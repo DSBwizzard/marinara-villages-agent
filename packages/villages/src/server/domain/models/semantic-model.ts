@@ -18,6 +18,11 @@ export interface SemanticInterpreter {
     residentActionsOmitted?: boolean,
     narrativeGrant?: import("./narrative-model.js").NarrativeAdmission | null,
     zoneEventSource?: Record<string, unknown>,
+    gm?: {
+      raw: Record<string, unknown>;
+      context: ReturnType<typeof import("../rules/semantic-contract.js").semanticContext>;
+      presentation: import("../rules/sprite-expressions.js").SpriteSelectionContext;
+    },
   ): Promise<SemanticExchange>;
 }
 
@@ -42,6 +47,7 @@ export type SemanticIntent = {
 
 /** Interpreter provenance is created by code, never accepted from Narration. */
 export type SemanticExchange = {
+  producer?: "gm";
   lore?: import("../../../shared/contracts/lore.js").LoreUse[];
   presentation?: import("../rules/sprite-expressions.js").SceneSpritePresentation;
   draftBoundaryViolation?: import("../rules/scene-halt.js").SceneBoundaryFinding;
@@ -56,6 +62,7 @@ export type SemanticExchange = {
 };
 
 export type SemanticProvenance = {
+  producer?: "gm";
   preservationVersion?: 1;
   occurrenceVersion?: 1;
   turnPolicyVersion?: 1;

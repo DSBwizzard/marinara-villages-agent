@@ -1,4 +1,6 @@
 import { observedZone } from "./zone-observation.js";
+import type { VenueScene } from "../models/scene-model.js";
+import { sceneMoveAccompanying } from "./venue-contact.js";
 import { zonePictureContext } from "./zone-picture.js";
 import { copyDate } from "../../../shared/helpers/zoned-date.js";
 import { legacyLetterFont } from "../../../shared/helpers/letter-font-selection.js";
@@ -152,12 +154,17 @@ export function exactSnapshotTransition(village: VillageState, now: Date): strin
 export function villageSettings(
   village: VillageState,
   player: VillagePlayerIdentity,
-  residenceAccess: {
-    placeId: string;
-    area: "outside" | "shared" | "private" | "public";
-    privateOwnerId: string;
-    zoneId?: string;
-  } | null,
+  residenceAccess: Pick<
+    VenueScene,
+    | "placeId"
+    | "area"
+    | "privateOwnerId"
+    | "zoneId"
+    | "entryOffers"
+    | "accompanying"
+    | "sceneAttendance"
+    | "departedIds"
+  > | null,
   accessContext?: import("../../domain/rules/venue-access.js").AccessContext,
   now = new Date(),
 ): VillageSettingsView {
@@ -279,6 +286,18 @@ export function villageSettings(
           accessView: venue.access
             ? projectZoneAccess(venue, originalZone, "player", {
                 ...context,
+                ...(residenceAccess?.placeId === venue.id
+                  ? {
+                      positions: {
+                        ...context?.positions,
+                        ...Object.fromEntries(
+                          (sceneMoveAccompanying(residenceAccess, venue, originalZone) ?? [])
+                            .filter((entry) => !residenceAccess.departedIds?.includes(entry.characterId))
+                            .map((entry) => [entry.characterId, entry.zoneId]),
+                        ),
+                      },
+                    }
+                  : {}),
                 sceneId: context?.sceneId ?? "next-visit-preview",
                 accepting: true,
                 unavailable: zoneClosed(village, venue, originalZone),

@@ -40,6 +40,15 @@ export const semanticNarrationCore = (raw: Record<string, unknown>) =>
 export const semanticHash = (value: unknown): string =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
+/** Model-only projection; canonical checkpoint evidence and its hash stay untouched. */
+export function semanticPromptContext(context: Record<string, unknown>) {
+  const { loreSelection: _usedSelector, setting, worldName, actors, ...changingContext } = context;
+  const social = asRecord(changingContext.social);
+  if (social.capturedAndScene !== undefined && JSON.stringify(social.capturedAndScene) === JSON.stringify(social.live))
+    changingContext.social = { ...social, capturedAndScene: { sameAs: "live" } };
+  return { setting, worldName, actors, ...changingContext };
+}
+
 const semanticActors = (scene: VenueScene) =>
   scene.contactGeneration?.actorIds ?? [
     ...new Set([...scene.activeIds, ...(scene.contactGeneration?.remoteIds ?? [])]),

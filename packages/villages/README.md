@@ -26,13 +26,13 @@ Have a Persona and **one to three characters** ready in your Engine library. You
 
 Create or check your model connections in Engine before founding. Choose them on the founding screen's **Setting** step:
 
-| Connection    | What it does                                                              |
-| ------------- | ------------------------------------------------------------------------- |
-| **System**    | Prepares residents and interprets proposed gameplay changes.              |
-| **Narration** | Writes Scene dialogue and description.                                    |
-| **Images**    | Generates artwork when requested. Choose **Disabled** to supply your own. |
+| Connection | What it does                                                              |
+| ---------- | ------------------------------------------------------------------------- |
+| **System** | Prepares the world, residents and background work.                        |
+| **GM**     | Writes new Scenes and proposes their gameplay updates.                    |
+| **Images** | Generates artwork when requested. Choose **Disabled** to supply your own. |
 
-Choose a specific language connection for **both System and Narration** before continuing. You can use the same one for both. Later, change these choices in Villages' **General Settings**.
+Choose a specific language connection for **both System and GM** before continuing. You can use the same one for both. Later, change these choices in Villages' **General Settings**. Existing connection selections and model settings are preserved.
 
 An image connection is optional if you upload your map. Founding requires an uploaded or generated map; the initial grid is a placeholder. Sprite setup makes no model requests.
 
@@ -97,6 +97,8 @@ Entering a private space requires permission. Knowing that a room exists, being 
 On a phone, use portrait orientation. Places opens as a drawer, and Venue editing opens as a sheet.
 
 ## Have a Scene
+
+New Scenes use one GM response for dialogue and gameplay updates. Existing open Scenes retain their original two-call behavior until concluded. The GM still needs to follow the game rules, and code validates proposed changes before applying them; it no longer receives a mandatory second model review. Wishes, relationships and Memories still update during play, without a separate Scene-end request.
 
 A Scene is an ongoing interaction within one Venue. It can continue as you move between that Venue's Zones.
 
@@ -205,7 +207,7 @@ Sprite Manager’s **Import Engine sprites** lets you choose an Engine folder an
 
 Imports make independent copies and reuse existing copies by their original Engine filename. Reimporting preserves reviewed names, assignments, framing and the default. Large folders import in bounded batches; failed images stay listed for retry, and completed copies survive leaving setup. Matching unambiguous Front and Side names share an expression. An existing assignment is never silently replaced; rename or unassign a conflicting import before applying it. Later Engine renames and folder moves do not change imported artwork. Older Engines without the folder catalog retain flat full-body import.
 
-Side-facing artwork must look right; Villages mirrors it to look left. Front-facing artwork addresses you. The existing System interpretation selects expressions and attention from the written Scene; Narration receives no sprite catalog. Code handles placement, variants, mirroring and animation without another model request.
+Side-facing artwork must look right; Villages mirrors it to look left. Front-facing artwork addresses you. The GM selects expressions and attention while writing new Scenes. Code handles placement, variants, mirroring and animation without another request. Existing two-call Scenes keep their saved presentation contract.
 
 **Generate signature** makes an image request. The original is retained alongside a transparent version; light and white areas are treated as paper. Failed regeneration keeps the previous signature.
 
@@ -215,11 +217,11 @@ Time, schedules, construction, approved moves, and expiry can advance without mo
 
 Set **Pace → Off** to pause automatic resident and world reviews. Local time, construction, approved moves and established environmental expiry continue. Retained Wishes do not expire.
 
-Quiet, Average, and Busy permit at most 2, 6, and 12 shared automatic reviews per Village-local day, at least 60, 30, and 15 minutes apart respectively. Midnight resets the allowance without shortening that spacing. Each review uses at most two principal model requests, plus one additional request for its single eligible automatic retry; quiet outcomes, failures, and unknown outcomes still count. Completed replies are reused, and unknown request outcomes require deliberate recovery. Accepted due arrangements have priority; other eligible resident and world reviews alternate. Residents may initiate private encounters or personal mail. World reviews can introduce or continue setting-grounded circumstances without waiting for available residents or healthy unrelated social work.
+Quiet, Average, and Busy permit at most 2, 6, and 12 shared automatic reviews per Village-local day, at least 60, 30, and 15 minutes apart respectively. Midnight resets the allowance without shortening spacing. New resident encounters and world developments use one principal model request; retained older jobs can use two. One eligible automatic retry may buy another response. Quiet outcomes, failures and unknown outcomes count. Completed replies are reused; unknown outcomes require deliberate recovery. Accepted due arrangements have priority; other resident and world reviews alternate. Residents may initiate private encounters or personal mail.
 
 **Consequence → Gentle / Moderate / Dramatic** controls introduced circumstances and event-driven escalation. Gentle is the default. It does not restrict ordinary character behavior or replace HALT. Lowering it preserves established facts and constrains uncommitted developments. Discover circumstances through ordinary visits, conversations, activities and memories; player assertions do not independently create external facts. Situations can remain quiet, develop or resolve without player involvement.
 
-An eligible Scene turn can introduce a local environmental development through its existing Narration and System calls. It shares the same allowance and cadence as background activity, uses the independently selected existing Zone, and yields to accepted arrangements. The captured Scene must still match that target's circumstances. Quiet is valid. New occurrences and their physical and mechanical consequences settle before display; a stale generated draft remains recoverable. Village-wide weather developments use the background timeline. Existing resident and player actions keep their own evidence and authority rules.
+An eligible new Scene turn can introduce a local environmental development through its existing GM request. It shares the background allowance and cadence, uses the independently selected existing Zone, and yields to accepted arrangements. The captured Scene must still match the target circumstances. Quiet is valid. Consequences settle before display; a stale generated draft remains recoverable. Village-wide weather developments use the background timeline. Existing action evidence and authority rules remain.
 
 World reviews have one existing prepared Zone as their physical target, with a separate timed Village-wide weather authority. Enduring changes remain in the Zone description. Temporary conditions can restrict ordinary use while preserving authorized inspection, corrective work and egress. Supported repairs update physical prose and the matching condition together. An ended condition does not repair damage or clear another restriction. Deterministic weather remains the baseline; an accepted timed override takes precedence only during its established interval. Each admitted exchange retains its captured circumstances; live Scenes refresh between exchanges. Material physical changes use the existing Zone artwork lifecycle and spending limits.
 
@@ -231,7 +233,7 @@ Background work shows progress, failures, and provider-reported usage where avai
 
 | Problem                       | What to do                                                                                                    |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Founding asks for connections | Select available language connections for both **System** and **Narration**.                                  |
+| Founding asks for connections | Select available language connections for both **System** and **GM**.                                         |
 | A setup suggestion seems lost | Return to Founding; the saved attempt recovers automatically. Use **Retry** only after a confirmed failure.   |
 | Preparation stops             | Fix any connection problem, then retry unfinished work under **REPAIR → Progress**. Completed tasks are kept. |
 | A Scene send fails            | Keep or edit the retained draft. An unchanged submission can reuse saved work.                                |

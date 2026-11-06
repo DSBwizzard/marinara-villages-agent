@@ -35,6 +35,7 @@ export type SocialMailInterpretation = {
   replyMemoryChanges?: unknown[];
 };
 export type SocialMailInput = {
+  gmVersion?: 1;
   mode?: "player" | "resident";
   seed: string;
   threadId: string;

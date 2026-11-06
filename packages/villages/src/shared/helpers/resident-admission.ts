@@ -40,10 +40,14 @@ export const RESIDENT_CONTINUITY_RULE =
   "A homeworld is not the complete list of worlds a character knows. Preserve source-supported familiarity with other worlds. Shared origin supports ordinary cultural familiarity, not automatic acquaintance, a shared timeline, specialist knowledge or another person's secrets. " +
   "Narrator context is not public knowledge; narrator-only truths are not resident knowledge. Keep each person's private history and witnessed knowledge separate. Later verified developments take precedence.";
 
-export function renderResidentAdmission(name: string, admission?: ResidentAdmission | null): string {
+export function renderResidentAdmission(
+  name: string,
+  admission?: ResidentAdmission | null,
+  includePolicy = true,
+): string {
   return [
     `## Starting situation: ${name}`,
-    RESIDENT_CONTINUITY_RULE,
+    includePolicy ? RESIDENT_CONTINUITY_RULE : "",
     admission?.homeworld ? `Homeworld (player-provided identity label): ${JSON.stringify(admission.homeworld)}` : "",
     admission?.startingSituation
       ? `Private starting situation (player-authored data): ${JSON.stringify(admission.startingSituation)}`

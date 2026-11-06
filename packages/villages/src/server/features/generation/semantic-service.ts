@@ -13,11 +13,14 @@ import type { InterpretationBatch } from "../../domain/models/interpretation-mod
 import type { VenueReplyLine, VenueScene } from "../../domain/models/scene-model.js";
 import type { SemanticExchange, SemanticIntent } from "../../domain/models/semantic-model.js";
 import { asRecord } from "../../domain/rules/coerce.js";
+import { normalizeGmEffects } from "../../domain/rules/scene-gm.js";
 import {
   badGateway,
   conflict,
   UnsupportedPlayerAgency,
   UnsupportedScenePerception,
+  InvalidGmReply,
+  VillagesRequestError,
 } from "../../domain/rules/errors.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { LIVE_MEMORY_INSTRUCTION } from "../../domain/rules/live-exchange.js";
@@ -32,12 +35,14 @@ import { readContactMoves } from "../../domain/rules/venue-contact.js";
 import { routeZoneEvents, zoneHearingContract } from "../../domain/rules/zone-events.js";
 import {
   reconcileResidentActions,
+  RESIDENT_ACTION_COMPACT_REVIEW,
   RESIDENT_ACTION_PUBLIC_SOCIAL,
   RESIDENT_ACTION_REVIEW,
   RESIDENT_ACTION_REVIEW_V1,
   RESIDENT_ACTION_SHAPE,
   type ResidentAccessAction,
 } from "../../domain/rules/resident-actions.js";
+import { expandSceneActionReview } from "../../domain/rules/scene-semantic-wire.js";
 import {
   assertSceneMovementCapacity,
   residentLocalIdsAt,
@@ -49,6 +54,7 @@ import {
   readSceneBoundary,
   readSceneHalt,
   SCENE_BOUNDARY_INSTRUCTION,
+  SCENE_BOUNDARY_REVIEW,
   SCENE_HALT_INSTRUCTION,
 } from "../../domain/rules/scene-halt.js";
 import {
@@ -57,6 +63,7 @@ import {
   semanticEvidence,
   semanticHash,
   semanticImmediate,
+  semanticPromptContext,
   semanticWishChangesCovered,
 } from "../../domain/rules/semantic-contract.js";
 import { semanticPlayerMoves } from "../../domain/rules/semantic-timeline.js";
@@ -122,7 +129,10 @@ function semanticCheckpointKey(stage: string, identity: Record<string, unknown>)
   ])}`;
 }
 
-function systemMessages(input: unknown, systemPrompt: string, sourceHash: string) {
+const SYSTEM_PROMPT_LAYOUT =
+  'In the reference input, social.capturedAndScene:{sameAs:"live"} means the complete captured view is identical to social.live, including seed, revisions, records and intentions; it is not absent or empty. Keep every required output field, review, coverage row and exact citation. Use compact JSON without indentation or Markdown fences. For supported results, keep reasons to one short factual clause; explain unresolved or rejected results precisely. Do not repeat evidence, rules or unchanged facts in reasons. ';
+
+function systemMessages(input: unknown, systemPrompt: string, sourceHash: string, promptVersion = 1) {
   const { _memoryWrite: _privateMemoryWrite, ...context } = asRecord(asRecord(input).context);
   const { _presentation, zoneEventSource: _privateZoneEventSource, ...publicInput } = asRecord(input);
   if (publicInput.hearingTimelineVersion === 1 && Array.isArray(publicInput.evidence))
@@ -136,28 +146,30 @@ function systemMessages(input: unknown, systemPrompt: string, sourceHash: string
       return line;
     });
   const selection = _presentation as SpriteSelectionContext | undefined;
+  const presentation = selection
+    ? {
+        presentation: {
+          current: selection.state,
+          sprites: Object.entries(selection.sprites).map(([characterId, sprite]) => ({
+            characterId,
+            expressions: describeSpriteExpressions(sprite, selection.variants),
+          })),
+        },
+      }
+    : {};
+  let packet: unknown = { sourceHash, input: { ...publicInput, context, ...presentation } };
+  if (promptVersion === 2) {
+    const { context: _originalContext, ...currentInput } = publicInput;
+    packet = {
+      input: { context: semanticPromptContext(context), ...currentInput, ...presentation },
+      sourceHash,
+    };
+  }
   return [
     { role: "system" as const, content: systemPrompt },
     {
       role: "user" as const,
-      content: JSON.stringify({
-        sourceHash,
-        input: {
-          ...publicInput,
-          context,
-          ...(selection
-            ? {
-                presentation: {
-                  current: selection.state,
-                  sprites: Object.entries(selection.sprites).map(([characterId, sprite]) => ({
-                    characterId,
-                    expressions: describeSpriteExpressions(sprite, selection.variants),
-                  })),
-                },
-              }
-            : {}),
-        },
-      }),
+      content: JSON.stringify(packet),
     },
   ];
 }
@@ -180,6 +192,7 @@ function exchangeInstruction(
     narrativeGrant?: NarrativeAdmission | null;
     residentActions?: ResidentAccessAction[];
   },
+  compact = false,
 ): string {
   return (
     (scene.operation?.input.hearingTimelineVersion === 1
@@ -195,7 +208,9 @@ function exchangeInstruction(
       : "") +
     (residentActions
       ? (actionContractV2
-          ? RESIDENT_ACTION_SHAPE + ". " + RESIDENT_ACTION_REVIEW + " " + RESIDENT_ACTION_PUBLIC_SOCIAL
+          ? (compact ? RESIDENT_ACTION_COMPACT_REVIEW : RESIDENT_ACTION_SHAPE + ". " + RESIDENT_ACTION_REVIEW) +
+            " " +
+            RESIDENT_ACTION_PUBLIC_SOCIAL
           : RESIDENT_ACTION_REVIEW_V1) + " "
       : "") +
     (combined
@@ -214,14 +229,21 @@ function exchangeInstruction(
       : "") +
     (context.preservation ? 'halt:{reason:"none",quote:"",appointments:[]},' : "") +
     "consistent:true,reason,playerAgencyViolation:null,presentation:[],authority:{physical:false,access:false,projects:false,standing:false,social:false},action:null,memoryChanges:[],relationshipChanges:{changes:[],permissions:[],disclosures:[],intentions:[]},wishChanges:[],projectSpeech:[],access:[],events:{moves:[],departures:[],contactEnd:[]}" +
-    (actionContractV2 ? ",residentActionReview:{version:1,additionalActions:[],decisions:[],coverage:[]}" : "") +
+    (actionContractV2
+      ? compact
+        ? ",residentActionReview:{version:2,reviewed:[],additionalActions:[],decisions:[],coverage:[]}"
+        : ",residentActionReview:{version:1,additionalActions:[],decisions:[],coverage:[]}"
+      : "") +
     "}. Return exactly one JSON object. " +
     'Use input.presentation to interpret visible acting in the completed draft, in this same response: presentation:[{segment:zero-based draft index,staging:[{characterId,expression?,look?:{target:"player"}|{target:"villager",characterId}|{target:"direction",direction:"left|right"}}]}]. Choose only listed expression IDs matching the visible emotion; preserve prior expression when unchanged or use the listed default when uncertain. Interpret attention from the actual addressee or narrated look; screen placement is handled by code. Omit uncertain cues. Artwork labels select images only and establish no story events, action, knowledge, attendance, consent or effects. An action pose such as eating or waving fits only when already occurring in the draft. Cues are visual only: never alter speech targets, hearing or physical positions. ' +
-    (actionContractV2
+    (actionContractV2 && !compact
       ? 'residentActionReview is required even when residentActions is empty: independently review every player-heard non-player segment. Populate coverage for each such segment; no access action means status:"none" with actionIds:[], not an omitted review or empty coverage. '
       : "") +
     (combined ? "intent belongs inside that same root object, never appended after its closing brace. " : "") +
     "Set each authority flag true exactly when the corresponding action/resolved access/Project/standing permission event is present; missing authority metadata must not masquerade as a harmless missing memory update. " +
+    (compact
+      ? "Set authority.social:true whenever a returned liveAfter changes connection or contains any records, including preserved records. Set it true for other consequential social changes too. A private stance-only update may leave social:false only when all returned connections are unchanged and records arrays are empty. "
+      : "") +
     'Review every draft segment for claims that the player spoke, acted, felt or committed. Include indirect narration such as "Your greeting carries across the room" or a resident reacting to words the player never said. A Scene arrival establishes only presence and entry, not a greeting or other voluntary action. If a current player claim is unsupported by the current input or already established Scene evidence, return consistent:false and playerAgencyViolation:{segment:zero-based draft index,quote:"exact excerpt asserting the unsupported claim"}. Otherwise return playerAgencyViolation:null. Distinguish a resident addressing the player, hypothetical speech, and a response to actual player input from invented player actions. Do not reject established prior actions or mere observation. ' +
     PLACE_UPDATE_INSTRUCTION.replace("placeUpdate:", "action:") +
     "consistent=false if the draft asserts an unsupported consequential outcome, misclassifies private thought/quoted/hypothetical speech as spoken words, changes intended delivery/addressees, or gives a character unreachable knowledge. action is the fully supported placeUpdate, with happened:true and segment:exact current narration index; null if no physical effect. Prepared actions are not committed receipts. Do not silently change a prepared outcome that the prose contradicts. " +
@@ -233,11 +255,10 @@ function exchangeInstruction(
     (actionContractV2
       ? ""
       : 'access rows use {actorId,visitorId:"player",venueId,zoneId,outcome:"invite-now|invite-later|refuse|dismiss|ban-zone|ban-venue|invite-outside-hours|access-management|unresolved",duration:"visit|standing",conditions:[],accompanies:boolean,evidence:[current segment indexes],command?:exact supported access command}. conditions only supports "accompanied"; any other condition (including a restricted future time) requires outcome:unresolved, with no command or permission. Standing grants go in relationship permissions, never turn a visit into standing. Interpret scope, timing and paraphrases from context; words ban or permission are not required. Only current issuer speech or witnessed clear gesture supports access. Unsupported conditions stay unresolved; never broaden them. ') +
-    'projectSpeech rows use {projectId,revision,kind:"approval|builder|withdrawal",speakerId,citations:[{segment,quote}]}. Cite exact dialogue by this speaker for only supplied Project IDs and revisions. Approval and volunteering are independent and can share the same witnessed exchange. Approval requires unconditional consent to the specific physical design; builder means personal willingness to lead that design, not mere capability or the player assigning work. Withdrawal requires an explicit present withdrawal of approval or willingness. No speech starts, resumes, accelerates or completes work. Gifts and objects have no mechanical Project effects. projects authority is true exactly when projectSpeech is nonempty. ' +
-    (actionContractV2
-      ? LIVE_MEMORY_INSTRUCTION.replace(RELATIONSHIP_PERMISSION_INSTRUCTION, "")
-      : LIVE_MEMORY_INSTRUCTION
-    )
+    (context.projects
+      ? 'projectSpeech rows use {projectId,revision,kind:"approval|builder|withdrawal",speakerId,citations:[{segment,quote}]}. Cite exact dialogue by this speaker for only supplied Project IDs and revisions. Approval and volunteering are independent and can share the same witnessed exchange. Approval requires unconditional consent to the specific physical design; builder means personal willingness to lead that design, not mere capability or the player assigning work. Withdrawal requires an explicit present withdrawal of approval or willingness. No speech starts, resumes, accelerates or completes work. Gifts and objects have no mechanical Project effects. projects authority is true exactly when projectSpeech is nonempty. '
+      : "No relevant Project IDs are supplied: return projectSpeech:[] and projects authority false. New venue and residence requests still use events. No speech starts, resumes, accelerates or completes work. Gifts and objects have no mechanical Project effects. ") +
+    relationshipInstruction(compact && scene.liveSceneVersion === 1, actionContractV2)
       .replaceAll('evidence:["player",0]', "evidence:[0]")
       .replaceAll('lineIds:["player",0]', "lineIds:[0]")
       .replace(
@@ -247,16 +268,39 @@ function exchangeInstruction(
       .replace('"player" means the latest player line.', "Captured player speech uses its numeric segment index.")
       .replace('"player" for the current player line, or ', "") +
     " " +
-    " Consider only the owner’s captured wishes and grounded new social desires. No relevant desire is valid. " +
+    (compact
+      ? " Consider only the owner’s captured wishes and grounded new social desires. No relevant desire means wishChanges:[]. "
+      : " Consider only the owner’s captured wishes and grounded new social desires. No relevant desire is valid. ") +
     WISH_PROPOSAL_INSTRUCTION.replace('evidence:["player",0]', "evidence:[0]") +
     ' Cite captured player speech by its numeric evidence index; never cite the complete private input as "player".' +
     " Use numeric indexes matching evidence draft:N for Wish evidence. Existing goals keep exact IDs; genuinely new social desires use new:local-key. Memory learners must witness all supporting context. " +
     (actionContractV2 ? "" : " Relationship permissions describe standing grants/revocations only.") +
     " Disclosures require actual speech heard by the player. Wish conditions/corrections reflect semantic meaning without requiring particular words. " +
     (context.preservation
-      ? SCENE_HALT_INSTRUCTION + (context.preservation.sceneBoundaryVersion === 1 ? SCENE_BOUNDARY_INSTRUCTION : "")
+      ? compact && context.preservation.sceneBoundaryVersion === 1
+        ? SCENE_BOUNDARY_REVIEW
+        : SCENE_HALT_INSTRUCTION + (context.preservation.sceneBoundaryVersion === 1 ? SCENE_BOUNDARY_INSTRUCTION : "")
       : "")
   );
+}
+
+function relationshipInstruction(liveTimeline: boolean, actionContractV2: boolean) {
+  const instruction = actionContractV2
+    ? LIVE_MEMORY_INSTRUCTION.replace(RELATIONSHIP_PERMISSION_INSTRUCTION, "")
+    : LIVE_MEMORY_INSTRUCTION;
+  return liveTimeline
+    ? instruction
+        .replace("expectedRevision,sceneAfter,liveAfter,reason", "expectedRevision,liveAfter,reason")
+        .replace(
+          "sceneAfter continues the captured Scene plus its settled events ONLY. liveAfter interprets this SAME event against the supplied current live revision;",
+          "This is one living timeline: return liveAfter only, with the exact current live revision;",
+        )
+        .replace("lineIds:[],sceneItems:[],items:", "lineIds:[],items:")
+        .replace(
+          "sceneItems continues the captured Scene; items settles the same event against current live intentions.",
+          "Return items only, settling this event against current live intentions.",
+        )
+    : instruction;
 }
 
 export function createSemanticService(ports: SemanticPorts) {
@@ -312,8 +356,9 @@ export function createSemanticService(ports: SemanticPorts) {
     // Future draft evidence is checked again after generation; known authority already has to fit now.
     const messages = systemMessages(
       input,
-      SYSTEM_BASE + SYSTEM_CURRENT_SCENE + exchangeInstruction(scene, context, policy),
+      SYSTEM_BASE + SYSTEM_CURRENT_SCENE + exchangeInstruction(scene, context, policy, combined) + SYSTEM_PROMPT_LAYOUT,
       "0".repeat(semanticHash(null).length),
+      2,
     );
     const fitted = model.fitContext(messages, { maxTokens: output });
     if (
@@ -327,14 +372,28 @@ export function createSemanticService(ports: SemanticPorts) {
     stage: string,
     input: Input,
     instruction: string,
-    validate: (raw: Record<string, unknown>, hash: string, savedInput: Input) => Result,
+    validate: (raw: Record<string, unknown>, hash: string, savedInput: Input, outputContractVersion?: 1) => Result,
     currentEvidenceOnly = false,
     _scene?: VenueScene,
+    outputContractVersion?: 1,
+    provided?: Record<string, unknown>,
   ): Promise<Result> {
     // Context is frozen once per operation/source, even when world state changes during recovery.
     const taskOutput = asRecord(input).pipelineVersion === 3 ? 4096 : 8192;
     const identity = asRecord(input);
     const key = semanticCheckpointKey(stage, identity);
+    if (provided) {
+      const saved = await ports.venueCheckpoint("gm:" + key + ":input", async () => ({
+        input,
+        hash: semanticHash(input),
+      }));
+      try {
+        return validate(provided, saved.hash, saved.input);
+      } catch (error) {
+        if (error instanceof VillagesRequestError && error.statusCode === 409) throw error;
+        throw new InvalidGmReply(error);
+      }
+    }
     return ports.venueCheckpoint(key, async () => {
       const requested = await ports.villagesConnectionIdFor("system");
       const initial = await ports.villagesLanguageModels().resolveForRequest({ connectionId: requested ?? undefined });
@@ -395,9 +454,15 @@ export function createSemanticService(ports: SemanticPorts) {
           model: initial.model,
           output: Math.min(initial.maxOutputTokens ?? taskOutput, taskOutput),
           outputPolicy: 3,
+          promptVersion: 2,
+          ...(outputContractVersion ? { outputContractVersion } : {}),
           instruction,
           currentEvidenceOnly,
-          systemPrompt: SYSTEM_BASE + (currentEvidenceOnly ? SYSTEM_CURRENT_SCENE : SYSTEM_RETRIEVAL) + instruction,
+          systemPrompt:
+            SYSTEM_BASE +
+            (currentEvidenceOnly ? SYSTEM_CURRENT_SCENE : SYSTEM_RETRIEVAL) +
+            instruction +
+            SYSTEM_PROMPT_LAYOUT,
           ...(identity.narrativeGrant !== undefined ? { narrativeReviewOutputVersion: 1 } : {}),
           reasoningEffort: identity.pipelineVersion === 3 ? ("none" as const) : ("low" as const),
         };
@@ -440,6 +505,7 @@ export function createSemanticService(ports: SemanticPorts) {
             input,
             snapshot.systemPrompt ?? SYSTEM_BASE + SYSTEM_RETRIEVAL + (snapshot.instruction ?? instruction),
             sourceHash,
+            snapshot.promptVersion,
           );
           const fitted = model.fitContext(messages, { maxTokens: output });
           if (
@@ -529,7 +595,7 @@ export function createSemanticService(ports: SemanticPorts) {
           throw badGateway(
             "Historical context is unresolved. The saved draft is retained; no expansion call is available.",
           );
-        const result = validate(raw, effectiveHash, effectiveInput);
+        const result = validate(raw, effectiveHash, effectiveInput, snapshot.outputContractVersion);
         const receipt = asRecord(asRecord(result).effects).residentActionReceipt;
         if (receipt) asRecord(receipt).systemResponse = answer.content;
         return { ...result, lore: inspectedLoreUse(packet.loreInspection, "System") };
@@ -688,27 +754,34 @@ export function createSemanticService(ports: SemanticPorts) {
     residentActionsOmitted = false,
     narrativeGrant?: NarrativeAdmission | null,
     zoneEventSource?: Record<string, unknown>,
+    gm?: {
+      raw: Record<string, unknown>;
+      context: ReturnType<typeof semanticContext>;
+      presentation: SpriteSelectionContext;
+    },
   ): Promise<SemanticExchange> {
     const state = await readSceneAuthority(scene);
     const sceneState = sceneContinuityView(state, scene);
     const evidence = semanticEvidence(lines);
     const combined = scene.operation?.input.semanticPipelineVersion === 3;
     const movementReview = scene.operation?.input.residentMovementReviewVersion === 1;
-    const actionContractV2 = residentActionsOmitted || scene.operation?.input.residentActionsVersion === 2;
-    const context = semanticContext(
-      scene,
-      state,
-      message,
-      combined,
-      actionContractV2,
-      sceneContinuityView(state, scene),
-      lines.map((line) => line.content).join("\n"),
-    );
-    return ask(
+    const actionContractV2 = !gm && (residentActionsOmitted || scene.operation?.input.residentActionsVersion === 2);
+    const context =
+      gm?.context ??
+      semanticContext(
+        scene,
+        state,
+        message,
+        combined,
+        actionContractV2,
+        sceneContinuityView(state, scene),
+        lines.map((line) => line.content).join("\n"),
+      );
+    const result = await ask(
       "exchange",
       {
         message,
-        _presentation: sceneSpriteSelection(scene, sceneState),
+        _presentation: gm?.presentation ?? sceneSpriteSelection(scene, sceneState),
         turnPolicyVersion: 1,
         ...(movementReview
           ? { residentMovementReviewVersion: 1, residentRequestLocalIds: residentLocalIdsAt(scene, [], 0) }
@@ -720,17 +793,16 @@ export function createSemanticService(ports: SemanticPorts) {
         context,
         ...(narrativeGrant !== undefined ? { narrativeGrant } : {}),
         ...(combined ? { pipelineVersion: 3 } : {}),
-        ...(residentActions ? { residentActions } : {}),
+        ...(residentActions && !gm ? { residentActions } : {}),
       },
-      exchangeInstruction(scene, context, {
-        combined,
-        movementReview,
-        actionContractV2,
-        residentActionsOmitted,
-        narrativeGrant,
-        residentActions,
-      }),
-      (raw, hash, savedInput): SemanticExchange => {
+      exchangeInstruction(
+        scene,
+        context,
+        { combined, movementReview, actionContractV2, residentActionsOmitted, narrativeGrant, residentActions },
+        combined && actionContractV2,
+      ),
+      (raw, hash, savedInput, outputContractVersion): SemanticExchange => {
+        if (gm) raw = { ...raw, sourceHash: hash };
         if (savedInput.context.preservation) {
           const finding =
             savedInput.context.preservation.sceneBoundaryVersion === 1
@@ -787,10 +859,12 @@ export function createSemanticService(ports: SemanticPorts) {
           throw new UnsupportedScenePerception();
         }
         let evidence = savedInput.evidence;
-        const immediate = raw.consistent === true ? semanticImmediate(raw.events, lines) : undefined;
+        const immediate = gm || raw.consistent === true ? semanticImmediate(raw.events, lines) : undefined;
         const admissions =
           savedInput.hearingTimelineVersion === 1 && immediate
-            ? validateNpcAdmissions(raw.npcAdmissions, scene.pendingNpcAdmissions ?? [])
+            ? gm
+              ? (scene.pendingNpcAdmissions ?? [])
+              : validateNpcAdmissions(raw.npcAdmissions, scene.pendingNpcAdmissions ?? [])
             : [];
         if (savedInput.hearingTimelineVersion === 1 && savedInput.zoneEventSource && immediate) {
           const venue = findLocation(sceneState, scene.placeId);
@@ -849,15 +923,16 @@ export function createSemanticService(ports: SemanticPorts) {
         if (raw.consistent === false && citedAgency) throw new UnsupportedPlayerAgency();
         if (raw.consistent === true && citedAgency)
           throw badGateway("System returned contradictory player-agency review. The draft is preserved.");
-        if (raw.consistent !== true)
+        if (!gm && raw.consistent !== true)
           throw badGateway("System could not establish a consistent Scene outcome. The draft is preserved.");
         semanticPlayerMoves(
           asRecord(raw.events).playerMoves,
           { ...scene, semanticIntent: interpretedIntent ?? prepared ?? undefined },
           lines,
         );
+        const reviewed = outputContractVersion === 1 ? expandSceneActionReview(raw, evidence) : raw;
         const reconciliation = savedInput.residentActions
-          ? reconcileResidentActions(savedInput.residentActions, raw.residentActionReview, evidence)
+          ? reconcileResidentActions(savedInput.residentActions, reviewed.residentActionReview, evidence)
           : undefined;
         if (reconciliation) {
           if (
@@ -1073,7 +1148,7 @@ export function createSemanticService(ports: SemanticPorts) {
           });
           const result = {
             outcome: String(row.outcome),
-            source: "system" as const,
+            source: gm ? ("gm" as const) : ("system" as const),
             evidenceIds: cited.map((line) => line.id),
             reason: "Current System-interpreted event",
           };
@@ -1084,7 +1159,7 @@ export function createSemanticService(ports: SemanticPorts) {
             question: "Current access event",
             evidence: cited,
             decisions: { status: "off" },
-            system: { status: "complete", outcome: result.outcome },
+            system: gm ? { status: "not-requested" } : { status: "complete", outcome: result.outcome },
             result,
             applied: "Pending authority validation",
             startedAt: "",
@@ -1102,7 +1177,7 @@ export function createSemanticService(ports: SemanticPorts) {
           projects: Array.isArray(effects.projectSpeech) && effects.projectSpeech.length > 0,
           standing: Array.isArray(permissions) && permissions.length > 0,
           social:
-            asRecord(raw.authority).social === true ||
+            (!gm && asRecord(raw.authority).social === true) ||
             (Array.isArray(asRecord(effects.relationshipChanges).changes) &&
               (asRecord(effects.relationshipChanges).changes as unknown[]).some((value: unknown) => {
                 const row = asRecord(value),
@@ -1117,14 +1192,15 @@ export function createSemanticService(ports: SemanticPorts) {
         const invalidAuthority = Object.entries(authority).find(
           ([key, value]) => asRecord(raw.authority)[key] !== value,
         );
-        if (invalidAuthority)
+        if (invalidAuthority && !gm)
           throw badGateway(
             `System authority metadata is missing or inconsistent (${invalidAuthority[0]}). The draft is preserved.`,
           );
         return {
           version: 2,
+          ...(gm ? { producer: "gm" as const } : {}),
           ...(interpretedIntent ? { intent: interpretedIntent } : {}),
-          checkpointKey: semanticCheckpointKey("exchange", savedInput),
+          checkpointKey: gm ? "" : semanticCheckpointKey("exchange", savedInput),
           sourceHash: hash,
           authority,
           effects,
@@ -1138,9 +1214,20 @@ export function createSemanticService(ports: SemanticPorts) {
       },
       actionContractV2,
       scene,
+      combined && actionContractV2 ? 1 : undefined,
+      gm ? normalizeGmEffects(gm.raw, context) : undefined,
     );
+    if (gm && result.presentation?.length) {
+      const presentation = result.presentation;
+      result.presentation = await ports.venueCheckpoint(
+        "gm-presentation:" + result.sourceHash + ":" + semanticHash(gm.raw.presentation),
+        async () => presentation,
+      );
+    }
+    return result;
   }
   async function rejectExchange(result: SemanticExchange) {
+    if (result.producer === "gm") return;
     await ports.rejectVenueCompletion(undefined, { preserveWriting: true, stages: [result.checkpointKey] });
   }
   return { preflight, exchange, rejectExchange };

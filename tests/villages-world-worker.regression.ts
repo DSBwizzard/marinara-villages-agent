@@ -51,16 +51,8 @@ const model: any = {
   fitContext: (messages: any, options: any) => ({ messages, maxTokens: options.maxTokens }),
   chatComplete: async () => {
     requests++;
-    if (requests % 2)
-      return {
-        finishReason: "stop",
-        content: JSON.stringify({
-          quiet: false,
-          proposal: { occurrence: "Drizzle collects beneath a window.", reason: "Changing harbor weather." },
-        }),
-      };
     if (failApply) state.narrativeConsequence = "gentle";
-    return { content: JSON.stringify({ consistent: true, development: proposal }), finishReason: "stop" };
+    return { content: JSON.stringify({ quiet: false, development: proposal }), finishReason: "stop" };
   },
 };
 let documents: any;
@@ -155,7 +147,7 @@ try {
   await narrative.reconcile(now);
   await background.settleBackgroundWork();
   assert.equal((await background.backgroundWorkSummaries())[0]!.status, "completed");
-  assert.equal(requests, 2);
+  assert.equal(requests, 1);
   assert.equal(state.eventAttempts!.attempts.length, 1);
   assert.equal(state.eventAttempts!.attempts[0]!.origin, "world");
   assert.equal(state.narrative!.conditions.length, 1);
@@ -230,7 +222,7 @@ try {
     3,
     "Replacement after explicit rejection reserves a new normal opportunity.",
   );
-  assert.equal(requests, 6);
+  assert.equal(requests, 3);
   assert.ok(
     [...rows.values()].some((row) => row.kind === "background-history" && row.data.hasResult),
     "The rejected paid result and source survive in existing background history.",

@@ -258,62 +258,102 @@ export function createSocialMail(ports: SocialMailPorts) {
     const system = async () => (systemModel ??= await resolveModel("system"));
     const narrationModel =
       input.mode !== "resident" && input.retainedReply == null ? await resolveModel("narration") : undefined;
+    const gmRaw =
+      input.gmVersion === 1 && narrationModel
+        ? await modelRequest(
+            "narration",
+            narrationModel,
+            [
+              {
+                role: "system",
+                content:
+                  "You are the GM of Villages correspondence. Write a personal reply as this resident and interpret the incoming letter and your reply in ONE response. A natural choice not to reply is valid. Return text (max2000 characters) and only meaningful optional sourceReview,replyReview,sourceMemoryChanges,replyMemoryChanges,sourceWishChanges,replyWishChanges. Preserve identity, motives and private knowledge. No self-review or independent checker. The reply cannot perform actions, grant access or create obligations. " +
+                  PERSONAL_LETTER_INSTRUCTION +
+                  " " +
+                  meaningMessages()[0].content +
+                  " All optional results belong inside that SAME root object. Omitted sections mean no change. Source interpretation precedes reply interpretation; reply relationship revisions refer to the state AFTER your source changes. Do not repeat unchanged projections or write filler Memories.",
+              },
+              {
+                role: "user",
+                content: JSON.stringify({
+                  ...JSON.parse(String(meaningMessages()[1].content)),
+                  setting: villageCurrentSetting(state),
+                  character: resident.cardSnapshot,
+                  admission: resident.admission,
+                  playerName: state.playerPersonaName || state.playerName,
+                  ownContext,
+                  replyInstruction:
+                    "Write the reply in root text, then cite its supplied reply ID for new reply effects.",
+                }),
+              },
+            ],
+            "personal-mail:gm:" + input.sourceHash,
+            4096,
+          )
+        : undefined;
     const text =
       input.mode === "resident"
         ? ""
-        : (input.retainedReply ??
-          String(
-            (
-              await modelRequest(
-                "narration",
-                narrationModel!,
-                [
-                  {
-                    role: "system",
-                    content:
-                      "Write one setting-appropriate personal reply as this resident. " +
-                      PERSONAL_LETTER_INSTRUCTION +
-                      " Treat the pending player's exact message as the proposed incoming source. System will independently settle its meaning before either message is delivered. Keep the resident's voice, initiative and boundaries; they may refuse or end a bond. Never invent player words, feelings, consent, travel or physical deeds. Communication alone does not perform physical tasks or grant access. Return JSON {text:string}, at most 2000 characters. Empty text is a valid choice not to reply. Retained Wishes are available context, not a required topic or gesture.",
+        : gmRaw
+          ? String(gmRaw.text ?? "")
+          : (input.retainedReply ??
+            String(
+              (
+                await modelRequest(
+                  "narration",
+                  narrationModel!,
+                  [
+                    {
+                      role: "system",
+                      content:
+                        "Write one setting-appropriate personal reply as this resident. " +
+                        PERSONAL_LETTER_INSTRUCTION +
+                        " Treat the pending player's exact message as the proposed incoming source. System will independently settle its meaning before either message is delivered. Keep the resident's voice, initiative and boundaries; they may refuse or end a bond. Never invent player words, feelings, consent, travel or physical deeds. Communication alone does not perform physical tasks or grant access. Return JSON {text:string}, at most 2000 characters. Empty text is a valid choice not to reply. Retained Wishes are available context, not a required topic or gesture.",
+                    },
+                    {
+                      role: "user",
+                      content: JSON.stringify({
+                        setting: villageCurrentSetting(state),
+                        playerName: state.playerPersonaName || state.playerName,
+                        character: resident.cardSnapshot,
+                        admission: resident.admission,
+                        ownContext,
+                        wishContext: await ports.backgroundSetting(
+                          "personal-mail:writing-context:" + input.sourceHash,
+                          () =>
+                            fitWishWritingContext(narrationModel!, [
+                              { actorId: input.residentId, wishes: resident.wishes },
+                            ]),
+                        ),
+                        memories: JSON.parse(input.narrationMemories ?? '{"memories":[]}'),
+                        incoming: { text: input.sourceText, at: input.sourceAt },
+                        now: input.admittedAt ?? input.sourceAt,
+                      }),
+                    },
+                  ],
+                  "personal-mail:writing:" + input.sourceHash,
+                  2048,
+                  async () => {
+                    fitMailContext(await system(), meaningMessages(), 16384, "system");
                   },
-                  {
-                    role: "user",
-                    content: JSON.stringify({
-                      setting: villageCurrentSetting(state),
-                      playerName: state.playerPersonaName || state.playerName,
-                      character: resident.cardSnapshot,
-                      admission: resident.admission,
-                      ownContext,
-                      wishContext: await ports.backgroundSetting(
-                        "personal-mail:writing-context:" + input.sourceHash,
-                        () =>
-                          fitWishWritingContext(narrationModel!, [
-                            { actorId: input.residentId, wishes: resident.wishes },
-                          ]),
-                      ),
-                      memories: JSON.parse(input.narrationMemories ?? '{"memories":[]}'),
-                      incoming: { text: input.sourceText, at: input.sourceAt },
-                      now: input.admittedAt ?? input.sourceAt,
-                    }),
-                  },
-                ],
-                "personal-mail:writing:" + input.sourceHash,
-                2048,
-                async () => {
-                  fitMailContext(await system(), meaningMessages(), 16384, "system");
-                },
-              )
-            ).text ?? "",
-          ));
+                )
+              ).text ?? "",
+            ));
     if (text.length > 2000) throw new Error("The personal reply exceeded its size limit.");
     if (input.mode !== "resident") assertPersonalLetter(text, resident.cardSnapshot.name);
     replyLine.content = text;
-    const raw = await modelRequest(
-      "system",
-      await system(),
-      meaningMessages(),
-      "personal-mail:meaning:" + input.sourceHash + ":" + semanticHash(state.relationshipContext),
-      16384,
-    );
+    const raw =
+      gmRaw ??
+      (await modelRequest(
+        "system",
+        await system(),
+        meaningMessages(),
+        "personal-mail:meaning:" + input.sourceHash + ":" + semanticHash(state.relationshipContext),
+        16384,
+      ));
+    if (gmRaw)
+      for (const key of ["sourceReview", "replyReview"])
+        raw[key] = { ...emptyRelationshipReview(), ...asRecord(raw[key]) };
     const source = input.sourceDelivered
       ? emptyRelationshipReview()
       : parseRelationshipReview(mailReviewInput(raw.sourceReview), input.messageId, [sourceLine], state, true);
@@ -966,6 +1006,7 @@ export function createSocialMail(ports: SocialMailPorts) {
       throw conflict("The correspondent changed. The original message is retained for recovery.");
     return {
       mode: message.fromId === "player" ? "player" : "resident",
+      gmVersion: 1,
       seed: village.seed,
       threadId,
       messageId,
@@ -1277,6 +1318,7 @@ export function createSocialMail(ports: SocialMailPorts) {
     const captured = admission({ ...village, relationshipContext: social }, row.senderId);
     const input: SocialMailInput = {
       mode: "resident",
+      gmVersion: 1,
       seed: village.seed,
       threadId,
       messageId,

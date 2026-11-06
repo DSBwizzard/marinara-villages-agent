@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { semanticContext } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
 import {
   coerceVillageState,
   defaultVillageState,
@@ -201,6 +202,36 @@ const replay = await service.exchange(scene, "I listen.", lines, null);
 assert.deepEqual(replay.presentation, result.presentation, "replay retains the concrete choice after library changes");
 assert.equal(calls, 1, "recovery never buys a sprite request");
 world.villagers[0].sprite = sprite as any;
+const gmContext = semanticContext(scene, world, "I listen.", true);
+const gmSelection = sceneSpriteSelection(scene, world);
+const gmRaw = {
+  presentation: [
+    {
+      segment: 0,
+      staging: [{ characterId: "a", expression: "g-e-first", look: { target: "player" } }],
+    },
+  ],
+};
+const gmCalls = calls;
+const originalRandom = Math.random;
+Math.random = () => 0;
+const gmFirst = await service.exchange(scene, "A GM turn.", lines, null, undefined, false, undefined, undefined, {
+  raw: gmRaw,
+  context: gmContext,
+  presentation: gmSelection,
+});
+world.villagers[0].sprite = null;
+Math.random = () => 0.999;
+const gmReplayed = await service.exchange(scene, "A GM turn.", lines, null, undefined, false, undefined, undefined, {
+  raw: gmRaw,
+  context: gmContext,
+  presentation: sceneSpriteSelection(scene, world),
+});
+Math.random = originalRandom;
+assert.deepEqual(gmReplayed.presentation, gmFirst.presentation, "GM validation input freezes the catalog and variants");
+assert.equal(gmReplayed.sourceHash, gmFirst.sourceHash, "Recovery retains its captured source hash");
+assert.equal(calls, gmCalls, "GM validation and replay never call System");
+world.villagers[0].sprite = sprite as any;
 malformed = true;
 const invalid = await service.exchange(scene, "Other turn.", lines, null);
 assert.deepEqual(invalid.presentation, [], "bad optional cues do not invalidate prose");
@@ -294,6 +325,98 @@ const replayed = await writer.generate(writingScene, "", "chat", "", null);
 assert.deepEqual(replayed.lines, written.lines);
 assert.equal(narrationCalls, 1);
 assert.equal(calls, beforeWriting + 1, "replaying the complete turn buys no requests");
+for (const failure of ["validation-input", "presentation-publish", "invalid-response"]) {
+  const retained = new Map<string, unknown>();
+  let pending = true,
+    paid = 0,
+    rejected = 0;
+  world.villagers[0].sprite = sprite as any;
+  const gmAdmission = { ...admission, gmVersion: 1, writingContractVersion: 4 };
+  const gmScene = {
+    ...writingScene,
+    id: "gm-storage-" + failure,
+    gmVersion: 1,
+    operation: { input: gmAdmission },
+  } as typeof scene;
+  const gmPorts = {
+    ...ports,
+    villagesConnectionIdFor: async () => "narration",
+    villagesLanguageModels: () => ({ resolveForRequest: async () => ({ ...model, connectionId: "narration" }) }),
+    readEffectiveVillagerCard,
+    readVillageLore: async () => [],
+    villagesLogger: () => ({ warn: () => assert.fail("Unexpected warning") }),
+    measurePipeline: async (_label: string, _metadata: unknown, work: () => Promise<unknown>) => work(),
+    runtimeDebug() {},
+    venueOperationId: () => gmScene.id,
+    venueOperationInput: () => gmAdmission,
+    refreshZoneParticipants: async (current: unknown) => current,
+    venueSavedCheckpoint: (key: string) => retained.get(key),
+    venueCheckpoint: async (key: string, work: () => Promise<unknown>) => {
+      if (retained.has(key)) return structuredClone(retained.get(key));
+      const value = await work();
+      const inputFailure = failure === "validation-input" && key.startsWith("gm:semantic-");
+      const publishFailure = failure === "presentation-publish" && key.startsWith("gm-presentation:");
+      if (pending && (inputFailure || publishFailure)) {
+        pending = false;
+        if (publishFailure) retained.set(key, structuredClone(value));
+        throw Error("Checkpoint persistence unavailable");
+      }
+      retained.set(key, structuredClone(value));
+      return value;
+    },
+    rejectVenueCompletion: async (_details?: unknown, options?: { stages?: string[] }) => {
+      rejected++;
+      for (const key of options?.stages ?? []) retained.delete(key);
+    },
+    completeWithRoom: async () => {
+      paid++;
+      return {
+        finishReason: "stop",
+        content: JSON.stringify({
+          input: [],
+          heardPlayerBy: [],
+          segments: [{ kind: "dialogue", speakerId: "a", text: "Hello." }],
+          presentation: [
+            { segment: 0, staging: [{ characterId: "a", expression: "g-e-first", look: { target: "player" } }] },
+          ],
+          ...(failure === "invalid-response" && paid === 1
+            ? {
+                access: [{ actorId: "a", venueId: "missing", zoneId: "missing", outcome: "invite-now", evidence: [0] }],
+              }
+            : {}),
+        }),
+      };
+    },
+  };
+  const gmWriter = createSceneWriting({
+    ...gmPorts,
+    semantic: createSemanticService(gmPorts as unknown as SemanticPorts),
+  } as unknown as SceneWritingPorts);
+  Math.random = () => 0;
+  try {
+    await assert.rejects(
+      () => gmWriter.generate(gmScene, "", "chat", "", null),
+      failure === "invalid-response" ? /unknown target|scope|authority/ : /Checkpoint persistence/,
+    );
+    assert.equal(paid, 1);
+    assert.equal(rejected, failure === "invalid-response" ? 1 : 0, "Storage failures cannot reject valid paid writing");
+    Math.random = () => 0.999;
+    const recovered = await gmWriter.generate(gmScene, "", "chat", "", null);
+    assert.equal(
+      paid,
+      failure === "invalid-response" ? 2 : 1,
+      "Only rejected model output can require another paid response",
+    );
+    if (failure === "presentation-publish")
+      assert.equal(
+        recovered.lines[0].staging![0].expression,
+        "e-first",
+        "A retained concrete choice survives failed root publication",
+      );
+  } finally {
+    Math.random = originalRandom;
+  }
+}
 console.log(
   "System sprite selection: single request, Narration isolation, optional cues, visibility and saved variants passed.",
 );

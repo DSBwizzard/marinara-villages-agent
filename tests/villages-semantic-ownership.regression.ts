@@ -10,9 +10,9 @@ import { parseRelationshipReview } from "../packages/villages/src/server/domain/
 import {
   applyRelationshipReview,
   defaultRelationshipState,
+  neutralRelationship,
 } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import {
-  RESIDENT_ACTION_SHAPE,
   assertResidentActionWitnesses,
   readResidentActions,
   reconcileResidentActions,
@@ -29,6 +29,8 @@ import {
   semanticContext,
   semanticEvidence,
   semanticImmediate,
+  semanticHash,
+  semanticPromptContext,
   semanticUnit,
   semanticWishChangesCovered,
 } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
@@ -50,6 +52,48 @@ import {
 import { addMemory } from "./helpers/memories-fixture.js";
 
 async function main() {
+  {
+    const live = defaultRelationshipState("same-seed");
+    live.intentions.host = ["Exact private intention"] as any;
+    live.intentionRevisions.host = 7;
+    const context = {
+      setting: "Village",
+      actors: [],
+      loreSelection: { recent: ["duplicate history"] },
+      social: {
+        capturedAndScene: structuredClone(live),
+        live,
+        liveAt: "now",
+        intentions: live.intentions,
+        rule: "Preserve revisions",
+      },
+      history: ["exact history"],
+    };
+    const frozen = structuredClone(context);
+    const projected = semanticPromptContext(context);
+    assert.deepEqual((projected.social as any).capturedAndScene, { sameAs: "live" });
+    assert.deepEqual((projected.social as any).live, live);
+    assert.deepEqual((projected.social as any).intentions, live.intentions);
+    assert.equal(Object.hasOwn(projected, "loreSelection"), false);
+    assert.deepEqual(projected.history, context.history);
+    assert.deepEqual(context, frozen, "Prompt projection cannot mutate canonical evidence");
+    for (const mutate of [
+      (view: typeof live) => {
+        view.seed = "different-seed";
+      },
+      (view: typeof live) => {
+        view.intentionRevisions.host++;
+      },
+      (view: typeof live) => {
+        view.intentions.host = [];
+      },
+    ]) {
+      const captured = structuredClone(live);
+      mutate(captured);
+      const different = semanticPromptContext({ social: { capturedAndScene: captured, live } });
+      assert.deepEqual((different.social as any).capturedAndScene, captured, "Different views must remain complete");
+    }
+  }
   // A door-closing narration is not a resident statement ending contact.
   {
     const farewell = [
@@ -474,6 +518,42 @@ async function main() {
         events: openingEvents,
       };
       if (behavior === "project-authority") Object.assign(result, { projectSpeech: [{}] });
+      if (["social-authority", "social-record-authority"].includes(behavior))
+        Object.assign(result, {
+          relationshipChanges: {
+            changes: [
+              {
+                fromId: "host",
+                toId: "player",
+                expectedRevision: state.relationshipContext?.edges[JSON.stringify(["host", "player"])]?.revision ?? 0,
+                reason: "Witnessed response.",
+                lineIds: [0],
+                liveAfter: {
+                  connection: behavior === "social-authority" ? "Friends" : "",
+                  stance: "Tentative but willing to hear the player.",
+                  expectations: [],
+                  concerns: [],
+                  records:
+                    behavior === "social-record-authority"
+                      ? [
+                          {
+                            id: "preserved-boundary",
+                            expectedRevision: 1,
+                            kind: "boundary",
+                            text: "Ask before entering.",
+                            participants: ["host", "player"],
+                            status: "stated",
+                          },
+                        ]
+                      : [],
+                },
+              },
+            ],
+            permissions: [],
+            disclosures: [],
+            intentions: [],
+          },
+        });
       if (packet.input.pipelineVersion === 3)
         Object.assign(result, {
           intent: {
@@ -656,6 +736,70 @@ async function main() {
   assert.equal(loreReads, 1, "The packet freezes selected lore once; replay fetches no new lore");
   assert(lastPacket.input.context.lore.includes("Selected lore establishes the setting's supported capabilities."));
   const intentKey = result.checkpointKey;
+  const inputSnapshot = checkpoints.get(intentKey + ":input") as any;
+  assert.equal(inputSnapshot.promptVersion, 2);
+  assert.equal(
+    result.sourceHash,
+    semanticHash(inputSnapshot.input),
+    "Hash binds full canonical evidence, not the smaller model projection",
+  );
+  assert.equal(Object.hasOwn(lastPacket.input.context, "loreSelection"), false);
+  assert.ok(Object.hasOwn(inputSnapshot.input.context, "loreSelection"));
+  assert.ok(
+    lastFitted[1].content.startsWith('{"input":{"context":'),
+    "Reusable context precedes current input and source hash",
+  );
+  const savedPacket = checkpoints.get(intentKey + ":prompt") as any;
+  const originalInputSnapshot = structuredClone(inputSnapshot);
+  // An old input snapshot may have committed just before a crash, without a prompt packet.
+  delete inputSnapshot.promptVersion;
+  inputSnapshot.systemPrompt = "You interpret Villages gameplay. Frozen legacy instructions.";
+  assert.equal(typeof inputSnapshot.input.context._memoryWrite.protection.fingerprint, "string");
+  inputSnapshot.input.context._memoryWrite.private = "never send this write guard";
+  inputSnapshot.input.zoneEventSource = { private: "never send this routing source" };
+  inputSnapshot.input._presentation = {
+    state: {},
+    variants: true,
+    sprites: {
+      host: {
+        defaultExpressionId: "calm",
+        expressions: [{ expressionId: "calm", name: "calm", spriteName: "calm", view: "front" }],
+      },
+    },
+  };
+  checkpoints.delete(intentKey);
+  checkpoints.delete(intentKey + ":prompt");
+  await currentExchange("We can discuss it.");
+  const legacyPacket = checkpoints.get(intentKey + ":prompt") as any;
+  assert.equal(legacyPacket.messages[0].content, inputSnapshot.systemPrompt);
+  const legacyWire = JSON.parse(legacyPacket.messages[1].content);
+  assert.equal(legacyWire.sourceHash, semanticHash(legacyPacket.input));
+  assert.deepEqual(legacyWire.input.context.loreSelection, inputSnapshot.input.context.loreSelection);
+  assert.ok(
+    legacyPacket.messages[1].content.startsWith('{"sourceHash":'),
+    "Unmarked input gaps retain legacy wire bytes",
+  );
+  const expectedLegacyInput = structuredClone(inputSnapshot.input);
+  delete expectedLegacyInput._presentation;
+  delete expectedLegacyInput.zoneEventSource;
+  delete expectedLegacyInput.context._memoryWrite;
+  expectedLegacyInput.presentation = {
+    current: {},
+    sprites: [{ characterId: "host", expressions: '{"id":"calm","name":"calm","views":["front"],"isDefault":true}' }],
+  };
+  assert.deepEqual(
+    legacyPacket.messages,
+    [
+      { role: "system", content: "You interpret Villages gameplay. Frozen legacy instructions." },
+      {
+        role: "user",
+        content: JSON.stringify({ sourceHash: semanticHash(inputSnapshot.input), input: expectedLegacyInput }),
+      },
+    ],
+    "Legacy recovery preserves every serialized byte, excluding private guards and preserving sprite projection",
+  );
+  checkpoints.set(intentKey + ":input", originalInputSnapshot);
+  checkpoints.set(intentKey + ":prompt", savedPacket);
   checkpoints.delete(intentKey);
   state.seed = "Changed after the request was saved";
   const resumed = await currentIntent("We can discuss it.");
@@ -1933,16 +2077,19 @@ async function main() {
     systemPrompt.indexOf("Return exactly one JSON object."),
   );
   assert(
-    rootExchangeExample.includes("residentActionReview:{version:1,additionalActions:[],decisions:[],coverage:[]}"),
+    rootExchangeExample.includes(
+      "residentActionReview:{version:2,reviewed:[],additionalActions:[],decisions:[],coverage:[]}",
+    ),
     "The required V2 review belongs in the complete root response example even with no proposed access actions",
   );
-  assert(systemPrompt.includes("residentActionReview is required even when residentActions is empty"));
+  assert(systemPrompt.includes("List each exactly once in reviewed, even when residentActions is empty"));
   assert(
     systemPrompt.includes("Return {sourceHash,intent:{"),
     "The combined response example must contain required intent inside the single exchange object",
   );
   assert(
-    systemPrompt.includes(RESIDENT_ACTION_SHAPE),
+    systemPrompt.includes('additionalActions:[{id:"unique action ID"') &&
+      systemPrompt.includes("source:{segment:zero-based current segment index}"),
     "System needs the full additional-action schema even when Narration proposes []",
   );
   assert.throws(
@@ -2221,7 +2368,62 @@ async function main() {
     rejected.some((row) => row.detail?.reason === "semantic-exchange"),
     "Failed review uses the existing retained-response journal",
   );
+  actionReview = () => ({
+    version: 2,
+    reviewed: [0],
+    additionalActions: [{ ...makeAction(accessLine.content), source: { segment: 0 } }],
+    decisions: [{ id: "invitation", status: "accepted", reason: "Current visit." }],
+    coverage: [{ segment: 0, status: "actions", actionIds: ["invitation"], reason: "Explicit invitation." }],
+  });
+  const compactScene = { ...accessScene, liveSceneVersion: 1 as const };
+  const compactResult = await service.exchange(compactScene, "Compact live invitation", [accessLine], null, [], true);
+  assert.equal(compactResult.access!.checks.length, 1, "Indexed additional actions reach the existing authority check");
+  assert.match(systemPrompt, /return liveAfter only/);
+  assert.doesNotMatch(systemPrompt, /expectedRevision,sceneAfter|lineIds:\[\],sceneItems:/);
+  const compactSnapshot = checkpoints.get(compactResult.checkpointKey + ":input") as any;
+  assert.equal(compactSnapshot.outputContractVersion, 1);
+  assert.equal(Object.hasOwn(compactSnapshot.input, "outputContractVersion"), false);
+  assert.equal(compactResult.sourceHash, semanticHash(compactSnapshot.input));
+  assert.deepEqual((compactResult.effects.residentActionReceipt as any).review.additionalActions[0].source, {
+    speakerId: accessLine.speakerId,
+    quote: accessLine.content,
+  });
+  delete compactSnapshot.outputContractVersion;
+  checkpoints.delete(compactResult.checkpointKey);
+  await assert.rejects(
+    service.exchange(compactScene, "Compact live invitation", [accessLine], null, [], true),
+    /review is incomplete/,
+    "The current Scene cannot silently upgrade an unmarked frozen decoder",
+  );
   actionReview = (p) => reviewFor(p.input.evidence, p.input.residentActions);
+  const beforeSocialAuthority = state.relationshipContext;
+  state.relationshipContext = defaultRelationshipState(state.seed);
+  state.relationshipContext.edges[JSON.stringify(["host", "player"])] = {
+    ...neutralRelationship("host", "player"),
+    revision: 1,
+    records: {
+      "preserved-boundary": {
+        id: "preserved-boundary",
+        revision: 1,
+        kind: "boundary",
+        text: "Ask before entering.",
+        participants: ["host", "player"],
+        status: "stated",
+        evidenceIds: [],
+        updatedAt: scene.startedAt,
+      },
+    },
+  } as any;
+  for (const scenario of ["social-authority", "social-record-authority"]) {
+    behavior = scenario;
+    await assert.rejects(
+      service.exchange(compactScene, "Missing social authority: " + scenario, [accessLine], null, [], true),
+      /inconsistent \(social\)/,
+      "Changed connections and nonempty records still require explicit consequential authority",
+    );
+  }
+  behavior = "valid";
+  state.relationshipContext = beforeSocialAuthority;
   state.villagers = [{ characterId: "host", cardSnapshot: { name: "Host" } }] as any;
   venue.zones.find((zone: any) => zone.id === "room")!.closed = true;
   const standingGrant = readResidentActions([makeAction(accessLine.content, { duration: "standing" })]);

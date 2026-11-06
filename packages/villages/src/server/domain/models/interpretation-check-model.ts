@@ -24,7 +24,7 @@ export type InterpretationCheck = {
 };
 export type InterpretationResult = {
   outcome: string;
-  source: "decisions" | "system";
+  source: "decisions" | "system" | "gm";
   evidenceIds: string[];
   reason: string;
   details?: unknown;

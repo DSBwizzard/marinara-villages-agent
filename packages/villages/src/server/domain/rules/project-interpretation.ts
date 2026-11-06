@@ -8,7 +8,7 @@ export type ProjectSpeechProposal = ProjectSpeechContext & {
   kind: "approval" | "builder" | "withdrawal";
   speakerId: string;
   citations: { lineId: string; quote: string }[];
-  contextual?: { version: 1; source: "system" | "decisions"; checkId: string; decisionEvidenceVersion?: 1 };
+  contextual?: { version: 1; source: "system" | "decisions" | "gm"; checkId: string; decisionEvidenceVersion?: 1 };
 };
 type SpeechLine = { id: string; speakerId: string; content: string; heardBy?: string[]; kind?: string };
 const normalized = (text: string) =>
@@ -70,11 +70,11 @@ export function coerceProjectSpeech(value: unknown): ProjectSpeechProposal[] {
               quote: asTrimmedString(asRecord(value).quote).slice(0, 1200),
             }))
           : [],
-        ...(context.version === 1 && ["system", "decisions"].includes(String(context.source))
+        ...(context.version === 1 && ["system", "decisions", "gm"].includes(String(context.source))
           ? {
               contextual: {
                 version: 1 as const,
-                source: context.source as "system" | "decisions",
+                source: context.source as "system" | "decisions" | "gm",
                 checkId: asTrimmedString(context.checkId),
                 ...(context.decisionEvidenceVersion === 1 ? { decisionEvidenceVersion: 1 as const } : {}),
               },

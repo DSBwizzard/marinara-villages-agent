@@ -82,6 +82,7 @@ import {
   contactPath,
   contactPosition,
   sceneAccessContext,
+  sceneMoveAccompanying,
   type ContactIntent,
 } from "../../domain/rules/venue-contact.js";
 import { venueClasses, venueInArea, venueResidentIds } from "../../domain/rules/venue-model.js";
@@ -684,16 +685,7 @@ export function createSceneCommands({
         });
       });
     if (zoneClosed(village, venue, zone)) throw conflict("This zone is closed for Renovation.");
-    const offered = session.entryOffers?.find((entry) => entry.zoneId === zone.id);
-    const accompanying =
-      offered?.accompanies &&
-      canOccupyZone(venue, zone, offered.controllerId) &&
-      (!venue.access || contactPosition(session, offered.controllerId) === session.zoneId)
-        ? [
-            ...(session.accompanying ?? []).filter((entry) => entry.characterId !== offered.controllerId),
-            { characterId: offered.controllerId, zoneId: zone.id },
-          ]
-        : session.accompanying;
+    const accompanying = sceneMoveAccompanying(session, venue, zone);
     const savedInvitation = asRecord(session.operation?.checkpoints["move-invitation"]);
     const recoveredPermission =
       typeof savedInvitation.sourceLineId === "string" &&
@@ -1189,6 +1181,7 @@ export function createSceneCommands({
       version: 3,
       sceneRevision: 0,
       liveSceneVersion: 1,
+      gmVersion: 1,
       processingVersion: 1,
       semanticVersion: 2,
       villageSeed: village.seed,
@@ -1286,7 +1279,8 @@ export function createSceneCommands({
                 ...(admission.semanticVersion === 2
                   ? { sceneBoundaryVersion: 1, narrativeIntroductionVersion: 1, chosenAt: villageNow().toISOString() }
                   : {}),
-                writingContractVersion: 3,
+                writingContractVersion: admission.gmVersion === 1 ? 4 : 3,
+                ...(admission.gmVersion === 1 ? { gmVersion: 1 } : {}),
                 castLimitVersion: 1,
                 soundHopVersion: 1,
                 playerAgencyVersion: 1,
@@ -1560,13 +1554,26 @@ export function createSceneCommands({
         "This old action admission cannot be resubmitted as a current action. Its saved history is preserved.",
       );
     const writingVersion =
-      scene.operation?.id === input.submissionId ? scene.operation.input.writingContractVersion : prior ? undefined : 3;
-    const writingCapabilities = [2, 3].includes(Number(writingVersion))
+      scene.operation?.id === input.submissionId
+        ? scene.operation.input.writingContractVersion
+        : prior
+          ? undefined
+          : scene.gmVersion === 1
+            ? 4
+            : 3;
+    const writingCapabilities = [2, 3, 4].includes(Number(writingVersion))
       ? scene.operation?.id === input.submissionId
         ? scene.operation.input.writingCapabilities
         : sceneWritingCapabilities(await readVillageState(), scene)
       : undefined;
     const payload = {
+      ...(scene.operation?.id === input.submissionId
+        ? scene.operation.input.gmVersion === 1
+          ? { gmVersion: 1 }
+          : {}
+        : scene.gmVersion === 1 && (!prior || prior.semanticProvenance?.producer === "gm")
+          ? { gmVersion: 1 }
+          : {}),
       ...(scene.operation?.id === input.submissionId
         ? scene.operation.input.narrativeIntroductionVersion === 1
           ? { narrativeIntroductionVersion: 1 }
@@ -1673,7 +1680,7 @@ export function createSceneCommands({
       ...(writingVersion !== undefined
         ? {
             writingContractVersion: writingVersion,
-            ...([2, 3].includes(Number(writingVersion)) ? { writingCapabilities } : {}),
+            ...([2, 3, 4].includes(Number(writingVersion)) ? { writingCapabilities } : {}),
           }
         : {}),
     };
@@ -1744,7 +1751,9 @@ export function createSceneCommands({
     const prior = scene.submissions.find((entry) => entry.id === submissionId);
     if (!prior) await requireLiveVenueSession(sessionId);
     const currentContract =
-      scene.operation?.id === submissionId ? scene.operation.input.writingContractVersion === 3 : !prior;
+      scene.operation?.id === submissionId
+        ? [3, 4].includes(Number(scene.operation.input.writingContractVersion))
+        : !prior;
     if (currentContract && !prior && !!!findLocation(await readVillageState(), scene.placeId))
       throw conflict("This Venue is no longer available. End the Scene.");
     const payload = currentContract

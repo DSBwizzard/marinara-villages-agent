@@ -32,6 +32,13 @@ export class UnsupportedScenePerception extends VillagesRequestError {
   }
 }
 
+/** A synchronous GM response validator rejected paid output, rather than its storage. */
+export class InvalidGmReply extends VillagesRequestError {
+  constructor(cause: unknown) {
+    super(502, cause instanceof Error ? cause.message : "The GM response could not be validated.");
+  }
+}
+
 export function badRequest(message: string): VillagesRequestError {
   return new VillagesRequestError(400, message);
 }

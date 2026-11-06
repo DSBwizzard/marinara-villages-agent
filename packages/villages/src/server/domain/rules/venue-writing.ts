@@ -11,6 +11,7 @@ export function venueCardProfile(
   card: Partial<Omit<VillagerCard, "tags">> & Pick<VillagerCard, "id" | "name">,
   playerName = "the player",
   includePostHistory = true,
+  includeAdmissionPolicy = true,
 ): string {
   const fields = [
     ["System prompt", card.systemPrompt],
@@ -29,14 +30,18 @@ export function venueCardProfile(
       .filter(([, value]) => value?.trim())
       .map(([label, value]) => `${label}:\n${expand(value!)}`)
       .join("\n\n") +
-    (card.admission ? "\n\n" + renderResidentAdmission(card.name, card.admission) : "")
+    (card.admission ? "\n\n" + renderResidentAdmission(card.name, card.admission, includeAdmissionPolicy) : "")
   );
 }
 
 export const EVENT_MEMORY_GUIDANCE =
   "Record what was said or done in this encounter, with its context. A pause, reserved delivery, temporary uncertainty, or the narrator's interpretation is not a stable personality trait. Preserve explicit preferences and commitments without generalizing a moment into who the character is.";
 
-export type VenueWritingBlock = { text: string; optional?: "wish" | "history" | "memory" | "lore"; lore?: LoreUse };
+export type VenueWritingBlock = {
+  text: string;
+  optional?: "wish" | "history" | "memory" | "lore";
+  lore?: LoreUse;
+};
 
 export type VenueWritingSections = {
   direction: VenueWritingBlock[];
@@ -52,8 +57,8 @@ export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWrit
   const headings: Record<keyof VenueWritingSections, string> = {
     direction: "Writing direction",
     identity: "Complete authored character identity",
-    circumstances: "Current Scene circumstances",
     conversation: "Witnessed conversation and recalled memories",
+    circumstances: "Current Scene circumstances",
     authoredInstructions: "Authored post-history direction",
     metadata: "Response format and evidence metadata",
   };

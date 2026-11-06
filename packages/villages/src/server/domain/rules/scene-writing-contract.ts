@@ -15,8 +15,9 @@ export function assertCurrentSceneGeneration(
 ) {
   if (
     scene.semanticVersion !== 2 ||
-    input?.writingContractVersion !== SCENE_WRITING_CONTRACT ||
-    input.semanticPipelineVersion !== 3 ||
+    (input?.writingContractVersion !== SCENE_WRITING_CONTRACT && input?.writingContractVersion !== 4) ||
+    input?.semanticPipelineVersion !== 3 ||
+    (input.writingContractVersion === 4 && (scene.gmVersion !== 1 || input.gmVersion !== 1)) ||
     input.residentActionsVersion !== 2 ||
     (input.interactionScopeVersion !== 6 && (mode !== "greet" || input.interactionScopeVersion !== undefined))
   )

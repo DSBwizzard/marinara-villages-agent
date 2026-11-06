@@ -106,6 +106,7 @@ export function residentEncounterPlace(
 }
 export type ResidentPlanningContext = {
   version: 1;
+  gmVersion?: 1;
   /** Limit a historical opportunity to encounters and private reflection. */
   catchup?: true;
   /** Model-facing description of the single Zone that participants share. */
@@ -206,7 +207,11 @@ export function buildResidentPlanningMessages(context: ResidentPlanningContext):
       "Optional future plans offered by code: " +
         JSON.stringify(context.social.candidates) +
         ". Select one exact offered ID with social.planId, or none. Availability is not preference or consent.",
-    'A CURRENT encounter opportunity with at least two actors in one Zone may have social.encounter:{opportunityId,lines:[{speakerId,text},{kind:"narration",text}]}. Write two to eight short source lines, with at least two actual speakers among the offered actors. Optional narration establishes only small local actions actually performed now, grounded in the supplied current Zone, known supplies and resident authority. Every actor hears the ordinary dialogue and witnesses local narration. No whispers, travel, player participation, hidden contents, invented possessions, injury, construction or time skips. Intentions and speech are no completed deeds. Do not return physical updates: a separate existing System check validates consequences. Omit the encounter if nothing fits.',
+    'A CURRENT encounter opportunity with at least two actors in one Zone may have social.encounter:{opportunityId,lines:[{speakerId,text},{kind:"narration",text}]}. Write two to eight short source lines, with at least two actual speakers among the offered actors. Optional narration establishes only small local actions actually performed now, grounded in the supplied current Zone, known supplies and resident authority. Every actor hears the ordinary dialogue and witnesses local narration. No whispers, travel, player participation, hidden contents, invented possessions, injury, construction or time skips. Intentions and speech are no completed deeds. ' +
+      (context.gmVersion === 1
+        ? "Put supported consequences in meaning, never in the source record. "
+        : "Do not return physical updates: a separate existing System check validates consequences. ") +
+      "Omit the encounter if nothing fits.",
     !context.catchup &&
       "Instead of an encounter, social.mail may be {senderId,text} from one offered actor to player, at most 2000 characters: a personal message, question or invitation grounded in their own intentions. No player consent, unseen deeds, or invented contact details. Choose at most one encounter or mail. Private/unknown locations permit mail only.",
     "A quiet opportunity may include wishReflection:null or {actorId,desire:{wish,reason},reason} for one new grounded social desire, or {actorId,wishId,attention:{state:background|foreground,reason},reason} to reconsider attention, {actorId,wishId,decision:approach,approach:string,reason} to choose or stop an attempt (empty approach), or {actorId,wishId,decision:withdrawn,reason} only when this resident actually stops wanting that outcome. A failed attempt alone does not withdraw the desire. Use only an offered actor. Reflection never proves fulfillment, another person's response, or public knowledge. No new physical facts or completed experiences. No daily quota; retained desires do not require attention. Reflection is available only when social is null. Existing history and refusals govern initiative; an unchanged open Wish is not a reason to repeat a declined invitation. Ordinary social activity needs no Wish.",
@@ -219,7 +224,9 @@ export function buildResidentPlanningMessages(context: ResidentPlanningContext):
       "routineIdea may be one {characterId,activity,venueId,zoneId,flexible:true} for an ordinary future activity at an existing accessible place, or null. It cannot establish employment, assets, commitments or physical changes.",
     context.catchup &&
       "This is a past catch-up opportunity. Choose only an encounter or a private reflection; no mail, housing request, routine change or future plan. Keep routineIdea null and housingRequests empty. Omit social.planId and social.mail.",
-    'Return JSON with exactly these top-level fields: {"social":null,"routineIdea":null,"housingRequests":[],"wishReflection":null}. Replace null only for an applicable structured choice. No outside narration, public updates, memories or world-state edits.',
+    context.gmVersion === 1
+      ? 'Return ONE JSON object {"social":null,"routineIdea":null,"housingRequests":[],"wishReflection":null} with optional meaning for meaningful consequences of the chosen source. Replace null only for applicable choices. Proposals are not committed world edits.'
+      : 'Return JSON with exactly these top-level fields: {"social":null,"routineIdea":null,"housingRequests":[],"wishReflection":null}. Replace null only for an applicable structured choice. No outside narration, public updates, memories or world-state edits.',
   ]
     .filter(Boolean)
     .join("\n\n");
