@@ -31,7 +31,6 @@ import {
   setVillageLoreSettings,
   setVillageName,
   setVillagePlayer,
-  setVillagePromptKnowledge,
   setVillageSendOnEnter,
   setVillageSpriteCardFlipEnabled,
   setVillageSpriteVariantsEnabled,
@@ -233,7 +232,6 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
   app.patch<{
     Body: {
       name?: unknown;
-      promptKnowledge?: unknown;
       selectedLorebookIds?: unknown;
       sceneryArtStyle?: unknown;
       sceneryStyleProfileId?: unknown;
@@ -277,9 +275,6 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
       )
         snapshot = await setScenerySettings(body);
       if (body.name !== undefined) snapshot = await setVillageName(body.name);
-      if (body.promptKnowledge !== undefined) {
-        snapshot = await setVillagePromptKnowledge(body.promptKnowledge);
-      }
       if (body.selectedLorebookIds !== undefined || body.loreTokenBudget !== undefined)
         snapshot = await setVillageLoreSettings(body.selectedLorebookIds, body.loreTokenBudget);
       // Choosing who the player is. There used to be a typed name and

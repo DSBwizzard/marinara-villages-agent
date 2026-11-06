@@ -301,10 +301,8 @@ async function main() {
       wishSystemVersion: 3,
       setupAt: "2025-01-01T00:00:00Z",
       setting: "Old harbor",
-      promptKnowledge: "My custom prompt",
       playerBackground: "I arrived to help the harbor.",
     });
-    assert.equal(legacy.promptKnowledge, "My custom prompt");
     assert.equal(legacy.playerBackground, "I arrived to help the harbor.");
     assert.equal(
       coerceVillageState({ ...defaultVillageState(), wishSystemVersion: 3, setupAt: legacy.setupAt }).playerBackground,

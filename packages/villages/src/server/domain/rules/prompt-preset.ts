@@ -3,9 +3,6 @@ import type { TownMapFit, VillageTownMapView, VillageVenue } from "../models/wor
 import { asTrimmedString } from "./coerce.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
 import { hasVenueClass } from "./venue-model.js";
-
-/** Preserve the existing bound when reading saved legacy knowledge. */
-export const VILLAGES_PROMPT_BOX_MAX_LENGTH = 8_000;
 /** Bound venue event text and decision titles. */
 export const MAX_EVENT_TEXT_LENGTH = 280;
 /** Bound saved requester names. */
@@ -444,90 +441,6 @@ export const DEFAULT_TOWN_MAP_VIEW: VillageTownMapView = {
   focusY: DEFAULT_TOWN_MAP_FOCUS,
   zoom: DEFAULT_TOWN_MAP_ZOOM,
 };
-
-/** Legacy template retained in settings snapshots for compatibility. */
-export const VILLAGES_DEFAULT_KNOWLEDGE = [
-  "You are {{char}}, and you live in {{village}}.",
-  "## Where you are",
-  "{{setting}}",
-  "It is {{time}}, and the weather is {{weather}}.",
-  "{{doing}}",
-  "{{wishes}}",
-  "{{venues}}",
-  "{{homes}}",
-  "{{player}}",
-  "{{roster}}",
-  "{{present}}",
-  "{{memory}}",
-  "{{lore}}",
-].join("\n");
-
-export type VillagePresetMacro = {
-  /** The literal token a player types. */
-  token: string;
-  label: string;
-  help: string;
-};
-
-/** Legacy snapshot metadata retained for compatibility. */
-export const VILLAGE_PRESET_MACROS: readonly VillagePresetMacro[] = [
-  { token: "{{char}}", label: "Villager", help: "The name of the villager being written to." },
-  { token: "{{village}}", label: "Village", help: "The village's name." },
-  {
-    token: "{{setting}}",
-    label: "The world",
-    help: "The authored place and world context, verified current facts, and shared-setting framing.",
-  },
-  {
-    token: "{{venues}}",
-    label: "Places here",
-    help: "The places in the village and what happens at them. Renders nothing when there are none.",
-  },
-  {
-    token: "{{homes}}",
-    label: "Where people live",
-    help: "The homes on the town map and who lives in each. Renders nothing when no home is occupied.",
-  },
-  { token: "{{user}}", label: "Player", help: 'Your name, or "the player" when you have not set one.' },
-  { token: "{{userDescription}}", label: "Your description", help: "Your description, or nothing when it is empty." },
-  { token: "{{time}}", label: "Time", help: 'For example "an autumn morning on 11 September".' },
-  { token: "{{weather}}", label: "Weather", help: "The weather right now, in lower case." },
-  {
-    token: "{{doing}}",
-    label: "What they are doing",
-    help: "What this villager is doing right now, from their own schedule. Renders nothing when they have none.",
-  },
-  {
-    token: "{{wishes}}",
-    label: "What they wish for",
-    help: "Retained private social desires, when supplied. Retention does not require attention or disclosure.",
-  },
-  {
-    token: "{{player}}",
-    label: "Who you are talking to",
-    help: "A heading naming you. Renders nothing when you are unnamed.",
-  },
-  {
-    token: "{{roster}}",
-    label: "Other villagers",
-    help: "A list of who else lives here. Renders nothing when nobody else does.",
-  },
-  {
-    token: "{{present}}",
-    label: "Who is around now",
-    help: "Where everybody else is at this hour, and what they are at. Renders nothing when nobody else is anywhere.",
-  },
-  {
-    token: "{{memory}}",
-    label: "What you remember",
-    help: "The things this villager remembers, dated and oldest first. Renders nothing before anything is remembered.",
-  },
-  {
-    token: "{{lore}}",
-    label: "Village lore",
-    help: "Lorebook entries attached to the village. Renders nothing when none are.",
-  },
-];
 
 /** A projected home: who lives there, resolved, and what it is. */
 export type VillageHomeLine = {

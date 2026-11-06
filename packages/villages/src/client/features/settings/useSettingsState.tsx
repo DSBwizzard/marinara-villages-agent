@@ -6,9 +6,6 @@ export function useSettingsState() {
   const [resetArmed, setResetArmed] = useState(false);
   const [requestEdits, setRequestEdits] = useState<Record<string, VenueRequest["venueDraft"]>>({});
 
-  /** The village's world-knowledge prompt box as it is being edited. */
-  const [knowledgeDraft, setKnowledgeDraft] = useState("");
-
   /**
    * Who the player is, as the picker has it.
    *
@@ -26,8 +23,6 @@ export function useSettingsState() {
    */
   const [personaDraft, setPersonaDraft] = useState("");
 
-  const [settingDraft, setSettingDraft] = useState("");
-
   const [lorebookDraft, setLorebookDraft] = useState<string[]>([]);
 
   const [loreTokenBudgetDraft, setLoreTokenBudgetDraft] = useState(1600);
@@ -39,12 +34,8 @@ export function useSettingsState() {
     setResetArmed,
     requestEdits,
     setRequestEdits,
-    knowledgeDraft,
-    setKnowledgeDraft,
     personaDraft,
     setPersonaDraft,
-    settingDraft,
-    setSettingDraft,
     lorebookDraft,
     setLorebookDraft,
     loreTokenBudgetDraft,
