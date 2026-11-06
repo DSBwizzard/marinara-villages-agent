@@ -29,7 +29,7 @@ try {
   });
   const state = await repository.readAuthority({ memories: true, wishes: true }),
     scene = coerceSession({
-      version: 3,
+      version: 4,
       id: "captured-wishes",
       villageSeed: state.seed,
       startedAt: wishTime(),
@@ -136,7 +136,7 @@ try {
     await repository.mutateAuthority((state) => Object.assign(state, world));
     const state = await repository.readAuthority({ wishes: true });
     const scene = coerceSession({
-      version: 3,
+      version: 4,
       id: "overlapping-captures",
       villageSeed: state.seed,
       status: "closed",
@@ -190,7 +190,7 @@ try {
   const world = wishWorld();
   world.villagers[0].wishes = ["first", "middle", "last"].map((id) => fixtureWish({ wish: "Baseline " + id }, id));
   const scene = coerceSession({
-    version: 3,
+    version: 4,
     id: "packet-order",
     villageSeed: world.seed,
     startedAt: wishTime(),
@@ -264,7 +264,7 @@ try {
     });
     const baseline = await repository.readAuthority({ memories: true, wishes: true });
     const scene = coerceSession({
-      version: 3,
+      version: 4,
       id,
       villageSeed: baseline.seed,
       startedAt: wishTime(),
@@ -353,7 +353,7 @@ try {
         if (index === 10) {
           await f.gate.simulate(async () => {
             await f.mutateDocument("villages-venue-visit-simulation", sessionSlot(f.gate.documents), (value) =>
-              Object.assign(value, coerceSession({ version: 3, id: "simulation", villageSeed: "another-world" })),
+              Object.assign(value, coerceSession({ version: 4, id: "simulation", villageSeed: "another-world" })),
             );
             await f.mutateDocument(ACTIVE_ID, activeSlot, (value) => {
               value.sessionId = "simulation";

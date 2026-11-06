@@ -77,7 +77,7 @@ function fixture(name: string) {
     ],
   });
   const scene = coerceSession({
-    version: 3,
+    version: 4,
     id: "same",
     processingVersion: 1,
     villageSeed: name,

@@ -77,7 +77,7 @@ function source(scene: VenueScene, previous?: HistoryPageTree) {
     actionReceiptIds: [],
   });
   const scene = coerceSession({
-    version: 3,
+    version: 4,
     id: "privacy",
     villageSeed: "public-world",
     participants: [],
@@ -188,7 +188,7 @@ function source(scene: VenueScene, previous?: HistoryPageTree) {
   const f = fixture(),
     store = createScenePublicHistory(f.documents);
   const scene = coerceSession({
-    version: 3,
+    version: 4,
     id: "hearing",
     villageSeed: "public-world",
     participants: [{ characterId: "visible", name: "Visible", doing: "Listening" }],
@@ -200,23 +200,25 @@ function source(scene: VenueScene, previous?: HistoryPageTree) {
   scene.participants.push({ characterId: "later-known", name: "Known", doing: "Listening" });
   native = source(scene, native.transcript.layout);
   const after = await store.prepare(scene, native.transcript.head, native.submissions.head, before);
-  assert.notEqual(
+  assert.equal(
     after.publicVersion,
     before.publicVersion,
-    "A cast change that actually changes published hearing invalidates the digest",
+    "Private hearing changes cannot invalidate the public content digest",
   );
   const entries = await store.readRange(after, native.transcript.head.count, 0, 1);
-  assert.deepEqual(projectSceneHistoryPage(scene.lines, entries, scene.participants, after.privateHearing)[0].heardBy, [
-    "visible",
-    "later-known",
-  ]);
+  assert(
+    !Object.hasOwn(
+      projectSceneHistoryPage(scene.lines, entries, scene.participants, after.privateHearing)[0],
+      "heardBy",
+    ),
+  );
 }
 
 for (const count of [1000, 10_000, 25_000]) {
   const f = fixture(),
     store = createScenePublicHistory(f.documents);
   const scene = coerceSession({
-    version: 3,
+    version: 4,
     id: "growth:" + count,
     villageSeed: "public-growth",
     participants: [],

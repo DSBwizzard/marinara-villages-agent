@@ -102,18 +102,14 @@ export function semanticContext(
   const wishQuery = [query, narration, ...history.map((row) => row.content)].join("\n");
   const wishTerms = new Set(memoryTerms(wishQuery));
   return {
-    ...(scene.operation?.input.preservationVersion === 1 || scene.operation?.input.sceneBoundaryVersion === 1
-      ? {
-          preservation: {
-            version: 1 as const,
-            ...(scene.operation?.input.sceneBoundaryVersion === 1 ? { sceneBoundaryVersion: 1 as const } : {}),
-            sceneAt: scene.continuity?.capturedAt ?? scene.sceneAttendance?.capturedAt ?? scene.startedAt,
-            chosenAt: String(scene.operation.input.chosenAt),
-            timeZone: authority.timeZone,
-            calendar: capturedSceneCalendar(scene, authority.timeZone),
-          },
-        }
-      : {}),
+    preservation: {
+      version: 1 as const,
+      sceneBoundaryVersion: 1 as const,
+      sceneAt: scene.continuity?.capturedAt ?? scene.sceneAttendance?.capturedAt ?? scene.startedAt,
+      chosenAt: scene.continuity?.capturedAt ?? scene.sceneAttendance?.capturedAt ?? scene.startedAt,
+      timeZone: authority.timeZone,
+      calendar: capturedSceneCalendar(scene, authority.timeZone),
+    },
     ...(scene.continuity
       ? {
           time: {

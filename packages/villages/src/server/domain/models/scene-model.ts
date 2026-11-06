@@ -53,7 +53,6 @@ export type VenueSubmission = {
   npcAdmissions?: import("../rules/npc-participation.js").NpcAdmission[];
   placeDiscoveries?: unknown[];
   establishmentProgress?: unknown[];
-  residentActionReceipt?: import("../rules/resident-actions.js").ResidentActionReceipt;
   speechCapture?: { version: 3; status: "captured" | "silent" };
   effectFailures?: Partial<
     Record<
@@ -174,7 +173,7 @@ export type VenueScene = {
   openingGatheringId?: string;
   semanticVersion?: 2;
   semanticIntent?: import("./semantic-model.js").SemanticIntent;
-  version: 3;
+  version: 4;
   processingVersion?: 1;
   changeSequence?: number;
   villageSeed?: string;

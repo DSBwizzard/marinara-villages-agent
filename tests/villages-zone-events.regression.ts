@@ -12,15 +12,12 @@ import { captureSceneLayout } from "../packages/villages/src/server/domain/rules
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import { appendLine, heardLines } from "../packages/villages/src/server/domain/rules/scene-record.js";
 import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
-import { normalizeSparseSceneReply } from "../packages/villages/src/server/domain/rules/scene-writing-contract.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import {
   routeZoneEvents,
-  ZONE_EVENT_CONTRACT,
   zoneEventHearingContext,
   zoneEventReply,
   zoneEventScene,
-  zoneEventContract,
 } from "../packages/villages/src/server/domain/rules/zone-events.js";
 
 const at = "2026-10-15T12:00:00Z";
@@ -56,7 +53,7 @@ world.villagers = ["local", "near", "far"].map((id) => ({
 const village = coerceVillageState(world);
 const venue = village.venues[0];
 const base = coerceSession({
-  version: 3,
+  version: 4,
   id: "events",
   villageSeed: world.seed,
   placeId: "house",
@@ -144,21 +141,8 @@ const scene = zoneEventScene(base, venue);
       ),
     /outside hearing range/,
   );
-  assert.match(zoneEventContract(marked), /at most two connections/);
   const relationships = JSON.parse(zoneEventHearingContext(marked, chain).split(": ").slice(1).join(": "));
   assert.deepEqual(relationships.find((row: any) => row.source === "player").alertOnly, ["far"]);
-  const retained = structuredClone(marked);
-  delete retained.operation!.input.soundHopVersion;
-  assert.deepEqual(
-    route(event({ kind: "sound", speakerId: "local", text: "A crash.", loud: true }), retained).heardBy,
-    ["local", "near", "far", "veryFar"],
-  );
-  assert.deepEqual(route(event({ kind: "dialogue", speakerId: "local", text: "Retained words" }), retained).heardBy, [
-    "local",
-    "near",
-  ]);
-  assert.equal(zoneEventContract(retained), ZONE_EVENT_CONTRACT);
-  assert.equal(coerceSession(marked).operation!.input.soundHopVersion, 1);
 }
 const message = 'I privately think SECRET. "Aqua, help!" I turn around.';
 const response = (segments: unknown[]) => ({
@@ -177,46 +161,9 @@ function routed(raw: ReturnType<typeof response>, text = message, moves: any[] =
 
 // No hearing metadata is required for an ordinary local answer.
 let result = routed(response([{ kind: "dialogue", speakerId: "local", text: "Hello there." }]));
-assert.deepEqual(result.lines[0].heardBy, ["local", "near"]);
+assert.deepEqual(result.lines[0].heardBy, ["local"]);
 assert.deepEqual(result.heardPlayerBy, []);
 assert.equal(result.lines.length, 1);
-
-// Misplaced legacy side is ordinary only with an explicit nonprivate aside.
-{
-  const main = { kind: "narration", text: "You wait by the gate." };
-  const aside = { speakerId: "local", text: "That is a confession.", delivery: "side", presentation: "aside" };
-  const original = response([main, aside]);
-  const normalized = normalizeSparseSceneReply(original);
-  assert.equal((original.segments[1] as any).delivery, "side", "saved input remains unchanged");
-  const actual = routed(normalized as any, "I wait.");
-  const legacy = routed(response([main, { kind: "side", speakerId: "local", text: aside.text }]), "I wait.");
-  assert.deepEqual(actual, legacy, "aside routing and anchoring match the established legacy kind");
-  assert.deepEqual(actual.lines[1].heardBy, ["local", "near"]);
-  assert.equal(actual.lines[1].delivery, "ordinary");
-  for (const conflict of [
-    { presentation: "main" },
-    { presentation: undefined },
-    { targetId: "player" },
-    { targetId: null },
-    { targetId: "" },
-    { kind: "whisper" },
-    { loud: true },
-    { delivery: "quiet" },
-    { delivery: "SIDE" },
-  ])
-    assert.throws(
-      () => routed(normalizeSparseSceneReply(response([main, { ...aside, ...conflict }])) as any, "I wait."),
-      /delivery|whisper/i,
-    );
-  const whisper = routed(
-    normalizeSparseSceneReply(response([main, { ...aside, delivery: "whisper", targetId: "player" }])) as any,
-    "I wait.",
-  );
-  assert.equal(whisper.lines[1].delivery, "whisper");
-  assert.deepEqual(whisper.lines[1].heardBy, ["local"]);
-  const shout = routed(normalizeSparseSceneReply(response([main, { ...aside, delivery: "shout" }])) as any, "I wait.");
-  assert.equal(shout.lines[1].delivery, "shout");
-}
 
 // Delivery and placement are independent, including a real main-panel whisper.
 for (const delivery of ["ordinary", "whisper", "shout"] as const) {
@@ -239,7 +186,7 @@ for (const delivery of ["ordinary", "whisper", "shout"] as const) {
     const line = reply.lines[1]!;
     assert.equal(line.delivery, delivery);
     assert.equal(line.presentation, presentation);
-    assert.deepEqual(line.heardBy, delivery === "whisper" ? ["local"] : ["local", "near"]);
+    assert.deepEqual(line.heardBy, delivery === "shout" ? ["local", "near"] : ["local"]);
     assert.equal(line.soundOnly?.characterIds.includes("far") ?? false, delivery === "shout");
     assert.equal(
       line.anchorIndex,
@@ -325,9 +272,9 @@ assert.equal(decoratedSound.lines[0].delivery, undefined);
 
 result = routed(
   response([
-    { kind: "dialogue", speakerId: "player", text: "Aqua, help!", loud: true },
-    { kind: "dialogue", speakerId: "near", text: "I'm here." },
-    { kind: "dialogue", speakerId: "far", text: "PRIVATE DISTANT WORDS", loud: true },
+    { kind: "dialogue", speakerId: "player", text: "Aqua, help!", delivery: "shout" },
+    { kind: "dialogue", speakerId: "near", text: "I'm here.", delivery: "shout" },
+    { kind: "dialogue", speakerId: "far", text: "PRIVATE DISTANT WORDS", delivery: "shout" },
   ]),
 );
 assert.deepEqual(result.lines[0].heardBy, ["local", "near"]);
@@ -578,7 +525,7 @@ const separateSound = routed(
   ]),
 );
 assert.equal(separateSound.lines.length, 2, "actual narration owns its own sound without synthesizing a segment");
-assert.deepEqual(separateSound.lines[0].heardBy, ["local", "near"]);
+assert.deepEqual(separateSound.lines[0].heardBy, ["local"]);
 assert.deepEqual(separateSound.lines[1].heardBy, ["local"]);
 assert.deepEqual(separateSound.lines[1].soundOnly?.characterIds, ["near"]);
 assert.throws(
@@ -636,7 +583,8 @@ const moved = routed(
 );
 assert.equal(moved.lines[0].contactHidden, true);
 assert.equal(moved.lines[2].contactHidden, false);
-assert.deepEqual(moved.lines[2].heardBy, ["local", "near", "far"]);
+assert.deepEqual(moved.lines[2].heardBy, ["local", "far"]);
+assert.deepEqual(moved.lines[2].soundOnly?.characterIds, ["near"]);
 assert.deepEqual(moved.lines[1].physicalIdsAfter, ["local", "far"]);
 const changedVenue = { ...venue, zones: venue.zones!.map((zone) => ({ ...zone, connectedTo: [] })) };
 const frozen = routed(
@@ -645,7 +593,10 @@ const frozen = routed(
   [],
   zoneEventScene(base, changedVenue),
 );
-assert(frozen.lines[0].heardBy.includes("near"), "active Scenes retain their captured connection graph");
+assert(
+  frozen.lines[0].soundOnly?.characterIds.includes("near"),
+  "active Scenes retain their captured connection graph",
+);
 const crowded = structuredClone(base);
 for (let index = 0; index < 12; index++)
   crowded.sceneAttendance!.occupants.push({

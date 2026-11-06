@@ -166,7 +166,7 @@ for (const workload of ["many-wishes", "one-long-history"] as const) {
     );
     const frozenWorld = await repository.readAuthority({ memories: true, wishes: true });
     const scene = coerceSession({
-      version: 3,
+      version: 4,
       id: "wish-frozen",
       villageSeed: world.seed,
       startedAt: wishTime(),

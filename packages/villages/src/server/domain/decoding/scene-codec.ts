@@ -113,7 +113,7 @@ export function coerceSession(value: unknown): VenueScene {
     Object.hasOwn(raw, "submissionHistory")
   )
     throw conflict("Stored Scene history requires explicit hydration.");
-  if (raw.version !== 3) throw conflict("Unsupported Scene format. Its saved data is preserved.");
+  if (raw.version !== 4) throw conflict("Unsupported Scene format. Start a fresh Village.");
   if (raw.spinoff !== undefined) throw conflict("This Scene uses a retired feature. Its saved data is preserved.");
   if (raw.memoryMode && raw.memoryMode !== "live" && raw.status !== "closed")
     throw conflict("This Scene uses a retired memory format and cannot continue.");
@@ -199,7 +199,7 @@ export function coerceSession(value: unknown): VenueScene {
         .filter((line) => line.id && line.content)
     : [];
   return {
-    version: 3,
+    version: 4,
     changeSequence: Math.max(0, Math.floor(Number(raw.changeSequence) || 0)),
     ...(raw.semanticVersion === 2 ? { semanticVersion: 2 as const } : {}),
     ...(raw.gmVersion === 1 ? { gmVersion: 1 as const } : {}),
@@ -508,13 +508,6 @@ export function coerceSession(value: unknown): VenueScene {
                 ? {
                     semanticContinuedDomains:
                       row.semanticContinuedDomains as VenueSubmission["semanticContinuedDomains"],
-                  }
-                : {}),
-              ...(asRecord(row.residentActionReceipt).version === 1
-                ? {
-                    residentActionReceipt: structuredClone(
-                      row.residentActionReceipt,
-                    ) as VenueSubmission["residentActionReceipt"],
                   }
                 : {}),
               ...(asRecord(row.semanticProvenance).version === 2

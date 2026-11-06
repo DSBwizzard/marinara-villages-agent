@@ -187,7 +187,7 @@ async function run() {
   try {
     const scene: any = {
       semanticVersion: 2,
-      version: 3,
+      version: 4,
       id: "fixture",
       placeId: "camp",
       placeName: "Camp",

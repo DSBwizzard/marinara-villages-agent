@@ -11,7 +11,6 @@ import {
   contactNeighbors,
   contactPath,
   readContactDelivery,
-  readContactIntent,
 } from "../packages/villages/src/server/domain/rules/venue-contact.js";
 const now = new Date(),
   stamp = now.toISOString(),
@@ -113,9 +112,6 @@ assert.deepEqual(contactNeighbors(house, "exterior").sort(), ["common", "public"
 assert.deepEqual(contactPath(saved, house, "common", "public", "messenger"), ["common", "exterior", "public"]);
 assert.equal(contactPath(saved, house, "common", "office", "messenger"), null, "staff permission is enforced");
 assert.equal(contactPath(saved, house, "common", "private:alex", "messenger"), null, "private ownership is enforced");
-const hypothetical = "If I knock on the door, would Alex hear?";
-assert.equal(readContactIntent({ kind: "knock", quote: hypothetical }, hypothetical), null);
-assert.equal(readContactIntent({ kind: "call", quote: "invented quote" }, "I call Alex."), null);
 assert.throws(() => readContactDelivery({ delivery: "device" }, "I use an intercom."), /not supported/);
 
 console.log("Contact geometry, private ownership and unsupported delivery passed without generation.");

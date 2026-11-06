@@ -75,7 +75,7 @@ export async function packagedSceneServer(
   ].map(venueFixture) as typeof world.venues;
   options.configure?.(world, now);
   const scene = coerceSession({
-    version: 3,
+    version: 4,
     gmVersion: 1,
     liveSceneVersion: 1,
     accompanying: [{ characterId: "mara", zoneId: "common" }],

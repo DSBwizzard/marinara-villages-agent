@@ -14,7 +14,7 @@ async function main() {
   assert.ok(noticeId.length > 100);
   const state = defaultVillageState();
   const scene = {
-    version: 3,
+    version: 4,
     id: sceneId,
     processingVersion: 1,
     memoryMode: "live",

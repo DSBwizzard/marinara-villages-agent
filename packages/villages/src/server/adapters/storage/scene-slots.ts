@@ -22,7 +22,7 @@ export function sessionSlot(documents: CapabilityDocumentStore): HydratedDocumen
     description: "The player's exact record of one Scene, indexed by Venue and participant.",
     coerce: async (value: unknown) => {
       previous = value;
-      return value === undefined ? coerceSession({ version: 3 }) : history.decode(value);
+      return value === undefined ? coerceSession({ version: 4 }) : history.decode(value);
     },
     encode: (value) => history.encode(value, previous),
     label: (session) => session.placeName || "Scene",

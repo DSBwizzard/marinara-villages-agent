@@ -124,7 +124,7 @@ world.venues = [
 ] as typeof world.venues;
 const village = coerceVillageState(world);
 const scene = coerceSession({
-  version: 3,
+  version: 4,
   id: "harbour-scene",
   placeId: "harbour",
   placeName: "The Harbour Terrace",
@@ -338,16 +338,16 @@ async function turn(id: string, segments: any[], effects: Record<string, unknown
   assert.equal(response.statusCode, 200, response.body);
   assert.equal(response.json().turnOutcome, undefined, response.body);
   assert.equal(modelCalls, before + 1, "A Scene exchange uses one GM response");
-  assert.equal(state().operation.input.writingContractVersion, 4);
+  const admitted = JSON.stringify(state().operation.input);
   assert.equal(state().submissions.at(-1).semanticProvenance.producer, "gm");
-  assert(
-    !Object.keys(state().operation.checkpoints).some((key) =>
-      /attention-plan|acoustic-routing|semantic-v2:exchange:.*:completion/.test(key),
-    ),
-  );
   const replay = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload: request });
   assert.equal(replay.statusCode, 200, replay.body);
   assert.equal(modelCalls, before + 1, "Committed replay never purchases a replacement");
+  assert.equal(
+    JSON.stringify(state().operation.input),
+    admitted,
+    "Committed replay preserves its admitted input and allowance",
+  );
   return response.json();
 }
 async function restart() {

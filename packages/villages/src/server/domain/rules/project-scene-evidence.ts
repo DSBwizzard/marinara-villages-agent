@@ -84,7 +84,7 @@ export function projectSceneEvidence(scene: VenueScene): VenueScene {
     };
   });
   return coerceSession({
-    version: 3,
+    version: 4,
     id: scene.id,
     villageSeed: scene.villageSeed,
     status: "closed",

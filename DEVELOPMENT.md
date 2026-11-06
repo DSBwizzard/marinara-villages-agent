@@ -65,7 +65,7 @@ During development, **DEBUG Settings → Advance Village time** advances the cur
 
 **DEBUG Settings → Verbose runtime logging** defaults Off and can print prompts, replies and private conversation context in the server terminal. It is separate from destructive debug controls. Keep logs private. Background leases renew every 30 seconds while visible; unsettled work may use scoped status reads, while settled views have no dedicated polling timer. The [generation lifecycle](docs/generation-pipeline.md), [Scene privacy](docs/scene-response-privacy.md), [response recovery](docs/scene-response-recovery.md) and [saved-state contracts](docs/architecture-migration.md#saved-work-and-compatibility) own request, evidence, persistence and compatibility details.
 
-Sprite setup is manual and provider-free. New Scenes use the single GM exchange to select expressions and attention from a captured catalog. Existing two-call Scenes retain their frozen System selection contract. Code owns placement, mirroring and animation.
+Sprite setup is manual and provider-free. New Scenes use the single GM exchange to select expressions and attention from a captured catalog. Code owns placement, mirroring and animation.
 
 New previews copy selective setup and Villages data from a verified saved checkpoint into independent storage, without stopping the source environment. Existing preview progress is preserved on feedback. Package changes require the guarded installer and checkpoint/recovery protection. Deliberate paid gameplay and personal installation operations require separate authorization.
 

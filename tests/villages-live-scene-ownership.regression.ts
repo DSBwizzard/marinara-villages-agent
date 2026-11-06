@@ -47,7 +47,7 @@ function fixture(name: string) {
     });
   initializeVenueAccess(world.venues[0]!);
   const saved = coerceSession({
-    version: 3,
+    version: 4,
     id: "same",
     villageSeed: world.seed,
     placeId: "venue",

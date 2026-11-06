@@ -267,7 +267,7 @@ for (const altered of ["unrelated-addition", "history", "order"] as const) {
     assert.deepEqual(world, before);
   }
   const scene = coerceSession({
-    version: 3,
+    version: 4,
     id: "s",
     villageSeed: world.seed,
     lines,
@@ -282,7 +282,7 @@ for (const altered of ["unrelated-addition", "history", "order"] as const) {
       assert.fail("No Wish changes require no World read/write");
     },
   } as never);
-  const noChanges = coerceSession({ version: 3, id: "s", submissions: [{ id: "empty", wishProposals: [] }] });
+  const noChanges = coerceSession({ version: 4, id: "s", submissions: [{ id: "empty", wishProposals: [] }] });
   assert.deepEqual((await service.processWishExchange(noChanges, "empty")).receiptIds, []);
   assert.throws(() => readSocialWishChanges([{ ...change(), captured: world.villagers }]), /Invalid/);
 }

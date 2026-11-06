@@ -96,7 +96,7 @@ for (const fault of ["before", "after"] as const) {
     initial.villagers[0].wishes = [fixtureWish({ wish: "Original World Wish" })];
     await repository.mutateAuthority((state) => Object.assign(state, initial));
     const baseline = await repository.readAuthority({ wishes: true });
-    const capturedScene = coerceSession({ version: 3, ...scope, status: "active", startedAt: at });
+    const capturedScene = coerceSession({ version: 4, ...scope, status: "active", startedAt: at });
     capturedScene.continuity = captureSceneContinuity(baseline, capturedScene, Date.parse(at));
     const capturedOwners = [
       {
@@ -286,7 +286,7 @@ for (const fault of ["before", "after"] as const) {
       response: { ...saved.ref, claim: saved.claim },
     };
     await f.mutateDocument("villages-venue-visit-" + scope.id, sessionSlot(f.gate.documents), (scene) =>
-      Object.assign(scene, coerceSession({ version: 3, ...scope, status: "active", startedAt: at, operation: op })),
+      Object.assign(scene, coerceSession({ version: 4, ...scope, status: "active", startedAt: at, operation: op })),
     );
     const native = f.rows.get("villages-venue-visit-" + scope.id).data;
     assert.equal(
@@ -494,7 +494,7 @@ for (const fault of ["before", "after"] as const) {
     const repository = createVillageRepository(() => f.gate.documents);
     await repository.mutateAuthority((world) => Object.assign(world, state));
     const captured = await repository.readAuthority({ wishes: true });
-    const scene = coerceSession({ version: 3, ...scope, status: "active", startedAt: at });
+    const scene = coerceSession({ version: 4, ...scope, status: "active", startedAt: at });
     scene.continuity = captureSceneContinuity(captured, scene, Date.parse(at));
     await f.mutateDocument("villages-venue-visit-" + scope.id, sessionSlot(f.gate.documents), (value) =>
       Object.assign(value, scene),
@@ -545,7 +545,7 @@ for (const durable of [false, true]) {
   try {
     await world(f);
     await f.mutateDocument("villages-venue-visit-" + scope.id, sessionSlot(f.gate.documents), (scene) =>
-      Object.assign(scene, coerceSession({ version: 3, ...scope, status: "active", startedAt: at })),
+      Object.assign(scene, coerceSession({ version: 4, ...scope, status: "active", startedAt: at })),
     );
     const coordinator = coordinatorFor(f);
     await coordinator.coordinateVenue(scope.id, "refused", "turn", {}, 0, undefined, async () => {

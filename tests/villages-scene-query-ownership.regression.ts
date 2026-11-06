@@ -57,7 +57,7 @@ function turn(id: string, extra: Partial<VenueSubmission> = {}): VenueSubmission
 }
 function scene(id = "same", name = "A Venue"): VenueScene {
   return coerceSession({
-    version: 3,
+    version: 4,
     id,
     placeId: "venue",
     placeName: name,

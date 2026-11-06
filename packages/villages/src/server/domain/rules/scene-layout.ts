@@ -60,9 +60,6 @@ export function sceneAccessState(state: VillageState, scene: VenueScene): Villag
 export function sceneLayoutVenue(venue: VillageVenue, scene?: VenueScene): VillageVenue {
   venue = findLocation(scene?.continuity?.facts, venue.id) ?? venue;
   const layout = scene?.sceneAttendance?.layout;
-  // Already admitted pre-v5 work keeps its purchased type-inferred routing contract.
-  if (scene?.operation?.kind === "turn" && ![5, 6].includes(Number(scene.operation.input.interactionScopeVersion)))
-    return { ...venue, zones: venueZones(venue).map((zone) => ({ ...zone, connectedTo: undefined })) };
   if (!layout) return venue;
   const current = venueZones(venue);
   return {

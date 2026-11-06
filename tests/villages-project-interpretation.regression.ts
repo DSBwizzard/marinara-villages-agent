@@ -46,7 +46,7 @@ const turn: any = {
   })),
 };
 let visit: any = {
-  version: 3,
+  version: 4,
   id: "visit",
   villageSeed: f.state().seed,
   placeId: "cafe",

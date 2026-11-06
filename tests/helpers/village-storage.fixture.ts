@@ -209,7 +209,7 @@ function createFixtureDocuments(store: CapabilityDocumentStore, virtual: Map<str
       const row = await store.getById(pkg, id);
       if (row && ["background-work", "background-history"].includes(row.kind))
         return { ...row, packageId: row.packageId ?? pkg, data: authorBackgroundFixture(virtual, row.data) };
-      if (row?.kind === "venue-visit" && (row.data as any)?.version === 3) {
+      if (row?.kind === "venue-visit" && (row.data as any)?.version === 4) {
         const world = (await store.getById(pkg, "villages-village"))?.data as any;
         return { ...row, id, packageId: pkg, data: authorSceneFixture(virtual, row.data, world) };
       }
@@ -359,7 +359,7 @@ function authorCapturedWishes(rows: Map<string, any>, value: any, scene: any) {
   };
 }
 export function authorSceneFixture(rows: Map<string, any>, raw: any, world?: { seed?: string; setupAt?: string }): any {
-  if (!raw || Object.hasOwn(raw, "storageFormat") || raw.version !== 3) return raw;
+  if (!raw || Object.hasOwn(raw, "storageFormat") || raw.version !== 4) return raw;
   const scene = {
     ...raw,
     villageSeed: Object.hasOwn(raw, "villageSeed") ? raw.villageSeed : world?.seed || undefined,

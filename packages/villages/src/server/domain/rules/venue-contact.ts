@@ -180,26 +180,6 @@ export function contactPath(
   }
   return null;
 }
-export function readContactIntent(value: unknown, message: string): ContactIntent | null {
-  const row = asRecord(value),
-    quote = asTrimmedString(row.quote);
-  if (
-    (row.kind !== "knock" && row.kind !== "call") ||
-    !quote ||
-    !normalize(message).includes(normalize(quote)) ||
-    /\b(?:would|could|might|if|yesterday|earlier|don't|do not|didn't|did not)\s+(?:i\s+)?(?:knock|call|shout|yell|holler|scream|use\s+(?:the\s+)?intercom)\b/iu.test(
-      normalize(message),
-    )
-  )
-    return null;
-  return {
-    kind: row.kind,
-    targetId: asTrimmedString(row.targetId),
-    boundaryZoneId: asTrimmedString(row.boundaryZoneId),
-    quote,
-    delivery: readContactDelivery(row, message),
-  };
-}
 export function contactSpeech(
   lines: Pick<VenueLine, "speakerId" | "content" | "kind">[],
   actor: string,
@@ -291,36 +271,4 @@ export function readContactMoves(
       },
     ];
   });
-}
-export function readContactRelay(
-  value: unknown,
-  lines: Pick<VenueLine, "speakerId" | "content" | "kind">[],
-  state: VillageState,
-  venue: VillageVenue,
-  scene: VenueScene,
-  allowed: string[],
-): ContactRelay | null {
-  const row = asRecord(value),
-    actor = asTrimmedString(row.speakerId),
-    target = asTrimmedString(row.targetId),
-    quote = asTrimmedString(row.quote),
-    targetZone = contactPosition(scene, target);
-  const targetSpace = venueZones(venue).find((entry) => entry.id === targetZone);
-  if (
-    !allowed.includes(actor) ||
-    actor === target ||
-    !targetZone ||
-    !targetSpace ||
-    zoneClosed(state, venue, targetSpace) ||
-    !contactSpeech(lines, actor, quote) ||
-    /\b(?:maybe|perhaps|might|unless|if|won't|can't|not)\b/iu.test(normalize(quote))
-  )
-    return null;
-  // A messenger can approach the target's door without trespassing into the target's room.
-  const candidates = [targetZone, ...contactNeighbors(venue, targetZone)]
-    .map((zone) => contactPath(state, venue, contactPosition(scene, actor), zone, actor, scene))
-    .filter((path): path is string[] => !!path)
-    .sort((a, b) => a.length - b.length);
-  const path = candidates[0];
-  return path ? { speakerId: actor, targetId: target, quote, path, targetZoneId: targetZone } : null;
 }

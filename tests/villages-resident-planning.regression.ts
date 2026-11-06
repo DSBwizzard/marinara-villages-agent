@@ -629,7 +629,7 @@ assert.deepEqual(coerceVillageState(JSON.parse(JSON.stringify(migrated))).planni
   const spatial = fixture();
   spatial.scene(
     coerceSession({
-      version: 3,
+      version: 4,
       liveSceneVersion: 1,
       id: "moved",
       villageSeed: spatial.state.seed,

@@ -16,15 +16,10 @@ import { readSceneNarrativeReview } from "../../domain/rules/scene-narrative-eff
 
 import { fenceIntroductionWitnesses } from "../../domain/rules/npc-participation.js";
 import { parseRelationshipProposals } from "../../domain/rules/relationship-review.js";
-import { type ResidentAccessAction } from "../../domain/rules/resident-actions.js";
-import {
-  assertSceneMovementCapacity,
-  residentLocalIdsAt,
-  residentMovementUnavailable,
-} from "../../domain/rules/resident-movement.js";
+import { assertSceneMovementCapacity, residentMovementUnavailable } from "../../domain/rules/resident-movement.js";
 import { sceneContinuityView, sceneWishEffectIds } from "../../domain/rules/scene-continuity.js";
 import { sceneEvidencePerception } from "../../domain/rules/scene-evidence-perception.js";
-import { readSceneBoundary, readSceneHalt } from "../../domain/rules/scene-halt.js";
+import { readSceneBoundary } from "../../domain/rules/scene-halt.js";
 import {
   readSemanticEffects,
   semanticContext,
@@ -51,12 +46,10 @@ export interface SemanticPorts {
 function semanticCheckpointKey(stage: string, identity: Record<string, unknown>): string {
   return `semantic-v2:${stage}:${semanticHash([
     1,
-    identity.residentActionsOmitted === true,
     identity.message,
     identity.evidence,
-    ...(identity.hearingTimelineVersion === 1 ? [identity.hearingTimelineVersion, identity.zoneEventSource] : []),
+    ...(identity.zoneEventSource ? [identity.zoneEventSource] : []),
     ...(Object.hasOwn(identity, "narrativeGrant") ? [identity.narrativeGrant] : []),
-    ...(Array.isArray(identity.residentActions) ? [identity.residentActions] : []),
   ])}`;
 }
 
@@ -77,7 +70,7 @@ export function createSemanticService(ports: SemanticPorts) {
   async function validateReply<Input, Result>(
     input: Input,
     provided: Record<string, unknown>,
-    validate: (raw: Record<string, unknown>, hash: string, savedInput: Input, outputContractVersion?: 1) => Result,
+    validate: (raw: Record<string, unknown>, hash: string, savedInput: Input) => Result,
   ): Promise<Result> {
     const key = semanticCheckpointKey("exchange", asRecord(input));
     const saved = await ports.venueCheckpoint("gm:" + key + ":input", async () => ({
@@ -237,9 +230,6 @@ export function createSemanticService(ports: SemanticPorts) {
       context: ReturnType<typeof semanticContext>;
       presentation: SpriteSelectionContext;
     },
-    prepared: SemanticIntent | null = null,
-    _residentActions?: ResidentAccessAction[],
-    residentActionsOmitted = false,
     narrativeGrant?: NarrativeAdmission | null,
     zoneEventSource?: Record<string, unknown>,
   ): Promise<SemanticExchange> {
@@ -247,68 +237,51 @@ export function createSemanticService(ports: SemanticPorts) {
     const state = await readSceneAuthority(scene);
     const sceneState = sceneContinuityView(state, scene);
     const evidence = semanticEvidence(lines);
-    const combined = scene.operation?.input.semanticPipelineVersion === 3;
-    const movementReview = scene.operation?.input.residentMovementReviewVersion === 1;
     const context = gm.context;
     const result = await validateReply(
       {
         message,
         _presentation: gm.presentation,
-        turnPolicyVersion: 1,
-        ...(movementReview
-          ? { residentMovementReviewVersion: 1, residentRequestLocalIds: residentLocalIdsAt(scene, [], 0) }
-          : {}),
-        residentActionsOmitted,
         evidence,
-        ...(zoneEventSource ? { hearingTimelineVersion: 1, zoneEventSource } : {}),
-        prepared,
+        ...(zoneEventSource ? { zoneEventSource } : {}),
         context,
         ...(narrativeGrant !== undefined ? { narrativeGrant } : {}),
-        ...(combined ? { pipelineVersion: 3 } : {}),
       },
       normalizeGmEffects(gm.raw, context),
       (raw, hash, savedInput): SemanticExchange => {
         raw = { ...raw, sourceHash: hash };
         if (savedInput.context.preservation) {
-          const finding =
-            savedInput.context.preservation.sceneBoundaryVersion === 1
-              ? readSceneBoundary(raw.halt, savedInput.context.preservation, savedInput.message, savedInput.evidence)
-              : null;
-          const outcome =
-            savedInput.context.preservation.sceneBoundaryVersion === 1
-              ? finding?.outcome
-              : readSceneHalt(raw.halt, savedInput.context.preservation, savedInput.message, savedInput.evidence);
+          const finding = readSceneBoundary(
+            raw.halt,
+            savedInput.context.preservation,
+            savedInput.message,
+            savedInput.evidence,
+          );
+          const outcome = finding?.outcome;
           if (outcome)
             return {
               version: 2,
               sourceHash: hash,
-              checkpointKey: "",
               ...(finding?.source === "draft" ? { draftBoundaryViolation: finding } : { turnOutcome: outcome }),
               authority: { physical: false, access: false, projects: false, standing: false },
               effects: {},
               access: null,
             };
         }
-        const interpretedIntent = combined
-          ? readIntent(asRecord(raw.intent), hash, savedInput, state, scene)
-          : undefined;
+        const interpretedIntent = readIntent(asRecord(raw.intent), hash, savedInput, state, scene);
         if (interpretedIntent?.status === "unresolved")
           throw badGateway(interpretedIntent.reason || "The action needs clarification. The draft is preserved.");
-        if (
-          savedInput.residentMovementReviewVersion === 1 &&
-          residentMovementUnavailable(raw.immediateResidentMoves, interpretedIntent ?? prepared!, sceneState, scene)
-        )
+        if (residentMovementUnavailable(raw.immediateResidentMoves, interpretedIntent, sceneState, scene))
           return {
             version: 2,
             sourceHash: hash,
-            checkpointKey: "",
             turnOutcome: "occupancy-unavailable",
             intent: interpretedIntent,
             authority: { physical: false, access: false, projects: false, standing: false },
             effects: {},
             access: null,
           };
-        if (savedInput.hearingTimelineVersion === 1 && raw.perceptionViolation != null) {
+        if (raw.perceptionViolation != null) {
           const violation = asRecord(raw.perceptionViolation);
           const source = Number.isSafeInteger(violation.segment)
             ? savedInput.evidence[Number(violation.segment)]
@@ -326,9 +299,8 @@ export function createSemanticService(ports: SemanticPorts) {
         }
         let evidence = savedInput.evidence;
         const immediate = semanticImmediate(raw.events, lines);
-        const admissions =
-          savedInput.hearingTimelineVersion === 1 && immediate ? (scene.pendingNpcAdmissions ?? []) : [];
-        if (savedInput.hearingTimelineVersion === 1 && savedInput.zoneEventSource && immediate) {
+        const admissions = immediate ? (scene.pendingNpcAdmissions ?? []) : [];
+        if (savedInput.zoneEventSource && immediate) {
           const venue = findLocation(sceneState, scene.placeId);
           if (!venue || !scene.contactGeneration?.zoneEvents)
             throw badGateway("The admitted hearing context is unavailable. The draft is preserved.");
@@ -349,7 +321,7 @@ export function createSemanticService(ports: SemanticPorts) {
           assertSceneMovementCapacity(scene, moves);
           const playerMoves = semanticPlayerMoves(
             immediate.semanticPlayerMoves,
-            { ...scene, semanticIntent: interpretedIntent ?? prepared ?? undefined },
+            { ...scene, semanticIntent: interpretedIntent },
             projected.lines,
           );
           routeZoneEvents(
@@ -385,13 +357,9 @@ export function createSemanticService(ports: SemanticPorts) {
         if (raw.consistent === false && citedAgency) throw new UnsupportedPlayerAgency();
         if (raw.consistent === true && citedAgency)
           throw badGateway("System returned contradictory player-agency review. The draft is preserved.");
-        semanticPlayerMoves(
-          asRecord(raw.events).playerMoves,
-          { ...scene, semanticIntent: interpretedIntent ?? prepared ?? undefined },
-          lines,
-        );
+        semanticPlayerMoves(asRecord(raw.events).playerMoves, { ...scene, semanticIntent: interpretedIntent }, lines);
         const effects = readSemanticEffects(raw, hash);
-        if (savedInput.hearingTimelineVersion === 1 && effects.relationshipChanges !== undefined) {
+        if (effects.relationshipChanges !== undefined) {
           const earlier = savedInput.context.history.map((line) => ({
             ...line,
             speakerId: line.role === "user" ? "player" : line.speakerId,
@@ -604,7 +572,6 @@ export function createSemanticService(ports: SemanticPorts) {
           version: 2,
           producer: "gm" as const,
           ...(interpretedIntent ? { intent: interpretedIntent } : {}),
-          checkpointKey: "",
           sourceHash: hash,
           authority,
           effects,

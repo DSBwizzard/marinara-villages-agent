@@ -102,7 +102,7 @@ for (const count of [1000, 10_000, 25_000]) {
     });
     world.relationshipContext = await social.readRelationshipState(world.seed);
     const scene = coerceSession({
-      version: 3,
+      version: 4,
       id: "frozen",
       villageSeed: world.seed,
       status: "active",

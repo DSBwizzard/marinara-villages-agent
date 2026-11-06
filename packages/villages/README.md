@@ -98,7 +98,7 @@ On a phone, use portrait orientation. Places opens as a drawer, and Venue editin
 
 ## Have a Scene
 
-New Scenes use one GM response for dialogue and gameplay updates. Existing open Scenes retain their original two-call behavior until concluded. The GM still needs to follow the game rules, and code validates proposed changes before applying them; it no longer receives a mandatory second model review. Wishes, relationships and Memories still update during play, without a separate Scene-end request.
+Scenes use one GM response for dialogue and gameplay updates. This build requires fresh Scene format 4; retired formats are rejected without conversion. The GM still needs to follow the game rules, and code validates proposed changes before applying them; it no longer receives a mandatory second model review. Wishes, relationships and Memories still update during play, without a separate Scene-end request.
 
 A Scene is an ongoing interaction within one Venue. It can continue as you move between that Venue's Zones.
 
@@ -127,7 +127,7 @@ New Scenes follow the Village's current time. Residents can leave for commitment
 
 On returning, earlier replies remain saved and your draft stays unsent. A small World changes popup shows arrivals and departures with the Village time, outside the dialogue box; you can dismiss it or reopen its chip. The Scene shows who is here now without inventing anything your Persona did during the gap. New arrivals do not learn earlier conversations automatically. If the situation changes before Send, your message stays a draft while the Scene updates; review it before sending again. Time passing never purchases a generated greeting.
 
-Scenes already open in an older build keep their original captured moment until you conclude them. New Scenes use the live behavior. Saved and interrupted requests keep their original evidence and recovery controls.
+Saved and interrupted supported requests keep their admitted time, evidence, allowance and recovery controls.
 
 ## Get to know the residents
 
@@ -207,7 +207,7 @@ Sprite Manager’s **Import Engine sprites** lets you choose an Engine folder an
 
 Imports make independent copies and reuse existing copies by their original Engine filename. Reimporting preserves reviewed names, assignments, framing and the default. Large folders import in bounded batches; failed images stay listed for retry, and completed copies survive leaving setup. Matching unambiguous Front and Side names share an expression. An existing assignment is never silently replaced; rename or unassign a conflicting import before applying it. Later Engine renames and folder moves do not change imported artwork. Older Engines without the folder catalog retain flat full-body import.
 
-Side-facing artwork must look right; Villages mirrors it to look left. Front-facing artwork addresses you. The GM selects expressions and attention while writing new Scenes. Code handles placement, variants, mirroring and animation without another request. Existing two-call Scenes keep their saved presentation contract.
+Side-facing artwork must look right; Villages mirrors it to look left. Front-facing artwork addresses you. The GM selects expressions and attention while writing new Scenes. Code handles placement, variants, mirroring and animation without another request.
 
 **Generate signature** makes an image request. The original is retained alongside a transparent version; light and white areas are treated as paper. Failed regeneration keeps the previous signature.
 

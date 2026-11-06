@@ -4,24 +4,9 @@ import { badGateway, conflict } from "./errors.js";
 import { extractModelJsonObject, modelJsonWithinBounds } from "./json-reply.js";
 import { parseSceneObject } from "./scene-json-syntax.js";
 
-/** Model wire format only. Saved evidence and public Scene representations do not change. */
-export const SCENE_WRITING_CONTRACT = 3;
-
-/** Refuse before replacement handling can invalidate a retained paid draft. */
-export function assertCurrentSceneGeneration(
-  scene: VenueScene,
-  input: Record<string, unknown> | undefined,
-  mode: string,
-) {
-  if (
-    scene.semanticVersion !== 2 ||
-    (input?.writingContractVersion !== SCENE_WRITING_CONTRACT && input?.writingContractVersion !== 4) ||
-    input?.semanticPipelineVersion !== 3 ||
-    (input.writingContractVersion === 4 && (scene.gmVersion !== 1 || input.gmVersion !== 1)) ||
-    input.residentActionsVersion !== 2 ||
-    (input.interactionScopeVersion !== 6 && (mode !== "greet" || input.interactionScopeVersion !== undefined))
-  )
-    throw conflict("This saved request uses a retired generation contract. Its history and responses are preserved.");
+/** Refuse an unsupported Scene before generation can replace a retained response. */
+export function assertCurrentSceneGeneration(scene: VenueScene) {
+  if (scene.version !== 4) throw conflict("Unsupported Scene format. Start a fresh Village.");
 }
 
 const EFFECT_FIELDS = ["memoryChanges", "relationshipChanges", "wishChanges", "projectSpeech", "interpretationRouting"];

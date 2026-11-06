@@ -175,7 +175,7 @@ async function main() {
   assert.equal(admission.foundingPreparation?.canPlay, true);
   const marker = fixture("marker");
   const scene = coerceSession({
-    version: 3,
+    version: 4,
     id: "active",
     villageSeed: marker.world.seed,
     status: "active",
@@ -220,7 +220,7 @@ async function main() {
     zone.observed = captureZoneObservation(venue, zone);
     zone.description = "Newly observed approach";
     const current = coerceSession({
-      version: 3,
+      version: 4,
       id: "observed",
       villageSeed: f.world.seed,
       placeId: venue.id,

@@ -118,7 +118,7 @@ const release = configureVillagesRuntime({
 async function run() {
   try {
     const session: any = {
-      version: 3,
+      version: 4,
       semanticVersion: 2,
       id: "fixture",
       placeId: "camp",
@@ -210,7 +210,7 @@ async function run() {
     );
     const capturedWorld = coerceVillageState(state);
     capturedWorld.villagers[0].wishes = [fixtureWish({ wish: "Exact captured desire" }, "captured")];
-    const capturedScene = { ...session, version: 3, villageSeed: state.seed, status: "closed" };
+    const capturedScene = { ...session, version: 4, villageSeed: state.seed, status: "closed" };
     capturedScene.continuity = captureSceneContinuity(capturedWorld, capturedScene, Date.parse(stamp));
     const captured = await prepareVenueTurnMessages(capturedScene, "A frozen Wish context", "chat", "", null);
     assert.equal(

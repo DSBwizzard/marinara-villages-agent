@@ -359,7 +359,7 @@ await runCase("repair/relationship-history", async () => {
   });
   const frozenId = "villages-venue-visit-inline-relationships";
   const frozen = coerceSession({
-    version: 3,
+    version: 4,
     id: "inline-relationships",
     villageSeed: seed,
     status: "closed",
@@ -865,7 +865,7 @@ await runCase("repair/snapshot-integrity", async () => {
     description: "",
     createdAt: memoryTime(),
     updatedAt: memoryTime(),
-    data: { version: 3, id: "invalid-owner", villageSeed: null, status: "closed", submissions: [], lines: [] },
+    data: { version: 4, id: "invalid-owner", villageSeed: null, status: "closed", submissions: [], lines: [] },
   });
   const control = structuredClone(f.rows.get("villages-repair-control"));
   await assert.rejects(f.api.createCheckpoint("Invalid source", "invalid-owner-save"), /source ownership/);
@@ -1101,7 +1101,7 @@ await runCase("repair/privacy", async () => {
   assert.ok(!projectMemories(untouched.memories, ["player"]).some((r) => r.text.includes("hidden brass compass")));
   const stamp = memoryTime(10),
     archived = {
-      version: 3,
+      version: 4,
       id: "private-archive",
       status: "closed",
       placeName: "Workshop",
@@ -1258,7 +1258,7 @@ await runCase("repair/retained-scenes", async () => {
   const f = await fixture(),
     stamp = memoryTime(10);
   const scene: any = {
-    version: 3,
+    version: 4,
     id: "held-scene",
     sceneRevision: 4,
     status: "active",
@@ -1370,7 +1370,7 @@ await runCase("repair/correction-retained", async () => {
     name: "Library",
     description: "",
     data: {
-      version: 3,
+      version: 4,
       id: "corrected",
       villageSeed: "repair-world",
       status: "closed",
@@ -1395,7 +1395,7 @@ await runCase("repair/restored-evidence", async () => {
   const f = await fixture(),
     stamp = memoryTime(10);
   const scene = {
-    version: 3,
+    version: 4,
     id: "restored",
     villageSeed: "repair-world",
     status: "closed",
