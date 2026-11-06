@@ -207,7 +207,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       revision,
       finite,
       label: villager.cardSnapshot.name + "'s agenda",
-      legacyError: founding ? undefined : villager.agenda?.personalizationFailure,
+      initialError: founding ? undefined : villager.agenda?.personalizationFailure,
       input: {
         seed: village.seed,
         characterId,
@@ -448,10 +448,6 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     await refreshScheduleInfluence(await readVillageState(), villageNow(), characterId);
   }
   return {
-    adoptFoundingRoutine: (state: VillageState, id: string, agenda: VillageAgenda, revision: string) => {
-      applyAgenda(state, id, agenda);
-      completeFoundingTask(state, id, "routine", revision);
-    },
     readFoundingResidentContext,
     rollActiveAgendas,
     queueVillagerAgenda,

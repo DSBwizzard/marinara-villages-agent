@@ -74,15 +74,7 @@ export async function previewBackgroundJobs() {
   return binding.get().previewBackgroundJobs();
 }
 
-/** Private server-only frozen inputs and response receipts for deliberate migration. */
+/** Current server-only job ownership and admitted inputs. */
 export function backgroundJobSnapshot(kind: BackgroundKind, subjectId: string) {
   return binding.get().backgroundJobSnapshot(kind, subjectId);
-}
-
-export function backgroundLegacyFounding(subjectId: string, seed: string, revision: string) {
-  return binding.get().backgroundLegacyFounding(subjectId, seed, revision);
-}
-
-export function retireLegacyFounding(...args: Parameters<BackgroundWorkService["retireLegacyFounding"]>) {
-  return binding.get().retireLegacyFounding(...args);
 }

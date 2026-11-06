@@ -126,8 +126,6 @@ function fixture(name: string) {
       entered.resolve();
       await gate.promise;
     },
-    backgroundLegacyFounding: async () => null,
-    retireLegacyFounding: async () => {},
     readFoundingResidentContext: async (id) =>
       ({
         sourceRevision: foundingTaskRevision(state, id, "routine"),
@@ -135,7 +133,6 @@ function fixture(name: string) {
         venues: routineVenues(state.venues),
         circumstances: { worldRules: state.worldRules },
       }) as any,
-    adoptFoundingRoutine: () => {},
     backgroundJobSnapshot: async (kind, id) =>
       structuredClone(jobs.get(foundingSlot(kind === "agenda" ? "routine" : "wish", id)) ?? null),
     queueVillagerAgenda: async (id, finite) => {
