@@ -179,12 +179,6 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
         sourceRevision = ports.socialIdentity(source, village);
         const entry = await ports.readSocialEntry(source, village.seed);
         const rawSource = asRecord(entry.proposal.encounter);
-        if (
-          Array.isArray(rawSource.lines) &&
-          rawSource.lines.some((line) => asRecord(line).kind === "narration") &&
-          rawSource.physicalConsistent !== true
-        )
-          throw new EncounterInterpretationError("Narrated encounter outcomes need independent validation.");
         if (rawSource.placeUpdate || village.exchangeReceipts[encounterPhysicalId(entry.id)]) {
           const prepared = readEncounter(entry.proposal.encounter, entry, village);
           if (!prepared) throw new Error("The saved encounter could not be admitted.");
