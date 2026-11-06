@@ -211,6 +211,28 @@ assert.equal(providerCalls, 1);
 assert.deepEqual(social.receipts, socialReceipt, "Correcting memory never reapplies an accepted social source");
 assert.deepEqual(social.socialEncounters[0]!.memoryChanges, []);
 
+const gmEncounter = structuredClone(entry);
+gmEncounter.id = "gm-narrated-encounter";
+gmEncounter.relationshipSnapshot = structuredClone(social);
+Object.assign(gmEncounter.proposal.encounter as any, {
+  producer: "gm",
+  physicalConsistent: false,
+  relationshipReview: emptyRelationshipReview(),
+  memoryChanges: [],
+  lines: [
+    { speakerId: "a", text: "Shall we talk again?" },
+    { kind: "narration", text: "A smiles at B." },
+    { speakerId: "b", text: "Yes." },
+  ],
+});
+village.socialOutbox = [gmEncounter];
+await service.processSocialOutbox(await snapshot());
+assert.equal(village.socialOutbox.length, 0, "A narrated GM encounter settles without a separate critic");
+assert(social.applied[gmEncounter.id]);
+assert.equal(social.socialEncounters.at(-1)!.semanticProvenance?.producer, "gm");
+assert.equal(providerCalls, 1, "GM encounter settlement makes no interpretation request");
+assert.equal(await service.processSocialOutbox(await snapshot()), false, "Settled encounters do not replay");
+
 // A source-supported offscreen memory passes through real social and memory settlement.
 const remembered = structuredClone(entry);
 remembered.id = "remembered-encounter";
