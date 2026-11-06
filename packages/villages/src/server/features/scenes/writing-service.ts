@@ -958,14 +958,13 @@ export function createSceneWriting({
       ])
         delete raw?.[key];
       raw = { ...raw, ...semanticResult.effects };
-      for (const domain of ["memories", "relationships", "wishes", "projects"] as const) delete effectFailures[domain];
       for (const [domain, key] of Object.entries({
         memories: "memoryChanges",
         relationships: "relationshipChanges",
         wishes: "wishChanges",
         projects: "projectSpeech",
       }))
-        if (semanticResult.effects[key] === undefined)
+        if (semanticResult.effects[key] === undefined && !effectFailures[domain as keyof typeof effectFailures])
           effectFailures[domain as keyof typeof effectFailures] = {
             kind: "metadata",
             message: "System update metadata is missing; retry interpretation.",
