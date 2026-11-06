@@ -108,7 +108,7 @@ export function createNarrative(ports: Ports) {
   }
   async function reconcileAt(now: Date): Promise<void> {
     let state = await ports.read();
-    if (!state.setupAt || state.clock?.recovery || !foundingReadyForPlay(state)) return;
+    if (!state.setupAt || !foundingReadyForPlay(state)) return;
     if (!state.narrative) {
       await ports.mutate((world) => {
         ensureNarrative(world, now.toISOString());

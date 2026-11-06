@@ -168,7 +168,6 @@ export type SocialEncounter = {
   review: RelationshipReview;
 };
 export type RelationshipState = {
-  clockShiftMs?: number;
   noticeSequence: number;
   eventSequence: number;
   version: 3;

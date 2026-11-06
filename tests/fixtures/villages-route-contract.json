@@ -560,10 +560,6 @@
     },
     {
       "method": "post",
-      "path": "/clock/recover"
-    },
-    {
-      "method": "post",
       "path": "/reconcile"
     },
     {
