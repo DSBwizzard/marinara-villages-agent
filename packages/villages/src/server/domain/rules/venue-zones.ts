@@ -8,7 +8,6 @@ import type {
 } from "../models/world.js";
 import { conflict } from "./errors.js";
 import { evaluateZoneAccess, mayInvite, zoneManagers } from "./venue-access.js";
-import { venueResidentIds } from "./venue-model.js";
 
 export const ZONE_KINDS: readonly VillageZoneKind[] = [
   "exterior",
@@ -67,42 +66,14 @@ export function canOccupyZone(
   actorId: string,
   context?: import("./venue-access.js").AccessContext,
 ): boolean {
-  if (venue.access) return evaluateZoneAccess(venue, zone, actorId, context).allowed;
-  if (
-    context?.environment &&
-    ordinaryUseRestricted(context.environment, (context.at ?? new Date()).toISOString(), venue.id, zone.id) &&
-    !zoneControllerIds(venue, zone).includes(actorId) &&
-    !Object.values(context.relationships?.grants ?? {}).some(
-      (grant) =>
-        grant.active &&
-        !grant.revoked &&
-        grant.visitorId === actorId &&
-        grant.venueId === venue.id &&
-        grant.zoneId === zone.id,
-    )
-  )
-    return false;
-  if (zone.kind === "exterior" || zone.kind === "public") return true;
-  if (actorId === "player" && venue.occupancy.playerHome && zone.kind === "shared-residence") return true;
-  if (zone.kind === "private-residence")
-    return (
-      zone.ownerId === actorId &&
-      (actorId === "player" ? venue.occupancy.playerHome : venueResidentIds(venue).includes(actorId))
-    );
-  if (zone.kind === "restricted") return !!zone.controllerIds?.includes(actorId);
-  return zone.kind === "staff" ? !!venue.workerIds?.includes(actorId) : venueResidentIds(venue).includes(actorId);
+  return evaluateZoneAccess(venue, zone, actorId, context).allowed;
 }
 export function canInviteToZone(venue: VillageVenue, zone: VillageVenueZone, actorId: string): boolean {
-  if (zone.closed) return false;
-  if (venue.access) return mayInvite(venue, zone, actorId);
-  if (zone.kind === "private-residence") return zone.ownerId === actorId && venueResidentIds(venue).includes(actorId);
-  if (zone.kind === "staff") return !!venue.workerIds?.includes(actorId);
-  if (zone.kind === "restricted") return !!zone.controllerIds?.includes(actorId);
-  return zone.kind === "shared-residence" && venueResidentIds(venue).includes(actorId);
+  return !!venue.access && !zone.closed && mayInvite(venue, zone, actorId);
 }
 /** Withdrawal requires controller authority, not availability to admit a visitor. */
 export function canRevokeZonePermission(venue: VillageVenue, zone: VillageVenueZone, actorId: string): boolean {
-  return venue.access ? mayInvite(venue, zone, actorId) : canInviteToZone(venue, { ...zone, closed: false }, actorId);
+  return !!venue.access && mayInvite(venue, zone, actorId);
 }
 export function zoneClosed(
   state: Pick<VillageState, "projects">,
@@ -239,14 +210,7 @@ export function synchronizeVenueZones(venue: VillageVenue, previous?: VillageVen
 }
 
 export function zoneControllerIds(venue: VillageVenue, zone: VillageVenueZone | undefined): string[] {
-  if (!zone) return [];
-  if (venue.access) return zoneManagers(venue, zone);
-  if (zone.kind === "staff") return [...(venue.workerIds ?? [])];
-  if (zone.kind === "restricted") return [...(zone.controllerIds ?? [])];
-  if (zone.kind === "private-residence") return zone.ownerId ? [zone.ownerId] : [];
-  return zone.kind === "shared-residence"
-    ? [...venueResidentIds(venue), ...(venue.occupancy.playerHome ? ["player"] : [])]
-    : [];
+  return venue.access && zone ? zoneManagers(venue, zone) : [];
 }
 export function privateTarget(
   venue: VillageVenue,
