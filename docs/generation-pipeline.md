@@ -56,13 +56,13 @@ Ordinary GM turns use one request; automatic boundary replacement adds at most o
 
 GM access proposals cite the actual current speech/narration once and go through existing authority, witness, scope, conditions and revision checks. There is no separate coverage critic to discover omitted proposals.
 
-Code checks exact source/witness identity, current invitation authority, duration, conditions and scope before applying access or standing permission. The GM receives private Zone IDs, kinds and captured adjacency; player-known projections stay separate. Unresolved or contradictory consequential actions hold the turn. Equivalent repeated invitations produce one effect. Invitations permit entry without moving the player or revealing unseen contents. Standing revocation checks current authority even when a space is closed.
+Code checks exact source/witness identity, current invitation authority, duration, conditions and scope before applying access or standing permission. The GM receives private Zone IDs, kinds and captured adjacency; player-known projections stay separate. Invalid or contradictory consequential authority holds the turn. Valid unresolved access outcomes become pending questions while independent valid invitations can settle. Equivalent repeated invitations produce one effect. Invitations permit entry without moving the player or revealing unseen contents. Standing revocation checks current authority even when a space is closed.
 
 Private receipts retain source proposals and responses. Rejected completions use the bounded private diagnostic journal; neither appears in public Scene data. GM retries replace a rejected combined response. No historical effects are retrospectively reinterpreted.
 
 ## Preparation
 
-Routine contract 2 asks for activities, allowed dayparts, optional weekday restrictions and fixed rhythms. Deterministic code constructs the seven-day choice structure and schedules. Contract 1 and legacy saved responses remain readable, including lossless four-daypart normalization. Long rest uses fixed rhythms; ordinary activity durations remain bounded.
+Routine contract 2 asks for activities, allowed dayparts, optional weekday restrictions and fixed rhythms. Deterministic code constructs the seven-day choice structure and schedules. Unsupported Routine contracts fail without conversion. Long rest uses fixed rhythms; ordinary activity durations remain bounded.
 
 Usable places and local routines allow entry while optional authored routines, initial Wishes and interiors finish preparing. A quiet Wish result is a completed attempt. Shared background jobs receive at most one automatic retry of a settled empty or malformed result, reusing valid earlier steps. The allowance belongs to the whole job instance and survives restart and manual retries. It preserves existing admission and request limits. A second failure, configuration/limit problem, changed source, storage failure or uncertain request requires REPAIR; startup never purchases retries for historical failures.
 

@@ -1,65 +1,35 @@
 # Scene continuity and effect recovery
 
-The current Scene writer uses contract v3. Previously admitted v1/v2 operations retain their saved contracts, source identities and hearing behavior. Existing Scene history never acquires witnesses retrospectively.
+Current format-4 Scenes require the current native admission, writing and source contracts. Interactive Scenes require semantic contract 2 and their Village identity. Every timed interactive exchange requires current processing metadata bound to that Village, Scene and submission; mutation and turn/greeting recovery refuse missing or mismatched metadata before admission or effects. New exchanges receive metadata when authored; existing exchanges are never backfilled. Unsupported formats are rejected before generation. Each admitted request retains its exact source, positions and witnesses through recovery; later arrivals never hear earlier dialogue.
 
-An empty supplied cast permits surroundings and player actions, never invented unseen responders or incoming messages. Invalid narrated-sound metadata rejects the uncommitted writer result; explicit retry may replace it while retaining the original player input and bounded private diagnostics. Routing failures caused by System movement interpretation retain valid writing and retry only that interpretation. Reads and reloads never request replacements.
+An empty local cast permits surroundings and player actions, without inventing unseen responders. Invalid hearing, movement or physical metadata keeps the uncommitted response held. Reads and reloads never request replacements.
 
 ## Speech capture
 
-Narration returns an internal `playerSpeechCapture` result: captured, silent or uncertain. Captured utterances cite input quote IDs or exact literal spans with one-based occurrences. Code expands the references into player speech, preserving authored resident segments and remapping their effect citations. Quotes are source references, not proof of audibility. Code resolves source offsets, retains interrupted utterances, and persists provenance on the server alongside delivery, targets and code-owned witnesses. Unquoted speech is supported; quotation marks alone do not establish audibility. Thoughts, actions, remembered or hypothetical quotations and negated speech are excluded by the capture contract.
+The GM's ordered input entries cite exact submitted text. Code binds canonical source offsets and one-based occurrences, preserves delivery and targets, materializes exact player speech and remaps affected segment references. Source references do not establish audibility: code supplies the actual position and witness timeline. Thoughts, actions, remembered quotations and hypothetical or negated speech cannot become spoken evidence.
 
-A missing, uncertain or invalid capture interrupts admission without discarding the saved completion. Explicit retry asks only System to recover capture metadata from the saved input/output. Existing prose cannot be changed. Missing utterances are inserted at specified segment boundaries, with current-segment citations remapped. Capture recovery is bound to the completion hash, so a core-rejected completion cannot replace a later draft. Invalid System recovery is retryable without generating Narration again.
+Missing, ambiguous or invalid source references reject the combined response with the input preserved. There is no quote-ID alias, inferred capture or separate capture-recovery model call. Explicit GM Retry replaces the rejected response under the ordinary ownership and accounting guards.
 
 ## Bounded Scene retrieval
 
-Before applying the recent-history window, local BM25 ranks the full eligible ongoing Scene using the current input and latest two visible exchanges. No ended-Scene transcript, embedding service, summary call or extra retrieval provider is used. Existing long-term memories remain available.
+Local retrieval ranks eligible ongoing Scene evidence using current input and recent visible exchanges. It uses no ended-Scene summary, embedding service or retrieval-provider request. Long-term Memories retain their own retrieval contract.
 
-The serialized history, including row metadata and its guidance, stays within 12,000 characters: up to 8,000 for recent context and 4,000 for older relevant evidence, with unused space reassigned. Whole source lines are deduplicated and returned chronologically. Oversized candidates are skipped. Witness/visibility filtering precedes ranking; acoustic-only listeners receive only their permitted projection. Narrator visibility never establishes shared resident knowledge.
+The serialized history stays within its 12,000-character budget, deduplicates whole source lines and returns them chronologically. Oversized candidates may be skipped. Witness and visibility filtering precedes ranking; acoustic-only listeners receive only the permitted projection. Narrator visibility never establishes resident knowledge.
 
-Requests freeze selected evidence, and saved proposals retain evidence fingerprints for replay. Retrieved evidence IDs are available to downstream validators. History is explicitly partial: omitted context cannot establish that something never happened.
-
-Characters may forget, bluff, guess, evade or disagree. Validation constrains authoritative updates, not their dialogue. A denial can support an attributed statement or belief; it cannot prove historical absence. Passing factual recollections join the existing selective System verification batch. No memory proposal requires no additional memory verification call.
+Requests freeze selected evidence and its fingerprints. Retrieved IDs remain available to validators. History is explicitly partial: omitted context cannot establish that something never happened. Residents may forget, bluff or disagree; validation constrains authoritative effects rather than forcing every line of dialogue to be true.
 
 ## Independent effects
 
-Complete syntax, speaker attribution, capture, hearing/privacy, movement and physical outcomes remain core requirements. Truncated JSON is never salvaged. Memory, relationship, Wish and Project metadata are normalized independently; malformed payloads remain private failed-domain records rather than empty successes.
+Complete syntax, source attribution, hearing/privacy, movement and physical outcomes remain core requirements. Truncated JSON is rejected. Noncritical optional metadata retains independent failure records instead of becoming empty success. Malformed consequential standing-permission or Project proposals reject the combined response before publication.
 
-Accepted prose, stable line IDs, proposals and failures commit together before acknowledgement. Provider completions are checkpointed before validation. Storage replay makes no provider calls. Domain receipts prevent completed effects from being applied twice. Explicit interpretation retry calls System only for the selected failed domain, using saved evidence and relevant context; it never rewrites accepted prose.
+Accepted prose, stable line IDs, proposals and failures commit together before acknowledgement. Provider responses checkpoint before validation. Domain receipts prevent effects from applying twice, and storage replay makes no provider call. Explicit selected-domain interpretation uses saved evidence and current settlement context without rewriting accepted prose.
 
-Projects consume consent, lead commitment and withdrawal evidence; objects and transfers have no Project effects. Scene physical settlement precedes agreement bookkeeping, and physical Wishes wait for their authoritative receipt. Ordinary conversation can continue while noncritical domains remain pending. Existing state/revision/authority gates continue to govern dependent actions.
+Scene physical settlement precedes dependent agreement and Wish bookkeeping. Ordinary conversation can continue while noncritical updates remain pending; standing access, physical, Project and Wish authority still governs dependent actions.
 
-Raw completions remain server-only until recoverable payloads commit; normal operation completion clears redundant checkpoints and attempt payloads. Public Scene projections exclude raw failures, provenance, fingerprints, checkpoints and interpretation history.
+Captured attendance and explicit connection maps remain authoritative for the admitted exchange. Idle live Scenes refresh current time, circumstances and scheduled attendance between exchanges, while running/interrupted requests retain their admitted snapshots. Canonical presentation cues and immutable playback checkpoints preserve reading and visual state independently of current authority.
+
+Raw completions, diagnostics, provenance, checkpoints and private interpretation history stay server-only. The ordinary public response contains only its explicit authority and bounded visible playback projection. Owner diagnostics require their dedicated endpoint.
 
 ## Validation
 
-Provider-free regressions cover exact and interrupted capture, occurrence selection, source order, missing capture recovery, model-setting changes during retry, rejected-draft replacement, bounded older preference retrieval, conditions, oversized lines, acoustic projections, independent domain corruption, selected-domain recovery, and crashes/lost acknowledgements around atomic prose saving with activation restart. Existing movement/privacy/physical receipt consumers remain applicable. Paid model quality and cost qualification are separate from deterministic correctness and must be reported with their actual coverage.
-
-## Provider-free cost and movement follow-up
-
-The v3 mechanical instructions request compact JSON, inferred segment kinds and source references instead of repeated movement quotes. Explicit kinds and quotes from saved completions remain supported. Authored cards, writing guidance, dialogue and narration are unchanged. A character budget guards the all-capability mechanical instructions; it is not a provider token or dollar guarantee.
-
-A validated annotation to the resident’s current player-local Zone is discarded before movement or witness routing. In v3, words about intending to speak or think elsewhere in the narration cannot make that redundant annotation fail movement validation. Unknown actors, invalid source citations, unlisted/inaccessible destinations and hypothetical or conditional actual crossings still fail. Earlier contracts retain their qualifier behavior.
-
-Saved-response replay can verify this correction and lossless compact formatting without provider calls. It cannot establish new model behavior or paid savings: the historical cost guard remains failed and qualification incomplete. The shared preview stays unchanged until qualification passes.
-
-## Qualification-driven corrections
-
-The v3 writer now starts with the two required object fields and a complete JSON syntax example. Capture remains mandatory for silence as well as speech; whisper recipients and the three valid evidence-reference forms are explicit. Those instructions add no provider repair call or paid retry.
-
-Movement guidance lists residents already in the player’s Zone and encourages entry only for actual remote doorway contacts. It cannot turn a resident already present into an arrival from another Zone. Movement validation remains unchanged.
-
-Unsupported System memory and relationship proposals carry interpretation failures. Storage exceptions retain storage classification. Both remain independently recoverable without changing accepted prose.
-
-The compact contract keeps movement mechanics in one place and explicitly requires effects inside the same JSON object as capture and prose. Unquoted speech uses an exact span plus occurrence when no input quote IDs exist; naming a listener does not imply whisper delivery. Mixed dialogue and narration remain valid. Those prompt changes leave core validation unchanged; the narrowly bounded finished-output normalization below is separate.
-
-Code canonicalizes an omitted occurrence to 1 only for a nonempty exact literal span appearing once in the entire input. Duplicate, overlapping, private/recalled duplicates and invalid supplied occurrences still require recovery. Captured words, order, delivery and witness rules remain unchanged.
-
-BM25 scores the current question first; the latest two visible exchanges disambiguate equal matches and supply fallback context. This prevents a long recent topic from overwhelming a short factual recall question. Recency and stable IDs break remaining ties; witness filtering and the serialized history allowance are unchanged.
-
-## Finished output-format normalization
-
-For a finished v3 response, code can remove one extra closing brace between the complete capture/segments object and appended noncritical effect fields. The joined object must pass strict whole-object JSON parsing, including duplicate-key checks; every supplied value is retained. Only memory, relationship, Wish and Project metadata may follow that boundary. Truncation, missing delimiters, critical or unknown suffix fields, competing objects and trailing prose remain rejected. Invalid effect values remain failed-domain proposals rather than disappearing or becoming successful empty effects.
-
-An explicit dialogue aside using `delivery:"side"` and `presentation:"aside"` maps to the existing ordinary-aside behavior only without a target or a conflicting loud/whisper signal. Ordinary hearing rules still determine witnesses. Ambiguous delivery values remain rejected. The prompt includes a complete multi-field JSON example and uses `presentation:"aside"` with `delivery:"ordinary"`.
-
-These corrections are covered by provider-free parsing, hearing and packaged save/replay tests. They do not establish improved provider reliability, cost qualification or long-session completion. Paid testing remains stopped and the shared preview remains unchanged.
+Provider-free tests cover exact occurrences, repeated and interrupted speech, missing/forged source references, visibility and acoustic projections, native movement, independent domain failures, selected-domain recovery, purchased-response reuse and lost acknowledgements. Packaged and desktop/phone tests retain current playback and recovery coverage. They do not establish real-provider semantic quality or cost.

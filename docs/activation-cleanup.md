@@ -1,13 +1,9 @@
-# Activation cleanup correction
+# Activation cleanup
 
-This is a separate reliability correction within the architecture migration. It changes failure handling; ordinary successful startup, gameplay, and shutdown order stay the same.
+Every successfully acquired disposer is registered inside the activation failure handler. Shutdown runs disposers once, in reverse acquisition order, and attempts the remaining cleanup if one fails. Concurrent, repeated and reentrant shutdown calls share the same result. Failed Scene recovery also stops its coordinator; an older disposer clears only its own registration.
 
-Today, the first three setup steps run outside the failure handler. A later setup failure can leave earlier acquired resources registered. Stopping twice reverses and runs the cleanup list twice, and one failing cleanup prevents the remaining cleanups. A Scene recovery failure can leave the coordinator running. An older activation's disposer also clears the current activation's self-check reference.
+An activation failure remains the primary error. If cleanup also fails, the aggregate contains the activation failure first, followed by the cleanup failures. Failed disposers are not silently retried. An acquisition must undo its internal partial setup before throwing if it has not returned a disposer.
 
-Afterward, every successfully acquired disposer is registered inside the failure handler. Shutdown runs each disposer once, in reverse acquisition order, and attempts the remaining disposers if one fails. Concurrent or repeated shutdown calls share one result. Failed Scene recovery also stops its coordinator. An older disposer clears only its own self-check reference.
+Activation owns its queues, cancellation scope, services and host registrations. Cleanup preserves saved work, exact request identities and the existing model budgets and retry rules. See [dispatch ownership](activation-dispatch-ownership.md).
 
-When activation fails, the original error is preserved. If cleanup also fails, an aggregate error contains the activation failure first and every cleanup failure afterward. Failed disposers are not silently retried.
-
-This improves recovery diagnostics and cleanup reliability. It does not change stored records, routes, controls, model budgets, provider requests, or automatic retry rules. Each acquisition still must undo any internal partial setup before throwing if it has not returned its disposer. Per-activation queue isolation and cancellation of already-running background work remain separate migration work; this change does not claim to solve them.
-
-Validation exercises the actual application assembly through mocked service ports, all admission failures, throwing cleanups, repeated/concurrent shutdown, and the actual entry module with a mocked application boundary. Packaged verification is separate. Publication still requires review of the complete candidate.
+Provider-free tests exercise the actual application assembly with synthetic service ports, admission failures, throwing cleanup, repeated/concurrent shutdown and entry ownership. Packaged Engine verification remains separate.
