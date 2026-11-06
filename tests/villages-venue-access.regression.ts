@@ -1,5 +1,6 @@
 import {
   canOccupyZone,
+  chooseAgendaZone,
   canInviteToZone,
   canRevokeZonePermission,
   zoneControllerIds,
@@ -61,7 +62,12 @@ import { villageFixtureDocuments, authorSceneFixture } from "./helpers/village-s
 
 import { changeVenueAccess } from "../packages/villages/src/server/features/venues/services.js";
 
-import { contactPath, sceneAccessContext } from "../packages/villages/src/server/domain/rules/venue-contact.js";
+import {
+  contactCanEnter,
+  contactPath,
+  sceneAccessContext,
+  sceneMoveAccompanying,
+} from "../packages/villages/src/server/domain/rules/venue-contact.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 
@@ -116,6 +122,27 @@ function fixture(): VillageVenue {
 for (const retainZonePolicy of [false, true]) {
   const missing = fixture();
   delete missing.access;
+  const world = defaultVillageState();
+  world.venues = [missing];
+  world.relationshipContext = defaultRelationshipState(world.seed);
+  world.relationshipContext.grants.forged = {
+    active: true,
+    revoked: false,
+    visitorId: "player",
+    venueId: missing.id,
+    zoneId: "bedroom",
+    controllerId: "jim",
+  } as any;
+  missing.playerInvitations = [{ zoneId: "bedroom", residentId: "jim", sourceLineId: "old-invitation" }] as any;
+  const oldScene = coerceSession({
+    version: 4,
+    id: "old-access",
+    status: "active",
+    zoneId: "exterior",
+    grantedZoneIds: ["bedroom"],
+    zoneGrants: [{ zoneId: "bedroom", controllerId: "jim" }],
+    sceneAttendance: { capturedAt: stamp, occupants: [] },
+  });
   for (const target of missing.zones!) {
     if (target.kind === "exterior") continue;
     target.ownerId = "jim";
@@ -131,6 +158,8 @@ for (const retainZonePolicy of [false, true]) {
       assert.equal(canRevokeZonePermission(missing, target, actor), false);
     }
     assert.deepEqual(zoneControllerIds(missing, target), []);
+    assert.equal(contactCanEnter(world, missing, target.id, "player", oldScene), false);
+    assert.equal(chooseAgendaZone(missing, "jim", "Visiting", target.id, world).id, "exterior");
   }
   assert.equal(
     canOccupyZone(
@@ -159,6 +188,55 @@ for (const retainZonePolicy of [false, true]) {
   assert.equal(canOccupyZone(native, target, "jim"), false, "An interior Zone needs its own native policy");
 }
 
+{
+  const home = fixture(),
+    world = defaultVillageState();
+  world.venues = [home];
+  const scene = coerceSession({
+    version: 4,
+    id: "escort",
+    status: "active",
+    zoneId: "exterior",
+    sceneAttendance: {
+      capturedAt: stamp,
+      occupants: [{ characterId: "jim", name: "Jim", doing: "Waiting", zoneId: "living" }],
+    },
+    entryOffers: [{ zoneId: "bedroom", controllerId: "jim", accompanies: true }],
+  });
+  const bedroom = home.zones!.find((row) => row.id === "bedroom")!;
+  assert.equal(
+    sceneMoveAccompanying(scene, home, bedroom),
+    scene.accompanying,
+    "an escort must be at the player's captured position",
+  );
+  scene.sceneAttendance!.occupants[0]!.zoneId = "exterior";
+  assert.deepEqual(sceneMoveAccompanying(scene, home, bedroom), [{ characterId: "jim", zoneId: "bedroom" }]);
+  assert.equal(contactCanEnter(world, home, bedroom.id, "player", scene), false);
+  applyAccessCommand(
+    home,
+    {
+      action: "invite",
+      operationId: "native-visit",
+      expectedRevision: home.access!.revision,
+      zoneId: bedroom.id,
+      visitorId: "player",
+      duration: "visit",
+      accompanied: true,
+      outsideHours: true,
+    },
+    "jim",
+    stamp,
+    known,
+  );
+  assert.equal(
+    contactCanEnter(world, home, bedroom.id, "player", scene),
+    false,
+    "an offer alone does not establish accompaniment",
+  );
+  scene.accompanying = sceneMoveAccompanying(scene, home, bedroom);
+  assert.equal(contactCanEnter(world, home, bedroom.id, "player", scene), true);
+  assert.equal(contactPath(world, home, bedroom.id, "exterior", "visitor", scene)?.at(-1), "exterior");
+}
 const venue = fixture(),
   zone = (id: string) => venue.zones!.find((zone) => zone.id === id)!;
 const context = { sceneId: "scene-a", at: new Date(2026, 9, 5, 12), accepting: true };

@@ -105,22 +105,11 @@ export function chooseAgendaZone(
     (zone) =>
       (!ordinaryUseRestricted(state?.narrative, (accessContext?.at ?? new Date()).toISOString(), venue.id, zone.id) ||
         /repair|inspect|restore|clear|correct/iu.test(activity)) &&
-      (venue.access
-        ? evaluateZoneAccess(venue, zone, actorId, {
-            ...accessContext,
-            unavailable: !!state && zoneClosed(state, venue, zone),
-            relationships: state?.relationshipContext,
-          }).allowed
-        : canOccupyZone(venue, zone, actorId) ||
-          Object.values(state?.relationshipContext?.grants ?? {}).some(
-            (grant) =>
-              grant.visitorId === actorId &&
-              grant.venueId === venue.id &&
-              grant.zoneId === zone.id &&
-              grant.active &&
-              !grant.revoked &&
-              canInviteToZone(venue, zone, grant.controllerId),
-          )) &&
+      evaluateZoneAccess(venue, zone, actorId, {
+        ...accessContext,
+        unavailable: !!state && zoneClosed(state, venue, zone),
+        relationships: state?.relationshipContext,
+      }).allowed &&
       (!state || !zoneClosed(state, venue, zone)),
   );
   const requested = eligible.find((zone) => zone.id === requestedId);
