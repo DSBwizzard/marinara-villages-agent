@@ -1047,7 +1047,14 @@ async function main() {
     await mutateVillageState((state) => {
       state.backgroundPace = "balanced";
       state.eventAttempts = undefined;
-      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+      state.returnCatchup = {
+        batch: {
+          budgetDate: localDateKey(villageNow()),
+          opportunityLimit: 6,
+          id: "return-batch",
+          status: "running",
+        },
+      };
     });
     await villageBackgroundPresence("return-session", true);
     await queueBackgroundJob(work("recurring", ["ordinary-during-return"], false));
@@ -1081,7 +1088,14 @@ async function main() {
       await reset();
       await mutateVillageState((state) => {
         state.backgroundPace = "balanced";
-        state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+        state.returnCatchup = {
+          batch: {
+            budgetDate: localDateKey(villageNow()),
+            opportunityLimit: 6,
+            id: "return-batch",
+            status: "running",
+          },
+        };
       });
       await villageBackgroundPresence("retry-world", true);
       responsePlans.set(failedStep, [
@@ -1111,7 +1125,14 @@ async function main() {
     await reset();
     await mutateVillageState((state) => {
       state.backgroundPace = "balanced";
-      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+      state.returnCatchup = {
+        batch: {
+          budgetDate: localDateKey(villageNow()),
+          opportunityLimit: 6,
+          id: "return-batch",
+          status: "running",
+        },
+      };
     });
     await villageBackgroundPresence("retry-world-exhausted", true);
     responsePlans.set("world-gm", [
@@ -1158,7 +1179,14 @@ async function main() {
     await reset();
     await mutateVillageState((state) => {
       state.backgroundPace = "balanced";
-      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+      state.returnCatchup = {
+        batch: {
+          budgetDate: localDateKey(villageNow()),
+          opportunityLimit: 6,
+          id: "return-batch",
+          status: "running",
+        },
+      };
     });
     await villageBackgroundPresence("return-session", true);
     const catchupWork = (subject: string, step: string): BackgroundInput => ({
@@ -1185,7 +1213,14 @@ async function main() {
     await reset();
     await mutateVillageState((state) => {
       state.backgroundPace = "quiet";
-      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+      state.returnCatchup = {
+        batch: {
+          budgetDate: localDateKey(villageNow()),
+          opportunityLimit: 6,
+          id: "return-batch",
+          status: "running",
+        },
+      };
     });
     await queueBackgroundJob(catchupWork("retry-before-dispatch", "retry-before-dispatch"));
     await settleBackgroundWork();
@@ -1219,7 +1254,14 @@ async function main() {
     await reset();
     await mutateVillageState((state) => {
       state.backgroundPace = "quiet";
-      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+      state.returnCatchup = {
+        batch: {
+          budgetDate: localDateKey(villageNow()),
+          opportunityLimit: 6,
+          id: "return-batch",
+          status: "running",
+        },
+      };
     });
     await villageBackgroundPresence("admission-session", true);
     holdPendingTiming = true;
@@ -1257,7 +1299,14 @@ async function main() {
     await reset();
     await mutateVillageState((state) => {
       state.backgroundPace = "quiet";
-      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+      state.returnCatchup = {
+        batch: {
+          budgetDate: localDateKey(villageNow()),
+          opportunityLimit: 6,
+          id: "return-batch",
+          status: "running",
+        },
+      };
     });
     await villageBackgroundPresence("hide-before-admission", true);
     holdPendingTiming = true;
@@ -1287,7 +1336,14 @@ async function main() {
     await reset();
     await mutateVillageState((state) => {
       state.backgroundPace = "quiet";
-      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+      state.returnCatchup = {
+        batch: {
+          budgetDate: localDateKey(villageNow()),
+          opportunityLimit: 6,
+          id: "return-batch",
+          status: "running",
+        },
+      };
     });
     await villageBackgroundPresence("hide-during-count", true);
     holdRequestCount = true;
@@ -1312,7 +1368,14 @@ async function main() {
     await reset();
     await mutateVillageState((state) => {
       state.backgroundPace = "quiet";
-      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+      state.returnCatchup = {
+        batch: {
+          budgetDate: localDateKey(villageNow()),
+          opportunityLimit: 6,
+          id: "return-batch",
+          status: "running",
+        },
+      };
     });
     await villageBackgroundPresence("stale-saved-response", true);
     registerBackgroundHandler("resident-planning", {
@@ -1345,7 +1408,14 @@ async function main() {
     await reset();
     await mutateVillageMemoryState((state) => {
       state.backgroundPace = "quiet";
-      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+      state.returnCatchup = {
+        batch: {
+          budgetDate: localDateKey(villageNow()),
+          opportunityLimit: 6,
+          id: "return-batch",
+          status: "running",
+        },
+      };
       state.memories = addMemory(state.memories, { sourceId: "before-return" });
     });
     registerBackgroundHandler("resident-planning", {
@@ -1365,7 +1435,14 @@ async function main() {
     assert.ok(effects.includes("loaded-memory"), "Catch-up validates and applies with a real persisted Memory head.");
     await reset();
     await mutateVillageMemoryState((state) => {
-      state.returnCatchup = { batch: { id: "return-batch", status: "recovering" } };
+      state.returnCatchup = {
+        batch: {
+          budgetDate: localDateKey(villageNow()),
+          opportunityLimit: 6,
+          id: "return-batch",
+          status: "recovering",
+        },
+      };
       state.memories = addMemory(state.memories, { sourceId: "before-interpretation" });
     });
     registerBackgroundHandler("social-recovery", {
@@ -1399,7 +1476,14 @@ async function main() {
     assert.equal(calls.includes("cancel-interpretation"), false, "Cancelled interpretation does not dispatch.");
     await reset();
     await mutateVillageMemoryState((state) => {
-      state.returnCatchup = { batch: { id: "return-batch", status: "recovering" } };
+      state.returnCatchup = {
+        batch: {
+          budgetDate: localDateKey(villageNow()),
+          opportunityLimit: 6,
+          id: "return-batch",
+          status: "recovering",
+        },
+      };
       state.memories = addMemory(state.memories, { sourceId: "before-interpretation" });
     });
     await villageBackgroundPresence("interpretation-hidden", true);
@@ -1420,6 +1504,8 @@ async function main() {
       const instant = villageNow().toISOString();
       state.returnCatchup = {
         batch: {
+          budgetDate: localDateKey(villageNow()),
+          opportunityLimit: 6,
           id: "return-batch",
           status: "running",
           from: instant,
@@ -1456,7 +1542,14 @@ async function main() {
       state.applied["partial:social"] = true;
     });
     await mutateVillageState((state) => {
-      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+      state.returnCatchup = {
+        batch: {
+          budgetDate: localDateKey(villageNow()),
+          opportunityLimit: 6,
+          id: "return-batch",
+          status: "running",
+        },
+      };
       state.socialOutbox = [capturedOutbox(state, "partial:social", "return-batch")] as any;
     });
     await assert.rejects(() => cancelReturnCatchup("return-batch"), /recovering the saved encounter/);

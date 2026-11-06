@@ -185,7 +185,7 @@ export function createNarrative(ports: Ports) {
     } catch {
       throw new ReturnOpportunityUnavailable("The historical environmental target changed.");
     }
-    await queueWorld(live, grant, batch.budgetDate ?? activityDate(live, ports.now()), batchId, opportunity, capture);
+    await queueWorld(live, grant, batch.budgetDate, batchId, opportunity, capture);
   }
   const handler: Handler = {
     authority: "raw",
