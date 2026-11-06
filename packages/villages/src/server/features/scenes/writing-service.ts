@@ -21,7 +21,7 @@ import {
   VillagesRequestError,
 } from "../../domain/rules/errors.js";
 import { extractJsonObject } from "../../domain/rules/json-reply.js";
-import { villageLoreContext } from "../../domain/rules/lore-context.js";
+import { inspectedLoreUse, villageLoreContext } from "../../domain/rules/lore-context.js";
 import { venueAdditionalWritingGuidance, venueWritingDirection } from "../../domain/rules/narration-style.js";
 import { environmentCircumstances } from "../../domain/rules/narrative-environment.js";
 import { SCENE_DEVELOPMENT_SCHEMA, SCENE_DEVELOPMENT_WRITING } from "../../domain/rules/narrative-prompts.js";
@@ -33,7 +33,7 @@ import {
 } from "../../domain/rules/npc-participation.js";
 import { openingSceneDirection } from "../../domain/rules/opening-project.js";
 import { findLocation, findNpc, npcProfile } from "../../domain/rules/places.js";
-import { renderPlayerBackgroundWritingContext } from "../../domain/rules/player-background.js";
+import { renderPlayerBackgroundContext } from "../../domain/rules/player-background.js";
 import { playerSpeechCapture } from "../../domain/rules/player-speech-capture.js";
 import {
   bindProjectSpeech,
@@ -54,7 +54,6 @@ import {
   sceneMissingFields,
   type ResponseDiagnostics,
 } from "../../domain/rules/response-diagnostics.js";
-import { readSceneWritingCapabilities } from "../../domain/rules/scene-compact-contract.js";
 import { sceneContinuityView, sceneLocationContext, sceneWishEffectIds } from "../../domain/rules/scene-continuity.js";
 import {
   materializeGmReply,
@@ -87,7 +86,7 @@ import { sceneWritingHistory, sharedLoreHistory } from "../../domain/rules/scene
 import { semanticContext, semanticEvidence } from "../../domain/rules/semantic-contract.js";
 import { semanticPhysicalContext, semanticPlayerMoves } from "../../domain/rules/semantic-timeline.js";
 import { immutableSocialWishes, wishHistoryLoaded } from "../../domain/rules/social-wishes.js";
-import { sceneSpriteSelection } from "../../domain/rules/sprite-expressions.js";
+import { describeSpriteExpressions, sceneSpriteSelection } from "../../domain/rules/sprite-expressions.js";
 import {
   contactSpeech,
   readContactIntent,
@@ -323,6 +322,7 @@ export function createSceneWriting({
         return value;
       });
     const [lore, model] = await Promise.all([lorePromise, modelPromise]);
+    const loreUses = inspectedLoreUse(loreInspection, "GM");
     signal?.throwIfAborted();
     const projectContexts = projectSpeechContexts(
       village,
@@ -368,7 +368,6 @@ export function createSceneWriting({
                       : undefined),
             },
       );
-    const capabilities = readSceneWritingCapabilities(venueOperationInput()?.writingCapabilities);
     const input = message;
     const maxTokens = Math.min(model.maxOutputTokens ?? VENUE_REPLY_MAX_TOKENS, VENUE_REPLY_MAX_TOKENS);
     const fitStarted = performance.now();
@@ -415,7 +414,11 @@ export function createSceneWriting({
         identity: blocksFor(profiles),
         conversation: blocksFor([
           earlierContext,
-          ...lore.map((text) => ({ text: "Relevant world lore: " + text, optional: "lore" as const })),
+          ...lore.map((text, index) => ({
+            text: "Relevant world lore: " + text,
+            optional: "lore" as const,
+            lore: loreUses[index],
+          })),
         ]),
         circumstances: [
           {
@@ -424,10 +427,7 @@ export function createSceneWriting({
               player: {
                 name: player.name,
                 description: player.description,
-                background: renderPlayerBackgroundWritingContext(
-                  village,
-                  !!venueOperationInput() && venueOperationInput()?.playerAgencyVersion !== 1,
-                ),
+                background: renderPlayerBackgroundContext(village),
               },
               residentActivity: active.map((person) => ({
                 characterId: person.characterId,
@@ -449,7 +449,13 @@ export function createSceneWriting({
               environment: village.narrative
                 ? environmentCircumstances(village.narrative, session.placeId, session.zoneId ?? "exterior")
                 : undefined,
-              presentation: gmPresentation,
+              presentation: {
+                state: gmPresentation.state,
+                sprites: Object.entries(gmPresentation.sprites).map(([actorId, sprite]) => ({
+                  actorId,
+                  expressions: describeSpriteExpressions(sprite, gmPresentation.variants),
+                })),
+              },
             }),
           },
         ],
@@ -528,7 +534,6 @@ export function createSceneWriting({
       writingVersion,
       gmContext,
       gmPresentation,
-      writingCapabilities: capabilities,
       maxTokens,
       model,
       village: authority,
@@ -642,18 +647,8 @@ export function createSceneWriting({
       replacement ? null : offer,
     );
     let { fitted, earlierEvidence, loreInspection, wishContexts, audience } = prepared;
-    const {
-      sparse,
-      writingVersion,
-      writingCapabilities,
-      maxTokens,
-      model,
-      village,
-      pendingMoves,
-      storedPlace,
-      place,
-      projectContexts,
-    } = prepared;
+    const { sparse, writingVersion, maxTokens, model, village, pendingMoves, storedPlace, place, projectContexts } =
+      prepared;
     const requestKey = originalKey + (replacement ? "-boundary" : "");
     let ordinary = prepared.ordinary;
     let gmContext = prepared.gmContext;
@@ -775,7 +770,6 @@ export function createSceneWriting({
     runtimeDebug("Scene writing contract", {
       sceneId: session.id,
       version: sparse ? writingVersion : 1,
-      capabilities: writingCapabilities,
       complete: !!completeRaw,
       originalMissingFields: sceneMissingFields(originalRaw),
       inputCharacters: fitted.messages.reduce((sum, message) => sum + message.content.length, 0),
@@ -889,6 +883,7 @@ export function createSceneWriting({
             session,
             message,
             parsed.lines,
+            { raw, context: gmContext, presentation: gmPresentation },
             session.semanticIntent ?? null,
             residentActions,
             residentActionsOmitted,
@@ -896,11 +891,13 @@ export function createSceneWriting({
             venueOperationInput()?.hearingTimelineVersion === 1 && session.contactGeneration?.zoneEvents
               ? (eventRaw ?? undefined)
               : undefined,
-            { raw, context: gmContext, presentation: gmPresentation },
           )
           .catch(async (error: unknown) => {
             if (error instanceof InvalidGmReply)
-              await rejectVenueCompletion(undefined, { stages: ["writing-completion:" + requestKey] });
+              await rejectVenueCompletion(
+                { model: model.model, connectionId: model.connectionId, reason: "invalid-gm-effects" },
+                { stages: ["writing-completion:" + requestKey] },
+              );
             if (
               error instanceof UnsupportedPlayerAgency ||
               error instanceof UnsupportedScenePerception ||
@@ -1438,7 +1435,6 @@ export function createSceneWriting({
     } catch (error) {
       if (error instanceof VillagesRequestError && error.statusCode === 502)
         await rejectVenueCompletion(undefined, { stages: ["writing-completion:" + requestKey] });
-      if (semanticResult) await semantic?.rejectExchange?.(semanticResult);
       throw error;
     }
   }

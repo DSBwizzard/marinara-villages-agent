@@ -1,80 +1,51 @@
 import type { InterpretationBatch } from "../../domain/models/interpretation-model.js";
 import type { NarrativeAdmission } from "../../domain/models/narrative-model.js";
-import type { VenueReplyLine,VenueScene } from "../../domain/models/scene-model.js";
-import type { SemanticExchange,SemanticIntent } from "../../domain/models/semantic-model.js";
+import type { VenueReplyLine, VenueScene } from "../../domain/models/scene-model.js";
+import type { SemanticExchange, SemanticIntent } from "../../domain/models/semantic-model.js";
 import { asRecord } from "../../domain/rules/coerce.js";
 import {
-badGateway,
-InvalidGmReply,
-UnsupportedPlayerAgency,
-UnsupportedScenePerception,
-VillagesRequestError
+  badGateway,
+  InvalidGmReply,
+  UnsupportedPlayerAgency,
+  UnsupportedScenePerception,
+  VillagesRequestError,
 } from "../../domain/rules/errors.js";
 import { findLocation } from "../../domain/rules/places.js";
 import { normalizeGmEffects } from "../../domain/rules/scene-gm.js";
 import { readSceneNarrativeReview } from "../../domain/rules/scene-narrative-effects.js";
 
-import { fenceIntroductionWitnesses,validateNpcAdmissions } from "../../domain/rules/npc-participation.js";
+import { fenceIntroductionWitnesses } from "../../domain/rules/npc-participation.js";
+import { parseRelationshipProposals } from "../../domain/rules/relationship-review.js";
+import { type ResidentAccessAction } from "../../domain/rules/resident-actions.js";
 import {
-parseRelationshipProposals
-} from "../../domain/rules/relationship-review.js";
-import {
-reconcileResidentActions,
-type ResidentAccessAction
-} from "../../domain/rules/resident-actions.js";
-import {
-assertSceneMovementCapacity,
-residentLocalIdsAt,
-residentMovementUnavailable,
+  assertSceneMovementCapacity,
+  residentLocalIdsAt,
+  residentMovementUnavailable,
 } from "../../domain/rules/resident-movement.js";
-import { sceneContinuityView,sceneWishEffectIds } from "../../domain/rules/scene-continuity.js";
+import { sceneContinuityView, sceneWishEffectIds } from "../../domain/rules/scene-continuity.js";
 import { sceneEvidencePerception } from "../../domain/rules/scene-evidence-perception.js";
+import { readSceneBoundary, readSceneHalt } from "../../domain/rules/scene-halt.js";
 import {
-readSceneBoundary,
-readSceneHalt
-} from "../../domain/rules/scene-halt.js";
-import { expandSceneActionReview } from "../../domain/rules/scene-semantic-wire.js";
-import {
-readSemanticEffects,
-semanticContext,
-semanticEvidence,
-semanticHash,
-semanticImmediate,
-semanticWishChangesCovered
+  readSemanticEffects,
+  semanticContext,
+  semanticEvidence,
+  semanticHash,
+  semanticImmediate,
+  semanticWishChangesCovered,
 } from "../../domain/rules/semantic-contract.js";
 import { semanticPlayerMoves } from "../../domain/rules/semantic-timeline.js";
 import { wishHistoryLoaded } from "../../domain/rules/social-wishes.js";
-import {
-readSceneSpritePresentation,
-sceneSpriteSelection,
-type SpriteSelectionContext
-} from "../../domain/rules/sprite-expressions.js";
-import { managesAccess,readAccessCommand } from "../../domain/rules/venue-access.js";
+import { readSceneSpritePresentation, type SpriteSelectionContext } from "../../domain/rules/sprite-expressions.js";
+import { managesAccess, readAccessCommand } from "../../domain/rules/venue-access.js";
 import { readContactMoves } from "../../domain/rules/venue-contact.js";
 import { venueInArea } from "../../domain/rules/venue-model.js";
 import { readVenueSceneChange } from "../../domain/rules/venue-scene-state.js";
-import {
-canInviteToZone,
-canRevokeZonePermission,
-resolveVenueZone,
-venueInZone,
-zoneClosed,
-} from "../../domain/rules/venue-zones.js";
+import { canInviteToZone, resolveVenueZone, venueInZone } from "../../domain/rules/venue-zones.js";
 import { routeZoneEvents } from "../../domain/rules/zone-events.js";
 
 export interface SemanticPorts {
-  runtimeDebug?: typeof import("../../adapters/observability/runtime-debug.js").runtimeDebug;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
-  readVillageLore?: typeof import("../../adapters/engine/lorebooks.js").readVillageLore;
-  villagesLanguageModels: typeof import("../../adapters/models/language-models.js").villagesLanguageModels;
-  villagesConnectionIdFor: typeof import("../settings/connections.js").villagesConnectionIdFor;
-  completeWithRoom: typeof import("./model-requests.js").completeWithRoom;
   venueCheckpoint: typeof import("../../jobs/venue-coordinator.js").venueCheckpoint;
-  venueSavedCheckpoint?: typeof import("../../jobs/venue-coordinator.js").venueSavedCheckpoint;
-  venueOperationSignal: typeof import("../../jobs/venue-coordinator.js").venueOperationSignal;
-  venueExplicitRetry?: typeof import("../../adapters/operations/operation-context.js").venueExplicitRetry;
-  venueDebugContext?: typeof import("../../adapters/operations/operation-context.js").venueDebugContext;
-  rejectVenueCompletion: typeof import("../../jobs/venue-coordinator.js").rejectVenueCompletion;
 }
 
 function semanticCheckpointKey(stage: string, identity: Record<string, unknown>): string {
@@ -261,16 +232,16 @@ export function createSemanticService(ports: SemanticPorts) {
     scene: VenueScene,
     message: string,
     lines: VenueReplyLine[],
-    prepared: SemanticIntent | null,
-    residentActions?: ResidentAccessAction[],
-    residentActionsOmitted = false,
-    narrativeGrant?: NarrativeAdmission | null,
-    zoneEventSource?: Record<string, unknown>,
-    gm?: {
+    gm: {
       raw: Record<string, unknown>;
       context: ReturnType<typeof semanticContext>;
       presentation: SpriteSelectionContext;
     },
+    prepared: SemanticIntent | null = null,
+    _residentActions?: ResidentAccessAction[],
+    residentActionsOmitted = false,
+    narrativeGrant?: NarrativeAdmission | null,
+    zoneEventSource?: Record<string, unknown>,
   ): Promise<SemanticExchange> {
     if (!gm) throw badGateway("The current GM response context is required. Your draft is preserved.");
     const state = await readSceneAuthority(scene);
@@ -278,22 +249,11 @@ export function createSemanticService(ports: SemanticPorts) {
     const evidence = semanticEvidence(lines);
     const combined = scene.operation?.input.semanticPipelineVersion === 3;
     const movementReview = scene.operation?.input.residentMovementReviewVersion === 1;
-    const actionContractV2 = !gm && (residentActionsOmitted || scene.operation?.input.residentActionsVersion === 2);
-    const context =
-      gm?.context ??
-      semanticContext(
-        scene,
-        state,
-        message,
-        combined,
-        actionContractV2,
-        sceneContinuityView(state, scene),
-        lines.map((line) => line.content).join("\n"),
-      );
+    const context = gm.context;
     const result = await validateReply(
       {
         message,
-        _presentation: gm?.presentation ?? sceneSpriteSelection(scene, sceneState),
+        _presentation: gm.presentation,
         turnPolicyVersion: 1,
         ...(movementReview
           ? { residentMovementReviewVersion: 1, residentRequestLocalIds: residentLocalIdsAt(scene, [], 0) }
@@ -305,11 +265,10 @@ export function createSemanticService(ports: SemanticPorts) {
         context,
         ...(narrativeGrant !== undefined ? { narrativeGrant } : {}),
         ...(combined ? { pipelineVersion: 3 } : {}),
-        ...(residentActions && !gm ? { residentActions } : {}),
       },
       normalizeGmEffects(gm.raw, context),
-      (raw, hash, savedInput, outputContractVersion): SemanticExchange => {
-        if (gm) raw = { ...raw, sourceHash: hash };
+      (raw, hash, savedInput): SemanticExchange => {
+        raw = { ...raw, sourceHash: hash };
         if (savedInput.context.preservation) {
           const finding =
             savedInput.context.preservation.sceneBoundaryVersion === 1
@@ -366,13 +325,9 @@ export function createSemanticService(ports: SemanticPorts) {
           throw new UnsupportedScenePerception();
         }
         let evidence = savedInput.evidence;
-        const immediate = gm || raw.consistent === true ? semanticImmediate(raw.events, lines) : undefined;
+        const immediate = semanticImmediate(raw.events, lines);
         const admissions =
-          savedInput.hearingTimelineVersion === 1 && immediate
-            ? gm
-              ? (scene.pendingNpcAdmissions ?? [])
-              : validateNpcAdmissions(raw.npcAdmissions, scene.pendingNpcAdmissions ?? [])
-            : [];
+          savedInput.hearingTimelineVersion === 1 && immediate ? (scene.pendingNpcAdmissions ?? []) : [];
         if (savedInput.hearingTimelineVersion === 1 && savedInput.zoneEventSource && immediate) {
           const venue = findLocation(sceneState, scene.placeId);
           if (!venue || !scene.contactGeneration?.zoneEvents)
@@ -430,43 +385,11 @@ export function createSemanticService(ports: SemanticPorts) {
         if (raw.consistent === false && citedAgency) throw new UnsupportedPlayerAgency();
         if (raw.consistent === true && citedAgency)
           throw badGateway("System returned contradictory player-agency review. The draft is preserved.");
-        if (!gm && raw.consistent !== true)
-          throw badGateway("System could not establish a consistent Scene outcome. The draft is preserved.");
         semanticPlayerMoves(
           asRecord(raw.events).playerMoves,
           { ...scene, semanticIntent: interpretedIntent ?? prepared ?? undefined },
           lines,
         );
-        const reviewed = outputContractVersion === 1 ? expandSceneActionReview(raw, evidence) : raw;
-        const reconciliation = savedInput.residentActions
-          ? reconcileResidentActions(savedInput.residentActions, reviewed.residentActionReview, evidence)
-          : undefined;
-        if (reconciliation) {
-          if (
-            !Array.isArray(raw.access) ||
-            raw.access.length ||
-            !Array.isArray(asRecord(raw.relationshipChanges).permissions) ||
-            (asRecord(raw.relationshipChanges).permissions as unknown[]).length
-          )
-            throw badGateway("Access effects must use the reviewed resident action ledger. Saved draft retained.");
-          for (const value of reconciliation.permissions) {
-            const venue = findLocation(sceneState, value.venueId),
-              zone = venue && resolveVenueZone(venue, String(value.zoneId));
-            if (
-              !venue ||
-              !zone ||
-              (value.action === "revoke"
-                ? !canRevokeZonePermission(venue, zone, String(value.controllerId))
-                : zoneClosed(sceneState, venue, zone) || !canInviteToZone(venue, zone, String(value.controllerId)))
-            )
-              throw badGateway("Standing permission issuer or scope lacks current authority. Saved draft retained.");
-          }
-          raw = {
-            ...raw,
-            access: reconciliation.access,
-            relationshipChanges: { ...asRecord(raw.relationshipChanges), permissions: reconciliation.permissions },
-          };
-        }
         const effects = readSemanticEffects(raw, hash);
         if (savedInput.hearingTimelineVersion === 1 && effects.relationshipChanges !== undefined) {
           const earlier = savedInput.context.history.map((line) => ({
@@ -525,11 +448,6 @@ export function createSemanticService(ports: SemanticPorts) {
             lines,
             raw.action,
           );
-        if (reconciliation)
-          effects.residentActionReceipt = {
-            ...reconciliation.receipt,
-            ...(savedInput.residentActionsOmitted ? { proposalsOmitted: true } : {}),
-          };
         if (
           raw.action !== null &&
           (asRecord(raw.action).happened !== true || !Number.isInteger(asRecord(raw.action).segment))
@@ -655,7 +573,7 @@ export function createSemanticService(ports: SemanticPorts) {
           });
           const result = {
             outcome: String(row.outcome),
-            source: gm ? ("gm" as const) : ("system" as const),
+            source: "gm" as const,
             evidenceIds: cited.map((line) => line.id),
             reason: "Current System-interpreted event",
           };
@@ -666,7 +584,7 @@ export function createSemanticService(ports: SemanticPorts) {
             question: "Current access event",
             evidence: cited,
             decisions: { status: "off" },
-            system: gm ? { status: "not-requested" } : { status: "complete", outcome: result.outcome },
+            system: { status: "not-requested" },
             result,
             applied: "Pending authority validation",
             startedAt: "",
@@ -684,30 +602,22 @@ export function createSemanticService(ports: SemanticPorts) {
           projects: Array.isArray(effects.projectSpeech) && effects.projectSpeech.length > 0,
           standing: Array.isArray(permissions) && permissions.length > 0,
           social:
-            (!gm && asRecord(raw.authority).social === true) ||
-            (Array.isArray(asRecord(effects.relationshipChanges).changes) &&
-              (asRecord(effects.relationshipChanges).changes as unknown[]).some((value: unknown) => {
-                const row = asRecord(value),
-                  after = asRecord(row.liveAfter);
-                const before = state.relationshipContext?.edges[JSON.stringify([row.fromId, row.toId])];
-                return (
-                  (Array.isArray(after.records) && after.records.length > 0) ||
-                  after.connection !== (before?.connection ?? "")
-                );
-              })),
+            Array.isArray(asRecord(effects.relationshipChanges).changes) &&
+            (asRecord(effects.relationshipChanges).changes as unknown[]).some((value: unknown) => {
+              const row = asRecord(value),
+                after = asRecord(row.liveAfter);
+              const before = state.relationshipContext?.edges[JSON.stringify([row.fromId, row.toId])];
+              return (
+                (Array.isArray(after.records) && after.records.length > 0) ||
+                after.connection !== (before?.connection ?? "")
+              );
+            }),
         };
-        const invalidAuthority = Object.entries(authority).find(
-          ([key, value]) => asRecord(raw.authority)[key] !== value,
-        );
-        if (invalidAuthority && !gm)
-          throw badGateway(
-            `System authority metadata is missing or inconsistent (${invalidAuthority[0]}). The draft is preserved.`,
-          );
         return {
           version: 2,
-          ...(gm ? { producer: "gm" as const } : {}),
+          producer: "gm" as const,
           ...(interpretedIntent ? { intent: interpretedIntent } : {}),
-          checkpointKey: gm ? "" : semanticCheckpointKey("exchange", savedInput),
+          checkpointKey: "",
           sourceHash: hash,
           authority,
           effects,
@@ -720,7 +630,7 @@ export function createSemanticService(ports: SemanticPorts) {
         };
       },
     );
-    if (gm && result.presentation?.length) {
+    if (result.presentation?.length) {
       const presentation = result.presentation;
       result.presentation = await ports.venueCheckpoint(
         "gm-presentation:" + result.sourceHash + ":" + semanticHash(gm.raw.presentation),
@@ -729,10 +639,6 @@ export function createSemanticService(ports: SemanticPorts) {
     }
     return result;
   }
-  async function rejectExchange(result: SemanticExchange) {
-    if (result.producer === "gm") return;
-    await ports.rejectVenueCompletion(undefined, { preserveWriting: true, stages: [result.checkpointKey] });
-  }
-  return { exchange, rejectExchange };
+  return { exchange };
 }
 export type SemanticService = ReturnType<typeof createSemanticService>;

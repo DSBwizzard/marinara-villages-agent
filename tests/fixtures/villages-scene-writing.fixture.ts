@@ -9,8 +9,8 @@ import type { VillagerCard } from "../../packages/villages/src/server/domain/mod
 import type { VenueScene } from "../../packages/villages/src/server/domain/models/scene-model.js";
 import type { VillageState } from "../../packages/villages/src/server/domain/models/world.js";
 import { snapshotFromCard } from "../../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
-import { wishFingerprint } from "../../packages/villages/src/server/domain/rules/social-wishes.js";
 import { sceneWritingCapabilities } from "../../packages/villages/src/server/domain/rules/scene-compact-contract.js";
+import { wishFingerprint } from "../../packages/villages/src/server/domain/rules/social-wishes.js";
 import {
   createSceneWriting,
   type SceneWritingPorts,
@@ -56,6 +56,7 @@ export async function currentScenePrompt(
   );
   const session = coerceSession({
     version: 3,
+    gmVersion: 1,
     semanticVersion: 2,
     id: "prompt-fixture",
     placeId: "common-room",
@@ -74,7 +75,8 @@ export async function currentScenePrompt(
   // Contact generation is request-local and intentionally absent from saved decoding.
   session.contactGeneration = overrides.contactGeneration;
   const admission = {
-    writingContractVersion: 3,
+    writingContractVersion: 4,
+    gmVersion: 1,
     semanticPipelineVersion: 3,
     residentActionsVersion: 2,
     interactionScopeVersion: 6,
@@ -147,4 +149,10 @@ export async function currentScenePrompt(
       "the actual submitted player line remains a separate final user message",
     );
   return prompt;
+}
+
+export function scenePromptPacket(prompt: string): any {
+  const packet = prompt.split("\n").find((line) => line.startsWith('{"context":'));
+  assert(packet, "The GM receives a structured current Scene context");
+  return JSON.parse(packet);
 }

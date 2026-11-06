@@ -1,7 +1,6 @@
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { VILLAGE_ACTIVITY_POLICY } from "../../../shared/helpers/activity-policy.js";
 import { recentPlaceText } from "../../../shared/helpers/place-continuity.js";
-import { venueZones } from "./venue-zones.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { SocialPlan } from "../models/relationship-types.js";
 import type {
@@ -13,6 +12,7 @@ import type {
   VillageVenue,
 } from "../models/world.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
+import { venueZones } from "./venue-zones.js";
 
 import { PERSONAL_LETTER_INSTRUCTION } from "./personal-letter.js";
 import { renderPlayerBackgroundContext } from "./player-background.js";
@@ -175,7 +175,7 @@ export function buildResidentPlanningMessages(context: ResidentPlanningContext):
     "Review optional resident choices in this shared place. Return structured choices only. A quiet result is valid; no choice is required.",
     "The player controls their own words, actions, thoughts, decisions and consent. Never invent their participation or consent. Cards govern identity; private wishes need no disclosure or forced pursuit.",
     "Village: " + context.village + ". Setting: " + context.setting,
-    renderPlayerBackgroundContext(context, false),
+    renderPlayerBackgroundContext(context),
     "Retained desires are a catalogue for considering this opportunity, never a quota or a requirement to act. Ordinary life and the complete character govern attention. No Wish need be mentioned or pursued.",
     "World facts: " + JSON.stringify(context.worldFacts),
     ...(context.environment

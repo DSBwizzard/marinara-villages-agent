@@ -26,13 +26,11 @@ import {
   villageEngineJson,
 } from "../adapters/engine/engine-transport.js";
 import { createGlobalGallery } from "../adapters/engine/global-gallery-service.js";
-import { createSpriteFiles } from "../adapters/storage/sprite-files.js";
-import { createSpriteFileRemoval } from "../adapters/engine/sprite-file-removal.js";
 import { configureGlobalGallery, uploadVillageGalleryImage } from "../adapters/engine/global-gallery.js";
 import { decodeVillageImageDataUrl, inspectVillageImage } from "../adapters/engine/image-files.js";
 import { loadEngineImageStyleSupport } from "../adapters/engine/image-style-profiles.js";
-import { readVillageLore, readVillageImageLore, readVillageImageLoreEntries } from "../adapters/engine/lorebooks.js";
 import { readLoreImageReferences } from "../adapters/engine/lore-image-references.js";
+import { readVillageImageLore, readVillageImageLoreEntries, readVillageLore } from "../adapters/engine/lorebooks.js";
 import { createNativeSchedules } from "../adapters/engine/native-schedules-service.js";
 import { configureNativeSchedules, readNativeScheduleSnapshot } from "../adapters/engine/native-schedules.js";
 import {
@@ -44,6 +42,7 @@ import {
   villagesResources,
   villagesRuntimeEpoch,
 } from "../adapters/engine/runtime-host.js";
+import { createSpriteFileRemoval } from "../adapters/engine/sprite-file-removal.js";
 import { readZonePictureReference } from "../adapters/engine/zone-picture-reference.js";
 import { villagesLanguageModels } from "../adapters/models/language-models.js";
 import { linkApiQuote, readExchangeRate } from "../adapters/models/linkapi-pricing.js";
@@ -81,10 +80,11 @@ import {
   venueRefusal,
   venueRequestMetrics,
 } from "../adapters/operations/operation-context.js";
+import { createCapturedAdmissions } from "../adapters/storage/captured-admission-store.js";
 import { createDocumentMutator, mutateDocument } from "../adapters/storage/document-store.js";
+import { relationshipPayloadStore } from "../adapters/storage/relationship-payload-store.js";
 import { repairGate, withRepairWork } from "../adapters/storage/repair-gate.js";
 import { createSceneRepository } from "../adapters/storage/scene-repository.js";
-import { createSceneWishContexts } from "../adapters/storage/scene-wish-contexts.js";
 import {
   changeSession,
   clearActivePointer,
@@ -92,27 +92,31 @@ import {
   readActive,
   readSession,
 } from "../adapters/storage/scene-store.js";
+import { createSceneWishContexts } from "../adapters/storage/scene-wish-contexts.js";
+import { createSpriteFiles } from "../adapters/storage/sprite-files.js";
 import { createVillageRepository } from "../adapters/storage/village-repository.js";
-import { relationshipPayloadStore } from "../adapters/storage/relationship-payload-store.js";
-import { createCapturedAdmissions } from "../adapters/storage/captured-admission-store.js";
 import { wishHistoryStore } from "../adapters/storage/wish-history.js";
 import { configureVillageClock, villageNow } from "../adapters/time/clock-gate.js";
 import { createVillageClock } from "../adapters/time/clock-service.js";
 import { parseCompactFoundingCompletion } from "../domain/rules/compact-founding-rules.js";
 import { createLiveEvidenceContext } from "../domain/rules/live-exchange.js";
 import { reconcileProjectLifecycles } from "../domain/rules/project-lifecycle-rules.js";
+import { filterRelationshipNotices } from "../domain/rules/relationship-presentation.js";
 import { reconcileRelationships } from "../domain/rules/relationship-rules.js";
 import { projectSocialActivities, reconcileSocialPlans } from "../domain/rules/social-rules.js";
 import { bindWishProposals, WISH_PROPOSAL_INSTRUCTION } from "../domain/rules/wish-progress-rules.js";
+import { createReturnCatchup } from "../features/background/return-catchup-service.js";
+import { createReturnCatchupSettlement } from "../features/background/return-catchup-settlement.js";
+import { advanceReturnCatchup, configureReturnCatchup } from "../features/background/return-catchup.js";
+import { createFoundingArtworkSources } from "../features/founding/founding-artwork.js";
 import { createCompactFounding } from "../features/founding/founding-compact-service.js";
 import { configureCompactFounding, proposeCompactFounding } from "../features/founding/founding-compact.js";
 import { createFoundingDrafts } from "../features/founding/founding-drafts-service.js";
-import { createFoundingArtworkSources } from "../features/founding/founding-artwork.js";
 import {
   configureFoundingDrafts,
+  generateFoundingVenueImage,
   readFoundingImageLore,
   suggestStartingVenues,
-  generateFoundingVenueImage,
 } from "../features/founding/founding-drafts.js";
 import { createFoundingProgress } from "../features/founding/founding-progress-service.js";
 import { configureFoundingProgress, reportFoundingProgress } from "../features/founding/founding-progress.js";
@@ -154,7 +158,6 @@ import {
   resolveVillageImageEditing,
 } from "../features/media/image-generation.js";
 import { decodeImageDataUrl } from "../features/media/location-image-codec.js";
-import { canGenerateZonePicture } from "../features/scenes/live-session.js";
 import { createLocationImages } from "../features/media/location-image-service.js";
 import { configureLocationImages, requestZonePicture } from "../features/media/location-image.js";
 import { createSpriteImageDecoder } from "../features/media/sprite-image-codec.js";
@@ -166,6 +169,7 @@ import { createTownMapImage } from "../features/media/town-map-image-service.js"
 import { configureTownMapImage, generateVillageTownMap } from "../features/media/town-map-image.js";
 import { createTownMapReview } from "../features/media/town-map-review-service.js";
 import { configureTownMapReview, prepareVillageMap } from "../features/media/town-map-review.js";
+import { createNarrative } from "../features/narrative/narrative-service.js";
 import { createProjectEvidence } from "../features/projects/project-evidence-service.js";
 import { configureProjectEvidence, processProjectSpeechTurn } from "../features/projects/project-evidence.js";
 import { createProjectLifecycle } from "../features/projects/project-lifecycle-service.js";
@@ -177,11 +181,11 @@ import {
   resumeProject,
 } from "../features/projects/project-lifecycle.js";
 import { createRepairService } from "../features/repair/repair-service.js";
-import {
-  createRetainedStorageCleanup,
-  configureRetainedStorageCleanup,
-} from "../features/repair/retained-storage-cleanup.js";
 import { configureRepairs } from "../features/repair/repair.js";
+import {
+  configureRetainedStorageCleanup,
+  createRetainedStorageCleanup,
+} from "../features/repair/retained-storage-cleanup.js";
 import { createLiveMemory } from "../features/residents/live-memory-service.js";
 import {
   configureLiveMemory,
@@ -211,7 +215,6 @@ import {
 import { createResidentCards } from "../features/residents/resident-card-service.js";
 import { configureResidentCards } from "../features/residents/resident-cards.js";
 import { createResidentPlanning } from "../features/residents/resident-planning-service.js";
-import { createNarrative } from "../features/narrative/narrative-service.js";
 import { createResidentRoster } from "../features/residents/resident-roster-service.js";
 import { configureResidentRoster } from "../features/residents/resident-roster.js";
 import { createResidentSignatures } from "../features/residents/resident-signature-service.js";
@@ -241,23 +244,23 @@ import { dispatchExchange } from "../features/scenes/exchange-processing.js";
 import { createLiveScenes } from "../features/scenes/live-session-service.js";
 import {
   activeVenueSession,
+  canGenerateZonePicture,
   configureLiveScenes,
   refreshZoneParticipants,
   requireLiveVenueSession,
 } from "../features/scenes/live-session.js";
 import { createSceneProgress } from "../features/scenes/progress-service.js";
 import { configureSceneProgress, processSavedExchange } from "../features/scenes/progress.js";
-import { createSceneQueryService } from "../features/scenes/scene-query-service.js";
-import { createSceneTerminalStore } from "../features/scenes/scene-terminal.js";
 import { createProjectEvidenceIndex } from "../features/scenes/project-evidence-index.js";
+import { createSceneNarrative } from "../features/scenes/scene-narrative-service.js";
+import { createSceneQueryService } from "../features/scenes/scene-query-service.js";
 import { createSceneRetirement } from "../features/scenes/scene-retirement-service.js";
-import { filterRelationshipNotices } from "../domain/rules/relationship-presentation.js";
+import { createSceneTerminalStore } from "../features/scenes/scene-terminal.js";
 import { createSceneWork } from "../features/scenes/scene-work-service.js";
 import { configureSceneWork, sceneWork } from "../features/scenes/scene-work.js";
 import { configureSceneQueries, sceneQueries } from "../features/scenes/services.js";
 import { configureSceneCommands, finishSemanticScene, sceneReplayEffects } from "../features/scenes/venue-session.js";
 import { createSceneWriting } from "../features/scenes/writing-service.js";
-import { createSceneNarrative } from "../features/scenes/scene-narrative-service.js";
 import { configureSceneWriting, generate, VENUE_REPLY_MAX_TOKENS } from "../features/scenes/writing.js";
 import { createConnectionSettings } from "../features/settings/connection-service.js";
 import {
@@ -298,9 +301,6 @@ import { createVenueCommands } from "../features/venues/venue-service.js";
 import { createVillageSnapshot } from "../features/world/snapshot-service.js";
 import { buildVillageSnapshot, configureVillageSnapshot } from "../features/world/snapshot.js";
 import { createWorldCoordination } from "../features/world/village-service.js";
-import { createReturnCatchup } from "../features/background/return-catchup-service.js";
-import { createReturnCatchupSettlement } from "../features/background/return-catchup-settlement.js";
-import { advanceReturnCatchup, configureReturnCatchup } from "../features/background/return-catchup.js";
 import { createVillageStateService } from "../features/world/village-state-service.js";
 import {
   configureVillageStateService,
@@ -318,14 +318,13 @@ import {
 import { configureWorldCoordination } from "../features/world/village.js";
 import { configureWorldRelationships, worldRelationships } from "../features/world/world-relationships.js";
 import { createBackgroundWork } from "../jobs/background-service.js";
-import { requestVillageRefresh } from "../jobs/village-refresh-scheduler.js";
 import {
   backgroundJobSnapshot,
   backgroundWorkSummaries,
   cancelReturnCatchup,
   configureBackgroundWork,
-  previewBackgroundJobs,
   hasVillagePresence,
+  previewBackgroundJobs,
   queueBackgroundJob,
   retireBackgroundResident,
   retryBackgroundJob,
@@ -353,6 +352,7 @@ import {
   venueInterpretationSettings,
   venueSavedCheckpoint,
 } from "../jobs/venue-coordinator.js";
+import { requestVillageRefresh } from "../jobs/village-refresh-scheduler.js";
 import { backendWorkFor } from "./backend-work.js";
 
 // A process identity preserves the existing saved-attempt recovery policy.
@@ -703,20 +703,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       mutateVillageState: mutateVillageMemoryState,
     }),
   );
-  const semantic = createSemanticService({
-    runtimeDebug,
-    venueExplicitRetry,
-    venueDebugContext,
-    readVillageLore,
-    venueSavedCheckpoint,
-    rejectVenueCompletion,
-    readVillageState: readVillageMemoryState,
-    villagesLanguageModels,
-    villagesConnectionIdFor,
-    completeWithRoom,
-    venueCheckpoint,
-    venueOperationSignal,
-  });
+  const semantic = createSemanticService({ readVillageState: readVillageMemoryState, venueCheckpoint });
+
   const sceneNarrative = createSceneNarrative({
     read: readVillageSnapshot,
     mutate: (work) => villageRepository.mutateAuthority(work),

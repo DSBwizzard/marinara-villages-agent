@@ -10,7 +10,7 @@ import {
   readPlayerBackground,
   renderPlayerBackgroundContext,
 } from "../packages/villages/src/server/domain/rules/player-background.js";
-import { currentScenePrompt } from "./fixtures/villages-scene-writing.fixture.js";
+import { currentScenePrompt, scenePromptPacket } from "./fixtures/villages-scene-writing.fixture.js";
 assert.equal(readPlayerBackground("  I came here as king.  "), "I came here as king.");
 for (const raw of [{ title: "King" }, null, 3, "x".repeat(1201)]) assert.throws(() => readPlayerBackground(raw));
 assert.equal(coercePlayerBackground(undefined), "");
@@ -31,18 +31,13 @@ assert.match(context, /consent/);
 assert.doesNotMatch(context, /has a recognized community role|fixed at founding/);
 assert.doesNotMatch(renderPlayerBackgroundContext({}), /oversees major changes/);
 assert.match(renderPlayerBackgroundContext({}), /explicit choice/);
-assert.match(
-  renderPlayerBackgroundContext({}, true),
-  /oversees major changes/,
-  "frozen legacy requests retain their original prompt",
-);
 const prompt = await currentScenePrompt(
   state,
   readVillagerCard({ id: "mara", data: { name: "Mara", description: "A patient guard." } } as any),
   "chat",
   "I have abdicated.",
 );
-assert.ok(prompt.includes(context));
+assert.equal(scenePromptPacket(prompt).player.background, context);
 console.log(
   "Player background: bounded prose, current-state precedence and independent gameplay responsibilities passed.",
 );
