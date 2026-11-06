@@ -256,7 +256,7 @@ assert.equal(complete.calls.filter((x) => x === "interpretation").length, 1);
   assert.equal(replay.calls.filter((stage) => stage === "completion").length, 1);
   const updated = { ...initial, revision: 2, wish: "Later committed desire" };
   replay.world.villagers[0].wishes = [updated];
-  replay.scene.submissions.push({ id: "earlier", at: stamp } as never);
+  replay.scene.submissions.push({ mode: "chat", id: "earlier", at: stamp } as never);
   replay.world.exchangeReceipts.late = {
     id: "late",
     sceneId: replay.scene.id,

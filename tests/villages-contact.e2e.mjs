@@ -90,6 +90,7 @@ await withBrowser(browser, async () => {
           submissions: [
             ...session.submissions,
             {
+              mode: "chat",
               id: submitted.submissionId,
               activeIdsAtTurn: [],
               activeIdsAfterTurn: [],

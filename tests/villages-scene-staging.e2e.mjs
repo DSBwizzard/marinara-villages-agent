@@ -142,6 +142,7 @@ await withBrowser(browser, async () => {
               },
             );
             session.submissions.push({
+              mode: "chat",
               id: body.submissionId,
               activeIdsAtTurn: castIds,
               activeIdsAfterTurn: castIds,
@@ -188,6 +189,7 @@ await withBrowser(browser, async () => {
               },
             );
             session.submissions.push({
+              mode: "chat",
               id: body.submissionId,
               activeIdsAtTurn: castIds,
               activeIdsAfterTurn: castIds,
@@ -208,6 +210,7 @@ await withBrowser(browser, async () => {
             );
             session.activeIds = castIds.slice(0, -1);
             session.submissions.push({
+              mode: "chat",
               id: body.submissionId,
               activeIdsAtTurn: castIds,
               activeIdsAfterTurn: session.activeIds,

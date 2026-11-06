@@ -106,7 +106,7 @@ assert.equal(
   "candidate list does not return unrelated player input",
 );
 turn.projectContexts[0].revision = turn.projectSpeech[0].revision = 2;
-for (const mode of ["greet", "chat", "ask", "leave"]) {
+for (const mode of ["chat", "leave"]) {
   visit.submissions[0].mode = mode;
   assert.equal((await evidence.listProjectEvidenceCandidates(id))[0].quote, line.content, mode);
 }

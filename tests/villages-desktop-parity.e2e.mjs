@@ -236,7 +236,10 @@ await withBrowser(browser, async () => {
         const message = lastTurn.message;
         session = {
           ...session,
-          submissions: [...(session.submissions ?? []), { id: lastTurn.submissionId, replyLineIds: ["answer"] }],
+          submissions: [
+            ...(session.submissions ?? []),
+            { mode: "chat", id: lastTurn.submissionId, replyLineIds: ["answer"] },
+          ],
           lines: [
             ...session.lines,
             { id: "player", role: "user", speakerId: "", name: "", content: message, at: now },

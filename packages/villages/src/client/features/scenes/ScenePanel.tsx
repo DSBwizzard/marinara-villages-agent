@@ -208,11 +208,11 @@ export function RoomPanel({
   picture,
   draft,
   mode,
-  legacyDestination,
-  legacyRecovery,
-  onRetryLegacy,
-  onReplaceLegacy,
-  onReviewLegacy,
+  recoveryDestination,
+  contactRecovery,
+  onRetryContact,
+  onReplaceContact,
+  onReviewContact,
   busy,
   error,
   greetingNotice,
@@ -265,11 +265,11 @@ export function RoomPanel({
   picture: string;
   draft: string;
   mode: SceneComposerMode;
-  legacyDestination: string;
-  legacyRecovery: import("./useScenesState.js").LegacySceneRecovery | null;
-  onRetryLegacy: () => void;
-  onReplaceLegacy: () => void;
-  onReviewLegacy: () => void;
+  recoveryDestination: string;
+  contactRecovery: import("./useScenesState.js").ContactRecovery | null;
+  onRetryContact: () => void;
+  onReplaceContact: () => void;
+  onReviewContact: () => void;
   busy: boolean;
   error: string;
   greetingNotice: string;
@@ -751,7 +751,7 @@ export function RoomPanel({
   const submitComposer = () => {
     if (
       !canCompose ||
-      !!legacyRecovery ||
+      !!contactRecovery ||
       (room.semanticVersion === 2 && !!changeStatus && changeStatus.pending + changeStatus.failed > 0) ||
       mode === "move" ||
       busy ||
@@ -1543,20 +1543,17 @@ export function RoomPanel({
 
         {canCompose ? (
           <div className={`${ELEMENT_TAG}-composer`}>
-            {legacyRecovery ? (
+            {contactRecovery ? (
               <div role="status">
-                <p>
-                  Saved {legacyRecovery.operation.input?.mode === "contact" ? "Contact" : "Fulfill"} action ·{" "}
-                  {legacyDestination}
-                </p>
-                <p>{legacyRecovery.operation.input?.message || "Saved action"}</p>
-                <button type="button" disabled={busy} onClick={onRetryLegacy}>
+                <p>Saved Contact action · {recoveryDestination}</p>
+                <p>{contactRecovery.operation.input?.message || "Saved action"}</p>
+                <button type="button" disabled={busy} onClick={onRetryContact}>
                   Retry original action
                 </button>
-                <button type="button" disabled={busy || !draft.trim()} onClick={onReplaceLegacy}>
+                <button type="button" disabled={busy || !draft.trim()} onClick={onReplaceContact}>
                   Replace with Say / Do
                 </button>
-                <button type="button" disabled={busy} onClick={onReviewLegacy}>
+                <button type="button" disabled={busy} onClick={onReviewContact}>
                   Review latest saved action
                 </button>
               </div>
@@ -1568,7 +1565,7 @@ export function RoomPanel({
                     type="button"
                     className={`${ELEMENT_TAG}-room-mode-toggle`}
                     onClick={() => setModeMenuOpen((value) => !value)}
-                    disabled={!!legacyRecovery}
+                    disabled={!!contactRecovery}
                     aria-label={`Mode: ${mode === "conclude" ? "Conclude" : mode === "move" ? "Move" : "Say / Do"}. Choose mode`}
                     aria-haspopup="menu"
                     aria-expanded={modeMenuOpen}
@@ -1586,7 +1583,7 @@ export function RoomPanel({
                           aria-checked={mode === option}
                           disabled={
                             busy ||
-                            !!legacyRecovery ||
+                            !!contactRecovery ||
                             (option === "move" &&
                               !movementZones.some((zone) => zone.id !== room.zoneId && !zone.closed))
                           }
@@ -1601,11 +1598,11 @@ export function RoomPanel({
                     </span>
                   ) : null}
                 </span>
-                {mode === "move" && !legacyRecovery ? (
+                {mode === "move" && !contactRecovery ? (
                   <select
                     className={`${ELEMENT_TAG}-select ${ELEMENT_TAG}-zone-navigation`}
                     aria-label="Move to Zone"
-                    disabled={busy || !!legacyRecovery}
+                    disabled={busy || !!contactRecovery}
                     value=""
                     onChange={(event) => onMovementTarget(event.target.value)}
                   >
@@ -1647,7 +1644,7 @@ export function RoomPanel({
                       onClick={submitComposer}
                       disabled={
                         !canCompose ||
-                        !!legacyRecovery ||
+                        !!contactRecovery ||
                         (room.semanticVersion === 2 &&
                           !!changeStatus &&
                           changeStatus.pending + changeStatus.failed > 0) ||

@@ -162,6 +162,7 @@ await withBrowser(browser, async () => {
           },
         );
         session.submissions.push({
+          mode: "chat",
           id: submissionId,
           replyLineIds: [id],
           activeIdsAtTurn: session.activeIds,
