@@ -66,7 +66,7 @@ await runCase("scene-json-hardening/ambiguity", async () => {
   // A finished object followed by effect members is an ambiguous response, never a current GM object.
   const core = {
     playerSpeechCapture: { status: "silent", utterances: [] },
-    segments: [{ text: 'A {gate} bears "hello", [friend], and a backslash: \\.' }],
+    segments: [{ kind: "narration", text: 'A {gate} bears "hello", [friend], and a backslash: \\.' }],
   };
   const coreJson = JSON.stringify(core);
   for (const effects of [
@@ -95,10 +95,7 @@ await runCase("scene-json-hardening/ambiguity", async () => {
   }
   const malformedEffect = completeSceneObject(JSON.stringify({ ...core, memoryChanges: { bad: true } }), "stop")!;
   const isolated = normalizeRecoverableSceneReply(malformedEffect);
-  assert.deepEqual(
-    isolated.raw.segments,
-    core.segments.map((line) => ({ ...line, kind: "narration" })),
-  );
+  assert.deepEqual(isolated.raw.segments, core.segments);
   assert.deepEqual((isolated.failures.memories!.proposal as any).memoryChanges, { bad: true });
   for (const key of [
     "sceneChange",
