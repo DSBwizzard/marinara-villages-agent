@@ -182,7 +182,6 @@ export function createReturnCatchup(ports: Ports) {
         const subject = returnCatchupSubject(batch.id, opportunity.id);
         const job = await ports.job(opportunity.kind === "world" ? "world-development" : "resident-planning", subject);
         if (
-          batch.budgetDate !== undefined &&
           activityDate(state, ports.now()) !== batch.budgetDate &&
           !state.eventAttempts?.attempts.some((row) => row.id === job?.id && row.batchId === batch.id) &&
           !job?.requests &&

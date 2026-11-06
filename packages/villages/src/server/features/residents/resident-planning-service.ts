@@ -391,7 +391,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         state: socialContextState(historical.relationshipContext, opportunity.actorIds, opportunity.facts.join(" ")),
       },
     };
-    const dateKey = current.returnCatchup.batch.budgetDate ?? activityDate(current, villageNow());
+    const dateKey = current.returnCatchup.batch.budgetDate;
     await queueBackgroundJob({
       kind: "resident-planning",
       subjectId: returnCatchupSubject(batchId, opportunity.id),

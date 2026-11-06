@@ -567,9 +567,9 @@ export const RETURN_CATCHUP_HISTORY_LIMIT = 20;
 export type ReturnCatchupBatch = {
   id: string;
   status: "queued" | "running" | "failed" | "recovering" | "completed" | "cancelled";
-  /** New batches cannot borrow a later calendar day's allowance. Missing retains admitted legacy work. */
-  budgetDate?: string;
-  opportunityLimit?: number;
+  /** Each batch is bounded by its captured calendar day and allowance. */
+  budgetDate: string;
+  opportunityLimit: number;
   from?: string;
   until?: string;
   reason?: string;

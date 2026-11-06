@@ -659,8 +659,13 @@ await runCase("repair/checkpoints", async () => {
         attempts: [{ id: "spent", at: memoryTime(10), date: "2026-10-26" }],
       };
       s.returnCatchup = {
-        batch: { id: "pending-return", status: "running" },
-        history: [{ id: "previous-return", status: "completed" }],
+        batch: {
+          budgetDate: "2026-10-26",
+          opportunityLimit: 6,
+          id: "pending-return",
+          status: "running",
+        },
+        history: [{ id: "previous-return", status: "completed", budgetDate: "2026-10-25", opportunityLimit: 6 }],
         capture: captureReturnContext(s, new Date(memoryTime(10))),
       };
       s.clock = {

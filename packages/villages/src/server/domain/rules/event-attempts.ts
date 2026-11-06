@@ -36,12 +36,8 @@ export function eventAttemptAvailable(state: VillageState, date: string, now: nu
   const batch = state.returnCatchup?.batch;
   const active = batch && !["completed", "cancelled"].includes(batch.status);
   if (batchId ? !active || batch.id !== batchId || batch.status !== "running" : active) return false;
-  if (batchId && batch?.budgetDate !== undefined && batch.budgetDate !== date) return false;
-  if (
-    batchId &&
-    batch?.opportunityLimit !== undefined &&
-    ledger.attempts.filter((row) => row.batchId === batchId).length >= batch.opportunityLimit
-  )
+  if (batchId && batch?.budgetDate !== date) return false;
+  if (batchId && !((batch?.opportunityLimit ?? 0) > ledger.attempts.filter((row) => row.batchId === batchId).length))
     return false;
   return (
     date ===
