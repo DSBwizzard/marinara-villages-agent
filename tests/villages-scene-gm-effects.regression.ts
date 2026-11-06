@@ -46,7 +46,6 @@ for (const scenario of [
   "draft-appointment",
 ] as const) {
   const host = await packagedSceneServer({
-    gm: true,
     configure(world, now) {
       if (scenario === "relationship") {
         world.relationshipContext = defaultRelationshipState(world.seed);
@@ -301,7 +300,6 @@ for (const scenario of [
 }
 {
   const host = await packagedSceneServer({
-    gm: true,
     configure(world, now) {
       world.backgroundPace = "balanced";
       world.venues[0].zones![0].description = "";

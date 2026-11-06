@@ -13,7 +13,6 @@ import { seedVillageFixtureDocuments, fixtureSceneState } from "../helpers/villa
 
 export async function packagedSceneServer(
   options: {
-    gm?: boolean;
     configure?: (world: ReturnType<typeof defaultVillageState>, now: string) => void;
     configureScene?: (scene: VenueScene) => void;
     bundle?: string;
@@ -77,13 +76,9 @@ export async function packagedSceneServer(
   options.configure?.(world, now);
   const scene = coerceSession({
     version: 3,
-    ...(options.gm
-      ? {
-          gmVersion: 1,
-          liveSceneVersion: 1,
-          accompanying: [{ characterId: "mara", zoneId: "common" }],
-        }
-      : {}),
+    gmVersion: 1,
+    liveSceneVersion: 1,
+    accompanying: [{ characterId: "mara", zoneId: "common" }],
     id: "browser",
     placeId: "mill",
     placeName: "The Mill",
@@ -165,77 +160,12 @@ export async function packagedSceneServer(
     }),
     chatComplete: async (messages: any[]) => {
       calls++;
-      if (messages[0].content.startsWith("You are the Game Master of Villages")) {
-        const text = messages.at(-1)?.content ?? "";
-        return {
-          content: JSON.stringify({
-            input: text ? [{ kind: "speech", text }] : [],
-            segments: [{ kind: "dialogue", speakerId: "mara", text: "I heard your browser message." }],
-          }),
-          finishReason: "stop",
-          usage: { inputTokens: 10, outputTokens: 10 },
-        };
-      }
-      if (messages[0].content.startsWith("You interpret Villages gameplay.")) {
-        const packet = JSON.parse(messages[1].content);
-        return {
-          content: JSON.stringify({
-            sourceHash: packet.sourceHash,
-            consistent: true,
-            authority: { physical: false, access: false, projects: false, standing: false, social: false },
-            intent: {
-              status: "resolved",
-              timeline: [{ kind: "speech", text: "Hello from browser" }],
-              instructions: "",
-              action: null,
-              movement: null,
-            },
-            action: null,
-            access: [],
-            events: { moves: [], departures: [], contactEnd: [] },
-            memoryChanges: [],
-            relationshipChanges: { changes: [], permissions: [], disclosures: [] },
-            wishChanges: [],
-            projectSpeech: [],
-            halt: { reason: "none", quote: "", appointments: [] },
-            immediateResidentMoves: [],
-            ...(Object.hasOwn(packet.input, "narrativeGrant")
-              ? { narrativeIntroduction: { status: "quiet", development: null } }
-              : {}),
-            ...(packet.input.residentActions
-              ? {
-                  residentActionReview: {
-                    version: 1,
-                    additionalActions: [],
-                    decisions: [],
-                    coverage: packet.input.evidence.flatMap((line: any, segment: number) =>
-                      line.speakerId === "mara"
-                        ? [{ segment, status: "none", actionIds: [], reason: "No actions" }]
-                        : [],
-                    ),
-                  },
-                }
-              : {}),
-          }),
-          finishReason: "stop",
-        };
-      }
-      assert.match(
-        messages.map((entry: any) => entry.content).join("\n"),
-        /ZONE EVENTS/u,
-        "only the expected packaged writer may dispatch",
-      );
+      assert.match(messages[0].content, /Game Master of Villages/, "Only the current GM writer may dispatch");
+      const text = messages.at(-1)?.content ?? "";
       return {
         content: JSON.stringify({
-          playerSpeechCapture: {
-            status: "captured",
-            segments: [{ segment: 0, sources: [{ text: "Hello from browser", occurrence: 1 }] }],
-          },
-          segments: [
-            { speakerId: "player", text: "Hello from browser", zoneId: "common" },
-            { speakerId: "mara", text: "I heard your browser message.", zoneId: "common" },
-          ],
-          residentActions: [],
+          input: text ? [{ kind: "speech", text }] : [],
+          segments: [{ kind: "dialogue", speakerId: "mara", text: "I heard your browser message." }],
         }),
         finishReason: "stop",
         usage: { inputTokens: 10, outputTokens: 10 },

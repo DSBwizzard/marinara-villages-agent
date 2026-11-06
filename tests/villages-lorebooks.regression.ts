@@ -1,32 +1,35 @@
 import assert from "node:assert/strict";
-import { readVillageLore, readVillageImageLore } from "../packages/villages/src/server/adapters/engine/lorebooks.js";
+import { readVillageImageLore, readVillageLore } from "../packages/villages/src/server/adapters/engine/lorebooks.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import {
-  coerceLoreTokenBudget,
-  coerceSelectedLorebookIds,
-  readLoreTokenBudget,
-  readSelectedLorebookIds,
-} from "../packages/villages/src/server/domain/rules/lore-policy.js";
-import { buildTownMapPrompt } from "../packages/villages/src/server/domain/rules/town-map-image-rules.js";
-import { selectVillageLore, type LoreEntry } from "../packages/villages/src/server/domain/rules/lore-selection.js";
-import { sharedLoreHistory } from "../packages/villages/src/server/domain/rules/scene-writing-history.js";
-import { fitVenueWritingMessages } from "../packages/villages/src/server/domain/rules/venue-writing.js";
-import { createSemanticService } from "../packages/villages/src/server/features/generation/semantic-service.js";
 import {
   fittedLoreUse,
   inspectedLoreUse,
   loreText,
   villageLoreContext,
 } from "../packages/villages/src/server/domain/rules/lore-context.js";
-import { mergeLoreUse, readLoreUse } from "../packages/villages/src/shared/helpers/lore.js";
+import {
+  coerceLoreTokenBudget,
+  coerceSelectedLorebookIds,
+  readLoreTokenBudget,
+  readSelectedLorebookIds,
+} from "../packages/villages/src/server/domain/rules/lore-policy.js";
+import { selectVillageLore, type LoreEntry } from "../packages/villages/src/server/domain/rules/lore-selection.js";
 import {
   publicSceneAuthority,
   publicSceneResponse,
 } from "../packages/villages/src/server/domain/rules/scene-public.js";
-import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { sharedLoreHistory } from "../packages/villages/src/server/domain/rules/scene-writing-history.js";
+import { buildTownMapPrompt } from "../packages/villages/src/server/domain/rules/town-map-image-rules.js";
+import { fitVenueWritingMessages } from "../packages/villages/src/server/domain/rules/venue-writing.js";
+import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
+import { createSemanticService } from "../packages/villages/src/server/features/generation/semantic-service.js";
+import { createSceneWriting } from "../packages/villages/src/server/features/scenes/writing-service.js";
+import { mergeLoreUse, readLoreUse } from "../packages/villages/src/shared/helpers/lore.js";
+import { venueDraftFixture } from "./helpers/venues.fixture.js";
 
 async function main() {
   assert.deepEqual(defaultVillageState().selectedLorebookIds, []);
@@ -576,118 +579,146 @@ async function main() {
     [originalUse],
   );
 
-  const checkpoints = new Map<string, any>(),
-    sent: any[] = [],
-    reports: any[] = [];
-  let failSystem = true,
-    unavailable = false,
-    loreReads = 0;
-  const systemModel = {
-    model: "fixture",
-    connectionId: "fixture",
-    maxOutputTokens: 4096,
-    fitContext(messages: any, options: any) {
-      const packet = JSON.parse(messages[1].content);
-      const crowded = packet.input.context.lore.includes("Low: expendable background");
-      return { ...options, messages: crowded ? [] : messages, trimmed: crowded };
-    },
-  };
-  const system = createSemanticService({
-    readVillageState: async () => defaultVillageState(),
-    readVillageLore: async (_ids: any, _context: any, _signal: any, _budget: any, options: any) => {
-      loreReads++;
-      if (unavailable) throw new Error("Engine unavailable");
-      options.inspect({
-        purpose: "Lore lookup",
-        stage: "selection",
-        budget: 1600,
-        omittedDiagnostics: 0,
-        entries: ["High", "Low"].map((name) => ({
-          id: name,
-          bookId: "book",
-          name,
-          status: "included",
-          match: "current",
-        })),
-      });
-      return ["High: relevant fact", "Low: expendable background"];
-    },
-    villagesConnectionIdFor: async () => "fixture",
-    villagesLanguageModels: () => ({ resolveForRequest: async () => systemModel }),
-    venueCheckpoint: async (key: string, work: any) => {
-      if (!checkpoints.has(key)) checkpoints.set(key, await work());
-      return checkpoints.get(key);
-    },
-    venueOperationSignal: () => undefined,
-    runtimeDebug: (event: string, detail: any) => {
-      if (event === "lore inspection") reports.push(detail);
-    },
-    completeWithRoom: async (_model: any, messages: any) => {
-      const packet = JSON.parse(messages[1].content);
-      sent.push(packet);
-      if (failSystem) throw new Error("Held purchased request");
-      return {
-        content: JSON.stringify({
-          sourceHash: packet.sourceHash,
-          intent: {
-            status: "resolved",
-            reason: "",
-            instructions: "",
-            action: null,
-            movement: null,
-            timeline: [{ kind: "speech", text: "Hello" }],
-          },
-          consistent: true,
-          authority: { physical: false, access: false, projects: false, standing: false, social: false },
-          action: null,
-          access: [],
-          residentActionReview: { version: 1, additionalActions: [], decisions: [], coverage: [] },
-          memoryChanges: [],
-          relationshipChanges: { changes: [], permissions: [], disclosures: [] },
-          wishChanges: [],
-          projectSpeech: [],
-          events: { moves: [], departures: [], contactEnd: [], playerMoves: [] },
-        }),
-        finishReason: "stop",
-      };
-    },
-    rejectVenueCompletion: () => assert.fail("Valid exchange must not be rejected"),
-  } as any);
-  const systemScene: any = {
-    id: "system-lore-fit",
-    activeIds: [],
-    lines: [],
-    submissions: [],
-    placeId: "none",
-    zoneId: "exterior",
-    sceneRevision: 1,
-    semanticVersion: 2,
-    operation: { input: { semanticPipelineVersion: 3, residentActionsVersion: 2 } },
-  };
-  const exchange = () => system.exchange(systemScene, "Hello", [], null, []);
-  await assert.rejects(exchange(), /Held purchased request/);
-  assert.deepEqual(sent[0].input.context.lore, ["High: relevant fact"]);
-  assert.equal(reports[0].entries.find((entry: any) => entry.id === "Low").status, "context-limit");
-  unavailable = true;
-  failSystem = false;
-  const replayed = await exchange();
-  assert.deepEqual(
-    replayed.lore?.map((entry) => entry.name),
-    ["High"],
-    "System provenance names only final-prompt entries",
-  );
-  assert.equal(loreReads, 1, "System retry uses captured selection and final prompt during a lore outage");
-  assert.deepEqual(sent[1], sent[0], "Optional lore fitting cannot vary the saved source hash on retry");
-  const oldInputKey = [...checkpoints.keys()].find((key) => key.endsWith(":input"))!;
-  const oldInput = structuredClone(checkpoints.get(oldInputKey));
-  delete oldInput.lorePolicy;
-  checkpoints.clear();
-  checkpoints.set(oldInputKey, structuredClone(oldInput));
-  const beforeOldReplay = sent.length;
-  await assert.rejects(exchange(), /Essential System evidence does not fit/);
-  assert.equal(sent.length, beforeOldReplay, "Legacy evidence cannot authorize a newly fitted replacement request");
-  assert.deepEqual(checkpoints.get(oldInputKey), oldInput, "Legacy input is retained byte-for-byte");
-  assert.equal(loreReads, 1);
+  {
+    const checkpoints = new Map<string, any>();
+    const warnings: unknown[] = [],
+      reports: any[] = [],
+      sent: any[] = [];
+    let rejected = 0,
+      holdInput = true,
+      unavailable = false,
+      loreReads = 0,
+      paid = 0;
+    const world = defaultVillageState();
+    Object.assign(world, {
+      seed: "gm-lore",
+      setupAt: "2026-11-05T20:00:00Z",
+      foundedAt: "2026-11-05T20:00:00Z",
+      selectedLorebookIds: ["book"],
+    });
+    world.venues = [
+      venueDraftFixture({ id: "harbor", name: "Harbor", description: "A quiet quay.", category: "public" }, null),
+    ];
+    const admission = {
+      writingContractVersion: 4,
+      gmVersion: 1,
+      semanticPipelineVersion: 3,
+      residentActionsVersion: 2,
+      interactionScopeVersion: 6,
+      writingCapabilities: { management: false, movement: false, residences: false, residenceDecision: false },
+    };
+    const scene = coerceSession({
+      version: 3,
+      gmVersion: 1,
+      semanticVersion: 2,
+      id: "gm-lore",
+      villageSeed: world.seed,
+      placeId: "harbor",
+      zoneId: "exterior",
+      status: "active",
+      startedAt: world.setupAt,
+      activeIds: [],
+      participants: [],
+      lines: [],
+      submissions: [],
+    });
+    scene.operation = { id: "turn", input: admission } as any;
+    Object.assign(scene, zoneEventScene(scene, world.venues[0]));
+    const model = {
+      model: "fixture",
+      connectionId: "fixture",
+      maxOutputTokens: 4096,
+      fitContext(messages: any[], options: any) {
+        return {
+          ...options,
+          messages: JSON.stringify(messages).includes("Low: expendable background") ? [] : messages,
+        };
+      },
+    };
+    const ports: any = {
+      readVillageState: async () => world,
+      readVillageLore: async (_ids: any, _context: any, _signal: any, _budget: any, options: any) => {
+        loreReads++;
+        if (unavailable) throw Error("Engine unavailable");
+        options.inspect({
+          purpose: "Lore lookup",
+          stage: "selection",
+          budget: 1600,
+          omittedDiagnostics: 0,
+          entries: ["High", "Low"].map((name) => ({
+            id: name,
+            bookId: "book",
+            name,
+            status: "included",
+            match: "current",
+          })),
+        });
+        return ["High: relevant fact", "Low: expendable background"];
+      },
+      villagesConnectionIdFor: async (purpose: string) => {
+        assert.equal(purpose, "narration");
+        return "fixture";
+      },
+      villagesLanguageModels: () => ({ resolveForRequest: async () => model }),
+      venueCheckpoint: async (key: string, work: any) => {
+        if (checkpoints.has(key)) return structuredClone(checkpoints.get(key));
+        const value = await work();
+        if (holdInput && key.startsWith("gm:semantic-") && key.endsWith(":input")) {
+          holdInput = false;
+          throw Error("Held purchased request");
+        }
+        checkpoints.set(key, structuredClone(value));
+        return value;
+      },
+      venueSavedCheckpoint: (key: string) => checkpoints.get(key),
+      venueOperationSignal: () => undefined,
+      runtimeDebug: (event: string, detail: any) => {
+        if (event === "lore inspection") reports.push(detail);
+      },
+      completeWithRoom: async (_model: any, messages: any[]) => {
+        paid++;
+        sent.push(structuredClone(messages));
+        assert.doesNotMatch(JSON.stringify(messages), /Low: expendable background/);
+        return {
+          content: JSON.stringify({
+            input: [{ kind: "action", text: "I watch the waves." }],
+            segments: [{ kind: "narration", text: "The harbor is quiet." }],
+          }),
+          finishReason: "stop",
+        };
+      },
+      rejectVenueCompletion: async () => {
+        rejected++;
+      },
+      venueOperationId: () => "turn",
+      venueOperationInput: () => admission,
+      readEffectiveVillagerCard: () => assert.fail("No actors"),
+      villagesLogger: () => ({
+        warn: (...details: unknown[]) => {
+          warnings.push(details);
+        },
+      }),
+      measurePipeline: async (_label: string, _metadata: unknown, work: any) => work(),
+      refreshZoneParticipants: async (current: any) => current,
+    };
+    const writer = createSceneWriting({ ...ports, semantic: createSemanticService(ports) });
+    const generate = () => writer.generate(scene, "I watch the waves.", "chat", "", null);
+    await assert.rejects(generate(), /Held purchased request/);
+    assert.equal(rejected, 0, "A local storage failure cannot reject purchased GM writing");
+    assert.equal(paid, 1);
+    assert.equal(reports[0].entries.find((entry: any) => entry.id === "Low").status, "context-limit");
+    unavailable = true;
+    const replayed = await generate();
+    assert.deepEqual(
+      replayed.lore?.map((entry) => entry.name),
+      ["High"],
+      "Provenance records only lore in the actual GM prompt",
+    );
+    assert.equal(loreReads, 1, "Recovery retains selected lore through a provider outage");
+    assert.equal(paid, 1, "Local validation recovery reuses the purchased combined response");
+    assert.equal(sent.length, 1);
+    assert.equal(warnings.length, 0);
+  }
 
   console.log("Villages live lorebook selection regressions passed.");
 }

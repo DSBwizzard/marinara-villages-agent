@@ -93,7 +93,7 @@ export function foundingRequestMessages(
         influence +
         description +
         "\n" +
-        renderPlayerBackgroundContext(context, context.playerAgencyVersion !== 1),
+        renderPlayerBackgroundContext(context),
     },
     { role: "user", content: JSON.stringify(data) },
   ];

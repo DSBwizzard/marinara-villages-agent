@@ -1077,23 +1077,6 @@ export type VillageState = {
   /** Writing styles retained when residents leave, keyed by character ID. */
   formerLetterFonts?: Record<string, string>;
   /**
-   * The village's one prompt box: what a villager here knows.
-   *
-   * Where the village is, who lives here and what has been happening lately,
-   * written as the macros that render those blocks. Editable — a village may want
-   * its context in a different order, or not at all — and
-   * empty means "use the shipped default", so a stored value is never mistaken
-   * for "they know nothing".
-   *
-   * It used to be the second of two boxes. The first, "how everyone talks", is
-   * gone: HOW a villager talks is the player's own Engine preset, chosen in the
-   * narration settings, and a package that also kept a paragraph of rules about
-   * register had two answers to one question and no way to say which won. What a
-   * villager KNOWS is not in any preset and cannot be, which is why this one
-   * stayed.
-   */
-  promptKnowledge: string;
-  /**
    * Who the player is, as the prompt layer consumes it: the resolved pair.
    *
    * These two stopped being a box the player types into. A village no longer

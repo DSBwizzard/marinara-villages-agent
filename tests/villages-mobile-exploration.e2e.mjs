@@ -96,9 +96,6 @@ const snapshot = {
   residences: [],
   villagers: residents,
   settings: {
-    promptKnowledge: "",
-    defaultPromptKnowledge: "",
-    promptBoxMaxLength: 1000,
     backgroundPace: "normal",
     venues: [place("mill", 0.04, 0.08), place("harbour", 0.96, 0.92), place("market", 0.5, 0.5)],
     homeBuildingNames: {},
@@ -132,7 +129,6 @@ const snapshot = {
     townMapExpectedHeight: 1000,
     townMapView: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
     backgroundPaces: [],
-    macros: [],
   },
 };
 

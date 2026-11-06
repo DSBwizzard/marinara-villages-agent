@@ -1,51 +1,50 @@
-import { venueFixture } from "./helpers/venues.fixture.js";
-import { configureLocationImages } from "../packages/villages/src/server/features/media/location-image.js";
-import type { LocationImageService } from "../packages/villages/src/server/features/media/location-image-service.js";
-import { readPrivateDiagnostics } from "../packages/villages/src/server/adapters/observability/private-diagnostics.js";
-import {
-  villageFixtureDocuments,
-  fixtureSceneState,
-  authorSceneFixture,
-  editFixtureScene,
-} from "./helpers/village-storage.fixture.js";
-import { createSemanticService } from "../packages/villages/src/server/features/generation/semantic-service.js";
-import {
-  venueSavedCheckpoint,
-  venueDebugContext,
-  venueExplicitRetry,
-} from "../packages/villages/src/server/adapters/operations/operation-context.js";
-import { createModelCompletions } from "../packages/villages/src/server/features/generation/completion-service.js";
-import { bindWishProposals } from "../packages/villages/src/server/domain/rules/wish-progress-rules.js";
-import { createSceneCommands } from "../packages/villages/src/server/features/scenes/command-service.js";
-import { createSceneWork } from "../packages/villages/src/server/features/scenes/scene-work-service.js";
-import { readSession, changeSession } from "../packages/villages/src/server/adapters/storage/scene-store.js";
-import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { readScenePublicHistoryHead } from "../packages/villages/src/server/adapters/storage/scene-public-history.js";
-import { validateSceneHistory } from "../packages/villages/src/server/adapters/storage/scene-history.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { quietContactReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
-import {
-  venueOperationSignal,
-  venueOperationInput,
-  venueRequestMetrics,
-} from "../packages/villages/src/server/adapters/operations/operation-context.js";
+import assert from "node:assert/strict";
 import { mock } from "node:test";
 import { withProviderDeadline } from "../packages/villages/src/server/adapters/models/provider-deadline.js";
-import assert from "node:assert/strict";
+import { readPrivateDiagnostics } from "../packages/villages/src/server/adapters/observability/private-diagnostics.js";
+import {
+  venueOperationInput,
+  venueOperationSignal,
+  venueRequestMetrics,
+  venueSavedCheckpoint,
+} from "../packages/villages/src/server/adapters/operations/operation-context.js";
+import { validateSceneHistory } from "../packages/villages/src/server/adapters/storage/scene-history.js";
+import { readScenePublicHistoryHead } from "../packages/villages/src/server/adapters/storage/scene-public-history.js";
+import { changeSession, readSession } from "../packages/villages/src/server/adapters/storage/scene-store.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { safeFailureMessage } from "../packages/villages/src/server/domain/rules/errors.js";
+import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
+import { quietContactReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
+import { bindWishProposals } from "../packages/villages/src/server/domain/rules/wish-progress-rules.js";
+import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
+import { createModelCompletions } from "../packages/villages/src/server/features/generation/completion-service.js";
+import { createSemanticService } from "../packages/villages/src/server/features/generation/semantic-service.js";
+import type { LocationImageService } from "../packages/villages/src/server/features/media/location-image-service.js";
+import { configureLocationImages } from "../packages/villages/src/server/features/media/location-image.js";
+import { createSceneCommands } from "../packages/villages/src/server/features/scenes/command-service.js";
+import { createSceneWork } from "../packages/villages/src/server/features/scenes/scene-work-service.js";
+import { createSceneWriting } from "../packages/villages/src/server/features/scenes/writing-service.js";
+import { venueFixture } from "./helpers/venues.fixture.js";
+import {
+  authorSceneFixture,
+  editFixtureScene,
+  fixtureSceneState,
+  villageFixtureDocuments,
+} from "./helpers/village-storage.fixture.js";
 
+import { assertVenueOwnership } from "../packages/villages/src/server/adapters/operations/operation-context.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
+  cancelVenueOperation,
   coordinateVenue,
   coordinatedCompletion,
-  venueCheckpoint,
-  rejectVenueCompletion,
-  cancelVenueOperation,
-  recoverVenueOperations,
   readVenueOperation,
+  recoverVenueOperations,
+  rejectVenueCompletion,
   stopVenueCoordinator,
+  venueCheckpoint,
 } from "../packages/villages/src/server/jobs/venue-coordinator.js";
-import { assertVenueOwnership } from "../packages/villages/src/server/adapters/operations/operation-context.js";
 
 const records = new Map<string, any>();
 const documents = {
@@ -1408,148 +1407,126 @@ async function main() {
       snapshot: null,
     });
     seed("typed-review");
+    const typedVenue = venueFixture({ id: "typed-place", name: "Quiet room", description: "A quiet room." });
+    const typedAt = new Date().toISOString();
+    world.venues.push(typedVenue);
     row("typed-review").data = coerceSession({
       version: 3,
       ...row("typed-review").data,
+      gmVersion: 1,
       semanticVersion: 2,
       processingVersion: 1,
       villageSeed: world.seed,
+      placeId: typedVenue.id,
+      zoneId: "exterior",
+      startedAt: typedAt,
+      sceneAttendance: { capturedAt: typedAt, layout: captureSceneLayout(typedVenue), occupants: [] },
     });
     const typedInput = {
+      gmVersion: 1,
+      writingContractVersion: 4,
       semanticPipelineVersion: 3,
-      residentActionsVersion: 1,
-      message: "Hello",
+      residentActionsVersion: 2,
+      interactionScopeVersion: 6,
+      writingCapabilities: { management: false, movement: false, residences: false, residenceDecision: false },
+      message: "I wait.",
       semanticBudget: { version: 1, requests: 2, inputTokens: 100000, outputTokens: 20000 },
     };
-    let narrationDispatches = 0,
-      systemDispatches = 0,
-      acceptReview = false;
+    let gmDispatches = 0,
+      acceptInput = false;
     const typedModel = {
       ...policyModel,
-      name: "System",
+      name: "GM",
       fitContext: (messages: unknown, options: any) => ({
         messages,
         ...options,
         estimatedTokensBefore: 1000,
         trimmed: false,
       }),
-      chatComplete: async (messages: any[]) => {
-        systemDispatches++;
-        const packet = JSON.parse(messages[1].content);
+      chatComplete: async () => {
+        gmDispatches++;
         return {
           finishReason: "stop",
           content: JSON.stringify({
-            sourceHash: packet.sourceHash,
-            consistent: true,
-            intent: {
-              status: "resolved",
-              instructions: "",
-              action: null,
-              movement: null,
-              timeline: [{ kind: "speech", text: "Hello" }],
-            },
-            authority: { physical: false, access: false, projects: false, standing: false, social: false },
-            action: null,
-            memoryChanges: [],
-            relationshipChanges: { changes: [], permissions: [], disclosures: [] },
-            wishChanges: [],
-            projectSpeech: [],
-            access: [],
-            events: { moves: [], departures: [], contactEnd: [] },
-            residentActionReview: {
-              version: 1,
-              additionalActions: [],
-              decisions: [],
-              coverage: [
-                {
-                  segment: 0,
-                  status: acceptReview ? "none" : "unresolved",
-                  actionIds: [],
-                  reason: acceptReview ? "No access act" : "Scope unclear",
-                },
-              ],
-            },
+            input: [{ kind: "action", text: acceptInput ? "I wait." : "I" }],
+            segments: [{ kind: "narration", text: "The room is quiet." }],
           }),
         };
       },
     };
     const typedWork = async () => {
-      if (fixtureSceneState(row("typed-review").data, records).submissions.some((s: any) => s.id === "typed"))
+      if (fixtureSceneState(row("typed-review").data, records).submissions.some((entry: any) => entry.id === "typed"))
         return readSession("typed-review");
-      const story = await venueCheckpoint("writing-completion:typed", () =>
-        coordinatedCompletion(
-          "typed-narration",
-          async () => {
-            narrationDispatches++;
-            return {
-              residentActions: [],
-              lines: [{ kind: "narration", speakerId: "__venue_scene__", content: "The room is quiet.", heardBy: [] }],
-            };
-          },
-          undefined,
-          { inputTokens: 1000, outputTokens: 1000 },
-        ),
-      );
-      const restoredService = createSemanticService({
+      const ports: any = {
         readVillageState: async () => world,
-        villagesConnectionIdFor: async () => "system",
+        villagesConnectionIdFor: async (purpose: string) => {
+          assert.equal(purpose, "narration");
+          return "gm";
+        },
         villagesLanguageModels: () => ({ resolveForRequest: async () => typedModel }),
         completeWithRoom: modelCalls.completeWithRoom,
         venueCheckpoint,
         venueSavedCheckpoint,
-        venueDebugContext,
-        venueExplicitRetry,
         venueOperationSignal,
         rejectVenueCompletion,
-      } as any);
-      const scene = {
-        ...fixtureSceneState(row("typed-review").data, records),
-        operation: { input: typedInput },
-      } as any;
-      const result = await restoredService.exchange(scene, "Hello", story.lines as any, null, story.residentActions);
+        venueOperationInput: () => typedInput,
+        venueOperationId: () => "typed",
+        readVillageLore: async () => [],
+        readEffectiveVillagerCard: () => assert.fail("No actors"),
+        villagesLogger: () => ({ warn() {} }),
+        runtimeDebug() {},
+        measurePipeline: async (_label: string, _metadata: unknown, work: any) => work(),
+        refreshZoneParticipants: async (current: unknown) => current,
+      };
+      const writer = createSceneWriting({ ...ports, semantic: createSemanticService(ports) });
+      const source = zoneEventScene(
+        { ...fixtureSceneState(row("typed-review").data, records), operation: { input: typedInput } } as any,
+        typedVenue,
+      );
+      const result = await writer.generate(source, "I wait.", "chat", "", null);
       await changeSession("typed-review", (current) => {
         current.lines.push({
           id: "typed-line",
           role: "assistant",
+          kind: "narration",
           speakerId: "__venue_scene__",
-          name: "Narration",
-          content: "The room is quiet.",
+          name: "GM",
+          content: result.lines[0].content,
           at: current.startedAt,
           heardBy: [],
         });
         current.submissions.push({
           id: "typed",
-          message: "Hello",
+          message: "I wait.",
           mode: "chat",
           targetId: "",
-          residentActionReceipt: result.effects.residentActionReceipt,
+          semanticProvenance: result.semanticProvenance,
         } as any);
       });
       return readSession("typed-review");
     };
     await assert.rejects(
       coordinateVenue("typed-review", "typed", "turn", typedInput, 0, undefined, typedWork),
-      /clarification/,
+      /omits player input/,
     );
     assert.equal(
       fixtureSceneState(row("typed-review").data, records).lines.length,
       0,
-      "An unresolved action cannot publish a partial turn",
+      "Invalid source coverage cannot publish a partial turn",
     );
-    assert.equal(narrationDispatches, 1);
-    assert.equal(systemDispatches, 1);
+    assert.equal(gmDispatches, 1);
     assert(
       readPrivateDiagnostics(records.get("villages-private-diagnostics").data).entries.some(
-        (e: any) => e.sceneId === "typed-review" && e.content.includes("residentActionReview"),
+        (entry: any) => entry.sceneId === "typed-review" && entry.content.includes('"input"'),
       ),
-      "Rejected System dispositions retained in existing private journal",
+      "Rejected GM output stays in the private journal",
     );
     await assert.rejects(
       coordinateVenue("typed-review", "typed", "turn", typedInput, undefined, undefined, typedWork, { recovery: true }),
       refused("OPERATION_INTERRUPTED"),
     );
-    assert.equal(systemDispatches, 1, "Local recovery cannot purchase a replacement");
-    acceptReview = true;
+    assert.equal(gmDispatches, 1, "Local recovery cannot purchase replacement work");
+    acceptInput = true;
     const typedAttempt = (await readVenueOperation("typed-review"))!.attemptId;
     const typedCommitted = await coordinateVenue(
       "typed-review",
@@ -1560,26 +1537,25 @@ async function main() {
       typedAttempt,
       typedWork,
     );
-    assert.equal(narrationDispatches, 1, "Explicit System retry reuses the paid Narration");
-    assert.equal(systemDispatches, 2);
-    assert(typedCommitted.submissions[0].residentActionReceipt?.systemResponse?.includes("residentActionReview"));
+    assert.equal(gmDispatches, 2, "Explicit retry replaces only the rejected combined response");
+    assert.equal(typedCommitted.submissions[0].semanticProvenance?.producer, "gm");
     await coordinateVenue("typed-review", "typed", "turn", typedInput, undefined, undefined, typedWork, {
       recovery: true,
     });
     assert.equal(fixtureSceneState(row("typed-review").data, records).lines.length, 1);
     assert.equal(fixtureSceneState(row("typed-review").data, records).submissions.length, 1);
-    assert.equal(systemDispatches, 2);
+    assert.equal(gmDispatches, 2);
     seed("typed-invalid-narration");
     const invalidNarration = () =>
       venueCheckpoint("turn-reply", async () => {
         await venueCheckpoint("writing-completion:invalid", () =>
           coordinatedCompletion("invalid-proposal", async () => ({
-            content: '{"residentActions":"invalid"}',
+            content: '{"input":[],"segments":"invalid"}',
             finishReason: "stop",
           })),
         );
         await rejectVenueCompletion(
-          { model: "synthetic", connectionId: "narration", reason: "resident-actions" },
+          { model: "synthetic", connectionId: "narration", reason: "invalid-segments" },
           { preserveWriting: true, stages: ["writing-completion:invalid"] },
         );
         throw Error("Invalid proposal");
@@ -1590,9 +1566,9 @@ async function main() {
     );
     assert(
       readPrivateDiagnostics(records.get("villages-private-diagnostics").data).entries.some(
-        (e: any) => e.sceneId === "typed-invalid-narration" && e.content.includes("residentActions"),
+        (e: any) => e.sceneId === "typed-invalid-narration" && e.content.includes("segments"),
       ),
-      "Targeted Narration rejection retains raw proposal diagnostics",
+      "Targeted GM rejection retains raw response diagnostics",
     );
     {
       seed("artwork-settled");

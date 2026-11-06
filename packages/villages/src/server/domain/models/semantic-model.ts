@@ -3,26 +3,20 @@ import type { InterpretationBatch } from "./interpretation-model.js";
 import type { VenueReplyLine, VenueScene } from "./scene-model.js";
 
 export interface SemanticInterpreter {
-  rejectExchange?(result: SemanticExchange): Promise<void>;
-  preflight(
-    scene: VenueScene,
-    message: string,
-    narrativeGrant?: import("./narrative-model.js").NarrativeAdmission | null,
-  ): Promise<void>;
   exchange(
     scene: VenueScene,
     message: string,
     lines: VenueReplyLine[],
-    prepared: SemanticIntent | null,
-    residentActions?: import("../rules/resident-actions.js").ResidentAccessAction[],
-    residentActionsOmitted?: boolean,
-    narrativeGrant?: import("./narrative-model.js").NarrativeAdmission | null,
-    zoneEventSource?: Record<string, unknown>,
-    gm?: {
+    gm: {
       raw: Record<string, unknown>;
       context: ReturnType<typeof import("../rules/semantic-contract.js").semanticContext>;
       presentation: import("../rules/sprite-expressions.js").SpriteSelectionContext;
     },
+    prepared?: SemanticIntent | null,
+    residentActions?: import("../rules/resident-actions.js").ResidentAccessAction[],
+    residentActionsOmitted?: boolean,
+    narrativeGrant?: import("./narrative-model.js").NarrativeAdmission | null,
+    zoneEventSource?: Record<string, unknown>,
   ): Promise<SemanticExchange>;
 }
 

@@ -3,9 +3,7 @@ import type { VillageSnapshot, VillageVenue } from "../../../shared/contracts/vi
 import { destinationPlaces } from "../../shared/presentation.js";
 
 export interface SettingsDraftValues {
-  knowledgeDraft: string;
   personaDraft: string;
-  settingDraft: string;
   lorebookDraft: string[];
   loreTokenBudgetDraft: number;
   sceneryStyle: string;
@@ -18,15 +16,10 @@ type Setters = {
     React.SetStateAction<SettingsDraftValues[K]>
   >;
 };
-export type SavedSettingsDraft = Pick<
-  SettingsDraftValues,
-  "knowledgeDraft" | "personaDraft" | "settingDraft" | "lorebookDraft" | "loreTokenBudgetDraft"
->;
+export type SavedSettingsDraft = Pick<SettingsDraftValues, "personaDraft" | "lorebookDraft" | "loreTokenBudgetDraft">;
 function savedValues(snapshot: NonNullable<VillageSnapshot>): SettingsDraftValues {
   return {
-    knowledgeDraft: snapshot.settings.promptKnowledge,
     personaDraft: snapshot.settings.playerPersonaId,
-    settingDraft: snapshot.settings.setting,
     lorebookDraft: [...snapshot.settings.selectedLorebookIds],
     loreTokenBudgetDraft: snapshot.settings.loreTokenBudget,
     sceneryStyle: snapshot.settings.sceneryArtStyle ?? "",
@@ -53,9 +46,7 @@ export function useSettingsDraftSession(ports: Setters & { snapshot: VillageSnap
     ) => {
       setter((current) => (!prior || equal(current, prior[key]) || equal(current, next[key]) ? next[key] : current));
     };
-    seed("knowledgeDraft", ports.setKnowledgeDraft);
     seed("personaDraft", ports.setPersonaDraft);
-    seed("settingDraft", ports.setSettingDraft);
     seed("lorebookDraft", ports.setLorebookDraft);
     seed("loreTokenBudgetDraft", ports.setLoreTokenBudgetDraft);
     seed("sceneryStyle", ports.setSceneryStyle);
@@ -73,18 +64,14 @@ export function useSettingsDraftSession(ports: Setters & { snapshot: VillageSnap
       ) => {
         setter((current) => (equal(current, submitted[key]) ? next[key] : current));
       };
-      accept("knowledgeDraft", ports.setKnowledgeDraft);
       accept("personaDraft", ports.setPersonaDraft);
-      accept("settingDraft", ports.setSettingDraft);
       accept("lorebookDraft", ports.setLorebookDraft);
       accept("loreTokenBudgetDraft", ports.setLoreTokenBudgetDraft);
       // Other editable sections keep their own drafts and saving commands.
       baseline.current = baseline.current
         ? {
             ...baseline.current,
-            knowledgeDraft: next.knowledgeDraft,
             personaDraft: next.personaDraft,
-            settingDraft: next.settingDraft,
             lorebookDraft: next.lorebookDraft,
             loreTokenBudgetDraft: next.loreTokenBudgetDraft,
           }

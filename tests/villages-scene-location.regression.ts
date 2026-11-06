@@ -1,4 +1,3 @@
-import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
@@ -8,7 +7,8 @@ import {
 import { sceneLocationContext } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
-import { currentScenePrompt } from "./fixtures/villages-scene-writing.fixture.js";
+import { currentScenePrompt, scenePromptPacket } from "./fixtures/villages-scene-writing.fixture.js";
+import { venueFixture } from "./helpers/venues.fixture.js";
 
 const at = "2026-10-23T12:00:00.000Z";
 const world = coerceVillageState({
@@ -146,7 +146,7 @@ const card = {
   personality: "Direct.",
 };
 const input = '"Why not come join me here?"';
-const marker = "Current physical Scene state (server authority, not shared character knowledge): ";
+const marker = '{"context":';
 for (const mode of ["greet", "chat", "leave"] as const) {
   const prompt = await currentScenePrompt(world, card, mode, mode === "greet" ? "" : input, scene, {
     interactionScopeVersion: 6,
@@ -159,9 +159,7 @@ for (const mode of ["greet", "chat", "leave"] as const) {
       residenceDecision: false,
     },
   });
-  const frame = prompt.split(marker)[1]?.split("\n")[0];
-  assert.ok(frame, "the actual writer receives required location context even without movement metadata");
-  assert.deepEqual(JSON.parse(frame), remote);
+  assert.deepEqual(scenePromptPacket(prompt).positions, remote);
   assert.ok(
     prompt.indexOf(marker) > prompt.indexOf(card.scenario),
     "current physical authority follows card scenarios",
@@ -171,7 +169,8 @@ for (const mode of ["greet", "chat", "leave"] as const) {
       prompt.indexOf(marker) > prompt.indexOf(scene.lines[0].content),
       "current physical authority follows misleading earlier narration",
     );
-  assert.doesNotMatch(prompt, /HIDDEN ROOM NAME|HIDDEN OCCUPANT|HIDDEN ACTIVITY/);
+  assert.doesNotMatch(prompt, /HIDDEN OCCUPANT|HIDDEN ACTIVITY/);
+  assert.doesNotMatch(JSON.stringify(scenePromptPacket(prompt).positions), /HIDDEN ROOM NAME/);
 }
 for (const context of [
   { ...scene, zoneId: "exterior", area: "outside" as const, activeIds: ["mari"] },
@@ -183,9 +182,9 @@ for (const context of [
     contactGeneration: scene.contactGeneration,
   });
   assert.deepEqual(
-    JSON.parse(prompt.split(marker)[1].split("\n")[0]),
+    scenePromptPacket(prompt).positions,
     sceneLocationContext(context, venue, ["mari"]),
-    "the actual writer refreshes positions on arrival and movement, including legacy writing contracts",
+    "the actual writer refreshes positions on arrival and movement, in the current GM context",
   );
 }
 const empty = {
@@ -210,12 +209,9 @@ for (const mode of ["greet", "chat", "leave"] as const) {
       residenceDecision: false,
     },
   });
-  assert.deepEqual(JSON.parse(prompt.split(marker)[1].split("\n")[0]).residents, []);
+  assert.deepEqual(scenePromptPacket(prompt).positions.residents, []);
   assert(!prompt.includes(card.description), "an absent resident's profile cannot supply an invented response");
-  const guard = prompt.indexOf("No resident is available in the supplied Scene cast.");
-  assert(guard > prompt.indexOf(marker), "empty-cast guidance follows the authoritative physical state");
-  if (mode !== "greet")
-    assert(guard > prompt.indexOf(empty.lines[0].content), "misleading old narration cannot override the empty cast");
+  assert.deepEqual(scenePromptPacket(prompt).context.actors, [], "Earlier prose cannot supply an absent actor");
   assert.doesNotMatch(prompt, /HIDDEN ROOM NAME|HIDDEN OCCUPANT|HIDDEN ACTIVITY/);
 }
 console.log(
