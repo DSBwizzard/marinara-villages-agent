@@ -53,7 +53,6 @@ export function scenePlaybackSteps(window: ScenePlaybackWindow, playerName: stri
         ...(line.expression ? { expression: line.expression } : {}),
         ...(line.gazeAt ? { gazeAt: line.gazeAt } : {}),
         ...(line.viaDoorway ? { viaDoorway: true } : {}),
-        ...(line.remoteDelivery ? { remoteDelivery: line.remoteDelivery } : {}),
       });
     });
   };

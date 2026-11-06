@@ -534,7 +534,6 @@ export function createSceneCommands({
         heardBy: line.heardBy,
         ...(line.viaDoorway ? { viaDoorway: true } : {}),
         ...(line.physicalIdsAfter ? { physicalIdsAfter: line.physicalIdsAfter } : {}),
-        ...(line.remoteDelivery ? { remoteDelivery: line.remoteDelivery } : {}),
         ...(line.contactHidden ? { contactHidden: true } : {}),
         ...(line.attentionEvidence ? { attentionEvidence: true } : {}),
         ...(line.contactReport ? { contactReport: true } : {}),

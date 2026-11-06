@@ -227,7 +227,6 @@ export type RoomStep = {
   anchorCursor?: string;
   presentation: StagingPresentation;
   viaDoorway?: boolean;
-  remoteDelivery?: "loud";
   /** A character id, or `""` for the player's own paragraph. */
   speakerId: string;
   /** What is printed over the paragraph: their name, or the player's. */

@@ -749,7 +749,6 @@ export type RoomLine = {
   /** Local cast after this line's completed movement; never unseen Zone attendance. */
   physicalIdsAfter?: string[];
   presenceChange?: true;
-  remoteDelivery?: "loud";
   /** The registers of this line's own paragraphs, on the same terms as a message's. */
   beats?: ChatBeat[];
   kind?: "narration" | "dialogue" | "side" | "whisper";

@@ -9,8 +9,6 @@ import { semanticAuthorityDomain } from "../../domain/rules/semantic-continuity.
 import type { NarrativeAdmission } from "../../domain/models/narrative-model.js";
 import type { GreetingTrace, VenueReplyFailureKind, VenueScene } from "../../domain/models/scene-model.js";
 import type { VillageState } from "../../domain/models/world.js";
-import { applyAcousticWitnesses } from "../../domain/rules/acoustic-witnesses.js";
-import { applyAttentionWitnesses } from "../../domain/rules/attention-witnesses.js";
 import { asRecord, asString, asTrimmedString } from "../../domain/rules/coerce.js";
 import {
   badGateway,
@@ -936,7 +934,6 @@ export function createSceneWriting({
               storedPlace,
               session,
               audience,
-              true,
               "redundant",
               !!semanticResult,
             )
@@ -953,7 +950,6 @@ export function createSceneWriting({
           const localIds = residentLocalIdsAt(session, contactMoves, index);
           if (!localIds.includes(line.speakerId) && context.remoteIds.includes(line.speakerId)) {
             line.viaDoorway = true;
-            if (context.delivery === "loud") line.remoteDelivery = context.delivery;
           }
           // Presentation never places an unseen remote listener in the player's Zone.
           line.staging = readStagingCues(line.staging, localIds);
@@ -970,28 +966,6 @@ export function createSceneWriting({
               { model: model.model, connectionId: model.connectionId, reason: "invalid-narrated-sound" },
               { preserveWriting: true, stages: ["writing-completion:" + requestKey] },
             );
-          throw cause;
-        }
-      }
-      if (session.contactGeneration?.attention && raw) {
-        try {
-          if (session.contactGeneration.acoustics) applyAcousticWitnesses(raw, session, message, parsed, contactMoves);
-          else applyAttentionWitnesses(raw, session, message, parsed, contactMoves);
-        } catch (cause) {
-          await rejectVenueCompletion({
-            model: model.model,
-            connectionId: model.connectionId,
-            reason: session.contactGeneration.acoustics
-              ? "acoustic-" +
-                String(
-                  (
-                    cause as {
-                      acousticReason?: string;
-                    }
-                  ).acousticReason ?? "invalid",
-                )
-              : "attention-witnesses",
-          });
           throw cause;
         }
       }
@@ -1040,7 +1014,7 @@ export function createSceneWriting({
       };
       const heardSignal = (value: unknown) => {
         const signal = readSpeechSignal(value);
-        return !(session.contactGeneration?.acoustics || session.contactGeneration?.zoneEvents) ||
+        return !session.contactGeneration?.zoneEvents ||
           !signal ||
           parsed.lines.some(
             (line) =>
@@ -1094,10 +1068,7 @@ export function createSceneWriting({
       const physicalVenue = findLocation(physicalVillage, session.placeId);
       let placeUpdate: ReturnType<typeof readVenueSceneChange> = null;
       try {
-        if (
-          (!session.contactGeneration || session.contactGeneration.attention || session.contactGeneration.zoneEvents) &&
-          (semanticResult || mode === "chat")
-        )
+        if ((!session.contactGeneration || session.contactGeneration.zoneEvents) && (semanticResult || mode === "chat"))
           placeUpdate = readVenueSceneChange(
             raw?.placeUpdate,
             physicalContext && physicalVenue ? venueInZone(physicalVenue, physicalContext.zoneId) : place,
@@ -1256,10 +1227,7 @@ export function createSceneWriting({
             : null,
         invitationSignal: null as
           import("../../domain/models/scene-model.js").VenueSubmission["invitationSignal"] | null,
-        recap:
-          session.contactGeneration?.acoustics || session.contactGeneration?.zoneEvents
-            ? ""
-            : asString(raw?.recap).slice(0, 600),
+        recap: session.contactGeneration?.zoneEvents ? "" : asString(raw?.recap).slice(0, 600),
         departures,
         sceneEnded,
         responseDiagnostics: diagnostics as ResponseDiagnostics | undefined,

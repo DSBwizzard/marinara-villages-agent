@@ -105,8 +105,7 @@ function privateSceneHearing(value: unknown): boolean {
     (Array.isArray(row.submissions) && row.submissions.some((turn) => asRecord(turn).zoneEventsVersion === 1)) ||
     (asRecord(row.operation).input !== undefined &&
       asRecord(asRecord(row.operation).input).interactionScopeVersion === 6) ||
-    asRecord(row.contactGeneration).zoneEvents === true ||
-    asRecord(row.contactGeneration).acoustics === true
+    asRecord(row.contactGeneration).zoneEvents === true
   );
 }
 export function sceneProcessingSummary(scene: VenueScene) {

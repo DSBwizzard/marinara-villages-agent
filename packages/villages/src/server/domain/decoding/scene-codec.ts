@@ -151,9 +151,6 @@ export function coerceSession(value: unknown): VenueScene {
                   ],
                 }
               : {}),
-            ...(row.remoteDelivery === "loud"
-              ? { remoteDelivery: row.remoteDelivery as VenueLine["remoteDelivery"] }
-              : {}),
             ...(row.contactHidden === true ? { contactHidden: true } : {}),
             ...(row.presenceChange === true ? { presenceChange: true as const } : {}),
             ...(row.attentionEvidence === true ? { attentionEvidence: true } : {}),
@@ -381,7 +378,6 @@ export function coerceSession(value: unknown): VenueScene {
                 ? { physicalContext: row.physicalContext as VenueSubmission["physicalContext"] }
                 : {}),
               ...(row.contact ? { contact: row.contact as ContactIntent } : {}),
-              ...(row.attention ? { attention: row.attention as VenueSubmission["attention"] } : {}),
               ...(Array.isArray(row.speechIdsAtTurn) ? { speechIdsAtTurn: row.speechIdsAtTurn as string[] } : {}),
               ...(row.contactEvidence
                 ? { contactEvidence: row.contactEvidence as VenueSubmission["contactEvidence"] }
