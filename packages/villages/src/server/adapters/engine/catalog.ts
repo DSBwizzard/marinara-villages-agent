@@ -1,4 +1,9 @@
-import type { ResidentDirectory, VillagerCard } from "../../domain/models/catalog-model.js";
+import type {
+  CapabilityCharacterRecord,
+  CapabilityPersonaRecord,
+  CapabilityResourceHost,
+} from "@marinara-engine/shared";
+import type { VillagerCard } from "../../domain/models/catalog-model.js";
 import type {
   VillageCatalogEntry,
   VillagePersona,
@@ -7,13 +12,8 @@ import type {
 } from "../../domain/models/world.js";
 import { asRecord, asString, asStringArray, asTrimmedString, condense } from "../../domain/rules/coerce.js";
 import { villagesResources } from "./runtime-host.js";
-import type {
-  CapabilityCharacterRecord,
-  CapabilityPersonaRecord,
-  CapabilityResourceHost,
-} from "@marinara-engine/shared";
 
-export type { VillagerCard, ResidentDirectory } from "../../domain/models/catalog-model.js";
+export type { VillagerCard } from "../../domain/models/catalog-model.js";
 
 // Villages — reading library cards.
 //
@@ -144,48 +144,6 @@ export async function findVillagerCard(characterId: string): Promise<VillagerCar
   const records = await villagesResources().listCharacters([characterId]);
   const record = records.find((entry) => entry.id === characterId);
   return record ? readVillagerCard(record) : null;
-}
-
-/**
- * Who lives here, as the prompt needs them: a short label for the roster and
- * the plain name for anywhere someone is described as living.
- */
-
-/** Names used during village runtime come from the card adopted at move-in. */
-export function residentsFromSnapshots(villagers: readonly VillageVillager[]): ResidentDirectory {
-  const labels = new Map<string, string>();
-  const names = new Map<string, string>();
-  for (const villager of villagers) {
-    const card = villager.cardSnapshot;
-    labels.set(card.id, card.comment ? `${card.name} — ${card.comment}` : card.name);
-    names.set(card.id, card.name);
-  }
-  return { labels, names };
-}
-
-/**
- * Who lives here, keyed by card id: a short label for the roster, e.g.
- * "Hana — apiarist", and the plain name for anywhere someone is described as
- * living.
- *
- * Both maps come out of ONE read of the library, so the name a villager hears
- * in the roster is the same name they hear attached to a house. The user-only
- * note is worth including in the label when it exists: it is usually the
- * player's own hint about who the character is. A card that is missing from the
- * library is simply absent from both maps, so a deleted resident drops out of
- * the roster instead of appearing as a nameless line.
- */
-export async function listResidents(characterIds: string[]): Promise<ResidentDirectory> {
-  const labels = new Map<string, string>();
-  const names = new Map<string, string>();
-  if (characterIds.length === 0) return { labels, names };
-  const records = await villagesResources().listCharacters(characterIds);
-  for (const record of records) {
-    const card = readVillagerCard(record);
-    labels.set(card.id, card.comment.length > 0 ? `${card.name} — ${card.comment}` : card.name);
-    names.set(card.id, card.name);
-  }
-  return { labels, names };
 }
 
 export function toCatalogEntry(card: VillagerCard, inVillage: boolean): VillageCatalogEntry {

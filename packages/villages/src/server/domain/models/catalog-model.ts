@@ -37,9 +37,3 @@ export type VillagerCard = {
   nameColor: string;
   dialogueColor: string;
 };
-export type ResidentDirectory = {
-  /** e.g. "Hana — apiarist". Used to tell a villager who else is around. */
-  labels: Map<string, string>;
-  /** Just the name, for the places someone is said to live. */
-  names: Map<string, string>;
-};

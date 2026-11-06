@@ -1,9 +1,5 @@
-import { findLocation } from "./places.js";
-import { findNpc, npcProfile } from "./places.js";
-import { currentVillageCircumstances } from "./prompt-preset.js";
 import { createHash } from "node:crypto";
 import { recentPlaceText } from "../../../shared/helpers/place-continuity.js";
-import { environmentObservations, environmentCircumstances } from "./narrative-environment.js";
 import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import type { VenueReplyLine, VenueScene } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
@@ -11,18 +7,19 @@ import { accessManagementPrompt } from "./access-speech.js";
 import { asRecord } from "./coerce.js";
 import { badGateway } from "./errors.js";
 import { memoryTerms } from "./memory-protection.js";
+import { environmentCircumstances, environmentObservations } from "./narrative-environment.js";
+import { findLocation, findNpc, npcProfile } from "./places.js";
+import { currentVillageCircumstances } from "./prompt-preset.js";
 
 import { projectSpeechContexts, projectSpeechPrompt } from "./project-interpretation.js";
 import { capturedSceneCalendar } from "./scene-halt.js";
-import { sharedLoreHistory } from "./scene-writing-history.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
 import { sceneMemoryContext, sceneMemoryUnit } from "./scene-memories.js";
+import { sharedLoreHistory } from "./scene-writing-history.js";
 import { socialContextState } from "./social-context.js";
 import { readSocialWishChanges } from "./social-wishes.js";
 import { venueZones, zoneControllerIds } from "./venue-zones.js";
 import { zoneEventHearingContext } from "./zone-events.js";
-
-export const SEMANTIC_VERSION = 2;
 export const SEMANTIC_OPERATION_BUDGET = {
   version: 1,
   requests: 12,

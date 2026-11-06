@@ -1,11 +1,11 @@
-import { sceneAccessState, sceneLayoutVenue } from "./scene-layout.js";
-import { sceneRelationshipView } from "./relationship-rules.js";
 import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
-import type { AttentionPlan } from "./scene-attention.js";
 import type { VenueLine, VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue, VillageVenueZone } from "../models/world.js";
-import { badRequest } from "./errors.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
+import { badRequest } from "./errors.js";
+import { sceneRelationshipView } from "./relationship-rules.js";
+import type { AttentionPlan } from "./scene-attention.js";
+import { sceneAccessState, sceneLayoutVenue } from "./scene-layout.js";
 import { type AccessContext, evaluateZoneAccess } from "./venue-access.js";
 import { canInviteToZone, canOccupyZone, venueZones, zoneClosed } from "./venue-zones.js";
 
@@ -36,29 +36,6 @@ export function readContactDelivery(value: unknown, message: string): ContactDel
   return normalize(message).includes(normalize(citation)) && loud.test(citation) && !hypothetical.test(citation)
     ? "loud"
     : "voice";
-}
-/** Sound reach is eligibility, never proof of hearing. Entry permissions do not block a voice. */
-export function contactReach(
-  state: VillageState,
-  venue: VillageVenue,
-  origin: string,
-  delivery: ContactDelivery,
-  boundary = "",
-  adjacentOnly = false,
-): string[] {
-  if (adjacentOnly) return contactNeighbors(venue, origin).filter((id) => id === boundary);
-  if (delivery === "voice") return contactNeighbors(venue, origin).filter((id) => !boundary || id === boundary);
-  const queue = [origin],
-    seen = new Set([origin]);
-  for (let index = 0; index < queue.length; index++) {
-    for (const next of contactNeighbors(venue, queue[index]!)) {
-      const zone = venueZones(venue).find((entry) => entry.id === next);
-      if (seen.has(next) || !zone || zoneClosed(state, venue, zone)) continue;
-      seen.add(next);
-      queue.push(next);
-    }
-  }
-  return queue.filter((id) => id !== origin);
 }
 export type ContactMove = {
   characterId: string;

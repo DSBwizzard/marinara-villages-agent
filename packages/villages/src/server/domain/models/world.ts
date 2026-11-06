@@ -740,12 +740,6 @@ export function isCurrentVenueId(venues: readonly VillageVenue[], venueId: unkno
   return typeof venueId === "string" && venues.some((venue) => venue.id === venueId);
 }
 
-/** Resolve a current venue without rebinding by name, index, or prose. */
-export function resolveCurrentVenue(venues: readonly VillageVenue[], venueId: unknown): VillageVenue | null {
-  if (!isCurrentVenueId(venues, venueId)) return null;
-  return venues.find((venue) => venue.id === venueId) ?? null;
-}
-
 /**
  * Someone the village's memory is about.
  *

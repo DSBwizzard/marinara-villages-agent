@@ -1,14 +1,11 @@
 import type { OpeningView } from "../../../shared/contracts/opening.js";
-import type { VillageState } from "../models/world.js";
 import type { VenueScene } from "../models/scene-model.js";
+import type { VillageState } from "../models/world.js";
 import { asRecord, asStringArray, asTrimmedString } from "./coerce.js";
 import { conflict } from "./errors.js";
 export type OpeningRecord = OpeningView;
 export function initialOpening(residentIds: string[], communityVenueId: string, id: string): OpeningRecord {
   return { id, version: 3, stage: "gathering", communityVenueId, gatheringSceneId: "", residentIds: [...residentIds] };
-}
-export function openingActive(state: Pick<VillageState, "opening">): boolean {
-  return state.opening?.stage === "gathering";
 }
 export function readOpening(value: unknown): OpeningRecord | undefined {
   if (value == null) return undefined;
