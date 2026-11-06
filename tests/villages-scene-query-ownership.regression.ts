@@ -105,9 +105,7 @@ function fixture(name: string) {
     records: Document[] = [],
     calls: string[] = [],
     owners: unknown[] = [];
-  let paused = false,
-    failWorld: Error | undefined,
-    failList: Error | undefined;
+  let paused: "world" | "session" | undefined, failWorld: Error | undefined, failList: Error | undefined;
   const entered = deferred(),
     gate = deferred();
   const note = (call: string) => {
@@ -118,14 +116,20 @@ function fixture(name: string) {
   const service = createSceneQueryService({
     async readSession(id) {
       note("session:" + id);
+      if (paused === "session") {
+        paused = undefined;
+        entered.resolve();
+        await gate.promise;
+        note("session-resumed");
+      }
       const found = sessions.get(id);
       if (!found) throw Error("Missing Scene");
       return structuredClone(found);
     },
     async readVillageState() {
       note("world");
-      if (paused) {
-        paused = false;
+      if (paused === "world") {
+        paused = undefined;
         entered.resolve();
         await gate.promise;
         note("world-resumed");
@@ -184,8 +188,8 @@ function fixture(name: string) {
     add,
     entered,
     gate,
-    pause() {
-      paused = true;
+    pause(target: "world" | "session" = "world") {
+      paused = target;
     },
     failWorld(error: Error) {
       failWorld = error;
@@ -401,7 +405,7 @@ async function main() {
   older.add(ownedScene("C"));
   newer.add(ownedScene("D"));
   const releaseC = c.run(() => configureSceneQueries(older.queries));
-  older.pause();
+  older.pause("session");
   const heldEvidence = c.run(() => sceneQueries().readProjectTurnEvidence("same", "proof"));
   await older.entered.promise;
   const releaseD = c.run(() => d.run(() => configureSceneQueries(newer.queries)));
@@ -414,7 +418,7 @@ async function main() {
   assert.equal(cEvidence.zoneId, "zone-C");
   assert.equal(cEvidence.message, "C message");
   assert.equal(cEvidence.lines[0]?.content, "C reply");
-  assert.deepEqual(older.calls, ["session:same", "world", "world-resumed"]);
+  assert.deepEqual(older.calls, ["session:same", "session-resumed"]);
   assert(older.owners.every((owner) => owner === c));
   assert(newer.owners.every((owner) => owner === d));
   d.run(() => c.run(releaseC));
