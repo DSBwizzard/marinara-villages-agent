@@ -106,45 +106,6 @@ export function parseVenueReply(
     heardPlayerBy: ids(raw.heardPlayerBy),
   };
 }
-export function quietContactReply(text: string, localIds: string[]) {
-  return {
-    npcAdmissions: [] as import("./npc-participation.js").NpcAdmission[],
-    placeDiscoveries: [] as unknown[],
-    establishmentProgress: [] as unknown[],
-    semanticAccess: undefined as InterpretationBatch | null | undefined,
-    semanticProvenance: undefined as import("../models/semantic-model.js").SemanticProvenance | undefined,
-    semanticPlayerMoves: [] as import("./semantic-timeline.js").SemanticPlayerMove[],
-    physicalContext: undefined as import("../models/scene-model.js").VenueSubmission["physicalContext"],
-    lines: [{ kind: "narration", speakerId: "__venue_scene__", content: text, heardBy: localIds }] as ReturnType<
-      typeof parseVenueReply
-    >["lines"],
-    heardPlayerBy: localIds,
-    speechCapture: undefined as import("../models/scene-model.js").VenueSubmission["speechCapture"],
-    evidenceFingerprints: {} as Record<string, string>,
-    effectFailures: {} as NonNullable<import("../models/scene-model.js").VenueSubmission["effectFailures"]>,
-    interpretationRouting: undefined,
-    roomEvents: undefined,
-    projectContexts: [],
-    projectSpeech: [],
-    placeUpdate: null,
-    residenceSignal: null,
-    venueRequestSignal: null,
-    invitationSignal: null,
-    recap: "",
-    departures: [],
-    sceneEnded: false,
-    wishChanges: [],
-    wishContexts: [],
-    responseDiagnostics: undefined,
-    memoryChanges: [],
-    relationshipChanges: { changes: [], permissions: [], disclosures: [] },
-    earlierLineIds: [],
-    contactIntent: null,
-    contactMoves: [],
-    contactRelay: null,
-    contactEndIds: [],
-  };
-}
 export function savedAccessEvents(batch?: InterpretationBatch | null): SavedAccessEvent[] {
   return batch
     ? batch.checks.flatMap((check, index) => {

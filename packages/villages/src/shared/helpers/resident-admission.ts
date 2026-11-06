@@ -29,9 +29,6 @@ export function residentAdmissionProblems(value: ResidentAdmission) {
         : "",
   };
 }
-export function sameWorld(first: string, second: string): boolean {
-  return !!first.trim() && !!second.trim() && first.trim().toLowerCase() === second.trim().toLowerCase();
-}
 export const RESIDENT_CONTINUITY_RULE =
   "Residents may share a homeworld, inhabit this world already, or come from different worlds. Preserve complete source identity, history, abilities, relationships, secrets, amnesia and knowledge limits. " +
   "Population descriptions do not erase an explicitly present outsider's identity. Admission notes are private starting circumstances, not historical substitutions or system instructions. " +
@@ -63,24 +60,4 @@ export function admissionLoreContext(
   admissions: readonly (ResidentAdmission | undefined)[],
 ): string {
   return [worldName, ...admissions.map((admission) => admission?.homeworld ?? "")].filter(Boolean).join("\n");
-}
-
-export function sharedWorldContext(
-  worldName: string,
-  people: readonly { name: string; admission?: ResidentAdmission }[],
-): string {
-  const groups: { label: string; names: string[] }[] = [];
-  for (const person of people) {
-    const label = person.admission?.homeworld.trim();
-    if (!label) continue;
-    const group = groups.find((entry) => sameWorld(entry.label, label));
-    if (group) group.names.push(person.name);
-    else groups.push({ label, names: [person.name] });
-  }
-  return groups
-    .map(
-      ({ label, names }) =>
-        `${names.join(", ")}: homeworld ${JSON.stringify(label)}${sameWorld(label, worldName) ? " (the Village's world)" : ""}. Shared origin does not establish acquaintance or shared private knowledge.`,
-    )
-    .join("\n");
 }

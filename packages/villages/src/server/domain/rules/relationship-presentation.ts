@@ -1,4 +1,3 @@
-import type { RelationshipReceipt, RelationshipState } from "../models/relationship-types.js";
 import { selectSocialRecords } from "./social-context.js";
 import type { VillageState } from "../models/world.js";
 
@@ -33,18 +32,6 @@ export function relationshipWritingPrompt(village: VillageState, fromId: string)
   ].join("\n");
 }
 export const relationshipPrompt = relationshipWritingPrompt;
-
-/** A private interpretation never produces a public notification. Disclosures are visible in their source. */
-export function relationshipChangeNotices(
-  _receipts: RelationshipReceipt[],
-  _state: RelationshipState,
-  _village: VillageState,
-): { id: string; kind: "relationship-up" | "relationship-down"; text: string; detail?: string }[] {
-  return [];
-}
-export function filterRelationshipNotices<T extends { id: string; kind: string }>(
-  notices: readonly T[],
-  _state: RelationshipState | undefined,
-): T[] {
+export function filterRelationshipNotices<T extends { id: string; kind: string }>(notices: readonly T[]): T[] {
   return notices.filter((notice) => notice.kind !== "relationship-up" && notice.kind !== "relationship-down");
 }

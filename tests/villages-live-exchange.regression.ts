@@ -4,7 +4,6 @@ import {
   bindLiveProposals,
   createLiveEvidenceContext,
   liveEvidence,
-  mergeLiveReplyProposals,
 } from "../packages/villages/src/server/domain/rules/live-exchange.js";
 
 const stamp = "2026-10-07T00:00:00.000Z";
@@ -104,44 +103,6 @@ assert.equal(bound.earlierLineIds, earlier);
 assert.deepEqual(bound.memoryContexts, contexts);
 assert.equal(bound.replyLineIds, replyIds);
 assert.equal(bound.version, 1, "Binding must preserve metadata for the later authoritative processors to validate.");
-
-const merged = mergeLiveReplyProposals(
-  {
-    memoryChanges: rawMemory,
-    relationshipChanges: rawRelationship,
-    earlierLineIds: ["earlier", "shared"],
-    memoryContexts: { old: { protection: { fingerprint: "old" } } as any },
-  },
-  {
-    memoryChanges: [
-      { learners: { a: { support: ["player", 0, 2, "earlier"].map((lineId) => ({ lineId, excerpt: "quote" })) } } },
-    ],
-    relationshipChanges: { changes: [{ lineIds: ["player", 1, "shared"] }], permissions: [], disclosures: [] },
-    earlierLineIds: ["shared", "other"],
-    memoryContexts: { current: { protection: { fingerprint: "current" } } as any },
-  },
-  4,
-);
-assert.deepEqual(
-  (merged.memoryChanges![1] as any).learners.a.support.map((row: any) => row.lineId),
-  [3, 4, 6, "earlier"],
-);
-assert.deepEqual(merged.relationshipChanges.changes, [rawRelationship.changes[0], { lineIds: [3, 5, "shared"] }]);
-assert.deepEqual(merged.earlierLineIds, ["earlier", "shared", "other"]);
-assert.deepEqual(Object.keys(merged.memoryContexts), ["old", "current"]);
-assert.deepEqual(rawMemory[0].evidence, ["player", 0]);
-assert.deepEqual(rawRelationship.changes[0].lineIds, ["player", 0, "earlier"]);
-const missing = mergeLiveReplyProposals(
-  {},
-  { memoryChanges: [], relationshipChanges: { changes: [], permissions: [], disclosures: [] } },
-  1,
-);
-assert.equal(missing.memoryChanges, undefined);
-assert.equal(
-  missing.relationshipChanges.changes,
-  undefined,
-  "Missing metadata must remain distinguishable from an empty valid proposal list.",
-);
 
 console.log(
   "PASS pure live-exchange citation, witness, captured-evidence and correction-version rules without Engine runtime",

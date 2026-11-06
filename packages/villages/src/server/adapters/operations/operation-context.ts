@@ -53,9 +53,6 @@ export function assertVenueOwnership(data?: Record<string, unknown>): void {
 export function venueOperationSnapshot<T>(): T | undefined {
   return operations().venueOperationSnapshot<T>();
 }
-export function venueOperationInput(): Record<string, unknown> | undefined {
-  return operations().venueOperationInput();
-}
 export function venueDebugContext(): Record<string, unknown> {
   return operations().venueDebugContext();
 }
