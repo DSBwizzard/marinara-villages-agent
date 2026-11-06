@@ -610,6 +610,22 @@ async function main() {
   assert.equal(invitations.access?.checks.length, 2);
   assert.equal((invitations.access?.checks[0].facts as any).accessCommand.accompanied, true);
   assert.equal(invitations.access?.results[0].source, "gm");
+  const mixedInvitations = await run(
+    "",
+    response("", {
+      access: [row, { ...row, zoneId: "other" }, { ...row, outcome: "unresolved", conditions: ["after supper"] }],
+    }),
+    [accessLine],
+  );
+  assert.equal(mixedInvitations.access?.checks.length, 3);
+  assert.deepEqual(
+    mixedInvitations.access?.results.map((result) => result.outcome),
+    ["invite-now", "invite-now", "unresolved"],
+  );
+  const mixedCommands = mixedInvitations.access!.checks.map((check) => (check.facts as any).accessCommand);
+  assert(mixedCommands[0] && mixedCommands[1]);
+  assert.notEqual(mixedCommands[0].operationId, mixedCommands[1].operationId);
+  assert.equal(mixedCommands[2], undefined);
   assert.equal(
     (
       await run("", response("", { access: [{ ...row, outcome: "unresolved", conditions: ["after supper"] }] }), [
