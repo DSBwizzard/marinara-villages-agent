@@ -163,9 +163,6 @@ export function materializePlayerSpeech(raw: Record<string, unknown>, input: str
   });
 }
 
-export const PLAYER_CAPTURE_CONTRACT =
-  'playerSpeechCapture(required):{status:"captured|silent|uncertain",utterances:[...]}. ALL current speech,in source order; exclude thoughts/actions,recalled/hypothetical/example/negated speech. Quoted:{quote:0},supplied ID only. Unquoted:{text:"exact span",occurrence:1}; No IDs:use text. "I tell Aqua that I dislike mint tea" captures "I dislike mint tea",not quote:0; naming Aqua is not whispering. Interrupted:sources:[...]. Default ordinary; whisper:delivery:"whisper",local targetId. Silent:utterances:[]; uncertain:recovery. No player speech in segments:code inserts/remaps it. Capture never limits character honesty/wording.';
-
 /** Insert omitted utterances without changing existing prose; remap every current-line reference. */
 export function recoverPlayerSpeech(saved: Record<string, unknown>, metadata: Record<string, unknown>) {
   if (Object.keys(metadata).some((key) => !["playerSpeechCapture", "additionalSpeech"].includes(key)))

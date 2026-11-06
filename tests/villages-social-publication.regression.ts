@@ -28,6 +28,7 @@ let scene = coerceSession({
   lines: [],
   submissions: [
     {
+      mode: "chat",
       id: "source",
       at: new Date().toISOString(),
       semanticProvenance: {

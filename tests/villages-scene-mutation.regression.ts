@@ -94,7 +94,6 @@ applySceneMutation(currentAction, "scene", (saved) => {
       {
         id: "act",
         mode: "chat",
-        requestMode: "act",
         at: stamp,
         message: "Act",
         action: { happened: true },
@@ -103,7 +102,7 @@ applySceneMutation(currentAction, "scene", (saved) => {
     ]).submissions[0]!,
   );
 });
-assert.ok(currentAction.submissions[0]!.processing, "current Act alias starts saved exchange processing");
+assert.ok(currentAction.submissions[0]!.processing, "current Chat action starts saved exchange processing");
 assert.deepEqual(currentAction.submissions[0]!.processing!.actionReceiptIds, ["venue-chat:scene:act"]);
 const currentProcessing = structuredClone(currentAction.submissions[0]!.processing);
 assert.equal(
@@ -114,6 +113,7 @@ assert.deepEqual(currentAction.submissions[0]!.processing, currentProcessing);
 const captured = scene([
   {
     id: "captured",
+    mode: "chat",
     message: "Same visible turn",
     wishContexts: [
       {
@@ -144,5 +144,5 @@ assert.equal(
   false,
 );
 console.log(
-  "Scene mutation domain passed: no-op, identity, revision, notice ordering, replayable processing and current Act admission; no Engine or providers.",
+  "Scene mutation domain passed: no-op, identity, revision, notice ordering, replayable processing and current Chat action admission; no Engine or providers.",
 );

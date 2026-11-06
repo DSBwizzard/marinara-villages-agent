@@ -14,7 +14,7 @@ import { currentVillageCircumstances } from "./prompt-preset.js";
 import { projectSpeechContexts, projectSpeechPrompt } from "./project-interpretation.js";
 import { capturedSceneCalendar } from "./scene-halt.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
-import { sceneMemoryContext, sceneMemoryUnit } from "./scene-memories.js";
+import { sceneMemoryContext } from "./scene-memories.js";
 import { sharedLoreHistory } from "./scene-writing-history.js";
 import { socialContextState } from "./social-context.js";
 import { readSocialWishChanges } from "./social-wishes.js";
@@ -26,25 +26,8 @@ export const SEMANTIC_OPERATION_BUDGET = {
   inputTokens: 144000,
   outputTokens: 32768,
 } as const;
-export const semanticNarrationCore = (raw: Record<string, unknown>) =>
-  Object.fromEntries(
-    Object.entries(raw).filter(([key]) =>
-      ["segments", "lines", "heardPlayerBy", "playerSpeechCapture", "residentActions", "npcIntroductions"].includes(
-        key,
-      ),
-    ),
-  );
 export const semanticHash = (value: unknown): string =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
-
-/** Model-only projection; canonical checkpoint evidence and its hash stay untouched. */
-export function semanticPromptContext(context: Record<string, unknown>) {
-  const { loreSelection: _usedSelector, setting, worldName, actors, ...changingContext } = context;
-  const social = asRecord(changingContext.social);
-  if (social.capturedAndScene !== undefined && JSON.stringify(social.capturedAndScene) === JSON.stringify(social.live))
-    changingContext.social = { ...social, capturedAndScene: { sameAs: "live" } };
-  return { setting, worldName, actors, ...changingContext };
-}
 
 const semanticActors = (scene: VenueScene) =>
   scene.contactGeneration?.actorIds ?? [
@@ -368,23 +351,4 @@ export function readSemanticEffects(raw: unknown, hash: string): Record<string, 
           )
         : value;
   return clean(result) as Record<string, unknown>;
-}
-
-/** Stable effect identity excludes model text/order; a reworded retry cannot re-award evidence. */
-export function semanticUnit(domain: string, value: unknown): string {
-  if (domain === "memory") return sceneMemoryUnit(value);
-  const row = asRecord(value);
-  return semanticHash([
-    domain,
-    row.kind,
-    row.category,
-    row.fromId,
-    row.toId,
-    row.dimension,
-    [
-      ...new Set(
-        (Array.isArray(row.evidence) ? row.evidence : Array.isArray(row.lineIds) ? row.lineIds : []) as unknown[],
-      ),
-    ].sort(),
-  ]);
 }

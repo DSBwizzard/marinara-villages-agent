@@ -347,7 +347,7 @@ console.log("Places: shared Zones, identity, scoped control, private projection 
 // A new arrival can be named in two exact scoped changes without losing the Place snapshot.
 {
   const { createSceneCommands } = await import("../packages/villages/src/server/features/scenes/command-service.js");
-  const { accessManagementChecks } = await import("../packages/villages/src/server/domain/rules/access-speech.js");
+  const { readAccessCommand } = await import("../packages/villages/src/server/domain/rules/venue-access.js");
   const { captureSceneContinuity } = await import("../packages/villages/src/server/domain/rules/scene-continuity.js");
   const { admitNpcParticipants } = await import("../packages/villages/src/server/domain/rules/npc-participation.js");
   const batchWorld = defaultVillageState();
@@ -414,35 +414,45 @@ console.log("Places: shared Zones, identity, scoped control, private projection 
   };
   saved.submissions.push(turn);
   applyPlaceExchange(batchWorld, saved, turn);
-  const checks = accessManagementChecks(
-    { ...batchWorld, worldPlaces: saved.continuity.facts.worldPlaces },
-    saved.lines,
-    [
-      {
-        kind: "manage-access",
-        actorId: alice,
-        venueId: site.id,
-        evidence: [1],
-        command: {
-          action: "zone-policy",
-          zoneId: "room",
-          policy: { ...site.location.zones![1].access, managerIds: [alice, jo.id] },
-        },
+  const checks = [
+    {
+      kind: "manage-access",
+      actorId: alice,
+      venueId: site.id,
+      evidence: [1],
+      command: {
+        action: "zone-policy",
+        zoneId: "room",
+        policy: { ...site.location.zones![1].access, managerIds: [alice, jo.id] },
       },
-      {
-        kind: "manage-access",
-        actorId: alice,
-        venueId: site.id,
-        evidence: [2],
-        command: {
-          action: "zone-policy",
-          zoneId: "annex",
-          policy: { ...site.location.zones![2].access, memberIds: [jo.id] },
-        },
+    },
+    {
+      kind: "manage-access",
+      actorId: alice,
+      venueId: site.id,
+      evidence: [2],
+      command: {
+        action: "zone-policy",
+        zoneId: "annex",
+        policy: { ...site.location.zones![2].access, memberIds: [jo.id] },
       },
-    ],
-    "batch",
-  );
+    },
+  ].map((event, index) => {
+    const operationId = "batch:" + index;
+    const revision = findLocation(batchWorld, site.id)!.access!.revision;
+    return {
+      id: operationId,
+      facts: {
+        actorId: event.actorId,
+        venueId: event.venueId,
+        zoneId: event.command.zoneId,
+        accessRevision: revision,
+        semanticVersion: 2,
+        accessCommand: readAccessCommand({ ...event.command, operationId, expectedRevision: revision }),
+      },
+      evidence: event.evidence.map((segment) => ({ id: "draft:" + segment })),
+    };
+  });
   assert.equal(checks.length, 2);
   const commands = createSceneCommands({
     readVillageState: async () => batchWorld,
@@ -458,7 +468,7 @@ console.log("Places: shared Zones, identity, scoped control, private projection 
   const results = checks.map((check) => ({
     outcome: "access-management",
     evidenceIds: check.evidence.map((line: any) => line.id),
-    source: "system",
+    source: "gm",
     reason: "Exact witnessed policy",
   }));
   await commands.recordRoomAccessEvents(

@@ -67,8 +67,20 @@ await withBrowser(browser, async () => {
         line("after", "narration", "__venue_scene__", "You wait in the Exterior."),
       ],
       submissions: [
-        { id: "join", activeIdsAtTurn: [], activeIdsAfterTurn: ["mara"], replyLineIds: ["remote", "arrival", "local"] },
-        { id: "return", activeIdsAtTurn: ["mara"], activeIdsAfterTurn: [], replyLineIds: ["departure", "after"] },
+        {
+          mode: "chat",
+          id: "join",
+          activeIdsAtTurn: [],
+          activeIdsAfterTurn: ["mara"],
+          replyLineIds: ["remote", "arrival", "local"],
+        },
+        {
+          mode: "chat",
+          id: "return",
+          activeIdsAtTurn: ["mara"],
+          activeIdsAfterTurn: [],
+          replyLineIds: ["departure", "after"],
+        },
       ],
     };
     await page.route("http://villages.test/", (route) =>

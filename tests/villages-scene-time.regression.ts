@@ -235,7 +235,7 @@ function learn(state: VillageState, text: string, sceneId?: string) {
     reason: "Accepted",
     physicalOutcome: event,
   };
-  scene.submissions.push({ id: "hop" } as any);
+  scene.submissions.push({ mode: "chat", id: "hop" } as any);
   zone.description = "An unrelated later delivery.";
   zone.state.revision++;
   const before = structuredClone(state);
@@ -263,7 +263,7 @@ function learn(state: VillageState, text: string, sceneId?: string) {
     evidenceIds: ["said"],
     sceneFacts: facts,
   };
-  scene.submissions.push({ id: "reveal" } as any);
+  scene.submissions.push({ mode: "chat", id: "reveal" } as any);
   wish.wish = "A later different Wish";
   const view = sceneContinuityView(state, scene);
   assert.equal(view.villagers[0]!.wishes[0]!.wish, "Share stories about motorcycles");
@@ -314,7 +314,7 @@ function learn(state: VillageState, text: string, sceneId?: string) {
     lineIds: [],
     evidence: [],
   };
-  scene.submissions.push({ id: "own-turn" } as any);
+  scene.submissions.push({ mode: "chat", id: "own-turn" } as any);
   const known = sceneContinuityView(state, scene).relationshipContext!;
   assert.equal(
     known.edges[relationshipKey("a", "player")]!.connection,

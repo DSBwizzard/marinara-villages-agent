@@ -483,6 +483,7 @@ const publicMemory = publicSceneResponse({
   lines: [{ id: "secret", contactHidden: true, content: "SECRET WORDS" }],
   submissions: [
     {
+      mode: "chat",
       attention: plan,
       recollections: [
         { text: "SECRET WORDS", subjectCharacterIds: ["near"], knownByCharacterIds: ["near"], lineIds: ["secret"] },
@@ -592,7 +593,7 @@ assert.deepEqual(
 
 const privateRecords = publicSceneResponse({
   ...scene,
-  submissions: [{ zoneEventsVersion: 1, heardPlayerBy: ["local"] }],
+  submissions: [{ mode: "chat", zoneEventsVersion: 1, heardPlayerBy: ["local"] }],
   lines: [{ id: "visible", content: "Hi", heardBy: ["local", "near"] }],
 } as any);
 assert(!JSON.stringify(privateRecords).includes("heardBy"));

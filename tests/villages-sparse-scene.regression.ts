@@ -5,7 +5,6 @@ import { parseVenueReply } from "../packages/villages/src/server/domain/rules/sc
 import {
   completeSceneObject,
   normalizeRecoverableSceneReply,
-  normalizeSceneEffectReferences,
   normalizeSparseSceneReply,
 } from "../packages/villages/src/server/domain/rules/scene-writing-contract.js";
 import { sceneWritingHistory } from "../packages/villages/src/server/domain/rules/scene-writing-history.js";
@@ -24,14 +23,13 @@ import { zoneEventReply } from "../packages/villages/src/server/domain/rules/zon
     assert.deepEqual(result.failures, {});
     assert.deepEqual(result.raw.relationshipChanges, { changes: [], permissions: [], disclosures: [] });
   }
-  const refs = ["0", "utterance:0", "saved-line", "01", "-1", "0.0", " 0", "99"];
+  const refs = [0, "utterance:0", "saved-line", "0", "01", "-1", "0.0", " 0", "99"];
   const wire = {
     ...core,
     memoryChanges: [{ learners: { rosa: { support: refs.map((lineId) => ({ lineId, excerpt: "tea" })) } } }],
     relationshipChanges: { changes: [{ lineIds: refs }] },
   };
-  const canonical = normalizeSceneEffectReferences(wire);
-  const expanded = materializePlayerSpeech(canonical, "Hello.");
+  const expanded = materializePlayerSpeech(wire, "Hello.");
   assert.deepEqual(
     (expanded.memoryChanges as any)[0].learners.rosa.support.map((row: any) => row.lineId),
     [1, 0, ...refs.slice(2)],
@@ -41,10 +39,6 @@ import { zoneEventReply } from "../packages/villages/src/server/domain/rules/zon
     (wire.memoryChanges as any)[0].learners.rosa.support.map((row: any) => row.lineId),
     refs,
     "normalization never mutates saved input",
-  );
-  assert.equal(
-    (normalizeSceneEffectReferences(wire, ["0"]).memoryChanges as any)[0].learners.rosa.support[0].lineId,
-    "0",
   );
   const change = {
     fromId: "rosa",
@@ -333,8 +327,8 @@ for (const supplied of [
   const floodedScene = {
     lines: [preference, correction, ...flooded],
     submissions: [
-      { message: topic, replyLineIds: ["topic-68"] },
-      { message: topic, replyLineIds: ["topic-69"] },
+      { mode: "chat", message: topic, replyLineIds: ["topic-68"] },
+      { mode: "chat", message: topic, replyLineIds: ["topic-69"] },
     ],
   };
   const focused = sceneWritingHistory(
@@ -351,7 +345,7 @@ for (const supplied of [
   const contextual = line("older-detail", "The larch workshop uses the scarlet dovetail pattern.");
   const contextScene = {
     lines: [contextual, ...filler, line("followup", "The scarlet dovetail pattern.")],
-    submissions: [{ message: "scarlet dovetail", replyLineIds: ["followup"] }],
+    submissions: [{ mode: "chat", message: "scarlet dovetail", replyLineIds: ["followup"] }],
   };
   const followup = sceneWritingHistory(contextScene as any, contextScene.lines as any, "?", ["rosa"]);
   assert(
@@ -448,6 +442,7 @@ for (const supplied of [
       lines: [],
       submissions: [
         {
+          mode: "chat",
           zoneEventsVersion: 1,
           effectFailures: {
             projects: {

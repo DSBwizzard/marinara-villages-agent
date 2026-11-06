@@ -374,10 +374,12 @@ export function coerceSession(value: unknown): VenueScene {
     lines,
     submissions: Array.isArray(raw.submissions)
       ? raw.submissions
-          .map((value) => {
+          .map((value): VenueSubmission => {
             const shared = reuseSceneSubmission(value, participantIds);
             if (shared) return shared;
             const row = asRecord(value);
+            if (row.mode !== "chat" && row.mode !== "contact" && row.mode !== "leave")
+              throw conflict("Unsupported saved Scene action.");
             return {
               id: asTrimmedString(row.id),
               ...(row.lore !== undefined ? { lore: readLoreUse(row.lore) } : {}),
@@ -393,9 +395,6 @@ export function coerceSession(value: unknown): VenueScene {
               ...(row.narrativeSource
                 ? { narrativeSource: structuredClone(row.narrativeSource) as VenueSubmission["narrativeSource"] }
                 : {}),
-              ...(row.requestMode === "act" || row.requestMode === "fulfill"
-                ? { requestMode: row.requestMode as "act" | "fulfill" }
-                : {}),
               ...(row.semanticConclude === true ? { semanticConclude: true } : {}),
               ...(Array.isArray(row.semanticPlayerMoves)
                 ? { semanticPlayerMoves: row.semanticPlayerMoves as VenueSubmission["semanticPlayerMoves"] }
@@ -409,18 +408,7 @@ export function coerceSession(value: unknown): VenueScene {
               ...(row.contactEvidence
                 ? { contactEvidence: row.contactEvidence as VenueSubmission["contactEvidence"] }
                 : {}),
-              mode:
-                row.mode === "contact"
-                  ? ("contact" as const)
-                  : row.mode === "leave"
-                    ? ("leave" as const)
-                    : row.mode === "act"
-                      ? ("act" as const)
-                      : row.mode === "fulfill"
-                        ? ("fulfill" as const)
-                        : row.mode === "ask"
-                          ? ("ask" as const)
-                          : ("chat" as const),
+              mode: row.mode,
               targetId: asString(row.targetId),
               ...(typeof row.zoneIdAtTurn === "string" ? { zoneIdAtTurn: row.zoneIdAtTurn } : {}),
               ...(row.areaAtTurn === "outside" ||

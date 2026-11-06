@@ -48,7 +48,7 @@ for (const mode of ["cancel", "complete", "removed-zone"]) {
   scene.submissions = [
     {
       id: "late",
-      mode: "act",
+      mode: "chat",
       message: "Leave a mark",
       at: new Date().toISOString(),
       processing,

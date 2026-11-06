@@ -323,7 +323,7 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
       after: { description: fixture.zone.description, state: structuredClone(fixture.zone.state) },
     },
   });
-  repairScene.submissions.push({ id: "repair" });
+  repairScene.submissions.push({ mode: "chat", id: "repair" });
   fixture.state.exchangeReceipts["repair:physical"] = {
     sceneId: repairScene.id,
     submissionId: "repair",
