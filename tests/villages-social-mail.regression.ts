@@ -99,7 +99,6 @@ const change = (input: SocialMailInput, revision: number, reply: boolean) => ({
   lineIds: [reply ? input.messageId + ":reply" : input.messageId],
 });
 let active: SocialMailInput;
-let gmAdmissions = false;
 const promptHistory: string[] = [];
 const coreService = createSocialMail({
   backgroundSetting: async (key: string, create: () => unknown) => {
@@ -244,8 +243,6 @@ const coreService = createSocialMail({
     }
     if (!queued.some((row) => row.subjectId === job.subjectId && row.revision === job.revision)) {
       const retained = structuredClone(job);
-      // This suite retains the two-stage saved-mail contract; GM admissions have separate coverage.
-      if (!gmAdmissions) delete retained.input.gmVersion;
       queued.push(retained);
     }
   },
@@ -270,7 +267,7 @@ const coreService = createSocialMail({
           trimmed:
             (rejectNarrationContext && connectionId === "narration") ||
             (rejectKnownContext &&
-              connectionId === "system" &&
+              connectionId === "narration" &&
               JSON.stringify(messages).includes("mandatory-correction-sentinel")),
         };
       },
@@ -296,23 +293,13 @@ const coreService = createSocialMail({
       );
     calls++;
     if (model.connectionId === "system") assert.equal(options.reasoningEffort, "low");
-    if (model.connectionId === "narration" && active.gmVersion !== 1) {
-      if (active.admitted.worldRules === "The sun never sets.") {
-        assert.match(JSON.stringify(messages), /The sun never sets/);
-        assert.match(JSON.stringify(messages), /A festival is underway/);
-        assert.match(JSON.stringify(messages), /not automatic knowledge/);
-      }
-      const value = { content: JSON.stringify({ text: narrationReply }), finishReason: "stop" };
-      if (writingReplay) writingReplay.response = { messages: JSON.stringify(messages), value };
-      return value;
-    }
     if (failMeaning) throw Error("Meaning provider unavailable");
     if (truncateMeaning) return { content: "", finishReason: "length", usage: { completionReasoningTokens: 4096 } };
     const replyChange = change(active, 0, true);
     if (sourceOnlyReply) replyChange.lineIds = [active.messageId];
-    return {
+    const value = {
       content: JSON.stringify({
-        ...(active.gmVersion === 1 ? { text: narrationReply } : {}),
+        ...(model.connectionId === "narration" ? { text: narrationReply } : {}),
         replyMemoryChanges: active.sourceText.startsWith("MEMORY:")
           ? [
               {
@@ -391,6 +378,9 @@ const coreService = createSocialMail({
       }),
       finishReason: "stop",
     };
+    if (model.connectionId === "narration" && writingReplay)
+      writingReplay.response = { messages: JSON.stringify(messages), value };
+    return value;
   },
 } as any);
 const service = correspondenceTestClient(coreService, snapshot);
@@ -495,12 +485,8 @@ const beforeInvalidReply = calls;
   input.admitted.villagers[0].wishes = [wish];
   rejectKnownContext = true;
   try {
-    await assert.rejects(service.handler.generate(input), /context does not fit.*system/);
-    assert.equal(
-      calls,
-      beforeInvalidReply,
-      "Known complete System authority is fitted before buying Narration or System work",
-    );
+    await assert.rejects(service.handler.generate(input), /context does not fit.*narration/);
+    assert.equal(calls, beforeInvalidReply, "Complete admitted authority is fitted before buying the GM response");
     assert.equal(input.admitted.villagers[0].wishes[0].history[0].sourceId, "exact-earlier-source");
   } finally {
     rejectKnownContext = false;
@@ -515,7 +501,7 @@ await assert.rejects(
 assert.equal(calls, beforeInvalidReply, "Unavailable captured relationships stop before any model purchase.");
 narrationReply = "Hello. *Ada smiles and waves.*";
 await assert.rejects(() => service.handler.generate({ ...active, sourceText: "*waves* Hello" }), /roleplay action/);
-assert.equal(calls, beforeInvalidReply + 1, "Invalid reply stops before the System interpretation request");
+assert.equal(calls, beforeInvalidReply + 1, "Invalid combined reply is rejected after its one response");
 assert.equal(
   social.mailThreads[active.threadId]!.messages[0]!.text,
   "Hello\n  exact text",
@@ -535,8 +521,8 @@ await service.handler.generate(active);
 await new Promise((resolve) => setTimeout(resolve, 25));
 await service.handler.generate(active);
 assert.deepEqual(
-  promptHistory.slice(initialPrompts, initialPrompts + 2),
-  promptHistory.slice(initialPrompts + 2),
+  promptHistory.slice(initialPrompts, initialPrompts + 1),
+  promptHistory.slice(initialPrompts + 1),
   "A later retry must reuse identical admitted prompts so purchased responses remain replayable",
 );
 calls = initialCalls;
@@ -571,12 +557,8 @@ calls = initialCalls;
     optionalTokenEstimate = 13000;
     rejectKnownContext = true;
     rejectNarrationContext = true;
-    await assert.rejects(service.handler.generate(active), /context does not fit.*system/);
-    assert.equal(
-      writingReplay.hits,
-      1,
-      "Cached Narration replays before the current System's existing final self-fit hold",
-    );
+    await service.handler.generate(active);
+    assert.equal(writingReplay.hits, 1, "Cached GM response replays without fitting or purchasing it again");
     assert.equal(calls, paid, "A context hold reuses the paid reply and buys no replacement");
     assert.equal(narrationFits, fits, "A smaller current Narration budget cannot block a purchased response replay");
   } finally {
@@ -1089,9 +1071,14 @@ correctVillageMemory(
 );
 await service.send({ residentId: "ada", requestId: "native-recall", text: "What do you remember about my fossils?" });
 const frozen = queued.at(-1).input as SocialMailInput;
-assert(frozen.narrationMemories!.includes("silver fossils"));
+const residentRecall = (input: SocialMailInput) =>
+  input
+    .systemMemory!.envelope.memories.filter((memory) => memory.knowers.ada)
+    .map((memory) => memory.text)
+    .join("\n");
+assert(residentRecall(frozen).includes("silver fossils"));
 assert(
-  !frozen.narrationMemories!.includes("amber fossils"),
+  !residentRecall(frozen).includes("amber fossils"),
   "Repaired prior prose never comes back from the thread ledger",
 );
 const repaired = village.memories.records.find((row) => row.id === native.id)!;
@@ -1106,14 +1093,14 @@ forgetVillageMemory(
   },
   new Date().toISOString(),
 );
-assert(frozen.narrationMemories!.includes("silver fossils"), "An admitted request retains its frozen recall on replay");
+assert(residentRecall(frozen).includes("silver fossils"), "An admitted request retains its frozen recall on replay");
 resetFixtureWork(frozen);
 await service.send({
   residentId: "ada",
   requestId: "native-forgotten",
   text: "What do you remember about my fossils?",
 });
-assert(!queued.at(-1).input.narrationMemories.includes("silver fossils"));
+assert(!residentRecall(queued.at(-1).input).includes("silver fossils"));
 resetFixtureWork(queued.at(-1).input);
 await service.send({ residentId: "ada", requestId: "delivered-memory", text: "MEMORY: I collect amber fossils." });
 failNativeWrite = "reply";
@@ -1358,7 +1345,6 @@ assert.equal(calls, beforeMeaning + 1, "Explicit metadata recovery reuses writin
   };
   reopen();
   await gate.work(() => savedRelationships!.mutateRelationships(village.seed, (state) => Object.assign(state, social)));
-  gmAdmissions = true;
   try {
     for (const cold of [false, true]) {
       backgroundStatuses = [];
@@ -1396,7 +1382,6 @@ assert.equal(calls, beforeMeaning + 1, "Explicit metadata recovery reuses writin
       );
     }
   } finally {
-    gmAdmissions = false;
     savedRelationships = undefined;
     gate.dispose();
   }

@@ -44,7 +44,6 @@ import {
   planningAllowance,
   readResidentPlanningProposal,
   residentPlanningOpportunity,
-  residentEncounterPlace,
   type ResidentPlanningContext,
 } from "../../domain/rules/resident-planning.js";
 import { responseDiagnostics } from "../../domain/rules/response-diagnostics.js";
@@ -148,7 +147,6 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
     if (!opportunity || village.processedActionIds.includes(opportunity.id)) return;
     const context: ResidentPlanningContext = {
       version: 1,
-      gmVersion: 1,
       village: village.name,
       setting: villageCurrentSetting(village),
       playerBackground: village.playerBackground,
@@ -319,7 +317,6 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       throw new ReturnOpportunityUnavailable("The historical encounter Zone is unavailable.");
     const context: ResidentPlanningContext = {
       version: 1,
-      gmVersion: 1,
       catchup: true,
       village: historical.name,
       setting: villageCurrentSetting(historical),
@@ -432,7 +429,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       connectionId: await villagesConnectionIdFor("system"),
     });
     const messages = buildResidentPlanningMessages(context);
-    if (context.gmVersion === 1) {
+    {
       messages[0].content +=
         " You are the GM: generate the choices, exact encounter/mail source and its meaningful updates in ONE object. Optional meaning:{relationshipReview:{changes:[],permissions:[],disclosures:[],intentions:[]},memoryChanges:[],wishChanges:[],placeUpdate?}. Omit unchanged sections. No independent review or consistent flag. Numeric source indexes refer to your social.encounter.lines, or index0 for social.mail.text. The player is absent during an encounter: no player disclosures, knowledge or consent. Mail never grants access, performs physical work or creates actionable terms; player learning waits for reading. " +
         RELATIONSHIP_REVIEW_INSTRUCTION +
@@ -456,7 +453,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           },
         });
     }
-    const output = context.gmVersion === 1 ? 4096 : 3000;
+    const output = 4096;
     const fitted = fitVenueWritingMessages(
       model,
       [{ text: String(messages[0].content) }],
@@ -470,14 +467,14 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       temperature: 0.85,
     });
     const payload = extractModelJsonObject(completion);
-    const failure = completionFailure(completion, "resident-planning", fitted.maxTokens ?? 3000);
+    const failure = completionFailure(completion, "resident-planning", fitted.maxTokens ?? output);
     if (!payload || failure)
       throw new WorkFailureError({
         ...failure,
         cause: failure?.cause ?? "invalid_json",
         stage: "resident-planning",
         message: failure?.message ?? "Resident activity returned no usable result. Retry unfinished work explicitly.",
-        responseDiagnostics: responseDiagnostics(model, completion, fitted.maxTokens ?? 3000, payload),
+        responseDiagnostics: responseDiagnostics(model, completion, fitted.maxTokens ?? output, payload),
       });
     let proposal;
     try {
@@ -487,7 +484,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         cause: "missing_result",
         stage: "resident-planning",
         message: "Resident activity returned incomplete choices. Retry unfinished work explicitly.",
-        responseDiagnostics: responseDiagnostics(model, completion, fitted.maxTokens ?? 3000, payload),
+        responseDiagnostics: responseDiagnostics(model, completion, fitted.maxTokens ?? output, payload),
       });
     }
     const encounter = proposal.social?.encounter,
@@ -526,84 +523,24 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       if (!Array.isArray(lines)) throw new Error("Automatic social source has no lines.");
       const nativeMemory = context.memory;
       if (!nativeMemory) throw new Error("Automatic social Memory context is missing.");
-      const reviewMessages = [
-        {
-          role: "system" as const,
-          content:
-            "Independently interpret these exact automatic social lines. Return one complete JSON object. " +
-            RELATIONSHIP_REVIEW_INSTRUCTION +
-            (mail
-              ? " The recipient is player; disclosures wait for reading. Mail cannot grant access or create actionable invitations. Return permissions:[] for mail."
-              : " The player is absent: disclosures must be empty. Physical Memory facts need the exact possibleMemoryEffects.physical.id with validated-event support and a supported matching placeUpdate. Return consistent:true only when every narrated physical outcome is supported by the admitted local actors, current description, supplies, authority and event time. Otherwise consistent:false; never repair the source by pretending a completed deed was only a plan. " +
-                PLACE_UPDATE_INSTRUCTION) +
-            " Use numeric zero-based lineIds. context.state is both captured and live social baseline. sceneAfter/liveAfter coincide. Return the memoryChanges array under the native Memory contract. " +
-            SCENE_MEMORY_INSTRUCTION +
-            " " +
-            SOCIAL_WISH_INSTRUCTION +
-            " For Wish evidence use zero-based current line indexes. Private NPC encounters never disclose to player. Supplied resident.wishes are the captured authority; no speech is required to concern them.",
+      const interpreted: Record<string, any> = {
+        ...asRecord(payload.meaning),
+        memoryChanges: asRecord(payload.meaning).memoryChanges ?? [],
+        wishChanges: asRecord(payload.meaning).wishChanges ?? [],
+        relationshipReview: {
+          changes: [],
+          permissions: [],
+          disclosures: [],
+          ...asRecord(asRecord(payload.meaning).relationshipReview),
         },
-        {
-          role: "user" as const,
-          content: JSON.stringify({
-            lines,
-            mode: mail ? "mail" : "encounter",
-            context: context.social,
-            residents: context.residents
-              .filter((r) => !context.catchup || context.opportunity.actorIds.includes(r.characterId))
-              .map((r) => ({ characterId: r.characterId, wishes: r.wishes })),
-            memory: nativeMemory.envelope,
-            now: context.moment.instant,
-            ...(context.environment ? { environment: context.environment } : {}),
-            place:
-              context.catchupPlace ??
-              residentEncounterPlace(context.venues, context.opportunity, context.moment.instant),
-            possibleMemoryEffects: mail
-              ? {}
-              : {
-                  physical: {
-                    id: encounterPhysicalId(context.opportunity.id + ":social"),
-                    domainRef: { kind: "physical", id: context.opportunity.venueId },
-                  },
-                },
-          }),
-        },
-      ];
-      const fittedReview = context.gmVersion === 1 ? undefined : model.fitContext(reviewMessages, { maxTokens: 16384 });
-      if (fittedReview && JSON.stringify(fittedReview.messages) !== JSON.stringify(reviewMessages))
-        throw new Error("Offscreen semantic evidence does not fit System context.");
-      const judged =
-        context.gmVersion === 1
-          ? undefined
-          : await completeWithRoom(model, reviewMessages, Math.min(fittedReview?.maxTokens ?? 16384, 16384), {
-              responseFormat: { type: "json_object" },
-              retryEmpty: false,
-              temperature: 0.1,
-              reasoningEffort: "low",
-              debugMode: false,
-              usagePurpose: "checks",
-            });
-      const interpreted =
-        context.gmVersion === 1
-          ? {
-              ...asRecord(payload.meaning),
-              memoryChanges: asRecord(payload.meaning).memoryChanges ?? [],
-              wishChanges: asRecord(payload.meaning).wishChanges ?? [],
-              relationshipReview: {
-                changes: [],
-                permissions: [],
-                disclosures: [],
-                ...asRecord(asRecord(payload.meaning).relationshipReview),
-              },
-            }
-          : extractModelJsonObject(judged!);
+      };
       const review = interpreted?.relationshipReview as Record<string, unknown> | undefined;
-      if (context.gmVersion === 1 && Array.isArray(review?.changes))
+      if (Array.isArray(review?.changes))
         review.changes = review.changes.map((value) => {
           const row = asRecord(value);
           return { ...row, sceneAfter: row.liveAfter };
         });
       if (
-        judged?.finishReason === "length" ||
         !review ||
         !Array.isArray(interpreted?.memoryChanges) ||
         interpreted.memoryChanges.length > 16 ||
@@ -612,23 +549,15 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         !["changes", "permissions", "disclosures"].every((key) => Array.isArray(review[key]))
       )
         throw new Error("Offscreen interpretation is incomplete; explicit retry required.");
-      if (
-        context.gmVersion !== 1 &&
-        !mail &&
-        lines.some((line) => asRecord(line).kind === "narration") &&
-        interpreted?.consistent !== true
-      )
-        throw new Error("The encounter contains unsupported physical outcomes; its source is retained.");
       record.placeUpdate = mail ? null : (interpreted?.placeUpdate ?? null);
-      record.physicalConsistent = !mail && interpreted?.consistent === true;
-      if (context.gmVersion === 1) record.producer = "gm";
+      record.producer = "gm";
       record.relationshipReview = review;
       record.wishChanges = readSocialWishChanges(interpreted!.wishChanges);
       record.semanticVersion = 2;
       record.memoryChanges = interpreted!.memoryChanges;
       record.memoryContexts = { [nativeMemory.saved.protection.fingerprint]: nativeMemory.saved };
       record.semanticSourceHash = createHash("sha256")
-        .update(JSON.stringify(context.gmVersion === 1 ? { messages, lines, meaning: interpreted } : reviewMessages))
+        .update(JSON.stringify({ messages, lines, meaning: interpreted }))
         .digest("hex");
     }
 
