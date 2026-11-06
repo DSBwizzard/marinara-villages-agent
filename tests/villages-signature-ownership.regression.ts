@@ -37,6 +37,7 @@ function documents(name: string) {
     wishSystemVersion: 3,
     villagers: [
       {
+        letterFontId: "caveat",
         characterId: "same",
         addedAt: stamp,
         cardSnapshot: {

@@ -1,7 +1,7 @@
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { defaultVillageState } from "../decoding/village-codec.js";
 import { RETURN_CATCHUP_HISTORY_LIMIT, type ReturnCatchupBatch, type VillageState } from "../models/world.js";
-import { calendarReplay } from "./clock-recovery.js";
+import { calendarReplay } from "./clock-state.js";
 import { captureReturnContext, departureMemoriesAvailable } from "./return-catchup-capture.js";
 import { returnCatchupOpportunities } from "./return-catchup-opportunities.js";
 import { localDateKey, planningAllowance } from "./resident-planning.js";

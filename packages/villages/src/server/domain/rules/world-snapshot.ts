@@ -3,7 +3,6 @@ import type { VenueScene } from "../models/scene-model.js";
 import { sceneMoveAccompanying } from "./venue-contact.js";
 import { zonePictureContext } from "./zone-picture.js";
 import { copyDate } from "../../../shared/helpers/zoned-date.js";
-import { legacyLetterFont } from "../../../shared/helpers/letter-font-selection.js";
 import { residentSignature } from "../../../shared/helpers/resident-signature.js";
 import { recentPlaceText } from "../../../shared/helpers/place-continuity.js";
 import type {
@@ -39,7 +38,6 @@ import {
   TOWN_MAP_ZOOM_STEP,
   VILLAGES_GALLERY_FOLDER_NAME,
 } from "./prompt-preset.js";
-import { relationshipZoneController } from "./relationship-rules.js";
 import { DEFAULT_TOWN_MAP_LAYOUT_PROMPT, DEFAULT_TOWN_MAP_NEGATIVE_PROMPT } from "./town-map-prompts.js";
 import { projectVenueAccess, projectZoneAccess } from "./venue-access.js";
 import { villageVenueLimit } from "./venue-capacity.js";
@@ -58,7 +56,7 @@ export function projectVillager(
 ): VillageVillagerView {
   return {
     characterId: villager.characterId,
-    letterFontId: villager.letterFontId ?? legacyLetterFont(villager.characterId),
+    letterFontId: villager.letterFontId,
     signatureFallback: residentSignature(villager.cardSnapshot),
     ...(villager.signature ? { signature: villager.signature } : {}),
     nameColor,
@@ -274,36 +272,27 @@ export function villageSettings(
             ? { status: visible.preparation.status, error: visible.preparation.error }
             : undefined,
           access: undefined,
-          controllerIds: venue.access ? undefined : originalZone.controllerIds,
-          accessView: venue.access
-            ? projectZoneAccess(venue, originalZone, "player", {
-                ...context,
-                ...(residenceAccess?.placeId === venue.id
-                  ? {
-                      positions: {
-                        ...context?.positions,
-                        ...Object.fromEntries(
-                          (sceneMoveAccompanying(residenceAccess, venue, originalZone) ?? [])
-                            .filter((entry) => !residenceAccess.departedIds?.includes(entry.characterId))
-                            .map((entry) => [entry.characterId, entry.zoneId]),
-                        ),
-                      },
-                    }
-                  : {}),
-                sceneId: context?.sceneId ?? "next-visit-preview",
-                accepting: true,
-                unavailable: zoneClosed(village, venue, originalZone),
-                environment: village.narrative,
-                relationships: village.relationshipContext,
-              })
-            : undefined,
-          relationshipAccess: !!relationshipZoneController(
-            village.relationshipContext,
-            village,
-            venue,
-            originalZone,
-            "player",
-          ),
+          controllerIds: undefined,
+          accessView: projectZoneAccess(venue, originalZone, "player", {
+            ...context,
+            ...(residenceAccess?.placeId === venue.id
+              ? {
+                  positions: {
+                    ...context?.positions,
+                    ...Object.fromEntries(
+                      (sceneMoveAccompanying(residenceAccess, venue, originalZone) ?? [])
+                        .filter((entry) => !residenceAccess.departedIds?.includes(entry.characterId))
+                        .map((entry) => [entry.characterId, entry.zoneId]),
+                    ),
+                  },
+                }
+              : {}),
+            sceneId: context?.sceneId ?? "next-visit-preview",
+            accepting: true,
+            unavailable: zoneClosed(village, venue, originalZone),
+            environment: village.narrative,
+            relationships: village.relationshipContext,
+          }),
         };
         return {
           ...zone,

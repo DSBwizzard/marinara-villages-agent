@@ -22,10 +22,10 @@ type Receipt = {
 type Ports = {
   signal?: AbortSignal;
   setupBeginningSourceKey: string;
-  setupWorkspace?: FoundingState["setupWorkspace"];
-  setSetupWorkspace?: FoundingState["setSetupWorkspace"];
-  persistSetupDraft?: (data: SetupDraftData) => Promise<void>;
-  setupDraftData?: SetupDraftData;
+  setupWorkspace: FoundingState["setupWorkspace"];
+  setSetupWorkspace: FoundingState["setSetupWorkspace"];
+  persistSetupDraft: (data: SetupDraftData) => Promise<void>;
+  setupDraftData: SetupDraftData;
 };
 
 /** POST admits one attempt; status checks only read the saved receipt. */
@@ -37,9 +37,6 @@ export async function requestFoundingSuggestions(
   const { signal } = ports;
   signal?.throwIfAborted();
   const { setupWorkspace, setSetupWorkspace, persistSetupDraft, setupDraftData } = ports;
-  // Older embedders without a persisted founding workspace retain the synchronous API.
-  if (!setupWorkspace || !setSetupWorkspace || !persistSetupDraft || !setupDraftData)
-    return request<Result>("/setup/venues/suggest", { method: "POST", body: JSON.stringify(input) });
   const existing = setupWorkspace.suggestionRequest?.failure ? undefined : setupWorkspace.suggestionRequest;
   const pending = existing ?? {
     id: createVillagesClientId(),

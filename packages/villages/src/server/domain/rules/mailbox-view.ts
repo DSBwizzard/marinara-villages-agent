@@ -6,7 +6,6 @@ import type {
   PersonalLetterSummary,
   PersonalMailThread,
 } from "../../../shared/contracts/mailbox.js";
-import { legacyLetterFont } from "../../../shared/helpers/letter-font-selection.js";
 import type { BackgroundSummary } from "../models/background-model.js";
 import type { RelationshipState } from "../models/relationship-types.js";
 import type { SocialMailMessage, SocialMailThread, WorldSocialMailOutbox } from "../models/social-mail.js";
@@ -79,7 +78,6 @@ const cursorSchema = z
     version: z.literal(1),
     seed: z.string(),
     setupAt: z.string(),
-    shift: z.number(),
     kind: z.enum(["inbox", "sent", "recovery"]),
     after: z.tuple([z.string(), z.string(), z.string()]),
   })
@@ -120,24 +118,24 @@ export function createMailboxPresentation(village: VillageState, state: Relation
     const residentId = thread.participantIds.find((id) => id !== "player");
     if (!residentId || !thread.participantIds.includes("player")) throw badRequest("That thread is unavailable.");
     const resident = residents.get(residentId);
+    const letterFontId =
+      resident?.letterFontId ??
+      (village.formerLetterFonts && Object.hasOwn(village.formerLetterFonts, residentId)
+        ? village.formerLetterFonts[residentId]
+        : undefined);
+    if (letterFontId === undefined) throw conflict("This saved correspondent has no writing-style assignment.");
     const result = {
       id: thread.id,
       residentId,
       residentName: resident?.cardSnapshot.name ?? "Former resident",
       revision: thread.revision,
-      letterFontId:
-        resident?.letterFontId ??
-        (village.formerLetterFonts && Object.hasOwn(village.formerLetterFonts, residentId)
-          ? village.formerLetterFonts[residentId]
-          : undefined) ??
-        legacyLetterFont(residentId),
+      letterFontId,
     };
     metadata.set(thread.id, result);
     return result;
   }
   function canRecover(message: SocialMailMessage | undefined, id: string) {
     return (
-      !village.clock?.recovery &&
       !message?.replyUnavailable &&
       !["cancelled", "undeliverable"].includes(message?.status ?? "") &&
       !busy(jobByMessage.get(id)?.status)
@@ -175,7 +173,7 @@ export function createMailboxPresentation(village: VillageState, state: Relation
             : undefined,
     };
   }
-  const scope = { version: 1, seed: village.seed, setupAt: village.setupAt, shift: state.clockShiftMs ?? 0 };
+  const scope = { version: 1, seed: village.seed, setupAt: village.setupAt };
   function after(value: string | undefined, kind: Kind): Key | undefined {
     if (!value) return undefined;
     let parsed: z.infer<typeof cursorSchema>;
@@ -185,12 +183,7 @@ export function createMailboxPresentation(village: VillageState, state: Relation
     } catch {
       throw badRequest("Choose a valid mailbox page.");
     }
-    if (
-      parsed.seed !== scope.seed ||
-      parsed.setupAt !== scope.setupAt ||
-      parsed.shift !== scope.shift ||
-      parsed.kind !== kind
-    )
+    if (parsed.seed !== scope.seed || parsed.setupAt !== scope.setupAt || parsed.kind !== kind)
       throw conflict("The mailbox changed. Open its newest page.");
     return [parsed.after[0]!, parsed.after[1]!, parsed.after[2]!];
   }

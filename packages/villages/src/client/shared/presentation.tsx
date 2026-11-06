@@ -278,18 +278,17 @@ function clockLabel(now: Date, timeZone?: string): string {
  * The server snapshot and saved village timezone are authoritative. A local
  * monotonic timer animates between snapshots; the browser clock is not authority.
  */
-function useRealClock(village?: VillageSnapshot["village"], paused = false): string {
+function useRealClock(village?: VillageSnapshot["village"]): string {
   const [label, setLabel] = useState(() => clockLabel(new Date(village?.instant || Date.now()), village?.timeZone));
   useEffect(() => {
     const epoch = Date.parse(village?.instant ?? "");
     const base = Number.isFinite(epoch) ? epoch : Date.now();
     const began = performance.now();
-    const update = () =>
-      setLabel(clockLabel(new Date(base + (paused ? 0 : performance.now() - began)), village?.timeZone));
+    const update = () => setLabel(clockLabel(new Date(base + (performance.now() - began)), village?.timeZone));
     update();
     const timer = setInterval(update, 1000);
     return () => clearInterval(timer);
-  }, [village?.instant, village?.timeZone, paused]);
+  }, [village?.instant, village?.timeZone]);
   return label;
 }
 
@@ -300,8 +299,8 @@ function useRealClock(village?: VillageSnapshot["village"], paused = false): str
  * nothing else — putting the hook in the view would redraw the whole tab, map
  * included, every time the minute turned over.
  */
-function MobileHudClock({ village, paused }: { village?: VillageSnapshot["village"]; paused?: boolean }) {
-  const [date, time] = useRealClock(village, paused).split(" · ");
+function MobileHudClock({ village }: { village?: VillageSnapshot["village"] }) {
+  const [date, time] = useRealClock(village).split(" · ");
   return (
     <span className={`${ELEMENT_TAG}-mobile-clock`}>
       <span>{date}</span>
@@ -310,18 +309,10 @@ function MobileHudClock({ village, paused }: { village?: VillageSnapshot["villag
   );
 }
 
-export function HomeDateWeather({
-  weather,
-  village,
-  paused,
-}: {
-  weather: string;
-  village?: VillageSnapshot["village"];
-  paused?: boolean;
-}) {
+export function HomeDateWeather({ weather, village }: { weather: string; village?: VillageSnapshot["village"] }) {
   return (
     <span className={`${ELEMENT_TAG}-mobile-datetime`}>
-      <MobileHudClock village={village} paused={paused} />
+      <MobileHudClock village={village} />
       <span role="img" aria-label={`Weather: ${weather || "unknown"}`} title={weather || "Weather unavailable"}>
         {weatherEmoji(weather)}
       </span>

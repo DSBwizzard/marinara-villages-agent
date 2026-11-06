@@ -14,7 +14,6 @@ import {
   relationshipDocumentId,
 } from "../packages/villages/src/server/adapters/storage/relationship-payload-store.js";
 import { LETTER_FONTS } from "../packages/villages/src/shared/helpers/letter-fonts.js";
-import { legacyLetterFont } from "../packages/villages/src/shared/helpers/letter-font-selection.js";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
   createRepairGate,
@@ -1627,20 +1626,20 @@ await runCase("repair/letter-fonts", async () => {
   const resident = (await f.read()).villagers[0]!;
   const id = repairId("letter-font", resident.characterId);
   const record = await f.api.inspect(id, resident.characterId);
-  const original = legacyLetterFont(resident.characterId);
+  const original = resident.letterFontId;
   assert.equal(record.fields[0]!.value, original);
-  assert.equal(record.fields[0]!.options!.length, 100);
+  assert.equal(record.fields[0]!.options!.length, LETTER_FONTS.length);
   const next = LETTER_FONTS.find((font) => font.id !== original)!.id;
   const request = { ...edit(id, { letterFontId: next }, "font-change"), personId: resident.characterId };
   const review = await f.prepare(request);
-  assert.equal((await f.read()).villagers[0]!.letterFontId, undefined, "Review is read-only");
+  assert.equal((await f.read()).villagers[0]!.letterFontId, original, "Review is read-only");
   await f.api.apply(review.id, review.token);
   assert.equal((await f.read()).villagers[0]!.letterFontId, next);
   f.reopen();
   assert.equal((await f.read()).villagers[0]!.letterFontId, next, "The decoder preserves the saved style");
   const undo = await f.api.undo(review.id, "undo-font-change");
   await f.api.apply(undo.id, undo.token);
-  assert.equal((await f.read()).villagers[0]!.letterFontId, undefined);
+  assert.equal((await f.read()).villagers[0]!.letterFontId, original);
 
   await f.repo.mutateAuthority((state) => {
     state.villagers[0]!.letterFontId = "future-font-id";

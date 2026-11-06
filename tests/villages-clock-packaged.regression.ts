@@ -8,9 +8,9 @@ import { pathToFileURL } from "node:url";
 import Fastify from "fastify";
 import AdmZip from "adm-zip";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-// Test cases: village-clock-recovery
+// Test cases: village-clock
 // Actual builder output and HTTP routes; synthetic persistence and zero provider calls.
-await runCase("village-clock-recovery", async () => {
+await runCase("village-clock", async () => {
   const receipt = JSON.parse(await readFile(".build-tmp/package-build.json", "utf8"));
   const archive = receipt.retainedArchivePath ?? receipt.archivePath ?? receipt.archive;
   const zip = new AdmZip(archive);
@@ -37,12 +37,6 @@ await runCase("village-clock-recovery", async () => {
     revision: 2,
     trustedAt: new Date(wall).toISOString(),
     replayUntilDate: "",
-    recovery: {
-      frozenAt: new Date(wall).toISOString(),
-      expectedAt: new Date(wall).toISOString(),
-      observedAt: new Date(wall + 3 * 3600000).toISOString(),
-      differenceMs: 3 * 3600000,
-    },
   };
   const projectFixture = fixture(),
     projectId = await projectFixture.newProject();
@@ -148,14 +142,13 @@ await runCase("village-clock-recovery", async () => {
     assert.equal(snapshot.clock.timeZone, "America/Los_Angeles");
     assert.equal(snapshot.village.localTime, "19:30");
     assert.ok(snapshot.projects[0]?.lifecycle?.workOrder, "packaged codec preserves timer fixture");
-    assert.equal(snapshot.clock.paused, false, "old saved pause clears at activation");
-    assert.equal(records.get("villages-village").data.clock.recovery, null);
+    assert.equal(Object.hasOwn(snapshot.clock, "paused"), false);
+    assert.equal(Object.hasOwn(records.get("villages-village").data.clock, "recovery"), false);
     const deadline = snapshot.projects[0].lifecycle.workOrder.completesAt;
     wall += 3 * 86400000; // Simulated suspended VM: elapsed timer barely advances.
     response = await call("/");
     assert.equal(response.statusCode, 200, response.body);
     snapshot = response.json();
-    assert.equal(snapshot.clock.paused, false);
     assert.equal(snapshot.village.instant, new Date(wall).toISOString());
     assert.equal(Date.parse(deadline) < wall, true, "ordinary absence counts toward unfinished work");
     assert.equal(snapshot.projects[0].lifecycle.workOrder.completesAt, deadline);
@@ -166,14 +159,11 @@ await runCase("village-clock-recovery", async () => {
     assert.equal("noticeboard" in records.get("villages-village").data, false);
     assert.equal((await call("/noticeboard", "POST", { notice: "new" })).statusCode, 404);
     assert.equal((await call("/noticeboard/0", "DELETE")).statusCode, 404);
-    response = await call("/clock/recover", "POST", { revision: 0, choice: "accept" });
-    assert.equal(response.statusCode, 200, response.body);
-    assert.equal(response.json().clock.paused, false, "older open clients can recover idempotently");
+    assert.equal((await call("/clock/recover", "POST", { revision: 0, choice: "accept" })).statusCode, 404);
     wall -= 86400000;
     response = await call("/");
     assert.equal(response.statusCode, 200, response.body);
     snapshot = response.json();
-    assert.equal(snapshot.clock.paused, false);
     assert.ok(records.get("villages-village").data.clock.replayUntilDate);
     wall += 3650 * 86400000;
     await stop();
@@ -191,7 +181,6 @@ await runCase("village-clock-recovery", async () => {
     });
     response = await restartApp.inject({ method: "GET", url: "/api/villages/" });
     assert.equal(response.statusCode, 200, response.body);
-    assert.equal(response.json().clock.paused, false);
     assert.equal(response.json().village.instant, new Date(wall).toISOString());
     const startAdvance = wall;
     let totalAdvance = 0;

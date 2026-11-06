@@ -1,6 +1,5 @@
 import { currentVillageCircumstances } from "./prompt-preset.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
-import { imagePromptId } from "./image-generation-rules.js";
 import { venueZones } from "./venue-zones.js";
 
 export const DAYTIME_IMAGE_INSTRUCTION =
@@ -22,8 +21,6 @@ export function venueImageCompositionPrompt(area: "exterior" | "interior"): stri
     "The current Zone description is the physical account for this enduring image. Do not add incidental arrangements from conversation. Render only the place: no people, animals, writing, numerals, labels, interface graphics, icons or markers. Do not draw an overhead map, floor plan, cutaway, collage, photograph frame, decorative border or blank panel for chat. The application supplies the Polaroid frame and chat interface."
   );
 }
-
-export const avatarPromptId = imagePromptId;
 
 export function buildLocationPrompt(
   village: VillageState,

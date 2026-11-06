@@ -5,7 +5,7 @@ const { authorSceneResponse } = await scenePlaybackFixtures();
 import assert from "node:assert/strict";
 import { build } from "../scripts/esbuild.mjs";
 import { chromium, expect, fulfill, mockEngineLookups, withBrowser } from "./fixtures/browser-diagnostics.mjs";
-import { snapshot as fixture, image, now } from "./fixtures/villages-scene-browser.fixture.mjs";
+import { snapshot as fixture, image, now, venueSnapshotFixture } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const bundle = await build({
   stdin: {
@@ -50,7 +50,6 @@ await withBrowser(browser, async () => {
     const night = image("#182944");
     venue.presentation.image = { url: old, id: "header-day", ref: "header-day" };
     snapshot.village = { ...snapshot.village, instant: "2026-11-06T04:00:00Z", timeZone: "America/Los_Angeles" };
-    snapshot.clock = { ...snapshot.clock, paused: true };
     venue.zones = [
       {
         id: "exterior",
@@ -74,6 +73,7 @@ await withBrowser(browser, async () => {
         connectedTo: ["exterior"],
       },
     ];
+    Object.assign(venue, venueSnapshotFixture(venue));
     const scene = {
       id: "artwork-scene",
       version: 2,

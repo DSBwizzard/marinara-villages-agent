@@ -6,10 +6,7 @@ import {
   installDefaultActivation,
   scopedActivation,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
-import {
-  captureMissingVillagerCardColors,
-  villagerCardFromSnapshot,
-} from "../packages/villages/src/server/adapters/engine/catalog.js";
+import { villagerCardFromSnapshot } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
   coerceVillageState,
@@ -42,6 +39,7 @@ function fixture(label: string, missingColors = false) {
     visitMemoryBackfilled: true,
     villagers: [
       {
+        letterFontId: "caveat",
         characterId: "resident",
         cardSnapshot: {
           id: "resident",
@@ -94,18 +92,11 @@ function fixture(label: string, missingColors = false) {
       await touch("world");
       return world;
     },
-    mutateVillageState: async (update) => {
-      await touch("mutation");
-      update(world);
-      update(world);
-      return world;
-    },
     listVillagerCards: async (ids) => {
       await touch("catalog");
       assert.deepEqual(ids, ["resident"]);
       return [card];
     },
-    captureMissingVillagerCardColors,
     rollActiveAgendas: async (date, supplied) => {
       await touch("roll");
       assert.equal(date, now);
@@ -280,28 +271,20 @@ async function main() {
     "Snapshot reads do not backfill retired memory stores",
   );
   const colors = fixture("colors", true);
+  const capturedColors = JSON.stringify(colors.world);
   const painted = await colors.service.buildVillageSnapshot(now);
-  assert.deepEqual(colors.calls, [
-    "world",
-    "roll",
-    "catalog",
-    "mutation",
-    "world",
-    "query-connection",
-    "scene",
-    "background",
-  ]);
-  assert.equal(painted.villagers[0]!.nameColor, "colors color");
+  assert.deepEqual(colors.calls, ["world", "roll", "catalog", "query-connection", "scene", "background"]);
+  assert.equal(painted.villagers[0]!.nameColor, "");
+  assert.equal(painted.villagers[0]!.dialogueColor, "");
   assert.equal(
-    colors.world.villagers[0]!.cardSnapshot.name,
-    "colors adopted",
-    "missing paint capture must not apply other library edits",
+    JSON.stringify(colors.world),
+    capturedColors,
+    "A snapshot never backfills paint from a changed library card",
   );
-  const writes = colors.calls.filter((stage) => stage === "mutation").length;
   await colors.service.buildVillageSnapshot(now);
-  assert.equal(colors.calls.filter((stage) => stage === "mutation").length, writes);
-  for (const stage of ["world", "roll", "catalog", "scene", "background", "mutation"]) {
-    const failed = fixture(stage, stage === "mutation");
+  assert.equal(JSON.stringify(colors.world), capturedColors);
+  for (const stage of ["world", "roll", "catalog", "scene", "background"]) {
+    const failed = fixture(stage);
     failed.fail(stage);
     await assert.rejects(failed.service.buildVillageSnapshot(now), (error) => error === failed.exact);
     assert.equal(
@@ -311,10 +294,10 @@ async function main() {
     );
   }
 
-  for (const stage of ["world", "roll", "catalog", "scene", "background", "mutation"]) {
+  for (const stage of ["world", "roll", "catalog", "scene", "background"]) {
     const a = createActivationScope(),
       b = createActivationScope();
-    const fa = fixture("A", stage === "mutation"),
+    const fa = fixture("A"),
       fb = fixture("B");
     const releaseA = a.run(() => configureVillageSnapshot(fa.service)),
       releaseB = b.run(() => configureVillageSnapshot(fb.service));
@@ -330,7 +313,7 @@ async function main() {
     fa.gate.resolve();
     const prior = await pending;
     assert.equal(prior.villagers[0]!.name, "A live");
-    assert.equal(prior.villagers[0]!.nameColor, stage === "mutation" ? "A color" : "adopted-name");
+    assert.equal(prior.villagers[0]!.nameColor, "adopted-name");
     assert(fa.owners.every((owner) => owner === a));
     assert(fb.owners.every((owner) => owner === b));
     assert.equal(

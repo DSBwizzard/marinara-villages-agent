@@ -1,6 +1,6 @@
 import { build } from "../../scripts/esbuild.mjs";
 import { mockEngineLookups, fulfill } from "./browser-diagnostics.mjs";
-import { snapshot as base } from "./villages-scene-browser.fixture.mjs";
+import { snapshot as base, venueSnapshotFixture } from "./villages-scene-browser.fixture.mjs";
 const source = `
 import {createRoot} from "react-dom/client";
 import {useState} from "react";
@@ -120,6 +120,7 @@ export function projectSnapshot() {
   ];
   venue.spaces = [venue.zones[1]];
   venue.privateSpaces = [];
+  Object.assign(venue, venueSnapshotFixture(venue));
   return snapshot;
 }
 export async function openProjectPage(browser, width, snapshot = projectSnapshot(), mutate) {

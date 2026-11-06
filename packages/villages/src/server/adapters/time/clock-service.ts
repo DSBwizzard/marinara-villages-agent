@@ -26,12 +26,9 @@ export function createVillageClock(
     return next;
   }
   function view(): VillageClockView {
-    // Compatibility for older clients; this version never pauses the village.
     return {
       revision: cached?.revision ?? 1,
       timeZone: zone,
-      paused: false,
-      recovery: null,
       instant: new Date(sources.wall() + (cached?.advanceMs ?? 0)).toISOString(),
       advanceMs: cached?.advanceMs ?? 0,
       worldId: cachedWorld,
@@ -72,10 +69,7 @@ export function createVillageClock(
     const desired: VillageClockRecord = {
       revision: stored?.revision ?? 1,
       trustedAt: new Date(Math.max(wall, previous)).toISOString(),
-      recovery: null,
       replayUntilDate,
-      // Retain offsets from an older explicitly accepted recovery; never shift timers now.
-      shiftTotalMs: stored?.shiftTotalMs ?? 0,
       ...(stored?.advanceMs !== undefined ? { advanceMs: stored.advanceMs } : {}),
       ...(stored?.lastAdvance ? { lastAdvance: stored.lastAdvance } : {}),
       ...(stored?.advanceReceipts ? { advanceReceipts: stored.advanceReceipts } : {}),
@@ -83,7 +77,6 @@ export function createVillageClock(
     if (
       !stored ||
       !state.timeZone ||
-      stored.recovery ||
       stored.replayUntilDate !== desired.replayUntilDate ||
       Date.parse(desired.trustedAt) - Date.parse(stored.trustedAt) >= 10_000
     ) {
@@ -115,7 +108,6 @@ export function createVillageClock(
   return {
     observe: () => serial(observeUnlocked),
     now: (advanceMs = cached?.advanceMs ?? 0) => new ZonedDate(sources.wall() + advanceMs, zone),
-    shiftMs: () => cached?.shiftTotalMs ?? 0,
     onAdvance(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -192,7 +184,5 @@ export function createVillageClock(
         if (advanced) for (const listener of listeners) listener();
         return result;
       }),
-    // An older open client may still submit this request. It is harmless and idempotent.
-    resolve: () => serial(observeUnlocked),
   };
 }

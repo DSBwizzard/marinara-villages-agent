@@ -6,7 +6,7 @@ import { agendaAt } from "./agenda-plan.js";
 import { agendaDateKey } from "./agenda-week.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { evaluateZoneAccess } from "./venue-access.js";
-import { contactCanEnter, contactPath, sceneAccessContext } from "./venue-contact.js";
+import { contactPath, sceneAccessContext } from "./venue-contact.js";
 import { sceneAccessState, sceneLayoutVenue } from "./scene-layout.js";
 import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
 import { conflict } from "./errors.js";
@@ -96,11 +96,10 @@ export function captureSceneAttendance(
     }),
   };
 }
-export function sceneZoneOccupants(session: VenueScene, village: VillageState, venue: VillageVenue, zoneId: string) {
+export function sceneZoneOccupants(session: VenueScene, venue: VillageVenue, zoneId: string) {
   const positions = (session.accompanying ?? []).filter((entry) => {
     const destination = resolveVenueZone(venue, entry.zoneId);
-    if (venue.access) return !!destination; // Captured positions change only through recorded movement.
-    return !!destination && contactCanEnter(village, venue, destination.id, entry.characterId);
+    return !!destination; // Captured positions change only through recorded movement.
   });
   const accompanying = positions.filter((entry) => entry.zoneId === zoneId).map((entry) => entry.characterId);
   return (session.sceneAttendance?.occupants ?? []).filter(

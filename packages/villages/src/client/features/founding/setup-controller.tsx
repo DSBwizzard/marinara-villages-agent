@@ -22,10 +22,10 @@ import { useCallback } from "react";
 
 export function createFoundingSuggestSetupVenues(ports: {
   signal?: AbortSignal;
-  readonly setupWorkspace?: FoundingState["setupWorkspace"];
-  readonly setSetupWorkspace?: FoundingState["setSetupWorkspace"];
-  readonly persistSetupDraft?: (data: import("./draft-model.js").SetupDraftData) => Promise<void>;
-  readonly setupDraftData?: import("./draft-model.js").SetupDraftData;
+  readonly setupWorkspace: FoundingState["setupWorkspace"];
+  readonly setSetupWorkspace: FoundingState["setSetupWorkspace"];
+  readonly persistSetupDraft: (data: import("./draft-model.js").SetupDraftData) => Promise<void>;
+  readonly setupDraftData: import("./draft-model.js").SetupDraftData;
   readonly onQuickStartApplied?: () => void;
   readonly personaDraft: string;
   readonly selectedResidentAdmissions: {
@@ -55,7 +55,7 @@ export function createFoundingSuggestSetupVenues(ports: {
   readonly setupVenuesRef: React.RefObject<import("../../../shared/contracts/village").VillageVenue[]>;
 }) {
   return async (options?: FoundingSuggestionOptions, signal = ports.signal) => {
-    const request = ports.setupWorkspace?.suggestionRequest;
+    const request = ports.setupWorkspace.suggestionRequest;
     const pending = request?.failure ? undefined : request;
     options = pending
       ? {
@@ -94,7 +94,7 @@ export function createFoundingSuggestSetupVenues(ports: {
       : options.venueId
         ? JSON.stringify([setupBeginningSourceKey, options.venueId])
         : setupBeginningSourceKey;
-    const roster = ports.setupFoundingVillagerIds ?? ports.setupDraftData?.roster ?? [];
+    const roster = ports.setupFoundingVillagerIds ?? ports.setupDraftData.roster ?? [];
     const replacementSource = JSON.stringify(setupVenues);
     const rows = options.separateHomes
       ? separateFoundingTemplates(roster, ports.setupContext?.communityVenueId ?? "founding-community")
@@ -173,7 +173,7 @@ export function createFoundingSuggestSetupVenues(ports: {
           "The people or setting changed while suggestions were prepared. Your existing draft is kept; request fresh suggestions when ready.",
         );
       if (replacing) {
-        ports.setSetupWorkspace?.((state) => ({ ...state, lore: result.lore }));
+        ports.setSetupWorkspace((state) => ({ ...state, lore: result.lore }));
         if (!options.quickStart || options.venueId)
           throw new Error(
             "The older suggestion attempt was checked. Use Suggest Venues again to generate all template Venues.",
@@ -187,7 +187,7 @@ export function createFoundingSuggestSetupVenues(ports: {
           arrangeQuickStartVenues(options.separateHomes ? next.map((row) => reconcileFoundingHome(row)) : next, true),
         );
         ports.onQuickStartApplied?.();
-        ports.setSetupWorkspace?.((state) => ({
+        ports.setSetupWorkspace((state) => ({
           ...state,
           view: "map",
           paused: false,
@@ -199,7 +199,7 @@ export function createFoundingSuggestSetupVenues(ports: {
         return;
       }
       if (options.quickStart) throw new Error("Use Suggest Venues to confirm replacing Venue drafts.");
-      ports.setSetupWorkspace?.((state) => ({ ...state, lore: result.lore }));
+      ports.setSetupWorkspace((state) => ({ ...state, lore: result.lore }));
       if (options.fullVenue && !result.venues.find((row) => row.id === options.venueId)?.zones)
         throw new Error("The Venue draft has no complete Zone plan.");
       setSetupVenues((currentRows) =>

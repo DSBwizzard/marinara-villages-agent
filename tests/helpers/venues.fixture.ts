@@ -161,7 +161,6 @@ function venueDraft(value: unknown, existing: VillageVenue | null): VillageVenue
 
     zones: existing?.zones,
     archivedZones: existing?.archivedZones,
-    usedInvitationIds: existing?.usedInvitationIds,
     id: (existing?.id ?? asTrimmedString(record.id)) || randomVillageSeed(),
     name,
     form,
@@ -169,7 +168,6 @@ function venueDraft(value: unknown, existing: VillageVenue | null): VillageVenue
     spaces,
     residenceCapacity,
     residentIds: existing ? venueResidentIds(existing) : venueStringList(record.residentIds, []),
-    playerInvitations: existing?.playerInvitations ?? [],
     exteriorState: existing?.exteriorState,
     privateSpaces: existing?.privateSpaces,
     archivedPrivateSpaces: existing?.archivedPrivateSpaces,

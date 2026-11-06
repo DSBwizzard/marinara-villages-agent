@@ -95,7 +95,7 @@ export type VillageDayView = {
 
 /** One library card the village has adopted. */
 export type VillageVillager = {
-  letterFontId?: string;
+  letterFontId: string;
   identityDescription?: import("../../../shared/contracts/resident-description.js").ResidentIdentityDescription & {
     initialGenerationComplete: boolean;
   };
@@ -272,7 +272,6 @@ export type PrivateSpacePreparation = {
 export type VillageVenueZone = VillageVenueSpace & {
   access?: import("../../../shared/helpers/venue-access.js").ZoneAccessPolicy;
   accessView?: import("../../../shared/helpers/venue-access.js").ZoneAccessView;
-  relationshipAccess?: boolean;
   purpose?: string;
   controllerIds?: string[];
   preparation?: PrivateSpacePreparation;
@@ -347,18 +346,6 @@ export type VillageVenue = {
   residenceCapacity?: number;
   /** The complete resident roster. The older occupancy field remains a read projection. */
   residentIds?: string[];
-  /** One-use invitations backed by resident speech; older manual entries remain shared invitations. */
-  usedInvitationIds?: string[];
-  playerInvitations?: {
-    residentId: string;
-    privateSpaceId?: string;
-    zoneId?: string;
-    recordedAt: string;
-    scope?: "shared" | "private";
-    ownerId?: string;
-    sourceLineId?: string;
-    quote?: string;
-  }[];
   /** The approach is distinct from both shared and private Residence state. */
   exteriorState?: VillageVenueSpace["state"];
   privateSpaces?: VillagePrivateSpace[];

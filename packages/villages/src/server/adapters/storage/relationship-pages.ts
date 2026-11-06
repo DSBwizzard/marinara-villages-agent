@@ -47,7 +47,7 @@ export type RelationshipPageLayout = {
 };
 export type RelationshipPageManifest = {
   format: 1;
-  header: Pick<RelationshipState, "version" | "seed" | "clockShiftMs" | "noticeSequence" | "eventSequence">;
+  header: Pick<RelationshipState, "version" | "seed" | "noticeSequence" | "eventSequence">;
   fields: Record<Field, HistoryPageRef | null>;
   edges: HistoryPageRef | null;
   threads: HistoryPageRef | null;
@@ -61,7 +61,6 @@ export function encodeRelationshipPages(value: RelationshipState, world: string,
     "seed",
     "noticeSequence",
     "eventSequence",
-    "clockShiftMs",
     "edges",
     "mailThreads",
     ...MAPS,
@@ -115,7 +114,6 @@ export function encodeRelationshipPages(value: RelationshipState, world: string,
       seed: value.seed,
       noticeSequence: value.noticeSequence,
       eventSequence: value.eventSequence,
-      ...(value.clockShiftMs === undefined ? {} : { clockShiftMs: value.clockShiftMs }),
     },
     fields: Object.fromEntries(
       Object.entries(fields).map(([field, tree]) => [field, tree.root]),
@@ -134,16 +132,12 @@ export function encodeRelationshipPages(value: RelationshipState, world: string,
 export function readRelationshipPageManifest(raw: unknown, world: string): RelationshipPageManifest {
   memoryObject(raw, ["format", "header", "fields", "edges", "threads"]);
   memoryRequire(raw.format === 1, "unsupported relationship page manifest");
-  memoryObject(raw.header, ["version", "seed", "noticeSequence", "eventSequence", "clockShiftMs"]);
+  memoryObject(raw.header, ["version", "seed", "noticeSequence", "eventSequence"]);
   memoryRequire(
     raw.header.version === 3 &&
       typeof raw.header.seed === "string" &&
       [raw.header.noticeSequence, raw.header.eventSequence].every((n) => Number.isSafeInteger(n) && n >= 0),
     "invalid relationship page header",
-  );
-  memoryRequire(
-    raw.header.clockShiftMs === undefined || Number.isFinite(raw.header.clockShiftMs),
-    "invalid relationship clock shift",
   );
   memoryObject(raw.fields, [...MAPS, ...LISTS]);
   for (const field of [...MAPS, ...LISTS]) readHistoryPageRef(raw.fields[field], world);
