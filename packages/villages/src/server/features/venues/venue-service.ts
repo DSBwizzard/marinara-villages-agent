@@ -34,7 +34,7 @@ export interface VenueCommandPorts {
   mutateVillageState: typeof import("../world/village-store.js").mutateVillageState;
   buildVillageSnapshot(): Promise<VillageSnapshot>;
   sceneQueries(): {
-    activeVenueSession(): Promise<Pick<VenueScene, "id" | "placeId" | "zoneId" | "zoneGrants"> | null>;
+    activeVenueSession(): Promise<Pick<VenueScene, "id" | "placeId" | "zoneId"> | null>;
   };
 }
 

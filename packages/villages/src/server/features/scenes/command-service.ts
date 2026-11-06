@@ -28,9 +28,9 @@ import { bindProjectSpeech, validateProjectSpeech } from "../../domain/rules/pro
 import { structuralShape as projectZoneShape } from "../../domain/rules/project-structure.js";
 import { rejectedInputHash, rejectedSubmission } from "../../domain/rules/rejected-submissions.js";
 import { publishRelationshipDisclosures } from "../../domain/rules/relationship-memories.js";
-import { filterRelationshipNotices, relationshipChangeNotices } from "../../domain/rules/relationship-presentation.js";
+import { filterRelationshipNotices } from "../../domain/rules/relationship-presentation.js";
 import { parseRelationshipProposals, RELATIONSHIP_REVIEW_INSTRUCTION } from "../../domain/rules/relationship-review.js";
-import { startingRelationshipsReady, relationshipZoneController } from "../../domain/rules/relationship-rules.js";
+import { startingRelationshipsReady } from "../../domain/rules/relationship-rules.js";
 import { assertSceneMovementCapacity, UnavailableResidentMovement } from "../../domain/rules/resident-movement.js";
 import { responseDiagnostics } from "../../domain/rules/response-diagnostics.js";
 import { captureSceneAttendance, sceneZoneOccupants } from "../../domain/rules/scene-attendance.js";
@@ -669,14 +669,9 @@ export function createSceneCommands({
       throw conflict(
         "There is no permitted connection route to that space; its controller may need to grant an invitation.",
       );
-    const people = sceneZoneOccupants({ ...session, accompanying }, village, venue, zone.id);
+    const people = sceneZoneOccupants({ ...session, accompanying }, venue, zone.id);
     if (people.filter((person) => !person.characterId.startsWith("npc:")).length > 4)
       throw conflict("Five residents occupy this Zone in the Scene. Choose another Zone.");
-    let controllerId = "";
-    if (session.dismissedZoneIds?.includes(zone.id))
-      throw conflict("Permission for this Zone was withdrawn during this Scene. Its controller can invite you again.");
-    const ongoingController = relationshipZoneController(village.relationshipContext, village, venue, zone, "player");
-    if (ongoingController) controllerId = ongoingController;
     const decision = evaluateZoneAccess(venue, zone, "player", {
       ...sceneAccessContext({ ...session, accompanying }, village),
       accepting: true,
@@ -726,16 +721,9 @@ export function createSceneCommands({
       }
       state.activeIds = people.map((person) => person.characterId);
       state.privateSpaceId = ["private-residence", "staff", "restricted"].includes(zone.kind) ? zone.id : undefined;
-      if (controllerId)
-        state.zoneGrants = [
-          ...(state.zoneGrants ?? []).filter((grant) => grant.zoneId !== zone.id),
-          { zoneId: zone.id, controllerId, source: ongoingController ? "relationship" : undefined },
-        ];
-      state.legacyCast = false;
       state.spaceClass = zone.venueClass;
       state.area = zoneArea(zone);
       state.privateOwnerId = zone.ownerId ?? "";
-      state.grantedZoneIds = [...new Set([...(state.grantedZoneIds ?? []), zone.id])];
       state.lastActivityAt = at;
       state.recap = "";
     });
@@ -966,13 +954,6 @@ export function createSceneCommands({
       accepting: true,
     };
     let initialPermissionId: string | undefined;
-    const grantedZoneIds: string[] = [];
-    const zoneGrants: { zoneId: string; controllerId: string; source?: "relationship" }[] = [];
-    const ongoingController = relationshipZoneController(village.relationshipContext, village, place, zone, "player");
-    if (ongoingController) {
-      grantedZoneIds.push(zone.id);
-      zoneGrants.push({ zoneId: zone.id, controllerId: ongoingController, source: "relationship" });
-    }
     const decision = evaluateZoneAccess(place, zone, "player", {
       ...entryAccessContext,
       relationships: village.relationshipContext,
@@ -1016,8 +997,6 @@ export function createSceneCommands({
       placeId,
       placeName: place.name,
       zoneId: zone.id,
-      grantedZoneIds,
-      zoneGrants,
       privateSpaceId: ["private-residence", "staff", "restricted"].includes(zone.kind) ? zone.id : undefined,
       accompanying: [],
       departedIds: [],
@@ -1243,20 +1222,8 @@ export function createSceneCommands({
           requestMetrics: venueRequestMetrics(),
         });
       }
-      if (reply.invitationSignal)
-        reply.invitationSignal.sourceLineId =
-          savedLineIds[
-            reply.lines.findIndex(
-              (line) =>
-                (reply.invitationSignal?.evidenceKind === "action"
-                  ? line.kind === "narration"
-                  : line.speakerId === reply.invitationSignal?.residentId) &&
-                line.content.includes(reply.invitationSignal!.quote),
-            )
-          ];
       if (state.semanticVersion === 2) {
         const greeting = state.submissions.find((row) => row.id === "greeting")!;
-        if (greeting.invitationSignal) greeting.invitationSignal.sourceLineId = reply.invitationSignal?.sourceLineId;
         const sourceLineId = (actor: string, quote: string) =>
           savedLineIds[reply.lines.findIndex((line) => line.speakerId === actor && line.content.includes(quote))];
         if (greeting.venueRequestSignal)
@@ -1795,22 +1762,7 @@ export function createSceneCommands({
                 },
               }
             : {}),
-          ...(reply.invitationSignal
-            ? {
-                invitationSignal: {
-                  ...reply.invitationSignal,
-                  sourceLineId: reply.lines
-                    .map((line, index) => ({ line, id: replyLineIds[index] }))
-                    .find(
-                      ({ line }) =>
-                        (reply.invitationSignal?.evidenceKind === "action"
-                          ? line.kind === "narration"
-                          : line.speakerId === reply.invitationSignal?.residentId) &&
-                        line.content.toLowerCase().includes(reply.invitationSignal.quote.toLowerCase()),
-                    )?.id,
-                },
-              }
-            : {}),
+          ...(reply.invitationSignal ? { invitationSignal: reply.invitationSignal } : {}),
           at,
         });
         if (reply.invitationSignal?.venueId === state.placeId && reply.invitationSignal.timing === "now") {
@@ -1909,8 +1861,9 @@ export function createSceneCommands({
   }
 
   async function applySavedAccessEvents(scene: VenueScene, turn: VenueSubmission) {
-    const events = (turn.accessEvents ?? []).filter((event) => event.interpretationVersion === 1);
-    if (events.length !== (turn.accessEvents ?? []).length) await holdLegacyRoomEffect(scene.id);
+    const events = turn.accessEvents ?? [];
+    if (events.some((event) => event.interpretationVersion !== 1 || asRecord(event.facts).semanticVersion !== 2))
+      throw conflict("This saved access effect needs current evidence.");
     if (!events.length) return;
     const batch = {
       checks: events.map((event) => ({ id: event.id, facts: event.facts })),
@@ -1924,6 +1877,8 @@ export function createSceneCommands({
     batch: InterpretationBatch,
     submissionId = scene.submissions.at(-1)?.id,
   ) {
+    if (batch.checks.some((check) => asRecord(check.facts).semanticVersion !== 2))
+      throw conflict("This saved access effect needs current evidence.");
     const turn = scene.submissions.find((turn) => turn.id === submissionId);
     if (!turn?.replyLineIds?.length || !turn.at) return;
     const apply = (state: VillageState) => {
@@ -1975,11 +1930,7 @@ export function createSceneCommands({
         if (
           management.action &&
           result.outcome !== "access-management" &&
-          !(
-            facts.semanticVersion === 2 &&
-            management.action === "invite" &&
-            ["invite-now", "invite-later"].includes(result.outcome)
-          )
+          !(management.action === "invite" && ["invite-now", "invite-later"].includes(result.outcome))
         ) {
           reject();
           continue;
@@ -1993,10 +1944,7 @@ export function createSceneCommands({
             (line): line is VenueLine =>
               !!line &&
               ((line.speakerId === actor && line.kind !== "narration") ||
-                (facts.semanticVersion === 2 &&
-                  line.kind === "narration" &&
-                  line.heardBy.includes(actor) &&
-                  !line.contactHidden)) &&
+                (line.kind === "narration" && line.heardBy.includes(actor) && !line.contactHidden)) &&
               turn.replyLineIds.includes(line.id),
           );
         if (!sources.length) {
@@ -2004,14 +1952,7 @@ export function createSceneCommands({
           continue;
         }
         const scope = result.outcome === "ban-venue" ? null : (zone?.id ?? null);
-        const speech = sources.map((line) => line.content).join(" ");
-        if (
-          result.outcome.startsWith("ban-") &&
-          (!managesAccess(venue, scope, actor) ||
-            (facts.semanticVersion !== 2 &&
-              (!/\b(?:ban|banned|barred)\b/iu.test(speech) ||
-                /\b(?:not banned|not ban|won't ban|would|might|if|joking)\b/iu.test(speech))))
-        ) {
+        if (result.outcome.startsWith("ban-") && !managesAccess(venue, scope, actor)) {
           reject();
           continue;
         }
@@ -2045,7 +1986,7 @@ export function createSceneCommands({
                 action: "invite",
                 duration: "visit",
                 sceneId: venue.id === scene.placeId ? scene.id : undefined,
-                accompanied: facts.semanticVersion === 2 && facts.accompanies === true,
+                accompanied: facts.accompanies === true,
                 outsideHours: true,
               },
               actor,
@@ -2104,6 +2045,9 @@ export function createSceneCommands({
         facts.actorId !== signal.residentId ||
         facts.venueId !== signal.venueId ||
         facts.zoneId !== signal.zoneId ||
+        asRecord(facts.accessCommand).action !== "invite" ||
+        !signal.accessOperationId ||
+        asRecord(facts.accessCommand).operationId !== signal.accessOperationId ||
         invitation.result.outcome !== (signal.timing === "now" ? "invite-now" : "invite-later") ||
         !invitation.check.evidence.some(
           (line) =>
@@ -2121,36 +2065,18 @@ export function createSceneCommands({
     const zone = venue && resolveVenueZone(venue, signal.zoneId);
     if (!venue || !zone || zoneClosed(village, venue, zone) || !canInviteToZone(venue, zone, signal.residentId))
       reply.invitationSignal = null;
-    else (signal as NonNullable<VenueSubmission["invitationSignal"]>).interpretationVersion = 1;
-  }
-
-  async function holdLegacyRoomEffect(sceneId: string): Promise<void> {
-    await changeSession(sceneId, (state) => {
-      state.pendingRoomQuestions = [
-        ...new Set([
-          ...(state.pendingRoomQuestions ?? []),
-          "A saved access effect lacks validated interpretation evidence. Ask again to establish current permission.",
-        ]),
-      ].slice(-8);
-    });
   }
 
   function applyImmediateZoneInvitation(
     session: VenueScene,
     signal: NonNullable<VenueSubmission["invitationSignal"]>,
   ): void {
-    const zoneId = signal.zoneId ?? (signal.scope === "private" ? "private:" + signal.ownerId : "residence");
-    session.dismissedZoneIds = session.dismissedZoneIds?.filter((id) => id !== zoneId);
-    session.grantedZoneIds = [...new Set([...(session.grantedZoneIds ?? []), zoneId])];
-    session.zoneGrants = [
-      ...(session.zoneGrants ?? []).filter((grant) => grant.zoneId !== zoneId),
-      { zoneId, controllerId: signal.residentId },
-    ];
+    const zoneId = signal.zoneId;
     session.entryOffers = [
       ...(session.entryOffers ?? []).filter((entry) => entry.zoneId !== zoneId),
       {
         zoneId,
-        label: signal.zoneLabel ?? (signal.scope === "private" ? "Private Space" : "Common Space"),
+        label: signal.zoneLabel,
         controllerId: signal.residentId,
         accompanies: signal.accompanies === true,
       },
@@ -2161,101 +2087,12 @@ export function createSceneCommands({
     session: VenueScene,
     signal: NonNullable<VenueSubmission["invitationSignal"]>,
   ): Promise<void> {
-    if (signal.accessOperationId) {
-      const venue = findLocation(
-        sceneContinuityView(await readVillageState(), await readSession(session.id)),
-        signal.venueId,
-      );
-      const receipt = venue?.access?.receipts[signal.accessOperationId];
-      if (!receipt || receipt.outcome === "rejected") throw conflict("The saved invitation needs recovery.");
-      return;
-    }
-    if (signal.interpretationVersion !== 1) {
-      await holdLegacyRoomEffect(session.id);
-      return;
-    }
-    const quote = signal.quote.replace(/\s+/gu, " ").toLowerCase();
-    const spoken = session.lines.find(
-      (line) =>
-        (signal.evidenceKind === "action" ? line.kind === "narration" : line.speakerId === signal.residentId) &&
-        line.content.replace(/\s+/gu, " ").toLowerCase().includes(quote) &&
-        (!signal.sourceLineId || line.id === signal.sourceLineId),
+    const venue = findLocation(
+      sceneContinuityView(await readVillageState(), await readSession(session.id)),
+      signal.venueId,
     );
-    if (!spoken || !quote) return;
-    const apply = (state: VillageState) => {
-      if (session.villageSeed && session.villageSeed !== state.seed) return;
-      const venue = findLocation(state, signal.venueId);
-      if (!venue) return;
-      const zone = resolveVenueZone(
-        venue,
-        signal.zoneId ??
-          legacyZoneId(venue, signal.scope === "private" ? "private" : "shared", "residence", signal.ownerId),
-      );
-      if (!zone || zoneClosed(state, venue, zone) || !canInviteToZone(venue, zone, signal.residentId)) return;
-      if (venue.access) {
-        const operationId = "speech:" + spoken.id + ":" + zone.id;
-        if (venue.access.receipts[operationId]) return;
-        if (
-          signal.accessRevision === undefined ||
-          venue.access.changes.some(
-            (change) =>
-              change.revision > signal.accessRevision! &&
-              (change.zoneId === null || change.zoneId === zone.id) &&
-              change.action !== "invite" &&
-              change.action !== "destinations",
-          )
-        ) {
-          venue.access.receipts[operationId] = {
-            fingerprint: "obsolete-visit-speech",
-            revision: venue.access.revision,
-            outcome: "rejected",
-          };
-          return;
-        }
-        applyAccessCommand(
-          venue,
-          {
-            action: "invite",
-            operationId,
-            expectedRevision: venue.access.revision,
-            zoneId: zone.id,
-            visitorId: "player",
-            duration: "visit",
-            accompanied: signal.accompanies === true,
-            outsideHours: false,
-            ...(signal.timing === "now" && venue.id === session.placeId ? { sceneId: session.id } : {}),
-          },
-          signal.residentId,
-          spoken.at,
-          ["player", ...sceneActorIds(state)],
-          [spoken.id],
-        );
-        return;
-      }
-      // Legacy immediate admission is captured by the current Scene's zoneGrants.
-      if (signal.timing === "now" && venue.id === session.placeId) return;
-      if (zone.kind === "private-residence" && signal.ownerId !== signal.residentId) return;
-      if (
-        venue.usedInvitationIds?.includes(spoken.id) ||
-        venue.playerInvitations?.some((entry) => entry.sourceLineId === spoken.id)
-      )
-        return;
-      venue.playerInvitations = [
-        ...(venue.playerInvitations ?? []),
-        {
-          residentId: signal.residentId,
-          zoneId: zone.id,
-          privateSpaceId: ["private-residence", "staff", "restricted"].includes(zone.kind) ? zone.id : undefined,
-          recordedAt: villageNow().toISOString(),
-          scope: signal.scope,
-          ownerId: signal.ownerId,
-          sourceLineId: spoken.id,
-          quote: signal.quote,
-        },
-      ].slice(-16);
-    };
-    await changeSceneVenues(session, apply);
-    await mutateVillageState(apply);
+    const receipt = signal.accessOperationId && venue?.access?.receipts[signal.accessOperationId];
+    if (!receipt || receipt.outcome === "rejected") throw conflict("The saved invitation needs recovery.");
   }
 
   async function applyVenueRequests(session: VenueScene, submission: VenueSubmission): Promise<void> {
@@ -2748,26 +2585,10 @@ export function createSceneCommands({
     // Domain bookkeeping can finish after the reply's original Scene object was read.
     submission = (await readSession(session.id)).submissions.find((turn) => turn.id === submission.id) ?? submission;
     const village = await readVillageSnapshot();
-    const presentation = sceneContinuityView(village, session);
     // Saved notices were authorized at delivery; later Forget cannot rewrite that history.
-    const cached = filterRelationshipNotices(submission.recordEvents ?? [], presentation.relationshipContext);
+    const cached = filterRelationshipNotices(submission.recordEvents ?? []);
     if (session.status === "closed" && !village.memoryScenes[session.id]) return structuredClone(cached);
     const events: VenueRecordEvent[] = [];
-    if (village.relationshipContext && submission.liveProposals) {
-      const receiptIds = new Set(submission.processing?.domains.relationships.receiptIds ?? []);
-      // A retry reconstructs notices from effects committed in the relationship document.
-      const receipts = Object.values(village.relationshipContext.receipts).filter(
-        (receipt) =>
-          receiptIds.has(receipt.id) || (receipt.sceneId === session.id && receipt.submissionId === submission.id),
-      );
-      events.push(
-        ...relationshipChangeNotices(
-          receipts,
-          presentation.relationshipContext ?? village.relationshipContext,
-          presentation,
-        ),
-      );
-    }
     for (const receipt of Object.values(village.exchangeReceipts))
       if (receipt.sceneId === session.id && receipt.submissionId === submission.id && receipt.notice)
         events.push(receipt.notice);

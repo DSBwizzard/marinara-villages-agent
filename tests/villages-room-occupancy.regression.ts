@@ -119,11 +119,11 @@ async function main() {
     activeIds: ["visible"],
   });
   assert.deepEqual(
-    sceneZoneOccupants(scene, world, hub, "common").map((entry) => entry.characterId),
+    sceneZoneOccupants(scene, hub, "common").map((entry) => entry.characterId),
     ["visible"],
   );
   assert.deepEqual(
-    sceneZoneOccupants(scene, world, hub, "private:hidden").map((entry) => entry.characterId),
+    sceneZoneOccupants(scene, hub, "private:hidden").map((entry) => entry.characterId),
     ["hidden"],
   );
   const card = readEffectiveVillagerCard(world.villagers.find((entry) => entry.characterId === "visible")!);
@@ -150,7 +150,7 @@ async function main() {
     "a new Scene uses the current agenda",
   );
   assert.deepEqual(
-    sceneZoneOccupants(scene, world, hub, "common").map((entry) => entry.doing),
+    sceneZoneOccupants(scene, hub, "common").map((entry) => entry.doing),
     ["sorting herbs"],
     "the active Scene keeps its captured position and activity",
   );
@@ -161,18 +161,14 @@ async function main() {
   const reloaded = coerceSession(JSON.parse(JSON.stringify(scene)));
   assert.deepEqual(reloaded.sceneAttendance, before, "new Scene attendance survives save/reload");
   reloaded.accompanying = [{ characterId: "visible", zoneId: "exterior" }];
-  assert.deepEqual(sceneZoneOccupants(reloaded, world, hub, "common"), []);
+  assert.deepEqual(sceneZoneOccupants(reloaded, hub, "common"), []);
   assert.deepEqual(
-    sceneZoneOccupants(reloaded, world, hub, "exterior").map((entry) => entry.characterId),
+    sceneZoneOccupants(reloaded, hub, "exterior").map((entry) => entry.characterId),
     ["visible"],
     "only recorded movement changes positions",
   );
   reloaded.departedIds = ["visible"];
-  assert.deepEqual(
-    sceneZoneOccupants(reloaded, world, hub, "exterior"),
-    [],
-    "an evidenced departure removes the occupant",
-  );
+  assert.deepEqual(sceneZoneOccupants(reloaded, hub, "exterior"), [], "an evidenced departure removes the occupant");
   const hidden = world.villagers.find((entry) => entry.characterId === "hidden")!;
   hidden.agenda = null;
   assert.equal(

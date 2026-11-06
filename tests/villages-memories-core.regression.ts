@@ -12,7 +12,6 @@ import {
 import { recallMemories } from "../packages/villages/src/server/domain/rules/memory-recall.js";
 import {
   captureMemoryScene,
-  inspectMemory,
   projectMemories,
   readMemorySceneSnapshot,
   sceneMemoryCollection,
@@ -107,7 +106,7 @@ await runCase("memories/repair", () => {
     operation.text,
   );
   assert.deepEqual(
-    inspectMemory(collection, collection.records[0].id)?.knowers.player.support,
+    structuredClone(collection.records[0]).knowers.player.support,
     original.records[0].knowers.player.support,
   );
   assert.throws(
@@ -481,7 +480,7 @@ await runCase("memories/consolidation", () => {
     });
   collection.records[0].knowers.player.disclosed = { title: "Move to the orchard", status: "considering" };
   const frozenDomain = structuredClone(domain),
-    inspected = inspectMemory(collection, collection.records[0].id);
+    inspected = structuredClone(collection.records[0]);
   assert.ok(inspected);
   assert.equal(projectMemories(collection, ["ella"]).length, 0, "Inspect is not learning.");
   assert.doesNotMatch(

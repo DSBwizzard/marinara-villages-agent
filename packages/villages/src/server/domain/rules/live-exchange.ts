@@ -2,7 +2,6 @@ import type { LiveEvidenceContext, LiveExchangeProposals } from "../models/memor
 import type { RelationshipEvidenceLine } from "../models/relationship-types.js";
 import type { VenueScene } from "../models/scene-model.js";
 import type { VenueLine } from "../models/scene-model.js";
-import { asRecord } from "./coerce.js";
 import { RELATIONSHIP_REVIEW_INSTRUCTION } from "./relationship-review.js";
 import { coerceResponseDiagnostics, type ResponseDiagnostics } from "./response-diagnostics.js";
 import { SCENE_MEMORY_INSTRUCTION } from "./scene-memories.js";
@@ -70,56 +69,6 @@ export function bindLiveProposals(
     earlierLineIds: reply.earlierLineIds ?? [],
     playerLineId,
     replyLineIds,
-  };
-}
-/** A relayed reply is appended after the messenger's actual delivered line. Keep its citations attached. */
-export function mergeLiveReplyProposals(
-  first: Parameters<typeof bindLiveProposals>[0],
-  second: Parameters<typeof bindLiveProposals>[0],
-  offset: number,
-) {
-  const remap = (value: unknown) =>
-    Array.isArray(value)
-      ? value.map((ref) => (ref === "player" ? offset - 1 : typeof ref === "number" ? offset + ref : ref))
-      : value;
-  const memories =
-    Array.isArray(first.memoryChanges) && Array.isArray(second.memoryChanges)
-      ? [
-          ...first.memoryChanges,
-          ...second.memoryChanges.map((value) => ({
-            ...asRecord(value),
-            learners: Object.fromEntries(
-              Object.entries(asRecord(asRecord(value).learners)).map(([id, raw]) => [
-                id,
-                {
-                  ...asRecord(raw),
-                  support: Array.isArray(asRecord(raw).support)
-                    ? (asRecord(raw).support as unknown[]).map((citation) => ({
-                        ...asRecord(citation),
-                        lineId: (remap([asRecord(citation).lineId]) as unknown[])[0],
-                      }))
-                    : undefined,
-                },
-              ]),
-            ),
-          })),
-        ]
-      : undefined;
-  const a = asRecord(first.relationshipChanges),
-    b = asRecord(second.relationshipChanges);
-  return {
-    responseDiagnostics: second.responseDiagnostics ?? first.responseDiagnostics,
-    memoryChanges: memories,
-    relationshipChanges: Object.fromEntries(
-      ["changes", "permissions", "disclosures", "intentions"].map((key) => [
-        key,
-        Array.isArray(a[key]) && Array.isArray(b[key])
-          ? [...a[key], ...b[key].map((value) => ({ ...asRecord(value), lineIds: remap(asRecord(value).lineIds) }))]
-          : undefined,
-      ]),
-    ),
-    earlierLineIds: [...new Set([...(first.earlierLineIds ?? []), ...(second.earlierLineIds ?? [])])],
-    memoryContexts: { ...first.memoryContexts, ...second.memoryContexts },
   };
 }
 export function liveEvidence(scene: VenueScene, proposals: LiveExchangeProposals): RelationshipEvidenceLine[] {

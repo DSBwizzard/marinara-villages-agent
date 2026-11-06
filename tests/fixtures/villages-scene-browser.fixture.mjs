@@ -1,3 +1,4 @@
+import { projectVenueAccess, projectZoneAccess } from "../../packages/villages/src/server/domain/rules/venue-access.js";
 import { venueFixture } from "../helpers/venues.fixture.js";
 const now = new Date().toISOString();
 const image = (color) =>
@@ -25,7 +26,7 @@ const longGreeting =
   "The mill hums softly while dust turns in the late light, and each villager pauses to listen. ".repeat(12);
 const mapImage = image("#719b77");
 const place = (id, x, y) =>
-  venueFixture({
+  venueSnapshotFixture({
     residentIds: [null].filter((id) => typeof id === "string" && !!id),
     id,
     name: id === "mill" ? "The Mill" : id === "harbour" ? "The Harbour" : "The Market",
@@ -42,6 +43,23 @@ const place = (id, x, y) =>
     occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
     state: { revision: 0, recent: null, updatedAt: now },
   });
+export function venueSnapshotFixture(input) {
+  const venue = venueFixture(input);
+  const zones = venue.zones.map((zone) => ({
+    ...zone,
+    access: undefined,
+    controllerIds: undefined,
+    accessView: projectZoneAccess(venue, zone, "player"),
+  }));
+  return {
+    ...venue,
+    access: undefined,
+    accessView: projectVenueAccess(venue, "player"),
+    zones,
+    spaces: zones.filter((zone) => zone.kind !== "exterior" && zone.kind !== "private-residence"),
+    privateSpaces: zones.filter((zone) => zone.kind === "private-residence"),
+  };
+}
 const snapshot = {
   worldScope: "b".repeat(64),
   status: "ready",

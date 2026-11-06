@@ -247,7 +247,6 @@ for (const failure of ["none", "validation-input", "presentation-publish", "inva
     measurePipeline: async (_label: string, _metadata: unknown, work: () => Promise<unknown>) => work(),
     runtimeDebug() {},
     venueOperationId: () => gmScene.id,
-    venueOperationInput: () => gmAdmission,
     refreshZoneParticipants: async (current: unknown) => current,
     venueSavedCheckpoint: (key: string) => retained.get(key),
     venueCheckpoint: async (key: string, work: () => Promise<unknown>) => {
