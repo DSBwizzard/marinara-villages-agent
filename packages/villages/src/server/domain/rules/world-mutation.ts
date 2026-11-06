@@ -61,8 +61,9 @@ export function normalizeVillageMutation(
   }
   for (const venue of state.venues) {
     synchronizeVenueZones(venue, previousVenues.get(venue.id));
-    if (!previousVenues.has(venue.id) && state.venues.some((entry) => entry.access)) initializeVenueAccess(venue);
-    else if (venue.access) initializeVenueAccess(venue);
+    if (previousVenues.has(venue.id) && !venue.access)
+      throw new Error("This saved Place needs its native access ledger.");
+    initializeVenueAccess(venue);
     const previousNpcRights = [
       ...(previousVenues.get(venue.id)?.access?.managerIds ?? []),
       ...(previousVenues.get(venue.id)?.zones ?? []).flatMap((zone) => [

@@ -57,7 +57,7 @@ async function main() {
     const f = fixture("Layout Scene lock");
     const navigation = createSceneNavigation();
     f.ports.withSceneNavigation = navigation.serializeNavigation;
-    let scene: Pick<VenueScene, "id" | "placeId" | "zoneId" | "zoneGrants"> | null = null;
+    let scene: Pick<VenueScene, "id" | "placeId" | "zoneId"> | null = null;
     f.ports.sceneQueries = () => ({ activeVenueSession: async () => scene });
     const venue = f.state.venues[0];
     const zones = materializeConnections(venueZones(venue));
@@ -67,7 +67,7 @@ async function main() {
       connections: zones.map((z) => ({ id: z.id, connectedTo: z.connectedTo! })),
     };
     const commands = createVenueCommands(f.ports);
-    scene = { id: "scene", placeId: "another-venue", zoneId: "exterior", zoneGrants: [] };
+    scene = { id: "scene", placeId: "another-venue", zoneId: "exterior" };
     const before = structuredClone(venue);
     await assert.rejects(commands.updateVenueZoneLayout(venue.id, change), /End the active Scene/);
     assert.deepEqual(venue, before, "Scene anywhere blocks layout writes");
@@ -77,7 +77,7 @@ async function main() {
       await new Promise<void>((resolve) => {
         release = resolve;
       });
-      scene = { id: "new-scene", placeId: venue.id, zoneId: "exterior", zoneGrants: [] };
+      scene = { id: "new-scene", placeId: venue.id, zoneId: "exterior" };
     });
     await Promise.resolve();
     const save = commands.updateVenueZoneLayout(venue.id, change);

@@ -566,7 +566,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
         </button>
       </div>
     );
-  const zones = venueDisplayZones(place, room);
+  const zones = venueDisplayZones(place);
   const selected =
     zones.find((zone) => zone.id === venueZoneKey) ?? zones.find((zone) => zone.kind === "exterior") ?? zones[0];
   const exterior = zones.find((zone) => zone.kind === "exterior");
