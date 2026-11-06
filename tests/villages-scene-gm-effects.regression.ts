@@ -15,6 +15,8 @@ import {
 } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { fixtureRelationshipState } from "./helpers/village-storage.fixture.js";
 import { relationshipDocumentId } from "../packages/villages/src/server/adapters/storage/relationship-payload-store.js";
+import { ensureNarrative } from "../packages/villages/src/server/domain/rules/narrative-development.js";
+import { SCENE_DEVELOPMENT_SCHEMA } from "../packages/villages/src/server/domain/rules/narrative-prompts.js";
 
 await import(pathToFileURL(resolve("packages/villages/server.mjs")).href);
 mock.timers.enable({ apis: ["Date"], now: new Date("2026-11-05T20:00:00Z") });
@@ -293,6 +295,86 @@ for (const scenario of [
     const replay = await host.app.inject({ method: "POST", url, payload: requestPayload });
     assert.equal(replay.statusCode, 200, replay.body);
     assert.equal(calls, scenario === "draft-appointment" ? 2 : 1, "Recovery reuses purchased responses");
+  } finally {
+    await host.stop();
+  }
+}
+{
+  const host = await packagedSceneServer({
+    gm: true,
+    configure(world, now) {
+      world.backgroundPace = "balanced";
+      world.venues[0].zones![0].description = "";
+      world.venues[0].zones![1].description = "A room with a wooden sign.";
+      ensureNarrative(world, now);
+    },
+  });
+  let calls = 0;
+  host.model.chatComplete = async (messages: any[]) => {
+    calls++;
+    const prompt = messages.map((row) => row.content).join("\n");
+    assert(prompt.includes(SCENE_DEVELOPMENT_SCHEMA), "The GM receives the complete environmental effect schema");
+    assert.doesNotMatch(prompt, /Do not emit effect metadata|System independently checks your unchanged prose/);
+    const grant = JSON.parse(prompt.match(/Immutable local admission: ([^\n]+)/u)![1]);
+    const target = grant.targets[0];
+    return {
+      finishReason: "stop",
+      content: JSON.stringify({
+        input: [{ kind: "speech", text: "Hello." }],
+        segments: [{ kind: "narration", text: "A gust rattles the wooden sign." }],
+        narrativeIntroduction: {
+          status: "introduced",
+          segment: 0,
+          quote: "A gust rattles the wooden sign.",
+          development: {
+            severity: "gentle",
+            occurrence: "A gust rattles the wooden sign.",
+            situation: {
+              scope: "zone",
+              id: null,
+              expectedRevision: 0,
+              title: "Rattling sign",
+              summary: "The sign rattles in the breeze.",
+              status: "active",
+            },
+            physical: [],
+            conditions: [
+              {
+                id: null,
+                expectedRevision: 0,
+                venueId: target.venueId,
+                zoneId: target.zoneId,
+                observation: "The wooden sign rattles in the breeze.",
+                restriction: "none",
+                remedy: "",
+                endsAt: "2026-11-05T20:10:00.000Z",
+                clear: false,
+              },
+            ],
+            weather: null,
+          },
+        },
+      }),
+    };
+  };
+  try {
+    await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+    const payload = {
+      sessionId: "browser",
+      submissionId: "c1111111-1111-4111-8111-111111111111",
+      message: "Hello.",
+      mode: "chat",
+      targetId: "",
+      expectedSceneRevision: host.scene().sceneRevision,
+    };
+    const response = await host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
+    assert.equal(response.statusCode, 200, response.body);
+    const world = fixtureVillageState(host.records.get("villages-village").data, host.records);
+    assert.equal(world.narrative!.conditions.length, 1);
+    assert.equal(world.narrative!.receipts.length, 1);
+    const replay = await host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
+    assert.equal(replay.statusCode, 200, replay.body);
+    assert.equal(calls, 1, "Development and recovery use the one purchased GM response");
   } finally {
     await host.stop();
   }
