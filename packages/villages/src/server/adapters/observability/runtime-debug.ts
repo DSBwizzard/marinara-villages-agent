@@ -1,21 +1,11 @@
-import { activationScope, bindActivationService, createActivationBinding } from "../engine/activation-scope.js";
-import { villagesDebugAgentsEnabled, villagesDocuments, villagesLogger } from "../engine/runtime-host.js";
-import { venueDebugContext } from "../operations/operation-context.js";
-import { mutateDocument } from "../storage/document-store.js";
-import { createRuntimeDebug, type RuntimeDebug } from "./runtime-debug-service.js";
+import { bindActivationService, createActivationBinding } from "../engine/activation-scope.js";
+import { type RuntimeDebug } from "./runtime-debug-service.js";
 import type { LoreInspection, LoreUse } from "../../../shared/contracts/lore.js";
 export type { RuntimeDebugView } from "./runtime-debug-service.js";
 const binding = createActivationBinding<RuntimeDebug>("Villages runtime diagnostics are not configured.");
-const standalone = createRuntimeDebug({
-  villagesDebugAgentsEnabled,
-  villagesDocuments,
-  villagesLogger,
-  venueDebugContext,
-  mutateDocument,
-});
+
 function diagnostics(): RuntimeDebug {
-  if (activationScope()) return binding.get();
-  return binding.maybe() ?? standalone;
+  return binding.get();
 }
 export function configureRuntimeDebug(service: RuntimeDebug): () => void {
   return binding.configure(bindActivationService(service));

@@ -721,7 +721,7 @@ async function main() {
   console.log("Villages live lorebook selection regressions passed.");
 }
 
-void main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

@@ -829,4 +829,4 @@ async function main() {
     "Current GM local validation preserves full source coverage, authority, private evidence and checkpoint identity without a System purchase.",
   );
 }
-void main();
+await main();

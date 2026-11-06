@@ -130,24 +130,32 @@ try {
         );
         const caseReport = join(directory, test.path.split("/").pop() + ".cases.json");
         const result = await new Promise((resolve) => {
-          const child = spawn(process.execPath, ["--import", "tsx", test.path], {
-            env: {
-              ...process.env,
-              ...(test.group === "engine"
-                ? { TSX_TSCONFIG_PATH: fileURLToPath(new URL("../tsconfig.engine-tests.json", import.meta.url)) }
-                : {}),
-              VILLAGES_TEST_CASES: JSON.stringify(testCases),
-              VILLAGES_TEST_CASE_REPORT: caseReport,
-              ...(process.env.VILLAGES_SCREENSHOT_DIR
-                ? { VILLAGES_SCREENSHOT_DIR: join(directory, test.path.split("/").pop(), "screenshots") }
-                : {}),
-              ...(process.env.VILLAGES_VISUAL_OUTPUT
-                ? { VILLAGES_VISUAL_OUTPUT: join(directory, test.path.split("/").pop(), "visual") }
-                : {}),
+          const child = spawn(
+            process.execPath,
+            [
+              "--import",
+              "tsx",
+              ...(test.group === "regression" ? ["scripts/run-regression.mjs", test.path] : [test.path]),
+            ],
+            {
+              env: {
+                ...process.env,
+                ...(test.group === "engine"
+                  ? { TSX_TSCONFIG_PATH: fileURLToPath(new URL("../tsconfig.engine-tests.json", import.meta.url)) }
+                  : {}),
+                VILLAGES_TEST_CASES: JSON.stringify(testCases),
+                VILLAGES_TEST_CASE_REPORT: caseReport,
+                ...(process.env.VILLAGES_SCREENSHOT_DIR
+                  ? { VILLAGES_SCREENSHOT_DIR: join(directory, test.path.split("/").pop(), "screenshots") }
+                  : {}),
+                ...(process.env.VILLAGES_VISUAL_OUTPUT
+                  ? { VILLAGES_VISUAL_OUTPUT: join(directory, test.path.split("/").pop(), "visual") }
+                  : {}),
+              },
+              windowsHide: true,
+              stdio: ["ignore", "pipe", "pipe"],
             },
-            windowsHide: true,
-            stdio: ["ignore", "pipe", "pipe"],
-          });
+          );
           children.add(child);
           let output = "",
             stderr = "",

@@ -1,12 +1,11 @@
-import { activationScope, bindActivationService, createActivationBinding } from "../engine/activation-scope.js";
-import { createBackgroundContext, type BackgroundContext } from "./background-context-service.js";
+import { bindActivationService, createActivationBinding } from "../engine/activation-scope.js";
+import { type BackgroundContext } from "./background-context-service.js";
 import type { BackgroundCompletion } from "../../domain/models/background-completion-model.js";
 export type { BackgroundCompletion, BackgroundContext } from "./background-context-service.js";
 const binding = createActivationBinding<BackgroundContext>("Villages background context is not configured.");
-const standalone = createBackgroundContext();
+
 function backgroundContext(): BackgroundContext {
-  if (activationScope()) return binding.get();
-  return binding.maybe() ?? standalone;
+  return binding.get();
 }
 export function configureBackgroundContext(service: BackgroundContext): () => void {
   return binding.configure(bindActivationService(service));
@@ -16,9 +15,7 @@ export const backgroundCalls = {
     return backgroundContext().backgroundCalls.getStore();
   },
   run<T>(store: BackgroundCompletion, work: () => T): T {
-    const owner = activationScope();
-    const calls = backgroundContext().backgroundCalls;
-    return owner ? owner.run(() => calls.run(store, work)) : calls.run(store, work);
+    return backgroundContext().backgroundCalls.run(store, work);
   },
 };
 export function requireBackgroundSuccess(error: unknown): void {

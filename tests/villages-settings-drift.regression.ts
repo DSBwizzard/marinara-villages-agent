@@ -5,10 +5,7 @@ import type { VillageVenueZone } from "../packages/villages/src/server/domain/mo
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
-import {
-  createActivationScope,
-  installDefaultActivation,
-} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
+import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { createVillageSnapshot } from "../packages/villages/src/server/features/world/snapshot-service.js";
 import { configureVillageSnapshot } from "../packages/villages/src/server/features/world/snapshot.js";
 import { registerSnapshotCatalogRoutes } from "../packages/villages/src/server/features/world/routes.js";
@@ -83,8 +80,8 @@ const settings = createVillageSettings({
 const scope = createActivationScope();
 const releaseSnapshot = scope.run(() => configureVillageSnapshot(snapshot));
 const releaseSettings = scope.run(() => configureVillageSettings(settings));
-const clear = installDefaultActivation(scope, () => {});
-const app = Fastify();
+
+const app = scope.run(() => Fastify());
 
 // The public HTTP surface is explicit: adding a saved-world field must not expose it.
 const publicFields = [
@@ -156,9 +153,9 @@ async function request(method: "GET" | "PATCH", payload?: Record<string, unknown
 }
 
 try {
-  registerSnapshotCatalogRoutes(app);
-  registerVillageSettingsRoutes(app);
-  const initial = await request("GET");
+  scope.run(() => registerSnapshotCatalogRoutes(app));
+  scope.run(() => registerVillageSettingsRoutes(app));
+  const initial = await scope.run(() => request("GET"));
   assert.equal(initial.worldName, "");
   assert.equal(initial.playerBackground, "");
   assert.equal(initial.communityVenueId, "");
@@ -185,12 +182,12 @@ try {
   assert.deepEqual(privateZone.state, hidden.state);
 
   // Older stored data can lack these fields; explicit response fallbacks remain present.
-  Reflect.deleteProperty(state, "worldName");
+  scope.run(() => Reflect.deleteProperty(state, "worldName"));
   state.playerBackground = null;
-  Reflect.deleteProperty(state, "sceneryStyleProfileId");
-  Reflect.deleteProperty(state, "automaticZonePictures");
+  scope.run(() => Reflect.deleteProperty(state, "sceneryStyleProfileId"));
+  scope.run(() => Reflect.deleteProperty(state, "automaticZonePictures"));
   state.playerPersonaMissing = true;
-  const legacy = await request("GET");
+  const legacy = await scope.run(() => request("GET"));
   assert.equal(legacy.worldName, null);
   assert.equal(legacy.playerBackground, null);
   assert.equal(legacy.sceneryStyleProfileId, null);
@@ -201,16 +198,18 @@ try {
   state.playerBackground = "A cartographer";
   state.worldRules = "Standing rules";
   visible.preparation = { status: "failed", error: "Drawing unavailable", claimId: "PRIVATE-FAILED-CLAIM", attempt: 3 };
-  const updated = await request("PATCH", {
-    worldName: "Harbor",
-    sendOnEnter: false,
-    backgroundPace: "quiet",
-    sceneryArtStyle: "Watercolor",
-    sceneryStyleProfileId: "watercolor",
-    automaticZonePictures: false,
-    personalizeVenueImagesByDefault: false,
-    useVisualLoreByDefault: false,
-  });
+  const updated = await scope.run(() =>
+    request("PATCH", {
+      worldName: "Harbor",
+      sendOnEnter: false,
+      backgroundPace: "quiet",
+      sceneryArtStyle: "Watercolor",
+      sceneryStyleProfileId: "watercolor",
+      automaticZonePictures: false,
+      personalizeVenueImagesByDefault: false,
+      useVisualLoreByDefault: false,
+    }),
+  );
   assert.equal(updated.worldName, "Harbor");
   assert.equal(updated.sendOnEnter, false);
   assert.equal(updated.backgroundPace, "quiet");
@@ -230,9 +229,9 @@ try {
   assert.equal(state.zonePictureEpoch > 0, true, "Internal picture generation state remains persisted");
 } finally {
   await app.close();
-  releaseSettings();
-  releaseSnapshot();
-  clear();
+  scope.run(() => releaseSettings());
+  scope.run(() => releaseSnapshot());
+
   scope.dispose();
 }
 console.log("Settings HTTP contract: serialized values, nullability, optional fields and privacy passed");

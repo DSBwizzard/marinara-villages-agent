@@ -102,7 +102,7 @@ async function main() {
     release();
   }
 }
-void main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

@@ -4,10 +4,7 @@ import Fastify from "fastify";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageState, VillageSnapshot } from "../packages/villages/src/server/domain/models/world.js";
 import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
-import {
-  createActivationScope,
-  installDefaultActivation,
-} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
+import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import {
   createVillageSettings,
   type VillageSettingsPorts,
@@ -171,27 +168,27 @@ async function main() {
   const ownerA = createVillageSettings(a.ports);
   const releaseA = scopeA.run(() => configureVillageSettings(ownerA));
   const releaseB = scopeB.run(() => configureVillageSettings(b.service));
-  const clearA = installDefaultActivation(scopeA, () => {});
-  const pending = setVillagePlayer({ personaId: "same-persona" });
+
+  const pending = scopeA.run(() => setVillagePlayer({ personaId: "same-persona" }));
   await entered.promise;
-  const clearB = installDefaultActivation(scopeB, () => {});
-  await setVillagePlayer({ personaId: "same-persona" });
+
+  await scopeB.run(() => setVillagePlayer({ personaId: "same-persona" }));
   gate.resolve();
   const savedA = await pending;
   assert.equal(savedA.village.name, "New name");
   assert.equal(a.state.playerPersonaIdentity, "private identity A");
   assert.equal(b.state.playerPersonaIdentity, "private identity B");
-  releaseA();
-  clearA();
-  await setVillageName("Current B");
+  scopeB.run(() => releaseA());
+
+  await scopeB.run(() => setVillageName("Current B"));
   assert.equal(b.state.name, "Current B");
-  assert.throws(() => scopeA.run(() => setVillageName("released")), /not configured/);
+  scopeB.run(() => assert.throws(() => scopeA.run(() => setVillageName("released")), /not configured/));
   const missing = createActivationScope();
-  assert.throws(() => missing.run(villageSettings), /not configured/);
+  scopeB.run(() => assert.throws(() => missing.run(villageSettings), /not configured/));
   scopeB.dispose();
-  assert.throws(() => scopeB.run(villageSettings), /not configured/);
-  releaseB();
-  clearB();
+  scopeB.run(() => assert.throws(() => scopeB.run(villageSettings), /not configured/));
+  scopeB.run(() => releaseB());
+
   scopeA.dispose();
   missing.dispose();
   assert.throws(villageSettings, /not configured/);
@@ -258,7 +255,7 @@ async function main() {
     "Settings owners retain CAS validation, deliberate bootstrap admission, Persona privacy and route dispatch across activation replacement.",
   );
 }
-main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

@@ -170,7 +170,7 @@ async function main() {
     "Application lifecycle passed: all admission failures, original/aggregate errors, ordered cleanup, repeated/concurrent/reentrant stop, and self-check (mocked service ports).",
   );
 }
-main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

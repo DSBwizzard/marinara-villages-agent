@@ -579,7 +579,7 @@ async function privateInteriorLifecycle() {
   prepareRenovatedPrivateInterior(ownRoom);
   assert.equal(ownRoom.description, "My authored interior", "player-owned Renovation keeps its authored appearance");
 }
-void (async () => {
+await (async () => {
   await privateInteriorLifecycle();
   await main();
 })();

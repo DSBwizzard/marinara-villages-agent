@@ -14,8 +14,21 @@ try {
   await mkdir(join(root, "tests"));
   await copyFile(new URL("../tsconfig.engine-tests.json", import.meta.url), join(root, "tsconfig.engine-tests.json"));
   await writeFile(join(root, "package.json"), JSON.stringify({ type: "module" }));
-  for (const name of ["checkout-operation", "test-inventory", "test-resources", "test-scheduler", "test-cases"])
+  for (const name of [
+    "checkout-operation",
+    "test-inventory",
+    "test-resources",
+    "test-scheduler",
+    "test-cases",
+    "run-regression",
+  ])
     await copyFile(new URL("../scripts/" + name + ".mjs", import.meta.url), join(root, "scripts", name + ".mjs"));
+  const launcher = (await readFile(new URL("../scripts/run-regression.mjs", import.meta.url), "utf8")).replaceAll(
+    /"(\.\.\/packages\/[^"]+)"/g,
+    (_match, relative) =>
+      JSON.stringify(new URL(relative, new URL("../scripts/run-regression.mjs", import.meta.url)).href),
+  );
+  await writeFile(join(root, "scripts/run-regression.mjs"), launcher);
   const runner = (await readFile(new URL("../scripts/run-tests.mjs", import.meta.url), "utf8")).replace(
     '"tsx"',
     JSON.stringify(import.meta.resolve("tsx")),

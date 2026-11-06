@@ -299,7 +299,7 @@ async function main() {
 const watchdog = setTimeout(() => {
   throw new Error("Scene coordinator ownership scenarios did not finish");
 }, 20000);
-main()
+await main()
   .catch((error) => {
     console.error(error);
     process.exitCode = 1;

@@ -317,7 +317,7 @@ async function main() {
     "Villages setting grounding: seven settings, founding/dialogue/Events/image prompts, ongoing refuge, and legacy compatibility passed.",
   );
 }
-void main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

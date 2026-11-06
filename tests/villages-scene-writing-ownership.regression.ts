@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import {
   createActivationScope,
-  installDefaultActivation,
-  scopedActivation,
+  activationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -63,7 +62,7 @@ function fixture(label: string, checkpointed = false) {
     import("../packages/villages/src/server/domain/models/interpretation-model.js").InterpretationBatch | null = null;
   async function touch(stage: string) {
     calls.push(stage);
-    owners.push(scopedActivation());
+    owners.push(activationScope());
     if (guardDisposed && !owner.active) throw exact;
     if (stage === failure) throw exact;
     if (stage === paused && !usedPause) {
@@ -83,7 +82,7 @@ function fixture(label: string, checkpointed = false) {
     chatComplete: async () => assert.fail("Only the injected completion port may request a reply"),
     fitContext(messages, options) {
       calls.push("fit");
-      owners.push(scopedActivation());
+      owners.push(activationScope());
       return {
         messages,
         maxTokens: options?.maxTokens,
@@ -363,15 +362,15 @@ for (const stage of ["world", "connection", "lore", "model", "completion", "refr
   const a = fixture("A"),
     b = fixture("B");
   a.pause(stage);
-  const clearA = installDefaultActivation(a.owner, () => {});
-  const releaseA = a.owner.run(() => configureSceneWriting(a.service));
-  const pending = generate(a.scene, "I wait.", "chat", "", null);
+
+  const releaseA = a.owner.run(() => a.owner.run(() => configureSceneWriting(a.service)));
+  const pending = a.owner.run(() => generate(a.scene, "I wait.", "chat", "", null));
   await a.entered.promise;
-  const clearB = installDefaultActivation(b.owner, () => {});
-  const releaseB = b.owner.run(() => configureSceneWriting(b.service));
-  releaseA();
-  clearA();
-  const current = await generate(b.scene, "I wait.", "chat", "", null);
+
+  const releaseB = b.owner.run(() => b.owner.run(() => configureSceneWriting(b.service)));
+  b.owner.run(() => releaseA());
+
+  const current = await b.owner.run(() => generate(b.scene, "I wait.", "chat", "", null));
   assert.equal(current.lines[0]?.content, "B room remains quiet.");
   a.gate.resolve();
   const old = await pending;
@@ -386,13 +385,15 @@ for (const stage of ["world", "connection", "lore", "model", "completion", "refr
   );
   assert.equal(a.calls.filter((x) => x === "completion").length, 1);
   assert.equal(b.calls.filter((x) => x === "completion").length, 1);
-  assert.equal(
-    (await prepareVenueTurnMessages(b.scene, "I wait.", "chat", "", null)).model.model,
-    "B",
-    "old cleanup cannot remove the new binding",
+  await b.owner.run(async () =>
+    assert.equal(
+      (await prepareVenueTurnMessages(b.scene, "I wait.", "chat", "", null)).model.model,
+      "B",
+      "old cleanup cannot remove the new binding",
+    ),
   );
-  releaseB();
-  clearB();
+  b.owner.run(() => releaseB());
+
   a.owner.dispose();
   b.owner.dispose();
 }
@@ -400,21 +401,21 @@ const disposed = fixture("disposed"),
   replacement = fixture("replacement");
 disposed.pause("world");
 disposed.guardDisposal();
-const clearDisposed = installDefaultActivation(disposed.owner, () => {}),
-  releaseDisposed = disposed.owner.run(() => configureSceneWriting(disposed.service));
-const pending = generate(disposed.scene, "I wait.", "chat", "", null);
+const releaseDisposed = disposed.owner.run(() => disposed.owner.run(() => configureSceneWriting(disposed.service)));
+const pending = disposed.owner.run(() => generate(disposed.scene, "I wait.", "chat", "", null));
 await disposed.entered.promise;
 disposed.owner.dispose();
-const clearReplacement = installDefaultActivation(replacement.owner, () => {}),
-  releaseReplacement = replacement.owner.run(() => configureSceneWriting(replacement.service));
+const releaseReplacement = replacement.owner.run(() =>
+  replacement.owner.run(() => configureSceneWriting(replacement.service)),
+);
 disposed.gate.resolve();
 await assert.rejects(pending, (error) => error === disposed.exact);
 assert.equal(disposed.calls.includes("completion"), false);
 assert.deepEqual(replacement.calls, [], "disposed originating guard never borrows the replacement");
-releaseDisposed();
-clearDisposed();
-releaseReplacement();
-clearReplacement();
+replacement.owner.run(() => releaseDisposed());
+
+replacement.owner.run(() => releaseReplacement());
+
 replacement.owner.dispose();
 await assert.rejects(generate(replacement.scene, "I wait.", "chat", "", null), /not configured/);
 console.log(

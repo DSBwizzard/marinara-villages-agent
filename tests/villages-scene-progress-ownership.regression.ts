@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import {
   createActivationScope,
-  installDefaultActivation,
-  scopedActivation,
+  activationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -61,8 +60,8 @@ function fixture(name: string) {
     queue: { sessionId: string; submissionId: string }[] = [];
   const note = (call: string) => {
     calls.push(call);
-    owners.push(scopedActivation());
-    if (scopedActivation()?.active === false) throw Error("Original replay connection unavailable");
+    owners.push(activationScope());
+    if (activationScope()?.active === false) throw Error("Original replay connection unavailable");
     if (call === failureAt) throw failure;
   };
   async function wait(call: string) {
@@ -199,15 +198,12 @@ function fixture(name: string) {
       note("dispatch");
       return dispatchExchange(processing, handlers, save);
     },
-    async processProjectWishOutbox() {
-      note("wish-outbox");
-      await wait("wish-outbox");
-    },
     sceneQueries() {
       note("queries");
       return {
         async progressBacklog() {
           note("backlog");
+          await wait("backlog");
           return structuredClone(queue.map((turn) => ({ ...turn, at: stamp, error: "" })));
         },
       };
@@ -478,50 +474,53 @@ async function main() {
       b = createActivationScope(),
       first = fixture("A"),
       second = fixture("B");
-    const releaseA = a.run(() => configureSceneProgress(first.service)),
-      clearA = installDefaultActivation(a, () => {});
+    const releaseA = a.run(() => configureSceneProgress(first.service));
     first.pause(kind === "progress" ? "world" : "speech");
-    const pending =
-      kind === "progress" ? processSavedProgressSubmission("same", "turn") : processSavedExchange("same", "turn");
+    const pending = a.run(() =>
+      kind === "progress" ? processSavedProgressSubmission("same", "turn") : processSavedExchange("same", "turn"),
+    );
     await first.entered.promise;
-    const releaseB = b.run(() => configureSceneProgress(second.service)),
-      clearB = installDefaultActivation(b, () => {});
+    const releaseB = a.run(() => b.run(() => configureSceneProgress(second.service)));
     first.gate.resolve();
     await pending;
-    assert(first.turn().progressProcessedAt);
+    b.run(() => assert(first.turn().progressProcessedAt));
     assert.deepEqual(second.calls, []);
     assert(first.owners.every((owner) => owner === a));
-    a.run(releaseA);
+    b.run(() => a.run(releaseA));
     a.dispose();
-    clearA();
-    await processSavedExchange("same", "turn");
-    assert.equal(second.turn().processing!.domains.wishes.reason, "B wishes");
+
+    await b.run(() => processSavedExchange("same", "turn"));
+    b.run(() => assert.equal(second.turn().processing!.domains.wishes.reason, "B wishes"));
     assert(second.owners.every((owner) => owner === b));
-    await assert.rejects(
-      a.run(() => processSavedExchange("same", "turn")),
-      /not configured/,
+    await b.run(() =>
+      assert.rejects(
+        a.run(() => processSavedExchange("same", "turn")),
+        /not configured/,
+      ),
     );
     const missing = createActivationScope();
-    await assert.rejects(
-      missing.run(() => processSavedExchange("same", "turn")),
-      /not configured/,
+    await b.run(() =>
+      assert.rejects(
+        missing.run(() => processSavedExchange("same", "turn")),
+        /not configured/,
+      ),
     );
     missing.dispose();
-    b.run(releaseB);
+    b.run(() => b.run(releaseB));
     b.dispose();
-    clearB();
+
     await assert.rejects(processSavedExchange("same", "turn"), /not configured/);
   }
   const stopped = fixture("stopped");
   stopped.queue.push({ sessionId: "same", submissionId: "turn" });
-  stopped.pause("wish-outbox");
+  stopped.pause("backlog");
   const stop = stopped.service.startProgressRecovery();
   assert.equal(typeof stop, "function", "startup returns synchronous cleanup");
   await stopped.entered.promise;
   stop();
   stopped.gate.resolve();
   await delay(40);
-  assert(stopped.calls.includes("backlog"), "stop retains the existing in-flight outbox/backlog policy");
+  assert(stopped.calls.includes("backlog"), "stop retains the admitted backlog read");
   assert(!stopped.calls.includes("read:same"));
   const batch = fixture("batch");
   for (let i = 0; i < 17; i++) {
@@ -548,63 +547,66 @@ async function main() {
   stopOne();
   stopTwo();
   await delay(30);
-  assert.equal(repeated.calls.filter((call) => call === "wish-outbox").length, 2, "each start retains its own closure");
-  assert.equal(repeated.calls.filter((call) => call === "backlog").length, 2);
+  assert.equal(repeated.calls.filter((call) => call === "backlog").length, 2, "each start retains its own closure");
   const a = createActivationScope(),
     b = createActivationScope(),
     first = fixture("timer-A"),
     second = fixture("timer-B");
   first.queue.push({ sessionId: "same", submissionId: "turn" });
-  first.pause("wish-outbox");
+  first.pause("backlog");
   for (let i = 0; i < 9; i++) {
     const id = i === 0 ? "same" : "scene" + i;
     if (i) second.add(id);
     second.queue.push({ sessionId: id, submissionId: "turn" });
   }
   second.pause("speech");
-  const releaseA = a.run(() => configureSceneProgress(first.service)),
-    clearA = installDefaultActivation(a, () => {});
+  const releaseA = a.run(() => configureSceneProgress(first.service));
   const completed = deferred();
-  first.onCompleted(() => {
-    if (first.turn().processing!.domains.relationships.status === "applied") completed.resolve();
-  });
-  const stopA = startProgressRecovery();
+  a.run(() =>
+    first.onCompleted(() => {
+      if (first.turn().processing!.domains.relationships.status === "applied") completed.resolve();
+    }),
+  );
+  const stopA = a.run(() => startProgressRecovery());
   await first.entered.promise;
-  const releaseB = b.run(() => configureSceneProgress(second.service)),
-    clearB = installDefaultActivation(b, () => {});
+  const releaseB = a.run(() => b.run(() => configureSceneProgress(second.service)));
   const completedB = deferred();
-  second.onCompleted(() => {
-    if (second.scenes.get("scene8")!.submissions[0]!.processing!.domains.relationships.status === "applied")
-      completedB.resolve();
-  });
-  const stopB = startProgressRecovery();
+  b.run(() =>
+    second.onCompleted(() => {
+      if (second.scenes.get("scene8")!.submissions[0]!.processing!.domains.relationships.status === "applied")
+        completedB.resolve();
+    }),
+  );
+  const stopB = b.run(() => startProgressRecovery());
   await second.entered.promise;
   first.gate.resolve();
-  await bounded(completed.promise);
-  stopA();
+  await b.run(() => bounded(completed.promise));
+  b.run(() => stopA());
   assert(
     first.owners.every((owner) => owner === a),
     "startup callbacks/timers retain their originating activation",
   );
   assert.equal(second.calls.filter((call) => call === "speech:same:turn").length, 1);
   second.gate.resolve();
-  await bounded(completedB.promise);
-  stopB();
-  assert.equal(
-    second.calls.filter((call) => /^speech:[^:]+:turn$/u.test(call)).length,
-    9,
-    "older A stop does not fence B's second batch",
+  await b.run(() => bounded(completedB.promise));
+  b.run(() => stopB());
+  b.run(() =>
+    assert.equal(
+      second.calls.filter((call) => /^speech:[^:]+:turn$/u.test(call)).length,
+      9,
+      "older A stop does not fence B's second batch",
+    ),
   );
   assert(second.owners.every((owner) => owner === b));
-  a.run(releaseA);
+  b.run(() => a.run(releaseA));
   a.dispose();
-  clearA();
-  b.run(releaseB);
+
+  b.run(() => b.run(releaseB));
   b.dispose();
-  clearB();
+
   console.log("PASS Scene saved-exchange/recovery ownership, evidence privacy, ordered receipts and startup cleanup");
 }
-main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
