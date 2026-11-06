@@ -729,6 +729,50 @@ for (const stage of ["session", "admission", "snapshot", "persistence"]) {
     second.owner.dispose();
   }
 }
+for (const scenario of ["missing-same-zone", "missing-move", "forged-checkpoint"] as const) {
+  let destination = "";
+  const refused = commandFixture(scenario, ({ scene, world, stamp }) => {
+    const home = venueDraft({ name: "Home", description: "A home", classes: ["residence"] }, null);
+    home.id = scene.placeId;
+    home.access!.managerIds = ["jim"];
+    destination =
+      scenario === "missing-same-zone" ? "exterior" : home.zones!.find((zone) => zone.kind === "shared-residence")!.id;
+    home.usedInvitationIds = ["retired-line"];
+    home.playerInvitations = [{ zoneId: destination, residentId: "jim", sourceLineId: "retired-line" }] as any;
+    if (scenario !== "forged-checkpoint") delete home.access;
+    world.venues = [home];
+    scene.zoneId = "exterior";
+    scene.submissions = [];
+    scene.sceneAttendance = { capturedAt: stamp, occupants: [] };
+    scene.grantedZoneIds = [destination];
+    scene.zoneGrants = [{ zoneId: destination, controllerId: "jim" }];
+    scene.operation = {
+      id: "refused-move",
+      kind: "move",
+      status: "running",
+      checkpoints: { "move-invitation": { sourceLineId: "retired-line", zoneId: destination, residentId: "jim" } },
+    } as any;
+    return {
+      coordinateVenue: async (_id, _operation, _kind, _input, _expected, _retry, run) => run(),
+      requireLiveVenueSession: async () => scene,
+      assertVenueOwnership: () => {},
+      venueOperationId: () => "refused-move",
+    };
+  });
+  const before = structuredClone({ scene: refused.scene, world: refused.world });
+  try {
+    await assert.rejects(
+      refused.service.moveVenueZone("same-scene", destination, undefined, undefined, "refused-move"),
+      scenario === "forged-checkpoint" ? /no permitted connection/ : /no native access record/,
+    );
+    assert.deepEqual({ scene: refused.scene, world: refused.world }, before);
+    assert(!refused.calls.some((call) => call === "persistence" || call === "world"));
+    assert.equal(refused.modelAccess, 0);
+    assert.deepEqual(refused.unexpected, []);
+  } finally {
+    refused.owner.dispose();
+  }
+}
 // A delayed navigation retry cannot move the player back after a later accepted move.
 {
   const replay = commandFixture("Navigation replay", ({ scene, stamp, touch }) => {
