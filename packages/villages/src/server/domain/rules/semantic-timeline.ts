@@ -1,3 +1,4 @@
+import { requireSceneZoneId } from "./scene-layout.js";
 import type { VenueScene, VenueReplyLine } from "../models/scene-model.js";
 import { bindPlaceEvidence } from "./zone-continuity.js";
 import { residentPositionsAt } from "./resident-movement.js";
@@ -38,12 +39,13 @@ export function semanticPhysicalContext(
   playerInput = "",
   moves: readonly ContactMove[] = [],
 ) {
+  const zoneId = requireSceneZoneId(scene);
   const positions = {
     ...residentPositionsAt(scene, moves, Number(asRecord(value).segment)),
-    player: scene.zoneId ?? "exterior",
+    player: zoneId,
   };
   return bindPlaceEvidence(value, lines, {
-    zoneId: scene.zoneId ?? "exterior",
+    zoneId: zoneId,
     positions,
     priorLines: scene.lines,
     playerInput,

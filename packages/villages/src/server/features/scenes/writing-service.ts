@@ -100,13 +100,7 @@ import {
   venueCardProfile,
   type VenueWritingBlock,
 } from "../../domain/rules/venue-writing.js";
-import {
-  canInviteToZone,
-  legacyZoneId,
-  resolveVenueZone,
-  venueInZone,
-  zoneClosed,
-} from "../../domain/rules/venue-zones.js";
+import { canInviteToZone, resolveVenueZone, venueInZone, zoneClosed } from "../../domain/rules/venue-zones.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
 import {
@@ -1344,13 +1338,7 @@ export function createSceneWriting({
         if (controlledVenue?.constructionStatus === "worksite") throw new VenueReplyFailure("construction-worksite");
       }
       const currentSession = await refreshZoneParticipants(session, true);
-      if (
-        currentSession.zoneId !==
-        (session.zoneId ??
-          (controlledVenue
-            ? legacyZoneId(controlledVenue, session.area, session.spaceClass, session.privateOwnerId)
-            : undefined))
-      )
+      if (currentSession.zoneId !== session.zoneId)
         throw conflict("Room access changed while the reply was being prepared. You returned to the exterior.");
       return bindRoomInvitation(session, currentVillage, reply);
     } catch (cause) {

@@ -247,7 +247,6 @@ export function coerceSession(value: unknown): VenueScene {
     pendingProjectQuestions: Array.isArray(raw.pendingProjectQuestions)
       ? raw.pendingProjectQuestions.filter((value): value is string => typeof value === "string").slice(0, 8)
       : [],
-    privateSpaceId: asTrimmedString(raw.privateSpaceId) || undefined,
     pendingAccessClaim: asTrimmedString(raw.pendingAccessClaim) || undefined,
     accessPreviousZones: Object.fromEntries(
       Object.entries(asRecord(raw.accessPreviousZones)).filter(

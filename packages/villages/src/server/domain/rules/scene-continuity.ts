@@ -1,13 +1,14 @@
+import { conflict } from "./errors.js";
 import { findLocation, capturePlaceContext } from "./places.js";
 import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue, VillageWish } from "../models/world.js";
 import { replaySceneRelationships, coerceRelationshipState } from "./relationship-rules.js";
 import { mergeNarrativeAfter } from "./narrative-development.js";
 import { extendSceneNarrative } from "./scene-narrative-effects.js";
-import { sceneLayoutVenue } from "./scene-layout.js";
+import { requireSceneZoneId, sceneLayoutVenue } from "./scene-layout.js";
 import { contactNeighbors, contactPosition } from "./venue-contact.js";
 import { physicalVenueEvents } from "./venue-scene-state.js";
-import { legacyZoneId, resolveVenueZone, venueZones } from "./venue-zones.js";
+import { resolveVenueZone, venueZones } from "./venue-zones.js";
 import { reserveMemoryScene, sceneMemories } from "./village-memories.js";
 import { cloneWorldContext } from "./world-context-copy.js";
 import { blockWishHistory, immutableSocialWishes, wishHistoryLoaded } from "./social-wishes.js";
@@ -15,7 +16,7 @@ import { blockWishHistory, immutableSocialWishes, wishHistoryLoaded } from "./so
 /** Current writer context, never evidence or a public attendance/room disclosure. */
 export function sceneLocationContext(scene: VenueScene, venue: VillageVenue, actorIds: readonly string[]) {
   const zones = venueZones(sceneLayoutVenue(venue, scene));
-  const origin = scene.zoneId ?? legacyZoneId(venue, scene.area, scene.spaceClass, scene.privateOwnerId);
+  const origin = requireSceneZoneId(scene);
   const adjacent = contactNeighbors(venue, origin, scene);
   const knownZone = (id: string) => {
     const zone = zones.find((row) => row.id === id);
@@ -250,16 +251,8 @@ export function sceneContinuityView(current: VillageState, scene: VenueScene, in
     const venue = findLocation(view, scene.placeId);
     if (!change || !venue) continue;
     venue.zones ??= structuredClone(venueZones(venue));
-    const zoneId =
-      event.zoneId ??
-      turn.zoneIdAtTurn ??
-      scene.zoneId ??
-      legacyZoneId(
-        venue,
-        turn.areaAtTurn ?? scene.area,
-        scene.spaceClass,
-        turn.privateOwnerIdAtTurn ?? scene.privateOwnerId,
-      );
+    const zoneId = event.zoneId;
+    if (!zoneId) throw conflict("The physical receipt has no captured Zone.");
     const zone = resolveVenueZone(venue, zoneId);
     if (!zone) continue;
     // Exact committed after-values extend this captured Scene only; live time and preconditions do not apply.

@@ -1,5 +1,4 @@
 import { projectSpeakerAtTurn } from "../../domain/rules/project-scene-evidence.js";
-import { findLocation } from "../../domain/rules/places.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { z } from "zod";
 import type { SceneHistoryPage } from "../../../shared/contracts/scene-history.js";
@@ -26,7 +25,7 @@ import {
 import { asRecord } from "../../domain/rules/coerce.js";
 import { pendingProgressTurns } from "../../domain/rules/scene-record.js";
 import { projectMetadataRejected } from "../../domain/rules/semantic-continuity.js";
-import { legacyZoneId } from "../../domain/rules/venue-zones.js";
+
 import { withRepairWork } from "../../adapters/storage/repair-gate.js";
 import { readVillageRoot } from "../../adapters/storage/village-repository.js";
 import { readSceneMomentFrames, readSceneMomentRange } from "../../adapters/storage/scene-presentation-pages.js";
@@ -323,18 +322,7 @@ export function createSceneQueryService({
     });
     const submission = session.submissions.find((entry) => entry.id === submissionId);
     if (!submission) throw notFound("That roleplay turn was not recorded.");
-    const venue = findLocation(await readVillageState(), session.placeId);
-    const zoneId =
-      submission.zoneIdAtTurn ??
-      session.zoneId ??
-      (venue
-        ? legacyZoneId(
-            venue,
-            submission.areaAtTurn ?? session.area,
-            session.spaceClass,
-            submission.privateOwnerIdAtTurn ?? session.privateOwnerId,
-          )
-        : undefined);
+    const zoneId = submission.zoneIdAtTurn;
     const playerSources = session.lines.filter(
       (line) =>
         line.role === "user" &&

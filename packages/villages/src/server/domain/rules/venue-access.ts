@@ -137,7 +137,7 @@ export function readZonePolicy(value: unknown): ZoneAccessPolicy {
   return result.data as ZoneAccessPolicy;
 }
 export function readVenueAccess(value: unknown): VenueAccessState | undefined {
-  if (value === undefined) return undefined; // Explicit legacy boundary.
+  if (value === undefined) return undefined; // New drafts acquire their ledger before admission.
   const result = stateSchema.safeParse(value);
   if (!result.success)
     throw conflict("This Venue's access record is invalid. Restore a valid saved copy before continuing.");
@@ -164,7 +164,7 @@ export function defaultZonePolicy(venue: VillageVenue, zone: VillageVenueZone): 
     accompanied: false,
   };
 }
-/** New Venues only. Legacy saves keep their established compatibility adapter. */
+/** Initialize a new Venue before admitting it to saved authority. */
 export function initializeVenueAccess(venue: VillageVenue): void {
   const created = !venue.access;
   venue.access ??= {
@@ -400,7 +400,7 @@ export function applyAccessCommand(
   communityVenueId?: string,
 ): void {
   const ledger = venue.access;
-  if (!ledger) throw conflict("This legacy Venue uses its existing access rules.");
+  if (!ledger) throw conflict("This Venue has no native access record.");
   const { expectedRevision: _revision, ...meaning } = command;
   const fingerprint = JSON.stringify({ actor, command: meaning });
   const previous = ledger.receipts[command.operationId];
