@@ -199,20 +199,3 @@ export function synchronizeVenueZones(venue: VillageVenue, previous?: VillageVen
 export function zoneControllerIds(venue: VillageVenue, zone: VillageVenueZone | undefined): string[] {
   return venue.access && zone ? zoneManagers(venue, zone) : [];
 }
-export function privateTarget(
-  venue: VillageVenue,
-  zoneId?: string,
-  privateSpaceId?: string,
-  privateOwnerId = "",
-): string | undefined {
-  const exact = zoneId || privateSpaceId;
-  if (exact && privateOwnerId && resolveVenueZone(venue, exact)?.ownerId !== privateOwnerId)
-    throw conflict("Conflicting personal Zone owner.");
-  const ownerTarget =
-    privateOwnerId && !exact ? defaultVenueZoneId(venue, "private", "residence", privateOwnerId) : undefined;
-  const targets = [zoneId, privateSpaceId, ownerTarget].filter(Boolean);
-  if (new Set(targets).size > 1) throw conflict("Conflicting private space targets.");
-  const target = targets[0];
-  if (target && !resolveVenueZone(venue, target)) throw conflict("That space is no longer here.");
-  return target;
-}

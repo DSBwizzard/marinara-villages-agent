@@ -634,7 +634,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
           ...(observed.form ? { form: observed.form } : {}),
         });
       } catch {
-        /* Legacy pictures without an account retain their saved presentation. */
+        /* Unusable artwork context leaves the captured physical account intact. */
       }
       zone.observed = observed;
     }

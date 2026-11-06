@@ -7,7 +7,7 @@ import { ELEMENT_TAG, STYLE_ID } from "../shared/constants.js";
 import { LORE_ACTIVITY_STYLES } from "../shared/lore-activity-styles.js";
 
 // Named container queries measure the Engine tab; font sizes stay fixed.
-// Avatar frames clip both current and legacy crops and must stay square.
+// Avatar frames clip imported card crops and stay square.
 // Map chrome passes pointer input through gaps; controls opt back in.
 // Hidden composers stay mounted to preserve drafts; pins follow the fitted image.
 // Short-container rules accommodate keyboards and constrained windows.
@@ -1089,7 +1089,6 @@ ${LORE_ACTIVITY_STYLES}
 .${ELEMENT_TAG}-memory-card dl > div { min-width: 0; border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent); padding-top: .38rem; }
 .${ELEMENT_TAG}-memory-card dt { color: var(--muted-foreground); font-size: .55rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 .${ELEMENT_TAG}-memory-card dd { overflow: hidden; margin: .08rem 0 0; font-size: .66rem; text-overflow: ellipsis; }
-.${ELEMENT_TAG}-memory-reinforced, .${ELEMENT_TAG}-memory-footnote, .${ELEMENT_TAG}-memory-legacy { margin: 0; color: var(--muted-foreground); font-size: .6rem; }
 .${ELEMENT_TAG}-memory-card-actions { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-top: auto; }
 .${ELEMENT_TAG}-memory-card-actions button, .${ELEMENT_TAG}-memory-evidence button { border: 0; padding: .18rem 0; background: transparent; color: var(--primary); font-size: .64rem; font-weight: 700; cursor: pointer; }
 .${ELEMENT_TAG}-memory-card-actions button:last-child { color: var(--muted-foreground); }

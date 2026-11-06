@@ -3,11 +3,10 @@ import {
   fail,
   readCharacterId,
   readVenueId,
-  readVenueSpaceClass,
+  readPlaceId,
   SETTINGS_BODY_LIMIT,
   VENUE_IMAGE_BODY_LIMIT,
 } from "../../adapters/http/route-support.js";
-import { imageTarget } from "../venues/services.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
 import { createVillageMap, updateVillageMap } from "./town-map-review.js";
 import { setVillageVenueImage } from "../venues/services.js";
@@ -157,24 +156,14 @@ export function registerVenueImageRoutes(engine: FastifyInstance) {
     Body: {
       venueId?: unknown;
       connectionId?: unknown;
-      spaceClass?: unknown;
-      privateSpaceId?: unknown;
-      privateOwnerId?: unknown;
       zoneId?: unknown;
     };
   }>("/locations/venue/image", async (request, reply) => {
     try {
       return await generateVillageLocationImage(
         readVenueId(request.body?.venueId),
-        // A connection the tab named wins; anything else is left to the
-        // package's own choice. The value is not validated here because
-        // whether it draws images is a question only the Engine can answer,
-        // and it already answers it with a better message than this could.
+        readPlaceId(request.body?.zoneId),
         typeof request.body?.connectionId === "string" ? request.body.connectionId : undefined,
-        readVenueSpaceClass(request.body?.spaceClass),
-        typeof request.body?.privateOwnerId === "string" ? request.body.privateOwnerId : "",
-        false,
-        await imageTarget(request.body),
       );
     } catch (error) {
       return fail(reply, error, "drawing a place");
@@ -184,19 +173,14 @@ export function registerVenueImageRoutes(engine: FastifyInstance) {
     Body: {
       venueId?: unknown;
       image?: unknown;
-      spaceClass?: unknown;
-      privateSpaceId?: unknown;
-      privateOwnerId?: unknown;
       zoneId?: unknown;
     };
   }>("/locations/venue/image", { bodyLimit: VENUE_IMAGE_BODY_LIMIT }, async (request, reply) => {
     try {
       return await storeVillageVenueImage(
         readVenueId(request.body?.venueId),
+        readPlaceId(request.body?.zoneId),
         request.body?.image,
-        readVenueSpaceClass(request.body?.spaceClass),
-        typeof request.body?.privateOwnerId === "string" ? request.body.privateOwnerId : "",
-        await imageTarget(request.body),
       );
     } catch (error) {
       return fail(reply, error, "keeping a place's picture");
@@ -205,21 +189,11 @@ export function registerVenueImageRoutes(engine: FastifyInstance) {
   app.delete<{
     Body: {
       venueId?: unknown;
-      spaceClass?: unknown;
-      privateSpaceId?: unknown;
-      privateOwnerId?: unknown;
       zoneId?: unknown;
     };
   }>("/locations/venue/image", async (request, reply) => {
     try {
-      await setVillageVenueImage(
-        readVenueId(request.body?.venueId),
-        null,
-        readVenueSpaceClass(request.body?.spaceClass),
-        typeof request.body?.privateOwnerId === "string" ? request.body.privateOwnerId : "",
-        false,
-        await imageTarget(request.body),
-      );
+      await setVillageVenueImage(readVenueId(request.body?.venueId), readPlaceId(request.body?.zoneId), null);
       return await buildVillageSnapshot();
     } catch (error) {
       return fail(reply, error, "taking a place's picture away");

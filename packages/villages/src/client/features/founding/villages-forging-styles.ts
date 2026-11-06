@@ -191,7 +191,7 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-founding-dialog footer { display:flex; justify-content:flex-end; gap:.5rem; padding-top:.75rem; }
 .villages-founding-dialog .villages-forging-primary { background:#6650cf; border-color:#9d88f4; }
 
-/* Backstory editing is a content-sized popup, including under legacy mobile dialog styles. */
+/* Backstory dialogs keep their content height on phones. */
 .villages-forging-v2 .villages-founding-dialog[data-compact=true] { display:block; inset:0; width:min(26rem,calc(100vw - 2rem)); height:fit-content; min-height:0; max-height:calc(100dvh - 2rem); padding:.75rem; border:2px solid #9d78ed; border-radius:.8rem; overflow:auto; }
 .villages-forging-v2 .villages-founding-dialog[data-compact=true]>header { padding:0; margin:0 0 .5rem; background:transparent; }
 .villages-forging-v2 .villages-founding-dialog[data-compact=true]>header h3 { margin:0; font-size:1rem; }

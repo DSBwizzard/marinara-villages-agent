@@ -158,7 +158,7 @@ export type VenueScene = {
   changeSequence?: number;
   villageSeed?: string;
   sceneRevision: number;
-  /** Absent on saved encounters that retain their original frozen moment. */
+  /** Interactive Scenes follow the Village clock; noninteractive memory inputs omit this marker. */
   liveSceneVersion?: 1;
   operation?: VenueOperation;
   /** Idempotent free navigation, separate from conversational turns. */

@@ -1225,11 +1225,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    */
   const nameOfCharacter = useResidentsNameOfCharacter({ catalog, snapshot });
 
-  /**
-   * Every placed Venue uses its public photograph or a plain placeholder.
-   * Keep legacy MapPin identifiers for callers; the presentation is always a Polaroid.
-   * Unplaced Venues remain available in play without guessing map coordinates.
-   */
   const venueExplorationActions = createVenueExplorationActions({
     openMenu,
     openPlace,

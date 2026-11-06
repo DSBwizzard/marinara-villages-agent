@@ -914,7 +914,11 @@ async function main() {
     // The first upload is the interesting one: the gallery folder cannot be
     // listed. A folder is an ornament, so the picture has to land anyway — at the
     // root of the gallery, which draws exactly as well.
-    const kept = await put("/api/villages/locations/venue/image", { venueId: "mill", image: TINY_PNG });
+    const kept = await put("/api/villages/locations/venue/image", {
+      zoneId: "exterior",
+      venueId: "mill",
+      image: TINY_PNG,
+    });
     assert.equal(kept.statusCode, 200, kept.body);
     assert.deepEqual(
       kept
@@ -937,7 +941,11 @@ async function main() {
     // The next one finds the folder missing and makes it, and every upload after
     // that reuses it — which is what stops twenty places making twenty folders.
     folderLookupFails = false;
-    const second = await put("/api/villages/locations/venue/image", { venueId: "ridge", image: TINY_PNG });
+    const second = await put("/api/villages/locations/venue/image", {
+      zoneId: "exterior",
+      venueId: "ridge",
+      image: TINY_PNG,
+    });
     assert.equal(second.statusCode, 200, second.body);
     assert.equal(
       second
@@ -975,7 +983,11 @@ async function main() {
     // a local endpoint is the ordinary arrangement.
     const asksFor = async (payload: Record<string, unknown> = {}) => {
       const before = engineCalls.length;
-      const answered = await post("/api/villages/locations/venue/image", { venueId: "mill", ...payload });
+      const answered = await post("/api/villages/locations/venue/image", {
+        zoneId: "exterior",
+        venueId: "mill",
+        ...payload,
+      });
       return { answered, call: engineCalls.slice(before).find((entry) => entry.path === AVATAR_PATH)! };
     };
 
@@ -1013,12 +1025,12 @@ async function main() {
     agentConfig = null;
     connectionRows = [];
     assert.equal(
-      (await post("/api/villages/locations/venue/image", { venueId: "mill" })).statusCode,
+      (await post("/api/villages/locations/venue/image", { zoneId: "exterior", venueId: "mill" })).statusCode,
       400,
       "with nothing able to draw, the player is told so instead of being handed a failure with no reason",
     );
     assert.match(
-      (await post("/api/villages/locations/venue/image", { venueId: "mill" })).json().error,
+      (await post("/api/villages/locations/venue/image", { zoneId: "exterior", venueId: "mill" })).json().error,
       /image connection/i,
       "and the message says which kind of connection is missing",
     );
@@ -1098,9 +1110,32 @@ async function main() {
     assert.ok(JSON.stringify(drawnImage).length < 400, "and a place's picture costs a village about a caption");
     assert.notDeepEqual(drawnImage, stored, "redrawing replaces the reference rather than accumulating one");
 
+    const beforeAlias = { records: structuredClone([...documentsByKey.entries()]), calls: engineCalls.length };
+    for (const body of [
+      { venueId: "mill", privateOwnerId: "owner" },
+      { venueId: "mill", privateSpaceId: "exterior" },
+      { venueId: "mill", spaceClass: "community" },
+      { venueId: "mill", zoneId: 7 },
+    ]) {
+      for (const method of ["POST", "PUT", "DELETE"]) {
+        const response = await app.inject({ method, url: "/api/villages/locations/venue/image", payload: body });
+        assert.equal(response.statusCode, 400, response.body);
+      }
+    }
+    assert.deepEqual(
+      [...documentsByKey.entries()],
+      beforeAlias.records,
+      "malformed and alias-only artwork requests cannot write",
+    );
+    assert.equal(
+      engineCalls.length,
+      beforeAlias.calls,
+      "malformed and alias-only artwork requests cannot dispatch Engine work",
+    );
+
     // ── Taking one away ───────────────────────────────────────────────────────
     const beforeRemoval = galleryCalls(UPLOAD_PATH).length;
-    const removed = await del("/api/villages/locations/venue/image", { venueId: "mill" });
+    const removed = await del("/api/villages/locations/venue/image", { zoneId: "exterior", venueId: "mill" });
     assert.equal(removed.statusCode, 200);
     assert.equal(
       removed.json().settings.venues.find((venue: any) => venue.id === "mill").presentation.image,
@@ -1126,19 +1161,27 @@ async function main() {
     // player holding an image they never asked to keep, with no hint where it came
     // from, so a missing place is refused.
     assert.equal(
-      (await put("/api/villages/locations/venue/image", { venueId: "gone", image: TINY_PNG })).statusCode,
+      (await put("/api/villages/locations/venue/image", { zoneId: "exterior", venueId: "gone", image: TINY_PNG }))
+        .statusCode,
       404,
       "a picture for a place that is gone is refused rather than dropped",
     );
-    assert.equal((await post("/api/villages/locations/venue/image", { venueId: "gone" })).statusCode, 404);
-    assert.equal((await del("/api/villages/locations/venue/image", { venueId: "gone" })).statusCode, 404);
+    assert.equal(
+      (await post("/api/villages/locations/venue/image", { zoneId: "exterior", venueId: "gone" })).statusCode,
+      404,
+    );
+    assert.equal(
+      (await del("/api/villages/locations/venue/image", { zoneId: "exterior", venueId: "gone" })).statusCode,
+      404,
+    );
     assert.equal(
       (await post("/api/villages/locations/venue/image", {})).statusCode,
       400,
       "and a place has to be named",
     );
     assert.equal(
-      (await put("/api/villages/locations/venue/image", { venueId: "mill", image: "nonsense" })).statusCode,
+      (await put("/api/villages/locations/venue/image", { zoneId: "exterior", venueId: "mill", image: "nonsense" }))
+        .statusCode,
       400,
       "and what arrives has to be a picture",
     );
@@ -1193,7 +1236,7 @@ async function main() {
     // Manual image controls still draw only on a press. The separate private-entry
     // path has a durable one-attempt marker and is not a UI redraw effect.
     //
-    // The shared venue image control serves exterior, Class, and private spaces.
+    // The shared image control identifies each Zone directly.
     const client = await clientImplementation();
     for (const handler of ["drawPlaceImage", "keepPlaceImage", "dropPlaceImage"]) {
       assert.equal(
@@ -1208,9 +1251,7 @@ async function main() {
       "the tab reaches the three picture routes and nothing else",
     );
     assert.ok(
-      /onClick=\{\(\) => void drawPlaceImage\(place\.id, spaceClass, (?:ownerId, zoneId|zone\.ownerId \?\? "", zone\.id)\)\}/.test(
-        client,
-      ),
+      /onClick=\{\(\) => void drawPlaceImage\(place\.id, zone\.id\)\}/.test(client),
       "and wired to a click on the screen that stands in a place",
     );
 
@@ -1595,17 +1636,12 @@ async function mediaConnectionOwnership() {
             : operation === "map"
               ? generateVillageTownMap({ setting: "Quiet harbor", selectedLorebookIds: ["visual"] })
               : operation === "store"
-                ? storeVillageVenueImage("equal-venue", TINY_PNG)
+                ? storeVillageVenueImage("equal-venue", "exterior", TINY_PNG)
                 : operation === "private"
                   ? generateFirstZoneImage("equal-venue", "own-room")
-                  : generateVillageLocationImage(
-                      "equal-venue",
-                      undefined,
-                      undefined,
-                      "",
-                      variant === "only-empty",
-                      "exterior",
-                    ),
+                  : variant === "only-empty"
+                    ? generateFirstZoneImage("equal-venue", "exterior")
+                    : generateVillageLocationImage("equal-venue", "exterior"),
       );
       const outcome = a.scope.run(() =>
         pending.then(
@@ -1657,7 +1693,7 @@ async function mediaConnectionOwnership() {
         b.scope.run(() => assert.match(String(result.error), new RegExp(controlledError.message)));
       else if (variant === "disposed")
         assert(result.error instanceof Error, "disposed work refuses further connections");
-      else if (variant === "context" || variant === "only-empty")
+      else if (variant === "context")
         b.scope.run(() => assert.match(String(result.error), /scenery changed/, `${operation}/${stage}/${variant}`));
       else assert.equal(result.error, undefined, `${operation}/${stage} succeeds`);
       b.scope.run(() => assert.equal(b.requests().length, 1, "A neither borrows nor duplicates B's receipt"));
