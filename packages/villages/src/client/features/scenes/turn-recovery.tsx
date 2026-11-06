@@ -142,17 +142,6 @@ export function useTurnRecovery(ports: {
         setStatus("");
         return;
       }
-      if (
-        scene?.attentionClarification?.id === pending.submissionId &&
-        scene.attentionClarification.message === pending.text
-      ) {
-        latest.current.setRoom(scene);
-        latest.current.setRoomError("");
-        if (latest.current.submission.current === pending.submissionId) latest.current.submission.current = null;
-        setPending(null);
-        setStatus("");
-        return;
-      }
       if (scene) latest.current.setRoom(scene);
       setStatus(
         recoveryMessage(

@@ -105,9 +105,7 @@ function privateSceneHearing(value: unknown): boolean {
     (asRecord(row.operation).input !== undefined &&
       asRecord(asRecord(row.operation).input).interactionScopeVersion === 6) ||
     asRecord(row.contactGeneration).zoneEvents === true ||
-    asRecord(row.contactGeneration).acoustics === true ||
-    (Array.isArray(row.submissions) &&
-      row.submissions.some((turn) => asRecord(asRecord(asRecord(turn).attention).validation).version === 3))
+    asRecord(row.contactGeneration).acoustics === true
   );
 }
 export function sceneProcessingSummary(scene: VenueScene) {
@@ -152,7 +150,6 @@ export function publicSceneAuthority(scene: VenueScene) {
     submissions: [],
     continuity: scene.continuity,
     sceneAttendance: scene.sceneAttendance,
-    pendingAttention: scene.pendingAttention,
   });
   const last = scene.submissions.at(-1);
   const { lines: _lines, submissions: _submissions, ...authority } = projected;
@@ -216,24 +213,6 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
     row.submissions = row.submissions.filter(sceneTurnPublished);
   }
   privateHearing ||= privateSceneHearing(row);
-  const pending = asRecord(row.pendingAttention);
-  const clarification =
-    pending.id && pending.message && pending.originZoneId === row.zoneId && pending.revision === row.sceneRevision
-      ? {
-          id: pending.id,
-          message: pending.message,
-          question:
-            asRecord(pending.plan).question === "Which door?"
-              ? Array.isArray(asRecord(pending.plan).fragments) &&
-                (asRecord(pending.plan).fragments as Record<string, unknown>[]).some(
-                  (fragment) => fragment.kind === "speech",
-                )
-                ? "The system wasn’t sure who you were trying to reach."
-                : "The system wasn’t sure which space you meant."
-              : asRecord(pending.plan).question,
-          choices: pending.choices,
-        }
-      : undefined;
   const visible = Array.isArray(row.participants)
     ? new Set(row.participants.map((entry) => asTrimmedString(asRecord(entry).characterId)))
     : visibleIds;
@@ -260,7 +239,6 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
                   })),
                 }
               : {}),
-            ...(clarification ? { attentionClarification: clarification } : {}),
           }
         : row,
     )

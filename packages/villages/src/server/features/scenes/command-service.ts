@@ -35,7 +35,6 @@ import { assertSceneMovementCapacity, UnavailableResidentMovement } from "../../
 import { responseDiagnostics } from "../../domain/rules/response-diagnostics.js";
 import { captureSceneAttendance, sceneZoneOccupants } from "../../domain/rules/scene-attendance.js";
 import { movedAttentionContacts } from "../../domain/rules/scene-attention.js";
-import { sceneWritingCapabilities } from "../../domain/rules/scene-compact-contract.js";
 import { sceneContinuityView, cloneSceneFacts, sceneWishEffectIds } from "../../domain/rules/scene-continuity.js";
 import { sceneHaltWorldConflict } from "../../domain/rules/scene-halt-world.js";
 import { provisionalSceneNarrative } from "../../domain/rules/scene-narrative-effects.js";
@@ -1280,7 +1279,6 @@ export function createSceneCommands({
                       hearingTimelineVersion: 1,
                     }
                   : {}),
-                writingCapabilities: sceneWritingCapabilities(await readVillageState(), admission),
               };
         signal.throwIfAborted();
         coordinated = true;
@@ -1529,7 +1527,6 @@ export function createSceneCommands({
     expectedSceneRevision?: number;
     retryOfAttemptId?: string;
     replaceOfOperationId?: string;
-    attentionChoice?: { id: string; zoneId: string };
   };
 
   function matchesSavedTurnMode(turn: VenueSubmission, mode: VenueTurnInput["mode"]) {
@@ -1556,11 +1553,6 @@ export function createSceneCommands({
           : scene.gmVersion === 1
             ? 4
             : 3;
-    const writingCapabilities = [2, 3, 4].includes(Number(writingVersion))
-      ? scene.operation?.id === input.submissionId
-        ? scene.operation.input.writingCapabilities
-        : sceneWritingCapabilities(await readVillageState(), scene)
-      : undefined;
     const payload = {
       ...(scene.operation?.id === input.submissionId
         ? scene.operation.input.gmVersion === 1
@@ -1652,7 +1644,6 @@ export function createSceneCommands({
       mode: input.mode,
       targetId: input.targetId,
       ...(input.contact ? { contact: input.contact } : {}),
-      ...(input.attentionChoice ? { attentionChoice: input.attentionChoice } : {}),
       ...(admittedVersion !== undefined ? { interactionScopeVersion: admittedVersion } : {}),
       ...(scene.operation?.id === input.submissionId
         ? scene.operation.input.soundHopVersion === 1
@@ -1675,7 +1666,6 @@ export function createSceneCommands({
       ...(writingVersion !== undefined
         ? {
             writingContractVersion: writingVersion,
-            ...([2, 3, 4].includes(Number(writingVersion)) ? { writingCapabilities } : {}),
           }
         : {}),
     };
@@ -2010,7 +2000,6 @@ export function createSceneCommands({
           venueOperationInput()?.preservationVersion === 1
             ? (state.continuity?.capturedAt ?? state.sceneAttendance?.capturedAt ?? state.startedAt)
             : acceptedAt;
-        state.pendingAttention = undefined;
         state.lastActivityAt = acceptedAt;
         if (reply.contactMoves.length) {
           state.accessPreviousZones ??= {};

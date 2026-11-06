@@ -71,7 +71,6 @@ export function sceneErrorDetails(scene: VenueScene) {
         zoneId: operation.input.zoneId,
         targetId: operation.input.targetId,
         contact: operation.input.contact,
-        attentionChoice: operation.input.attentionChoice,
       }),
     });
   }

@@ -216,15 +216,6 @@ export type VenueScene = {
   privateSpaceId?: string;
   accompanying?: { characterId: string; zoneId: string }[];
   doorwayContacts?: DoorwayContact[];
-  pendingAttention?: {
-    intentKey?: string;
-    id: string;
-    message: string;
-    revision: number;
-    originZoneId: string;
-    plan: AttentionPlan;
-    choices: { id: string; label: string }[];
-  };
   entryOffers?: { zoneId: string; label: string; controllerId: string; accompanies: boolean }[];
   /** Ephemeral prompt context; never stored or disclosed. */
   contactGeneration?: {

@@ -230,7 +230,6 @@ export function RoomPanel({
   onDraft,
   onMode,
   onSend,
-  onAttentionChoice,
   sendOnEnter,
   spriteCardFlipEnabled,
   onViewVenue,
@@ -288,7 +287,6 @@ export function RoomPanel({
   onDraft: (value: string) => void;
   onMode: (value: SceneComposerMode) => void;
   onSend: () => void;
-  onAttentionChoice?: (zoneId: string) => void;
   sendOnEnter: boolean;
   spriteCardFlipEnabled: boolean;
   onViewVenue: () => void;
@@ -1623,28 +1621,6 @@ export function RoomPanel({
                   </select>
                 ) : (
                   <>
-                    {mode === "chat" && room.attentionClarification?.message === draft.trim() ? (
-                      <span
-                        role="group"
-                        aria-label="Clarify who to reach"
-                        className={`${ELEMENT_TAG}-attention-choice`}
-                      >
-                        <span role="status">{room.attentionClarification.question}</span>
-                        {room.attentionClarification.choices.length ? (
-                          <small>Choose below, or edit your message.</small>
-                        ) : null}
-                        {room.attentionClarification.choices.map((choice) => (
-                          <button
-                            key={choice.id}
-                            type="button"
-                            disabled={busy || !canCompose}
-                            onClick={() => onAttentionChoice?.(choice.id)}
-                          >
-                            {choice.label}
-                          </button>
-                        ))}
-                      </span>
-                    ) : null}
                     <textarea
                       autoComplete="off"
                       ref={composerRef}
