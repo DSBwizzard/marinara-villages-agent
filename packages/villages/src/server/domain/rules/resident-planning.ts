@@ -106,7 +106,6 @@ export function residentEncounterPlace(
 }
 export type ResidentPlanningContext = {
   version: 1;
-  gmVersion?: 1;
   /** Limit a historical opportunity to encounters and private reflection. */
   catchup?: true;
   /** Model-facing description of the single Zone that participants share. */
@@ -208,9 +207,7 @@ export function buildResidentPlanningMessages(context: ResidentPlanningContext):
         JSON.stringify(context.social.candidates) +
         ". Select one exact offered ID with social.planId, or none. Availability is not preference or consent.",
     'A CURRENT encounter opportunity with at least two actors in one Zone may have social.encounter:{opportunityId,lines:[{speakerId,text},{kind:"narration",text}]}. Write two to eight short source lines, with at least two actual speakers among the offered actors. Optional narration establishes only small local actions actually performed now, grounded in the supplied current Zone, known supplies and resident authority. Every actor hears the ordinary dialogue and witnesses local narration. No whispers, travel, player participation, hidden contents, invented possessions, injury, construction or time skips. Intentions and speech are no completed deeds. ' +
-      (context.gmVersion === 1
-        ? "Put supported consequences in meaning, never in the source record. "
-        : "Do not return physical updates: a separate existing System check validates consequences. ") +
+      "Put supported consequences in meaning, never in the source record. " +
       "Omit the encounter if nothing fits.",
     !context.catchup &&
       "Instead of an encounter, social.mail may be {senderId,text} from one offered actor to player, at most 2000 characters: a personal message, question or invitation grounded in their own intentions. No player consent, unseen deeds, or invented contact details. Choose at most one encounter or mail. Private/unknown locations permit mail only.",
@@ -224,9 +221,7 @@ export function buildResidentPlanningMessages(context: ResidentPlanningContext):
       "routineIdea may be one {characterId,activity,venueId,zoneId,flexible:true} for an ordinary future activity at an existing accessible place, or null. It cannot establish employment, assets, commitments or physical changes.",
     context.catchup &&
       "This is a past catch-up opportunity. Choose only an encounter or a private reflection; no mail, housing request, routine change or future plan. Keep routineIdea null and housingRequests empty. Omit social.planId and social.mail.",
-    context.gmVersion === 1
-      ? 'Return ONE JSON object {"social":null,"routineIdea":null,"housingRequests":[],"wishReflection":null} with optional meaning for meaningful consequences of the chosen source. Replace null only for applicable choices. Proposals are not committed world edits.'
-      : 'Return JSON with exactly these top-level fields: {"social":null,"routineIdea":null,"housingRequests":[],"wishReflection":null}. Replace null only for an applicable structured choice. No outside narration, public updates, memories or world-state edits.',
+    'Return ONE JSON object {"social":null,"routineIdea":null,"housingRequests":[],"wishReflection":null} with optional meaning for meaningful consequences of the chosen source. Replace null only for applicable choices. Proposals are not committed world edits.',
   ]
     .filter(Boolean)
     .join("\n\n");

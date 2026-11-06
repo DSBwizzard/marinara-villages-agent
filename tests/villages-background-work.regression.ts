@@ -1159,18 +1159,18 @@ async function main() {
     const currentDate = localDateKey(villageNow());
     registerBackgroundHandler("world-development", {
       authority: "raw",
-      async generate() {
-        for (const step of ["world-proposal", "world-review"]) {
-          const reply = await completeWithRoom(model as any, [{ role: "user", content: step }], 100, {});
-          const failure = completionFailure(reply, "world-development", 100);
-          if (failure) throw new WorkFailureError(failure);
-        }
+      async generate(input) {
+        const reply = await completeWithRoom(model as any, [{ role: "user", content: "world-gm" }], 100, {});
+        const failure = completionFailure(reply, "world-development", 100);
+        if (failure) throw new WorkFailureError(failure);
+        if (input.extraRequest)
+          await completeWithRoom(model as any, [{ role: "user", content: "extra-world-request" }], 100, {});
         return {};
       },
       valid: () => true,
       apply() {},
     });
-    for (const failedStep of ["world-proposal", "world-review"]) {
+    for (const failedStep of ["world-gm"]) {
       await reset();
       await mutateVillageState((state) => {
         state.backgroundPace = "balanced";
@@ -1193,14 +1193,8 @@ async function main() {
       });
       await settleBackgroundWork();
       assert.equal((await summary(failedStep)).status, "completed");
-      assert.equal((await summary(failedStep)).requests, 3, "One extra principal request is accounted for.");
-      assert.deepEqual(
-        calls,
-        failedStep === "world-proposal"
-          ? [failedStep, failedStep, "world-review"]
-          : ["world-proposal", failedStep, failedStep],
-        "Completed steps are reused.",
-      );
+      assert.equal((await summary(failedStep)).requests, 2, "One extra principal request is accounted for.");
+      assert.deepEqual(calls, [failedStep, failedStep], "Completed steps are reused.");
       assert.equal(
         (await readVillageState()).eventAttempts!.attempts.length,
         1,
@@ -1213,7 +1207,7 @@ async function main() {
       state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
     });
     await villageBackgroundPresence("retry-world-exhausted", true);
-    responsePlans.set("world-review", [
+    responsePlans.set("world-gm", [
       { content: "", finishReason: "stop" },
       { content: "", finishReason: "stop" },
     ]);
@@ -1229,12 +1223,31 @@ async function main() {
     });
     await settleBackgroundWork();
     assert.equal((await summary("world-exhausted")).status, "failed");
-    assert.equal(calls.length, 3);
+    assert.equal(calls.length, 2);
     stop();
     stop = startBackgroundWork({ now: () => now });
     await recoverBackgroundWork();
     await settleBackgroundWork();
-    assert.equal(calls.length, 3, "Restart cannot grant another automatic model request.");
+    assert.equal(calls.length, 2, "Restart cannot grant another automatic model request.");
+    await reset();
+    await mutateVillageState((state) => {
+      state.backgroundPace = "balanced";
+    });
+    await villageBackgroundPresence("one-principal-request", true);
+    await queueBackgroundJob({
+      kind: "world-development",
+      subjectId: "principal-cap",
+      seed: "fixture",
+      revision: "principal-cap",
+      finite: false,
+      label: "World activity",
+      automaticDate: currentDate,
+      input: { extraRequest: true },
+    });
+    await settleBackgroundWork();
+    assert.equal((await summary("principal-cap")).status, "failed");
+    assert.equal((await summary("principal-cap")).requests, 1);
+    assert.deepEqual(calls, ["world-gm"], "A second principal request cannot be purchased");
     await reset();
     await mutateVillageState((state) => {
       state.backgroundPace = "balanced";
