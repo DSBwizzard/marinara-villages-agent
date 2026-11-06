@@ -126,13 +126,7 @@ export function sceneReadyForRetirement(scene: VenueScene, village: VillageState
     Object.keys(scene.operation?.attempts ?? {}).length
   )
     return false;
-  if (
-    scene.operation?.error ||
-    Object.values(scene.operation?.optionalAttempts ?? {}).some(
-      (a) => a.status !== "complete" && a.status !== "unknown",
-    )
-  )
-    return false;
+  if (scene.operation?.error) return false;
   if (pendingProgressTurns(scene, village.foundedAt).length) return false;
   return !scene.submissions.some(
     (turn) =>

@@ -13,7 +13,6 @@ export type SceneTerminal = {
   rejectedSubmissions: NonNullable<VenueScene["rejectedSubmissions"]>;
   generationReceipts: NonNullable<VenueScene["generationReceipts"]>;
   recordEvents: NonNullable<VenueScene["submissions"][number]["recordEvents"]>;
-  optionalAttempts?: Record<string, { status: "complete" | "unknown"; elapsedMs: number }>;
   abandonedRequest?: { id: string; kind: string; attemptId: string };
   operation?: {
     id: string;

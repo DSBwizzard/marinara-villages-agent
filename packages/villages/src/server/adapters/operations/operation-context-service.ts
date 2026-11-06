@@ -4,7 +4,6 @@ import type { CapabilityRuntimeLogger } from "@marinara-engine/shared";
 import { AsyncLocalStorage } from "node:async_hooks";
 export type { VenueOperation } from "../../domain/models/operation-model.js";
 export type Context = {
-  decisionRemainingMs?: number;
   sessionId: string;
   villageSeed?: string;
   operation: VenueOperation;

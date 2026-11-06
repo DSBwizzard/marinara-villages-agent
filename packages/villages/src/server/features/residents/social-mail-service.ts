@@ -68,7 +68,6 @@ import {
 } from "../../domain/rules/social-wishes.js";
 
 export interface SocialMailPorts {
-  backgroundSetting: typeof import("../../adapters/operations/background-context.js").backgroundSetting;
   readMailInput: import("../../adapters/storage/captured-admission-store.js").CapturedAdmissionStore["readMailInput"];
   withWork: typeof import("../../adapters/storage/repair-gate.js").withRepairWork;
   processLiveMemories?: typeof import("./live-memory.js").processLiveMemories;

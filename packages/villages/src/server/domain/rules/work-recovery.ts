@@ -76,17 +76,6 @@ export function isBackgroundRecoveryRecord(value: unknown): value is Job {
     )
   )
     return false;
-  if (
-    value.optionalAttempts !== undefined &&
-    (!record(value.optionalAttempts) ||
-      !Object.values(value.optionalAttempts).every(
-        (attempt) =>
-          record(attempt) &&
-          typeof attempt.status === "string" &&
-          ["dispatching", "complete", "unknown"].includes(attempt.status),
-      ))
-  )
-    return false;
   if (value.partialResult !== undefined && typeof value.partialResult !== "boolean") return false;
   if (value.failure !== undefined && (!record(value.failure) || typeof value.failure.cause !== "string")) return false;
   if (value.replacement !== undefined && !isBackgroundInput(value.replacement)) return false;
@@ -99,7 +88,6 @@ export function backgroundRecoveryState(value: unknown): WorkRecoveryState {
   const job = value;
   const scheduled = ["queued", "running", "paused"].includes(job.status);
   const steps = job.steps ?? [];
-  const optional = Object.values(job.optionalAttempts ?? {});
   return workRecoveryState({
     pending: scheduled || !!job.replacement,
     uncertain:
@@ -108,7 +96,6 @@ export function backgroundRecoveryState(value: unknown): WorkRecoveryState {
         (step) =>
           step.status === "running" || (step.timing?.outcome === "unknown" && !step.response && !step.responseRef),
       ) ||
-        optional.some((attempt) => ["dispatching", "unknown"].includes(attempt.status)) ||
         (job.failure?.cause === "unknown_request" &&
           !job.hasResult &&
           !steps.some((step) => step.response || step.responseRef))),
@@ -116,8 +103,7 @@ export function backgroundRecoveryState(value: unknown): WorkRecoveryState {
       !!job.hasResult ||
       !!job.partialResult ||
       job.result !== undefined ||
-      steps.some((step) => step.response != null || step.responseRef != null) ||
-      optional.some((attempt) => attempt.status === "complete"),
+      steps.some((step) => step.response != null || step.responseRef != null),
     completed: job.status === "completed",
     // Obsolete is a scheduling label, not proof that every external callback/effect was reconciled.
     abandonmentFenced: false,

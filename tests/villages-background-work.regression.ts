@@ -30,7 +30,6 @@ import { buildResidentPlanningMessages } from "./fixtures/resident-planning.fixt
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { addMemory } from "./helpers/memories-fixture.js";
 import { mutateRelationships } from "../packages/villages/src/server/features/residents/relationship-store.js";
-import { backgroundCalls } from "../packages/villages/src/server/adapters/operations/background-context.js";
 import { completionFailure, WorkFailureError } from "../packages/villages/src/server/domain/rules/work-failure.js";
 
 const rows = new Map<string, any>();
@@ -194,14 +193,6 @@ registerBackgroundHandler("agenda", {
       });
     }
     const result: string[] = [];
-    if (input.optional)
-      await backgroundCalls.getStore()!.optionalCompletion!("uncertain-optional", async () => {
-        calls.push("optional-original");
-        await new Promise<void>((resolve) => {
-          providerGate = resolve;
-        });
-        throw new Error("Optional request outcome unavailable");
-      });
     for (const step of input.steps) {
       const reply = await completeWithRoom(model as any, [{ role: "user", content: step }], 100, {
         temperature: 0,
@@ -941,8 +932,14 @@ async function main() {
     holdPendingTiming = true;
     providerGate!();
     await until(() => !!releasePendingTiming);
-    await queueBackgroundJob({ ...work("replace", ["replacement-after-reservation"]), revision: "new" });
+    const reservedReplacement = queueBackgroundJob({
+      ...work("replace", ["replacement-after-reservation"]),
+      revision: "new",
+    });
+    // Let replacement admission reach the blocked save before releasing the reservation.
+    await tick();
     releasePendingTiming!();
+    await reservedReplacement;
     await settleBackgroundWork();
     assert.deepEqual(calls, ["paid-first", "replacement-after-reservation"]);
     const retainedPaid = [...rows.values()].filter((row) => row.kind === "background-history");
@@ -993,12 +990,11 @@ async function main() {
     assert.deepEqual(calls, ["held-original"], "A queued replacement cannot bypass a saved connection hold.");
     assert.equal(rows.get(heldParent.id).data.replacement.revision, "next");
 
-    for (const optional of [false, true]) {
+    {
       await reset();
       blockStep = failStep = "uncertain-original";
       failure = "Request outcome unavailable";
       const original = work("replace", ["uncertain-original"]);
-      if (optional) original.input = { ...(original.input as object), optional: true };
       await queueBackgroundJob(original);
       await until(() => !!providerGate);
       await queueBackgroundJob({ ...work("replace", ["replacement-must-wait"]), revision: "next" });
@@ -1007,9 +1003,8 @@ async function main() {
       const held = rows.get((await summary("replace")).id);
       assert.equal(held.data.status, "interrupted", "Supersession preserves the uncertain original request.");
       assert.equal(held.data.replacement.revision, "next");
-      if (optional) assert.equal(held.data.optionalAttempts["uncertain-optional"].status, "unknown");
-      else assert.equal(held.data.steps[0].status, "running");
-      const expectedCalls = [optional ? "optional-original" : "uncertain-original"];
+      assert.equal(held.data.steps[0].status, "running");
+      const expectedCalls = ["uncertain-original"];
       assert.deepEqual(calls, expectedCalls, "A replacement cannot dispatch while the original remains uncertain.");
       stop();
       stop = startBackgroundWork({ now: () => now });
@@ -1030,27 +1025,7 @@ async function main() {
         (row) => row.kind === "background-history" && row.data.id === held.data.id,
       );
       assert.ok(retained, "Replacement Retry retains the original uncertain request and its captured source.");
-      if (optional) assert.equal(retained.data.optionalAttempts["uncertain-optional"].status, "unknown");
-      else assert.equal(retained.data.steps[0].status, "running");
-    }
-
-    for (const status of ["running", "completed"] as const) {
-      await reset();
-      await queueBackgroundJob(work("replace", ["committed-original"]));
-      await settleBackgroundWork();
-      stop();
-      const parent = rows.get((await summary("replace")).id);
-      parent.data.status = status;
-      parent.data.input = work("replace", ["committed-original"]).input;
-      parent.data.optionalAttempts = { review: { status: "unknown", elapsedMs: 10 } };
-      parent.data.replacement = { ...work("replace", ["committed-replacement-must-wait"]), revision: "next" };
-      stop = startBackgroundWork({ now: () => now });
-      await recoverBackgroundWork();
-      await settleBackgroundWork();
-      assert.deepEqual(calls, ["committed-original"], "A committed main effect does not settle optional uncertainty.");
-      assert.equal(rows.get(parent.id).data.status, "interrupted");
-      assert.equal(rows.get(parent.id).data.optionalAttempts.review.status, "unknown");
-      assert.equal(rows.get(parent.id).data.replacement.revision, "next");
+      assert.equal(retained.data.steps[0].status, "running");
     }
 
     for (const replacement of [{}, { ...work("other", ["wrong-slot"]), revision: "foreign" }]) {
@@ -1318,8 +1293,10 @@ async function main() {
     holdPendingTiming = true;
     await queueBackgroundJob(catchupWork("cancel-before-dispatch", "cancel-before-dispatch"));
     await until(() => releasePendingTiming !== null);
-    await cancelReturnCatchup("return-batch");
+    const cancelAdmission = cancelReturnCatchup("return-batch");
+    await tick();
     releasePendingTiming!();
+    await cancelAdmission;
     await settleBackgroundWork();
     assert.equal(
       calls.includes("cancel-before-dispatch"),
@@ -1354,8 +1331,10 @@ async function main() {
     holdPendingTiming = true;
     await queueBackgroundJob(catchupWork("hidden-before-dispatch", "hidden-before-dispatch"));
     await until(() => releasePendingTiming !== null);
-    await villageBackgroundPresence("hide-before-admission", false);
+    const hideAdmission = villageBackgroundPresence("hide-before-admission", false);
+    await tick();
     releasePendingTiming!();
+    await hideAdmission;
     await settleBackgroundWork();
     const hidden = await summary("hidden-before-dispatch");
     assert.equal(hidden.status, "paused", "No request began, so hiding is a pause rather than an interruption.");
@@ -1480,8 +1459,10 @@ async function main() {
     holdPendingTiming = true;
     await queueBackgroundJob(reinterpret("cancel-interpretation"));
     await until(() => releasePendingTiming !== null);
-    await cancelReturnCatchup("return-batch");
+    const cancelInterpretation = cancelReturnCatchup("return-batch");
+    await tick();
     releasePendingTiming!();
+    await cancelInterpretation;
     await settleBackgroundWork();
     assert.equal(calls.includes("cancel-interpretation"), false, "Cancelled interpretation does not dispatch.");
     await reset();
@@ -1493,8 +1474,10 @@ async function main() {
     holdPendingTiming = true;
     await queueBackgroundJob(reinterpret("hidden-interpretation"));
     await until(() => releasePendingTiming !== null);
-    await villageBackgroundPresence("interpretation-hidden", false);
+    const hideInterpretation = villageBackgroundPresence("interpretation-hidden", false);
+    await tick();
     releasePendingTiming!();
+    await hideInterpretation;
     await settleBackgroundWork();
     assert.equal(calls.includes("hidden-interpretation"), false, "Hidden interpretation does not dispatch.");
     await villageBackgroundPresence("interpretation-hidden", true);
@@ -1555,7 +1538,4 @@ async function main() {
     release();
   }
 }
-void main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+await main();
