@@ -2,8 +2,7 @@ import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import assert from "node:assert/strict";
 import {
   createActivationScope,
-  installDefaultActivation,
-  scopedActivation,
+  activationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import {
   createVenueOperationContext,
@@ -115,8 +114,8 @@ function fixture(name: string) {
   });
   function note(call: string) {
     calls.push(call);
-    owners.push(scopedActivation());
-    if (scopedActivation()?.active === false) throw Error("Original changes connection unavailable");
+    owners.push(activationScope());
+    if (activationScope()?.active === false) throw Error("Original changes connection unavailable");
     if (call === failAt) throw exact;
   }
   async function wait(call: string) {
@@ -554,20 +553,22 @@ async function main() {
       fb = fixture("B");
     const releaseA = a.run(() => configureSceneChanges(fa.service)),
       releaseB = b.run(() => configureSceneChanges(fb.service));
-    const clearA = installDefaultActivation(a, () => {});
+
     fa.pause(pause);
-    const pending = fa.operations.context.run(context("A-live"), () =>
-      pause === "world"
-        ? dismissSceneNotice("same", "first:notice")
-        : pause.startsWith("replay:")
-          ? replaySceneChanges("same")
-          : readSceneChanges("same"),
+    const pending = a.run(() =>
+      fa.operations.context.run(context("A-live"), () =>
+        pause === "world"
+          ? dismissSceneNotice("same", "first:notice")
+          : pause.startsWith("replay:")
+            ? replaySceneChanges("same")
+            : readSceneChanges("same"),
+      ),
     );
     await fa.entered.promise;
-    const clearB = installDefaultActivation(b, () => {});
-    releaseA();
-    clearA();
-    const current = await fb.operations.context.run(context("B-live"), () => readSceneChanges("same"));
+
+    b.run(() => releaseA());
+
+    const current = await b.run(() => fb.operations.context.run(context("B-live"), () => readSceneChanges("same")));
     assert.equal(current.changes[0]!.evidence[0]!.content, "B private diagnostic");
     assert.equal(current.activeRequest.requests![0]!.stage, "B-live");
     fa.gate.resolve();
@@ -578,30 +579,31 @@ async function main() {
     }
     assert(fa.owners.every((owner) => owner === a));
     assert(fb.owners.every((owner) => owner === b));
-    assert.equal((await readSceneChanges("same")).sceneId, "same", "old cleanup cannot remove B");
-    releaseB();
-    clearB();
+    await b.run(async () =>
+      assert.equal((await readSceneChanges("same")).sceneId, "same", "old cleanup cannot remove B"),
+    );
+    b.run(() => releaseB());
+
     a.dispose();
     b.dispose();
   }
   const disposed = createActivationScope(),
     old = fixture("old");
-  const release = disposed.run(() => configureSceneChanges(old.service)),
-    clear = installDefaultActivation(disposed, () => {});
+  const release = disposed.run(() => configureSceneChanges(old.service));
   old.pause("scene:same");
-  const pending = readSceneChanges("same");
+  const pending = disposed.run(() => readSceneChanges("same"));
   await old.entered.promise;
   disposed.dispose();
   old.gate.resolve();
   await assert.rejects(pending, /Original changes connection unavailable/);
-  release();
-  clear();
+  disposed.run(() => release());
+
   await assert.rejects(readSceneChanges("same"), /not configured|disposed/);
   console.log(
     "PASS Scene changes ownership, readonly diagnostics, global privacy pagination, serial replay, CAS dismissal and operation-context metrics",
   );
 }
-void main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

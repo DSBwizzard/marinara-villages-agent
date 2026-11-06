@@ -520,7 +520,7 @@ async function main() {
   console.log("Villages continuous time regression: exact time, migration, restart, idempotence, failure, timer ok");
 }
 
-void main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

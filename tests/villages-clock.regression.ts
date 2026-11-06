@@ -433,7 +433,7 @@ async function verify() {
     assert.equal(new ZonedDate("2026-12-01T12:00:00Z", "America/Phoenix").getTimezoneOffset(), 420);
   });
 }
-verify().catch((error) => {
+await verify().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

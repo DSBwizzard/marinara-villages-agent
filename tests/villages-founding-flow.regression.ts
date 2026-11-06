@@ -10,7 +10,6 @@ import assert from "node:assert/strict";
 import {
   activationScope,
   createActivationScope,
-  installDefaultActivation,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import {
   coerceVillageState,
@@ -561,43 +560,45 @@ async function foundingConnectionOwnership() {
     const a = fixture("A", true),
       b = fixture("B", false),
       oldFetch = globalThis.fetch;
-    const clearA = installDefaultActivation(a.scope, () => {});
-    let clearB = () => {};
-    globalThis.fetch = async (input, init) => {
-      const owner = activationScope() === a.scope ? a : activationScope() === b.scope ? b : undefined;
-      assert(owner);
-      const path = new URL(String(input)).pathname;
-      if (path === "/api/lorebooks") await owner.pause("lore");
-      if (path === "/api/characters/avatar-generation") {
-        const request = JSON.parse(String(init?.body));
-        assert.match(request.appearance, /eye-level landscape view/u);
-        assert.match(request.appearance, /works behind chat overlays/u);
-        assert.match(request.appearance, /recognizable at thumbnail size/u);
-        assert.match(request.appearance, /application supplies the Polaroid frame/u);
-        assert.equal(request.width, 1216);
-        assert.equal(request.height, 832);
-        await owner.pause("provider");
-      }
-      if (path === "/api/global-gallery/upload") await owner.pause("gallery");
-      const payload =
-        path === "/api/connections"
-          ? [
-              { id: `${owner.label}-text`, provider: "fixture", model: "fixture" },
-              { id: `${owner.label}-brush`, provider: "image_generation" },
-            ]
-          : path === "/api/lorebooks"
-            ? [{ id: "visual", name: "Visual", enabled: true }]
-            : path.endsWith("/entries")
-              ? [{ id: "blue", name: "Color", content: `${owner.label} blue doors`, enabled: true, constant: true }]
-              : path.endsWith("/folders")
-                ? []
-                : path === "/api/characters/avatar-generation"
-                  ? { image: png }
-                  : path === "/api/global-gallery/upload"
-                    ? { id: `${owner.label}-image`, url: `/api/global-gallery/file/${owner.label}.png` }
-                    : {};
-      return new Response(JSON.stringify(payload), { headers: { "content-type": "application/json" } });
-    };
+
+    a.scope.run(
+      () =>
+        (globalThis.fetch = async (input, init) => {
+          const owner = activationScope() === a.scope ? a : activationScope() === b.scope ? b : undefined;
+          assert(owner);
+          const path = new URL(String(input)).pathname;
+          if (path === "/api/lorebooks") await owner.pause("lore");
+          if (path === "/api/characters/avatar-generation") {
+            const request = JSON.parse(String(init?.body));
+            assert.match(request.appearance, /eye-level landscape view/u);
+            assert.match(request.appearance, /works behind chat overlays/u);
+            assert.match(request.appearance, /recognizable at thumbnail size/u);
+            assert.match(request.appearance, /application supplies the Polaroid frame/u);
+            assert.equal(request.width, 1216);
+            assert.equal(request.height, 832);
+            await owner.pause("provider");
+          }
+          if (path === "/api/global-gallery/upload") await owner.pause("gallery");
+          const payload =
+            path === "/api/connections"
+              ? [
+                  { id: `${owner.label}-text`, provider: "fixture", model: "fixture" },
+                  { id: `${owner.label}-brush`, provider: "image_generation" },
+                ]
+              : path === "/api/lorebooks"
+                ? [{ id: "visual", name: "Visual", enabled: true }]
+                : path.endsWith("/entries")
+                  ? [{ id: "blue", name: "Color", content: `${owner.label} blue doors`, enabled: true, constant: true }]
+                  : path.endsWith("/folders")
+                    ? []
+                    : path === "/api/characters/avatar-generation"
+                      ? { image: png }
+                      : path === "/api/global-gallery/upload"
+                        ? { id: `${owner.label}-image`, url: `/api/global-gallery/file/${owner.label}.png` }
+                        : {};
+          return new Response(JSON.stringify(payload), { headers: { "content-type": "application/json" } });
+        }),
+    );
     const scenarioInput = {
       communityVenueId: "community",
       context: { rules: "", circumstances: [] },
@@ -616,7 +617,7 @@ async function foundingConnectionOwnership() {
       schedule: null,
     };
     try {
-      const work =
+      const work = a.scope.run(() =>
         operation === "progress"
           ? reportFoundingProgress("equal-founding-seed", { stage: "model", modelName: "A-model" }, "equal-resident")
           : operation === "compact"
@@ -633,23 +634,30 @@ async function foundingConnectionOwnership() {
                   ? uploadFoundingVenueImage({ image: png, name: "Uploaded room" })
                   : draftVillageVenueDescriptions("Quiet harbor", [
                       { id: "equal-venue", name: "Room", classes: ["residence"] },
-                    ]);
-      const outcome = work.then(
-        (value) => ({ value, error: undefined }),
-        (error) => ({ value: undefined, error: error as unknown }),
+                    ]),
       );
-      await Promise.race([
-        a.entered.promise,
-        outcome.then((result) => assert.fail(`No ${operation}/${stage} pause: ${String(result.error)}`)),
-      ]);
-      clearB = installDefaultActivation(b.scope, () => {});
-      const independent = await proposeCompactFounding(compactContext, async () => {});
+      const outcome = a.scope.run(() =>
+        work.then(
+          (value) => ({ value, error: undefined }),
+          (error) => ({ value: undefined, error: error as unknown }),
+        ),
+      );
+      await a.scope.run(() =>
+        Promise.race([
+          a.entered.promise,
+          outcome.then((result) => assert.fail(`No ${operation}/${stage} pause: ${String(result.error)}`)),
+        ]),
+      );
+
+      const independent = await b.scope.run(() => proposeCompactFounding(compactContext, async () => {}));
       assert.equal(independent.agenda.routineSummary, "B reads quietly.");
-      await reportFoundingProgress("equal-founding-seed", { stage: "model", modelName: "B-model" }, "equal-resident");
-      assert.equal(b.requests().length, 1);
+      await b.scope.run(() =>
+        reportFoundingProgress("equal-founding-seed", { stage: "model", modelName: "B-model" }, "equal-resident"),
+      );
+      b.scope.run(() => assert.equal(b.requests().length, 1));
       if (["cas", "seed-changed", "status-changed", "resident-changed"].includes(variant)) {
         const row = a.rows.get("villages-village")!,
-          state = structuredClone(a.world());
+          state = b.scope.run(() => structuredClone(a.world()));
         if (variant === "cas") state.spriteCardFlipEnabled = false;
         if (variant === "seed-changed") state.seed = "new-world";
         if (variant === "status-changed") state.foundingPreparation!.status = "ready";
@@ -661,17 +669,21 @@ async function foundingConnectionOwnership() {
       const result = await outcome;
       if (variant === "failure" && operation === "progress")
         assert.equal(result.error, failure, "native document failure keeps exact identity");
-      else if (variant === "failure") assert.match(String(result.error), new RegExp(failure.message));
+      else if (variant === "failure")
+        b.scope.run(() => assert.match(String(result.error), new RegExp(failure.message)));
       else if (variant === "disposed") assert(result.error instanceof Error);
       else assert.equal(result.error, undefined, `${operation}/${stage} succeeds`);
-      assert.equal(b.world().foundingPreparation!.modelName, "B-model", "A cannot rewrite B's preparation marker");
-      assert.equal(b.requests().length, 1, "A does not borrow or duplicate B's usage receipt");
-      assert.equal(b.requests()[0]!.connectionId, "B-text");
+      b.scope.run(() =>
+        assert.equal(b.world().foundingPreparation!.modelName, "B-model", "A cannot rewrite B's preparation marker"),
+      );
+      b.scope.run(() => assert.equal(b.requests().length, 1, "A does not borrow or duplicate B's usage receipt"));
+      b.scope.run(() => assert.equal(b.requests()[0]!.connectionId, "B-text"));
       const paid = operation !== "progress" && operation !== "upload";
-      assert.equal(a.requests().length, paid ? 1 : 0, "native usage records stay with A");
-      if (paid) assert.equal(a.requests()[0]!.connectionId, operation === "image" ? "A-brush" : "A-text");
+      b.scope.run(() => assert.equal(a.requests().length, paid ? 1 : 0, "native usage records stay with A"));
+      if (paid)
+        b.scope.run(() => assert.equal(a.requests()[0]!.connectionId, operation === "image" ? "A-brush" : "A-text"));
       if (operation === "progress") {
-        const marker = a.world().foundingPreparation!;
+        const marker = b.scope.run(() => a.world().foundingPreparation!);
         if (["seed-changed", "status-changed", "resident-changed", "failure", "disposed"].includes(variant))
           assert.equal(marker.modelName, undefined, "changed authority or failure does not apply stale progress");
         else {
@@ -679,14 +691,18 @@ async function foundingConnectionOwnership() {
           assert(marker.stageStartedAt);
         }
         if (variant === "cas")
-          assert.equal(a.world().spriteCardFlipEnabled, false, "real CAS retry preserves winning fields");
+          b.scope.run(() =>
+            assert.equal(a.world().spriteCardFlipEnabled, false, "real CAS retry preserves winning fields"),
+          );
       }
       if (operation === "compact") {
         assert.deepEqual(callbacks, [{ owner: "A", modelName: "A-model" }]);
         assert.equal(calls.filter((call) => call.owner === "A" && call.stage === "provider").length, 1);
-        const saved = parseCompactFoundingCompletion(
-          { content: JSON.stringify(compactReply("A")), finishReason: "stop" },
-          compactContext,
+        const saved = b.scope.run(() =>
+          parseCompactFoundingCompletion(
+            { content: JSON.stringify(compactReply("A")), finishReason: "stop" },
+            compactContext,
+          ),
         );
         assert.equal(saved.agenda.routineSummary, "A reads quietly.");
         assert.equal(
@@ -709,8 +725,7 @@ async function foundingConnectionOwnership() {
       );
     } finally {
       a.gate.resolve();
-      clearA();
-      clearB();
+
       a.release();
       b.release();
       a.scope.dispose();

@@ -1,36 +1,19 @@
-import { activationScope, bindActivationService, createActivationBinding } from "../engine/activation-scope.js";
-import { villagesDocuments, villagesLogger } from "../engine/runtime-host.js";
-import { villageEngineJson } from "../engine/engine-transport.js";
-import { backgroundCalls } from "../operations/background-context.js";
-import { venueDebugContext } from "../operations/operation-context.js";
-import { linkApiQuote, readExchangeRate } from "./linkapi-pricing.js";
-import { createUsageLedger, type UsageLedger } from "./usage-ledger-service.js";
+import { bindActivationService, createActivationBinding } from "../engine/activation-scope.js";
+import { type UsageLedger } from "./usage-ledger-service.js";
 import type { UsagePurpose } from "../../domain/models/usage-model.js";
 import { randomUUID } from "node:crypto";
 const binding = createActivationBinding<UsageLedger>("Villages usage accounting is not configured.");
 /** Recovery distinguishes earlier processes, including overlapping live activations of one store. */
 export const usageProcessOwner = randomUUID();
-const standalone = createUsageLedger({
-  owner: usageProcessOwner,
-  villagesDocuments,
-  villagesLogger,
-  villageEngineJson,
-  backgroundCalls,
-  venueDebugContext,
-  linkApiQuote,
-  readExchangeRate,
-});
+
 function ledger(): UsageLedger {
-  if (activationScope()) return binding.get();
-  return binding.maybe() ?? standalone;
+  return binding.get();
 }
 export function configureUsageLedger(service: UsageLedger): () => void {
   return binding.configure(bindActivationService(service));
 }
 export function withUsagePurpose<T>(purpose: UsagePurpose, work: () => T): T {
-  const owner = activationScope(),
-    service = ledger();
-  return owner ? owner.run(() => service.withUsagePurpose(purpose, work)) : service.withUsagePurpose(purpose, work);
+  return ledger().withUsagePurpose(purpose, work);
 }
 export function inferredPurpose(): UsagePurpose {
   return ledger().inferredPurpose();

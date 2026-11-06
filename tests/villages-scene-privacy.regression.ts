@@ -293,7 +293,7 @@ async function main() {
     "Villages Scene privacy: active wrapper filters only Scene payloads, preserving visible content, progress summaries, saved records and explicit diagnostics (mocked collector).",
   );
 }
-main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

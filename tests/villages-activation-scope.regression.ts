@@ -1,3 +1,5 @@
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
@@ -94,71 +96,87 @@ function fixture(name: string) {
     },
   };
 }
+const unowned = spawnSync(
+  process.execPath,
+  ["--import", "tsx", fileURLToPath(new URL("./fixtures/villages-no-owner.fixture.mjs", import.meta.url))],
+  { encoding: "utf8", windowsHide: true, timeout: 15000 },
+);
+assert.equal(unowned.status, 0, unowned.stdout + unowned.stderr);
+
 async function scopeDispatch() {
-  const a = createActivationScope(),
-    b = fixture("B"),
-    f = fixture("A");
-  const releaseA = a.run(() => configureVillagesRuntime(f.runtime));
-  a.run(() => configureSceneQueries({ activeVenueSession: async () => ({ owner: "A" }) } as unknown as SceneQueries));
-  const epochA = a.run(villagesRuntimeEpoch);
-  const entered = deferred(),
-    resume = deferred();
-  const paused = a.run(async () => {
-    assert.equal(requireHost(), f.runtime);
-    entered.resolve();
-    await resume.promise;
-    assert.equal(requireHost(), f.runtime);
-    assert.equal(villagesRuntimeEpoch(), epochA);
-    assert.equal((await readVillageAuthority()).name, "A");
-    assert.deepEqual(await sceneQueries().activeVenueSession(), { owner: "A" });
-  });
-  await entered.promise;
-  const releaseB = configureVillagesRuntime(b.runtime);
-  const epochB = villagesRuntimeEpoch();
-  assert.notEqual(epochA, epochB);
-  resume.resolve();
-  await paused;
-  const bound = a.bind(function (this: { value: number }, delta: number) {
-    assert.equal(requireHost(), f.runtime);
-    return this.value + delta;
-  });
-  assert.equal(bound.call({ value: 4 }, 3), 7, "binding preserves this and synchronous return");
-  assert.equal(activationScope()?.active, true, "nested run restores the default B owner");
-  assert.equal(requireHost(), b.runtime);
+  const caller = createActivationScope();
+  try {
+    await caller.run(async () => {
+      const a = createActivationScope(),
+        b = fixture("B"),
+        f = fixture("A");
+      const releaseA = a.run(() => configureVillagesRuntime(f.runtime));
+      a.run(() =>
+        configureSceneQueries({ activeVenueSession: async () => ({ owner: "A" }) } as unknown as SceneQueries),
+      );
+      const epochA = a.run(villagesRuntimeEpoch);
+      const entered = deferred(),
+        resume = deferred();
+      const paused = a.run(async () => {
+        assert.equal(requireHost(), f.runtime);
+        entered.resolve();
+        await resume.promise;
+        assert.equal(requireHost(), f.runtime);
+        assert.equal(villagesRuntimeEpoch(), epochA);
+        assert.equal((await readVillageAuthority()).name, "A");
+        assert.deepEqual(await sceneQueries().activeVenueSession(), { owner: "A" });
+      });
+      await entered.promise;
+      const releaseB = configureVillagesRuntime(b.runtime);
+      const epochB = villagesRuntimeEpoch();
+      assert.notEqual(epochA, epochB);
+      resume.resolve();
+      await paused;
+      const bound = a.bind(function (this: { value: number }, delta: number) {
+        assert.equal(requireHost(), f.runtime);
+        return this.value + delta;
+      });
+      assert.equal(bound.call({ value: 4 }, 3), 7, "binding preserves this and synchronous return");
+      assert.equal(activationScope()?.active, true, "nested run restores the calling B owner");
+      assert.equal(requireHost(), b.runtime);
 
-  const binding = createActivationBinding<{ value: number }>("fixture service missing");
-  binding.configure({ value: 9 });
-  assert.throws(() => a.run(binding.get), /fixture service missing/, "missing A slot cannot borrow B's slot");
-  const same = { value: 1 };
-  a.run(() => {
-    const first = binding.configure(same),
-      second = binding.configure(same);
-    first();
-    assert.equal(binding.get(), same, "each repeated registration owns a distinct token");
-    second();
-    assert.throws(binding.get, /fixture service missing/);
-  });
-  releaseA();
-  a.dispose();
-  assert.equal(a.run(villagesRuntimeEpoch), null);
-  assert.throws(() => a.run(villagesDocuments), /runtime is not configured/, "closed A cannot borrow B's host");
-  assert.throws(bound, /runtime is not configured/);
-  assert.equal(requireHost(), b.runtime, "old cleanup preserves the live default");
-  releaseB();
-  assert.equal(villagesRuntimeEpoch(), null);
-  assert.throws(requireHost, /runtime is not configured/);
-  assert.equal(activationScope(), undefined);
+      const binding = createActivationBinding<{ value: number }>("fixture service missing");
+      binding.configure({ value: 9 });
+      assert.throws(() => a.run(binding.get), /fixture service missing/, "missing A slot cannot borrow B's slot");
+      const same = { value: 1 };
+      a.run(() => {
+        const first = binding.configure(same),
+          second = binding.configure(same);
+        first();
+        assert.equal(binding.get(), same, "each repeated registration owns a distinct token");
+        second();
+        assert.throws(binding.get, /fixture service missing/);
+      });
+      releaseA();
+      a.dispose();
+      assert.equal(a.run(villagesRuntimeEpoch), null);
+      assert.throws(() => a.run(villagesDocuments), /runtime is not configured/, "closed A cannot borrow B's host");
+      assert.throws(bound, /runtime is not configured/);
+      assert.equal(requireHost(), b.runtime, "old cleanup preserves the calling owner");
+      releaseB();
+      assert.equal(villagesRuntimeEpoch(), null);
+      assert.throws(requireHost, /runtime is not configured/);
+      assert.equal(activationScope(), caller);
 
-  const thrown = new Error("synchronous fixture error");
-  const scope = createActivationScope();
-  assert.throws(
-    scope.bind(() => {
-      throw thrown;
-    }),
-    (error) => error === thrown,
-  );
-  assert.equal(activationScope(), undefined, "throwing run restores prior context");
-  scope.dispose();
+      const thrown = new Error("synchronous fixture error");
+      const scope = createActivationScope();
+      assert.throws(
+        scope.bind(() => {
+          throw thrown;
+        }),
+        (error) => error === thrown,
+      );
+      assert.equal(activationScope(), caller, "throwing run restores prior context");
+      scope.dispose();
+    });
+  } finally {
+    caller.dispose();
+  }
 }
 async function productionHandlers() {
   async function activate(name: string, compare: boolean) {
@@ -190,7 +208,8 @@ async function productionHandlers() {
     const paused = a.engine.inject({ url: "/api/villages/narration" });
     await entered.promise;
     b = await activate("application-B", true);
-    assert.equal(requireHost(), b.runtime, "direct helpers select the latest successful activation");
+    assert.throws(requireHost, /runtime is not configured/, "activation never installs a process-wide host");
+    assert.equal(b.owner.run(requireHost), b.runtime);
     const responseB = await b.engine.inject({ url: "/api/villages/narration" });
     assert.equal(responseB.statusCode, 200);
     assert.equal(responseB.json().writingGuidance, "application-B");
@@ -253,7 +272,7 @@ async function productionHandlers() {
       (error) => error === failedSetup,
     );
     assert.equal(failedOwner?.active, false);
-    assert.equal(requireHost(), b.runtime, "failed production setup never replaces the successful default");
+    assert.equal(b.owner.run(requireHost), b.runtime, "failed production setup preserves the live owner");
     const beforeA = a.reads.length,
       beforeB = b.reads.length;
     await a.application.selfCheck();
@@ -266,7 +285,7 @@ async function productionHandlers() {
     assert.equal(a.application.stop(), stopped, "disposed owner preserves repeated stop identity");
     assert.equal(a.owner.active, false);
     assert.equal(b.owner.active, true);
-    assert.equal(requireHost(), b.runtime, "old production cleanup cannot clear the new default");
+    assert.equal(b.owner.run(requireHost), b.runtime, "old production cleanup cannot clear another owner");
     await assert.rejects(a.application.selfCheck(), /state service is not configured/);
     await b.application.selfCheck();
     const stillB = await b.engine.inject({ url: "/api/villages/narration" });
@@ -287,7 +306,7 @@ async function main() {
 const watchdog = setTimeout(() => {
   throw new Error("Activation scope scenarios did not finish");
 }, 20_000);
-main()
+await main()
   .catch((error) => {
     console.error(error);
     process.exitCode = 1;

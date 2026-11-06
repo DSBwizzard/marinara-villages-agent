@@ -145,8 +145,9 @@ async function main() {
 
   const releaseFirst = configureVenueCommands(firstCommands);
   const releaseSecond = configureVenueCommands(secondCommands);
+  const boundSecond = venueCommands();
   releaseFirst();
-  assert.equal(venueCommands(), secondCommands, "an older binding cannot clear its replacement");
+  assert.equal(venueCommands(), boundSecond, "an older binding cannot clear its replacement");
   releaseSecond();
   assert.throws(venueCommands, /not configured/);
 
@@ -241,7 +242,7 @@ async function main() {
     "Venue service ports, overlapping independent stores, binding ownership, Scene timing and retry fences passed.",
   );
 }
-main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

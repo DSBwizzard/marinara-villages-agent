@@ -361,7 +361,7 @@ async function run() {
   }
   console.log("Complete cards, live prompts, refresh, legacy snapshots, wish privacy and context protection passed.");
 }
-void context.run(
+await context.run(
   {
     controller: new AbortController(),
     operation: {

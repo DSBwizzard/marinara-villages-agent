@@ -387,4 +387,4 @@ async function main() {
   );
 }
 
-void main();
+await main();

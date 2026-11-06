@@ -3,8 +3,7 @@ import { captureZoneObservation } from "../packages/villages/src/server/domain/r
 import assert from "node:assert/strict";
 import {
   createActivationScope,
-  installDefaultActivation,
-  scopedActivation,
+  activationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { villagerCardFromSnapshot } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -67,7 +66,7 @@ function fixture(label: string, missingColors = false) {
     delete adopted.dialogueColor;
   }
   const calls: string[] = [],
-    owners: ReturnType<typeof scopedActivation>[] = [];
+    owners: ReturnType<typeof activationScope>[] = [];
   const entered = deferred(),
     gate = deferred();
   let paused = "",
@@ -76,14 +75,14 @@ function fixture(label: string, missingColors = false) {
   const exact = new Error(label + " exact failure");
   async function touch(stage: string) {
     calls.push(stage);
-    const owner = scopedActivation();
+    const owner = activationScope();
     owners.push(owner);
     if (stage === paused) {
       entered.resolve();
       await gate.promise;
     }
     if (owner && !owner.active) throw new Error("Original snapshot connection unavailable");
-    assert.equal(scopedActivation(), owner);
+    assert.equal(activationScope(), owner);
     if (stage === failure) throw exact;
   }
   let activeScene: VenueScene | null = null;
@@ -301,14 +300,14 @@ async function main() {
       fb = fixture("B");
     const releaseA = a.run(() => configureVillageSnapshot(fa.service)),
       releaseB = b.run(() => configureVillageSnapshot(fb.service));
-    const clearA = installDefaultActivation(a, () => {});
+
     fa.pause(stage);
-    const pending = buildVillageSnapshot(now);
+    const pending = a.run(() => buildVillageSnapshot(now));
     await fa.entered.promise;
-    const clearB = installDefaultActivation(b, () => {});
-    releaseA();
-    clearA();
-    const current = await buildVillageSnapshot(now);
+
+    b.run(() => releaseA());
+
+    const current = await b.run(() => buildVillageSnapshot(now));
     assert.equal(current.villagers[0]!.name, "B live");
     fa.gate.resolve();
     const prior = await pending;
@@ -316,34 +315,35 @@ async function main() {
     assert.equal(prior.villagers[0]!.nameColor, "adopted-name");
     assert(fa.owners.every((owner) => owner === a));
     assert(fb.owners.every((owner) => owner === b));
-    assert.equal(
-      (await buildVillageSnapshot(now)).villagers[0]!.name,
-      "B live",
-      "old cleanup must not remove B's snapshot service",
+    await b.run(async () =>
+      assert.equal(
+        (await buildVillageSnapshot(now)).villagers[0]!.name,
+        "B live",
+        "old cleanup must not remove B's snapshot service",
+      ),
     );
-    releaseB();
-    clearB();
+    b.run(() => releaseB());
+
     a.dispose();
     b.dispose();
   }
   const retired = createActivationScope(),
     f = fixture("retired");
-  const release = retired.run(() => configureVillageSnapshot(f.service)),
-    clear = installDefaultActivation(retired, () => {});
+  const release = retired.run(() => configureVillageSnapshot(f.service));
   f.pause("catalog");
-  const pending = buildVillageSnapshot(now);
+  const pending = retired.run(() => buildVillageSnapshot(now));
   await f.entered.promise;
   retired.dispose();
   f.gate.resolve();
   await assert.rejects(pending, /Original snapshot connection unavailable/);
-  release();
-  clear();
+  retired.run(() => release());
+
   await assert.rejects(buildVillageSnapshot(now), /not configured/);
   console.log(
     "PASS owned Village snapshot connections, read ordering, adopted paint, exact failures and paused activation replacement",
   );
 }
-void main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

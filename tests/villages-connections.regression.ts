@@ -37,7 +37,6 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   activationScope,
   createActivationScope,
-  installDefaultActivation,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { createVenueOperationContext } from "../packages/villages/src/server/adapters/operations/operation-context-service.js";
 import { configureVenueOperationContext } from "../packages/villages/src/server/adapters/operations/operation-context.js";
@@ -268,7 +267,7 @@ async function checkOwnedConnections() {
     const a = fixture("A", stage),
       b = fixture("B");
     otherScope = b.scope;
-    let clearDefault = installDefaultActivation(a.scope, () => {});
+
     const attempts: number[] = [];
     try {
       let pending: Promise<unknown>;
@@ -277,14 +276,14 @@ async function checkOwnedConnections() {
           revision: 1,
           data: { systemConnectionId: "", narrationConnectionId: "", imageConnectionId: "" },
         });
-        pending = villagesConnectionIdFor("system");
+        a.scope.run(() => (pending = villagesConnectionIdFor("system")));
       } else if (stage === "save") {
         a.records.set(CONNECTIONS_DOC_ID, {
           revision: 1,
           data: { systemConnectionId: "old", narrationConnectionId: "saved", imageConnectionId: "old-image" },
         });
-        a.conflict();
-        pending = saveVillageConnectionSettings({ systemConnectionId: "changed" });
+        a.scope.run(() => a.conflict());
+        a.scope.run(() => (pending = saveVillageConnectionSettings({ systemConnectionId: "changed" })));
       } else {
         const call = () =>
           completeWithRoom(a.model, sentMessages, 100, {
@@ -306,13 +305,19 @@ async function checkOwnedConnections() {
             assert.equal(activationScope(), a.scope);
             return { content: "background A", finishReason: "stop" };
           };
-          pending = a.background.run(handler, call);
-        } else pending = call();
+          a.scope.run(() => (pending = a.background.run(handler, call)));
+        } else a.scope.run(() => (pending = call()));
       }
       await a.entered.promise;
-      clearDefault = installDefaultActivation(b.scope, () => {});
-      assert.equal(await villagesConnectionIdFor("system"), "B-talk", "B can make independent requests while A waits");
-      a.releaseBindings();
+
+      await b.scope.run(async () =>
+        assert.equal(
+          await villagesConnectionIdFor("system"),
+          "B-talk",
+          "B can make independent requests while A waits",
+        ),
+      );
+      b.scope.run(() => a.releaseBindings());
       a.gate.resolve();
       const result = await pending;
       if (stage === "read" || stage === "agent") assert.equal(result, "A-talk");
@@ -338,10 +343,12 @@ async function checkOwnedConnections() {
       }
       assert.equal(b.records.size, 0, "A saves cannot write B's settings");
       assert.deepEqual(b.tokens, [], "A completions cannot invoke B's provider");
-      assert.equal(await villagesConnectionIdFor("system"), "B-talk", "old cleanup cannot remove B");
+      await b.scope.run(async () =>
+        assert.equal(await villagesConnectionIdFor("system"), "B-talk", "old cleanup cannot remove B"),
+      );
     } finally {
       a.gate.resolve();
-      clearDefault();
+
       a.release();
       b.release();
       a.scope.dispose();
@@ -351,54 +358,66 @@ async function checkOwnedConnections() {
   const a = fixture("A"),
     b = fixture("B");
   otherScope = b.scope;
-  let clearDefault = installDefaultActivation(a.scope, () => {});
+
   try {
     const exactFailure = new Error("exact read failure");
-    a.failRead(exactFailure);
-    await assert.rejects(readVillageConnectionSettings(), (error) => error === exactFailure);
-    assert.equal(await villagesConnectionIdFor("system"), "A-talk", "selection retains its documented read fallback");
-    a.failRead();
+    a.scope.run(() => a.failRead(exactFailure));
+    await a.scope.run(() => assert.rejects(readVillageConnectionSettings(), (error) => error === exactFailure));
+    await a.scope.run(async () =>
+      assert.equal(await villagesConnectionIdFor("system"), "A-talk", "selection retains its documented read fallback"),
+    );
+    a.scope.run(() => a.failRead());
     const saveError = new Error("exact settings save failure");
-    a.failSave(saveError);
-    await assert.rejects(
-      saveVillageConnectionSettings({ systemConnectionId: "failed" }),
-      (error) => error === saveError,
+    a.scope.run(() => a.failSave(saveError));
+    await a.scope.run(() =>
+      assert.rejects(saveVillageConnectionSettings({ systemConnectionId: "failed" }), (error) => error === saveError),
     );
     assert.equal(a.records.size, 0, "a failed save has no committed result");
-    a.failSave();
-    assert.deepEqual(await villagesImageConnectionChoice(), { enabled: false, connectionId: null });
+    a.scope.run(() => a.failSave());
+    await a.scope.run(async () =>
+      assert.deepEqual(await villagesImageConnectionChoice(), { enabled: false, connectionId: null }),
+    );
     assert.equal(a.events.includes("agent-image"), false, "disabled images do not read the agent default");
     a.records.set(CONNECTIONS_DOC_ID, { revision: 1, data: { imageConnectionId: "" } });
-    assert.deepEqual(await villagesImageConnectionChoice(), { enabled: true, connectionId: "A-image" });
+    await a.scope.run(async () =>
+      assert.deepEqual(await villagesImageConnectionChoice(), { enabled: true, connectionId: "A-image" }),
+    );
     const providerError = new Error("exact provider failure");
-    a.failProvider(providerError);
-    await assert.rejects(
-      completeWithRoom(a.model, sentMessages, 100, { temperature: null }),
-      (error) => error === providerError,
+    a.scope.run(() => a.failProvider(providerError));
+    await a.scope.run(() =>
+      assert.rejects(
+        completeWithRoom(a.model, sentMessages, 100, { temperature: null }),
+        (error) => error === providerError,
+      ),
     );
     assert.deepEqual(a.tokens, [100], "provider exceptions do not trigger blank retries");
     const cancelled = new AbortController();
     const abortError = new Error("explicit cancelled request");
-    cancelled.abort(abortError);
-    await assert.rejects(
-      completeWithRoom(a.model, sentMessages, 100, { temperature: null, signal: cancelled.signal }),
-      (error) => error === abortError,
+    a.scope.run(() => cancelled.abort(abortError));
+    await a.scope.run(() =>
+      assert.rejects(
+        completeWithRoom(a.model, sentMessages, 100, { temperature: null, signal: cancelled.signal }),
+        (error) => error === abortError,
+      ),
     );
     assert.deepEqual(a.tokens, [100], "a request already aborted starts no provider call");
-    clearDefault = installDefaultActivation(b.scope, () => {});
+
     a.scope.dispose();
-    await assert.rejects(
-      a.scope.run(() => readVillageConnectionSettings()),
-      /not configured/,
+    await b.scope.run(() =>
+      assert.rejects(
+        a.scope.run(() => readVillageConnectionSettings()),
+        /not configured/,
+      ),
     );
-    await assert.rejects(
-      a.scope.run(() => completeWithRoom(a.model, sentMessages, 100, { temperature: null })),
-      /not configured/,
+    await b.scope.run(() =>
+      assert.rejects(
+        a.scope.run(() => completeWithRoom(a.model, sentMessages, 100, { temperature: null })),
+        /not configured/,
+      ),
     );
-    assert.equal(await villagesConnectionIdFor("system"), "B-talk");
+    await b.scope.run(async () => assert.equal(await villagesConnectionIdFor("system"), "B-talk"));
     assert.deepEqual(b.tokens, []);
   } finally {
-    clearDefault();
     a.release();
     b.release();
     a.scope.dispose();
@@ -531,6 +550,7 @@ async function main() {
 
   const logger = { debugOverride() {}, error() {}, info() {}, warn() {}, debug() {} };
 
+  let applicationOwner: ReturnType<typeof activationScope>;
   const app = Fastify();
   const registrations: Array<{ prefix: string }> = [];
   let decisionRequests = 0;
@@ -563,6 +583,7 @@ async function main() {
         },
       },
       async registerPrivilegedRoutes(routes: any, options: { prefix: string }) {
+        applicationOwner = activationScope();
         registrations.push(options);
         await app.register(routes, { prefix: options.prefix });
         await app.ready();
@@ -598,233 +619,236 @@ async function main() {
 
   assert.deepEqual(registrations, [{ prefix: "/api/villages" }], "the package mounts one route prefix and no more");
 
-  // ── The order the three steps are tried in ─────────────────────────────────
-  // Driven through the resolver directly rather than through a route, because
-  // two of the three purposes have no route yet: only narration is wired to a
-  // caller, and the point here is the arithmetic, not the surface.
-  assert.deepEqual(
-    defaultVillageConnectionSettings(),
-    { systemConnectionId: "", narrationConnectionId: "", imageConnectionId: "__villages_image_disabled__" },
-    "a new village keeps image generation off until the player explicitly enables it",
-  );
-
-  agentConfig = null;
-  assert.equal(
-    await villagesConnectionIdFor("system"),
-    null,
-    "an agent that has never been configured asks for the Engine's own default rather than inventing an id",
-  );
-  assert.equal(await villagesConnectionIdFor("narration"), null);
-  assert.equal(await villagesConnectionIdFor("image"), null);
-  assert.deepEqual(
-    await villagesImageConnectionChoice(),
-    { enabled: false, connectionId: null },
-    "the disabled image choice does not fall through to an agent or Engine image default",
-  );
-
-  agentConfig = { connectionId: "agent-talk", settings: { imageConnectionId: "agent-pictures" } };
-  assert.equal(await villagesConnectionIdFor("system"), "agent-talk", "step two is the agent's own connection");
-  assert.equal(await villagesConnectionIdFor("narration"), "agent-talk");
-  assert.equal(await villagesConnectionIdFor("image"), null, "new villages keep image generation disabled");
-  assert.deepEqual(
-    await villagesImageConnectionChoice(),
-    { enabled: false, connectionId: null },
-    "the image choice remains disabled even when the agent has an image default",
-  );
-
-  // The empty string is the "Engine default" option, not a choice of a
-  // connection whose id happens to be blank — so it must fall THROUGH the
-  // second step rather than being handed to the Engine as a real id.
-  agentConfig = { connectionId: "agent-talk", settings: { imageConnectionId: "" } };
-  assert.equal(await villagesConnectionIdFor("image"), null, "a blank agent image field is not a connection id");
-
-  // ── The choices live in a document of their own ────────────────────────────
-  agentConfig = { connectionId: "agent-talk", settings: { imageConnectionId: "agent-pictures" } };
-
-  const fresh = (await get("/api/villages/connections")).json();
-  assert.deepEqual(
-    fresh,
-    { systemConnectionId: "", narrationConnectionId: "", imageConnectionId: "__villages_image_disabled__" },
-    "the panel is told that a new village starts with image generation disabled",
-  );
-
-  const saved = await put("/api/villages/connections", {
-    systemConnectionId: "connection-big",
-    narrationConnectionId: "connection-small",
-    imageConnectionId: "connection-brush",
-  });
-  assert.equal(saved.statusCode, 200);
-  assert.deepEqual(saved.json(), {
-    systemConnectionId: "connection-big",
-    narrationConnectionId: "connection-small",
-    imageConnectionId: "connection-brush",
-  });
-  assert.ok(
-    createdIds.includes(CONNECTIONS_DOC_ID),
-    `the choices are kept in the "${CONNECTIONS_DOC_ID}" document, not in the village record`,
-  );
-
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () =>
-    new Response(JSON.stringify([{ id: "connection-big", provider: "openai" }]), {
-      headers: { "content-type": "application/json" },
-    });
-  try {
-    await validateVillageSetupConnections({
-      systemConnectionId: "connection-big",
-      narrationConnectionId: "connection-big",
-      imageConnectionId: "__villages_image_disabled__",
-    });
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-
-  // And now step one beats step two, for all three purposes.
-  assert.equal(await villagesConnectionIdFor("system"), "connection-big");
-  assert.equal(await villagesConnectionIdFor("narration"), "connection-small");
-  assert.equal(await villagesConnectionIdFor("image"), "connection-brush");
-  assert.deepEqual(
-    await villagesImageConnectionChoice(),
-    { enabled: true, connectionId: "connection-brush" },
-    "an explicit image connection enables image generation",
-  );
-
-  // A patch touches only what it carries. A picker that saves one box must not
-  // quietly clear the other two.
-  const patched = await put("/api/villages/connections", { narrationConnectionId: "connection-tinier" });
-  assert.deepEqual(
-    patched.json(),
-    {
-      systemConnectionId: "connection-big",
-      narrationConnectionId: "connection-tinier",
-      imageConnectionId: "connection-brush",
-    },
-    "leaving a field out of the patch is not the same as clearing it",
-  );
-
-  // ── Starting the village over leaves the choices alone ─────────────────────
-  // Asserted on the document's revision rather than on the reply. A reset that
-  // rewrote this document with identical values would still read back correctly
-  // and would still be wrong, because it would have thrown away the revision a
-  // concurrent save was written against.
-  const versionBefore = documentsByKey.get(`villages::${CONNECTIONS_DOC_ID}`).revision;
-  assert.equal((await post("/api/villages/setup/reset")).statusCode, 200, "the village itself does start over");
-
-  const versionAfter = documentsByKey.get(`villages::${CONNECTIONS_DOC_ID}`).revision;
-  assert.equal(versionAfter, versionBefore, "starting the village over does not touch the connection document");
-  assert.deepEqual(
-    (await get("/api/villages/connections")).json(),
-    {
-      systemConnectionId: "connection-big",
-      narrationConnectionId: "connection-tinier",
-      imageConnectionId: "connection-brush",
-    },
-    "so the player does not have to enter their model choices a second time",
-  );
-
-  // ── What the route will and will not store ────────────────────────────────
-  // Note the asymmetry: an id that names a connection the agent does not have is
-  // ACCEPTED. Whether a connection exists is the Engine's question, asked when
-  // the connection is used, and the panel draws an id it cannot find as
-  // "Missing" — refusing it here would only make a stale choice un-clearable.
-  assert.equal(
-    (await put("/api/villages/connections", { systemConnectionId: "connection-that-never-existed" })).statusCode,
-    200,
-    "the route stores what the panel sends and leaves existence to the Engine",
-  );
-
-  assert.equal(
-    (await put("/api/villages/connections", { systemConnectionId: "x".repeat(200) })).statusCode,
-    400,
-    "but a pasted blob is not a connection id",
-  );
-  assert.equal(
-    (await get("/api/villages/connections")).json().systemConnectionId,
-    "connection-that-never-existed",
-    "a refused save leaves what was already stored exactly as it was",
-  );
-
-  // A non-string is coerced rather than rejected, the same way every other
-  // patch in this package treats its input: the panel only ever sends strings,
-  // and the store's job is to never hold anything else.
-  assert.equal(
-    (await put("/api/villages/connections", { narrationConnectionId: 42 })).json().narrationConnectionId,
-    "",
-    "a number is read as 'no choice' rather than as an id",
-  );
-
-  assert.equal(
-    (await put("/api/villages/connections", { systemConnectionId: "" })).json().systemConnectionId,
-    "",
-    "clearing a picker back to the Engine default is a save like any other",
-  );
-  assert.equal(await villagesConnectionIdFor("system"), "agent-talk", "and it falls straight back to the agent");
-
-  // ── A store that hiccuped costs a model choice, not a conversation ────────
-  await put("/api/villages/connections", { narrationConnectionId: "connection-small" });
-  documentsThrow = true;
-  assert.equal(
-    await villagesConnectionIdFor("narration"),
-    "agent-talk",
-    "an unreadable settings document falls through to the agent instead of failing the villager's reply",
-  );
-  assert.equal(
-    (await get("/api/villages/connections")).statusCode,
-    500,
-    "the panel, unlike a villager, is told that the store is unreachable",
-  );
-  documentsThrow = false;
-
-  // A cleared narration choice falls back to the agent connection. Venue reply calls use this resolver.
-  await put("/api/villages/connections", { narrationConnectionId: "" });
-  assert.equal(await villagesConnectionIdFor("narration"), "agent-talk");
-
-  // ── The agent default is only ever read through the resolver ──────────────
-  // `villagesAgentConnectionId` is the second step of the chain. A service that
-  // called it directly would skip the player's choice entirely, silently, for
-  // that one call — which is exactly the bug this rewiring was for. So the
-  // accessor is pinned to its two legitimate readers: its own definition, and
-  // the resolver that makes up the chain.
-  const servicesRoot = join(repoRoot, "packages/villages/src/server");
-  for (const relativePath of [
-    "features/scenes/writing-service.ts",
-    "features/founding/village-bootstrap.ts",
-    "features/founding/village-bootstrap-service.ts",
-    "features/residents/wishes/service.ts",
-    "features/world/village.ts",
-    "features/world/village-service.ts",
-    "features/residents/resident-agenda-service.ts",
-    "features/venues/residence-service.ts",
-  ]) {
-    const source = await readFile(join(servicesRoot, relativePath), "utf8");
-    assert.equal(
-      source.includes("villagesAgentConnectionId("),
-      false,
-      `${relativePath} must ask which connection to use through villagesConnectionIdFor, not for the agent default`,
+  assert(applicationOwner);
+  await applicationOwner.run(async () => {
+    // ── The order the three steps are tried in ─────────────────────────────────
+    // Driven through the resolver directly rather than through a route, because
+    // two of the three purposes have no route yet: only narration is wired to a
+    // caller, and the point here is the arithmetic, not the surface.
+    assert.deepEqual(
+      defaultVillageConnectionSettings(),
+      { systemConnectionId: "", narrationConnectionId: "", imageConnectionId: "__villages_image_disabled__" },
+      "a new village keeps image generation off until the player explicitly enables it",
     );
-  }
 
-  // The village still has a document of its own, and it is not the connection
-  // document wearing its name — which is the plainest way to say that the two
-  // never merged into one record.
-  assert.ok(
-    [...documentsByKey.keys()].some(
-      (stored) => stored.startsWith("villages::") && stored !== `villages::${CONNECTIONS_DOC_ID}`,
-    ),
-    "the village record is still its own document",
-  );
+    agentConfig = null;
+    assert.equal(
+      await villagesConnectionIdFor("system"),
+      null,
+      "an agent that has never been configured asks for the Engine's own default rather than inventing an id",
+    );
+    assert.equal(await villagesConnectionIdFor("narration"), null);
+    assert.equal(await villagesConnectionIdFor("image"), null);
+    assert.deepEqual(
+      await villagesImageConnectionChoice(),
+      { enabled: false, connectionId: null },
+      "the disabled image choice does not fall through to an agent or Engine image default",
+    );
 
-  // The package must not have grown a private Engine import to do any of this.
-  // Which connections exist is the Engine's own list and the panel reads it from
-  // `/api/connections`; reaching into the connection store would be a second,
-  // silently diverging copy of it.
-  const boundary = JSON.parse(await readFile(join(repoRoot, "packages/villages/engine-boundary.json"), "utf8"));
-  assert.deepEqual(boundary.privateEngineImports, [], "the connection pickers add no private Engine import");
+    agentConfig = { connectionId: "agent-talk", settings: { imageConnectionId: "agent-pictures" } };
+    assert.equal(await villagesConnectionIdFor("system"), "agent-talk", "step two is the agent's own connection");
+    assert.equal(await villagesConnectionIdFor("narration"), "agent-talk");
+    assert.equal(await villagesConnectionIdFor("image"), null, "new villages keep image generation disabled");
+    assert.deepEqual(
+      await villagesImageConnectionChoice(),
+      { enabled: false, connectionId: null },
+      "the image choice remains disabled even when the agent has an image default",
+    );
 
-  process.stdout.write("Villages connections regression: order, document, reset, route, call site ok\n");
+    // The empty string is the "Engine default" option, not a choice of a
+    // connection whose id happens to be blank — so it must fall THROUGH the
+    // second step rather than being handed to the Engine as a real id.
+    agentConfig = { connectionId: "agent-talk", settings: { imageConnectionId: "" } };
+    assert.equal(await villagesConnectionIdFor("image"), null, "a blank agent image field is not a connection id");
+
+    // ── The choices live in a document of their own ────────────────────────────
+    agentConfig = { connectionId: "agent-talk", settings: { imageConnectionId: "agent-pictures" } };
+
+    const fresh = (await get("/api/villages/connections")).json();
+    assert.deepEqual(
+      fresh,
+      { systemConnectionId: "", narrationConnectionId: "", imageConnectionId: "__villages_image_disabled__" },
+      "the panel is told that a new village starts with image generation disabled",
+    );
+
+    const saved = await put("/api/villages/connections", {
+      systemConnectionId: "connection-big",
+      narrationConnectionId: "connection-small",
+      imageConnectionId: "connection-brush",
+    });
+    assert.equal(saved.statusCode, 200);
+    assert.deepEqual(saved.json(), {
+      systemConnectionId: "connection-big",
+      narrationConnectionId: "connection-small",
+      imageConnectionId: "connection-brush",
+    });
+    assert.ok(
+      createdIds.includes(CONNECTIONS_DOC_ID),
+      `the choices are kept in the "${CONNECTIONS_DOC_ID}" document, not in the village record`,
+    );
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify([{ id: "connection-big", provider: "openai" }]), {
+        headers: { "content-type": "application/json" },
+      });
+    try {
+      await validateVillageSetupConnections({
+        systemConnectionId: "connection-big",
+        narrationConnectionId: "connection-big",
+        imageConnectionId: "__villages_image_disabled__",
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    // And now step one beats step two, for all three purposes.
+    assert.equal(await villagesConnectionIdFor("system"), "connection-big");
+    assert.equal(await villagesConnectionIdFor("narration"), "connection-small");
+    assert.equal(await villagesConnectionIdFor("image"), "connection-brush");
+    assert.deepEqual(
+      await villagesImageConnectionChoice(),
+      { enabled: true, connectionId: "connection-brush" },
+      "an explicit image connection enables image generation",
+    );
+
+    // A patch touches only what it carries. A picker that saves one box must not
+    // quietly clear the other two.
+    const patched = await put("/api/villages/connections", { narrationConnectionId: "connection-tinier" });
+    assert.deepEqual(
+      patched.json(),
+      {
+        systemConnectionId: "connection-big",
+        narrationConnectionId: "connection-tinier",
+        imageConnectionId: "connection-brush",
+      },
+      "leaving a field out of the patch is not the same as clearing it",
+    );
+
+    // ── Starting the village over leaves the choices alone ─────────────────────
+    // Asserted on the document's revision rather than on the reply. A reset that
+    // rewrote this document with identical values would still read back correctly
+    // and would still be wrong, because it would have thrown away the revision a
+    // concurrent save was written against.
+    const versionBefore = documentsByKey.get(`villages::${CONNECTIONS_DOC_ID}`).revision;
+    assert.equal((await post("/api/villages/setup/reset")).statusCode, 200, "the village itself does start over");
+
+    const versionAfter = documentsByKey.get(`villages::${CONNECTIONS_DOC_ID}`).revision;
+    assert.equal(versionAfter, versionBefore, "starting the village over does not touch the connection document");
+    assert.deepEqual(
+      (await get("/api/villages/connections")).json(),
+      {
+        systemConnectionId: "connection-big",
+        narrationConnectionId: "connection-tinier",
+        imageConnectionId: "connection-brush",
+      },
+      "so the player does not have to enter their model choices a second time",
+    );
+
+    // ── What the route will and will not store ────────────────────────────────
+    // Note the asymmetry: an id that names a connection the agent does not have is
+    // ACCEPTED. Whether a connection exists is the Engine's question, asked when
+    // the connection is used, and the panel draws an id it cannot find as
+    // "Missing" — refusing it here would only make a stale choice un-clearable.
+    assert.equal(
+      (await put("/api/villages/connections", { systemConnectionId: "connection-that-never-existed" })).statusCode,
+      200,
+      "the route stores what the panel sends and leaves existence to the Engine",
+    );
+
+    assert.equal(
+      (await put("/api/villages/connections", { systemConnectionId: "x".repeat(200) })).statusCode,
+      400,
+      "but a pasted blob is not a connection id",
+    );
+    assert.equal(
+      (await get("/api/villages/connections")).json().systemConnectionId,
+      "connection-that-never-existed",
+      "a refused save leaves what was already stored exactly as it was",
+    );
+
+    // A non-string is coerced rather than rejected, the same way every other
+    // patch in this package treats its input: the panel only ever sends strings,
+    // and the store's job is to never hold anything else.
+    assert.equal(
+      (await put("/api/villages/connections", { narrationConnectionId: 42 })).json().narrationConnectionId,
+      "",
+      "a number is read as 'no choice' rather than as an id",
+    );
+
+    assert.equal(
+      (await put("/api/villages/connections", { systemConnectionId: "" })).json().systemConnectionId,
+      "",
+      "clearing a picker back to the Engine default is a save like any other",
+    );
+    assert.equal(await villagesConnectionIdFor("system"), "agent-talk", "and it falls straight back to the agent");
+
+    // ── A store that hiccuped costs a model choice, not a conversation ────────
+    await put("/api/villages/connections", { narrationConnectionId: "connection-small" });
+    documentsThrow = true;
+    assert.equal(
+      await villagesConnectionIdFor("narration"),
+      "agent-talk",
+      "an unreadable settings document falls through to the agent instead of failing the villager's reply",
+    );
+    assert.equal(
+      (await get("/api/villages/connections")).statusCode,
+      500,
+      "the panel, unlike a villager, is told that the store is unreachable",
+    );
+    documentsThrow = false;
+
+    // A cleared narration choice falls back to the agent connection. Venue reply calls use this resolver.
+    await put("/api/villages/connections", { narrationConnectionId: "" });
+    assert.equal(await villagesConnectionIdFor("narration"), "agent-talk");
+
+    // ── The agent default is only ever read through the resolver ──────────────
+    // `villagesAgentConnectionId` is the second step of the chain. A service that
+    // called it directly would skip the player's choice entirely, silently, for
+    // that one call — which is exactly the bug this rewiring was for. So the
+    // accessor is pinned to its two legitimate readers: its own definition, and
+    // the resolver that makes up the chain.
+    const servicesRoot = join(repoRoot, "packages/villages/src/server");
+    for (const relativePath of [
+      "features/scenes/writing-service.ts",
+      "features/founding/village-bootstrap.ts",
+      "features/founding/village-bootstrap-service.ts",
+      "features/residents/wishes/service.ts",
+      "features/world/village.ts",
+      "features/world/village-service.ts",
+      "features/residents/resident-agenda-service.ts",
+      "features/venues/residence-service.ts",
+    ]) {
+      const source = await readFile(join(servicesRoot, relativePath), "utf8");
+      assert.equal(
+        source.includes("villagesAgentConnectionId("),
+        false,
+        `${relativePath} must ask which connection to use through villagesConnectionIdFor, not for the agent default`,
+      );
+    }
+
+    // The village still has a document of its own, and it is not the connection
+    // document wearing its name — which is the plainest way to say that the two
+    // never merged into one record.
+    assert.ok(
+      [...documentsByKey.keys()].some(
+        (stored) => stored.startsWith("villages::") && stored !== `villages::${CONNECTIONS_DOC_ID}`,
+      ),
+      "the village record is still its own document",
+    );
+
+    // The package must not have grown a private Engine import to do any of this.
+    // Which connections exist is the Engine's own list and the panel reads it from
+    // `/api/connections`; reaching into the connection store would be a second,
+    // silently diverging copy of it.
+    const boundary = JSON.parse(await readFile(join(repoRoot, "packages/villages/engine-boundary.json"), "utf8"));
+    assert.deepEqual(boundary.privateEngineImports, [], "the connection pickers add no private Engine import");
+
+    process.stdout.write("Villages connections regression: order, document, reset, route, call site ok\n");
+  });
 }
 
-void main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
