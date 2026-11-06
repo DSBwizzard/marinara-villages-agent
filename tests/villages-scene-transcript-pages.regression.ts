@@ -35,7 +35,7 @@ const line = (id: string) => ({
   role: "assistant" as const,
   content: "Exact witnessed café 🌼 — " + id + ". ".repeat(40),
   at,
-  gazeAt: "ada",
+  staging: [{ characterId: "ada", look: { target: "player" as const } }],
   heardBy: ["ada", "remote"],
 });
 const measurements: unknown[] = [];
