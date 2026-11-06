@@ -17,7 +17,6 @@ import {
   readEffectiveVillagerCard,
   toCatalogEntry,
 } from "../adapters/engine/catalog.js";
-import { decisionAdapterStatus, evaluateVillagesDecisions } from "../adapters/engine/decisions-adapter.js";
 import { villageEngineJson as villageImageEngineJson } from "../adapters/engine/engine-loopback.js";
 import {
   deleteVillageSpriteFile,
@@ -56,7 +55,6 @@ import {
   resetUsagePeriod as resetUsageLedgerPeriod,
   saveLinkApiGroup as saveLedgerGroup,
   saveUsageRate as saveLedgerRate,
-  trackUsage,
   usageProcessOwner,
   withUsagePurpose,
 } from "../adapters/models/usage-ledger.js";
@@ -129,23 +127,8 @@ import {
   interpretSocialSource,
 } from "../features/founding/village-bootstrap.js";
 import { createModelCompletions } from "../features/generation/completion-service.js";
-import { createInterpretationDiagnostics } from "../features/generation/interpretation-diagnostics-service.js";
-import {
-  configureInterpretationDiagnostics,
-  removeInterpretationDiagnostics,
-  writeInterpretationDiagnostics,
-} from "../features/generation/interpretation-diagnostics.js";
-import { createInterpretationEvidence } from "../features/generation/interpretation-evidence-service.js";
-import {
-  configureInterpretationEvidence,
-  saveInterpretationContext,
-} from "../features/generation/interpretation-evidence.js";
-import { createInterpretation } from "../features/generation/interpretation-service.js";
-import { configureInterpretation } from "../features/generation/interpretation.js";
 import { completeWithRoom, configureModelCompletions } from "../features/generation/model-requests.js";
 import { createSemanticService } from "../features/generation/semantic-service.js";
-import { createSystemInterpretation } from "../features/generation/system-interpretation-service.js";
-import { configureSystemInterpretation, systemInterpretations } from "../features/generation/system-interpretation.js";
 import { createImageGeneration } from "../features/media/image-generation-service.js";
 import {
   configureImageGeneration,
@@ -267,11 +250,6 @@ import {
   villagesConnectionIdFor,
   villagesImageConnectionChoice,
 } from "../features/settings/connections.js";
-import { createInterpretationSettings } from "../features/settings/interpretation-settings-service.js";
-import {
-  configureInterpretationSettings,
-  readInterpretationSettings,
-} from "../features/settings/interpretation-settings.js";
 import { configureVillageWriting } from "../features/settings/narration-settings.js";
 import { createPersonaCache } from "../features/settings/persona-cache-service.js";
 import { configurePersonaCache } from "../features/settings/persona-cache.js";
@@ -344,13 +322,11 @@ import {
   cancelVenueOperation,
   configureVenueCoordinator,
   coordinatedCompletion,
-  coordinatedOptionalCompletion,
   coordinateVenue,
   hasVenueOperation,
   recoverVenueOperations,
   rejectVenueCompletion,
   venueCheckpoint,
-  venueInterpretationSettings,
   venueSavedCheckpoint,
 } from "../jobs/venue-coordinator.js";
 import { backendWorkFor } from "./backend-work.js";
@@ -403,7 +379,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       saveProjectEvidence: projectEvidenceIndex.save,
       saveTerminal: sceneTerminals.save,
       readTerminal: sceneTerminals.read,
-      removeInterpretationDiagnostics,
       withRepairWork,
       withSceneWork: backendWork.sceneFence.run,
       withLateResponseWork: backendWork.lateResponseFence.run,
@@ -435,13 +410,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       void retirement.retireSettled().catch((error) => logRetirementFailure("Scene cleanup scan deferred", error));
     });
   const releaseSceneRepository = configureSceneRepository(sceneRepository);
-  const releaseInterpretationEvidence = configureInterpretationEvidence(
-    createInterpretationEvidence({
-      VILLAGES_PACKAGE_ID,
-      villagesDocuments,
-      mutateDocument: createDocumentMutator(villagesDocuments),
-    }),
-  );
   const releaseUsage = configureUsageLedger(
     createUsageLedger({
       owner: usageProcessOwner,
@@ -452,13 +420,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       venueDebugContext: operations.venueDebugContext,
       linkApiQuote,
       readExchangeRate,
-    }),
-  );
-  const releaseInterpretationSettings = configureInterpretationSettings(
-    createInterpretationSettings({
-      VILLAGES_PACKAGE_ID,
-      villagesDocuments,
-      mutateDocument: createDocumentMutator(villagesDocuments),
     }),
   );
   const releaseUsageMeter = configureUsageMeter(
@@ -480,12 +441,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       previewBackgroundJobs,
       villagesConnectionIdFor,
       villagesImageConnectionChoice,
-    }),
-  );
-  const releaseInterpretationDiagnostics = configureInterpretationDiagnostics(
-    createInterpretationDiagnostics({
-      villagesDocuments,
-      mutateDocument: createDocumentMutator(villagesDocuments),
     }),
   );
   const releaseDebug = configureRuntimeDebug(
@@ -564,26 +519,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       generateVillageImage,
       uploadVillageGalleryImage,
       decodeVillageImageDataUrl,
-    }),
-  );
-  const releaseSystemInterpretation = configureSystemInterpretation(
-    createSystemInterpretation({ villagesLanguageModels, villagesConnectionIdFor, completeWithRoom }),
-  );
-  const releaseInterpretation = configureInterpretation(
-    createInterpretation({
-      evaluateVillagesDecisions,
-      decisionAdapterStatus,
-      trackUsage,
-      backgroundCalls: background.backgroundCalls,
-      backgroundSetting: background.backgroundSetting,
-      readInterpretationSettings,
-      venueOperationSignal,
-      coordinatedOptionalCompletion,
-      venueCheckpoint,
-      venueInterpretationSettings,
-      writeInterpretationDiagnostics,
-      systemInterpretations,
-      bindCallback: (callback) => (completionOwner ? completionOwner.bind(callback) : callback),
     }),
   );
   const releaseSceneWork = configureSceneWork(createSceneWork(backendWork.navigation));
@@ -790,8 +725,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       recoverVenueOperations,
       rejectVenueCompletion,
       venueCheckpoint,
-      writeInterpretationDiagnostics,
-      saveInterpretationContext,
       completeWithRoom,
       rollActiveAgendas,
       bindWishProposals,
@@ -1065,7 +998,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       villagesDocuments,
       villagesLogger,
       runtimeDebug,
-      readInterpretationSettings,
       readTerminal: async (id) => {
         const receipt = await sceneTerminals.read(id);
         const state = await readVillageAuthority();
@@ -1253,7 +1185,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseUsagePreview();
     releaseUsageMeter();
     releaseCoordinator();
-    releaseInterpretationSettings();
     releaseFoundingSuggestions();
     releaseTownMap();
     releaseSignatures();
@@ -1291,9 +1222,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseRelationshipSocial();
     releaseRelationshipStore();
     releaseSceneWork();
-    releaseInterpretation();
-    releaseSystemInterpretation();
-    releaseInterpretationEvidence();
     releaseCompactFounding();
     releaseBootstrapRecipes();
     releaseFoundingDrafts();
@@ -1302,7 +1230,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseConnections();
     releaseCompletions();
     releaseDebug();
-    releaseInterpretationDiagnostics();
     releaseUsage();
     releaseSceneRepository();
     releaseOperations();

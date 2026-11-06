@@ -464,9 +464,6 @@ await runCase("scene-retirement/publication", async () => {
     withRepairWork: async (work) => work(),
     withSceneWork: async (_id, work) => work(),
     withLateResponseWork: async (_id, work) => work(),
-    removeInterpretationDiagnostics: async () => {
-      calls.push("diagnostics");
-    },
   });
   active = "scene";
   assert.equal(await service.retire("scene"), false);
@@ -489,7 +486,7 @@ await runCase("scene-retirement/publication", async () => {
   sceneConflict = false;
   calls.length = 0;
   assert.equal(await service.retire("scene"), true);
-  assert.deepEqual(calls, ["evidence", "receipt", "remove", "diagnostics"]);
+  assert.deepEqual(calls, ["evidence", "receipt", "remove"]);
   assert.equal(
     responsePresent,
     true,
@@ -524,9 +521,7 @@ await runCase("scene-retirement/restart-cleanup", async () => {
       at: "2026-10-28T12:00:00.000Z",
     },
   };
-  let diagnosticExists = true,
-    fail = true,
-    responseExists = true;
+  let responseExists = true;
   const service = createSceneRetirement({
     villagesDocuments: () => ({
       getById: async () => null,
@@ -559,20 +554,12 @@ await runCase("scene-retirement/restart-cleanup", async () => {
     saveProjectEvidence: async () => {},
     saveTerminal: async () => {},
     readTerminal: async () => terminal,
-    removeInterpretationDiagnostics: async () => {
-      if (fail) throw Error("diagnostic conflict");
-      diagnosticExists = false;
-    },
     withRepairWork: async (work) => work(),
     withSceneWork: async (_id, work) => work(),
     withLateResponseWork: async (_id, work) => work(),
   });
-  await assert.rejects(service.retireSettled(), /diagnostic conflict/);
-  assert.equal(responseExists, true, "Restart cleanup cannot retire responses without a closed-scope proof");
-  assert.equal(diagnosticExists, true);
-  fail = false;
+  assert.equal(responseExists, true);
   await service.retireSettled();
-  assert.equal(diagnosticExists, false, "restart retries diagnostics after source deletion");
   assert.equal(
     world.exchangeReceipts["venue-chat:scene:turn"].physicalOutcome,
     undefined,

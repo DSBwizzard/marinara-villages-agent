@@ -24,7 +24,6 @@ import { accessManagementPrompt } from "../../domain/rules/access-speech.js";
 import { applyAcousticWitnesses } from "../../domain/rules/acoustic-witnesses.js";
 import { applyAttentionWitnesses } from "../../domain/rules/attention-witnesses.js";
 import { asRecord, asString, asTrimmedString } from "../../domain/rules/coerce.js";
-import { validDecisionEvidence } from "../../domain/rules/decision-candidates.js";
 import {
   badGateway,
   conflict,
@@ -1875,8 +1874,7 @@ export function createSceneWriting({
     if (roomInterpretation) {
       // Narrator metadata is a proposal, not permission. Contextual interpretation replaces its phrase gates.
       const invitations = roomInterpretation.results.flatMap((result, index) =>
-        ["invite-now", "invite-later"].includes(result.outcome) &&
-        validDecisionEvidence(roomInterpretation.checks[index], result)
+        ["invite-now", "invite-later"].includes(result.outcome)
           ? [{ result, check: roomInterpretation.checks[index] }]
           : [],
       );

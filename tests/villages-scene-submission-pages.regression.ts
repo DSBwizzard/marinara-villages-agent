@@ -26,8 +26,6 @@ import { createSceneQueryService } from "../packages/villages/src/server/feature
 import { createSceneCommands } from "../packages/villages/src/server/features/scenes/command-service.js";
 import { createVenueCoordinator } from "../packages/villages/src/server/jobs/venue-coordinator-service.js";
 import { createVenueOperationContext } from "../packages/villages/src/server/adapters/operations/operation-context-service.js";
-import { createInterpretationEvidence } from "../packages/villages/src/server/features/generation/interpretation-evidence-service.js";
-import type { InterpretationBatch } from "../packages/villages/src/server/domain/models/interpretation-model.js";
 import { ensureNarrative } from "../packages/villages/src/server/domain/rules/narrative-development.js";
 import { repairId } from "../packages/villages/src/server/domain/rules/repair-records.js";
 
@@ -218,7 +216,6 @@ for (const consumer of ["backlog", "operation", "restart"] as const) {
         villagesDocuments: () => documents,
         villagesLogger: () => logger as any,
         runtimeDebug() {},
-        readInterpretationSettings: async () => ({}) as any,
         withRepairWork: (work) => fixture.gate.work(work),
       });
       if (consumer === "operation")
@@ -344,28 +341,6 @@ for (const committed of [false, true]) {
     fixture.gate.dispose();
   }
 }
-
-const evidenceBatch: InterpretationBatch = {
-  checks: (["room", "project"] as const).map((domain) => ({
-    id: domain,
-    domain,
-    question: "What does this exact exchange establish?",
-    outcomes: [],
-    facts: { actorId: "ada", zoneId: "room", projectId: "garden" },
-    evidence: [
-      { id: "player-input", speakerId: "player", name: "Player", content: "The exact question" },
-      { id: "draft:0", speakerId: "ada", name: "Ada", content: "The exact answer" },
-    ],
-  })),
-  results: ["room", "project"].map(() => ({
-    outcome: "unresolved",
-    source: "system",
-    evidenceIds: [],
-    reason: "Keep exact evidence",
-  })),
-  traces: [],
-  settings: { decisionsEnabled: false, compareSystem: false },
-};
 const measurements: {
   count: number;
   initialBytes: number;
@@ -400,11 +375,6 @@ for (const count of [1000, 10_000, 25_000]) {
       );
       mutableSceneSubmission(scene, "turn:" + (count - 1))!.replyLineIds = ["saved-reply"];
     });
-    const evidence = createInterpretationEvidence({
-      VILLAGES_PACKAGE_ID: "villages",
-      villagesDocuments: () => fixture.gate.documents,
-      mutateDocument: fixture.mutateDocument,
-    });
     const original = structuredClone(fixture.rows.get("villages-venue-visit-" + sceneId));
     assert.equal(Object.hasOwn(original.data, "submissions"), false);
     assert.equal(original.data.submissionHistory.count, count);
@@ -435,7 +405,6 @@ for (const count of [1000, 10_000, 25_000]) {
       villagesDocuments: () => fixture.gate.documents,
       villagesLogger: () => logger as any,
       runtimeDebug() {},
-      readInterpretationSettings: async () => ({}) as any,
       withRepairWork: (work) => fixture.gate.work(work),
     });
     const requested = "turn:" + (count - 1);
@@ -517,7 +486,6 @@ for (const count of [1000, 10_000, 25_000]) {
         await fixture.repository.changeSession(sceneId, (scene) => {
           scene.activity = "Metadata update " + index;
         });
-        await evidence.saveInterpretationContext(sceneId, evidenceBatch, "turn:" + (count - 1));
         await fixture.repository.changeSession(sceneId, (scene) => {
           mutableSceneSubmission(scene, "turn:" + (count - 1))!.interpretationHistory!.push({
             at,
@@ -582,17 +550,6 @@ for (const count of [1000, 10_000, 25_000]) {
       1,
     );
     assert.equal((await cold.decode(stored)).submissions[count - 1].interpretationHistory!.length, 21);
-    const restarted = createInterpretationEvidence({
-      VILLAGES_PACKAGE_ID: "villages",
-      villagesDocuments: () => fixture.gate.documents,
-      mutateDocument: fixture.mutateDocument,
-    });
-    for (const check of await restarted.contextualChecks(sceneId, evidenceBatch.checks))
-      assert.deepEqual(
-        check.essentialEvidenceIds,
-        ["saved-player", "saved-reply"],
-        "Native saved evidence survives service restart with exact player/draft ID mapping",
-      );
     await collectRetainedStorage(fixture.gate);
     await validateSceneHistory(fixture.gate.documents, [fixture.rows.get(original.id).data]);
   } finally {

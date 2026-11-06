@@ -1037,8 +1037,6 @@ export function createSemanticService(ports: SemanticPorts) {
         const access: InterpretationBatch = {
           checks: [],
           results: [],
-          traces: [],
-          settings: { decisionsEnabled: false },
         };
         if (!Array.isArray(raw.access) || raw.access.length > 16)
           throw badGateway("System access interpretation is incomplete.");
@@ -1153,17 +1151,6 @@ export function createSemanticService(ports: SemanticPorts) {
             reason: "Current System-interpreted event",
           };
           access.results.push(result);
-          access.traces.push({
-            id,
-            domain: "room",
-            question: "Current access event",
-            evidence: cited,
-            decisions: { status: "off" },
-            system: gm ? { status: "not-requested" } : { status: "complete", outcome: result.outcome },
-            result,
-            applied: "Pending authority validation",
-            startedAt: "",
-          });
         }
         if (
           access.results.filter((row) => ["invite-now", "invite-later"].includes(row.outcome)).length > 1 &&

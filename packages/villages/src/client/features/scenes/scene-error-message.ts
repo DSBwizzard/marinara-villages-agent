@@ -12,7 +12,6 @@ export function sceneErrorMessage(original: string, domain?: string): string {
     [/line could not be accepted/iu, "The game couldn’t accept your message."],
     [/^Invalid request details/iu, "The request contains invalid details."],
     [/History temporarily unavailable|Could not load Scene history/iu, "The game couldn’t load the Scene history."],
-    [/switch could not be saved|persist the Decisions setting/iu, "The game couldn’t save the Decisions setting."],
     [/^Interrupted$|^Request interrupted$/iu, "The request stopped before it finished."],
     [
       /Reconnecting to check|Reply outcome unknown|request outcome is unknown/iu,

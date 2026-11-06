@@ -107,7 +107,6 @@ await withBrowser(browser, async () => {
         submissions: [],
       };
       let phase = 0;
-      let interpretationSettings = { decisionsEnabled: false, compareSystem: true };
       let failSpriteSave = false;
       const api = async (route) => {
         const path = new URL(route.request().url()).pathname;
@@ -122,15 +121,7 @@ await withBrowser(browser, async () => {
               body: JSON.stringify({ message: "Setting save failed" }),
             });
           Object.assign(fixture.settings, route.request().postDataJSON());
-        } else if (path.endsWith("/interpretation-settings")) {
-          if (route.request().method() === "PATCH")
-            interpretationSettings = { ...interpretationSettings, ...route.request().postDataJSON() };
-          value = {
-            settings: interpretationSettings,
-            status: { available: false, reason: "No selected Decision model", engineBuild: null },
-          };
-        } else if (path.includes("/interpretation-diagnostics/")) value = { checks: [] };
-        else if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session };
+        } else if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session };
         else if (path.endsWith("/town-map")) value = { image: mapImage };
         else if (path.endsWith("/rooms/turn")) {
           const body = route.request().postDataJSON();

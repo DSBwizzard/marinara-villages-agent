@@ -103,7 +103,7 @@ try {
     JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "runtime-probe": ["./declarations.ts"] } } }),
   );
   await writeFile(
-    join(root, "tests/villages-decision-transport.regression.ts"),
+    join(root, "tests/villages-image-engine-contract.regression.ts"),
     'import { marker } from "runtime-probe"; if (marker !== "runtime") throw Error("Runtime package was not loaded");',
   );
   const engine = spawnSync(process.execPath, ["scripts/run-tests.mjs", "engine"], {

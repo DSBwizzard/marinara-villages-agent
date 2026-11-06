@@ -104,9 +104,6 @@ await withBrowser(browser, async () => {
           nextCursor: "",
           processingSummary: { pending: 0, failed: 0, rejected: 0 },
         };
-      else if (path.endsWith("/interpretation-settings"))
-        value = { settings: { decisionsEnabled: false, compareSystem: true }, status: { available: false } };
-      else if (path.includes("/interpretation-diagnostics/")) value = { checks: [] };
       await fulfill(route, {
         status: 200,
         contentType: "application/json",

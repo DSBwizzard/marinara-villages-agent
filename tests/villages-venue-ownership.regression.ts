@@ -20,7 +20,7 @@ function deferred<T>() {
   return Promise.withResolvers<T>();
 }
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
-function fixture(label: string, decisionsEnabled: boolean) {
+function fixture(label: string) {
   const id = "villages-venue-visit-same-scene";
   const records = new Map<string, any>([
     [
@@ -72,15 +72,12 @@ function fixture(label: string, decisionsEnabled: boolean) {
     villagesDocuments: () => documents,
     villagesLogger: () => logger,
     runtimeDebug() {},
-    async readInterpretationSettings() {
-      return { decisionsEnabled, compareSystem: false };
-    },
   });
   return { service, operations, documents, logger, records, row: () => records.get(id) };
 }
 async function independentRequests() {
-  const a = fixture("A", true),
-    b = fixture("B", false);
+  const a = fixture("A"),
+    b = fixture("B");
   const enteredA = deferred<void>(),
     replyA = deferred<string>();
   const enteredB = deferred<void>(),
@@ -134,8 +131,6 @@ async function independentRequests() {
     workB,
   );
   assert.deepEqual([paidA, paidB], [1, 1]);
-  assert.equal(a.row().data.operation.interpretationSettings.decisionsEnabled, true);
-  assert.equal(b.row().data.operation.interpretationSettings.decisionsEnabled, false);
   await a.service.stopVenueCoordinator();
   await rejectedA;
   const stoppedA = structuredClone(a.row().data);
@@ -164,8 +159,8 @@ async function independentRequests() {
 }
 
 async function nestedOwners() {
-  const a = fixture("nested-A", true),
-    b = fixture("nested-B", false);
+  const a = fixture("nested-A"),
+    b = fixture("nested-B");
   try {
     const result = await a.service.coordinateVenue("same-scene", "outer-A", "turn", {}, 0, undefined, async () => {
       assert.equal(a.operations.venueOperationId(), "outer-A");
@@ -176,7 +171,6 @@ async function nestedOwners() {
         assert.equal(b.operations.venueOperationId(), "inner-B");
         assert.notEqual(b.operations.venueOperationSignal(), signalA);
         assert.equal(b.service.hasVenueOperation("same-scene"), true, "B must take its own admission path");
-        assert.equal(b.service.venueInterpretationSettings().decisionsEnabled, false);
         return "inner reply";
       });
       assert.equal(inner, "inner reply");
@@ -195,7 +189,7 @@ async function nestedOwners() {
 }
 
 async function queuedCancellation() {
-  const a = fixture("shared", true);
+  const a = fixture("shared");
   const fence = createSceneWorkFence();
   const make = () =>
     createVenueCoordinator({
@@ -203,7 +197,6 @@ async function queuedCancellation() {
       villagesDocuments: () => a.documents,
       villagesLogger: () => a.logger,
       runtimeDebug() {},
-      readInterpretationSettings: async () => ({ decisionsEnabled: true, compareSystem: false }),
       withSceneWork: fence.run,
       sceneWorkBusy: fence.isBusy,
     });
@@ -238,8 +231,8 @@ async function queuedCancellation() {
 }
 
 async function actualDispatch() {
-  const a = fixture("dispatch-A", false),
-    b = fixture("dispatch-B", false);
+  const a = fixture("dispatch-A"),
+    b = fixture("dispatch-B");
   const ownerA = createActivationScope(),
     ownerB = createActivationScope();
   const releaseA = ownerA.run(() =>

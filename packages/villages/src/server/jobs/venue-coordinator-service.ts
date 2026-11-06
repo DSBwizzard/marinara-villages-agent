@@ -37,17 +37,14 @@ import { operationSummary } from "../adapters/operations/operation-context.js";
 import type { Context, VenueOperationContext } from "../adapters/operations/operation-context-service.js";
 import type { VenueOperation } from "../domain/models/operation-model.js";
 import { safeFailureMessage, VillagesRequestError } from "../domain/rules/errors.js";
-import { coerceInterpretationSettings, type InterpretationSettings } from "../domain/rules/interpretation-policy.js";
 import { sceneRevision } from "../domain/rules/scene-revision.js";
 import { coerceWorkFailure } from "../domain/rules/work-failure.js";
-import type { readInterpretationSettings } from "../features/settings/interpretation-settings.js";
 import { randomUUID } from "node:crypto";
 export interface VenueCoordinatorPorts {
   operations: VenueOperationContext;
   villagesDocuments(): CapabilityDocumentStore;
   villagesLogger(): CapabilityRuntimeLogger;
   runtimeDebug: typeof runtimeDebug;
-  readInterpretationSettings: typeof readInterpretationSettings;
   readTerminal?(sceneId: string): Promise<import("../domain/models/scene-terminal-model.js").SceneTerminal | null>;
   withSceneWork?<T>(sceneId: string, work: () => Promise<T>): Promise<T>;
   sceneWorkBusy?(sceneId: string): boolean;
@@ -68,7 +65,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
   ];
   const attentionAttempt = (operation: VenueOperation, key: string) =>
     attentionStages(operation).some((stage) => key.startsWith(stage + ":"));
-  const { villagesDocuments, villagesLogger, runtimeDebug, readInterpretationSettings } = ports;
+  const { villagesDocuments, villagesLogger, runtimeDebug } = ports;
   const { context, assertVenueOwnership, venueRefusal } = ports.operations;
   const live = new Map<
     string,
@@ -86,10 +83,6 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
 
   function hasVenueOperation(id: string): boolean {
     return live.has(id);
-  }
-
-  function venueInterpretationSettings(): InterpretationSettings {
-    return coerceInterpretationSettings(context.getStore()?.operation.interpretationSettings);
   }
   function withResponseWork<T>(sessionId: string, work: () => Promise<T>) {
     return ports.operations.outsideVenueOperation(() => {
@@ -686,7 +679,6 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       const run = async () => {
         const runStarted = performance.now();
         const runStartedAt = new Date().toISOString();
-        const capturedInterpretationSettings = await readInterpretationSettings();
         let operation!: VenueOperation;
         let villageSeed: string | undefined;
         let authorizedRetry = false;
@@ -814,7 +806,6 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
               );
             operation = {
               id,
-              interpretationSettings: reuseAttention ? prior.interpretationSettings : capturedInterpretationSettings,
               kind,
               input,
               token: randomUUID(),
@@ -1198,7 +1189,6 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
 
   return {
     hasVenueOperation,
-    venueInterpretationSettings,
     coordinatedOptionalCompletion,
     venueCheckpoint,
     coordinatedCompletion,

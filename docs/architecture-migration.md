@@ -28,7 +28,7 @@ Client commands claim admission before mutation and preserve the originating wor
 
 Cancellation revokes authority to apply late effects. It does not promise that an upstream provider physically stopped or that an uncertain request was unbilled. Existing operation deadlines, request reservations and recovery records remain authoritative.
 
-See [activation dispatch ownership](activation-dispatch-ownership.md), [activation cleanup](activation-cleanup.md) and [Decisions ownership](decisions-activation-ownership.md).
+See [activation dispatch ownership](activation-dispatch-ownership.md) and [activation cleanup](activation-cleanup.md).
 
 ## Scenes and privacy
 
@@ -147,7 +147,7 @@ The Scene History drawer uses a separate read-only endpoint with at most 40 publ
 
 ## Engine and validation
 
-Villages uses declared permissions and public Engine APIs. Optional Decisions integration feature-detects `api.runtime.decisions.evaluate()`; unsupported capabilities retain System behavior. Private Engine implementations are not bundled.
+Villages uses declared permissions and public Engine APIs. Private Engine implementations are not bundled.
 
 Locked dependencies and pinned public declarations support builds without an Engine checkout. The repository builder owns generated payloads and deterministic archives; maintained source, tests and documentation are committed.
 
