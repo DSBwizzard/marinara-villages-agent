@@ -244,20 +244,9 @@ await withBrowser(browser, async () => {
       await page.getByRole("menuitem", { name: "Scene settings", exact: true }).click();
       const flipEnabled = count < 4;
       await expect(page.getByRole("checkbox", { name: "Card-flip sprite changes" })).toHaveCount(0);
-      const decisionSwitch = page.getByRole("switch", { name: "Use Decisions" });
-      await expect(decisionSwitch).toBeVisible();
-      await expect(decisionSwitch).toBeEnabled();
-      await expect(decisionSwitch).toHaveAttribute("aria-checked", "false");
-      await decisionSwitch.focus();
-      await page.keyboard.press("Space");
-      await expect(decisionSwitch).toHaveAttribute("aria-checked", "true");
-      await expect(page.getByText("Using System fallback", { exact: true })).toBeVisible();
-      await page.getByRole("button", { name: "0 checks", exact: true }).click();
-      await expect(page.getByRole("checkbox", { name: "Compare with System" })).toHaveCount(0);
-      await page.keyboard.press("Escape");
-      await expect(page.getByRole("region", { name: "Interpretation checks" })).toHaveCount(0);
-      const switchBox = await decisionSwitch.boundingBox();
-      assert.ok(switchBox.x >= 0 && switchBox.x + switchBox.width <= width && switchBox.y >= 0);
+      await expect(page.getByRole("switch", { name: "Use Decisions" })).toHaveCount(0);
+      const settingsBox = await page.getByRole("dialog", { name: "Scene settings" }).boundingBox();
+      assert.ok(settingsBox.x >= 0 && settingsBox.x + settingsBox.width <= width && settingsBox.y >= 0);
       await page.getByRole("button", { name: "Close Scene settings" }).click();
       async function checkSpriteSize(isMobile) {
         // ResizeObserver updates the Scene's container measurements after rotation.
