@@ -1,16 +1,16 @@
 import type { VillageProject, VillageProjectLifecycle, VillageState } from "../models/world.js";
 import { conflict, notFound } from "./errors.js";
-import { completeProject } from "./project-completion.js";
-import { cloneVillageContext } from "./world-context-copy.js";
-import {
-  allocateProjectFocus,
-  projectFocusValid,
-  trimProjectFocus,
-  projectAgendaReservations,
-} from "./project-focus.js";
-import { approvalScope, matchesProjectDesign, renovationAffectedIds } from "./project-terms.js";
 import { establishmentControllers, establishmentScope } from "./establishment.js";
 import { findLocation, placeRegistry } from "./places.js";
+import { completeProject } from "./project-completion.js";
+import {
+  allocateProjectFocus,
+  projectAgendaReservations,
+  projectFocusValid,
+  trimProjectFocus,
+} from "./project-focus.js";
+import { approvalScope, matchesProjectDesign, renovationAffectedIds } from "./project-terms.js";
+import { cloneVillageContext } from "./world-context-copy.js";
 export { renovationAffectedIds, validImage } from "./project-terms.js";
 
 export const PROJECT_DURATION_MS = 24 * 60 * 60_000;
@@ -46,10 +46,6 @@ export function lifecycle(
     blockedReason: "",
     completedAt: "",
   };
-}
-export function sameName(state: VillageState, name: string): boolean {
-  const key = name.toLocaleLowerCase();
-  return state.venues.some((venue) => venue.name.toLocaleLowerCase() === key);
 }
 export function missingProjectAgreements(state: VillageState, project: VillageProject): string[] {
   const flow = project.lifecycle!;
