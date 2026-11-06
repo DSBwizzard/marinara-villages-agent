@@ -176,7 +176,7 @@ for (const count of [1000, 10_000, 25_000]) {
       villageSeed: scope.seed,
       status: "active",
       lines: [],
-      submissions: [{ id: "turn", at }],
+      submissions: [{ mode: "chat", id: "turn", at }],
     });
     scene.lines = [
       {

@@ -95,7 +95,7 @@ const apply = (id: string, sceneConnection: string, liveConnection: string, scen
     sceneState,
   );
   Object.assign(state.receipts[id], { sceneId: scene.id, submissionId: id });
-  scene.submissions.push({ id });
+  scene.submissions.push({ mode: "chat", id });
 };
 apply("one", "Old Scene connection", "Later live ending", scene.continuity.facts.relationshipContext);
 let view = sceneRelationshipView(state, scene)!;
@@ -144,7 +144,7 @@ for (const defect of ["missing", "forked", "duplicate-sequence"] as const) {
   assert.throws(() => replaySceneRelationships(target, damaged, scene), /missing or forked/);
   assert.deepEqual(target, original, "A broken chain rejects before applying any sibling patch");
 }
-const removed = { ...scene, submissions: [{ id: "one" }] };
+const removed = { ...scene, submissions: [{ mode: "chat", id: "one" }] };
 assert.equal(sceneRelationshipView(state, removed)!.edges[key].revision, 5);
 assert.equal(sceneContinuityView(village, removed, false).relationshipContext!.edges[key].revision, 5);
 

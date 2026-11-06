@@ -281,7 +281,7 @@ async function run() {
     scene.area = "outside";
     scene.activeIds = ["reserved"];
     const one = String(
-      (await prepareVenueTurnMessages(scene, "Your move.", "ask", "reserved", null)).fitted.messages
+      (await prepareVenueTurnMessages(scene, "Your move.", "chat", "reserved", null)).fitted.messages
         .map((entry) => entry.content)
         .join("\n"),
     );
@@ -289,7 +289,7 @@ async function run() {
     assert.ok(!one.includes("outgoing DESCRIPTION TAIL"));
     shrink = true;
     await assert.rejects(
-      prepareVenueTurnMessages(scene, "Your move.", "ask", "reserved", null),
+      prepareVenueTurnMessages(scene, "Your move.", "chat", "reserved", null),
       /No reply was requested/,
     );
     assert.equal(paidCalls, 0);

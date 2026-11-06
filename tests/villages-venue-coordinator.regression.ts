@@ -324,7 +324,7 @@ async function main() {
       row(id).data = authorSceneFixture(records, cloned);
       if (evidence === "submission")
         editFixtureScene(row(id), records, (scene) => {
-          scene.submissions = [{ id: "turn" } as any];
+          scene.submissions = [{ mode: "chat", id: "turn" } as any];
         });
       else if (evidence === "navigation") row(id).data.navigationReceipts = [{ id: "turn" }];
       else
@@ -997,12 +997,17 @@ async function main() {
       const data = row("edit-" + blockedCase).data;
       if (blockedCase === "committed")
         editFixtureScene(row("edit-" + blockedCase), records, (scene) =>
-          scene.submissions.push({ id: "original" } as any),
+          scene.submissions.push({ mode: "chat", id: "original" } as any),
         );
       if (blockedCase === "navigation") data.navigationReceipts = [{ id: "original" }];
       if (blockedCase === "semantic")
         editFixtureScene(row("edit-" + blockedCase), records, (scene) =>
-          scene.submissions.push({ id: "other", semanticProvenance: { version: 2 }, semanticReady: false } as any),
+          scene.submissions.push({
+            mode: "chat",
+            id: "other",
+            semanticProvenance: { version: 2 },
+            semanticReady: false,
+          } as any),
         );
       const beforeBlockedEdit = calls;
       await assert.rejects(
@@ -1027,7 +1032,7 @@ async function main() {
       "Provider timeout",
       "Storage failed",
     ])
-      for (const mode of ["chat", "contact", "act", "fulfill", "leave"]) {
+      for (const mode of ["chat", "contact", "leave"]) {
         const sceneId = "editable-results-" + failure + mode;
         seed(sceneId);
         await assert.rejects(
@@ -1240,7 +1245,9 @@ async function main() {
     await coordinateVenue("timed", "timed-turn", "turn", {}, 0, undefined, async () => {
       await venueCheckpoint("reply", async () => "saved");
       await venueCheckpoint("reply", async () => assert.fail("completed checkpoint must be reused"));
-      editFixtureScene(row("timed"), records, (scene) => scene.submissions.push({ id: "timed-turn" } as any));
+      editFixtureScene(row("timed"), records, (scene) =>
+        scene.submissions.push({ mode: "chat", id: "timed-turn" } as any),
+      );
     });
     const timing = fixtureSceneState(row("timed").data, records).submissions[0].timing;
     assert(timing.elapsedMs >= 0);
@@ -1349,7 +1356,12 @@ async function main() {
       );
     }
     editFixtureScene(row("abandon"), records, (scene) =>
-      scene.submissions.push({ id: "earlier", semanticProvenance: { version: 2 }, semanticReady: false } as any),
+      scene.submissions.push({
+        mode: "chat",
+        id: "earlier",
+        semanticProvenance: { version: 2 },
+        semanticReady: false,
+      } as any),
     );
     await assert.rejects(
       coordinateVenue(

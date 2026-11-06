@@ -1,4 +1,3 @@
-import { assertVillageClockWrite, withVillageClockCommit } from "../time/clock-gate.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { VILLAGES_PACKAGE_ID, villagesDocuments } from "../engine/runtime-host.js";
 import { assertVenueOwnership } from "../operations/operation-context.js";
@@ -45,44 +44,37 @@ export function createDocumentMutator(getDocuments: () => CapabilityDocumentStor
         documentId.startsWith("villages-venue-visit-") ? (record?.data as Record<string, unknown>) : undefined,
       );
       const state = await slot.coerce(record?.data, record?.revision ?? 0);
-      await assertVillageClockWrite();
       const changed = await mutate(state);
-      await assertVillageClockWrite();
       assertVenueOwnership();
       if (changed === false) return;
       const data = slot.encode ? await slot.encode(state, record?.revision ?? 0) : state;
-      await assertVillageClockWrite();
       assertVenueOwnership();
       // Compare the bounded saved representation, never a hydrated history, when an encoder owns publication.
       if (record && slot.encode && JSON.stringify(data) === JSON.stringify(record.data)) return;
       const stamp = new Date().toISOString();
       try {
         if (!record) {
-          await withVillageClockCommit(() =>
-            documents.create({
-              id: documentId,
-              packageId: VILLAGES_PACKAGE_ID,
-              kind: slot.kind,
-              name: slot.label(state) || slot.name,
-              description: slot.description,
-              data,
-              createdAt: stamp,
-              updatedAt: stamp,
-            }),
-          );
-          return;
-        }
-        const updated = await withVillageClockCommit(() =>
-          documents.update({
+          await documents.create({
             id: documentId,
             packageId: VILLAGES_PACKAGE_ID,
-            expectedRevision: record.revision,
+            kind: slot.kind,
             name: slot.label(state) || slot.name,
             description: slot.description,
             data,
+            createdAt: stamp,
             updatedAt: stamp,
-          }),
-        );
+          });
+          return;
+        }
+        const updated = await documents.update({
+          id: documentId,
+          packageId: VILLAGES_PACKAGE_ID,
+          expectedRevision: record.revision,
+          name: slot.label(state) || slot.name,
+          description: slot.description,
+          data,
+          updatedAt: stamp,
+        });
         if (updated) return;
       } catch (error) {
         if (record || !(await documents.getById(VILLAGES_PACKAGE_ID, documentId))) throw error;

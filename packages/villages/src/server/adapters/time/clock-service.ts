@@ -1,7 +1,7 @@
 import type { VillageRepository } from "../../domain/models/world-repository.js";
 import type { VillageClockRecord, VillageClockView } from "../../../shared/contracts/clock.js";
 import { ZonedDate, validTimeZone } from "../../../shared/helpers/zoned-date.js";
-import { clockAdministration, type VillageClockAuthority } from "./clock-gate.js";
+import type { VillageClockAuthority } from "./clock-gate.js";
 import { badRequest, conflict } from "../../domain/rules/errors.js";
 
 // Keep a month inside the four-digit calendar for agenda planning and ordinary ticks.
@@ -88,21 +88,19 @@ export function createVillageClock(
       Date.parse(desired.trustedAt) - Date.parse(stored.trustedAt) >= 10_000
     ) {
       let changed = false;
-      await clockAdministration(() =>
-        repository.mutateAuthority((current) => {
-          if (
-            current.seed !== state.seed ||
-            current.setupAt !== state.setupAt ||
-            current.timeZone !== state.timeZone ||
-            JSON.stringify(current.clock) !== JSON.stringify(stored)
-          ) {
-            changed = true;
-            return;
-          }
-          current.timeZone ||= zone;
-          current.clock = desired;
-        }),
-      );
+      await repository.mutateAuthority((current) => {
+        if (
+          current.seed !== state.seed ||
+          current.setupAt !== state.setupAt ||
+          current.timeZone !== state.timeZone ||
+          JSON.stringify(current.clock) !== JSON.stringify(stored)
+        ) {
+          changed = true;
+          return;
+        }
+        current.timeZone ||= zone;
+        current.clock = desired;
+      });
       if (changed) {
         return observeUnlocked();
       }
@@ -116,11 +114,6 @@ export function createVillageClock(
   }
   return {
     observe: () => serial(observeUnlocked),
-    commit: (work) =>
-      serial(async () => {
-        await observeUnlocked();
-        return work();
-      }),
     now: (advanceMs = cached?.advanceMs ?? 0) => new ZonedDate(sources.wall() + advanceMs, zone),
     shiftMs: () => cached?.shiftTotalMs ?? 0,
     onAdvance(listener) {

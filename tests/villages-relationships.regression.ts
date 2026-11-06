@@ -194,7 +194,7 @@ applyRelationshipReview(
 const receipt = state.receipts[dualReview.changes[0]!.id]!;
 receipt.sceneId = scene.id;
 receipt.submissionId = "turn";
-scene.submissions = [{ id: "turn" }];
+scene.submissions = [{ mode: "chat", id: "turn" }];
 assert.equal(
   sceneContinuityView(village, scene).relationshipContext!.edges[relationshipKey("ada", "player")]!.connection,
   "Partners",

@@ -3,7 +3,7 @@ import type { RoomOperation, RoomRecordEvent, SceneChangeIssue } from "../../../
 import type { SceneComposerMode } from "../../shared/types.js";
 import { useSceneReadingSession } from "./reading-session.js";
 
-export type LegacySceneRecovery = { sceneId: string; operation: RoomOperation };
+export type ContactRecovery = { sceneId: string; operation: RoomOperation };
 
 /** Always mounted by the application controller so navigation retains this feature state. */
 export function useScenesState(isFounded?: boolean) {
@@ -19,7 +19,7 @@ export function useScenesState(isFounded?: boolean) {
   const [roomDraft, setRoomDraft] = useState("");
 
   const [roomMode, setRoomMode] = useState<SceneComposerMode>("chat");
-  const [legacyRecovery, setLegacyRecovery] = useState<LegacySceneRecovery | null>(null);
+  const [contactRecovery, setContactRecovery] = useState<ContactRecovery | null>(null);
 
   const [roomContactBoundary, setRoomContactBoundary] = useState("");
 
@@ -107,8 +107,8 @@ export function useScenesState(isFounded?: boolean) {
     setRoomDraft,
     roomMode,
     setRoomMode,
-    legacyRecovery,
-    setLegacyRecovery,
+    contactRecovery,
+    setContactRecovery,
     roomContactBoundary,
     setRoomContactBoundary,
     roomContactKind,

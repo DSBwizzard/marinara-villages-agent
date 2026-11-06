@@ -30,7 +30,7 @@ import {
   staleVenueReason,
 } from "./ScenePanel.js";
 import { useTurnRecovery } from "./turn-recovery.js";
-import type { LegacySceneRecovery } from "./useScenesState.js";
+import type { ContactRecovery } from "./useScenesState.js";
 import { sceneResend } from "./villages-venue-send";
 import { hasPublishedRoomSubmission } from "./villages-room-reading.js";
 
@@ -49,12 +49,8 @@ function sameSavedOperation(
   );
 }
 
-function hasPendingLegacy(operation: RoomOperation | null): boolean {
-  return (
-    !!operation &&
-    (operation.status !== "complete" || !!operation.error) &&
-    ["contact", "fulfill"].includes(operation.input?.mode ?? "")
-  );
+function hasPendingContact(operation: RoomOperation | null): boolean {
+  return !!operation && (operation.status !== "complete" || !!operation.error) && operation.input?.mode === "contact";
 }
 
 export function useReceiveRoomRecordEvents(ports: {
@@ -287,7 +283,7 @@ export function useLeaveRoom(ports: {
   loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
   receiveRoomRecordEvents: (events: readonly RoomRecordEvent[]) => void;
   room: SceneView;
-  legacyRecovery: LegacySceneRecovery | null;
+  contactRecovery: ContactRecovery | null;
   roomBusy: boolean;
   roomCompletionRef: React.RefObject<{ roomId: string; submissionId: string }>;
   roomDraft: string;
@@ -315,7 +311,7 @@ export function useLeaveRoom(ports: {
     loadSnapshot,
     receiveRoomRecordEvents,
     room,
-    legacyRecovery,
+    contactRecovery,
     roomBusy,
     roomCompletionRef,
     roomDraft,
@@ -350,7 +346,7 @@ export function useLeaveRoom(ports: {
       room.status !== "active" ||
       roomBusy ||
       roomSendInFlightRef.current ||
-      legacyRecovery?.sceneId === room.id
+      contactRecovery?.sceneId === room.id
     )
       return;
     const claim = lifetime.begin(room.id);
@@ -382,7 +378,7 @@ export function useLeaveRoom(ports: {
         `/rooms/${encodeURIComponent(room.id)}/operation`,
       );
       if (!lifetime.owns(claim)) return;
-      if (hasPendingLegacy(operation)) throw new Error("Review the saved action before continuing.");
+      if (hasPendingContact(operation)) throw new Error("Review the saved action before continuing.");
       const resend = sceneResend(operation, { message: roomDraft, mode: "leave", targetId: "" }, submissionId);
       submissionId = resend.submissionId;
       roomLeaveSubmissionIdRef.current = submissionId;
@@ -484,7 +480,7 @@ export function useLeaveRoom(ports: {
     loadSnapshot,
     receiveRoomRecordEvents,
     room,
-    legacyRecovery,
+    contactRecovery,
     roomBusy,
     roomCompletionRef,
     roomDraft,
@@ -580,7 +576,7 @@ export function useMoveRoom(ports: {
   isFounded: boolean | undefined;
   loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
   room: SceneView;
-  legacyRecovery: LegacySceneRecovery | null;
+  contactRecovery: ContactRecovery | null;
   roomBusy: boolean;
   roomCompletionRef: React.RefObject<{ roomId: string; submissionId: string }>;
   roomEnded: boolean;
@@ -598,7 +594,7 @@ export function useMoveRoom(ports: {
     isFounded,
     loadSnapshot,
     room,
-    legacyRecovery,
+    contactRecovery,
     roomBusy,
     roomCompletionRef,
     roomEnded,
@@ -629,7 +625,7 @@ export function useMoveRoom(ports: {
         roomEnded ||
         roomBusy ||
         roomSendInFlightRef.current ||
-        legacyRecovery?.sceneId === room.id ||
+        contactRecovery?.sceneId === room.id ||
         !zoneId ||
         zoneId === room.zoneId
       )
@@ -648,7 +644,7 @@ export function useMoveRoom(ports: {
           `/rooms/${encodeURIComponent(room.id)}/operation`,
         );
         if (!owns()) return;
-        if (hasPendingLegacy(operation)) throw new Error("Review the saved action before moving.");
+        if (hasPendingContact(operation)) throw new Error("Review the saved action before moving.");
         const resend = sceneResend(operation, { zoneId }, operationId);
         operationId = resend.submissionId;
         roomMoveOperationIdRef.current = operationId;
@@ -694,7 +690,7 @@ export function useMoveRoom(ports: {
     },
     [
       room,
-      legacyRecovery,
+      contactRecovery,
       roomMoveZoneId,
       roomEnded,
       roomBusy,
@@ -718,8 +714,8 @@ export function useSendRoom(ports: {
   receiveRoomRecordEvents: (events: readonly RoomRecordEvent[]) => void;
   composerEditVersionRef?: React.RefObject<number>;
   room: SceneView;
-  legacyRecovery: LegacySceneRecovery | null;
-  setLegacyRecovery: React.Dispatch<SetStateAction<LegacySceneRecovery | null>>;
+  contactRecovery: ContactRecovery | null;
+  setContactRecovery: React.Dispatch<SetStateAction<ContactRecovery | null>>;
   roomBusy: boolean;
   roomCompletionRef: React.RefObject<{ roomId: string; submissionId: string }>;
   roomDraft: string;
@@ -750,8 +746,8 @@ export function useSendRoom(ports: {
     loadSnapshot,
     receiveRoomRecordEvents,
     room,
-    legacyRecovery,
-    setLegacyRecovery,
+    contactRecovery,
+    setContactRecovery,
     roomBusy,
     roomCompletionRef,
     roomDraft,
@@ -797,8 +793,8 @@ export function useSendRoom(ports: {
   });
   const { pending: recoveryPending, begin: beginRecovery } = recovery;
   const sendRoom = useCallback(
-    async (replacement?: LegacySceneRecovery) => {
-      if (recoveryPending || (legacyRecovery?.sceneId === room?.id && !replacement)) return;
+    async (replacement?: ContactRecovery) => {
+      if (recoveryPending || (contactRecovery?.sceneId === room?.id && !replacement)) return;
       const editVersion = composerEditVersionRef?.current ?? 0;
       const text = roomDraft.trim();
       if (room === null || !room.id || roomEnded || roomBusy || roomSendInFlightRef.current || text.length === 0)
@@ -819,7 +815,7 @@ export function useSendRoom(ports: {
         if (
           !replacement &&
           (operation?.status !== "complete" || !!operation.error) &&
-          ["contact", "fulfill"].includes(operation?.input?.mode ?? "")
+          operation?.input?.mode === "contact"
         )
           throw new Error("Review the saved action before sending a new message.");
         if (replacement && (replacement.sceneId !== room.id || !sameSavedOperation(replacement.operation, operation)))
@@ -895,7 +891,7 @@ export function useSendRoom(ports: {
           claim.completion = null;
         }
         receiveRoomRecordEvents(answer.recordEvents ?? []);
-        if (replacement && !isSceneTurnOutcome(answer.turnOutcome)) setLegacyRecovery(null);
+        if (replacement && !isSceneTurnOutcome(answer.turnOutcome)) setContactRecovery(null);
         if (isSceneTurnOutcome(answer.turnOutcome)) {
           if (!composerEditVersionRef || composerEditVersionRef.current === editVersion) {
             setRoomDraft(text);
@@ -942,7 +938,7 @@ export function useSendRoom(ports: {
         if (!owns()) return;
         if (hasPublishedRoomSubmission(authoritative, submissionId)) recovered = authoritative;
         if (recovered) {
-          if (replacement) setLegacyRecovery(null);
+          if (replacement) setContactRecovery(null);
           if (latest) setRoom(currentRoom(latest));
           setRoom(currentRoom(recovered));
           setRoomEnded(recovered.status === "closed");
@@ -996,8 +992,8 @@ export function useSendRoom(ports: {
       recoveryPending,
       composerEditVersionRef,
       roomDraft,
-      legacyRecovery,
-      setLegacyRecovery,
+      contactRecovery,
+      setContactRecovery,
       room,
       roomEnded,
       roomBusy,
@@ -1113,7 +1109,7 @@ export function useRetrySavedScene(ports: {
   loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
   receiveRoomRecordEvents: (events: readonly RoomRecordEvent[]) => void;
   room: SceneView;
-  setLegacyRecovery: React.Dispatch<SetStateAction<LegacySceneRecovery | null>>;
+  setContactRecovery: React.Dispatch<SetStateAction<ContactRecovery | null>>;
   roomBusy: boolean;
   roomCompletionRef: React.RefObject<{ roomId: string; submissionId: string }>;
   roomDraft: string;
@@ -1141,7 +1137,7 @@ export function useRetrySavedScene(ports: {
     loadSnapshot,
     receiveRoomRecordEvents,
     room,
-    setLegacyRecovery,
+    setContactRecovery,
     roomBusy,
     roomCompletionRef,
     roomDraft,
@@ -1177,7 +1173,7 @@ export function useRetrySavedScene(ports: {
     clearCompletionOnRetire: false,
   });
   return useCallback(
-    async (expected?: LegacySceneRecovery) => {
+    async (expected?: ContactRecovery) => {
       if (!room?.id || roomBusy) return;
       if (
         !room.operation ||
@@ -1196,7 +1192,7 @@ export function useRetrySavedScene(ports: {
           `/rooms/${encodeURIComponent(room.id)}/operations/${encodeURIComponent(room.operation.id)}`,
         );
         if (!lifetime.owns(claim)) return;
-        if (!expected && operation?.kind === "turn" && ["contact", "fulfill"].includes(operation.input?.mode ?? ""))
+        if (!expected && operation?.kind === "turn" && operation.input?.mode === "contact")
           throw new Error("Review the saved action before retrying.");
         if (
           (room.operation.kind === "greet" || !!expected) &&
@@ -1249,7 +1245,7 @@ export function useRetrySavedScene(ports: {
         setRoom(currentRoom(answer.session));
         setRoomEnded(answer.session.status === "closed");
         receiveRoomRecordEvents(answer.recordEvents ?? []);
-        if (expected && !isSceneTurnOutcome(answer.turnOutcome)) setLegacyRecovery(null);
+        if (expected && !isSceneTurnOutcome(answer.turnOutcome)) setContactRecovery(null);
         if (!composerEditVersionRef || composerEditVersionRef.current === editVersion) {
           if (isSceneTurnOutcome(answer.turnOutcome)) {
             setRoomDraft((current) =>
@@ -1273,7 +1269,7 @@ export function useRetrySavedScene(ports: {
           setRoomContactBoundary("");
           roomMoveOperationIdRef.current = null;
         }
-        if (operation.kind === "turn" && ["contact", "fulfill"].includes(operation.input?.mode ?? "")) {
+        if (operation.kind === "turn" && operation.input?.mode === "contact") {
           if (!isSceneTurnOutcome(answer.turnOutcome)) setRoomMode("chat");
           setRoomTargetId("");
           setRoomContactKind("call");
@@ -1294,7 +1290,7 @@ export function useRetrySavedScene(ports: {
       room,
       roomBusy,
       roomDraft,
-      setLegacyRecovery,
+      setContactRecovery,
       receiveRoomRecordEvents,
       loadSnapshot,
       roomCompletionRef,

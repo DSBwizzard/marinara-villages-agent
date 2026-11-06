@@ -105,7 +105,7 @@ await withBrowser(browser, async () => {
         scene.submissions = [];
       } else if (mode === "error")
         scene.operation = { id: "submission", status: "complete", error: "Confirmed validation failure" };
-      else scene.submissions = [{ id: "submission" }];
+      else scene.submissions = [{ mode: "chat", id: "submission" }];
       if (mode === "hidden-return") await page.evaluate(() => window.h.visible(true));
       else await page.evaluate(() => window.h.check());
       if (mode === "selection") {
