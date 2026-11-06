@@ -24,12 +24,6 @@ export function configureVenueCoordinator(service: VenueCoordinatorService): () 
 export function hasVenueOperation(id: string): boolean {
   return coordinatorBinding.get().hasVenueOperation(id);
 }
-export async function coordinatedOptionalCompletion<T>(
-  fingerprint: string,
-  work: (signal: AbortSignal) => Promise<T>,
-): Promise<T | undefined> {
-  return coordinatorBinding.get().coordinatedOptionalCompletion<T>(fingerprint, work);
-}
 export async function venueCheckpoint<T>(stage: string, work: () => Promise<T>): Promise<T> {
   return coordinatorBinding.get().venueCheckpoint<T>(stage, work);
 }

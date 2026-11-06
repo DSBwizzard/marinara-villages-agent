@@ -12,7 +12,6 @@ import {
 import { createBackgroundContext } from "../packages/villages/src/server/adapters/operations/background-context-service.js";
 import {
   backgroundCalls,
-  backgroundSetting,
   configureBackgroundContext,
 } from "../packages/villages/src/server/adapters/operations/background-context.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -77,10 +76,8 @@ function fixture(label: string) {
     timingGate = deferred();
   let holdTiming = false,
     timingEntered = false;
-  let optionalHold: "before" | "after" | undefined;
   const calls: string[] = [],
     signals: AbortSignal[] = [];
-  const settings: string[] = [];
   let fail = false,
     conflicts = 0;
   const documents = {
@@ -97,16 +94,6 @@ function fixture(label: string) {
       return structuredClone(row);
     },
     async update(value: any) {
-      const hold =
-        optionalHold &&
-        Object.values(value.data?.optionalAttempts ?? {}).some((row: any) => row.status === "dispatching")
-          ? optionalHold
-          : undefined;
-      if (hold) {
-        optionalHold = undefined;
-        timingEntered = true;
-      }
-      if (hold === "before") await timingGate.promise;
       if (holdTiming && value.data?.steps?.some((step: any) => step.timing?.outcome === "pending")) {
         timingEntered = true;
         holdTiming = false;
@@ -117,7 +104,6 @@ function fixture(label: string) {
       if (!old || old.revision !== value.expectedRevision) return null;
       const row = { ...old, ...structuredClone(value), revision: old.revision + 1 };
       records.set(value.id, row);
-      if (hold === "after") await timingGate.promise;
       return structuredClone(row);
     },
     async remove(_packageId: string, id: string, revision: number) {
@@ -148,13 +134,11 @@ function fixture(label: string) {
   } as CapabilityResolvedLanguageModel;
   function handler(
     getCompletion: () => BackgroundCompletion | undefined = () => context.backgroundCalls.getStore(),
-    setting: typeof backgroundSetting = context.backgroundSetting,
   ): Handler {
     return {
       async generate(value) {
         const complete = getCompletion();
         assert.equal(complete?.metadata?.kind, "agenda");
-        settings.push(await setting("owner-setting", () => label));
         return (
           await complete!(model, [{ role: "user", content: value.text }], 100, { temperature: 0, debugMode: false })
         ).content;
@@ -213,9 +197,6 @@ function fixture(label: string) {
     holdTiming: () => {
       holdTiming = true;
     },
-    holdOptional: (stage: "before" | "after") => {
-      optionalHold = stage;
-    },
     timingEntered: () => timingEntered,
     timingGate,
     context,
@@ -227,7 +208,6 @@ function fixture(label: string) {
     gate,
     calls,
     signals,
-    settings,
     handler,
     suppliedHandlers,
     world: () => structuredClone(world),
@@ -403,7 +383,6 @@ async function independentQueues() {
     } finally {
       restartA();
     }
-    assert.deepEqual([a.settings, b.settings], [["A"], ["B", "B"]]);
   } finally {
     stopA();
     stopB();
@@ -449,7 +428,6 @@ async function nestedContexts() {
   const completion = (label: string): BackgroundCompletion =>
     Object.assign(async () => ({ content: label }), {
       metadata: { id: label, kind: "agenda", cause: "fixture" },
-      setting: async <T>(_key: string, create: () => T | Promise<T>) => create(),
     });
   const ca = completion("A"),
     cb = completion("B");
@@ -460,7 +438,6 @@ async function nestedContexts() {
       await tick();
       assert.equal(a.backgroundCalls.getStore(), ca);
       assert.equal(b.backgroundCalls.getStore(), cb);
-      assert.equal(await b.backgroundSetting("owner", () => "B"), "B");
       const failure = new Error("inside B");
       assert.throws(
         () => b.requireBackgroundSuccess(failure),
@@ -532,8 +509,6 @@ async function scopedDispatch() {
   const ownedHandler = (f: ReturnType<typeof fixture>): Handler => ({
     generate: async (value) => {
       assert.equal(backgroundCalls.getStore()?.metadata?.kind, "agenda");
-      const frozen = await backgroundSetting("owner", () => f.world().name);
-      assert.equal(frozen, f.world().name);
       const answer = await completeWithRoom(f.model, [{ role: "user", content: value.text }], 100, {
         temperature: 0,
         debugMode: false,
@@ -583,37 +558,20 @@ async function scopedDispatch() {
   }
 }
 async function replacedInstanceCallbacks() {
-  for (const stage of [
-    "provider",
-    "setting",
-    "optional",
-    "optional-owner",
-    "optional-reset",
-    "optional-closed",
-    "result",
-    "owner",
-  ] as const) {
+  for (const stage of ["provider", "result", "owner"] as const) {
     const f = fixture("recreated-" + stage),
       entered = deferred(),
       release = deferred();
-    let optionalCalls = 0,
-      parsed = 0;
+    let parsed = 0;
     if (stage !== "provider")
       f.service.registerBackgroundHandler("agenda", {
         valid: () => true,
         async generate() {
-          const complete = f.context.backgroundCalls.getStore()!;
           const delayed = async () => {
             entered.resolve();
             await release.promise;
             return "old purchased value";
           };
-          if (stage === "setting") return complete.setting!("delayed-setting", delayed);
-          if (stage.startsWith("optional"))
-            return complete.optionalCompletion!("delayed-optional", async () => {
-              optionalCalls++;
-              return delayed();
-            });
           return delayed();
         },
         recoverSavedResult() {
@@ -630,23 +588,20 @@ async function replacedInstanceCallbacks() {
       if (stage === "provider") await until(() => f.calls.length === 1);
       else await entered.promise;
       const old = [...f.records.values()].find((row) => row.kind === "background-work")!;
-      if (stage !== "optional-owner" && stage !== "optional-closed") await retainBackgroundJob(f.documents, old.data);
+      await retainBackgroundJob(f.documents, old.data);
       const replacement = structuredClone(old);
-      if (stage === "owner" || stage === "optional-owner") replacement.data.owner = randomUUID();
+      if (stage === "owner") replacement.data.owner = randomUUID();
       else replacement.data.instanceId = randomUUID();
       replacement.revision++;
       Object.assign(replacement.data, {
         status: "interrupted",
         steps: [],
-        optionalAttempts: stage === "optional-owner" ? replacement.data.optionalAttempts : {},
-        settings: {},
         requests: 0,
         tokens: null,
         hasResult: false,
         result: undefined,
       });
       f.records.set(old.id, replacement);
-      if (stage === "optional-reset") f.records.get("villages-village").data.seed = "explicitly-reset-world";
       const expected = structuredClone(replacement);
       release.resolve();
       f.gate.resolve();
@@ -665,20 +620,7 @@ async function replacedInstanceCallbacks() {
           "Late purchased evidence remains owned by its original instance",
         );
       }
-      if (stage.startsWith("optional")) {
-        assert.equal(optionalCalls, 1);
-        assert.equal(
-          [...f.records.values()].some(
-            (row) =>
-              row.kind === "background-history" &&
-              row.data.instanceId === old.data.instanceId &&
-              row.data.optionalAttempts?.["delayed-optional"]?.result === "old purchased value",
-          ),
-          stage === "optional" || stage === "optional-owner",
-          "Only a durable same-world reservation may retain a known optional result",
-        );
-      }
-      if (stage !== "owner" && stage !== "optional-owner") {
+      if (stage !== "owner") {
         await assert.rejects(
           f.service.retryBackgroundJob(old.id, old.data.attempt, "stale-instance", old.data.instanceId),
           /changed/,
@@ -720,7 +662,6 @@ async function reusedNativeRevisions() {
         instanceId: randomUUID(),
         status: "interrupted",
         steps: [],
-        settings: {},
         hasResult: false,
         result: undefined,
       };
@@ -842,41 +783,6 @@ async function main() {
     stopAdmission();
     admission.timingGate.resolve();
     await admission.service.settleBackgroundWork();
-  }
-  for (const stage of ["before", "after"] as const) {
-    const pending = fixture("unsubmitted-optional-" + stage);
-    pending.holdOptional(stage);
-    let calls = 0;
-    pending.service.registerBackgroundHandler("agenda", {
-      generate: async () =>
-        pending.context.backgroundCalls.getStore()!.optionalCompletion!("decision", async () => {
-          calls++;
-          return "done";
-        }),
-      valid: () => true,
-      apply(state, _input, result) {
-        state.setting = result;
-      },
-    });
-    const stop = pending.service.startBackgroundWork();
-    try {
-      await pending.service.queueBackgroundJob(input());
-      await until(pending.timingEntered);
-      await pending.service.queueBackgroundJob({ ...input(), revision: "replacement" });
-      pending.timingGate.resolve();
-      await pending.service.settleBackgroundWork();
-      assert.equal(calls, 1, "A superseded unsubmitted optional reservation never invokes its provider.");
-      assert.equal((await pending.service.backgroundWorkSummaries())[0].status, "completed");
-      assert.equal(
-        [...pending.records.values()].filter((row) => row.kind === "background-history").length,
-        0,
-        "Unsubmitted optional work cannot become uncertain history.",
-      );
-    } finally {
-      stop();
-      pending.timingGate.resolve();
-      await pending.service.settleBackgroundWork();
-    }
   }
   const replaced = fixture("late-config");
   const stopReplaced = replaced.service.startBackgroundWork({ now: () => 0 });

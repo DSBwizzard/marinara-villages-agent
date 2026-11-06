@@ -555,7 +555,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     completeWithRoom,
   });
   const personalMail = createSocialMail({
-    backgroundSetting: background.backgroundSetting,
     readMailInput: (value, seed) => createCapturedAdmissions(villagesDocuments()).readMailInput(value, seed),
     withWork: withRepairWork,
     processLiveMemories,

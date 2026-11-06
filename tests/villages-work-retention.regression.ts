@@ -26,7 +26,6 @@ function job(patch: Partial<Job> = {}): Job {
     owner: "previous-activation",
     attempt: 1,
     steps: [],
-    settings: {},
     hasResult: false,
     requests: 1,
     tokens: 10,
@@ -73,15 +72,11 @@ for (const patch of [
   { hasResult: true, result: { result: "purchased" } },
   { partialResult: true },
   { steps: [savedReply] },
-  { optionalAttempts: { review: { status: "complete" as const, elapsedMs: 2, result: "saved" } } },
-  { optionalAttempts: { review: { status: "complete" as const, elapsedMs: 2 } } },
 ])
   for (const status of ["failed", "interrupted", "obsolete", "completed"] as const)
     assert.equal(backgroundRecoveryState(job({ ...patch, status })), "recoverable");
 for (const patch of [
   { steps: [{ fingerprint: "unknown", status: "running" as const }] },
-  { optionalAttempts: { review: { status: "unknown" as const, elapsedMs: 2 } } },
-  { optionalAttempts: { review: { status: "dispatching" as const, elapsedMs: 2 } } },
   { failure: { cause: "unknown_request" as const, stage: "provider", message: "unknown" } },
 ])
   assert.equal(backgroundRecoveryState(job({ status: "obsolete", ...patch })), "uncertain");
@@ -93,10 +88,8 @@ for (const malformed of [
   job({ status: ["completed"] as any }),
   job({ steps: [{ ...savedReply, status: ["completed"] as any }] }),
   job({ steps: [{ ...savedReply, response: undefined, timing: { outcome: ["unknown"] } as any }] }),
-  job({ optionalAttempts: { review: { status: ["unknown"], elapsedMs: 1 } as any } }),
   job({ steps: [null] as any }),
   job({ steps: {} as any }),
-  job({ optionalAttempts: { review: null } as any }),
   job({ partialResult: "invalid" as any }),
   job({ replacement: null as any }),
   job({ replacement: {} as any }),
@@ -144,8 +137,8 @@ for (const [id, data] of Object.entries({
   "empty-object": {},
   "malformed-step": job({ kind: "world-development", steps: [null] as any }),
   "malformed-steps": job({ steps: {} as any }),
-  "malformed-optional": job({ optionalAttempts: { review: null } as any }),
-  "array-discriminant": job({ optionalAttempts: { review: { status: ["unknown"], elapsedMs: 1 } as any } }),
+  "malformed-request-state": job({ steps: [{ fingerprint: "bad", status: "invalid" }] as any }),
+  "array-discriminant": job({ status: ["completed"] as any }),
 }))
   rows.set(id, { id, kind: "background-work", revision: 1, data });
 save("completed-without-usage", { usageComplete: false });
@@ -195,14 +188,14 @@ assert.deepEqual(remainingJobs(), [
   "empty-object",
   "malformed-step",
   "malformed-steps",
-  "malformed-optional",
+  "malformed-request-state",
   "array-discriminant",
 ]);
 state.seed = "explicit-reset";
 await background.backgroundWorkSummaries();
 assert.deepEqual(
   remainingJobs(),
-  ["malformed", "empty-object", "malformed-step", "malformed-steps", "malformed-optional", "array-discriminant"],
+  ["malformed", "empty-object", "malformed-step", "malformed-steps", "malformed-request-state", "array-discriminant"],
   "Explicit Reset releases known prior-world records; corrupt ownership remains protected.",
 );
 console.log("Recovery classification protects saved replies, partial effects and uncertainty during ordinary cleanup.");

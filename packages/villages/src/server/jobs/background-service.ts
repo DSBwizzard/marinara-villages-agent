@@ -79,7 +79,7 @@ function sameCurrentJob(current: JobRecord | null, expected: JobRecord): boolean
     next.owner === before.owner
   );
 }
-type Unsubmitted = { step?: number; optional?: readonly string[] };
+type Unsubmitted = { step?: number };
 const jobId = (work: BackgroundInput) => backgroundRevision([work.seed, work.kind, work.subjectId, work.revision]);
 const activityDispatched = (job: Job) =>
   job.requests > 0 || job.attemptHistory?.some((attempt) => attempt.requests > 0) === true;
@@ -105,8 +105,6 @@ function completedJob(job: Job): Job {
     failedAt: undefined,
     partialResult: false,
     steps: [],
-    optionalAttempts: {},
-    settings: {},
     input: null,
     result: undefined,
     hasResult: false,
@@ -296,7 +294,6 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           status: "obsolete",
           error: "Replaced by independent founding tasks.",
           steps: [],
-          settings: {},
           input: null,
           result: undefined,
           hasResult: false,
@@ -374,20 +371,14 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       if (record) {
         const before = record.data as Job,
           claims = new Set(backgroundResponseOwners(data).map((owner) => owner.claim.id));
-        const optional = new Set(unsubmitted.optional);
         if (
-          (unsubmitted.step !== undefined || optional.size) &&
+          unsubmitted.step !== undefined &&
           (before.id !== next.id ||
             before.instanceId !== next.instanceId ||
             before.attempt !== next.attempt ||
             before.owner !== next.owner)
         )
           throw new Error("Unsubmitted background ownership changed.");
-        for (const key of optional) {
-          const saved = before.optionalAttempts?.[key];
-          if (saved && (saved.status !== "dispatching" || saved.result !== undefined || data.optionalAttempts?.[key]))
-            throw new Error("Unsubmitted optional reservation changed.");
-        }
         const releasedClaims = backgroundResponseOwners(before).filter((owner) => {
           if (claims.has(owner.claim.id)) return false;
           if (owner.index !== unsubmitted.step) return true;
@@ -403,11 +394,6 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           (before.hasResult && !next.hasResult) ||
           (before.partialResult && !next.partialResult) ||
           (before.result !== undefined && next.result === undefined) ||
-          Object.entries(before.optionalAttempts ?? {}).some(
-            ([key, value]) =>
-              !next.optionalAttempts?.[key] ||
-              (value.result !== undefined && next.optionalAttempts[key].result === undefined),
-          ) ||
           (before.failure?.cause === "unknown_request" &&
             before.steps.length === 0 &&
             next.failure?.cause !== "unknown_request");
@@ -416,17 +402,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           const retained = {
             ...before,
             steps: before.steps.filter((_step, index) => index !== unsubmitted.step),
-            ...(before.optionalAttempts
-              ? {
-                  optionalAttempts: Object.fromEntries(
-                    Object.entries(before.optionalAttempts).filter(([key]) => !optional.has(key)),
-                  ),
-                }
-              : {}),
-            requests:
-              unsubmitted.step !== undefined || optional.size
-                ? Math.min(before.requests, next.requests)
-                : before.requests,
+            requests: unsubmitted.step !== undefined ? Math.min(before.requests, next.requests) : before.requests,
           };
           const recovery = backgroundRecoveryState({
             ...retained,
@@ -483,50 +459,6 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       }
     }
     throw new Error("Background work kept changing while it was saved.");
-  }
-  async function retainOptionalOutcome(
-    job: Job,
-    fingerprint: string,
-    outcome: NonNullable<Job["optionalAttempts"]>[string],
-    documents: CapabilityDocumentStore,
-  ) {
-    const retain = () =>
-      ports.withCurrentJobWrite(async () => {
-        const world = readVillageRoot(await documents.getById(VILLAGES_PACKAGE_ID, "villages-village"));
-        if (world?.seed !== job.seed) return;
-        const owns = (row: JobRecord | null) => {
-          if (!row) return false;
-          if (row.packageId !== VILLAGES_PACKAGE_ID || !Number.isSafeInteger(row.revision) || row.revision < 1)
-            throw new Error("Background optional reservation identity changed.");
-          validateBackgroundJobRecord(row);
-          if (row.kind === "background-history" && row.revision !== 1)
-            throw new Error("Retained background attempt changed.");
-          const source = row.data as Job;
-          return (
-            source.seed === job.seed &&
-            slotId(source) === slotId(job) &&
-            source.id === job.id &&
-            source.instanceId === job.instanceId &&
-            source.attempt === job.attempt &&
-            source.optionalAttempts?.[fingerprint]?.status === "dispatching" &&
-            JSON.stringify(source.input) === JSON.stringify(job.input)
-          );
-        };
-        let source = await documents.getById(VILLAGES_PACKAGE_ID, slotId(job));
-        if (source && (source.id !== slotId(job) || source.kind !== KIND))
-          throw new Error("Background optional reservation identity changed.");
-        if (!owns(source))
-          source = (await documents.list(VILLAGES_PACKAGE_ID, "background-history")).find(owns) ?? null;
-        if (source && owns(source))
-          await retainBackgroundJob(
-            documents,
-            nativeBackgroundJob({
-              ...(source.data as Job),
-              optionalAttempts: { ...(source.data as Job).optionalAttempts, [fingerprint]: outcome },
-            }),
-          );
-      });
-    return ports.withRepairWork ? ports.withRepairWork(retain) : retain();
   }
   async function persistConnectionPause(
     connectionId: string,
@@ -602,7 +534,6 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       completedCount: 0,
       usageComplete: true,
       steps: [],
-      settings: {},
       hasResult: false,
       requests: 0,
       tokens: null,
@@ -944,11 +875,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       if (await promoteReplacement(id, job, documents, runOwner)) relaunch.add(id);
       return;
     }
-    if (
-      job.owner !== runOwner &&
-      (job.steps.some((step) => step.status === "running") ||
-        Object.values(job.optionalAttempts ?? {}).some((attempt) => attempt.status === "dispatching"))
-    ) {
+    if (job.owner !== runOwner && job.steps.some((step) => step.status === "running")) {
       await updateJob((current) => ({
         ...current!,
         status: "interrupted",
@@ -995,8 +922,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     let invoked = false;
     let stage = "generation";
     let dispatched = false;
-    const unsubmittedSteps = new Set<string>(),
-      unsubmittedOptional = new Set<string>();
+    const unsubmittedSteps = new Set<string>();
     const complete: BackgroundCompletion = async (model, messages, maxTokens, options) => {
       // Provider and token-limit changes do not invalidate already purchased responses.
       const fingerprint = backgroundRevision(messages);
@@ -1250,144 +1176,11 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       });
     };
     complete.signal = controller.signal;
-    complete.optionalCompletion = async <T>(
-      fingerprint: string,
-      work: (signal: AbortSignal) => Promise<T>,
-    ): Promise<T | undefined> => {
-      const assertStorageOwner = () => {
-        if (stopped || owner !== runOwner) throw new Paused("Background generation stopped.");
-        controller.signal.throwIfAborted();
-      };
-      const assertOwner = () => {
-        assertStorageOwner();
-        if (superseded.has(job!.instanceId)) throw new Obsolete("This job was replaced.");
-      };
-      assertOwner();
-      const prior = job!.optionalAttempts?.[fingerprint];
-      if (prior) return prior.status === "complete" ? (structuredClone(prior.result) as T) : undefined;
-      // A purchased System checkpoint must replay with exactly the same pending batch.
-      if (job!.steps.length) return undefined;
-      return requestTurn(async () => {
-        assertOwner();
-        if ((!job!.finite || catchupBatchId(job!)) && !hasVillagePresence())
-          throw new Paused("Waiting until Villages is visible.");
-        const expectedOwner = job!.owner;
-        checkCurrent(job!, await readForJob(job!));
-        const allowance = Math.max(
-          0,
-          10_000 - Object.values(job!.optionalAttempts ?? {}).reduce((sum, attempt) => sum + attempt.elapsedMs, 0),
-        );
-        if (!allowance) return undefined;
-        job = await updateJob((current) => {
-          assertOwner();
-          if (
-            !current ||
-            current.id !== runJobId ||
-            current.attempt !== runAttempt ||
-            current.owner !== expectedOwner ||
-            (current.owner !== runOwner && current.status === "running")
-          )
-            throw new Obsolete("This job was replaced.");
-          current.optionalAttempts ??= {};
-          if (current.optionalAttempts[fingerprint]) throw new Paused("Optional request already reserved.");
-          current.optionalAttempts[fingerprint] = { status: "dispatching", elapsedMs: allowance };
-          unsubmittedOptional.add(fingerprint);
-          current.owner = runOwner;
-          current.status = "running";
-          current.requests++;
-          current.usageComplete = false;
-          return current;
-        });
-        assertOwner();
-        const started = performance.now();
-        const timeout = new AbortController();
-        const signal = AbortSignal.any([controller.signal, timeout.signal]);
-        let onAbort: () => void = () => {};
-        const timer = setTimeout(() => timeout.abort(), allowance);
-        let result: T | undefined;
-        let status: "complete" | "unknown" = "unknown";
-        try {
-          result = await Promise.race([
-            (() => {
-              unsubmittedOptional.delete(fingerprint);
-              return work(signal);
-            })(),
-            new Promise<never>((_resolve, reject) => {
-              onAbort = () => reject(signal.reason);
-              signal.addEventListener("abort", onAbort, { once: true });
-              if (signal.aborted) onAbort();
-            }),
-          ]);
-          status = "complete";
-        } catch {
-          // An exception does not prove whether an opaque provider request incurred costs.
-        } finally {
-          clearTimeout(timer);
-          signal.removeEventListener("abort", onAbort);
-        }
-        const outcome = {
-          status,
-          elapsedMs: Math.min(allowance, Math.ceil(performance.now() - started)),
-          ...(status === "complete" ? { result: structuredClone(result) } : {}),
-        };
-        try {
-          assertStorageOwner();
-          // Persistence/ownership errors propagate: they never authorize a System request.
-          job = await updateJob((current) => {
-            assertStorageOwner();
-            if (
-              !current ||
-              current.id !== runJobId ||
-              current.attempt !== runAttempt ||
-              current.owner !== runOwner ||
-              current.optionalAttempts?.[fingerprint]?.status !== "dispatching"
-            )
-              throw new Obsolete("Optional request ownership changed.");
-            current.optionalAttempts[fingerprint] = outcome;
-            return current;
-          });
-        } catch (error) {
-          // Preserve a known purchased result without writing into a replacement job.
-          if (status === "complete")
-            await retainOptionalOutcome({ ...job!, input: admitted!.nativeInput }, fingerprint, outcome, documents);
-          throw error;
-        }
-        assertOwner();
-        checkCurrent(job!, await readForJob(job!));
-        return result;
-      });
-    };
     complete.metadata = {
       id: job.id,
       kind: job.kind,
       attempt: job.attempt,
       cause: job.finite ? "Player-requested generation" : "Automatic: village time or resident agenda update",
-    };
-    complete.setting = async <T>(key: string, create: () => T | Promise<T>): Promise<T> => {
-      const assertOwner = () => {
-        if (stopped || owner !== runOwner) throw new Paused("Background generation stopped.");
-        if (superseded.has(runInstanceId)) throw new Obsolete("This job was replaced.");
-        controller.signal.throwIfAborted();
-      };
-      assertOwner();
-      const expectedOwner = job!.owner;
-      const value = key in (job!.settings ?? {}) ? job!.settings[key] : await create();
-      assertOwner();
-      job = await updateJob((current) => {
-        assertOwner();
-        if (
-          !current ||
-          current.id !== runJobId ||
-          current.attempt !== runAttempt ||
-          current.owner !== expectedOwner ||
-          (current.owner !== runOwner && current.status === "running")
-        )
-          throw new Obsolete("This job was replaced.");
-        current.settings ??= {};
-        if (!(key in current.settings)) current.settings[key] = value;
-        return current;
-      });
-      return job.settings[key] as T;
     };
     try {
       checkCurrent(job, await readForJob(job));
@@ -1477,23 +1270,13 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             current.steps.splice(lastIndex, 1);
             if (!catchupBatchId(current)) current.requests = Math.max(0, current.requests - 1);
           }
-          if (paused || obsolete)
-            for (const key of unsubmittedOptional) {
-              const saved = current.optionalAttempts?.[key];
-              if (!saved) continue;
-              if (saved?.status !== "dispatching" || saved.result !== undefined)
-                throw new Obsolete("Optional reservation changed.");
-              delete current.optionalAttempts![key];
-              current.requests = Math.max(0, current.requests - 1);
-            }
           if (obsolete && current.replacement && uncertainAttempt(current)) return holdReplacement(current);
           return {
             ...current!,
             status: obsolete
               ? "obsolete"
               : paused
-                ? current!.steps.some((step) => step.status === "running") ||
-                  Object.values(current!.optionalAttempts ?? {}).some((attempt) => attempt.status === "dispatching")
+                ? current!.steps.some((step) => step.status === "running")
                   ? "interrupted"
                   : "paused"
                 : "failed",
@@ -1515,9 +1298,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
                     ["storage", "response-storage"].includes(stage)
                   ? current!.failedStep
                   : Math.max(0, lastIndex),
-            ...(obsolete
-              ? { steps: [], optionalAttempts: {}, settings: {}, input: null, result: undefined, hasResult: false }
-              : {}),
+            ...(obsolete ? { steps: [], input: null, result: undefined, hasResult: false } : {}),
           };
         },
         paused || obsolete
@@ -1526,7 +1307,6 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
                 job.steps[lastIndex]?.responseClaim && unsubmittedSteps.has(job.steps[lastIndex].responseClaim!.id)
                   ? lastIndex
                   : undefined,
-              optional: [...unsubmittedOptional],
             }
           : undefined,
       );
@@ -1718,10 +1498,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       if (stopped || owner !== recoveryOwner) return;
       validateBackgroundJobRecord(record);
       const original = await responses.decode(record.data);
-      const interruptedDispatch =
-        original.owner !== owner &&
-        (original.steps.some((step) => step.status === "running") ||
-          Object.values(original.optionalAttempts ?? {}).some((attempt) => attempt.status === "dispatching"));
+      const interruptedDispatch = original.owner !== owner && original.steps.some((step) => step.status === "running");
       const job = await adoptLateResponses(record.id, original, documents);
       const recovering = (current: Job | null) => {
         if (
@@ -1910,7 +1687,6 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         status: job.status,
         label: job.label,
         input: job.input,
-        settings: job.settings ?? {},
         completedSteps,
         remainingRequests:
           ["completed", "obsolete"].includes(job.status) || job.hasResult || recovered

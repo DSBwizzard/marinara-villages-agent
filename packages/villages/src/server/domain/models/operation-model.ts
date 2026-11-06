@@ -11,10 +11,6 @@ export type VenueOperation = {
   turnOutcome?: import("../../../shared/contracts/scene-turn-outcome.js").SceneTurnOutcome;
   timing?: VenueTiming;
   failure?: WorkFailure;
-  optionalAttempts?: Record<
-    string,
-    { status: "dispatching" | "complete" | "unknown"; elapsedMs: number; result?: unknown }
-  >;
   id: string;
   kind: string;
   input: Record<string, unknown>;

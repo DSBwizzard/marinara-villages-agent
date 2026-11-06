@@ -79,10 +79,6 @@ export type Job = BackgroundInput & {
   owner: string;
   attempt: number;
   steps: Step[];
-  optionalAttempts?: Record<
-    string,
-    { status: "dispatching" | "complete" | "unknown"; elapsedMs: number; result?: unknown }
-  >;
   attemptHistory?: Array<{
     attempt: number;
     requests: number;
@@ -90,7 +86,6 @@ export type Job = BackgroundInput & {
     failure?: WorkFailure;
     steps: Array<Pick<Step, "key" | "status" | "timing" | "responseDiagnostics">>;
   }>;
-  settings: Record<string, unknown>;
   result?: unknown;
   hasResult: boolean;
   requests: number;

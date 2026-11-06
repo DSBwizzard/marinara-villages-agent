@@ -66,7 +66,6 @@ const base: SocialMailInput = {
     villagesLanguageModels: () => ({
       resolveForRequest: async ({ connectionId }: { connectionId: string }) => model(connectionId),
     }),
-    backgroundSetting: async (_key: string, work: () => unknown) => work(),
     completeWithRoom: async (
       selected: { connectionId: string },
       messages: { content: string }[],

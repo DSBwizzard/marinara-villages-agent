@@ -1238,14 +1238,10 @@ export function createRepairService(ports: RepairPorts) {
         const job = row.data as {
           status?: string;
           steps?: { status: string }[];
-          optionalAttempts?: Record<string, { status: string }>;
         };
         if (
           !["completed", "failed", "obsolete"].includes(job.status ?? "") ||
-          job.steps?.some((step) => step.status === "running") ||
-          Object.values(job.optionalAttempts ?? {}).some((attempt) =>
-            ["dispatching", "unknown"].includes(attempt.status),
-          )
+          job.steps?.some((step) => step.status === "running")
         )
           throw conflict("Resolve pending background work before restoring this checkpoint.");
         if ((row.data as { kind?: string }).kind === "world-development" && job.status === "failed")
@@ -1420,22 +1416,6 @@ export function createRepairService(ports: RepairPorts) {
           for (const receipt of receipts)
             if (!scene.generationReceipts.some((saved) => saved.attemptId === receipt.attemptId))
               scene.generationReceipts.push(structuredClone(receipt));
-          const terminalData = terminal?.data as
-            import("../../domain/models/scene-terminal-model.js").SceneTerminal | undefined;
-          const uncertain = Object.entries(terminalData?.optionalAttempts ?? {})
-            .filter(([, attempt]) => attempt.status === "unknown")
-            .map(([fingerprint]) => fingerprint);
-          if (uncertain.length && terminalData?.operation) {
-            const attemptId = `optional:${terminalData.operation.attemptId}`;
-            if (!scene.generationReceipts.some((saved) => saved.attemptId === attemptId))
-              scene.generationReceipts.push({
-                operationId: terminalData.operation.id,
-                attemptId,
-                stages: uncertain,
-                outcome: "unknown",
-                acknowledgedAt: terminalData.endedAt,
-              });
-          }
         }
         if (old) await documents.update({ ...value, packageId: PKG, expectedRevision: old.revision, updatedAt: stamp });
         else await documents.create({ ...value, packageId: PKG, createdAt: stamp, updatedAt: stamp });
