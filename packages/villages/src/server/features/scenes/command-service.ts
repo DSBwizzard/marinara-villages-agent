@@ -84,7 +84,6 @@ import {
 } from "../../domain/rules/venue-scene-state.js";
 import {
   canInviteToZone,
-  canOccupyZone,
   legacyZoneId,
   resolveVenueZone,
   venueInZone,
