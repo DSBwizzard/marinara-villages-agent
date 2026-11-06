@@ -34,7 +34,7 @@ import type {
 } from "../models/world.js";
 import { completeAgendaWeek, workingAgendaWeek } from "../rules/agenda-week.js";
 import { projectAgendaReservations, readProjectFocus } from "../rules/project-focus.js";
-import { decodeVillageClock } from "../rules/clock-recovery.js";
+import { decodeVillageClock } from "../rules/clock-state.js";
 import { asFraction, asIsoString, asRecord, asString, asStringArray, asTrimmedString } from "../rules/coerce.js";
 import { coerceFoundingTasks } from "../rules/founding-tasks.js";
 import { coerceLoreTokenBudget, coerceSelectedLorebookIds, DEFAULT_LORE_TOKEN_BUDGET } from "../rules/lore-policy.js";

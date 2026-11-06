@@ -978,8 +978,7 @@ export function createSocialMail(ports: SocialMailPorts) {
   async function presentation(scope?: string, settle = false) {
     let village = await ports.readVillageSnapshot();
     if (scope) assertScope(village, scope);
-    if (settle && !village.clock?.recovery && (await processOutbox(village)))
-      village = await ports.readVillageSnapshot();
+    if (settle && (await processOutbox(village))) village = await ports.readVillageSnapshot();
     if (scope) assertScope(village, scope);
     const state = await ports.readRelationshipState(village.seed);
     return createMailboxPresentation(village, state, await ports.backgroundWorkSummaries());
@@ -1100,7 +1099,6 @@ export function createSocialMail(ports: SocialMailPorts) {
     const village = await ports.readVillageSnapshot({ memories: true }),
       social = await ports.readRelationshipState(village.seed);
     assertScope(village, scope);
-    if (village.clock?.recovery) throw conflict("Resolve the village clock notice before retrying this letter.");
     const source = social.mailThreads[threadId]?.messages.find((row) => row.id === messageId);
     if (source?.replyUnavailable || (source && ["cancelled", "undeliverable"].includes(source.status)))
       throw conflict("This letter can no longer be delivered.");

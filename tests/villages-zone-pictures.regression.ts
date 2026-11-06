@@ -875,13 +875,18 @@ console.log(
     "a held observation cannot buy current hidden facts",
   );
   f.zone().observed = captureZoneObservation(f.world().venues[0], f.zone());
-  const release = configureVillageClock({ observe: async () => ({ paused: true }) } as VillageClockAuthority);
+  const clockFailure = new Error("Clock authority could not be read");
+  const release = configureVillageClock({
+    observe: async () => {
+      throw clockFailure;
+    },
+  } as VillageClockAuthority);
   try {
-    assert.equal(await live.canGenerateZonePicture("home", "living"), false, "paused Scenes cannot dispatch imagery");
-    assert.equal(
-      await live.canGenerateZonePicture("home", "living", undefined, true),
-      false,
-      "historical generation respects a global pause",
+    await assert.rejects(live.canGenerateZonePicture("home", "living"), (error) => error === clockFailure);
+    await assert.rejects(
+      live.canGenerateZonePicture("home", "living", undefined, true),
+      (error) => error === clockFailure,
+      "Historical artwork also requires clock observation",
     );
   } finally {
     release();

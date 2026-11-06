@@ -28,7 +28,7 @@ export function createVillageStateService(repository: VillageRepository, worldRe
 
   async function readVillageState(options?: VillageMemoryRead): Promise<VillageState> {
     let state = await readVillageSnapshot(options);
-    if (state.seed && !state.clock?.recovery) {
+    if (state.seed) {
       const { readRelationshipState, reconcileRelationships } = worldRelationships();
       const { projectSocialActivities, processSocialOutbox, reconcileSocialPlans } = worldRelationships();
       const mailChanged = await worldRelationships().processPersonalMailOutbox?.(state);

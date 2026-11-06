@@ -9,7 +9,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 import { SESSION_PREFIX, sessionSlot } from "../../adapters/storage/scene-slots.js";
 import { createSceneHistory } from "../../adapters/storage/scene-history.js";
-import { villageClockShiftMs, villageNow } from "../../adapters/time/clock-gate.js";
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
 import type { InterpretationBatch } from "../../domain/models/interpretation-model.js";
 import type {
@@ -1007,7 +1007,6 @@ export function createSceneCommands({
       startedAt: sceneAttendance.capturedAt,
       endedAt: "",
       lastActivityAt: villageNow().toISOString(),
-      clockShiftMs: villageClockShiftMs(),
       endReason: "",
       memoryMode: "live",
       status: participants.length === 0 && !discovery ? "active" : "opening",

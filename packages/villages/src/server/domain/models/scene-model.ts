@@ -223,7 +223,6 @@ export type VenueScene = {
   startedAt: string;
   endedAt: string;
   lastActivityAt: string;
-  clockShiftMs?: number;
   endReason: "player" | "scene" | "inactivity" | "debug" | "";
   memoryMode: "live";
   status: "opening" | "active" | "closing" | "closed";

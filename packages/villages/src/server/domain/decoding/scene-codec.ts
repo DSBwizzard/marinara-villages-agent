@@ -310,7 +310,6 @@ export function coerceSession(value: unknown): VenueScene {
     ...(raw.continuity !== undefined ? { continuity: readSceneContinuity(raw.continuity) } : {}),
     endedAt: asString(raw.endedAt),
     lastActivityAt: asString(raw.lastActivityAt) || asString(raw.startedAt),
-    clockShiftMs: typeof raw.clockShiftMs === "number" && Number.isFinite(raw.clockShiftMs) ? raw.clockShiftMs : 0,
     endReason:
       raw.endReason === "player" ||
       raw.endReason === "scene" ||
