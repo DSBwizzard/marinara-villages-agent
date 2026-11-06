@@ -17,7 +17,6 @@ import { DESKTOP_PHOTO_SCALE, ELEMENT_TAG } from "../../shared/constants.js";
 import { clamp, round4 } from "../../shared/presentation.js";
 import type { MapFrameShape, MapPin, MapZoomRange, PictureBox } from "../../shared/types.js";
 import { ExplorationMarkers, type ExplorationPin } from "./villages-exploration";
-export type { MobileMapView } from "./villages-mobile-map.js";
 import {
   focusedPhotoScale,
   mobileCoverZoom,
@@ -29,6 +28,7 @@ import {
   mobilePhotoScale,
 } from "./villages-mobile-map";
 import { VenuePolaroid } from "./villages-venue-polaroid.js";
+export type { MobileMapView } from "./villages-mobile-map.js";
 
 /**
  * How far under a place its people stack, as a fraction of the picture.
@@ -60,32 +60,6 @@ export const TOWN_MAP_FITS: readonly { fit: TownMapFit; label: string; help: str
     help: "Keeps the whole picture and leaves the frame's own background showing around it.",
   },
 ];
-
-/**
- * What is actually true of a picture, said plainly, before the player picks a
- * fit. The three outcomes are different enough to be worth different advice:
- * a picture at the map's shape needs none, a bigger one only needs to be aimed,
- * and a smaller one has to be warned about because filling the frame with it
- * means inventing pixels.
- */
-export function pictureAdvice(size: { width: number; height: number }): { tone: "ok" | "warn"; text: string } {
-  if (size.width / size.height < 1.2) {
-    return {
-      tone: "warn",
-      text: `This ${size.width}×${size.height} map is nearly square or portrait. It will fit in full, but navigation may feel cramped on a wide desktop.`,
-    };
-  }
-  if (size.width < 1024 || size.height < 700) {
-    return {
-      tone: "warn",
-      text: `This ${size.width}×${size.height} map will fit in full, but it may look soft when enlarged.`,
-    };
-  }
-  return {
-    tone: "ok",
-    text: `This ${size.width}×${size.height} map will be shown at its native shape, with the whole image visible.`,
-  };
-}
 
 /** One bundled blueprint serves every unfinished New Venue and Renovation. */
 export const PROJECT_BLUEPRINT_IMAGE = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 440"><rect width="640" height="440" fill="#11285b"/><g stroke="#6c9bd5" opacity=".34" stroke-width="1"><path d="M0 40H640M0 80H640M0 120H640M0 160H640M0 200H640M0 240H640M0 280H640M0 320H640M0 360H640M0 400H640M40 0V440M80 0V440M120 0V440M160 0V440M200 0V440M240 0V440M280 0V440M320 0V440M360 0V440M400 0V440M440 0V440M480 0V440M520 0V440M560 0V440M600 0V440"/></g><g fill="none" stroke="#d7e9ff" stroke-width="5" stroke-linejoin="round"><path d="M110 195 320 88 530 195 320 302Z"/><path d="M110 195v150l210 87 210-87V195M320 302v130"/><path d="M212 153v89l108 46 108-46v-89M257 128v76l63 29 63-29v-76"/><path d="M160 221v72l95 40v-72zM385 334l95-40v-72l-95 40z"/></g><g fill="#d7e9ff" font-family="Arial,sans-serif" letter-spacing="9" text-anchor="middle"><text x="320" y="48" font-size="22">VILLAGE PROJECT</text></g></svg>`)}`;

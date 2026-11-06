@@ -2,15 +2,14 @@ import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import type { VenueLine, VenueScene } from "../../domain/models/scene-model.js";
 import type { HistoryPageRef, HistoryPageTree, MemoryPageData } from "./memory-pages.js";
 import {
-  sceneRecordWorld,
-  readSceneRecordHead,
-  readSceneRecordPositions,
-  encodeSceneRecords,
+  createSceneRecordStore,
+  createSceneRecordTracer,
   decodeSceneRecords,
   decodeSceneRecordsSync,
-  createSceneRecordStore,
+  encodeSceneRecords,
+  readSceneRecordHead,
+  readSceneRecordPositions,
   sceneRecordStore,
-  createSceneRecordTracer,
   type SceneRecordHead,
 } from "./scene-record-pages.js";
 
@@ -18,7 +17,6 @@ type Owner = Pick<VenueScene, "id" | "villageSeed">;
 export type SceneTranscriptHead = { format: 1; world: string; count: number; lines: HistoryPageRef | null };
 const internal = ({ lines, ...head }: SceneTranscriptHead): SceneRecordHead => ({ ...head, root: lines });
 const external = ({ root, ...head }: SceneRecordHead): SceneTranscriptHead => ({ ...head, lines: root });
-export const sceneTranscriptWorld = (owner: Owner) => sceneRecordWorld(owner, "lines");
 export function readSceneTranscriptHead(value: unknown, owner: Owner): SceneTranscriptHead {
   return external(readSceneRecordHead(value, owner, "lines"));
 }

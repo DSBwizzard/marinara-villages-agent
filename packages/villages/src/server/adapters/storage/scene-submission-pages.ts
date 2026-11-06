@@ -3,27 +3,27 @@ import type { VenueScene, VenueSubmission } from "../../domain/models/scene-mode
 import type { CapturedWishSnapshot } from "../../domain/models/wish-check-model.js";
 import { memoryRequire } from "../../domain/rules/memory-integrity.js";
 import { isImmutableSceneSubmission } from "../../domain/rules/scene-submissions.js";
-import {
-  createSceneWishContexts,
-  capturedWishReferences,
-  readCapturedWishSnapshot,
-  capturedWishSnapshotKey,
-  assertCapturedWishOwners,
-} from "./scene-wish-contexts.js";
-import { operationEvidenceStore } from "./operation-evidence.js";
-import { createWishHistoryTracer } from "./wish-history.js";
 import type { HistoryPageRef, HistoryPageTree, MemoryPageData } from "./memory-pages.js";
+import { operationEvidenceStore } from "./operation-evidence.js";
 import {
-  sceneRecordWorld,
-  readSceneRecordHead,
-  encodeSceneRecords,
+  createSceneRecordStore,
+  createSceneRecordTracer,
   decodeSceneRecords,
   decodeSceneRecordsSync,
-  createSceneRecordStore,
+  encodeSceneRecords,
+  readSceneRecordHead,
   sceneRecordStore,
-  createSceneRecordTracer,
+  sceneRecordWorld,
   type SceneRecordHead,
 } from "./scene-record-pages.js";
+import {
+  assertCapturedWishOwners,
+  capturedWishReferences,
+  capturedWishSnapshotKey,
+  createSceneWishContexts,
+  readCapturedWishSnapshot,
+} from "./scene-wish-contexts.js";
+import { createWishHistoryTracer } from "./wish-history.js";
 
 type Owner = Pick<VenueScene, "id" | "villageSeed" | "continuity" | "operation">;
 export type SceneSubmissionHead = { format: 1; world: string; count: number; submissions: HistoryPageRef | null };
@@ -153,9 +153,6 @@ function submissionStore(
       return external(head);
     },
   };
-}
-export function createSceneSubmissionStore(documents: Pick<CapabilityDocumentStore, "getById" | "create">) {
-  return submissionStore(createSceneRecordStore(documents, "submissions"), documents);
 }
 export function sceneSubmissionStore(documents: CapabilityDocumentStore) {
   return submissionStore(sceneRecordStore(documents, "submissions"), documents);

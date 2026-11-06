@@ -168,10 +168,8 @@ export const clientFeatureInterfaces = Object.freeze({
   "residents/ResidentPanels.tsx": ["AvatarFace", "readAvatarCrop"],
   "residents/SpriteSetupDialog.tsx": ["SpriteSetupDialog"],
   "residents/villages-dossier.tsx": ["DossierNavigation"],
-  "settings/SettingsPanels.tsx": ["AgentConnections"],
   "settings/AgentConnections.tsx": ["AgentConnections"],
   "settings/villages-decisions-control.tsx": ["DecisionsControl"],
   "settings/villages-saved-changes.tsx": ["SavedChangesDiagnostics"],
   "venues/VenuePanels.tsx": ["MailboxImprovementEditor", "VENUE_CLASS_CHOICES", "VenueDraftFields"],
-  "venues/villages-venue-access.tsx": ["ZonePolicyFields"],
 });

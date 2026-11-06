@@ -21,10 +21,6 @@ export function asStringArray(value: unknown): string[] {
   return value.map((entry) => asTrimmedString(entry)).filter((entry) => entry.length > 0);
 }
 
-export function asPositiveInt(value: unknown, fallback: number): number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 1 ? Math.floor(value) : fallback;
-}
-
 export function asIsoString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }

@@ -1,12 +1,12 @@
-import { acousticFingerprint } from "./scene-acoustics.js";
-import { attentionQuotes, attentionSourceSpan, sourceAttentionCheck } from "./attention-sources.js";
+import type { InterpretationCheck, InterpretationResult } from "../models/interpretation-check-model.js";
 import type { VenueScene } from "../models/scene-model.js";
 import type { VillageVenue } from "../models/world.js";
-import { contactNeighbors, contactPosition, type DoorwayContact } from "./venue-contact.js";
+import { attentionQuotes, attentionSourceSpan, sourceAttentionCheck } from "./attention-sources.js";
 import { asRecord } from "./coerce.js";
-import type { InterpretationCheck, InterpretationResult } from "../models/interpretation-check-model.js";
 import { validDecisionEvidence } from "./decision-candidates.js";
 import { fingerprint } from "./interpretation-rules.js";
+import { acousticFingerprint } from "./scene-acoustics.js";
+import { contactNeighbors, contactPosition, type DoorwayContact } from "./venue-contact.js";
 
 /** Private, cited routing proposals. They establish neither hearing nor physical success. */
 export type AttentionFragment = {
@@ -215,18 +215,6 @@ export function validAttentionPlan(plan: AttentionPlan, message: string, venue: 
     (plan.validation.fingerprint === attentionPlanFingerprint(plan, message, venue, scene) ||
       (plan.validation.version === 2 &&
         plan.validation.fingerprint === attentionPlanFingerprint(plan, message, venue, scene, true)))
-  );
-}
-
-export function holdAttentionPlan(message: string, venue: VillageVenue, scene: VenueScene): AttentionPlan {
-  return bindAttentionPlan(
-    {
-      ...clarifyAttention(),
-      question: "This saved action needs fresh interpretation. Edit the draft before sending it again.",
-    },
-    message,
-    venue,
-    scene,
   );
 }
 

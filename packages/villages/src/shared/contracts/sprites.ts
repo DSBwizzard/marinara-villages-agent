@@ -1,7 +1,5 @@
 export type SpriteView = "front" | "side";
 export const SPRITE_CANVAS = { width: 1024, height: 1536, margin: 32, baseline: 1504, bodyHeight: 1280 };
-export const SPRITE_UPLOAD_GUIDANCE =
-  "Recommended: transparent PNG, 1024 × 1536 pixels. Include one complete character with space around the silhouette. Side views must face right; Villages mirrors them. Use consistent body proportions across expressions. Smaller images also work; adjust size and foot position in the preview.";
 export type SpriteExpression = { id: string; name: string };
 export type SpriteFrame = {
   x: number;
