@@ -33,7 +33,7 @@ function fixture(label: string) {
         description: "",
         revision: 1,
         data: {
-          version: 3,
+          version: 4,
           id: "same-scene",
           status: "active",
           sceneRevision: 0,

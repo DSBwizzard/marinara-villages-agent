@@ -117,8 +117,9 @@ async function main() {
       staging: { prose: "render-only ".repeat(80) },
     }));
     const historyScene = {
-      version: 3,
+      version: 4,
       id: "supper",
+      startedAt: "2026-11-01T12:00:00.000Z",
       activeIds: ["a", "b", "c"],
       lines: rows,
       placeId: "missing",
@@ -167,6 +168,7 @@ async function main() {
     state.villagers[0].wishes = [wish];
     const scene = {
       id: "wish-evidence",
+      startedAt: "2026-11-01T12:00:00.000Z",
       activeIds: ["a"],
       lines: [],
       placeId: "missing",
@@ -213,7 +215,13 @@ async function main() {
       },
     ];
     state.villagers[0].wishes = [open, ...archive];
-    const scene = { id: "archive", activeIds: ["a"], lines: [], placeId: "missing" } as any;
+    const scene = {
+      id: "archive",
+      startedAt: "2026-11-01T12:00:00.000Z",
+      activeIds: ["a"],
+      lines: [],
+      placeId: "missing",
+    } as any;
     const before = JSON.stringify(state);
     const selected = semanticContext(scene, state, "Hello there", true);
     assert.deepEqual(selected.actors[0].wishes, [open], "Unrelated closed history cannot crowd out ordinary speech");
@@ -367,7 +375,7 @@ async function main() {
   state.villagers = [{ characterId: "host", cardSnapshot: { id: "host", name: "Host" }, wishes: [] }] as any;
   const stamp = "2026-11-05T20:00:00.000Z";
   const scene = coerceSession({
-    version: 3,
+    version: 4,
     id: "scene",
     placeId: venue.id,
     zoneId: "common",

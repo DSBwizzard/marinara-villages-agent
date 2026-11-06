@@ -21,8 +21,8 @@ function put(id: string, kind: string, data: unknown = {}) {
     updatedAt: stamp,
   });
 }
-const closed = coerceSession({ version: 3, id: "closed", status: "closed", startedAt: stamp });
-const active = coerceSession({ version: 3, id: "active", status: "active", startedAt: stamp });
+const closed = coerceSession({ version: 4, id: "closed", status: "closed", startedAt: stamp });
+const active = coerceSession({ version: 4, id: "active", status: "active", startedAt: stamp });
 put(SESSION_PREFIX + closed.id, SESSION_KIND, closed);
 put(SESSION_PREFIX + active.id, SESSION_KIND, active);
 put("terminal", "scene-terminal");
@@ -51,7 +51,7 @@ const otherPages = new Map<string, Document>();
 documents.get(SESSION_PREFIX + "closed")!.data = authorSceneFixture(
   otherPages,
   coerceSession({
-    version: 3,
+    version: 4,
     id: "other",
     status: "closed",
     startedAt: stamp,

@@ -117,7 +117,7 @@ assert.deepEqual(
 );
 
 const base: any = {
-  version: 3,
+  version: 4,
   id: "s",
   placeId: "house",
   zoneId: "exterior",

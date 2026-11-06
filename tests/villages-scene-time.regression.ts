@@ -66,7 +66,7 @@ function fixture() {
     connection: "Friends",
   };
   const scene = coerceSession({
-    version: 3,
+    version: 4,
     id: "morning",
     processingVersion: 1,
     villageSeed: state.seed,
@@ -199,7 +199,7 @@ function learn(state: VillageState, text: string, sceneId?: string) {
   assert.equal(restored.facts.villagers[0]!.wishes[0]!.id, "ride");
   assert.equal(restored.facts.relationshipContext!.edges[relationshipKey("a", "player")]!.connection, "Friends");
   assert.throws(
-    () => coerceSession({ version: 3, ...scene, continuity: { ...scene.continuity, version: 99 } }),
+    () => coerceSession({ version: 4, ...scene, continuity: { ...scene.continuity, version: 99 } }),
     /captured context/,
   );
 }

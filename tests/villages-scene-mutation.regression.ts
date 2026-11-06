@@ -8,7 +8,7 @@ import { fixtureWish } from "./helpers/social-wishes-fixture.js";
 const stamp = "2026-10-06T12:00:00.000Z";
 function scene(submissions: unknown[] = []) {
   return coerceSession({
-    version: 3,
+    version: 4,
     id: "scene",
     placeId: "venue",
     zoneId: "exterior",

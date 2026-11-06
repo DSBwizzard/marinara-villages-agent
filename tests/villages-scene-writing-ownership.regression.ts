@@ -31,7 +31,7 @@ function fixture(label: string, checkpointed = false) {
   world.name = label;
   world.foundedAt = world.setupAt = stamp;
   const scene = coerceSession({
-    version: 3,
+    version: 4,
     gmVersion: 1,
     semanticVersion: 2,
     id: "same-scene",

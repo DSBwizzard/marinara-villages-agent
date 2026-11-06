@@ -171,7 +171,7 @@ for (const count of [1000, 10_000, 25_000]) {
       mutateRelationships: api.mutateRelationships,
     });
     const scene = coerceSession({
-      version: 3,
+      version: 4,
       id: "paged-ack",
       villageSeed: scope.seed,
       status: "active",

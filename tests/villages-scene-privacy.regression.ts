@@ -18,7 +18,7 @@ import type { VenueScene } from "../packages/villages/src/server/domain/models/s
 async function main() {
   for (const status of ["prepared", "running", "returned", "resolved"]) {
     const retired = {
-      version: 3,
+      version: 4,
       id: "retired",
       participants: [],
       lines: [],

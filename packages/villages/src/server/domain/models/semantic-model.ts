@@ -12,9 +12,6 @@ export interface SemanticInterpreter {
       context: ReturnType<typeof import("../rules/semantic-contract.js").semanticContext>;
       presentation: import("../rules/sprite-expressions.js").SpriteSelectionContext;
     },
-    prepared?: SemanticIntent | null,
-    residentActions?: import("../rules/resident-actions.js").ResidentAccessAction[],
-    residentActionsOmitted?: boolean,
     narrativeGrant?: import("./narrative-model.js").NarrativeAdmission | null,
     zoneEventSource?: Record<string, unknown>,
   ): Promise<SemanticExchange>;
@@ -47,7 +44,6 @@ export type SemanticExchange = {
   draftBoundaryViolation?: import("../rules/scene-halt.js").SceneBoundaryFinding;
   turnOutcome?: import("../../../shared/contracts/scene-turn-outcome.js").SceneTurnOutcome;
   intent?: SemanticIntent;
-  checkpointKey: string;
   authority: { physical: boolean; access: boolean; projects: boolean; standing: boolean; social?: boolean };
   version: 2;
   sourceHash: string;
@@ -61,7 +57,6 @@ export type SemanticProvenance = {
   occurrenceVersion?: 1;
   turnPolicyVersion?: 1;
   pipelineVersion?: 3;
-  residentActionsVersion?: 1 | 2;
   hearingTimelineVersion?: 1;
   authority?: SemanticExchange["authority"];
   version: 2;

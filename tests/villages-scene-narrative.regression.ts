@@ -49,7 +49,7 @@ function fixture() {
   ensureNarrative(state, at);
   const selected = admitNarrative(state, at, "selection")!.targets[0]!;
   const scene = coerceSession({
-    version: 3,
+    version: 4,
     gmVersion: 1,
     id: "scene",
     placeId: venue.id,

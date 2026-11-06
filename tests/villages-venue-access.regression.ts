@@ -249,7 +249,7 @@ for (const scenario of [
   world.venues = [home];
   const target = home.zones!.find((zone) => zone.id === "office")!;
   const scene = coerceSession({
-    version: 3,
+    version: 4,
     id: "escort-scene",
     villageSeed: world.seed,
     placeId: home.id,
@@ -1129,7 +1129,7 @@ async function main() {
       0,
     );
     const speechScene = {
-      version: 3,
+      version: 4,
       id: "speech-scene",
       placeId: "home",
       lines: [{ ...draft[0], id: "speech-line" }],
@@ -1221,7 +1221,7 @@ async function main() {
       0,
     );
     const recoveryScene = {
-      version: 3,
+      version: 4,
       id: "recovery-scene",
       placeId: "home",
       lines: [{ ...recoveryDraft[0], id: "recovery-line" }],

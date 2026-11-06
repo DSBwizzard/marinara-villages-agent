@@ -535,7 +535,7 @@ async function main() {
     "Final image fitting counts actual occurrences, not substring matches",
   );
   const savedScene = coerceSession({
-    version: 3,
+    version: 4,
     id: "lore",
     sceneRevision: 1,
     placeId: "harbor",
@@ -608,7 +608,7 @@ async function main() {
       writingCapabilities: { management: false, movement: false, residences: false, residenceDecision: false },
     };
     const scene = coerceSession({
-      version: 3,
+      version: 4,
       gmVersion: 1,
       semanticVersion: 2,
       id: "gm-lore",

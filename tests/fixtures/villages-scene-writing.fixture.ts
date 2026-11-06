@@ -55,7 +55,7 @@ export async function currentScenePrompt(
     "all supplied residents, including hidden actors, survive current save decoding",
   );
   const session = coerceSession({
-    version: 3,
+    version: 4,
     gmVersion: 1,
     semanticVersion: 2,
     id: "prompt-fixture",

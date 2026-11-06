@@ -18,7 +18,7 @@ const choice = { chosenAt: "2026-10-15T20:00:00Z", timeZone: "America/Los_Angele
 const clear = { reason: "none", quote: "", appointments: [] };
 await runCase("scene-halt/captured-calendar", () => {
   const scene = coerceSession({
-    version: 3,
+    version: 4,
     startedAt: "2026-10-19T14:00:00.000Z",
     lines: [{ content: "Thursday. Early Thursday." }],
   });
@@ -138,7 +138,7 @@ await runCase("scene-halt/world", () => {
   ] as any;
   world.venues[0].zones![0].description = "A folded cloth lies here.";
   const scene = coerceSession({
-    version: 3,
+    version: 4,
     id: "scene",
     villageSeed: world.seed,
     placeId: "house",

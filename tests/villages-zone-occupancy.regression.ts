@@ -155,7 +155,7 @@ assert.equal(zoneActivityFits(state, ids.slice(0, 4), "hall", "b", 720, 780, at)
 assert.equal(zoneActivityFits(state, ids.slice(0, 2), "home0", "exterior", 720, 780, at), true);
 
 const scene = coerceSession({
-  version: 3,
+  version: 4,
   id: "crowd",
   villageSeed: state.seed,
   placeId: "hall",
@@ -220,7 +220,7 @@ assert.equal(
   });
   resolveVenueZone(venue, "a")!.connectedTo!.push("hidden");
   const saved = coerceSession({
-    version: 3,
+    version: 4,
     ...scene,
     activeIds: ids.slice(0, 4),
     sceneAttendance: captureSceneAttendance(state, venue.id, at),
@@ -430,7 +430,7 @@ assert.equal(paint.description, "A yellow motorcycle.", "closing never replays a
   zone.ownerId = ids[0];
   zone.description = "blue motorcycle";
   const saved = coerceSession({
-    version: 3,
+    version: 4,
     ...scene,
     id: "ownership-fence",
     status: "active",
@@ -470,7 +470,7 @@ assert.equal(paint.description, "A yellow motorcycle.", "closing never replays a
 // Village polling and Scene navigation survive background removal of the captured current Zone.
 {
   const { state, ids } = fixture(4);
-  const saved = coerceSession({ version: 3, ...scene, id: "removed-zone", status: "active", continuity: undefined });
+  const saved = coerceSession({ version: 4, ...scene, id: "removed-zone", status: "active", continuity: undefined });
   saved.continuity = captureSceneContinuity(state, saved, at.getTime());
   state.venues[0].zones = state.venues[0].zones!.filter((zone) => zone.id !== "a");
   resolveVenueZone(state.venues[0], "b")!.closed = true;
@@ -501,7 +501,7 @@ assert.equal(paint.description, "A yellow motorcycle.", "closing never replays a
   initializeVenueAccess(venue);
   venue.access!.managerIds = [ids[0]];
   const saved = coerceSession({
-    version: 3,
+    version: 4,
     ...scene,
     id: "access-recovery",
     status: "active",
@@ -612,7 +612,7 @@ assert.equal(paint.description, "A yellow motorcycle.", "closing never replays a
     ...neutralRelationship(ids[0], "player"),
     connection: "Friends",
   };
-  const saved = coerceSession({ version: 3, ...scene, id: "friendship", status: "active", continuity: undefined });
+  const saved = coerceSession({ version: 4, ...scene, id: "friendship", status: "active", continuity: undefined });
   saved.continuity = captureSceneContinuity(state, saved, at.getTime());
   assert.equal(contactCanEnter(state, venue, "b", "player", saved), false);
   state.relationshipContext.receipts.friend = {
@@ -639,7 +639,7 @@ assert.equal(paint.description, "A yellow motorcycle.", "closing never replays a
   venue.access!.managerIds = [ids[1]];
   resolveVenueZone(venue, "b")!.preparation = { status: "pending" };
   let saved = coerceSession({
-    version: 3,
+    version: 4,
     ...scene,
     id: "forced",
     status: "active",

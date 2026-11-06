@@ -7,25 +7,10 @@ import { isSceneAside, speechDelivery } from "../../../shared/helpers/scene-spee
 import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
 import { readStagingCues } from "../../../shared/helpers/scene-staging.js";
 
-/** Fresh v6 admissions opt in; paid unmarked work retains its original reach. */
+/** Loud sound reaches at most two captured Zone connections. */
 export function zoneSoundRange(scene: VenueScene, venue: VillageVenue, origin: string): string[] {
   const adjacent = contactNeighbors(venue, origin, scene);
   return [...new Set([origin, ...adjacent, ...adjacent.flatMap((id) => contactNeighbors(venue, id, scene))])];
-}
-const LEGACY_HEARING_CONTRACT =
-  "Ordinary speech/asides and sound reach the source and directly connected Zones. Explicit shouting (delivery:shout) or actually very loud sound (loud:true) alerts the Venue; words are clear only locally/adjacently, farther listeners perceive indistinct noise.";
-export function zoneHearingContract(scene: VenueScene): string {
-  return scene.operation?.input.soundHopVersion === 1
-    ? "Ordinary words are clear only in the source Zone. Directly connected Zones hear indistinct voices or ordinary sound. Explicit shouting (delivery:shout) or very loud sound (loud:true) reaches at most two connections; shouted words carry to directly connected Zones, while farther listeners hear indistinct noise."
-    : LEGACY_HEARING_CONTRACT;
-}
-export function zoneEventContract(scene: VenueScene): string {
-  return scene.operation?.input.soundHopVersion === 1
-    ? ZONE_EVENT_CONTRACT.replace(LEGACY_HEARING_CONTRACT, zoneHearingContract(scene)).replace(
-        "Venue-wide shouts",
-        "connected-Zone shouts",
-      ) + "\nEvery connection behaves alike. Drawing distance changes neither movement nor sound."
-    : ZONE_EVENT_CONTRACT;
 }
 
 /** Invalid writer metadata, independent of System's movement interpretation. */
@@ -95,7 +80,6 @@ export function zoneEventScene(
   const offered = [
     ...new Map([...required, ...candidates].map((person) => [person.characterId, person])).values(),
   ].slice(0, Math.max(4, required.length));
-  const bounded = !scene.operation || scene.operation.input.castLimitVersion === 1;
   const priority = [
     ...named.filter((person) => person.characterId === intent.targetId).map((person) => person.characterId),
     ...named.map((person) => person.characterId),
@@ -103,8 +87,8 @@ export function zoneEventScene(
     ...scene.activeIds,
     ...offered.map((person) => person.characterId),
   ];
-  const actorIds = bounded ? [...new Set(priority)].slice(0, MAX_ZONE_VILLAGERS) : undefined;
-  const selected = actorIds ?? [...scene.activeIds, ...offered.map((person) => person.characterId)];
+  const actorIds = [...new Set(priority)].slice(0, MAX_ZONE_VILLAGERS);
+  const selected = actorIds;
   const cast = selected.flatMap((id) => {
     const person =
       scene.participants.find((entry) => entry.characterId === id) ??
@@ -131,19 +115,6 @@ export const ZONE_PLAYER_SPEECH_CONTRACT =
 export const ZONE_SOUND_CONTRACT =
   "Player/supplied-resident noise uses narration.sound:{sourceId,text,loud?:true}; audible-only text,max300 chars. Ambience stays observable narration only,no sound or remote witnesses. No invented sources/impacts/unseen activity, silence/thought/speech tags, repeats or sound-effect captions. Sound proves no deed.";
 
-export const ZONE_EVENT_CONTRACT = [
-  "ZONE EVENTS. Resolve this turn in one response. Code routes sound. Return no listener lists, hearing/comprehension flags, attentionWitnesses, acousticReplies or acousticEvents.",
-  'Ordered segments: speech {kind:"dialogue",speakerId,text,delivery:"ordinary|whisper|shout",presentation:"main|aside",targetId?}; narration {kind:"narration",text,sound?:{sourceId,text,loud?:true}}. Each key occurs ONCE. Whisper is delivery, never kind, and requires targetId. Either presentation supports every delivery; placement never changes hearing. Include a visible main moment for asides. Offstage speech is dialogue.',
-  "Write natural prose, including audible events in their relevant action or reaction. Offscreen sounds reveal only perceptible qualities/direction, never unseen identity, objects, activity or rooms. Do not duplicate noises, add filler sound or use detached sound-effect captions; a meaningful sound may stand alone.",
-  ZONE_SOUND_CONTRACT,
-  ZONE_PLAYER_SPEECH_CONTRACT,
-  LEGACY_HEARING_CONTRACT +
-    " Whispers reach only their local addressee. Permissions never block sound; sound grants no entry. No cross-Venue sound.",
-  "Use captured Scene positions and completed segment movements. Visual narration/gestures are witnessed only in the player's Zone; thoughts are private. Remote residents know only reachable audio and their own witnessed history, never surrounding player narration, private thoughts, unseen actions or others' private knowledge.",
-  "Residents may occasionally initiate brief offstage speech/sounds from existing activity without hearing the player; do not force everyone to react or repeat noises. Each reaction uses ONLY preceding perceptible events: local visuals, reachable ordinary audio, directed local whispers or indistinct distant shouts. A source-private activity is not shared knowledge. Never react beyond reach, even to events you wrote, infer an unseen identity/location/activity or explain silence. Quiet distant sounds support no local reaction. Do not invent doors blocking Venue-wide shouts. Hearing forces no reply, consent, waking or movement. Remote dialogue reveals no unseen gestures/interiors.",
-  'Evidence uses numeric segment indexes (including player speech) or supplied earlier IDs, never unfiltered "player" input. Narration proves full visual text only locally; remote sound listeners cannot cite surrounding actions. Distant shouts prove no words. Omit routine noise memories; receiving sound requires no updates. No recap, contactIntent, contactRelay or player movement. Physical changes still need validated placeUpdate: sound proves no repair, transfer, permission or lasting effect.',
-].join("\n");
-
 /** The writer needs reach relationships, not the names of hidden occupied rooms. */
 export function zoneEventHearingContext(scene: VenueScene, venue: VillageVenue): string {
   const actors = ["player", ...scene.participants.map((person) => person.characterId)];
@@ -157,21 +128,12 @@ export function zoneEventHearingContext(scene: VenueScene, venue: VillageVenue):
         return {
           source,
           onstage: origin === position("player"),
-          wordsReach: actors.filter((id) =>
-            scene.operation?.input.soundHopVersion === 1 ? position(id) === origin : near.includes(position(id)),
-          ),
-          ...(scene.operation?.input.soundHopVersion === 1
-            ? {
-                raisedWordsReach: actors.filter((id) => near.includes(position(id))),
-                muffledVoicesReach: actors.filter((id) => near.includes(position(id)) && position(id) !== origin),
-              }
-            : {}),
+          wordsReach: actors.filter((id) => position(id) === origin),
+          raisedWordsReach: actors.filter((id) => near.includes(position(id))),
+          muffledVoicesReach: actors.filter((id) => near.includes(position(id)) && position(id) !== origin),
           whisperTargets: actors.filter((id) => id !== source && position(id) === origin),
           alertOnly: actors.filter(
-            (id) =>
-              !near.includes(position(id)) &&
-              (scene.operation?.input.soundHopVersion !== 1 ||
-                zoneSoundRange(scene, venue, origin).includes(position(id))),
+            (id) => !near.includes(position(id)) && zoneSoundRange(scene, venue, origin).includes(position(id)),
           ),
         };
       }),
@@ -311,17 +273,16 @@ export function routeZoneEvents(
     const near = [origin, ...contactNeighbors(venue, origin, scene)];
     const spoken = line.kind === "dialogue" || line.kind === "side";
     const loud = sound ? row.loud === true : speechDelivery(line) === "shout" && spoken;
-    const bounded = scene.operation?.input.soundHopVersion === 1;
     const loudZones = zoneSoundRange(scene, venue, origin);
-    const loudIds = bounded ? inZones(loudZones, index) : ids;
-    const playerLoud = !bounded || loudZones.includes(playerZone);
+    const loudIds = inZones(loudZones, index);
+    const playerLoud = loudZones.includes(playerZone);
     const playerNear = near.includes(playerZone);
     line.heardBy = sound
       ? loud
         ? loudIds
         : inZones(near, index)
       : spoken
-        ? bounded && !loud
+        ? !loud
           ? local
           : inZones(near, index)
         : local;
@@ -345,7 +306,7 @@ export function routeZoneEvents(
     } else if (line.kind !== "narration") {
       line.viaDoorway = origin !== playerZone;
       line.contactHidden =
-        (bounded && !loud && spoken ? origin !== playerZone : !playerNear) ||
+        (!loud && spoken ? origin !== playerZone : !playerNear) ||
         (speechDelivery(line) === "whisper" && line.targetId !== "player");
     }
     if (row.sound !== undefined) {
@@ -370,24 +331,21 @@ export function routeZoneEvents(
         if (!sourceZone) throw badGateway("The reply used an unknown sound source. Your draft is preserved.");
         const soundZones = [sourceZone, ...contactNeighbors(venue, sourceZone, scene)];
         const loudRange = zoneSoundRange(scene, venue, sourceZone);
-        if (cue.loud === true ? bounded && !loudRange.includes(playerZone) : !soundZones.includes(playerZone))
+        if (cue.loud === true ? !loudRange.includes(playerZone) : !soundZones.includes(playerZone))
           throw badGateway("The reply narrated a sound outside hearing range. Your draft is preserved.");
         // Full prose remains local. Other listeners receive only the acoustic cue,
         // under this same line ID; neither visuals nor evidence audiences expand.
         line.soundOnly = {
-          characterIds: (cue.loud === true
-            ? bounded
-              ? inZones(loudRange, index)
-              : ids
-            : inZones(soundZones, index)
-          ).filter((id) => !local.includes(id)),
+          characterIds: (cue.loud === true ? inZones(loudRange, index) : inZones(soundZones, index)).filter(
+            (id) => !local.includes(id),
+          ),
           player: false,
           text,
         };
       }
     }
-    if (spoken && (loud || bounded)) {
-      const wordZones = loud || !bounded ? near : [origin];
+    if (spoken) {
+      const wordZones = loud ? near : [origin];
       const audibleIds = loud ? loudIds : inZones(near, index);
       const distant = audibleIds.filter((id) => !wordZones.includes(position(id, index)));
       const playerNoise = !wordZones.includes(playerZone) && (loud ? playerLoud : playerNear);

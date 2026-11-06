@@ -74,7 +74,7 @@ function fixture(name: string) {
   }
   function add(id = "same") {
     const saved = coerceSession({
-      version: 3,
+      version: 4,
       id,
       placeId: "venue",
       placeName: name,

@@ -31,7 +31,7 @@ const batch: InterpretationBatch = {
   results: [{ outcome: "invite-now", source: "gm", evidenceIds: ["answer"], reason: "Current witnessed invitation" }],
 };
 function freshScene() {
-  return coerceSession({ version: 3, id: "same-scene", placeId: "home", zoneId: "exterior", semanticVersion: 2 });
+  return coerceSession({ version: 4, id: "same-scene", placeId: "home", zoneId: "exterior", semanticVersion: 2 });
 }
 const scene = freshScene(),
   ledger = structuredClone(venue.access);

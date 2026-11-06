@@ -199,7 +199,7 @@ agenda.activeDay = {
 };
 const captured = captureSceneAttendance(village, "square", beforeSeven);
 const scene = coerceSession({
-  version: 3,
+  version: 4,
   id: "clock-scene",
   placeId: "square",
   status: "active",

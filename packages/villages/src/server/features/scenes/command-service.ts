@@ -35,7 +35,6 @@ import { assertSceneMovementCapacity, UnavailableResidentMovement } from "../../
 import { responseDiagnostics } from "../../domain/rules/response-diagnostics.js";
 import { captureSceneAttendance, sceneZoneOccupants } from "../../domain/rules/scene-attendance.js";
 import { movedAttentionContacts } from "../../domain/rules/scene-attention.js";
-import { sceneWritingCapabilities } from "../../domain/rules/scene-compact-contract.js";
 import { sceneContinuityView, cloneSceneFacts, sceneWishEffectIds } from "../../domain/rules/scene-continuity.js";
 import { sceneHaltWorldConflict } from "../../domain/rules/scene-halt-world.js";
 import { provisionalSceneNarrative } from "../../domain/rules/scene-narrative-effects.js";
@@ -150,7 +149,6 @@ export interface SceneCommandPorts {
   venueOperationId: typeof import("../../adapters/operations/operation-context.js").venueOperationId;
   venueOperationSignal: typeof import("../../adapters/operations/operation-context.js").venueOperationSignal;
   venueOperationSnapshot: typeof import("../../adapters/operations/operation-context.js").venueOperationSnapshot;
-  venueOperationInput: typeof import("../../adapters/operations/operation-context.js").venueOperationInput;
   venueRefusal: typeof import("../../adapters/operations/operation-context.js").venueRefusal;
   venueRequestMetrics: typeof import("../../adapters/operations/operation-context.js").venueRequestMetrics;
   mutateDocument: typeof import("../../adapters/storage/document-store.js").mutateDocument;
@@ -204,7 +202,6 @@ export function createSceneCommands({
   venueOperationId,
   venueOperationSignal,
   venueOperationSnapshot,
-  venueOperationInput,
   venueRefusal,
   venueRequestMetrics,
   mutateDocument,
@@ -1166,7 +1163,7 @@ export function createSceneCommands({
     const session: VenueScene = {
       openingGatheringId: gathering ? village.opening!.id : undefined,
       pendingAccessClaim: initialPermissionId,
-      version: 3,
+      version: 4,
       sceneRevision: 0,
       liveSceneVersion: 1,
       gmVersion: 1,
@@ -1259,29 +1256,12 @@ export function createSceneCommands({
       Promise.resolve().then(async () => {
         const admission = await readSession(id);
         signal.throwIfAborted();
-        const writingInput =
-          admission.operation?.id === "greeting"
-            ? admission.operation.input
-            : {
-                occurrenceVersion: 1,
-                ...(admission.semanticVersion === 2
-                  ? { sceneBoundaryVersion: 1, narrativeIntroductionVersion: 1, chosenAt: villageNow().toISOString() }
-                  : {}),
-                writingContractVersion: admission.gmVersion === 1 ? 4 : 3,
-                ...(admission.gmVersion === 1 ? { gmVersion: 1 } : {}),
-                castLimitVersion: 1,
-                soundHopVersion: 1,
-                playerAgencyVersion: 1,
-                ...(admission.semanticVersion === 2
-                  ? {
-                      semanticBudget: SEMANTIC_OPERATION_BUDGET,
-                      semanticPipelineVersion: 3,
-                      residentActionsVersion: 2,
-                      hearingTimelineVersion: 1,
-                    }
-                  : {}),
-                writingCapabilities: sceneWritingCapabilities(await readVillageState(), admission),
-              };
+        const writingInput = {
+          semanticBudget:
+            admission.operation?.id === "greeting"
+              ? admission.operation.input.semanticBudget
+              : SEMANTIC_OPERATION_BUDGET,
+        };
         signal.throwIfAborted();
         coordinated = true;
         return coordinateVenue(
@@ -1350,10 +1330,7 @@ export function createSceneCommands({
     const greeted = await changeSession(id, (state) => {
       signal.throwIfAborted();
       if (state.status !== "opening") return;
-      const at =
-        venueOperationInput()?.occurrenceVersion === 1
-          ? (state.continuity?.capturedAt ?? state.sceneAttendance?.capturedAt ?? state.startedAt)
-          : villageNow().toISOString();
+      const at = state.continuity?.capturedAt ?? state.sceneAttendance?.capturedAt ?? state.startedAt;
       const initialIds = [...state.activeIds];
       const savedLineIds = appendVenueReply(state, reply.lines, at, reply.npcAdmissions);
       {
@@ -1404,7 +1381,6 @@ export function createSceneCommands({
 
           speechCapture: reply.speechCapture,
           accessEvents: savedAccessEvents(reply.roomInterpretation),
-          ...(reply.residentActionReceipt ? { residentActionReceipt: reply.residentActionReceipt } : {}),
           ...(state.semanticVersion === 2
             ? {
                 projectContexts: reply.projectContexts,
@@ -1536,150 +1512,15 @@ export function createSceneCommands({
     return (turn.requestMode ?? turn.mode) === mode;
   }
 
-  async function venueTurnPayload(scene: VenueScene, input: VenueTurnInput, prior: VenueSubmission | undefined) {
-    const admittedVersion =
-      scene.operation?.id === input.submissionId ? scene.operation.input.interactionScopeVersion : 6;
-    if (
-      scene.operation?.id === input.submissionId &&
-      admittedVersion === undefined &&
-      (input.mode === "act" || input.mode === "fulfill")
-    )
-      throw venueRefusal(
-        "SUBMISSION_MISMATCH",
-        "This old action admission cannot be resubmitted as a current action. Its saved history is preserved.",
-      );
-    const writingVersion =
-      scene.operation?.id === input.submissionId
-        ? scene.operation.input.writingContractVersion
-        : prior
-          ? undefined
-          : scene.gmVersion === 1
-            ? 4
-            : 3;
-    const writingCapabilities = [2, 3, 4].includes(Number(writingVersion))
-      ? scene.operation?.id === input.submissionId
-        ? scene.operation.input.writingCapabilities
-        : sceneWritingCapabilities(await readVillageState(), scene)
-      : undefined;
-    const payload = {
-      ...(scene.operation?.id === input.submissionId
-        ? scene.operation.input.gmVersion === 1
-          ? { gmVersion: 1 }
-          : {}
-        : scene.gmVersion === 1 && (!prior || prior.semanticProvenance?.producer === "gm")
-          ? { gmVersion: 1 }
-          : {}),
-      ...(scene.operation?.id === input.submissionId
-        ? scene.operation.input.narrativeIntroductionVersion === 1
-          ? { narrativeIntroductionVersion: 1 }
-          : {}
-        : !prior && scene.semanticVersion === 2
-          ? { narrativeIntroductionVersion: 1 }
-          : {}),
-      ...(scene.operation?.id === input.submissionId
-        ? scene.operation.input.sceneBoundaryVersion === 1
-          ? { sceneBoundaryVersion: 1 }
-          : {}
-        : !prior && scene.semanticVersion === 2
-          ? { sceneBoundaryVersion: 1 }
-          : {}),
-      ...(scene.operation?.id === input.submissionId
-        ? scene.operation.input.preservationVersion === 1
-          ? { preservationVersion: 1, chosenAt: scene.operation.input.chosenAt }
-          : {}
-        : !prior && scene.semanticVersion === 2
-          ? { preservationVersion: 1, chosenAt: villageNow().toISOString() }
-          : {}),
-      ...(scene.operation?.id === input.submissionId
-        ? scene.operation.input.residentMovementReviewVersion === 1
-          ? { residentMovementReviewVersion: 1 }
-          : {}
-        : !prior && scene.semanticVersion === 2 && input.mode !== "leave"
-          ? { residentMovementReviewVersion: 1 }
-          : {}),
-      ...(scene.operation?.id === input.submissionId
-        ? scene.operation.input.castLimitVersion === 1
-          ? { castLimitVersion: 1 }
-          : {}
-        : prior
-          ? {}
-          : { castLimitVersion: 1 }),
-      ...(scene.operation?.id === input.submissionId
-        ? scene.operation.input.turnPolicyVersion === 1
-          ? { turnPolicyVersion: 1 }
-          : {}
-        : prior
-          ? {}
-          : { turnPolicyVersion: 1 }),
-      ...(scene.operation?.id === input.submissionId
-        ? [1, 2].includes(Number(scene.operation.input.residentActionsVersion))
-          ? { residentActionsVersion: scene.operation.input.residentActionsVersion }
-          : {}
-        : prior
-          ? [1, 2].includes(Number(prior.semanticProvenance?.residentActionsVersion))
-            ? { residentActionsVersion: prior.semanticProvenance?.residentActionsVersion }
-            : {}
-          : scene.semanticVersion === 2
-            ? { residentActionsVersion: 2 }
-            : {}),
-      ...(scene.semanticVersion === 2
-        ? scene.operation?.id === input.submissionId
-          ? scene.operation.input.semanticPipelineVersion
-            ? { semanticPipelineVersion: scene.operation.input.semanticPipelineVersion }
-            : {}
-          : prior
-            ? prior.semanticProvenance?.pipelineVersion === 3
-              ? { semanticPipelineVersion: 3 }
-              : {}
-            : { semanticPipelineVersion: 3 }
-        : {}),
-      ...(scene.semanticVersion === 2
-        ? {
-            semanticBudget:
-              scene.operation?.id === input.submissionId
-                ? (scene.operation.input.semanticBudget ?? SEMANTIC_OPERATION_BUDGET)
-                : SEMANTIC_OPERATION_BUDGET,
-          }
-        : {}),
-      ...(scene.operation?.id === input.submissionId
-        ? scene.operation.input.playerAgencyVersion === 1
-          ? { playerAgencyVersion: 1 }
-          : {}
-        : prior
-          ? {}
-          : { playerAgencyVersion: 1 }),
+  function venueTurnPayload(scene: VenueScene, input: VenueTurnInput) {
+    return {
       message: input.message,
       mode: input.mode,
       targetId: input.targetId,
       ...(input.contact ? { contact: input.contact } : {}),
-      ...(input.attentionChoice ? { attentionChoice: input.attentionChoice } : {}),
-      ...(admittedVersion !== undefined ? { interactionScopeVersion: admittedVersion } : {}),
-      ...(scene.operation?.id === input.submissionId
-        ? scene.operation.input.soundHopVersion === 1
-          ? { soundHopVersion: 1 }
-          : {}
-        : !prior && admittedVersion === 6
-          ? { soundHopVersion: 1 }
-          : {}),
-      ...(scene.operation?.id === input.submissionId
-        ? scene.operation.input.hearingTimelineVersion === 1
-          ? { hearingTimelineVersion: 1 }
-          : {}
-        : prior
-          ? prior.semanticProvenance?.hearingTimelineVersion === 1
-            ? { hearingTimelineVersion: 1 }
-            : {}
-          : scene.semanticVersion === 2 && admittedVersion === 6
-            ? { hearingTimelineVersion: 1 }
-            : {}),
-      ...(writingVersion !== undefined
-        ? {
-            writingContractVersion: writingVersion,
-            ...([2, 3, 4].includes(Number(writingVersion)) ? { writingCapabilities } : {}),
-          }
-        : {}),
+      semanticBudget:
+        scene.operation?.id === input.submissionId ? scene.operation.input.semanticBudget : SEMANTIC_OPERATION_BUDGET,
     };
-    return payload;
   }
 
   function unavailableTurnResult(session: VenueScene, submissionId: string) {
@@ -1713,7 +1554,7 @@ export function createSceneCommands({
     const prior = scene.submissions.find((entry) => entry.id === input.submissionId);
     if (prior) runtimeDebug("submission replay", { sceneId: input.sessionId, submissionId: input.submissionId });
     if (!prior) await requireLiveVenueSession(input.sessionId);
-    const payload = await venueTurnPayload(scene, input, prior);
+    const payload = venueTurnPayload(scene, input);
     if (prior && JSON.stringify(prior.contact ?? null) !== JSON.stringify(input.contact ?? null))
       throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID belongs to a different contact attempt.");
     if (
@@ -1745,27 +1586,9 @@ export function createSceneCommands({
     const scene = await readSession(sessionId);
     const prior = scene.submissions.find((entry) => entry.id === submissionId);
     if (!prior) await requireLiveVenueSession(sessionId);
-    const currentContract =
-      scene.operation?.id === submissionId
-        ? [3, 4].includes(Number(scene.operation.input.writingContractVersion))
-        : !prior;
-    if (currentContract && !prior && !!!findLocation(await readVillageState(), scene.placeId))
+    if (!prior && !findLocation(await readVillageState(), scene.placeId))
       throw conflict("This Venue is no longer available. End the Scene.");
-    const payload = currentContract
-      ? await venueTurnPayload(scene, { sessionId, submissionId, message, mode: "leave", targetId: "" }, prior)
-      : {
-          message,
-          mode: "leave",
-          targetId: "",
-          ...(scene.semanticVersion === 2
-            ? {
-                semanticBudget:
-                  scene.operation?.id === submissionId
-                    ? (scene.operation.input.semanticBudget ?? SEMANTIC_OPERATION_BUDGET)
-                    : SEMANTIC_OPERATION_BUDGET,
-              }
-            : {}),
-        };
+    const payload = venueTurnPayload(scene, { sessionId, submissionId, message, mode: "leave", targetId: "" });
     return coordinateVenue(
       sessionId,
       submissionId,
@@ -1850,7 +1673,7 @@ export function createSceneCommands({
             : recordEvents,
       };
     }
-    assertCurrentSceneGeneration(session, venueOperationInput(), input.mode);
+    assertCurrentSceneGeneration(session);
 
     session = await requireLiveVenueSession(session.id);
     const blocker = semanticBlocker(session);
@@ -1996,8 +1819,7 @@ export function createSceneCommands({
     const commitTurn = async (current: VillageState) => {
       validatePlaceReply(current, session, reply);
       if (reply.narrativeSource?.development) provisionalSceneNarrative(current, current, reply.narrativeSource);
-      if (venueOperationInput()?.preservationVersion === 1 && sceneHaltWorldConflict(session, current, reply))
-        throw new HaltedSceneTurn("halt-world");
+      if (sceneHaltWorldConflict(session, current, reply)) throw new HaltedSceneTurn("halt-world");
       applicationVillage = current;
       return changeSession(session.id, (state) => {
         if (state.submissions.some((entry) => entry.id === input.submissionId)) return;
@@ -2006,10 +1828,7 @@ export function createSceneCommands({
         if (state.sceneRevision !== session.sceneRevision)
           throw conflict("The conversation moved on. Try sending that line again.");
         const acceptedAt = villageNow().toISOString();
-        const at =
-          venueOperationInput()?.preservationVersion === 1
-            ? (state.continuity?.capturedAt ?? state.sceneAttendance?.capturedAt ?? state.startedAt)
-            : acceptedAt;
+        const at = state.continuity?.capturedAt ?? state.sceneAttendance?.capturedAt ?? state.startedAt;
         state.pendingAttention = undefined;
         state.lastActivityAt = acceptedAt;
         if (reply.contactMoves.length) {
@@ -2125,7 +1944,6 @@ export function createSceneCommands({
           physicalContext: reply.physicalContext,
           liveProposals: bindLiveProposals(reply, playerLineId, replyLineIds, state.lines),
           accessEvents: savedAccessEvents(reply.roomInterpretation),
-          ...(reply.residentActionReceipt ? { residentActionReceipt: reply.residentActionReceipt } : {}),
           requestMetrics: venueRequestMetrics(),
           ...(reply.placeUpdate
             ? {
@@ -2187,22 +2005,21 @@ export function createSceneCommands({
     };
     let updated: VenueScene;
     try {
-      updated =
-        venueOperationInput()?.preservationVersion === 1 && withVillageSceneAcceptance
-          ? await withVillageSceneAcceptance(commitTurn, {
-              memories: true,
-              wishEffects: (state) => sceneWishEffectIds(state, session),
-              wishes: Array.isArray(reply.wishChanges)
-                ? [
-                    ...new Set(
-                      reply.wishChanges.flatMap((row) =>
-                        typeof asRecord(row).actorId === "string" ? [asRecord(row).actorId as string] : [],
-                      ),
+      updated = withVillageSceneAcceptance
+        ? await withVillageSceneAcceptance(commitTurn, {
+            memories: true,
+            wishEffects: (state) => sceneWishEffectIds(state, session),
+            wishes: Array.isArray(reply.wishChanges)
+              ? [
+                  ...new Set(
+                    reply.wishChanges.flatMap((row) =>
+                      typeof asRecord(row).actorId === "string" ? [asRecord(row).actorId as string] : [],
                     ),
-                  ]
-                : [],
-            })
-          : await commitTurn(applicationVillage);
+                  ),
+                ]
+              : [],
+          })
+        : await commitTurn(applicationVillage);
     } catch (error) {
       if (error instanceof HaltedSceneTurn) return hold(error.outcome);
       throw error;

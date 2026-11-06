@@ -1,3 +1,4 @@
+import { SEMANTIC_OPERATION_BUDGET } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
 import assert from "node:assert/strict";
 import {
   activationScope,
@@ -69,7 +70,7 @@ function commandFixture(
     notice: { id: "same-notice", kind: "venue", text: label + " saved effect" },
   };
   const scene = coerceSession({
-    version: 3,
+    version: 4,
     id: "same-scene",
     villageSeed: world.seed,
     placeId: "same-place",
@@ -150,7 +151,12 @@ function commandFixture(
       assert.equal(id, scene.id);
       assert.equal(submissionId, "same-turn");
       assert.equal(kind, "turn");
-      assert.deepEqual(input, { message: "Already saved", mode: "chat", targetId: "", interactionScopeVersion: 6 });
+      assert.deepEqual(input, {
+        message: "Already saved",
+        mode: "chat",
+        targetId: "",
+        semanticBudget: SEMANTIC_OPERATION_BUDGET,
+      });
       assert.equal(expected, undefined);
       assert.equal(retry, undefined);
       assert.equal(options?.replay, true);
@@ -255,7 +261,7 @@ function fixture(name: string, pause = false, navigationIdentity?: object) {
         packageId: "villages",
         revision: 1,
         data: {
-          version: 3,
+          version: 4,
           id: "same",
           placeId: "same-place",
           placeName: name,
@@ -872,7 +878,7 @@ const greetingUnhandled: unknown[] = [];
 const captureGreetingUnhandled = (error: unknown) => greetingUnhandled.push(error);
 process.on("unhandledRejection", captureGreetingUnhandled);
 try {
-  for (const failingRead of ["session", "world"] as const) {
+  for (const failingRead of ["session", "coordination"] as const) {
     const timeout = new AbortController();
     AbortSignal.timeout = () => timeout.signal;
     const exactFailure = new Error("failed greeting " + failingRead);
@@ -881,7 +887,7 @@ try {
         if (failingRead === "session") throw exactFailure;
         return scene;
       },
-      readVillageState: async () => {
+      coordinateVenue: async () => {
         throw exactFailure;
       },
     }));
@@ -1094,17 +1100,15 @@ try {
 }
 
 // Conclude must admit the same current writing/privacy contract as an ordinary new turn.
-for (const legacy of [false, true]) {
+{
   let admitted: any;
   const terminal = new Error("Admission observed");
-  const frozen = { message: "Good night.", mode: "leave", targetId: "", semanticBudget: { maxRequests: 4 } };
   const current = commandFixture("Conclude admission", ({ scene, world }) => {
     const venue = venueDraft({ name: "Shared hall", description: "A public hall", classes: ["community"] }, null);
     venue.id = scene.placeId;
     world.venues = [venue];
     scene.semanticVersion = 2;
     scene.submissions = [];
-    if (legacy) scene.operation = { id: "conclude", input: frozen } as any;
     return {
       requireLiveVenueSession: async () => scene,
       readVillageState: async () => world,
@@ -1118,14 +1122,12 @@ for (const legacy of [false, true]) {
     current.owner.run(() => current.service.leaveVenueSession("same-scene", "conclude", "Good night.")),
     (error) => error === terminal,
   );
-  if (legacy) assert.deepEqual(admitted, frozen, "Frozen legacy Conclude input is not upgraded on retry");
-  else {
-    assert.equal(admitted.interactionScopeVersion, 6);
-    assert.equal(admitted.writingContractVersion, 3);
-    assert.equal(admitted.semanticPipelineVersion, 3);
-    assert.equal(admitted.residentActionsVersion, 2);
-    assert(admitted.writingCapabilities);
-  }
+  assert.deepEqual(admitted, {
+    message: "Good night.",
+    mode: "leave",
+    targetId: "",
+    semanticBudget: SEMANTIC_OPERATION_BUDGET,
+  });
   assert.equal(current.modelAccess, 0);
   current.owner.dispose();
 }

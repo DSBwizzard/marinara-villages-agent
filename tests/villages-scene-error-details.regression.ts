@@ -18,7 +18,7 @@ const processing = createExchangeProcessing({
   actionReceiptIds: [],
 });
 const scene = coerceSession({
-  version: 3,
+  version: 4,
   id: "scene",
   villageSeed: "seed",
   status: "active",

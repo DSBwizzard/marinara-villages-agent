@@ -83,7 +83,7 @@ async function populate(fixture: ReturnType<typeof f>, count: number) {
     Object.assign(state, world);
   });
   const scene = coerceSession({
-    version: 3,
+    version: 4,
     id: sceneId,
     villageSeed: seed,
     status: "closed",
@@ -498,7 +498,7 @@ for (const count of [1000, 10_000, 25_000]) {
       for (let index = 0; index < 20; index++)
         await fixture.repository.changeSession(sceneId, (scene) => {
           scene.submissions.push(
-            coerceSession({ version: 3, participants: scene.participants, submissions: [turn(count + index)] })
+            coerceSession({ version: 4, participants: scene.participants, submissions: [turn(count + index)] })
               .submissions[0],
           );
         });

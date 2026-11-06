@@ -49,7 +49,7 @@ async function fixture() {
     purchased = { content: "Exact purchased café 東京 🌼 ".repeat(1000), finishReason: "stop" },
     saved = (await receipts.retain(owner, signature, claim, purchased))!;
   async function createScene() {
-    const scene = coerceSession({ version: 3, ...owner, status: "active", startedAt: at });
+    const scene = coerceSession({ version: 4, ...owner, status: "active", startedAt: at });
     await world.mutateAuthority(
       (state) => {
         scene.continuity = captureSceneContinuity(state, scene, Date.parse(at));

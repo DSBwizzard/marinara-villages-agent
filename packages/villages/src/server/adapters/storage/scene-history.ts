@@ -136,7 +136,7 @@ export function sceneHistoryOwners(value: unknown): SceneHistoryOwner[] {
     memoryObject(raw);
     memoryRequire(
       raw.storageFormat === SCENE_STORAGE_FORMAT &&
-        raw.version === 3 &&
+        raw.version === 4 &&
         typeof raw.id === "string" &&
         (!expectedId || raw.id === expectedId),
       "unsupported Scene storage format; start a fresh Village",
@@ -189,13 +189,13 @@ export function sceneTranscriptOwners(
   const heads = [
     {
       head: readSceneTranscriptHead(raw.transcript, raw as VenueScene),
-      participants: coerceSession({ version: 3, participants: raw.participants }).participants,
+      participants: coerceSession({ version: 4, participants: raw.participants }).participants,
     },
   ];
   if (raw.operation?.snapshot)
     heads.push({
       head: readSceneTranscriptHead(raw.operation.snapshot.transcript, raw.operation.snapshot),
-      participants: coerceSession({ version: 3, participants: raw.operation.snapshot.participants }).participants,
+      participants: coerceSession({ version: 4, participants: raw.operation.snapshot.participants }).participants,
     });
   return heads;
 }
@@ -206,7 +206,7 @@ export function sceneSubmissionOwners(
   const raw = value as Record<string, any>;
   return [raw, ...(raw.operation?.snapshot ? [raw.operation.snapshot] : [])].map((owner) => ({
     head: readSceneSubmissionHead(owner.submissionHistory, owner),
-    participants: coerceSession({ version: 3, participants: owner.participants }).participants,
+    participants: coerceSession({ version: 4, participants: owner.participants }).participants,
     scene: owner,
   }));
 }
@@ -276,7 +276,7 @@ export async function publishSceneOperationHistory(
     "Scene operation cannot change transcript or cast",
   );
   const scene = coerceSession({
-    version: 3,
+    version: 4,
     id: next.id,
     villageSeed: next.villageSeed,
     participants: next.participants,
