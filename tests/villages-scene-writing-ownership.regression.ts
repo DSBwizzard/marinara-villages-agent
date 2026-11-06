@@ -135,7 +135,6 @@ function fixture(label: string, checkpointed = false) {
       gmVersion: 1,
       semanticPipelineVersion: 3,
       residentActionsVersion: 2,
-      writingCapabilities: { management: false, movement: false, residences: false, residenceDecision: false },
     }),
     venueCheckpoint: async <T>(stage: string, work: () => Promise<T>): Promise<T> => {
       if (!checkpointed) return work();

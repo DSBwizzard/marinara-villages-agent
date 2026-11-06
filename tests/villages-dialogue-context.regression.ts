@@ -309,7 +309,6 @@ void context.run(
         semanticPipelineVersion: 3,
         residentActionsVersion: 2,
         interactionScopeVersion: 6,
-        writingCapabilities: { management: false, movement: false, residences: false, residenceDecision: false },
       },
       checkpoints: {},
     },

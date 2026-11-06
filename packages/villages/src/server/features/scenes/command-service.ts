@@ -1505,7 +1505,6 @@ export function createSceneCommands({
     expectedSceneRevision?: number;
     retryOfAttemptId?: string;
     replaceOfOperationId?: string;
-    attentionChoice?: { id: string; zoneId: string };
   };
 
   function matchesSavedTurnMode(turn: VenueSubmission, mode: VenueTurnInput["mode"]) {
@@ -1829,7 +1828,6 @@ export function createSceneCommands({
           throw conflict("The conversation moved on. Try sending that line again.");
         const acceptedAt = villageNow().toISOString();
         const at = state.continuity?.capturedAt ?? state.sceneAttendance?.capturedAt ?? state.startedAt;
-        state.pendingAttention = undefined;
         state.lastActivityAt = acceptedAt;
         if (reply.contactMoves.length) {
           state.accessPreviousZones ??= {};

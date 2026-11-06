@@ -8,18 +8,9 @@ export function rejectedInputHash(input: {
   mode?: unknown;
   targetId?: unknown;
   contact?: unknown;
-  attentionChoice?: unknown;
 }): string {
   return createHash("sha256")
-    .update(
-      JSON.stringify([
-        input.message,
-        input.mode,
-        input.targetId || "",
-        input.contact ?? null,
-        input.attentionChoice ?? null,
-      ]),
-    )
+    .update(JSON.stringify([input.message, input.mode, input.targetId || "", input.contact ?? null]))
     .digest("hex");
 }
 

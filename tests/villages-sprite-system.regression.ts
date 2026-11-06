@@ -211,7 +211,6 @@ const admission = {
   gmVersion: 1,
   semanticPipelineVersion: 3,
   residentActionsVersion: 2,
-  writingCapabilities: { management: false, movement: false, residences: false, residenceDecision: false },
 };
 const writingScene = {
   ...scene,

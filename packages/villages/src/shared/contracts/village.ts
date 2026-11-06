@@ -798,7 +798,6 @@ export type RoomOperation = {
     mode?: string;
     targetId?: string;
     contact?: { kind?: string; boundaryZoneId?: string };
-    attentionChoice?: { id: string; zoneId: string };
   };
 };
 
@@ -823,7 +822,6 @@ export type SceneView = {
   /** An existing handoff needs return/recovery controls; private context stays server-side. */
   semanticVersion?: 2;
   connectionMap?: { id: string; connectedTo?: string[] }[];
-  attentionClarification?: { id: string; message: string; question: string; choices: { id: string; label: string }[] };
   memoryMode?: "live";
   version: 1;
   sceneRevision?: number;

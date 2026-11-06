@@ -18,7 +18,6 @@ import { readLoreUse } from "../../../shared/helpers/lore.js";
 
 import { coerceProjectSpeech } from "../rules/project-interpretation.js";
 import { immutableRelationshipState } from "../rules/relationship-rules.js";
-import { coercePendingAttention } from "../rules/scene-attention.js";
 import { sceneContinuityFields, type SceneContinuity } from "../rules/scene-continuity.js";
 import { readSceneLayout } from "../rules/scene-layout.js";
 import { sceneRevision } from "../rules/scene-revision.js";
@@ -282,7 +281,6 @@ export function coerceSession(value: unknown): VenueScene {
       ),
     ),
     doorwayContacts: Array.isArray(raw.doorwayContacts) ? (raw.doorwayContacts as DoorwayContact[]) : [],
-    pendingAttention: coercePendingAttention(raw.pendingAttention),
     entryOffers: Array.isArray(raw.entryOffers) ? (raw.entryOffers as VenueScene["entryOffers"]) : [],
     grantedZoneIds: Array.isArray(raw.grantedZoneIds)
       ? raw.grantedZoneIds.filter((id): id is string => typeof id === "string")

@@ -1,3 +1,7 @@
+import type { AttentionFragment } from "../packages/villages/src/server/domain/rules/scene-attention.js";
+import type { VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
+import type { VillageVenue } from "../packages/villages/src/server/domain/models/world.js";
+import type { SoundDelivery } from "../packages/villages/src/server/domain/rules/scene-acoustics.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import { bindSceneMemorySuggestion } from "../packages/villages/src/server/domain/rules/scene-memories.js";
 import assert from "node:assert/strict";
@@ -14,24 +18,31 @@ import {
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { captureSceneLayout, sceneLayoutVenue } from "../packages/villages/src/server/domain/rules/scene-layout.js";
-import {
-  acousticReach,
-  acousticFragment,
-  bindAcousticPlan,
-} from "../packages/villages/src/server/domain/rules/scene-acoustics.js";
+import { acousticReach } from "../packages/villages/src/server/domain/rules/scene-acoustics.js";
 import { applyAcousticWitnesses } from "../packages/villages/src/server/domain/rules/acoustic-witnesses.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import {
-  coercePendingAttention,
-  attentionCheck,
-  bindAttentionPlan,
-  validAttentionPlan,
-} from "../packages/villages/src/server/domain/rules/scene-attention.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import { parseFoundingVenueSuggestions } from "../packages/villages/src/server/domain/rules/founding-draft-rules.js";
 import { readBaseVenueLayout } from "../packages/villages/src/server/domain/rules/venue-layout.js";
 import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 
+function acousticFragment(
+  venue: VillageVenue,
+  scene: VenueScene,
+  fragment: Pick<AttentionFragment, "id" | "start" | "end" | "kind">,
+  delivery: SoundDelivery,
+  outward: boolean,
+): AttentionFragment {
+  const reach = acousticReach(venue, scene, scene.zoneId ?? "exterior", delivery, outward);
+  return {
+    ...fragment,
+    delivery,
+    outward,
+    reach: "broadcast",
+    zoneIds: reach.sound,
+    wordZoneIds: fragment.kind === "speech" ? reach.words : [],
+  };
+}
 const zone = (id: string, kind: string, links: string[]) => ({
   ...defaultVenueSpace("other"),
   id,
@@ -178,7 +189,7 @@ const fragment = acousticFragment(
   "shout",
   true,
 );
-const plan = bindAcousticPlan({ status: "attention", fragments: [fragment] }, message, venue, scene);
+const plan = { status: "attention", fragments: [fragment] };
 const context: any = {
   ...scene,
   contactGeneration: {
@@ -234,23 +245,18 @@ let parsed = noReply();
 // Rock impacts need narration evidence even with no local residents and no speech.
 const rockMessage = "I throw a rock at another rock";
 const rockScene = { ...scene, activeIds: [], participants: [] };
-const rockPlan = bindAcousticPlan(
-  {
-    status: "attention",
-    fragments: [
-      acousticFragment(
-        venue,
-        rockScene,
-        { id: "attention:0", start: 0, end: rockMessage.length, kind: "sound" },
-        "call",
-        false,
-      ),
-    ],
-  },
-  rockMessage,
-  venue,
-  rockScene,
-);
+const rockPlan = {
+  status: "attention",
+  fragments: [
+    acousticFragment(
+      venue,
+      rockScene,
+      { id: "attention:0", start: 0, end: rockMessage.length, kind: "sound" },
+      "call",
+      false,
+    ),
+  ],
+};
 const rockContext = {
   ...rockScene,
   contactGeneration: { ...context.contactGeneration, localIds: [], remoteIds: ["near", "far"], attention: rockPlan },
@@ -351,7 +357,7 @@ const silentContext = {
   ...context,
   contactGeneration: {
     ...context.contactGeneration,
-    attention: bindAcousticPlan({ status: "local", fragments: [] }, "I think privately.", venue, scene),
+    attention: { status: "local", fragments: [] },
   },
 };
 parsed = {
@@ -387,7 +393,7 @@ const gunContext = {
   ...context,
   contactGeneration: {
     ...context.contactGeneration,
-    attention: bindAcousticPlan({ status: "attention", fragments: [gun] }, "I fire.", venue, scene),
+    attention: { status: "attention", fragments: [gun] },
   },
 };
 parsed = {
@@ -401,23 +407,6 @@ applyAcousticWitnesses(
   parsed,
 );
 assert(!parsed.lines.some((line) => line.attentionEvidence), "failed sound leaves no auditory receipt");
-const pendingPlan = bindAcousticPlan(
-  { status: "clarify", fragments: [{ ...gun, zoneIds: [], wordZoneIds: [] }], question: "Which surface?" },
-  "I knock.",
-  venue,
-  scene,
-);
-const pending = coercePendingAttention({
-  id: "pending",
-  message: "I knock.",
-  revision: 1,
-  originZoneId: "exterior",
-  plan: pendingPlan,
-  choices: [{ id: "kitchen", label: "Kitchen" }],
-});
-assert(pending && validAttentionPlan(pending.plan, "I knock.", venue, scene));
-assert(!validAttentionPlan(pending!.plan, "Changed", venue, scene));
-
 const suggestion: any = {
   id: "house",
   name: "House",
@@ -566,18 +555,6 @@ assert.throws(
   "Sound evidence cannot teach private words",
 );
 
-for (const version of [2, 3, 4]) {
-  const oldScene = { ...scene, operation: { kind: "turn", input: { interactionScopeVersion: version } } } as any;
-  const oldVenue = { ...venue, zones: venue.zones!.map((zone) => ({ ...zone, connectedTo: undefined })) };
-  assert.deepEqual(
-    attentionCheck("Hello", changedVenue, oldScene, version === 2, version === 4),
-    attentionCheck("Hello", oldVenue, oldScene, version === 2, version === 4),
-    "purchased old check identity ignores new links",
-  );
-  const saved = bindAttentionPlan({ status: "local", fragments: [] }, "Hello", oldVenue, oldScene, version === 4);
-  assert(validAttentionPlan(saved, "Hello", changedVenue, oldScene), "old signed checkpoints still validate");
-}
-
 const hiddenEvent = {
   lines: [{ kind: "narration", speakerId: "__venue_scene__", content: "SECRET OFFSCREEN CAUSE" }],
   heardPlayerBy: [],
@@ -615,7 +592,7 @@ assert.deepEqual(
 
 const privateRecords = publicSceneResponse({
   ...scene,
-  submissions: [{ attention: plan, heardPlayerBy: ["local"] }],
+  submissions: [{ zoneEventsVersion: 1, heardPlayerBy: ["local"] }],
   lines: [{ id: "visible", content: "Hi", heardBy: ["local", "near"] }],
 } as any);
 assert(!JSON.stringify(privateRecords).includes("heardBy"));
@@ -697,7 +674,7 @@ for (const mixed of [false, true]) {
     ...context,
     contactGeneration: {
       ...context.contactGeneration,
-      attention: bindAcousticPlan({ status: "attention", fragments: [f] }, text, venue, scene),
+      attention: { status: "attention", fragments: [f] },
     },
   };
   const raw: any = {

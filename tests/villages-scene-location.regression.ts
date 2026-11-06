@@ -152,12 +152,6 @@ for (const mode of ["greet", "chat", "leave"] as const) {
     interactionScopeVersion: 6,
     writingContractVersion: 3,
     semanticPipelineVersion: 3,
-    writingCapabilities: {
-      movement: false,
-      management: false,
-      residences: false,
-      residenceDecision: false,
-    },
   });
   assert.deepEqual(scenePromptPacket(prompt).positions, remote);
   assert.ok(
@@ -202,12 +196,6 @@ for (const mode of ["greet", "chat", "leave"] as const) {
     interactionScopeVersion: 6,
     writingContractVersion: 3,
     semanticPipelineVersion: 3,
-    writingCapabilities: {
-      movement: false,
-      management: false,
-      residences: false,
-      residenceDecision: false,
-    },
   });
   assert.deepEqual(scenePromptPacket(prompt).positions.residents, []);
   assert(!prompt.includes(card.description), "an absent resident's profile cannot supply an invented response");

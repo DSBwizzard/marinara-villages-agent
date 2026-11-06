@@ -72,7 +72,6 @@ export type VenueTurnBody = {
   mode?: unknown;
   targetId?: unknown;
   contact?: { kind?: unknown; boundaryZoneId?: unknown; delivery?: unknown };
-  attentionChoice?: { id?: unknown; zoneId?: unknown };
   submissionId?: unknown;
   expectedSceneRevision?: unknown;
   retryOfAttemptId?: string;

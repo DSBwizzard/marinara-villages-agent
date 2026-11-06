@@ -9,7 +9,6 @@ import type { VillagerCard } from "../../packages/villages/src/server/domain/mod
 import type { VenueScene } from "../../packages/villages/src/server/domain/models/scene-model.js";
 import type { VillageState } from "../../packages/villages/src/server/domain/models/world.js";
 import { snapshotFromCard } from "../../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
-import { sceneWritingCapabilities } from "../../packages/villages/src/server/domain/rules/scene-compact-contract.js";
 import { wishFingerprint } from "../../packages/villages/src/server/domain/rules/social-wishes.js";
 import {
   createSceneWriting,
@@ -81,7 +80,6 @@ export async function currentScenePrompt(
     residentActionsVersion: 2,
     interactionScopeVersion: 6,
     playerAgencyVersion: 1,
-    writingCapabilities: sceneWritingCapabilities(world, session),
     ...operationInput,
   };
   const forbidden = () => assert.fail("Prompt preparation must not generate, interpret, or mutate a Scene.");

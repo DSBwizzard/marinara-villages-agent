@@ -77,7 +77,6 @@ function fixture() {
       playerAgencyVersion: 1,
       residentActionsVersion: 2,
       chosenAt: at,
-      writingCapabilities: { management: false, movement: false, residences: false, residenceDecision: false },
     },
     checkpoints: {},
     attempts: {},

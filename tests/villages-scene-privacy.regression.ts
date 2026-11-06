@@ -36,7 +36,6 @@ async function main() {
     assert(!sameSceneHistoryTurnPolicy(held, { ...held, semanticReady: true }));
     assert(!sameSceneHistoryTurnPolicy(held, { ...held, processing: { lineIds: ["different-line"] } }));
     assert(!sameSceneHistoryTurnPolicy({}, { zoneEventsVersion: 1 }));
-    assert(!sameSceneHistoryTurnPolicy({}, { attention: { validation: { version: 3 } } }));
   }
   {
     const scene = {
@@ -74,7 +73,7 @@ async function main() {
     assert.equal(selected[1].content, "A quiet knock.");
     assert(!JSON.stringify(selected).includes("private-knower"));
     assert(!JSON.stringify(selected).includes("Private cause"));
-    for (const flag of [{ zoneEventsVersion: 1 }, { attention: { validation: { version: 3 } } }]) {
+    for (const flag of [{ zoneEventsVersion: 1 }]) {
       const unready = {
         ...scene,
         operation: undefined,

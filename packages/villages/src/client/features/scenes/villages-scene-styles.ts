@@ -62,11 +62,6 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-scene-history-pages .${tag}-chat-vn-button { min-height: 44px; min-width: 44px; }
 .${tag}-room-screen .${tag}-composer { border: 0; padding: 0; gap: .375rem; }
 .${tag}-room-screen .${tag}-chat-input { padding: .375rem .5rem; gap: .25rem; }
-.${tag}-room-screen .${tag}-chat-input:has(> .${tag}-attention-choice) { flex-wrap: wrap; }
-.${tag}-attention-choice { display: flex; flex-wrap: wrap; align-items: center; gap: .375rem; flex-basis: 100%; order: -1; min-width: 0; padding: .25rem 0; }
-.${tag}-attention-choice > small { flex-basis: 100%; font-size: .75rem; opacity: .8; }
-.${tag}-attention-choice > span { flex-basis: 100%; font-size: .8rem; }
-.${tag}-attention-choice > button { min-height: 44px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; border: 1px solid var(--border); border-radius: .5rem; padding: .25rem .5rem; background: var(--secondary); color: inherit; }
 .${tag}-room-screen .${tag}-chat-input > .${tag}-zone-navigation { flex: 1 1 0; min-width: 0; width: 100%; border: 0; padding: 0; background: transparent; font: inherit; color: inherit; }
 .${tag}-room-screen .${tag}-chat-input > .${tag}-textarea {
   height: auto; min-height: 0; max-height: 12.5rem; padding: 0; font-size: .875rem; line-height: 1.5;

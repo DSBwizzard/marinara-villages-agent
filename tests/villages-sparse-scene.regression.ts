@@ -1,14 +1,6 @@
 import assert from "node:assert/strict";
-import {
-  materializePlayerSpeech,
-  PLAYER_CAPTURE_CONTRACT,
-} from "../packages/villages/src/server/domain/rules/player-speech-capture.js";
+import { materializePlayerSpeech } from "../packages/villages/src/server/domain/rules/player-speech-capture.js";
 import { sceneMissingFields } from "../packages/villages/src/server/domain/rules/response-diagnostics.js";
-import {
-  compactSceneContract,
-  readSceneWritingCapabilities,
-  reliableSceneContract,
-} from "../packages/villages/src/server/domain/rules/scene-compact-contract.js";
 import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 import {
   completeSceneObject,
@@ -181,69 +173,6 @@ for (const [text, finish] of [
   ['{"segments":[],"segments":[]}', "stop"],
 ])
   assert.equal(completeSceneObject(text, finish), null, "incomplete or ambiguous output never earns sparse defaults");
-const context = {
-  opening: false,
-  conversational: true,
-  liveMemory: true,
-  residentControlled: false,
-  recapNeeded: false,
-  staging: false,
-  contactFacts: "",
-  zoneEventContract: "zone events",
-  invitationZones: "none",
-  presentation: "",
-  expressions: [],
-  projects: false,
-  wishes: false,
-};
-const unavailable = {
-  management: false,
-  movement: false,
-  residences: false,
-  residenceDecision: false,
-};
-const minimal = compactSceneContract(context, unavailable).join("\n");
-assert.doesNotMatch(
-  minimal,
-  /wishChanges|projectSpeech|residenceRequest|residenceDecision|editApproval:|manage-access/,
-);
-assert.match(minimal, /venueRequest/, "spontaneous available proposals survive ordinary conversation");
-const full = compactSceneContract(
-  { ...context, wishes: true, projects: true, invitationZones: "common" },
-  { management: true, movement: true, residences: true, residenceDecision: true },
-).join("\n");
-assert.match(full, /wishChanges/);
-assert.match(full, /projectSpeech/);
-assert.match(full, /manage-access/);
-assert.match(full, /residenceRequest/);
-assert.doesNotMatch(full, /editApproval/);
-// Mechanical budget excludes authored cards, writing guidance, world facts and history.
-// All capabilities remain described; compaction cannot trade away their availability.
-const reliableFull = reliableSceneContract(
-  { ...context, residentControlled: true, staging: true, wishes: true, projects: true, invitationZones: "common" },
-  { management: true, movement: true, residences: true, residenceDecision: true },
-).join("\n");
-assert(
-  reliableFull.length + PLAYER_CAPTURE_CONTRACT.length <= 8000,
-  `v3 mechanical instructions stay within their character budget (${reliableFull.length + PLAYER_CAPTURE_CONTRACT.length}/8000)`,
-);
-for (const field of [
-  "contactMoves",
-  "wishChanges",
-  "projectSpeech",
-  "manage-access",
-  "residenceRequest",
-  "residenceDecision",
-  "sound",
-  "relationshipChanges",
-  "memoryChanges",
-])
-  assert(reliableFull.includes(field), `${field} remains available inside the mechanical budget`);
-
-console.log(
-  "Sparse Scene: complete-only defaults, exact references, private speech, stable indexes, conflicting fields and capability contracts passed.",
-);
-
 for (const length of [321, 1201]) {
   const text = "I might help " + "x".repeat(length) + " only if Mara later agrees.";
   assert.throws(
@@ -257,9 +186,6 @@ for (const length of [321, 1201]) {
     /limit/,
   );
 }
-for (const value of [undefined, null, {}, [], { ...unavailable, movement: "true" }, { ...unavailable, extra: false }])
-  assert.throws(() => readSceneWritingCapabilities(value), /invalid writing capability/);
-assert.deepEqual(readSceneWritingCapabilities(unavailable), unavailable);
 const narration = {
   id: "n",
   kind: "narration",
@@ -773,3 +699,7 @@ for (const supplied of [
   ])
     assert.throws(() => resolve(input as string, [{ text, occurrence }]), /capture needs recovery/);
 }
+
+console.log(
+  "Sparse Scene: complete-only defaults, exact references, private speech, stable indexes and conflicting fields passed.",
+);

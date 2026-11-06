@@ -344,14 +344,6 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
         message: readMessage(request.body?.message),
         mode,
         targetId: typeof request.body?.targetId === "string" ? request.body.targetId : "",
-        ...(request.body?.attentionChoice
-          ? {
-              attentionChoice: {
-                id: readSubmissionId(request.body.attentionChoice.id),
-                zoneId: readChatId(request.body.attentionChoice.zoneId),
-              },
-            }
-          : {}),
         ...(mode === "contact"
           ? {
               contact: {

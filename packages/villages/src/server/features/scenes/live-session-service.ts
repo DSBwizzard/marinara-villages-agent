@@ -552,7 +552,6 @@ export function createLiveScenes({
             .join(" "),
         });
         state.recap = "";
-        state.pendingAttention = undefined;
       }
     });
   }
