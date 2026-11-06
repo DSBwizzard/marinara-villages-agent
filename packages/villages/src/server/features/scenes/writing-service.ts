@@ -137,7 +137,7 @@ import { applyVenueSceneChange, readVenueSceneChange } from "../../domain/rules/
 import { environmentObservations, environmentCircumstances } from "../../domain/rules/narrative-environment.js";
 import type { NarrativeAdmission } from "../../domain/models/narrative-model.js";
 import { provisionalSceneNarrative, type SceneNarrativeSource } from "../../domain/rules/scene-narrative-effects.js";
-import { SCENE_DEVELOPMENT_WRITING } from "../../domain/rules/narrative-prompts.js";
+import { SCENE_DEVELOPMENT_SCHEMA, SCENE_DEVELOPMENT_WRITING } from "../../domain/rules/narrative-prompts.js";
 import {
   buildVenueSceneBlocks,
   fitVenueWritingMessages,
@@ -423,7 +423,7 @@ export function createSceneWriting({
     signal?.throwIfAborted();
     if (!captured) optionalKnowledge.push({ text: fitWishWritingContext(model, wishWritingActors), optional: "wish" });
     const projectContexts =
-      mode === "chat" || mode === "ask"
+      gm || mode === "chat" || mode === "ask"
         ? projectSpeechContexts(
             village,
             audience,
@@ -807,7 +807,14 @@ export function createSceneWriting({
       : fitVenueWritingMessages(model, blocks, input, maxTokens);
     if (introduction)
       blocks.push({
-        text: SCENE_DEVELOPMENT_WRITING + " Immutable local admission: " + JSON.stringify(introduction),
+        text:
+          SCENE_DEVELOPMENT_WRITING +
+          (gm
+            ? ' Return narrativeIntroduction:{status:"introduced",segment,quote,development} in this same response for an introduced circumstance, citing its exact narration segment and quote. Omit it when quiet. ' +
+              SCENE_DEVELOPMENT_SCHEMA
+            : " Do not emit effect metadata. System independently checks your unchanged prose.") +
+          " Immutable local admission: " +
+          JSON.stringify(introduction),
       });
     let fitted = captured?.fitted ?? ordinary;
     if (!captured && introduction) {

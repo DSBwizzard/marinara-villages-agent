@@ -235,8 +235,9 @@ try {
   });
   await service.settleBackgroundWork();
   const outcome = (await service.backgroundWorkSummaries())[0]!;
-  assert.equal(outcome.status, "completed", outcome.error);
-  assert.equal(calls, 2, "A purchased source can complete its check without buying a new review.");
+  assert.equal(outcome.status, "failed");
+  assert.match(outcome.error, /principal request allowance/);
+  assert.equal(calls, 1, "A month rollover cannot grant a second principal request.");
   assert.deepEqual(
     world.eventAttempts!.attempts.map((row) => row.id),
     ["next-month"],

@@ -17,7 +17,7 @@ export function projectSpeakerAtTurn(turn: VenueSubmission, line: Pick<VenueLine
 /** Keep the same per-Scene candidate window without storing the Scene transcript. */
 export function projectSceneEvidence(scene: VenueScene): VenueScene {
   const candidates = scene.submissions.flatMap((turn) => {
-    if ((turn.mode !== "chat" && turn.mode !== "ask") || !turn.at) return [];
+    if (!["greet", "chat", "ask", "leave"].includes(turn.mode) || !turn.at) return [];
     return scene.lines
       .filter((line) =>
         turn.replyLineIds?.length

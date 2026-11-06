@@ -35,7 +35,6 @@ export type SocialMailInterpretation = {
   replyMemoryChanges?: unknown[];
 };
 export type SocialMailInput = {
-  gmVersion?: 1;
   mode?: "player" | "resident";
   seed: string;
   threadId: string;
@@ -48,7 +47,6 @@ export type SocialMailInput = {
   incarnation: string;
   admitted: import("./world.js").VillageState;
   retainedReply?: string;
-  narrationMemories?: string;
   systemMemory?: ReturnType<typeof import("../rules/scene-memories.js").sceneMemoryContext>;
   sourceDelivered: boolean;
 };

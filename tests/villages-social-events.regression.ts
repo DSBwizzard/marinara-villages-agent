@@ -858,9 +858,9 @@ const proposed = (await writer.handler.generate({
     social: { state: social, candidates: [], relationships: [] },
   },
 } as any)) as any;
-assert.equal(automaticCalls, 2);
+assert.equal(automaticCalls, 1);
 assert.equal(
   (proposed.social!.mail as any).invitation,
   undefined,
-  "Writer metadata cannot bypass independent invitation adjudication",
+  "Generated mail metadata cannot bypass server invitation validation",
 );
