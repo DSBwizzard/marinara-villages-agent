@@ -40,7 +40,7 @@ const base: SocialMailInput = {
   sourceDelivered: false,
   systemMemory: sceneMemoryContext(state, ["ada", "player"], "garden"),
 };
-for (const gm of [false, true]) {
+{
   const roles: string[] = [];
   const replyText = "Thank you. I liked sharing the idea with you.";
   const changes = [
@@ -75,12 +75,10 @@ for (const gm of [false, true]) {
     ) => {
       await options.beforeBackgroundDispatch?.();
       roles.push(selected.connectionId);
-      const combined = messages[0].content.includes("GM of Villages correspondence");
-      if (selected.connectionId === "narration" && !combined)
-        return { content: JSON.stringify({ text: replyText }), finishReason: "stop" };
+      assert(messages[0].content.includes("GM of Villages correspondence"));
       return {
         content: JSON.stringify({
-          ...(combined ? { text: replyText } : {}),
+          text: replyText,
           sourceReview: { changes, permissions: [], disclosures: [], intentions: [] },
           replyReview: { changes: [], permissions: [], disclosures: [], intentions: [] },
         }),
@@ -88,22 +86,16 @@ for (const gm of [false, true]) {
       };
     },
   } as any);
-  const input = { ...base, ...(gm ? { gmVersion: 1 as const } : {}) };
+  const input = base;
   const result = await service.handler.generate(input);
   assert.equal(result.replyText, replyText);
   assert.equal(result.source.changes[0].liveAfter.stance, "Feels heard");
   assert.deepEqual(result.reply.changes, []);
-  assert.deepEqual(
-    roles,
-    gm ? ["narration"] : ["narration", "system"],
-    "Saved legacy mail retains its purchased protocol; new mail uses one GM call",
-  );
+  assert.deepEqual(roles, ["narration"], "Mail returns writing and meaning in one GM response");
   assert.equal(
     state.relationshipContext.edges[JSON.stringify(["ada", "player"])],
     undefined,
     "Generation does not apply correspondence before delivery",
   );
 }
-console.log(
-  "GM correspondence returns its reply and witnessed changes once; legacy mail keeps its original two-stage contract.",
-);
+console.log("GM correspondence returns its reply and witnessed changes in one response.");

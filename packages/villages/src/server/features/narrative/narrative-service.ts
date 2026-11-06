@@ -24,11 +24,7 @@ import { fitVenueWritingMessages } from "../../domain/rules/venue-writing.js";
 import { ReturnOpportunityUnavailable, returnCatchupSubject } from "../../domain/rules/return-catchup-authority.js";
 import { conflict } from "../../domain/rules/errors.js";
 import { completionFailure, WorkFailureError } from "../../domain/rules/work-failure.js";
-import {
-  WORLD_DEVELOPMENT_INSTRUCTION,
-  WORLD_DEVELOPMENT_REVIEW,
-  WORLD_GM_INSTRUCTION,
-} from "../../domain/rules/narrative-prompts.js";
+import { WORLD_GM_INSTRUCTION } from "../../domain/rules/narrative-prompts.js";
 
 type Ports = {
   relationshipIdentity: RelationshipIdentity;
@@ -96,7 +92,6 @@ export function createNarrative(ports: Ports) {
       automaticDate: date,
       input: {
         version: 1,
-        gmVersion: 1,
         grant,
         dateKey: date,
         ...(batchId
@@ -196,38 +191,14 @@ export function createNarrative(ports: Ports) {
   const handler: Handler = {
     authority: "raw",
     async generate(input) {
-      if (input.gmVersion === 1) {
-        const result = await ask(WORLD_GM_INSTRUCTION, input.grant, 3000);
-        if (result.quiet === true && Object.keys(result).length === 1) return { quiet: true };
-        if (result.quiet !== false || !result.development)
-          throw new WorkFailureError({
-            cause: "missing_result",
-            stage: "world-development",
-            message: "The GM world development is incomplete. Its response is retained.",
-          });
-        return { quiet: false, development: readNarrativeDevelopment(result.development, input.grant) };
-      }
-      const proposed = await ask(WORLD_DEVELOPMENT_INSTRUCTION, input.grant, 1800);
-      if (proposed.quiet === true && Object.keys(proposed).length === 1) return { quiet: true };
-      if (proposed.quiet !== false || !proposed.proposal)
+      const result = await ask(WORLD_GM_INSTRUCTION, input.grant, 3000);
+      if (result.quiet === true && Object.keys(result).length === 1) return { quiet: true };
+      if (result.quiet !== false || !result.development)
         throw new WorkFailureError({
           cause: "missing_result",
           stage: "world-development",
-          message: "Invalid world proposal. Its response is retained.",
+          message: "The GM world development is incomplete. Its response is retained.",
         });
-      const result = await ask(
-        WORLD_DEVELOPMENT_REVIEW,
-        { admission: input.grant, savedProposal: proposed.proposal },
-        3000,
-      );
-      if (typeof result.consistent !== "boolean" || (result.consistent && !result.development))
-        throw new WorkFailureError({
-          cause: "missing_result",
-          stage: "world-development",
-          message: "The world review is missing required metadata. Its response is retained.",
-        });
-      if (result.consistent !== true)
-        throw new Error(String(result.reason || "The world proposal was not supported.").slice(0, 300));
       return { quiet: false, development: readNarrativeDevelopment(result.development, input.grant) };
     },
     valid(state, input) {

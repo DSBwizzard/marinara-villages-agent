@@ -334,7 +334,7 @@ async function main() {
       social: { candidates: [], relationships: [] },
     },
   } as any);
-  assert.deepEqual(jsonCalls, ["planning", "review"]);
+  assert.deepEqual(jsonCalls, ["planning"]);
   assert.equal(Object.hasOwn(choices, "happenings"), false);
   assert.equal((choices.social?.encounter as any).semanticVersion, 2);
   assert.deepEqual((choices.social?.encounter as any).lines, spokenLines);

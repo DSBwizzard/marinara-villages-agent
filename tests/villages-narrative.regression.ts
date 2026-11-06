@@ -686,16 +686,13 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
     attempts: [{ id: "saved-attempt", date: "2026-10-29", at, origin: "world" }],
   };
   assert.equal(preferredActivityLane(fixture.state), "resident");
-  for (const review of [{}, { consistent: true }, { consistent: false, reason: "Unsupported proposal" }]) {
-    answers = [{ quiet: false, proposal: {} }, review];
+  for (const result of [{}, { quiet: false }, { quiet: false, proposal: {} }]) {
+    answers = [result];
     await assert.rejects(
-      () => service.handler.generate({ ...queued.input, gmVersion: undefined }),
-      (error: unknown) =>
-        review.consistent === false
-          ? error instanceof Error && !(error instanceof WorkFailureError)
-          : error instanceof WorkFailureError && error.failure.cause === "missing_result",
+      () => service.handler.generate(queued.input),
+      (error: unknown) => error instanceof WorkFailureError && error.failure.cause === "missing_result",
     );
-    assert.equal(answers.length, 0, "The retained review determines recovery; no hidden request is made.");
+    assert.equal(answers.length, 0, "An invalid combined response makes no hidden review request");
   }
   answers = [{ quiet: false, development: proposal(queued.input.grant) }];
   const gm = await service.handler.generate(queued.input);

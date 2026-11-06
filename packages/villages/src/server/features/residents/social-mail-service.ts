@@ -17,7 +17,6 @@ import { asRecord } from "../../domain/rules/coerce.js";
 import { badRequest, conflict } from "../../domain/rules/errors.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { bindLiveProposals } from "../../domain/rules/live-exchange.js";
-import { recallMemories } from "../../domain/rules/memory-recall.js";
 import {
   assertPersonalLetter,
   hasPersonalLetterAction,
@@ -48,7 +47,6 @@ import { SCENE_MEMORY_INSTRUCTION, sceneMemoryContext } from "../../domain/rules
 import { semanticHash } from "../../domain/rules/semantic-contract.js";
 import { socialContextState } from "../../domain/rules/social-context.js";
 import { cloneWorldContext } from "../../domain/rules/world-context-copy.js";
-import { fitWishWritingContext } from "../../domain/rules/wish-writing-context.js";
 import {
   beginMailDelivery,
   completeMailDelivery,
@@ -173,7 +171,6 @@ export function createSocialMail(ports: SocialMailPorts) {
     messages: CapabilityLanguageModelMessage[],
     key: string,
     maxTokens: number,
-    beforeBackgroundDispatch?: () => Promise<void>,
   ) {
     let requestTokens = Math.min(maxTokens, model.maxOutputTokens ?? maxTokens);
     const result = await ports.completeWithRoom(model, messages, requestTokens, {
@@ -183,7 +180,6 @@ export function createSocialMail(ports: SocialMailPorts) {
       checkpointId: key,
       beforeBackgroundDispatch: async () => {
         requestTokens = fitMailContext(model, messages, maxTokens, role).maxTokens;
-        await beforeBackgroundDispatch?.();
         return requestTokens;
       },
       temperature: role === "narration" ? 0.7 : 0.1,
@@ -258,87 +254,39 @@ export function createSocialMail(ports: SocialMailPorts) {
     const system = async () => (systemModel ??= await resolveModel("system"));
     const narrationModel =
       input.mode !== "resident" && input.retainedReply == null ? await resolveModel("narration") : undefined;
-    const gmRaw =
-      input.gmVersion === 1 && narrationModel
-        ? await modelRequest(
-            "narration",
-            narrationModel,
-            [
-              {
-                role: "system",
-                content:
-                  "You are the GM of Villages correspondence. Write a personal reply as this resident and interpret the incoming letter and your reply in ONE response. A natural choice not to reply is valid. Return text (max2000 characters) and only meaningful optional sourceReview,replyReview,sourceMemoryChanges,replyMemoryChanges,sourceWishChanges,replyWishChanges. Preserve identity, motives and private knowledge. No self-review or independent checker. The reply cannot perform actions, grant access or create obligations. " +
-                  PERSONAL_LETTER_INSTRUCTION +
-                  " " +
-                  meaningMessages()[0].content +
-                  " All optional results belong inside that SAME root object. Omitted sections mean no change. Source interpretation precedes reply interpretation; reply relationship revisions refer to the state AFTER your source changes. Do not repeat unchanged projections or write filler Memories.",
-              },
-              {
-                role: "user",
-                content: JSON.stringify({
-                  ...JSON.parse(String(meaningMessages()[1].content)),
-                  setting: villageCurrentSetting(state),
-                  character: resident.cardSnapshot,
-                  admission: resident.admission,
-                  playerName: state.playerPersonaName || state.playerName,
-                  ownContext,
-                  replyInstruction:
-                    "Write the reply in root text, then cite its supplied reply ID for new reply effects.",
-                }),
-              },
-            ],
-            "personal-mail:gm:" + input.sourceHash,
-            4096,
-          )
-        : undefined;
-    const text =
-      input.mode === "resident"
-        ? ""
-        : gmRaw
-          ? String(gmRaw.text ?? "")
-          : (input.retainedReply ??
-            String(
-              (
-                await modelRequest(
-                  "narration",
-                  narrationModel!,
-                  [
-                    {
-                      role: "system",
-                      content:
-                        "Write one setting-appropriate personal reply as this resident. " +
-                        PERSONAL_LETTER_INSTRUCTION +
-                        " Treat the pending player's exact message as the proposed incoming source. System will independently settle its meaning before either message is delivered. Keep the resident's voice, initiative and boundaries; they may refuse or end a bond. Never invent player words, feelings, consent, travel or physical deeds. Communication alone does not perform physical tasks or grant access. Return JSON {text:string}, at most 2000 characters. Empty text is a valid choice not to reply. Retained Wishes are available context, not a required topic or gesture.",
-                    },
-                    {
-                      role: "user",
-                      content: JSON.stringify({
-                        setting: villageCurrentSetting(state),
-                        playerName: state.playerPersonaName || state.playerName,
-                        character: resident.cardSnapshot,
-                        admission: resident.admission,
-                        ownContext,
-                        wishContext: await ports.backgroundSetting(
-                          "personal-mail:writing-context:" + input.sourceHash,
-                          () =>
-                            fitWishWritingContext(narrationModel!, [
-                              { actorId: input.residentId, wishes: resident.wishes },
-                            ]),
-                        ),
-                        memories: JSON.parse(input.narrationMemories ?? '{"memories":[]}'),
-                        incoming: { text: input.sourceText, at: input.sourceAt },
-                        now: input.admittedAt ?? input.sourceAt,
-                      }),
-                    },
-                  ],
-                  "personal-mail:writing:" + input.sourceHash,
-                  2048,
-                  async () => {
-                    fitMailContext(await system(), meaningMessages(), 16384, "system");
-                  },
-                )
-              ).text ?? "",
-            ));
+    const gmRaw = narrationModel
+      ? await modelRequest(
+          "narration",
+          narrationModel,
+          [
+            {
+              role: "system",
+              content:
+                "You are the GM of Villages correspondence. Write a personal reply as this resident and interpret the incoming letter and your reply in ONE response. A natural choice not to reply is valid. Return text (max2000 characters) and only meaningful optional sourceReview,replyReview,sourceMemoryChanges,replyMemoryChanges,sourceWishChanges,replyWishChanges. Preserve identity, motives and private knowledge. No self-review or independent checker. The reply cannot perform actions, grant access or create obligations. " +
+                PERSONAL_LETTER_INSTRUCTION +
+                " " +
+                meaningMessages()[0].content +
+                " All optional results belong inside that SAME root object. Omitted sections mean no change. Source interpretation precedes reply interpretation; reply relationship revisions refer to the state AFTER your source changes. Do not repeat unchanged projections or write filler Memories.",
+            },
+            {
+              role: "user",
+              content: JSON.stringify({
+                ...JSON.parse(String(meaningMessages()[1].content)),
+                setting: villageCurrentSetting(state),
+                character: resident.cardSnapshot,
+                admission: resident.admission,
+                playerName: state.playerPersonaName || state.playerName,
+                ownContext,
+                replyInstruction:
+                  "Write the reply in root text, then cite its supplied reply ID for new reply effects.",
+              }),
+            },
+          ],
+          "personal-mail:gm:" + input.sourceHash,
+          4096,
+        )
+      : undefined;
+    const text = input.mode === "resident" ? "" : gmRaw ? String(gmRaw.text ?? "") : (input.retainedReply ?? "");
     if (text.length > 2000) throw new Error("The personal reply exceeded its size limit.");
     if (input.mode !== "resident") assertPersonalLetter(text, resident.cardSnapshot.name);
     replyLine.content = text;
@@ -349,7 +297,7 @@ export function createSocialMail(ports: SocialMailPorts) {
         await system(),
         meaningMessages(),
         "personal-mail:meaning:" + input.sourceHash + ":" + semanticHash(state.relationshipContext),
-        16384,
+        4096,
       ));
     if (gmRaw)
       for (const key of ["sourceReview", "replyReview"])
@@ -1006,7 +954,6 @@ export function createSocialMail(ports: SocialMailPorts) {
       throw conflict("The correspondent changed. The original message is retained for recovery.");
     return {
       mode: message.fromId === "player" ? "player" : "resident",
-      gmVersion: 1,
       seed: village.seed,
       threadId,
       messageId,
@@ -1018,11 +965,6 @@ export function createSocialMail(ports: SocialMailPorts) {
       incarnation,
       admitted: admission({ ...village, relationshipContext: state }, resident.characterId),
       retainedReply,
-      narrationMemories: recallMemories(village.memories, {
-        purpose: "narration",
-        audience: [resident.characterId],
-        query: message.text + " " + resident.characterId,
-      }).serialized,
       systemMemory: sceneMemoryContext(village, [resident.characterId, "player"], message.text),
       sourceDelivered: !!state.mailDeliveries[message.id],
     };
@@ -1318,7 +1260,6 @@ export function createSocialMail(ports: SocialMailPorts) {
     const captured = admission({ ...village, relationshipContext: social }, row.senderId);
     const input: SocialMailInput = {
       mode: "resident",
-      gmVersion: 1,
       seed: village.seed,
       threadId,
       messageId,
