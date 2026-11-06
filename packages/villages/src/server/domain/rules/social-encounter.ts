@@ -88,7 +88,7 @@ export function readEncounter(
     };
   });
   if (new Set(lines.filter((line) => line.kind === "dialogue").map((line) => line.speakerId)).size < 2) return null;
-  if (lines.some((line) => line.kind === "narration") && raw.physicalConsistent !== true)
+  if (lines.some((line) => line.kind === "narration") && raw.physicalConsistent !== true && raw.producer !== "gm")
     throw new Error("The encounter's narrated outcomes need independent System validation.");
   if (raw.placeUpdate && raw.semanticVersion !== 2) throw new Error("Physical encounter meaning is unverified.");
   const placeUpdate = readVenueSceneChange(raw.placeUpdate, venueInZone(venue, zoneId), entry.at);
@@ -147,6 +147,7 @@ export function readEncounter(
           memoryContexts: raw.memoryContexts as SocialEncounter["memoryContexts"],
           semanticProvenance: {
             version: 2 as const,
+            ...(raw.producer === "gm" ? { producer: "gm" as const } : {}),
             sourceHash: String(raw.semanticSourceHash),
             interpretedAt: entry.at,
           },

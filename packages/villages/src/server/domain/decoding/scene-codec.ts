@@ -203,6 +203,7 @@ export function coerceSession(value: unknown): VenueScene {
     version: 3,
     changeSequence: Math.max(0, Math.floor(Number(raw.changeSequence) || 0)),
     ...(raw.semanticVersion === 2 ? { semanticVersion: 2 as const } : {}),
+    ...(raw.gmVersion === 1 ? { gmVersion: 1 as const } : {}),
     ...(raw.processingVersion === 1 ? { processingVersion: 1 as const } : {}),
     ...(raw.villageSeed ? { villageSeed: asString(raw.villageSeed) } : {}),
     sceneRevision: sceneRevision(raw),

@@ -7,9 +7,18 @@ import { defaultVillageState } from "../../packages/villages/src/server/domain/d
 import { coerceSession } from "../../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { defaultVenueSpace } from "../../packages/villages/src/server/domain/rules/venue-model.js";
 import { captureSceneLayout } from "../../packages/villages/src/server/domain/rules/scene-layout.js";
+import type { VenueScene } from "../../packages/villages/src/server/domain/models/scene-model.js";
+import { relationshipDocumentId } from "../../packages/villages/src/server/adapters/storage/relationship-payload-store.js";
 import { seedVillageFixtureDocuments, fixtureSceneState } from "../helpers/village-storage.fixture.js";
 
-export async function packagedSceneServer() {
+export async function packagedSceneServer(
+  options: {
+    gm?: boolean;
+    configure?: (world: ReturnType<typeof defaultVillageState>, now: string) => void;
+    configureScene?: (scene: VenueScene) => void;
+    bundle?: string;
+  } = {},
+) {
   const now = new Date().toISOString();
   const world = defaultVillageState();
   Object.assign(world, {
@@ -65,8 +74,16 @@ export async function packagedSceneServer() {
       ],
     },
   ].map(venueFixture) as typeof world.venues;
+  options.configure?.(world, now);
   const scene = coerceSession({
     version: 3,
+    ...(options.gm
+      ? {
+          gmVersion: 1,
+          liveSceneVersion: 1,
+          accompanying: [{ characterId: "mara", zoneId: "common" }],
+        }
+      : {}),
     id: "browser",
     placeId: "mill",
     placeName: "The Mill",
@@ -88,6 +105,7 @@ export async function packagedSceneServer() {
     lines: [],
     submissions: [],
   });
+  options.configureScene?.(scene);
   const records = new Map<string, any>([
     ["villages-village", { id: "villages-village", packageId: "villages", kind: "village", revision: 1, data: world }],
     [
@@ -125,6 +143,10 @@ export async function packagedSceneServer() {
     remove: async (_pkg: string, id: string, revision: number) =>
       records.get(id)?.revision === revision && records.delete(id),
   };
+  if (world.relationshipContext) {
+    const id = relationshipDocumentId(world.seed);
+    records.set(id, { id, packageId: "villages", kind: "relationships", revision: 1, data: world.relationshipContext });
+  }
   await seedVillageFixtureDocuments(documents as any);
   assert(Object.hasOwn(records.get("villages-village").data, "memoryHead"));
   assert(!Object.hasOwn(records.get("villages-village").data, "memories"));
@@ -143,6 +165,17 @@ export async function packagedSceneServer() {
     }),
     chatComplete: async (messages: any[]) => {
       calls++;
+      if (messages[0].content.startsWith("You are the Game Master of Villages")) {
+        const text = messages.at(-1)?.content ?? "";
+        return {
+          content: JSON.stringify({
+            input: text ? [{ kind: "speech", text }] : [],
+            segments: [{ kind: "dialogue", speakerId: "mara", text: "I heard your browser message." }],
+          }),
+          finishReason: "stop",
+          usage: { inputTokens: 10, outputTokens: 10 },
+        };
+      }
       if (messages[0].content.startsWith("You interpret Villages gameplay.")) {
         const packet = JSON.parse(messages[1].content);
         return {
@@ -226,7 +259,7 @@ export async function packagedSceneServer() {
     isDebugAgentsEnabled: () => false,
   };
   const app = Fastify();
-  const { activate } = await import(pathToFileURL(resolve("packages/villages/server.mjs")).href);
+  const { activate } = await import(pathToFileURL(resolve(options.bundle ?? "packages/villages/server.mjs")).href);
   const stop = await activate({
     api: {
       runtime,

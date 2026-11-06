@@ -148,6 +148,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
     if (!opportunity || village.processedActionIds.includes(opportunity.id)) return;
     const context: ResidentPlanningContext = {
       version: 1,
+      gmVersion: 1,
       village: village.name,
       setting: villageCurrentSetting(village),
       playerBackground: village.playerBackground,
@@ -318,6 +319,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       throw new ReturnOpportunityUnavailable("The historical encounter Zone is unavailable.");
     const context: ResidentPlanningContext = {
       version: 1,
+      gmVersion: 1,
       catchup: true,
       village: historical.name,
       setting: villageCurrentSetting(historical),
@@ -430,14 +432,39 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       connectionId: await villagesConnectionIdFor("system"),
     });
     const messages = buildResidentPlanningMessages(context);
+    if (context.gmVersion === 1) {
+      messages[0].content +=
+        " You are the GM: generate the choices, exact encounter/mail source and its meaningful updates in ONE object. Optional meaning:{relationshipReview:{changes:[],permissions:[],disclosures:[],intentions:[]},memoryChanges:[],wishChanges:[],placeUpdate?}. Omit unchanged sections. No independent review or consistent flag. Numeric source indexes refer to your social.encounter.lines, or index0 for social.mail.text. The player is absent during an encounter: no player disclosures, knowledge or consent. Mail never grants access, performs physical work or creates actionable terms; player learning waits for reading. " +
+        RELATIONSHIP_REVIEW_INSTRUCTION +
+        " " +
+        SCENE_MEMORY_INSTRUCTION +
+        " " +
+        SOCIAL_WISH_INSTRUCTION +
+        " " +
+        PLACE_UPDATE_INSTRUCTION +
+        " Put every meaningful proposal inside meaning in the SAME root as the choices. No recopy of unchanged state. For social projections return liveAfter only; code uses the same view for the captured timeline. All actual physical changes need their supported placeUpdate. No inventory or invented supplies.";
+      messages[1].content +=
+        "\n" +
+        JSON.stringify({
+          social: context.social.state,
+          memory: context.memory?.envelope,
+          possibleMemoryEffects: {
+            physical: {
+              id: encounterPhysicalId(context.opportunity.id + ":social"),
+              domainRef: { kind: "physical", id: context.opportunity.venueId },
+            },
+          },
+        });
+    }
+    const output = context.gmVersion === 1 ? 4096 : 3000;
     const fitted = fitVenueWritingMessages(
       model,
       [{ text: String(messages[0].content) }],
       String(messages[1].content),
-      Math.min(model.maxOutputTokens ?? 3000, 3000),
+      Math.min(model.maxOutputTokens ?? output, output),
       "System",
     );
-    const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 3000, {
+    const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? output, {
       responseFormat: { type: "json_object" },
       retryEmpty: false,
       temperature: 0.85,
@@ -485,6 +512,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           "physicalConsistent",
           "semanticVersion",
           "semanticSourceHash",
+          "producer",
           "memoryChanges",
           "memoryContexts",
           "relationshipReview",
@@ -540,21 +568,42 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           }),
         },
       ];
-      const fittedReview = model.fitContext(reviewMessages, { maxTokens: 16384 });
-      if (JSON.stringify(fittedReview.messages) !== JSON.stringify(reviewMessages))
+      const fittedReview = context.gmVersion === 1 ? undefined : model.fitContext(reviewMessages, { maxTokens: 16384 });
+      if (fittedReview && JSON.stringify(fittedReview.messages) !== JSON.stringify(reviewMessages))
         throw new Error("Offscreen semantic evidence does not fit System context.");
-      const judged = await completeWithRoom(model, reviewMessages, Math.min(fittedReview.maxTokens ?? 16384, 16384), {
-        responseFormat: { type: "json_object" },
-        retryEmpty: false,
-        temperature: 0.1,
-        reasoningEffort: "low",
-        debugMode: false,
-        usagePurpose: "checks",
-      });
-      const interpreted = extractModelJsonObject(judged);
+      const judged =
+        context.gmVersion === 1
+          ? undefined
+          : await completeWithRoom(model, reviewMessages, Math.min(fittedReview?.maxTokens ?? 16384, 16384), {
+              responseFormat: { type: "json_object" },
+              retryEmpty: false,
+              temperature: 0.1,
+              reasoningEffort: "low",
+              debugMode: false,
+              usagePurpose: "checks",
+            });
+      const interpreted =
+        context.gmVersion === 1
+          ? {
+              ...asRecord(payload.meaning),
+              memoryChanges: asRecord(payload.meaning).memoryChanges ?? [],
+              wishChanges: asRecord(payload.meaning).wishChanges ?? [],
+              relationshipReview: {
+                changes: [],
+                permissions: [],
+                disclosures: [],
+                ...asRecord(asRecord(payload.meaning).relationshipReview),
+              },
+            }
+          : extractModelJsonObject(judged!);
       const review = interpreted?.relationshipReview as Record<string, unknown> | undefined;
+      if (context.gmVersion === 1 && Array.isArray(review?.changes))
+        review.changes = review.changes.map((value) => {
+          const row = asRecord(value);
+          return { ...row, sceneAfter: row.liveAfter };
+        });
       if (
-        judged.finishReason === "length" ||
+        judged?.finishReason === "length" ||
         !review ||
         !Array.isArray(interpreted?.memoryChanges) ||
         interpreted.memoryChanges.length > 16 ||
@@ -563,16 +612,24 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         !["changes", "permissions", "disclosures"].every((key) => Array.isArray(review[key]))
       )
         throw new Error("Offscreen interpretation is incomplete; explicit retry required.");
-      if (!mail && lines.some((line) => asRecord(line).kind === "narration") && interpreted?.consistent !== true)
+      if (
+        context.gmVersion !== 1 &&
+        !mail &&
+        lines.some((line) => asRecord(line).kind === "narration") &&
+        interpreted?.consistent !== true
+      )
         throw new Error("The encounter contains unsupported physical outcomes; its source is retained.");
       record.placeUpdate = mail ? null : (interpreted?.placeUpdate ?? null);
       record.physicalConsistent = !mail && interpreted?.consistent === true;
+      if (context.gmVersion === 1) record.producer = "gm";
       record.relationshipReview = review;
       record.wishChanges = readSocialWishChanges(interpreted!.wishChanges);
       record.semanticVersion = 2;
       record.memoryChanges = interpreted!.memoryChanges;
       record.memoryContexts = { [nativeMemory.saved.protection.fingerprint]: nativeMemory.saved };
-      record.semanticSourceHash = createHash("sha256").update(JSON.stringify(reviewMessages)).digest("hex");
+      record.semanticSourceHash = createHash("sha256")
+        .update(JSON.stringify(context.gmVersion === 1 ? { messages, lines, meaning: interpreted } : reviewMessages))
+        .digest("hex");
     }
 
     return proposal;

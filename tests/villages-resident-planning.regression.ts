@@ -119,7 +119,17 @@ function fixture() {
                 memoryChanges,
                 relationshipReview: { changes: [], permissions: [], disclosures: [] },
               }
-            : payload,
+            : messages[0].content.includes("You are the GM")
+              ? {
+                  ...payload,
+                  meaning: {
+                    memoryChanges,
+                    wishChanges: [],
+                    relationshipReview: { changes: [], permissions: [], disclosures: [] },
+                    ...payload.meaning,
+                  },
+                }
+              : payload,
         ),
       } as any;
     },
@@ -430,9 +440,9 @@ assert.match(
   "The writing model can see the selected Zone.",
 );
 assert.match(
-  String(privateReturn.calls[1].messages[1].content),
+  String(privateReturn.calls[0].messages[0].content),
   /SHARED-ZONE-DETAIL/,
-  "Interpretation sees the selected Zone.",
+  "The GM interprets the same supplied Zone.",
 );
 assert.doesNotMatch(
   JSON.stringify(privateReturn.calls),
@@ -515,15 +525,15 @@ social.payload({
   },
 });
 const accepted: any = await social.service.handler.generate(si);
-assert.equal(social.calls.length, 2, "An offered encounter retains independent interpretation");
+assert.equal(social.calls.length, 1, "A new encounter includes meaning in its one GM response");
 assert.doesNotMatch(
-  social.calls[1].messages[1].content,
+  social.calls[0].messages[1].content,
   /UNRELATED-PRIVATE-WISH/,
   "Nonparticipants' private Wishes stay out of catch-up interpretation.",
 );
 assert.equal(accepted.social.encounter.semanticVersion, 2);
 assert.deepEqual(accepted.social.encounter.memoryChanges, [proposedMemory]);
-assert.doesNotMatch(social.calls[1].messages[0].content, /Return memoryChanges:\[\] under the native Memory contract/);
+assert(social.calls[0].messages[0].content.includes("optional meaning"));
 si.context.catchup = false;
 social.service.handler.apply(social.state, si, accepted, { retrying: false });
 assert.equal(social.state.socialOutbox!.length, 1);

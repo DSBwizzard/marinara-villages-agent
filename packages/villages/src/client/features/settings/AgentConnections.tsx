@@ -247,9 +247,9 @@ export function AgentConnectionsControls({
     } else if (connections.saving || !settings) {
       onSetupProblem("Connections are still loading.");
     } else if (systemId.length === 0 || narrationId.length === 0) {
-      onSetupProblem("Choose both System and Narration connections before continuing.");
+      onSetupProblem("Choose both System and GM connections before continuing.");
     } else if (!talk.some((option) => option.id === systemId) || !talk.some((option) => option.id === narrationId)) {
-      onSetupProblem("Choose available language connections for System and Narration.");
+      onSetupProblem("Choose available language connections for System and GM.");
     } else {
       onSetupProblem("");
     }
@@ -274,7 +274,7 @@ export function AgentConnectionsControls({
           />
           <ConnectionPicker
             id={`${ELEMENT_TAG}-connection-narration`}
-            label="Narration"
+            label="GM"
             options={talk}
             value={settings.narrationConnectionId}
             disabled={busy || disabled}

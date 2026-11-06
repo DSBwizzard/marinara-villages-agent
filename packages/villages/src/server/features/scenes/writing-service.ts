@@ -79,6 +79,7 @@ import { readSceneWritingCapabilities } from "../../domain/rules/scene-compact-c
 import { sceneContinuityView, sceneWishEffectIds, sceneLocationContext } from "../../domain/rules/scene-continuity.js";
 import {
   capturedSceneCalendar,
+  readSceneBoundary,
   GeneratedSceneBoundary,
   SCENE_OUTCOME_BOUNDARY,
   HaltedSceneTurn,
@@ -93,7 +94,23 @@ import {
   SCENE_WRITING_CONTRACT,
 } from "../../domain/rules/scene-writing-contract.js";
 import { sceneWritingHistory, sharedLoreHistory } from "../../domain/rules/scene-writing-history.js";
-import { semanticEvidence, semanticNarrationCore } from "../../domain/rules/semantic-contract.js";
+import { semanticContext, semanticEvidence, semanticNarrationCore } from "../../domain/rules/semantic-contract.js";
+import { SCENE_MEMORY_INSTRUCTION, sceneMemoryContext } from "../../domain/rules/scene-memories.js";
+import { PLACE_UPDATE_INSTRUCTION } from "../../domain/rules/zone-continuity.js";
+import { sceneSpriteSelection } from "../../domain/rules/sprite-expressions.js";
+import {
+  materializeGmReply,
+  normalizeGmEffects,
+  sceneGmContext,
+  SCENE_GM_DIRECTION,
+  SCENE_GM_RESPONSE,
+  SCENE_GM_EVENTS,
+  SCENE_GM_ACCESS,
+  SCENE_GM_PROJECTS,
+  SCENE_GM_SOCIAL,
+  SCENE_GM_WISHES,
+  SCENE_GM_BOUNDARY,
+} from "../../domain/rules/scene-gm.js";
 import { semanticPhysicalContext, semanticPlayerMoves } from "../../domain/rules/semantic-timeline.js";
 import { immutableSocialWishes, wishHistoryLoaded } from "../../domain/rules/social-wishes.js";
 import { fitWishWritingContext } from "../../domain/rules/wish-writing-context.js";
@@ -232,13 +249,16 @@ export function createSceneWriting({
     introduction?: NarrativeAdmission | null,
   ) {
     assertCurrentSceneGeneration(session, venueOperationInput(), mode);
-    const writingVersion = SCENE_WRITING_CONTRACT;
+    const gm = venueOperationInput()?.gmVersion === 1;
+    const writingVersion = gm ? 4 : SCENE_WRITING_CONTRACT;
     const requestKey = writingRequestKey(session, message, mode);
     const captured = venueSavedCheckpoint?.<{
       fitted: ReturnType<typeof fitVenueWritingMessages>;
       ordinary?: ReturnType<typeof fitVenueWritingMessages>;
       loreInspection?: LoreInspection;
       wishContexts: NonNullable<VenueScene["submissions"][number]["wishContexts"]>;
+      gmContext?: ReturnType<typeof semanticContext>;
+      gmPresentation?: ReturnType<typeof sceneSpriteSelection>;
     }>("writing-request:" + requestKey);
     if (captured && !captured.wishContexts)
       throw conflict("The saved Wish writing context is unavailable. Its source is retained.");
@@ -484,7 +504,7 @@ export function createSceneWriting({
           ? "A willing resident continuing an in-person doorway conversation normally completes a permitted crossing into the player's Zone, or remains offstage and uses the supplied hearing rules. Opening a door or stopping at its threshold is not a crossing and does not make ordinary remote words clear or remote acting visible. Narration, delivery and completed movement must agree."
           : "",
       ].filter(Boolean);
-    const blocks = buildVenueSceneBlocks({
+    let blocks = buildVenueSceneBlocks({
       direction: blocksFor([
         NPC_INTRODUCTION_WRITING,
         VENUE_SCENE_WRITING_FOUNDATION,
@@ -635,8 +655,9 @@ export function createSceneWriting({
       ]),
       metadata: blocksFor(responseContract()),
     });
-    const input =
-      mode === "greet"
+    const input = gm
+      ? message
+      : mode === "greet"
         ? session.area === "outside"
           ? session.spaceClass === "residence"
             ? "The player arrives in this Residence's Exterior Zone, outside its interior. Show a brief moment already underway from this Zone."
@@ -680,6 +701,105 @@ export function createSceneWriting({
     blocks.push({
       text: "Only the player's explicit Move action changes their Zone. Act/Do and conversation remain in the current Zone. Walking toward furniture or people here is an ordinary local action. Never narrate the player crossing into another Zone, following a villager across Zones, or accepting entry automatically. Villager movement remains subject to access; presence does not confer housing residency or permission.",
     });
+    const gmContext = gm
+      ? (captured?.gmContext ?? semanticContext(session, authority, message, true, true, village))
+      : undefined;
+    const gmPresentation = gm ? (captured?.gmPresentation ?? sceneSpriteSelection(session, village)) : undefined;
+    if (gmContext) {
+      const supportingCandidates = Object.values(village.worldPlaces.npcs)
+        .filter(
+          (npc) => !npc.disabled && npc.associations.some((association) => association.placeId === session.placeId),
+        )
+        .slice(0, 4);
+      if (!captured) {
+        const memory = sceneMemoryContext(
+          authority,
+          [...new Set(["player", ...audibleIds, ...supportingCandidates.map((npc) => npc.id)])],
+          message,
+        );
+        gmContext.memory = memory.envelope;
+        gmContext._memoryWrite = memory.saved;
+      }
+      const post = blocks.findIndex((block) => block.text === "## Authored post-history direction");
+      const metadata = blocks.findIndex((block) => block.text === "## Response format and evidence metadata");
+      const authoredInstructions = post >= 0 ? blocks.slice(post + 1, metadata < 0 ? undefined : metadata) : [];
+      blocks = buildVenueSceneBlocks({
+        direction: blocksFor([
+          SCENE_GM_DIRECTION,
+          venueWritingDirection(village.narrationStyle, player.name),
+          venueAdditionalWritingGuidance(village.narrationStyle),
+          mode === "greet"
+            ? "Opening: the player's presence is established, never their voluntary speech or actions. input:[]."
+            : "",
+          mode === "leave"
+            ? "Conclude: interpret the ENTIRE authored input, then close naturally; do not invent a player goodbye. Empty input means input:[]."
+            : "",
+          openingSceneDirection(village, session),
+        ]),
+        identity: blocksFor(profiles),
+        conversation: blocksFor([
+          earlierContext,
+          ...lore.map((text) => ({ text: "Relevant world lore: " + text, optional: "lore" as const })),
+        ]),
+        circumstances: [
+          {
+            text: JSON.stringify({
+              context: sceneGmContext(gmContext),
+              player: {
+                name: player.name,
+                description: player.description,
+                background: renderPlayerBackgroundWritingContext(
+                  village,
+                  !!venueOperationInput() && venueOperationInput()?.playerAgencyVersion !== 1,
+                ),
+              },
+              residentActivity: active.map((person) => ({
+                characterId: person.characterId,
+                doing:
+                  session.sceneAttendance?.occupants.find((row) => row.characterId === person.characterId)?.doing ||
+                  person.doing,
+                homes: village.venues
+                  .filter((venue) => venueResidentIds(venue).includes(person.characterId))
+                  .map((venue) => ({ id: venue.id, name: venue.name })),
+              })),
+              supportingCandidates,
+              pendingProjectQuestions: session.pendingProjectQuestions,
+              pendingRoomQuestions: session.pendingRoomQuestions,
+              pendingMoves,
+              residentRequestLocalIds: residentLocalIdsAt(session, [], 0),
+              setting: villageCurrentSetting(village),
+              weather: moment.weather,
+              positions: storedPlace ? sceneLocationContext(session, storedPlace, audience) : undefined,
+              environment: village.narrative
+                ? environmentCircumstances(village.narrative, session.placeId, session.zoneId ?? "exterior")
+                : undefined,
+              presentation: gmPresentation,
+            }),
+          },
+        ],
+        authoredInstructions,
+        metadata: blocksFor([
+          SCENE_GM_RESPONSE,
+          SCENE_GM_BOUNDARY,
+          SCENE_GM_EVENTS,
+          NPC_INTRODUCTION_WRITING,
+          SCENE_GM_ACCESS,
+          SCENE_GM_SOCIAL,
+          SCENE_GM_WISHES,
+          SCENE_MEMORY_INSTRUCTION,
+          projectContexts.length ? SCENE_GM_PROJECTS : "",
+          PLACE_UPDATE_INSTRUCTION.replace("placeUpdate:", "action:"),
+          'Physical action needs happened:true and its exact narration segment. Omit action when nothing changes. Memory screening uses the captured administrative rules; code binds the context fingerprint. Newly introduced narrative circumstances use narrativeIntroduction:{status:"introduced",segment,quote,development}; only an admitted grant permits it. Omit it when quiet. Optional presentation:[{segment,staging:[{characterId,expression?,look?:{target:"player"}|{target:"villager",characterId}|{target:"direction",direction:"left|right"}}]}] selects only supplied expression IDs; omit uncertain cues. Cues never establish actions, hearing, consent or positions.',
+        ]),
+      });
+      const contractAt = blocks.findIndex((block) => block.text === "## Response format and evidence metadata");
+      const contract = blocks.splice(contractAt).slice(1);
+      const identityAt = blocks.findIndex((block) => block.text === "## Complete authored character identity");
+      blocks.splice(identityAt < 0 ? blocks.length : identityAt, 0, ...contract);
+      blocks.push({
+        text: 'Return one complete JSON object with BOTH required keys: {"input":[...],"segments":[...],...optional effects}. Always classify the entire exact original input, even when returning effects or a halt. Empty input means input:[]. Every current explicit access choice and Project approval, builder commitment or withdrawal needs its matching cited effect; include each separately.',
+      });
+    }
     const ordinary = captured
       ? (captured.ordinary ?? captured.fitted)
       : fitVenueWritingMessages(model, blocks, input, maxTokens);
@@ -712,11 +832,15 @@ export function createSceneWriting({
       };
     }
     trace?.("context fit", performance.now() - fitStarted);
-    const memoryIncluded = fitted.messages.some((message) => message.content.includes(memoryContext));
+    const memoryIncluded = !!gmContext || fitted.messages.some((message) => message.content.includes(memoryContext));
     runtimeDebug("memory retrieval", {
       sceneId: session.id,
-      selectedMemoryIds: memoryIncluded ? promptMemories.map((memory) => memory.id) : [],
-      memoryBudget: 1000,
+      selectedMemoryIds: gmContext
+        ? gmContext._memoryWrite.recall.candidates.map((memory) => memory.id)
+        : memoryIncluded
+          ? promptMemories.map((memory) => memory.id)
+          : [],
+      memoryBudget: gmContext ? 1796 : 1000,
       participantIds: audibleIds,
       allocation: "full-collection BM25 with participant balance",
     });
@@ -726,6 +850,8 @@ export function createSceneWriting({
       loreInspection,
       sparse: session.contactGeneration?.zoneEvents === true,
       writingVersion,
+      gmContext,
+      gmPresentation,
       writingCapabilities: capabilities,
       maxTokens,
       model,
@@ -817,6 +943,7 @@ export function createSceneWriting({
     ...args: Parameters<typeof prepareVenueTurnMessages>
   ) {
     let [session] = args;
+    const gm = venueOperationInput()?.gmVersion === 1;
     const [, message, mode] = args;
     const signal = args[5];
     const trace = args[6];
@@ -854,6 +981,8 @@ export function createSceneWriting({
     } = prepared;
     const requestKey = originalKey + (replacement ? "-boundary" : "");
     let ordinary = prepared.ordinary;
+    let gmContext = prepared.gmContext;
+    let gmPresentation = prepared.gmPresentation;
     {
       const saved = await venueCheckpoint("writing-request:" + originalKey, async () => ({
         fitted,
@@ -862,9 +991,13 @@ export function createSceneWriting({
         promptMemories,
         loreInspection,
         wishContexts,
+        gmContext,
+        gmPresentation,
       }));
       ({ fitted, earlierEvidence, promptMemories, loreInspection, wishContexts } = saved);
       ordinary = saved.ordinary;
+      gmContext = saved.gmContext;
+      gmPresentation = saved.gmPresentation;
     }
     const dispatch = narrativeVersion
       ? await venueCheckpoint("narrative-dispatch:" + requestKey, async () => {
@@ -903,7 +1036,7 @@ export function createSceneWriting({
     {
       if (!semantic) throw conflict("System interpretation is not configured.");
       // A purchased draft must remain replayable even when the current connection can no longer fit it.
-      if (venueSavedCheckpoint?.("writing-completion:" + requestKey) === undefined)
+      if (!gm && venueSavedCheckpoint?.("writing-completion:" + requestKey) === undefined)
         await semantic.preflight(session, message, narrativeVersion ? (narrativeGrant ?? null) : undefined);
       signal?.throwIfAborted();
     }
@@ -933,7 +1066,31 @@ export function createSceneWriting({
     let captureSources: ReturnType<typeof playerSpeechCapture> | undefined;
     let recoveredRaw: Record<string, unknown> | undefined;
     let materializedRaw: Record<string, unknown> | undefined;
-    if (session.contactGeneration?.zoneEvents) {
+    if (gm) {
+      try {
+        if (!gmContext) throw conflict("The saved GM context is unavailable. Your draft is preserved.");
+        const complete = completeSceneObject(completion.content ?? "", completion.finishReason);
+        if (!complete) throw badGateway("The GM response was not valid JSON. Your draft is preserved.");
+        if (complete.halt && gmContext.preservation) {
+          const halt = asRecord(complete.halt);
+          const playerHalt = {
+            ...halt,
+            ...(halt.source === "draft" ? { reason: "none", quote: "" } : {}),
+            appointments: Array.isArray(halt.appointments)
+              ? halt.appointments.filter((row) => asRecord(row).source !== "draft")
+              : [],
+          };
+          const finding = readSceneBoundary(playerHalt, gmContext.preservation, message, []);
+          if (finding?.source === "player") throw new HaltedSceneTurn(finding.outcome);
+        }
+        materializedRaw = materializeGmReply(normalizeGmEffects(complete, gmContext), message, mode === "greet");
+        captureSources = playerSpeechCapture(materializedRaw, message, mode === "greet");
+      } catch (error) {
+        if (!(error instanceof HaltedSceneTurn))
+          await rejectVenueCompletion(undefined, { stages: ["writing-completion:" + requestKey] });
+        throw error;
+      }
+    } else if (session.contactGeneration?.zoneEvents) {
       const completeRaw = completeSceneObject(completion.content ?? "", completion.finishReason);
       const savedRaw =
         completeRaw &&
@@ -1024,8 +1181,8 @@ export function createSceneWriting({
       ? (recoveredRaw ?? materializedRaw ?? completeSceneObject(completion.content ?? "", completion.finishReason))
       : null;
     {
-      if (originalRaw) originalRaw = semanticNarrationCore(originalRaw);
-      if (completeRaw) completeRaw = semanticNarrationCore(completeRaw);
+      if (originalRaw && !gm) originalRaw = semanticNarrationCore(originalRaw);
+      if (completeRaw && !gm) completeRaw = semanticNarrationCore(completeRaw);
     }
     let raw = originalRaw;
     const diagnostics = responseDiagnostics(
@@ -1158,8 +1315,12 @@ export function createSceneWriting({
             venueOperationInput()?.hearingTimelineVersion === 1 && session.contactGeneration?.zoneEvents
               ? (eventRaw ?? undefined)
               : undefined,
+            gm && raw && gmContext && gmPresentation
+              ? { raw, context: gmContext, presentation: gmPresentation }
+              : undefined,
           )
           .catch(async (error: unknown) => {
+            if (gm) await rejectVenueCompletion(undefined, { stages: ["writing-completion:" + requestKey] });
             if (
               error instanceof UnsupportedPlayerAgency ||
               error instanceof UnsupportedScenePerception ||
@@ -1192,7 +1353,7 @@ export function createSceneWriting({
       throw new HaltedSceneTurn(semanticResult.turnOutcome);
     }
     if (semanticResult?.intent) session = { ...session, semanticIntent: semanticResult.intent };
-    npcAdmissions = validateNpcAdmissions(semanticResult?.effects.npcAdmissions, npcAdmissions);
+    if (!gm) npcAdmissions = validateNpcAdmissions(semanticResult?.effects.npcAdmissions, npcAdmissions);
     for (const row of semanticResult?.presentation ?? []) {
       if (parsed.lines[row.segment]) parsed.lines[row.segment].staging = row.staging;
     }
@@ -1472,6 +1633,18 @@ export function createSceneWriting({
         if (!semanticResult) await rejectVenueCompletion();
         throw cause;
       }
+      if (gm && Array.isArray(raw?.projectSpeech))
+        for (const proposal of raw.projectSpeech) {
+          const row = asRecord(proposal);
+          if (Array.isArray(row.citations))
+            row.citations = row.citations.map((value) => {
+              const citation = asRecord(value);
+              return {
+                ...citation,
+                quote: Number.isInteger(citation.segment) ? parsed.lines[Number(citation.segment)]?.content : "",
+              };
+            });
+        }
       const projectSpeech = bindProjectSpeech(
         raw?.projectSpeech,
         projectContexts,
@@ -1479,7 +1652,7 @@ export function createSceneWriting({
       );
       if (semanticResult)
         for (const proposal of projectSpeech)
-          proposal.contextual = { version: 1, source: "system", checkId: semanticResult.sourceHash };
+          proposal.contextual = { version: 1, source: gm ? "gm" : "system", checkId: semanticResult.sourceHash };
       if (Array.isArray(raw?.projectSpeech) && projectSpeech.length !== raw.projectSpeech.length)
         effectFailures.projects = {
           kind: "metadata",
@@ -1652,6 +1825,7 @@ export function createSceneWriting({
         semanticProvenance: semanticResult
           ? ({
               version: 2 as const,
+              ...(gm ? { producer: "gm" as const } : {}),
               turnPolicyVersion: 1 as const,
               ...(venueOperationInput()?.preservationVersion === 1 ? { preservationVersion: 1 as const } : {}),
               ...(venueOperationInput()?.occurrenceVersion === 1 ? { occurrenceVersion: 1 as const } : {}),
@@ -1676,6 +1850,7 @@ export function createSceneWriting({
         wishContexts,
       };
     } catch (error) {
+      if (gm) await rejectVenueCompletion(undefined, { stages: ["writing-completion:" + requestKey] });
       if (semanticResult) await semantic?.rejectExchange?.(semanticResult);
       throw error;
     }

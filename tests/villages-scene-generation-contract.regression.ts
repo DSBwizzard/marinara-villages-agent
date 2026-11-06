@@ -27,6 +27,14 @@ const scene = coerceSession({
 });
 assertCurrentSceneGeneration(scene, current, "chat");
 assertCurrentSceneGeneration(scene, { ...current, interactionScopeVersion: undefined }, "greet");
+assert.throws(() =>
+  assertCurrentSceneGeneration(scene, { ...current, writingContractVersion: 4, gmVersion: 1 }, "chat"),
+);
+assertCurrentSceneGeneration(
+  { ...scene, gmVersion: 1 },
+  { ...current, writingContractVersion: 4, gmVersion: 1 },
+  "chat",
+);
 
 for (const [field, values] of [
   ["writingContractVersion", [undefined, 1, 2, "3"]],

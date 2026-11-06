@@ -20,7 +20,7 @@ const introduction = z
 
 export const NPC_INTRODUCTION_WRITING = `Supporting characters may be introduced when grounded in this setting, including an otherwise empty Scene. Prefer a suitable known person, while respecting availability; an association alone does not place them here. For at most four observed arrivals/introductions return npcIntroductions:[{ref:"new:local-key",existingId?:"known NPC id",name,label,characterization,segment:zero-based narration index}]. Use that ref as speakerId in subsequent segments. The cited narration must visibly establish the person in the CURRENT Zone before their dialogue. Do not impersonate an absent Villager or reveal an unseen person. Background crowds remain narration. New arrivals cannot witness earlier speech, including the player's input. A supporting character may speak, act, refuse and remember, but receives no resident Agenda, Wishes or construction leadership. Never invent the player's past, consent, or relationship. Genuine pre-established history must be grounded in supplied authored context.`;
 
-/** Temporary writer references never become identities until the existing System exchange approves them. */
+/** Bind temporary writer references to server-owned identities and observed arrivals. */
 export function prepareNpcIntroductions(
   raw: Record<string, unknown>,
   state: VillageState,
@@ -81,6 +81,7 @@ export function prepareNpcIntroductions(
     "ownerId",
     "visitorId",
     "controllerId",
+    "attributedTo",
   ]);
   const actorLists = new Set([
     "heardBy",
@@ -90,6 +91,9 @@ export function prepareNpcIntroductions(
     "memberIds",
     "inviterIds",
     "controllerIds",
+    "subjects",
+    "participants",
+    "targetIds",
   ]);
   const bind = (value: unknown): void => {
     if (Array.isArray(value)) {
@@ -101,7 +105,16 @@ export function prepareNpcIntroductions(
       const row = value as Record<string, unknown>;
       if (actorFields.has(key) && typeof field === "string") row[key] = refs.get(field) ?? field;
       else if (actorLists.has(key) && Array.isArray(field)) row[key] = field.map((id) => refs.get(String(id)) ?? id);
-      else bind(field);
+      else if (key === "learners" && field && typeof field === "object" && !Array.isArray(field)) {
+        const learners: Record<string, unknown> = {};
+        for (const [id, learning] of Object.entries(field)) {
+          const bound = refs.get(id) ?? id;
+          if (Object.hasOwn(learners, bound)) throw badGateway("Duplicate supporting character learner.");
+          learners[bound] = learning;
+          bind(learning);
+        }
+        row[key] = learners;
+      } else bind(field);
     }
   };
   bind(raw);

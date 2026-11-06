@@ -13,6 +13,7 @@ import type { InterpretationBatch } from "../../domain/models/interpretation-mod
 import type { VenueReplyLine, VenueScene } from "../../domain/models/scene-model.js";
 import type { SemanticExchange, SemanticIntent } from "../../domain/models/semantic-model.js";
 import { asRecord } from "../../domain/rules/coerce.js";
+import { normalizeGmEffects } from "../../domain/rules/scene-gm.js";
 import {
   badGateway,
   conflict,
@@ -373,11 +374,19 @@ export function createSemanticService(ports: SemanticPorts) {
     currentEvidenceOnly = false,
     _scene?: VenueScene,
     outputContractVersion?: 1,
+    provided?: Record<string, unknown>,
   ): Promise<Result> {
     // Context is frozen once per operation/source, even when world state changes during recovery.
     const taskOutput = asRecord(input).pipelineVersion === 3 ? 4096 : 8192;
     const identity = asRecord(input);
     const key = semanticCheckpointKey(stage, identity);
+    if (provided) {
+      const saved = await ports.venueCheckpoint("gm:" + key + ":input", async () => ({
+        input,
+        hash: semanticHash(input),
+      }));
+      return validate(provided, saved.hash, saved.input);
+    }
     return ports.venueCheckpoint(key, async () => {
       const requested = await ports.villagesConnectionIdFor("system");
       const initial = await ports.villagesLanguageModels().resolveForRequest({ connectionId: requested ?? undefined });
@@ -738,27 +747,34 @@ export function createSemanticService(ports: SemanticPorts) {
     residentActionsOmitted = false,
     narrativeGrant?: NarrativeAdmission | null,
     zoneEventSource?: Record<string, unknown>,
+    gm?: {
+      raw: Record<string, unknown>;
+      context: ReturnType<typeof semanticContext>;
+      presentation: SpriteSelectionContext;
+    },
   ): Promise<SemanticExchange> {
     const state = await readSceneAuthority(scene);
     const sceneState = sceneContinuityView(state, scene);
     const evidence = semanticEvidence(lines);
     const combined = scene.operation?.input.semanticPipelineVersion === 3;
     const movementReview = scene.operation?.input.residentMovementReviewVersion === 1;
-    const actionContractV2 = residentActionsOmitted || scene.operation?.input.residentActionsVersion === 2;
-    const context = semanticContext(
-      scene,
-      state,
-      message,
-      combined,
-      actionContractV2,
-      sceneContinuityView(state, scene),
-      lines.map((line) => line.content).join("\n"),
-    );
+    const actionContractV2 = !gm && (residentActionsOmitted || scene.operation?.input.residentActionsVersion === 2);
+    const context =
+      gm?.context ??
+      semanticContext(
+        scene,
+        state,
+        message,
+        combined,
+        actionContractV2,
+        sceneContinuityView(state, scene),
+        lines.map((line) => line.content).join("\n"),
+      );
     return ask(
       "exchange",
       {
         message,
-        _presentation: sceneSpriteSelection(scene, sceneState),
+        _presentation: gm?.presentation ?? sceneSpriteSelection(scene, sceneState),
         turnPolicyVersion: 1,
         ...(movementReview
           ? { residentMovementReviewVersion: 1, residentRequestLocalIds: residentLocalIdsAt(scene, [], 0) }
@@ -770,7 +786,7 @@ export function createSemanticService(ports: SemanticPorts) {
         context,
         ...(narrativeGrant !== undefined ? { narrativeGrant } : {}),
         ...(combined ? { pipelineVersion: 3 } : {}),
-        ...(residentActions ? { residentActions } : {}),
+        ...(residentActions && !gm ? { residentActions } : {}),
       },
       exchangeInstruction(
         scene,
@@ -779,6 +795,7 @@ export function createSemanticService(ports: SemanticPorts) {
         combined && actionContractV2,
       ),
       (raw, hash, savedInput, outputContractVersion): SemanticExchange => {
+        if (gm) raw = { ...raw, sourceHash: hash };
         if (savedInput.context.preservation) {
           const finding =
             savedInput.context.preservation.sceneBoundaryVersion === 1
@@ -835,10 +852,12 @@ export function createSemanticService(ports: SemanticPorts) {
           throw new UnsupportedScenePerception();
         }
         let evidence = savedInput.evidence;
-        const immediate = raw.consistent === true ? semanticImmediate(raw.events, lines) : undefined;
+        const immediate = gm || raw.consistent === true ? semanticImmediate(raw.events, lines) : undefined;
         const admissions =
           savedInput.hearingTimelineVersion === 1 && immediate
-            ? validateNpcAdmissions(raw.npcAdmissions, scene.pendingNpcAdmissions ?? [])
+            ? gm
+              ? (scene.pendingNpcAdmissions ?? [])
+              : validateNpcAdmissions(raw.npcAdmissions, scene.pendingNpcAdmissions ?? [])
             : [];
         if (savedInput.hearingTimelineVersion === 1 && savedInput.zoneEventSource && immediate) {
           const venue = findLocation(sceneState, scene.placeId);
@@ -897,7 +916,7 @@ export function createSemanticService(ports: SemanticPorts) {
         if (raw.consistent === false && citedAgency) throw new UnsupportedPlayerAgency();
         if (raw.consistent === true && citedAgency)
           throw badGateway("System returned contradictory player-agency review. The draft is preserved.");
-        if (raw.consistent !== true)
+        if (!gm && raw.consistent !== true)
           throw badGateway("System could not establish a consistent Scene outcome. The draft is preserved.");
         semanticPlayerMoves(
           asRecord(raw.events).playerMoves,
@@ -1122,7 +1141,7 @@ export function createSemanticService(ports: SemanticPorts) {
           });
           const result = {
             outcome: String(row.outcome),
-            source: "system" as const,
+            source: gm ? ("gm" as const) : ("system" as const),
             evidenceIds: cited.map((line) => line.id),
             reason: "Current System-interpreted event",
           };
@@ -1133,7 +1152,7 @@ export function createSemanticService(ports: SemanticPorts) {
             question: "Current access event",
             evidence: cited,
             decisions: { status: "off" },
-            system: { status: "complete", outcome: result.outcome },
+            system: gm ? { status: "not-requested" } : { status: "complete", outcome: result.outcome },
             result,
             applied: "Pending authority validation",
             startedAt: "",
@@ -1151,7 +1170,7 @@ export function createSemanticService(ports: SemanticPorts) {
           projects: Array.isArray(effects.projectSpeech) && effects.projectSpeech.length > 0,
           standing: Array.isArray(permissions) && permissions.length > 0,
           social:
-            asRecord(raw.authority).social === true ||
+            (!gm && asRecord(raw.authority).social === true) ||
             (Array.isArray(asRecord(effects.relationshipChanges).changes) &&
               (asRecord(effects.relationshipChanges).changes as unknown[]).some((value: unknown) => {
                 const row = asRecord(value),
@@ -1166,14 +1185,15 @@ export function createSemanticService(ports: SemanticPorts) {
         const invalidAuthority = Object.entries(authority).find(
           ([key, value]) => asRecord(raw.authority)[key] !== value,
         );
-        if (invalidAuthority)
+        if (invalidAuthority && !gm)
           throw badGateway(
             `System authority metadata is missing or inconsistent (${invalidAuthority[0]}). The draft is preserved.`,
           );
         return {
           version: 2,
+          ...(gm ? { producer: "gm" as const } : {}),
           ...(interpretedIntent ? { intent: interpretedIntent } : {}),
-          checkpointKey: semanticCheckpointKey("exchange", savedInput),
+          checkpointKey: gm ? "" : semanticCheckpointKey("exchange", savedInput),
           sourceHash: hash,
           authority,
           effects,
@@ -1188,9 +1208,11 @@ export function createSemanticService(ports: SemanticPorts) {
       actionContractV2,
       scene,
       combined && actionContractV2 ? 1 : undefined,
+      gm ? normalizeGmEffects(gm.raw, context) : undefined,
     );
   }
   async function rejectExchange(result: SemanticExchange) {
+    if (result.producer === "gm") return;
     await ports.rejectVenueCompletion(undefined, { preserveWriting: true, stages: [result.checkpointKey] });
   }
   return { preflight, exchange, rejectExchange };

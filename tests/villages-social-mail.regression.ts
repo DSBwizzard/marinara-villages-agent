@@ -99,6 +99,7 @@ const change = (input: SocialMailInput, revision: number, reply: boolean) => ({
   lineIds: [reply ? input.messageId + ":reply" : input.messageId],
 });
 let active: SocialMailInput;
+let gmAdmissions = false;
 const promptHistory: string[] = [];
 const coreService = createSocialMail({
   backgroundSetting: async (key: string, create: () => unknown) => {
@@ -241,8 +242,12 @@ const coreService = createSocialMail({
       failAdmission = false;
       throw Error("Admission unavailable");
     }
-    if (!queued.some((row) => row.subjectId === job.subjectId && row.revision === job.revision))
-      queued.push(structuredClone(job));
+    if (!queued.some((row) => row.subjectId === job.subjectId && row.revision === job.revision)) {
+      const retained = structuredClone(job);
+      // This suite retains the two-stage saved-mail contract; GM admissions have separate coverage.
+      if (!gmAdmissions) delete retained.input.gmVersion;
+      queued.push(retained);
+    }
   },
   retryBackgroundJob: async (id: string) => {
     retries.push(id);
@@ -291,7 +296,7 @@ const coreService = createSocialMail({
       );
     calls++;
     if (model.connectionId === "system") assert.equal(options.reasoningEffort, "low");
-    if (model.connectionId === "narration") {
+    if (model.connectionId === "narration" && active.gmVersion !== 1) {
       if (active.admitted.worldRules === "The sun never sets.") {
         assert.match(JSON.stringify(messages), /The sun never sets/);
         assert.match(JSON.stringify(messages), /A festival is underway/);
@@ -307,6 +312,7 @@ const coreService = createSocialMail({
     if (sourceOnlyReply) replyChange.lineIds = [active.messageId];
     return {
       content: JSON.stringify({
+        ...(active.gmVersion === 1 ? { text: narrationReply } : {}),
         replyMemoryChanges: active.sourceText.startsWith("MEMORY:")
           ? [
               {
@@ -1352,6 +1358,7 @@ assert.equal(calls, beforeMeaning + 1, "Explicit metadata recovery reuses writin
   };
   reopen();
   await gate.work(() => savedRelationships!.mutateRelationships(village.seed, (state) => Object.assign(state, social)));
+  gmAdmissions = true;
   try {
     for (const cold of [false, true]) {
       backgroundStatuses = [];
@@ -1389,6 +1396,7 @@ assert.equal(calls, beforeMeaning + 1, "Explicit metadata recovery reuses writin
       );
     }
   } finally {
+    gmAdmissions = false;
     savedRelationships = undefined;
     gate.dispose();
   }

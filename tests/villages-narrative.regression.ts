@@ -689,7 +689,7 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
   for (const review of [{}, { consistent: true }, { consistent: false, reason: "Unsupported proposal" }]) {
     answers = [{ quiet: false, proposal: {} }, review];
     await assert.rejects(
-      () => service.handler.generate(queued.input),
+      () => service.handler.generate({ ...queued.input, gmVersion: undefined }),
       (error: unknown) =>
         review.consistent === false
           ? error instanceof Error && !(error instanceof WorkFailureError)
@@ -697,4 +697,8 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
     );
     assert.equal(answers.length, 0, "The retained review determines recovery; no hidden request is made.");
   }
+  answers = [{ quiet: false, development: proposal(queued.input.grant) }];
+  const gm = await service.handler.generate(queued.input);
+  assert.equal(gm.quiet, false);
+  assert.equal(answers.length, 0, "A new world development uses one typed GM response");
 }

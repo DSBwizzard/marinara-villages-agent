@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { semanticContext } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
 import {
   coerceVillageState,
   defaultVillageState,
@@ -200,6 +201,32 @@ world.villagers[0].sprite = null;
 const replay = await service.exchange(scene, "I listen.", lines, null);
 assert.deepEqual(replay.presentation, result.presentation, "replay retains the concrete choice after library changes");
 assert.equal(calls, 1, "recovery never buys a sprite request");
+world.villagers[0].sprite = sprite as any;
+const gmContext = semanticContext(scene, world, "I listen.", true);
+const gmSelection = sceneSpriteSelection(scene, world);
+const gmRaw = {
+  presentation: [
+    {
+      segment: 0,
+      staging: [{ characterId: "a", expression: "e-side", look: { target: "villager", characterId: "b" } }],
+    },
+  ],
+};
+const gmCalls = calls;
+const gmFirst = await service.exchange(scene, "A GM turn.", lines, null, undefined, false, undefined, undefined, {
+  raw: gmRaw,
+  context: gmContext,
+  presentation: gmSelection,
+});
+world.villagers[0].sprite = null;
+const gmReplayed = await service.exchange(scene, "A GM turn.", lines, null, undefined, false, undefined, undefined, {
+  raw: gmRaw,
+  context: gmContext,
+  presentation: sceneSpriteSelection(scene, world),
+});
+assert.deepEqual(gmReplayed.presentation, gmFirst.presentation, "GM validation input freezes the catalog and variants");
+assert.equal(gmReplayed.sourceHash, gmFirst.sourceHash, "Recovery retains its captured source hash");
+assert.equal(calls, gmCalls, "GM validation and replay never call System");
 world.villagers[0].sprite = sprite as any;
 malformed = true;
 const invalid = await service.exchange(scene, "Other turn.", lines, null);

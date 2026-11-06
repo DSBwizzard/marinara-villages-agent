@@ -627,7 +627,7 @@ async function checkPackage(width) {
   await page.getByRole("button", { name: "Erase Village", exact: true }).click();
   await page.getByRole("button", { name: "Erase Village permanently", exact: true }).click();
   await expect.poll(() => heldReset !== null).toBe(true);
-  for (const label of ["System", "Narration", "Images"]) {
+  for (const label of ["System", "GM", "Images"]) {
     await expect(page.getByLabel(label, { exact: true })).toBeDisabled();
   }
   assert.equal(narration.writingGuidance, "Saved writing guidance", "Writing preferences preserve saved guidance");
