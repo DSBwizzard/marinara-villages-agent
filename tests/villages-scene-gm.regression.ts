@@ -46,7 +46,6 @@ await assert.rejects(
 mock.timers.enable({ apis: ["Date"], now: new Date("2026-11-05T20:00:00Z") });
 for (const invited of [false, true]) {
   const host = await packagedSceneServer({
-    gm: true,
     configure(world) {
       if (!invited) return;
       const venue = world.venues[0];
