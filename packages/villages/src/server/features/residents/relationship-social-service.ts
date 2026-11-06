@@ -287,7 +287,6 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
           const privateScene = coerceSession({
             version: 4,
             id: "offscreen:" + entry.id,
-            processingVersion: 1,
             villageSeed: entry.seed,
             placeId: accepted.venueId,
             zoneId: accepted.zoneId,

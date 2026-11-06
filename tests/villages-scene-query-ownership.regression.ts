@@ -71,7 +71,6 @@ function scene(id = "same", name = "A Venue"): VenueScene {
 function ownedScene(owner: string): VenueScene {
   const saved = scene("same", owner + " Venue");
   saved.placeId = "venue-" + owner;
-  saved.processingVersion = 1;
   saved.villageSeed = owner;
   saved.lines = [line("reply", { content: owner + " reply" })];
   saved.submissions = [
@@ -81,6 +80,14 @@ function ownedScene(owner: string): VenueScene {
       activeIdsAtTurn: ["mara"],
       replyLineIds: ["reply"],
       progressError: owner + " pending",
+      processing: createExchangeProcessing({
+        seed: owner,
+        sceneId: saved.id,
+        submissionId: "proof",
+        order: 0,
+        lineIds: ["reply"],
+        actionReceiptIds: [],
+      }),
     }),
   ];
   return saved;
@@ -106,9 +113,7 @@ function fixture(name: string) {
     records: Document[] = [],
     calls: string[] = [],
     owners: unknown[] = [];
-  let paused = false,
-    failWorld: Error | undefined,
-    failList: Error | undefined;
+  let paused: "world" | "session" | undefined, failWorld: Error | undefined, failList: Error | undefined;
   const entered = deferred(),
     gate = deferred();
   const note = (call: string) => {
@@ -119,14 +124,20 @@ function fixture(name: string) {
   const service = createSceneQueryService({
     async readSession(id) {
       note("session:" + id);
+      if (paused === "session") {
+        paused = undefined;
+        entered.resolve();
+        await gate.promise;
+        note("session-resumed");
+      }
       const found = sessions.get(id);
       if (!found) throw Error("Missing Scene");
       return structuredClone(found);
     },
     async readVillageState() {
       note("world");
-      if (paused) {
-        paused = false;
+      if (paused === "world") {
+        paused = undefined;
         entered.resolve();
         await gate.promise;
         note("world-resumed");
@@ -185,8 +196,8 @@ function fixture(name: string) {
     add,
     entered,
     gate,
-    pause() {
-      paused = true;
+    pause(target: "world" | "session" = "world") {
+      paused = target;
     },
     failWorld(error: Error) {
       failWorld = error;
@@ -278,7 +289,6 @@ async function main() {
 
   const backlog = fixture("seed");
   const current = scene("current");
-  current.processingVersion = 1;
   current.villageSeed = "seed";
   const pending = createExchangeProcessing({
     seed: "seed",
@@ -290,14 +300,18 @@ async function main() {
   });
   const complete = structuredClone(pending);
   for (const domain of Object.values(complete.domains)) domain.status = "applied";
+  complete.submissionId = "complete";
   const failed = structuredClone(complete);
+  failed.submissionId = "failed";
   failed.domains.memories.status = "failed";
   current.submissions = [
     turn("pending", { processing: pending, progressError: "Still pending" }),
     turn("complete", { processing: complete }),
     turn("failed", { processing: failed }),
-    turn("plain"),
-    turn("processed", { progressProcessedAt: stamp }),
+    turn("processed", {
+      progressProcessedAt: stamp,
+      processing: { ...structuredClone(complete), submissionId: "processed" },
+    }),
     turn("before-founding", { at: "2026-10-06T12:00:00.000Z" }),
   ];
   current.navigationReceipts = [{ id: "move", originZoneId: "a", destinationZoneId: "b", at: stamp }];
@@ -309,7 +323,7 @@ async function main() {
   const originalRecords = structuredClone(backlog.records);
   assert.deepEqual(
     await backlog.service.progressBacklog(),
-    ["pending", "failed", "plain"].map((submissionId) => ({
+    ["pending", "failed"].map((submissionId) => ({
       sessionId: "current",
       submissionId,
       at: stamp,
@@ -326,6 +340,14 @@ async function main() {
     "Backlog explicitly reads its saved turn pages",
   );
   assert.deepEqual(backlog.records, originalRecords, "backlog is not a storage mutation");
+  const malformed = fixture("malformed"),
+    malformedScene = scene("malformed");
+  malformedScene.villageSeed = "malformed";
+  malformedScene.submissions = [turn("missing-processing")];
+  malformed.add(malformedScene);
+  const malformedBefore = structuredClone(malformed.records);
+  await assert.rejects(malformed.service.progressBacklog(), /processing metadata/);
+  assert.deepEqual(malformed.records, malformedBefore, "backlog refuses missing saved processing without rewriting it");
   const listFault = Error("Exact document list failure"),
     broken = fixture("list-fault");
   broken.failList(listFault);
@@ -400,7 +422,7 @@ async function main() {
   newer.add(ownedScene("D"));
   const releaseC = c.run(() => configureSceneQueries(older.queries)),
     clearC = installDefaultActivation(c, () => {});
-  older.pause();
+  older.pause("session");
   const heldEvidence = sceneQueries().readProjectTurnEvidence("same", "proof");
   await older.entered.promise;
   const releaseD = d.run(() => configureSceneQueries(newer.queries)),
@@ -412,7 +434,7 @@ async function main() {
   assert.equal(cEvidence.zoneId, "zone-C");
   assert.equal(cEvidence.message, "C message");
   assert.equal(cEvidence.lines[0]?.content, "C reply");
-  assert.deepEqual(older.calls, ["session:same", "world", "world-resumed"]);
+  assert.deepEqual(older.calls, ["session:same", "session-resumed"]);
   assert(older.owners.every((owner) => owner === c));
   assert(newer.owners.every((owner) => owner === d));
   c.run(releaseC);
@@ -425,7 +447,7 @@ async function main() {
     "Scene evidence/backlog inertness, historical witness/privacy filters, authoritative progress gates and activation-bound lazy query connections passed without providers.",
   );
 }
-main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

@@ -5,7 +5,7 @@ import { sceneFingerprint } from "./scene-record.js";
 import { asRecord } from "./coerce.js";
 import { isImmutableRelationshipState } from "./relationship-rules.js";
 import { isImmutableSceneLine } from "./scene-transcript.js";
-import { isImmutableSceneSubmission, mutableSceneSubmission } from "./scene-submissions.js";
+import { isImmutableSceneSubmission, mutableSceneSubmission, requireSceneExchange } from "./scene-submissions.js";
 import { isImmutableMemoryValue } from "./memory-integrity.js";
 import type { VenueOperation } from "../models/operation-model.js";
 
@@ -87,6 +87,7 @@ export function applySceneMutation(
   change: (session: VenueScene) => void,
 ): void | false {
   if (session.id !== id) throw notFound("That Scene is no longer available.");
+  for (const turn of session.submissions) if (turn.at) requireSceneExchange(session, turn);
   const snapshot = mutationSnapshot(session);
   const before = sceneFingerprint(session);
   const priorChanges = new Map(
@@ -101,9 +102,9 @@ export function applySceneMutation(
     ]),
   );
   change(session);
-  if (session.processingVersion === 1 && session.villageSeed)
-    session.submissions.forEach((turn, order) => {
-      if (turn.processing || !turn.at) return;
+  session.submissions.forEach((turn, order) => {
+    if (!turn.at) return;
+    if (!turn.processing && !priorChanges.has(turn.id))
       mutableSceneSubmission(session, turn.id)!.processing = createExchangeProcessing({
         seed: session.villageSeed!,
         sceneId: id,
@@ -112,11 +113,11 @@ export function applySceneMutation(
         lineIds: session.lines
           .filter((line) => turn.replyLineIds?.includes(line.id) || (line.role === "user" && line.at === turn.at))
           .map((line) => line.id),
-        actionReceiptIds: turn.action?.happened
-          ? [turn.physicalOutcomeVersion ? `venue-chat:${id}:${turn.id}` : `venue-action:${turn.id}`]
-          : [],
+        actionReceiptIds:
+          turn.action?.happened && turn.physicalOutcomeVersion === 1 ? [`venue-chat:${id}:${turn.id}`] : [],
       });
-    });
+    requireSceneExchange(session, session.submissions[order]);
+  });
   for (const turn of session.submissions) {
     const prior = priorChanges.get(turn.id);
     if (prior?.value === turn && isImmutableSceneSubmission(turn)) continue;

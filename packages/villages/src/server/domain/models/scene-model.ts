@@ -147,8 +147,6 @@ export type VenueRecordEvent = {
   detail?: string;
 };
 export type VenueScene = {
-  /** Captured at creation; unmarked saved Scenes keep their two-stage contract. */
-  gmVersion?: 1;
   /** Provisional writer cast, validated before publication; never persisted as Scene authority. */
   pendingNpcAdmissions?: import("../rules/npc-participation.js").NpcAdmission[];
   /** Private captured writing context; never part of a client projection. */
@@ -157,7 +155,6 @@ export type VenueScene = {
   semanticVersion?: 2;
   semanticIntent?: import("./semantic-model.js").SemanticIntent;
   version: 4;
-  processingVersion?: 1;
   changeSequence?: number;
   villageSeed?: string;
   sceneRevision: number;

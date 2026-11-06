@@ -1,4 +1,5 @@
 import type { VenueScene, VenueSubmission } from "../models/scene-model.js";
+import { conflict } from "./errors.js";
 import { immutableMemoryValue, memoryRequire } from "./memory-integrity.js";
 
 const canonical = new WeakSet<object>();
@@ -29,4 +30,20 @@ export function mutableSceneSubmission(scene: Pick<VenueScene, "submissions">, i
   const row = scene.submissions[index];
   if (!canonical.has(row)) return row;
   return (scene.submissions[index] = structuredClone(row));
+}
+
+/** Saved effects must belong to the exact admitted Scene and submission. */
+export function requireSceneExchange(scene: VenueScene, turn: VenueSubmission | undefined) {
+  const processing = turn?.processing;
+  if (
+    !scene.villageSeed ||
+    !turn ||
+    !processing ||
+    processing.version !== 1 ||
+    processing.seed !== scene.villageSeed ||
+    processing.sceneId !== scene.id ||
+    processing.submissionId !== turn.id
+  )
+    throw conflict("The saved Scene exchange has no current processing metadata.");
+  return processing;
 }

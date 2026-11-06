@@ -48,6 +48,7 @@ state.venues = [
 const old = new Date(Date.now() - 3_600_000).toISOString();
 let saved = coerceSession({
   version: 4,
+  semanticVersion: 2,
   id: "gathering",
   liveSceneVersion: 1,
   placeId: "community",
@@ -58,7 +59,6 @@ let saved = coerceSession({
   status: "active",
   startedAt: old,
   lastActivityAt: old,
-  processingVersion: 1,
   villageSeed: state.seed,
   openingGatheringId: state.opening.id,
   sceneAttendance: { capturedAt: old, occupants: [] },
@@ -211,10 +211,10 @@ for (const how of ["semantic", "abandon"] as const) {
   };
   const scene = coerceSession({
     version: 4,
+    semanticVersion: 2,
     id: "commitment",
     placeId: "venue",
     status: "active",
-    processingVersion: 1,
     villageSeed: village.seed,
     lines: [
       {

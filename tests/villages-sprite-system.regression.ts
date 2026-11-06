@@ -93,7 +93,6 @@ const sprite = {
 world.villagers[0].sprite = sprite as any;
 const scene = coerceSession({
   version: 4,
-  gmVersion: 1,
   semanticVersion: 2,
   id: "sprite-scene",
   placeId: "studio",
@@ -209,7 +208,6 @@ assert.equal(local[0].expression, "e-side");
 const admission = {
   interactionScopeVersion: 6,
   writingContractVersion: 4,
-  gmVersion: 1,
   semanticPipelineVersion: 3,
   residentActionsVersion: 2,
 };
@@ -230,11 +228,10 @@ for (const failure of ["none", "validation-input", "presentation-publish", "inva
     paid = 0,
     rejected = 0;
   world.villagers[0].sprite = sprite as any;
-  const gmAdmission = { ...admission, gmVersion: 1, writingContractVersion: 4 };
+  const gmAdmission = { ...admission, writingContractVersion: 4 };
   const gmScene = {
     ...writingScene,
     id: "gm-storage-" + failure,
-    gmVersion: 1,
     operation: { input: gmAdmission },
   } as typeof scene;
   Object.assign(gmScene, zoneEventScene(gmScene, world.venues[0]));

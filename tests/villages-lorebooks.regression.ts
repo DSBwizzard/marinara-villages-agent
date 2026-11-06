@@ -601,14 +601,12 @@ async function main() {
     ];
     const admission = {
       writingContractVersion: 4,
-      gmVersion: 1,
       semanticPipelineVersion: 3,
       residentActionsVersion: 2,
       interactionScopeVersion: 6,
     };
     const scene = coerceSession({
       version: 4,
-      gmVersion: 1,
       semanticVersion: 2,
       id: "gm-lore",
       villageSeed: world.seed,

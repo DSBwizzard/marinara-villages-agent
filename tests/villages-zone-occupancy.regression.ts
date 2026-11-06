@@ -453,6 +453,7 @@ assert.equal(paint.description, "A yellow motorcycle.", "closing never replays a
   } as any);
   await service.sceneReplayEffects().applyVenueTurnChange(saved, {
     id: "red",
+    physicalOutcomeVersion: 1,
     at: stamp,
     areaAtTurn: "public",
     zoneIdAtTurn: "a",

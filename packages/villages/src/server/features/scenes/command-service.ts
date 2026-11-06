@@ -3,7 +3,7 @@ import { captureZoneObservation } from "../../domain/rules/zone-observation.js";
 import { findLocation, sceneActorIds } from "../../domain/rules/places.js";
 import { admitNpcParticipants, type NpcAdmission } from "../../domain/rules/npc-participation.js";
 import { applyPlaceExchange } from "../../domain/rules/place-exchange.js";
-import { mutableSceneSubmission } from "../../domain/rules/scene-submissions.js";
+import { requireSceneExchange, mutableSceneSubmission } from "../../domain/rules/scene-submissions.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { createHash, randomUUID } from "node:crypto";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
@@ -958,8 +958,6 @@ export function createSceneCommands({
       version: 4,
       sceneRevision: 0,
       liveSceneVersion: 1,
-      gmVersion: 1,
-      processingVersion: 1,
       semanticVersion: 2,
       villageSeed: village.seed,
       id,
@@ -1022,6 +1020,7 @@ export function createSceneCommands({
       aborted,
       Promise.resolve().then(async () => {
         const admission = await readSession(id);
+        assertCurrentSceneGeneration(admission);
         signal.throwIfAborted();
         const writingInput = {
           semanticBudget:
@@ -1307,6 +1306,7 @@ export function createSceneCommands({
       return unavailableTurnResult(rejected, input.submissionId);
     }
     const scene = await readSession(input.sessionId);
+    assertCurrentSceneGeneration(scene);
     const prior = scene.submissions.find((entry) => entry.id === input.submissionId);
     if (prior) runtimeDebug("submission replay", { sceneId: input.sessionId, submissionId: input.submissionId });
     if (!prior) await requireLiveVenueSession(input.sessionId);
@@ -1337,6 +1337,7 @@ export function createSceneCommands({
     replaceOfOperationId?: string,
   ) {
     const scene = await readSession(sessionId);
+    assertCurrentSceneGeneration(scene);
     const prior = scene.submissions.find((entry) => entry.id === submissionId);
     if (!prior) await requireLiveVenueSession(sessionId);
     if (!prior && !findLocation(await readVillageState(), scene.placeId))
@@ -1381,6 +1382,7 @@ export function createSceneCommands({
     let session = await readSession(input.sessionId);
     if (rejectedSubmission(session, input.submissionId, input))
       return unavailableTurnResult(session, input.submissionId);
+    assertCurrentSceneGeneration(session);
     const prior = session.submissions.find((entry) => entry.id === input.submissionId);
     if (!prior && session.semanticVersion === 2) {
       await finishSemanticScene(session.id);
@@ -1396,7 +1398,6 @@ export function createSceneCommands({
       } catch (error) {
         villagesLogger().warn("[villages] saved turn progress deferred for %s: %s", prior.id, String(error));
       }
-      if (!prior.processing) await applyVenueTurnChange(session, prior);
       await applyVenueRequests(session, prior);
       if (
         prior.invitationSignal &&
@@ -1414,14 +1415,9 @@ export function createSceneCommands({
         session: await readSession(session.id),
         verdict: prior.verdict,
         action: prior.action ?? null,
-        recordEvents:
-          prior.action?.happened && !prior.physicalOutcomeVersion
-            ? [{ id: `venue-action:${input.submissionId}`, kind: "venue" as const, text: prior.action.narration }]
-            : recordEvents,
+        recordEvents,
       };
     }
-    assertCurrentSceneGeneration(session);
-
     session = await requireLiveVenueSession(session.id);
     const blocker = semanticBlocker(session);
     if (blocker) throw conflict(blocker);
@@ -1751,6 +1747,7 @@ export function createSceneCommands({
       throw error;
     }
     const submission = updated.submissions.find((entry) => entry.id === input.submissionId)!;
+    requireSceneExchange(updated, submission);
     if (
       submission.npcAdmissions?.length ||
       submission.placeDiscoveries?.length ||
@@ -1765,7 +1762,6 @@ export function createSceneCommands({
     } catch (error) {
       villagesLogger().warn("[villages] saved turn progress deferred for %s: %s", submission.id, String(error));
     }
-    if (!submission.processing) await applyVenueTurnChange(updated, submission);
     await applyVenueRequests(updated, submission);
     if (submission.invitationSignal) await recordSpokenInvitation(updated, submission.invitationSignal);
     await markZoneSeen(updated, false).catch((error) =>
@@ -2378,6 +2374,8 @@ export function createSceneCommands({
         submission.semanticProvenance?.version !== 2
       )
         throw conflict("The saved physical source has no current captured Zone.");
+      if (submission.physicalOutcomeVersion !== 1)
+        throw conflict("The saved physical source has no current outcome receipt.");
       const zoneId = captured.zoneId,
         area = submission.areaAtTurn,
         privateOwnerId = submission.privateOwnerIdAtTurn;
@@ -2485,34 +2483,28 @@ export function createSceneCommands({
           venueName: venue.name,
           text: change.narration,
           at,
-          // Only newly interpreted turns gain proof. Existing settled history is never backfilled.
-          ...(submission.physicalOutcomeVersion === 1
-            ? {
-                actionReceipt: {
-                  happened: true,
-                  ...change,
-                  submissionId: submission.id,
-                  witnessIds: ["player", ...witnesses],
-                  after,
-                },
-              }
-            : {}),
+          actionReceipt: {
+            happened: true,
+            ...change,
+            submissionId: submission.id,
+            witnessIds: ["player", ...witnesses],
+            after,
+          },
         },
         ...state.venueEvents,
       ].slice(0, 200);
-      if (submission.physicalOutcomeVersion === 1)
-        state.exchangeReceipts[id] = {
-          id,
-          sceneId: session.id,
-          submissionId: submission.id,
-          domain: "physical",
-          at,
-          committedAt: villageNow().toISOString(),
-          status: "applied",
-          evidenceIds: submission.replyLineIds ?? [],
-          reason: "Confirmed physical outcome",
-          physicalOutcome: state.venueEvents[0]!,
-        };
+      state.exchangeReceipts[id] = {
+        id,
+        sceneId: session.id,
+        submissionId: submission.id,
+        domain: "physical",
+        at,
+        committedAt: villageNow().toISOString(),
+        status: "applied",
+        evidenceIds: submission.replyLineIds ?? [],
+        reason: "Confirmed physical outcome",
+        physicalOutcome: state.venueEvents[0]!,
+      };
     });
   }
 
@@ -2744,6 +2736,7 @@ export function createSceneCommands({
         );
       if (operation.kind === "turn") {
         assertSceneTurnMode(operation.input.mode);
+        assertCurrentSceneGeneration(await readSession(id));
         const input = { ...operation.input, sessionId: id, submissionId: operation.id } as VenueTurnInput;
         return coordinateVenue(
           id,
@@ -2770,7 +2763,8 @@ export function createSceneCommands({
           () => closeVenueSessionOnce(id),
           { recovery: true },
         );
-      if (operation.kind === "greet")
+      if (operation.kind === "greet") {
+        assertCurrentSceneGeneration(await readSession(id));
         return coordinateVenue(
           id,
           operation.id,
@@ -2781,6 +2775,7 @@ export function createSceneCommands({
           () => greetVenueOnce(id, venueOperationSignal()!, () => {}),
           { recovery: true },
         );
+      }
     });
   }
 

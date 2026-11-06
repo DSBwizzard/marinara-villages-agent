@@ -70,7 +70,6 @@ function fixture(live = false) {
     version: 4,
     id: "morning",
     ...(live ? { liveSceneVersion: 1 } : {}),
-    processingVersion: 1,
     villageSeed: state.seed,
     placeId: "square",
     placeName: "Square",

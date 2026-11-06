@@ -23,7 +23,7 @@ import {
   projectSceneHistoryPage,
 } from "../../adapters/storage/scene-public-history.js";
 import { asRecord } from "../../domain/rules/coerce.js";
-import { pendingProgressTurns } from "../../domain/rules/scene-record.js";
+import { requireSceneExchange } from "../../domain/rules/scene-submissions.js";
 import { projectMetadataRejected } from "../../domain/rules/semantic-continuity.js";
 
 import { withRepairWork } from "../../adapters/storage/repair-gate.js";
@@ -402,12 +402,15 @@ export function createSceneQueryService({
     const backlog = [];
     for (const record of records) {
       const header = readSceneIndex(record.data);
-      if (header.processingVersion === 1 && header.villageSeed !== village.seed) continue;
+      if (header.villageSeed !== village.seed) continue;
       const session = await readSceneWorkIndex(documents, record.data);
-      const pending = new Set(pendingProgressTurns(session, village.foundedAt));
+      const eligible = session.submissions.filter(
+        (turn) => turn.at && (!village.foundedAt || Date.parse(turn.at) >= Date.parse(village.foundedAt)),
+      );
+      for (const turn of eligible) requireSceneExchange(session, turn);
       backlog.push(
-        ...session.submissions
-          .filter((turn) => (turn.processing ? unfinishedExchange(turn.processing) : pending.has(turn)))
+        ...eligible
+          .filter((turn) => unfinishedExchange(turn.processing!))
           .map((turn) => ({
             sessionId: session.id,
             submissionId: turn.id,
