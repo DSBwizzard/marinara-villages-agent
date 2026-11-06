@@ -41,6 +41,7 @@ await withBrowser(browser, async () => {
     const village = structuredClone(base);
     village.villagers = village.villagers.slice(0, 2);
     village.villagers[0].letterFontId = "caveat";
+    village.villagers[1].letterFontId = "caveat";
     await page.route("**/api/capability-packages/villages/assets/letter-fonts/caveat.json", (route) =>
       fulfill(route, {
         contentType: "application/json",

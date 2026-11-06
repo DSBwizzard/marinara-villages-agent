@@ -243,6 +243,7 @@ assert.equal(a.state.simulatedThrough, now.toISOString(), "backward clocks do no
 for (const f of [a, b]) {
   f.state.villagers = [
     {
+      letterFontId: "caveat",
       characterId: "same",
       cardSnapshot: snapshotFromCard(f.card, 1),
       addedAt: stamp,

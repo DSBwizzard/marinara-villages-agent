@@ -3,7 +3,6 @@ import type { VenueScene } from "../models/scene-model.js";
 import { sceneMoveAccompanying } from "./venue-contact.js";
 import { zonePictureContext } from "./zone-picture.js";
 import { copyDate } from "../../../shared/helpers/zoned-date.js";
-import { legacyLetterFont } from "../../../shared/helpers/letter-font-selection.js";
 import { residentSignature } from "../../../shared/helpers/resident-signature.js";
 import { recentPlaceText } from "../../../shared/helpers/place-continuity.js";
 import type {
@@ -57,7 +56,7 @@ export function projectVillager(
 ): VillageVillagerView {
   return {
     characterId: villager.characterId,
-    letterFontId: villager.letterFontId ?? legacyLetterFont(villager.characterId),
+    letterFontId: villager.letterFontId,
     signatureFallback: residentSignature(villager.cardSnapshot),
     ...(villager.signature ? { signature: villager.signature } : {}),
     nameColor,

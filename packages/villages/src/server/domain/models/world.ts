@@ -95,7 +95,7 @@ export type VillageDayView = {
 
 /** One library card the village has adopted. */
 export type VillageVillager = {
-  letterFontId?: string;
+  letterFontId: string;
   identityDescription?: import("../../../shared/contracts/resident-description.js").ResidentIdentityDescription & {
     initialGenerationComplete: boolean;
   };

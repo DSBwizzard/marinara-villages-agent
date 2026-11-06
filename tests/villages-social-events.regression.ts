@@ -59,6 +59,7 @@ const village = coerceVillageState({
     }),
   ],
   villagers: ["a", "b"].map((id) => ({
+    letterFontId: "caveat",
     characterId: id,
     addedAt: "2026-10-22T18:00:00Z",
     cardSnapshot: { id, name: id, capturedAt: "card-" + id, revision: 1, sourceStatus: "available" },

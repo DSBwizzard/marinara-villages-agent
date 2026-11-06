@@ -148,6 +148,7 @@ assert.equal(
   "the Village document preserves the shared setting through storage round trips",
 );
 const resident = {
+  letterFontId: "caveat",
   characterId: "a",
   addedAt: now,
   cardSnapshot: { id: "a", revision: 1, sourceStatus: "available", name: "A", capturedAt: now },

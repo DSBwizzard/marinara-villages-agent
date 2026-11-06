@@ -46,6 +46,7 @@ function villager(id: string, venueId: string, zoneId: string, activity = "Visit
     status: "online" as const,
   };
   return {
+    letterFontId: "caveat",
     characterId: id,
     cardSnapshot: {
       id,

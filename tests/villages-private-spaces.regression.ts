@@ -61,6 +61,7 @@ function venue(id: string, classes: NonNullable<VillageVenue["classes"]>): Villa
 }
 const state = defaultVillageState();
 state.villagers = ["a", "b"].map((id) => ({
+  letterFontId: "caveat",
   characterId: id,
   addedAt: stamp,
   cardSnapshot: {

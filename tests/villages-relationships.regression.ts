@@ -47,6 +47,7 @@ const village = defaultVillageState();
 village.seed = "social-v2";
 village.foundedAt = "2026-10-22T10:00:00.000Z";
 village.villagers = ["ada", "ben", "cy"].map((id) => ({
+  letterFontId: "caveat",
   characterId: id,
   cardSnapshot: { name: id },
   wishes: [],

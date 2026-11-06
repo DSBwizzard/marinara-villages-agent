@@ -123,6 +123,7 @@ const state = coerceVillageState({
   ],
   villagers: [
     {
+      letterFontId: "caveat",
       characterId: "a",
       addedAt: "2026-09-01",
       cardSnapshot: {

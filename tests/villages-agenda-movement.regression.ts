@@ -92,6 +92,7 @@ const recovered = coerceVillageState({
   wishSystemVersion: 3,
   villagers: [
     {
+      letterFontId: "caveat",
       characterId: "r1",
       cardSnapshot: {
         id: "r1",

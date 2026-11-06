@@ -24,9 +24,7 @@ import {
 
 export type VillageSnapshotPorts = {
   readVillageState: typeof import("./village-store.js").readVillageState;
-  mutateVillageState: typeof import("./village-store.js").mutateVillageState;
   listVillagerCards: typeof import("../../adapters/engine/catalog.js").listVillagerCards;
-  captureMissingVillagerCardColors: typeof import("../../adapters/engine/catalog.js").captureMissingVillagerCardColors;
   rollActiveAgendas: typeof import("../residents/resident-agendas.js").rollActiveAgendas;
   sceneQueries: () => Pick<ReturnType<typeof import("../scenes/services.js").sceneQueries>, "activeVenueSession">;
   backgroundWorkSummaries: typeof import("../../jobs/background-work.js").backgroundWorkSummaries;
@@ -36,16 +34,14 @@ export type VillageSnapshotPorts = {
 /** Inert snapshot assembly; connections belong to its activation. */
 export function createVillageSnapshot({
   readVillageState,
-  mutateVillageState,
   listVillagerCards,
-  captureMissingVillagerCardColors,
   rollActiveAgendas,
   sceneQueries,
   backgroundWorkSummaries,
   privatePreparationRooms,
 }: VillageSnapshotPorts) {
   /** The village as the tab draws it: live library labels and adopted card colors. */
-  async function buildVillageSnapshot(at?: Date, _observeCurrentHousing = false): Promise<VillageSnapshot> {
+  async function buildVillageSnapshot(at?: Date): Promise<VillageSnapshot> {
     let village = await readVillageState();
     const clock = await observeVillageClock();
     let now = at ?? (clock?.instant ? new ZonedDate(clock.instant, clock.timeZone) : villageNow());
@@ -54,22 +50,6 @@ export function createVillageSnapshot({
     const residentIds = village.villagers.map((villager) => villager.characterId);
     const cards = await listVillagerCards(residentIds);
     const cardsById = new Map(cards.map((card) => [card.id, card]));
-    // Existing residents adopted their cards before colors were captured. Fill only
-    // the missing fields once; later card edits still require Apply refresh.
-    if (
-      village.villagers.some(
-        ({ cardSnapshot }) => cardSnapshot.nameColor === undefined || cardSnapshot.dialogueColor === undefined,
-      )
-    ) {
-      await mutateVillageState((state) => {
-        for (const resident of state.villagers) {
-          const card = cardsById.get(resident.characterId);
-          if (resident.cardSnapshot.nameColor === undefined || resident.cardSnapshot.dialogueColor === undefined)
-            resident.cardSnapshot = captureMissingVillagerCardColors(resident.cardSnapshot, card ?? null);
-        }
-      });
-      village = await readVillageState();
-    }
     if (
       village.projects.some(
         (project) =>
@@ -322,8 +302,7 @@ export function createVillageSnapshot({
         : {}),
       backgroundWork: await backgroundWorkSummaries(),
     };
-    if (clock && (await observeVillageClock())?.revision !== clock.revision)
-      return buildVillageSnapshot(undefined, _observeCurrentHousing);
+    if (clock && (await observeVillageClock())?.revision !== clock.revision) return buildVillageSnapshot();
     return snapshot;
   }
 
