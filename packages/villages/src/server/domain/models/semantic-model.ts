@@ -4,11 +4,6 @@ import type { VenueReplyLine, VenueScene } from "./scene-model.js";
 
 export interface SemanticInterpreter {
   rejectExchange?(result: SemanticExchange): Promise<void>;
-  preflight(
-    scene: VenueScene,
-    message: string,
-    narrativeGrant?: import("./narrative-model.js").NarrativeAdmission | null,
-  ): Promise<void>;
   exchange(
     scene: VenueScene,
     message: string,
