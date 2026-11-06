@@ -1,6 +1,6 @@
 # GM ownership contracts
 
-Current Villages use format 16 and social contract 2. Current Scenes use format 4 with native admission, source and effect contracts. Unsupported saved formats fail before normalization, recovery or provider dispatch; there is no conversion path.
+Current Villages use format 16, logical relationship contract 3 and native relationship root format 4. Current Scenes use format 4 with native admission, source and effect contracts. Unsupported saved formats fail before normalization, recovery or provider dispatch; there is no conversion path.
 
 ## Calls and authority
 
@@ -10,16 +10,16 @@ The GM interprets meaning; code owns source identity, legal routes, attendance, 
 
 Opening Project proposals bind the current prepared idea through a server-created fingerprint, exact witnessed speech, Scene eligibility and once-only reveal guards. The fingerprint remains private. Move follows native access commands and saved receipts; it does not infer invitations from dialogue keywords.
 
-| Family | Model responsibility | Code authority |
-| --- | --- | --- |
-| Input and prose | Speech, thought, action, addressees and proposed outcomes | Exact submitted spans, positions, speaker identity, routes and hearing |
-| Physical actions | Feasibility, capability, completed deeds and consent in context | Cited narration, supported patch, current authority, CAS and physical receipts |
-| Access | Visit/standing scope, conditions, timing, refusals and accompaniment | Native commands, issuer authority, witnesses, hours, revisions and replay receipts |
-| Memories | Experiences, information, correction and actual knowers | Exact sources, protection screening, publication, owner revisions and unit receipts |
-| Relationships | Directional perspectives, boundaries, intentions and actual disclosures | Captured/live predecessors, knowledge, scope and publication receipts |
-| Social Wishes | Concrete desires, attention, approaches and witnessed outcomes | Owner incarnation, current owner evidence, Wish revisions and independent player disclosure |
-| Projects and resident requests | Consent, willingness, withdrawal and requests | Current design, required actors, explicit Start, elapsed time, capacity and atomic completion |
-| Presentation | Optional expression IDs and attention | Frozen catalog, ownership, local visibility, concrete variant persistence and captured playback frames |
+| Family                         | Model responsibility                                                    | Code authority                                                                                         |
+| ------------------------------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Input and prose                | Speech, thought, action, addressees and proposed outcomes               | Exact submitted spans, positions, speaker identity, routes and hearing                                 |
+| Physical actions               | Feasibility, capability, completed deeds and consent in context         | Cited narration, supported patch, current authority, CAS and physical receipts                         |
+| Access                         | Visit/standing scope, conditions, timing, refusals and accompaniment    | Native commands, issuer authority, witnesses, hours, revisions and replay receipts                     |
+| Memories                       | Experiences, information, correction and actual knowers                 | Exact sources, protection screening, publication, owner revisions and unit receipts                    |
+| Relationships                  | Directional perspectives, boundaries, intentions and actual disclosures | Captured/live predecessors, knowledge, scope and publication receipts                                  |
+| Social Wishes                  | Concrete desires, attention, approaches and witnessed outcomes          | Owner incarnation, current owner evidence, Wish revisions and independent player disclosure            |
+| Projects and resident requests | Consent, willingness, withdrawal and requests                           | Current design, required actors, explicit Start, elapsed time, capacity and atomic completion          |
+| Presentation                   | Optional expression IDs and attention                                   | Frozen catalog, ownership, local visibility, concrete variant persistence and captured playback frames |
 
 Starting ties, Routine interpretation, Initial Wishes, planning and explicit saved-domain interpretation remain separate bounded tasks. Resident encounters, correspondence replies and world developments return their own content and effects together. They retain their existing source, spending and recovery boundaries; see [model responsibilities](model-responsibilities.md).
 

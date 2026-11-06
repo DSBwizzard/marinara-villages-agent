@@ -1,6 +1,6 @@
 # Scene continuity and effect recovery
 
-Current format-4 Scenes require the current native admission, writing and source contracts. Interactive Scenes require semantic contract 2 and their Village identity. Every timed exchange requires current processing metadata bound to that Village, Scene and submission; mutation and turn/greeting recovery refuse missing or mismatched metadata before admission or effects. New exchanges receive metadata when authored; existing exchanges are never backfilled. Unsupported formats are rejected before generation. Each admitted request retains its exact source, positions and witnesses through recovery; later arrivals never hear earlier dialogue.
+Current format-4 Scenes require the current native admission, writing and source contracts. Interactive Scenes require semantic contract 2 and their Village identity. Every timed interactive exchange requires current processing metadata bound to that Village, Scene and submission; mutation and turn/greeting recovery refuse missing or mismatched metadata before admission or effects. New exchanges receive metadata when authored; existing exchanges are never backfilled. Unsupported formats are rejected before generation. Each admitted request retains its exact source, positions and witnesses through recovery; later arrivals never hear earlier dialogue.
 
 An empty local cast permits surroundings and player actions, without inventing unseen responders. Invalid hearing, movement or physical metadata keeps the uncommitted response held. Reads and reloads never request replacements.
 

@@ -32,7 +32,7 @@ See [activation dispatch ownership](activation-dispatch-ownership.md) and [activ
 
 ## Scenes and privacy
 
-A Venue contains Zones; a Scene continues across movement between those Zones. At admission, the server captures attendance, positions, activities, connections, time and source facts for writing. Background changes cannot rewrite an active snapshot. Exact accepted Scene effects extend its presentation context through existing receipts; those projections never become authority for a world write. Unseen attendance, captured facts and private contents stay server-side. Current-format Scenes reserve sparse memory continuity before attaching their captured facts; recovery reuses that reservation. Closed Scenes stay closed.
+A Venue contains Zones; a Scene continues across movement between those Zones. At admission, the server captures attendance, positions, activities, connections, time and source facts for writing. Background changes cannot rewrite an active snapshot. Exact accepted Scene effects extend its presentation context through existing receipts; those projections never become authority for a world write. Unseen attendance, captured facts and private contents stay server-side. Live Scenes freeze eligible Memory evidence per request. Noninteractive captured sources reserve sparse Memory continuity before attaching their facts; recovery reuses that reservation. Closed Scenes stay closed.
 
 Source spans, witnesses, authority, revisions and physical receipts bind proposed effects to the saved interaction. Hearing, understanding, disclosure, entry and permission to change a space remain separate. Domain validation determines actual effects after model interpretation.
 
