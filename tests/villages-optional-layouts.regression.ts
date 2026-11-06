@@ -19,7 +19,7 @@ import { defaultVenueSpace, venueCapacity } from "../packages/villages/src/serve
 import {
   canOccupyZone,
   chooseAgendaZone,
-  legacyZoneId,
+  defaultVenueZoneId,
   synchronizeVenueZones,
 } from "../packages/villages/src/server/domain/rules/venue-zones.js";
 import { villageSettings } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
@@ -137,7 +137,28 @@ assert.throws(
 );
 const privateOnly = place("private");
 assert.equal(chooseAgendaZone(privateOnly, "a", "Sleep").id, "personal");
-assert.equal(legacyZoneId(privateOnly, "private", "residence", "a"), "personal");
+assert.equal(defaultVenueZoneId(privateOnly, "private", "residence", "a"), "personal");
+const selectionDraft = structuredClone(privateOnly);
+delete selectionDraft.access;
+const personal = selectionDraft.zones!.find((zone) => zone.id === "personal")!;
+selectionDraft.zones!.push({ ...structuredClone(personal), id: "a" }, { ...structuredClone(personal), id: "assigned" });
+selectionDraft.destinations = { a: { sleep: "assigned" } };
+assert.equal(
+  defaultVenueZoneId(selectionDraft, "private", "residence", "a"),
+  "assigned",
+  "Draft selection follows its assigned Zone, never an owner-ID alias",
+);
+selectionDraft.destinations = {};
+assert.equal(
+  defaultVenueZoneId(selectionDraft, "private", "residence", "a"),
+  "",
+  "Ambiguous personal destinations never guess a Zone",
+);
+assert.equal(
+  defaultVenueZoneId(place("exterior"), "shared", "residence"),
+  "exterior",
+  "A Visit without an interior uses the Entrance",
+);
 assert.equal(
   canOccupyZone(
     privateOnly,

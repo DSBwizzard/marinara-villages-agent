@@ -1209,13 +1209,11 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
     if (historical && !["completed", "cancelled"].includes(String(batch.status)))
       throw new Error("The saved Village catch-up history contains unfinished work.");
     if (
-      (batch.budgetDate !== undefined &&
-        (typeof batch.budgetDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(batch.budgetDate))) ||
-      (batch.opportunityLimit !== undefined &&
-        (!Number.isSafeInteger(batch.opportunityLimit) ||
-          Number(batch.opportunityLimit) < 0 ||
-          Number(batch.opportunityLimit) > 6)) ||
-      (batch.budgetDate === undefined) !== (batch.opportunityLimit === undefined)
+      typeof batch.budgetDate !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(batch.budgetDate) ||
+      !Number.isSafeInteger(batch.opportunityLimit) ||
+      Number(batch.opportunityLimit) < 0 ||
+      Number(batch.opportunityLimit) > 6
     )
       throw new Error("The saved Village catch-up allowance could not be read.");
     if (batch.labels !== undefined) {
@@ -1245,7 +1243,7 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
       if (
         !Array.isArray(batch.opportunities) ||
         batch.opportunities.length > 6 ||
-        (batch.opportunityLimit !== undefined && batch.opportunities.length > Number(batch.opportunityLimit)) ||
+        batch.opportunities.length > Number(batch.opportunityLimit) ||
         typeof batch.from !== "string" ||
         typeof batch.until !== "string"
       )

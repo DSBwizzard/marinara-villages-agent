@@ -960,14 +960,14 @@ async function recordCurrentInvitation(scene: any, line: any, operationId: strin
 async function main() {
   try {
     failSceneCreate = true;
-    await assert.rejects(() => enterVenue("home", undefined, "", undefined, "bedroom"), /fixture Scene create failed/);
+    await assert.rejects(() => enterVenue("home", "bedroom"), /fixture Scene create failed/);
     assert.equal(
       (await readVillageState({ memories: true })).venues[0].access!.permissions[0].sceneId,
       null,
       "Failed initial Scene save cannot consume a visit.",
     );
     failSceneCreate = false;
-    let entered = await enterVenue("home", undefined, "", undefined, "bedroom");
+    let entered = await enterVenue("home", "bedroom");
     assert.equal(entered.zoneId, "bedroom");
     assert.equal((await readVillageState({ memories: true })).venues[0].access!.permissions[0].sceneId, entered.id);
     const gapManager = "npc:claim-gap-manager",
@@ -1213,7 +1213,7 @@ async function main() {
         known,
       );
     });
-    const escortedArrival = await enterVenue("home", undefined, "", undefined, "office");
+    const escortedArrival = await enterVenue("home", "office");
     assert.equal(escortedArrival.zoneId, "office", "Initial entry uses captured attendance for the named escort.");
     await endVenueSession(escortedArrival.id);
     await mutateVillageState((current) => {
@@ -1221,14 +1221,14 @@ async function main() {
         "exterior";
     });
     await assert.rejects(
-      () => enterVenue("home", undefined, "", undefined, "office"),
+      () => enterVenue("home", "office"),
       { name: "VillagesRequestError" },
       "An absent escort cannot permit initial entry.",
     );
     await mutateVillageState((current) => {
       current.villagers.find((resident) => resident.characterId === "jim")!.agenda = null;
     });
-    const arrival = await enterVenue("home", undefined, "", "outside", "exterior");
+    const arrival = await enterVenue("home", "exterior");
     const speechAt = new Date().toISOString();
     const invitationLine = {
       id: "immediate-line",

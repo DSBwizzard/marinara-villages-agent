@@ -126,7 +126,7 @@ const commands = createSceneCommands({
     mutate(pointer);
   },
 } as unknown as SceneCommandPorts);
-const resumed = await commands.enterVenue("community", "community");
+const resumed = await commands.enterVenue("community");
 assert.equal(resumed.id, "gathering");
 assert.equal(resumed.lines[0].content, "I remember this conversation.");
 assert.equal(state.opening.stage, "complete");
@@ -135,7 +135,7 @@ assert.equal(sceneWrites, 0, "a closed gathering is never restaged or regenerate
 // A saved live Scene with a missing pointer is reattached intact.
 state.opening.stage = "gathering";
 saved = { ...saved, status: "active", endedAt: "", lastActivityAt: new Date().toISOString() };
-await commands.enterVenue("community", "community");
+await commands.enterVenue("community");
 assert.equal(pointer.sessionId, "gathering");
 assert.equal(saved.lines.length, 1);
 assert.equal(sceneWrites, 1, "only the pointer is restored");
@@ -149,7 +149,7 @@ pointer = { sessionId: saved.id, placeId: saved.placeId };
 assert.equal(await live.activeVenueSession(), null);
 assert.equal(state.opening.stage, "complete");
 state.opening.stage = "gathering";
-const closedInteractive = await commands.enterVenue("community", "community");
+const closedInteractive = await commands.enterVenue("community");
 assert.equal(closedInteractive.id, "gathering");
 assert.equal(state.opening.stage, "complete");
 assert.equal(sceneWrites, 1, "recovery does not create or reattach another Scene");

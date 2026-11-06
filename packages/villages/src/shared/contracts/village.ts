@@ -784,7 +784,6 @@ export type SceneView = {
   placeName: string;
   spaceClass?: VenueClass;
   zoneId?: string;
-  privateSpaceId?: string;
   doorwayContacts?: { characterId: string; playerZoneId: string }[];
   entryOffers?: { zoneId: string; label: string; controllerId: string; accompanies: boolean }[];
   area?: "outside" | "shared" | "private" | "public";

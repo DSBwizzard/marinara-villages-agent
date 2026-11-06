@@ -10,6 +10,11 @@ import { sceneRelationshipView } from "./relationship-rules.js";
 import { mergeNarrativeAfter } from "./narrative-development.js";
 import { extendSceneNarrative } from "./scene-narrative-effects.js";
 
+export function requireSceneZoneId(scene: Pick<VenueScene, "zoneId">): string {
+  if (!scene.zoneId) throw conflict("That Scene has no captured Zone.");
+  return scene.zoneId;
+}
+
 /** Only captured access inputs; persistent effects still validate against the current world. */
 export function sceneAccessState(state: VillageState, scene: VenueScene): VillageState {
   const facts = scene.continuity?.facts;

@@ -29,8 +29,8 @@ function Harness(){
   state.setRoomEnded(initial==='closed');state.setRoomDraft('A draft');state.setRoomError('A error');
   if(window.options.marker)state.roomCompletionRef.current={roomId:'A',submissionId:'prior-marker'};
  },[]);
- const commands={open:()=>open({id:'other',name:'Other'},'workplace','owner','private','private-room'),
-  zone:()=>open({id:'mill',name:'Mill'},undefined,'',undefined,'exterior'),greet:()=>greet(room?.id),
+ const commands={open:()=>open({id:'other',name:'Other'},'private-room'),
+  zone:()=>open({id:'mill',name:'Mill'},'exterior'),greet:()=>greet(room?.id),
   continue:()=>continueRoom(room?.id),close:closeRoom};
  const launch=work=>{window.pending.push(work());return window.pending.length-1};
  window.h={run:kind=>launch(commands[kind]),twice:kind=>{launch(commands[kind]);launch(commands[kind])},
@@ -173,9 +173,6 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         assert.equal(await f.loads(), 2);
         assert.deepEqual(f.requests[0].body, {
           venueId: "other",
-          spaceClass: "workplace",
-          privateOwnerId: "owner",
-          entryArea: "private",
           zoneId: "private-room",
           ...(initial === null ? {} : { expectedSceneRevision: 0 }),
         });

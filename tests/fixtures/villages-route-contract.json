@@ -233,10 +233,6 @@
     },
     {
       "method": "post",
-      "path": "/rooms/enter-private"
-    },
-    {
-      "method": "post",
       "path": "/rooms/debug/discard"
     },
     {

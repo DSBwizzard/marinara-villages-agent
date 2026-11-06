@@ -1,7 +1,6 @@
 import { villagesDebugAgentsEnabled } from "../../adapters/engine/runtime-host.js";
 import {
   fail,
-  readCharacterId,
   readChatId,
   readMessage,
   readPlaceId,
@@ -10,17 +9,15 @@ import {
   type VenueTurnBody,
 } from "../../adapters/http/route-support.js";
 import { operationSummary } from "../../adapters/operations/operation-context.js";
-import type { VillageVenueClass } from "../../domain/models/world.js";
-import { badRequest, conflict } from "../../domain/rules/errors.js";
+
+import { badRequest } from "../../domain/rules/errors.js";
 import { publicSceneChanges } from "../../domain/rules/scene-public.js";
 import { readVenueOperation } from "../../jobs/venue-coordinator.js";
-import { imageTarget } from "../venues/services.js";
 import { assertFoundedVillageReady } from "../founding/preparation.js";
 import {
   closeVenueSessionWithReceipts,
   continueVenueWithoutGreeting,
   discardVenueVisitDebug,
-  enterResidencePrivateSpace,
   enterVenue,
   greetVenue,
   leaveVenueSession,
@@ -71,41 +68,16 @@ export function registerSceneEntryRoutes(engine: FastifyInstance) {
   app.post<{
     Body: {
       venueId?: unknown;
-      spaceClass?: unknown;
       zoneId?: unknown;
-      privateSpaceId?: unknown;
-      privateOwnerId?: unknown;
-      entryArea?: unknown;
       expectedSceneRevision?: unknown;
     };
   }>("/rooms", async (request, reply) => {
     try {
       await assertFoundedVillageReady();
-      const spaceClass = request.body?.spaceClass;
-      if (
-        spaceClass !== undefined &&
-        spaceClass !== "residence" &&
-        spaceClass !== "workplace" &&
-        spaceClass !== "community" &&
-        spaceClass !== "other"
-      )
-        throw badRequest("Choose a valid Venue Class space.");
-      const entryArea = request.body?.entryArea;
-      if (
-        entryArea !== undefined &&
-        entryArea !== "outside" &&
-        entryArea !== "shared" &&
-        entryArea !== "private" &&
-        entryArea !== "public"
-      )
-        throw badRequest("Choose a valid Venue area.");
       return {
         session: await enterVenue(
           readPlaceId(request.body?.venueId),
-          spaceClass as VillageVenueClass | undefined,
-          typeof request.body?.privateOwnerId === "string" ? request.body.privateOwnerId : "",
-          entryArea as "public" | "private" | "shared" | "outside" | undefined,
-          await imageTarget(request.body),
+          request.body?.zoneId === undefined ? undefined : readPlaceId(request.body.zoneId),
           request.body?.expectedSceneRevision === undefined
             ? undefined
             : readSceneRevision(request.body.expectedSceneRevision),
@@ -119,19 +91,16 @@ export function registerSceneEntryRoutes(engine: FastifyInstance) {
     Body: {
       sessionId?: unknown;
       zoneId?: unknown;
-      privateSpaceId?: unknown;
       expectedSceneRevision?: unknown;
       retryOfAttemptId?: string;
       operationId?: unknown;
     };
   }>("/rooms/zone", async (request, reply) => {
     try {
-      if (request.body?.zoneId && request.body?.privateSpaceId && request.body.zoneId !== request.body.privateSpaceId)
-        throw conflict("Conflicting private space targets.");
       return {
         session: await moveVenueZone(
           readChatId(request.body?.sessionId),
-          readPlaceId(request.body?.privateSpaceId ?? request.body?.zoneId),
+          readPlaceId(request.body?.zoneId),
           readSceneRevision(request.body?.expectedSceneRevision),
           request.body?.retryOfAttemptId,
           request.body?.operationId === undefined ? undefined : readSubmissionId(request.body.operationId),
@@ -183,23 +152,6 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
       return fail(reply, error, "updating venue activity");
     }
   });
-  app.post<{ Body: { sessionId?: unknown; ownerId?: unknown; expectedSceneRevision?: unknown } }>(
-    "/rooms/enter-private",
-    async (request, reply) => {
-      try {
-        await assertFoundedVillageReady();
-        return {
-          session: await enterResidencePrivateSpace(
-            readChatId(request.body?.sessionId),
-            readCharacterId(request.body?.ownerId),
-            readSceneRevision(request.body?.expectedSceneRevision),
-          ),
-        };
-      } catch (error) {
-        return fail(reply, error, "entering a private Residence space");
-      }
-    },
-  );
   app.post<{ Body: { sessionId?: unknown } }>("/rooms/debug/discard", async (request, reply) => {
     try {
       await discardVenueVisitDebug(readChatId(request.body?.sessionId));

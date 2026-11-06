@@ -313,6 +313,8 @@ const secondOpportunity = { ...batchOpportunity, id: "return-second", startsAt: 
 village.returnCatchup = {
   capture: batchCapture,
   batch: {
+    budgetDate: "2026-10-22",
+    opportunityLimit: 6,
     id: "return-batch",
     status: "running",
     from: at,
@@ -476,6 +478,8 @@ storedWorld.socialOutbox = [structuredClone(batchSource)];
 storedWorld.returnCatchup = {
   capture: structuredClone(batchCapture),
   batch: {
+    budgetDate: "2026-10-22",
+    opportunityLimit: 6,
     id: "return-batch",
     status: "running",
     from: at,
@@ -662,6 +666,8 @@ try {
     state.returnCatchup = {
       capture: captured,
       batch: {
+        budgetDate: "2026-10-22",
+        opportunityLimit: 6,
         id: "return-batch",
         status: "running",
         from: at,

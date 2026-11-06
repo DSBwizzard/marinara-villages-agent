@@ -8,7 +8,7 @@ import { MAX_IMAGE_PROMPT_LENGTH } from "../../domain/rules/image-generation-rul
 import { conflict } from "../../domain/rules/errors.js";
 import { sceneryImageKey } from "../../domain/rules/scenery-context.js";
 import { zonePictureContext, zonePictureBaseline } from "../../domain/rules/zone-picture.js";
-import { resolveVenueZone, legacyZoneId, zoneClosed } from "../../domain/rules/venue-zones.js";
+import { resolveVenueZone, defaultVenueZoneId, zoneClosed } from "../../domain/rules/venue-zones.js";
 import type { LocationImagePorts } from "./location-image-service.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
 import {
@@ -61,7 +61,8 @@ export function createZonePictures(
     const venue = state.venues.find((row) => row.id === venueId);
     const zone =
       venue &&
-      (resolveVenueZone(venue, zoneId) ?? resolveVenueZone(venue, legacyZoneId(venue, "private", "residence", zoneId)));
+      (resolveVenueZone(venue, zoneId) ??
+        resolveVenueZone(venue, defaultVenueZoneId(venue, "private", "residence", zoneId)));
     return { venue, zone };
   };
   async function queue(

@@ -1,7 +1,7 @@
 import type { VillageVenue } from "../models/world.js";
 import { badRequest } from "./errors.js";
 import { boundText, MAX_VENUE_DESCRIPTION_LENGTH, MAX_VENUE_NOTE_LENGTH } from "./prompt-preset.js";
-import { legacyZoneId } from "./venue-zones.js";
+import { defaultVenueZoneId } from "./venue-zones.js";
 
 export function venueFieldText(value: unknown, fallback: string, limit: number): string {
   if (
@@ -22,7 +22,7 @@ export function venueStringList(value: unknown, fallback: string[]): string[] {
     .slice(0, 24);
 }
 export function personalDestinationSpace(venue: VillageVenue, characterId: string) {
-  const id = legacyZoneId(venue, "private", "residence", characterId);
+  const id = defaultVenueZoneId(venue, "private", "residence", characterId);
   return venue.privateSpaces?.find((space) => space.id === id);
 }
 /** Where a place stands, or a refusal — see `parsePlace` for why the two are exclusive. */

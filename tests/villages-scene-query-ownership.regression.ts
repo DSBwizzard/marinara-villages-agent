@@ -237,7 +237,7 @@ async function main() {
   assert.deepEqual(f.calls, ["session:same"], "missing submission rejects before world read");
   f.calls.length = 0;
   const evidence = await f.service.readProjectTurnEvidence("same", "proof");
-  assert.deepEqual(f.calls, ["session:same", "world"]);
+  assert.deepEqual(f.calls, ["session:same"], "captured evidence needs no later World lookup");
   assert.equal(evidence.zoneId, "historic-zone");
   assert.deepEqual(evidence.activeIdsAtTurn, ["mara", "visitor"]);
   assert.equal(evidence.contextualInterpretation, true);
@@ -262,7 +262,7 @@ async function main() {
   f.add(fallback);
   const oldShape = await f.service.readProjectTurnEvidence("fallback", "fallback");
   assert.deepEqual(oldShape.activeIdsAtTurn, ["mara"]);
-  assert.equal(oldShape.zoneId, "residence");
+  assert.equal(oldShape.zoneId, undefined, "missing source Zone is never reconstructed from the later Scene");
   assert.deepEqual(
     oldShape.lines.map((l) => l.id),
     ["fallback-visible"],
@@ -271,7 +271,7 @@ async function main() {
     fault = fixture("fault");
   fault.add(saved);
   fault.failWorld(worldFault);
-  await assert.rejects(fault.service.readProjectTurnEvidence("same", "proof"), (cause) => cause === worldFault);
+  assert.equal((await fault.service.readProjectTurnEvidence("same", "proof")).zoneId, "historic-zone");
   await assert.rejects(fault.service.progressBacklog(), (cause) => cause === worldFault);
   assert(!fault.calls.includes("documents"), "failed world read does not open documents");
 
