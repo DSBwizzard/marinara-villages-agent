@@ -1,4 +1,3 @@
-import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import {
   createActivationScope,
@@ -8,9 +7,8 @@ import {
 import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { wishFingerprint } from "../packages/villages/src/server/domain/rules/social-wishes.js";
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
-import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
+import { wishFingerprint } from "../packages/villages/src/server/domain/rules/social-wishes.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import {
   createSceneWriting,
@@ -21,6 +19,8 @@ import {
   generate,
   prepareVenueTurnMessages,
 } from "../packages/villages/src/server/features/scenes/writing.js";
+import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
+import { venueFixture } from "./helpers/venues.fixture.js";
 const stamp = "2026-10-07T12:00:00.000Z";
 function deferred() {
   return Promise.withResolvers<void>();
@@ -32,6 +32,7 @@ function fixture(label: string, checkpointed = false) {
   world.foundedAt = world.setupAt = stamp;
   const scene = coerceSession({
     version: 3,
+    gmVersion: 1,
     semanticVersion: 2,
     id: "same-scene",
     placeId: "same-place",
@@ -130,7 +131,8 @@ function fixture(label: string, checkpointed = false) {
     venueOperationId: () => label + " operation",
     venueOperationInput: () => ({
       interactionScopeVersion: 6,
-      writingContractVersion: 3,
+      writingContractVersion: 4,
+      gmVersion: 1,
       semanticPipelineVersion: 3,
       residentActionsVersion: 2,
       writingCapabilities: { management: false, movement: false, residences: false, residenceDecision: false },
@@ -157,8 +159,9 @@ function fixture(label: string, checkpointed = false) {
         content:
           brokenReply ??
           JSON.stringify({
-            playerSpeechCapture: { status: "silent", utterances: [] },
-            residentActions: [],
+            input: _messages.findLast((message) => message.role === "user")?.content
+              ? [{ kind: "action", text: String(_messages.findLast((message) => message.role === "user")!.content) }]
+              : [],
             segments: [{ kind: "narration", text: label + " room remains quiet." }],
             heardPlayerBy: [],
             wishChanges: [],
@@ -174,14 +177,13 @@ function fixture(label: string, checkpointed = false) {
       return scene;
     },
     semantic: {
-      preflight: async () => {},
-      intent: async () => assert.fail("The current writer never buys a separate intent"),
       exchange: async () => {
         await touch("interpretation");
         return {
           version: 2,
           checkpointKey: "exchange",
-          sourceHash: "current-system",
+          sourceHash: "current-gm",
+          producer: "gm",
           authority: { physical: false, access: true, projects: false, standing: false },
           effects: {
             memoryChanges: [],
@@ -330,15 +332,14 @@ for (const stage of ["world", "connection", "lore", "model", "completion", "refr
 const invalid = fixture("invalid");
 invalid.invalidReply();
 await assert.rejects(invalid.run(), (error: any) => {
-  assert.equal(error.failure.cause, "invalid_json");
-  assert.match(error.failure.detail, /No JSON object found/);
+  assert.equal(error.statusCode, 502);
+  assert.match(error.message, /GM response was not valid JSON/);
   return true;
 });
 const invalidLine = fixture("invalid-line");
 invalidLine.invalidReply(
   JSON.stringify({
-    playerSpeechCapture: { status: "silent", utterances: [] },
-    residentActions: [],
+    input: [{ kind: "action", text: "I wait." }],
     segments: [{ kind: "robot", text: "A quiet room." }],
     heardPlayerBy: [],
     wishChanges: [],

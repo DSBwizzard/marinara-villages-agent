@@ -4,22 +4,35 @@ import type { VillageState } from "../models/world.js";
 import { asRecord } from "./coerce.js";
 import { conflict } from "./errors.js";
 
-export function semanticAuthorityDomain(turn: VenueSubmission, domain: ExchangeDomain): boolean {
-  const social = asRecord(turn.liveProposals?.relationshipChanges);
-  const permissions = social.permissions;
-  const consequential =
-    Array.isArray(social.changes) &&
-    social.changes.some((value) => {
-      const after = asRecord(asRecord(value).liveAfter);
-      return !!after.connection || (Array.isArray(after.records) && after.records.length > 0);
-    });
+export function semanticAuthorityDomain(
+  turn: Pick<VenueSubmission, "liveProposals" | "semanticProvenance" | "projectSpeech" | "action" | "effectFailures">,
+  domain: ExchangeDomain,
+): boolean {
+  const retainedProjects = turn.effectFailures?.projects?.proposal;
+  const projectSpeech = Array.isArray(retainedProjects) ? retainedProjects : asRecord(retainedProjects).projectSpeech;
+  const social = [
+    turn.liveProposals?.relationshipChanges,
+    asRecord(turn.effectFailures?.relationships?.proposal).relationshipChanges,
+  ];
   return domain === "projects"
-    ? !!turn.semanticProvenance?.authority?.projects || !!turn.projectSpeech?.length || !!turn.action?.happened
+    ? !!turn.semanticProvenance?.authority?.projects ||
+        !!turn.projectSpeech?.length ||
+        !!turn.action?.happened ||
+        (Array.isArray(projectSpeech) && projectSpeech.length > 0)
     : domain === "relationships"
-      ? consequential ||
-        !!turn.semanticProvenance?.authority?.social ||
+      ? !!turn.semanticProvenance?.authority?.social ||
         !!turn.semanticProvenance?.authority?.standing ||
-        (Array.isArray(permissions) && permissions.length > 0)
+        social.some((value) => {
+          const row = asRecord(value);
+          return (
+            (Array.isArray(row.permissions) ? row.permissions.length > 0 : !!row.permissions) ||
+            (Array.isArray(row.changes) &&
+              row.changes.some((value) => {
+                const after = asRecord(asRecord(value).liveAfter);
+                return !!after.connection || (Array.isArray(after.records) && after.records.length > 0);
+              }))
+          );
+        })
       : false;
 }
 

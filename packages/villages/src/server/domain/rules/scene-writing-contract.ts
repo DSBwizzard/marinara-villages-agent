@@ -126,7 +126,7 @@ export function normalizeSparseSceneReply(raw: Record<string, unknown>): Record<
       typeof value !== "object" ||
       Array.isArray(value) ||
       Object.entries(value).some(
-        ([key, rows]) => !["changes", "permissions", "disclosures"].includes(key) || !Array.isArray(rows),
+        ([key, rows]) => !["changes", "permissions", "disclosures", "intentions"].includes(key) || !Array.isArray(rows),
       )
     )
       throw badGateway("The Scene reply supplied malformed relationships. Your draft is preserved.");
@@ -335,7 +335,8 @@ export function normalizeRecoverableSceneReply(raw: Record<string, unknown>) {
             ["lineIds"],
             "permissions",
           ) ||
-          malformed(relationship.disclosures, ["fromId", "toId", "text", "kind"], ["lineIds"], "disclosures")
+          malformed(relationship.disclosures, ["fromId", "toId", "text", "kind"], ["lineIds"], "disclosures") ||
+          malformed(relationship.intentions ?? [], ["actorId"], ["lineIds", "items", "sceneItems"], "intentions")
         )
           throw new Error("Malformed relationship proposal: " + malformedDetail);
       }

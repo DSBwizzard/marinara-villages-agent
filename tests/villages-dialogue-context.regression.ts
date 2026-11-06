@@ -1,7 +1,7 @@
-import { venueFixture } from "./helpers/venues.fixture.js";
-import { context } from "../packages/villages/src/server/adapters/operations/operation-context.js";
 import assert from "node:assert/strict";
+import { context } from "../packages/villages/src/server/adapters/operations/operation-context.js";
 import { addMemory } from "./helpers/memories-fixture.js";
+import { venueFixture } from "./helpers/venues.fixture.js";
 import { fixtureVillageState, villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -233,7 +233,6 @@ async function run() {
       "## Witnessed conversation",
       "## Current Scene circumstances",
       "## Authored post-history direction",
-      "## Response format and evidence metadata",
     ].map((heading) => prompt.indexOf(heading));
     assert.ok(positions.every((position, i) => position >= 0 && (!i || position > positions[i - 1])));
     for (const person of state.villagers)
@@ -241,7 +240,7 @@ async function run() {
         assert.ok(prompt.includes(person.characterId + " " + suffix), suffix);
     assert.ok(prompt.indexOf('"id":"earlier-spoken"') < prompt.indexOf("outgoing AUTHORED INSTRUCTION"));
     assert.ok(prompt.includes("where compatible with character identity"));
-    assert.ok(prompt.includes("Their card determines") || prompt.includes("their card determines"));
+    assert.ok(prompt.includes("Preserve complete authored identity"));
     assert.ok(!prompt.includes("LEGACY TELL SECRET"));
     assert.ok(prompt.includes(state.memories.records[0].text), "Relevant native memory is recalled");
     assert.ok(prompt.includes(state.memories.records[2].text), "Contextual memory is recalled");
@@ -250,7 +249,7 @@ async function run() {
     assert.ok(!prompt.includes("ABSENT PERSON SECRET"));
     assert.ok(!prompt.includes("Pending exact Residence edit proposals:"));
     assert.ok(!prompt.includes("Pending player requests to move:"));
-    assert.match(prompt, /System interprets consequences/);
+    assert.match(prompt, /server validation determines what applies/);
 
     assert.ok(RELATIONSHIP_REVIEW_INSTRUCTION.includes("liveAfter"));
 
@@ -277,7 +276,7 @@ async function run() {
         .map((entry) => entry.content)
         .join("\n"),
     );
-    assert.match(controlled, /residentActions/);
+    assert.match(controlled, /Optional access:/);
     scene.area = "outside";
     scene.activeIds = ["reserved"];
     const one = String(
