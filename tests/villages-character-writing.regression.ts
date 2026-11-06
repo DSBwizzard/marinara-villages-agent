@@ -121,6 +121,7 @@ async function run() {
     const session: any = {
       version: 4,
       semanticVersion: 2,
+      villageSeed: state.seed,
       id: "fixture",
       placeId: "camp",
       placeName: "Camp",

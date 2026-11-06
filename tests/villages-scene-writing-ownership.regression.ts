@@ -1,3 +1,4 @@
+import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
 import assert from "node:assert/strict";
 import {
   createActivationScope,
@@ -31,7 +32,6 @@ function fixture(label: string, checkpointed = false) {
   world.foundedAt = world.setupAt = stamp;
   const scene = coerceSession({
     version: 4,
-    gmVersion: 1,
     semanticVersion: 2,
     id: "same-scene",
     placeId: "same-place",
@@ -248,7 +248,19 @@ assert.equal(complete.calls.filter((x) => x === "interpretation").length, 1);
   assert.equal(replay.calls.filter((stage) => stage === "completion").length, 1);
   const updated = { ...initial, revision: 2, wish: "Later committed desire" };
   replay.world.villagers[0].wishes = [updated];
-  replay.scene.submissions.push({ mode: "chat", id: "earlier", at: stamp } as never);
+  replay.scene.submissions.push({
+    mode: "chat",
+    id: "earlier",
+    at: stamp,
+    processing: createExchangeProcessing({
+      seed: replay.scene.villageSeed!,
+      sceneId: replay.scene.id,
+      submissionId: "earlier",
+      order: 1,
+      lineIds: [],
+      actionReceiptIds: [],
+    }),
+  } as never);
   replay.world.exchangeReceipts.late = {
     id: "late",
     sceneId: replay.scene.id,

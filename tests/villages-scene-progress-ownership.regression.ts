@@ -16,7 +16,6 @@ import { createSceneProgress } from "../packages/villages/src/server/features/sc
 import {
   configureSceneProgress,
   processSavedExchange,
-  processSavedProgressSubmission,
   startProgressRecovery,
 } from "../packages/villages/src/server/features/scenes/progress.js";
 function deferred() {
@@ -78,7 +77,6 @@ function fixture(name: string) {
       placeId: "venue",
       placeName: name,
       villageSeed: name,
-      processingVersion: 1,
       status: "active",
       startedAt: stamp,
       participants: [{ characterId: "mara", name: name + " Mara", doing: "listening" }],
@@ -295,6 +293,27 @@ function automaticTask(f: ReturnType<typeof fixture>) {
     ),
   );
 }
+{
+  const missing = fixture("missing-processing");
+  delete missing.turn().processing;
+  missing.turn().accessEvents = [
+    {
+      id: "effect",
+      facts: { actorId: "mara", venueId: "venue", zoneId: "common", accessRevision: 0 },
+      outcome: "allowed",
+      evidenceIds: ["reply"],
+    },
+  ];
+  const before = structuredClone(missing.saved);
+  await assert.rejects(missing.service.processSavedExchange("same", "turn"), /processing metadata/);
+  assert.deepEqual(missing.saved, before);
+  assert(!missing.calls.includes("access"), "missing metadata refuses before access effects");
+  assert(
+    !missing.calls.some((call) => call === "world-change" || call.startsWith("change:") || call.startsWith("speech:")),
+    "missing metadata cannot write or process saved effects",
+  );
+}
+
 async function main() {
   const held = fixture("held-startup-failure");
   held.queue.push({ sessionId: "same", submissionId: "turn" });
@@ -381,8 +400,14 @@ async function main() {
     if (field === "seed") changed.world.seed = "replacement";
     else if (field === "scene") changed.turn().processing!.sceneId = "another";
     else changed.turn().processing!.submissionId = "another";
-    await changed.service.processSavedExchange("same", "turn");
-    assert(Object.values(changed.turn().processing!.domains).every((row) => row.status === "rejected"));
+    if (field === "seed") {
+      await changed.service.processSavedExchange("same", "turn");
+      assert(Object.values(changed.turn().processing!.domains).every((row) => row.status === "rejected"));
+    } else {
+      const before = structuredClone(changed.saved);
+      await assert.rejects(changed.service.processSavedExchange("same", "turn"), /processing metadata/);
+      assert.deepEqual(changed.saved, before, "foreign exchange identities cannot rewrite saved sources");
+    }
     assert(!changed.calls.some((call) => ["physical", "wishes", "memories", "relationships"].includes(call)));
   }
   const evidence = fixture("evidence");
@@ -437,6 +462,7 @@ async function main() {
   assert.equal(terminal.turn().processing!.domains.wishes.reason, "Concurrent completed receipt");
   const staleBookkeeping = fixture("stale-bookkeeping");
   staleBookkeeping.onReceipt(() => {
+    staleBookkeeping.scenes.get("same")!.villageSeed = "replacement";
     staleBookkeeping.turn().processing!.seed = "replacement";
   });
   await staleBookkeeping.service.processSavedExchange("same", "turn");
@@ -469,16 +495,14 @@ async function main() {
   const missingTurn = fixture("missing-turn");
   await missingTurn.service.processSavedProgressSubmission("same", "missing");
   assert.deepEqual(missingTurn.calls, ["world", "read:same"]);
-  for (const kind of ["progress", "exchange"] as const) {
+  for (const pause of ["world", "speech"] as const) {
     const a = createActivationScope(),
       b = createActivationScope(),
       first = fixture("A"),
       second = fixture("B");
     const releaseA = a.run(() => configureSceneProgress(first.service));
-    first.pause(kind === "progress" ? "world" : "speech");
-    const pending = a.run(() =>
-      kind === "progress" ? processSavedProgressSubmission("same", "turn") : processSavedExchange("same", "turn"),
-    );
+    first.pause(pause);
+    const pending = a.run(() => processSavedExchange("same", "turn"));
     await first.entered.promise;
     const releaseB = a.run(() => b.run(() => configureSceneProgress(second.service)));
     first.gate.resolve();

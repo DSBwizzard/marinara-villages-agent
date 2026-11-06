@@ -4,11 +4,7 @@ const binding = createActivationBinding<SceneProgress>("Scene progress service i
 export function configureSceneProgress(service: SceneProgress): () => void {
   return binding.configure(bindActivationService(service));
 }
-export async function processSavedProgressSubmission(
-  ...args: Parameters<SceneProgress["processSavedProgressSubmission"]>
-) {
-  return binding.get().processSavedProgressSubmission(...args);
-}
+
 export async function processSavedExchange(...args: Parameters<SceneProgress["processSavedExchange"]>) {
   return binding.get().processSavedExchange(...args);
 }

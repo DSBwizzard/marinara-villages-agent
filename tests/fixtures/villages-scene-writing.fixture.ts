@@ -42,6 +42,7 @@ export async function currentScenePrompt(
     ...defaultVillageState(),
 
     ...state,
+    seed: state.seed || "prompt-fixture",
     villagers: state.villagers.some((resident) => resident.characterId === card.id)
       ? state.villagers.map((resident) =>
           resident.characterId === card.id ? { ...resident, cardSnapshot: snapshot } : resident,
@@ -58,7 +59,6 @@ export async function currentScenePrompt(
   );
   const session = coerceSession({
     version: 4,
-    gmVersion: 1,
     semanticVersion: 2,
     id: "prompt-fixture",
     placeId: "common-room",
@@ -78,7 +78,6 @@ export async function currentScenePrompt(
   session.contactGeneration = overrides.contactGeneration;
   const admission = {
     writingContractVersion: 4,
-    gmVersion: 1,
     semanticPipelineVersion: 3,
     residentActionsVersion: 2,
     interactionScopeVersion: 6,

@@ -6,6 +6,8 @@ import { createSceneWriting } from "../packages/villages/src/server/features/sce
 const scene = coerceSession({
   version: 4,
   id: "current",
+  villageSeed: "current-village",
+  semanticVersion: 2,
   status: "active",
   startedAt: "2026-11-01T12:00:00.000Z",
   participants: [],
@@ -13,6 +15,11 @@ const scene = coerceSession({
   submissions: [],
 });
 assertCurrentSceneGeneration(scene);
+for (const source of [
+  { ...scene, villageSeed: undefined },
+  { ...scene, semanticVersion: undefined },
+])
+  assert.throws(() => assertCurrentSceneGeneration(source as any), /Unsupported Scene format/);
 for (const version of [undefined, 1, 2, 3, "4", 5]) {
   const source = { ...structuredClone(scene), version };
   const retained = { content: "Exact paid response", finishReason: "stop" };

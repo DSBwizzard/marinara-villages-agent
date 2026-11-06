@@ -71,10 +71,10 @@ function commandFixture(
     version: 4,
     id: "same-scene",
     villageSeed: world.seed,
+    semanticVersion: 2,
     placeId: "same-place",
     placeName: label,
     status: "active",
-    processingVersion: 1,
     startedAt: stamp,
     participants: [],
     lines: [],
@@ -289,6 +289,11 @@ function commandFixture(
     assert.equal(writes, 0);
     assert.equal(physical.modelAccess, 0);
     assert.deepEqual(physical.world, before, "Later navigation cannot supply a missing physical source address");
+    turn.physicalContext.zoneId = "exterior";
+    await assert.rejects(effects.applyVenueTurnChange(physical.scene, turn), /current outcome receipt/);
+    assert.equal(writes, 0);
+    assert.equal(physical.modelAccess, 0);
+    assert.deepEqual(physical.world, before, "missing outcome metadata cannot create bare physical events");
     const id = "venue-chat:" + physical.scene.id + ":" + turn.id;
     physical.world.exchangeReceipts[id] = {
       ...physical.world.exchangeReceipts["same-effect"],
@@ -320,6 +325,8 @@ function fixture(name: string, pause = false, navigationIdentity?: object) {
         data: {
           version: 4,
           id: "same",
+          villageSeed: "same-seed",
+          semanticVersion: 2,
           placeId: "same-place",
           placeName: name,
           status: "active",
@@ -820,6 +827,55 @@ for (const stage of ["session", "admission", "snapshot", "persistence"]) {
     second.owner.dispose();
   }
 }
+// Recovery validates current ownership before admission can replace saved paid evidence.
+for (const kind of ["turn", "greet"] as const)
+  for (const defect of ["seed", "semantic", "processing", "identity"] as const) {
+    let admissions = 0;
+    const held = commandFixture("Invalid recovered " + kind, ({ scene }) => {
+      const turn = scene.submissions[0];
+      if (kind === "greet") {
+        turn.id = "greeting";
+        turn.processing!.submissionId = turn.id;
+        turn.semanticReady = true;
+      }
+      scene.operation = {
+        id: turn.id,
+        kind,
+        status: "interrupted",
+        attemptId: "paid-attempt",
+        input: { message: "Exact saved words — retained", mode: "chat", targetId: "" },
+        attempts: { paid: { status: "complete", result: { content: "Exact paid result", finishReason: "stop" } } },
+        checkpoints: { "turn-reply": { retained: "Original response evidence" } },
+      } as any;
+      if (defect === "seed") scene.villageSeed = "";
+      if (defect === "semantic") delete scene.semanticVersion;
+      if (defect === "processing") delete turn.processing;
+      if (defect === "identity") turn.processing!.sceneId = "another-scene";
+      return {
+        recoverVenueOperations: async (recover) => {
+          await recover(scene.id, scene.operation!);
+        },
+        coordinateVenue: async () => {
+          admissions++;
+          throw Error("Invalid recovered Scene reached admission");
+        },
+      };
+    });
+    const before = structuredClone({ scene: held.scene, world: held.world });
+    try {
+      await assert.rejects(
+        held.service.recoverVenueSceneWork(),
+        /Unsupported Scene format|current processing metadata/,
+      );
+      assert.equal(admissions, 0);
+      assert.deepEqual({ scene: held.scene, world: held.world }, before);
+      assert.deepEqual(held.calls, ["session"]);
+      assert.equal(held.modelAccess, 0);
+      assert.deepEqual(held.unexpected, []);
+    } finally {
+      held.owner.dispose();
+    }
+  }
 // Unsupported persisted modes cannot enter admission or discard saved paid evidence.
 for (const mode of ["ask", "act", "fulfill", "greet", "unknown", null, undefined]) {
   const held = commandFixture("Unsupported mode", ({ scene }) => {

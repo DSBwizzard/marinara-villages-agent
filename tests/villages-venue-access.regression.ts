@@ -1,3 +1,4 @@
+import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
 import { venueDisplayZones } from "../packages/villages/src/client/features/venues/venue-view.js";
 import {
   canOccupyZone,
@@ -916,7 +917,20 @@ async function recordCurrentInvitation(scene: any, line: any, operationId: strin
   const venue = world.venues.find((row) => row.id === "home")!;
   const current = structuredClone(scene);
   current.lines = [...current.lines.filter((row: any) => row.id !== line.id), { ...line, kind: "dialogue" }];
-  current.submissions.push({ mode: "chat", id: operationId, at: line.at, replyLineIds: [line.id] });
+  current.submissions.push({
+    mode: "chat",
+    id: operationId,
+    at: line.at,
+    replyLineIds: [line.id],
+    processing: createExchangeProcessing({
+      seed: current.villageSeed!,
+      sceneId: current.id,
+      submissionId: operationId,
+      order: current.submissions.length + 1,
+      lineIds: [line.id],
+      actionReceiptIds: [],
+    }),
+  });
   const key = "villages-venue-visit-" + current.id;
   records.set(key, {
     id: key,
@@ -1166,6 +1180,7 @@ async function main() {
     );
     await endVenueSession(entered.id);
     const managementWorld = defaultVillageState();
+    managementWorld.seed = "management-world";
     managementWorld.foundedAt = stamp;
     managementWorld.setupAt = stamp;
     managementWorld.visitMemoryBackfilled = true;
@@ -1283,6 +1298,14 @@ async function main() {
         {
           mode: "chat",
           id: "standing-turn",
+          processing: createExchangeProcessing({
+            seed: arrival.villageSeed!,
+            sceneId: "standing-scene",
+            submissionId: "standing-turn",
+            order: 0,
+            lineIds: ["standing-line"],
+            actionReceiptIds: [],
+          }),
           at: standingAt,
           replyLineIds: ["standing-line"],
           liveProposals: {
@@ -1673,11 +1696,32 @@ async function main() {
       {
         mode: "chat",
         id: "saved-ban-turn",
+        processing: createExchangeProcessing({
+          seed: banScene.villageSeed,
+          sceneId: banScene.id,
+          submissionId: "saved-ban-turn",
+          order: 0,
+          lineIds: ["saved-ban-line"],
+          actionReceiptIds: [],
+        }),
         at: new Date().toISOString(),
         replyLineIds: ["saved-ban-line"],
         accessEvents: savedAccessEvents(banBatch),
       },
-      { mode: "chat", id: "later-unrelated-turn", at: stamp, replyLineIds: [] },
+      {
+        mode: "chat",
+        id: "later-unrelated-turn",
+        at: stamp,
+        replyLineIds: [],
+        processing: createExchangeProcessing({
+          seed: banScene.villageSeed,
+          sceneId: banScene.id,
+          submissionId: "later-unrelated-turn",
+          order: 1,
+          lineIds: [],
+          actionReceiptIds: [],
+        }),
+      },
     ];
     records.set("villages-venue-visit-" + banScene.id, {
       id: "villages-venue-visit-" + banScene.id,
@@ -1737,6 +1781,14 @@ async function main() {
         {
           mode: "chat",
           id: "old-reply-turn",
+          processing: createExchangeProcessing({
+            seed: "previous-village-seed",
+            sceneId: "previous-world-reply",
+            submissionId: "old-reply-turn",
+            order: 0,
+            lineIds: ["previous-world-line"],
+            actionReceiptIds: [],
+          }),
           at: stamp,
           replyLineIds: ["previous-world-line"],
           invitationSignal: {

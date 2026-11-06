@@ -18,6 +18,7 @@ import { prepareVenueTurnMessages } from "../packages/villages/src/server/featur
 
 const stamp = new Date().toISOString();
 const state = defaultVillageState();
+state.seed = "dialogue-context";
 state.foundedAt = state.setupAt = stamp;
 
 state.narrationStyle.writingGuidance = "Make all residents agreeable and reluctant to act.";
@@ -186,6 +187,7 @@ async function run() {
   try {
     const scene: any = {
       semanticVersion: 2,
+      villageSeed: state.seed,
       version: 4,
       id: "fixture",
       placeId: "camp",
@@ -195,7 +197,6 @@ async function run() {
       spaceClass: "community",
       startedAt: stamp,
       memoryMode: "live",
-      processingVersion: 1,
       participants: state.villagers.map((person) => ({
         characterId: person.characterId,
         name: person.cardSnapshot.name,

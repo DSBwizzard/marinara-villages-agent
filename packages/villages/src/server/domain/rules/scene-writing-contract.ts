@@ -1,3 +1,4 @@
+import { requireSceneExchange } from "./scene-submissions.js";
 import type { VenueScene, VenueSubmission } from "../models/scene-model.js";
 import { asRecord } from "./coerce.js";
 import { badGateway, conflict } from "./errors.js";
@@ -5,7 +6,9 @@ import { extractModelJsonObject, modelJsonWithinBounds } from "./json-reply.js";
 
 /** Refuse an unsupported Scene before generation can replace a retained response. */
 export function assertCurrentSceneGeneration(scene: VenueScene) {
-  if (scene.version !== 4) throw conflict("Unsupported Scene format. Start a fresh Village.");
+  if (scene.version !== 4 || scene.semanticVersion !== 2 || !scene.villageSeed)
+    throw conflict("Unsupported Scene format. Start a fresh Village.");
+  for (const turn of scene.submissions) if (turn.at) requireSceneExchange(scene, turn);
 }
 
 const EFFECT_FIELDS = ["memoryChanges", "relationshipChanges", "wishChanges", "projectSpeech", "interpretationRouting"];

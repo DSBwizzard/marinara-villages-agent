@@ -70,7 +70,6 @@ function scene(id = "same", name = "A Venue"): VenueScene {
 function ownedScene(owner: string): VenueScene {
   const saved = scene("same", owner + " Venue");
   saved.placeId = "venue-" + owner;
-  saved.processingVersion = 1;
   saved.villageSeed = owner;
   saved.lines = [line("reply", { content: owner + " reply" })];
   saved.submissions = [
@@ -80,6 +79,14 @@ function ownedScene(owner: string): VenueScene {
       activeIdsAtTurn: ["mara"],
       replyLineIds: ["reply"],
       progressError: owner + " pending",
+      processing: createExchangeProcessing({
+        seed: owner,
+        sceneId: saved.id,
+        submissionId: "proof",
+        order: 0,
+        lineIds: ["reply"],
+        actionReceiptIds: [],
+      }),
     }),
   ];
   return saved;
@@ -281,7 +288,6 @@ async function main() {
 
   const backlog = fixture("seed");
   const current = scene("current");
-  current.processingVersion = 1;
   current.villageSeed = "seed";
   const pending = createExchangeProcessing({
     seed: "seed",
@@ -293,14 +299,18 @@ async function main() {
   });
   const complete = structuredClone(pending);
   for (const domain of Object.values(complete.domains)) domain.status = "applied";
+  complete.submissionId = "complete";
   const failed = structuredClone(complete);
+  failed.submissionId = "failed";
   failed.domains.memories.status = "failed";
   current.submissions = [
     turn("pending", { processing: pending, progressError: "Still pending" }),
     turn("complete", { processing: complete }),
     turn("failed", { processing: failed }),
-    turn("plain"),
-    turn("processed", { progressProcessedAt: stamp }),
+    turn("processed", {
+      progressProcessedAt: stamp,
+      processing: { ...structuredClone(complete), submissionId: "processed" },
+    }),
     turn("before-founding", { at: "2026-10-06T12:00:00.000Z" }),
   ];
   current.navigationReceipts = [{ id: "move", originZoneId: "a", destinationZoneId: "b", at: stamp }];
@@ -312,7 +322,7 @@ async function main() {
   const originalRecords = structuredClone(backlog.records);
   assert.deepEqual(
     await backlog.service.progressBacklog(),
-    ["pending", "failed", "plain"].map((submissionId) => ({
+    ["pending", "failed"].map((submissionId) => ({
       sessionId: "current",
       submissionId,
       at: stamp,
@@ -329,6 +339,14 @@ async function main() {
     "Backlog explicitly reads its saved turn pages",
   );
   assert.deepEqual(backlog.records, originalRecords, "backlog is not a storage mutation");
+  const malformed = fixture("malformed"),
+    malformedScene = scene("malformed");
+  malformedScene.villageSeed = "malformed";
+  malformedScene.submissions = [turn("missing-processing")];
+  malformed.add(malformedScene);
+  const malformedBefore = structuredClone(malformed.records);
+  await assert.rejects(malformed.service.progressBacklog(), /processing metadata/);
+  assert.deepEqual(malformed.records, malformedBefore, "backlog refuses missing saved processing without rewriting it");
   const listFault = Error("Exact document list failure"),
     broken = fixture("list-fault");
   broken.failList(listFault);

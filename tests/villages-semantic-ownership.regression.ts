@@ -340,9 +340,7 @@ async function main() {
     status: "active",
     startedAt: stamp,
     villageSeed: state.seed,
-    gmVersion: 1,
     semanticVersion: 2,
-    processingVersion: 1,
     activeIds: ["host"],
     participants: [{ characterId: "host", name: "Host", doing: "Waiting" }],
     sceneAttendance: {
@@ -356,7 +354,6 @@ async function main() {
   scene.operation = {
     id: "turn",
     input: {
-      gmVersion: 1,
       semanticPipelineVersion: 3,
       interactionScopeVersion: 6,
       residentMovementReviewVersion: 1,

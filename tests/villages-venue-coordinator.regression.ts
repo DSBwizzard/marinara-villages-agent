@@ -81,6 +81,7 @@ function seed(id: string) {
     revision: 1,
     data: {
       version: 4,
+      villageSeed: "coordinator-world",
       id,
       status: "active",
       sceneRevision: 0,
@@ -427,8 +428,14 @@ async function main() {
     }
 
     seed("slow-greeting");
-    row("slow-greeting").data = coerceSession({ version: 4, ...row("slow-greeting").data, status: "opening" });
+    row("slow-greeting").data = coerceSession({
+      version: 4,
+      ...row("slow-greeting").data,
+      semanticVersion: 2,
+      status: "opening",
+    });
     const world = defaultVillageState();
+    world.seed = "coordinator-world";
     const greetingVenue = venueFixture({ id: "greeting-place", name: "Hall", description: "A hall" });
     delete greetingVenue.access;
     world.venues = [greetingVenue];
@@ -493,6 +500,8 @@ async function main() {
           contactMoves: [],
           contactEndIds: [],
           roomInterpretation: null,
+          projectContexts: [],
+          projectSpeech: [],
         };
       },
     } as any);
@@ -520,6 +529,7 @@ async function main() {
       mock.timers.reset();
     }
     seed("opening-retry");
+    row("opening-retry").data.semanticVersion = 2;
     const frozenOpening = {
       semanticBudget: { version: 1, requests: 2, inputTokens: 100000, outputTokens: 20000 },
     };
@@ -1432,9 +1442,7 @@ async function main() {
     row("typed-review").data = coerceSession({
       version: 4,
       ...row("typed-review").data,
-      gmVersion: 1,
       semanticVersion: 2,
-      processingVersion: 1,
       villageSeed: world.seed,
       placeId: typedVenue.id,
       zoneId: "exterior",
@@ -1442,7 +1450,6 @@ async function main() {
       sceneAttendance: { capturedAt: typedAt, layout: captureSceneLayout(typedVenue), occupants: [] },
     });
     const typedInput = {
-      gmVersion: 1,
       writingContractVersion: 4,
       semanticPipelineVersion: 3,
       residentActionsVersion: 2,
