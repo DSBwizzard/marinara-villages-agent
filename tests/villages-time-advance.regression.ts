@@ -1,3 +1,4 @@
+import { influenceSettings } from "../packages/villages/src/server/domain/rules/owned-routine.js";
 import { residenceProposal } from "../packages/villages/src/server/domain/rules/residence-agreement.js";
 import assert from "node:assert/strict";
 import { configureVillageClock, villageNow } from "../packages/villages/src/server/adapters/time/clock-gate.js";
@@ -45,7 +46,7 @@ async function fixture() {
   state.projects = structuredClone(projects.state().projects);
   state.venues.push(...structuredClone(projects.state().venues));
   for (const resident of state.villagers) {
-    resident.agenda = unwrittenVillageAgenda(state.venues, resident.cardSnapshot.name, new Date(start));
+    resident.agenda = unwrittenVillageAgenda(new Date(start));
     resident.agenda.personalizationPending = false;
   }
   state.villagers[0]!.wishes = [fixtureWish({ wish: "Take a walk together" }, "walk", state.simulatedThrough)];
@@ -135,7 +136,7 @@ async function fixture() {
     outsideVenueOperation: (work: () => void) => work(),
     preparePrivateSpaces: async () => {},
     retryResidencePrivateSpaceAdaptation: async () => {},
-    backfillAgendas: async (value: VillageState) => value,
+    queuePendingAgendas: async (value: VillageState) => value,
     refreshScheduleInfluence: async () => {},
     listVillagerCards: async () => [],
   } as any);
@@ -225,7 +226,7 @@ for (const duration of [90 * 60_000, day, 7 * day, 30 * day]) {
     const cafe = state.venues.find((venue) => venue.id === "cafe")!;
     cafe.access!.visitorHours = [{ days: ["Monday"], start: "09:00", end: "17:00" }];
     for (const resident of state.villagers) {
-      resident.ingestSchedule = false;
+      resident.scheduleInfluence = influenceSettings({ ...resident.scheduleInfluence, enabled: false });
       resident.agenda!.activeDay = {
         dateKey: agendaDateKey(now),
         weekday: "Monday",

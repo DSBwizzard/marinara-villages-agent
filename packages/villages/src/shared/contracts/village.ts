@@ -948,11 +948,9 @@ type VillagerAgenda = {
   day: { startMinute: number; endMinute: number; venueId: string; activity: string }[];
   week?: Record<string, AgendaBlock[]>;
   scheduleInfluenceSnapshot?: { adopted: string[]; unresolved: string[]; available: boolean };
-  scheduleWeek?: Record<string, AgendaBlock[]> | null;
   activeDay?: { dateKey: string; weekday: string; blocks: AgendaBlock[]; scheduleInformed: boolean };
   personalizationPending?: boolean;
   personalizationFailure?: string;
-  source: "native" | "village";
   generatedAt: string;
 };
 export type AgendaBlock = {
@@ -1007,8 +1005,7 @@ export type VillagerAgendaView = {
   weekUnreadable: boolean;
   addedAt: string;
   agenda: VillagerAgenda | null;
-  scheduleInfluence?: { version: 1; enabled: boolean; categories: Record<string, boolean> };
-  ingestSchedule: boolean;
+  scheduleInfluence: { version: 1; enabled: boolean; categories: Record<string, boolean> };
   nativeSchedule: {
     weekStart: string;
     days: Record<string, { time: string; activity: string }[]>;

@@ -1,3 +1,5 @@
+import { applyWorldRepair, worldRepairRecords } from "../packages/villages/src/server/domain/rules/repair-records.js";
+import { agendaBlocksFor } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import assert from "node:assert/strict";
 import {
   bindActivationService,
@@ -6,7 +8,10 @@ import {
   scopedActivation,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
 import { agendaRevision } from "../packages/villages/src/server/domain/rules/agenda-revision.js";
 import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
@@ -37,8 +42,7 @@ function fixture(name: string) {
     cardSnapshot: snapshotFromCard(card, 2),
     addedAt: "2026-10-06T12:00:00Z",
     wishes: [],
-    ingestSchedule: false,
-    agenda: unwrittenVillageAgenda(state.venues, name),
+    agenda: unwrittenVillageAgenda(),
   };
   state.villagers = [resident];
   const calls: string[] = [],
@@ -239,6 +243,41 @@ await assert.rejects(
 );
 assert.equal(local.calls.filter((operation) => operation === "mutate").length, mutations);
 
+const manual = fixture("Manual repair");
+Object.assign(manual.state, coerceVillageState(manual.state));
+const admittedDay = JSON.parse(JSON.stringify(manual.state.villagers[0]!.agenda!.activeDay));
+const manualRecord = worldRepairRecords(manual.state).find((row) => row.id === JSON.stringify(["routine", "same"]))!;
+applyWorldRepair(
+  manual.state,
+  manualRecord,
+  {
+    action: "correct",
+    values: {
+      ...Object.fromEntries(manualRecord.fields.map((field) => [field.key, field.value])),
+      "activity:0": "Quiet crafting",
+    },
+  } as any,
+  new Date().toISOString(),
+);
+Object.assign(manual.state, coerceVillageState(JSON.parse(JSON.stringify(manual.state))));
+assert.equal(manual.state.villagers[0]!.agenda!.personalizationPending, false);
+await manual.service.queuePendingAgendas(manual.state, new Date());
+await manual.service.buildVillageAgendas();
+assert.equal(manual.jobs.length, 0, "Reload and refresh cannot admit generation over a manual repair");
+assert.equal(manual.generated, 0);
+assert.deepEqual(JSON.parse(JSON.stringify(manual.state.villagers[0]!.agenda!.activeDay)), admittedDay);
+const tomorrow = new Date();
+tomorrow.setDate(tomorrow.getDate() + 1);
+assert.ok(
+  agendaBlocksFor(manual.state.villagers[0]!.agenda!, tomorrow).every((row) => row.activity === "Quiet crafting"),
+);
+
+const absent = fixture("No routine");
+absent.state.villagers[0]!.agenda = null as any;
+assert.equal(await absent.service.rollActiveAgendas(new Date(), absent.state), false);
+assert.deepEqual(absent.calls, [], "Missing agendas cannot cause a no-op world write on snapshot reads");
+assert.equal(absent.jobs.length, 0);
+
 const handler = a.service.agendaBackgroundHandler,
   input = a.jobs[0].input;
 assert(handler.valid(a.state, input));
@@ -253,21 +292,20 @@ assert.equal(a.parsed, 0);
 assert.equal(
   handler.recoverSavedResult!(input, [
     { key: "owned-routine-profile", status: "completed", response: { content: "retired profile" } },
-    { key: "founding-routine-v1", status: "completed", response: { content: "another contract" } },
+    { key: "another-stage", status: "completed", response: { content: "another contract" } },
   ] as any),
   undefined,
 );
 assert.equal(a.parsed, 0, "Unrelated saved responses cannot enter the admitted parser");
-for (const version of [undefined, 1, 2]) {
-  const context = { ...input.context, contractVersion: version };
-  if (version === undefined) delete context.contractVersion;
+{
+  const context = input.context;
   const admitted = { ...input, context };
-  const key = version === 2 ? "founding-routine-v2" : "founding-routine-v1";
-  const response = { content: "exact admitted response " + version };
+  const key = "founding-routine-v2";
+  const response = { content: "exact admitted response" };
   const steps = [
     { key: "owned-routine-profile", status: "completed", response: { content: "retired profile" } },
     {
-      key: version === 2 ? "founding-routine-v1" : "founding-routine-v2",
+      key: "another-stage",
       status: "completed",
       response: { content: "wrong contract" },
     },

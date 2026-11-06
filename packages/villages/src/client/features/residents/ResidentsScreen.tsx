@@ -39,7 +39,7 @@ export function ResidentsScreen({
     refreshPreviews,
     rewriteAgenda,
     screen,
-    setAgendaScheduleIngestion,
+    setScheduleInfluence,
     setExploreSheet,
     setFocusedProjectId,
     setFocusedRequestId,
@@ -201,7 +201,7 @@ export function ResidentsScreen({
                     {villager.missing ? <span className={`${ELEMENT_TAG}-badge`}>Card missing</span> : null}
                     {villager.nativeSchedule ? (
                       <span className={`${ELEMENT_TAG}-badge`}>
-                        {villager.ingestSchedule ? "Schedule influence enabled" : "Schedule available"}
+                        {villager.scheduleInfluence.enabled ? "Schedule influence enabled" : "Schedule available"}
                       </span>
                     ) : null}
                     {agendaUpdatePending(villager) ? (
@@ -223,11 +223,9 @@ export function ResidentsScreen({
                       <input
                         autoComplete="off"
                         type="checkbox"
-                        checked={villager.ingestSchedule}
+                        checked={villager.scheduleInfluence.enabled}
                         disabled={busy}
-                        onChange={(event) =>
-                          void setAgendaScheduleIngestion(villager.characterId, event.target.checked)
-                        }
+                        onChange={(event) => void setScheduleInfluence(villager.characterId, event.target.checked)}
                       />
                       Schedule influence
                     </label>
@@ -243,8 +241,8 @@ export function ResidentsScreen({
                       <button
                         type="button"
                         className={`${ELEMENT_TAG}-button`}
-                        disabled={busy || !villager.ingestSchedule}
-                        onClick={() => void setAgendaScheduleIngestion(villager.characterId, true)}
+                        disabled={busy || !villager.scheduleInfluence.enabled}
+                        onClick={() => void setScheduleInfluence(villager.characterId, true)}
                       >
                         Interpret schedule
                       </button>
@@ -261,9 +259,9 @@ export function ResidentsScreen({
                           autoComplete="off"
                           type="checkbox"
                           checked={villager.scheduleInfluence?.categories[key] !== false}
-                          disabled={busy || !villager.ingestSchedule}
+                          disabled={busy || !villager.scheduleInfluence.enabled}
                           onChange={(event) =>
-                            void setAgendaScheduleIngestion(villager.characterId, villager.ingestSchedule, {
+                            void setScheduleInfluence(villager.characterId, villager.scheduleInfluence.enabled, {
                               [key]: event.target.checked,
                             })
                           }
@@ -272,7 +270,7 @@ export function ResidentsScreen({
                       </label>
                     ))}
                   </div>
-                  {villager.ingestSchedule ? (
+                  {villager.scheduleInfluence.enabled ? (
                     <ul>
                       {(villager.agenda?.scheduleInfluenceSnapshot?.adopted ?? []).map((line) => (
                         <li key={line}>{line}</li>

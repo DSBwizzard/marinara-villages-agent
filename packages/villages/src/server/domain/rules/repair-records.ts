@@ -12,6 +12,9 @@ import type { VillageState } from "../models/world.js";
 import { badRequest, conflict } from "./errors.js";
 import { memoryHash, validateMemoryRecord } from "./memory-integrity.js";
 import { inspectMemoryCandidates, retainMemoryScenes } from "./memory-views.js";
+import { completeAgendaWeek, workingAgendaWeek } from "./agenda-week.js";
+import { routineProfileFromWeek } from "./owned-routine.js";
+import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 import { keepAgendaPlaces } from "./resident-agenda.js";
 import { readSocialWish } from "./social-wishes.js";
 import { assertResidencePrivateDestination } from "./venue-layout.js";
@@ -772,9 +775,13 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
         const sorted = [...agenda.day].sort((a, b) => a.startMinute - b.startMinute);
         if (sorted.some((b, i) => i > 0 && b.startMinute < sorted[i - 1].endMinute))
           throw badRequest("Routine blocks cannot overlap.");
-        agenda.routineProfile = undefined;
-        agenda.week = undefined;
+        agenda.week = completeAgendaWeek(
+          Object.fromEntries(VILLAGE_WEEKDAYS.map((weekday) => [weekday, sorted])),
+          workingAgendaWeek(),
+        );
+        agenda.routineProfile = routineProfileFromWeek(agenda.week);
         agenda.plannedDays = {};
+        agenda.personalizationPending = false;
       } else if (kind === "venue") {
         const v = state.venues.find((v) => v.id === id)!;
         if (!str("name") || str("name").length > 100 || str("form").length > 240)

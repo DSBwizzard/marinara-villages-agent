@@ -51,7 +51,7 @@ function fixture() {
     })),
   });
   for (const person of state.villagers) {
-    person.agenda = unwrittenVillageAgenda(state.venues, person.characterId, new Date(at));
+    person.agenda = unwrittenVillageAgenda(new Date(at));
     const block = {
       startMinute: 0,
       endMinute: 1440,

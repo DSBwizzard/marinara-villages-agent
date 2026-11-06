@@ -1,3 +1,4 @@
+import { agendaFixture } from "./helpers/agenda.fixture.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { configureVillageClock } from "../packages/villages/src/server/adapters/time/clock-gate.js";
@@ -65,7 +66,7 @@ function fixture(live = true) {
       },
     })),
   });
-  world.villagers[0]!.agenda = {
+  world.villagers[0]!.agenda = agendaFixture({
     routineSummary: "Work at ten",
     source: "village",
     generatedAt: "",
@@ -73,8 +74,8 @@ function fixture(live = true) {
       { startMinute: 0, endMinute: 600, venueId: "garden", zoneId: "community", activity: "Gardening" },
       { startMinute: 600, endMinute: 1440, venueId: "work", zoneId: "workplace", activity: "Working" },
     ],
-  };
-  world.villagers[1]!.agenda = {
+  });
+  world.villagers[1]!.agenda = agendaFixture({
     routineSummary: "A garden visit",
     source: "village",
     generatedAt: "",
@@ -83,7 +84,7 @@ function fixture(live = true) {
       { startMinute: 690, endMinute: 750, venueId: "garden", zoneId: "community", activity: "Reading" },
       { startMinute: 750, endMinute: 1440, venueId: "work", zoneId: "workplace", activity: "Working" },
     ],
-  };
+  });
   let scene = coerceSession({
     version: 4,
     id: "visit",
@@ -255,9 +256,9 @@ try {
     person.characterId = `guest-${i}`;
     person.cardSnapshot.id = person.characterId;
     person.cardSnapshot.name = `Guest ${i}`;
-    person.agenda!.day = [
-      { startMinute: 0, endMinute: 1440, venueId: "garden", zoneId: "exterior", activity: "Visiting" },
-    ];
+    person.agenda = agendaFixture({
+      day: [{ startMinute: 0, endMinute: 1440, venueId: "garden", zoneId: "exterior", activity: "Visiting" }],
+    });
     crowded.world.villagers.push(person);
   }
   now = new Date("2026-11-02T09:57:00Z");
@@ -278,9 +279,9 @@ try {
 
   now = new Date("2026-11-02T09:50:00Z");
   const spatial = fixture();
-  spatial.world.villagers[1]!.agenda!.day = [
-    { startMinute: 0, endMinute: 1440, venueId: "garden", zoneId: "community", activity: "Reading" },
-  ];
+  spatial.world.villagers[1]!.agenda = agendaFixture({
+    day: [{ startMinute: 0, endMinute: 1440, venueId: "garden", zoneId: "community", activity: "Reading" }],
+  });
   spatial.scene.accompanying = [{ characterId: "maya", zoneId: "exterior" }];
   await spatial.service.activeVenueSession();
   const conflicts = liveSceneEncounterConflicts(spatial.world, spatial.scene, now);

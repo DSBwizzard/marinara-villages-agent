@@ -135,7 +135,7 @@ assert.equal(resident.cardSnapshot.capturedAt, resident.addedAt);
 assert.equal(resident.agendaGeneration, "arrival-" + resident.addedAt);
 assert(resident.agenda!.activeDay!.blocks.length > 0);
 assert.equal(resident.agenda!.personalizationPending, true);
-assert.equal(resident.ingestSchedule, false);
+assert.equal(resident.scheduleInfluence.enabled, false);
 assert.equal(resident.scheduleInfluence!.enabled, false);
 first.card.tags.push("Later library edit");
 assert.deepEqual(resident.cardSnapshot.tags, ["First"], "Arrival owns its captured tags.");

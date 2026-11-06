@@ -66,6 +66,7 @@ function fixture() {
         generatedAt: at,
         routineProfile: {
           version: 1,
+          semanticVersion: 2,
           activities: [
             { activity: "Resting", venueId: "", flexible: true, essential: false, duration: 90, parts: [0, 1, 2, 3] },
           ],
@@ -572,58 +573,25 @@ assert(
 );
 assert.equal(savedAction.calls.length, 0, "Applying a saved result never triggers a model request");
 
-const legacyRaw: any = { ...effects.state };
-delete legacyRaw.backgroundPace;
-delete legacyRaw.lastPlanningDate;
-delete legacyRaw.planningUsage;
-delete legacyRaw.processedActionIds;
-Object.assign(legacyRaw, {
-  storyPace: "off",
-  lastCreativeDate: "2026-10-24",
-  timeZone: "",
-  lastKnownTimeZone: "America/Los_Angeles",
-  processedOpportunityIds: ["accepted-move"],
-  happenings: Array.from({ length: 3 }, (_, i) => ({
-    id: String(i),
-    occurredAt: "2026-10-25T06:30:00.000Z",
-    text: "old prose",
-  })),
-  scheduledEvents: [{ id: "unused" }],
-  socialOutbox: [
-    {
-      id: "accepted-social",
-      seed: effects.state.seed,
-      at,
-      opportunity: {
-        id: "original",
-        kind: "encounter",
-        actorIds: ["a", "b"],
-        venueId: "square",
-        startsAt: at,
-        endsAt: at,
-        facts: [],
-      },
-      candidates: [],
-      proposal: {},
-    },
-  ],
-});
-const migrated = coerceVillageState(legacyRaw);
-assert.equal(migrated.backgroundPace, "off");
-assert.equal(migrated.lastPlanningDate, "2026-10-24");
-assert.deepEqual(
-  migrated.planningUsage,
-  { dateKey: "2026-10-24", count: 3 },
-  "Legacy counts use their local calendar across UTC midnight",
-);
-assert(migrated.processedActionIds.includes("accepted-move"));
-assert.deepEqual(migrated.memories, effects.state.memories);
-assert.equal(migrated.socialOutbox![0].opportunity.id, "original");
-assert.equal(migrated.residences[0].status, "pending");
-assert.equal(migrated.residences[0].proposedVenueId, "home");
-assert.equal(Object.hasOwn(migrated, "happenings"), false);
-assert.equal(Object.hasOwn(migrated, "scheduledEvents"), false);
-assert.deepEqual(coerceVillageState(JSON.parse(JSON.stringify(migrated))).planningUsage, migrated.planningUsage);
+const currentRaw: any = {
+  ...effects.state,
+  backgroundPace: "off",
+  lastPlanningDate: "2026-10-24",
+  planningUsage: { dateKey: "2026-10-24", count: 3 },
+  processedActionIds: ["accepted-move"],
+};
+const reloaded = coerceVillageState(currentRaw);
+assert.equal(reloaded.backgroundPace, "off");
+assert.equal(reloaded.lastPlanningDate, "2026-10-24");
+assert.deepEqual(reloaded.planningUsage, currentRaw.planningUsage, "Reload preserves the spent daily allowance");
+assert(reloaded.processedActionIds.includes("accepted-move"));
+assert.deepEqual(reloaded.memories, effects.state.memories);
+assert.equal(reloaded.residences[0].status, "pending");
+assert.equal(reloaded.residences[0].proposedVenueId, "home");
+assert.deepEqual(coerceVillageState(JSON.parse(JSON.stringify(reloaded))).planningUsage, reloaded.planningUsage);
+for (const planningUsage of [null, { dateKey: "2026-10-24", count: -1 }, { dateKey: "bad", count: 1 }]) {
+  assert.throws(() => coerceVillageState({ ...currentRaw, planningUsage }), /Invalid saved planning allowance/);
+}
 
 {
   const spatial = fixture();

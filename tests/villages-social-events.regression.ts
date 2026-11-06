@@ -69,7 +69,7 @@ const at = "2026-10-22T19:00:00.000Z",
   sourceDate = new ZonedDate(at, village.timeZone);
 assert.equal(sourceDate.getHours(), 15);
 for (const person of village.villagers) {
-  person.agenda = unwrittenVillageAgenda(village.venues, person.cardSnapshot.name);
+  person.agenda = unwrittenVillageAgenda();
   const block = {
     startMinute: 900,
     endMinute: 960,

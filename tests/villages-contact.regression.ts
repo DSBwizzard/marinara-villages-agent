@@ -1,3 +1,4 @@
+import { agendaFixture } from "./helpers/agenda.fixture.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import {
@@ -69,15 +70,14 @@ function villager(id: string, venueId: string, zoneId: string, activity = "Visit
     },
     addedAt: stamp,
     wishes: [],
-    ingestSchedule: false,
-    agenda: {
+    agenda: agendaFixture({
       routineSummary: "",
       day: [block],
       week: { [weekday]: [block] },
       activeDay: { dateKey, weekday, blocks: [block], scheduleInformed: false },
       source: "village",
       generatedAt: stamp,
-    },
+    }),
   } as VillageVillager;
 }
 

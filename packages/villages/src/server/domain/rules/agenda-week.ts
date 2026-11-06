@@ -28,10 +28,7 @@ const block = (startMinute: number, endMinute: number, venueId: string, activity
 });
 
 /** A complete, varied week exists before any model or schedule is consulted. */
-export function workingAgendaWeek(
-  _venues: readonly VillageVenue[],
-  _name: string,
-): Record<string, VillageAgendaBlock[]> {
+export function workingAgendaWeek(): Record<string, VillageAgendaBlock[]> {
   return Object.fromEntries(
     VILLAGE_WEEKDAYS.map((weekday) => [
       weekday,
@@ -132,20 +129,7 @@ function fillFromFallback(fallback: VillageAgendaBlock[], start: number, end: nu
   });
 }
 
-export function legacyAgendaWeek(
-  agenda: VillageAgenda,
-  fallback: Record<string, VillageAgendaBlock[]>,
-): Record<string, VillageAgendaBlock[]> {
-  if (agenda.week) return completeAgendaWeek(agenda.week, fallback);
-  const day = agenda.day.map((entry) => ({
-    ...block(entry.startMinute, entry.endMinute, entry.venueId, entry.activity),
-    zoneId: entry.zoneId,
-  }));
-  if (!day.length) return fallback;
-  return completeAgendaWeek(Object.fromEntries(VILLAGE_WEEKDAYS.map((weekday) => [weekday, day])), fallback);
-}
-
-export function agendaBlocksFor(agenda: VillageAgenda, _ingestSchedule: boolean, at: Date): VillageAgendaBlock[] {
+export function agendaBlocksFor(agenda: VillageAgenda, at: Date): VillageAgendaBlock[] {
   const key = agendaDateKey(at);
   const weekday = VILLAGE_WEEKDAYS[(at.getDay() + 6) % 7]!;
   const ordinary =

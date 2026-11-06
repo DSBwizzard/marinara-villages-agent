@@ -78,7 +78,6 @@ export function fixture() {
   state.villagers = ["a", "b", "c"].map((id) => ({
     characterId: id,
     addedAt: state.setupAt,
-    ingestSchedule: false,
     wishes: [],
     cardSnapshot: {
       id,
@@ -89,7 +88,7 @@ export function fixture() {
       sourceStatus: "available",
       capturedAt: state.setupAt,
     },
-    agenda: unwrittenVillageAgenda(state.venues, id),
+    agenda: unwrittenVillageAgenda(),
   })) as VillageState["villagers"];
   const mutate = async (fn: (state: VillageState) => void) => {
     const next = structuredClone(state);

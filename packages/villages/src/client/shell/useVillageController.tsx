@@ -84,7 +84,7 @@ import {
   useLoadMemoryLibrary,
   usePreviewVillagerRefresh,
   useRewriteAgenda,
-  useSetAgendaScheduleIngestion,
+  useSetScheduleInfluence,
 } from "../features/residents/actions.js";
 import { calculatePersonaPortraitId, calculatePortraitWanted } from "../features/residents/calculations.js";
 import {
@@ -615,7 +615,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setError,
   });
 
-  const setAgendaScheduleIngestion = useSetAgendaScheduleIngestion({
+  const setScheduleInfluence = useSetScheduleInfluence({
     currentSnapshotRef,
     setAgendas,
     setBusy,
@@ -1438,7 +1438,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     turnRecovery,
     checkSavedReply,
     replyPending,
-    setAgendaScheduleIngestion,
+    setScheduleInfluence,
     setBusy,
     setConnectionSetupProblem: founding.setConnectionSetupProblem,
     setError,

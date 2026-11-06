@@ -209,7 +209,6 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
       homeBuildingNames?: unknown;
       backgroundPace?: unknown;
       narrativeConsequence?: unknown;
-      storyPace?: unknown; // Compatibility with an already-open older client.
       characterSpeechColors?: unknown;
       sendOnEnter?: unknown;
       spriteCardFlipEnabled?: unknown;
@@ -247,8 +246,7 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
         throw badRequest(
           "Use REPAIR to correct the local geography. Physical changes belong to gameplay and Projects.",
         );
-      if (body.backgroundPace !== undefined || body.storyPace !== undefined)
-        snapshot = await setVillageBackgroundPace(body.backgroundPace ?? body.storyPace);
+      if (body.backgroundPace !== undefined) snapshot = await setVillageBackgroundPace(body.backgroundPace);
       if (body.narrativeConsequence !== undefined)
         snapshot = await setVillageNarrativeConsequence(body.narrativeConsequence);
       if (body.sendOnEnter !== undefined) snapshot = await setVillageSendOnEnter(body.sendOnEnter);

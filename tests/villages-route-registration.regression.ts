@@ -17,7 +17,7 @@ async function agendaHttpAdmission() {
     async queueVillagerAgenda() {
       throw Error("Unexpected background admission.");
     },
-    async backfillAgendas(state) {
+    async queuePendingAgendas(state) {
       return state;
     },
     async refreshScheduleInfluence() {},

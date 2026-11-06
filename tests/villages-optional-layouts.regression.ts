@@ -1,3 +1,4 @@
+import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
 import assert from "node:assert/strict";
 import {
   coerceVillageState,
@@ -177,6 +178,7 @@ initial.villagers = coerceVillageState({
   villagers: [
     {
       characterId: "a",
+      agenda: unwrittenVillageAgenda(),
       cardSnapshot: {
         id: "a",
         name: "Ada",
@@ -187,6 +189,7 @@ initial.villagers = coerceVillageState({
     },
     {
       characterId: "b",
+      agenda: unwrittenVillageAgenda(),
       cardSnapshot: {
         id: "b",
         name: "Bram",

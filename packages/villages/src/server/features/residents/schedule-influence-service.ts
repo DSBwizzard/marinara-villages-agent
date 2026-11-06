@@ -1,6 +1,11 @@
 import type { Handler } from "../../domain/models/background-model.js";
 import { semanticHash } from "../../domain/rules/semantic-contract.js";
-import { influenceSettings, readPreparedInfluence, scheduleSemanticSource } from "../../domain/rules/owned-routine.js";
+import {
+  canInterpretSchedule,
+  influenceSettings,
+  readPreparedInfluence,
+  scheduleSemanticSource,
+} from "../../domain/rules/owned-routine.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { StartingTiesPorts } from "./starting-ties-service.js";
@@ -18,7 +23,7 @@ export function createScheduleInfluence(ports: ScheduleInfluencePorts) {
     const state = await ports.readVillageState();
     const resident = state.villagers.find((row) => row.characterId === characterId);
     const profile = resident?.agenda?.routineProfile;
-    if (!resident || profile?.semanticVersion !== 2) return;
+    if (!resident || !profile || !canInterpretSchedule(resident.agenda)) return;
     const settings = influenceSettings(resident.scheduleInfluence);
     if (!settings.enabled) return;
     const native = await ports.readNativeScheduleSnapshot(villageNow(), [characterId]);
@@ -49,7 +54,8 @@ export function createScheduleInfluence(ports: ScheduleInfluencePorts) {
       const resident = state.villagers.find((row) => row.characterId === input.characterId);
       return (
         !!resident &&
-        resident.agenda?.routineProfile?.semanticVersion === 2 &&
+        !!resident.agenda?.routineProfile &&
+        canInterpretSchedule(resident.agenda) &&
         semanticHash(influenceSettings(resident.scheduleInfluence)) === semanticHash(input.settings) &&
         semanticHash(resident.agenda.routineProfile.activities) === input.profileHash
       );

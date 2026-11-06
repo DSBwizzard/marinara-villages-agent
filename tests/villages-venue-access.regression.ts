@@ -586,7 +586,7 @@ assert.equal(
 );
 cafeZone.controllerIds = ["private-controller-sentinel"];
 planningWorld.villagers = ["visitor", "trina"].map((characterId) => {
-  const agenda = unwrittenVillageAgenda(planningWorld.venues, characterId, new Date(2026, 9, 5));
+  const agenda = unwrittenVillageAgenda(new Date(2026, 9, 5));
   agenda.activeDay!.blocks = [
     {
       startMinute: 0,
@@ -850,7 +850,7 @@ async function main() {
     records.set("villages-village", { id: "villages-village", kind: "village", data: managementWorld, revision: 100 });
     await mutateVillageState((current) => {
       const jim = current.villagers.find((resident) => resident.characterId === "jim")!;
-      jim.agenda = unwrittenVillageAgenda(current.venues, "jim");
+      jim.agenda = unwrittenVillageAgenda();
       jim.agenda.activeDay!.blocks = [
         {
           startMinute: 0,
@@ -1072,7 +1072,7 @@ async function main() {
 
     const friendWorld = await readVillageState({ memories: true, wishes: true });
     const visitor = friendWorld.villagers.find((resident) => resident.characterId === "visitor")!;
-    visitor.agenda = unwrittenVillageAgenda(friendWorld.venues, "visitor");
+    visitor.agenda = unwrittenVillageAgenda();
     const future = new Date();
     future.setDate(future.getDate() + 1);
     const futureKey = `${future.getFullYear()}-${String(future.getMonth() + 1).padStart(2, "0")}-${String(future.getDate()).padStart(2, "0")}`;
@@ -1438,7 +1438,7 @@ async function main() {
       ).toISOString();
     for (const actor of ["jim", "mara"]) {
       const resident = socialWorld.villagers.find((resident) => resident.characterId === actor)!;
-      resident.agenda = unwrittenVillageAgenda(socialWorld.venues, actor);
+      resident.agenda = unwrittenVillageAgenda();
       resident.agenda.activeDay!.blocks = [
         {
           startMinute: 0,

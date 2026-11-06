@@ -1,3 +1,4 @@
+import { agendaFixture } from "./helpers/agenda.fixture.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -47,6 +48,9 @@ const model: any = {
           venue: 0,
           status: "idle",
           flexible: true,
+          essential: false,
+          duration: 90,
+          parts: [0, 1, 2, 3],
         })),
         days: Array.from({ length: 7 }, () => [0, 1, 2, 3, 4, 5, 0, 1]),
         rhythm: [],
@@ -128,7 +132,7 @@ const state = coerceVillageState({
         name: "A",
         capturedAt: "2026-09-01T00:00:00.000Z",
       },
-      agenda: { generatedAt: "2026-09-01", routineSummary: "Routine", day: [], week: {} },
+      agenda: agendaFixture({ generatedAt: "2026-09-01", routineSummary: "Routine", day: [], week: {} }),
     },
   ],
 });
@@ -155,7 +159,6 @@ async function main() {
       activeWishes: [],
       wishes: [],
       schedule: null,
-      allowInitialWish: false,
     };
     await proposeCompactFounding(context, async () => {});
     assert.equal(calls, plan.requests, "forecast matches actual mocked generator dispatches");

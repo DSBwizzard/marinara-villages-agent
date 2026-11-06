@@ -59,7 +59,7 @@ export function villageSchedulerDelayMs(
       deadlines.push(activity > now.getTime() ? activity : Math.max(now.getTime(), activityNotBefore));
   }
   for (const villager of village?.villagers ?? []) {
-    for (const row of villager.agenda ? agendaBlocksFor(villager.agenda, villager.ingestSchedule !== false, now) : []) {
+    for (const row of villager.agenda ? agendaBlocksFor(villager.agenda, now) : []) {
       deadlines.push(localMinuteDeadline(now, row.startMinute), localMinuteDeadline(now, row.endMinute));
     }
   }

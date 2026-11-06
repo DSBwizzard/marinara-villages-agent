@@ -1,3 +1,5 @@
+import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
+import { applyWorldRepair, worldRepairRecords } from "../packages/villages/src/server/domain/rules/repair-records.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import {
@@ -6,12 +8,13 @@ import {
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
   addRoutineIdea,
-  adoptedProfile,
+  routineProfileFromWeek,
   agendaPromptDay,
   compressAgendaBlocks,
   deriveInfluence,
   influenceSettings,
   routineDay,
+  scheduleSemanticSource,
   validateRoutineDay,
 } from "../packages/villages/src/server/domain/rules/owned-routine.js";
 import { villagePresence } from "../packages/villages/src/server/domain/rules/village-projections.js";
@@ -86,12 +89,9 @@ const block = {
   venueId: "",
   zoneId: undefined,
   activity: "Reading",
-  reason: "A long repetitive explanation",
-  status: "idle" as const,
   flexible: true,
 };
-const legacyWeek = Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, [block]]));
-const translated = Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, [{ ...block, activity: "Tending herbs" }]]));
+const ownedWeek = Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, [block]]));
 const raw = {
   ...defaultVillageState(),
   memories: { format: 1, revision: 0, records: [] },
@@ -106,14 +106,14 @@ const raw = {
     {
       characterId: "a",
       addedAt: "2026-09-01",
-      ingestSchedule: true,
+      scheduleInfluence: influenceSettings({ enabled: true }),
       cardSnapshot: { ...card, revision: 1, sourceStatus: "available", capturedAt: "2026-09-01T00:00:00.000Z" },
       wishes: [],
       agenda: {
         generatedAt: "2026-09-01T00:00:00.000Z",
         routineSummary: "Existing life",
-        week: legacyWeek,
-        scheduleWeek: translated,
+        week: ownedWeek,
+        routineProfile: routineProfileFromWeek(ownedWeek),
         day: [],
         activeDay: { dateKey, weekday, blocks: [block], scheduleInformed: true },
       },
@@ -197,28 +197,49 @@ const release = configureVillagesRuntime({
 } as any);
 
 async function main() {
-  const migration = coerceVillageState(raw),
-    resident = migration.villagers[0]!;
-  assert.equal(resident.agenda!.scheduleWeek, null);
-  assert.deepEqual(
-    resident.agenda!.week,
-    completeAgendaWeek(translated, translated),
-    "adopt the effective saved translated life",
+  const repairedWorld = coerceVillageState(raw);
+  repairedWorld.villagers[0]!.agenda = unwrittenVillageAgenda(today);
+  const admittedDay = coerceVillageState(repairedWorld).villagers[0]!.agenda!.activeDay;
+  const repairRecord = worldRepairRecords(repairedWorld).find((row) => row.id === JSON.stringify(["routine", "a"]))!;
+  applyWorldRepair(
+    repairedWorld,
+    repairRecord,
+    {
+      action: "correct",
+      values: {
+        ...Object.fromEntries(repairRecord.fields.map((field) => [field.key, field.value])),
+        "activity:0": "Quiet crafting",
+      },
+    } as any,
+    today.toISOString(),
   );
+  const repairedReload = coerceVillageState(JSON.parse(JSON.stringify(repairedWorld)));
+  assert.deepEqual(
+    repairedReload.villagers[0]!.agenda!.activeDay,
+    admittedDay,
+    "Repair preserves today's admitted plan",
+  );
+  assert.equal(
+    repairedReload.villagers[0]!.agenda!.week!.Monday![0]!.activity,
+    "Quiet crafting",
+    "Repaired future routine survives reload without decoder adoption",
+  );
+  assert.equal(calls, 0, "Manual routine repair never purchases generation");
+
+  const currentWorld = coerceVillageState(raw),
+    resident = currentWorld.villagers[0]!;
+  assert.deepEqual(resident.agenda!.week, completeAgendaWeek(ownedWeek, ownedWeek), "Exact current owned week reloads");
   assert.deepEqual(
     resident.agenda!.activeDay?.blocks,
-    completeAgendaWeek({ Monday: [block] }, legacyWeek).Monday,
+    completeAgendaWeek({ Monday: [block] }, ownedWeek).Monday,
     "today is preserved separately",
   );
   assert.equal(resident.agenda!.personalizationPending, false);
   assert.equal(resident.scheduleInfluence!.enabled, true);
-  assert.deepEqual(coerceVillageState(migration), migration, "migration is idempotent");
+  assert.deepEqual(coerceVillageState(currentWorld), currentWorld, "Current-world reload is stable");
 
   const previousDigest = routineRevision(raw.villagers[0]!.agenda as any);
-  assert.ok(
-    routineRevisionMatches(resident.agenda!, previousDigest),
-    "exact legacy social revision survives field removal",
-  );
+  assert.ok(routineRevisionMatches(resident.agenda!, previousDigest), "exact current routine revision remains valid");
   assert.equal(
     routineRevisionMatches(resident.agenda!, "0".repeat(64)),
     false,
@@ -229,7 +250,7 @@ async function main() {
   assert.equal(
     routineRevisionMatches(changedRoutine, previousDigest),
     false,
-    "compatibility expires on a real routine change",
+    "a real routine change invalidates the continuation",
   );
   for (const fields of [{ essential: true }, { commitmentId: "committed" }]) {
     const protectedBlock = {
@@ -242,8 +263,8 @@ async function main() {
       ...fields,
     };
     const restBlock = { ...block, activity: "Resting", startMinute: 720, endMinute: 1440, flexible: false };
-    const seedWeek = Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, [protectedBlock, restBlock]]));
-    const profile = adoptedProfile(seedWeek as any);
+    const baseWeek = Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, [protectedBlock, restBlock]]));
+    const profile = routineProfileFromWeek(baseWeek as any);
     const influence = {
       ...resident.agenda!.scheduleInfluenceSnapshot,
       rhythms: [{ weekday: "Monday", startMinute: 660, endMinute: 1440 }],
@@ -251,7 +272,7 @@ async function main() {
     const day = routineDay(profile, "seed", new Date(2026, 9, 5, 12), influence, influenceSettings({ enabled: true }));
     assert.equal(day[0]!.endMinute, 720, "rest preference cannot shift essential or committed time");
     const optional = { ...block, activity: "Optional reading", startMinute: 0, endMinute: 1440 };
-    profile.seedWeek = Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, [optional]]));
+    profile.baseWeek = Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, [optional]]));
     profile.activities = [{ ...profile.activities[0]!, ...fields }];
     const replacement = routineDay(profile, "seed", new Date(2026, 9, 5, 12));
     assert.ok(
@@ -262,23 +283,7 @@ async function main() {
   assert.equal(influenceSettings(null).enabled, false, "new residents opt in");
   const owned = parseCompactFounding(payload, context as any).agenda;
   assert.equal(owned.routineProfile!.rhythm.length, 0, "nonhuman residents need no imposed sleep");
-  const aliases = { ...payload, palette: palette.map(({ venue, ...row }) => ({ ...row, venueNumber: venue })) };
-  assert.deepEqual(
-    parseCompactFounding(aliases, context as any).agenda.routineProfile,
-    owned.routineProfile,
-    "saved venueNumber replies retain exact destinations",
-  );
-  const rest = { ...payload, rhythm: [{ startMinute: 1320, endMinute: 360, activity: 0 }] };
-  assert.deepEqual(
-    parseCompactFounding(
-      { ...aliases, rhythm: [{ startMinute: 1320, endMinute: 360, activityPaletteIndex: 0 }] },
-      context as any,
-    ).agenda.routineProfile,
-    parseCompactFounding(rest, context as any).agenda.routineProfile,
-    "saved rest aliases normalize without changing timing or activity",
-  );
   for (const invalid of [
-    { activity: 0, activityPaletteIndex: 1 },
     { activityPaletteIndex: "0" },
     { activityPaletteIndex: 6 },
     { activityPaletteIndex: -1 },
@@ -294,7 +299,6 @@ async function main() {
       /rest pattern/,
     );
   for (const invalid of [
-    { venue: 0, venueNumber: 1 },
     { venue: "0" },
     { venueNumber: "0" },
     { venue: 1 },
@@ -321,11 +325,25 @@ async function main() {
     );
   resident.agenda = owned;
   resident.scheduleInfluence = influenceSettings({ enabled: true });
-  const first = deriveInfluence(source, resident, migration);
+  const expectedInfluence = {
+    version: 1 as const,
+    signature: "prepared",
+    available: true,
+    enabled: true,
+    rhythms: [{ weekday: "Monday", startMinute: 1320, endMinute: 360 }],
+    busy: [{ weekday: "Monday", part: 1, free: false }],
+    patterns: [{ weekend: true, busy: false }],
+    interests: ["Reading"],
+    entities: [],
+    adopted: [],
+    unresolved: [],
+  };
+  resident.agenda!.routineProfile!.influence = expectedInfluence;
+  resident.agenda!.routineProfile!.influenceSource = scheduleSemanticSource(source, resident.scheduleInfluence);
+  const first = deriveInfluence(source, resident);
   source.weekStart = "2099-01-01";
-  source.days.Monday.forEach((row: any) => (row.status = "different"));
   assert.equal(
-    deriveInfluence(source, resident, migration).signature,
+    deriveInfluence(source, resident).signature,
     first.signature,
     "Engine dates and availability have no authority",
   );
@@ -335,7 +353,8 @@ async function main() {
   assert.equal(first.entities.length, 0, "no imported starship employer");
   for (const category of ["rhythm", "busyFree", "weekdayWeekend", "interests", "establishedEntities"]) {
     resident.scheduleInfluence = influenceSettings({ enabled: true, categories: { [category]: false } });
-    const result = deriveInfluence(source, resident, migration);
+    resident.agenda!.routineProfile!.influenceSource = scheduleSemanticSource(source, resident.scheduleInfluence);
+    const result = deriveInfluence(source, resident);
     if (category === "rhythm") assert.equal(result.rhythms.length, 0);
     if (category === "busyFree") assert.equal(result.busy.length, 0);
     if (category === "interests") assert.equal(result.interests.length, 0);
@@ -351,16 +370,13 @@ async function main() {
       ]),
     ),
   });
-  const weekendOnly = deriveInfluence(source, resident, migration);
+  resident.agenda!.routineProfile!.influenceSource = scheduleSemanticSource(source, resident.scheduleInfluence);
+  const weekendOnly = deriveInfluence(source, resident);
   assert.ok(weekendOnly.patterns!.length);
   assert.equal(weekendOnly.rhythms.length, 0);
   assert.equal(weekendOnly.busy.length, 0);
   assert.doesNotThrow(() =>
-    deriveInfluence(
-      { days: { Monday: [null, { time: 34 }, { time: "bad", activity: "Sleeping" }] } } as any,
-      resident,
-      migration,
-    ),
+    deriveInfluence({ days: { Monday: [null, { time: 34 }, { time: "bad", activity: "Sleeping" }] } } as any, resident),
   );
   assert.throws(
     () =>
@@ -419,9 +435,14 @@ async function main() {
     ]).length,
     2,
   );
-  assert.ok(addRoutineIdea(owned, { activity: "Writing poetry", flexible: true, venueId: "" }, resident, migration));
+  assert.ok(addRoutineIdea(owned, { activity: "Writing poetry", flexible: true, venueId: "" }, resident, currentWorld));
   assert.equal(
-    addRoutineIdea(owned, { activity: "Flying a starship", flexible: true, venueId: "missing" }, resident, migration),
+    addRoutineIdea(
+      owned,
+      { activity: "Flying a starship", flexible: true, venueId: "missing" },
+      resident,
+      currentWorld,
+    ),
     false,
   );
 
@@ -517,13 +538,12 @@ async function main() {
       venues: [safeVenue],
     });
     resident.scheduleInfluence = influenceSettings({ enabled: true });
-    assert.ok(
-      deriveInfluence(
-        { days: { Monday: [{ time: "10:00-12:00", activity: "Reading at Library" }] } } as any,
-        resident,
-        access,
-      ).entities.includes("library"),
+    const pendingInfluence = deriveInfluence(
+      { characterId: "a", days: { Monday: [{ time: "10:00-12:00", activity: "Reading at Library" }] } } as any,
+      resident,
     );
+    assert.deepEqual(pendingInfluence.entities, [], "Uninterpreted imported prose cannot nominate a place");
+    assert.deepEqual(pendingInfluence.unresolved, ["Schedule interpretation pending"]);
     const destination = { ...block, venueId: "library", zoneId: "exterior" };
     assert.notEqual(
       validateRoutineDay([{ ...destination, zoneId: undefined }], resident, access)[0]!.zoneId,
@@ -544,9 +564,11 @@ async function main() {
         cardSnapshot: { ...raw.villagers[0]!.cardSnapshot, id: "crowd" + i, name: "Crowd " + i },
         agenda: {
           ...raw.villagers[0]!.agenda,
-          scheduleWeek: null,
           activeDay: undefined,
           week: Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, [destination]])),
+          routineProfile: routineProfileFromWeek(
+            Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, [destination]])),
+          ),
         },
       })),
     });
@@ -578,7 +600,7 @@ async function main() {
     await mutateVillageState((value) => {
       value.villagers[0]!.scheduleInfluence = influenceSettings({ enabled: false });
     });
-    assert.ok(agendaBlocksFor((await readVillageState({ memories: true })).villagers[0]!.agenda!, false, next).length);
+    assert.ok(agendaBlocksFor((await readVillageState({ memories: true })).villagers[0]!.agenda!, next).length);
     await mutateVillageState((value) => {
       value.villagers[0]!.agenda = null;
       value.backgroundPace = "off";
@@ -586,8 +608,8 @@ async function main() {
     });
     await reconcileVillage({ now: today });
     await settleBackgroundWork();
-    assert.equal(calls, 3, "entire missing legacy agendas are repaired locally, never a paid migration");
-    assert.equal((await readVillageState({ memories: true })).villagers[0]!.agenda!.personalizationPending, false);
+    assert.equal(calls, 3, "Missing agendas cannot admit a paid request");
+    assert.equal((await readVillageState({ memories: true })).villagers[0]!.agenda, null);
   } finally {
     stop();
     release();
@@ -596,8 +618,4 @@ async function main() {
     "Villages owned Agenda regressions passed; routine requests 8 -> 1, translation/influence/local rollover requests 0.",
   );
 }
-void main().catch((error) => {
-  release();
-  console.error(error);
-  process.exitCode = 1;
-});
+await main();

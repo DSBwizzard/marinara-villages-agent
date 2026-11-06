@@ -1,3 +1,4 @@
+import { routineProfileFromWeek } from "../packages/villages/src/server/domain/rules/owned-routine.js";
 import assert from "node:assert/strict";
 import { ZonedDate } from "../packages/villages/src/shared/helpers/zoned-date.js";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -36,7 +37,7 @@ async function prepared() {
     state.timeZone = "UTC";
     for (const resident of state.villagers) {
       resident.agenda!.week = Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, structuredClone(routine)]));
-      resident.agenda!.routineProfile = undefined;
+      resident.agenda!.routineProfile = routineProfileFromWeek(resident.agenda!.week!);
       resident.agenda!.activeDay = undefined;
       resident.agenda!.plannedDays = {};
     }
@@ -85,7 +86,7 @@ social.relationshipContext = { applied: {}, socialPlans: [] } as any;
 for (const person of social.villagers) {
   for (const blocks of [
     ...Object.values(person.agenda!.week!),
-    ...Object.values(person.agenda!.routineProfile!.seedWeek!),
+    ...Object.values(person.agenda!.routineProfile!.baseWeek!),
   ])
     for (const block of blocks) if (!block.essential && !block.commitmentId) block.flexible = true;
   person.agenda!.activeDay = undefined;
@@ -102,7 +103,7 @@ const blockedId = await blocked.newProject();
 await blocked.mutate((state) => {
   for (const blocks of [
     ...Object.values(state.villagers[0].agenda!.week!),
-    ...Object.values(state.villagers[0].agenda!.routineProfile!.seedWeek!),
+    ...Object.values(state.villagers[0].agenda!.routineProfile!.baseWeek!),
   ])
     blocks[3].commitmentId = "fixed-appointment";
 });
@@ -125,7 +126,6 @@ await crowded.mutate((state) => {
     cardSnapshot: { ...template.cardSnapshot, id: characterId, name: characterId },
   }));
   for (const person of state.villagers) {
-    person.agenda!.routineProfile = undefined;
     person.agenda!.activeDay = undefined;
     person.agenda!.week = Object.fromEntries(
       VILLAGE_WEEKDAYS.map((day) => [
@@ -143,6 +143,7 @@ await crowded.mutate((state) => {
       ]),
     );
   }
+  for (const person of state.villagers) person.agenda!.routineProfile = routineProfileFromWeek(person.agenda!.week!);
   state.narrative = {
     version: 1,
     adoptedAt: "2026-10-29T00:00:00.000Z",
@@ -203,7 +204,7 @@ await changed.service.startProjectConstruction(changedId, changed.body(changedId
 await changed.mutate((state) => {
   for (const blocks of [
     ...Object.values(state.villagers[0].agenda!.week!),
-    ...Object.values(state.villagers[0].agenda!.routineProfile!.seedWeek!),
+    ...Object.values(state.villagers[0].agenda!.routineProfile!.baseWeek!),
   ])
     blocks[1].essential = true;
   state.villagers[0].agenda!.plannedDays = {};
@@ -293,7 +294,7 @@ assert.equal(
   "Meeting",
 );
 assert.deepEqual(
-  agendaBlocksFor(agenda, false, now),
-  agendaBlocksFor(coerceVillageState({ ...future }).villagers[0].agenda!, false, now),
+  agendaBlocksFor(agenda, now),
+  agendaBlocksFor(coerceVillageState({ ...future }).villagers[0].agenda!, now),
 );
 console.log("Agenda composition, protected time, Project focus, lifecycle, persistence, privacy and DST passed.");

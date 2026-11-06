@@ -48,7 +48,7 @@ export function activateVillagerDay(villager: VillageVillager, now: Date, state:
     weekday,
     blocks:
       agenda.plannedDays?.[agendaDateKey(now)] ??
-      validateRoutineDay(agendaBlocksFor(agenda, false, now), villager, state, now),
+      validateRoutineDay(agendaBlocksFor(agenda, now), villager, state, now),
     scheduleInformed: false,
   };
 }
@@ -79,7 +79,6 @@ export function keepAgendaPlaces(state: VillageState): void {
         ]),
       );
     villager.agenda.week = repair(villager.agenda.week);
-    villager.agenda.scheduleWeek = repair(villager.agenda.scheduleWeek ?? undefined) ?? null;
     if (villager.agenda.activeDay) {
       villager.agenda.activeDay.blocks = villager.agenda.activeDay.blocks.map((part) =>
         part.venueId && !publicIds.has(part.venueId)
