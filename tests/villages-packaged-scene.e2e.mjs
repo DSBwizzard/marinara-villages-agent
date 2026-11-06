@@ -64,7 +64,7 @@ await withBrowser({ close: server.stop }, async () => {
     await composer.fill("Hello from browser");
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect.poll(() => turns.length).toBe(1);
-    assert.equal(server.calls(), 2, "one Narration request and one combined System check");
+    assert.equal(server.calls(), 1, "one combined GM response");
     assert(
       server
         .scene()
@@ -77,7 +77,7 @@ await withBrowser({ close: server.stop }, async () => {
       payload: turns[0].input,
     });
     assert.equal(replay.statusCode, 200, replay.body);
-    assert.equal(server.calls(), 2, "replaying the actual browser submission buys no new model request");
+    assert.equal(server.calls(), 1, "replaying the actual browser submission buys no new model request");
     for (const field of ["transcript", "submissionHistory", "sceneRevision"]) {
       assert.deepEqual(
         server.records.get(saved.id).data[field],
@@ -94,7 +94,7 @@ await withBrowser({ close: server.stop }, async () => {
         return page.locator("marinara-capability-villages").textContent();
       })
       .toContain("I heard your browser message.");
-    assert.equal(server.calls(), 2, "reload restores saved output without dispatch");
+    assert.equal(server.calls(), 1, "reload restores saved output without dispatch");
   });
 });
 console.log("Packaged browser send, native persistence, replay and reload passed.");

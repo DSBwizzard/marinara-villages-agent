@@ -245,6 +245,10 @@
     },
     {
       "method": "get",
+      "path": "/rooms/:id/changes/diagnostics"
+    },
+    {
+      "method": "get",
       "path": "/rooms/:id/operation"
     },
     {

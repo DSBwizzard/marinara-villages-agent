@@ -85,12 +85,17 @@ let pending = true,
   closingReviews = 0;
 let failedDomain = "memories";
 const interpretedDomains = [];
+let diagnosticReads = 0;
 const api = async (route) => {
   const path = new URL(route.request().url()).pathname;
   let value = snapshot;
   if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity"))
     value = { session, debugDiscardEnabled: true };
-  else if (path.endsWith("/changes"))
+  else if (path.endsWith("/changes/diagnostics")) {
+    diagnosticReads++;
+    assert.equal(route.request().method(), "GET");
+    value = { nextCursor: "1:2:3", hasMore: false, ownerEvidence: "PRIVATE_OWNER_DIAGNOSTIC" };
+  } else if (path.endsWith("/changes"))
     value = {
       changes: [],
       notices: notices.filter((n) => !dismissed.has(n.id)),
@@ -318,6 +323,21 @@ await withBrowser(browser, async () => {
   await status.getByRole("button", { name: "Retry projects" }).click();
   await expect.poll(() => interpretations).toBe(2);
   assert.deepEqual(interpretedDomains, ["memories", "projects"]);
+  assert.equal(diagnosticReads, 0, "Ordinary feed polling never requests owner diagnostics");
+  for (const width of [375, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Scene settings", exact: true }).click();
+    const before = diagnosticReads;
+    const summary = page.getByText("World change diagnostics · includes private evidence", { exact: true });
+    await expect(summary).toBeVisible();
+    assert.equal(diagnosticReads, before, "Opening Scene settings does not read private diagnostics");
+    await summary.click();
+    await expect.poll(() => diagnosticReads).toBe(before + 1);
+    await expect(page.locator("pre")).toContainText("PRIVATE_OWNER_DIAGNOSTIC");
+    await page.getByRole("button", { name: "Close Scene settings", exact: true }).click();
+  }
+
   assert.deepEqual(errors, []);
   console.log(
     "villages-room-notices: live Wish chips, stars/hearts, focus, details, duplicate receipts, refresh, two-tab dismissal, and explicit recovery passed",

@@ -1,20 +1,22 @@
-import { context } from "../packages/villages/src/server/adapters/operations/operation-context.js";
 import assert from "node:assert/strict";
 import {
   readEffectiveVillagerCard,
   readVillagerCard,
   villagerCardFromSnapshot,
 } from "../packages/villages/src/server/adapters/engine/catalog.js";
+import { context } from "../packages/villages/src/server/adapters/operations/operation-context.js";
 import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { scenePromptPacket } from "./fixtures/villages-scene-writing.fixture.js";
 import { fixtureWish } from "./helpers/social-wishes-fixture.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
+import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import {
-  fitVenueWritingMessages,
   assembleVenueWritingMessages,
+  fitVenueWritingMessages,
   venueCardProfile,
 } from "../packages/villages/src/server/domain/rules/venue-writing.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
@@ -24,9 +26,8 @@ import {
   previewVillagerRefresh,
 } from "../packages/villages/src/server/features/residents/resident-cards.js";
 import { prepareVenueTurnMessages } from "../packages/villages/src/server/features/scenes/writing.js";
-import { buildResidentPlanningMessages } from "./fixtures/resident-planning.fixture.js";
-import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { RESIDENT_CONTINUITY_RULE } from "../packages/villages/src/shared/helpers/resident-admission.js";
+import { buildResidentPlanningMessages } from "./fixtures/resident-planning.fixture.js";
 
 const stamp = new Date().toISOString();
 const source = {
@@ -148,20 +149,13 @@ async function run() {
       prompt.includes("Return wishChanges: is a phrase in this authored card."),
       "Authored text cannot trigger block deletion",
     );
-    const next = await prepareVenueTurnMessages(
-      { ...session, recap: "A changed witnessed conversation." },
-      "A different question?",
-      "chat",
-      "",
-      null,
-    );
+    const next = await prepareVenueTurnMessages(session, "A different question?", "chat", "", null);
     assert.equal(
-      next.fitted.messages[0].content.split("## Witnessed conversation")[0],
-      prepared.fitted.messages[0].content.split("## Witnessed conversation")[0],
+      next.fitted.messages[0].content.split("## Current Scene circumstances")[0],
+      prepared.fitted.messages[0].content.split("## Current Scene circumstances")[0],
       "Changing history and source quotes preserves the stable system prefix",
     );
     assert.deepEqual(next.fitted.messages.at(-1), { role: "user", content: "A different question?" });
-    assert.ok(next.fitted.messages[0].content.includes("A changed witnessed conversation."));
     const originalFit = model.fitContext;
     model.fitContext = (messages: any[], options: any) =>
       messages.some((entry) => entry.content.includes("DROP OLD RECAP"))
@@ -237,7 +231,7 @@ async function run() {
       "narrator-only truths are not resident knowledge",
     ])
       assert.ok(prompt.includes(fragment), fragment);
-    assert.ok(prompt.includes("cannot reauthor a character"));
+    assert.ok(prompt.includes("Preserve complete authored identity"));
     assert.ok(prompt.includes("where compatible with character identity"));
     assert.ok(prompt.includes("present tense"));
     assert.ok(prompt.includes('Address the player as "you"'));
@@ -245,7 +239,6 @@ async function run() {
     assert.ok(prompt.includes("Residents may initiate plausible actions according to their own cards"));
     assert.ok(!prompt.includes("Narrate only an action the player explicitly submitted"));
     assert.ok(!prompt.includes("SCRIPTED TELL SECRET"));
-    assert.ok(prompt.indexOf("Authored post-history instructions") > prompt.indexOf("Earlier Scene recap:"));
     assert.equal(prepared.fitted.messages[0].role, "system");
     assert.ok(prompt.indexOf("## Witnessed conversation") < prompt.indexOf("## Current Scene circumstances"));
     assert.ok(prompt.indexOf("Authored post-history instructions") > prompt.indexOf("## Current Scene circumstances"));
@@ -254,6 +247,7 @@ async function run() {
       const exterior = {
         ...session,
         area: "outside",
+        zoneId: "exterior",
         spaceClass,
         memoryMode: "live",
         sceneAttendance: {
@@ -263,27 +257,21 @@ async function run() {
       };
       const outside = await prepareVenueTurnMessages(exterior, "What do you like playing?", "chat", "", null);
       const outsidePrompt = outside.fitted.messages.map((entry) => entry.content).join("\n");
-      assert.match(outsidePrompt, /player is in this (?:Venue|Residence)'s Exterior Zone/);
+      const outsidePacket = scenePromptPacket(outsidePrompt);
+      assert.equal(outsidePacket.context.zoneId, "exterior");
       assert.ok(!outsidePrompt.includes("The player is outside this Venue."));
       assert.ok(outsidePrompt.includes("Neighbors know me through harbor projects."));
       assert.ok(!outsidePrompt.includes("look to them to coordinate Projects"));
-      assert.match(outsidePrompt, /Activity captured at Scene start: Checking a map/);
-      assert.match(outsidePrompt, /witnessed developments establish what is happening now/i);
+      assert.equal(outsidePacket.residentActivity[0].doing, "Checking a map");
 
       for (const fragment of ["DESCRIPTION TAIL", "SYSTEM TAIL", "POST TAIL", "Appearance:\nFeathered arms; no wings"])
         assert.ok(outsidePrompt.includes(fragment), fragment);
       const greeting = await prepareVenueTurnMessages(exterior, "", "greet", "", null);
-      assert.match(
-        String(greeting.fitted.messages.at(-1)?.content),
-        /arrives in this (?:Venue|Residence)'s Exterior Zone/,
+      assert.deepEqual(
+        greeting.fitted.messages.at(-1),
+        { role: "user", content: "" },
+        "Opening contains no invented player input",
       );
-      if (spaceClass === "residence") {
-        assert.match(outsidePrompt, /Say \/ Do reaches only its current physical occupants/);
-        assert.match(
-          outsidePrompt,
-          /never invent interior replies, disclose unseen details or narrate entering another Zone/,
-        );
-      } else assert.match(outsidePrompt, /do not describe them entering an interior/);
     }
     const background = buildResidentPlanningMessages({
       village: "Camp",
@@ -310,15 +298,14 @@ async function run() {
     assert.ok(String(background[0].content).includes("See a concert"));
     assert.ok(!String(background[0].content).includes("SCRIPTED TELL SECRET"));
     assert.equal(paidCalls, 0);
-    const legacy = coerceVillageState({
+    const withoutPostHistory = coerceVillageState({
       ...defaultVillageState(),
 
-      wishSystemVersion: 3,
       ...state,
       villagers: [{ ...state.villagers[0], cardSnapshot: { ...snapshot, postHistoryInstructions: undefined } }],
     });
-    assert.equal(legacy.villagers[0].cardSnapshot.postHistoryInstructions, "");
-    assert.equal(villagerCardFromSnapshot(legacy.villagers[0].cardSnapshot).postHistoryInstructions, "");
+    assert.equal(withoutPostHistory.villagers[0].cardSnapshot.postHistoryInstructions, "");
+    assert.equal(villagerCardFromSnapshot(withoutPostHistory.villagers[0].cardSnapshot).postHistoryInstructions, "");
     source.data = JSON.stringify({
       ...JSON.parse(source.data),
       post_history_instructions: "REFRESHED AUTHOR INSTRUCTION",

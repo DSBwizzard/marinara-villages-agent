@@ -8,6 +8,7 @@ import { packagedSceneServer } from "./fixtures/packaged-scene-server.fixture.js
 import { fixtureVillageState } from "./helpers/village-storage.fixture.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
+import { createSemanticService } from "../packages/villages/src/server/features/generation/semantic-service.js";
 
 const segments = [{ kind: "dialogue", speakerId: "mara", text: "Tea sounds good." }];
 const raw = materializeGmReply(
@@ -35,11 +36,16 @@ const empty = normalizeGmEffects({}, context);
 assert.deepEqual(empty.memoryChanges, []);
 assert.deepEqual(empty.wishChanges, []);
 assert.equal(empty.consistent, undefined, "No fabricated independent review");
+await assert.rejects(
+  createSemanticService({
+    readVillageState: () => assert.fail("Missing GM context must stop before any I/O"),
+  } as any).exchange(coerceSession({ version: 3, id: "missing-context" }), "", [], null),
+  /current GM response context is required/,
+);
 
 mock.timers.enable({ apis: ["Date"], now: new Date("2026-11-05T20:00:00Z") });
 for (const invited of [false, true]) {
   const host = await packagedSceneServer({
-    gm: true,
     configure(world) {
       if (!invited) return;
       const venue = world.venues[0];

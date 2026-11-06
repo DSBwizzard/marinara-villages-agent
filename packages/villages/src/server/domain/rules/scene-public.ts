@@ -3,6 +3,53 @@ import { asRecord, asTrimmedString } from "./coerce.js";
 import { deriveVillageMoment } from "./village-clock.js";
 import { villageLighting } from "../../../shared/helpers/village-lighting.js";
 import { readLoreUse } from "../../../shared/helpers/lore.js";
+/** The ordinary change feed carries visible notices and recovery controls, never owner diagnostics. */
+export function publicSceneChanges(value: unknown) {
+  const row = asRecord(value);
+  const notices = (value: unknown) =>
+    (Array.isArray(value) ? value : []).map((value) => {
+      const notice = asRecord(value),
+        wish = asRecord(notice.wishUpdate);
+      return {
+        id: notice.id,
+        kind: notice.kind,
+        text: notice.text,
+        detail: notice.detail,
+        ...(notice.wishUpdate ? { wishUpdate: { actorId: wish.actorId, wishId: wish.wishId, state: wish.state } } : {}),
+      };
+    });
+  const summary = asRecord(row.processingSummary);
+  return {
+    sceneId: row.sceneId,
+    changes: (Array.isArray(row.changes) ? row.changes : []).map((value) => {
+      const change = asRecord(value);
+      return { submissionId: change.submissionId, at: change.at, notices: notices(change.notices) };
+    }),
+    notices: notices(row.notices),
+    dismissedNoticeIds: row.dismissedNoticeIds,
+    unresolved: (Array.isArray(row.unresolved) ? row.unresolved : []).map((value) => {
+      const issue = asRecord(value);
+      return {
+        submissionId: issue.submissionId,
+        domain: issue.domain,
+        status: issue.status,
+        at: issue.at,
+        diagnosticId: issue.diagnosticId,
+        reason: issue.reason,
+        canContinue: issue.canContinue,
+        continued: issue.continued,
+      };
+    }),
+    processingSummary: { pending: summary.pending, failed: summary.failed, rejected: summary.rejected },
+    backgroundChecks: (Array.isArray(row.backgroundChecks) ? row.backgroundChecks : []).map((value) => ({
+      status: asRecord(value).status,
+    })),
+    activeRequest: { status: asRecord(row.activeRequest).status },
+    nextCursor: row.nextCursor,
+    hasMore: row.hasMore,
+  };
+}
+
 export function sceneTurnPublished(value: unknown) {
   const turn = asRecord(value);
   return asRecord(turn.semanticProvenance).version !== 2 || turn.semanticReady === true;

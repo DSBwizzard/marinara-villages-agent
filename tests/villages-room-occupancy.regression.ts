@@ -1,4 +1,3 @@
-import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -14,7 +13,8 @@ import { publicSceneResponse } from "../packages/villages/src/server/domain/rule
 import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { villagerPlaceView } from "../packages/villages/src/server/domain/rules/village-projections.js";
-import { currentScenePrompt } from "./fixtures/villages-scene-writing.fixture.js";
+import { currentScenePrompt, scenePromptPacket } from "./fixtures/villages-scene-writing.fixture.js";
+import { venueFixture } from "./helpers/venues.fixture.js";
 
 async function main() {
   const at = new Date("2026-10-07T12:00:00.000Z");
@@ -129,10 +129,12 @@ async function main() {
   const card = readEffectiveVillagerCard(world.villagers.find((entry) => entry.characterId === "visible")!);
   const prompt = await currentScenePrompt(world, card, "chat", "What are you doing?", scene);
   assert.match(prompt, /sorting herbs/u);
+  const packet = scenePromptPacket(prompt);
+  assert.doesNotMatch(prompt, /HIDDEN_ACTIVITY_POISON/u);
   assert.doesNotMatch(
-    prompt,
-    /HIDDEN_PERSON_POISON|HIDDEN_ACTIVITY_POISON/u,
-    "captured private Zone attendance stays out of the current writer",
+    JSON.stringify([packet.context.actors, packet.residentActivity, packet.positions]),
+    /HIDDEN_PERSON_POISON/u,
+    "Private attendance is absent from actors and positions",
   );
   assert.doesNotMatch(
     JSON.stringify(publicSceneResponse(scene)),

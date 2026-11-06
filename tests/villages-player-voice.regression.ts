@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { currentScenePrompt } from "./fixtures/villages-scene-writing.fixture.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { currentScenePrompt, scenePromptPacket } from "./fixtures/villages-scene-writing.fixture.js";
 
 async function main() {
   const village = defaultVillageState();
@@ -33,8 +33,7 @@ async function main() {
         },
       ],
     });
-    assert.match(prompt, /the player controls their own persona/u);
-    assert.match(prompt, /The player is Robin/u);
+    assert.equal(scenePromptPacket(prompt).player.name, "Robin");
     assert.match(prompt, /The player controls their own speech, decisions, actions, thoughts, feelings, and consent/u);
     assert.match(prompt, /Never write a new player response or imply one/u);
     assert.match(
@@ -42,9 +41,9 @@ async function main() {
       /narrate only what they explicitly submitted, the departure they chose, or an outcome already verified in the scene/u,
     );
     assert.match(prompt, /I fixed the gate/u, "the witnessed player line survives current Scene prompt assembly");
-    if (mode === "greet") assert.match(prompt, /moment already underway/u);
-    if (mode === "chat") assert.match(prompt, /Never speak for the player/u);
-    if (mode === "leave") assert.match(prompt, /Do not invent the player's goodbye, further actions, or a new errand/u);
+    if (mode === "greet") assert.match(prompt, /Opening: the player's presence is established/u);
+    if (mode === "chat") assert.match(prompt, /No invented player words/u);
+    if (mode === "leave") assert.match(prompt, /do not invent a player goodbye/u);
   }
   console.log("Villages player voice regression: current greeting, conversation and departure prompts passed");
 }
