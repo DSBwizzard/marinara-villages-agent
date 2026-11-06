@@ -154,13 +154,6 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     handlers.set(kind, handler);
   }
   for (const [kind, handler] of ports.handlers) registerBackgroundHandler(kind, handler);
-  registerBackgroundHandler("story", {
-    generate: async () => {
-      throw new Obsolete("The former feed generator is retired.");
-    },
-    valid: () => false,
-    apply: () => {},
-  });
   let owner = randomUUID();
   let stopped = false;
   let recoveryReady: Promise<void> = Promise.resolve();
@@ -272,35 +265,6 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       );
     }
     return job;
-  }
-  async function retireLegacyFounding(job: Job): Promise<void> {
-    const documents = villagesDocuments();
-    const state = await (ports.readVillageAuthority ?? readVillageState)(),
-      task = state.foundingPreparation?.tasks?.[job.subjectId]?.routine;
-    if (state.seed !== job.seed || task?.status !== "completed" || task.receipt !== task.revision) return;
-    await changeJob(
-      slotId(job),
-      (current) => {
-        if (
-          !current ||
-          current.id !== job.id ||
-          current.instanceId !== job.instanceId ||
-          current.attempt !== job.attempt ||
-          running.has(slotId(job))
-        )
-          throw conflict("Legacy founding job changed during recovery.");
-        return {
-          ...current,
-          status: "obsolete",
-          error: "Replaced by independent founding tasks.",
-          steps: [],
-          input: null,
-          result: undefined,
-          hasResult: false,
-        };
-      },
-      documents,
-    );
   }
   async function backgroundStatus(
     kind: BackgroundKind,
@@ -527,7 +491,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       ...copyBackgroundWork(work),
       id: jobId(work),
       instanceId,
-      status: work.legacyError ? "failed" : "queued",
+      status: work.initialError ? "failed" : "queued",
       owner,
       attempt: (previous?.attempt ?? 0) + 1,
       connectionPaused: false,
@@ -537,7 +501,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       hasResult: false,
       requests: 0,
       tokens: null,
-      error: work.legacyError ?? "",
+      error: work.initialError ?? "",
       failedStep: null,
       retryActions: work.retryActionId ? [backgroundRevision([instanceId, work.retryActionId])] : [],
       retrying: !!work.retryActionId,
@@ -778,7 +742,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           )
             return previous;
           if (
-            ["story", "resident-planning", "world-development"].includes(work.kind) &&
+            ["resident-planning", "world-development"].includes(work.kind) &&
             work.automaticDate &&
             previous?.seed === work.seed &&
             ["failed", "interrupted"].includes(previous.status)
@@ -786,7 +750,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             return previous;
           if (
             work.automaticDate &&
-            !["story", "resident-planning", "world-development"].includes(work.kind) &&
+            !["resident-planning", "world-development"].includes(work.kind) &&
             previous?.seed === work.seed &&
             previous?.highWaterDate &&
             work.automaticDate <= previous.highWaterDate
@@ -851,10 +815,6 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           throw new Obsolete("Background replacement ownership changed.");
         return holdReplacement(current);
       });
-      return;
-    }
-    if (job?.kind === "story") {
-      await retireStory(id, documents);
       return;
     }
     if (!job || stopped || ["failed", "interrupted", "completed", "obsolete"].includes(job.status)) return;
@@ -928,10 +888,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       const fingerprint = backgroundRevision(messages);
       const sequential = cursor++;
       const named = options.checkpointId ? job!.steps.findIndex((step) => step.key === options.checkpointId) : -1;
-      const legacy = options.checkpointId
-        ? job!.steps.findIndex((step) => !step.key && step.fingerprint === fingerprint)
-        : -1;
-      const index = options.checkpointId ? (named >= 0 ? named : legacy >= 0 ? legacy : job!.steps.length) : sequential;
+      const index = options.checkpointId ? (named >= 0 ? named : job!.steps.length) : sequential;
       lastIndex = index;
       const saved = job!.steps[index];
       if (saved?.status === "completed") {
@@ -1422,10 +1379,6 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     if (foundPrior?.retryActions.includes(action)) return;
     if (!foundPrior || foundPrior.instanceId !== expectedInstanceId || foundPrior.attempt !== expectedAttempt)
       throw conflict("That job changed. Refresh its status before retrying.");
-    if (foundPrior?.kind === "story") {
-      await retireStory(id, documents);
-      throw conflict("The former feed generator is retired. This work cannot be retried.");
-    }
     const savedPrior =
       foundPrior && !running.has(id) ? await adoptLateResponses(id, foundPrior, documents) : foundPrior;
     let recovered: { result: unknown } | undefined;
@@ -1474,16 +1427,6 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     if (savedPrior) superseded.delete(savedPrior.instanceId);
     launch(id, documents);
   }
-  async function retireStory(id: string, documents = villagesDocuments()): Promise<void> {
-    await changeJob(
-      id,
-      (job) => {
-        if (!job || job.kind !== "story" || job.status === "obsolete") return job;
-        return { ...job, status: "obsolete", error: "The former feed generator is retired.", replacement: undefined };
-      },
-      documents,
-    );
-  }
   async function recoverBackgroundWork(documents = villagesDocuments()): Promise<void> {
     if (stopped) return;
     const responses = backgroundResponseStore(documents);
@@ -1513,10 +1456,6 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           throw new Obsolete("Background recovery ownership changed.");
         return current;
       };
-      if (job.kind === "story") {
-        await retireStory(record.id, documents);
-        continue;
-      }
       if (job.connectionPaused) pausedConnections.add(job.connectionId);
       if (interruptedDispatch && !["completed", "obsolete"].includes(job.status)) {
         await changeJob(
@@ -1572,7 +1511,6 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       const retired =
         job?.kind !== "resident-planning" &&
         job?.kind !== "world-development" &&
-        job?.kind !== "story" &&
         job?.kind !== "starting-ties" &&
         job?.kind !== "personal-mail" &&
         job?.kind !== "social-recovery" &&
@@ -1597,7 +1535,6 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             const subjectGone =
               job?.kind !== "resident-planning" &&
               job?.kind !== "world-development" &&
-              job?.kind !== "story" &&
               job?.kind !== "personal-mail" &&
               job?.kind !== "social-recovery" &&
               !state.villagers.some((resident) => resident.characterId === job?.subjectId);
@@ -1605,7 +1542,6 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           }
         continue;
       }
-      if (job.kind === "story") continue; // Hide retired work after the existing retention/reset cleanup.
       summaries.push({
         id: record.id,
         instanceId: job.instanceId,
@@ -1702,35 +1638,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   return {
     cancelReturnCatchup,
     registerBackgroundHandler,
-    retireLegacyFounding,
     backgroundJobSnapshot: (kind: BackgroundKind, subjectId: string) => readJob(slotId({ kind, subjectId })),
-    backgroundLegacyFounding: async (subjectId: string, seed: string, revision: string) => {
-      const documents = villagesDocuments(),
-        responses = backgroundResponseStore(documents);
-      const current = await readJob(slotId({ kind: "agenda", subjectId }), documents);
-      if (
-        current?.seed === seed &&
-        current.status !== "obsolete" &&
-        current.revision === revision &&
-        asRecord(current.input).foundingContract !== 1
-      )
-        return current;
-      const rows = await documents.list(VILLAGES_PACKAGE_ID, "background-history");
-      const saved =
-        rows
-          .map((row) => row.data as Job)
-          .sort((a, b) => b.attempt - a.attempt)
-          .find(
-            (job) =>
-              job.seed === seed &&
-              job.kind === "agenda" &&
-              job.subjectId === subjectId &&
-              job.revision === revision &&
-              asRecord(job.input).foundingContract !== 1,
-          ) ?? null;
-      if (saved) validateBackgroundJobRecord(rows.find((row) => row.data === saved)!);
-      return saved ? responses.decode(saved) : null;
-    },
     backgroundStatus,
     hasVillagePresence,
     villageBackgroundPresence,

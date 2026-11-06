@@ -303,7 +303,6 @@ export function createStartingTies(ports: StartingTiesPorts) {
       await recordLoreUse(input.loreUse, "Starting relationships");
       const answer = await ports.completeWithRoom(model, messages, Math.min(maxTokens, fitted.maxTokens ?? maxTokens), {
         responseFormat: { type: "json_object" },
-        retryEmpty: false,
         debugMode: false,
         temperature: 0.1,
         reasoningEffort: "low",

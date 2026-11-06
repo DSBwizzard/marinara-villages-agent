@@ -58,7 +58,6 @@ export const serverFeatureInterfaces = Object.freeze({
   "residents/relationship-store.ts": ["readRelationshipState", "mutateRelationships", "persistRelationshipAuthority"],
   "residents/resident-agendas.ts": [
     "readFoundingResidentContext",
-    "adoptFoundingRoutine",
     "queueVillagerAgenda",
     "queuePendingAgendas",
     "refreshScheduleInfluence",

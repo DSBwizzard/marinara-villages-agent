@@ -228,7 +228,7 @@ async function main() {
         );
       },
     );
-    // Real completion fingerprints and persisted raw responses survive a reasoning-policy upgrade.
+    // Exact completion fingerprints replay persisted raw responses without purchasing again.
     let policyCalls = 0;
     const efforts: unknown[] = [];
     let truncated = false;
@@ -264,7 +264,6 @@ async function main() {
               temperature: 0.1,
               responseFormat: { type: "json_object" },
               reasoningEffort: effort,
-              ...(effort === "none" ? { replayReasoningEffort: "low" as const } : {}),
             },
           );
           if (raw.finishReason === "length") {
@@ -280,6 +279,17 @@ async function main() {
       /Validation interrupted/,
     );
     assert.equal(row("policy-raw").data.operation.checkpoints.system, undefined);
+    await assert.rejects(
+      coordinateVenue("policy-raw", "turn", "turn", policyInput, undefined, undefined, policyWork("none"), {
+        recovery: true,
+      }),
+      refused("OPERATION_INTERRUPTED"),
+    );
+    assert.equal(
+      policyCalls,
+      1,
+      "A changed fingerprint neither adopts a purchased response nor dispatches in recovery",
+    );
     const reusedRaw = await coordinateVenue(
       "policy-raw",
       "turn",
@@ -287,7 +297,7 @@ async function main() {
       policyInput,
       undefined,
       undefined,
-      policyWork("none"),
+      policyWork("low"),
       { recovery: true },
     );
     assert.equal(reusedRaw.content, '{"valid":true}');
@@ -344,7 +354,7 @@ async function main() {
       /Truncated/,
     );
     await assert.rejects(
-      coordinateVenue("policy-rejected", "turn", "turn", policyInput, undefined, undefined, policyWork("none"), {
+      coordinateVenue("policy-rejected", "turn", "turn", policyInput, undefined, undefined, policyWork("low"), {
         recovery: true,
       }),
       refused("OPERATION_INTERRUPTED"),
@@ -395,7 +405,7 @@ async function main() {
         delayed.resolve({ content: finishReason === "stop" ? '{"valid":true}' : "", finishReason });
         await new Promise((resolve) => setImmediate(resolve));
         const replay = () =>
-          coordinateVenue(id, "turn", "turn", policyInput, undefined, undefined, policyWork("none"), {
+          coordinateVenue(id, "turn", "turn", policyInput, undefined, undefined, policyWork("low"), {
             recovery: true,
           });
         if (finishReason === "stop") {
@@ -406,9 +416,9 @@ async function main() {
           const receipt = [...records.values()].find(
             (r) => typeof r.data?.signature === "string" && JSON.parse(r.data.signature)[0] === id,
           );
-          assert.equal(receipt.data.status, "rejected", "Rejection targets the adopted low-effort late receipt");
+          assert.equal(receipt.data.status, "rejected", "Rejection targets the exact late receipt");
           await assert.rejects(replay(), refused("OPERATION_INTERRUPTED"));
-          assert.equal(lateCalls, 1, "Rejected late alias cannot loop or silently spend");
+          assert.equal(lateCalls, 1, "Rejected late response cannot loop or silently spend");
           const attempt = (await readVenueOperation(id))!.attemptId;
           await coordinateVenue(id, "turn", "turn", policyInput, undefined, attempt, policyWork("none"));
         }
@@ -476,7 +486,6 @@ async function main() {
                 await new Promise((resolve) => setTimeout(resolve, duration));
                 return "saved stage";
               }, signal),
-            undefined,
             { inputTokens: 1, outputTokens: 1 },
           );
         }
@@ -1251,7 +1260,6 @@ async function main() {
           budgetDispatches++;
           return "saved";
         },
-        undefined,
         { inputTokens: 10, outputTokens: 5 },
       );
       return coordinatedCompletion(
@@ -1260,7 +1268,6 @@ async function main() {
           budgetDispatches++;
           return "second";
         },
-        undefined,
         { inputTokens: 10, outputTokens: 5 },
       );
     };
@@ -1294,12 +1301,10 @@ async function main() {
       seed(id);
       await assert.rejects(
         coordinateVenue(id, "invalid", "turn", { semanticBudget: budget }, 0, undefined, () =>
-          coordinatedCompletion(
-            "invalid-budget",
-            async () => assert.fail("Invalid budget must not dispatch"),
-            undefined,
-            { inputTokens: 1, outputTokens: 1 },
-          ),
+          coordinatedCompletion("invalid-budget", async () => assert.fail("Invalid budget must not dispatch"), {
+            inputTokens: 1,
+            outputTokens: 1,
+          }),
         ),
         refused("SEMANTIC_BUDGET"),
       );
@@ -1308,12 +1313,10 @@ async function main() {
     row("missing-v2-budget").data.semanticVersion = 2;
     await assert.rejects(
       coordinateVenue("missing-v2-budget", "invalid", "turn", {}, 0, undefined, () =>
-        coordinatedCompletion(
-          "missing-budget",
-          async () => assert.fail("New semantic Scenes require an allowance"),
-          undefined,
-          { inputTokens: 1, outputTokens: 1 },
-        ),
+        coordinatedCompletion("missing-budget", async () => assert.fail("New semantic Scenes require an allowance"), {
+          inputTokens: 1,
+          outputTokens: 1,
+        }),
       ),
       refused("SEMANTIC_BUDGET"),
     );

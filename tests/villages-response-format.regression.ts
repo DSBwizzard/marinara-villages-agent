@@ -110,7 +110,7 @@ async function main() {
     opportunities: [{ id: "opportunity", kind: "wish", actorIds: ["a"], venueId: "park", facts: ["A quiet morning"] }],
     recent: [],
   };
-  const jsonOptions = { temperature: 0, debugMode: false, retryEmpty: false, responseFormat: { type: "json_object" } };
+  const jsonOptions = { temperature: 0, debugMode: false, responseFormat: { type: "json_object" } };
   const examples = buildVenueTextContract("a", ["a"], true)
     .split("\n")
     .filter((line) => line.startsWith("{"));
@@ -147,14 +147,16 @@ async function main() {
     await completeWithRoom(model as any, [{ role: "user", content: "Plain" }], 3000, {
       temperature: 0,
       debugMode: false,
-      retryEmpty: false,
     });
     assert.equal(optionsSeen.at(-1).responseFormat, undefined, "unrelated request formats are unchanged");
-    const legacyMessages: any[] = [{ role: "user", content: "JSON" }];
-    const legacyHash = createHash("sha256")
-      .update(JSON.stringify(["fixture", "fixture", legacyMessages, 3000, 0, undefined, undefined]))
+    const messages: any[] = [{ role: "user", content: "JSON" }];
+    const priorHash = createHash("sha256")
+      .update(JSON.stringify(["fixture", "fixture", messages, 3000, 0, undefined, undefined]))
       .digest("hex");
-    const makeLegacy = (id: string, status: string) => {
+    const formatHash = createHash("sha256")
+      .update(JSON.stringify(["fixture", "fixture", messages, 3000, 0, undefined, undefined, { type: "json_object" }]))
+      .digest("hex");
+    const makeSaved = (id: string, status: string, fingerprint = formatHash) => {
       rows.set("villages-venue-visit-" + id, {
         id: "villages-venue-visit-" + id,
         packageId: "villages",
@@ -181,88 +183,83 @@ async function main() {
             snapshot: null,
             checkpoints: {},
             attempts: {
-              ["turn:0:" + legacyHash]: { status, result: { content: '{"saved":true}', finishReason: "stop" } },
+              ["turn:0:" + fingerprint]: { status, result: { content: '{"saved":true}', finishReason: "stop" } },
             },
             error: "interrupted",
           },
         },
       });
     };
-    makeLegacy("legacy-complete", "complete");
-    const beforeLegacy = calls;
-    const legacy = await coordinateVenue(
-      "legacy-complete",
-      "legacy-complete",
+    makeSaved("saved-complete", "complete");
+    const beforeReplay = calls;
+    const replayed = await coordinateVenue(
+      "saved-complete",
+      "saved-complete",
       "turn",
       {},
       0,
       undefined,
-      () => completeWithRoom(model as any, legacyMessages, 3000, jsonOptions),
+      () => completeWithRoom(model as any, messages, 3000, jsonOptions),
       { recovery: true },
     );
-    assert.equal(legacy.content, '{"saved":true}');
-    assert.equal(calls, beforeLegacy, "completed purchased legacy JSON survives the new format option");
-    makeLegacy("legacy-unknown", "dispatching");
+    assert.equal(replayed.content, '{"saved":true}');
+    assert.equal(calls, beforeReplay, "completed exact JSON request replays without another purchase");
+    makeSaved("saved-unknown", "dispatching");
     await assert.rejects(
       coordinateVenue(
-        "legacy-unknown",
-        "legacy-unknown",
+        "saved-unknown",
+        "saved-unknown",
         "turn",
         {},
         0,
         undefined,
-        () => completeWithRoom(model as any, legacyMessages, 3000, jsonOptions),
+        () => completeWithRoom(model as any, messages, 3000, jsonOptions),
         { recovery: true },
       ),
       (error: any) => error.code === "OPERATION_INTERRUPTED" && error.statusCode === 409,
     );
-    assert.equal(calls, beforeLegacy, "unknown requests keep their explicit-retry refusal code and never dispatch");
-    makeLegacy("legacy-rejected", "rejected");
+    assert.equal(calls, beforeReplay, "unknown requests keep their explicit-retry refusal code and never dispatch");
+    makeSaved("saved-rejected", "rejected");
     await assert.rejects(
       coordinateVenue(
-        "legacy-rejected",
-        "legacy-rejected",
+        "saved-rejected",
+        "saved-rejected",
         "turn",
         {},
         0,
         undefined,
-        () => completeWithRoom(model as any, legacyMessages, 3000, jsonOptions),
+        () => completeWithRoom(model as any, messages, 3000, jsonOptions),
         { recovery: true },
       ),
       (error: any) => error.code === "OPERATION_INTERRUPTED",
     );
-    makeLegacy("legacy-superseded", "complete");
-    const formatHash = createHash("sha256")
-      .update(
-        JSON.stringify(["fixture", "fixture", legacyMessages, 3000, 0, undefined, undefined, { type: "json_object" }]),
-      )
-      .digest("hex");
-    rows.get("villages-venue-visit-legacy-superseded").data.operation.attempts["turn:0:" + formatHash] = {
+    makeSaved("saved-superseded", "complete", priorHash);
+    rows.get("villages-venue-visit-saved-superseded").data.operation.attempts["turn:0:" + formatHash] = {
       status: "rejected",
     };
     await assert.rejects(
       coordinateVenue(
-        "legacy-superseded",
-        "legacy-superseded",
+        "saved-superseded",
+        "saved-superseded",
         "turn",
         {},
         0,
         undefined,
-        () => completeWithRoom(model as any, legacyMessages, 3000, jsonOptions),
+        () => completeWithRoom(model as any, messages, 3000, jsonOptions),
         { recovery: true },
       ),
       (error: any) => error.code === "OPERATION_INTERRUPTED",
     );
-    assert.equal(calls, beforeLegacy, "rejected or superseded replies cannot resurrect an older completed response");
-    makeLegacy("legacy-paid", "complete");
-    const paidScene = rows.get("villages-venue-visit-legacy-paid").data;
+    assert.equal(calls, beforeReplay, "rejected or superseded replies cannot resurrect an older completed response");
+    makeSaved("saved-paid", "complete", priorHash);
+    const paidScene = rows.get("villages-venue-visit-saved-paid").data;
     paidScene.operation.attempts["turn:0:" + formatHash] = { status: "rejected" };
-    paidScene.submissions = [{ id: "legacy-paid" }];
+    paidScene.submissions = [{ id: "saved-paid" }];
     output = "not JSON";
     const beforePaid = calls;
     await assert.rejects(
-      coordinateVenue("legacy-paid", "legacy-paid", "turn", {}, 0, "old", async () => {
-        await completeWithRoom(model as any, legacyMessages, 3000, jsonOptions);
+      coordinateVenue("saved-paid", "saved-paid", "turn", {}, 0, "old", async () => {
+        await completeWithRoom(model as any, messages, 3000, jsonOptions);
         await rejectVenueCompletion({ model: "fixture", connectionId: "fixture", reason: "invalid-json" });
         throw Error("fixture validation rejection");
       }),
@@ -272,7 +269,7 @@ async function main() {
     assert.equal(diagnostic.content, "not JSON");
     assert.equal(diagnostic.reason, "invalid-json");
     assert.equal(diagnostic.model, "fixture");
-    assert.equal(diagnostic.sceneId, "legacy-paid");
+    assert.equal(diagnostic.sceneId, "saved-paid");
     assert.equal(diagnostic.syntaxError, "No JSON object found");
     assert.equal(diagnostic.finishReason, "stop");
     assert.equal(diagnostic.responseLength, 8);
@@ -281,15 +278,15 @@ async function main() {
     assert.ok(!privateRejectedText("Bearer abc.def api_key=private-secret").includes("private-secret"));
     assert.ok(!privateRejectedText("Bearer abc.def").includes("abc.def"));
     assert.ok(
-      !JSON.stringify(await readVenueOperation("legacy-paid")).includes("not JSON"),
+      !JSON.stringify(await readVenueOperation("saved-paid")).includes("not JSON"),
       "public recovery summary never exposes rejected text",
     );
     for (let index = 0; index < 107; index++) {
       const id = "diagnostic-bound-" + index;
-      makeLegacy(id, "rejected");
+      makeSaved(id, "rejected");
       await assert.rejects(
         coordinateVenue(id, id, "turn", {}, 0, "old", async () => {
-          await completeWithRoom(model as any, legacyMessages, 3000, jsonOptions);
+          await completeWithRoom(model as any, messages, 3000, jsonOptions);
           await rejectVenueCompletion({ model: "fixture", connectionId: "fixture", reason: "invalid-json" });
           throw Error("diagnostic fixture");
         }),
@@ -306,10 +303,10 @@ async function main() {
       "diagnostic-bound-7",
     );
     const capture = async (id: string) => {
-      makeLegacy(id, "rejected");
+      makeSaved(id, "rejected");
       await assert.rejects(
         coordinateVenue(id, id, "turn", {}, 0, "old", async () => {
-          await completeWithRoom(model as any, legacyMessages, 3000, jsonOptions);
+          await completeWithRoom(model as any, messages, 3000, jsonOptions);
           await rejectVenueCompletion({ model: "fixture", connectionId: "fixture", reason: "invalid-json" });
           throw Error("diagnostic fixture");
         }),
@@ -331,23 +328,23 @@ async function main() {
     );
     assert.equal(readPrivateDiagnostics(rows.get("villages-private-diagnostics").data).entries.length, 100);
     const afterDiagnosticFixtures = calls;
-    const paidAttempts = rows.get("villages-venue-visit-legacy-paid").data.operation.attempts;
+    const paidAttempts = rows.get("villages-venue-visit-saved-paid").data.operation.attempts;
     assert.equal(paidAttempts["turn:0:" + formatHash].status, "rejected", "rejection targets the exact paid retry");
     assert.equal(
-      paidAttempts["turn:0:" + legacyHash].status,
+      paidAttempts["turn:0:" + priorHash].status,
       "complete",
-      "legacy response is not incorrectly rejected",
+      "unrelated fingerprint response is not incorrectly rejected",
     );
     assert.equal(afterDiagnosticFixtures - beforePaid, 111);
     await assert.rejects(
       coordinateVenue(
-        "legacy-paid",
-        "legacy-paid",
+        "saved-paid",
+        "saved-paid",
         "turn",
         {},
         0,
         undefined,
-        () => completeWithRoom(model as any, legacyMessages, 3000, jsonOptions),
+        () => completeWithRoom(model as any, messages, 3000, jsonOptions),
         { recovery: true },
       ),
       (error: any) => error.code === "OPERATION_INTERRUPTED",

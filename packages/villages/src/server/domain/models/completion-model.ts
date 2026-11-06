@@ -2,7 +2,7 @@ import type { CapabilityLanguageModelCompletion } from "@marinara-engine/shared"
 
 export type VillageCompletionOptions = {
   responseFormat?: Readonly<{ type: string; [key: string]: unknown }>;
-  /** Stable background request identity; optional for legacy sequential generators. */
+  /** Stable background request identity; optional for sequential generators. */
   checkpointId?: string;
   /** New-work preflight after replay and before reservation; may lower the output allowance. */
   beforeBackgroundDispatch?: () => Promise<number | void>;
@@ -16,13 +16,9 @@ export type VillageCompletionOptions = {
   };
   temperature: number | null;
   reasoningEffort?: "none" | "low" | "medium" | "high" | "xhigh" | "max" | null;
-  /** Replay a completed response from the prior reasoning policy; never dispatch it. */
-  replayReasoningEffort?: "low";
   verbosity?: "low" | "medium" | "high" | null;
   debugMode?: boolean;
   signal?: AbortSignal;
   onAttempt?: (completion: CapabilityLanguageModelCompletion, elapsedMs: number, maxTokens: number) => void;
-  /** Legacy caller compatibility; empty responses never dispatch an automatic replacement. */
-  retryEmpty?: boolean;
   usagePurpose?: import("./usage-model.js").UsagePurpose;
 };

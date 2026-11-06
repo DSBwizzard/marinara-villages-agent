@@ -11,7 +11,7 @@ import {
 } from "../../../shared/helpers/resident-admission.js";
 import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
 import { readZoneLayout } from "../../../shared/helpers/zone-layout.js";
-import { validTimeZone, ZonedDate } from "../../../shared/helpers/zoned-date.js";
+import { validTimeZone } from "../../../shared/helpers/zoned-date.js";
 import { RETURN_CATCHUP_HISTORY_LIMIT } from "../models/world.js";
 import { cloneReturnCapture, copyExchangeReceipts } from "../rules/world-context-copy.js";
 import { readEstablishment } from "../rules/establishment.js";
@@ -75,7 +75,6 @@ import {
   TOWN_MAP_ZOOM_MAX,
   TOWN_MAP_ZOOM_MIN,
 } from "../rules/prompt-preset.js";
-import { localDateKey } from "../rules/resident-planning.js";
 
 import { coerceSocialActivities } from "../rules/social-activity.js";
 import { copySocialWishes } from "../rules/social-wishes.js";
@@ -84,14 +83,14 @@ import { readVenueAccess, readZonePolicy } from "../rules/venue-access.js";
 import { readNarrativeState } from "./narrative-codec.js";
 import { defaultVenueSpace, validVenueClasses, venueResidentIds } from "../rules/venue-model.js";
 import { canInviteToZone, chooseAgendaZone, synchronizeVenueZones, ZONE_KINDS } from "../rules/venue-zones.js";
-import { randomVillageSeed, VILLAGE_CLOCKS, VILLAGE_WEEKDAYS, villageClockIndex } from "../rules/village-clock.js";
+import { randomVillageSeed, VILLAGE_WEEKDAYS } from "../rules/village-clock.js";
 import { readMemorySceneStates, readMemoryReceipts } from "../rules/village-memories.js";
 import { zonePictureBaseline, zonePicturePhysicalRecord } from "../rules/zone-picture.js";
 
 export function defaultVillageState(): VillageState {
   return {
     worldPlaces: emptyPlaceRegistry(),
-    version: 15,
+    version: 16,
     memories: { format: 1, revision: 0, records: [] },
     memoryScenes: {},
     memoryReceipts: {},
@@ -884,17 +883,6 @@ function coerceResidences(value: unknown): VillageResidence[] {
   }
   return residences.slice(0, MAX_PLACES);
 }
-function coerceRefreshClocks(value: unknown): string[] {
-  if (!Array.isArray(value)) return [...VILLAGE_CLOCKS];
-  const wanted = new Set<string>();
-  for (const entry of value) {
-    if (typeof entry === "string" && villageClockIndex(entry) >= 0) wanted.add(entry);
-  }
-  // Filtered through the canonical list rather than mapped from the input, so
-  // the result is deduplicated and always in the order the day runs, whatever
-  // order the stored list happened to be in.
-  return VILLAGE_CLOCKS.filter((clock) => wanted.has(clock));
-}
 function asFocus(value: unknown): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
   return value >= TOWN_MAP_FOCUS_MIN && value <= TOWN_MAP_FOCUS_MAX ? value : null;
@@ -915,29 +903,23 @@ export function coerceTownMapView(value: unknown): VillageTownMapView {
 const BACKGROUND_PACES: readonly VillageBackgroundPace[] = ["off", "quiet", "balanced", "lively"];
 const MAX_SIMULATION_RECORDS = 256;
 function coerceBackgroundPace(raw: Record<string, unknown>): VillageBackgroundPace {
-  const pace = raw.backgroundPace ?? raw.storyPace;
-  if (typeof pace === "string" && BACKGROUND_PACES.includes(pace as VillageBackgroundPace))
-    return pace as VillageBackgroundPace;
-  const clocks = coerceRefreshClocks(raw.refreshClocks);
-  if (raw.backgroundRefreshesEnabled === false || clocks.length === 0) return "off";
-  return clocks.length === 1 ? "quiet" : "balanced";
+  const pace = raw.backgroundPace;
+  return typeof pace === "string" && BACKGROUND_PACES.includes(pace as VillageBackgroundPace)
+    ? (pace as VillageBackgroundPace)
+    : "balanced";
 }
-/** Preserve the spent daily allowance when removing the legacy visual feed. */
-function coercePlanningUsage(raw: Record<string, unknown>): VillageState["planningUsage"] {
-  const usage = asRecord(raw.planningUsage),
-    dateKey = boundText(usage.dateKey ?? raw.lastPlanningDate ?? raw.lastCreativeDate, 10);
-  if (raw.planningUsage && typeof usage.count === "number" && Number.isSafeInteger(usage.count) && usage.count >= 0)
-    return { dateKey, count: usage.count };
-  const timeZone = validTimeZone(raw.timeZone)
-    ? raw.timeZone
-    : validTimeZone(raw.lastKnownTimeZone)
-      ? raw.lastKnownTimeZone
-      : Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const count = (Array.isArray(raw.happenings) ? raw.happenings : []).filter((row) => {
-    const at = asIsoString(asRecord(row).occurredAt);
-    return !!at && localDateKey(new ZonedDate(at, timeZone)) === dateKey;
-  }).length;
-  return { dateKey, count: dateKey ? Math.max(1, count) : 0 };
+function coercePlanningUsage(value: unknown): VillageState["planningUsage"] {
+  if (value === undefined) return { dateKey: "", count: 0 };
+  const usage = asRecord(value);
+  if (
+    typeof usage.dateKey !== "string" ||
+    (usage.dateKey !== "" && !/^\d{4}-\d{2}-\d{2}$/.test(usage.dateKey)) ||
+    typeof usage.count !== "number" ||
+    !Number.isSafeInteger(usage.count) ||
+    usage.count < 0
+  )
+    throw new Error("Invalid saved planning allowance.");
+  return { dateKey: usage.dateKey, count: usage.count };
 }
 function coerceProjects(value: unknown): VillageProject[] {
   if (!Array.isArray(value)) throw new Error("Invalid Project records.");
@@ -1411,7 +1393,7 @@ function readZoneObservation(
 
 export function coerceVillageState(value: unknown): VillageState {
   const raw = asRecord(value);
-  if (value != null && raw.version !== 15) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (value != null && raw.version !== 16) throw new Error("Unsupported Village format. Start a fresh Village.");
   if (value != null) memoryRequire(raw.memories && raw.memoryScenes, "current Village memory data is missing");
   if (raw.foundedAt && raw.socialContractVersion !== 2)
     throw new Error(
@@ -1453,7 +1435,7 @@ export function coerceVillageState(value: unknown): VillageState {
   }
   const state: VillageState = {
     worldPlaces: readPlaceRegistry(raw.worldPlaces),
-    version: 15,
+    version: 16,
     memories,
     memoryScenes: readMemorySceneStates(memoryField(raw.memoryScenes ?? {}), memories),
     backgroundReceipts: Object.fromEntries(
@@ -1596,9 +1578,9 @@ export function coerceVillageState(value: unknown): VillageState {
     narrativeConsequence: ["gentle", "moderate", "dramatic"].includes(String(raw.narrativeConsequence))
       ? (raw.narrativeConsequence as "gentle" | "moderate" | "dramatic")
       : "gentle",
-    lastPlanningDate: boundText(raw.lastPlanningDate ?? raw.lastCreativeDate, 10),
-    planningUsage: coercePlanningUsage(raw),
-    processedActionIds: asStringArray(raw.processedActionIds ?? raw.processedOpportunityIds)
+    lastPlanningDate: boundText(raw.lastPlanningDate, 10),
+    planningUsage: coercePlanningUsage(raw.planningUsage),
+    processedActionIds: asStringArray(raw.processedActionIds)
       .map((id) => id.trim())
       .filter(Boolean)
       .slice(-MAX_SIMULATION_RECORDS),

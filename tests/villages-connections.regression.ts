@@ -373,7 +373,7 @@ async function checkOwnedConnections() {
     const providerError = new Error("exact provider failure");
     a.failProvider(providerError);
     await assert.rejects(
-      completeWithRoom(a.model, sentMessages, 100, { temperature: null, retryEmpty: false }),
+      completeWithRoom(a.model, sentMessages, 100, { temperature: null }),
       (error) => error === providerError,
     );
     assert.deepEqual(a.tokens, [100], "provider exceptions do not trigger blank retries");

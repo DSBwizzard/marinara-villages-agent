@@ -31,6 +31,3 @@ export async function setVillagerScheduleInfluence(
 export function readFoundingResidentContext(...args: Parameters<ResidentAgendas["readFoundingResidentContext"]>) {
   return binding.get().readFoundingResidentContext(...args);
 }
-export function adoptFoundingRoutine(...args: Parameters<ResidentAgendas["adoptFoundingRoutine"]>) {
-  return binding.get().adoptFoundingRoutine(...args);
-}
