@@ -11,8 +11,6 @@ import {
   signaturePrompt,
   signatureNegativePrompt,
   signatureEvidence,
-  previousSignaturePrompt,
-  legacySignaturePrompt,
 } from "../../domain/rules/resident-signature-prompt.js";
 import type { ResidentSignatureTasks } from "./resident-signature-tasks.js";
 import { createHash } from "node:crypto";
@@ -81,19 +79,10 @@ export function createResidentSignatures({
       incarnation,
       runtimeEpoch: villagesRuntimeEpoch(),
       revision: digest(signatureEvidence(resident)),
-      previousRevision: digest(previousSignaturePrompt(resident)),
-      legacyRevision: digest([resident.cardSnapshot.name, resident.cardSnapshot.personality]),
-      legacyPrompt: legacySignaturePrompt(resident),
     };
   }
   function matchesRevision(attempt: Attempt | undefined, current: Awaited<ReturnType<typeof subject>>) {
-    return Boolean(
-      attempt &&
-      (attempt.revision === current.revision ||
-        (attempt.revision === current.previousRevision &&
-          attempt.prompt === previousSignaturePrompt(current.resident)) ||
-        (attempt.revision === current.legacyRevision && attempt.prompt === current.legacyPrompt)),
-    );
+    return Boolean(attempt && attempt.revision === current.revision);
   }
   async function readAttempt(id: string) {
     const record = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, id);

@@ -1,12 +1,7 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { PNG } from "pngjs";
 import sharp from "sharp";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import {
-  legacySignaturePrompt,
-  previousSignaturePrompt,
-} from "../packages/villages/src/server/domain/rules/resident-signature-prompt.js";
 import { residentSignature } from "../packages/villages/src/shared/helpers/resident-signature.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
@@ -331,23 +326,14 @@ async function main() {
     assert.equal(failedUpload.recoverable, true);
     assert.deepEqual(failedUpload.saved, first.saved);
     failUpload = false;
-    const legacy = [...records.values()].find((row) => row.kind === "resident-signature");
-    legacy.data.revision = createHash("sha256")
-      .update(JSON.stringify(["Mara", village.villagers[0]!.cardSnapshot.personality]))
-      .digest("hex");
-    legacy.data.prompt = legacySignaturePrompt(village.villagers[0]!);
-    assert.equal(
-      (await readResidentSignature("mara")).recoverable,
-      true,
-      "Old paid responses remain recoverable after upgrade",
-    );
-    legacy.data.prompt = previousSignaturePrompt(village.villagers[0]!);
-    legacy.data.revision = createHash("sha256").update(JSON.stringify(legacy.data.prompt)).digest("hex");
-    assert.equal(
-      (await readResidentSignature("mara")).recoverable,
-      true,
-      "Previous character-mark responses remain recoverable",
-    );
+    const held = [...records.values()].find((row) => row.kind === "resident-signature");
+    const currentAttempt = structuredClone(held.data);
+    held.data.revision = "unrecognized-evidence";
+    const unsupported = structuredClone(held.data);
+    assert.equal((await readResidentSignature("mara")).recoverable, false);
+    assert.equal(requests, 2, "Reading an unrecognized source never buys a replacement");
+    assert.deepEqual(held.data, unsupported, "Reading cannot discard purchased evidence");
+    held.data = currentAttempt;
     records.get("villages-connections").data.imageConnectionId = "__villages_image_disabled__";
     const recovered = await generateResidentSignature("mara", action(3, 2));
     assert.equal(recovered.status, "saved");
