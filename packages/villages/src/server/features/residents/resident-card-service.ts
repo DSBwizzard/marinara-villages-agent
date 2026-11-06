@@ -76,7 +76,7 @@ export function createResidentCards({
         ...proposed,
       };
       if (proseChanged) {
-        resident.agenda = unwrittenVillageAgenda(state.venues, card.name, villageNow());
+        resident.agenda = unwrittenVillageAgenda(villageNow());
       }
     });
     return buildVillageSnapshot();

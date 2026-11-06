@@ -1,3 +1,4 @@
+import { agendaFixture } from "./helpers/agenda.fixture.js";
 import assert from "node:assert/strict";
 import {
   coerceVillageState,
@@ -26,7 +27,7 @@ state.villagers = ["ada", "ben"].map((characterId) => ({
   characterId,
   cardSnapshot: { name: characterId },
   wishes: [],
-  agenda: { day: [] },
+  agenda: agendaFixture({ day: [] }),
 })) as any;
 const now = new Date("2026-10-26T17:00:00.000Z");
 const moment = deriveVillageMoment({ foundedAt: now.toISOString(), seed: state.seed, now });
@@ -63,7 +64,7 @@ const venue = venueDraft(
 );
 capture.venues = [venue];
 capture.villagers = ["ada", "ben"].map((characterId) => {
-  const agenda = unwrittenVillageAgenda([venue], characterId, now);
+  const agenda = unwrittenVillageAgenda(now);
   const block = { startMinute: 0, endMinute: 1440, venueId: venue.id, activity: "Visiting" };
   agenda.week.Monday = [block];
   agenda.activeDay!.blocks = [block];
@@ -402,12 +403,13 @@ for (const resident of noInfluence.villagers) {
   };
   resident.agenda!.routineProfile = {
     version: 1,
+    semanticVersion: 2,
     activities: [
       { activity: "Visiting", venueId: venue.id, duration: 60, parts: [1], flexible: true, essential: false },
     ],
     days: Array.from({ length: 7 }, () => [0, 0, 0, 0, 0, 0, 0, 0]),
     rhythm: [],
-    seedWeek: Object.fromEntries(
+    baseWeek: Object.fromEntries(
       ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((day) => [
         day,
         day === "Monday"

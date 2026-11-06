@@ -36,8 +36,6 @@ const card = {
   },
 } as const;
 const context = {
-  contractVersion: 1 as const,
-  semanticVersion: 2 as const,
   village: "The place",
   setting: "A converted complex shared by residents.",
   home: "A small assigned room",
@@ -83,14 +81,6 @@ assert.equal(
   parseCompactFounding({ ...payload, days: Array.from({ length: 7 }, () => [0, 1, 2, 3]) }, context).agenda
     .routineProfile!.days[0].length,
   8,
-);
-assert.equal(
-  parseCompactFounding(
-    { ...payload, days: Array.from({ length: 7 }, () => [0, 1, 2, 3]) },
-    { ...context, contractVersion: undefined },
-  ).agenda.routineProfile!.days[0].length,
-  8,
-  "legacy dayparts remain recoverable",
 );
 const task = {
   contract: 1,
@@ -165,10 +155,10 @@ const ingredients = {
   palette: palette.map((row) => ({ ...row, parts: [0, 1, 2, 3] })),
   rhythm: [{ startMinute: 1320, endMinute: 360, activity: 0 }],
 };
-const compiled = parseCompactFounding(ingredients, { ...context, contractVersion: 2 });
+const compiled = parseCompactFounding(ingredients, { ...context });
 assert.deepEqual(
   compiled.agenda.routineProfile!.days,
-  parseCompactFounding(ingredients, { ...context, contractVersion: 2 }).agenda.routineProfile!.days,
+  parseCompactFounding(ingredients, { ...context }).agenda.routineProfile!.days,
 );
 assert.equal(compiled.agenda.routineProfile!.days.length, 7);
 for (const blocks of Object.values(compiled.agenda.week!)) {
@@ -180,7 +170,7 @@ assert.throws(
   () =>
     parseCompactFounding(
       { ...ingredients, palette: ingredients.palette.map((row) => ({ ...row, parts: [0] })) },
-      { ...context, contractVersion: 2 },
+      { ...context },
     ),
   /every daypart/,
 );
@@ -189,8 +179,7 @@ const weekdayIngredients = {
   ...ingredients,
   palette: ingredients.palette.map((row, index) => ({ ...row, weekdays: index < 3 ? [0] : [1, 2, 3, 4, 5, 6] })),
 };
-const weekdays = parseCompactFounding(weekdayIngredients, { ...context, contractVersion: 2 }).agenda.routineProfile!
-  .days;
+const weekdays = parseCompactFounding(weekdayIngredients, { ...context }).agenda.routineProfile!.days;
 assert(
   weekdays[0].every((index) => index < 3),
   "Monday choices preserve resident weekday preferences",
@@ -203,7 +192,7 @@ assert.throws(
   () =>
     parseCompactFounding(
       { ...ingredients, palette: ingredients.palette.map((row) => ({ ...row, weekdays: [7] })) },
-      { ...context, contractVersion: 2 },
+      { ...context },
     ),
   /weekday/,
 );
@@ -215,7 +204,7 @@ assert.throws(
         ...ingredients,
         palette: ingredients.palette.map((row, index) => (index === 0 ? { ...row, duration: 360 } : row)),
       },
-      { ...context, contractVersion: 2 },
+      { ...context },
     ),
   /Routine activity 1 duration 360; expected 30–240 minutes/,
 );
@@ -246,6 +235,6 @@ assert.equal(
   undefined,
 );
 
-const freshOpening = foundingRequestMessages({ ...context, playerAgencyVersion: 1 }, "routine");
+const freshOpening = foundingRequestMessages({ ...context }, "routine");
 assert.doesNotMatch(freshOpening[0].content as string, /oversees major changes/);
 assert.match(freshOpening[0].content as string, /explicit choice/);

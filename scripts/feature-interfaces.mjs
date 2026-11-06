@@ -60,7 +60,7 @@ export const serverFeatureInterfaces = Object.freeze({
     "readFoundingResidentContext",
     "adoptFoundingRoutine",
     "queueVillagerAgenda",
-    "backfillAgendas",
+    "queuePendingAgendas",
     "refreshScheduleInfluence",
     "buildVillageAgendas",
     "clearVillagerAgenda",

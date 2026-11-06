@@ -70,6 +70,7 @@ function fixture() {
         generatedAt: at,
         routineProfile: {
           version: 1,
+          semanticVersion: 2,
           activities: [
             { activity: "Resting", venueId: "", flexible: true, essential: false, duration: 90, parts: [0, 1, 2, 3] },
           ],

@@ -1,3 +1,4 @@
+import { agendaFixture } from "./helpers/agenda.fixture.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -104,7 +105,7 @@ function fixture(count: number) {
       addedAt: stamp,
       cardSnapshot: { id, name: id, revision: 1, sourceStatus: "available", capturedAt: stamp },
       wishes: [],
-      agenda: {
+      agenda: agendaFixture({
         generatedAt: stamp,
         day: [
           {
@@ -116,7 +117,7 @@ function fixture(count: number) {
             flexible: true,
           },
         ],
-      },
+      }),
     })),
   });
   return { state, ids };

@@ -34,15 +34,15 @@ export type RoutineActivity = Omit<VillageAgendaBlock, "startMinute" | "endMinut
   essential: boolean;
 };
 export type RoutineProfile = {
-  semanticVersion?: 2;
+  semanticVersion: 2;
   influence?: InfluenceSnapshot;
   influenceSource?: string;
   version: 1;
   activities: RoutineActivity[];
   days: number[][];
   rhythm: { startMinute: number; endMinute: number; activity: number }[];
-  /** Legacy life is adopted without a paid rewrite. */
-  seedWeek?: Record<string, VillageAgendaBlock[]>;
+  /** Exact authored intervals for provisional and manually repaired routines. */
+  baseWeek?: Record<string, VillageAgendaBlock[]>;
 };
 
 /** Weekly refresh dates are not authored schedule changes. */
@@ -111,229 +111,68 @@ const record = (value: unknown): Record<string, unknown> =>
 const text = (value: unknown) => (typeof value === "string" ? value.trim().slice(0, 160) : "");
 const dayKey = (at: Date) =>
   `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
-const words = (value: string): string[] => value.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? [];
-const commonWords = new Set([
-  "home",
-  "village",
-  "their",
-  "with",
-  "ordinary",
-  "spending",
-  "time",
-  "taking",
-  "care",
-  "about",
-  "doing",
-  "space",
-  "own",
-  "the",
-  "and",
-  "for",
-  "his",
-  "her",
-]);
-const compatible = (left: string, right: string) =>
-  words(left).some((word) => !commonWords.has(word) && words(right).includes(word));
-const rest = /\b(?:sleep(?:ing)?|rest(?:ing)?|hibernate|hibernating|recharge|recharging|dormant)\b/iu;
-const busy = /\b(?:work(?:ing)?|shift|study(?:ing)?|class|training|appointment|duty|duties)\b/iu;
-const hobby =
-  /\b(?:read(?:ing)?|garden(?:ing)?|paint(?:ing)?|music|play(?:ing)?|walk(?:ing)?|fish(?:ing)?|craft(?:ing)?|cook(?:ing)?|hobby|hobbies)\b/iu;
-
-export function influenceSettings(value: unknown, legacyEnabled = false): ScheduleInfluence {
+export function influenceSettings(value: unknown): ScheduleInfluence {
   const raw = record(value),
     categories = record(raw.categories);
   return {
     version: 1,
-    enabled: typeof raw.enabled === "boolean" ? raw.enabled : legacyEnabled,
+    enabled: raw.enabled === true,
     categories: Object.fromEntries(
       INFLUENCE_CATEGORIES.map((key) => [key, categories[key] !== false]),
     ) as ScheduleInfluence["categories"],
   };
 }
 
-/** Strict parsing is independent of the Engine's chat availability and weekly date. */
-function range(value: string): { startMinute: number; endMinute: number } | null {
-  const match = /^(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})$/.exec(value.trim());
-  if (!match) return null;
-  const [h1, m1, h2, m2] = match.slice(1).map(Number);
-  if (h1! > 23 || h2! > 24 || m1! > 59 || m2! > 59 || (h2 === 24 && m2 !== 0)) return null;
-  const startMinute = h1! * 60 + m1!,
-    endMinute = h2! * 60 + m2!;
-  return startMinute === endMinute ? null : { startMinute, endMinute };
+export function canInterpretSchedule(agenda: VillageAgenda | null | undefined): boolean {
+  return (
+    agenda?.routineProfile?.semanticVersion === 2 && !agenda.personalizationPending && !agenda.personalizationFailure
+  );
 }
 
-export function deriveInfluence(
-  schedule: NativeWeekSchedule | null,
-  resident: VillageVillager,
-  state: VillageState,
-  now = new Date(),
-): InfluenceSnapshot {
-  const settings = influenceSettings(resident.scheduleInfluence, resident.ingestSchedule === true);
+export function deriveInfluence(schedule: NativeWeekSchedule | null, resident: VillageVillager): InfluenceSnapshot {
+  const settings = influenceSettings(resident.scheduleInfluence);
   const profile = resident.agenda?.routineProfile;
-  if (profile?.semanticVersion === 2) {
-    const source = scheduleSemanticSource(schedule, settings);
-    const saved = profile.influenceSource === source ? profile.influence : undefined;
-    return saved && settings.enabled
-      ? {
-          ...saved,
-          enabled: true,
-          available: !!schedule,
-          rhythms: settings.categories.rhythm
-            ? saved.rhythms
-                .filter((row) => settings.categories.weekdayWeekend || row.weekday === "Monday")
-                .flatMap((row) =>
-                  settings.categories.weekdayWeekend ? [row] : VILLAGE_WEEKDAYS.map((weekday) => ({ ...row, weekday })),
-                )
-            : [],
-          busy: settings.categories.busyFree
-            ? saved.busy
-                .filter((row) => settings.categories.weekdayWeekend || row.weekday === "Monday")
-                .flatMap((row) =>
-                  settings.categories.weekdayWeekend ? [row] : VILLAGE_WEEKDAYS.map((weekday) => ({ ...row, weekday })),
-                )
-            : [],
-          interests: settings.categories.interests ? saved.interests : [],
-          patterns: settings.categories.weekdayWeekend ? saved.patterns : [],
-          entities: settings.categories.establishedEntities ? saved.entities : [],
-        }
-      : {
-          version: 1,
-          signature: source,
-          available: !!schedule,
-          enabled: settings.enabled,
-          rhythms: [],
-          busy: [],
-          interests: [],
-          entities: [],
-          adopted: [],
-          unresolved: settings.enabled && schedule ? ["Schedule interpretation pending"] : [],
-        };
-  }
-  const result: InfluenceSnapshot = {
-    version: 1,
-    signature: "",
-    available: !!schedule,
-    enabled: settings.enabled,
-    rhythms: [],
-    busy: [],
-    interests: [],
-    entities: [],
-    adopted: [],
-    unresolved: [],
-  };
-  const patternObservations: { weekend: boolean; busy: boolean }[] = [];
-  const activities = resident.agenda?.routineProfile?.activities ?? [];
-  for (const weekday of VILLAGE_WEEKDAYS)
-    for (const value of (Array.isArray(schedule?.days?.[weekday]) ? schedule.days[weekday] : []) ?? []) {
-      const entry = record(value);
-      const interval = typeof entry.time === "string" ? range(entry.time) : null;
-      if (!interval) continue;
-      const phrase = text(entry.activity);
-      if (/\b(?:chat|conversation|talk(?:ing)?|message|call(?:ing)?|reply|respond)\b/iu.test(phrase)) continue;
-      if (busy.test(phrase) || hobby.test(phrase) || /\b(?:free|leisure|relaxing)\b/iu.test(phrase))
-        patternObservations.push({ weekend: weekday === "Saturday" || weekday === "Sunday", busy: busy.test(phrase) });
-      if (rest.test(phrase))
-        result.rhythms.push({
-          weekday,
-          startMinute: Math.round(interval.startMinute / 60) * 60,
-          endMinute: Math.round(interval.endMinute / 60) * 60,
-        });
-      else if (busy.test(phrase) || /\b(?:free|leisure|relaxing)\b/iu.test(phrase)) {
-        const end = interval.endMinute > interval.startMinute ? interval.endMinute : interval.endMinute + 1440;
-        for (let minute = interval.startMinute; minute < end; minute += 360)
-          result.busy.push({ weekday, part: Math.floor((minute % 1440) / 360), free: !busy.test(phrase) });
+
+  const source = scheduleSemanticSource(schedule, settings);
+  const saved = profile?.influenceSource === source ? profile.influence : undefined;
+  return saved && settings.enabled
+    ? {
+        ...saved,
+        enabled: true,
+        available: !!schedule,
+        rhythms: settings.categories.rhythm
+          ? saved.rhythms
+              .filter((row) => settings.categories.weekdayWeekend || row.weekday === "Monday")
+              .flatMap((row) =>
+                settings.categories.weekdayWeekend ? [row] : VILLAGE_WEEKDAYS.map((weekday) => ({ ...row, weekday })),
+              )
+          : [],
+        busy: settings.categories.busyFree
+          ? saved.busy
+              .filter((row) => settings.categories.weekdayWeekend || row.weekday === "Monday")
+              .flatMap((row) =>
+                settings.categories.weekdayWeekend ? [row] : VILLAGE_WEEKDAYS.map((weekday) => ({ ...row, weekday })),
+              )
+          : [],
+        interests: settings.categories.interests ? saved.interests : [],
+        patterns: settings.categories.weekdayWeekend ? saved.patterns : [],
+        entities: settings.categories.establishedEntities ? saved.entities : [],
       }
-      if (hobby.test(phrase)) {
-        const matches = activities.filter((item) => item.flexible && compatible(phrase, item.activity));
-        if (matches.length) result.interests.push(...matches.map((item) => item.activity));
-        else result.unresolved.push(`Interest awaiting compatible village activity: ${phrase}`);
-      }
-      for (const venue of state.venues) {
-        if (venue.name.length < 3 || !phrase.toLowerCase().includes(venue.name.toLowerCase())) continue;
-        if (
-          venueZones(venue).some(
-            (zone) =>
-              canOccupyZone(venue, zone, resident.characterId, { at: now, relationships: state.relationshipContext }) &&
-              !zoneClosed(state, venue, zone),
-          ) &&
-          venue.constructionStatus !== "worksite"
-        )
-          result.entities.push(venue.id);
-      }
-    }
-  result.patterns = settings.categories.weekdayWeekend
-    ? [false, true].flatMap((weekend) => {
-        const known = patternObservations.filter((item) => item.weekend === weekend);
-        return known.length ? [{ weekend, busy: known.filter((item) => item.busy).length > known.length / 2 }] : [];
-      })
-    : [];
-  result.rhythms = result.rhythms
-    .filter(
-      (row, _, all) =>
-        row.startMinute !== row.endMinute && all.filter((other) => other.weekday === row.weekday).length === 1,
-    )
-    .slice(0, 21);
-  result.busy = [...new Map(result.busy.map((item) => [`${item.weekday}:${item.part}`, item])).values()];
-  result.interests = [...new Set(result.interests)].slice(0, 8);
-  result.entities = [...new Set(result.entities)].slice(0, 8);
-  result.unresolved = settings.categories.interests ? [...new Set(result.unresolved)].slice(0, 4) : [];
-  if (!settings.categories.rhythm) result.rhythms = [];
-  if (!settings.categories.busyFree) result.busy = [];
-  if (!settings.categories.interests) result.interests = [];
-  if (!settings.categories.establishedEntities) result.entities = [];
-  if (!settings.categories.weekdayWeekend) {
-    result.rhythms = result.rhythms
-      .filter((item) => item.weekday === "Monday")
-      .flatMap((item) => VILLAGE_WEEKDAYS.map((weekday) => ({ ...item, weekday })));
-    result.busy = result.busy
-      .filter((item) => item.weekday === "Monday")
-      .flatMap((item) => VILLAGE_WEEKDAYS.map((weekday) => ({ ...item, weekday })));
-  }
-  if (result.rhythms.length) {
-    const clock = (minute: number) =>
-      String(Math.floor(minute / 60)).padStart(2, "0") + ":" + String(minute % 60).padStart(2, "0");
-    result.adopted.push(
-      ...result.rhythms.map(
-        (row) => row.weekday + ": preferred rest " + clock(row.startMinute) + "–" + clock(row.endMinute),
-      ),
-    );
-  }
-  if (result.busy.length)
-    result.adopted.push(
-      ...result.busy.map(
-        (row) =>
-          row.weekday +
-          ": prefer " +
-          (row.free ? "flexible" : "busy") +
-          " activities in " +
-          ["overnight", "morning", "afternoon", "evening"][row.part],
-      ),
-    );
-  if (settings.categories.weekdayWeekend && result.patterns.length)
-    result.adopted.push("Weekday and weekend differences");
-  result.adopted.push(
-    ...result.interests.map((item) => `Interest: ${item}`),
-    ...result.entities.map((id) => `Established place: ${state.venues.find((v) => v.id === id)!.name}`),
-  );
-  // Hash only normalized, selected preferences; neither status nor weekStart enters.
-  result.signature = String(
-    hashString(
-      JSON.stringify([
-        settings,
-        result.rhythms,
-        result.busy,
-        result.patterns,
-        result.interests,
-        result.entities,
-        result.unresolved,
-        result.available,
-      ]),
-    ),
-  );
-  return result;
+    : {
+        version: 1,
+        signature: source,
+        available: !!schedule,
+        enabled: settings.enabled,
+        rhythms: [],
+        busy: [],
+        interests: [],
+        entities: [],
+        adopted: [],
+        unresolved: settings.enabled && schedule ? ["Schedule interpretation pending"] : [],
+      };
 }
 
-export function adoptedProfile(week: Record<string, VillageAgendaBlock[]>): RoutineProfile {
+export function routineProfileFromWeek(week: Record<string, VillageAgendaBlock[]>): RoutineProfile {
   const unique = new Map<string, RoutineActivity>();
   for (const weekday of VILLAGE_WEEKDAYS)
     for (const block of week[weekday] ?? []) {
@@ -361,10 +200,11 @@ export function adoptedProfile(week: Record<string, VillageAgendaBlock[]>): Rout
     }
   return {
     version: 1,
+    semanticVersion: 2,
     activities: [...unique.values()].slice(0, 16),
     days: Array.from({ length: 7 }, () => []),
     rhythm: [],
-    seedWeek: structuredClone(week),
+    baseWeek: structuredClone(week),
   };
 }
 
@@ -372,6 +212,7 @@ export function coerceRoutineProfile(value: unknown): RoutineProfile | undefined
   const raw = record(value);
   if (
     raw.version !== 1 ||
+    raw.semanticVersion !== 2 ||
     !Array.isArray(raw.activities) ||
     !raw.activities.length ||
     raw.activities.length > 16 ||
@@ -405,7 +246,7 @@ export function coerceRoutineProfile(value: unknown): RoutineProfile | undefined
     days.some(
       (day) =>
         !Array.isArray(day) ||
-        (raw.seedWeek ? day.length > 8 : day.length !== 8) ||
+        (raw.baseWeek ? day.length > 8 : day.length !== 8) ||
         day.some((id) => !Number.isInteger(id) || id < 0 || id >= activities.length),
     )
   )
@@ -428,13 +269,9 @@ export function coerceRoutineProfile(value: unknown): RoutineProfile | undefined
   if (rhythm.length !== raw.rhythm.length || !validRoutineRhythm(rhythm)) return undefined;
   return {
     version: 1,
-    ...(raw.semanticVersion === 2
-      ? {
-          semanticVersion: 2 as const,
-          influence: readPreparedInfluence(raw.influence),
-          influenceSource: text(raw.influenceSource),
-        }
-      : {}),
+    semanticVersion: 2,
+    influence: readPreparedInfluence(raw.influence),
+    influenceSource: text(raw.influenceSource),
     activities,
     days,
     rhythm,
@@ -468,7 +305,7 @@ export function routineDay(
   const index = (at.getDay() + 6) % 7,
     weekday = VILLAGE_WEEKDAYS[index]!,
     pattern = profile.days[index] ?? [];
-  const base = profile.seedWeek?.[weekday];
+  const base = profile.baseWeek?.[weekday];
   const salt = hashString(`${seed}:${dayKey(at)}`);
   const enabled = settings?.enabled === true;
   const choice = (part: number, step: number): RoutineActivity => {
@@ -501,14 +338,11 @@ export function routineDay(
         const prior = retained[index - 1]!,
           next = retained[index]!;
         const desired =
-          (profile.semanticVersion === 2
-            ? profile.rhythm.some((row) => profile.activities[row.activity]?.activity === prior.activity)
-            : rest.test(prior.activity)) && flexibleAgendaBlock(next)
+          profile.rhythm.some((row) => profile.activities[row.activity]?.activity === prior.activity) &&
+          flexibleAgendaBlock(next)
             ? preference.endMinute
             : flexibleAgendaBlock(prior) &&
-                (profile.semanticVersion === 2
-                  ? profile.rhythm.some((row) => profile.activities[row.activity]?.activity === next.activity)
-                  : rest.test(next.activity))
+                profile.rhythm.some((row) => profile.activities[row.activity]?.activity === next.activity)
               ? preference.startMinute
               : undefined;
         if (desired === undefined) continue;
@@ -648,14 +482,6 @@ export function addRoutineIdea(
   const row = record(value),
     profile = agenda.routineProfile;
   if (!profile || row.flexible !== true || !text(row.activity)) return false;
-  // Optional repertoire entries cannot create employment, assets or world effects.
-  if (
-    profile.semanticVersion !== 2 &&
-    /\b(?:buy|bought|acquir\w*|purchas\w*|own(?:s|ed|ing)?|new vehicle|employ\w*|hired|promis\w*|contract|paid|debt|injur\w*|destroy\w*|repair\w*|build\w*|deliver\w*|ship|spaceship|aircraft|train|car)\b/iu.test(
-      text(row.activity),
-    )
-  )
-    return false;
   const candidate: RoutineActivity = {
     activity: text(row.activity),
     venueId: text(row.venueId),
@@ -677,7 +503,7 @@ export function addRoutineIdea(
     profile.activities[index] = candidate;
   } else profile.activities.push(candidate);
   // The seed routine remains intact; only optional alternatives evolve.
-  if (!profile.seedWeek)
+  if (!profile.baseWeek)
     for (const day of profile.days)
       for (const part of candidate.parts) {
         const at = part * 2 + 1;

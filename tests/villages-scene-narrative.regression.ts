@@ -74,7 +74,6 @@ function fixture() {
       gmVersion: 1,
       sceneBoundaryVersion: 1,
       interactionScopeVersion: 6,
-      playerAgencyVersion: 1,
       residentActionsVersion: 2,
       chosenAt: at,
     },

@@ -266,7 +266,7 @@ const schedule = {
   characterId: "a",
   days: { Monday: [{ time: "00:00-06:00", activity: "Thinking about sleep while repairing a friendship" }] },
 } as any;
-const pending = deriveInfluence(schedule, resident, state);
+const pending = deriveInfluence(schedule, resident);
 assert.deepEqual(pending.rhythms, [], "A stale/missing new-contract interpretation never falls back to a sleep word");
 assert.deepEqual(pending.unresolved, ["Schedule interpretation pending"]);
 profile.influence = {
@@ -277,7 +277,7 @@ profile.influence = {
 };
 profile.influenceSource = scheduleSemanticSource(schedule, resident.scheduleInfluence);
 assert.equal(
-  deriveInfluence(schedule, resident, state).rhythms[0]?.startMinute,
+  deriveInfluence(schedule, resident).rhythms[0]?.startMinute,
   60,
   "Prepared System meaning is reused locally",
 );
@@ -451,15 +451,26 @@ const influence = createScheduleInfluence({
   },
 } as any);
 resident.agenda!.routineProfile!.influenceSource = "stale";
+for (const held of [{ personalizationPending: true }, { personalizationFailure: "Preparation failed" }]) {
+  Object.assign(resident.agenda!, held);
+  await influence.queue("a");
+  assert.equal(scheduleJob, undefined, "Unprepared or failed routine cannot admit paid schedule interpretation");
+  assert.equal(scheduleCalls, 0);
+  resident.agenda!.personalizationPending = false;
+  resident.agenda!.personalizationFailure = "";
+}
 const activeDay = JSON.stringify(resident.agenda!.activeDay);
 await influence.queue("a");
 assert.equal(scheduleCalls, 0, "Settings changes queue finite preparation, without an inline model request");
 assert.equal(scheduleJob.finite, true);
 assert.equal(scheduleJob.kind, "schedule-influence");
 assert(influence.handler.valid(state, scheduleJob.input));
+resident.agenda!.personalizationPending = true;
+assert.equal(influence.handler.valid(state, scheduleJob.input), false, "Regeneration fences a queued interpretation");
+resident.agenda!.personalizationPending = false;
 const preparedInfluence = await influence.handler.generate(scheduleJob.input);
 influence.handler.apply(state, scheduleJob.input, preparedInfluence);
-assert.equal(deriveInfluence(schedule, resident, state).rhythms[0].startMinute, 60);
+assert.equal(deriveInfluence(schedule, resident).rhythms[0].startMinute, 60);
 assert.equal(JSON.stringify(resident.agenda!.activeDay), activeDay, "Preparation preserves the active day");
 scheduleJob = undefined;
 await influence.queue("a");

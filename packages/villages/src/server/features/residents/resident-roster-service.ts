@@ -109,9 +109,8 @@ export function createResidentRoster({
             capturedAt: addedAt,
           },
           addedAt,
-          agenda: unwrittenVillageAgenda(state.venues, card.name, villageNow()),
+          agenda: unwrittenVillageAgenda(villageNow()),
           wishes: [],
-          ingestSchedule: false,
           scheduleInfluence: influenceSettings(null),
         });
       });

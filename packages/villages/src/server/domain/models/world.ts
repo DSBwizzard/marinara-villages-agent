@@ -48,8 +48,6 @@ export type VillageWish = import("../../../shared/contracts/wishes.js").SocialWi
  * is the village's own fallback for the ones who do not.
  */
 export type VillageAgenda = {
-  /** Exact legacy digest accepted only while the normalized routine is unchanged. */
-  legacyRoutineRevision?: { previous: string; current: string };
   plannedDays?: Record<string, VillageAgendaBlock[]>;
   routineProfile?: import("../rules/owned-routine.js").RoutineProfile;
   scheduleInfluenceSnapshot?: import("../rules/owned-routine.js").InfluenceSnapshot;
@@ -62,8 +60,6 @@ export type VillageAgenda = {
   day: { startMinute: number; endMinute: number; venueId: string; zoneId?: string; activity: string }[];
   /** Villages' own complete weekly plan, independent of Marinara schedules. */
   week?: Record<string, VillageAgendaBlock[]>;
-  /** @deprecated Legacy translation data is adopted locally and has no runtime authority. */
-  scheduleWeek?: Record<string, VillageAgendaBlock[]> | null;
   /** The day already in progress never changes when a week is rewritten. */
   activeDay?: { dateKey: string; weekday: string; blocks: VillageAgendaBlock[]; scheduleInformed: boolean };
   /** Failed generation keeps the owned routine; only deliberate retry can spend again. */
@@ -72,7 +68,6 @@ export type VillageAgenda = {
   personalizationFailure?: string;
   /** Display-only date of the latest personalization attempt. */
   personalizationAttemptDate?: string;
-  source: "native" | "village";
   /** Display-only, Read by nothing. */
   generatedAt: string;
 };
@@ -130,8 +125,6 @@ export type VillageVillager = {
    * retried on every part of every day forever.
    */
   agenda: VillageAgenda | null;
-  /** Schedule changes influence tomorrow's agenda, never today's. */
-  ingestSchedule?: boolean;
   scheduleInfluence?: import("../rules/owned-routine.js").ScheduleInfluence;
 };
 
@@ -1187,8 +1180,7 @@ export type VillageAgendaView = {
   weekUnreadable: boolean;
   addedAt: string;
   agenda: VillageAgenda | null;
-  ingestSchedule: boolean;
-  scheduleInfluence?: import("../rules/owned-routine.js").ScheduleInfluence;
+  scheduleInfluence: import("../rules/owned-routine.js").ScheduleInfluence;
   nativeSchedule: {
     weekStart: string;
     days: Record<string, { time: string; activity: string }[]>;

@@ -22,6 +22,7 @@ import {
 } from "../../domain/rules/founding-tasks.js";
 
 import {
+  canInterpretSchedule,
   deriveInfluence,
   INFLUENCE_CATEGORIES,
   influenceSettings,
@@ -73,7 +74,12 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     const now = at ?? (clock?.instant ? new ZonedDate(clock.instant, clock.timeZone) : villageNow());
     const revision = clockRevision ?? clock?.revision;
     const village = known ?? (await readVillageState());
-    if (village.villagers.every((villager) => villager.agenda?.activeDay?.dateKey === agendaDateKey(now))) return false;
+    if (
+      village.villagers.every(
+        (villager) => !villager.agenda || villager.agenda.activeDay?.dateKey === agendaDateKey(now),
+      )
+    )
+      return false;
     let changed = false;
     await mutateVillageState((state) => {
       changed = false;
@@ -96,7 +102,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       await mutateVillageState((state) => {
         const resident = state.villagers.find((entry) => entry.characterId === characterId);
         if (!resident) return;
-        resident.agenda ??= unwrittenVillageAgenda(state.venues, resident.cardSnapshot.name, villageNow());
+        resident.agenda ??= unwrittenVillageAgenda(villageNow());
         resident.agenda.personalizationPending = false;
         resident.agenda.personalizationFailure =
           "Character identity is unavailable. Keep the existing routine and retry deliberately after restoring the card.";
@@ -113,12 +119,9 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       ...(villager.identityDescription && !villager.identityDescription.initialGenerationComplete
         ? { identityDescriptionRevision: villager.identityDescription.revision }
         : {}),
-      playerAgencyVersion: 1 as const,
-      semanticVersion: 2 as const,
       card: effectiveCard,
       characterId,
       sourceRevision: foundingTaskRevision(village, characterId, "routine"),
-      contractVersion: 2 as const,
       circumstances: {
         worldFacts: currentVillageCircumstances(village),
         worldRules: village.worldRules,
@@ -220,7 +223,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
 
   const agendaBackgroundHandler: Handler = {
     recoverSavedResult: (input, steps) => {
-      const key = input.context.contractVersion === 2 ? "founding-routine-v2" : "founding-routine-v1";
+      const key = "founding-routine-v2";
       const saved = steps.find((step) => step.key === key && step.status === "completed");
       if (!saved?.response) return undefined;
       return parseCompactFoundingCompletion(saved.response, input.context);
@@ -275,7 +278,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     const previous = villager.agenda;
     const now = villageNow();
     const weekday = VILLAGE_WEEKDAYS[(now.getDay() + 6) % 7]!;
-    const nextDay = agenda.week?.[weekday] ?? workingAgendaWeek(state.venues, villager.cardSnapshot.name)[weekday]!;
+    const nextDay = agenda.week?.[weekday] ?? workingAgendaWeek()[weekday]!;
     villager.agenda = {
       ...agenda,
       plannedDays: Object.fromEntries(
@@ -308,17 +311,8 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
   }
 
   /** Discover missing agendas. The coordinator retains failures across dates and throttles provider requests. */
-  async function backfillAgendas(village: VillageState, _now: Date): Promise<VillageState> {
+  async function queuePendingAgendas(village: VillageState, _now: Date): Promise<VillageState> {
     const pending = village.villagers.filter((resident) => resident.agenda?.personalizationPending === true);
-    if (village.villagers.some((resident) => resident.agenda === null))
-      await mutateVillageState((state) => {
-        for (const resident of state.villagers)
-          if (!resident.agenda) {
-            resident.agenda = unwrittenVillageAgenda(state.venues, resident.cardSnapshot.name, villageNow());
-            resident.agenda.personalizationPending = false;
-          }
-      });
-    // Only explicitly admitted new/regen profiles are eligible, never missing legacy data.
     for (const resident of pending) await queueVillagerAgenda(resident.characterId, Boolean(resident.agendaGeneration));
     return readVillageState();
   }
@@ -334,7 +328,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     await mutateVillageState((state) => {
       for (const resident of state.villagers) {
         if ((only && resident.characterId !== only) || !resident.agenda) continue;
-        const next = deriveInfluence(weeks.get(resident.characterId) ?? null, resident, state, now);
+        const next = deriveInfluence(weeks.get(resident.characterId) ?? null, resident);
         if (next.signature !== resident.agenda.scheduleInfluenceSnapshot?.signature) {
           for (const key of Object.keys(resident.agenda.plannedDays ?? {})) {
             if (
@@ -372,14 +366,13 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       now,
     });
     return village.villagers.map((resident) => ({
-      canInterpretSchedule: resident.agenda?.routineProfile?.semanticVersion === 2,
+      canInterpretSchedule: canInterpretSchedule(resident.agenda),
       characterId: resident.characterId,
       name: resident.cardSnapshot.name,
       missing: false,
       weekUnreadable: !snapshot.cardsReadable,
       addedAt: resident.addedAt,
       agenda: resident.agenda,
-      ingestSchedule: resident.scheduleInfluence?.enabled === true,
       scheduleInfluence: influenceSettings(resident.scheduleInfluence),
       nativeSchedule: weeks.has(resident.characterId) ? { weekStart: "", days: {} } : null,
       effectiveDays: Object.fromEntries(
@@ -387,7 +380,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
           const date = calendarDate(now, now.getFullYear(), now.getMonth(), now.getDate() + offset, 12);
           return [
             VILLAGE_WEEKDAYS[(date.getDay() + 6) % 7]!,
-            resident.agenda ? agendaBlocksFor(resident.agenda, false, date) : [],
+            resident.agenda ? agendaBlocksFor(resident.agenda, date) : [],
           ];
         }),
       ),
@@ -442,7 +435,6 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         ...raw,
         categories: { ...previous.categories, ...raw.categories },
       });
-      resident.ingestSchedule = resident.scheduleInfluence.enabled;
     });
     await ports.queueScheduleInfluence?.(characterId);
     await refreshScheduleInfluence(await readVillageState(), villageNow(), characterId);
@@ -455,7 +447,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     readFoundingResidentContext,
     rollActiveAgendas,
     queueVillagerAgenda,
-    backfillAgendas,
+    queuePendingAgendas,
     refreshScheduleInfluence,
     buildVillageAgendas,
     clearVillagerAgenda,

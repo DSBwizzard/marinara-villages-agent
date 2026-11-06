@@ -32,8 +32,7 @@ import type {
   VillageVillagerCardSnapshot,
   VillageZoneDraft,
 } from "../models/world.js";
-import { unwrittenVillageAgenda, VILLAGE_AGENDA_WINDOWS } from "../rules/agenda-plan.js";
-import { completeAgendaWeek, legacyAgendaWeek, workingAgendaWeek } from "../rules/agenda-week.js";
+import { completeAgendaWeek, workingAgendaWeek } from "../rules/agenda-week.js";
 import { projectAgendaReservations, readProjectFocus } from "../rules/project-focus.js";
 import { decodeVillageClock } from "../rules/clock-recovery.js";
 import { asFraction, asIsoString, asRecord, asString, asStringArray, asTrimmedString } from "../rules/coerce.js";
@@ -43,7 +42,7 @@ import { memoryRequire, readMemoryCollection } from "../rules/memory-integrity.j
 import { readPlaceContinuity, readPlaceDescription } from "../rules/zone-continuity.js";
 import { coerceVillageNarrationStyle, defaultVillageNarrationStyle } from "../rules/narration-style.js";
 import { readOpening } from "../rules/opening-project.js";
-import { adoptedProfile, coerceRoutineProfile, influenceSettings } from "../rules/owned-routine.js";
+import { coerceRoutineProfile, influenceSettings } from "../rules/owned-routine.js";
 import { coercePlayerBackground } from "../rules/player-background.js";
 import { coerceProgressTasks } from "../rules/progress-engine.js";
 import { readProjectPlan } from "../rules/project-completion.js";
@@ -88,8 +87,6 @@ import { canInviteToZone, chooseAgendaZone, synchronizeVenueZones, ZONE_KINDS } 
 import { randomVillageSeed, VILLAGE_CLOCKS, VILLAGE_WEEKDAYS, villageClockIndex } from "../rules/village-clock.js";
 import { readMemorySceneStates, readMemoryReceipts } from "../rules/village-memories.js";
 import { zonePictureBaseline, zonePicturePhysicalRecord } from "../rules/zone-picture.js";
-
-import { routineRevision } from "../rules/wish-policy.js";
 
 export function defaultVillageState(): VillageState {
   return {
@@ -181,7 +178,7 @@ export function defaultVillageState(): VillageState {
     maps: [],
   };
 }
-function coerceVillager(value: unknown, venues: readonly VillageVenue[]): VillageVillager | null {
+function coerceVillager(value: unknown): VillageVillager | null {
   const raw = asRecord(value);
   if (Object.hasOwn(raw, "wishHead")) throw new Error("Wish history was not loaded for this operation.");
   const characterId = asTrimmedString(raw.characterId);
@@ -213,10 +210,9 @@ function coerceVillager(value: unknown, venues: readonly VillageVenue[]): Villag
     // matters: null means "not written for yet", which is what makes the
     // village write one. An empty agenda is a positive statement that asking
     // produced nothing, and it must only ever come from actually asking.
-    agenda: coerceAgenda(raw.agenda, venues, cardSnapshot.name, raw.ingestSchedule !== false),
+    agenda: coerceAgenda(raw.agenda),
     wishes: copySocialWishes(raw.wishes),
-    ingestSchedule: influenceSettings(raw.scheduleInfluence, raw.ingestSchedule !== false).enabled,
-    scheduleInfluence: influenceSettings(raw.scheduleInfluence, raw.ingestSchedule !== false),
+    scheduleInfluence: influenceSettings(raw.scheduleInfluence),
   };
 }
 function coerceVillagerCardSnapshot(value: unknown): VillageVillagerCardSnapshot | null {
@@ -249,12 +245,7 @@ function coerceVillagerCardSnapshot(value: unknown): VillageVillagerCardSnapshot
     capturedAt,
   };
 }
-function coerceAgenda(
-  value: unknown,
-  venues: readonly VillageVenue[],
-  name: string,
-  legacyEnabled = false,
-): VillageAgenda | null {
+function coerceAgenda(value: unknown): VillageAgenda | null {
   if (value === null || value === undefined) return null;
   const raw = asRecord(value);
   if (Object.keys(raw).length === 0) return null;
@@ -264,18 +255,14 @@ function coerceAgenda(
     day: Array.isArray(raw.day)
       ? raw.day.flatMap((entry) => {
           const item = asRecord(entry);
-          const legacy =
-            typeof item.clock === "string"
-              ? VILLAGE_AGENDA_WINDOWS.find((window) => window.legacyClock === item.clock)
-              : undefined;
           const startMinute =
             typeof item.startMinute === "number" && Number.isInteger(item.startMinute)
               ? Math.max(0, Math.min(1439, item.startMinute))
-              : legacy?.startMinute;
+              : undefined;
           const endMinute =
             typeof item.endMinute === "number" && Number.isInteger(item.endMinute)
               ? Math.max(1, Math.min(1440, item.endMinute))
-              : legacy?.endMinute;
+              : undefined;
           if (startMinute === undefined || endMinute === undefined || endMinute <= startMinute) return [];
           return [
             {
@@ -288,15 +275,13 @@ function coerceAgenda(
           ];
         })
       : [],
-    source: raw.source === "native" ? "native" : "village",
     // Left empty rather than stamped with "now": a record that predates agendas
     // has no answer to when this was written, and inventing one would put a
     // time on it that the debug tab would then show as fact.
     generatedAt: asIsoString(raw.generatedAt) ?? "",
   };
-  const fallback = workingAgendaWeek(venues, name);
-  agenda.week = legacyAgendaWeek({ ...agenda, week: raw.week as VillageAgenda["week"] }, fallback);
-  agenda.scheduleWeek = raw.scheduleWeek ? completeAgendaWeek(raw.scheduleWeek, agenda.week) : null;
+  const fallback = workingAgendaWeek();
+  agenda.week = completeAgendaWeek(raw.week, fallback);
   agenda.plannedDays = Object.fromEntries(
     Object.entries(asRecord(raw.plannedDays))
       .filter(([key]) => /^\d{4}-\d{2}-\d{2}$/.test(key))
@@ -319,15 +304,10 @@ function coerceAgenda(
       };
   }
   agenda.routineProfile = coerceRoutineProfile(raw.routineProfile);
-  if (agenda.routineProfile && asRecord(raw.routineProfile).seedWeek)
-    agenda.routineProfile.seedWeek = completeAgendaWeek(asRecord(raw.routineProfile).seedWeek, agenda.week!);
-  if (!agenda.routineProfile) {
-    if (legacyEnabled && agenda.scheduleWeek) agenda.week = agenda.scheduleWeek;
-    agenda.routineProfile = adoptedProfile(agenda.week!);
-    agenda.personalizationPending = false;
-  } else agenda.personalizationPending = raw.personalizationPending === true;
-  agenda.scheduleWeek = null;
-  agenda.source = "village";
+  if (!agenda.routineProfile) throw new Error("Invalid saved routine profile. Start a fresh Village.");
+  if (asRecord(raw.routineProfile).baseWeek)
+    agenda.routineProfile.baseWeek = completeAgendaWeek(asRecord(raw.routineProfile).baseWeek, agenda.week!);
+  agenda.personalizationPending = raw.personalizationPending === true;
   const influence = asRecord(raw.scheduleInfluenceSnapshot);
   if (
     influence.version === 1 &&
@@ -371,14 +351,6 @@ function coerceAgenda(
   agenda.personalizationAttemptDate = /^\d{4}-\d{2}-\d{2}$/.test(asString(raw.personalizationAttemptDate))
     ? asString(raw.personalizationAttemptDate)
     : undefined;
-  // Keep one exact compatibility digest; never bless an already stale continuation.
-  const current = routineRevision(agenda);
-  const previous = routineRevision({ week: raw.week, scheduleWeek: raw.scheduleWeek } as VillageAgenda);
-  const alias = asRecord(raw.legacyRoutineRevision);
-  const hasObsoleteFields = /"(?:status|reason)"\s*:/.test(JSON.stringify([raw.week, raw.scheduleWeek]));
-  if (hasObsoleteFields && previous !== current) agenda.legacyRoutineRevision = { previous, current };
-  else if (alias.current === current && typeof alias.previous === "string" && /^[a-f0-9]{64}$/.test(alias.previous))
-    agenda.legacyRoutineRevision = { previous: alias.previous, current };
   return agenda;
 }
 function coerceVenue(value: unknown): VillageVenue | null {
@@ -950,16 +922,6 @@ function coerceBackgroundPace(raw: Record<string, unknown>): VillageBackgroundPa
   if (raw.backgroundRefreshesEnabled === false || clocks.length === 0) return "off";
   return clocks.length === 1 ? "quiet" : "balanced";
 }
-function legacySimulatedThrough(foundedAt: string, key: unknown): string {
-  const [dayText, clock] = asTrimmedString(key).split(":");
-  const dayIndex = Number(dayText);
-  const window = VILLAGE_AGENDA_WINDOWS.find((entry) => entry.legacyClock === clock);
-  const founded = new Date(foundedAt);
-  if (!Number.isFinite(dayIndex) || !window || Number.isNaN(founded.getTime())) return "";
-  const at = new Date(founded.getFullYear(), founded.getMonth(), founded.getDate() + Math.max(0, dayIndex), 0, 0, 0, 0);
-  at.setMinutes(window.endMinute);
-  return at.toISOString();
-}
 /** Preserve the spent daily allowance when removing the legacy visual feed. */
 function coercePlanningUsage(raw: Record<string, unknown>): VillageState["planningUsage"] {
   const usage = asRecord(raw.planningUsage),
@@ -1458,9 +1420,7 @@ export function coerceVillageState(value: unknown): VillageState {
   const fallback = defaultVillageState();
   const venues = coerceVenues(raw.venues);
   const villagers = Array.isArray(raw.villagers)
-    ? raw.villagers
-        .map((entry) => coerceVillager(entry, venues))
-        .filter((entry): entry is VillageVillager => entry !== null)
+    ? raw.villagers.map((entry) => coerceVillager(entry)).filter((entry): entry is VillageVillager => entry !== null)
     : [];
   const seen = new Set<string>();
 
@@ -1628,7 +1588,7 @@ export function coerceVillageState(value: unknown): VillageState {
     // pretend it has been running since the upgrade.
     foundedAt,
     seed: asTrimmedString(raw.seed),
-    simulatedThrough: asIsoString(raw.simulatedThrough) ?? legacySimulatedThrough(foundedAt, raw.lastHappeningKey),
+    simulatedThrough: asIsoString(raw.simulatedThrough) ?? "",
     lastKnownTimeZone: boundText(raw.lastKnownTimeZone, 100),
     timeZone: validTimeZone(raw.timeZone) ? raw.timeZone : "",
     clock: decodeVillageClock(raw.clock),
@@ -1681,20 +1641,11 @@ export function coerceVillageState(value: unknown): VillageState {
           ),
         }
       : {}),
-    villagers: villagers
-      .filter((entry) => {
-        if (seen.has(entry.characterId)) return false;
-        seen.add(entry.characterId);
-        return true;
-      })
-      .map((entry) =>
-        entry.agenda
-          ? entry
-          : {
-              ...entry,
-              agenda: { ...unwrittenVillageAgenda(venues, entry.cardSnapshot.name), personalizationPending: false },
-            },
-      ),
+    villagers: villagers.filter((entry) => {
+      if (seen.has(entry.characterId)) return false;
+      seen.add(entry.characterId);
+      return true;
+    }),
     // A stored box keeps its internal formatting, so it is bounded but not
     // trimmed to nothing; an empty box means "this village wrote nothing", which
     // is what the renderer answers with the shipped text.
@@ -1749,12 +1700,7 @@ export function coerceVillageState(value: unknown): VillageState {
   for (const villager of state.villagers) {
     const agenda = villager.agenda;
     if (!agenda) continue;
-    const blocks = [
-      ...agenda.day,
-      ...Object.values(agenda.week ?? {}).flat(),
-      ...Object.values(agenda.scheduleWeek ?? {}).flat(),
-      ...(agenda.activeDay?.blocks ?? []),
-    ];
+    const blocks = [...agenda.day, ...Object.values(agenda.week ?? {}).flat(), ...(agenda.activeDay?.blocks ?? [])];
     for (const block of blocks) {
       const venue =
         state.venues.find((entry) => entry.id === block.venueId) ??

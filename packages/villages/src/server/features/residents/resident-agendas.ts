@@ -10,8 +10,8 @@ export async function rollActiveAgendas(...args: Parameters<ResidentAgendas["rol
 export async function queueVillagerAgenda(...args: Parameters<ResidentAgendas["queueVillagerAgenda"]>) {
   return binding.get().queueVillagerAgenda(...args);
 }
-export async function backfillAgendas(...args: Parameters<ResidentAgendas["backfillAgendas"]>) {
-  return binding.get().backfillAgendas(...args);
+export async function queuePendingAgendas(...args: Parameters<ResidentAgendas["queuePendingAgendas"]>) {
+  return binding.get().queuePendingAgendas(...args);
 }
 export async function refreshScheduleInfluence(...args: Parameters<ResidentAgendas["refreshScheduleInfluence"]>) {
   return binding.get().refreshScheduleInfluence(...args);

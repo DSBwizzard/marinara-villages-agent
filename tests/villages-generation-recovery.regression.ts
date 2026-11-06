@@ -34,6 +34,7 @@ const release = configureVillagesRuntime({
                 venue: 0,
                 status: "idle",
                 flexible: true,
+                essential: false,
                 duration: 180,
                 parts: [0, 1, 2, 3],
               })),
@@ -58,7 +59,6 @@ async function main() {
       activeWishes: [],
       wishes: [],
       schedule: null,
-      allowInitialWish: false,
     };
     await assert.rejects(
       proposeCompactFounding(context, async () => {}),

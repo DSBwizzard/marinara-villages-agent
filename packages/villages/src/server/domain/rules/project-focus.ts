@@ -152,7 +152,7 @@ function focusAvailability(state: VillageState, project: VillageProject): (at: D
       )
         return false;
     }
-    if (!days.has(key)) days.set(key, agendaBlocksFor(agenda, false, at));
+    if (!days.has(key)) days.set(key, agendaBlocksFor(agenda, at));
     const instantMinute = Math.floor(at.getTime() / minuteMs);
     if (!capacity.has(instantMinute))
       capacity.set(instantMinute, zoneActivityFits(state, [lead], venue.id, zone.id, minute, minute + 1, at));

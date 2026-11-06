@@ -261,9 +261,8 @@ export function createFoundingSetup({
             ...snapshotFromCard(card, 1),
           },
           addedAt: villageNow().toISOString(),
-          agenda: unwrittenVillageAgenda(state.venues, card.name, villageNow()),
+          agenda: unwrittenVillageAgenda(villageNow()),
           wishes: [],
-          ingestSchedule: false,
           scheduleInfluence: influenceSettings(null),
         });
         addedResidents.push(card);
@@ -277,7 +276,7 @@ export function createFoundingSetup({
       await mutateVillageState((state) => {
         for (const villager of state.villagers) {
           if (!addedIds.has(villager.characterId) || villager.agenda?.generatedAt) continue;
-          villager.agenda = unwrittenVillageAgenda(state.venues, villager.cardSnapshot.name, villageNow());
+          villager.agenda = unwrittenVillageAgenda(villageNow());
         }
       });
     }

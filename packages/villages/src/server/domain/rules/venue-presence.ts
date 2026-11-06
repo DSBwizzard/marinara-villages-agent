@@ -18,7 +18,7 @@ export function zoneActivityFits(
   const boundaries = new Set([startMinute]);
   for (const resident of state.villagers) {
     if (!resident.agenda) continue;
-    for (const block of agendaBlocksFor(resident.agenda, resident.ingestSchedule !== false, date)) {
+    for (const block of agendaBlocksFor(resident.agenda, date)) {
       for (const minute of [block.startMinute, block.endMinute])
         if (minute > startMinute && minute < endMinute) boundaries.add(minute);
     }

@@ -13,7 +13,7 @@ import {request} from './packages/villages/src/client/shared/api.js';
 import {VillagerDossier} from './packages/villages/src/client/features/residents/villages-dossier.js';
 import {VillagerWishJournal} from './packages/villages/src/client/features/residents/villages-wish-journal.js';
 import {VillagerMemoriesPanel} from './packages/villages/src/client/features/residents/MemoriesPanel.js';
-import {useLoadMemoryLibrary,useLoadAgendas,useSetAgendaScheduleIngestion} from './packages/villages/src/client/features/residents/actions.js';
+import {useLoadMemoryLibrary,useLoadAgendas,useSetScheduleInfluence} from './packages/villages/src/client/features/residents/actions.js';
 import {useSceneSelectionReset} from './packages/villages/src/client/features/scenes/controller-hooks.js';
 import {useResidentInspection} from './packages/villages/src/client/features/residents/controller-hooks.js';
 function Harness(){
@@ -29,7 +29,7 @@ function Harness(){
  const loadAgendas=useLoadAgendas({worldScope:scope,setAgendas,setError,agendaRevision});
  const personProfile=useMemo(()=>navigation.actorId===actor?navigation:{actorId:actor,returnTo:'home'},[navigation,actor]);
  useResidentInspection({loadAgendas,personProfile,profileInspection:inspection,screen:active?'person':'home',visible});
- const influence=useSetAgendaScheduleIngestion({currentSnapshotRef,setAgendas,setError,setBusy:()=>{}});
+ const influence=useSetScheduleInfluence({currentSnapshotRef,setAgendas,setError,setBusy:()=>{}});
  const [validating,setValidating]=useState(false),observed=useRef(''),completion=useRef({roomId:'',submissionId:''}),movement=useRef(''),seen=useRef(new Set());
  const noChange=useCallback(()=>{},[]);
  useSceneSelectionReset({snapshot:{village:{instant:'same'}},loadSnapshot:noChange,observedRoomIdRef:observed,room:validating?{id:'saved-scene',status:'active',liveSceneVersion:1}:null,roomCompletionRef:completion,roomMoveOperationIdRef:movement,screen:'room',seenRoomEventIdsRef:seen,setLastSceneEnding:noChange,setRoom:noChange,setRoomContactBoundary:noChange,setRoomMoveZoneId:noChange,setRoomNotices:noChange,setRoomOpen:noChange,setRoomTargetId:noChange,setScreen:noChange});

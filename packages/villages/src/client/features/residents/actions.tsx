@@ -198,7 +198,7 @@ export function useRewriteAgenda(ports: {
   );
 }
 
-export function useSetAgendaScheduleIngestion(ports: {
+export function useSetScheduleInfluence(ports: {
   currentSnapshotRef: React.RefObject<VillageSnapshot>;
   setAgendas: React.Dispatch<SetStateAction<VillagerAgendaView[]>>;
   setBusy: React.Dispatch<SetStateAction<boolean>>;

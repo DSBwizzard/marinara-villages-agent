@@ -52,7 +52,7 @@ const world = coerceVillageState({
     },
   })),
 });
-for (const resident of world.villagers) resident.agenda = unwrittenVillageAgenda([], resident.cardSnapshot.name);
+for (const resident of world.villagers) resident.agenda = unwrittenVillageAgenda();
 const clone = <T>(x: T): T => structuredClone(x);
 const records = new Map<string, any>([
   ["villages-village", { id: "villages-village", packageId: "villages", kind: "village", revision: 1, data: world }],

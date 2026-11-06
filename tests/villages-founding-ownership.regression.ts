@@ -68,8 +68,7 @@ function fixture(name: string) {
       }),
     ],
   });
-  for (const resident of state.villagers)
-    resident.agenda = unwrittenVillageAgenda(state.venues, resident.cardSnapshot.name);
+  for (const resident of state.villagers) resident.agenda = unwrittenVillageAgenda();
   const gate = deferred(),
     entered = deferred();
   const calls: string[] = [],

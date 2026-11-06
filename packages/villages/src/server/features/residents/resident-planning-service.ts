@@ -174,7 +174,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           capturedAt: resident.cardSnapshot.capturedAt,
           name: card.name,
           profile: venueCardProfile(card, readPlayerIdentity(village).name),
-          doing: agendaAt(resident.agenda, moment.minuteOfDay, now, resident.ingestSchedule !== false)?.activity ?? "",
+          doing: agendaAt(resident.agenda, moment.minuteOfDay, now)?.activity ?? "",
           agenda: resident.agenda,
           wishes: resident.wishes,
         };
@@ -351,8 +351,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
             capturedAt: resident.cardSnapshot.capturedAt,
             name: card.name,
             profile: venueCardProfile(card, readPlayerIdentity(historical).name),
-            doing:
-              agendaAt(resident.agenda, moment.minuteOfDay, now, resident.ingestSchedule !== false)?.activity ?? "",
+            doing: agendaAt(resident.agenda, moment.minuteOfDay, now)?.activity ?? "",
             agenda: resident.agenda,
             wishes: resident.wishes,
           };

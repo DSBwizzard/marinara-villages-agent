@@ -1,3 +1,4 @@
+import { agendaFixture } from "./helpers/agenda.fixture.js";
 import assert from "node:assert/strict";
 import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -57,9 +58,8 @@ async function main() {
       capturedAt: stamp,
     },
     addedAt: stamp,
-    ingestSchedule: false,
     wishes: [],
-    agenda: {
+    agenda: agendaFixture({
       routineSummary: "Owned day",
       source: "village",
       generatedAt: stamp,
@@ -71,7 +71,7 @@ async function main() {
           { startMinute: 0, endMinute: 1440, venueId, zoneId, activity, status: "online", reason: "Owned routine" },
         ],
       },
-    },
+    }),
   });
   const world = coerceVillageState({
     ...defaultVillageState(),
