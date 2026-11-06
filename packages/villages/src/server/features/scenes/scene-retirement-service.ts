@@ -21,7 +21,6 @@ export interface SceneRetirementPorts {
   saveProjectEvidence(scene: VenueScene, revision: number): Promise<void>;
   saveTerminal(scene: VenueScene, revision: number): Promise<void>;
   readTerminal(id: string): Promise<import("../../domain/models/scene-terminal-model.js").SceneTerminal | null>;
-  removeInterpretationDiagnostics(id: string): Promise<void>;
   withRepairWork<T>(work: () => Promise<T>): Promise<T>;
   withSceneWork<T>(id: string, work: () => Promise<T>): Promise<T>;
   withLateResponseWork<T>(id: string, work: () => Promise<T>): Promise<T>;
@@ -77,7 +76,6 @@ export function createSceneRetirement(ports: SceneRetirementPorts) {
           releaseSceneMemories(state, scene);
           releasePhysicalOutcomes(state, scene.id);
         });
-        await ports.removeInterpretationDiagnostics(id);
         return true;
       }),
     );
@@ -102,7 +100,6 @@ export function createSceneRetirement(ports: SceneRetirementPorts) {
         if (await ports.villagesDocuments().getById(VILLAGES_PACKAGE_ID, SESSION_PREFIX + data.sceneId)) continue;
         const terminal = await ports.readTerminal(data.sceneId);
         if (!terminal || terminal.villageSeed !== data.villageSeed) continue;
-        await ports.removeInterpretationDiagnostics(data.sceneId);
         if (memoryState.memoryScenes[data.sceneId] || physicalScenes.has(data.sceneId)) releasable.push(data.sceneId);
       }
       if (releasable.length)

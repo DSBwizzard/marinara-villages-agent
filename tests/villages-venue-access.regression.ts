@@ -35,10 +35,6 @@ import {
 } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { reserveMemoryScene } from "../packages/villages/src/server/domain/rules/village-memories.js";
-import {
-  readInterpretationDiagnostics,
-  writeInterpretationDiagnostics,
-} from "../packages/villages/src/server/features/generation/interpretation-diagnostics.js";
 import { processLiveRelationships } from "../packages/villages/src/server/features/residents/live-memory.js";
 import { processSocialOutbox } from "../packages/villages/src/server/features/residents/relationship-social.js";
 import { mutateRelationships } from "../packages/villages/src/server/features/residents/relationship-store.js";
@@ -1148,31 +1144,12 @@ async function main() {
     const batch = {
       checks,
       results: [result],
-      traces: [
-        {
-          id: checks[0].id,
-          question: checks[0].question,
-          domain: "room",
-          evidence: checks[0].evidence,
-          result,
-          system: { status: "complete", reason: "secret-policy-data" },
-          decisions: { status: "off" },
-          applied: "Not yet applied",
-          startedAt: stamp,
-        },
-      ],
     } as any;
     await recordRoomAccessEvents(speechScene, batch);
     assert.deepEqual(
       (await readVillageState({ memories: true })).venues[0].zones!.find((zone) => zone.id === "living")!.access!
         .managerIds,
       ["mara"],
-      batch.traces[0].applied,
-    );
-    await writeInterpretationDiagnostics(speechScene.id, batch.traces);
-    assert.ok(
-      !JSON.stringify(await readInterpretationDiagnostics(speechScene.id)).includes("secret-policy-data"),
-      "Access diagnostics redact model reasons on write and read.",
     );
     await mutateVillageState((current) =>
       applyAccessCommand(
@@ -1193,7 +1170,13 @@ async function main() {
     obsolete.checks[0].id += ":obsolete";
     obsolete.checks[0].facts.accessCommand.operationId += ":obsolete";
     await recordRoomAccessEvents(speechScene, obsolete);
-    assert.match(obsolete.traces[0].applied, /access changed/);
+    assert.equal(
+      (await readVillageState({ memories: true })).venues[0].access!.receipts[
+        obsolete.checks[0].facts.accessCommand.operationId
+      ].outcome,
+      "rejected",
+      "Changed authority records a native rejection receipt",
+    );
     assert.equal(
       (await readVillageState({ memories: true })).venues[0].access!.receipts[
         obsolete.checks[0].facts.accessCommand.operationId
@@ -1201,7 +1184,6 @@ async function main() {
       "rejected",
     );
     await recordRoomAccessEvents(speechScene, obsolete);
-    assert.match(obsolete.traces[0].applied, /Already settled/);
     await mutateVillageState((current) => {
       current.venues[0].zones!.find((zone) => zone.id === "office")!.access!.managerIds = [];
     });
@@ -1248,14 +1230,12 @@ async function main() {
     const recoveryBatch = {
       checks: recoveryChecks,
       results: [result],
-      traces: [{ ...batch.traces[0], id: recoveryChecks[0].id }],
     } as any;
     await recordRoomAccessEvents(recoveryScene, recoveryBatch);
     assert.deepEqual(
       (await readVillageState({ memories: true })).venues[0].zones!.find((zone) => zone.id === "office")!.access!
         .managerIds,
       ["mara"],
-      recoveryBatch.traces[0].applied,
     );
     // Persisted reply effects recover without another model call or the latest turn's evidence.
     const recoveryRevision = (await readVillageState({ memories: true })).venues[0].access!.revision;

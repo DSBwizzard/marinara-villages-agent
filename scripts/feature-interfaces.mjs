@@ -15,15 +15,7 @@ export const serverFeatureInterfaces = Object.freeze({
     "assertFoundedVillageReady",
   ],
   "founding/village-bootstrap.ts": ["interpretSocialSource", "draftVillageVenueDescriptions"],
-  "generation/interpretation-diagnostics.ts": [
-    "readInterpretationDiagnostics",
-    "writeInterpretationDiagnostics",
-    "removeInterpretationDiagnostics",
-  ],
-  "generation/interpretation-evidence.ts": ["contextualChecks", "saveInterpretationContext"],
-  "generation/interpretation.ts": ["interpretChecks", "recordInterpretationRouting"],
   "generation/model-requests.ts": ["completeWithRoom"],
-  "generation/system-interpretation.ts": ["systemInterpretations"],
   "media/image-generation.ts": [
     "resolveVillageImageConnectionId",
     "resolveVillageImageEditing",
@@ -97,7 +89,6 @@ export const serverFeatureInterfaces = Object.freeze({
     "villagesImageConnectionChoice",
     "saveVillageConnections",
   ],
-  "settings/interpretation-settings.ts": ["readInterpretationSettings", "saveInterpretationSettings"],
   "settings/personas.ts": ["readLinkedPersona", "buildVillagePersonaCatalog", "readVillagePersonaPreview"],
   "settings/village-settings.ts": [
     "setVillageLoreSettings",

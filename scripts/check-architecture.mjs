@@ -192,11 +192,7 @@ export async function analyzeArchitecture({
         continue;
       }
       if (!node || !ts.isStringLiteralLike(node)) {
-        if (
-          !["server/adapters/engine/decisions-adapter.ts", "server/adapters/engine/image-style-profiles.ts"].includes(
-            from,
-          )
-        )
+        if (from !== "server/adapters/engine/image-style-profiles.ts")
           failures.push(`${from}: computed module imports hide dependencies`);
         continue;
       }

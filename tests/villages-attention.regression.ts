@@ -1,6 +1,5 @@
 import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
-import { coerceInterpretationSettings } from "../packages/villages/src/server/domain/rules/interpretation-policy.js";
 import { fingerprint } from "../packages/villages/src/server/domain/rules/interpretation-rules.js";
 import {
   attentionCheck,
@@ -43,12 +42,6 @@ const house: any = venueFixture({
   ],
 });
 
-assert.deepEqual(coerceInterpretationSettings(null), { decisionsEnabled: false });
-assert.deepEqual(
-  coerceInterpretationSettings({ compareSystem: true }),
-  { decisionsEnabled: false },
-  "legacy comparison choices cannot dispatch requests",
-);
 const routeScene: any = {
   zoneId: "exterior",
   activeIds: ["local"],

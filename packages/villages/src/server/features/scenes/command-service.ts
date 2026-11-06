@@ -21,15 +21,7 @@ import type {
 } from "../../domain/models/scene-model.js";
 import type { VillageState, VillageVenue, VillageVenueClass } from "../../domain/models/world.js";
 import { asRecord } from "../../domain/rules/coerce.js";
-import { validDecisionEvidence } from "../../domain/rules/decision-candidates.js";
-import {
-  badGateway,
-  badRequest,
-  conflict,
-  notFound,
-  safeFailureMessage,
-  VillagesRequestError,
-} from "../../domain/rules/errors.js";
+import { badGateway, badRequest, conflict, notFound, VillagesRequestError } from "../../domain/rules/errors.js";
 import { bindLiveProposals, createLiveEvidenceContext, liveEvidence } from "../../domain/rules/live-exchange.js";
 import { applyLiveMemories } from "../../domain/rules/live-memory-application.js";
 import { bindProjectSpeech, validateProjectSpeech } from "../../domain/rules/project-interpretation.js";
@@ -173,8 +165,6 @@ export interface SceneCommandPorts {
   recoverVenueOperations: typeof import("../../jobs/venue-coordinator.js").recoverVenueOperations;
   rejectVenueCompletion: typeof import("../../jobs/venue-coordinator.js").rejectVenueCompletion;
   venueCheckpoint: typeof import("../../jobs/venue-coordinator.js").venueCheckpoint;
-  writeInterpretationDiagnostics: typeof import("../generation/interpretation-diagnostics.js").writeInterpretationDiagnostics;
-  saveInterpretationContext: typeof import("../generation/interpretation-evidence.js").saveInterpretationContext;
   completeWithRoom: typeof import("../generation/model-requests.js").completeWithRoom;
   rollActiveAgendas: typeof import("../residents/resident-agendas.js").rollActiveAgendas;
   bindWishProposals: typeof import("../../domain/rules/wish-progress-rules.js").bindWishProposals;
@@ -229,8 +219,6 @@ export function createSceneCommands({
   recoverVenueOperations,
   rejectVenueCompletion,
   venueCheckpoint,
-  writeInterpretationDiagnostics,
-  saveInterpretationContext,
   completeWithRoom,
   rollActiveAgendas,
   bindWishProposals,
@@ -1496,8 +1484,7 @@ export function createSceneCommands({
       if (greeting) await applySavedAccessEvents(greeted, greeting);
     }
     if (reply.roomInterpretation) {
-      await finalizeRoomInvitationDiagnostics(greeted, reply.roomInterpretation, reply.invitationSignal);
-      await writeInterpretationDiagnostics(id, reply.roomInterpretation.traces).catch(() => {});
+      await finalizeRoomInvitation(greeted, reply.roomInterpretation, reply.invitationSignal);
     }
     if (reply.invitationSignal) await recordSpokenInvitation(greeted, reply.invitationSignal);
     await markZoneSeen(greeted, false);
@@ -2242,8 +2229,7 @@ export function createSceneCommands({
       villagesLogger().warn("[villages] saved turn observation deferred for %s: %s", submission.id, String(error)),
     );
     if (reply.roomInterpretation) {
-      await finalizeRoomInvitationDiagnostics(updated, reply.roomInterpretation, submission.invitationSignal);
-      await writeInterpretationDiagnostics(updated.id, reply.roomInterpretation.traces).catch(() => {});
+      await finalizeRoomInvitation(updated, reply.roomInterpretation, submission.invitationSignal);
     }
     await settleSemanticAuthority(updated, submission);
     await finishSemanticScene(updated.id);
@@ -2285,7 +2271,6 @@ export function createSceneCommands({
     const batch = {
       checks: events.map((event) => ({ id: event.id, facts: event.facts })),
       results: events.map((event) => ({ outcome: event.outcome, evidenceIds: event.evidenceIds })),
-      traces: events.map(() => ({ applied: "Saved access interpretation awaiting application" })),
     } as InterpretationBatch;
     await recordRoomAccessEvents(scene, batch, turn.id);
   }
@@ -2301,7 +2286,6 @@ export function createSceneCommands({
       if (scene.villageSeed && state.seed !== scene.villageSeed) return;
       const initialRevisions = new Map<string, number | undefined>();
       for (const [index, result] of batch.results.entries()) {
-        if (!validDecisionEvidence(batch.checks[index], result)) continue;
         const check = batch.checks[index],
           facts = asRecord(check.facts),
           actor = String(facts.actorId);
@@ -2322,16 +2306,14 @@ export function createSceneCommands({
               .update(check.id + ":" + result.outcome)
               .digest("hex");
         if (venue.access.receipts[operationId]) {
-          batch.traces[index].applied = "Already settled; replay made no access change";
           continue;
         }
-        const reject = (reason: string) => {
+        const reject = () => {
           venue.access!.receipts[operationId] = {
             fingerprint: "rejected-witnessed-event",
             revision: venue.access!.revision,
             outcome: "rejected",
           };
-          batch.traces[index].applied = reason;
         };
         if (
           facts.accessRevision !== initialRevisions.get(venue.id) &&
@@ -2343,7 +2325,7 @@ export function createSceneCommands({
                 change.action !== "destinations",
             ))
         ) {
-          reject("Rejected: access changed after this speech was interpreted");
+          reject();
           continue;
         }
         if (
@@ -2355,7 +2337,7 @@ export function createSceneCommands({
             ["invite-now", "invite-later"].includes(result.outcome)
           )
         ) {
-          reject("Rejected: the exact management change was not established by current speech");
+          reject();
           continue;
         }
         const sources = result.evidenceIds
@@ -2374,7 +2356,7 @@ export function createSceneCommands({
               turn.replyLineIds.includes(line.id),
           );
         if (!sources.length) {
-          reject("Rejected: no saved current speech by the authorized actor");
+          reject();
           continue;
         }
         const scope = result.outcome === "ban-venue" ? null : (zone?.id ?? null);
@@ -2386,7 +2368,7 @@ export function createSceneCommands({
               (!/\b(?:ban|banned|barred)\b/iu.test(speech) ||
                 /\b(?:not banned|not ban|won't ban|would|might|if|joking)\b/iu.test(speech))))
         ) {
-          reject("Rejected: a lasting ban requires explicit manager speech");
+          reject();
           continue;
         }
         const base = { operationId, expectedRevision: venue.access.revision, zoneId: scope, visitorId: "player" };
@@ -2439,9 +2421,8 @@ export function createSceneCommands({
               state.communityVenueId,
             );
           else continue;
-          batch.traces[index].applied = "Scoped access change recorded with current authority and saved speech";
-        } catch (error) {
-          reject("Rejected: " + safeFailureMessage(error));
+        } catch {
+          reject();
         }
       }
     };
@@ -2449,36 +2430,13 @@ export function createSceneCommands({
     await mutateVillageState(apply);
   }
 
-  async function finalizeRoomInvitationDiagnostics(
+  async function finalizeRoomInvitation(
     scene: VenueScene,
     batch: InterpretationBatch,
     signal: VenueSubmission["invitationSignal"],
   ) {
     await recordRoomAccessEvents(scene, batch);
-    await saveInterpretationContext(scene.id, batch, scene.submissions.at(-1)?.id).catch(() => {});
-    const queued = batch.traces.filter((trace) => trace.applied.startsWith("Future invitation queued"));
     if (signal) await recordSpokenInvitation(scene, signal);
-    if (!queued.length) return;
-    const state = await readVillageState();
-    for (const trace of queued) {
-      const facts = asRecord(batch.checks[batch.traces.indexOf(trace)].facts);
-      const venue = findLocation(state, facts.venueId);
-      const recorded =
-        signal &&
-        (venue?.access
-          ? venue.access.permissions.some(
-              (grant) =>
-                !grant.revoked &&
-                grant.sourceLineIds.includes(signal.sourceLineId ?? "") &&
-                grant.zoneId === facts.zoneId,
-            )
-          : venue?.playerInvitations?.some(
-              (invitation) => invitation.sourceLineId === signal.sourceLineId && invitation.zoneId === facts.zoneId,
-            ));
-      trace.applied = recorded
-        ? `Next-visit invitation recorded using ${trace.result.source}; authority and saved evidence validated`
-        : "Rejected: future invitation did not validate against saved evidence and current authority";
-    }
   }
 
   function validateCurrentRoomInvitation(
@@ -2492,15 +2450,13 @@ export function createSceneCommands({
       batch?.results.flatMap((result, index) =>
         ["invite-now", "invite-later"].includes(result.outcome) ? [{ result, check: batch.checks[index] }] : [],
       ) ?? [];
-    // Completed greeting/turn checkpoints already contain the interpreted signal.
-    // Replaying them bypasses the writing service, so validate its Decision binding again here.
+    // Replayed greeting/turn checkpoints must still match exact witnessed speech.
     {
       const invitation = invitations[0];
       const facts = asRecord(invitation?.check?.facts);
       if (
         invitations.length !== 1 ||
         !invitation.check ||
-        !validDecisionEvidence(invitation.check, invitation.result) ||
         facts.actorId !== signal.residentId ||
         facts.venueId !== signal.venueId ||
         facts.zoneId !== signal.zoneId ||

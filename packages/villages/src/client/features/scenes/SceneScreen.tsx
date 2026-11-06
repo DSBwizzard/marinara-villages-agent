@@ -9,7 +9,6 @@ import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { playerDisplayName, venuePictureOf } from "../../shared/presentation.js";
 import { recordTurnTiming } from "../../shared/turn-timing.js";
-import { DecisionsControl } from "../settings/villages-decisions-control.js";
 import { SavedChangesDiagnostics } from "../settings/villages-saved-changes.js";
 import type { SceneErrorItem } from "./scene-errors.js";
 import { currentRoom, RoomPanel, sceneZoneLabel } from "./ScenePanel.js";
@@ -61,10 +60,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
       ]);
     },
     [sceneId],
-  );
-  const reportDecisionsError = useCallback(
-    (message: string) => reportSettingsError("decisions", "Scene interpretation setting failed", message),
-    [reportSettingsError],
   );
   const reportDiagnosticsError = useCallback(
     (message: string) => reportSettingsError("diagnostics", "Saved change diagnostics unavailable", message),
@@ -446,14 +441,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           spriteCardFlipEnabled={snapshot?.settings.spriteCardFlipEnabled !== false}
           sceneSettings={
             <>
-              {room.semanticVersion !== 2 ? (
-                <DecisionsControl
-                  sceneId={room.id}
-                  onError={reportDecisionsError}
-                  busy={roomBusy || room.operation?.status === "running"}
-                  api={request}
-                />
-              ) : null}
               {room.memoryMode === "live" ? (
                 <SavedChangesDiagnostics
                   key={room.id}

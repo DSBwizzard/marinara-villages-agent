@@ -1,6 +1,5 @@
 import { currentVillageCircumstances } from "../../domain/rules/prompt-preset.js";
 import type { FastifyInstance } from "fastify";
-import { decisionAdapterStatus } from "../../adapters/engine/decisions-adapter.js";
 import { listVillageLorebooks, readVillageLore } from "../../adapters/engine/lorebooks.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
 import { fail, readCharacterId, SETTINGS_BODY_LIMIT } from "../../adapters/http/route-support.js";
@@ -12,12 +11,10 @@ import {
   readLoreActivity,
 } from "../../adapters/observability/runtime-debug.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
-import { readInterpretationDiagnostics } from "../generation/interpretation-diagnostics.js";
 import { readVillageAuthority } from "../world/village-store.js";
 import { setVillageHomeBuildingNames } from "../venues/services.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
 import { readVillageConnectionSettings, saveVillageConnections } from "./connections.js";
-import { readInterpretationSettings, saveInterpretationSettings } from "./interpretation-settings.js";
 import { readVillageWriting, saveVillageWriting } from "./narration-settings.js";
 import { refreshPlayerPersona } from "./persona-cache.js";
 import { buildVillagePersonaCatalog, readVillagePersonaPreview } from "./personas.js";
@@ -36,44 +33,6 @@ import {
   setVillageSpriteVariantsEnabled,
   setVillageWorldName,
 } from "./village-settings.js";
-
-export function registerInterpretationRoutes(engine: FastifyInstance) {
-  engine.get("/interpretation-settings", async (_request, reply) => {
-    try {
-      const settings = await readInterpretationSettings();
-      return {
-        settings,
-        status: settings.decisionsEnabled
-          ? await decisionAdapterStatus()
-          : { available: false, reason: "Decisions is off" },
-      };
-    } catch (error) {
-      return fail(reply, error, "reading interpretation settings");
-    }
-  });
-  engine.patch("/interpretation-settings", { bodyLimit: 1024 }, async (request, reply) => {
-    try {
-      const settings = await saveInterpretationSettings(request.body);
-      return {
-        settings,
-        status: settings.decisionsEnabled
-          ? await decisionAdapterStatus()
-          : { available: false, reason: "Decisions is off" },
-      };
-    } catch (error) {
-      return fail(reply, error, "saving interpretation settings");
-    }
-  });
-  engine.get<{ Params: { sceneId: string } }>("/interpretation-diagnostics/:sceneId", async (request, reply) => {
-    try {
-      const id = request.params.sceneId;
-      if (!/^[a-zA-Z0-9:_-]{1,128}$/u.test(id)) throw badRequest("Invalid Scene ID.");
-      return await readInterpretationDiagnostics(id);
-    } catch (error) {
-      return fail(reply, error, "reading interpretation diagnostics");
-    }
-  });
-}
 export function registerPersonaRoutes(engine: FastifyInstance) {
   const app = engine;
   app.get("/personas", async (_request, reply) => {

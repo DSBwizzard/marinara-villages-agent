@@ -117,9 +117,7 @@ await withBrowser(browser, async () => {
         session.endedAt = now;
         session.memoryReview = { status: "complete", decisions: [] };
         value = { session, recordEvents: [] };
-      } else if (path.endsWith("/interpretation-settings"))
-        value = { settings: { decisionsEnabled: false, compareSystem: true }, status: { available: false } };
-      else if (path.includes("/interpretation-diagnostics/")) value = { checks: [] };
+      }
       await fulfill(route, {
         status: 200,
         contentType: "application/json",

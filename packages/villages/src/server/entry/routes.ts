@@ -28,7 +28,6 @@ import { registerSceneEntryRoutes, registerSceneOperationRoutes } from "../featu
 import { projectSceneResponse } from "../features/scenes/services.js";
 import {
   registerConnectionRoutes,
-  registerInterpretationRoutes,
   registerPersonaRoutes,
   registerRuntimeDiagnosticsRoutes,
   registerUsageRoutes,
@@ -88,7 +87,6 @@ export async function villagesRoutes(engine: FastifyInstance) {
     "post /memories/:id/forget",
     "post /memories/:id/correct",
   ]);
-  registerInterpretationRoutes(surface);
   registerRelationshipRoutes(surface);
   registerSpriteManagerRoutes(surface);
   registerSnapshotCatalogRoutes(surface);
