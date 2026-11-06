@@ -16,7 +16,6 @@ import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { accessManagementChecks } from "../packages/villages/src/server/domain/rules/access-speech.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
 import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import { bindLiveProposals } from "../packages/villages/src/server/domain/rules/live-exchange.js";
@@ -38,6 +37,7 @@ import {
   projectVenueAccess,
   projectZoneAccess,
   readVenueAccess,
+  readAccessCommand,
   reconcileVenueAccess,
   settleStandingAccess,
   withinVisitorHours,
@@ -1115,7 +1115,7 @@ async function main() {
       speakerId: "jim",
       role: "assistant",
       content: "You are always welcome in the living room; come in now.",
-      kind: "main",
+      kind: "dialogue",
       heardBy: ["jim", "player"],
       at: speechAt,
     } as any;
@@ -1367,7 +1367,7 @@ async function main() {
         speakerId: "jim",
         content:
           "Mara will manage the shared living room from now on; she is its only named manager. All its other rules stay the same.",
-        kind: "main",
+        kind: "dialogue",
         heardBy: ["player"],
       },
     ] as any;
@@ -1384,17 +1384,24 @@ async function main() {
         command: { action: "zone-policy", zoneId: "living", policy: commandPolicy },
       },
     ];
-    const checks = accessManagementChecks(await readVillageState({ memories: true }), draft, events, "speech-fixture");
-    assert.equal(checks.length, 1);
-    assert.equal(
-      accessManagementChecks(
-        await readVillageState({ memories: true }),
-        [{ ...draft[0], speakerId: "visitor" }],
-        events,
-        "wrong-speaker",
-      ).length,
-      0,
-    );
+    const speechAuthority = (await readVillageState({ memories: true })).venues[0].access!;
+    const checks = [
+      {
+        id: "speech-fixture",
+        facts: {
+          actorId: "jim",
+          venueId: "home",
+          zoneId: "living",
+          accessRevision: speechAuthority.revision,
+          semanticVersion: 2,
+          accessCommand: readAccessCommand({
+            ...events[0].command,
+            operationId: "speech-fixture",
+            expectedRevision: speechAuthority.revision,
+          }),
+        },
+      },
+    ];
     const speechScene = {
       version: 4,
       id: "speech-scene",
@@ -1405,13 +1412,27 @@ async function main() {
     const result = {
       outcome: "access-management",
       evidenceIds: ["draft:0"],
-      source: "system",
+      source: "gm",
       reason: "secret-policy-data",
     };
     const batch = {
       checks,
       results: [result],
     } as any;
+    const wrongSpeaker = structuredClone(batch);
+    wrongSpeaker.checks[0].id = "wrong-speaker";
+    wrongSpeaker.checks[0].facts.accessCommand.operationId = "wrong-speaker";
+    const speechPolicy = structuredClone(
+      (await readVillageState({ memories: true })).venues[0].zones!.find((zone) => zone.id === "living")!.access,
+    );
+    await recordRoomAccessEvents(
+      { ...speechScene, lines: [{ ...speechScene.lines[0], speakerId: "visitor" }] },
+      wrongSpeaker,
+    );
+    const refusedSpeech = (await readVillageState({ memories: true })).venues[0];
+    assert.deepEqual(refusedSpeech.zones!.find((zone) => zone.id === "living")!.access, speechPolicy);
+    assert.equal(refusedSpeech.access!.receipts["wrong-speaker"].outcome, "rejected");
+    assert.equal(refusedSpeech.access!.revision, speechAuthority.revision);
     await recordRoomAccessEvents(speechScene, batch);
     assert.deepEqual(
       (await readVillageState({ memories: true })).venues[0].zones!.find((zone) => zone.id === "living")!.access!
@@ -1458,7 +1479,7 @@ async function main() {
       {
         speakerId: "jim",
         content: "The office has no manager left. Mara is its new manager. All its other rules and bans stay the same.",
-        kind: "main",
+        kind: "dialogue",
         heardBy: ["player", "jim"],
       },
     ] as any;
@@ -1471,22 +1492,24 @@ async function main() {
         command: { action: "recover-managers", zoneId: "office", managerIds: ["mara"] },
       },
     ];
-    const recoveryChecks = accessManagementChecks(
-      await readVillageState({ memories: true }),
-      recoveryDraft,
-      recoveryEvents,
-      "npc-recovery",
-    );
-    assert.equal(recoveryChecks.length, 1, "A current NPC Venue manager can propose scoped orphan recovery.");
-    assert.equal(
-      accessManagementChecks(
-        await readVillageState({ memories: true }),
-        recoveryDraft,
-        [{ ...recoveryEvents[0], actorId: "visitor" }],
-        "guest-recovery",
-      ).length,
-      0,
-    );
+    const recoveryAuthority = (await readVillageState({ memories: true })).venues[0].access!;
+    const recoveryChecks = [
+      {
+        id: "npc-recovery",
+        facts: {
+          actorId: "jim",
+          venueId: "home",
+          zoneId: "office",
+          accessRevision: recoveryAuthority.revision,
+          semanticVersion: 2,
+          accessCommand: readAccessCommand({
+            ...recoveryEvents[0].command,
+            operationId: "npc-recovery",
+            expectedRevision: recoveryAuthority.revision,
+          }),
+        },
+      },
+    ];
     const recoveryScene = {
       version: 4,
       id: "recovery-scene",
@@ -1498,6 +1521,21 @@ async function main() {
       checks: recoveryChecks,
       results: [result],
     } as any;
+    const guestRecovery = structuredClone(recoveryBatch);
+    guestRecovery.checks[0].id = "guest-recovery";
+    guestRecovery.checks[0].facts.actorId = "visitor";
+    guestRecovery.checks[0].facts.accessCommand.operationId = "guest-recovery";
+    const officePolicy = structuredClone(
+      (await readVillageState({ memories: true })).venues[0].zones!.find((zone) => zone.id === "office")!.access,
+    );
+    await recordRoomAccessEvents(
+      { ...recoveryScene, lines: [{ ...recoveryScene.lines[0], speakerId: "visitor", heardBy: ["visitor"] }] },
+      guestRecovery,
+    );
+    const refusedRecovery = (await readVillageState({ memories: true })).venues[0];
+    assert.deepEqual(refusedRecovery.zones!.find((zone) => zone.id === "office")!.access, officePolicy);
+    assert.equal(refusedRecovery.access!.receipts["guest-recovery"].outcome, "rejected");
+    assert.equal(refusedRecovery.access!.revision, recoveryAuthority.revision);
     await recordRoomAccessEvents(recoveryScene, recoveryBatch);
     assert.deepEqual(
       (await readVillageState({ memories: true })).venues[0].zones!.find((zone) => zone.id === "office")!.access!
@@ -1510,7 +1548,7 @@ async function main() {
       {
         speakerId: "jim",
         content: "Visitor is banned from this venue. You are banned from this venue.",
-        kind: "main",
+        kind: "dialogue",
         heardBy: ["jim", "player"],
       },
     ] as any;

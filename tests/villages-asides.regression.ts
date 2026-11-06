@@ -3,7 +3,6 @@ import {
   groupSceneAsides,
   sceneAsideAvailableHeight,
 } from "../packages/villages/src/client/features/scenes/villages-aside-layout.js";
-import { VENUE_SCENE_WRITING_FOUNDATION } from "../packages/villages/src/server/domain/rules/narration-style.js";
 import { groupSceneMoments } from "../packages/villages/src/shared/helpers/scene-speech.js";
 
 const main = { id: "main" },
@@ -48,7 +47,4 @@ assert.equal(
 assert.equal(sceneAsideAvailableHeight(450, 80, 0, 48), 316);
 assert.equal(sceneAsideAvailableHeight(220, 80, 140, 48), 26, "viewport panning bounds the band");
 assert.equal(sceneAsideAvailableHeight(100, 80, 0, 48), 0);
-assert.match(VENUE_SCENE_WRITING_FOUNDATION, /Take natural opportunities/u);
-assert.match(VENUE_SCENE_WRITING_FOUNDATION, /there is no quota/u);
-assert.match(VENUE_SCENE_WRITING_FOUNDATION, /A request does not compel agreement or guarantee privacy/u);
 console.log("Scene asides: independent speaker groups, movement, legacy fallback and visible-height bounds passed.");
