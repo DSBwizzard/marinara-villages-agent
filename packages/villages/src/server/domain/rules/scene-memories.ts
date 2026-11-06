@@ -4,7 +4,6 @@ import type {
   MemoryEvidence,
   MemoryLearning,
   MemoryProposal,
-  MemoryScreening,
   MemorySource,
 } from "../models/memories.js";
 import type { RelationshipEvidenceLine } from "../models/relationship-types.js";
@@ -19,25 +18,6 @@ import { recallMemories } from "./memory-recall.js";
 export type SceneMemoryContext = {
   protection: MemoryProtectionContext;
   recall: { candidates: MemoryCandidate[]; targetIds: string[] };
-};
-export type SceneMemorySuggestion = {
-  action: MemoryProposal["action"];
-  kind?: MemoryProposal["kind"];
-  text?: string;
-  subjects?: string[];
-  target?: MemoryProposal["target"];
-  learners: Record<
-    string,
-    {
-      basis: MemoryLearning["basis"];
-      attributedTo?: string;
-      support: { lineId: string | number; excerpt: string }[];
-      disclosed?: MemoryLearning["disclosed"];
-    }
-  >;
-  domainRef?: MemoryProposal["domainRef"];
-  effectId?: string;
-  screening: MemoryScreening;
 };
 
 export const SCENE_MEMORY_INSTRUCTION =

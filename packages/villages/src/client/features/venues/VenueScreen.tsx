@@ -12,7 +12,7 @@ import { WorkspaceShell, type WorkspaceDestination } from "../../shared/Workspac
 import type { VenueScreenController } from "./screen-contracts.js";
 import { venueDisplayZones, type VenueDisplayZone } from "./venue-view.js";
 import { VenueLayoutEditor } from "./VenueLayoutEditor.js";
-import { ZoneAccessLabels } from "./VenueLayout.js";
+import { ZoneAccessLabels } from "./ZoneAccessLabels.js";
 import { LoreActivityButton } from "../../shared/LoreActivity.js";
 
 function VenueName({ place, controller }: { place: VillageVenue; controller: VenueScreenController }) {

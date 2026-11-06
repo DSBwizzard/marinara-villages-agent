@@ -1,4 +1,4 @@
-import type { VenueClass, VillageVenue, VillageVenueImage } from "../../shared/contracts/village.js";
+import type { VillageVenue } from "../../shared/contracts/village.js";
 import type { SpeechDelivery } from "../../shared/helpers/scene-speech.js";
 import type { StagingPresentation } from "../../shared/helpers/scene-staging.js";
 import type { VillagesWalkAside } from "../../shared/contracts/scene-beat.js";
@@ -9,17 +9,6 @@ export type SetupMapSource = "existing" | "simple" | "generate" | "upload";
 export type SetupVenueDraft = VillageVenue & {
   /** null follows the household; absent retains an existing draft's capacity. */
   foundingCapacity?: number | null;
-};
-
-export type PersonaPreview = {
-  id: string;
-  name: string;
-  description: string;
-  appearance: string;
-  personality: string;
-  backstory: string;
-  avatarPath: string | null;
-  avatarCrop: unknown;
 };
 
 /**
@@ -156,23 +145,6 @@ export type EnginePersonaRow = {
 /** The one node kind that is a run of other nodes rather than a leaf. */
 export type VillagesStyledNode = Extract<VillagesMarkdownNode, { kind: "styled" }>;
 
-export type VenueViewZone = {
-  key: string;
-  zoneId?: string;
-  label: string;
-  subtitle: string;
-  purpose?: string;
-  area: "outside" | "shared" | "private" | "public";
-  spaceClass: VenueClass;
-  ownerId: string;
-  image: VillageVenueImage | null;
-  description: string;
-  state?: NonNullable<VillageVenue["spaces"]>[number]["state"];
-  locked: boolean;
-  canEnter: boolean;
-  accessLabel: string;
-};
-
 /** One pin drawn over the town map. */
 export type MapPin = {
   label?: string;
@@ -243,12 +215,6 @@ export type MapZoomRange = { min: number; max: number; step: number };
 
 /** Display data shared by identity choices, independent of their source. */
 export type IdentityChoice = { id: string; name: string; portrait?: Portrait; hint?: string };
-
-export type IdentityPreview = IdentityChoice & {
-  overview: string;
-  details: { label: string; text: string }[];
-  context: string;
-};
 
 /** One paragraph in a Scene, with its speaker and attached asides. */
 export type RoomStep = {

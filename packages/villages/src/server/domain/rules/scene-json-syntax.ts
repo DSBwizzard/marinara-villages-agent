@@ -1,37 +1,3 @@
-/** Syntax-only normalization. Never guess quotation boundaries, values, or missing closers. */
-export function normalizeSceneJson(text: string): string {
-  let result = "",
-    quoted = false,
-    escaped = false;
-  for (let index = 0; index < text.length; index++) {
-    const char = text[index]!;
-    if (quoted) {
-      if (escaped) {
-        result += char;
-        escaped = false;
-      } else if (char === "\\") {
-        result += char;
-        escaped = true;
-      } else if (char === '"') {
-        result += char;
-        quoted = false;
-      } else if (char === "\n") result += "\\n";
-      else if (char === "\r") result += "\\r";
-      else if (char === "\t") result += "\\t";
-      else result += char;
-    } else if (char === '"') {
-      quoted = true;
-      result += char;
-    } else if (
-      char !== "," ||
-      !/^[\x20\t\r\n]*[}\]]/u.test(text.slice(index + 1)) ||
-      /[\[{:,]/u.test(result.trimEnd().slice(-1))
-    )
-      result += char;
-  }
-  return result;
-}
-
 /** Reject duplicate keys rather than resolving an ambiguous repaired object by last-key wins. */
 export function parseSceneObject(text: string): Record<string, unknown> | null {
   try {

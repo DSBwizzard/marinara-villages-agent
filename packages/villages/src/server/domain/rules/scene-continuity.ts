@@ -134,24 +134,6 @@ export function sceneWishEffectIds(current: VillageState, scene: VenueScene): st
   return [...latest.values()];
 }
 
-/** Narrator continuity never grants resident knowledge or supplies save evidence. */
-export function visibleSceneContinuity(scene: VenueScene): string {
-  const recent: string[] = [];
-  let size = 0;
-  for (let index = scene.lines.length - 1; index >= 0 && recent.length < 8; index--) {
-    const line = scene.lines[index];
-    if (line.kind !== "narration" || line.contactHidden || line.contactReport) continue;
-    if (size + line.content.length > 6000) break;
-    recent.unshift(line.content);
-    size += line.content.length;
-  }
-  return recent.length
-    ? "Player-visible narration continuity (narrator only; not resident knowledge or citable evidence): " +
-        JSON.stringify(recent) +
-        " Continue after these events. Keep established appearance and completed actions consistent; do not reopen an already opened door or introduce the same outfit again. Only an explicit new event changes them. Residents still know only their individually witnessed history."
-    : "";
-}
-
 export function captureSceneContinuity(state: VillageState, scene: VenueScene, now: number): SceneContinuity {
   const capturedAt = new Date(
     scene.liveSceneVersion === 1 ? now : scene.sceneAttendance?.capturedAt || scene.startedAt || now,

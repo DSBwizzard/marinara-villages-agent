@@ -14,7 +14,6 @@ import { accessibleVenueRoute } from "./venue-path.js";
 import { readVenueImageContext } from "./village-projections.js";
 import { readZoneLayout } from "../../../shared/helpers/zone-layout.js";
 import { communityVenueEligible } from "./community-venue.js";
-export type ParsedPlace = VillageVenue;
 
 export function foundingImage(value: unknown): VillageVenueImage | null {
   if (value === null || value === undefined) return null;

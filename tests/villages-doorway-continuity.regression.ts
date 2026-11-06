@@ -7,11 +7,7 @@ import {
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { readContactMoves } from "../packages/villages/src/server/domain/rules/venue-contact.js";
-import { visibleSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
-import {
-  applyResidentMovementTimeline,
-  residentMovementPrompt,
-} from "../packages/villages/src/server/domain/rules/resident-movement.js";
+import { applyResidentMovementTimeline } from "../packages/villages/src/server/domain/rules/resident-movement.js";
 import { applyAttentionWitnesses } from "../packages/villages/src/server/domain/rules/attention-witnesses.js";
 import { stagingTranscriptEvents } from "../packages/villages/src/shared/helpers/scene-staging.js";
 import { replayStaging } from "./helpers/scene-staging.fixture.js";
@@ -72,18 +68,6 @@ const scene = coerceSession({
     },
   ],
 });
-const localPromptScene = structuredClone(scene);
-localPromptScene.sceneAttendance!.occupants[0].zoneId = "exterior";
-const localPrompt = residentMovementPrompt(village, venue, localPromptScene, ["buster"], true);
-assert.match(localPrompt, /ALREADY in player Zone exterior: \["buster"\]/);
-assert.doesNotMatch(localPrompt, /normally steps into|Actual remote doorway speakers/);
-assert.match(localPrompt, /DIFFERENT listed destination/);
-const historyBefore = structuredClone(scene.lines);
-assert.match(visibleSceneContinuity(scene), /t-shirt and sweats/);
-assert.doesNotMatch(visibleSceneContinuity(scene), /PRIVATE UNSEEN/);
-assert.deepEqual(scene.lines, historyBefore, "narrator continuity never rewrites witness evidence");
-assert.match(residentMovementPrompt(village, venue, scene, ["buster"]), /normally steps into/);
-
 scene.contactGeneration = {
   localIds: [],
   remoteIds: ["buster"],

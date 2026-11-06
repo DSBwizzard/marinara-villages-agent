@@ -2,7 +2,6 @@ import type { VenueScene, VenueSubmission } from "../models/scene-model.js";
 import { asRecord } from "./coerce.js";
 import { badGateway, conflict } from "./errors.js";
 import { extractModelJsonObject, modelJsonWithinBounds } from "./json-reply.js";
-import { parseSceneObject } from "./scene-json-syntax.js";
 
 /** Refuse an unsupported Scene before generation can replace a retained response. */
 export function assertCurrentSceneGeneration(scene: VenueScene) {
@@ -10,82 +9,6 @@ export function assertCurrentSceneGeneration(scene: VenueScene) {
 }
 
 const EFFECT_FIELDS = ["memoryChanges", "relationshipChanges", "wishChanges", "projectSpeech", "interpretationRouting"];
-
-/** Canonical decimal strings name current segments only when no supplied saved ID conflicts. */
-export function normalizeSceneEffectReferences(raw: Record<string, unknown>, earlierIds: string[] = []) {
-  const result = structuredClone(raw);
-  const segments = Array.isArray(result.segments) ? result.segments : [];
-  const reference = (value: unknown) =>
-    typeof value === "string" &&
-    /^(0|[1-9]\d*)$/u.test(value) &&
-    !earlierIds.includes(value) &&
-    Number.isSafeInteger(Number(value)) &&
-    Number(value) < segments.length
-      ? Number(value)
-      : value;
-  const rows = (values: unknown, key: string) => {
-    if (Array.isArray(values))
-      for (const value of values) {
-        const row = asRecord(value);
-        if (Array.isArray(row[key])) row[key] = row[key].map(reference);
-      }
-  };
-  if (Array.isArray(result.memoryChanges))
-    for (const value of result.memoryChanges)
-      for (const learner of Object.values(asRecord(asRecord(value).learners)))
-        if (Array.isArray(asRecord(learner).support))
-          for (const citation of asRecord(learner).support as unknown[]) {
-            const row = asRecord(citation);
-            row.lineId = reference(row.lineId);
-          }
-  rows(result.wishChanges, "evidence");
-  const relationships = asRecord(result.relationshipChanges);
-  for (const key of ["changes", "permissions", "disclosures"]) rows(relationships[key], "lineIds");
-  return result;
-}
-
-/** A finished reply sometimes closes its core before appending effect members.
- * Remove that extra brace and at most one stray array closer at the same boundary,
- * never values, missing closers or competing objects.
- */
-function parsePrematureEffectBoundary(text: string): Record<string, unknown> | null {
-  if (!text.startsWith("{")) return null;
-  let depth = 0,
-    quoted = false,
-    escaped = false;
-  for (let index = 0; index < text.length; index++) {
-    const char = text[index];
-    if (quoted) {
-      if (escaped) escaped = false;
-      else if (char === "\\") escaped = true;
-      else if (char === '"') quoted = false;
-      continue;
-    }
-    if (char === '"') quoted = true;
-    else if (char === "{") depth++;
-    else if (char === "}" && --depth === 0) {
-      const core = parseSceneObject(text.slice(0, index + 1));
-      const suffix = text.slice(index + 1).replace(/^\s*\](?=\s*,\s*")/u, "");
-      if (
-        !core ||
-        Object.keys(core).length !== 2 ||
-        !Object.hasOwn(core, "playerSpeechCapture") ||
-        !Object.hasOwn(core, "segments") ||
-        !Array.isArray(core.segments) ||
-        !/^\s*,\s*"/u.test(suffix)
-      )
-        return null;
-      // Strict whole-object parsing also rejects duplicate keys at every depth.
-      const combined = parseSceneObject(text.slice(0, index) + suffix);
-      if (!combined) return null;
-      const tail = Object.keys(combined).filter((key) => !Object.hasOwn(core, key));
-      return tail.length && tail.every((key) => EFFECT_FIELDS.includes(key) || key === "residentActions")
-        ? combined
-        : null;
-    }
-  }
-  return null;
-}
 
 export function completeSceneObject(content: string, finishReason?: string): Record<string, unknown> | null {
   if (!modelJsonWithinBounds(content)) return null;
@@ -95,7 +18,7 @@ export function completeSceneObject(content: string, finishReason?: string): Rec
     .replace(/^```(?:json)?\s*\n/u, "")
     .replace(/\n```$/u, "");
   if (!text.startsWith("{") || !text.endsWith("}")) return null;
-  return extractModelJsonObject({ content: text, finishReason }) ?? parsePrematureEffectBoundary(text);
+  return extractModelJsonObject({ content: text, finishReason });
 }
 
 /** Only a complete current-contract response may omit optional metadata. Never repair a supplied value. */
