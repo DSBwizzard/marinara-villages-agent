@@ -1,9 +1,9 @@
 import { type SetStateAction, useCallback, useLayoutEffect, useRef } from "react";
-import { useConfirmation } from "../../shared/confirmation.js";
 import type { VenueClass, VenueRequest, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
+import { useConfirmation } from "../../shared/confirmation.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
-import { destinationPlaces, freshRowKey } from "../../shared/presentation.js";
+import { destinationPlaces } from "../../shared/presentation.js";
 import type { MenuPage } from "../../shared/types.js";
 import { venueClassesFor, venueSpaceFor } from "../../shared/venue.js";
 import type { ExplorationSheet, ExplorationTab } from "../exploration/villages-exploration.js";
@@ -124,28 +124,6 @@ export function useLeaveVenue(ports: {
     setScreen,
     venueReturnTo,
   ]);
-}
-
-export function useAddVenue(ports: { setVenueEditDraft: React.Dispatch<SetStateAction<VillageVenue>> }) {
-  const { setVenueEditDraft } = ports;
-  return useCallback(() => {
-    setVenueEditDraft({
-      id: freshRowKey(),
-      name: "",
-      form: "",
-      classes: ["other"],
-      spaces: [],
-      residenceCapacity: 1,
-      residentIds: [],
-
-      description: "",
-      category: "",
-      presentation: { mapId: "", image: null, x: null, y: null },
-      occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-      capabilities: [],
-      state: { revision: 0, updatedAt: "", recent: null },
-    });
-  }, [setVenueEditDraft]);
 }
 
 export function useSaveVenue(ports: {

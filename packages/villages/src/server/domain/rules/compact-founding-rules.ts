@@ -2,14 +2,13 @@ import type { VillagerCard } from "../models/catalog-model.js";
 import type {
   VillageAgenda,
   VillagePlayerBackground,
-  VillageRemap,
   VillageRemapMove,
   VillageVenue,
   VillageWish,
 } from "../models/world.js";
 import { villageAgendaDay } from "./agenda-plan.js";
 import { extractModelJsonObject } from "./json-reply.js";
-import { remapBlocks, VILLAGE_UNTRANSLATED_ACTIVITY } from "./native-remap.js";
+import { remapBlocks } from "./native-remap.js";
 import type { RoutineProfile } from "./owned-routine.js";
 import {
   influenceSettings,
@@ -78,33 +77,6 @@ export function foundingNativeActivities(schedule: NativeWeekSchedule | null): s
     seen.add(key);
     return [block.activity];
   });
-}
-
-export function rebaseFoundingRemap(
-  remap: VillageRemap,
-  schedule: NativeWeekSchedule,
-  signature: string,
-): VillageRemap {
-  const known = new Map(remap.moves.map((move) => [compactKey(move.activity), move]));
-  return {
-    ...remap,
-    weekStart: schedule.weekStart,
-    signature,
-    moves: remapBlocks(schedule).map((entry) => {
-      const prior = known.get(compactKey(entry.activity));
-      return {
-        day: entry.day,
-        time: entry.time,
-        activity: entry.activity,
-        here: prior?.here ?? VILLAGE_UNTRANSLATED_ACTIVITY,
-        venueId: prior?.venueId ?? "",
-        wishId: prior?.wishId ?? "",
-        flexible: prior?.flexible === true,
-      };
-    }),
-    attempts: 1,
-    generatedAt: new Date().toISOString(),
-  };
 }
 
 const validIndex = (value: unknown, length: number): value is number =>

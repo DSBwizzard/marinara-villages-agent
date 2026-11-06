@@ -7,24 +7,7 @@ import {
   HOME_BUILDINGS,
   MAX_SETTING_LENGTH,
   MAX_VILLAGE_NAME_LENGTH,
-  VILLAGES_PROMPT_BOX_MAX_LENGTH,
 } from "./prompt-preset.js";
-
-/**
- * Read the village's prompt box out of a request body.
- *
- * An over-long box is refused rather than silently truncated — the player is
- * editing text they can see, so quietly dropping the end of it would be the
- * worst possible outcome. `what` names the box the refusal is about, which is
- * now one name but was two.
- */
-export function readPromptBox(value: unknown, what: string): string {
-  if (typeof value !== "string") throw badRequest(`${what} must be text.`);
-  if (value.length > VILLAGES_PROMPT_BOX_MAX_LENGTH) {
-    throw badRequest(`${what} can be at most ${VILLAGES_PROMPT_BOX_MAX_LENGTH} characters.`);
-  }
-  return value;
-}
 /**
  * Read a village name out of a request body.
  *

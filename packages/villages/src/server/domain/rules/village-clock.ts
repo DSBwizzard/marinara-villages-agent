@@ -300,19 +300,6 @@ export function deriveVillageMoment(input: {
 }
 
 /**
- * The phrase `{{time}}` renders, e.g. "an autumn morning on 11 September".
- *
- * The old wording ("morning on day 1 of Spring") counted days and named a
- * season together, which only made sense while the village clock was a stored
- * counter. At 1:1 the day count and the season are independent facts, so the
- * phrase names the real date instead.
- */
-export function describeMoment(moment: VillageMoment): string {
-  const article = "aeiou".includes(moment.season.slice(0, 1)) ? "an" : "a";
-  return `${article} ${moment.season} ${moment.dayPhase} at ${moment.localTime} on ${moment.dateLabel}`;
-}
-
-/**
  * The calendar date a village day falls on, e.g. "12 September".
  *
  * The mirror of the arithmetic in `deriveVillageMoment`: a `dayIndex` is a
@@ -335,42 +322,4 @@ export function villageDateLabel(foundedAt: string, dayIndex: number): string {
   const day = Number.isFinite(dayIndex) ? Math.max(0, Math.floor(dayIndex)) : 0;
   const at = new Date(start.getFullYear(), start.getMonth(), start.getDate() + day);
   return `${at.getDate()} ${MONTHS[at.getMonth()]}`;
-}
-
-/** Spelled out because these are read straight into prose ("three days ago"). */
-const AGE_WORDS = ["two", "three", "four", "five", "six"] as const;
-
-/**
- * How long ago a stored `dayIndex` and `clock` were, as a person would say it.
- *
- * This exists because of a failure mode, not because of a preference. A model
- * handed "Day 3" and "Day 5" does not reliably subtract them, and a villager
- * who has been told a conversation happened "this morning" when it happened on
- * Tuesday is not slightly wrong — the shared history is wrong, in the direction
- * that is hardest to notice. So the subtraction happens HERE, in code that
- * cannot get it wrong, and the answer is handed over as prose.
- *
- * A delta that cannot be believed is never rendered as a future: a restored
- * backup or a corrected system date can put an entry ahead of the clock, and
- * "in three days" is not a thing a village can remember. It reads as the
- * vaguest past there is instead.
- *
- * Returns "" when there is genuinely nothing to say — an entry from today whose
- * stored part of day is not one this clock knows cannot be placed before or
- * after now, and guessing "earlier today" would be inventing an ordering. A
- * caller renders the date alone in that case.
- */
-export function describeVillageAge(fromDayIndex: number, fromClock: string, moment: VillageMoment): string {
-  const days = moment.dayIndex - fromDayIndex;
-  if (!Number.isFinite(days) || days < 0) return "recently";
-  if (days === 0) {
-    const from = villageClockIndex(fromClock);
-    if (from < 0) return "";
-    // ">=" rather than ">": the same part of day is not earlier than itself.
-    return from >= villageClockIndex(moment.dayPhase) ? "not long ago" : "earlier today";
-  }
-  if (days === 1) return "yesterday";
-  if (days < 7) return `${AGE_WORDS[days - 2] ?? "several"} days ago`;
-  if (days < 14) return "last week";
-  return `${Math.floor(days / 7)} weeks ago`;
 }

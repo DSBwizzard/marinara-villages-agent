@@ -1,4 +1,4 @@
-import { cloneElement, type ReactElement, type ReactNode, useId, useState, useEffect } from "react";
+import { cloneElement, type ReactElement, type ReactNode, useId } from "react";
 import { FieldHelp as FoundingHelp } from "../../shared/FieldHelp.js";
 export { FieldHelp as FoundingHelp } from "../../shared/FieldHelp.js";
 export function FoundingField({
@@ -41,14 +41,4 @@ export function FoundingField({
       ) : null}
     </div>
   );
-}
-
-export function CircumstanceInput({ examples, ...props }: { examples: string[] } & React.ComponentProps<"textarea">) {
-  const [example, setExample] = useState(0);
-  useEffect(() => {
-    if (String(props.value ?? "").length || !examples.length) return;
-    const timer = setInterval(() => setExample((index) => (index + 1) % examples.length), 4000);
-    return () => clearInterval(timer);
-  }, [props.value, examples]);
-  return <textarea autoComplete="off" {...props} placeholder={examples[example % examples.length]} />;
 }

@@ -1,10 +1,10 @@
 import type { CapabilityLanguageModelMessage, CapabilityResolvedLanguageModel } from "@marinara-engine/shared";
-import type { VillagerCard } from "../models/catalog-model.js";
-import { badRequest } from "./errors.js";
-import { renderResidentAdmission } from "./resident-admission.js";
 import type { LoreUse } from "../../../shared/contracts/lore.js";
 import { mergeLoreUse } from "../../../shared/helpers/lore.js";
+import type { VillagerCard } from "../models/catalog-model.js";
+import { badRequest } from "./errors.js";
 import { LORE_REFERENCE_RULE } from "./lore-context.js";
+import { renderResidentAdmission } from "./resident-admission.js";
 
 /** The authored person is complete; circumstances are supplied separately. */
 export function venueCardProfile(
@@ -33,9 +33,6 @@ export function venueCardProfile(
     (card.admission ? "\n\n" + renderResidentAdmission(card.name, card.admission, includeAdmissionPolicy) : "")
   );
 }
-
-export const EVENT_MEMORY_GUIDANCE =
-  "Record what was said or done in this encounter, with its context. A pause, reserved delivery, temporary uncertainty, or the narrator's interpretation is not a stable personality trait. Preserve explicit preferences and commitments without generalizing a moment into who the character is.";
 
 export type VenueWritingBlock = {
   text: string;
@@ -67,12 +64,6 @@ export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWrit
     return blocks.length ? [{ text: `## ${headings[section]}` }, ...blocks] : [];
   });
 }
-
-export const VENUE_RESIDENT_REQUESTS =
-  "Capture spontaneous resident proposals only when they actually occur in spoken dialogue, using speakerId and an exact quote. residenceRequest also needs an available venueId for a requested move; residenceDecision needs the incoming characterId and approved for the speaker’s agreement or withdrawal to the exact captured move. Only the incoming person or a current housemate may agree; silence is not consent. venueRequest needs name and classes (one or two of workplace, community, other) for a NEW public venue. Omit unused fields. Player requests, hypothetical speech, silence, or a different speaker are never resident consent. Approval starts planning, not construction. Existing accepted commitments remain binding until explicitly withdrawn.";
-
-export const VENUE_DEPARTURE_METADATA =
-  'For an explicitly departing resident return departures:[{speakerId,quote:"exact spoken departure"}]. Return sceneEnded:{speakerId,quote:"exact spoken ending"} only when dialogue ends the whole encounter, never for player silence or ordinary company.';
 
 /** Shared by live generation and isolated evaluations. Never silently shrink a character. */
 export function assembleVenueWritingMessages(blocks: readonly VenueWritingBlock[], input: string) {

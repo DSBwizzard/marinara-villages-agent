@@ -13,7 +13,6 @@ export async function createVenueScreenHarness(browser) {
 import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';import {StrictMode,useState,useCallback} from 'react';
 import {useVenueScreenCommands} from './packages/villages/src/client/features/venues/screen-commands.js';
 import {VenueScreen} from './packages/villages/src/client/features/venues/VenueScreen.js';
-import {VenueAccessPanel} from './packages/villages/src/client/features/venues/villages-venue-access.js';
 import {useSaveBackgroundPace} from './packages/villages/src/client/features/settings/actions.js';
 import {ConfirmationProvider} from './packages/villages/src/client/shared/confirmation.js';
 function Harness(){
@@ -40,12 +39,11 @@ poll:()=>rawSnapshot(current=>structuredClone(current)),hydrate:()=>rawSnapshot(
 removeVenue:()=>rawSnapshot(current=>({...current,settings:{...current.settings,venues:current.settings.venues.filter(v=>v.id!==venueId)}})),
 revision:()=>rawSnapshot(current=>({...current,settings:{...current.settings,venues:current.settings.venues.map(v=>v.id===venueId?{...v,accessView:{...v.accessView,revision:v.accessView.revision+1}}:v)}})),
 read:()=>({setting:snapshot.settings.setting,founded:snapshot.isFounded,screen,venueId,venuePage,venueZoneKey,busy,settingsError,venueEditBusy,venueEditError,venueEditNotice,venueEditDraft,venueProposalDraft,placeProblem})};
-const editorZone=place?.zones.find(z=>z.id===venueZoneKey)??place?.zones[0];
-return <><pre id='state'>{JSON.stringify(window.h.read())}</pre>{window.accessPanel ? <VenueAccessPanel key={JSON.stringify([place.id,editorZone.id,place.accessView.revision])} venue={place} zoneId={editorZone.id} people={[{id:'player',name:'Player'},{id:'mara',name:'Mara'}]} isFounded={snapshot.isFounded} onCommand={command=>ui.changeVenueAccess(place.id,command)} /> : <VenueScreen controller={{...ports,...ui,busy,settingsError,venueEditBusy,venueEditError,venueEditNotice,venueEditDraft,venueProposalDraft,placeProblem,
+return <><pre id='state'>{JSON.stringify(window.h.read())}</pre><VenueScreen controller={{...ports,...ui,busy,settingsError,venueEditBusy,venueEditError,venueEditNotice,venueEditDraft,venueProposalDraft,placeProblem,
 homeBuildings:[],room:null,roomBusy:false,drawPlaceImage:async()=>{},dropPlaceImage:async()=>{},keepPlaceImage:async()=>{},leaveVenue:()=>jump({id:null,active:false}),openRoom:async()=>{},retryWork:async()=>{},
 moveTargetId:'target / B',movePrivateZoneId:' private / target ',playerMovePrivateZoneId:' private / target ',setMoveTargetId:()=>{},setMovePrivateZoneId:()=>{},setPlayerMovePrivateZoneId:()=>{},
 placeBusyId:'',nameOfCharacter:id=>id??'',standingAt:()=>[],setScreen,setVenuePage,setVenueZoneKey,
-venueSection:venuePage==='view'?'zones':'manage',setVenueSection:value=>setVenuePage(value==='zones'?'view':'edit'),planVenueRenovation:()=>{},openVenueRequests:()=>{}}}/>}
+venueSection:venuePage==='view'?'zones':'manage',setVenueSection:value=>setVenuePage(value==='zones'?'view':'edit'),planVenueRenovation:()=>{},openVenueRequests:()=>{}}}/>
 </>;
 }
 window.pending=[];window.calls={snapshot:0,busy:0,settingsError:0,editBusy:0,editError:0,notice:0,draft:0,proposal:0,problem:0};
@@ -163,7 +161,6 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
       zoneBody,
       strict,
       page: options.page ?? "edit",
-      accessPanel: options.accessPanel ?? false,
       initialZone: options.zone ?? "zone / same",
       occupied: options.occupied ?? false,
       confirmAnswer: true,
@@ -306,10 +303,6 @@ export async function verifyVenueScreenLifetimes(browser) {
       })
       .toBe(true);
     return outcome;
-  }
-  async function openAccess(f) {
-    await f.page.getByText("Manage access", { exact: true }).click();
-    await f.page.getByText("Zone policy", { exact: true }).click();
   }
   // State-only lifetime scenarios need one width; responsive UI lives in universal-venue coverage.
   for (const width of [390])
@@ -503,89 +496,6 @@ export async function verifyVenueScreenLifetimes(browser) {
         await f.reply(0);
         await f.settle(0);
         assert.deepEqual(await f.read(), before);
-        await f.finish();
-      }
-      for (const retirement of ["venue", "revision"])
-        for (const fail of [false, true]) {
-          const f = await mount(strict, width, { page: "view", accessPanel: true });
-          await openAccess(f);
-          await f.page.getByRole("button", { name: "Save Zone policy", exact: true }).click();
-          await expect.poll(() => f.requests.length).toBe(1);
-          assert.equal(f.requests[0].body.expectedRevision, 1);
-          assert.equal(typeof f.requests[0].body.operationId, "string");
-          assert(f.requests[0].body.operationId.length > 0);
-          if (retirement === "venue") await f.page.evaluate(() => window.h.jump({ id: "B / venue", page: "view" }));
-          else await f.page.evaluate(() => window.h.revision());
-          await openAccess(f);
-          await expect(f.page.getByRole("combobox", { name: "Zone access", exact: true })).toHaveValue(
-            retirement === "venue" ? "permission-required" : "public",
-          );
-          await expect(f.page.getByRole("button", { name: "Save Zone policy", exact: true })).toBeEnabled();
-          await f.page.getByRole("button", { name: "Save Zone policy", exact: true }).click();
-          await expect.poll(() => f.requests.length).toBe(2);
-          assert.equal(f.requests[1].body.expectedRevision, retirement === "revision" ? 2 : 1);
-          assert.notEqual(f.requests[1].body.operationId, f.requests[0].body.operationId);
-          await f.reply(0, { fail });
-          await f.settle(0);
-          await expect(f.page.getByRole("alert").filter({ hasText: "synthetic Venue failure" })).toHaveCount(0);
-          await expect(f.page.getByRole("button", { name: "Save Zone policy", exact: true })).toBeDisabled();
-          await f.reply(1);
-          await f.settle(1);
-          await f.finish();
-        }
-      {
-        const f = await mount(strict, width, { page: "view", accessPanel: true });
-        await openAccess(f);
-        await f.page.getByRole("button", { name: "Save Zone policy", exact: true }).click();
-        await expect.poll(() => f.requests.length).toBe(1);
-        await f.reply(0, { fail: true });
-        await f.settle(0);
-        await expect(f.page.getByRole("alert").filter({ hasText: "synthetic Venue failure" })).toBeVisible();
-        await expect(f.page.getByRole("button", { name: "Save Zone policy", exact: true })).toBeEnabled();
-        await f.finish();
-      }
-      for (const child of ["access"])
-        for (const fail of [false, true]) {
-          const f = await mount(strict, width, { page: "view", accessPanel: true });
-          if (child === "access") await openAccess(f);
-          const name = child === "access" ? "Save Zone policy" : "Save zone details";
-          await f.page.getByRole("button", { name, exact: true }).click();
-          await expect.poll(() => f.requests.length).toBe(1);
-          await f.page.evaluate(() => {
-            window.h.reset();
-            window.h.refound();
-          });
-          await expect(f.page.getByRole("button", { name, exact: true })).toBeEnabled();
-          await f.page.getByRole("button", { name, exact: true }).click();
-          await expect.poll(() => f.requests.length).toBe(2);
-          const before = await f.read();
-          await f.reply(0, { fail });
-          await f.settle(0);
-          assert.deepEqual(await f.read(), before);
-          await expect(f.page.getByRole("alert").filter({ hasText: "synthetic Venue failure" })).toHaveCount(0);
-          await expect(f.page.getByText("Zone saved.", { exact: true })).toHaveCount(0);
-          await expect(
-            f.page.getByRole("button", { name: child === "zone" ? "Saving…" : name, exact: true }),
-          ).toBeDisabled();
-          await f.reply(1);
-          await f.settle(1);
-          await expect(f.page.getByRole("button", { name, exact: true })).toBeEnabled();
-          await f.finish();
-        }
-      {
-        const f = await mount(strict, width, { page: "view", accessPanel: true });
-        await openAccess(f);
-        await f.page.getByRole("button", { name: "Save Zone policy", exact: true }).click();
-        await expect.poll(() => f.requests.length).toBe(1);
-        const submitted = structuredClone(f.requests[0].body);
-        await f.page.evaluate(() => window.h.poll());
-        await expect(f.page.getByRole("button", { name: "Save Zone policy", exact: true })).toBeDisabled();
-        await f.reply(0, { fail: true });
-        await f.settle(0);
-        assert.equal(f.requests.length, 1);
-        assert.deepEqual(f.requests[0].body, submitted);
-        await expect(f.page.getByRole("alert").filter({ hasText: "synthetic Venue failure" })).toBeVisible();
-        await expect(f.page.getByRole("button", { name: "Save Zone policy", exact: true })).toBeEnabled();
         await f.finish();
       }
     }

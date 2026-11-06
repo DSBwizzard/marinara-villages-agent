@@ -1,15 +1,9 @@
-import type {
-  SceneView,
-  VillageBuildingOption,
-  VillagerAgendaView,
-  VillageSnapshot,
-  VillageVenue,
-} from "../../shared/contracts/village.js";
+import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
+import type { SceneView, VillagerAgendaView, VillageSnapshot, VillageVenue } from "../../shared/contracts/village.js";
 import { ELEMENT_TAG } from "./constants.js";
 import type { EngineConnectionRow, VillageConnectionOption, VillagesStyledNode } from "./types.js";
 import { isHouse, venueClassesFor, venueSpaceFor } from "./venue.js";
 import { parseVillagesInlineMarkdown, type VillagesMarkdownNode } from "./villages-inline-markdown";
-import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
 
 /**
  * A stamp as a wall-clock time, or nothing when there is not one to read.
@@ -405,38 +399,10 @@ export function pinText(occupant: string): string {
   return occupant.length > 0 ? houseLabel(occupant, true) : "Empty house";
 }
 
-/**
- * What a building is called and the class it belongs to, as the village named
- * them. A kind the tab was not handed — reachable only from a document written
- * by some later version — is drawn by its own name rather than as a blank row.
- */
-export function buildingOf(buildings: readonly VillageBuildingOption[], kind: string | null): VillageBuildingOption {
-  if (kind === null) return { kind: "", name: "Venue residence", category: "" };
-  return buildings.find((option) => option.kind === kind) ?? { kind, name: kind, category: "" };
-}
-
 /** How a house's pin reads at a glance: yours, someone's, or nobody's yet. */
 export function pinTone(place: { isPlayerHome: boolean; occupant: string }): "player" | "resident" | "empty" {
   if (place.isPlayerHome) return "player";
   return place.occupant ? "resident" : "empty";
-}
-
-/**
- * What the screen standing in a place is called.
- *
- * A house is named by who lives in it rather than by its own name, because the
- * village does not give houses names — everybody knows where everybody lives —
- * and the player's own house is named the same way out of the same reader. A
- * named house still says its name once nobody has moved in, which is the one case
- * where the name is the only true thing about it.
- *
- * A landmark is its own name, and the village never made one without one: the
- * server drops a place with no name and nothing to make it a house, so the last
- * arm here is reached only by an empty house.
- */
-export function venueTitle(place: Pick<VillageVenue, "name">, occupant: string): string {
-  if (occupant.length > 0) return houseLabel(occupant, true);
-  return place.name || "An empty house";
 }
 
 /**

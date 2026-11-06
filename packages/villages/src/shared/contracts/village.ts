@@ -340,12 +340,6 @@ export type VillageBuildingOption = {
   name: string;
   category: string;
 };
-export /** One insertable prompt token, with the wording the server also renders from. */
-type PresetMacro = {
-  token: string;
-  label: string;
-  help: string;
-};
 
 /**
  * The picture a place is drawn with, as the village stores it.
@@ -553,10 +547,6 @@ export type VillageSettings = {
   sendOnEnter: boolean;
   spriteCardFlipEnabled: boolean;
   spriteVariantsEnabled: boolean;
-  promptKnowledge: string;
-  defaultPromptKnowledge: string;
-  promptBoxMaxLength: number;
-  macros: readonly PresetMacro[];
   backgroundPace: VillageBackgroundPace;
   narrativeConsequence?: VillageNarrativeConsequence;
   backgroundPaces: readonly VillageBackgroundPace[];

@@ -36,10 +36,6 @@ const snapshot = {
   settings: {
     characterSpeechColors: false,
     visitRetention: { mode: "forever", value: 0 },
-    promptKnowledge: "",
-    defaultPromptKnowledge: "",
-    promptBoxMaxLength: 2000,
-    macros: [],
     backgroundPace: "off",
     backgroundPaces: ["off"],
     villageNameMaxLength: 80,

@@ -101,7 +101,6 @@ async function main() {
   const a = fixture("A"),
     b = fixture("B");
   await a.service.setVillageName("  New name  ");
-  await a.service.setVillagePromptKnowledge("Public knowledge");
   await a.service.setVillageLoreSettings([" book ", "book"], 800);
   await a.service.setVillageBackgroundPace("quiet");
   await a.service.setVillageSendOnEnter(true);
@@ -114,7 +113,6 @@ async function main() {
     useVisualLoreByDefault: false,
   });
   assert.equal(a.state.name, "New name");
-  assert.equal(a.state.promptKnowledge, "Public knowledge");
   assert.deepEqual(a.state.selectedLorebookIds, ["book"]);
   assert.equal(a.state.loreTokenBudget, 800);
   assert.equal(a.state.playerPersonaIdentity, "private identity A");
@@ -129,7 +127,6 @@ async function main() {
     () => a.service.setVillageSendOnEnter("true"),
     () => a.service.setVillageSpriteCardFlipEnabled(1),
     () => a.service.setVillageCharacterSpeechColors(null),
-    () => a.service.setVillagePromptKnowledge(1),
     () => a.service.setVillageLoreSettings([""], 800),
     () => a.service.setVillageLoreSettings(undefined, -1),
   ]) {
@@ -151,12 +148,10 @@ async function main() {
   const loreOnly = fixture("Lore only");
   loreOnly.state.venues = [];
   loreOnly.state.setting = "A saved world";
-  loreOnly.state.promptKnowledge = "Saved player knowledge";
   loreOnly.state.playerPersonaId = "saved-persona";
   loreOnly.state.narrationStyle.writingGuidance = "Saved writing guidance";
   await loreOnly.service.setVillageLoreSettings(["book"], 800);
   assert.equal(loreOnly.state.setting, "A saved world");
-  assert.equal(loreOnly.state.promptKnowledge, "Saved player knowledge");
   assert.equal(loreOnly.state.playerPersonaId, "saved-persona");
   assert.equal(loreOnly.state.narrationStyle.writingGuidance, "Saved writing guidance");
   assert.equal(loreOnly.bootstrapCalls, 0, "saving Lorebooks does not bootstrap an empty world");
@@ -239,7 +234,6 @@ async function main() {
       url: "/settings",
       payload: {
         name: "Routed name",
-        promptKnowledge: "Known",
         backgroundPace: "balanced",
         sendOnEnter: true,
         characterSpeechColors: true,
@@ -247,12 +241,11 @@ async function main() {
     });
     assert.equal(response.statusCode, 200, response.body);
     assert.equal(response.json().village.name, "Routed name");
-    assert.equal(routed.state.promptKnowledge, "Known");
     assert.equal(routed.state.sendOnEnter, true);
     assert.equal(routed.bootstrapCalls, 0);
     assert.deepEqual(
       routed.events.filter((event) => event === "mutate" || event === "snapshot"),
-      Array.from({ length: 5 }, () => ["mutate", "snapshot"]).flat(),
+      Array.from({ length: 4 }, () => ["mutate", "snapshot"]).flat(),
     );
     const rejected = await app.inject({ method: "PATCH", url: "/settings", payload: { sendOnEnter: "true" } });
     assert.equal(rejected.statusCode, 400);

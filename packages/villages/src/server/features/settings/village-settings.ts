@@ -8,9 +8,6 @@ export function configureVillageSettings(service: VillageSettings): () => void {
 export function villageSettings(): VillageSettings {
   return binding.get();
 }
-export function setVillagePromptKnowledge(...args: Parameters<VillageSettings["setVillagePromptKnowledge"]>) {
-  return villageSettings().setVillagePromptKnowledge(...args);
-}
 export function setVillageLoreSettings(...args: Parameters<VillageSettings["setVillageLoreSettings"]>) {
   return villageSettings().setVillageLoreSettings(...args);
 }

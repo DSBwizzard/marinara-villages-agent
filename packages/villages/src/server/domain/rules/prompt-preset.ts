@@ -3,9 +3,6 @@ import type { TownMapFit, VillageTownMapView, VillageVenue } from "../models/wor
 import { asTrimmedString } from "./coerce.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
 import { hasVenueClass } from "./venue-model.js";
-
-/** Preserve the existing bound when reading saved legacy knowledge. */
-export const VILLAGES_PROMPT_BOX_MAX_LENGTH = 8_000;
 /** Bound venue event text and decision titles. */
 export const MAX_EVENT_TEXT_LENGTH = 280;
 /** Bound saved requester names. */
@@ -16,23 +13,6 @@ export const MAX_PHYSICAL_NARRATION_LENGTH = 320;
 
 /** Recent physical changes; exchange receipts retain durable proof. */
 export const MAX_VENUE_EVENTS = 200;
-/**
- * How many conversations are kept for one villager.
- *
- * This is the player's own copy of what was said, kept for the debug tab, and
- * it is the only record in the package that grows with use rather than with
- * time. Newest first and trimmed from the tail, which drops whole conversations
- * rather than half of one.
- *
- * ponytail: ceil it, do not grow it. Twenty conversations is far more than the
- * player will ever scroll through, and the ceiling is what stops a village that
- * has been played for a year from carrying every word of it. The upgrade path,
- * if somebody genuinely wants the whole history, is a download rather than a
- * larger document.
- */
-export const MAX_CHAT_LOG_SESSIONS = 20;
-/** Maximum recent logical sends retained for durable retry reconciliation. */
-export const MAX_SUBMISSIONS = 8;
 /** Matches the Engine generate schema's bounded submissionId field. */
 export const MAX_SUBMISSION_ID_LENGTH = 100;
 /** How long the village's fallback line about an ordinary day may be. */
@@ -74,9 +54,6 @@ export const MAX_REMAP_MOVES = 512;
 export const MAX_REMAP_SLOT_LENGTH = 40;
 export const MAX_REMAP_ACTIVITY_LENGTH = 200;
 export const MAX_REMAP_HERE_LENGTH = 200;
-/** How much of the player's own identity the village will store. */
-export const MAX_PLAYER_NAME_LENGTH = 80;
-export const MAX_PLAYER_DESCRIPTION_LENGTH = 2_000;
 /**
  * How long a Persona id the village will remember.
  *
@@ -98,17 +75,6 @@ export const MAX_PLAYER_PERSONA_ID_LENGTH = 128;
  */
 export const MAX_PLAYER_PERSONA_NAME_LENGTH = 80;
 export const MAX_PLAYER_PERSONA_IDENTITY_LENGTH = 8_000;
-/**
- * How long an Engine key the village stores may be.
- *
- * A scene record holds three of them — a chat id, a preset id and a Persona id —
- * and none of them is ever shown. The cap does the same job as the Persona one
- * above and for the same reason: nothing here validates that the key still
- * exists, because that is a question about the Engine's library and not about
- * this record, so the only thing this can do is stop a hand-edited document
- * carrying prose where a key belongs.
- */
-export const MAX_ENGINE_ID_LENGTH = 128;
 /** How much of the world the player may write. One paragraph, not a wiki. */
 export const MAX_SETTING_LENGTH = 4_096;
 /** How long the village's own name may be. */
@@ -131,7 +97,6 @@ export const MAX_VENUE_DESCRIPTION_LENGTH = 4_000;
  * the places a villager is sent to — see `remapVenues`.
  */
 export const MAX_PLACES = 48;
-export const MAX_VENUES = 24;
 
 /**
  * The places a villager may be SENT to: everything the village holds except the
@@ -330,19 +295,6 @@ export function homeBuildingOptions(): VillageBuildingOption[] {
 export const MAX_TOWN_MAP_IMAGE_LENGTH = 8_000_000;
 
 /**
- * A map is only ever shown in an `<img src>`, so only a base64 image data URL
- * is worth storing: anything else would be a stored value the tab cannot draw.
- * The pattern is anchored at both ends on purpose — `startsWith` alone would
- * accept a hand-edited document whose payload is not base64 at all.
- */
-const TOWN_MAP_IMAGE_PATTERN = /^data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/]+=*$/i;
-
-/** Whether a string is an image data URL the tab could actually display. */
-export function isTownMapImage(value: string): boolean {
-  return TOWN_MAP_IMAGE_PATTERN.test(value);
-}
-
-/**
  * The shape the map is drawn in, and the picture size that shape is authored
  * against.
  *
@@ -444,90 +396,6 @@ export const DEFAULT_TOWN_MAP_VIEW: VillageTownMapView = {
   focusY: DEFAULT_TOWN_MAP_FOCUS,
   zoom: DEFAULT_TOWN_MAP_ZOOM,
 };
-
-/** Legacy template retained in settings snapshots for compatibility. */
-export const VILLAGES_DEFAULT_KNOWLEDGE = [
-  "You are {{char}}, and you live in {{village}}.",
-  "## Where you are",
-  "{{setting}}",
-  "It is {{time}}, and the weather is {{weather}}.",
-  "{{doing}}",
-  "{{wishes}}",
-  "{{venues}}",
-  "{{homes}}",
-  "{{player}}",
-  "{{roster}}",
-  "{{present}}",
-  "{{memory}}",
-  "{{lore}}",
-].join("\n");
-
-export type VillagePresetMacro = {
-  /** The literal token a player types. */
-  token: string;
-  label: string;
-  help: string;
-};
-
-/** Legacy snapshot metadata retained for compatibility. */
-export const VILLAGE_PRESET_MACROS: readonly VillagePresetMacro[] = [
-  { token: "{{char}}", label: "Villager", help: "The name of the villager being written to." },
-  { token: "{{village}}", label: "Village", help: "The village's name." },
-  {
-    token: "{{setting}}",
-    label: "The world",
-    help: "The authored place and world context, verified current facts, and shared-setting framing.",
-  },
-  {
-    token: "{{venues}}",
-    label: "Places here",
-    help: "The places in the village and what happens at them. Renders nothing when there are none.",
-  },
-  {
-    token: "{{homes}}",
-    label: "Where people live",
-    help: "The homes on the town map and who lives in each. Renders nothing when no home is occupied.",
-  },
-  { token: "{{user}}", label: "Player", help: 'Your name, or "the player" when you have not set one.' },
-  { token: "{{userDescription}}", label: "Your description", help: "Your description, or nothing when it is empty." },
-  { token: "{{time}}", label: "Time", help: 'For example "an autumn morning on 11 September".' },
-  { token: "{{weather}}", label: "Weather", help: "The weather right now, in lower case." },
-  {
-    token: "{{doing}}",
-    label: "What they are doing",
-    help: "What this villager is doing right now, from their own schedule. Renders nothing when they have none.",
-  },
-  {
-    token: "{{wishes}}",
-    label: "What they wish for",
-    help: "Retained private social desires, when supplied. Retention does not require attention or disclosure.",
-  },
-  {
-    token: "{{player}}",
-    label: "Who you are talking to",
-    help: "A heading naming you. Renders nothing when you are unnamed.",
-  },
-  {
-    token: "{{roster}}",
-    label: "Other villagers",
-    help: "A list of who else lives here. Renders nothing when nobody else does.",
-  },
-  {
-    token: "{{present}}",
-    label: "Who is around now",
-    help: "Where everybody else is at this hour, and what they are at. Renders nothing when nobody else is anywhere.",
-  },
-  {
-    token: "{{memory}}",
-    label: "What you remember",
-    help: "The things this villager remembers, dated and oldest first. Renders nothing before anything is remembered.",
-  },
-  {
-    token: "{{lore}}",
-    label: "Village lore",
-    help: "Lorebook entries attached to the village. Renders nothing when none are.",
-  },
-];
 
 /** A projected home: who lives there, resolved, and what it is. */
 export type VillageHomeLine = {

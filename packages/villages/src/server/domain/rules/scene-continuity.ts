@@ -70,7 +70,6 @@ export const sceneContinuityFields = [
   "venueEvents",
   "projects",
   "opening",
-  "promptKnowledge",
 ] as const satisfies readonly (keyof VillageState)[];
 
 export type SceneContinuity = {
