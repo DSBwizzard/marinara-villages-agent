@@ -12,6 +12,7 @@ import {
 import { operationSummary } from "../../adapters/operations/operation-context.js";
 import type { VillageVenueClass } from "../../domain/models/world.js";
 import { badRequest, conflict } from "../../domain/rules/errors.js";
+import { publicSceneChanges } from "../../domain/rules/scene-public.js";
 import { readVenueOperation } from "../../jobs/venue-coordinator.js";
 import { imageTarget } from "../venues/services.js";
 import { assertFoundedVillageReady } from "../founding/preparation.js";
@@ -211,13 +212,29 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
     "/rooms/:id/changes",
     async (request, reply) => {
       try {
-        return await readSceneChanges(
-          readChatId(request.params.id),
-          request.query?.cursor,
-          Number(request.query?.limit ?? 20),
+        return publicSceneChanges(
+          await readSceneChanges(
+            readChatId(request.params.id),
+            request.query?.cursor,
+            Number(request.query?.limit ?? 20),
+          ),
         );
       } catch (error) {
         return fail(reply, error, "reading saved Scene changes");
+      }
+    },
+  );
+  app.get<{ Params: { id: string }; Querystring: { cursor?: string; limit?: string } }>(
+    "/rooms/:id/changes/diagnostics",
+    async (request, reply) => {
+      try {
+        return await readSceneChanges(
+          readChatId(request.params.id),
+          request.query?.cursor,
+          Number(request.query?.limit ?? 10),
+        );
+      } catch (error) {
+        return fail(reply, error, "reading owner Scene diagnostics");
       }
     },
   );
@@ -260,10 +277,12 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
         const domain = request.body?.domain;
         if (!["memories", "relationships", "wishes", "projects"].includes(domain))
           throw badRequest("Choose a saved domain.");
-        return await continueSceneChange(
-          readChatId(request.params.id),
-          readChatId(request.params.submissionId),
-          domain as "memories" | "relationships" | "wishes" | "projects",
+        return publicSceneChanges(
+          await continueSceneChange(
+            readChatId(request.params.id),
+            readChatId(request.params.submissionId),
+            domain as "memories" | "relationships" | "wishes" | "projects",
+          ),
         );
       } catch (error) {
         return fail(reply, error, "continuing after a failed semantic update");
@@ -272,7 +291,7 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
   );
   app.post<{ Params: { id: string } }>("/rooms/:id/changes/replay", async (request, reply) => {
     try {
-      return await replaySceneChanges(readChatId(request.params.id));
+      return publicSceneChanges(await replaySceneChanges(readChatId(request.params.id)));
     } catch (error) {
       return fail(reply, error, "replaying saved changes without model requests");
     }
@@ -284,11 +303,13 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
         const domain = request.body?.domain;
         if (domain !== "memories" && domain !== "relationships" && domain !== "wishes" && domain !== "projects")
           throw badRequest("Choose memories, relationships, wishes, or projects.");
-        return await retrySceneChangeInterpretation(
-          readChatId(request.params.id),
-          readChatId(request.params.submissionId),
-          domain,
-          request.body?.retryOfAttemptId,
+        return publicSceneChanges(
+          await retrySceneChangeInterpretation(
+            readChatId(request.params.id),
+            readChatId(request.params.submissionId),
+            domain,
+            request.body?.retryOfAttemptId,
+          ),
         );
       } catch (error) {
         return fail(reply, error, "explicitly retrying a change interpretation");

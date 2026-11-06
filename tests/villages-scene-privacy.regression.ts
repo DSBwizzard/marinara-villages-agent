@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { publicSceneRoutes } from "../packages/villages/src/server/adapters/http/public-scene-routes.js";
-import type { FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance } from "fastify";
+import { configureSceneChanges } from "../packages/villages/src/server/features/scenes/changes.js";
+import { configureSceneCommands } from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { registerSceneOperationRoutes } from "../packages/villages/src/server/features/scenes/routes.js";
+import { conflict } from "../packages/villages/src/server/domain/rules/errors.js";
 import {
   publicSceneResponse,
   publicSceneAuthority,
@@ -170,6 +174,116 @@ async function main() {
     diagnostic,
     "other public and explicit owner-diagnostic payloads remain intact",
   );
+
+  {
+    const visibleNotice = {
+      id: "known",
+      kind: "memory",
+      text: "You learned a visible fact.",
+      wishUpdate: { actorId: "visible", wishId: "known-wish", state: "progress" },
+    };
+    const issue = {
+      submissionId: "turn",
+      domain: "relationships",
+      status: "failed",
+      at: "now",
+      diagnosticId: "failure-id",
+      reason: "This update needs explicit repair.",
+      canContinue: false,
+      continued: false,
+    };
+    const raw = {
+      sceneId: "fixture",
+      notices: [visibleNotice],
+      dismissedNoticeIds: ["dismissed"],
+      changes: [
+        {
+          submissionId: "turn",
+          at: "now",
+          notices: [visibleNotice],
+          interpretations: {
+            relationship: { intentions: "private intention sentinel", stance: "private stance sentinel" },
+            wishes: "private Wish sentinel",
+            memory: "private Memory sentinel",
+          },
+          evidence: ["private hearing sentinel"],
+          receipts: { private: "private receipt sentinel" },
+          interpretationHistory: ["private history sentinel"],
+          processing: { error: "private raw reason sentinel" },
+        },
+      ],
+      unresolved: [{ ...issue, privateEvidence: "private issue sentinel" }],
+      backgroundChecks: [{ status: "running", subjectId: "private subject sentinel", error: "private job sentinel" }],
+      activeRequest: { status: "complete", error: "private request sentinel", requests: "private metrics sentinel" },
+      processingSummary: { pending: 0, failed: 1, rejected: 0, private: "private summary sentinel" },
+      nextCursor: "2:3:4",
+      hasMore: true,
+      private: "private root sentinel",
+    };
+    const original = structuredClone(raw),
+      reads: unknown[] = [];
+    let failRead = false;
+    const releaseChanges = configureSceneChanges({
+      readSceneChanges: async (...args: unknown[]) => {
+        if (failRead) throw conflict("This Scene belongs to a previous village.");
+        reads.push(args);
+        return structuredClone(raw);
+      },
+      replaySceneChanges: async () => structuredClone(raw),
+      continueSceneChange: async () => structuredClone(raw),
+    } as any);
+    const releaseCommands = configureSceneCommands({
+      retrySceneChangeInterpretation: async () => structuredClone(raw),
+    } as any);
+    const app = Fastify();
+    registerSceneOperationRoutes(publicSceneRoutes(app, async (scene) => publicSceneResponse(scene)));
+    try {
+      for (const request of [
+        { method: "GET" as const, url: "/rooms/fixture/changes?cursor=1:2:3&limit=7" },
+        { method: "POST" as const, url: "/rooms/fixture/changes/replay" },
+        { method: "POST" as const, url: "/rooms/fixture/changes/turn/continue", payload: { domain: "relationships" } },
+        { method: "POST" as const, url: "/rooms/fixture/changes/turn/interpret", payload: { domain: "relationships" } },
+      ]) {
+        const response = await app.inject(request);
+        assert.equal(response.statusCode, 200, response.body);
+        assert.doesNotMatch(response.body, /private .* sentinel/);
+        const feed = response.json();
+        assert.deepEqual(feed.notices, [visibleNotice]);
+        assert.deepEqual(feed.changes, [{ submissionId: "turn", at: "now", notices: [visibleNotice] }]);
+        assert.deepEqual(feed.unresolved, [issue]);
+        assert.deepEqual(feed.processingSummary, { pending: 0, failed: 1, rejected: 0 });
+        assert.deepEqual(feed.backgroundChecks, [{ status: "running" }]);
+        assert.deepEqual(feed.activeRequest, { status: "complete" });
+        assert.deepEqual(feed.dismissedNoticeIds, ["dismissed"]);
+        assert.equal(feed.nextCursor, "2:3:4");
+        assert.equal(feed.hasMore, true);
+      }
+      assert.deepEqual(reads, [["fixture", "1:2:3", 7]]);
+      const explicit = await app.inject({
+        method: "GET",
+        url: "/rooms/fixture/changes/diagnostics?cursor=4:5:6&limit=3",
+      });
+      assert.equal(explicit.statusCode, 200, explicit.body);
+      assert.deepEqual(
+        explicit.json(),
+        raw,
+        "Deliberate owner inspection retains its existing private evidence contract",
+      );
+      assert.deepEqual(reads.at(-1), ["fixture", "4:5:6", 3]);
+      assert.deepEqual(raw, original, "Projection never mutates retained diagnostic evidence");
+      failRead = true;
+      for (const path of ["/rooms/fixture/changes", "/rooms/fixture/changes/diagnostics"]) {
+        const rejected = await app.inject({ method: "GET", url: path });
+        assert.equal(rejected.statusCode, 409, rejected.body);
+        assert.equal(rejected.json().error, "This Scene belongs to a previous village.");
+      }
+    } finally {
+      await app.close();
+      releaseCommands();
+      releaseChanges();
+    }
+  }
+
   console.log(
     "Villages Scene privacy: active wrapper filters only Scene payloads, preserving visible content, progress summaries, saved records and explicit diagnostics (mocked collector).",
   );
