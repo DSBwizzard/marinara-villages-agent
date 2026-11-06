@@ -44,6 +44,7 @@ import {
   planningAllowance,
   readResidentPlanningProposal,
   residentPlanningOpportunity,
+  residentPlanningRecallContext,
   type ResidentPlanningContext,
 } from "../../domain/rules/resident-planning.js";
 import { responseDiagnostics } from "../../domain/rules/response-diagnostics.js";
@@ -186,10 +187,17 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
             purpose: "narration",
             audience: [id],
             query: opportunity.facts.join(" ") + " " + id,
+            context: residentPlanningRecallContext(village, opportunity, [id]),
           }).serialized,
         ]),
       ),
-      memory: sceneMemoryContext(village, opportunity.actorIds, opportunity.facts.join(" ")),
+      memory: sceneMemoryContext(
+        village,
+        opportunity.actorIds,
+        opportunity.facts.join(" "),
+        "",
+        residentPlanningRecallContext(village, opportunity),
+      ),
       social: {
         candidates: !activePlan && allowance > 1 ? socialPlanCandidates(village, now) : [],
         relationships: opportunity.actorIds.map((id) => relationshipWritingPrompt(village, id)),
@@ -381,10 +389,17 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
             purpose: "narration",
             audience: [id],
             query: opportunity.facts.join(" ") + " " + id,
+            context: residentPlanningRecallContext(historical, opportunity, [id]),
           }).serialized,
         ]),
       ),
-      memory: sceneMemoryContext(historical, opportunity.actorIds, opportunity.facts.join(" ")),
+      memory: sceneMemoryContext(
+        historical,
+        opportunity.actorIds,
+        opportunity.facts.join(" "),
+        "",
+        residentPlanningRecallContext(historical, opportunity),
+      ),
       social: {
         candidates: [],
         relationships: opportunity.actorIds.map((id) => relationshipWritingPrompt(historical, id)),

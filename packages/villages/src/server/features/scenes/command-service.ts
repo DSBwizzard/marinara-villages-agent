@@ -23,6 +23,7 @@ import type { VillageState, VillageVenue } from "../../domain/models/world.js";
 import { asRecord } from "../../domain/rules/coerce.js";
 import { badGateway, badRequest, conflict, notFound, VillagesRequestError } from "../../domain/rules/errors.js";
 import { bindLiveProposals, createLiveEvidenceContext, liveEvidence } from "../../domain/rules/live-exchange.js";
+import { sharedLoreHistory } from "../../domain/rules/scene-writing-history.js";
 import { applyLiveMemories } from "../../domain/rules/live-memory-application.js";
 import { bindProjectSpeech, validateProjectSpeech } from "../../domain/rules/project-interpretation.js";
 import { structuralShape as projectZoneShape } from "../../domain/rules/project-structure.js";
@@ -286,6 +287,11 @@ export function createSceneCommands({
         liveEvidence(scene, proposals)
           .map((line) => line.content)
           .join("\n"),
+        sharedLoreHistory(
+          scene,
+          scene.lines.filter((line) => proposals.earlierLineIds.includes(line.id)),
+          scene.activeIds,
+        ).join("\n"),
       );
       let model = await villagesLanguageModels().resolveForRequest({
         connectionId: await villagesConnectionIdFor("system"),

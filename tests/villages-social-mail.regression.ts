@@ -31,6 +31,7 @@ import { createSocialMail } from "../packages/villages/src/server/features/resid
 import { correspondenceTestClient } from "./helpers/mailbox.fixture.js";
 import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
 import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
+import { addMemory, emptyMemories } from "./helpers/memories-fixture.js";
 const village = defaultVillageState();
 village.seed = "mail";
 village.foundedAt = new Date().toISOString();
@@ -1032,6 +1033,51 @@ await assert.rejects(
 );
 assert.equal(calls, afterFenceCalls, "Obsolete work cannot dispatch a new request");
 resetFixtureWork(obsoleteInput);
+{
+  const priorMemories = village.memories,
+    priorThreads = social.mailThreads;
+  village.memories = addMemory(
+    addMemory(emptyMemories(), {
+      text: "The greenhouse needs repairs.",
+      audience: ["ada"],
+      patch: { subjects: [] },
+    }),
+    { text: "The sapphire is missing.", audience: ["ada"], patch: { subjects: [] } },
+  );
+  const threadId = "personal:ada";
+  const letter = (id: string, text: string, fromId = "player") => ({
+    id,
+    requestId: id,
+    text,
+    fromId,
+    toId: fromId === "player" ? "ada" : "player",
+    at: new Date().toISOString(),
+    status: "delivered" as const,
+  });
+  social.mailThreads = {
+    [threadId]: {
+      id: threadId,
+      participantIds: ["player", "ada"],
+      revision: 1,
+      messages: [
+        letter("shared-topic", "greenhouse repairs"),
+        letter("unread-topic", "sapphire", "ada"),
+        { ...letter("cancelled-topic", "sapphire"), status: "cancelled" },
+      ],
+    },
+  };
+  const paid = calls;
+  await service.send({ residentId: "ada", requestId: "contextual-followup", text: "What about it?" });
+  const contextual = queued.at(-1).input as SocialMailInput;
+  const texts = contextual.systemMemory!.envelope.memories.map((row) => row.text).join("\n");
+  assert(texts.includes("greenhouse"), "A brief letter recalls the delivered thread topic");
+  assert(!texts.includes("sapphire"), "Unread and cancelled letters cannot steer shared recall");
+  assert.deepEqual(contextual.systemMemory!.saved.recall.targetIds, []);
+  assert.equal(calls, paid, "Mail recall itself makes no provider request");
+  resetFixtureWork(contextual);
+  village.memories = priorMemories;
+  social.mailThreads = priorThreads;
+}
 await service.send({ residentId: "ada", requestId: "native-learning", text: "MEMORY: I collect amber fossils." });
 failNativeWrite = "source";
 await generateAndSave();

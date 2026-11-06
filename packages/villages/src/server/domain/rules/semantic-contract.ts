@@ -71,7 +71,13 @@ export function semanticContext(
   const venue = findLocation(state, scene.placeId);
   const layout = venue && sceneLayoutVenue(venue, scene);
   const { receipts: _receipts, changes: _changes, ...accessRules } = venue?.access ?? {};
-  const memory = sceneMemoryContext(authority, ["player", ...actors], query, narration);
+  const memory = sceneMemoryContext(
+    authority,
+    ["player", ...actors],
+    query,
+    narration,
+    sharedLoreHistory(scene, scene.lines, actors).join("\n"),
+  );
   const recentHistory = scene.lines
     .filter((row) => !row.contactReport && actors.some((id) => row.heardBy.includes(id)))
     .slice(-18);

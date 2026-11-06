@@ -1,4 +1,4 @@
-// Test cases: memories/formation, memories/repair, memories/guards, memories/authority, memories/continuity, memories/evidence, memories/protection, memories/consolidation, memories/review-regressions
+// Test cases: memories/formation, memories/repair, memories/guards, memories/authority, memories/continuity, memories/evidence, memories/protection, memories/consolidation, memories/review-regressions, memories/context
 import assert from "node:assert/strict";
 import {
   applyMemoryProposal,
@@ -10,6 +10,8 @@ import {
   memoryProtectionContext,
 } from "../packages/villages/src/server/domain/rules/memory-protection.js";
 import { recallMemories } from "../packages/villages/src/server/domain/rules/memory-recall.js";
+import { semanticContext } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
   captureMemoryScene,
   projectMemories,
@@ -31,6 +33,114 @@ import {
   memoryTime,
   targetOf,
 } from "./helpers/memories-fixture.js";
+
+await runCase("memories/context", () => {
+  let collection = addMemory(emptyMemories(), { text: "Aqua promised greenhouse repairs." });
+  collection = addMemory(collection, { text: "Aqua promised bakery lessons." });
+  collection = addMemory(collection, { text: "Ella concealed the sapphire.", audience: ["ella"] });
+  const original = structuredClone(collection);
+  const followup = recallMemories(collection, {
+    purpose: "system",
+    audience: ["aqua", "player"],
+    query: "What about it?",
+    context: "greenhouse repairs",
+  });
+  assert.equal(followup.candidates[0].text, "Aqua promised greenhouse repairs.");
+  assert.deepEqual(followup.targetIds, [], "Context alone never guesses a mutation target");
+  const changedTopic = recallMemories(collection, {
+    purpose: "system",
+    audience: ["aqua"],
+    query: "bakery",
+    context: "greenhouse repairs ".repeat(100),
+  });
+  assert.equal(changedTopic.candidates[0].text, "Aqua promised bakery lessons.");
+  assert(changedTopic.targetIds.includes(collection.records[1].id));
+  assert.equal(
+    recallMemories(collection, {
+      purpose: "system",
+      audience: ["aqua"],
+      query: "What about it?",
+      context: "sapphire",
+    }).candidates.length,
+    0,
+    "Context cannot grant private knowledge",
+  );
+  const forgotten = applyMemoryRepair(
+    collection,
+    memoryRepair(collection, "forget", ["aqua"]),
+    memoryTime(9),
+  ).collection;
+  assert.equal(
+    recallMemories(forgotten, {
+      purpose: "system",
+      audience: ["aqua"],
+      query: "What about it?",
+      context: "greenhouse repairs",
+    }).candidates.length,
+    0,
+  );
+  assert.deepEqual(collection, original);
+  assert(followup.tokens <= 1800);
+  const separate = addMemory(
+    addMemory(emptyMemories(), { text: "The greenhouse needs repairs.", audience: ["player"] }),
+    { text: "The bakery offers lessons.", audience: ["aqua"] },
+  );
+  const primary = projectMemories(separate, ["aqua"])[0];
+  const constrained = recallMemories(separate, {
+    purpose: "system",
+    audience: ["player", "aqua"],
+    query: "bakery",
+    context: "greenhouse repairs",
+    budget: estimatedMemoryTokens(JSON.stringify({ memories: [primary] })),
+  });
+  assert.deepEqual(
+    constrained.candidates.map((row) => row.id),
+    [primary.id],
+    "Participant balancing cannot displace a current match with context",
+  );
+
+  const world = defaultVillageState();
+  world.memories = collection;
+  const shared = {
+    id: "shared",
+    role: "assistant",
+    speakerId: "aqua",
+    kind: "dialogue",
+    content: "greenhouse repairs",
+    heardBy: ["aqua", "ella"],
+    zoneId: "common",
+  };
+  const scene = {
+    version: 4,
+    id: "context",
+    startedAt: memoryTime(),
+    activeIds: ["aqua", "ella"],
+    participants: [],
+    zoneId: "common",
+    lines: [shared],
+    submissions: [],
+  } as any;
+  const packet = semanticContext(scene, world, "What about it?", true);
+  assert(
+    packet.memory.memories.some((row) => row.text.includes("greenhouse")),
+    "Shared Scene context reaches recall",
+  );
+  for (const line of [
+    { ...shared, heardBy: ["aqua"] },
+    { ...shared, contactHidden: true },
+    { ...shared, zoneId: "private" },
+    { ...shared, role: "user", speechSource: undefined },
+  ]) {
+    const privatePacket = semanticContext({ ...scene, lines: [line] }, world, "What about it?", true);
+    assert.deepEqual(privatePacket.memory.memories, [], "Unshared or unverified history cannot steer shared recall");
+  }
+  assert.deepEqual(
+    semanticContext({ ...scene, activeIds: ["aqua", "ella", "absent-npc"] }, world, "What about it?", true).memory
+      .memories,
+    [],
+    "An absent potential recipient keeps the conservative no-context fallback",
+  );
+});
 
 await runCase("memories/formation", () => {
   let collection = addMemory(emptyMemories(), {

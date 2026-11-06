@@ -941,7 +941,7 @@ export function createSocialMail(ports: SocialMailPorts) {
       village = current;
     }
     const state = await ports.readRelationshipState(village.seed),
-      { message } = requireMailSource(state, threadId, messageId);
+      { thread, message } = requireMailSource(state, threadId, messageId);
     const resident = village.villagers.find(
       (row) => row.characterId === (message.toId === "player" ? message.fromId : message.toId),
     );
@@ -963,7 +963,18 @@ export function createSocialMail(ports: SocialMailPorts) {
       incarnation,
       admitted: admission({ ...village, relationshipContext: state }, resident.characterId),
       retainedReply,
-      systemMemory: sceneMemoryContext(village, [resident.characterId, "player"], message.text),
+      systemMemory: sceneMemoryContext(
+        village,
+        [resident.characterId, "player"],
+        message.text,
+        "",
+        thread.messages
+          .slice(0, thread.messages.indexOf(message))
+          .filter((row) => row.status === "delivered" && (row.fromId === "player" || !!row.readAt))
+          .slice(-4)
+          .map((row) => row.text)
+          .join("\n"),
+      ),
       sourceDelivered: !!state.mailDeliveries[message.id],
     };
   }

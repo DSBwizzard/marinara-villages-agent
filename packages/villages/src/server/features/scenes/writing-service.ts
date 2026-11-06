@@ -373,6 +373,12 @@ export function createSceneWriting({
           authority,
           [...new Set(["player", ...audibleIds, ...supportingCandidates.map((npc) => npc.id)])],
           message,
+          "",
+          // Potential NPCs also receive this envelope; absent candidates cannot inherit earlier topic cues.
+          sharedLoreHistory(session, earlierEvidence, [
+            ...audibleIds,
+            ...supportingCandidates.map((npc) => npc.id),
+          ]).join("\n"),
         );
         gmContext.memory = memory.envelope;
         gmContext._memoryWrite = memory.saved;

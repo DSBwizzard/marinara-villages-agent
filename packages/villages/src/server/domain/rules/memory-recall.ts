@@ -5,6 +5,8 @@ import { projectMemories, sceneMemoryCollection } from "./memory-views.js";
 
 export type MemoryRecallRequest = {
   query: string;
+  /** Optional topic cues; never evidence for selecting a mutation target. */
+  context?: string;
   names?: Record<string, string>;
   /** The fresh local System lookup includes the accepted Narration reply. */
   narration?: string;
@@ -37,6 +39,7 @@ export function recallMemories(collection: MemoryCollection, request: MemoryReca
   });
   const query = request.query + " " + (request.purpose === "system" ? (request.narration ?? "") : "");
   const terms = new Set(memoryTerms(query));
+  const contextTerms = new Set(memoryTerms((request.context ?? "").slice(-4000)));
   const documents = new Map<string, number>();
   const rows = candidates.map((candidate, index) => {
     const counts = new Map<string, number>();
@@ -49,18 +52,22 @@ export function recallMemories(collection: MemoryCollection, request: MemoryReca
     const tokens = memoryTerms(text);
     for (const term of tokens) counts.set(term, (counts.get(term) ?? 0) + 1);
     for (const term of counts.keys()) documents.set(term, (documents.get(term) ?? 0) + 1);
-    return { candidate, counts, length: tokens.length, index, score: 0, explicit: false };
+    return { candidate, counts, length: tokens.length, index, score: 0, contextScore: 0, explicit: false };
   });
   const average = rows.reduce((sum, row) => sum + row.length, 0) / Math.max(1, rows.length);
   for (const row of rows) {
-    for (const term of terms) {
-      const tf = row.counts.get(term) ?? 0;
-      if (!tf) continue;
-      const df = documents.get(term) ?? 0;
-      row.score +=
-        (Math.log(1 + (rows.length - df + 0.5) / (df + 0.5)) * tf * 2.2) /
-        (tf + 1.2 * (0.25 + (0.75 * row.length) / Math.max(1, average)));
-    }
+    for (const [field, cues] of [
+      ["score", terms],
+      ["contextScore", contextTerms],
+    ] as const)
+      for (const term of cues) {
+        const tf = row.counts.get(term) ?? 0;
+        if (!tf) continue;
+        const df = documents.get(term) ?? 0;
+        row[field] +=
+          (Math.log(1 + (rows.length - df + 0.5) / (df + 0.5)) * tf * 2.2) /
+          (tf + 1.2 * (0.25 + (0.75 * row.length) / Math.max(1, average)));
+      }
     row.explicit = [row.candidate.id, row.candidate.rootId, row.candidate.domainRef?.id].some(
       (id) => id && query.split(/\s+/u).includes(id),
     );
@@ -69,8 +76,14 @@ export function recallMemories(collection: MemoryCollection, request: MemoryReca
     if (row.score > 0 && row.candidate.kind === "open-matter") row.score += 0.1;
   }
   const ranked = rows
-    .filter((row) => row.score > 0)
-    .sort((a, b) => b.score - a.score || a.candidate.id.localeCompare(b.candidate.id) || a.index - b.index);
+    .filter((row) => row.score > 0 || row.contextScore > 0)
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        b.contextScore - a.contextScore ||
+        a.candidate.id.localeCompare(b.candidate.id) ||
+        a.index - b.index,
+    );
   const selected: MemoryCandidate[] = [];
   const selectedRows = new Set<number>();
   const encode = () =>
@@ -88,12 +101,14 @@ export function recallMemories(collection: MemoryCollection, request: MemoryReca
     }
     selectedRows.add(row.index);
   };
-  // Reserve the best relevant opportunity for each participant before filling by rank.
-  for (const id of request.audience) {
-    const row = ranked.find((item) => item.candidate.knowers[id]);
-    if (row) take(row);
+  // Current-source matches get space before optional context-only matches.
+  for (const relevant of [ranked.filter((row) => row.score > 0), ranked.filter((row) => row.score === 0)]) {
+    for (const id of request.audience) {
+      const row = relevant.find((item) => item.candidate.knowers[id]);
+      if (row) take(row);
+    }
+    for (const row of relevant) take(row);
   }
-  for (const row of ranked) take(row);
   // One hop only, with projection rechecking every linked item's actual audience.
   const initial = [...selected];
   for (const candidate of initial)
@@ -116,6 +131,7 @@ export function recallMemories(collection: MemoryCollection, request: MemoryReca
   const serialized = encode();
   const seenRoots = new Set<string>();
   const distinct = ranked.filter((row) => {
+    if (row.score <= 0) return false;
     if (seenRoots.has(row.candidate.rootId)) return false;
     seenRoots.add(row.candidate.rootId);
     return true;
