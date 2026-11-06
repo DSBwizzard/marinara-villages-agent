@@ -1329,7 +1329,6 @@ async function main() {
         id: "saved-ban-turn",
         at: new Date().toISOString(),
         replyLineIds: ["saved-ban-line"],
-        movement: {},
         accessEvents: savedAccessEvents(banBatch),
       },
       { id: "later-unrelated-turn", at: stamp, replyLineIds: [] },
@@ -1393,7 +1392,6 @@ async function main() {
           id: "old-reply-turn",
           at: stamp,
           replyLineIds: ["previous-world-line"],
-          movement: {},
           invitationSignal: {
             interpretationVersion: 1,
             residentId: "jim",
