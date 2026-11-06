@@ -1061,16 +1061,6 @@ console.log(
   });
   const captured = captureSceneContinuity(state, scene, Date.parse(at));
   assert.equal(Object.hasOwn(captured.facts, "foundingHistory"), false);
-  captured.facts = Object.fromEntries(
-    Object.entries(captured.facts).flatMap(([key, value]) =>
-      key === "worldRules"
-        ? [
-            [key, value],
-            ["foundingHistory", "EXACT RETAINED HISTORY"],
-          ]
-        : [[key, value]],
-    ),
-  ) as typeof captured.facts;
   scene.continuity = captured;
   const serialized = JSON.stringify(captured.facts);
   const restarted = coerceSession(JSON.parse(JSON.stringify(scene)));
@@ -1079,8 +1069,11 @@ console.log(
     serialized,
     "Already admitted Scene facts retain exact text and serialized order",
   );
+  const retired = structuredClone(scene);
+  (retired.continuity!.facts as any).foundingHistory = "RETIRED HISTORY";
+  assert.equal(Object.hasOwn(coerceSession(retired).continuity!.facts, "foundingHistory"), false);
   const departure = captureReturnContext(state, new Date(at));
-  (departure.world as any).foundingHistory = "EXACT DEPARTURE HISTORY";
+  departure.world.worldRules = "EXACT DEPARTURE WORLD RULES";
   state.returnCatchup = { capture: departure };
   const identity = returnCaptureRevision(departure, fixtureRelationshipIdentity, fixtureWishIdentity);
   const loaded = coerceVillageState(JSON.parse(JSON.stringify(state)));

@@ -185,9 +185,6 @@ export function createResidentRoster({
           venue.residentIds = venueResidentIds(venue).filter((id) => id !== characterId);
           venue.occupancy.residentCharacterId = venue.residentIds[0] ?? null;
         }
-        venue.playerInvitations = venue.playerInvitations?.filter(
-          (invite) => invite.residentId !== characterId && invite.ownerId !== characterId,
-        );
         venue.workerIds = venue.workerIds?.filter((id) => id !== characterId);
         for (const zone of venue.zones ?? [])
           zone.controllerIds = zone.controllerIds?.filter((id) => id !== characterId);

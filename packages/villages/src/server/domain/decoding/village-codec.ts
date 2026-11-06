@@ -34,7 +34,7 @@ import type {
 } from "../models/world.js";
 import { completeAgendaWeek, workingAgendaWeek } from "../rules/agenda-week.js";
 import { projectAgendaReservations, readProjectFocus } from "../rules/project-focus.js";
-import { decodeVillageClock } from "../rules/clock-recovery.js";
+import { decodeVillageClock } from "../rules/clock-state.js";
 import { asFraction, asIsoString, asRecord, asString, asStringArray, asTrimmedString } from "../rules/coerce.js";
 import { coerceFoundingTasks } from "../rules/founding-tasks.js";
 import { coerceLoreTokenBudget, coerceSelectedLorebookIds, DEFAULT_LORE_TOKEN_BUDGET } from "../rules/lore-policy.js";
@@ -82,7 +82,7 @@ import { coerceSpriteManager, managerResidentSprite } from "../rules/sprite-mana
 import { readVenueAccess, readZonePolicy } from "../rules/venue-access.js";
 import { readNarrativeState } from "./narrative-codec.js";
 import { defaultVenueSpace, validVenueClasses, venueResidentIds } from "../rules/venue-model.js";
-import { canInviteToZone, chooseAgendaZone, synchronizeVenueZones, ZONE_KINDS } from "../rules/venue-zones.js";
+import { chooseAgendaZone, synchronizeVenueZones, ZONE_KINDS } from "../rules/venue-zones.js";
 import { randomVillageSeed, VILLAGE_WEEKDAYS } from "../rules/village-clock.js";
 import { readMemorySceneStates, readMemoryReceipts } from "../rules/village-memories.js";
 import { zonePictureBaseline, zonePicturePhysicalRecord } from "../rules/zone-picture.js";
@@ -504,34 +504,6 @@ function coerceVenue(value: unknown): VillageVenue | null {
           .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
           .slice(-32)
       : [],
-    usedInvitationIds: Array.isArray(raw.usedInvitationIds)
-      ? [
-          ...new Set(
-            raw.usedInvitationIds.filter(
-              (id): id is string => typeof id === "string" && id.length > 0 && id.length <= 200,
-            ),
-          ),
-        ]
-      : [],
-    playerInvitations: Array.isArray(raw.playerInvitations)
-      ? raw.playerInvitations
-          .map((entry) => ({
-            residentId: asTrimmedString(asRecord(entry).residentId),
-            zoneId: asTrimmedString(asRecord(entry).privateSpaceId ?? asRecord(entry).zoneId) || undefined,
-            privateSpaceId: asTrimmedString(asRecord(entry).privateSpaceId) || undefined,
-            recordedAt: asIsoString(asRecord(entry).recordedAt) ?? "",
-            scope: asRecord(entry).scope === "private" ? ("private" as const) : ("shared" as const),
-            ownerId: asTrimmedString(asRecord(entry).ownerId),
-            sourceLineId: asTrimmedString(asRecord(entry).sourceLineId),
-            quote: boundText(asRecord(entry).quote, MAX_VENUE_NOTE_LENGTH),
-          }))
-          .filter(
-            (entry) =>
-              (!!entry.zoneId || residentIds.includes(entry.residentId)) &&
-              (entry.scope === "shared" || entry.ownerId === entry.residentId),
-          )
-          .slice(-16)
-      : [],
     description,
     category,
     presentation: {
@@ -702,19 +674,6 @@ function coerceVenue(value: unknown): VillageVenue | null {
   const graphProblem = connectionProblem(venue.zones ?? []);
   if (graphProblem) throw new Error(graphProblem);
   synchronizeVenueZones(venue, structuredClone(venue));
-  venue.playerInvitations = venue.playerInvitations?.filter((invitation) => {
-    invitation.zoneId ??=
-      invitation.scope === "private"
-        ? (venue.zones?.find((zone) => zone.kind === "private-residence" && zone.ownerId === invitation.ownerId)?.id ??
-          "private:" + invitation.ownerId)
-        : venue.zones?.find((zone) => zone.kind === "shared-residence")?.id;
-    const zone = venue.zones?.find((zone) => zone.id === invitation.zoneId);
-    return (
-      !!zone &&
-      !venue.usedInvitationIds?.includes(invitation.sourceLineId) &&
-      canInviteToZone(venue, zone, invitation.residentId)
-    );
-  });
   return venue;
 }
 function coerceZoneDrafts(value: unknown): VillageZoneDraft[] | undefined {

@@ -189,7 +189,6 @@ export function createFoundingSetup({
         spaces: place.spaces,
         residenceCapacity: prior?.residenceCapacity ?? place.residenceCapacity,
         residentIds: prior ? venueResidentIds(prior) : place.residentIds,
-        playerInvitations: prior?.playerInvitations ?? [],
         zones: prior?.zones ?? place.zones,
         privateSpaces: prior?.privateSpaces ?? place.privateSpaces,
         playerSeenPrivateIds: prior?.playerSeenPrivateIds,

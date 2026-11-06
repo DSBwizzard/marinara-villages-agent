@@ -115,24 +115,14 @@ export type VenueSubmission = {
   /** Approved access interpretations saved with their exact witnessed reply; never sent to the client. */
   accessEvents?: SavedAccessEvent[];
   invitationSignal?: {
-    accessOperationId?: string;
-    /** Minted by Villages after interpretation and evidence validation, never by narration. */
-    interpretationVersion?: 1;
+    accessOperationId: string;
     residentId: string;
     venueId: string;
-    scope: "shared" | "private";
-    zoneLabel?: string;
-    privateSpaceId?: string;
-    zoneId?: string;
-    area?: VenueScene["area"];
-    spaceClass?: VillageVenueClass;
+    zoneId: string;
+    zoneLabel: string;
     accompanies?: boolean;
     timing: "now" | "later";
-    evidenceKind?: "speech" | "action";
-    ownerId: string;
     quote: string;
-    sourceLineId?: string;
-    accessRevision?: number;
   };
   semanticReady?: boolean;
   semanticConclude?: boolean;
@@ -201,15 +191,11 @@ export type VenueScene = {
   placeName: string;
   spaceClass?: VillageVenueClass;
   zoneId?: string;
-  legacyCast?: boolean;
-  grantedZoneIds?: string[];
   enteredFromZoneId?: string;
   accessPreviousZones?: Record<string, string>;
   pendingAccessClaim?: string;
-  dismissedZoneIds?: string[];
   pendingRoomQuestions?: string[];
   pendingProjectQuestions?: string[];
-  zoneGrants?: { zoneId: string; controllerId: string; source?: "relationship" }[];
   privateSpaceId?: string;
   accompanying?: { characterId: string; zoneId: string }[];
   doorwayContacts?: DoorwayContact[];
@@ -237,7 +223,6 @@ export type VenueScene = {
   startedAt: string;
   endedAt: string;
   lastActivityAt: string;
-  clockShiftMs?: number;
   endReason: "player" | "scene" | "inactivity" | "debug" | "";
   memoryMode: "live";
   status: "opening" | "active" | "closing" | "closed";
@@ -284,15 +269,14 @@ export type VenueReplyLine = {
   anchorIndex?: number;
 };
 export type SavedAccessEvent = {
-  /** Unversioned pending effects lack interpreter provenance and require fresh interpretation. */
-  interpretationVersion?: 1;
+  interpretationVersion: 1;
   id: string;
   facts: {
     actorId: string;
     venueId: string;
     zoneId: string | null;
     accessRevision: number;
-    semanticVersion?: 2;
+    semanticVersion: 2;
     accompanies?: boolean;
     accessCommand?: import("../../../shared/helpers/venue-access.js").AccessCommand;
   };

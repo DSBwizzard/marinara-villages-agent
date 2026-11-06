@@ -497,7 +497,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
     venueEditNotice,
     planVenueRenovation,
   } = controller;
-  const lighting = useVillageLighting(snapshot?.village, snapshot?.clock?.paused);
+  const lighting = useVillageLighting(snapshot?.village);
   const place = snapshot?.settings.venues.find((venue) => venue.id === venueId);
   const navigationSelection = useMemo(
     () => ({ venueId, venueZoneKey, venueSection }),
@@ -566,7 +566,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
         </button>
       </div>
     );
-  const zones = venueDisplayZones(place, room);
+  const zones = venueDisplayZones(place);
   const selected =
     zones.find((zone) => zone.id === venueZoneKey) ?? zones.find((zone) => zone.kind === "exterior") ?? zones[0];
   const exterior = zones.find((zone) => zone.kind === "exterior");

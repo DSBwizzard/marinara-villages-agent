@@ -108,9 +108,6 @@ export function completeProject(state: VillageState, project: VillageProject, at
     }
     venue.classes = change.classes ?? venue.classes;
     venue.residenceCapacity = change.capacity ?? venue.residenceCapacity;
-    venue.playerInvitations = venue.playerInvitations?.filter(
-      (entry) => !retired.some((zone) => zone.id === entry.zoneId),
-    );
   }
   venue.layoutVersion = 1;
   initializeVenueAccess(venue);

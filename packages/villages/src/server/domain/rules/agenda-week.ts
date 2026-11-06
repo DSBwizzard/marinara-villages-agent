@@ -1,21 +1,7 @@
 import type { VillageAgenda, VillageAgendaBlock, VillageVenue } from "../models/world.js";
-import { flexibleAgendaBlock } from "./agenda-flexibility.js";
 import { composeAgenda } from "./agenda-composition.js";
 import { routineDay } from "./owned-routine.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
-
-/** A dated opportunity remains valid across unrelated edits and equivalent splits. */
-export function flexibleAgendaInterval(blocks: readonly VillageAgendaBlock[], start: number, end: number): boolean {
-  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end > 1440 || start >= end) return false;
-  let covered = start;
-  for (const row of blocks
-    .filter((row) => row.endMinute > start && row.startMinute < end)
-    .sort((a, b) => a.startMinute - b.startMinute)) {
-    if (row.startMinute > covered || !flexibleAgendaBlock(row)) return false;
-    covered = Math.max(covered, row.endMinute);
-  }
-  return covered >= end;
-}
 
 export const agendaDateKey = (at: Date): string =>
   `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
@@ -43,23 +29,6 @@ export function workingAgendaWeek(): Record<string, VillageAgendaBlock[]> {
       ],
     ]),
   ) as Record<string, VillageAgendaBlock[]>;
-}
-
-/** Keep elapsed time exactly as it was while adopting a new plan for the rest of today. */
-export function replaceRemainingAgendaDay(
-  previous: readonly VillageAgendaBlock[],
-  next: readonly VillageAgendaBlock[],
-  minute: number,
-): VillageAgendaBlock[] {
-  const at = Math.max(0, Math.min(1440, minute));
-  return [
-    ...previous
-      .filter((part) => part.startMinute < at)
-      .map((part) => ({ ...part, endMinute: Math.min(part.endMinute, at) })),
-    ...next
-      .filter((part) => part.endMinute > at)
-      .map((part) => ({ ...part, startMinute: Math.max(part.startMinute, at) })),
-  ].filter((part) => part.startMinute < part.endMinute);
 }
 
 /** Preserve valid proposed intervals and fill every gap with the working week. */

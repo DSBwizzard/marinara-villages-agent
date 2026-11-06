@@ -26,12 +26,12 @@ import {
   touchVenueSession,
 } from "../packages/villages/src/server/features/scenes/live-session.js";
 const now = new Date();
-let paused = false;
+let observations = 0;
 const releaseClock = configureVillageClock({
   now: () => new Date(now),
-  observe: async () => ({ paused }) as any,
-  resolve: async () => {
-    throw Error("No clock administration in this test");
+  observe: async () => {
+    observations++;
+    return { revision: 1 } as any;
   },
 });
 function deferred() {
@@ -239,7 +239,7 @@ async function main() {
     await assert.rejects(invalid.service.refreshZoneParticipants(invalid.saved, true), /no current live admission/);
     assert.deepEqual(invalid.saved, before);
     assert(!invalid.calls.some((call) => call === "world" || call.startsWith("change:")));
-    for (const hold of ["pause", "busy", "failed", "semantic"] as const) {
+    for (const hold of ["busy", "failed", "semantic"] as const) {
       const held = fixture(missing + "-" + hold);
       delete held.saved[missing];
       if (hold === "busy") held.setBusy(true);
@@ -253,12 +253,9 @@ async function main() {
           semanticReady: false,
         } as any);
       const retained = structuredClone(held.saved);
-      paused = hold === "pause";
-      try {
-        assert.equal(await held.service.refreshZoneParticipants(held.saved), held.saved);
-      } finally {
-        paused = false;
-      }
+      const observed = observations;
+      assert.equal(await held.service.refreshZoneParticipants(held.saved), held.saved);
+      assert.equal(observations, observed + 1, "Held work still observes authoritative Village time");
       assert.deepEqual(held.saved, retained);
       assert(!held.calls.some((call) => call === "world" || call.startsWith("change:")));
     }

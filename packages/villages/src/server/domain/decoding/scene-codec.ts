@@ -79,18 +79,13 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
     keepCapturedLighting(place.location, asRecord(asRecord(asRecord(facts.worldPlaces).places)[id]).location);
   if (facts.relationshipContext)
     decoded.relationshipContext = immutableRelationshipState(raw.seed, facts.relationshipContext);
-  if (Object.hasOwn(facts, "foundingHistory") && typeof facts.foundingHistory !== "string")
-    throw conflict("This saved Scene has invalid captured history. Its data is preserved.");
-  // Retired source text stays only in already admitted facts, in its original serialized position.
   const captured = Object.fromEntries(
-    Object.entries(facts).flatMap(([key, value]) =>
-      key === "foundingHistory"
-        ? [[key, value]]
-        : key === "worldPlaces"
-          ? [[key, decoded.worldPlaces]]
-          : sceneContinuityFields.includes(key as (typeof sceneContinuityFields)[number])
-            ? [[key, decoded[key as (typeof sceneContinuityFields)[number]]]]
-            : [],
+    Object.entries(facts).flatMap<[string, unknown]>(([key]) =>
+      key === "worldPlaces"
+        ? [[key, decoded.worldPlaces]]
+        : sceneContinuityFields.includes(key as (typeof sceneContinuityFields)[number])
+          ? [[key, decoded[key as (typeof sceneContinuityFields)[number]]]]
+          : [],
     ),
   ) as SceneContinuity["facts"];
   return {
@@ -259,21 +254,7 @@ export function coerceSession(value: unknown): VenueScene {
     pendingProjectQuestions: Array.isArray(raw.pendingProjectQuestions)
       ? raw.pendingProjectQuestions.filter((value): value is string => typeof value === "string").slice(0, 8)
       : [],
-    dismissedZoneIds: Array.isArray(raw.dismissedZoneIds)
-      ? raw.dismissedZoneIds.filter((id): id is string => typeof id === "string")
-      : [],
     privateSpaceId: asTrimmedString(raw.privateSpaceId) || undefined,
-    zoneGrants: Array.isArray(raw.zoneGrants)
-      ? raw.zoneGrants
-          .map(asRecord)
-          .filter((grant) => typeof grant.zoneId === "string" && typeof grant.controllerId === "string")
-          .map((grant) => ({
-            zoneId: String(grant.zoneId),
-            controllerId: String(grant.controllerId),
-            source: grant.source === "relationship" ? ("relationship" as const) : undefined,
-          }))
-      : [],
-    legacyCast: raw.legacyCast === true,
     pendingAccessClaim: asTrimmedString(raw.pendingAccessClaim) || undefined,
     accessPreviousZones: Object.fromEntries(
       Object.entries(asRecord(raw.accessPreviousZones)).filter(
@@ -282,9 +263,6 @@ export function coerceSession(value: unknown): VenueScene {
     ),
     doorwayContacts: Array.isArray(raw.doorwayContacts) ? (raw.doorwayContacts as DoorwayContact[]) : [],
     entryOffers: Array.isArray(raw.entryOffers) ? (raw.entryOffers as VenueScene["entryOffers"]) : [],
-    grantedZoneIds: Array.isArray(raw.grantedZoneIds)
-      ? raw.grantedZoneIds.filter((id): id is string => typeof id === "string")
-      : [],
     accompanying: Array.isArray(raw.accompanying)
       ? raw.accompanying.flatMap((value) => {
           const row = asRecord(value);
@@ -332,7 +310,6 @@ export function coerceSession(value: unknown): VenueScene {
     ...(raw.continuity !== undefined ? { continuity: readSceneContinuity(raw.continuity) } : {}),
     endedAt: asString(raw.endedAt),
     lastActivityAt: asString(raw.lastActivityAt) || asString(raw.startedAt),
-    clockShiftMs: typeof raw.clockShiftMs === "number" && Number.isFinite(raw.clockShiftMs) ? raw.clockShiftMs : 0,
     endReason:
       raw.endReason === "player" ||
       raw.endReason === "scene" ||

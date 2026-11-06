@@ -9,8 +9,6 @@ import {
 import {
   addRoutineIdea,
   routineProfileFromWeek,
-  agendaPromptDay,
-  compressAgendaBlocks,
   deriveInfluence,
   influenceSettings,
   routineDay,
@@ -401,41 +399,6 @@ async function main() {
     ),
   );
   assert.ok(variants.size > 7, "daily choices have local variety");
-  const pieces = Array.from({ length: 24 }, (_, hour) => ({
-    ...block,
-    startMinute: hour * 60,
-    endMinute: (hour + 1) * 60,
-  }));
-  const compressed = compressAgendaBlocks(pieces);
-  const oldPrompt = pieces
-    .map((row) => String(row.startMinute) + "-" + row.endMinute + " " + row.activity + " (" + row.reason + ")")
-    .join("; ");
-  const newPrompt = agendaPromptDay(
-    pieces.map((row) => ({ ...row, time: String(row.startMinute) + "-" + row.endMinute, here: row.activity })),
-  );
-  console.log(
-    "Repeated-day prompt fixture estimated tokens (characters / 4): " +
-      Math.ceil(oldPrompt.length / 4) +
-      " -> " +
-      Math.ceil(newPrompt.length / 4) +
-      ". Provider usage is mocked, not a billing measurement.",
-  );
-  const commitments = pieces.slice(0, 2).map((row, index) => ({ ...row, commitmentId: "c" + index }));
-  assert.equal(
-    compressAgendaBlocks(commitments).length,
-    2,
-    "equivalent activities with distinct commitments never merge",
-  );
-  assert.equal(compressed.length, 1);
-  assert.equal(compressed[0]!.endMinute, 1440);
-  assert.ok(JSON.stringify(compressed).length < JSON.stringify(pieces).length / 10);
-  assert.equal(
-    compressAgendaBlocks([
-      { ...block, endMinute: 60, zoneId: "exterior" },
-      { ...block, startMinute: 60, zoneId: "common" },
-    ]).length,
-    2,
-  );
   assert.ok(addRoutineIdea(owned, { activity: "Writing poetry", flexible: true, venueId: "" }, resident, currentWorld));
   assert.equal(
     addRoutineIdea(

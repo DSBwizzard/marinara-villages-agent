@@ -231,10 +231,6 @@ zone.access = {
   visitorHours: "always",
   accompanied: false,
 };
-home.playerInvitations = [
-  { residentId: "same", recordedAt: "earlier", ownerId: "same" },
-  { residentId: "other", recordedAt: "earlier" },
-];
 departed.state.venues = [home];
 const receiptId = "villages-background-" + backgroundRevision(["agenda", "same"]);
 departed.state.backgroundReceipts[receiptId] = "receipt";
@@ -255,7 +251,6 @@ assert.deepEqual(vacant.access!.inviterIds, []);
 assert.deepEqual(vacant.access!.memberIds, []);
 assert.deepEqual(vacant.controllerIds, ["other"]);
 assert.deepEqual(emptied.workerIds, ["other"]);
-assert.equal(emptied.playerInvitations!.length, 1);
 assert(
   emptied.archivedPrivateSpaces!.some(
     (archive) => archive.ownerId === "same" && archive.space.description === "Secret writing",

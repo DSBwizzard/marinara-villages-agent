@@ -17,16 +17,16 @@ type PendingLayout = LayoutSave & {
 };
 
 function layoutKey(venue: VillageVenue) {
-  return zoneLayoutKey(venueDisplayZones(venue, null), venue.zoneLayout);
+  return zoneLayoutKey(venueDisplayZones(venue), venue.zoneLayout);
 }
 function mergeLayout(venue: VillageVenue, saved: VillageVenue): VillageVenue {
-  const connections = new Map(venueDisplayZones(saved, null).map((zone) => [zone.id, zone.connectedTo]));
+  const connections = new Map(venueDisplayZones(saved).map((zone) => [zone.id, zone.connectedTo]));
   const merge = <T extends { id?: string; connectedTo?: string[] }>(zones: T[] | undefined) =>
     zones?.map((zone) => ({ ...zone, connectedTo: zone.id ? connections.get(zone.id) : zone.connectedTo }));
   return {
     ...venue,
     zoneLayout: saved.zoneLayout,
-    zones: merge(venue.zones ?? venueDisplayZones(venue, null)),
+    zones: merge(venue.zones),
   };
 }
 

@@ -45,9 +45,8 @@ export function createVillageSnapshot({
     let village = await readVillageState();
     const clock = await observeVillageClock();
     let now = at ?? (clock?.instant ? new ZonedDate(clock.instant, clock.timeZone) : villageNow());
-    if (clock?.paused) now = villageNow();
-    else if (clock) now = new ZonedDate(now, clock.timeZone);
-    if (!clock?.paused && (await rollActiveAgendas(now, village, clock?.revision))) village = await readVillageState();
+    if (clock) now = new ZonedDate(now, clock.timeZone);
+    if (await rollActiveAgendas(now, village, clock?.revision)) village = await readVillageState();
     const residentIds = village.villagers.map((villager) => villager.characterId);
     const cards = await listVillagerCards(residentIds);
     const cardsById = new Map(cards.map((card) => [card.id, card]));

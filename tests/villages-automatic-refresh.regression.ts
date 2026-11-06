@@ -39,9 +39,7 @@ async function main() {
   );
   const { deriveVillageMoment } = await import(moduleUrl("packages/villages/src/server/domain/rules/village-clock.ts"));
   const { reconcileVillage } = await import(moduleUrl("packages/villages/src/server/features/world/village.ts"));
-  const { projectHomeLines } = await import(
-    moduleUrl("packages/villages/src/server/domain/rules/village-projections.ts")
-  );
+  const { villageSettings } = await import(moduleUrl("packages/villages/src/server/domain/rules/world-snapshot.ts"));
   const { proposeVillageResidence, decideVillageResidence, completeVillageResidence } = await import(
     moduleUrl("packages/villages/src/server/features/venues/residences.ts")
   );
@@ -491,8 +489,8 @@ async function main() {
       "moving without a selected Private Space never creates a room",
     );
     assert.ok(
-      projectHomeLines(await readVillageState(), new Map()).some(
-        (home) => home.occupant === "Rosa" && home.venueName === "The bakery",
+      villageSettings(movedState, { name: "", description: "", personaId: "", missing: false }).venues.some(
+        (home) => home.residentIds?.includes("housing-resident") && home.name === "The bakery",
       ),
       "a move into a public venue remains in the home projection",
     );

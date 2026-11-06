@@ -79,7 +79,6 @@ export type SceneContinuity = {
   capturedAt: string;
   receiptIds: string[];
   facts: Pick<VillageState, (typeof sceneContinuityFields)[number]> & {
-    foundingHistory?: string;
     worldPlaces?: VillageState["worldPlaces"];
   };
 };

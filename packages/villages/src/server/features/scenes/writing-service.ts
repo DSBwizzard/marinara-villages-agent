@@ -107,7 +107,6 @@ import {
   legacyZoneId,
   resolveVenueZone,
   venueInZone,
-  zoneArea,
   zoneClosed,
 } from "../../domain/rules/venue-zones.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
@@ -1056,7 +1055,6 @@ export function createSceneWriting({
       const request = heardSignal(raw?.residenceRequest);
       const decision = heardSignal(raw?.residenceDecision);
       const venueRequest = heardSignal(raw?.venueRequest);
-      const invitation = heardSignal(raw?.invitation);
       const departures = Array.isArray(raw?.departures)
         ? [
             ...new Set(
@@ -1073,39 +1071,6 @@ export function createSceneWriting({
         : [];
       const sceneEnded = false;
       const requestedVenueId = request ? asTrimmedString(request.entry.venueId) : "";
-      const invitedVenueId = invitation ? asTrimmedString(invitation.entry.venueId) : "";
-      const invitedVenue = findLocation(sceneContinuityView(village, session), invitedVenueId);
-      let invitationScope: "shared" | "private" = invitation?.entry.scope === "private" ? "private" : "shared";
-      const invitationZoneId = asTrimmedString(invitation?.entry.privateSpaceId ?? invitation?.entry.zoneId);
-      const invitationZone = invitedVenue
-        ? resolveVenueZone(
-            invitedVenue,
-            invitationZoneId ||
-              legacyZoneId(
-                invitedVenue,
-                invitationScope === "private" ? "private" : "shared",
-                "residence",
-                asTrimmedString(invitation?.entry.ownerId),
-              ),
-          )
-        : undefined;
-      invitationScope =
-        invitationZone?.kind === "private-residence" ? "private" : invitationZone ? "shared" : invitationScope;
-      const invitationOwnerId =
-        invitationScope === "private" ? (invitationZone?.ownerId ?? asTrimmedString(invitation?.entry.ownerId)) : "";
-      const invitationQuote = asTrimmedString(invitation?.entry.quote).toLowerCase();
-      const invitationIsFuture =
-        /\b(later|tomorrow|next visit|next time|another day|anytime|when you return|come back)\b/u.test(
-          invitationQuote,
-        );
-      const invitationIsEntry =
-        /\b(come in|come into|step in|step inside|enter|welcome inside|welcome in|visit)\b/u.test(invitationQuote);
-      const invitationTiming: "now" | "later" = invitation?.entry.timing === "now" ? "now" : "later";
-      const invitationTimingSupported =
-        invitationTiming === "later" ? invitationIsFuture : invitationIsEntry && !invitationIsFuture;
-      const privateScopeSupported =
-        invitationScope === "shared" ||
-        /\b(my|mine|your)\s+(private\s+)?(room|bedroom|space|quarters)|private space\b/u.test(invitationQuote);
       const pendingDecision = decision
         ? pendingMoves.find(
             (move) =>
@@ -1289,46 +1254,8 @@ export function createSceneWriting({
                 quote: asTrimmedString(venueRequest.entry.quote),
               }
             : null,
-        invitationSignal: (invitation &&
-        invitedVenue &&
-        invitationTimingSupported &&
-        !(
-          invitation.entry.privateSpaceId &&
-          invitation.entry.zoneId &&
-          invitation.entry.privateSpaceId !== invitation.entry.zoneId
-        ) &&
-        !(
-          invitationZoneId &&
-          invitation.entry.privateOwnerId &&
-          invitationZoneId !==
-            legacyZoneId(invitedVenue, "private", "residence", invitation.entry.privateOwnerId as string)
-        ) &&
-        !/\b(no|not|never|don't|can't|cannot|won't|unless|if|maybe|perhaps)\b/iu.test(invitationQuote) &&
-        privateScopeSupported &&
-        !!invitationZone &&
-        !zoneClosed(village, invitedVenue, invitationZone) &&
-        canInviteToZone(invitedVenue, invitationZone, invitation.speakerId) &&
-        (invitationScope === "shared" || invitationOwnerId === invitation.speakerId)
-          ? {
-              residentId: invitation.speakerId,
-              venueId: invitedVenueId,
-              scope: invitationScope,
-              zoneLabel: invitationZone.name,
-              zoneId: invitationZone?.id,
-              privateSpaceId:
-                invitationZone && ["private-residence", "staff", "restricted"].includes(invitationZone.kind)
-                  ? invitationZone.id
-                  : undefined,
-              area: invitationZone ? zoneArea(invitationZone) : undefined,
-              spaceClass: invitationZone?.venueClass,
-              accompanies:
-                invitation?.entry.accompanies === true &&
-                /\b(with me|follow me|show you|take you|come with|let me show)\b/iu.test(invitationQuote),
-              timing: invitationTiming,
-              ownerId: invitationOwnerId,
-              quote: asTrimmedString(invitation.entry.quote),
-            }
-          : null) as import("../../domain/models/scene-model.js").VenueSubmission["invitationSignal"] | null,
+        invitationSignal: null as
+          import("../../domain/models/scene-model.js").VenueSubmission["invitationSignal"] | null,
         recap:
           session.contactGeneration?.acoustics || session.contactGeneration?.zoneEvents
             ? ""
@@ -1391,7 +1318,8 @@ export function createSceneWriting({
       );
       if (invitations.length === 1) {
         const { result, check } = invitations[0],
-          facts = asRecord(check.facts);
+          facts = asRecord(check.facts),
+          command = asRecord(facts.accessCommand);
         const controlledVenue = findLocation(currentVillage, facts.venueId);
         const zone = controlledVenue && resolveVenueZone(controlledVenue, String(facts.zoneId));
         const actor = String(facts.actorId);
@@ -1403,6 +1331,9 @@ export function createSceneWriting({
             (line) => result.evidenceIds.includes(line.id) && line.current && line.kind === "narration",
           );
         if (
+          command.action === "invite" &&
+          typeof command.operationId === "string" &&
+          command.operationId.length > 0 &&
           controlledVenue &&
           zone &&
           supporting &&
@@ -1410,23 +1341,14 @@ export function createSceneWriting({
           canInviteToZone(controlledVenue, zone, actor)
         ) {
           reply.invitationSignal = {
-            ...(asRecord(facts.accessCommand).action === "invite"
-              ? { accessOperationId: String(asRecord(facts.accessCommand).operationId) }
-              : {}),
+            accessOperationId: command.operationId,
             residentId: actor,
             venueId: controlledVenue.id,
-            scope: zone.kind === "private-residence" ? "private" : "shared",
             zoneLabel: zone.name,
             zoneId: zone.id,
-            privateSpaceId: ["private-residence", "staff", "restricted"].includes(zone.kind) ? zone.id : undefined,
-            area: zoneArea(zone),
-            spaceClass: zone.venueClass,
             accompanies: facts.accompanies === true,
             timing: result.outcome === "invite-now" ? "now" : "later",
-            ownerId: zone.ownerId ?? "",
-            evidenceKind: supporting.kind === "narration" ? "action" : "speech",
             quote: supporting.content,
-            accessRevision: controlledVenue.access?.revision,
           };
         }
       }
@@ -1472,17 +1394,6 @@ export function createSceneWriting({
             : undefined))
       )
         throw conflict("Room access changed while the reply was being prepared. You returned to the exterior.");
-      if (reply.invitationSignal) {
-        const invited = findLocation(currentVillage, reply.invitationSignal!.venueId);
-        const target = invited && resolveVenueZone(invited, reply.invitationSignal.zoneId ?? "");
-        if (
-          !invited ||
-          !target ||
-          zoneClosed(currentVillage, invited, target) ||
-          !canInviteToZone(invited, target, reply.invitationSignal.residentId)
-        )
-          reply.invitationSignal = null;
-      }
       return bindRoomInvitation(session, currentVillage, reply);
     } catch (cause) {
       if (!(cause instanceof VenueReplyFailure)) throw cause;

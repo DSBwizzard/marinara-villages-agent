@@ -15,10 +15,7 @@ import {
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { projectRelationshipProfiles } from "../packages/villages/src/server/domain/rules/relationship-knowledge.js";
 import { publishRelationshipDisclosures } from "../packages/villages/src/server/domain/rules/relationship-memories.js";
-import {
-  relationshipChangeNotices,
-  relationshipWritingPrompt,
-} from "../packages/villages/src/server/domain/rules/relationship-presentation.js";
+import { relationshipWritingPrompt } from "../packages/villages/src/server/domain/rules/relationship-presentation.js";
 import {
   emptyRelationshipReview,
   parseRelationshipReview,
@@ -122,11 +119,6 @@ assert.deepEqual(state, saved, "Source replay is idempotent");
 assert.throws(() => review({ ...proposal("Friends"), fromId: "player" }), /actor/);
 assert.throws(() => review({ ...proposal("Friends"), lineIds: ["missing"] }), /missing source/);
 assert.throws(() => review({ ...proposal("Friends"), fromId: "cy" }), /audience/);
-assert.equal(
-  relationshipChangeNotices(Object.values(state.receipts), state, village).length,
-  0,
-  "Private interpretation produces no public notice",
-);
 
 // A unilateral ending needs no invented acceptance and does not erase earlier history.
 const history: SocialRecord = {
