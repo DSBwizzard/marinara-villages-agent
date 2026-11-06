@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { lineStagingCues } from "../packages/villages/src/shared/helpers/scene-staging.js";
 import { completeSceneObject } from "../packages/villages/src/server/domain/rules/scene-writing-contract.js";
 
 import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
@@ -56,7 +57,7 @@ const toPlayer = parseVenueReply(
 );
 assert.equal(toPlayer.lines[1]!.kind, "whisper", "player-directed whispers stay as whispers");
 assert.equal(toPlayer.lines[1]!.targetId, "player");
-assert.equal(toPlayer.lines[1]!.gazeAt, "player");
+assert.deepEqual(lineStagingCues(toPlayer.lines[1]!), [{ characterId: "reserved", look: { target: "player" } }]);
 assert.equal(toPlayer.lines[1]!.anchorIndex, 0);
 assert.deepEqual(toPlayer.lines[1]!.heardBy, ["reserved"], "the player target never enters resident witness IDs");
 assert.deepEqual(toPlayer.heardPlayerBy, ["reserved"]);

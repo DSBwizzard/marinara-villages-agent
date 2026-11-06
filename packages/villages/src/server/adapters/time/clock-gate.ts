@@ -6,8 +6,6 @@ export type ClockAdvanceEffect = (state: VillageState, from: Date, until: Date) 
 export interface VillageClockAuthority {
   observe(): Promise<VillageClockView>;
   now(advanceMs?: number): Date;
-  shiftMs?(): number;
-  resolve(revision: number, choice: "accept" | "check"): Promise<VillageClockView>;
   advance?(request: VillageTimeAdvance, effect?: ClockAdvanceEffect): Promise<VillageClockView>;
   onAdvance?(listener: () => void): () => void;
   advanceSettled?(): void;
@@ -42,10 +40,4 @@ export async function withVillageClockWork<T>(callback: () => Promise<T>): Promi
 export async function guardedClockGeneration<T>(callback: () => Promise<T>): Promise<T> {
   assertRepairGeneration();
   return withRepairWork(callback);
-}
-export async function resolveVillageClock(revision: number, choice: "accept" | "check") {
-  return binding.get().resolve(revision, choice);
-}
-export function villageClockShiftMs(): number {
-  return binding.maybe()?.shiftMs?.() ?? 0;
 }

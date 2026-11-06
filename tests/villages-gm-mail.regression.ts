@@ -10,6 +10,7 @@ const state = defaultVillageState();
 Object.assign(state, { seed: "gm-mail", setupAt: at, foundedAt: at, timeZone: "UTC" });
 state.villagers = [
   {
+    letterFontId: "caveat",
     characterId: "ada",
     addedAt: at,
     wishes: [],

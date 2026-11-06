@@ -38,6 +38,7 @@ function fixture(name: string) {
   state.seed = `seed-${name}`;
   const card = readVillagerCard({ id: "same", data: JSON.stringify({ name, description: `Owned ${name}` }) } as any);
   const resident = {
+    letterFontId: "caveat",
     characterId: "same",
     cardSnapshot: snapshotFromCard(card, 2),
     addedAt: "2026-10-06T12:00:00Z",

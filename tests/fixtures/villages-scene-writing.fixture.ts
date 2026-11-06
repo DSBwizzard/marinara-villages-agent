@@ -46,7 +46,10 @@ export async function currentScenePrompt(
       ? state.villagers.map((resident) =>
           resident.characterId === card.id ? { ...resident, cardSnapshot: snapshot } : resident,
         )
-      : [...state.villagers, { characterId: card.id, cardSnapshot: snapshot, addedAt: "2026-10-07T12:00:00.000Z" }],
+      : [
+          ...state.villagers,
+          { letterFontId: "caveat", characterId: card.id, cardSnapshot: snapshot, addedAt: "2026-10-07T12:00:00.000Z" },
+        ],
   });
   assert.deepEqual(
     world.villagers.map((resident) => resident.characterId).sort(),

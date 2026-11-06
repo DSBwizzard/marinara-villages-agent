@@ -154,6 +154,7 @@ await runCase("retained-storage/sprite-owners", async () => {
     await f.repo.mutateAuthority((world) => {
       world.villagers = [
         {
+          letterFontId: "caveat",
           characterId: "mara",
           addedAt: memoryTime(),
           cardSnapshot: { id: "mara", name: "Mara", capturedAt: memoryTime(), revision: 1, sourceStatus: "available" },
@@ -901,6 +902,7 @@ await runCase("retained-storage/background-sprite-retirement", async () => {
         setupAt: world.setupAt,
         villagers: [
           {
+            letterFontId: "caveat",
             characterId: "mara",
             wishHead: null,
             cardSnapshot: { name: "Mara", capturedAt: stamp },

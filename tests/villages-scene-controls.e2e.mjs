@@ -35,7 +35,6 @@ await withBrowser(browser, async () => {
       fixture.settings.venues[0].classes = home ? ["residence"] : ["workplace"];
       const session = {
         version: 2,
-        stagingVersion: 1,
         id: "scene-controls",
         placeId: "mill",
         placeName: "The Mill",

@@ -37,6 +37,7 @@ const village = coerceVillageState({
   foundedAt: now,
   villagers: [
     {
+      letterFontId: "caveat",
       characterId: "mara",
       addedAt: now,
       cardSnapshot: {

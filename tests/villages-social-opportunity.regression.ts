@@ -24,6 +24,7 @@ const state = defaultVillageState();
 state.seed = "social-opportunity";
 state.venues = [{ id: "commons", classes: ["workplace"], occupancy: {} }] as any;
 state.villagers = ["ada", "ben"].map((characterId) => ({
+  letterFontId: "caveat",
   characterId,
   cardSnapshot: { name: characterId },
   wishes: [],
@@ -69,6 +70,7 @@ capture.villagers = ["ada", "ben"].map((characterId) => {
   agenda.week.Monday = [block];
   agenda.activeDay!.blocks = [block];
   return {
+    letterFontId: "caveat",
     characterId,
     addedAt: now.toISOString(),
     cardSnapshot: { name: characterId, capturedAt: now.toISOString() },

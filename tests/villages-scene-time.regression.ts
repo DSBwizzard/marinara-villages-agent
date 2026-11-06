@@ -50,6 +50,7 @@ function fixture(live = false) {
     ],
     villagers: [
       {
+        letterFontId: "caveat",
         characterId: "a",
         addedAt: at,
         cardSnapshot: { id: "a", name: "Ada", capturedAt: at, revision: 1, sourceStatus: "available" },

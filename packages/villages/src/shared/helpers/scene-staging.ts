@@ -12,8 +12,6 @@ export type StagingState = Record<string, StagingPerson>;
 export type StagingLine = {
   speakerId: string;
   kind?: string;
-  expression?: string;
-  gazeAt?: string;
   targetId?: string;
   staging?: StagingCue[];
 };
@@ -90,13 +88,12 @@ export function initialStaging(ids: readonly string[]): StagingState {
   );
 }
 
-/** Explicit cue fields win; older speaker fields fill only omitted fields. */
+/** Explicit cues win; whispers face their recipient when no look was selected. */
 export function lineStagingCues(line: StagingLine): StagingCue[] {
   const cues = (line.staging ?? []).map((cue) => ({ ...cue }));
   if (!line.speakerId || line.kind === "narration" || line.speakerId === "__venue_scene__") return cues;
   const speaker = cues.find((cue) => cue.characterId === line.speakerId) ?? { characterId: line.speakerId };
-  if (!speaker.expression && line.expression) speaker.expression = line.expression;
-  const gazeAt = line.gazeAt || (line.kind === "whisper" ? line.targetId : undefined);
+  const gazeAt = line.kind === "whisper" ? line.targetId : undefined;
   if (!speaker.look && gazeAt)
     speaker.look = gazeAt === "player" ? { target: "player" } : { target: "villager", characterId: gazeAt };
   if (!cues.includes(speaker) && (speaker.expression || speaker.look)) cues.push(speaker);

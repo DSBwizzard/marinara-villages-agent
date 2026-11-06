@@ -70,7 +70,6 @@ await withBrowser(browser, async () => {
     let activityWrites = 0;
     const session = {
       version: 2,
-      stagingVersion: 1,
       memoryMode: "live",
       id: "grouped-scene",
       placeId: "mill",

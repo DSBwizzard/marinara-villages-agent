@@ -4,15 +4,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { villagesWalk } from "../packages/villages/src/shared/helpers/scene-paragraphs.ts";
-import {
-  selectSpriteImage,
-  spriteFacing,
-} from "../packages/villages/src/client/features/scenes/villages-sprite-stage.ts";
+import { selectSpriteImage } from "../packages/villages/src/client/features/scenes/villages-sprite-stage.ts";
 import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { lineStagingCues } from "../packages/villages/src/shared/helpers/scene-staging.js";
 import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 import {
   describeSpriteExpressions,
@@ -20,18 +17,6 @@ import {
   resolveSceneSpriteExpressions,
   validateSpriteExpression,
 } from "../packages/villages/src/server/domain/rules/sprite-expressions.js";
-import type { VillagesWalkBeat } from "../packages/villages/src/shared/contracts/scene-beat.js";
-const beats: VillagesWalkBeat[] = [
-  { kind: "untagged", text: '"Welcome home."', expression: "happy" },
-  { kind: "untagged", text: '"Maybe."', expression: "unknown" },
-  { kind: "side", text: '"Quiet now."' },
-];
-const walk = villagesWalk(beats.map((beat) => beat.text).join("\n\n"), beats);
-assert.deepEqual(walk.expressions, ["happy", "unknown"]);
-assert.equal(walk.asides[1]?.[0]?.text, '"Quiet now."');
-assert.deepEqual(villagesWalk('"An ordinary line."', null).expressions, [null]);
-const directions = [spriteFacing(1, -1), spriteFacing(1, 0), spriteFacing(1, 2)];
-assert.deepEqual(directions, ["front", "left", "right"]);
 const images = [
   { view: "front" as const, label: "neutral", url: "/front-neutral" },
   { view: "front" as const, label: "happy", url: "/front-happy" },
@@ -121,9 +106,15 @@ const staged = parseVenueReply(
   },
   ["resident-a", "resident-b"],
 );
-assert.equal(staged.lines[0]?.gazeAt, "resident-b");
-assert.equal(staged.lines[1]?.gazeAt, undefined, "unknown gaze targets cannot steer the stage");
-assert.equal(staged.lines[2]?.gazeAt, "resident-b", "whispers face their target without extra model output");
+assert(
+  staged.lines.every((line) => !Object.hasOwn(line, "gazeAt")),
+  "Inline gaze hints are ignored",
+);
+assert.deepEqual(
+  lineStagingCues(staged.lines[2]),
+  [{ characterId: "resident-a", look: { target: "villager", characterId: "resident-b" } }],
+  "Whispers face their target without extra model output",
+);
 
 const now = new Date().toISOString();
 assert.equal(defaultVillageState().spriteCardFlipEnabled, true, "new Villages start with flips on");
@@ -148,6 +139,7 @@ assert.equal(
   "the Village document preserves the shared setting through storage round trips",
 );
 const resident = {
+  letterFontId: "caveat",
   characterId: "a",
   addedAt: now,
   cardSnapshot: { id: "a", revision: 1, sourceStatus: "available", name: "A", capturedAt: now },
@@ -209,12 +201,10 @@ assert.equal(
 );
 const cueLines = [
   { speakerId: "a", staging: [{ characterId: "a", look: { target: "villager" as const, characterId: "b" } }] },
-  { speakerId: "a", expression: grouped.id, staging: [{ characterId: "a", expression: grouped.id }] },
+  { speakerId: "a", staging: [{ characterId: "a", expression: grouped.id }] },
   {
     speakerId: "a",
-    expression: grouped.id,
-    gazeAt: "b",
-    staging: [{ characterId: "a", look: { target: "player" as const } }],
+    staging: [{ characterId: "a", expression: grouped.id, look: { target: "player" as const } }],
   },
 ];
 const stageState = { a: { position: "left" as const, expression: "", look: { target: "player" as const } } };
@@ -225,9 +215,8 @@ resolveSceneSpriteExpressions(
   true,
   () => 0.99,
 );
-assert.equal(cueLines[1].expression, "e-side", "gaze-only cues persist to later variant selection");
-assert.equal(cueLines[1].staging[0].expression, "e-side", "speaker and staging share the same concrete pick");
-assert.equal(cueLines[2].expression, "e-second", "explicit staging attention wins over older gaze hints");
+assert.equal(cueLines[1].staging[0].expression, "e-side", "Gaze-only cues persist to later variant selection");
+assert.equal(cueLines[2].staging[0].expression, "e-second", "Explicit player attention selects the front view");
 const persisted = JSON.parse(JSON.stringify(cueLines));
 resolveSceneSpriteExpressions(
   persisted,

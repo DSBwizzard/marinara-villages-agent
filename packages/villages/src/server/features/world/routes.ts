@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { VillageTimeAdvance } from "../../../shared/contracts/clock.js";
 import { fail } from "../../adapters/http/route-support.js";
-import { observeVillageClock, resolveVillageClock } from "../../adapters/time/clock-gate.js";
+import { observeVillageClock } from "../../adapters/time/clock-gate.js";
 import { badRequest } from "../../domain/rules/errors.js";
 import { buildVillageCatalog } from "../residents/resident-cards.js";
 import { readVillageAuthority } from "./village-store.js";
@@ -54,17 +54,6 @@ export function registerWorldMaintenanceRoutes(engine: FastifyInstance) {
       return await reconcileVillage({ advanceTime: request.body });
     } catch (error) {
       return fail(reply, error, "advancing Village time");
-    }
-  });
-  app.post<{ Body: { revision?: unknown; choice?: unknown } }>("/clock/recover", async (request, reply) => {
-    try {
-      const { revision, choice } = request.body ?? {};
-      if (!Number.isSafeInteger(revision) || (choice !== "accept" && choice !== "check"))
-        throw badRequest("Refresh the clock notice and choose an action.");
-      await resolveVillageClock(revision as number, choice);
-      return await buildVillageSnapshot();
-    } catch (error) {
-      return fail(reply, error, "resolving the village clock");
     }
   });
   app.post<{ Body: { forceStory?: unknown; actionId?: unknown; expectedAttempt?: unknown } }>(

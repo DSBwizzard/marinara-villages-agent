@@ -142,7 +142,11 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
   });
   async function mount() {
     await page.goto("http://villages.test/");
-    await page.addScriptTag({ path: bundle });
+    // Restoration has its own read deadline; scenario assertions start after that read completes.
+    const initialSceneRead = page
+      .waitForResponse((response) => new URL(response.url()).pathname.endsWith("/rooms/active"), { timeout: 10_000 })
+      .then(async (response) => assert.equal(await response.finished(), null));
+    await Promise.all([page.addScriptTag({ path: bundle }), initialSceneRead]);
     await expect(page.locator(".marinara-capability-villages-root").first()).toHaveAttribute("data-mobile", "true");
   }
   async function start() {

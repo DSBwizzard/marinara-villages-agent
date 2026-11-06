@@ -121,6 +121,7 @@ await crowded.mutate((state) => {
   state.venues.push(venue("overflow"));
   const template = structuredClone(state.villagers[0]);
   state.villagers = ["a", "b", "c", "d", "z"].map((characterId) => ({
+    letterFontId: "caveat",
     ...structuredClone(template),
     characterId,
     cardSnapshot: { ...template.cardSnapshot, id: characterId, name: characterId },

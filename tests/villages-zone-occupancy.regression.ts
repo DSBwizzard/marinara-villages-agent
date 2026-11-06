@@ -101,6 +101,7 @@ function fixture(count: number) {
       ),
     ],
     villagers: ids.map((id, i) => ({
+      letterFontId: "caveat",
       characterId: id,
       addedAt: stamp,
       cardSnapshot: { id, name: id, revision: 1, sourceStatus: "available", capturedAt: stamp },
@@ -483,7 +484,6 @@ assert.equal(paint.description, "A yellow motorcycle.", "closing never replays a
     },
     rollActiveAgendas: async () => false,
     listVillagerCards: async () => [],
-    captureMissingVillagerCardColors: (card: any) => ({ ...card, nameColor: "", dialogueColor: "" }),
     sceneQueries: () => ({ activeVenueSession: async () => saved }),
     backgroundWorkSummaries: async () => [],
     privatePreparationRooms: () => [],

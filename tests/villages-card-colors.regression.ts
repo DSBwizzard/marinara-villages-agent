@@ -1,13 +1,10 @@
+import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
 import assert from "node:assert/strict";
-import {
-  captureMissingVillagerCardColors,
-  readVillagerCard,
-} from "../packages/villages/src/server/adapters/engine/catalog.js";
+import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import type { VillageVillagerCardSnapshot } from "../packages/villages/src/server/domain/models/world.js";
 
 const card = readVillagerCard({
   id: "resident",
@@ -24,40 +21,32 @@ const card = readVillagerCard({
 assert.equal(card.nameColor, "linear-gradient(90deg, #aabbcc, #ddeeff)");
 assert.equal(card.dialogueColor, "#abcdef");
 
-const legacy = {
-  id: "resident",
-  revision: 1,
-  sourceStatus: "available",
-  name: "Resident",
-  comment: "",
-  summary: "",
-  tags: [],
-  systemPrompt: "",
-  description: "",
-  personality: "",
-  scenario: "",
-  backstory: "",
-  appearance: "",
-  exampleDialogue: "",
-  capturedAt: "2026-01-01T00:00:00.000Z",
-} satisfies VillageVillagerCardSnapshot;
-const migrated = captureMissingVillagerCardColors(legacy, card);
-const recovered = coerceVillageState({
+const adopted = snapshotFromCard(card, 1);
+const fresh = {
   ...defaultVillageState(),
-
-  wishSystemVersion: 3,
-  villagers: [{ characterId: "resident", cardSnapshot: legacy, addedAt: legacy.capturedAt }],
-});
-assert.equal(recovered.villagers[0]?.cardSnapshot.nameColor, undefined);
-assert.equal(recovered.villagers[0]?.cardSnapshot.dialogueColor, undefined);
-assert.equal(migrated.nameColor, card.nameColor);
-assert.equal(migrated.dialogueColor, card.dialogueColor);
-assert.equal(migrated.revision, 1);
-assert.equal(migrated.capturedAt, legacy.capturedAt);
-
-const adopted = { ...migrated, nameColor: "#112233", dialogueColor: "#445566" };
+  villagers: [{ characterId: "resident", letterFontId: "caveat", cardSnapshot: adopted, addedAt: adopted.capturedAt }],
+};
+const recovered = coerceVillageState(fresh);
+assert.equal(recovered.villagers[0].cardSnapshot.nameColor, card.nameColor);
+assert.equal(recovered.villagers[0].cardSnapshot.dialogueColor, card.dialogueColor);
+assert.equal(recovered.villagers[0].cardSnapshot.capturedAt, adopted.capturedAt);
 const editedCard = { ...card, nameColor: "#778899", dialogueColor: "#aabbcc" };
-assert.deepEqual(captureMissingVillagerCardColors(adopted, editedCard), adopted);
-assert.equal(captureMissingVillagerCardColors(legacy, null).dialogueColor, "");
-
-console.log("Villages card color snapshot regression passed");
+assert.equal(recovered.villagers[0].cardSnapshot.nameColor, card.nameColor, "Library edits never adopt themselves");
+const refreshed = snapshotFromCard(editedCard, 2);
+assert.equal(refreshed.nameColor, editedCard.nameColor);
+assert.equal(refreshed.dialogueColor, editedCard.dialogueColor);
+const uncolored = snapshotFromCard(readVillagerCard({ id: "uncolored", data: { name: "Uncolored" } } as any), 1);
+assert.equal(uncolored.nameColor, "");
+assert.equal(uncolored.dialogueColor, "");
+for (const id of ["", "caveat", "future-font-id"])
+  assert.equal(
+    coerceVillageState({ ...fresh, villagers: [{ ...fresh.villagers[0], letterFontId: id }] }).villagers[0]
+      .letterFontId,
+    id,
+  );
+for (const invalid of [undefined, null, false, "x".repeat(121)])
+  assert.throws(
+    () => coerceVillageState({ ...fresh, villagers: [{ ...fresh.villagers[0], letterFontId: invalid }] }),
+    /writing-style assignment/,
+  );
+console.log("Current resident colors and saved writing styles preserve their adopted values.");
