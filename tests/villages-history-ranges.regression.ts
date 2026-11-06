@@ -81,7 +81,7 @@ assert.throws(() => run(createHistoryPageReader(world).range(tree.root, rows.len
 assert.deepEqual(run(createHistoryPageReader(world).range(null, 0, 0, 0), new Map()).value, []);
 {
   const scene = coerceSession({
-    version: 3,
+    version: 4,
     id: "selected-Scene",
     villageSeed: "range-world",
     participants: [],

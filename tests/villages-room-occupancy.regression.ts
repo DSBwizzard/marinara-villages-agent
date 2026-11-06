@@ -105,7 +105,7 @@ async function main() {
     "capture spans all Zones in the selected Venue and excludes other Venues/unplaced residents",
   );
   const scene = coerceSession({
-    version: 3,
+    version: 4,
     id: "attendance-scene",
     placeId: "hub",
     placeName: "Shared building",

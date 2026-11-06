@@ -101,6 +101,7 @@ export function sameSceneHistoryTurnPolicy(before: unknown, after: unknown) {
 function privateSceneHearing(value: unknown): boolean {
   const row = asRecord(value);
   return (
+    row.version === 4 ||
     (Array.isArray(row.submissions) && row.submissions.some((turn) => asRecord(turn).zoneEventsVersion === 1)) ||
     (asRecord(row.operation).input !== undefined &&
       asRecord(asRecord(row.operation).input).interactionScopeVersion === 6) ||
@@ -144,13 +145,17 @@ export function publicSceneAuthority(scene: VenueScene) {
     "liveSceneVersion",
   ] as const;
   const selected = Object.fromEntries(fields.filter((key) => scene[key] !== undefined).map((key) => [key, scene[key]]));
-  const projected = publicSceneResponse({
-    ...selected,
-    lines: [],
-    submissions: [],
-    continuity: scene.continuity,
-    sceneAttendance: scene.sceneAttendance,
-  });
+  const projected = publicSceneResponse(
+    {
+      ...selected,
+      lines: [],
+      submissions: [],
+      continuity: scene.continuity,
+      sceneAttendance: scene.sceneAttendance,
+    },
+    undefined,
+    true,
+  );
   const last = scene.submissions.at(-1);
   const { lines: _lines, submissions: _submissions, ...authority } = projected;
   return {

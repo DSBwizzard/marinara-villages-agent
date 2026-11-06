@@ -31,7 +31,7 @@ const sceneFixture = () => {
   state.seed = "places";
   state.venues = [venue()];
   const scene = coerceSession({
-    version: 3,
+    version: 4,
     id: "s",
     villageSeed: state.seed,
     placeId: "cafe",

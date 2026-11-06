@@ -38,7 +38,7 @@ const line = (id: string, speakerId = "a") => ({
 const f = sceneHistoryFixture();
 try {
   const logical = coerceSession({
-    version: 3,
+    version: 4,
     id: "playback",
     villageSeed: "seed",
     startedAt: at,
@@ -264,7 +264,7 @@ try {
   await collectRetainedStorage(f.gate);
 
   const unusual = coerceSession({
-    version: 3,
+    version: 4,
     id: "unusual",
     villageSeed: "seed",
     status: "active",
@@ -292,7 +292,7 @@ try {
   await collectRetainedStorage(f.gate);
 
   const pending = coerceSession({
-    version: 3,
+    version: 4,
     id: "pending",
     villageSeed: "seed",
     status: "active",
@@ -344,7 +344,7 @@ for (const count of [1000, 10_000, 25_000]) {
     actors = Array.from({ length: count }, (_, index) => "actor:" + index);
   try {
     const scene = coerceSession({
-      version: 3,
+      version: 4,
       id: "growing",
       villageSeed: "seed",
       status: "active",

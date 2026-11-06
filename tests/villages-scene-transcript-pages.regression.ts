@@ -43,7 +43,7 @@ for (const count of [1000, 10_000, 25_000]) {
   const f = fixture();
   try {
     const scene = coerceSession({
-      version: 3,
+      version: 4,
       id: "long",
       villageSeed: "seed",
       startedAt: at,
@@ -164,7 +164,7 @@ console.log("Scene transcript document-store growth:", JSON.stringify(measuremen
 const f = fixture();
 try {
   const scene = coerceSession({
-    version: 3,
+    version: 4,
     id: "faults",
     villageSeed: "seed",
     startedAt: at,

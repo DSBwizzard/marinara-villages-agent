@@ -91,7 +91,7 @@ const sprite = {
 };
 world.villagers[0].sprite = sprite as any;
 const scene = coerceSession({
-  version: 3,
+  version: 4,
   gmVersion: 1,
   semanticVersion: 2,
   id: "sprite-scene",

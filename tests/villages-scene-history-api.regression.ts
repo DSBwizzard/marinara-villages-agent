@@ -47,7 +47,7 @@ for (const count of [1000, 10_000, 25_000]) {
     const worlds = createVillageRepository(() => f.gate.documents);
     await worlds.mutateAuthority((saved) => Object.assign(saved, world));
     const scene = coerceSession({
-      version: 3,
+      version: 4,
       id,
       villageSeed: world.seed,
       status: "active",
@@ -287,7 +287,7 @@ for (const count of [1000, 10_000, 25_000]) {
     const worlds = createVillageRepository(() => f.gate.documents);
     await worlds.mutateAuthority((saved) => Object.assign(saved, world));
     const source = coerceSession({
-      version: 3,
+      version: 4,
       id,
       villageSeed: world.seed,
       status: "closed",

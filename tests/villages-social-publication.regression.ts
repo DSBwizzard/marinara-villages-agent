@@ -21,7 +21,7 @@ import { elapsed, socialWorldFixture } from "./fixtures/social-world.fixture.js"
 const village = socialWorldFixture();
 village.seed = "publication";
 let scene = coerceSession({
-  version: 3,
+  version: 4,
   id: "scene",
   villageSeed: village.seed,
   status: "active",
@@ -199,7 +199,7 @@ assert.equal(worldWrites, after, "Published source replay is a read-only no-op")
   initializeVenueAccess(home);
   const zone = home.zones.find((z) => z.kind === "shared-residence")!;
   let current = coerceSession({
-    version: 3,
+    version: 4,
     id: "standing-scene",
     villageSeed: world.seed,
     placeId: home.id,

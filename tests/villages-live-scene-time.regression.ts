@@ -85,7 +85,7 @@ function fixture(live = true) {
     ],
   };
   let scene = coerceSession({
-    version: 3,
+    version: 4,
     id: "visit",
     villageSeed: world.seed,
     placeId: "garden",

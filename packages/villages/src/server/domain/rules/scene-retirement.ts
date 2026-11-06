@@ -8,7 +8,7 @@ import { EXCHANGE_DOMAINS } from "../models/exchange-model.js";
 /** Do not let permissive compatibility decoding turn corrupt saved work into a settled Scene. */
 export function sceneRetirementSourceIsValid(value: unknown): boolean {
   const raw = asRecord(value);
-  if (raw.version !== 3 || raw.status !== "closed" || typeof raw.id !== "string" || !raw.id) return false;
+  if (raw.version !== 4 || raw.status !== "closed" || typeof raw.id !== "string" || !raw.id) return false;
   if (
     typeof raw.villageSeed !== "string" ||
     !raw.villageSeed ||

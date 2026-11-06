@@ -32,7 +32,7 @@ function deferred() {
 }
 function scene(id: string, name: string) {
   return coerceSession({
-    version: 3,
+    version: 4,
     id,
     placeId: "venue",
     placeName: name,

@@ -82,7 +82,7 @@ function seed(id: string) {
     description: "",
     revision: 1,
     data: {
-      version: 3,
+      version: 4,
       id,
       status: "active",
       sceneRevision: 0,
@@ -151,8 +151,8 @@ async function main() {
           native.transcript,
           native.submissionHistory,
         );
-        assert.equal(head.privateHearing, true, "Scope6 privacy publishes before operation work");
-        assert.notEqual(head.publicVersion, publicBefore.publicVersion);
+        assert.equal(head.privateHearing, true, "Current Scene hearing is private before operation work");
+        assert.equal(head.publicVersion, publicBefore.publicVersion);
         assert.deepEqual(
           native.operation.snapshot.publicHistory,
           publicBefore,
@@ -199,7 +199,7 @@ async function main() {
       afterTiming.sceneRevision,
       undefined,
       async () => {
-        assert.equal(row("history-policy").data.publicHistory.privateHearing, false);
+        assert.equal(row("history-policy").data.publicHistory.privateHearing, true);
         assert.equal(row("history-policy").data.publicHistory.publicVersion, publicBefore.publicVersion);
       },
     );
@@ -419,7 +419,7 @@ async function main() {
     }
 
     seed("slow-greeting");
-    row("slow-greeting").data = coerceSession({ version: 3, ...row("slow-greeting").data, status: "opening" });
+    row("slow-greeting").data = coerceSession({ version: 4, ...row("slow-greeting").data, status: "opening" });
     const world = defaultVillageState();
     const greetingVenue = venueFixture({ id: "greeting-place", name: "Hall", description: "A hall" });
     delete greetingVenue.access;
@@ -467,13 +467,17 @@ async function main() {
       processSavedExchange: async () => {},
       generate: async (_scene, _message, _mode, _target, _settled, signal) => {
         for (const duration of [7942, 24163]) {
-          await coordinatedCompletion("stage-" + duration, () =>
-            withProviderDeadline(async () => {
-              dispatches++;
-              stage.resolve();
-              await new Promise((resolve) => setTimeout(resolve, duration));
-              return "saved stage";
-            }, signal),
+          await coordinatedCompletion(
+            "stage-" + duration,
+            () =>
+              withProviderDeadline(async () => {
+                dispatches++;
+                stage.resolve();
+                await new Promise((resolve) => setTimeout(resolve, duration));
+                return "saved stage";
+              }, signal),
+            undefined,
+            { inputTokens: 1, outputTokens: 1 },
           );
         }
         return quietContactReply("Saved slow greeting.", []);
@@ -502,14 +506,11 @@ async function main() {
       delayedPresence.resolve();
       mock.timers.reset();
     }
-    seed("v3-opening-retry");
+    seed("opening-retry");
     const frozenOpening = {
-      writingContractVersion: 3,
       semanticBudget: { version: 1, requests: 2, inputTokens: 100000, outputTokens: 20000 },
-      semanticPipelineVersion: 3,
-      residentActionsVersion: 2,
     };
-    row("v3-opening-retry").data.operation = {
+    row("opening-retry").data.operation = {
       evidenceFormat: 1,
       checkpoints: {},
       attempts: {},
@@ -537,12 +538,12 @@ async function main() {
           "Opening retry preserves frozen admission bytes",
         );
         assert.equal(attempt, "saved-opening-attempt");
-        return readSession("v3-opening-retry");
+        return readSession("opening-retry");
       },
     } as any);
-    await retryCommands.greetVenue("v3-opening-retry", "saved-opening-attempt");
+    await retryCommands.greetVenue("opening-retry", "saved-opening-attempt");
     seed("v3-replay");
-    row("v3-replay").data = coerceSession({ version: 3, ...row("v3-replay").data, semanticVersion: 2 });
+    row("v3-replay").data = coerceSession({ version: 4, ...row("v3-replay").data, semanticVersion: 2 });
     const replayCommands = createSceneCommands({
       runtimeDebug() {},
       readSession,
@@ -1410,7 +1411,7 @@ async function main() {
     const typedAt = new Date().toISOString();
     world.venues.push(typedVenue);
     row("typed-review").data = coerceSession({
-      version: 3,
+      version: 4,
       ...row("typed-review").data,
       gmVersion: 1,
       semanticVersion: 2,

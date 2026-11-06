@@ -1044,7 +1044,7 @@ console.log(
     await import("../packages/villages/src/server/domain/rules/founding-tasks.js");
   const state = coerceVillageState(JSON.parse(JSON.stringify(world())));
   const scene = coerceSession({
-    version: 3,
+    version: 4,
     id: "frozen-history",
     placeId: "community",
     zoneId: "common:base",

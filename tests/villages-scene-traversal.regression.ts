@@ -41,7 +41,7 @@ for (const count of [1000, 10_000, 25_000]) {
   );
   world.villagers[0].wishes = before;
   const scene = coerceSession({
-    version: 3,
+    version: 4,
     id: "wish-growth",
     villageSeed: world.seed,
     status: "active",
@@ -94,7 +94,7 @@ for (const unknown of ["none", "before", "after"]) {
   ];
   world.villagers[1].wishes = [fixtureWish({ wish: "Other resident remains private" }, "other")];
   const scene = coerceSession({
-    version: 3,
+    version: 4,
     id: "wish-order",
     villageSeed: world.seed,
     status: "active",
@@ -164,7 +164,7 @@ for (const count of [1000, 10_000, 25_000]) {
     evidence: [],
   });
   social.intentionReceipts.already = receipt("already", "turn:0");
-  const scene = coerceSession({ version: 3, id: "scene", villageSeed: world.seed, status: "active", startedAt: at });
+  const scene = coerceSession({ version: 4, id: "scene", villageSeed: world.seed, status: "active", startedAt: at });
   scene.continuity = captureSceneContinuity(world, scene, Date.parse(at));
   const captured = structuredClone(scene.continuity);
   social.intentionReceipts.first = receipt("first", "turn:0");
@@ -233,7 +233,7 @@ for (const count of [1000, 10_000, 25_000]) {
 }
 {
   const scene = coerceSession({
-    version: 3,
+    version: 4,
     id: "narration-boundaries",
     lines: [
       { id: "old", kind: "narration", role: "assistant", speakerId: "__venue_scene__", content: "Earlier." },

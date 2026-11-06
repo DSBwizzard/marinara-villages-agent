@@ -53,7 +53,7 @@ const world = coerceVillageState({
 });
 const venue = world.venues[0];
 const scene = coerceSession({
-  version: 3,
+  version: 4,
   id: "location",
   villageSeed: world.seed,
   placeId: venue.id,
@@ -109,7 +109,7 @@ assert.doesNotMatch(JSON.stringify(remote), /HIDDEN|secret-room|hidden/);
 assert.deepEqual(scene, before, "building writing context never repairs or rewrites saved positions");
 
 const moved = coerceSession({
-  version: 3,
+  version: 4,
   ...scene,
   activeIds: ["mari"],
   accompanying: [{ characterId: "mari", zoneId: "bar" }],
@@ -120,7 +120,7 @@ const reloaded = coerceSession(structuredClone(moved));
 assert.deepEqual(sceneLocationContext(reloaded, venue, ["mari"]), sceneLocationContext(moved, venue, ["mari"]));
 
 const privateScene = coerceSession({
-  version: 3,
+  version: 4,
   ...scene,
   accompanying: [{ characterId: "mari", zoneId: "secret-room" }],
 });

@@ -40,7 +40,7 @@ state.venues = [
 const village = coerceVillageState(state);
 const venue = village.venues[0];
 const scene = coerceSession({
-  version: 3,
+  version: 4,
   id: "doorway",
   placeId: "home",
   zoneId: "exterior",
@@ -209,7 +209,7 @@ assert.deepEqual(
   frames.map((frame) => frame.activeIds),
   [[], ["buster"], ["buster"]],
 );
-const reloaded = coerceSession({ version: 3, ...scene, lines: stored });
+const reloaded = coerceSession({ version: 4, ...scene, lines: stored });
 assert.deepEqual(reloaded.lines[1].physicalIdsAfter, ["buster"], "paragraph timing survives reload");
 
 const localScene = {

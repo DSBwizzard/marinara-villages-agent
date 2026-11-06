@@ -21,7 +21,7 @@ const rows = new Map([
       kind: "venue-visit",
       packageId: "villages",
       revision: 1,
-      data: { version: 3, id: "esm", villageSeed: "esm-world", sceneRevision: 0, status: "active" },
+      data: { version: 4, id: "esm", villageSeed: "esm-world", sceneRevision: 0, status: "active" },
     },
   ],
 ]);

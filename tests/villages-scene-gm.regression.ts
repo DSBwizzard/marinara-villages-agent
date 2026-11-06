@@ -27,7 +27,15 @@ assert.deepEqual((raw.access as any[])[0].evidence, [1], "Sources follow inserte
 assert.equal((raw.intent as any).timeline[0].kind, "thought");
 assert.throws(() => materializeGmReply({ input: [{ kind: "speech", text: "Invented" }], segments }, "Tea?"));
 const context = semanticContext(
-  coerceSession({ version: 3, id: "empty", activeIds: [], participants: [], lines: [], submissions: [] }),
+  coerceSession({
+    version: 4,
+    id: "empty",
+    startedAt: "2026-11-01T12:00:00.000Z",
+    activeIds: [],
+    participants: [],
+    lines: [],
+    submissions: [],
+  }),
   defaultVillageState(),
   "",
   true,
@@ -39,7 +47,7 @@ assert.equal(empty.consistent, undefined, "No fabricated independent review");
 await assert.rejects(
   createSemanticService({
     readVillageState: () => assert.fail("Missing GM context must stop before any I/O"),
-  } as any).exchange(coerceSession({ version: 3, id: "missing-context" }), "", [], null),
+  } as any).exchange(coerceSession({ version: 4, id: "missing-context" }), "", [], null),
   /current GM response context is required/,
 );
 

@@ -805,7 +805,7 @@ console.log(
 {
   const f = fixture();
   const scene = coerceSession({
-    version: 3,
+    version: 4,
     id: "visit",
     villageSeed: f.world().seed,
     placeId: "home",
@@ -879,7 +879,7 @@ console.log(
   f.zone().picture!.night = { sourceId: f.zone().image!.id, image: image("old-night") };
   delete f.zone().observed;
   const scene = coerceSession({
-    version: 3,
+    version: 4,
     id: "archived",
     villageSeed: f.world().seed,
     placeId: "home",

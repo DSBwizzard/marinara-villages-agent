@@ -42,7 +42,6 @@ import {
 } from "../../domain/rules/project-interpretation.js";
 import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
 import { privateRejectedText, rejectedSyntaxError } from "../../domain/rules/rejected-response.js";
-import { assertResidentActionWitnesses, readResidentActions } from "../../domain/rules/resident-actions.js";
 import { renderResidentAdmission } from "../../domain/rules/resident-admission.js";
 import {
   applyResidentMovementTimeline,
@@ -76,7 +75,7 @@ import {
 } from "../../domain/rules/scene-halt.js";
 import { SCENE_MEMORY_INSTRUCTION, sceneMemoryContext } from "../../domain/rules/scene-memories.js";
 import { provisionalSceneNarrative, type SceneNarrativeSource } from "../../domain/rules/scene-narrative-effects.js";
-import { parseVenueReply, quietContactReply } from "../../domain/rules/scene-reply.js";
+import { parseVenueReply } from "../../domain/rules/scene-reply.js";
 import {
   assertCurrentSceneGeneration,
   completeSceneObject,
@@ -87,12 +86,7 @@ import { semanticContext, semanticEvidence } from "../../domain/rules/semantic-c
 import { semanticPhysicalContext, semanticPlayerMoves } from "../../domain/rules/semantic-timeline.js";
 import { immutableSocialWishes, wishHistoryLoaded } from "../../domain/rules/social-wishes.js";
 import { describeSpriteExpressions, sceneSpriteSelection } from "../../domain/rules/sprite-expressions.js";
-import {
-  contactSpeech,
-  readContactIntent,
-  readContactMoves,
-  readContactRelay,
-} from "../../domain/rules/venue-contact.js";
+import { contactSpeech, readContactMoves } from "../../domain/rules/venue-contact.js";
 import {
   hasVenueClass,
   venueAssignedCount,
@@ -151,7 +145,6 @@ export interface SceneWritingPorts {
   measurePipeline: typeof import("../../adapters/observability/pipeline-metrics.js").measurePipeline;
   runtimeDebug: typeof import("../../adapters/observability/runtime-debug.js").runtimeDebug;
   venueOperationId: typeof import("../../adapters/operations/operation-context.js").venueOperationId;
-  venueOperationInput: typeof import("../../adapters/operations/operation-context.js").venueOperationInput;
   rejectVenueCompletion: typeof import("../../jobs/venue-coordinator.js").rejectVenueCompletion;
   completeWithRoom: typeof import("../generation/model-requests.js").completeWithRoom;
   villagesConnectionIdFor: typeof import("../settings/connections.js").villagesConnectionIdFor;
@@ -173,7 +166,6 @@ export function createSceneWriting({
   measurePipeline,
   runtimeDebug,
   venueOperationId,
-  venueOperationInput,
   rejectVenueCompletion,
   completeWithRoom,
   villagesConnectionIdFor,
@@ -182,9 +174,6 @@ export function createSceneWriting({
 }: SceneWritingPorts) {
   const readVillageState: typeof readVillageStateWithoutPlaces = (options) =>
     readVillageStateWithoutPlaces({ ...options, memories: true });
-  function explicitSceneActions(): boolean {
-    return venueOperationInput()?.interactionScopeVersion === 6;
-  }
   /** Do not disclose occupants of unseen Zones, including inside operation snapshots/checkpoints. */
   class VenueReplyFailure extends Error {
     constructor(
@@ -211,7 +200,7 @@ export function createSceneWriting({
     actionOutcome?: string,
     introduction?: NarrativeAdmission | null,
   ) {
-    assertCurrentSceneGeneration(session, venueOperationInput(), mode);
+    assertCurrentSceneGeneration(session);
 
     const writingVersion = 4;
     const requestKey = writingRequestKey(session, message, mode);
@@ -611,8 +600,7 @@ export function createSceneWriting({
       try {
         return await generateMeasured(undefined, ...args);
       } catch (error) {
-        if (!(error instanceof GeneratedSceneBoundary) || venueOperationInput()?.sceneBoundaryVersion !== 1)
-          throw error;
+        if (!(error instanceof GeneratedSceneBoundary)) throw error;
         const replacement = await venueCheckpoint(replacementKey, async () => ({ requestKey, outcome: error.outcome }));
         return replace(replacement);
       }
@@ -628,8 +616,7 @@ export function createSceneWriting({
     const signal = args[5];
     const trace = args[6];
     const originalKey = writingRequestKey(session, message, mode);
-    const narrativeVersion =
-      venueOperationInput()?.narrativeIntroductionVersion === 1 && session.semanticVersion === 2 && !!sceneNarrative;
+    const narrativeVersion = session.semanticVersion === 2 && !!sceneNarrative;
     const offer = narrativeVersion
       ? await venueCheckpoint("narrative-offer:" + originalKey, () =>
           sceneNarrative!.offer(session, "scene:" + session.id + ":" + venueOperationId()),
@@ -779,16 +766,6 @@ export function createSceneWriting({
     });
     const movementIntent: MovementIntent | null = null;
     if (movementIntent && movementIntent.zoneId !== session.zoneId) throw conflict("Use Move to change Zones.");
-    const extractedContact =
-      !explicitSceneActions() && !session.contactGeneration && (mode === "chat" || mode === "ask")
-        ? readContactIntent(raw?.contactIntent, message)
-        : null;
-    // Route a valid contact interpretation before validating its uncommitted local draft.
-    if (extractedContact)
-      return {
-        ...quietContactReply("Routing the contact request.", session.activeIds),
-        contactIntent: extractedContact,
-      };
     let parsed: ReturnType<typeof parseVenueReply>;
     let npcAdmissions: NpcAdmission[] = [];
     let eventRaw = raw;
@@ -864,20 +841,6 @@ export function createSceneWriting({
         responseDiagnostics: diagnostics,
       });
     }
-    let residentActions: ReturnType<typeof readResidentActions> | undefined;
-    const residentActionsOmitted = raw?.residentActions === undefined && session.semanticVersion === 2 && !!semantic;
-    if (semantic || [1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))) {
-      try {
-        residentActions = readResidentActions(residentActionsOmitted ? [] : raw?.residentActions);
-        if (residentActionsOmitted) runtimeDebug("resident action proposals omitted", { sceneId: session.id });
-      } catch (error) {
-        await rejectVenueCompletion(
-          { model: model.model, connectionId: model.connectionId, reason: "resident-actions" },
-          { preserveWriting: true, stages: ["writing-completion:" + requestKey] },
-        );
-        throw error;
-      }
-    }
     if (!raw || !gmContext || !gmPresentation)
       throw conflict("The saved GM response context is unavailable. Your draft is preserved.");
     const semanticResult = semantic
@@ -887,13 +850,8 @@ export function createSceneWriting({
             message,
             parsed.lines,
             { raw, context: gmContext, presentation: gmPresentation },
-            session.semanticIntent ?? null,
-            residentActions,
-            residentActionsOmitted,
             narrativeVersion ? (narrativeGrant ?? null) : undefined,
-            venueOperationInput()?.hearingTimelineVersion === 1 && session.contactGeneration?.zoneEvents
-              ? (eventRaw ?? undefined)
-              : undefined,
+            session.contactGeneration?.zoneEvents ? (eventRaw ?? undefined) : undefined,
           )
           .catch(async (error: unknown) => {
             if (error instanceof InvalidGmReply)
@@ -1060,11 +1018,6 @@ export function createSceneWriting({
         semanticResult && raw?.placeUpdate
           ? semanticPhysicalContext(raw.placeUpdate, parsed.lines, session, message, contactMoves)
           : undefined;
-      if (semanticResult?.effects.residentActionReceipt) {
-        const receipt = semanticResult.effects
-          .residentActionReceipt as import("../../domain/rules/resident-actions.js").ResidentActionReceipt;
-        assertResidentActionWitnesses(receipt, semanticEvidence(parsed.lines));
-      }
       if (semanticAccess) {
         // The interpreter proposes events; only the mechanically routed timeline owns witnesses.
         const witnessed = semanticEvidence(parsed.lines);
@@ -1122,13 +1075,7 @@ export function createSceneWriting({
             ),
           ]
         : [];
-      const ending = heardSignal(raw?.sceneEnded);
-      const sceneEnded =
-        venueOperationInput()?.preservationVersion !== 1 &&
-        !!ending &&
-        (!session.contactGeneration ||
-          ((session.contactGeneration.acoustics === true || session.contactGeneration.zoneEvents === true) &&
-            session.contactGeneration.localIds.includes(ending.speakerId)));
+      const sceneEnded = false;
       const requestedVenueId = request ? asTrimmedString(request.entry.venueId) : "";
       const invitedVenueId = invitation ? asTrimmedString(invitation.entry.venueId) : "";
       const invitedVenue = findLocation(sceneContinuityView(village, session), invitedVenueId);
@@ -1293,15 +1240,9 @@ export function createSceneWriting({
         interpretationRouting: raw?.interpretationRouting as unknown,
         roomEvents: raw?.roomEvents as unknown,
         projectContexts,
-        contactIntent:
-          !explicitSceneActions() && !session.contactGeneration && (mode === "chat" || mode === "ask")
-            ? readContactIntent(raw?.contactIntent, message)
-            : null,
+        contactIntent: null,
         contactMoves,
-        contactRelay:
-          !explicitSceneActions() && session.contactGeneration && storedPlace
-            ? readContactRelay(raw?.contactRelay, parsed.lines, village, storedPlace, session, audience)
-            : null,
+        contactRelay: null,
         contactEndIds:
           session.contactGeneration && Array.isArray(raw?.contactEnd)
             ? raw.contactEnd.flatMap((value) => {
@@ -1357,47 +1298,46 @@ export function createSceneWriting({
                 quote: asTrimmedString(venueRequest.entry.quote),
               }
             : null,
-        invitationSignal:
-          invitation &&
-          invitedVenue &&
-          invitationTimingSupported &&
-          !(
-            invitation.entry.privateSpaceId &&
-            invitation.entry.zoneId &&
-            invitation.entry.privateSpaceId !== invitation.entry.zoneId
-          ) &&
-          !(
-            invitationZoneId &&
-            invitation.entry.privateOwnerId &&
-            invitationZoneId !==
-              legacyZoneId(invitedVenue, "private", "residence", invitation.entry.privateOwnerId as string)
-          ) &&
-          !/\b(no|not|never|don't|can't|cannot|won't|unless|if|maybe|perhaps)\b/iu.test(invitationQuote) &&
-          privateScopeSupported &&
-          !!invitationZone &&
-          !zoneClosed(village, invitedVenue, invitationZone) &&
-          canInviteToZone(invitedVenue, invitationZone, invitation.speakerId) &&
-          (invitationScope === "shared" || invitationOwnerId === invitation.speakerId)
-            ? {
-                residentId: invitation.speakerId,
-                venueId: invitedVenueId,
-                scope: invitationScope,
-                zoneLabel: invitationZone.name,
-                zoneId: invitationZone?.id,
-                privateSpaceId:
-                  invitationZone && ["private-residence", "staff", "restricted"].includes(invitationZone.kind)
-                    ? invitationZone.id
-                    : undefined,
-                area: invitationZone ? zoneArea(invitationZone) : undefined,
-                spaceClass: invitationZone?.venueClass,
-                accompanies:
-                  invitation?.entry.accompanies === true &&
-                  /\b(with me|follow me|show you|take you|come with|let me show)\b/iu.test(invitationQuote),
-                timing: invitationTiming,
-                ownerId: invitationOwnerId,
-                quote: asTrimmedString(invitation.entry.quote),
-              }
-            : null,
+        invitationSignal: (invitation &&
+        invitedVenue &&
+        invitationTimingSupported &&
+        !(
+          invitation.entry.privateSpaceId &&
+          invitation.entry.zoneId &&
+          invitation.entry.privateSpaceId !== invitation.entry.zoneId
+        ) &&
+        !(
+          invitationZoneId &&
+          invitation.entry.privateOwnerId &&
+          invitationZoneId !==
+            legacyZoneId(invitedVenue, "private", "residence", invitation.entry.privateOwnerId as string)
+        ) &&
+        !/\b(no|not|never|don't|can't|cannot|won't|unless|if|maybe|perhaps)\b/iu.test(invitationQuote) &&
+        privateScopeSupported &&
+        !!invitationZone &&
+        !zoneClosed(village, invitedVenue, invitationZone) &&
+        canInviteToZone(invitedVenue, invitationZone, invitation.speakerId) &&
+        (invitationScope === "shared" || invitationOwnerId === invitation.speakerId)
+          ? {
+              residentId: invitation.speakerId,
+              venueId: invitedVenueId,
+              scope: invitationScope,
+              zoneLabel: invitationZone.name,
+              zoneId: invitationZone?.id,
+              privateSpaceId:
+                invitationZone && ["private-residence", "staff", "restricted"].includes(invitationZone.kind)
+                  ? invitationZone.id
+                  : undefined,
+              area: invitationZone ? zoneArea(invitationZone) : undefined,
+              spaceClass: invitationZone?.venueClass,
+              accompanies:
+                invitation?.entry.accompanies === true &&
+                /\b(with me|follow me|show you|take you|come with|let me show)\b/iu.test(invitationQuote),
+              timing: invitationTiming,
+              ownerId: invitationOwnerId,
+              quote: asTrimmedString(invitation.entry.quote),
+            }
+          : null) as import("../../domain/models/scene-model.js").VenueSubmission["invitationSignal"] | null,
         recap:
           session.contactGeneration?.acoustics || session.contactGeneration?.zoneEvents
             ? ""
@@ -1412,22 +1352,17 @@ export function createSceneWriting({
         establishmentProgress: Array.isArray(semanticResult?.effects.establishmentProgress)
           ? (semanticResult.effects.establishmentProgress as unknown[])
           : [],
-        residentActionReceipt: semanticResult?.effects.residentActionReceipt as
-          import("../../domain/rules/resident-actions.js").ResidentActionReceipt | undefined,
         semanticAccess,
         semanticProvenance: semanticResult
           ? ({
               version: 2 as const,
               ...{ producer: "gm" as const },
               turnPolicyVersion: 1 as const,
-              ...(venueOperationInput()?.preservationVersion === 1 ? { preservationVersion: 1 as const } : {}),
-              ...(venueOperationInput()?.occurrenceVersion === 1 ? { occurrenceVersion: 1 as const } : {}),
+              preservationVersion: 1 as const,
+              occurrenceVersion: 1 as const,
               sourceHash: semanticResult.sourceHash,
-              ...(venueOperationInput()?.semanticPipelineVersion === 3 ? { pipelineVersion: 3 as const } : {}),
-              ...(venueOperationInput()?.hearingTimelineVersion === 1 ? { hearingTimelineVersion: 1 as const } : {}),
-              ...([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))
-                ? { residentActionsVersion: venueOperationInput()?.residentActionsVersion as 1 | 2 }
-                : {}),
+              pipelineVersion: 3 as const,
+              hearingTimelineVersion: 1 as const,
               authority: semanticResult.authority,
               interpretedAt: new Date().toISOString(),
             } as import("../../domain/models/semantic-model.js").SemanticProvenance)
@@ -1523,7 +1458,7 @@ export function createSceneWriting({
     actionOutcome?: string,
   ): Promise<SceneReply> {
     try {
-      assertCurrentSceneGeneration(session, venueOperationInput(), mode);
+      assertCurrentSceneGeneration(session);
       if (!semantic) throw conflict("System interpretation is not configured.");
       if (mode === "greet" && !session.contactGeneration?.zoneEvents) {
         const state = await readVillageState();

@@ -54,17 +54,6 @@ export interface VenueCoordinatorPorts {
 }
 /** Each application owns its live Scene operations and shutdown admission. */
 export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
-  const attentionStages = (operation: VenueOperation) => [
-    "attention-plan",
-    `attention-routing:${operation.id}`,
-    `attention-routing:${operation.id}-system`,
-    ...(operation.input.interactionScopeVersion === 5
-      ? ["acoustic-layout", `acoustic-routing:${operation.id}`, `acoustic-routing:${operation.id}-system`]
-      : []),
-    ...(operation.input.interactionScopeVersion === 6 ? ["scene-layout"] : []),
-  ];
-  const attentionAttempt = (operation: VenueOperation, key: string) =>
-    attentionStages(operation).some((stage) => key.startsWith(stage + ":"));
   const { villagesDocuments, villagesLogger, runtimeDebug } = ports;
   const { context, assertVenueOwnership, venueRefusal } = ports.operations;
   const live = new Map<
@@ -159,7 +148,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
   ) {
     return update(id, async (data, documents) => {
       const scene = coerceSession({
-        version: 3,
+        version: 4,
         id: data.id,
         villageSeed: data.villageSeed,
         participants: data.participants,
@@ -761,9 +750,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
               checkpoints: abandoned
                 ? { "abandoned-request": abandoned }
                 : reuseAttention
-                  ? Object.fromEntries(
-                      Object.entries(prior.checkpoints).filter(([stage]) => attentionStages(prior).includes(stage)),
-                    )
+                  ? Object.fromEntries(Object.entries(prior.checkpoints).filter(([stage]) => stage === "scene-layout"))
                   : {},
               attempts: {},
               error: "",
@@ -869,16 +856,10 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
                   Object.keys(operation.checkpointClaims ?? {}).length > 0 ||
                   Object.values(operation.attempts).some((attempt) => attempt.status === "complete") ||
                   operation.checkpoints["turn-reply"] ||
-                  ((attentionStages(operation).some((stage) => Object.hasOwn(operation.checkpoints, stage)) ||
-                    Object.entries(operation.attempts).some(
-                      ([stage, attempt]) => attentionAttempt(operation, stage) && attempt.status === "complete",
-                    )) &&
+                  (Object.hasOwn(operation.checkpoints, "scene-layout") &&
                     !Object.entries(operation.attempts).some(
                       ([stage, attempt]) => stage.startsWith("turn-reply:") && attempt.status === "rejected",
                     )) ||
-                  operation.checkpoints["contact-response"] ||
-                  operation.checkpoints["contact-relay-response"] ||
-                  operation.checkpoints["action-reply"] ||
                   operation.checkpoints["greeting-reply"] ||
                   operation.checkpoints["move-invitation"] ||
                   (operation.kind === "close" &&
