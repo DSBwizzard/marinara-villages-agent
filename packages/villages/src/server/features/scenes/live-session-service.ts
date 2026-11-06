@@ -20,13 +20,7 @@ import { semanticBlocker } from "../../domain/rules/semantic-continuity.js";
 import { appendLine } from "../../domain/rules/scene-record.js";
 import { claimVisitPermission, evaluateZoneAccess } from "../../domain/rules/venue-access.js";
 import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
-import {
-  canInviteToZone,
-  legacyZoneId,
-  resolveVenueZone,
-  zoneArea,
-  zoneClosed,
-} from "../../domain/rules/venue-zones.js";
+import { legacyZoneId, resolveVenueZone, zoneArea, zoneClosed } from "../../domain/rules/venue-zones.js";
 export interface LiveScenePorts {
   readActive: typeof import("../../adapters/storage/scene-store.js").readActive;
   readSession: typeof import("../../adapters/storage/scene-store.js").readSession;
@@ -93,6 +87,7 @@ export function createLiveScenes({
     const zone = venue && resolveVenueZone(venue, zoneId);
     if (
       !venue ||
+      !venue.access ||
       !zone ||
       (guard && !guard(state)) ||
       scene.status !== "active" ||
@@ -111,7 +106,6 @@ export function createLiveScenes({
     if (captured && (!capturedZone || zonePictureContext(state, captured, capturedZone) !== zone.observed.context))
       return false;
     if (
-      venue.access &&
       !evaluateZoneAccess(venue, zone, "player", {
         ...sceneAccessContext(scene, state),
         unavailable: zoneClosed(state, venue, zone),
@@ -177,6 +171,7 @@ export function createLiveScenes({
     const village = sceneContinuityView(await readVillageState(), session),
       venue = findLocation(village, session.placeId);
     if (!venue || session.status === "closed") return session;
+    if (!venue.access) throw conflict("That Place has no native access record.");
     if (session.sceneAttendance && !session.sceneAttendance.layout) {
       const captured = await changeSession(session.id, (state) => {
         if (state.sceneAttendance && !state.sceneAttendance.layout)
@@ -213,7 +208,6 @@ export function createLiveScenes({
       return refreshZoneParticipants(settled, completing);
     }
     const zoneId = session.zoneId ?? legacyZoneId(venue, session.area, session.spaceClass, session.privateOwnerId);
-    const zone = resolveVenueZone(venue, zoneId);
     if (venue.access && session.sceneAttendance) {
       const exits = accessExits(session, village, venue);
       if (exits.length) {
@@ -268,64 +262,6 @@ export function createLiveScenes({
         });
         return refreshZoneParticipants(displaced, completing);
       }
-    }
-    const revoked =
-      !venue.access &&
-      session.zoneGrants?.some(
-        (grant) => grant.zoneId === zoneId && (!zone || !canInviteToZone(venue, zone, grant.controllerId)),
-      );
-    if (!venue.access && (!zone || zoneClosed(village, venue, zone) || revoked)) {
-      const displaced = await changeSession(session.id, (state) => {
-        if (!completing && hasVenueOperation(session.id)) return;
-        state.zoneId = "exterior";
-        state.area = "outside";
-        state.privateOwnerId = "";
-        state.privateSpaceId = undefined;
-        state.recap = "";
-        state.legacyCast = false;
-        state.grantedZoneIds = state.grantedZoneIds?.filter(
-          (id) =>
-            !!resolveVenueZone(venue, id) &&
-            !session.zoneGrants?.some(
-              (grant) =>
-                grant.zoneId === id && !canInviteToZone(venue, resolveVenueZone(venue, id)!, grant.controllerId),
-            ),
-        );
-        state.zoneGrants = state.zoneGrants?.filter(
-          (grant) =>
-            !!resolveVenueZone(venue, grant.zoneId) &&
-            canInviteToZone(venue, resolveVenueZone(venue, grant.zoneId)!, grant.controllerId),
-        );
-        appendLine(state, {
-          id: randomUUID(),
-          kind: "narration",
-          content: "This zone is closed. You return to the exterior.",
-          speakerId: "",
-          name: "",
-          role: "assistant",
-          heardBy: [],
-          at: villageNow().toISOString(),
-        });
-      });
-      return refreshZoneParticipants(displaced, completing);
-    }
-    const invalidGrants =
-      (!venue.access
-        ? session.zoneGrants?.filter((grant) => {
-            const target = resolveVenueZone(venue, grant.zoneId);
-            return !target || !canInviteToZone(venue, target, grant.controllerId);
-          })
-        : []) ?? [];
-    if (invalidGrants.length) {
-      const refreshed = await changeSession(session.id, (state) => {
-        state.zoneGrants = state.zoneGrants?.filter(
-          (grant) => !invalidGrants.some((invalid) => invalid.zoneId === grant.zoneId),
-        );
-        state.grantedZoneIds = state.grantedZoneIds?.filter(
-          (id) => !invalidGrants.some((grant) => grant.zoneId === id),
-        );
-      });
-      return refreshZoneParticipants(refreshed, completing);
     }
     if (!session.zoneId) {
       const migrated = await changeSession(session.id, (state) => {
@@ -443,6 +379,7 @@ export function createLiveScenes({
     if (village.seed !== session.villageSeed) throw conflict("That Village changed. Its saved Scene is preserved.");
     const venue = findLocation(village, session.placeId);
     if (!venue) return session;
+    if (!venue.access) throw conflict("That Place has no native access record.");
     const now = villageNow();
     const moment = (at: Date) =>
       deriveVillageMoment({

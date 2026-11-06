@@ -824,6 +824,22 @@ console.log(
     },
   } as LiveScenePorts);
   assert.equal(await live.canGenerateZonePicture("home", "living"), true);
+  const entrance = f.zone("exterior"),
+    ledger = f.world().venues[0].access;
+  entrance.observed = captureZoneObservation(f.world().venues[0], entrance);
+  scene.zoneId = "exterior";
+  assert.equal(await live.canGenerateZonePicture("home", "exterior"), true);
+  delete f.world().venues[0].access;
+  for (const zoneId of ["living", "exterior"]) {
+    scene.zoneId = zoneId;
+    assert.equal(
+      await live.canGenerateZonePicture("home", zoneId),
+      false,
+      "egress does not authorize an artwork purchase without native authority",
+    );
+  }
+  f.world().venues[0].access = ledger;
+  scene.zoneId = "living";
   scene.operation = { status: "running" } as typeof scene.operation;
   assert.equal(
     await live.canGenerateZonePicture("home", "living"),
