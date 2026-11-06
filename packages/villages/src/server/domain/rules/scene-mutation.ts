@@ -54,7 +54,6 @@ function mutationSnapshot(session: VenueScene) {
         ]),
       ),
       attempts: attempts(value.attempts),
-      optionalAttempts: attempts(value.optionalAttempts),
     };
   }
   const value = {

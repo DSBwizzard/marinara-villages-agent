@@ -55,7 +55,6 @@ export const isolatedTests = new Set([
   "tests/villages-package-verifier.regression.mjs",
   "tests/villages-client-scope.regression.ts",
   "tests/villages-api-failures.regression.ts",
-  "tests/villages-background-decisions.regression.ts",
   "tests/villages-public-client.regression.ts",
   "tests/villages-activation-owner.regression.mjs",
   "tests/villages-clock-packaged.regression.ts",

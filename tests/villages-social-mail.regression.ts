@@ -56,10 +56,9 @@ let narrationReply = "I'd like to stay friends.";
 let rejectKnownContext = false;
 let rejectNarrationContext = false,
   narrationFits = 0;
-let optionalTokenEstimate = 13000;
+let narrationTokenEstimate = 13000;
 let writingReplay:
   | {
-      settings: Map<string, unknown>;
       response?: { messages: string; value: unknown };
       hits: number;
     }
@@ -101,11 +100,6 @@ const change = (input: SocialMailInput, revision: number, reply: boolean) => ({
 let active: SocialMailInput;
 const promptHistory: string[] = [];
 const coreService = createSocialMail({
-  backgroundSetting: async (key: string, create: () => unknown) => {
-    if (!writingReplay) return create();
-    if (!writingReplay.settings.has(key)) writingReplay.settings.set(key, await create());
-    return writingReplay.settings.get(key);
-  },
   readMailInput: (...args) => captures.readMailInput(...args),
   withWork: async (work: any) => work(),
   withVillageSceneAcceptance: async (work: any) => {
@@ -263,7 +257,7 @@ const coreService = createSocialMail({
         return {
           messages,
           ...options,
-          estimatedTokensBefore: optionalTokenEstimate,
+          estimatedTokensBefore: narrationTokenEstimate,
           trimmed:
             (rejectNarrationContext && connectionId === "narration") ||
             (rejectKnownContext &&
@@ -279,7 +273,7 @@ const coreService = createSocialMail({
       assert.equal(
         JSON.stringify(messages),
         writingReplay.response.messages,
-        "Saved optional selection keeps the purchased fingerprint",
+        "Saved GM reply keeps the purchased fingerprint",
       );
       writingReplay.hits++;
       return structuredClone(writingReplay.response.value);
@@ -541,8 +535,8 @@ calls = initialCalls;
   ];
   active = { ...active, admitted: structuredClone(active.admitted) };
   active.admitted.villagers[0].wishes = [wish];
-  writingReplay = { settings: new Map(), hits: 0 };
-  optionalTokenEstimate = 1;
+  writingReplay = { hits: 0 };
+  narrationTokenEstimate = 1;
   try {
     rejectNarrationContext = true;
     const before = calls;
@@ -553,8 +547,7 @@ calls = initialCalls;
     assert(writingReplay.response?.messages.includes("original-refusal"));
     const paid = calls;
     const fits = narrationFits;
-    writingReplay.settings = new Map(structuredClone([...writingReplay.settings]));
-    optionalTokenEstimate = 13000;
+    narrationTokenEstimate = 13000;
     rejectKnownContext = true;
     rejectNarrationContext = true;
     await service.handler.generate(active);
@@ -566,7 +559,7 @@ calls = initialCalls;
     writingReplay = undefined;
     rejectKnownContext = false;
     rejectNarrationContext = false;
-    optionalTokenEstimate = 13000;
+    narrationTokenEstimate = 13000;
     calls = initialCalls;
   }
 }

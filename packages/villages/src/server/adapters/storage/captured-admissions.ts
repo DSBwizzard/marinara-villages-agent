@@ -177,12 +177,7 @@ export function capturedJobOwners(raw: unknown): CapturedAdmissionOwners {
         raw.steps.length === 0 &&
         raw.hasResult === false &&
         raw.result === undefined &&
-        !raw.partialResult &&
-        (raw.optionalAttempts === undefined ||
-          (typeof raw.optionalAttempts === "object" &&
-            raw.optionalAttempts !== null &&
-            !Array.isArray(raw.optionalAttempts) &&
-            Object.keys(raw.optionalAttempts).length === 0)),
+        !raw.partialResult,
       "unfinished background capture was released",
     );
   } else if (raw.input !== null) input(raw.kind, raw.input, raw.seed, into);

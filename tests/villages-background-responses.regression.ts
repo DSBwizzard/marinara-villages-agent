@@ -126,11 +126,6 @@ for (const failure of ["before", "after"] as const) {
       readVillageState: async () => structuredClone(world),
       mutateVillageState: async (update) => {
         update(world);
-        if (failure === "after") {
-          const row = [...db.rows.values()].find((row) => row.kind === "background-work");
-          row.data.optionalAttempts = { review: { status: "unknown", elapsedMs: 10 } };
-          row.revision++;
-        }
         await saveWorld(db, world);
         return world;
       },
@@ -161,7 +156,6 @@ for (const failure of ["before", "after"] as const) {
                 { checkpointId: "reply" },
               );
               assert.equal(reply.content, completion.content);
-              for (let index = 0; index < 30; index++) await complete.setting!("setting:" + index, () => index);
               return { done: true };
             },
             apply(_state, _input, result) {
@@ -198,16 +192,12 @@ for (const failure of ["before", "after"] as const) {
   assert.equal(applied, 1);
   assert.equal(calls, 1, "both lost job acknowledgements reuse the purchased reply");
   const retained = [...db.rows.values()].filter((row) => row.kind === "background-history");
-  assert.equal(retained.length, failure === "after" ? 1 : 0, "settled successful work needs no extra attempt copy");
-  if (failure === "after") {
-    assert.equal(retained[0].data.optionalAttempts.review.status, "unknown");
-    assert.deepEqual(retained[0].data.result, { done: true }, "optional uncertainty survives a valid World receipt");
-  }
+  assert.equal(retained.length, 0, "settled successful work needs no extra attempt copy");
   assert.equal((await background.backgroundWorkSummaries())[0].tokens, 17, "receipt adoption counts known usage once");
   const bodies = [...db.rows.values()].filter((row) => row.kind === "generation-response");
   assert.equal(bodies.length, 1, "normal and recovered replies share one immutable body");
   assert.equal(validateBackgroundResponse(bodies[0]).response.content, completion.content);
-  assert.ok(db.metrics().writes < 150_000, "thirty metadata checkpoints do not rewrite the large provider reply");
+  assert.ok(db.metrics().writes < 150_000, "Recovery keeps one immutable provider reply");
   await background.recoverBackgroundWork();
   assert.equal(applied, 1, "effect receipt prevents duplicate application");
   stop();
@@ -677,9 +667,7 @@ for (const failure of [
       inject = false;
       if (failure === "cas-conflict") {
         const current = db.rows.get(input.id);
-        current.data.optionalAttempts = {
-          review: { status: "complete", elapsedMs: 10, result: "Exact optional result" },
-        };
+        current.data.error = "Exact concurrent before-image";
         current.revision++;
         return null;
       }
@@ -727,7 +715,7 @@ for (const failure of [
     "each exact before-image keeps an immutable owner",
   );
   if (failure === "cas-conflict")
-    assert.ok(histories.some((row) => row.data.optionalAttempts?.review.result === "Exact optional result"));
+    assert.ok(histories.some((row) => row.data.error === "Exact concurrent before-image"));
   assert.deepEqual(histories[0].data.input, work.input);
   assert.equal(histories[0].data.steps[0].responseClaim.id, old.steps[0].responseClaim!.id);
   const late = await createBackgroundResponses(gate.documents).publish(old, 0, {
@@ -914,7 +902,6 @@ for (const mode of ["closed-before", "closed-after", "uncertain", "undo"]) {
     owner: "prior-owner",
     attempt: 1,
     steps: [{ fingerprint: "purchased-input", status: "running" }],
-    settings: {},
     hasResult: false,
     requests: 1,
     tokens: 17,
@@ -975,17 +962,6 @@ for (const mode of ["closed-before", "closed-after", "uncertain", "undo"]) {
         },
       ]);
     else if (uncertain) {
-      await retainBackgroundJob(
-        gate.documents,
-        nativeBackgroundJob({
-          ...job,
-          attempt: 2,
-          status: "interrupted",
-          steps: [],
-          optionalAttempts: { review: { status: "unknown", elapsedMs: 10 } },
-          usageComplete: false,
-        }),
-      );
       const pending: Job = {
         ...job,
         attempt: 3,
@@ -1101,8 +1077,7 @@ for (const mode of ["closed-before", "closed-after", "uncertain", "undo"]) {
       assert.equal([...db.rows.values()].filter((row) => row.kind === "repair-undo").length, 10);
     } else if (uncertain) {
       const held = [...db.rows.values()].filter((row) => row.kind === "background-history");
-      assert.equal(held.length, 2, "unknown optional work and a late principal response are not compacted as settled");
-      assert.ok(held.some((row) => row.data.optionalAttempts?.review.status === "unknown"));
+      assert.equal(held.length, 1, "A late principal response is not compacted as settled");
       assert.ok(
         [...db.rows.values()].some((row) => row.kind === "generation-response"),
         "unreconciled late response remains available",

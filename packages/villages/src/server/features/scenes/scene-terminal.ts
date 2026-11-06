@@ -122,18 +122,6 @@ function slot(id: string): DocumentSlot<SceneTerminal> {
         )
           throw new Error("Saved Scene receipt is invalid; Scene cleanup is deferred.");
       }
-      if (
-        raw.optionalAttempts !== undefined &&
-        Object.values(asRecord(raw.optionalAttempts)).some((value) => {
-          const attempt = asRecord(value);
-          return (
-            !["complete", "unknown"].includes(String(attempt.status)) ||
-            typeof attempt.elapsedMs !== "number" ||
-            !Number.isFinite(attempt.elapsedMs)
-          );
-        })
-      )
-        throw new Error("Saved Scene receipt is invalid; Scene cleanup is deferred.");
       if (raw.abandonedRequest !== undefined) {
         const abandoned = asRecord(raw.abandonedRequest);
         if (["id", "kind", "attemptId"].some((key) => typeof abandoned[key] !== "string" || !abandoned[key]))
@@ -157,14 +145,6 @@ export function terminalForScene(scene: VenueScene, sourceRevision: number): Sce
     ["id", "kind", "attemptId"].some((key) => typeof abandoned[key] !== "string" || !abandoned[key])
   )
     throw new Error("Abandoned Scene request identity is invalid; Scene cleanup is deferred.");
-  const optionalAttempts = Object.fromEntries(
-    Object.entries(scene.operation?.optionalAttempts ?? {}).map(([id, attempt]) => [
-      id,
-      { status: attempt.status, elapsedMs: attempt.elapsedMs },
-    ]),
-  );
-  if (Object.values(optionalAttempts).some((attempt) => attempt.status === "dispatching"))
-    throw new Error("Optional Scene work is still in progress.");
   return {
     version: 1,
     sceneId: scene.id,
@@ -183,9 +163,6 @@ export function terminalForScene(scene: VenueScene, sourceRevision: number): Sce
     rejectedSubmissions: structuredClone(scene.rejectedSubmissions ?? []),
     generationReceipts: structuredClone(scene.generationReceipts ?? []),
     recordEvents: [...scenePresenceNotices(scene), ...scene.submissions.flatMap((turn) => turn.recordEvents ?? [])],
-    ...(Object.keys(optionalAttempts).length
-      ? { optionalAttempts: optionalAttempts as NonNullable<SceneTerminal["optionalAttempts"]> }
-      : {}),
     ...(scene.operation?.checkpoints?.["abandoned-request"]
       ? {
           abandonedRequest: {
@@ -224,7 +201,6 @@ export function createSceneTerminalStore(ports: {
         throw new Error("Village changed while saving the Scene receipt.");
       if (current.sourceRevision > sourceRevision) throw new Error("Scene receipt source changed.");
       delete current.operation;
-      delete current.optionalAttempts;
       delete current.abandonedRequest;
       Object.assign(current, receipt);
     });

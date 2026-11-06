@@ -1117,7 +1117,6 @@ for (const patch of [
   { hasResult: true },
   { result: {} },
   { partialResult: true },
-  { optionalAttempts: { review: { status: "unknown" } } },
 ])
   assert.throws(() => capturedJobOwners({ ...closed, ...patch }));
 
@@ -1221,7 +1220,6 @@ for (const patch of [
               for (let index = 0; index < 20; index++) {
                 f.reset();
                 bytes = 0;
-                await context.backgroundSetting("setting:" + index, () => index);
                 returnCaptureRevision(captured, () => "known-relationships", identify);
                 assert(
                   sameReturnResident(
@@ -1428,7 +1426,6 @@ for (const patch of [
         input: null,
         status: "completed",
         steps: [],
-        optionalAttempts: {},
         hasResult: false,
         result: undefined,
       },

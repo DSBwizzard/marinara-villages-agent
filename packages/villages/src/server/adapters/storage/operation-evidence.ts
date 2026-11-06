@@ -206,39 +206,30 @@ export function operationEvidenceReferences(
   memoryRequire(raw.evidenceFormat === 1, "unsupported Scene operation evidence; start a fresh Village");
   memoryObject(raw.checkpoints);
   memoryObject(raw.attempts);
-  if (raw.optionalAttempts !== undefined) memoryObject(raw.optionalAttempts);
   memoryRequire(!nested || !Object.hasOwn(raw.checkpoints, abandoned), "nested abandoned operation evidence");
   const refs = Object.entries(raw.checkpoints).map(([stage, value]) =>
     bound(value, raw as VenueOperation, scope, ["checkpoint", stage]),
   );
-  for (const [role, attempts] of [
-    ["attempt", raw.attempts],
-    ["optional", raw.optionalAttempts ?? {}],
-  ] as const)
-    for (const [stage, attempt] of Object.entries(attempts)) {
-      memoryObject(attempt);
-      if (Object.hasOwn(attempt, "result")) {
-        const ref = bound(attempt.result, raw as VenueOperation, scope, [role, stage]);
-        if (role === "attempt") {
-          memoryObject(attempt.response, ["id", "digest", "claim"]);
-          memoryRequire(
-            attempt.response.id === ref.id &&
-              attempt.response.digest === ref.digest &&
-              typeof attempt.response.claim === "string" &&
-              attempt.response.claim.startsWith(operationResponsePrefix(raw as VenueOperation, scope, stage)) &&
-              ref.id === operationResponseBodyId(scope, attempt.response.claim),
-            "provider response belongs to another operation or attempt",
-          );
-        }
-        refs.push(ref);
-      } else
-        memoryRequire(
-          !Object.hasOwn(attempt, "response") && (role !== "attempt" || attempt.status !== "complete"),
-          "provider response is missing its adopted value",
-        );
-      if (role === "optional")
-        memoryRequire(!Object.hasOwn(attempt, "response"), "optional work cannot claim a provider response identity");
-    }
+  for (const [stage, attempt] of Object.entries(raw.attempts)) {
+    memoryObject(attempt);
+    if (Object.hasOwn(attempt, "result")) {
+      const ref = bound(attempt.result, raw as VenueOperation, scope, ["attempt", stage]);
+      memoryObject(attempt.response, ["id", "digest", "claim"]);
+      memoryRequire(
+        attempt.response.id === ref.id &&
+          attempt.response.digest === ref.digest &&
+          typeof attempt.response.claim === "string" &&
+          attempt.response.claim.startsWith(operationResponsePrefix(raw as VenueOperation, scope, stage)) &&
+          ref.id === operationResponseBodyId(scope, attempt.response.claim),
+        "provider response belongs to another operation or attempt",
+      );
+      refs.push(ref);
+    } else
+      memoryRequire(
+        !Object.hasOwn(attempt, "response") && attempt.status !== "complete",
+        "provider response is missing its adopted value",
+      );
+  }
   return refs;
 }
 export async function traceOperationEvidence(
@@ -286,7 +277,7 @@ export function encodeOperationEvidence(
   function encode(value: VenueOperation | undefined, nested = false): Record<string, any> | undefined {
     if (!value) return undefined;
     memoryRequire(!nested || !Object.hasOwn(value.checkpoints, abandoned), "nested abandoned operation");
-    const { checkpoints, attempts, optionalAttempts, ...header } = value;
+    const { checkpoints, attempts, ...header } = value;
     const saved = {
       ...header,
       evidenceFormat: 1,
@@ -304,16 +295,6 @@ export function encodeOperationEvidence(
       attempts: Object.fromEntries(
         Object.entries(attempts).map(([stage, attempt]) => [stage, encodeAttempt(attempt, value, ["attempt", stage])]),
       ),
-      ...(optionalAttempts
-        ? {
-            optionalAttempts: Object.fromEntries(
-              Object.entries(optionalAttempts).map(([id, attempt]) => [
-                id,
-                encodeAttempt(attempt, value, ["optional", id]),
-              ]),
-            ),
-          }
-        : {}),
     };
     return saved;
   }
@@ -358,30 +339,24 @@ function* decoder(
   if (raw === undefined || raw === null) return undefined;
   operationEvidenceReferences(raw, scope, nested);
   operationCheckpointClaims(raw, scope);
-  const { evidenceFormat: _format, checkpoints, attempts, optionalAttempts, ...header } = raw as Record<string, any>;
+  const { evidenceFormat: _format, checkpoints, attempts, ...header } = raw as Record<string, any>;
   const result = {
     ...header,
     checkpoints: {},
     attempts: {},
-    ...(optionalAttempts ? { optionalAttempts: {} } : {}),
   } as VenueOperation;
   for (const [stage, ref] of Object.entries(checkpoints)) {
     const body = yield bound(ref, raw as VenueOperation, scope, ["checkpoint", stage]);
     result.checkpoints[stage] = stage === abandoned ? yield* decoder(body, scope, true) : body;
   }
-  for (const [role, source, target] of [
-    ["attempt", attempts, result.attempts],
-    ["optional", optionalAttempts, result.optionalAttempts],
-  ] as const) {
-    for (const [stage, attempt] of Object.entries(source ?? {}) as [string, Record<string, any>][]) {
-      const { result: ref, ...metadata } = attempt;
-      target![stage] = {
-        ...metadata,
-        ...(Object.hasOwn(attempt, "result")
-          ? { result: yield bound(ref, raw as VenueOperation, scope, [role, stage]) }
-          : {}),
-      } as any;
-    }
+  for (const [stage, attempt] of Object.entries(attempts) as [string, Record<string, any>][]) {
+    const { result: ref, ...metadata } = attempt;
+    result.attempts[stage] = {
+      ...metadata,
+      ...(Object.hasOwn(attempt, "result")
+        ? { result: yield bound(ref, raw as VenueOperation, scope, ["attempt", stage]) }
+        : {}),
+    } as any;
   }
   return result;
 }

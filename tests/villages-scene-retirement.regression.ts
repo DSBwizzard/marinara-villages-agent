@@ -289,26 +289,13 @@ await runCase("scene-retirement/terminal", () => {
     },
     attempts: {},
     error: "",
-    optionalAttempts: { fingerprint: { status: "unknown" as const, elapsedMs: 10 } },
   };
   const world = defaultVillageState();
   world.seed = "world";
   assert.equal(sceneReadyForRetirement({ ...scene, operation }, world, ""), true);
   const terminal = terminalForScene({ ...scene, operation }, 2);
   assert.deepEqual(terminal.abandonedRequest, { id: "old", kind: "turn", attemptId: "old-attempt" });
-  assert.equal(terminal.optionalAttempts?.fingerprint.status, "unknown");
   assert.ok(!JSON.stringify(terminal).includes("private"));
-  assert.equal(
-    sceneReadyForRetirement(
-      {
-        ...scene,
-        operation: { ...operation, optionalAttempts: { fingerprint: { status: "dispatching", elapsedMs: 10 } } },
-      },
-      world,
-      "",
-    ),
-    false,
-  );
   assert.throws(() => terminalForScene({ ...scene, status: "active" }, 1), /not ready/);
   for (const mode of ["act", "fulfill", "leave", "contact"] as const) {
     const turn = {

@@ -24,6 +24,3 @@ export const backgroundCalls = {
 export function requireBackgroundSuccess(error: unknown): void {
   return backgroundContext().requireBackgroundSuccess(error);
 }
-export async function backgroundSetting<T>(key: string, create: () => T | Promise<T>): Promise<T> {
-  return backgroundContext().backgroundSetting<T>(key, create);
-}
