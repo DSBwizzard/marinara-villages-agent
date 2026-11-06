@@ -22,6 +22,7 @@ state.foundedAt = state.setupAt = stamp;
 
 state.narrationStyle.writingGuidance = "Make all residents agreeable and reluctant to act.";
 state.villagers = ["outgoing", "reserved"].map((id) => ({
+  letterFontId: "caveat",
   characterId: id,
   addedAt: stamp,
   wishes: [],

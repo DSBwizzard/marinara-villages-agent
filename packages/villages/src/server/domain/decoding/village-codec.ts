@@ -184,11 +184,11 @@ function coerceVillager(value: unknown): VillageVillager | null {
   if (characterId.length === 0) return null;
   const cardSnapshot = coerceVillagerCardSnapshot(raw.cardSnapshot);
   if (!cardSnapshot || cardSnapshot.id !== characterId) return null;
+  if (typeof raw.letterFontId !== "string" || raw.letterFontId.length > 120)
+    throw new Error("This saved resident needs a current writing-style assignment.");
   return {
     characterId,
-    ...(typeof raw.letterFontId === "string" && raw.letterFontId.length <= 120
-      ? { letterFontId: raw.letterFontId }
-      : {}),
+    letterFontId: raw.letterFontId,
     agendaGeneration: asString(raw.agendaGeneration),
     cardSnapshot,
     ...(typeof asRecord(raw.identityDescription).revision === "string"

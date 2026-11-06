@@ -31,6 +31,7 @@ export function socialWorldFixture() {
   state.villagers = profiles.map(
     ([id, name, personality]) =>
       ({
+        letterFontId: "caveat",
         characterId: id,
         addedAt: START,
         agenda: null,

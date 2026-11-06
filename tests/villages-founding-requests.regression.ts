@@ -103,6 +103,7 @@ const state = coerceVillageState({
   setting: "Shared place",
   villagers: [
     {
+      letterFontId: "caveat",
       characterId: "a",
       cardSnapshot: {
         id: "a",

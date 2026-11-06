@@ -49,6 +49,7 @@ function fixture(name: string) {
       foundedAt: stamp,
       villagers: [
         {
+          letterFontId: "caveat",
           characterId: "mara",
           addedAt: stamp,
           cardSnapshot: { id: "mara", name: name + " Mara", capturedAt: stamp, revision: 1, sourceStatus: "available" },

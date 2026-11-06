@@ -67,10 +67,12 @@ function fixture(name: string) {
     foundedAt: stamp,
     villagers: [
       {
+        letterFontId: "caveat",
         characterId: "mara",
         cardSnapshot: { id: "mara", name: "Mara", revision: 1, sourceStatus: "available", capturedAt: stamp },
       },
       {
+        letterFontId: "caveat",
         characterId: "ivy",
         cardSnapshot: { id: "ivy", name: "Ivy", revision: 1, sourceStatus: "available", capturedAt: stamp },
       },

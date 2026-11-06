@@ -36,6 +36,7 @@ village.seed = "mail";
 village.foundedAt = new Date().toISOString();
 village.villagers = [
   {
+    letterFontId: "caveat",
     characterId: "ada",
     cardSnapshot: { name: "Ada", capturedAt: "card-1", personality: "Candid" },
     wishes: [],
@@ -640,6 +641,7 @@ await assert.rejects(
 
 // A first incoming letter retains its replay control when its thread write fails.
 village.villagers.push({
+  letterFontId: "caveat",
   characterId: "bea",
   cardSnapshot: { name: "Bea", capturedAt: "bea-card" },
   wishes: [],
@@ -1441,6 +1443,7 @@ for (const kind of ["progress", "create"] as const)
       neighbour = fixtureWish({ wish: "Visit the orchard" }, id + "-neighbour");
     const resident = wishWorld().villagers[0];
     village.villagers[0] = {
+      letterFontId: "caveat",
       ...resident,
       characterId: "ada",
       cardSnapshot: { ...resident.cardSnapshot, id: "ada" },

@@ -105,6 +105,7 @@ try {
     state.playerPersonaIdentity = "Cached private identity";
     state.villagers = [
       {
+        letterFontId: "caveat",
         characterId: "requested",
         cardSnapshot: snapshotFromCard(cachedCard, 2),
         addedAt: "2026-10-06T12:00:00Z",

@@ -6,7 +6,6 @@ import type {
   PersonalLetterSummary,
   PersonalMailThread,
 } from "../../../shared/contracts/mailbox.js";
-import { legacyLetterFont } from "../../../shared/helpers/letter-font-selection.js";
 import type { BackgroundSummary } from "../models/background-model.js";
 import type { RelationshipState } from "../models/relationship-types.js";
 import type { SocialMailMessage, SocialMailThread, WorldSocialMailOutbox } from "../models/social-mail.js";
@@ -120,17 +119,18 @@ export function createMailboxPresentation(village: VillageState, state: Relation
     const residentId = thread.participantIds.find((id) => id !== "player");
     if (!residentId || !thread.participantIds.includes("player")) throw badRequest("That thread is unavailable.");
     const resident = residents.get(residentId);
+    const letterFontId =
+      resident?.letterFontId ??
+      (village.formerLetterFonts && Object.hasOwn(village.formerLetterFonts, residentId)
+        ? village.formerLetterFonts[residentId]
+        : undefined);
+    if (letterFontId === undefined) throw conflict("This saved correspondent has no writing-style assignment.");
     const result = {
       id: thread.id,
       residentId,
       residentName: resident?.cardSnapshot.name ?? "Former resident",
       revision: thread.revision,
-      letterFontId:
-        resident?.letterFontId ??
-        (village.formerLetterFonts && Object.hasOwn(village.formerLetterFonts, residentId)
-          ? village.formerLetterFonts[residentId]
-          : undefined) ??
-        legacyLetterFont(residentId),
+      letterFontId,
     };
     metadata.set(thread.id, result);
     return result;

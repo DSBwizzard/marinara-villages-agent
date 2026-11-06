@@ -38,6 +38,7 @@ function fixture(name: string) {
   state.setupAt = state.foundedAt = stamp;
   state.villagers = [
     {
+      letterFontId: "caveat",
       characterId: "same",
       cardSnapshot: snapshotFromCard(card, 4),
       addedAt: stamp,

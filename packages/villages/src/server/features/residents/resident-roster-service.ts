@@ -1,4 +1,4 @@
-import { chooseLetterFont, legacyLetterFont } from "../../../shared/helpers/letter-font-selection.js";
+import { chooseLetterFont } from "../../../shared/helpers/letter-font-selection.js";
 import { MAX_IDENTITY_DESCRIPTION_LENGTH } from "../../../shared/contracts/resident-description.js";
 import { EMPTY_RESIDENT_ADMISSION, readResidentAdmission } from "../../../shared/helpers/resident-admission.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
@@ -134,7 +134,7 @@ export function createResidentRoster({
       if (departing) {
         state.formerLetterFonts ??= {};
         Object.defineProperty(state.formerLetterFonts, characterId, {
-          value: departing.letterFontId ?? legacyLetterFont(characterId),
+          value: departing.letterFontId,
           enumerable: true,
           writable: true,
           configurable: true,

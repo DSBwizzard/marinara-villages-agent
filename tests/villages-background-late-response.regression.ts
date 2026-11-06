@@ -163,6 +163,7 @@ try {
   assert.equal(applied, 2);
   await mutateVillageState((state) => {
     state.villagers = ["a", "b"].map((characterId) => ({
+      letterFontId: "caveat",
       characterId,
       cardSnapshot: {
         id: characterId,

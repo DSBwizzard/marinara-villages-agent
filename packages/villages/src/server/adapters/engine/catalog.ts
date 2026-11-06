@@ -118,18 +118,6 @@ export function readVillagerCard(record: CapabilityCharacterRecord): VillagerCar
   };
 }
 
-/** Fill only legacy missing paint fields; a later card edit waits for explicit refresh. */
-export function captureMissingVillagerCardColors(
-  snapshot: VillageVillagerCardSnapshot,
-  card: VillagerCard | null,
-): VillageVillagerCardSnapshot {
-  return {
-    ...snapshot,
-    nameColor: snapshot.nameColor ?? card?.nameColor ?? "",
-    dialogueColor: snapshot.dialogueColor ?? card?.dialogueColor ?? "",
-  };
-}
-
 /** Every card in the library, name-ordered for the picker. */
 export async function listVillagerCards(characterIds?: string[]): Promise<VillagerCard[]> {
   if (characterIds?.length === 0) return [];

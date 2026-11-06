@@ -426,7 +426,7 @@ await runCase("memories/protection", () => {
 await runCase("memories/consolidation", () => {
   const village: any = {
     memories: emptyMemories(),
-    villagers: [{ characterId: "ella", cardSnapshot: { name: "Ella" }, wishes: [] }],
+    villagers: [{ letterFontId: "caveat", characterId: "ella", cardSnapshot: { name: "Ella" }, wishes: [] }],
     venues: [{ id: "home", zones: [{ id: "door", name: "Front door" }] }],
   };
   const relationships = defaultRelationshipState("knowledge");

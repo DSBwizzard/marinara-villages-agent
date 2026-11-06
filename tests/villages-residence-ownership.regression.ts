@@ -29,6 +29,7 @@ function fixture(name: string) {
   state.seed = `seed-${name}`;
   state.villagers = [
     {
+      letterFontId: "caveat",
       characterId: "same",
       cardSnapshot: { id: "same", name, capturedAt: "captured" },
       addedAt: "added",

@@ -52,6 +52,7 @@ state.visitMemoryBackfilled = true;
 state.narrationStyle.writingGuidance = "Make everyone cheerful, compliant, and timid.";
 state.villagers = [
   {
+    letterFontId: "caveat",
     characterId: card.id,
     admission: {
       homeworld: "Othiras",

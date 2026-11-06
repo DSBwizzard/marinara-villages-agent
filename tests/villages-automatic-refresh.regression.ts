@@ -242,6 +242,7 @@ async function main() {
       state.lastKnownTimeZone = "Etc/Old";
       state.villagers = [
         {
+          letterFontId: "caveat",
           characterId: "retained",
           cardSnapshot: {
             id: "retained",
@@ -302,6 +303,7 @@ async function main() {
       const week = workingAgendaWeek();
       state.villagers = [
         {
+          letterFontId: "caveat",
           characterId: "lina",
           cardSnapshot: {
             id: "lina",
@@ -374,6 +376,7 @@ async function main() {
     await mutateVillageState((state) => {
       state.villagers = [
         {
+          letterFontId: "caveat",
           characterId: "housing-resident",
           wishes: [],
           cardSnapshot: {
