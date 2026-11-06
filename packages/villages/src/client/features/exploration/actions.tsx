@@ -116,7 +116,7 @@ export function useDrawPlaceImage(ports: {
 }) {
   const { placeBusyId, setPlaceBusyId, setPlaceProblem, setSettingsError, setSnapshot } = ports;
   return useCallback(
-    async (venueId: string, spaceClass?: VenueClass, privateOwnerId = "", zoneId?: string) => {
+    async (venueId: string, zoneId: string) => {
       if (placeBusyId) return;
       setPlaceBusyId(venueId);
       setPlaceProblem(null);
@@ -125,7 +125,7 @@ export function useDrawPlaceImage(ports: {
         setSnapshot(
           await request<VillageSnapshot>("/locations/venue/image", {
             method: "POST",
-            body: JSON.stringify({ venueId, spaceClass, privateOwnerId, zoneId }),
+            body: JSON.stringify({ venueId, zoneId }),
           }),
         );
       } catch (cause) {
@@ -148,7 +148,7 @@ export function useKeepPlaceImage(ports: {
 }) {
   const { placeBusyId, setPlaceBusyId, setPlaceProblem, setSettingsError, setSnapshot, snapshot } = ports;
   return useCallback(
-    async (venueId: string, file: File | undefined, spaceClass?: VenueClass, privateOwnerId = "", zoneId?: string) => {
+    async (venueId: string, zoneId: string, file: File | undefined) => {
       if (!file || !snapshot || placeBusyId) return;
       setPlaceBusyId(venueId);
       setPlaceProblem(null);
@@ -168,7 +168,7 @@ export function useKeepPlaceImage(ports: {
         setSnapshot(
           await request<VillageSnapshot>("/locations/venue/image", {
             method: "PUT",
-            body: JSON.stringify({ venueId, image, spaceClass, privateOwnerId, zoneId }),
+            body: JSON.stringify({ venueId, zoneId, image }),
           }),
         );
       } catch (cause) {
@@ -190,7 +190,7 @@ export function useDropPlaceImage(ports: {
 }) {
   const { placeBusyId, setPlaceBusyId, setPlaceProblem, setSettingsError, setSnapshot } = ports;
   return useCallback(
-    async (venueId: string, spaceClass?: VenueClass, privateOwnerId = "", zoneId?: string) => {
+    async (venueId: string, zoneId: string) => {
       if (placeBusyId) return;
       setPlaceBusyId(venueId);
       setPlaceProblem(null);
@@ -199,7 +199,7 @@ export function useDropPlaceImage(ports: {
         setSnapshot(
           await request<VillageSnapshot>("/locations/venue/image", {
             method: "DELETE",
-            body: JSON.stringify({ venueId, spaceClass, privateOwnerId, zoneId }),
+            body: JSON.stringify({ venueId, zoneId }),
           }),
         );
       } catch (cause) {

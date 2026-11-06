@@ -82,18 +82,16 @@ const commands = createVenueCommands({
 });
 await commands.setVillageVenueImage(
   "home",
-  { id: "replacement", ref: "global-gallery:replacement", url: "/replacement.webp" },
-  undefined,
-  "",
-  false,
   "room",
+  { id: "replacement", ref: "global-gallery:replacement", url: "/replacement.webp" },
+  false,
 );
 assert.equal(room().image?.id, "replacement", "an internal artwork commit grants no entry permission");
 assert.equal(room().seen, false);
 assert.equal(room().freezePicture, true);
 assert.equal(access().allowed, false, "editing art grants no gameplay access");
 assert.equal(sceneReads, 0, "artwork does not require or reconcile a private Scene");
-await commands.setVillageVenueImage("home", null, undefined, "", false, "room");
+await commands.setVillageVenueImage("home", "room", null, false);
 state = coerceVillageState(JSON.parse(JSON.stringify(state)));
 assert.equal(room().image, null);
 assert.equal(room().picture?.removed, true, "explicit removal survives saved-world reload");
