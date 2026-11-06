@@ -228,14 +228,6 @@ export function destinationPlaces(places: readonly VillageVenue[]): VillageVenue
   return places.filter((place) => !isHouse(place) || venueClassesFor(place).some((item) => item !== "residence"));
 }
 
-/**
- * A stable key for a row the player adds by hand — a venue, a home. Uniqueness
- * only has to hold within the open editor; the server mints the real id.
- */
-export function freshRowKey(): string {
-  return Math.random().toString(36).slice(2, 10);
-}
-
 /** Four decimal places is finer than a pixel on any map and keeps stored numbers readable. */
 export function round4(value: number): number {
   return Math.round(value * 10_000) / 10_000;

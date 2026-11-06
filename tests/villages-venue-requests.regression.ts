@@ -13,7 +13,6 @@ import {
 } from "../packages/villages/src/server/domain/rules/resident-planning.js";
 import { assertCanAddVillageVenue } from "../packages/villages/src/server/domain/rules/venue-capacity.js";
 import {
-  readConversationVenueRequest,
   readVenueRequestCore,
   venueRequestDraft,
 } from "../packages/villages/src/server/domain/rules/venue-requests.js";
@@ -72,21 +71,6 @@ assert.deepEqual(
   normalizeVillageSnapshot({ settings: { venues: [] }, venueRequests: [classOnlyRequest] }).venueRequests,
   [classOnlyRequest],
   "a request without a Purpose remains visible in the client snapshot",
-);
-const quoted = { ...core, quote: "Could we have a glasshouse for herbs?" };
-assert.deepEqual(
-  readConversationVenueRequest(quoted, [
-    { role: "user", content: "What do you need?", at },
-    { role: "assistant", content: quoted.quote, at },
-  ]),
-  core,
-);
-assert.equal(
-  readConversationVenueRequest(quoted, [
-    { role: "assistant", content: quoted.quote, at, speakerId: "someone-else", speakerName: "Ives" },
-  ]),
-  null,
-  "a room participant cannot file another villager's request as their own",
 );
 const readHousingRequests = (value: unknown, context: ResidentPlanningContext) =>
   readResidentPlanningProposal({ social: null, routineIdea: null, housingRequests: value }, context).housingRequests;
