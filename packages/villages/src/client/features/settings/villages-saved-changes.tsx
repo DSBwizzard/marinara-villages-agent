@@ -16,7 +16,11 @@ export function SavedChangesDiagnostics({
   const load = async (cursor = "") => {
     setBusy(true);
     try {
-      setPage(await api(`/rooms/${encodeURIComponent(sceneId)}/changes?limit=10&cursor=${encodeURIComponent(cursor)}`));
+      setPage(
+        await api(
+          `/rooms/${encodeURIComponent(sceneId)}/changes/diagnostics?limit=10&cursor=${encodeURIComponent(cursor)}`,
+        ),
+      );
       setError("");
       onError?.("");
     } catch (cause) {
@@ -34,13 +38,12 @@ export function SavedChangesDiagnostics({
       }}
     >
       <summary>World change diagnostics · includes private evidence</summary>
-      <p>Reading makes no model request.</p>
       <button type="button" disabled={busy} onClick={() => void load()}>
-        Refresh saved records
+        Refresh
       </button>
       {page?.hasMore ? (
         <button type="button" disabled={busy} onClick={() => void load(page.nextCursor)}>
-          Next saved records
+          Next
         </button>
       ) : null}
       {error && !onError ? <p role="status">{error}</p> : null}
