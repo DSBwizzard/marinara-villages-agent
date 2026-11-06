@@ -190,6 +190,41 @@ function fixture(name: string) {
   };
 }
 async function main() {
+  for (const completing of [false, true]) {
+    const invalid = fixture("missing-native-access");
+    invalid.saved.liveSceneVersion = 1;
+    delete invalid.world.venues[0]!.access;
+    if (completing) delete invalid.saved.continuity!.facts.venues[0]!.access;
+    const before = structuredClone({ scene: invalid.saved, world: invalid.world });
+    await assert.rejects(invalid.service.refreshZoneParticipants(invalid.saved, completing), /no native access record/);
+    assert.deepEqual({ scene: invalid.saved, world: invalid.world }, before);
+    assert(!invalid.calls.some((call) => call.startsWith("change:") || call === "world-change"));
+  }
+  for (const hold of ["busy", "failed", "semantic"] as const) {
+    const held = fixture("native-access-" + hold);
+    held.saved.liveSceneVersion = 1;
+    delete held.world.venues[0]!.access;
+    if (hold === "busy") held.setBusy(true);
+    if (hold === "failed")
+      held.saved.operation = {
+        id: "paid",
+        kind: "turn",
+        status: "interrupted",
+        error: "Unknown provider outcome",
+      } as any;
+    if (hold === "semantic")
+      held.saved.submissions.push({ id: "accepted", semanticProvenance: { version: 2 }, semanticReady: false } as any);
+    const before = structuredClone(held.saved);
+    assert.equal(await held.service.refreshZoneParticipants(held.saved), held.saved);
+    assert.deepEqual(held.saved, before);
+    assert(!held.calls.includes("world"));
+  }
+  const capturedAccess = fixture("captured-native-access");
+  capturedAccess.saved.liveSceneVersion = 1;
+  delete capturedAccess.world.venues[0]!.access;
+  const admitted = structuredClone(capturedAccess.saved);
+  const completed = await capturedAccess.service.refreshZoneParticipants(capturedAccess.saved, true);
+  assert.deepEqual(completed, admitted, "completion uses its valid captured ledger and attendance");
   for (const missing of ["zoneId", "sceneAttendance", "liveSceneVersion"] as const) {
     const invalid = fixture("missing-" + missing);
     delete invalid.saved[missing];
