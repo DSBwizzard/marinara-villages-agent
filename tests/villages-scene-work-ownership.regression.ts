@@ -1,3 +1,5 @@
+import { applyAccessCommand } from "../packages/villages/src/server/domain/rules/venue-access.js";
+import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { SEMANTIC_OPERATION_BUDGET } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
 import assert from "node:assert/strict";
 import {
@@ -727,6 +729,129 @@ for (const stage of ["session", "admission", "snapshot", "persistence"]) {
     clearFirst();
     clearSecond();
     second.owner.dispose();
+  }
+}
+// Native permission claims survive an interrupted final move save without old invitation checkpoints.
+{
+  let failMoveSave = true,
+    destination = "";
+  const moving = commandFixture("Native move recovery", ({ scene, world, stamp }) => {
+    const home = venueDraft({ name: "Home", description: "A home", classes: ["residence"] }, null);
+    home.id = scene.placeId;
+    home.access!.managerIds = ["jim"];
+    destination = home.zones!.find((zone) => zone.kind === "shared-residence")!.id;
+    applyAccessCommand(
+      home,
+      {
+        action: "invite",
+        operationId: "native-visit",
+        expectedRevision: home.access!.revision,
+        zoneId: destination,
+        visitorId: "player",
+        duration: "visit",
+        accompanied: false,
+        outsideHours: true,
+      },
+      "jim",
+      stamp,
+      ["player", "jim"],
+    );
+    world.venues = [home];
+    scene.liveSceneVersion = 1;
+    scene.zoneId = "exterior";
+    scene.sceneAttendance = { capturedAt: stamp, layout: captureSceneLayout(home), occupants: [] };
+    scene.submissions = [];
+    scene.continuity = captureSceneContinuity(world, scene, Date.parse(stamp));
+    scene.operation = { id: "native-move", kind: "move", status: "running", checkpoints: {} } as any;
+    return {
+      coordinateVenue: async (_id, id, kind, input, _expected, _retry, run) => {
+        assert.equal(id, "native-move");
+        assert.equal(kind, "move");
+        assert.deepEqual(input, { zoneId: destination });
+        return run();
+      },
+      assertVenueOwnership: () => {},
+      requireLiveVenueSession: async () => scene,
+      refreshZoneParticipants: async () => scene,
+      hasVenueOperation: () => true,
+      venueOperationId: () => "native-move",
+      changeSession: async (_id, change) => {
+        const candidate = structuredClone(scene);
+        await change(candidate);
+        if (candidate.navigationReceipts?.length && failMoveSave) {
+          failMoveSave = false;
+          throw Error("Interrupted final move save");
+        }
+        Object.assign(scene, candidate);
+        return scene;
+      },
+    };
+  });
+  try {
+    await assert.rejects(
+      moving.service.moveVenueZone("same-scene", destination, undefined, undefined, "native-move"),
+      /Interrupted final move save/,
+    );
+    assert.equal(moving.scene.zoneId, "exterior");
+    assert.equal(moving.scene.navigationReceipts?.length ?? 0, 0);
+    assert.equal(moving.world.venues[0].access!.permissions[0].sceneId, moving.scene.id);
+    assert.equal(moving.scene.continuity!.facts.venues[0].access!.permissions[0].sceneId, moving.scene.id);
+    const result = await moving.service.moveVenueZone("same-scene", destination, undefined, undefined, "native-move");
+    assert.equal(result.zoneId, destination);
+    assert.equal(result.navigationReceipts!.length, 1);
+    assert.equal(moving.world.venues[0].access!.permissions.length, 1);
+    assert.equal(result.submissions.length, 0);
+    assert.deepEqual(result.operation!.checkpoints, {});
+    await moving.service.moveVenueZone("same-scene", destination, undefined, undefined, "native-move");
+    assert.equal(moving.scene.navigationReceipts!.length, 1);
+    assert.equal(moving.modelAccess, 0);
+    assert.deepEqual(moving.unexpected, []);
+  } finally {
+    moving.owner.dispose();
+  }
+}
+for (const scenario of ["missing-same-zone", "missing-move", "forged-checkpoint"] as const) {
+  let destination = "";
+  const refused = commandFixture(scenario, ({ scene, world, stamp }) => {
+    const home = venueDraft({ name: "Home", description: "A home", classes: ["residence"] }, null);
+    home.id = scene.placeId;
+    home.access!.managerIds = ["jim"];
+    destination =
+      scenario === "missing-same-zone" ? "exterior" : home.zones!.find((zone) => zone.kind === "shared-residence")!.id;
+    home.usedInvitationIds = ["retired-line"];
+    home.playerInvitations = [{ zoneId: destination, residentId: "jim", sourceLineId: "retired-line" }] as any;
+    if (scenario !== "forged-checkpoint") delete home.access;
+    world.venues = [home];
+    scene.zoneId = "exterior";
+    scene.submissions = [];
+    scene.sceneAttendance = { capturedAt: stamp, occupants: [] };
+    scene.grantedZoneIds = [destination];
+    scene.zoneGrants = [{ zoneId: destination, controllerId: "jim" }];
+    scene.operation = {
+      id: "refused-move",
+      kind: "move",
+      status: "running",
+      checkpoints: { "move-invitation": { sourceLineId: "retired-line", zoneId: destination, residentId: "jim" } },
+    } as any;
+    return {
+      coordinateVenue: async (_id, _operation, _kind, _input, _expected, _retry, run) => run(),
+      requireLiveVenueSession: async () => scene,
+      assertVenueOwnership: () => {},
+      venueOperationId: () => "refused-move",
+    };
+  });
+  const before = structuredClone({ scene: refused.scene, world: refused.world });
+  try {
+    await assert.rejects(
+      refused.service.moveVenueZone("same-scene", destination, undefined, undefined, "refused-move"),
+      scenario === "forged-checkpoint" ? /no permitted connection/ : /no native access record/,
+    );
+    assert.deepEqual({ scene: refused.scene, world: refused.world }, before);
+    assert(!refused.calls.some((call) => call === "persistence" || call === "world"));
+    assert.equal(refused.modelAccess, 0);
+    assert.deepEqual(refused.unexpected, []);
+  } finally {
+    refused.owner.dispose();
   }
 }
 // Free navigation replay retains its owner and never starts image work.
