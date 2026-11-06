@@ -142,10 +142,9 @@ export function residentMovementOptions(state: VillageState, venue: VillageVenue
 /** Validate all captured occupants, including passive witnesses and offscreen destinations. */
 export function assertSceneMovementCapacity(scene: VenueScene, moves: readonly ContactMove[]): void {
   const positions = new Map(sceneResidentIds(scene).map((id) => [id, contactPosition(scene, id)]));
-  const segments = [...new Set(moves.map((move) => move.segment ?? Infinity))].sort((a, b) => a - b);
+  const segments = [...new Set(moves.map((move) => move.segment))].sort((a, b) => a - b);
   for (const segment of segments) {
-    for (const move of moves.filter((row) => (row.segment ?? Infinity) === segment))
-      positions.set(move.characterId, move.zoneId);
+    for (const move of moves.filter((row) => row.segment === segment)) positions.set(move.characterId, move.zoneId);
     const counts = new Map<string, number>();
     for (const [id, position] of positions) {
       if (!position || id.startsWith(NPC_PREFIX)) continue;
@@ -163,9 +162,7 @@ export function residentPositionsAt(
 ): Record<string, string> {
   return Object.fromEntries(
     sceneResidentIds(scene).map((id) => {
-      const move = moves.find(
-        (entry) => entry.characterId === id && entry.segment !== undefined && entry.segment <= segment,
-      );
+      const move = moves.find((entry) => entry.characterId === id && entry.segment <= segment);
       return [id, move?.zoneId ?? contactPosition(scene, id)];
     }),
   );
@@ -184,13 +181,13 @@ export function applyResidentMovementTimeline(
   moves: ContactMove[],
 ) {
   assertSceneMovementCapacity(scene, moves);
-  if (!moves.some((move) => move.segment !== undefined)) return;
+  if (!moves.length) return;
   const origin = scene.zoneId ?? "exterior";
   const ids = sceneResidentIds(scene);
   const positions = new Map(ids.map((id) => [id, contactPosition(scene, id)]));
   const localIds = () => ids.filter((id) => positions.get(id) === origin);
   for (const [index, line] of lines.entries()) {
-    // Hidden attention fragments occurred in the player input, before any reply movement.
+    // Hidden input evidence precedes reply movement.
     if (line.contactHidden) continue;
     const before = localIds();
     const crossing = moves.filter((move) => move.segment === index);
@@ -201,39 +198,20 @@ export function applyResidentMovementTimeline(
       throw badGateway("The reply would overcrowd this Zone. Your draft is preserved.");
     const remote = positions.get(line.speakerId) !== origin;
     if (line.kind === "narration") {
-      // Acoustic witnesses already distinguish visual movement from noise-only receipts.
-      if (!scene.contactGeneration?.acoustics && !scene.contactGeneration?.zoneEvents)
+      if (!scene.contactGeneration?.zoneEvents)
         line.heardBy = [...new Set([...before, ...local, ...crossing.map((move) => move.characterId)])];
     } else {
       const speakerZone = positions.get(line.speakerId) ?? "";
-      const unchangedChannel =
-        scene.contactGeneration?.delivery === "loud" && speakerZone === contactPosition(scene, line.speakerId);
       if (
-        !scene.contactGeneration?.acoustics &&
         !scene.contactGeneration?.zoneEvents &&
         remote &&
-        !unchangedChannel &&
         !contactNeighbors(venue, origin, scene).includes(speakerZone)
       )
         throw badGateway("The reply speaks from beyond the established contact. Your draft is preserved.");
-      const permissible = scene.contactGeneration?.replyAudiences?.[line.speakerId];
-      if (!scene.contactGeneration?.acoustics && !scene.contactGeneration?.zoneEvents)
-        line.heardBy = line.heardBy.filter(
-          (id) =>
-            id === line.speakerId ||
-            local.includes(id) ||
-            (line.kind !== "whisper" &&
-              line.kind !== "side" &&
-              !!permissible?.includes(id) &&
-              (positions.get(id) === speakerZone ||
-                contactNeighbors(venue, speakerZone, scene).includes(positions.get(id) ?? "") ||
-                (unchangedChannel && positions.get(id) === contactPosition(scene, id)))),
-        );
+      if (!scene.contactGeneration?.zoneEvents)
+        line.heardBy = line.heardBy.filter((id) => id === line.speakerId || local.includes(id));
       if (remote) line.viaDoorway = true;
-      else {
-        delete line.viaDoorway;
-        delete line.remoteDelivery;
-      }
+      else delete line.viaDoorway;
       if (!scene.contactGeneration?.zoneEvents && remote && (line.kind === "whisper" || line.kind === "side"))
         throw badGateway("An inaudible remote whisper cannot be delivered. Your draft is preserved.");
     }

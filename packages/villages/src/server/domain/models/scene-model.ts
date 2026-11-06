@@ -2,7 +2,6 @@ import type { SpeechDelivery, SpeechPresentation } from "../../../shared/helpers
 import type { StagingCue } from "../../../shared/helpers/scene-staging.js";
 import type { ProjectSpeechContext, ProjectSpeechProposal } from "../rules/project-interpretation.js";
 import type { ResponseDiagnostics } from "../rules/response-diagnostics.js";
-import type { AttentionPlan } from "../rules/scene-attention.js";
 import type { ContactIntent, ContactMove, ContactRelay, DoorwayContact } from "../rules/venue-contact.js";
 import type { VenueSceneChange } from "../rules/venue-scene-state.js";
 import type { ExchangeProcessing } from "./exchange-model.js";
@@ -29,7 +28,6 @@ export type VenueLine = {
   physicalIdsAfter?: string[];
   /** Server-authored attendance notice, retained for staging but outside the dialogue walk. */
   presenceChange?: true;
-  remoteDelivery?: "loud";
   contactHidden?: boolean;
   attentionEvidence?: boolean;
   contactReport?: boolean;
@@ -59,7 +57,6 @@ export type VenueSubmission = {
     >
   >;
   zoneEventsVersion?: 1;
-  attention?: AttentionPlan;
   wishProposals?: WishProposal[];
   wishAuthority?: import("../rules/social-wishes.js").WishAuthority;
   wishProposalError?: string;
@@ -200,16 +197,12 @@ export type VenueScene = {
   /** Ephemeral prompt context; never stored or disclosed. */
   contactGeneration?: {
     zoneEvents?: boolean;
-    attention?: AttentionPlan;
-    acoustics?: boolean;
     venue?: import("./world.js").VillageVenue;
-    replyAudiences?: Record<string, string[]>;
     instruction: string;
     localIds: string[];
     remoteIds: string[];
     /** Selected writers only; physical attendance and witnesses remain independent. */
     actorIds?: string[];
-    delivery?: "voice" | "loud";
   };
   departedIds?: string[];
   /** Server-only destinations for validated forced departures, never another Scene's cast. */
@@ -247,7 +240,6 @@ export type VenueReplyLine = {
   soundOnly?: VenueLine["soundOnly"];
   attentionEvidence?: boolean;
   role?: "user" | "assistant";
-  evidenceId?: string;
   kind: NonNullable<VenueLine["kind"]>;
   delivery?: SpeechDelivery;
   presentation?: SpeechPresentation;
@@ -256,7 +248,6 @@ export type VenueReplyLine = {
   heardBy: string[];
   viaDoorway?: boolean;
   physicalIdsAfter?: string[];
-  remoteDelivery?: "loud";
   contactHidden?: boolean;
   contactReport?: boolean;
   staging?: StagingCue[];

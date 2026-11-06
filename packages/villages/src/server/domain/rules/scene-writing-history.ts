@@ -24,41 +24,6 @@ export function sharedLoreHistory(scene: VenueScene, retained: readonly VenueLin
   return result;
 }
 
-/** One copy of each exact line, with narrator visibility distinct from resident evidence. */
-export function legacySceneWritingHistory(scene: VenueScene, eligible: readonly VenueLine[]) {
-  const citable = new Set(eligible.map((line) => line.id));
-  const continuity = scene.lines
-    .filter((line) => line.kind === "narration" && !line.contactHidden && !line.contactReport)
-    .slice(-8);
-  const wanted = new Set([...eligible, ...continuity].map((line) => line.id));
-  const selected: { line: VenueLine; row: Record<string, unknown> }[] = [];
-  let size = 0;
-  for (const line of scene.lines.filter((line) => wanted.has(line.id)).toReversed()) {
-    const row = {
-      id: line.id,
-      speakerId: line.role === "user" ? "player" : line.speakerId,
-      kind: line.kind,
-      heardBy: line.heardBy,
-      ...(line.soundOnly ? { soundOnly: line.soundOnly } : {}),
-      visibleToPlayer: !line.contactHidden,
-      citable: citable.has(line.id),
-      text: line.content,
-    };
-    const cost = JSON.stringify(row).length;
-    if (size + cost > 12000) break;
-    size += cost;
-    selected.unshift({ line, row });
-  }
-  return {
-    evidence: selected.filter(({ line }) => citable.has(line.id)).map(({ line }) => line),
-    context: selected.length
-      ? "Witnessed Scene history (each exact line once): " +
-        JSON.stringify(selected.map(({ row }) => row)) +
-        " Continue after these events. Visible narration supports narrator continuity, never shared resident knowledge. Residents know only heardBy evidence or their own audible-only soundOnly text. Only citable:true IDs support proposals; no surrounding unseen actions or recap evidence."
-      : "",
-  };
-}
-
 const HISTORY_PREFIX = "Partial active Scene history (omission never proves historical absence): ";
 const HISTORY_SUFFIX =
   " Continue after these events. Narrator-visible actions are not shared resident knowledge. Residents know only heardBy text or their own soundOnly projection. Only citable IDs support effects. Statements establish what a speaker said/believed, not the truth of their claims.";
@@ -72,12 +37,11 @@ const tokens = (text: string) =>
 export function sceneWritingHistory(
   scene: VenueScene,
   eligible: readonly VenueLine[],
-  query?: string,
-  audience?: readonly string[],
+  query: string,
+  audience: readonly string[],
 ) {
-  if (query === undefined) return legacySceneWritingHistory(scene, eligible);
   const allowed = new Set(eligible.map((line) => line.id));
-  const cast = new Set(audience ?? eligible.flatMap((line) => line.heardBy));
+  const cast = new Set(audience);
   const unique = new Set<string>();
   const rows = scene.lines.flatMap((line, index) => {
     if (unique.has(line.id) || line.contactReport) return [];
