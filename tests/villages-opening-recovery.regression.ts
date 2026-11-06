@@ -49,6 +49,7 @@ const old = new Date(Date.now() - 3_600_000).toISOString();
 let saved = coerceSession({
   version: 4,
   id: "gathering",
+  liveSceneVersion: 1,
   placeId: "community",
   placeName: "Meeting Hall",
   zoneId: "community",
