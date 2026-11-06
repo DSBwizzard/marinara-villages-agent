@@ -5,7 +5,6 @@ import {
   completeSceneObject,
   normalizeRecoverableSceneReply,
 } from "../packages/villages/src/server/domain/rules/scene-writing-contract.js";
-import { extractSceneReply } from "../packages/villages/src/server/domain/rules/scene-reply-json.js";
 import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 const scene = {
   heardPlayerBy: ["a"],
@@ -18,21 +17,22 @@ const json = JSON.stringify(scene);
 await runCase("scene-json-hardening/syntax", async () => {
   for (const input of [
     json,
-    "Here is the reply:\n" + json + "\nDone.",
     "\u0060\u0060\u0060json\n" + json + "\n\u0060\u0060\u0060",
     json.slice(0, -1) + ",}",
     json.replace('"heardPlayerBy":["a"]', '"heardPlayerBy":["a",]'),
   ]) {
-    assert.deepEqual(extractSceneReply(input), scene);
-    assert.equal(parseVenueReply(extractSceneReply(input), ["a"]).lines[0]?.content, scene.segments[0]!.text);
+    assert.deepEqual(completeSceneObject(input, "stop"), scene);
+    assert.equal(parseVenueReply(completeSceneObject(input, "stop"), ["a"]).lines[0]?.content, scene.segments[0]!.text);
   }
   const multiline = JSON.stringify({ ...scene, segments: [{ ...scene.segments[0], text: "one\ntwo\r\nthree\tfour" }] });
-  assert.deepEqual(
-    extractSceneReply(multiline.replace(/\\n/gu, "\n").replace(/\\r/gu, "\r").replace(/\\t/gu, "\t")),
-    JSON.parse(multiline),
+  assert.deepEqual(completeSceneObject(multiline, "stop"), JSON.parse(multiline));
+  assert.equal(
+    completeSceneObject(multiline.replace(/\\n/gu, "\n").replace(/\\r/gu, "\r").replace(/\\t/gu, "\t"), "stop"),
+    null,
   );
   for (const input of [
     json + json,
+    "Here is the reply:\n" + json + "\nDone.",
     '{"heardPlayerBy":[],"segments":[],"\\q":{',
     '{"heardPlayerBy":[],"segments":[],"segments":[{"text":"cut',
     '{"heardPlayerBy":[],"segments":[],"heardPlayerBy":["cut',
@@ -45,15 +45,16 @@ await runCase("scene-json-hardening/syntax", async () => {
     '{"heardPlayerBy":[],"segments":[{"text":"cut',
     '{"heardPlayerBy":[],"segments":[1,,]}',
     '{"heardPlayerBy":[],"segments":["unescaped "quote""]}',
-    '{"heardPlayerBy":[],"segments":[1,}',
     "No usable reply",
   ])
-    assert.equal(extractSceneReply(input), null, input);
+    assert.equal(completeSceneObject(input, "stop"), null, input);
+  assert.throws(() => parseVenueReply(completeSceneObject('{"heardPlayerBy":[],"segments":[1,}', "stop"), ["a"]));
   // Repaired syntax is not permission to admit invalid Scene structure.
   assert.throws(() =>
     parseVenueReply(
-      extractSceneReply(
+      completeSceneObject(
         '{"heardPlayerBy":[],"segments":[{"kind":"dialogue","speakerId":"stranger","text":"x","heardBy":[]},],}',
+        "stop",
       ),
       ["a"],
     ),
@@ -62,7 +63,7 @@ await runCase("scene-json-hardening/syntax", async () => {
 });
 
 await runCase("scene-json-hardening/ambiguity", async () => {
-  // Finished v3 core + appended effects: remove one extra brace, retain every value.
+  // A finished object followed by effect members is an ambiguous response, never a current GM object.
   const core = {
     playerSpeechCapture: { status: "silent", utterances: [] },
     segments: [{ text: 'A {gate} bears "hello", [friend], and a backslash: \\.' }],
@@ -84,16 +85,15 @@ await runCase("scene-json-hardening/ambiguity", async () => {
   ]) {
     for (const boundary of [",", "],"]) {
       const appended = coreJson + boundary + JSON.stringify(effects).slice(1);
-      const expected = { ...core, ...effects };
-      assert.deepEqual(completeSceneObject(appended, "stop"), expected);
-      assert.deepEqual(completeSceneObject("```json\n" + appended + "\n```", "end_turn"), expected);
+      assert.equal(completeSceneObject(appended, "stop"), null);
+      assert.equal(completeSceneObject("```json\n" + appended + "\n```", "end_turn"), null);
       for (const finish of ["length", "unknown", undefined]) assert.equal(completeSceneObject(appended, finish), null);
       assert.equal(completeSceneObject(appended.slice(0, -1), "stop"), null, "no missing closer is invented");
       assert.equal(completeSceneObject(appended + " prose", "stop"), null);
       assert.equal(completeSceneObject(appended + "{}", "stop"), null);
     }
   }
-  const malformedEffect = completeSceneObject(coreJson + ',"memoryChanges":{"bad":true}}', "stop")!;
+  const malformedEffect = completeSceneObject(JSON.stringify({ ...core, memoryChanges: { bad: true } }), "stop")!;
   const isolated = normalizeRecoverableSceneReply(malformedEffect);
   assert.deepEqual(
     isolated.raw.segments,
