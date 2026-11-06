@@ -235,8 +235,7 @@ for (const supplied of [
 
 // v3 captures are exact source occurrences, independent of character reactions.
 {
-  const { playerSpeechCapture, recoverPlayerSpeech } =
-    await import("../packages/villages/src/server/domain/rules/player-speech-capture.js");
+  const { playerSpeechCapture } = await import("../packages/villages/src/server/domain/rules/player-speech-capture.js");
   const input = 'I think "mint". I say "mint" and then *pause* "cinnamon, if cold".';
   const segments = [
     { kind: "dialogue", speakerId: "player", text: "mint cinnamon, if cold" },
@@ -279,19 +278,27 @@ for (const supplied of [
   const saved = {
     segments: segments.slice(1),
     memoryChanges: [{ evidence: [0, "older-id"] }],
-    contactMoves: [{ segment: 0 }],
-    invitation: { source: 0 },
+    events: { moves: [{ segment: 0 }], sceneEnded: { source: 0 } },
     relationshipChanges: { disclosures: [{ source: 0 }] },
+    playerSpeechCapture: {
+      status: "captured",
+      utterances: [
+        { text: "mint", occurrence: 2 },
+        { text: "cinnamon, if cold", occurrence: 1 },
+      ],
+    },
   };
-  const recovered = recoverPlayerSpeech(saved, { additionalSpeech: [segments[0]], playerSpeechCapture: playerSpeech });
-  playerSpeechCapture(recovered, input);
-  assert.deepEqual(recovered.segments, segments);
-  assert.deepEqual((recovered.memoryChanges as any)[0].evidence, [1, "older-id"]);
-  assert.equal((recovered.invitation as any).source, 1);
-  assert.equal((recovered.contactMoves as any)[0].segment, 1);
-  assert.deepEqual(saved.segments, segments.slice(1));
-  assert.throws(() => recoverPlayerSpeech(saved, { segments: [] }), /unrelated/);
-  assert.throws(() => recoverPlayerSpeech(saved, { additionalSpeech: [segments[1]] }), /invalid/);
+  const before = structuredClone(saved);
+  const expanded = materializePlayerSpeech(saved, input);
+  playerSpeechCapture(expanded, input);
+  assert.deepEqual(
+    (expanded.segments as any[]).map((line) => line.text),
+    ["mint", "cinnamon, if cold", "You never told me."],
+  );
+  assert.deepEqual((expanded.memoryChanges as any)[0].evidence, [2, "older-id"]);
+  assert.equal((expanded.events as any).moves[0].segment, 2);
+  assert.equal((expanded.events as any).sceneEnded.source, 2);
+  assert.deepEqual(saved, before);
 }
 
 // Retrieval finds old exact evidence without expanding the serialized history allowance.
@@ -417,26 +424,20 @@ for (const supplied of [
   });
   assert(disclosure.failures.relationships);
   assert.deepEqual(disclosure.raw.memoryChanges, []);
-  const { recoverPlayerSpeech, playerSpeechCapture } =
-    await import("../packages/villages/src/server/domain/rules/player-speech-capture.js");
+  const { playerSpeechCapture } = await import("../packages/villages/src/server/domain/rules/player-speech-capture.js");
   const input = "I tell her mint, pause for a breath, then add cinnamon.";
   const saved = {
-    segments: [
-      { kind: "dialogue", speakerId: "player", text: "mint" },
-      { kind: "dialogue", speakerId: "rosa", text: "Hmm." },
-    ],
-    memoryChanges: [{ evidence: [1] }],
-  };
-  const result = recoverPlayerSpeech(saved, {
-    additionalSpeech: [{ beforeSegment: 1, kind: "dialogue", speakerId: "player", text: "cinnamon" }],
+    segments: [{ kind: "dialogue", speakerId: "rosa", text: "Hmm." }],
+    memoryChanges: [{ evidence: [0] }],
     playerSpeechCapture: {
       status: "captured",
-      segments: [
-        { segment: 0, sources: [{ text: "mint", occurrence: 1 }] },
-        { segment: 1, sources: [{ text: "cinnamon", occurrence: 1 }] },
+      utterances: [
+        { text: "mint", occurrence: 1 },
+        { text: "cinnamon", occurrence: 1 },
       ],
     },
-  });
+  };
+  const result = materializePlayerSpeech(saved, input);
   playerSpeechCapture(result, input);
   assert.deepEqual((result.memoryChanges as any)[0].evidence, [2]);
 }
@@ -511,13 +512,10 @@ for (const supplied of [
   }
 }
 
-// Compact quote references avoid repeating input while preserving exact provenance and citations.
+// Current GM speech uses literal text and exact occurrences; citations follow inserted speech.
 {
-  const { materializePlayerSpeech, playerSpeechCapture, playerQuoteSources } =
-    await import("../packages/villages/src/server/domain/rules/player-speech-capture.js");
+  const { playerSpeechCapture } = await import("../packages/villages/src/server/domain/rules/player-speech-capture.js");
   const input = 'I recall "mint". I say "mint" and then "ginger, only hot".';
-  const quotes = playerQuoteSources(input);
-  assert.equal(quotes[1].occurrence, 2);
   const original = {
     segments: [{ kind: "dialogue", speakerId: "rosa", text: "I hear you." }],
     memoryChanges: [{ evidence: [0, "utterance:0"] }],
@@ -525,179 +523,131 @@ for (const supplied of [
     relationshipChanges: { changes: [{ lineIds: ["utterance:0", 0] }] },
     playerSpeechCapture: {
       status: "captured",
-      utterances: [{ quote: 1 }, { quote: 2, delivery: "whisper", targetId: "rosa" }],
+      utterances: [
+        { text: "mint", occurrence: 2 },
+        { text: "ginger, only hot", occurrence: 1, delivery: "whisper", targetId: "rosa" },
+      ],
     },
   };
-  const aliasInput = {
-    ...original,
-    playerSpeechCapture: {
-      status: "captured",
-      utterances: [{ id: 1 }, { id: 2, delivery: "whisper", targetId: "rosa" }],
-    },
-  };
-  const beforeAlias = structuredClone(aliasInput);
-  assert.deepEqual(
-    materializePlayerSpeech(aliasInput, input),
-    materializePlayerSpeech(original, input),
-    "Supplied quote IDs retain the same exact text, occurrence and audience",
-  );
-  assert.deepEqual(aliasInput, beforeAlias, "Saved raw capture is never rewritten");
-  for (const id of [-1, 99, "1", 1.5, null])
-    assert.throws(
-      () =>
-        materializePlayerSpeech(
-          { ...original, playerSpeechCapture: { status: "captured", utterances: [{ id }] } },
-          input,
-        ),
-      /capture/,
-    );
-  assert.throws(
-    () =>
-      materializePlayerSpeech(
-        { ...original, playerSpeechCapture: { status: "captured", utterances: [{ id: 1, occurrence: 1 }] } },
-        input,
-      ),
-    /capture/,
-  );
+  const before = structuredClone(original);
   const expanded = materializePlayerSpeech(original, input);
-  const captured = playerSpeechCapture(expanded, input);
-  assert.equal(captured.get(0)![0].start, input.lastIndexOf("mint"));
+  const capture = playerSpeechCapture(expanded, input);
+  assert.equal(capture.get(0)![0].start, input.lastIndexOf("mint"));
+  assert.equal(capture.get(1)![0].text, "ginger, only hot");
   assert.deepEqual((expanded.memoryChanges as any)[0].evidence, [2, 0]);
   assert.deepEqual((expanded.wishChanges as any)[0].evidence, [1]);
   assert.deepEqual((expanded.relationshipChanges as any).changes[0].lineIds, [0, 2]);
   assert.equal((expanded.segments as any)[1].delivery, "whisper");
+  assert.equal((expanded.segments as any)[1].targetId, "rosa");
   assert.equal((expanded.segments as any)[2].text, "I hear you.");
-  assert.equal((original.segments as any).length, 1);
-  assert.throws(
-    () =>
-      materializePlayerSpeech(
-        { ...original, playerSpeechCapture: { status: "captured", utterances: [{ quote: 99 }] } },
-        input,
-      ),
-    /capture/,
-  );
-  const interrupted = materializePlayerSpeech(
+  assert.deepEqual(original, before);
+  (expanded.segments as any)[2].text = "A later working copy";
+  assert.deepEqual(original, before, "working results cannot rewrite the original response");
+  for (const unsupported of [
+    { quote: 1 },
+    { id: 1 },
+    { text: "mint" },
+    { sources: [{ text: "mint", occurrence: 2 }] },
+  ]) {
+    const raw = { ...original, playerSpeechCapture: { status: "captured", utterances: [unsupported] } };
+    const saved = structuredClone(raw);
+    assert.throws(() => materializePlayerSpeech(raw, input), /capture needs recovery/);
+    assert.deepEqual(raw, saved);
+  }
+  const invalidIndex = materializePlayerSpeech(
     {
-      segments: [{ kind: "narration", text: "A nod." }],
-      playerSpeechCapture: {
-        status: "captured",
-        utterances: [
-          {
-            sources: [
-              { text: "mint", occurrence: 2 },
-              { text: "ginger, only hot", occurrence: 1 },
-            ],
-          },
-        ],
-      },
+      ...original,
+      memoryChanges: [{ evidence: [1, "utterance:1"] }],
+      events: { sceneEnded: { source: 9 } },
     },
     input,
   );
-  playerSpeechCapture(interrupted, input);
-  assert.equal((interrupted.segments as any)[0].text, "mint ginger, only hot");
-}
-
-{
-  const { materializePlayerSpeech, assertRecoveredSpeechPrivacy } =
-    await import("../packages/villages/src/server/domain/rules/player-speech-capture.js");
-  const capture = { status: "captured", utterances: [{ quote: 0 }] };
-  for (const segments of [undefined, null, []])
-    assert.throws(
-      () => materializePlayerSpeech({ segments, playerSpeechCapture: capture }, '"mint"'),
-      /authored moment/,
-    );
-  const original = {
-    segments: [{ kind: "narration", text: "A glance." }],
-    playerSpeechCapture: { status: "uncertain", utterances: [{ quote: 0, delivery: "whisper", targetId: "rosa" }] },
-  };
-  const recovered = (delivery: string, targetId = "rosa") =>
-    materializePlayerSpeech(
-      { ...original, playerSpeechCapture: { status: "captured", utterances: [{ quote: 0, delivery, targetId }] } },
-      '"private mint"',
-    );
-  assert.doesNotThrow(() => assertRecoveredSpeechPrivacy(original, recovered("whisper"), '"private mint"'));
-  assert.throws(
-    () => assertRecoveredSpeechPrivacy(original, recovered("ordinary"), '"private mint"'),
-    /private delivery/,
-  );
-  assert.throws(
-    () => assertRecoveredSpeechPrivacy(original, recovered("whisper", "mara"), '"private mint"'),
-    /private delivery/,
+  assert.deepEqual((invalidIndex.memoryChanges as any)[0].evidence, [-1, 1]);
+  assert.equal(
+    (invalidIndex.events as any).sceneEnded.source,
+    -1,
+    "invalid reply references never acquire inserted speech",
   );
 }
 
 {
-  const { materializePlayerSpeech } =
-    await import("../packages/villages/src/server/domain/rules/player-speech-capture.js");
-  const expanded = materializePlayerSpeech(
-    {
-      segments: [{ kind: "dialogue", speakerId: "rosa", text: "Noted." }],
-      memoryChanges: [{ evidence: [1, "utterance:1"] }],
-      invitation: { source: 9 },
-      playerSpeechCapture: { status: "captured", utterances: [{ quote: 0 }, { quote: 1 }] },
-    },
-    '"mint" "ginger"',
-  );
-  assert.deepEqual(
-    (expanded.memoryChanges as any)[0].evidence,
-    [-1, 1],
-    "an invalid authored index cannot acquire an inserted utterance",
-  );
-  assert.equal((expanded.invitation as any).source, -1);
-}
-
-// Saved provider evidence omitted occurrence for exact, unique spoken spans.
-{
-  const { materializePlayerSpeech, playerSpeechCapture } =
-    await import("../packages/villages/src/server/domain/rules/player-speech-capture.js");
+  const { playerSpeechCapture } = await import("../packages/villages/src/server/domain/rules/player-speech-capture.js");
   const resolve = (input: string, utterances: unknown[]) => {
     const raw = {
       playerSpeechCapture: { status: "captured", utterances },
-      segments: [{ text: "Rosa rests her hand on the rail." }],
+      segments: [{ kind: "narration", text: "Rosa rests her hand on the rail." }],
     };
     const before = structuredClone(raw);
     const expanded = materializePlayerSpeech(raw, input);
-    assert.deepEqual(raw, before, "canonicalization does not alter the saved completion");
+    assert.deepEqual(raw, before);
     return playerSpeechCapture(expanded, input);
   };
-  const input = '\"Everyone should follow the same routine. It would make the village better.\" \"What do you think?\"';
-  const capture = resolve(input, [
-    { text: "Everyone should follow the same routine. It would make the village better." },
-    { text: "What do you think?" },
+  const input = "mint *pause* ginger";
+  const captured = resolve(input, [
+    { text: "mint", occurrence: 1 },
+    { text: "ginger", occurrence: 1 },
   ]);
-  assert.equal(capture.get(0)![0].occurrence, 1);
-  assert.equal(capture.get(1)![0].start, input.indexOf("What do you think?"));
-  assert.equal(resolve("mint *pause* ginger", [{ sources: [{ text: "mint" }, { text: "ginger" }] }]).get(0)!.length, 2);
+  assert.equal(captured.get(0)![0].start, 0);
+  assert.equal(captured.get(1)![0].start, input.indexOf("ginger"));
+  assert.equal(resolve("mint mint", [{ text: "mint", occurrence: 2 }]).get(0)![0].start, 5);
+  for (const occurrence of [undefined, null, 0, -1, "1", 1.5, NaN, Infinity, 2])
+    assert.throws(() => resolve("mint", [{ text: "mint", occurrence }]), /capture needs recovery/);
+  assert.throws(
+    () =>
+      resolve("mint ginger", [
+        { text: "ginger", occurrence: 1 },
+        { text: "mint", occurrence: 1 },
+      ]),
+    /capture needs recovery/,
+  );
+  const words = "Mari, I don’t want to be friends anymore. I’m ending our friendship.";
+  assert.equal(resolve(words, [{ text: words, occurrence: 1 }]).get(0)![0].text, words);
+  assert.equal(resolve(words, [{ text: words, occurrence: 1 }]).get(0)![0].end, words.length);
   for (const [input, text] of [
-    ["mint mint", "mint"],
-    ["aaa", "aa"],
-    ['I think "mint". I say "mint".', "mint"],
+    [words, "Mari, I don't want to be friends anymore. I'm ending our friendship."],
+    ["mint", "Mint"],
     ["mint", "missing"],
     ["mint", " "],
   ])
-    assert.throws(() => resolve(input, [{ text }]), /capture needs recovery/);
-  for (const occurrence of [null, 0, -1, "1", 1.5, NaN, Infinity, 2])
-    assert.throws(() => resolve("mint", [{ text: "mint", occurrence }]), /capture needs recovery/);
+    assert.throws(() => resolve(input, [{ text, occurrence: 1 }]), /capture needs recovery/);
+  for (const segments of [undefined, null, []])
+    assert.throws(
+      () =>
+        materializePlayerSpeech(
+          { segments, playerSpeechCapture: { status: "captured", utterances: [{ text: "mint", occurrence: 1 }] } },
+          "mint",
+        ),
+      /authored moment/,
+    );
+  for (const capture of [
+    { status: "uncertain", utterances: [] },
+    { status: "silent", utterances: [{ text: "mint", occurrence: 1 }] },
+    { status: "captured", segments: [] },
+  ])
+    assert.throws(
+      () =>
+        materializePlayerSpeech(
+          { segments: [{ kind: "narration", text: "A nod." }], playerSpeechCapture: capture },
+          "mint",
+        ),
+      /capture needs recovery/,
+    );
+  const silent = materializePlayerSpeech(
+    { segments: [{ kind: "narration", text: "A nod." }], playerSpeechCapture: { status: "silent", utterances: [] } },
+    "*nods*",
+  );
+  assert.equal(playerSpeechCapture(silent, "*nods*").size, 0);
   assert.throws(
-    () => resolve("mint ginger", [{ sources: [{ text: "ginger" }, { text: "mint" }] }]),
+    () =>
+      materializePlayerSpeech(
+        {
+          segments: Array.from({ length: 24 }, () => ({ kind: "narration", text: "A nod." })),
+          playerSpeechCapture: { status: "captured", utterances: [{ text: "mint", occurrence: 1 }] },
+        },
+        "mint",
+      ),
     /capture needs recovery/,
   );
-  assert.equal(resolve("mint mint", [{ text: "mint", occurrence: 2 }]).get(0)![0].start, 5);
-  const originalWords = "Mari, I don’t want to be friends anymore. I’m ending our friendship.";
-  const typography = resolve(originalWords, [
-    { text: "Mari, I don't want to be friends anymore. I'm ending our friendship.", occurrence: 1 },
-  ]);
-  assert.equal(typography.get(0)![0].text, originalWords, "Typography repair always keeps the player's original words");
-  assert.equal(typography.get(0)![0].start, 0);
-  assert.equal(typography.get(0)![0].end, originalWords.length);
-  assert.equal(resolve("I don't mind.", [{ text: "I don’t mind." }]).get(0)![0].text, "I don't mind.");
-  for (const [input, text, occurrence] of [
-    ["I don’t mind. I don‘t mind.", "I don't mind.", 1],
-    ["I don’t mind.", "I don't mind.", 2],
-    ["I don’t mind.", "I do not mind.", 1],
-    ["I don’t mind.", "I don't Mind.", 1],
-  ])
-    assert.throws(() => resolve(input as string, [{ text, occurrence }]), /capture needs recovery/);
 }
 
 console.log(
