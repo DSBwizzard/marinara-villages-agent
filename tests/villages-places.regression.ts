@@ -49,6 +49,18 @@ assert.deepEqual(
   "Private history preserves Place and NPC identities",
 );
 const restored = readPlaceRegistry(decoded.value.worldPlaces);
+for (const missing of ["ledger", "zone-policy"] as const) {
+  const incomplete = structuredClone(state.worldPlaces);
+  const location = incomplete.places[place.id].location;
+  if (missing === "ledger") delete location.access;
+  else delete location.zones!.find((zone) => zone.id === "kitchen")!.access;
+  const before = structuredClone(incomplete);
+  assert.throws(() => readPlaceRegistry(incomplete), missing === "ledger" ? /no access record/ : /access policy/);
+  assert.deepEqual(incomplete, before, "decoding never constructs missing authority or changes saved evidence");
+}
+assert.deepEqual(restored.places[place.id].location.access, place.location.access);
+assert.equal(projectPlace(state, place).access, undefined, "the required saved ledger stays private");
+
 restored.places[place.id].location.name = "Renamed";
 assert.equal(state.worldPlaces.places[place.id].location.name, "The Lantern");
 assert.throws(
