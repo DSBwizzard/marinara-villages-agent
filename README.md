@@ -12,7 +12,7 @@ A Village can be a small town, a space station, a workplace, or another shared s
 - Work with residents on Projects that create or renovate places.
 - Return later to a Village whose clock and construction have kept moving.
 
-New Scenes follow the Village's current time between exchanges. Residents can leave for commitments and others can arrive while you remain in the Venue. Each admitted exchange keeps its captured time, participants, and witnesses; later arrivals do not automatically learn earlier conversations. Returning preserves earlier replies and leaves your draft unsent. Scenes already open in an older build keep their original captured moment until you conclude them.
+New Scenes follow the Village's current time between exchanges. Residents can leave for commitments and others can arrive while you remain in the Venue. Each admitted exchange keeps its captured time, participants, and witnesses; later arrivals do not automatically learn earlier conversations. Returning preserves earlier replies and leaves your draft unsent.
 
 ## Status and access
 
@@ -25,7 +25,7 @@ For a test installation, the person running your Marinara server needs to instal
 You need:
 
 - Marinara Engine **2.5.0 or later, before 4.0.0**, with the test package's required capabilities. Engine checks package compatibility during installation.
-- A configured language-model connection. You must explicitly select connections for both **System** and **Narration**; they can use the same connection.
+- A configured language-model connection. You must explicitly select connections for both **System** and **GM**; they can use the same connection.
 - A Persona and one to three starting characters in your Engine library.
 - Map artwork, either uploaded or generated with an image connection. Image generation is optional if you supply your own artwork.
 
@@ -34,16 +34,16 @@ Model requests use your configured providers and may cost money, including durin
 ## Your first Village
 
 1. Open **Home → Villages** after your test installation has restarted.
-2. In **Setting**, describe the local area, optional standing rules and starting circumstances. Select lorebooks for world history and references, and choose **System**, **Narration**, and any **Images** connection.
+2. In **Setting**, describe the local area, optional standing rules and starting circumstances. Select lorebooks for world history and references, and choose **System**, **GM**, and any **Images** connection.
 3. Choose your Persona and starting residents in **People**.
-4. In **Venues and Map**, assign people directly to homes, review the designated Community Venue and add any other existing places. Review the starting state and found the Village.
+4. In **Venues and Map**, review the separate Residences, public Community Venue, their Zones and connections, and map artwork. Found the Village.
 5. Open a Venue from the map, choose **Visit**, and use **Say / Do** to begin interacting.
 
 The [player guide](packages/villages/README.md) walks through setup, Scenes, relationships, Projects, artwork, and recovery.
 
 ## Saved worlds and test updates
 
-The current prototype requires a fresh **Village save format 15** and uses **Scene format 3**. No older Village conversion is provided. Keep older worlds with their matching runtime, and arrange independent fresh storage before testing an incompatible build. Installing a package does not reset a world.
+The current prototype requires a fresh **Village save format 16** and uses **Scene format 4**. Retired formats are rejected without conversion. Use independent fresh storage for an incompatible build; installing a package does not reset a world.
 
 ## Development and contributions
 
