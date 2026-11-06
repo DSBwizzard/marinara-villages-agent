@@ -595,4 +595,3 @@ export function createSemanticService(ports: SemanticPorts) {
   }
   return { exchange };
 }
-export type SemanticService = ReturnType<typeof createSemanticService>;

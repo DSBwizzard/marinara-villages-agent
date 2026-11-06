@@ -26,29 +26,6 @@ export function asIsoString(value: unknown): string | null {
 }
 
 /**
- * An instant as an ISO string, or "" when the value does not name one.
- *
- * Deliberately a second reader beside `asIsoString` rather than a stronger
- * version of it, because the two answer different questions and most callers
- * only ask the first: `asIsoString` asks "is there a string here", which is all
- * a field that is only ever displayed needs, and `asInstant` asks "is there a
- * MOMENT here", which a field that is going to be COMPARED needs. A wish's
- * deadline is compared — against the clock, to decide whether the wish is over —
- * and an unreadable deadline has to be distinguishable from a deadline that has
- * passed, or a hand-edited document could delete somebody's wish.
- *
- * The value is normalised rather than returned as it was found, so that the
- * thing the writer stored and the thing the reader hands back are the same
- * string. That is what lets a wish be written and read back byte for byte.
- */
-export function asInstant(value: unknown): string {
-  const text = typeof value === "string" ? value.trim() : "";
-  if (text.length === 0) return "";
-  const instant = Date.parse(text);
-  return Number.isNaN(instant) ? "" : new Date(instant).toISOString();
-}
-
-/**
  * A 0..1 map coordinate, or null when the value is not one.
  *
  * Deliberately returns null rather than clamping: clamping would silently move

@@ -861,15 +861,6 @@ export type RoomRecordEvent = {
   detail?: string;
 };
 
-export type ArchiveVisitSummary = Pick<
-  SceneView,
-  "id" | "placeId" | "placeName" | "startedAt" | "endedAt" | "endReason" | "participants"
-> & {
-  lineCount: number;
-  memoryUnits: number;
-  recollectionCount: number;
-};
-
 /**
  * What the village decided about a claim the player made.
  *
