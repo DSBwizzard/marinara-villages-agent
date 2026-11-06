@@ -129,9 +129,6 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
     const prior = await backgroundJobSnapshot("resident-planning", subjectId);
     if (prior?.seed === village.seed && ["queued", "running", "failed", "interrupted", "paused"].includes(prior.status))
       return;
-    // A renamed job must not reopen a failed or interrupted paid attempt from this date.
-    const legacy = await backgroundJobSnapshot("story", subjectId);
-    if (legacy?.seed === village.seed && legacy.highWaterDate >= dateKey) return;
     const opportunity = activePlan
       ? {
           id: activePlan.id + ":encounter",
