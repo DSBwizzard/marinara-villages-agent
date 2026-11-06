@@ -32,7 +32,7 @@ import { fixtureWish } from "./helpers/social-wishes-fixture.js";
 const day = 86400000;
 const start = Date.now() - 3 * day,
   at = new Date(start).toISOString();
-function fixture() {
+function fixture(live = false) {
   const state = coerceVillageState({
     ...defaultVillageState(),
 
@@ -68,11 +68,12 @@ function fixture() {
   const scene = coerceSession({
     version: 4,
     id: "morning",
+    ...(live ? { liveSceneVersion: 1 } : {}),
     processingVersion: 1,
     villageSeed: state.seed,
     placeId: "square",
     placeName: "Square",
-    status: "active",
+    status: live ? "active" : "closed",
     zoneId: "community",
     area: "public",
     spaceClass: "community",
@@ -105,7 +106,7 @@ function learn(state: VillageState, text: string, sceneId?: string) {
 }
 
 {
-  const { state, scene } = fixture();
+  const { state, scene } = fixture(true);
   let raw = structuredClone(state);
   const relationships = structuredClone(state.relationshipContext!);
   delete raw.relationshipContext;
