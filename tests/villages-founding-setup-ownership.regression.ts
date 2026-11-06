@@ -5,8 +5,7 @@ import Fastify from "fastify";
 import { registerFoundingRoutes } from "../packages/villages/src/server/features/founding/routes.js";
 import {
   createActivationScope,
-  installDefaultActivation,
-  scopedActivation,
+  activationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -79,7 +78,7 @@ function fixture(name: string) {
     failure: Error | undefined;
   const note = (call: string) => {
     calls.push(call);
-    owners.push(scopedActivation());
+    owners.push(activationScope());
   };
   const service = createFoundingSetup({
     async peekVillageAuthority() {
@@ -88,7 +87,7 @@ function fixture(name: string) {
         pause = false;
         entered.resolve();
         await gate.promise;
-        owners.push(scopedActivation());
+        owners.push(activationScope());
       }
       return structuredClone(state);
     },
@@ -362,12 +361,12 @@ const original = fixture("Original"),
   current = fixture("Current");
 const releaseA = a.run(() => configureFoundingSetup(original.service)),
   releaseB = b.run(() => configureFoundingSetup(current.service));
-const clearA = installDefaultActivation(a, () => {});
+
 original.pause();
-const pending = runVillageSetup(input("Original"));
+const pending = a.run(() => runVillageSetup(input("Original")));
 await original.entered.promise;
-const clearB = installDefaultActivation(b, () => {});
-await runVillageSetup(input("Current"));
+
+await b.run(() => runVillageSetup(input("Current")));
 original.gate.resolve();
 assert.equal((await pending).village.name, "Original");
 assert.equal(original.state.playerPersonaIdentity, "Private Persona Original");
@@ -376,24 +375,28 @@ assert(original.owners.every((owner) => owner === a));
 assert(current.owners.every((owner) => owner === b));
 assert(original.calls.includes("prepare"));
 assert(current.calls.includes("prepare"));
-a.run(releaseA);
+b.run(() => a.run(releaseA));
 a.dispose();
-clearA();
-assert.deepEqual(
-  await draftVenueDescriptions({
-    setting: "Observatory",
-    venues: [{ id: "hall", name: "Hall", classes: ["community"] }],
-  }),
-  { descriptions: { hall: "Current description" } },
+
+await b.run(async () =>
+  assert.deepEqual(
+    await draftVenueDescriptions({
+      setting: "Observatory",
+      venues: [{ id: "hall", name: "Hall", classes: ["community"] }],
+    }),
+    { descriptions: { hall: "Current description" } },
+  ),
 );
 const missing = createActivationScope();
-await assert.rejects(
-  missing.run(() => runVillageSetup(input("Missing"))),
-  /not configured/,
+await b.run(() =>
+  assert.rejects(
+    missing.run(() => runVillageSetup(input("Missing"))),
+    /not configured/,
+  ),
 );
-b.run(releaseB);
+b.run(() => b.run(releaseB));
 b.dispose();
-clearB();
+
 await assert.rejects(
   b.run(() =>
     draftVenueDescriptions({ setting: "Observatory", venues: [{ id: "hall", name: "Hall", classes: ["community"] }] }),

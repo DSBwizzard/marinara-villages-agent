@@ -80,4 +80,4 @@ async function main() {
     "Saved exchange dispatcher: independent domains, commit/status interruption, restart and duplicates passed (no model requests).",
   );
 }
-void main();
+await main();

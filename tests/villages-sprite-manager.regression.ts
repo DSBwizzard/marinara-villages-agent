@@ -551,7 +551,7 @@ async function run() {
     globalThis.fetch = originalFetch;
   }
 }
-void run().catch((error) => {
+await run().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

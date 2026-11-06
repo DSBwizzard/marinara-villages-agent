@@ -5,12 +5,11 @@ import {
   saveVillageWriting,
 } from "../packages/villages/src/server/features/settings/narration-settings.js";
 
-await withSettingsOwners(async (a, b, selectB) => {
+await withSettingsOwners(async (a, b) => {
   const paused = a.pause("update", "villages-village");
-  const pending = saveVillageWriting({ writingGuidance: "  authored A  " });
+  const pending = a.owner.run(() => saveVillageWriting({ writingGuidance: "  authored A  " }));
   await paused.wait(pending);
-  selectB();
-  assert.equal((await readVillageWriting()).writingGuidance, "B writing");
+  assert.equal((await b.owner.run(() => readVillageWriting())).writingGuidance, "B writing");
   const bCalls = b.calls.length;
   paused.resume();
   await pending;
@@ -25,5 +24,5 @@ await withSettingsOwners(async (a, b, selectB) => {
     a.owner.run(() => readVillageWriting()),
     /writing settings are not configured/,
   );
-  assert.equal((await readVillageWriting()).writingGuidance, "B writing");
+  assert.equal((await b.owner.run(() => readVillageWriting())).writingGuidance, "B writing");
 });

@@ -1,3 +1,4 @@
+import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import assert from "node:assert/strict";
 import { PNG } from "pngjs";
 import sharp from "sharp";
@@ -235,7 +236,9 @@ const host = {
     }),
   },
 };
-const release = configureVillagesRuntime(host as any);
+const owner = createActivationScope(),
+  replacementOwner = createActivationScope();
+const release = owner.run(() => configureVillagesRuntime(host as any));
 let releaseReplacement: (() => void) | undefined;
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async (url, init) => {
@@ -445,93 +448,99 @@ async function main() {
     });
     const stopped = generateResidentSignature("mara", action(12, 0));
     await runtimeGate;
-    releaseReplacement = configureVillagesRuntime(host as any);
+    release();
+    owner.dispose();
+    releaseReplacement = replacementOwner.run(() => configureVillagesRuntime(host as any));
     unblock();
-    await assert.rejects(stopped, /runtime is not configured/);
-    assert.equal((await readResidentSignature("mara")).status, "interrupted");
-    assert.equal(uploads, beforeUploads, "Package replacement fences late gallery and Village writes");
-    // Supporting character evidence now fences late effects as personality does.
-    let releaseEvidence!: () => void;
-    imageGate = new Promise<void>((resolve) => {
-      releaseEvidence = resolve;
-    });
-    const evidenceEntered = new Promise<void>((resolve) => {
-      entered = resolve;
-    });
-    const priorAttempt = (await readResidentSignature("mara")).attempt;
-    const evidencePending = generateResidentSignature("mara", action(55, priorAttempt));
-    await evidenceEntered;
-    await mutateVillageState((state) => {
-      state.villagers[0]!.cardSnapshot.backstory = "Now signs harbor logs.";
-    });
-    const evidenceUploads = uploads;
-    releaseEvidence();
-    assert.equal((await evidencePending).status, "failed");
-    assert.equal(uploads, evidenceUploads, "Changed backstory fences the image before upload");
-    imageGate = undefined;
-    entered = undefined;
-
-    for (const field of ["appearance", "scenario", "systemPrompt", "postHistoryInstructions"] as const) {
-      let unblockField!: () => void;
+    await assert.rejects(stopped, /state service is not configured/);
+    await replacementOwner.run(async () => {
+      assert.equal((await readResidentSignature("mara")).status, "interrupted");
+      assert.equal(uploads, beforeUploads, "Package replacement fences late gallery and Village writes");
+      // Supporting character evidence now fences late effects as personality does.
+      let releaseEvidence!: () => void;
       imageGate = new Promise<void>((resolve) => {
-        unblockField = resolve;
+        releaseEvidence = resolve;
       });
-      const fieldEntered = new Promise<void>((resolve) => {
+      const evidenceEntered = new Promise<void>((resolve) => {
         entered = resolve;
       });
-      const attempt = (await readResidentSignature("mara")).attempt;
-      const pendingField = generateResidentSignature("mara", action(100 + attempt, attempt));
-      await fieldEntered;
+      const priorAttempt = (await readResidentSignature("mara")).attempt;
+      const evidencePending = generateResidentSignature("mara", action(55, priorAttempt));
+      await evidenceEntered;
       await mutateVillageState((state) => {
-        state.villagers[0]!.cardSnapshot[field] = `Changed ${field}`;
+        state.villagers[0]!.cardSnapshot.backstory = "Now signs harbor logs.";
       });
-      const beforeFieldUploads = uploads;
-      unblockField();
-      const result = await pendingField;
-      assert.equal(result.status, "failed", `${field} fences late results`);
-      assert.equal(result.recoverable, false);
-      assert.equal(uploads, beforeFieldUploads);
+      const evidenceUploads = uploads;
+      releaseEvidence();
+      assert.equal((await evidencePending).status, "failed");
+      assert.equal(uploads, evidenceUploads, "Changed backstory fences the image before upload");
       imageGate = undefined;
       entered = undefined;
-    }
-    // Full evidence, including text omitted from the provider prompt, fences recovery.
-    await mutateVillageState((state) => {
-      state.villagers[0]!.cardSnapshot.personality = "a".repeat(9000);
-    });
-    failUpload = true;
-    const evidenceAttempt = (await readResidentSignature("mara")).attempt;
-    assert.equal((await generateResidentSignature("mara", action(200, evidenceAttempt))).recoverable, true);
-    failUpload = false;
-    const unchangedPrompt = signaturePrompt((await readVillageAuthority()).villagers[0]!);
-    await mutateVillageState((state) => {
-      state.villagers[0]!.cardSnapshot.personality = "a".repeat(4500) + "b" + "a".repeat(4499);
-    });
-    assert.equal(signaturePrompt((await readVillageAuthority()).villagers[0]!), unchangedPrompt);
-    assert.equal(
-      (await readResidentSignature("mara")).recoverable,
-      false,
-      "Elided evidence changes fence paid recovery",
-    );
 
-    const requestsBeforeLongName = requests;
-    await mutateVillageState((state) => {
-      state.villagers[0]!.cardSnapshot.name = "a".repeat(5000);
+      for (const field of ["appearance", "scenario", "systemPrompt", "postHistoryInstructions"] as const) {
+        let unblockField!: () => void;
+        imageGate = new Promise<void>((resolve) => {
+          unblockField = resolve;
+        });
+        const fieldEntered = new Promise<void>((resolve) => {
+          entered = resolve;
+        });
+        const attempt = (await readResidentSignature("mara")).attempt;
+        const pendingField = generateResidentSignature("mara", action(100 + attempt, attempt));
+        await fieldEntered;
+        await mutateVillageState((state) => {
+          state.villagers[0]!.cardSnapshot[field] = `Changed ${field}`;
+        });
+        const beforeFieldUploads = uploads;
+        unblockField();
+        const result = await pendingField;
+        assert.equal(result.status, "failed", `${field} fences late results`);
+        assert.equal(result.recoverable, false);
+        assert.equal(uploads, beforeFieldUploads);
+        imageGate = undefined;
+        entered = undefined;
+      }
+      // Full evidence, including text omitted from the provider prompt, fences recovery.
+      await mutateVillageState((state) => {
+        state.villagers[0]!.cardSnapshot.personality = "a".repeat(9000);
+      });
+      failUpload = true;
+      const evidenceAttempt = (await readResidentSignature("mara")).attempt;
+      assert.equal((await generateResidentSignature("mara", action(200, evidenceAttempt))).recoverable, true);
+      failUpload = false;
+      const unchangedPrompt = signaturePrompt((await readVillageAuthority()).villagers[0]!);
+      await mutateVillageState((state) => {
+        state.villagers[0]!.cardSnapshot.personality = "a".repeat(4500) + "b" + "a".repeat(4499);
+      });
+      assert.equal(signaturePrompt((await readVillageAuthority()).villagers[0]!), unchangedPrompt);
+      assert.equal(
+        (await readResidentSignature("mara")).recoverable,
+        false,
+        "Elided evidence changes fence paid recovery",
+      );
+
+      const requestsBeforeLongName = requests;
+      await mutateVillageState((state) => {
+        state.villagers[0]!.cardSnapshot.name = "a".repeat(5000);
+      });
+      await assert.rejects(
+        generateResidentSignature("mara", action(56, (await readResidentSignature("mara")).attempt)),
+        /name is too long/,
+      );
+      assert.equal(requests, requestsBeforeLongName, "Oversized names fail before image dispatch");
+      console.log(
+        "Villager signatures: stable handwriting, transparent crop, persistence, free recovery, explicit retries and late-effect fences passed",
+      );
     });
-    await assert.rejects(
-      generateResidentSignature("mara", action(56, (await readResidentSignature("mara")).attempt)),
-      /name is too long/,
-    );
-    assert.equal(requests, requestsBeforeLongName, "Oversized names fail before image dispatch");
-    console.log(
-      "Villager signatures: stable handwriting, transparent crop, persistence, free recovery, explicit retries and late-effect fences passed",
-    );
   } finally {
     globalThis.fetch = originalFetch;
     release();
     releaseReplacement?.();
+    owner.dispose();
+    replacementOwner.dispose();
   }
 }
-void main().catch((error) => {
+await owner.run(main).catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

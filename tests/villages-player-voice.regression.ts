@@ -47,7 +47,7 @@ async function main() {
   }
   console.log("Villages player voice regression: current greeting, conversation and departure prompts passed");
 }
-void main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

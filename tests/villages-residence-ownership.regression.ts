@@ -3,8 +3,7 @@ import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import {
   createActivationScope,
-  installDefaultActivation,
-  scopedActivation,
+  activationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageSnapshot, VillageState } from "../packages/villages/src/server/domain/models/world.js";
@@ -60,7 +59,7 @@ function fixture(name: string) {
     preparations = 0;
   const note = (operation: string) => {
     calls.push(operation);
-    owners.push(scopedActivation());
+    owners.push(activationScope());
   };
   const ports: ResidencePorts = {
     async readVillageState() {
@@ -73,7 +72,7 @@ function fixture(name: string) {
         pauseWrite = false;
         entered.resolve();
         await gate.promise;
-        owners.push(scopedActivation());
+        owners.push(activationScope());
       }
       const first = structuredClone(state);
       update(first);
@@ -138,7 +137,7 @@ function fixture(name: string) {
         pauseCompletion = false;
         entered.resolve();
         await gate.promise;
-        owners.push(scopedActivation());
+        owners.push(activationScope());
       }
       return {
         content: JSON.stringify({
@@ -321,27 +320,29 @@ const first = fixture("First"),
   second = fixture("Second");
 const releaseFirst = one.run(() => configureResidences(first.service));
 const releaseSecond = two.run(() => configureResidences(second.service));
-const clearFirst = installDefaultActivation(one, () => {});
-first.pauseWrite();
-const pending = proposeVillageResidence("same", "destination");
+
+one.run(() => first.pauseWrite());
+const pending = one.run(() => proposeVillageResidence("same", "destination"));
 await first.entered.promise;
-const clearSecond = installDefaultActivation(two, () => {});
-assert.equal((await proposeVillageResidence("same", "destination")).village.name, "Second");
+
+await two.run(async () => assert.equal((await proposeVillageResidence("same", "destination")).village.name, "Second"));
 first.gate.resolve();
 assert.equal((await pending).village.name, "First");
 assert(first.owners.every((owner) => owner === one));
 assert(second.owners.every((owner) => owner === two));
-one.run(releaseFirst);
+two.run(() => one.run(releaseFirst));
 one.dispose();
-clearFirst();
+
 const missing = createActivationScope();
-await assert.rejects(
-  missing.run(() => proposeVillageResidence("same", "destination")),
-  /not configured/,
+await two.run(() =>
+  assert.rejects(
+    missing.run(() => proposeVillageResidence("same", "destination")),
+    /not configured/,
+  ),
 );
-two.run(releaseSecond);
+two.run(() => two.run(releaseSecond));
 two.dispose();
-clearSecond();
+
 missing.dispose();
 await assert.rejects(
   two.run(() => proposeVillageResidence("same", "destination")),

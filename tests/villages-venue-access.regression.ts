@@ -1923,7 +1923,7 @@ async function main() {
     "Villages Venue access: evaluator, authority, hours, replay, privacy, multiple Zones and recovery passed (mock document host; no model requests).",
   );
 }
-void main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

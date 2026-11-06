@@ -298,7 +298,7 @@ async function run() {
     "Dialogue context: temperament/history separation, full cards, section order, spontaneous effects, live evidence, and fitting passed without model requests.",
   );
 }
-void context.run(
+await context.run(
   {
     controller: new AbortController(),
     operation: {
