@@ -284,6 +284,8 @@ await runCase("encounter-places/catchup", async () => {
   world.returnCatchup = {
     capture,
     batch: {
+      budgetDate: "2026-10-28",
+      opportunityLimit: 6,
       id: "physical-return",
       status: "running",
       from: at,

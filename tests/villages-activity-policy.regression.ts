@@ -1,8 +1,15 @@
 import assert from "node:assert/strict";
 import { createBackgroundContext } from "../packages/villages/src/server/adapters/operations/background-context-service.js";
 import { configureVillageClock } from "../packages/villages/src/server/adapters/time/clock-gate.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { activityDate, reserveEventAttempt } from "../packages/villages/src/server/domain/rules/event-attempts.js";
+import {
+  defaultVillageState,
+  coerceVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import {
+  activityDate,
+  eventAttemptAvailable,
+  reserveEventAttempt,
+} from "../packages/villages/src/server/domain/rules/event-attempts.js";
 import { captureReturnContext } from "../packages/villages/src/server/domain/rules/return-catchup-capture.js";
 import { createReturnCatchup } from "../packages/villages/src/server/features/background/return-catchup-service.js";
 import { createBackgroundWork } from "../packages/villages/src/server/jobs/background-service.js";
@@ -46,7 +53,30 @@ assert.throws(() => reserveEventAttempt(bounded, "seventh", "2026-10-29", wakeAt
 reserveEventAttempt(bounded, "six-0", "2026-10-29", Date.parse("2026-10-30T00:01:00Z"), "six");
 assert.equal(bounded.eventAttempts!.attempts.length, 6, "Continuation does not consume another slot.");
 
-for (const evidence of ["unstarted", "paid", "uncertain", "retry", "legacy"] as const) {
+const undated = structuredClone(scheduled);
+undated.backgroundPace = "lively";
+undated.eventAttempts = undefined;
+undated.returnCatchup = { batch: { id: "undated", status: "running" } } as any;
+assert.equal(
+  eventAttemptAvailable(undated, "2026-10-29", wakeAt.getTime(), "undated"),
+  false,
+  "Undated batches cannot borrow today's allowance",
+);
+assert.throws(() => coerceVillageState(undated), /catch-up allowance/);
+const unbounded = structuredClone(undated);
+unbounded.returnCatchup!.batch!.budgetDate = "2026-10-29";
+assert.equal(
+  eventAttemptAvailable(unbounded, "2026-10-29", wakeAt.getTime(), "undated"),
+  false,
+  "A missing batch limit admits no requests",
+);
+for (const field of ["budgetDate", "opportunityLimit"]) {
+  const partial = structuredClone(bounded);
+  delete (partial.returnCatchup!.batch! as any)[field];
+  assert.throws(() => coerceVillageState(partial), /catch-up allowance/);
+}
+
+for (const evidence of ["unstarted", "paid", "uncertain", "retry"] as const) {
   const state = defaultVillageState();
   state.seed = "return";
   state.setupAt = "2026-10-29T00:00:00Z";
@@ -70,12 +100,13 @@ for (const evidence of ["unstarted", "paid", "uncertain", "retry", "legacy"] as 
       status: "running",
       from: capture.at,
       until: returned.toISOString(),
-      ...(evidence === "legacy" ? {} : { budgetDate: activityDate(state, returned), opportunityLimit: 1 }),
+      budgetDate: activityDate(state, returned),
+      opportunityLimit: 1,
       opportunities: [opportunity],
       records: [
         {
           opportunityId: opportunity.id,
-          status: evidence === "unstarted" || evidence === "legacy" ? "pending" : "queued",
+          status: evidence === "unstarted" ? "pending" : "queued",
         },
       ],
     },
@@ -83,7 +114,7 @@ for (const evidence of ["unstarted", "paid", "uncertain", "retry", "legacy"] as 
   let queued = 0,
     rearmed = 0;
   const job: any =
-    evidence === "unstarted" || evidence === "legacy"
+    evidence === "unstarted"
       ? null
       : {
           id: "paid-job",
@@ -120,8 +151,6 @@ for (const evidence of ["unstarted", "paid", "uncertain", "retry", "legacy"] as 
     assert.equal(queued, 0);
     assert.equal(state.returnCatchup.batch!.records![0]!.status, "rejected");
     assert.equal(state.returnCatchup.batch!.status, "completed");
-  } else if (evidence === "legacy") {
-    assert.equal(queued, 1, "Already admitted legacy batches keep their original recovery contract.");
   } else {
     assert.equal(state.returnCatchup.batch!.status, "failed", "Purchased or uncertain work requires recovery.");
     assert.equal(state.returnCatchup.batch!.records![0]!.status, "queued");
