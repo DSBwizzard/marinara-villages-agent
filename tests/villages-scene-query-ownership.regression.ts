@@ -4,8 +4,7 @@ import assert from "node:assert/strict";
 import { authorSceneFixture } from "./helpers/village-storage.fixture.js";
 import {
   createActivationScope,
-  installDefaultActivation,
-  scopedActivation,
+  activationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { SESSION_KIND, SESSION_PREFIX } from "../packages/villages/src/server/adapters/storage/scene-slots.js";
 import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
@@ -113,8 +112,8 @@ function fixture(name: string) {
     gate = deferred();
   const note = (call: string) => {
     calls.push(call);
-    owners.push(scopedActivation());
-    if (scopedActivation()?.active === false) throw Error("Original query connection unavailable.");
+    owners.push(activationScope());
+    if (activationScope()?.active === false) throw Error("Original query connection unavailable.");
   };
   const service = createSceneQueryService({
     async readSession(id) {
@@ -338,14 +337,12 @@ async function main() {
     second = fixture("B");
   first.add(ownedScene("A"));
   second.add(ownedScene("B"));
-  const releaseA = a.run(() => configureSceneQueries(first.queries)),
-    clearA = installDefaultActivation(a, () => {});
+  const releaseA = a.run(() => configureSceneQueries(first.queries));
   first.pause();
-  const inFlight = sceneQueries().progressBacklog();
+  const inFlight = a.run(() => sceneQueries().progressBacklog());
   await first.entered.promise;
-  const releaseB = b.run(() => configureSceneQueries(second.queries)),
-    clearB = installDefaultActivation(b, () => {});
-  const bEvidence = await sceneQueries().readProjectTurnEvidence("same", "proof");
+  const releaseB = a.run(() => b.run(() => configureSceneQueries(second.queries)));
+  const bEvidence = await b.run(() => sceneQueries().readProjectTurnEvidence("same", "proof"));
   assert.equal(bEvidence.venueId, "venue-B");
   assert.equal(bEvidence.zoneId, "zone-B");
   assert.equal(bEvidence.message, "B message");
@@ -354,43 +351,48 @@ async function main() {
   first.gate.resolve();
   assert.deepEqual(await inFlight, [{ sessionId: "same", submissionId: "proof", at: stamp, error: "A pending" }]);
   assert.deepEqual(first.calls.slice(0, 4), ["world", "world-resumed", "documents", "list"]);
-  assert(first.calls.slice(4).every((call) => call.startsWith("get:villages-memory-page-")));
+  b.run(() => assert(first.calls.slice(4).every((call) => call.startsWith("get:villages-memory-page-"))));
   assert(first.owners.every((owner) => owner === a));
   assert(second.owners.every((owner) => owner === b));
-  a.run(releaseA);
+  b.run(() => a.run(releaseA));
   a.dispose();
-  clearA();
-  assert.deepEqual(await sceneQueries().progressBacklog(), [
-    { sessionId: "same", submissionId: "proof", at: stamp, error: "B pending" },
-  ]);
+
+  await b.run(async () =>
+    assert.deepEqual(await sceneQueries().progressBacklog(), [
+      { sessionId: "same", submissionId: "proof", at: stamp, error: "B pending" },
+    ]),
+  );
   assert(second.calls.includes("list"), "older cleanup retains B dispatch");
-  await assert.rejects(
-    a.run(async () => sceneQueries().progressBacklog()),
-    /not configured/,
+  await b.run(() =>
+    assert.rejects(
+      a.run(async () => sceneQueries().progressBacklog()),
+      /not configured/,
+    ),
   );
   const missing = createActivationScope();
-  await assert.rejects(
-    missing.run(async () => sceneQueries().readProjectTurnEvidence("same", "proof")),
-    /not configured/,
+  await b.run(() =>
+    assert.rejects(
+      missing.run(async () => sceneQueries().readProjectTurnEvidence("same", "proof")),
+      /not configured/,
+    ),
   );
   missing.dispose();
-  b.run(releaseB);
+  b.run(() => b.run(releaseB));
   b.dispose();
-  clearB();
+
   assert.throws(() => sceneQueries(), /not configured/);
   const retired = createActivationScope(),
     old = fixture("retired");
   old.add(scene());
   retired.run(() => configureSceneQueries(old.queries));
-  const clearRetired = installDefaultActivation(retired, () => {});
+
   old.pause();
-  const abandoned = sceneQueries().progressBacklog();
+  const abandoned = retired.run(() => sceneQueries().progressBacklog());
   await old.entered.promise;
   retired.dispose();
   old.gate.resolve();
   await assert.rejects(abandoned, /Original query connection unavailable/);
   assert(!old.calls.includes("documents"), "retired world connection does not borrow another document store");
-  clearRetired();
 
   const c = createActivationScope(),
     d = createActivationScope(),
@@ -398,14 +400,14 @@ async function main() {
     newer = fixture("D");
   older.add(ownedScene("C"));
   newer.add(ownedScene("D"));
-  const releaseC = c.run(() => configureSceneQueries(older.queries)),
-    clearC = installDefaultActivation(c, () => {});
+  const releaseC = c.run(() => configureSceneQueries(older.queries));
   older.pause();
-  const heldEvidence = sceneQueries().readProjectTurnEvidence("same", "proof");
+  const heldEvidence = c.run(() => sceneQueries().readProjectTurnEvidence("same", "proof"));
   await older.entered.promise;
-  const releaseD = d.run(() => configureSceneQueries(newer.queries)),
-    clearD = installDefaultActivation(d, () => {});
-  assert.equal((await sceneQueries().readProjectTurnEvidence("same", "proof")).message, "D message");
+  const releaseD = c.run(() => d.run(() => configureSceneQueries(newer.queries)));
+  await d.run(async () =>
+    assert.equal((await sceneQueries().readProjectTurnEvidence("same", "proof")).message, "D message"),
+  );
   older.gate.resolve();
   const cEvidence = await heldEvidence;
   assert.equal(cEvidence.venueId, "venue-C");
@@ -415,17 +417,17 @@ async function main() {
   assert.deepEqual(older.calls, ["session:same", "world", "world-resumed"]);
   assert(older.owners.every((owner) => owner === c));
   assert(newer.owners.every((owner) => owner === d));
-  c.run(releaseC);
+  d.run(() => c.run(releaseC));
   c.dispose();
-  clearC();
-  d.run(releaseD);
+
+  d.run(() => d.run(releaseD));
   d.dispose();
-  clearD();
+
   console.log(
     "Scene evidence/backlog inertness, historical witness/privacy filters, authoritative progress gates and activation-bound lazy query connections passed without providers.",
   );
 }
-main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

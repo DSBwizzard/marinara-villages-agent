@@ -2,8 +2,7 @@ import Fastify from "fastify";
 import assert from "node:assert/strict";
 import {
   createActivationScope,
-  installDefaultActivation,
-  scopedActivation,
+  activationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { readVillagerCard, toCatalogEntry } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -56,7 +55,7 @@ function fixture(name: string) {
     retry: ((next: VillageState) => void) | undefined;
   const note = (operation: string) => {
     calls.push(operation);
-    owners.push(scopedActivation());
+    owners.push(activationScope());
   };
   const service = createResidentCards({
     async readVillageState() {
@@ -65,7 +64,7 @@ function fixture(name: string) {
         pause = false;
         entered.resolve();
         await gate.promise;
-        owners.push(scopedActivation());
+        owners.push(activationScope());
       }
       return structuredClone(state);
     },
@@ -237,54 +236,62 @@ const first = fixture("First owner"),
   second = fixture("Second owner");
 const releaseFirst = one.run(() => configureResidentCards(first.service));
 const releaseSecond = two.run(() => configureResidentCards(second.service));
-const clearFirst = installDefaultActivation(one, () => {});
+
 first.pause();
 first.card.description = "First owner's refreshed prose";
-const pending = applyVillagerRefresh("same");
+const pending = one.run(() => applyVillagerRefresh("same"));
 await first.entered.promise;
-const clearSecond = installDefaultActivation(two, () => {});
-assert.equal((await previewVillagerRefresh("same")).current.name, "Second owner");
+
+await two.run(async () => assert.equal((await previewVillagerRefresh("same")).current.name, "Second owner"));
 first.gate.resolve();
 assert.equal((await pending).village.name, "First owner");
 assert.equal(first.state.villagers[0]!.cardSnapshot.description, "First owner's refreshed prose");
 assert.equal(second.state.villagers[0]!.cardSnapshot.revision, 4);
 assert(first.owners.every((owner) => owner === one));
 assert(second.owners.every((owner) => owner === two));
-one.run(releaseFirst);
+two.run(() => one.run(releaseFirst));
 one.dispose();
-clearFirst();
-assert.equal(
-  (await buildVillageCatalog())[0]!.name,
-  "Second owner",
-  "Older cleanup cannot release the newer card owner.",
+
+await two.run(async () =>
+  assert.equal(
+    (await buildVillageCatalog())[0]!.name,
+    "Second owner",
+    "Older cleanup cannot release the newer card owner.",
+  ),
 );
 
-const app = Fastify();
-try {
-  registerSnapshotCatalogRoutes(app);
-  registerResidentRoutes(app);
-  const list = await app.inject({ method: "GET", url: "/catalog" });
-  assert.equal(list.statusCode, 200);
-  assert.equal(list.json().characters[0].name, "Second owner");
-  const view = await app.inject({ method: "GET", url: "/villagers/same/refresh" });
-  assert.equal(view.statusCode, 200);
-  assert.equal(view.json().characterId, "same");
-  assert.equal(view.json().current.revision, 4);
-  const apply = await app.inject({ method: "POST", url: "/villagers/same/refresh" });
-  assert.equal(apply.statusCode, 200);
-  assert.equal(apply.json().village.name, "Second owner");
-  assert.equal((await app.inject({ method: "GET", url: "/villagers/absent/refresh" })).statusCode, 404);
-} finally {
-  await app.close();
-}
+await two.run(async () => {
+  const app = two.run(() => Fastify());
+  try {
+    two.run(() => registerSnapshotCatalogRoutes(app));
+    two.run(() => registerResidentRoutes(app));
+    const list = await two.run(() => app.inject({ method: "GET", url: "/catalog" }));
+    assert.equal(list.statusCode, 200);
+    two.run(() => assert.equal(list.json().characters[0].name, "Second owner"));
+    const view = await two.run(() => app.inject({ method: "GET", url: "/villagers/same/refresh" }));
+    assert.equal(view.statusCode, 200);
+    two.run(() => assert.equal(view.json().characterId, "same"));
+    two.run(() => assert.equal(view.json().current.revision, 4));
+    const apply = await two.run(() => app.inject({ method: "POST", url: "/villagers/same/refresh" }));
+    assert.equal(apply.statusCode, 200);
+    two.run(() => assert.equal(apply.json().village.name, "Second owner"));
+    await two.run(async () =>
+      assert.equal((await app.inject({ method: "GET", url: "/villagers/absent/refresh" })).statusCode, 404),
+    );
+  } finally {
+    await app.close();
+  }
+});
 const unconfigured = createActivationScope();
-await assert.rejects(
-  unconfigured.run(() => previewVillagerRefresh("same")),
-  /not configured/,
+await two.run(() =>
+  assert.rejects(
+    unconfigured.run(() => previewVillagerRefresh("same")),
+    /not configured/,
+  ),
 );
-two.run(releaseSecond);
+two.run(() => two.run(releaseSecond));
 two.dispose();
-clearSecond();
+
 await assert.rejects(
   two.run(() => applyVillagerRefresh("same")),
   /not configured/,

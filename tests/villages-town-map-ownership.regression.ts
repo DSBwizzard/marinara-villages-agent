@@ -287,7 +287,7 @@ async function main() {
 const watchdog = setTimeout(() => {
   throw new Error("Town-map ownership scenarios did not finish");
 }, 20_000);
-main()
+await main()
   .catch((error) => {
     console.error(error);
     process.exitCode = 1;

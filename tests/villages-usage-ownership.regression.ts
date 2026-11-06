@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import {
   createActivationScope,
-  installDefaultActivation,
   activationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { configureRuntimeHost } from "../packages/villages/src/server/adapters/engine/runtime-host.js";
@@ -307,35 +306,37 @@ async function scopedContexts() {
   const releaseB = ownerB.run(() => configureUsageLedger(b.service));
   const releaseMetricsA = ownerA.run(() => configureMetricsContext(createMetricsContext()));
   const releaseMetricsB = ownerB.run(() => configureMetricsContext(createMetricsContext()));
-  const clearA = installDefaultActivation(ownerA, () => {});
+
   const gate = deferred(),
     entered = deferred();
   const countA = counters(),
     countB = counters();
-  const pending = withUsagePurpose("checks", () =>
-    active.run(countA, async () => {
-      entered.resolve();
-      await gate.promise;
-      assert.equal(inferredPurpose(), "checks", "a direct callback captures its owner before default replacement");
-      pipelineStorage("reads");
-      pipelineSignal("owner-A");
-      await ownerB.run(async () => {
-        assert.equal(inferredPurpose(), "other", "nested activation cannot inherit another owner's purpose");
-        assert.equal(active.getStore(), undefined, "nested activation cannot inherit another owner's counters");
-        await active.run(countB, () =>
-          withUsagePurpose("conversation", async () => {
-            pipelineStorage("writes");
-            await measureModel(completion);
-            await trackUsage(meta, completion);
-          }),
-        );
-      });
-      await measureModel(completion);
-      await trackUsage(meta, completion);
-    }),
+  const pending = ownerA.run(() =>
+    withUsagePurpose("checks", () =>
+      active.run(countA, async () => {
+        entered.resolve();
+        await gate.promise;
+        assert.equal(inferredPurpose(), "checks", "a direct callback captures its owner before default replacement");
+        pipelineStorage("reads");
+        pipelineSignal("owner-A");
+        await ownerB.run(async () => {
+          assert.equal(inferredPurpose(), "other", "nested activation cannot inherit another owner's purpose");
+          assert.equal(active.getStore(), undefined, "nested activation cannot inherit another owner's counters");
+          await active.run(countB, () =>
+            withUsagePurpose("conversation", async () => {
+              pipelineStorage("writes");
+              await measureModel(completion);
+              await trackUsage(meta, completion);
+            }),
+          );
+        });
+        await measureModel(completion);
+        await trackUsage(meta, completion);
+      }),
+    ),
   );
   await entered.promise;
-  const clearB = installDefaultActivation(ownerB, () => {});
+
   try {
     gate.resolve();
     await pending;
@@ -345,33 +346,36 @@ async function scopedContexts() {
     assert.equal(countB.reads, 0);
     assert.equal(countB.writes, 1);
     assert.equal(countB.requests, 1);
-    assert.equal((await readUsageLedger()).requests[0].purpose, "conversation");
-    assert.equal((await ownerA.run(() => readUsageLedger())).requests[0].purpose, "checks");
-    releaseA();
-    releaseMetricsA();
-    releaseA();
-    releaseMetricsA();
-    assert.equal((await readUsageLedger()).totals.requests, 1);
-    assert.throws(() => ownerA.run(() => inferredPurpose()), /not configured/);
+    await ownerB.run(async () => assert.equal((await readUsageLedger()).requests[0].purpose, "conversation"));
+    await ownerB.run(async () =>
+      assert.equal((await ownerA.run(() => readUsageLedger())).requests[0].purpose, "checks"),
+    );
+    ownerB.run(() => releaseA());
+    ownerB.run(() => releaseMetricsA());
+    ownerB.run(() => releaseA());
+    ownerB.run(() => releaseMetricsA());
+    await ownerB.run(async () => assert.equal((await readUsageLedger()).totals.requests, 1));
+    ownerB.run(() => assert.throws(() => ownerA.run(() => inferredPurpose()), /not configured/));
     const missing = createActivationScope();
-    assert.throws(() => missing.run(() => trackUsage(meta, completion)), /not configured/);
-    assert.throws(() => missing.run(() => active.run(counters(), () => {})), /not configured/);
+    ownerB.run(() => assert.throws(() => missing.run(() => trackUsage(meta, completion)), /not configured/));
+    ownerB.run(() => assert.throws(() => missing.run(() => active.run(counters(), () => {})), /not configured/));
     missing.dispose();
     ownerA.dispose();
-    ownerA.run(() => {
-      pipelineStorage("writes");
-      pipelineSignal("disposed");
-    });
+    ownerB.run(() =>
+      ownerA.run(() => {
+        pipelineStorage("writes");
+        pipelineSignal("disposed");
+      }),
+    );
     assert.equal(countB.writes, 1, "disposed passive metrics do not enter the default owner's counters");
   } finally {
     gate.resolve();
     await pending;
-    releaseA();
-    releaseB();
-    releaseMetricsA();
-    releaseMetricsB();
-    clearA();
-    clearB();
+    ownerB.run(() => releaseA());
+    ownerB.run(() => releaseB());
+    ownerB.run(() => releaseMetricsA());
+    ownerB.run(() => releaseMetricsB());
+
     ownerA.dispose();
     ownerB.dispose();
   }
@@ -457,33 +461,34 @@ async function escapedModelAccounting() {
       const releaseLedgerB = ownerB.run(() => configureUsageLedger(b.service));
       const releaseMetricsA = ownerA.run(() => configureMetricsContext(metricsA));
       const releaseMetricsB = ownerB.run(() => configureMetricsContext(createMetricsContext()));
-      const clearA = installDefaultActivation(ownerA, () => {});
-      let clearB: (() => void) | undefined;
+
       try {
-        const adapter = villagesLanguageModels();
+        const adapter = ownerA.run(() => villagesLanguageModels());
         const escapedResolve = () =>
           method === "resolve"
             ? adapter.resolve(meta.connectionId)
             : adapter.resolveForRequest({ connectionId: meta.connectionId });
-        let resolving = pause === "resolver" ? escapedResolve() : undefined;
+        let resolving = ownerA.run(() => (pause === "resolver" ? escapedResolve() : undefined));
         if (resolving) await enteredResolve.promise;
-        clearB = installDefaultActivation(ownerB, () => {});
-        resolving ??= escapedResolve();
+
+        ownerB.run(() => (resolving ??= escapedResolve()));
         releaseResolve.resolve();
         const model = await resolving,
           escapedComplete = model.chatComplete;
-        assert.equal(model.fitContext(messages).messages, messages);
+        ownerB.run(() => assert.equal(model.fitContext(messages).messages, messages));
         const countB = counters();
-        const pending = active.run(countB, () => escapedComplete(messages, options));
+        const pending = ownerB.run(() => active.run(countB, () => escapedComplete(messages, options)));
         await enteredProvider.promise;
         releaseProvider.resolve();
         await pending;
         assert.equal(providerCalls, 1);
-        assert.equal((await a.service.readUsageLedger()).totals.requests, 1);
-        assert.equal(
-          (await b.service.readUsageLedger()).totals.requests,
-          0,
-          "B never accounts for A's escaped provider",
+        await ownerB.run(async () => assert.equal((await a.service.readUsageLedger()).totals.requests, 1));
+        await ownerB.run(async () =>
+          assert.equal(
+            (await b.service.readUsageLedger()).totals.requests,
+            0,
+            "B never accounts for A's escaped provider",
+          ),
         );
         assert(
           events.every((event) => event.owner === ownerA),
@@ -494,30 +499,31 @@ async function escapedModelAccounting() {
         assert.equal(spansA[0]!.requests, 1);
         assert.equal(spansA[0]!.reportedInputTokens, 10);
         assert.equal(spansA[0]!.reportedOutputTokens, 5);
-        assert.equal(a.row().data.requests[0].status, "complete");
-        assert(!JSON.stringify(a.row()).includes("private text"));
-        releaseHostA();
-        await assert.rejects(async () => escapedComplete(messages, options), /runtime is not configured/);
+        ownerB.run(() => assert.equal(a.row().data.requests[0].status, "complete"));
+        ownerB.run(() => assert(!JSON.stringify(a.row()).includes("private text")));
+        ownerB.run(() => releaseHostA());
+        await ownerB.run(() =>
+          assert.rejects(async () => escapedComplete(messages, options), /runtime is not configured/),
+        );
         const beforeResolver = events.length;
         await assert.rejects(escapedResolve, /runtime is not configured/);
         assert.equal(events.length, beforeResolver, "invalidated resolver refuses before reading the captured Engine");
         assert.equal(providerCalls, 1, "an invalidated host refuses before accounting or provider dispatch");
-        assert.equal((await a.service.readUsageLedger()).totals.requests, 1);
-        releaseLedgerA();
+        await ownerB.run(async () => assert.equal((await a.service.readUsageLedger()).totals.requests, 1));
+        ownerB.run(() => releaseLedgerA());
         ownerA.dispose();
-        await assert.rejects(async () => escapedComplete(messages, options), /not configured/);
+        await ownerB.run(() => assert.rejects(async () => escapedComplete(messages, options), /not configured/));
         assert.equal(providerCalls, 1, "retired ownership refuses before provider dispatch");
-        assert.equal((await b.service.readUsageLedger()).totals.requests, 0);
+        await ownerB.run(async () => assert.equal((await b.service.readUsageLedger()).totals.requests, 0));
       } finally {
         releaseResolve.resolve();
         releaseProvider.resolve();
-        releaseHostA();
-        releaseLedgerA();
-        releaseLedgerB();
-        releaseMetricsA();
-        releaseMetricsB();
-        clearB?.();
-        clearA();
+        ownerB.run(() => releaseHostA());
+        ownerB.run(() => releaseLedgerA());
+        ownerB.run(() => releaseLedgerB());
+        ownerB.run(() => releaseMetricsA());
+        ownerB.run(() => releaseMetricsB());
+
         ownerA.dispose();
         ownerB.dispose();
       }
@@ -554,22 +560,21 @@ async function escapedModelAccounting() {
   );
   const releaseA = owner.run(() => configureUsageLedger(a.service));
   const releaseB = replacement.run(() => configureUsageLedger(b.service));
-  const clearA = installDefaultActivation(owner, () => {});
-  let clearB: (() => void) | undefined;
+
   try {
-    const model = await villagesLanguageModels().resolve(meta.connectionId);
-    const pending = model.chatComplete([]);
+    const model = await owner.run(() => villagesLanguageModels().resolve(meta.connectionId));
+    const pending = owner.run(() => model.chatComplete([]));
     // Observe rejection immediately, then invalidate the host while claim storage waits.
     const refused = assert.rejects(pending, /runtime is not configured/);
     await a.entered.promise;
     assert.equal(providerCalls, 0);
-    clearB = installDefaultActivation(replacement, () => {});
-    releaseHost();
+
+    replacement.run(() => releaseHost());
     a.gate.resolve();
     await refused;
     assert.equal(providerCalls, 0, "retirement during claim storage refuses before provider dispatch");
-    assert.equal((await b.service.readUsageLedger()).totals.requests, 0);
-    const ledgerA = await a.service.readUsageLedger();
+    await replacement.run(async () => assert.equal((await b.service.readUsageLedger()).totals.requests, 0));
+    const ledgerA = await replacement.run(() => a.service.readUsageLedger());
     assert.equal(ledgerA.totals.requests, 1);
     assert.equal(
       ledgerA.requests[0]!.status,
@@ -578,11 +583,10 @@ async function escapedModelAccounting() {
     );
   } finally {
     a.gate.resolve();
-    releaseHost();
-    releaseA();
-    releaseB();
-    clearB?.();
-    clearA();
+    replacement.run(() => releaseHost());
+    replacement.run(() => releaseA());
+    replacement.run(() => releaseB());
+
     owner.dispose();
     replacement.dispose();
   }
@@ -600,4 +604,4 @@ async function main() {
     "Usage queues, connection prices, CAS counts, recovery, purpose and pipeline contexts remain independently owned.",
   );
 }
-void main();
+await main();

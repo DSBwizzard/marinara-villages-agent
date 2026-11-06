@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
-/** Transitional dispatch context; owned factories, rather than this adapter, implement features. */
+/** Explicit activation context for host dispatch and owned service registrations. */
 export interface ActivationScope {
   readonly active: boolean;
   run<T>(work: () => T): T;
@@ -11,14 +11,9 @@ export interface ActivationScope {
   dispose(): void;
 }
 const context = new AsyncLocalStorage<ActivationScope>();
-let defaultOwner: { scope: ActivationScope; invalidate: () => void } | undefined;
 
-export function scopedActivation(): ActivationScope | undefined {
-  return context.getStore();
-}
 export function activationScope(): ActivationScope | undefined {
-  // A present but disposed/missing owner must never borrow the legacy default.
-  return scopedActivation() ?? defaultOwner?.scope;
+  return context.getStore();
 }
 export function createActivationScope(): ActivationScope {
   const slots = new Map<symbol, unknown>();
@@ -53,16 +48,6 @@ export function createActivationScope(): ActivationScope {
   return scope;
 }
 
-/** Direct configuration selects one legacy host; production activations use explicit scopes. */
-export function installDefaultActivation(scope: ActivationScope, invalidate: () => void): () => void {
-  defaultOwner?.invalidate();
-  const registration = { scope, invalidate };
-  defaultOwner = registration;
-  return () => {
-    if (defaultOwner === registration) defaultOwner = undefined;
-  };
-}
-
 export function bindActivationService<T extends object>(service: T): T {
   const scope = activationScope();
   if (!scope) return service;
@@ -86,10 +71,8 @@ export function bindActivationService<T extends object>(service: T): T {
 export function createActivationBinding<T>(unavailable: string) {
   const key = Symbol(unavailable);
   type Registration = { value: T };
-  let legacy: Registration | undefined;
   function maybe(): T | undefined {
-    const scope = activationScope();
-    return (scope ? scope.read<Registration>(key) : legacy)?.value;
+    return activationScope()?.read<Registration>(key)?.value;
   }
   return {
     maybe,
@@ -100,13 +83,11 @@ export function createActivationBinding<T>(unavailable: string) {
     },
     configure(value: T): () => void {
       const scope = activationScope();
+      if (!scope) throw new Error("An explicit Villages activation is required.");
       const registration = { value };
-      if (scope) scope.write(key, registration);
-      else legacy = registration;
+      scope.write(key, registration);
       return () => {
-        if (scope) {
-          if (scope.read<Registration>(key) === registration) scope.remove(key);
-        } else if (legacy === registration) legacy = undefined;
+        if (scope.read<Registration>(key) === registration) scope.remove(key);
       };
     },
   };

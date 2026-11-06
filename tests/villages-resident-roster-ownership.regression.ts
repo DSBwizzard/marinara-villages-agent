@@ -2,8 +2,7 @@ import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import {
   createActivationScope,
-  installDefaultActivation,
-  scopedActivation,
+  activationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import {
@@ -45,7 +44,7 @@ function fixture(name: string) {
   let retry: ((state: VillageState) => void) | undefined;
   const note = (call: string) => {
     calls.push(call);
-    owners.push(scopedActivation());
+    owners.push(activationScope());
   };
   const service = createResidentRoster({
     async findVillagerCard(id) {
@@ -54,7 +53,7 @@ function fixture(name: string) {
         pause = false;
         entered.resolve();
         await gate.promise;
-        owners.push(scopedActivation());
+        owners.push(activationScope());
       }
       if (libraryError) throw libraryError;
       return !missing && id === card.id ? card : null;
@@ -285,32 +284,34 @@ const original = fixture("Original owner"),
   replacement = fixture("Replacement owner");
 const releaseA = a.run(() => configureResidentRoster(original.service)),
   releaseB = b.run(() => configureResidentRoster(replacement.service));
-const clearA = installDefaultActivation(a, () => {});
+
 original.pause();
-const pending = addVillager("same");
+const pending = a.run(() => addVillager("same"));
 await original.entered.promise;
-const clearB = installDefaultActivation(b, () => {});
-await addVillager("same");
+
+await b.run(() => addVillager("same"));
 original.gate.resolve();
 await pending;
 assert.equal(original.state.villagers[0]!.cardSnapshot.name, "Original owner");
 assert.equal(replacement.state.villagers[0]!.cardSnapshot.name, "Replacement owner");
 assert(original.owners.every((owner) => owner === a));
 assert(replacement.owners.every((owner) => owner === b));
-a.run(releaseA);
+b.run(() => a.run(releaseA));
 a.dispose();
-clearA();
-await removeVillager("same");
+
+await b.run(() => removeVillager("same"));
 assert.equal(replacement.state.villagers.length, 0);
 assert.equal(original.state.villagers.length, 1);
 const absent = createActivationScope();
-await assert.rejects(
-  absent.run(() => addVillager("same")),
-  /not configured/,
+await b.run(() =>
+  assert.rejects(
+    absent.run(() => addVillager("same")),
+    /not configured/,
+  ),
 );
-b.run(releaseB);
+b.run(() => b.run(releaseB));
 b.dispose();
-clearB();
+
 await assert.rejects(
   b.run(() => removeVillager("same")),
   /not configured/,

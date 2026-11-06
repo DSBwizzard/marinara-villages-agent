@@ -639,4 +639,4 @@ async function main() {
     release();
   }
 }
-void main();
+await main();

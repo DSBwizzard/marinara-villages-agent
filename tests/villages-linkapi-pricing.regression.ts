@@ -265,4 +265,4 @@ async function main() {
     Date.now = originalNow;
   }
 }
-void main();
+await main();

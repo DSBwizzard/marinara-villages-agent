@@ -5,8 +5,7 @@ import { createSceneArchive } from "../packages/villages/src/server/features/sce
 import { configureSceneArchive, resetVenueSessions } from "../packages/villages/src/server/features/scenes/archive.js";
 import {
   createActivationScope,
-  installDefaultActivation,
-  scopedActivation,
+  activationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import {
   ACTIVE_ID,
@@ -31,8 +30,8 @@ function fixture(name: string) {
     gate = deferred();
   const note = (call: string) => {
     calls.push(call);
-    owners.push(scopedActivation());
-    if (scopedActivation()?.active === false) throw Error("Original archive connection unavailable.");
+    owners.push(activationScope());
+    if (activationScope()?.active === false) throw Error("Original archive connection unavailable.");
   };
   const put = (id: string, revision = 1) =>
     records.set(id, {
@@ -181,58 +180,60 @@ async function main() {
     f.put(SESSION_PREFIX + "same", 2);
     f.put(ACTIVE_ID, 4);
   }
-  const releaseA = a.run(() => configureSceneArchive(first.service)),
-    clearA = installDefaultActivation(a, () => {});
+  const releaseA = a.run(() => configureSceneArchive(first.service));
   first.pause();
-  const pending = resetVenueSessions();
+  const pending = a.run(() => resetVenueSessions());
   await first.entered.promise;
-  const releaseB = b.run(() => configureSceneArchive(second.service)),
-    clearB = installDefaultActivation(b, () => {});
+  const releaseB = a.run(() => b.run(() => configureSceneArchive(second.service)));
   first.gate.resolve();
   await pending;
   assert.equal(first.records.size, 0);
   assert.equal(second.records.size, 2, "A reset does not delete same-ID B documents");
   assert(first.owners.every((owner) => owner === a));
   assert.deepEqual(second.calls, []);
-  a.run(releaseA);
+  b.run(() => a.run(releaseA));
   a.dispose();
-  clearA();
-  await resetVenueSessions();
+
+  await b.run(() => resetVenueSessions());
   assert.equal(second.records.size, 0);
   assert(second.owners.every((owner) => owner === b));
-  await assert.rejects(
-    a.run(() => resetVenueSessions()),
-    /not configured/,
+  await b.run(() =>
+    assert.rejects(
+      a.run(() => resetVenueSessions()),
+      /not configured/,
+    ),
   );
   const missing = createActivationScope();
-  await assert.rejects(
-    missing.run(() => resetVenueSessions()),
-    /not configured/,
+  await b.run(() =>
+    assert.rejects(
+      missing.run(() => resetVenueSessions()),
+      /not configured/,
+    ),
   );
   missing.dispose();
-  b.run(releaseB);
+  b.run(() => b.run(releaseB));
   b.dispose();
-  clearB();
+
   await assert.rejects(resetVenueSessions(), /not configured/);
   const retired = createActivationScope(),
     old = fixture("retired");
   old.put(SESSION_PREFIX + "same");
   retired.run(() => configureSceneArchive(old.service));
-  const clearRetired = installDefaultActivation(retired, () => {});
+
   old.pause();
-  const abandoned = resetVenueSessions();
+  const abandoned = retired.run(() => resetVenueSessions());
   await old.entered.promise;
   retired.dispose();
   old.gate.resolve();
   await assert.rejects(abandoned, /Original archive connection unavailable/);
   assert.equal(old.records.size, 1);
   assert(!old.calls.includes("documents"));
-  clearRetired();
+
   console.log(
     "Scene archive reset active refusal, serial revision removals/partial failure, exact errors and originating activation cleanup passed with provider-free documents.",
   );
 }
-main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

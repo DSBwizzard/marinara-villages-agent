@@ -55,4 +55,4 @@ async function run() {
   }
   console.log("Pipeline efficiency: actual usage, unknown usage and concurrent metric isolation passed");
 }
-void run();
+await run();

@@ -3,8 +3,7 @@ import assert from "node:assert/strict";
 import type { CapabilityDocumentStore, CapabilityRuntimeHost } from "@marinara-engine/shared";
 import {
   createActivationScope,
-  installDefaultActivation,
-  scopedActivation,
+  activationScope,
 } from "../../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { defaultVillageState } from "../../packages/villages/src/server/domain/decoding/village-codec.js";
 import { configureVillagesRuntime } from "../../packages/villages/src/server/entry/runtime.js";
@@ -26,7 +25,7 @@ function unused<T extends object>(seed: Partial<T> = {}): T {
 
 /** Two actual, independently assembled runtime graphs with identical persisted identifiers. */
 export async function withSettingsOwners(
-  work: (a: ReturnType<typeof graph>, b: ReturnType<typeof graph>, selectB: () => void) => Promise<void>,
+  work: (a: ReturnType<typeof graph>, b: ReturnType<typeof graph>) => Promise<void>,
 ) {
   const originalFetch = globalThis.fetch;
   let networkMocks = 0;
@@ -36,18 +35,12 @@ export async function withSettingsOwners(
   };
   const a = graph("A"),
     b = graph("B");
-  const defaultA = installDefaultActivation(a.owner, () => {});
-  let defaultB: (() => void) | undefined;
   try {
-    await work(a, b, () => {
-      defaultB = installDefaultActivation(b.owner, () => {});
-    });
+    await work(a, b);
     assert.equal(a.providers + b.providers, 0, "settings tests dispatch no provider completion");
   } finally {
     a.unblock();
     b.unblock();
-    defaultB?.();
-    defaultA();
     a.owner.run(a.release);
     b.owner.run(b.release);
     a.owner.dispose();
@@ -110,7 +103,7 @@ function graph(label: "A" | "B") {
     finite: true,
   });
   async function touch(op: string, id: string) {
-    calls.push({ op, id, owner: scopedActivation() === owner });
+    calls.push({ op, id, owner: activationScope() === owner });
     const key = `${op}:${id}`,
       count = (counts.get(key) ?? 0) + 1;
     counts.set(key, count);
