@@ -286,7 +286,7 @@ async function main() {
       current.sceneryArtStyle = "Pixel art";
     });
     await assert.rejects(
-      () => setVillageVenueImage("own", null, undefined, "", false, undefined, key),
+      () => setVillageVenueImage("own", "exterior", null, false, key),
       /scenery changed/,
     );
     assert.equal((await readVillageState({ memories: true })).venues[1]!.privateSpaces![0]!.image!.id, "art");
@@ -417,7 +417,7 @@ async function main() {
         "exterior",
         "live access follows current worker authority while preserving safe egress",
       );
-      await assertVenueImageAccess("bank", undefined, "", "staff");
+      await assertVenueImageAccess("bank", "staff");
       assert.equal(
         resolveVenueZone((await readVillageState({ memories: true })).venues[2], "staff").seen,
         true,
@@ -563,7 +563,7 @@ async function privateInteriorLifecycle() {
   bedroom.description += "\n" + "Large established physical detail. ".repeat(70);
   bedroom.observed = captureZoneObservation(home, bedroom);
   await assert.rejects(
-    () => images.generateVillageLocationImage("bungalow", undefined, undefined, "", false, "bedroom"),
+    () => images.generateVillageLocationImage("bungalow", "bedroom", undefined),
     /Synthetic image failure/,
     "a long bounded physical account fits completely before requesting an image",
   );

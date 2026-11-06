@@ -190,14 +190,7 @@ async function main() {
 
   await assert.rejects(
     () =>
-      createVenueCommands(retry.ports).setVillageVenueImage(
-        "venue",
-        null,
-        undefined,
-        "",
-        false,
-        undefined,
-        "stale-context",
+      createVenueCommands(retry.ports).setVillageVenueImage("venue", "exterior", null, false, "stale-context"
       ),
     /scenery changed/,
   );

@@ -1565,17 +1565,10 @@ async function mediaConnectionOwnership() {
             : operation === "map"
               ? generateVillageTownMap({ setting: "Quiet harbor", selectedLorebookIds: ["visual"] })
               : operation === "store"
-                ? storeVillageVenueImage("equal-venue", TINY_PNG)
+                ? storeVillageVenueImage("equal-venue", "exterior", TINY_PNG)
                 : operation === "private"
                   ? generateFirstZoneImage("equal-venue", "own-room")
-                  : generateVillageLocationImage(
-                      "equal-venue",
-                      undefined,
-                      undefined,
-                      "",
-                      variant === "only-empty",
-                      "exterior",
-                    );
+                  : (variant === "only-empty" ? generateFirstZoneImage("equal-venue", "exterior") : generateVillageLocationImage("equal-venue", "exterior"));
       const outcome = pending.then(
         (value) => ({ value, error: undefined }),
         (error) => ({ value: undefined, error: error as unknown }),
