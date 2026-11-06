@@ -313,10 +313,10 @@ await withBrowser(browser, async () => {
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
     await expect.poll(() => siblingDenied.started).toBeGreaterThan(0);
     siblingDenied.gate.resolve();
-    hold = null;
     await expect(tabs.getByRole("button", { name: "Inspect", exact: true })).toBeVisible();
     await expect(page.getByText("Private reason", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Saved memory")).toHaveCount(0);
+    hold = null;
 
     await page.evaluate(() => window.h.loadAgendas());
     const beforeInfluence = pause("/api/villages/agendas");
