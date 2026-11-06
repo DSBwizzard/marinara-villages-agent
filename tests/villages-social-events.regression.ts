@@ -100,7 +100,16 @@ const entry: SocialOutboxEntry = {
   seed: village.seed,
   at,
   candidates: [],
-  opportunity: { id: "occasion", kind: "encounter", actorIds: ["a", "b"], venueId: "cafe", zoneId: zone.id } as any,
+  opportunity: {
+    id: "occasion",
+    kind: "encounter",
+    actorIds: ["a", "b"],
+    venueId: "cafe",
+    zoneId: zone.id,
+    startsAt: at,
+    endsAt: at,
+    facts: [],
+  },
   admitted: captureResidentActivity(village),
   relationshipSnapshot: structuredClone(social),
   proposal: {

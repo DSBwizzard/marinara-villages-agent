@@ -16,13 +16,17 @@ import { defaultRelationshipState } from "../packages/villages/src/server/domain
 import { activateVillagerDay, planRoutineDays } from "../packages/villages/src/server/domain/rules/resident-agenda.js";
 import { captureReturnContext } from "../packages/villages/src/server/domain/rules/return-catchup-capture.js";
 import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
-import { localDateKey } from "../packages/villages/src/server/domain/rules/resident-planning.js";
+import {
+  localDateKey,
+  residentPlanningRecallContext,
+} from "../packages/villages/src/server/domain/rules/resident-planning.js";
 import { VILLAGE_ACTIVITY_POLICY } from "../packages/villages/src/shared/helpers/activity-policy.js";
 import { nextEventAttemptAt } from "../packages/villages/src/server/domain/rules/event-attempts.js";
 import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import { venueZones } from "../packages/villages/src/server/domain/rules/venue-zones.js";
 import { createResidentPlanning } from "../packages/villages/src/server/features/residents/resident-planning-service.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { addMemory, emptyMemories } from "./helpers/memories-fixture.js";
 
 const now = new Date(),
   at = now.toISOString(),
@@ -141,7 +145,45 @@ function fixture() {
     prior: (value: any) => (prior = value),
   };
 }
+{
+  const contextual = fixture();
+  contextual.state.venues[0].name = "Greenhouse";
+  contextual.state.memories = addMemory(emptyMemories(), {
+    text: "Greenhouse repairs were discussed.",
+    audience: ["a"],
+    patch: { subjects: [] },
+  });
+  await contextual.service.reconcile(now);
+  const recalled = contextual.queued[0].input.context;
+  assert(recalled.narrationMemories.a.includes("Greenhouse repairs"));
+  assert(recalled.memory.envelope.memories.some((row: any) => row.text.includes("Greenhouse repairs")));
+  assert.equal(contextual.calls.length, 0, "Context-aware recall dispatches no model");
+}
 const f = fixture();
+{
+  const timed = fixture();
+  timed.state.timeZone = "UTC";
+  timed.state.villagers[0].agenda!.routineProfile = undefined;
+  timed.state.villagers[0].agenda!.day = [
+    { startMinute: 0, endMinute: 720, activity: "Breakfast", venueId: "square" },
+    { startMinute: 720, endMinute: 1440, activity: "Pottery", venueId: "square" },
+  ] as any;
+  const opportunity = {
+    id: "interval",
+    kind: "routine" as const,
+    actorIds: ["a"],
+    venueId: "square",
+    facts: [],
+    startsAt: "2026-11-06T08:00:00Z",
+    endsAt: "2026-11-06T14:00:00Z",
+  };
+  const cues = residentPlanningRecallContext(timed.state, opportunity);
+  assert(cues.includes("Pottery"));
+  assert(
+    !cues.includes("Breakfast"),
+    "Live recall uses the admitted current activity, not the previous simulation time",
+  );
+}
 await f.service.reconcile(now);
 assert.equal(f.calls.length, 0, "Discovery queues work without dispatching a model");
 assert.equal(f.queued[0].kind, "resident-planning");
@@ -318,6 +360,22 @@ await queuedReturn.service.reconcile(now);
 const returnOpportunity = structuredClone(queuedReturn.queued[0].input.opportunity);
 returnOpportunity.venueId = "";
 returnOpportunity.zoneId = undefined;
+queuedReturn.state.venues[0].name = "Greenhouse";
+queuedReturn.state.villagers[0].agenda!.activeDay!.blocks = [
+  {
+    startMinute: 0,
+    endMinute: 1440,
+    activity: "Greenhouse repairs",
+    venueId: "",
+    flexible: true,
+    status: "online",
+  },
+];
+queuedReturn.state.memories = addMemory(emptyMemories(), {
+  text: "Greenhouse repairs were discussed.",
+  audience: ["a"],
+  patch: { subjects: [] },
+});
 const returnCapture = captureReturnContext(queuedReturn.state, now);
 queuedReturn.state.returnCatchup = {
   batch: {
@@ -336,6 +394,12 @@ queuedReturn.queued.length = 0;
 await queuedReturn.service.queueReturnOpportunity("batch-one", returnOpportunity, returnCapture);
 assert.equal(queuedReturn.calls.length, 0, "Queueing a return opportunity does not dispatch a model request.");
 assert.equal(queuedReturn.queued[0].input.context.catchup, true);
+assert(queuedReturn.queued[0].input.context.narrationMemories.a.includes("Greenhouse repairs"));
+assert(
+  queuedReturn.queued[0].input.context.memory.envelope.memories.some((row: any) =>
+    row.text.includes("Greenhouse repairs"),
+  ),
+);
 assert.deepEqual(queuedReturn.queued[0].input.context.social.candidates, []);
 assert.equal(queuedReturn.service.handler.valid(queuedReturn.state, queuedReturn.queued[0].input), true);
 const rolledDay = structuredClone(queuedReturn.state);

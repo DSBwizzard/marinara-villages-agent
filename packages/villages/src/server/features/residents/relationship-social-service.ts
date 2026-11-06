@@ -3,7 +3,7 @@ import { backgroundRevision } from "../../domain/rules/background-revision.js";
 import { applyVenueSceneChange, releasePhysicalOutcomes } from "../../domain/rules/venue-scene-state.js";
 import { structuralShape } from "../../domain/rules/project-structure.js";
 import { resolveVenueZone } from "../../domain/rules/venue-zones.js";
-import { residentEncounterPlace } from "../../domain/rules/resident-planning.js";
+import { residentEncounterPlace, residentPlanningRecallContext } from "../../domain/rules/resident-planning.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { coerceSession } from "../../domain/decoding/scene-codec.js";
@@ -32,6 +32,13 @@ import { WorkFailureError } from "../../domain/rules/work-failure.js";
 import type { mutateVillageState } from "../world/village-store.js";
 import type { mutateRelationships } from "./relationship-store.js";
 class EncounterInterpretationError extends Error {}
+function encounterRecallSource(entry: SocialOutboxEntry) {
+  const raw = asRecord(entry.proposal.encounter);
+  return (Array.isArray(raw.lines) ? raw.lines : [])
+    .map((line) => asRecord(line).text)
+    .filter((text): text is string => typeof text === "string")
+    .join("\n");
+}
 export type RelationshipSocialPorts = {
   /** Full repair admission and World authority ownership through provider-free settlement. */
   withVillageSceneAcceptance: typeof import("../world/village-store.js").withVillageSceneAcceptance;
@@ -444,7 +451,13 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
           social: socialContextState(village.relationshipContext, entry.opportunity.actorIds, ""),
           seed: village.seed,
           admittedAt: villageNow().toISOString(),
-          memory: sceneMemoryContext(village, entry.opportunity.actorIds, (entry.opportunity.facts ?? []).join(" ")),
+          memory: sceneMemoryContext(
+            village,
+            entry.opportunity.actorIds,
+            (entry.opportunity.facts ?? []).join(" "),
+            encounterRecallSource(captured),
+            captured.admitted ? residentPlanningRecallContext(captured.admitted, entry.opportunity) : "",
+          ),
           committedPhysical: village.exchangeReceipts[encounterPhysicalId(entry.id)],
         },
       });
@@ -490,7 +503,13 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
         social: captured.relationshipSnapshot,
         seed: village.seed,
         admittedAt: entry.at,
-        memory: sceneMemoryContext(historical, entry.opportunity.actorIds, entry.opportunity.facts.join(" ")),
+        memory: sceneMemoryContext(
+          historical,
+          entry.opportunity.actorIds,
+          entry.opportunity.facts.join(" "),
+          encounterRecallSource(captured),
+          captured.admitted ? residentPlanningRecallContext(captured.admitted, entry.opportunity) : "",
+        ),
         committedPhysical: village.exchangeReceipts[encounterPhysicalId(entry.id)],
       },
     });

@@ -21,6 +21,30 @@ import { hasVenueClass, venueResidentIds } from "./venue-model.js";
 import type { VillageMoment } from "./village-clock.js";
 import { hashString } from "./village-clock.js";
 import { villagerPlaceView } from "./village-projections.js";
+import { agendaAt } from "./agenda-plan.js";
+
+/** Only the admitted actors' current activities and place supply optional recall cues. */
+export function residentPlanningRecallContext(
+  state: Pick<VillageState, "villagers" | "venues" | "timeZone">,
+  opportunity: ResidentPlanningOpportunity,
+  actorIds = opportunity.actorIds,
+) {
+  const at = new ZonedDate(opportunity.endsAt, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const venue = state.venues.find((row) => row.id === opportunity.venueId);
+  const zone = venue && venueZones(venue).find((row) => row.id === opportunity.zoneId);
+  return [
+    venue?.name,
+    zone?.name,
+    ...state.villagers
+      .filter((row) => opportunity.actorIds.includes(row.characterId) && actorIds.includes(row.characterId))
+      .map(
+        (row) =>
+          `${row.cardSnapshot.name}: ${agendaAt(row.agenda, at.getHours() * 60 + at.getMinutes(), at)?.activity ?? ""}`,
+      ),
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
 
 export function localDateKey(now: Date): string {
   return (

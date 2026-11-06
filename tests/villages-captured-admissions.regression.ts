@@ -823,7 +823,7 @@ for (const change of [
         endsAt: wishTime(),
         facts: [],
       },
-      admitted: { ...scope, villagers: [person] },
+      admitted: captureResidentActivity(world),
       relationshipSnapshot: social,
     };
     const outboxes = await withRepairWork(() =>
