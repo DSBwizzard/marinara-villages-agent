@@ -841,7 +841,6 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
                       ([stage, attempt]) => stage.startsWith("turn-reply:") && attempt.status === "rejected",
                     )) ||
                   operation.checkpoints["greeting-reply"] ||
-                  operation.checkpoints["move-invitation"] ||
                   (operation.kind === "close" &&
                     (Object.keys(operation.attempts).length > 0 || !!operation.checkpoints["abandoned-request"])) ||
                   submissions.some((entry) => entry.id === operation.id) ||

@@ -1,9 +1,12 @@
 import {
   canOccupyZone,
+  chooseAgendaZone,
   canInviteToZone,
   canRevokeZonePermission,
   zoneControllerIds,
 } from "../packages/villages/src/server/domain/rules/venue-zones.js";
+import { emptyPlaceRegistry } from "../packages/villages/src/server/domain/rules/places.js";
+import { readSession } from "../packages/villages/src/server/adapters/storage/scene-store.js";
 import { residenceProposal } from "../packages/villages/src/server/domain/rules/residence-agreement.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
@@ -57,11 +60,16 @@ import {
 import { completeVillageResidence } from "../packages/villages/src/server/features/venues/residences.js";
 import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
 import { fixtureWish } from "./helpers/social-wishes-fixture.js";
-import { villageFixtureDocuments, authorSceneFixture } from "./helpers/village-storage.fixture.js";
+import { villageFixtureDocuments, authorSceneFixture, fixtureSceneState } from "./helpers/village-storage.fixture.js";
 
 import { changeVenueAccess } from "../packages/villages/src/server/features/venues/services.js";
 
-import { contactPath, sceneAccessContext } from "../packages/villages/src/server/domain/rules/venue-contact.js";
+import {
+  contactCanEnter,
+  contactPath,
+  sceneAccessContext,
+  sceneMoveAccompanying,
+} from "../packages/villages/src/server/domain/rules/venue-contact.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 
@@ -116,6 +124,27 @@ function fixture(): VillageVenue {
 for (const retainZonePolicy of [false, true]) {
   const missing = fixture();
   delete missing.access;
+  const world = defaultVillageState();
+  world.venues = [missing];
+  world.relationshipContext = defaultRelationshipState(world.seed);
+  world.relationshipContext.grants.forged = {
+    active: true,
+    revoked: false,
+    visitorId: "player",
+    venueId: missing.id,
+    zoneId: "bedroom",
+    controllerId: "jim",
+  } as any;
+  missing.playerInvitations = [{ zoneId: "bedroom", residentId: "jim", sourceLineId: "old-invitation" }] as any;
+  const oldScene = coerceSession({
+    version: 4,
+    id: "old-access",
+    status: "active",
+    zoneId: "exterior",
+    grantedZoneIds: ["bedroom"],
+    zoneGrants: [{ zoneId: "bedroom", controllerId: "jim" }],
+    sceneAttendance: { capturedAt: stamp, occupants: [] },
+  });
   for (const target of missing.zones!) {
     if (target.kind === "exterior") continue;
     target.ownerId = "jim";
@@ -131,6 +160,8 @@ for (const retainZonePolicy of [false, true]) {
       assert.equal(canRevokeZonePermission(missing, target, actor), false);
     }
     assert.deepEqual(zoneControllerIds(missing, target), []);
+    assert.equal(contactCanEnter(world, missing, target.id, "player", oldScene), false);
+    assert.equal(chooseAgendaZone(missing, "jim", "Visiting", target.id, world).id, "exterior");
   }
   assert.equal(
     canOccupyZone(
@@ -159,6 +190,55 @@ for (const retainZonePolicy of [false, true]) {
   assert.equal(canOccupyZone(native, target, "jim"), false, "An interior Zone needs its own native policy");
 }
 
+{
+  const home = fixture(),
+    world = defaultVillageState();
+  world.venues = [home];
+  const scene = coerceSession({
+    version: 4,
+    id: "escort",
+    status: "active",
+    zoneId: "exterior",
+    sceneAttendance: {
+      capturedAt: stamp,
+      occupants: [{ characterId: "jim", name: "Jim", doing: "Waiting", zoneId: "living" }],
+    },
+    entryOffers: [{ zoneId: "bedroom", controllerId: "jim", accompanies: true }],
+  });
+  const bedroom = home.zones!.find((row) => row.id === "bedroom")!;
+  assert.equal(
+    sceneMoveAccompanying(scene, home, bedroom),
+    scene.accompanying,
+    "an escort must be at the player's captured position",
+  );
+  scene.sceneAttendance!.occupants[0]!.zoneId = "exterior";
+  assert.deepEqual(sceneMoveAccompanying(scene, home, bedroom), [{ characterId: "jim", zoneId: "bedroom" }]);
+  assert.equal(contactCanEnter(world, home, bedroom.id, "player", scene), false);
+  applyAccessCommand(
+    home,
+    {
+      action: "invite",
+      operationId: "native-visit",
+      expectedRevision: home.access!.revision,
+      zoneId: bedroom.id,
+      visitorId: "player",
+      duration: "visit",
+      accompanied: true,
+      outsideHours: true,
+    },
+    "jim",
+    stamp,
+    known,
+  );
+  assert.equal(
+    contactCanEnter(world, home, bedroom.id, "player", scene),
+    false,
+    "an offer alone does not establish accompaniment",
+  );
+  scene.accompanying = sceneMoveAccompanying(scene, home, bedroom);
+  assert.equal(contactCanEnter(world, home, bedroom.id, "player", scene), true);
+  assert.equal(contactPath(world, home, bedroom.id, "exterior", "visitor", scene)?.at(-1), "exterior");
+}
 const venue = fixture(),
   zone = (id: string) => venue.zones!.find((zone) => zone.id === id)!;
 const context = { sceneId: "scene-a", at: new Date(2026, 9, 5, 12), accepting: true };
@@ -630,6 +710,8 @@ assert.ok(!privateProjection.includes("private-controller-sentinel"));
 const records = new Map<string, any>();
 let failSceneCreate = false;
 let failAccessWrite = false;
+let failNavigationReceiptId = "";
+let modelResolutions = 0;
 let revokeBeforeSceneCommit = false;
 const live = defaultVillageState();
 live.foundedAt = stamp;
@@ -706,6 +788,16 @@ const release = configureVillagesRuntime({
       async update(input: any) {
         const prior = records.get(input.id);
         if (!prior || prior.revision !== input.expectedRevision) return null;
+        if (
+          failNavigationReceiptId &&
+          input.id.startsWith("villages-venue-visit-") &&
+          fixtureSceneState(input.data, records).navigationReceipts?.some(
+            (row: any) => row.id === failNavigationReceiptId,
+          )
+        ) {
+          failNavigationReceiptId = "";
+          throw Error("fixture movement receipt save failed");
+        }
         if (failAccessWrite && input.id === "villages-village") {
           failAccessWrite = false;
           throw Error("fixture access write failed");
@@ -741,6 +833,7 @@ const release = configureVillagesRuntime({
   },
   languageModels: {
     async resolveForRequest() {
+      modelResolutions++;
       throw Error("This regression must not request a model.");
     },
   },
@@ -755,9 +848,130 @@ async function main() {
       "Failed initial Scene save cannot consume a visit.",
     );
     failSceneCreate = false;
-    const entered = await enterVenue("home", undefined, "", undefined, "bedroom");
+    let entered = await enterVenue("home", undefined, "", undefined, "bedroom");
     assert.equal(entered.zoneId, "bedroom");
     assert.equal((await readVillageState({ memories: true })).venues[0].access!.permissions[0].sceneId, entered.id);
+    const gapManager = "npc:claim-gap-manager",
+      gapActors = [...known, gapManager];
+    const beforeGapPolicy = structuredClone(
+      (await readVillageState({ memories: true })).venues[0].zones!.find((zone) => zone.id === "living")!.access!,
+    );
+    await mutateVillageState(
+      (world) => {
+        world.worldPlaces ??= emptyPlaceRegistry();
+        world.worldPlaces.npcs[gapManager] = {
+          id: gapManager,
+          revision: 1,
+          name: "Room manager",
+          label: "Host",
+          characterization: "Manages the living room",
+          facts: [],
+          associations: [{ placeId: "home", role: "Room manager" }],
+          availability: "",
+          disabled: false,
+          source: "fixture",
+          updatedAt: stamp,
+        };
+        const home = world.venues[0];
+        applyAccessCommand(
+          home,
+          {
+            action: "zone-policy",
+            operationId: "claim-gap-policy",
+            expectedRevision: home.access!.revision,
+            zoneId: "living",
+            policy: { ...beforeGapPolicy, managerIds: [gapManager], inviterIds: [gapManager] },
+          },
+          "player",
+          stamp,
+          gapActors,
+        );
+        applyAccessCommand(
+          home,
+          {
+            action: "invite",
+            operationId: "claim-gap-permission",
+            expectedRevision: home.access!.revision,
+            zoneId: "living",
+            visitorId: "player",
+            duration: "visit",
+            accompanied: false,
+            outsideHours: true,
+          },
+          gapManager,
+          stamp,
+          gapActors,
+        );
+      },
+      { memories: true },
+    );
+    const beforeGap = (await activeVenueSession())!;
+    const callsBeforeGap = modelResolutions;
+    failNavigationReceiptId = "claim-gap-move";
+    await assert.rejects(
+      moveVenueZone(entered.id, "living", beforeGap.sceneRevision, undefined, "claim-gap-move"),
+      /fixture movement receipt save failed/,
+    );
+    const heldMove = await readSession(entered.id);
+    assert.equal(heldMove.zoneId, "bedroom");
+    assert(!heldMove.navigationReceipts?.some((row) => row.id === "claim-gap-move"));
+    assert.equal(heldMove.operation!.id, "claim-gap-move");
+    assert.match(heldMove.operation!.error ?? "", /fixture movement receipt save failed/);
+    assert.equal(heldMove.operation!.status, "complete", "caught free navigation can retry without a paid hold");
+    const claimedWorld = await readVillageState({ memories: true });
+    assert.equal(
+      claimedWorld.venues[0].access!.permissions.find((row) => row.id === "claim-gap-permission")!.sceneId,
+      entered.id,
+    );
+    assert.equal(
+      heldMove.continuity!.facts.venues[0].access!.permissions.find((row) => row.id === "claim-gap-permission")!
+        .sceneId,
+      entered.id,
+    );
+    const recoveredMove = await moveVenueZone(
+      entered.id,
+      "living",
+      heldMove.sceneRevision,
+      undefined,
+      "claim-gap-move",
+    );
+    assert.equal(recoveredMove.zoneId, "living");
+    assert.equal(recoveredMove.navigationReceipts!.filter((row) => row.id === "claim-gap-move").length, 1);
+    assert.equal(
+      (await readVillageState({ memories: true })).venues[0].access!.permissions.filter(
+        (row) => row.id === "claim-gap-permission",
+      ).length,
+      1,
+    );
+    assert.equal(recoveredMove.lines.length, beforeGap.lines.length);
+    assert.equal(recoveredMove.submissions.length, beforeGap.submissions.length);
+    await moveVenueZone(entered.id, "living", undefined, undefined, "claim-gap-move");
+    assert.equal(
+      (await readSession(entered.id)).navigationReceipts!.filter((row) => row.id === "claim-gap-move").length,
+      1,
+    );
+    assert.equal(modelResolutions, callsBeforeGap, "claim recovery and receipt replay make no model request");
+    entered = await moveVenueZone(entered.id, "bedroom", recoveredMove.sceneRevision, undefined, "claim-gap-return");
+    await mutateVillageState(
+      (world) => {
+        const home = world.venues[0];
+        applyAccessCommand(
+          home,
+          {
+            action: "zone-policy",
+            operationId: "claim-gap-restore",
+            expectedRevision: home.access!.revision,
+            zoneId: "living",
+            policy: beforeGapPolicy,
+          },
+          gapManager,
+          stamp,
+          gapActors,
+        );
+        delete world.worldPlaces.npcs[gapManager];
+      },
+      { memories: true },
+    );
     const office = await moveVenueZone(entered.id, "office", entered.sceneRevision);
     const returned = await moveVenueZone(entered.id, "bedroom", office.sceneRevision);
     assert.equal(returned.id, entered.id, "Zone movements keep the same Scene and its visit permission.");
@@ -1331,7 +1545,6 @@ async function main() {
         id: "saved-ban-turn",
         at: new Date().toISOString(),
         replyLineIds: ["saved-ban-line"],
-        movement: {},
         accessEvents: savedAccessEvents(banBatch),
       },
       { mode: "chat", id: "later-unrelated-turn", at: stamp, replyLineIds: [] },
@@ -1396,7 +1609,6 @@ async function main() {
           id: "old-reply-turn",
           at: stamp,
           replyLineIds: ["previous-world-line"],
-          movement: {},
           invitationSignal: {
             interpretationVersion: 1,
             residentId: "jim",

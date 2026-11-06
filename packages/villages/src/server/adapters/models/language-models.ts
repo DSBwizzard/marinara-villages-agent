@@ -1,6 +1,6 @@
 import { retainJsonRepair } from "../observability/json-repair-diagnostics.js";
 import { withProviderDeadline } from "./provider-deadline.js";
-import { guardedClockGeneration, assertVillageClockWrite } from "../time/clock-gate.js";
+import { guardedClockGeneration } from "../time/clock-gate.js";
 import { requireHost } from "../engine/runtime-host.js";
 import { bindActivationService } from "../engine/activation-scope.js";
 import { measureModel } from "../observability/pipeline-metrics.js";
@@ -21,7 +21,6 @@ export function villagesLanguageModels(): CapabilityLanguageModelHost {
           trackUsage({ connectionId: model.connectionId, model: model.model }, async () => {
             // A usage claim may await storage; recheck before dispatching the provider.
             requireHost();
-            await assertVillageClockWrite();
             const result = await measureModel(() =>
               withProviderDeadline(
                 (signal) => model.chatComplete(messages, { ...requestOptions, signal }),

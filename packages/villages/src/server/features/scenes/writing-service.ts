@@ -94,7 +94,6 @@ import {
   venueInArea,
   venueResidentIds,
 } from "../../domain/rules/venue-model.js";
-import type { MovementIntent } from "../../domain/rules/venue-movement.js";
 import { readVenueRequestCore } from "../../domain/rules/venue-requests.js";
 import { applyVenueSceneChange, readVenueSceneChange } from "../../domain/rules/venue-scene-state.js";
 import {
@@ -763,8 +762,6 @@ export function createSceneWriting({
       originalMissingFields: sceneMissingFields(originalRaw),
       inputCharacters: fitted.messages.reduce((sum, message) => sum + message.content.length, 0),
     });
-    const movementIntent: MovementIntent | null = null;
-    if (movementIntent && movementIntent.zoneId !== session.zoneId) throw conflict("Use Move to change Zones.");
     let parsed: ReturnType<typeof parseVenueReply>;
     let npcAdmissions: NpcAdmission[] = [];
     let eventRaw = raw;
@@ -1263,7 +1260,6 @@ export function createSceneWriting({
         placeUpdate,
         semanticPlayerMoves: playerMoves,
         physicalContext,
-        movementIntent,
         residenceSignal:
           (semanticResult || mode === "chat") &&
           requestedVenueId &&

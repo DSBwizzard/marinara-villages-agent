@@ -395,7 +395,6 @@ export function coerceSession(value: unknown): VenueScene {
               ...(row.narrativeSource
                 ? { narrativeSource: structuredClone(row.narrativeSource) as VenueSubmission["narrativeSource"] }
                 : {}),
-              ...(row.movement ? { movement: row.movement as VenueSubmission["movement"] } : {}),
               ...(row.semanticConclude === true ? { semanticConclude: true } : {}),
               ...(Array.isArray(row.semanticPlayerMoves)
                 ? { semanticPlayerMoves: row.semanticPlayerMoves as VenueSubmission["semanticPlayerMoves"] }

@@ -16,13 +16,7 @@ import {
   backgroundResponseStore,
   nativeBackgroundJob,
 } from "../adapters/storage/background-responses.js";
-import {
-  assertVillageClockWrite,
-  clockAdministration,
-  isVillageClockError,
-  villageNow,
-  withVillageClockWork,
-} from "../adapters/time/clock-gate.js";
+import { villageNow, withVillageClockWork } from "../adapters/time/clock-gate.js";
 import type { BackgroundCompletion } from "../domain/models/background-completion-model.js";
 import type {
   BackgroundInput,
@@ -298,7 +292,6 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           throw new Error("Background job record identity changed.");
         validateBackgroundJobRecord(record);
       }
-      await assertVillageClockWrite();
       const next = change(record ? await responses.decode(record.data) : null);
       const data = nativeBackgroundJob(next);
       const capturedKinds = ["resident-planning", "personal-mail", "social-recovery"];
@@ -1179,29 +1172,6 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         .catch((error) => villagesLogger().warn("[villages] could not queue follow-up work: %s", String(error)));
     } catch (error) {
       if (owner !== runOwner || stopped) return;
-      if (isVillageClockError(error)) {
-        await clockAdministration(() =>
-          updateJob((current) => {
-            if (!current) throw new Obsolete("This job was removed.");
-            if (
-              current.id !== runJobId ||
-              current.attempt !== runAttempt ||
-              (current.owner !== job!.owner && current.owner !== runOwner) ||
-              (current.owner !== runOwner && current.status === "running")
-            )
-              return current;
-            return {
-              ...current,
-              status: "interrupted",
-              error:
-                "The computer clock changed. Resolve the village clock notice before explicitly retrying this work.",
-              failure: undefined,
-              failedAt: undefined,
-            };
-          }),
-        );
-        return;
-      }
       const obsolete = error instanceof Obsolete,
         paused = error instanceof Paused;
       const message = (error instanceof Error ? error.message : String(error)).slice(0, 300);
@@ -1292,8 +1262,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           });
           if (automaticallyRetried) relaunch.add(id);
         } catch (retryError) {
-          if (!(retryError instanceof Paused || retryError instanceof Obsolete || isVillageClockError(retryError)))
-            throw retryError;
+          if (!(retryError instanceof Paused || retryError instanceof Obsolete)) throw retryError;
         }
       }
       if (!automaticallyRetried)

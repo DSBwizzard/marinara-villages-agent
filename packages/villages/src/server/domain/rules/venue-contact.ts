@@ -7,7 +7,7 @@ import { sceneRelationshipView } from "./relationship-rules.js";
 import type { AttentionPlan } from "./scene-attention.js";
 import { sceneAccessState, sceneLayoutVenue } from "./scene-layout.js";
 import { type AccessContext, evaluateZoneAccess } from "./venue-access.js";
-import { canInviteToZone, canOccupyZone, venueZones, zoneClosed } from "./venue-zones.js";
+import { canOccupyZone, venueZones, zoneClosed } from "./venue-zones.js";
 
 export type ContactDelivery = "voice" | "loud";
 export type ContactIntent = {
@@ -74,7 +74,7 @@ export function sceneMoveAccompanying(
   const offered = scene.entryOffers?.find((entry) => entry.zoneId === zone.id);
   return offered?.accompanies &&
     canOccupyZone(venue, zone, offered.controllerId) &&
-    (!venue.access || contactPosition(scene, offered.controllerId) === scene.zoneId)
+    contactPosition(scene, offered.controllerId) === scene.zoneId
     ? [
         ...(scene.accompanying ?? []).filter((entry) => entry.characterId !== offered.controllerId),
         { characterId: offered.controllerId, zoneId: zone.id },
@@ -119,41 +119,14 @@ export function contactCanEnter(
   venue = sceneLayoutVenue(venue, scene);
   const zone = venueZones(venue).find((entry) => entry.id === zoneId);
   if (zone?.closed) return false;
-  if (venue.access)
-    return (
-      !!zone &&
-      evaluateZoneAccess(venue, zone, characterId, {
-        ...(scene ? sceneAccessContext(scene, state) : { relationships: state.relationshipContext }),
-        accepting: characterId === "player",
-        unavailable: !!zone && zoneClosed(state, venue, zone),
-        environment: state.narrative,
-      }).allowed
-    );
   return (
     !!zone &&
-    !zoneClosed(state, venue, zone) &&
-    (canOccupyZone(venue, zone, characterId, {
+    evaluateZoneAccess(venue, zone, characterId, {
       ...(scene ? sceneAccessContext(scene, state) : { relationships: state.relationshipContext }),
+      accepting: characterId === "player",
+      unavailable: zoneClosed(state, venue, zone),
       environment: state.narrative,
-    }) ||
-      (characterId === "player" &&
-        !scene?.dismissedZoneIds?.includes(zoneId) &&
-        (venue.playerInvitations?.some(
-          (entry) => entry.zoneId === zoneId && canInviteToZone(venue, zone, entry.residentId),
-        ) ||
-          (scene?.grantedZoneIds?.includes(zoneId) &&
-            scene.zoneGrants?.some(
-              (grant) => grant.zoneId === zoneId && canInviteToZone(venue, zone, grant.controllerId),
-            )))) ||
-      Object.values(state.relationshipContext?.grants ?? {}).some(
-        (grant) =>
-          grant.active &&
-          !grant.revoked &&
-          grant.visitorId === characterId &&
-          grant.venueId === venue.id &&
-          grant.zoneId === zoneId &&
-          canInviteToZone(venue, zone, grant.controllerId),
-      ))
+    }).allowed
   );
 }
 /** Entrance egress follows physical doorways even when an intermediate Zone denies entry. */

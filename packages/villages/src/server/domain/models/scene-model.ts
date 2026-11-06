@@ -91,7 +91,6 @@ export type VenueSubmission = {
   actionReplyDone?: boolean;
   physicalOutcomeVersion?: 1;
   narrativeSource?: import("../rules/scene-narrative-effects.js").SceneNarrativeSource;
-  movement?: { operationId: string; originZoneId: string; destinationZoneId: string; transitionLineId: string };
   placeUpdate?: VenueSceneChange;
   semanticPlayerMoves?: import("../rules/semantic-timeline.js").SemanticPlayerMove[];
   physicalContext?: import("../../../shared/contracts/place-continuity.js").PlaceEvidence & {
