@@ -4,14 +4,12 @@ import type { VillageState, VillageVenue, VillageVenueZone } from "../models/wor
 import { asRecord, asTrimmedString } from "./coerce.js";
 
 import { sceneRelationshipView } from "./relationship-rules.js";
-import type { AttentionPlan } from "./scene-attention.js";
 import { sceneAccessState, sceneLayoutVenue } from "./scene-layout.js";
 import { type AccessContext, evaluateZoneAccess } from "./venue-access.js";
 import { canOccupyZone, venueZones, zoneClosed } from "./venue-zones.js";
 
 export type ContactDelivery = "voice" | "loud";
 export type ContactIntent = {
-  attention?: AttentionPlan;
   physicalTargetId?: string;
   kind: "knock" | "call";
   targetId: string;
@@ -30,8 +28,8 @@ export type ContactMove = {
   zoneId: string;
   quote: string;
   path: string[];
-  /** Movement completes in this narration segment; absent on older saved replies. */
-  segment?: number;
+  /** Movement completes in this narration segment. */
+  segment: number;
 };
 export type ContactRelay = { speakerId: string; targetId: string; quote: string; path: string[]; targetZoneId: string };
 const normalize = (value: string) =>
@@ -161,7 +159,6 @@ export function readContactMoves(
   venue: VillageVenue,
   scene: VenueScene,
   allowed: string[],
-  requireSegment = false,
   allowLocalNoop: boolean | "redundant" = false,
   semantic = false,
 ): ContactMove[] {
@@ -208,13 +205,9 @@ export function readContactMoves(
     const qualifyMovement = !localNoop || allowLocalNoop !== "redundant";
     if (
       !allowed.includes(actor) ||
-      (requireSegment && segment === undefined) ||
       seen.has(actor) ||
-      (segment === undefined ? !contactSpeech(lines, actor, quote) : !citedMove) ||
-      (!semantic &&
-        qualifyMovement &&
-        segment !== undefined &&
-        /\b(?:would|could|will|plans?|intends?)\b/iu.test(movementText)) ||
+      !citedMove ||
+      (!semantic && qualifyMovement && /\b(?:would|could|will|plans?|intends?)\b/iu.test(movementText)) ||
       (!semantic && qualifyMovement && /\b(?:maybe|perhaps|might|unless|if|won't|can't|not)\b/iu.test(movementText)) ||
       !path ||
       (path.length < 2 && !localNoop) ||
@@ -228,7 +221,7 @@ export function readContactMoves(
         zoneId: destination,
         quote,
         path,
-        ...(segment !== undefined ? { segment: Number(segment) } : {}),
+        segment: Number(segment),
       },
     ];
   });

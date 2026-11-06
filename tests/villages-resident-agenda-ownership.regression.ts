@@ -4,8 +4,7 @@ import assert from "node:assert/strict";
 import {
   bindActivationService,
   createActivationScope,
-  installDefaultActivation,
-  scopedActivation,
+  activationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import {
@@ -38,6 +37,7 @@ function fixture(name: string) {
   state.seed = `seed-${name}`;
   const card = readVillagerCard({ id: "same", data: JSON.stringify({ name, description: `Owned ${name}` }) } as any);
   const resident = {
+    letterFontId: "caveat",
     characterId: "same",
     cardSnapshot: snapshotFromCard(card, 2),
     addedAt: "2026-10-06T12:00:00Z",
@@ -60,7 +60,7 @@ function fixture(name: string) {
   let parsedResponse: unknown, parsedContext: unknown;
   const note = (operation: string) => {
     calls.push(operation);
-    owners.push(scopedActivation());
+    owners.push(activationScope());
   };
   const ports: ResidentAgendaPorts = {
     async readVillageState() {
@@ -69,7 +69,7 @@ function fixture(name: string) {
         pauseRead = false;
         entered.resolve();
         await gate.promise;
-        owners.push(scopedActivation());
+        owners.push(activationScope());
       }
       return structuredClone(state);
     },
@@ -96,7 +96,7 @@ function fixture(name: string) {
         pauseLore = false;
         entered.resolve();
         await gate.promise;
-        owners.push(scopedActivation());
+        owners.push(activationScope());
       }
       return [`Lore ${name}`];
     },
@@ -123,7 +123,7 @@ function fixture(name: string) {
         pauseModel = false;
         entered.resolve();
         await gate.promise;
-        owners.push(scopedActivation());
+        owners.push(activationScope());
       }
       return { agenda: structuredClone(resident.agenda) } as any;
     },
@@ -338,31 +338,33 @@ const first = fixture("First owner"),
   second = fixture("Second owner");
 const releaseFirst = one.run(() => configureResidentAgendas(first.service));
 const releaseSecond = two.run(() => configureResidentAgendas(second.service));
-const clearFirst = installDefaultActivation(one, () => {});
-first.pauseLore();
-const pending = queueVillagerAgenda("same");
+
+one.run(() => first.pauseLore());
+const pending = one.run(() => queueVillagerAgenda("same"));
 await first.entered.promise;
-const clearSecond = installDefaultActivation(two, () => {});
-await queueVillagerAgenda("same");
+
+await two.run(() => queueVillagerAgenda("same"));
 first.gate.resolve();
 await pending;
 assert.equal(first.jobs[0].seed, first.state.seed);
 assert.equal(second.jobs[0].seed, second.state.seed);
 assert(first.owners.every((owner) => owner === one));
 assert(second.owners.every((owner) => owner === two));
-one.run(releaseFirst);
+two.run(() => one.run(releaseFirst));
 one.dispose();
-clearFirst();
-await clearVillagerAgenda("same", "new-owner-action");
+
+await two.run(() => clearVillagerAgenda("same", "new-owner-action"));
 assert.equal(second.state.villagers[0]!.agendaGeneration, "new-owner-action");
 const missing = createActivationScope();
-await assert.rejects(
-  missing.run(() => queueVillagerAgenda("same")),
-  /not configured/,
+await two.run(() =>
+  assert.rejects(
+    missing.run(() => queueVillagerAgenda("same")),
+    /not configured/,
+  ),
 );
-two.run(releaseSecond);
+two.run(() => two.run(releaseSecond));
 two.dispose();
-clearSecond();
+
 missing.dispose();
 await assert.rejects(
   two.run(() => queueVillagerAgenda("same")),
@@ -377,13 +379,13 @@ const captured = callbackOwner.run(() => bindActivationService(callbackFixture.s
 callbackFixture.pauseModel();
 const generation = captured.generate({ characterId: "same", seed: callbackFixture.state.seed, context: {} });
 await callbackFixture.entered.promise;
-const clearReplacement = installDefaultActivation(replacementOwner, () => {});
+
 callbackFixture.gate.resolve();
 await generation;
 assert.equal(callbackFixture.generated, 1);
 assert(callbackFixture.owners.every((owner) => owner === callbackOwner));
 assert.equal(callbackFixture.calls.at(-1), "progress:applying");
-clearReplacement();
+
 callbackOwner.dispose();
 replacementOwner.dispose();
 
@@ -394,40 +396,44 @@ const rollA = fixture("Roll A"),
   rollB = fixture("Roll B");
 const releaseRollA = rollOne.run(() => configureResidentAgendas(rollA.service));
 const releaseRollB = rollTwo.run(() => configureResidentAgendas(rollB.service));
-const clearRollA = installDefaultActivation(rollOne, () => {});
+
 const rollAt = new Date("2026-10-07T12:00:00Z");
 rollA.resident.agenda.activeDay = undefined;
 rollB.resident.agenda.activeDay = undefined;
-rollA.pauseRead();
-const pendingRoll = rollActiveAgendas(rollAt);
+rollOne.run(() => rollA.pauseRead());
+const pendingRoll = rollOne.run(() => rollActiveAgendas(rollAt));
 await rollA.entered.promise;
-const clearRollB = installDefaultActivation(rollTwo, () => {});
-assert.equal(await rollActiveAgendas(rollAt), true);
+
+await rollTwo.run(async () => assert.equal(await rollActiveAgendas(rollAt), true));
 assert.equal(rollA.calls.filter((call) => call === "mutate").length, 0);
 rollA.gate.resolve();
 assert.equal(await pendingRoll, true);
-assert.equal(rollA.resident.agenda.activeDay?.dateKey, agendaDateKey(rollAt));
-assert.equal(rollB.resident.agenda.activeDay?.dateKey, agendaDateKey(rollAt));
+rollTwo.run(() => assert.equal(rollA.resident.agenda.activeDay?.dateKey, agendaDateKey(rollAt)));
+rollTwo.run(() => assert.equal(rollB.resident.agenda.activeDay?.dateKey, agendaDateKey(rollAt)));
 assert(rollA.owners.every((owner) => owner === rollOne));
 assert(rollB.owners.every((owner) => owner === rollTwo));
 const completedCalls = rollA.calls.length;
-assert.equal(await rollOne.run(() => rollActiveAgendas(rollAt, rollA.state)), false);
+await rollTwo.run(async () => assert.equal(await rollOne.run(() => rollActiveAgendas(rollAt, rollA.state)), false));
 assert.equal(rollA.calls.length, completedCalls, "Supplied current state avoids both read and mutation.");
 const suppliedRoll = fixture("Supplied roll");
 suppliedRoll.resident.agenda.activeDay = undefined;
-assert.equal(await suppliedRoll.service.rollActiveAgendas(rollAt, suppliedRoll.state), true);
+await rollTwo.run(async () =>
+  assert.equal(await suppliedRoll.service.rollActiveAgendas(rollAt, suppliedRoll.state), true),
+);
 assert.deepEqual(
   suppliedRoll.calls,
   ["mutate"],
   "Supplied stale state bypasses the read and keeps the original mutation.",
 );
-rollOne.run(releaseRollA);
+rollTwo.run(() => rollOne.run(releaseRollA));
 rollOne.dispose();
-clearRollA();
-assert.equal(await rollActiveAgendas(rollAt), false, "Releasing A retains B's current command.");
-rollTwo.run(releaseRollB);
+
+await rollTwo.run(async () =>
+  assert.equal(await rollActiveAgendas(rollAt), false, "Releasing A retains B's current command."),
+);
+rollTwo.run(() => rollTwo.run(releaseRollB));
 rollTwo.dispose();
-clearRollB();
+
 await assert.rejects(
   rollTwo.run(() => rollActiveAgendas(rollAt)),
   /not configured/,

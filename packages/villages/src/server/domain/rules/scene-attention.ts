@@ -2,26 +2,6 @@ import type { VenueScene } from "../models/scene-model.js";
 import type { VillageVenue } from "../models/world.js";
 import { contactNeighbors, contactPosition, type DoorwayContact } from "./venue-contact.js";
 
-/** Private, cited routing proposals. They establish neither hearing nor physical success. */
-export type AttentionFragment = {
-  targetZoneId?: string;
-  delivery?: import("./scene-acoustics.js").SoundDelivery;
-  outward?: boolean;
-  wordZoneIds?: string[];
-  id: string;
-  start: number;
-  end: number;
-  kind: "speech" | "sound";
-  reach: "directed" | "broadcast";
-  zoneIds: string[];
-};
-
-export type AttentionPlan = {
-  status: "local" | "attention" | "clarify";
-  fragments: AttentionFragment[];
-  question?: string;
-};
-
 /** Only the latest visible exchange can supply a conversational default. */
 function latestAttentionSpeaker(scene: VenueScene) {
   const speakers = new Set<string>();

@@ -101,6 +101,7 @@ function fixture(count: number) {
       ),
     ],
     villagers: ids.map((id, i) => ({
+      letterFontId: "caveat",
       characterId: id,
       addedAt: stamp,
       cardSnapshot: { id, name: id, revision: 1, sourceStatus: "available", capturedAt: stamp },
@@ -452,9 +453,19 @@ assert.equal(paint.description, "A yellow motorcycle.", "closing never replays a
   } as any);
   await service.sceneReplayEffects().applyVenueTurnChange(saved, {
     id: "red",
+    physicalOutcomeVersion: 1,
     at: stamp,
     areaAtTurn: "public",
     zoneIdAtTurn: "a",
+    privateOwnerIdAtTurn: "",
+    physicalContext: {
+      zoneId: "a",
+      actorIds: ["player"],
+      witnessIds: ids,
+      consentIds: [ids[0]],
+      positions: { ...Object.fromEntries(ids.map((id) => [id, "a"])), player: "a" },
+      segment: 0,
+    },
     activeIdsAtTurn: ids,
     semanticProvenance: { version: 2 },
     placeUpdate: {
@@ -483,7 +494,6 @@ assert.equal(paint.description, "A yellow motorcycle.", "closing never replays a
     },
     rollActiveAgendas: async () => false,
     listVillagerCards: async () => [],
-    captureMissingVillagerCardColors: (card: any) => ({ ...card, nameColor: "", dialogueColor: "" }),
     sceneQueries: () => ({ activeVenueSession: async () => saved }),
     backgroundWorkSummaries: async () => [],
     privatePreparationRooms: () => [],

@@ -14,7 +14,6 @@ function scene(submissions: unknown[] = []) {
     zoneId: "exterior",
     sceneRevision: 3,
     changeSequence: 4,
-    processingVersion: 1,
     villageSeed: "seed",
     participants: [{ characterId: "resident", name: "Resident" }],
     lines: [
@@ -36,6 +35,19 @@ assert.throws(
   /no longer available/,
 );
 assert.deepEqual(unchanged, untouched);
+
+const missing = scene([{ id: "old", mode: "chat", message: "Saved text", at: stamp }]);
+const missingBefore = structuredClone(missing);
+let callbacks = 0;
+assert.throws(
+  () =>
+    applySceneMutation(missing, "scene", () => {
+      callbacks++;
+    }),
+  /processing metadata/,
+);
+assert.equal(callbacks, 0, "missing saved processing is rejected before the mutation callback");
+assert.deepEqual(missing, missingBefore, "a later mutation cannot backfill saved exchange metadata");
 
 const movement = scene();
 assert.equal(

@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import {
   createActivationScope,
-  installDefaultActivation,
-  scopedActivation,
+  activationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import {
   coerceVillageState,
@@ -32,6 +31,7 @@ function fixture(name: string) {
     foundedAt: stamp,
     villagers: [
       {
+        letterFontId: "caveat",
         characterId: "same",
         addedAt: stamp,
         cardSnapshot: { id: "same", name, revision: 1, sourceStatus: "available", capturedAt: stamp },
@@ -61,7 +61,7 @@ function fixture(name: string) {
     failure: Error | undefined;
   const note = (call: string) => {
     calls.push(call);
-    owners.push(scopedActivation());
+    owners.push(activationScope());
   };
   const service = createVenueRequests({
     async mutateVillageState(update) {
@@ -70,7 +70,7 @@ function fixture(name: string) {
         pause = false;
         entered.resolve();
         await gate.promise;
-        owners.push(scopedActivation());
+        owners.push(activationScope());
       }
       if (failure) throw failure;
       const first = structuredClone(state);
@@ -177,29 +177,33 @@ request(original);
 request(replacement);
 const releaseA = a.run(() => configureVenueRequests(original.service)),
   releaseB = b.run(() => configureVenueRequests(replacement.service));
-const clearA = installDefaultActivation(a, () => {});
+
 original.pause();
-const pending = decideVillageVenueRequest("same-request", true, { ...core, description: "Original decision." });
+const pending = a.run(() =>
+  decideVillageVenueRequest("same-request", true, { ...core, description: "Original decision." }),
+);
 await original.entered.promise;
-const clearB = installDefaultActivation(b, () => {});
-await decideVillageVenueRequest("same-request", false, null);
+
+await b.run(() => decideVillageVenueRequest("same-request", false, null));
 original.gate.resolve();
 assert.equal((await pending).village.name, "Original");
 assert.equal(original.state.pendingDecisions[0]!.status, "approved");
 assert.equal(replacement.state.pendingDecisions[0]!.status, "denied");
 assert(original.owners.every((owner) => owner === a));
 assert(replacement.owners.every((owner) => owner === b));
-a.run(releaseA);
+b.run(() => a.run(releaseA));
 a.dispose();
-clearA();
+
 const missing = createActivationScope();
-await assert.rejects(
-  missing.run(() => decideVillageVenueRequest("missing", false, null)),
-  /not configured/,
+await b.run(() =>
+  assert.rejects(
+    missing.run(() => decideVillageVenueRequest("missing", false, null)),
+    /not configured/,
+  ),
 );
-b.run(releaseB);
+b.run(() => b.run(releaseB));
 b.dispose();
-clearB();
+
 await assert.rejects(
   b.run(() => decideVillageVenueRequest("same-request", false, null)),
   /not configured/,

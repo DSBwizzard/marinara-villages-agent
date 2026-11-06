@@ -2,8 +2,7 @@ import assert from "node:assert/strict";
 import { PNG } from "pngjs";
 import {
   createActivationScope,
-  installDefaultActivation,
-  scopedActivation,
+  activationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import {
   coerceVillageState,
@@ -42,6 +41,7 @@ const village = (name: string) =>
     visitMemoryBackfilled: true,
     villagers: [
       {
+        letterFontId: "caveat",
         characterId: "same",
         addedAt: "2026-10-07T00:00:00.000Z",
         cardSnapshot: {
@@ -167,28 +167,30 @@ const delayed = fixture("delayed A"),
   current = fixture("current B");
 const releaseA = ownerA.run(() => configureSpriteManager(delayed.service));
 const releaseB = ownerB.run(() => configureSpriteManager(current.service));
-const clearA = installDefaultActivation(ownerA, () => {});
+
 delayed.pause();
-const pending = importSpriteArtwork("same", { images: [{ name: "owned artwork", image }] });
+const pending = ownerA.run(() => importSpriteArtwork("same", { images: [{ name: "owned artwork", image }] }));
 await delayed.entered.promise;
-const clearB = installDefaultActivation(ownerB, () => {});
+
 delayed.gate.resolve();
 assert.equal((await pending).snapshot.village.name, "delayed A");
-assert(delayed.events.every((event) => event.endsWith("delayed A")));
+ownerB.run(() => assert(delayed.events.every((event) => event.endsWith("delayed A"))));
 assert.deepEqual(current.events, []);
-ownerA.run(releaseA);
-clearA();
+ownerB.run(() => ownerA.run(releaseA));
+
 ownerA.dispose();
-assert.equal((await readSpriteManager("same")).artwork.length, 0);
-assert.equal((await decodeSpriteImage(image)).width, 16);
+await ownerB.run(async () => assert.equal((await readSpriteManager("same")).artwork.length, 0));
+await ownerB.run(async () => assert.equal((await decodeSpriteImage(image)).width, 16));
 const missing = createActivationScope();
-await assert.rejects(
-  missing.run(() => readSpriteManager("same")),
-  /not configured/,
+await ownerB.run(() =>
+  assert.rejects(
+    missing.run(() => readSpriteManager("same")),
+    /not configured/,
+  ),
 );
-ownerB.run(releaseB);
+ownerB.run(() => ownerB.run(releaseB));
 ownerB.dispose();
-clearB();
+
 await assert.rejects(
   ownerB.run(() => decodeSpriteImage(image)),
   /not configured/,
@@ -250,7 +252,7 @@ try {
       const path = new URL(String(input)).pathname;
       if (path === "/api/characters/same") return Response.json({ id: "same" });
       if (path === "/api/sprites/same") {
-        if (scopedActivation() === two) twoLibraryReads++;
+        if (activationScope() === two) twoLibraryReads++;
         return Response.json([{ filename: "neutral.png" }]);
       }
       if (path === "/api/sprites/same/file/neutral.png")
@@ -258,7 +260,7 @@ try {
       if (path === "/api/image-metadata/inspect") return Response.json({ width: 16, height: 24 });
       if (path.startsWith("/api/sprites/villages-") && init.method === "POST") {
         saves++;
-        fileOwners.push(scopedActivation());
+        fileOwners.push(activationScope());
         if (saves === 1) {
           uploadEntered.resolve();
           await uploadGate.promise;

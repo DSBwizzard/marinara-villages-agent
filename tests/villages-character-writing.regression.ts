@@ -52,6 +52,7 @@ state.visitMemoryBackfilled = true;
 state.narrationStyle.writingGuidance = "Make everyone cheerful, compliant, and timid.";
 state.villagers = [
   {
+    letterFontId: "caveat",
     characterId: card.id,
     admission: {
       homeworld: "Othiras",
@@ -120,6 +121,7 @@ async function run() {
     const session: any = {
       version: 4,
       semanticVersion: 2,
+      villageSeed: state.seed,
       id: "fixture",
       placeId: "camp",
       placeName: "Camp",
@@ -359,7 +361,7 @@ async function run() {
   }
   console.log("Complete cards, live prompts, refresh, legacy snapshots, wish privacy and context protection passed.");
 }
-void context.run(
+await context.run(
   {
     controller: new AbortController(),
     operation: {

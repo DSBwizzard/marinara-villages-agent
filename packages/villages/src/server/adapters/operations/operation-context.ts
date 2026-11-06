@@ -1,14 +1,12 @@
-import { activationScope, bindActivationService, createActivationBinding } from "../engine/activation-scope.js";
-import { villagesLogger } from "../engine/runtime-host.js";
-import { createVenueOperationContext, type Context, type VenueOperationContext } from "./operation-context-service.js";
+import { bindActivationService, createActivationBinding } from "../engine/activation-scope.js";
+import { type Context, type VenueOperationContext } from "./operation-context-service.js";
 import type { VillagesRequestError } from "../../domain/rules/errors.js";
 export type { Context, VenueOperation, VenueOperationContext } from "./operation-context-service.js";
 export { operationSummary } from "./operation-context-service.js";
 const binding = createActivationBinding<VenueOperationContext>("Villages Scene operation context is not configured.");
-const standalone = createVenueOperationContext(villagesLogger);
+
 function operations(): VenueOperationContext {
-  if (activationScope()) return binding.get();
-  return binding.maybe() ?? standalone;
+  return binding.get();
 }
 export function configureVenueOperationContext(service: VenueOperationContext): () => void {
   return binding.configure(bindActivationService(service));
@@ -19,14 +17,10 @@ export const context = {
     return operations().context.getStore();
   },
   run<T>(store: Context, work: () => T): T {
-    const owner = activationScope();
-    const calls = operations().context;
-    return owner ? owner.run(() => calls.run(store, work)) : calls.run(store, work);
+    return operations().context.run(store, work);
   },
   exit<T>(work: () => T): T {
-    const owner = activationScope();
-    const calls = operations().context;
-    return owner ? owner.run(() => calls.exit(work)) : calls.exit(work);
+    return operations().context.exit(work);
   },
 };
 export function venueRefusal(code: string, message: string): VillagesRequestError {
@@ -52,9 +46,6 @@ export function assertVenueOwnership(data?: Record<string, unknown>): void {
 }
 export function venueOperationSnapshot<T>(): T | undefined {
   return operations().venueOperationSnapshot<T>();
-}
-export function venueOperationInput(): Record<string, unknown> | undefined {
-  return operations().venueOperationInput();
 }
 export function venueDebugContext(): Record<string, unknown> {
   return operations().venueDebugContext();

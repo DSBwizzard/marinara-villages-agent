@@ -8,7 +8,7 @@ import { MAX_IMAGE_PROMPT_LENGTH } from "../../domain/rules/image-generation-rul
 import { conflict } from "../../domain/rules/errors.js";
 import { sceneryImageKey } from "../../domain/rules/scenery-context.js";
 import { zonePictureContext, zonePictureBaseline } from "../../domain/rules/zone-picture.js";
-import { resolveVenueZone, legacyZoneId, zoneClosed } from "../../domain/rules/venue-zones.js";
+import { resolveVenueZone, zoneClosed } from "../../domain/rules/venue-zones.js";
 import type { LocationImagePorts } from "./location-image-service.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
 import {
@@ -59,9 +59,7 @@ export function createZonePictures(
   }
   const find = (state: VillageState, venueId: string, zoneId: string) => {
     const venue = state.venues.find((row) => row.id === venueId);
-    const zone =
-      venue &&
-      (resolveVenueZone(venue, zoneId) ?? resolveVenueZone(venue, legacyZoneId(venue, "private", "residence", zoneId)));
+    const zone = venue && resolveVenueZone(venue, zoneId);
     return { venue, zone };
   };
   async function queue(
@@ -373,7 +371,7 @@ export function createZonePictures(
                 valid(await ports.readVillageState())?.picture?.claim !== claim
               )
                 throw conflict("The scenery or image connection changed. Retry artwork deliberately.");
-              await ports.assertVenueImageAccess(venueId, undefined, undefined, zone.id, !automatic);
+              await ports.assertVenueImageAccess(venueId, zone.id, !automatic);
               await recordLoreUse(usedLore, `Zone artwork · ${venue.name} · ${zone.name}`);
               if (
                 !(await ports.canGenerateZonePicture(
@@ -512,7 +510,7 @@ export function createZonePictures(
       await queue(venueId, zoneId, automatic, undefined, canonical);
   }
   async function updateZonePicture(venueId: string, zoneId: string) {
-    await ports.assertVenueImageAccess(venueId, undefined, "", zoneId, true);
+    await ports.assertVenueImageAccess(venueId, zoneId, true);
     const canonical = await queue(venueId, zoneId, false);
     await completeNight(venueId, zoneId, canonical);
     return ports.buildVillageSnapshot!();
@@ -523,7 +521,7 @@ export function createZonePictures(
       zoneId: string,
       draw: (guard: (state: VillageState) => boolean) => Promise<string | undefined>,
     ) => {
-      await ports.assertVenueImageAccess(venueId, undefined, "", zoneId, true);
+      await ports.assertVenueImageAccess(venueId, zoneId, true);
       const canonical = await queue(venueId, zoneId, false, draw);
       await completeNight(venueId, zoneId, canonical);
       return ports.buildVillageSnapshot!();

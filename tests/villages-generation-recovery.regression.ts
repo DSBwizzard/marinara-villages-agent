@@ -87,7 +87,7 @@ async function main() {
   }
   console.log("Routine recovery: one request, no automatic repairs.");
 }
-void main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

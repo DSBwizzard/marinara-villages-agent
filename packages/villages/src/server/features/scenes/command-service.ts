@@ -3,13 +3,13 @@ import { captureZoneObservation } from "../../domain/rules/zone-observation.js";
 import { findLocation, sceneActorIds } from "../../domain/rules/places.js";
 import { admitNpcParticipants, type NpcAdmission } from "../../domain/rules/npc-participation.js";
 import { applyPlaceExchange } from "../../domain/rules/place-exchange.js";
-import { mutableSceneSubmission } from "../../domain/rules/scene-submissions.js";
+import { requireSceneExchange, mutableSceneSubmission } from "../../domain/rules/scene-submissions.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { createHash, randomUUID } from "node:crypto";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 import { SESSION_PREFIX, sessionSlot } from "../../adapters/storage/scene-slots.js";
 import { createSceneHistory } from "../../adapters/storage/scene-history.js";
-import { villageClockShiftMs, villageNow } from "../../adapters/time/clock-gate.js";
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
 import type { InterpretationBatch } from "../../domain/models/interpretation-model.js";
 import type {
@@ -19,7 +19,7 @@ import type {
   VenueScene,
   VenueSubmission,
 } from "../../domain/models/scene-model.js";
-import type { VillageState, VillageVenue, VillageVenueClass } from "../../domain/models/world.js";
+import type { VillageState, VillageVenue } from "../../domain/models/world.js";
 import { asRecord } from "../../domain/rules/coerce.js";
 import { badGateway, badRequest, conflict, notFound, VillagesRequestError } from "../../domain/rules/errors.js";
 import { bindLiveProposals, createLiveEvidenceContext, liveEvidence } from "../../domain/rules/live-exchange.js";
@@ -28,7 +28,7 @@ import { bindProjectSpeech, validateProjectSpeech } from "../../domain/rules/pro
 import { structuralShape as projectZoneShape } from "../../domain/rules/project-structure.js";
 import { rejectedInputHash, rejectedSubmission } from "../../domain/rules/rejected-submissions.js";
 import { publishRelationshipDisclosures } from "../../domain/rules/relationship-memories.js";
-import { filterRelationshipNotices, relationshipChangeNotices } from "../../domain/rules/relationship-presentation.js";
+import { filterRelationshipNotices } from "../../domain/rules/relationship-presentation.js";
 import { parseRelationshipProposals, RELATIONSHIP_REVIEW_INSTRUCTION } from "../../domain/rules/relationship-review.js";
 import { startingRelationshipsReady } from "../../domain/rules/relationship-rules.js";
 import { assertSceneMovementCapacity, UnavailableResidentMovement } from "../../domain/rules/resident-movement.js";
@@ -39,7 +39,7 @@ import { sceneContinuityView, cloneSceneFacts, sceneWishEffectIds } from "../../
 import { sceneHaltWorldConflict } from "../../domain/rules/scene-halt-world.js";
 import { provisionalSceneNarrative } from "../../domain/rules/scene-narrative-effects.js";
 import { HaltedSceneTurn } from "../../domain/rules/scene-halt.js";
-import { captureSceneLayout, sceneLayoutVenue } from "../../domain/rules/scene-layout.js";
+import { requireSceneZoneId, captureSceneLayout, sceneLayoutVenue } from "../../domain/rules/scene-layout.js";
 import { SCENE_MEMORY_INSTRUCTION, sceneMemoryContext } from "../../domain/rules/scene-memories.js";
 import { releaseSceneMemories } from "../../domain/rules/scene-memory-lifecycle.js";
 import { appendLine } from "../../domain/rules/scene-record.js";
@@ -76,7 +76,7 @@ import {
   sceneMoveAccompanying,
   type ContactIntent,
 } from "../../domain/rules/venue-contact.js";
-import { venueClasses, venueInArea, venueResidentIds } from "../../domain/rules/venue-model.js";
+import { venueClasses, venueResidentIds } from "../../domain/rules/venue-model.js";
 import {
   applyVenueSceneChange,
   physicalVenueEvents,
@@ -84,7 +84,7 @@ import {
 } from "../../domain/rules/venue-scene-state.js";
 import {
   canInviteToZone,
-  legacyZoneId,
+  defaultVenueZoneId,
   resolveVenueZone,
   venueInZone,
   venueZones,
@@ -534,15 +534,12 @@ export function createSceneCommands({
         heardBy: line.heardBy,
         ...(line.viaDoorway ? { viaDoorway: true } : {}),
         ...(line.physicalIdsAfter ? { physicalIdsAfter: line.physicalIdsAfter } : {}),
-        ...(line.remoteDelivery ? { remoteDelivery: line.remoteDelivery } : {}),
         ...(line.contactHidden ? { contactHidden: true } : {}),
         ...(line.attentionEvidence ? { attentionEvidence: true } : {}),
         ...(line.contactReport ? { contactReport: true } : {}),
         kind: line.kind,
         ...(line.delivery ? { delivery: line.delivery } : {}),
         ...(line.presentation ? { presentation: line.presentation } : {}),
-        ...(line.expression ? { expression: line.expression } : {}),
-        ...(line.gazeAt ? { gazeAt: line.gazeAt } : {}),
         ...(line.staging?.length ? { staging: line.staging } : {}),
         ...(line.targetId ? { targetId: line.targetId } : {}),
         ...(line.anchorIndex !== undefined ? { asideFor: lineIds[line.anchorIndex]! } : {}),
@@ -661,7 +658,7 @@ export function createSceneCommands({
     if (zoneClosed(village, venue, zone)) throw conflict("This zone is closed for Renovation.");
     const accompanying = sceneMoveAccompanying(session, venue, zone);
     if (
-      !contactPath(village, venue, session.zoneId ?? "exterior", zone.id, "player", {
+      !contactPath(village, venue, requireSceneZoneId(session), zone.id, "player", {
         ...session,
         accompanying,
       })
@@ -701,7 +698,7 @@ export function createSceneCommands({
     });
     const moved = await changeSession(sessionId, (state) => {
       if (state.navigationReceipts?.some((entry) => entry.id === operationId)) return;
-      const originZoneId = state.zoneId ?? legacyZoneId(venue, state.area, state.spaceClass, state.privateOwnerId);
+      const originZoneId = requireSceneZoneId(state);
       const at = villageNow().toISOString();
       state.navigationReceipts ??= [];
       state.navigationReceipts.push({ id: operationId, originZoneId, destinationZoneId: zone.id, at });
@@ -720,7 +717,6 @@ export function createSceneCommands({
           state.participants.push({ characterId: person.characterId, name: person.name, doing: person.doing });
       }
       state.activeIds = people.map((person) => person.characterId);
-      state.privateSpaceId = ["private-residence", "staff", "restricted"].includes(zone.kind) ? zone.id : undefined;
       state.spaceClass = zone.venueClass;
       state.area = zoneArea(zone);
       state.privateOwnerId = zone.ownerId ?? "";
@@ -735,7 +731,7 @@ export function createSceneCommands({
     if (session.continuity) {
       await changeSceneVenues(session, (state) => {
         const venue = findLocation(state, session.placeId);
-        const zone = venue && resolveVenueZone(venue, session.zoneId ?? "exterior");
+        const zone = venue && resolveVenueZone(venue, requireSceneZoneId(session));
         if (venue && zone && contactCanEnter(state, venue, zone.id, "player", session)) zone.seen = true;
       });
     }
@@ -750,17 +746,12 @@ export function createSceneCommands({
     )
       return;
     const observedVenue = findLocation(currentScene.continuity?.facts, session.placeId);
-    const observed = observedVenue && resolveVenueZone(observedVenue, session.zoneId ?? "exterior");
+    const observed = observedVenue && resolveVenueZone(observedVenue, requireSceneZoneId(session));
     let admitted = false;
     await mutateVillageState((state) => {
       admitted = false;
       const venue = findLocation(state, session.placeId);
-      const zone =
-        venue &&
-        resolveVenueZone(
-          venue,
-          session.zoneId ?? legacyZoneId(venue, session.area, session.spaceClass, session.privateOwnerId),
-        );
+      const zone = venue && resolveVenueZone(venue, requireSceneZoneId(session));
       if (
         !venue ||
         !zone ||
@@ -801,42 +792,25 @@ export function createSceneCommands({
       return;
     outsideVenueOperation(() => {
       void loadPrivateSpaceImages()
-        .then(({ requestZonePicture }) => requestZonePicture?.(session.placeId, session.zoneId ?? "exterior"))
+        .then(({ requestZonePicture }) => requestZonePicture?.(session.placeId, requireSceneZoneId(session)))
         .catch(() => {});
     });
   }
 
-  function enterVenue(
-    placeId: string,
-    spaceClass?: VillageVenueClass,
-    privateOwnerId = "",
-    entryArea?: "outside" | "public" | "shared" | "private",
-    requestedZoneId?: string,
-    expectedSceneRevision?: number,
-  ): Promise<VenueScene> {
-    return withSceneActivation(() =>
-      enterVenueInActivation(placeId, spaceClass, privateOwnerId, entryArea, requestedZoneId, expectedSceneRevision),
-    );
+  function enterVenue(placeId: string, requestedZoneId?: string, expectedSceneRevision?: number): Promise<VenueScene> {
+    return withSceneActivation(() => enterVenueInActivation(placeId, requestedZoneId, expectedSceneRevision));
   }
 
   function enterVenueInActivation(
     placeId: string,
-    spaceClass?: VillageVenueClass,
-    privateOwnerId = "",
-    entryArea?: "outside" | "public" | "shared" | "private",
     requestedZoneId?: string,
     expectedSceneRevision?: number,
   ): Promise<VenueScene> {
-    return serializedNavigation(() =>
-      enterVenueOnce(placeId, spaceClass, privateOwnerId, entryArea, requestedZoneId, expectedSceneRevision),
-    );
+    return serializedNavigation(() => enterVenueOnce(placeId, requestedZoneId, expectedSceneRevision));
   }
 
   async function enterVenueOnce(
     placeId: string,
-    requestedClass?: VillageVenueClass,
-    privateOwnerId = "",
-    entryArea?: VenueScene["area"],
     requestedZoneId?: string,
     expectedSceneRevision?: number,
   ): Promise<VenueScene> {
@@ -861,14 +835,10 @@ export function createSceneCommands({
         "Starting relationship history is not ready. Open Inspect → Relationships to check preparation, retry failed work, or clarify history before opening a Scene.",
       );
     const classes = venueClasses(place),
-      spaceClass = requestedClass ?? classes.find((entry) => entry !== "residence") ?? classes[0]!;
-    if (!classes.includes(spaceClass) && !requestedZoneId) throw badRequest("That Venue has no such space.");
+      spaceClass = classes.find((entry) => entry !== "residence") ?? classes[0]!;
     const requested =
-      requestedZoneId ??
-      legacyZoneId(place, entryArea ?? (spaceClass === "residence" ? "shared" : "public"), spaceClass, privateOwnerId);
+      requestedZoneId ?? defaultVenueZoneId(place, spaceClass === "residence" ? "shared" : "public", spaceClass);
     let zone = resolveVenueZone(place, requested);
-    if (!zone && !requestedZoneId && !entryArea && place.layoutVersion === 1)
-      zone = resolveVenueZone(place, "exterior");
     if (!zone) throw notFound("That zone is not in this Venue.");
     if (zoneClosed(village, place, zone)) {
       if (
@@ -959,7 +929,7 @@ export function createSceneCommands({
       relationships: village.relationshipContext,
     });
     if (!decision.allowed) {
-      if (requestedZoneId || entryArea) throw conflict(decision.explanation);
+      if (requestedZoneId) throw conflict(decision.explanation);
       zone = resolveVenueZone(place, "exterior")!;
     } else
       await mutateVillageState((state) => {
@@ -988,16 +958,12 @@ export function createSceneCommands({
       version: 4,
       sceneRevision: 0,
       liveSceneVersion: 1,
-      gmVersion: 1,
-      processingVersion: 1,
       semanticVersion: 2,
       villageSeed: village.seed,
-      stagingVersion: 1,
       id,
       placeId,
       placeName: place.name,
       zoneId: zone.id,
-      privateSpaceId: ["private-residence", "staff", "restricted"].includes(zone.kind) ? zone.id : undefined,
       accompanying: [],
       departedIds: [],
       spaceClass: zone.venueClass,
@@ -1007,7 +973,6 @@ export function createSceneCommands({
       startedAt: sceneAttendance.capturedAt,
       endedAt: "",
       lastActivityAt: villageNow().toISOString(),
-      clockShiftMs: villageClockShiftMs(),
       endReason: "",
       memoryMode: "live",
       status: participants.length === 0 && !discovery ? "active" : "opening",
@@ -1026,26 +991,6 @@ export function createSceneCommands({
     const settled = await refreshZoneParticipants(session);
     await markZoneSeen(settled);
     return settled;
-  }
-
-  async function enterResidencePrivateSpace(
-    sessionId: string,
-    ownerId: string,
-    expectedSceneRevision?: number,
-  ): Promise<VenueScene> {
-    return withSceneActivation(() => enterResidencePrivateSpaceInActivation(sessionId, ownerId, expectedSceneRevision));
-  }
-
-  async function enterResidencePrivateSpaceInActivation(
-    sessionId: string,
-    ownerId: string,
-    expectedSceneRevision?: number,
-  ): Promise<VenueScene> {
-    const session = await readSession(sessionId);
-    const village = await readVillageState();
-    const venue = findLocation(village, session.placeId);
-    if (!venue) throw conflict("That Residence is no longer here.");
-    return moveVenueZone(sessionId, legacyZoneId(venue, "private", "residence", ownerId), expectedSceneRevision);
   }
 
   async function greetVenue(id: string, retryOfAttemptId?: string, recovery = false): Promise<VenueScene> {
@@ -1075,6 +1020,7 @@ export function createSceneCommands({
       aborted,
       Promise.resolve().then(async () => {
         const admission = await readSession(id);
+        assertCurrentSceneGeneration(admission);
         signal.throwIfAborted();
         const writingInput = {
           semanticBudget:
@@ -1360,6 +1306,7 @@ export function createSceneCommands({
       return unavailableTurnResult(rejected, input.submissionId);
     }
     const scene = await readSession(input.sessionId);
+    assertCurrentSceneGeneration(scene);
     const prior = scene.submissions.find((entry) => entry.id === input.submissionId);
     if (prior) runtimeDebug("submission replay", { sceneId: input.sessionId, submissionId: input.submissionId });
     if (!prior) await requireLiveVenueSession(input.sessionId);
@@ -1390,6 +1337,7 @@ export function createSceneCommands({
     replaceOfOperationId?: string,
   ) {
     const scene = await readSession(sessionId);
+    assertCurrentSceneGeneration(scene);
     const prior = scene.submissions.find((entry) => entry.id === submissionId);
     if (!prior) await requireLiveVenueSession(sessionId);
     if (!prior && !findLocation(await readVillageState(), scene.placeId))
@@ -1434,6 +1382,7 @@ export function createSceneCommands({
     let session = await readSession(input.sessionId);
     if (rejectedSubmission(session, input.submissionId, input))
       return unavailableTurnResult(session, input.submissionId);
+    assertCurrentSceneGeneration(session);
     const prior = session.submissions.find((entry) => entry.id === input.submissionId);
     if (!prior && session.semanticVersion === 2) {
       await finishSemanticScene(session.id);
@@ -1449,7 +1398,6 @@ export function createSceneCommands({
       } catch (error) {
         villagesLogger().warn("[villages] saved turn progress deferred for %s: %s", prior.id, String(error));
       }
-      if (!prior.processing) await applyVenueTurnChange(session, prior);
       await applyVenueRequests(session, prior);
       if (
         prior.invitationSignal &&
@@ -1467,14 +1415,9 @@ export function createSceneCommands({
         session: await readSession(session.id),
         verdict: prior.verdict,
         action: prior.action ?? null,
-        recordEvents:
-          prior.action?.happened && !prior.physicalOutcomeVersion
-            ? [{ id: `venue-action:${input.submissionId}`, kind: "venue" as const, text: prior.action.narration }]
-            : recordEvents,
+        recordEvents,
       };
     }
-    assertCurrentSceneGeneration(session);
-
     session = await requireLiveVenueSession(session.id);
     const blocker = semanticBlocker(session);
     if (blocker) throw conflict(blocker);
@@ -1524,7 +1467,7 @@ export function createSceneCommands({
         input.contact?.boundaryZoneId &&
         !contactNeighbors(
           movementVenue ?? findLocation(village, session.placeId)!,
-          session.zoneId ?? "exterior",
+          requireSceneZoneId(session),
           session,
         ).includes(input.contact.boundaryZoneId)
       )
@@ -1804,6 +1747,7 @@ export function createSceneCommands({
       throw error;
     }
     const submission = updated.submissions.find((entry) => entry.id === input.submissionId)!;
+    requireSceneExchange(updated, submission);
     if (
       submission.npcAdmissions?.length ||
       submission.placeDiscoveries?.length ||
@@ -1818,7 +1762,6 @@ export function createSceneCommands({
     } catch (error) {
       villagesLogger().warn("[villages] saved turn progress deferred for %s: %s", submission.id, String(error));
     }
-    if (!submission.processing) await applyVenueTurnChange(updated, submission);
     await applyVenueRequests(updated, submission);
     if (submission.invitationSignal) await recordSpokenInvitation(updated, submission.invitationSignal);
     await markZoneSeen(updated, false).catch((error) =>
@@ -2414,11 +2357,6 @@ export function createSceneCommands({
   }
   async function applyVenueTurnChange(session: VenueScene, submission: VenueSubmission): Promise<void> {
     if (!submission.placeUpdate) return;
-    const area = submission.areaAtTurn ?? session.area;
-    const zoneId = submission.physicalContext?.zoneId ?? submission.zoneIdAtTurn ?? session.zoneId;
-    const witnesses = submission.physicalContext?.witnessIds ?? submission.activeIdsAtTurn ?? [];
-    if (area === "private" && submission.semanticProvenance?.version !== 2) return;
-    const privateOwnerId = submission.privateOwnerIdAtTurn ?? session.privateOwnerId;
     const id = `venue-chat:${session.id}:${submission.id}`;
     await mutateVillageState((state) => {
       if (session.villageSeed && state.seed !== session.villageSeed) return;
@@ -2428,6 +2366,20 @@ export function createSceneCommands({
         state.exchangeReceipts[id]?.status === "rejected"
       )
         return;
+      const captured = submission.physicalContext;
+      if (
+        !captured?.zoneId ||
+        !submission.areaAtTurn ||
+        typeof submission.privateOwnerIdAtTurn !== "string" ||
+        submission.semanticProvenance?.version !== 2
+      )
+        throw conflict("The saved physical source has no current captured Zone.");
+      if (submission.physicalOutcomeVersion !== 1)
+        throw conflict("The saved physical source has no current outcome receipt.");
+      const zoneId = captured.zoneId,
+        area = submission.areaAtTurn,
+        privateOwnerId = submission.privateOwnerIdAtTurn;
+      const witnesses = captured.witnessIds;
       const worksite = state.venues.some(
         (venue) => venue.id === session.placeId && venue.constructionStatus === "worksite",
       );
@@ -2468,16 +2420,10 @@ export function createSceneCommands({
         );
         return;
       }
-      if (
-        submission.semanticProvenance?.version !== 2 &&
-        area === "shared" &&
-        state.venues.some((venue) => venue.id === session.placeId && venueResidentIds(venue).length > 0)
-      )
-        return;
       const controlledVenue = findLocation(state, session.placeId);
-      const controlledZone = controlledVenue && resolveVenueZone(controlledVenue, zoneId ?? "");
+      const controlledZone = controlledVenue && resolveVenueZone(controlledVenue, zoneId);
       const capturedVenue = findLocation(session.continuity?.facts, session.placeId);
-      const capturedZone = capturedVenue && resolveVenueZone(capturedVenue, zoneId ?? "");
+      const capturedZone = capturedVenue && resolveVenueZone(capturedVenue, zoneId);
       if (
         capturedVenue &&
         (capturedVenue.constructionStatus === "worksite" ||
@@ -2505,20 +2451,11 @@ export function createSceneCommands({
           return;
         }
       }
-      if (
-        submission.semanticProvenance?.version !== 2 &&
-        (controlledZone?.kind === "staff" || controlledZone?.kind === "restricted")
-      )
-        return;
       const change = readVenueSceneChange(
         { happened: true, ...submission.placeUpdate },
         (() => {
           const place = findLocation(sceneContinuityView(state, session), session.placeId);
-          return place
-            ? zoneId
-              ? venueInZone(place, zoneId)
-              : venueInArea(place, area, session.spaceClass, privateOwnerId)
-            : undefined;
+          return place ? venueInZone(place, zoneId) : undefined;
         })(),
         submission.at || session.startedAt,
       );
@@ -2546,34 +2483,28 @@ export function createSceneCommands({
           venueName: venue.name,
           text: change.narration,
           at,
-          // Only newly interpreted turns gain proof. Existing settled history is never backfilled.
-          ...(submission.physicalOutcomeVersion === 1
-            ? {
-                actionReceipt: {
-                  happened: true,
-                  ...change,
-                  submissionId: submission.id,
-                  witnessIds: ["player", ...witnesses],
-                  after,
-                },
-              }
-            : {}),
+          actionReceipt: {
+            happened: true,
+            ...change,
+            submissionId: submission.id,
+            witnessIds: ["player", ...witnesses],
+            after,
+          },
         },
         ...state.venueEvents,
       ].slice(0, 200);
-      if (submission.physicalOutcomeVersion === 1)
-        state.exchangeReceipts[id] = {
-          id,
-          sceneId: session.id,
-          submissionId: submission.id,
-          domain: "physical",
-          at,
-          committedAt: villageNow().toISOString(),
-          status: "applied",
-          evidenceIds: submission.replyLineIds ?? [],
-          reason: "Confirmed physical outcome",
-          physicalOutcome: state.venueEvents[0]!,
-        };
+      state.exchangeReceipts[id] = {
+        id,
+        sceneId: session.id,
+        submissionId: submission.id,
+        domain: "physical",
+        at,
+        committedAt: villageNow().toISOString(),
+        status: "applied",
+        evidenceIds: submission.replyLineIds ?? [],
+        reason: "Confirmed physical outcome",
+        physicalOutcome: state.venueEvents[0]!,
+      };
     });
   }
 
@@ -2585,26 +2516,10 @@ export function createSceneCommands({
     // Domain bookkeeping can finish after the reply's original Scene object was read.
     submission = (await readSession(session.id)).submissions.find((turn) => turn.id === submission.id) ?? submission;
     const village = await readVillageSnapshot();
-    const presentation = sceneContinuityView(village, session);
     // Saved notices were authorized at delivery; later Forget cannot rewrite that history.
-    const cached = filterRelationshipNotices(submission.recordEvents ?? [], presentation.relationshipContext);
+    const cached = filterRelationshipNotices(submission.recordEvents ?? []);
     if (session.status === "closed" && !village.memoryScenes[session.id]) return structuredClone(cached);
     const events: VenueRecordEvent[] = [];
-    if (village.relationshipContext && submission.liveProposals) {
-      const receiptIds = new Set(submission.processing?.domains.relationships.receiptIds ?? []);
-      // A retry reconstructs notices from effects committed in the relationship document.
-      const receipts = Object.values(village.relationshipContext.receipts).filter(
-        (receipt) =>
-          receiptIds.has(receipt.id) || (receipt.sceneId === session.id && receipt.submissionId === submission.id),
-      );
-      events.push(
-        ...relationshipChangeNotices(
-          receipts,
-          presentation.relationshipContext ?? village.relationshipContext,
-          presentation,
-        ),
-      );
-    }
     for (const receipt of Object.values(village.exchangeReceipts))
       if (receipt.sceneId === session.id && receipt.submissionId === submission.id && receipt.notice)
         events.push(receipt.notice);
@@ -2821,6 +2736,7 @@ export function createSceneCommands({
         );
       if (operation.kind === "turn") {
         assertSceneTurnMode(operation.input.mode);
+        assertCurrentSceneGeneration(await readSession(id));
         const input = { ...operation.input, sessionId: id, submissionId: operation.id } as VenueTurnInput;
         return coordinateVenue(
           id,
@@ -2847,7 +2763,8 @@ export function createSceneCommands({
           () => closeVenueSessionOnce(id),
           { recovery: true },
         );
-      if (operation.kind === "greet")
+      if (operation.kind === "greet") {
+        assertCurrentSceneGeneration(await readSession(id));
         return coordinateVenue(
           id,
           operation.id,
@@ -2858,6 +2775,7 @@ export function createSceneCommands({
           () => greetVenueOnce(id, venueOperationSignal()!, () => {}),
           { recovery: true },
         );
+      }
     });
   }
 
@@ -2874,7 +2792,6 @@ export function createSceneCommands({
     retrySceneChangeInterpretation,
     moveVenueZone,
     enterVenue,
-    enterResidencePrivateSpace,
     greetVenue,
     continueVenueWithoutGreeting,
     sendVenueTurn,

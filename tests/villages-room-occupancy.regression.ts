@@ -49,6 +49,7 @@ async function main() {
       ],
     });
   const resident = (characterId: string, venueId: string, zoneId: string, activity: string) => ({
+    letterFontId: "caveat",
     characterId,
     cardSnapshot: {
       id: characterId,
@@ -85,6 +86,7 @@ async function main() {
       resident("hidden", "hub", "private:hidden", "HIDDEN_ACTIVITY_POISON"),
       resident("distant", "elsewhere", "common", "repairing tools"),
       {
+        letterFontId: "caveat",
         characterId: "unplaced",
         cardSnapshot: { id: "unplaced", name: "Unplaced", revision: 1, sourceStatus: "missing", capturedAt: stamp },
         addedAt: stamp,
@@ -190,7 +192,7 @@ async function main() {
     "Villages room occupancy: current Venue capture, Zone privacy, frozen attendance, reload, movement and departure passed",
   );
 }
-void main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

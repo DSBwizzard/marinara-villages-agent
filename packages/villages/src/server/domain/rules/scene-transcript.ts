@@ -15,7 +15,6 @@ export function sceneTranscriptDependencies(value: unknown): string[] {
     if (typeof cue.characterId === "string") ids.push(cue.characterId);
     if (look.target === "villager" && typeof look.characterId === "string") ids.push(look.characterId);
   }
-  if (typeof line.gazeAt === "string" && line.gazeAt !== "player") ids.push(line.gazeAt);
   return [...new Set(ids)];
 }
 

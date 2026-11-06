@@ -39,6 +39,7 @@ const village = coerceVillageState({
   visitMemoryBackfilled: true,
   villagers: [
     {
+      letterFontId: "caveat",
       characterId: "mara",
       addedAt: now,
       cardSnapshot: {
@@ -550,7 +551,7 @@ async function run() {
     globalThis.fetch = originalFetch;
   }
 }
-void run().catch((error) => {
+await run().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

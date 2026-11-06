@@ -18,10 +18,12 @@ import { prepareVenueTurnMessages } from "../packages/villages/src/server/featur
 
 const stamp = new Date().toISOString();
 const state = defaultVillageState();
+state.seed = "dialogue-context";
 state.foundedAt = state.setupAt = stamp;
 
 state.narrationStyle.writingGuidance = "Make all residents agreeable and reluctant to act.";
 state.villagers = ["outgoing", "reserved"].map((id) => ({
+  letterFontId: "caveat",
   characterId: id,
   addedAt: stamp,
   wishes: [],
@@ -185,6 +187,7 @@ async function run() {
   try {
     const scene: any = {
       semanticVersion: 2,
+      villageSeed: state.seed,
       version: 4,
       id: "fixture",
       placeId: "camp",
@@ -194,7 +197,6 @@ async function run() {
       spaceClass: "community",
       startedAt: stamp,
       memoryMode: "live",
-      processingVersion: 1,
       participants: state.villagers.map((person) => ({
         characterId: person.characterId,
         name: person.cardSnapshot.name,
@@ -297,7 +299,7 @@ async function run() {
     "Dialogue context: temperament/history separation, full cards, section order, spontaneous effects, live evidence, and fitting passed without model requests.",
   );
 }
-void context.run(
+await context.run(
   {
     controller: new AbortController(),
     operation: {

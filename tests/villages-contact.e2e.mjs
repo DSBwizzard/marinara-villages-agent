@@ -18,7 +18,7 @@ await withBrowser(browser, async () => {
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     const snapshot = structuredClone(fixture);
-    const remoteDelivery = width === 390 ? "loud" : undefined;
+
     snapshot.settings.venues[0].zones = [
       { id: "exterior", kind: "exterior", name: "Exterior", seen: true },
       { id: "common", kind: "shared-residence", venueClass: "residence", name: "Common Space", seen: false },
@@ -48,7 +48,6 @@ await withBrowser(browser, async () => {
       startedAt: now,
       lastActivityAt: now,
       sceneRevision: 0,
-      stagingVersion: 1,
       activeIds: [],
       participants: [],
       submissions: [],
@@ -120,7 +119,7 @@ await withBrowser(browser, async () => {
               content:
                 contactTurns === 1 ? "Come into our Common Space." : "Yes, I am still listening through the doorway.",
               viaDoorway: true,
-              remoteDelivery,
+
               at: now,
             },
           ],

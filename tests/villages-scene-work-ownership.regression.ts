@@ -5,8 +5,6 @@ import {
   activationScope,
   bindActivationService,
   createActivationScope,
-  installDefaultActivation,
-  scopedActivation,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -23,7 +21,6 @@ import { createSceneWork } from "../packages/villages/src/server/features/scenes
 import { configureSceneWork, sceneWork } from "../packages/villages/src/server/features/scenes/scene-work.js";
 import {
   configureSceneCommands,
-  enterResidencePrivateSpace,
   enterVenue,
   greetVenue,
   moveVenueZone,
@@ -74,10 +71,10 @@ function commandFixture(
     version: 4,
     id: "same-scene",
     villageSeed: world.seed,
+    semanticVersion: 2,
     placeId: "same-place",
     placeName: label,
     status: "active",
-    processingVersion: 1,
     startedAt: stamp,
     participants: [],
     lines: [],
@@ -118,7 +115,7 @@ function commandFixture(
     modelAccess = 0;
   async function touch(stage: string) {
     calls.push(stage);
-    owners.push(scopedActivation());
+    owners.push(activationScope());
     if (guardDisposed && !owner.active) throw exact;
     if (stage === fail) throw exact;
     if (stage === pause && !paused) {
@@ -249,6 +246,70 @@ function commandFixture(
     },
   };
 }
+{
+  let writes = 0;
+  const physical = commandFixture("Missing captured physical Zone", ({ scene, world, stamp }) => {
+    const venue = venueDraft({ name: "Hall", description: "A hall", classes: ["other"] }, null);
+    venue.id = scene.placeId;
+    world.venues = [venue];
+    scene.zoneId = "other";
+    scene.navigationReceipts = [
+      {
+        id: "later-move",
+        originZoneId: "exterior",
+        destinationZoneId: "other",
+        at: new Date(Date.parse(stamp) + 1000).toISOString(),
+      },
+    ];
+    return {
+      mutateVillageState: async (change) => {
+        const draft = structuredClone(world);
+        await change(draft);
+        writes++;
+        Object.assign(world, draft);
+        return world;
+      },
+    };
+  });
+  try {
+    const turn = physical.scene.submissions[0];
+    turn.placeUpdate = { narration: "The wall is blue.", expectedRevision: 0, append: "Blue paint." };
+    turn.areaAtTurn = "outside";
+    turn.privateOwnerIdAtTurn = "";
+    turn.semanticProvenance = { version: 2 } as any;
+    turn.physicalContext = {
+      actorIds: ["player"],
+      witnessIds: [],
+      consentIds: [],
+      positions: { player: "exterior" },
+    } as any;
+    const effects = physical.owner.run(() => physical.service.sceneReplayEffects());
+    const before = structuredClone(physical.world);
+    await assert.rejects(effects.applyVenueTurnChange(physical.scene, turn), /physical source.*captured Zone/);
+    assert.equal(writes, 0);
+    assert.equal(physical.modelAccess, 0);
+    assert.deepEqual(physical.world, before, "Later navigation cannot supply a missing physical source address");
+    turn.physicalContext.zoneId = "exterior";
+    await assert.rejects(effects.applyVenueTurnChange(physical.scene, turn), /current outcome receipt/);
+    assert.equal(writes, 0);
+    assert.equal(physical.modelAccess, 0);
+    assert.deepEqual(physical.world, before, "missing outcome metadata cannot create bare physical events");
+    const id = "venue-chat:" + physical.scene.id + ":" + turn.id;
+    physical.world.exchangeReceipts[id] = {
+      ...physical.world.exchangeReceipts["same-effect"],
+      id,
+      sceneId: physical.scene.id,
+      submissionId: turn.id,
+    };
+    const committed = structuredClone(physical.world);
+    await effects.applyVenueTurnChange(physical.scene, turn);
+    assert.deepEqual(physical.world, committed, "Committed receipt replay never reinterprets missing source data");
+    assert.equal(physical.modelAccess, 0);
+  } finally {
+    physical.owner.dispose();
+  }
+}
+
 function fixture(name: string, pause = false, navigationIdentity?: object) {
   const gate = deferred(),
     entered = deferred();
@@ -264,6 +325,8 @@ function fixture(name: string, pause = false, navigationIdentity?: object) {
         data: {
           version: 4,
           id: "same",
+          villageSeed: "same-seed",
+          semanticVersion: 2,
           placeId: "same-place",
           placeName: name,
           status: "active",
@@ -419,30 +482,34 @@ const selectedA = createActivationScope(),
   selectedB = createActivationScope();
 const releaseSelectedA = selectedA.run(() => configureSceneWork(workA));
 const releaseSelectedB = selectedB.run(() => configureSceneWork(workB));
-const clearA = installDefaultActivation(selectedA, () => {});
+
 const selectedGate = deferred(),
   selectedEntered = deferred();
-const pendingSelected = sceneWork().serializeNavigation(async () => {
-  selectedEntered.resolve();
-  await selectedGate.promise;
-  assert.equal(sceneWork().greetingTask("same")!.task, sceneA);
-  return "origin A";
-});
+const pendingSelected = selectedA.run(() =>
+  sceneWork().serializeNavigation(async () => {
+    selectedEntered.resolve();
+    await selectedGate.promise;
+    assert.equal(sceneWork().greetingTask("same")!.task, sceneA);
+    return "origin A";
+  }),
+);
 await selectedEntered.promise;
-const clearB = installDefaultActivation(selectedB, () => {});
-assert.equal(sceneWork().greetingTask("same"), undefined);
+
+selectedB.run(() => assert.equal(sceneWork().greetingTask("same"), undefined));
 selectedGate.resolve();
 assert.equal(await pendingSelected, "origin A");
-releaseSelectedA();
-clearA();
-assert.equal(await sceneWork().serializeNavigation(async () => "current B"), "current B");
-assert.throws(() => selectedA.run(sceneWork), /not configured/);
+selectedB.run(() => releaseSelectedA());
+
+await selectedB.run(async () =>
+  assert.equal(await sceneWork().serializeNavigation(async () => "current B"), "current B"),
+);
+selectedB.run(() => assert.throws(() => selectedA.run(sceneWork), /not configured/));
 const missing = createActivationScope();
-assert.throws(() => missing.run(sceneWork), /not configured/);
+selectedB.run(() => assert.throws(() => missing.run(sceneWork), /not configured/));
 selectedB.dispose();
-assert.throws(() => selectedB.run(sceneWork), /not configured/);
-releaseSelectedB();
-clearB();
+selectedB.run(() => assert.throws(() => selectedB.run(sceneWork), /not configured/));
+selectedB.run(() => releaseSelectedB());
+
 selectedA.dispose();
 missing.dispose();
 assert.throws(sceneWork, /not configured/);
@@ -575,22 +642,21 @@ for (const canonical of [false, true]) {
   }
 }
 
-// Residence's first Scene read must pin the application before its later Village read.
+// Movement's first Scene read pins its owner before subsequent Village reads.
 const residenceA = fixture("Residence A", true),
   residenceB = fixture("Residence B");
-const clearResidenceA = installDefaultActivation(residenceA.scope, () => {});
-const residence = enterResidencePrivateSpace("same", "resident");
+const residence = residenceA.scope.run(() => moveVenueZone("same", "bedroom", 0));
+
 await residenceA.entered.promise;
-const clearResidenceB = installDefaultActivation(residenceB.scope, () => {});
+
 try {
-  residenceA.gate.resolve();
-  await assert.rejects(residence, /Residence is no longer here/);
+  residenceB.scope.run(() => residenceA.gate.resolve());
+  await assert.rejects(residence, /current live admission/);
   assert(residenceA.allReads.includes("villages-village"));
-  assert.deepEqual(residenceB.allReads, [], "default replacement cannot redirect the pending residence to B's Village");
+  assert.deepEqual(residenceB.allReads, [], "the calling B activation cannot redirect pending movement to its Village");
 } finally {
   residenceA.gate.resolve();
-  clearResidenceA();
-  clearResidenceB();
+
   residenceA.release();
   residenceB.release();
   residenceA.scope.dispose();
@@ -619,7 +685,7 @@ for (const source of ["fresh", "same-zone", "captured"] as const) {
   try {
     const before = structuredClone({ scene: invalid.scene, world: invalid.world });
     await assert.rejects(
-      invalid.owner.run(() => invalid.service.enterVenue(invalid.scene.placeId, undefined, "", undefined, "community")),
+      invalid.owner.run(() => invalid.service.enterVenue(invalid.scene.placeId, "community")),
       /no native access record/,
     );
     assert.deepEqual({ scene: invalid.scene, world: invalid.world }, before);
@@ -644,20 +710,20 @@ for (const stage of ["session", "admission", "progress", "snapshot", "persistenc
   first.pause(stage);
   const releaseFirst = first.owner.run(() => configureSceneCommands(first.service));
   const releaseSecond = second.owner.run(() => configureSceneCommands(second.service));
-  const clearFirst = installDefaultActivation(first.owner, () => {});
-  const pending = sendVenueTurn(savedInput);
+
+  const pending = first.owner.run(() => sendVenueTurn(savedInput));
   await first.entered.promise;
-  const clearSecond = installDefaultActivation(second.owner, () => {});
+
   try {
     assert.deepEqual(first.scene.submissions[0].recordEvents, []);
-    const resultB = await sendVenueTurn(savedInput);
+    const resultB = await second.owner.run(() => sendVenueTurn(savedInput));
     assert.equal(resultB.session.placeName, "Command B");
     assert.deepEqual(
       resultB.recordEvents.map((event) => event.text),
       ["Command B saved effect"],
     );
-    releaseFirst();
-    clearFirst();
+    second.owner.run(() => releaseFirst());
+
     first.gate.resolve();
     const resultA = await pending;
     assert.equal(resultA.session.placeName, "Command A");
@@ -675,11 +741,10 @@ for (const stage of ["session", "admission", "progress", "snapshot", "persistenc
     assert.equal(first.modelAccess + second.modelAccess, 0);
   } finally {
     first.gate.resolve();
-    await pending.catch(() => {});
-    releaseFirst();
-    releaseSecond();
-    clearFirst();
-    clearSecond();
+    await second.owner.run(() => pending.catch(() => {}));
+    second.owner.run(() => releaseFirst());
+    second.owner.run(() => releaseSecond());
+
     first.owner.dispose();
     second.owner.dispose();
   }
@@ -709,27 +774,26 @@ for (const stage of ["session", "admission", "snapshot", "persistence"]) {
     second = commandFixture("Selected B");
   const releaseFirst = first.owner.run(() => configureSceneCommands(first.service));
   const releaseSecond = second.owner.run(() => configureSceneCommands(second.service));
-  const clearFirst = installDefaultActivation(first.owner, () => {});
-  const captured = sceneReplayEffects();
-  const clearSecond = installDefaultActivation(second.owner, () => {});
-  releaseFirst();
-  clearFirst();
+
+  const captured = first.owner.run(() => sceneReplayEffects());
+
+  second.owner.run(() => releaseFirst());
+
   try {
-    const events = await captured.receiptForTurn(first.scene, first.scene.submissions[0]);
+    const events = await second.owner.run(() => captured.receiptForTurn(first.scene, first.scene.submissions[0]));
     assert.deepEqual(
       events.map((event) => event.text),
       ["Captured A saved effect"],
     );
     assert(first.owners.every((owner) => owner === first.owner));
     assert.deepEqual(second.calls, [], "escaped A callbacks cannot use the selected B connections");
-    const resultB = await sendVenueTurn(savedInput);
+    const resultB = await second.owner.run(() => sendVenueTurn(savedInput));
     assert.equal(resultB.session.placeName, "Selected B", "old command cleanup must leave B configured");
     assert.equal(first.modelAccess + second.modelAccess, 0);
   } finally {
-    releaseFirst();
-    releaseSecond();
-    clearFirst();
-    clearSecond();
+    second.owner.run(() => releaseFirst());
+    second.owner.run(() => releaseSecond());
+
     first.owner.dispose();
     second.owner.dispose();
   }
@@ -743,27 +807,75 @@ for (const stage of ["session", "admission", "snapshot", "persistence"]) {
   first.guardDisposal();
   const releaseFirst = first.owner.run(() => configureSceneCommands(first.service));
   const releaseSecond = second.owner.run(() => configureSceneCommands(second.service));
-  const clearFirst = installDefaultActivation(first.owner, () => {});
-  const pending = sendVenueTurn(savedInput);
+
+  const pending = first.owner.run(() => sendVenueTurn(savedInput));
   await first.entered.promise;
-  const clearSecond = installDefaultActivation(second.owner, () => {});
+
   first.owner.dispose();
   const rejected = assert.rejects(pending, (error) => error === first.exact);
   first.gate.resolve();
   try {
     await rejected;
     assert.deepEqual(first.scene.submissions[0].recordEvents, []);
-    const resultB = await sendVenueTurn(savedInput);
+    const resultB = await second.owner.run(() => sendVenueTurn(savedInput));
     assert.equal(resultB.session.placeName, "Surviving B");
     assert.equal(first.modelAccess + second.modelAccess, 0);
   } finally {
-    releaseFirst();
-    releaseSecond();
-    clearFirst();
-    clearSecond();
+    second.owner.run(() => releaseFirst());
+    second.owner.run(() => releaseSecond());
+
     second.owner.dispose();
   }
 }
+// Recovery validates current ownership before admission can replace saved paid evidence.
+for (const kind of ["turn", "greet"] as const)
+  for (const defect of ["seed", "semantic", "processing", "identity"] as const) {
+    let admissions = 0;
+    const held = commandFixture("Invalid recovered " + kind, ({ scene }) => {
+      const turn = scene.submissions[0];
+      if (kind === "greet") {
+        turn.id = "greeting";
+        turn.processing!.submissionId = turn.id;
+        turn.semanticReady = true;
+      }
+      scene.operation = {
+        id: turn.id,
+        kind,
+        status: "interrupted",
+        attemptId: "paid-attempt",
+        input: { message: "Exact saved words — retained", mode: "chat", targetId: "" },
+        attempts: { paid: { status: "complete", result: { content: "Exact paid result", finishReason: "stop" } } },
+        checkpoints: { "turn-reply": { retained: "Original response evidence" } },
+      } as any;
+      if (defect === "seed") scene.villageSeed = "";
+      if (defect === "semantic") delete scene.semanticVersion;
+      if (defect === "processing") delete turn.processing;
+      if (defect === "identity") turn.processing!.sceneId = "another-scene";
+      return {
+        recoverVenueOperations: async (recover) => {
+          await recover(scene.id, scene.operation!);
+        },
+        coordinateVenue: async () => {
+          admissions++;
+          throw Error("Invalid recovered Scene reached admission");
+        },
+      };
+    });
+    const before = structuredClone({ scene: held.scene, world: held.world });
+    try {
+      await assert.rejects(
+        held.service.recoverVenueSceneWork(),
+        /Unsupported Scene format|current processing metadata/,
+      );
+      assert.equal(admissions, 0);
+      assert.deepEqual({ scene: held.scene, world: held.world }, before);
+      assert.deepEqual(held.calls, ["session"]);
+      assert.equal(held.modelAccess, 0);
+      assert.deepEqual(held.unexpected, []);
+    } finally {
+      held.owner.dispose();
+    }
+  }
 // Unsupported persisted modes cannot enter admission or discard saved paid evidence.
 for (const mode of ["ask", "act", "fulfill", "greet", "unknown", null, undefined]) {
   const held = commandFixture("Unsupported mode", ({ scene }) => {
@@ -957,16 +1069,18 @@ for (const scenario of ["missing-same-zone", "missing-move", "forged-checkpoint"
   const second = commandFixture("Image B");
   const releaseFirst = first.owner.run(() => configureSceneCommands(first.service));
   const releaseSecond = second.owner.run(() => configureSceneCommands(second.service));
-  const clearFirst = installDefaultActivation(first.owner, () => {});
-  const pending = moveVenueZone("same-scene", "staff-zone", undefined, undefined, "same-image-operation");
-  const clearSecond = installDefaultActivation(second.owner, () => {});
+
+  const pending = first.owner.run(() =>
+    moveVenueZone("same-scene", "staff-zone", undefined, undefined, "same-image-operation"),
+  );
+
   try {
     assert.equal((await pending).placeName, "Image A");
     assert.equal(first.scene.navigationReceipts!.length, 1, "recovery cannot duplicate committed navigation");
     assert.equal(first.scene.submissions.length, 1, "navigation creates no conversational submission");
     assert.equal(first.calls.includes("image-command"), false);
-    releaseFirst();
-    clearFirst();
+    second.owner.run(() => releaseFirst());
+
     first.gate.resolve();
     assert.equal(first.calls.includes("image-loader"), false);
     assert.equal(first.calls.filter((stage) => stage === "image-command").length, 0);
@@ -975,10 +1089,9 @@ for (const scenario of ["missing-same-zone", "missing-move", "forged-checkpoint"
     assert.equal(first.modelAccess + second.modelAccess, 0);
   } finally {
     first.gate.resolve();
-    releaseFirst();
-    releaseSecond();
-    clearFirst();
-    clearSecond();
+    second.owner.run(() => releaseFirst());
+    second.owner.run(() => releaseSecond());
+
     first.owner.dispose();
     second.owner.dispose();
   }

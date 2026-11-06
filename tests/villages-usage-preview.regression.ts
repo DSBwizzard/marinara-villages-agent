@@ -123,6 +123,7 @@ const state = coerceVillageState({
   ],
   villagers: [
     {
+      letterFontId: "caveat",
       characterId: "a",
       addedAt: "2026-09-01",
       cardSnapshot: {
@@ -249,12 +250,11 @@ async function main() {
     ["get", "villages-connections", 2],
     ["get", "villages-ai-usage", 1],
   ] as const) {
-    await withSettingsOwners(async (a, b, selectB) => {
+    await withSettingsOwners(async (a, b) => {
       const paused = a.pause(op, id, at);
-      const pending = previewVillageBurst({ action: "images", count: 1 });
+      const pending = a.owner.run(() => previewVillageBurst({ action: "images", count: 1 }));
       await paused.wait(pending);
-      selectB();
-      assert.equal((await previewVillageBurst({ action: "images", count: 2 })).requests, 2);
+      assert.equal((await b.owner.run(() => previewVillageBurst({ action: "images", count: 2 }))).requests, 2);
       const bCalls = b.calls.length;
       paused.resume();
       const result = await pending;
@@ -268,14 +268,13 @@ async function main() {
         a.owner.run(() => previewVillageBurst({ action: "images" })),
         /usage preview is not configured/,
       );
-      assert.equal((await previewVillageBurst({ action: "images", count: 0 })).requests, 0);
+      assert.equal((await b.owner.run(() => previewVillageBurst({ action: "images", count: 0 }))).requests, 0);
     });
   }
-  await withSettingsOwners(async (a, b, selectB) => {
+  await withSettingsOwners(async (a, b) => {
     const paused = a.pause("list", "background-work");
-    const pending = previewVillageBurst({ action: "retry", jobId: settingsJobId });
+    const pending = a.owner.run(() => previewVillageBurst({ action: "retry", jobId: settingsJobId }));
     await paused.wait(pending);
-    selectB();
     paused.resume();
     await pending;
     assert.equal(
@@ -290,17 +289,20 @@ async function main() {
   await withSettingsOwners(async (a) => {
     const failure = new Error("A raw world storage failure");
     a.failNext("get", "villages-village", failure);
-    await assert.rejects(previewVillageBurst({ action: "images" }), (error) => error === failure);
+    await assert.rejects(
+      a.owner.run(() => previewVillageBurst({ action: "images" })),
+      (error) => error === failure,
+    );
     assert.ok(
       a.calls.every((call) => call.op === "get" && ["villages-repair-control", "villages-village"].includes(call.id)),
       "raw read failure precedes model and background lookup; only recovery admission may precede it",
     );
     assert.equal(a.calls.filter((call) => call.id === "villages-village").length, 1);
     a.failNext("resolver", "same-connection", new Error("model unavailable"));
-    const result = await previewVillageBurst({ action: "images", count: 1 });
+    const result = await a.owner.run(() => previewVillageBurst({ action: "images", count: 1 }));
     assert.equal(result.requests, 1, "resolution failure retains counts and unknown prices");
     assert(a.calls.some((call) => call.op === "list"));
     assert.equal(a.writes, 0);
   });
 }
-void main();
+await main();

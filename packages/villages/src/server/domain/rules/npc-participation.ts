@@ -198,7 +198,6 @@ export function fenceIntroductionWitnesses(
             ...cue,
             ...(cue.look?.target === "villager" && cue.look.characterId === id ? { look: undefined } : {}),
           }));
-      if (line.gazeAt === id) delete line.gazeAt;
     }
     if (emitBoundaries) {
       const boundary = lines[admission.segment];

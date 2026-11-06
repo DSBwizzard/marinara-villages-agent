@@ -6,7 +6,7 @@ const tag = "marinara-capability-villages";
 export const SCENE_ASIDE_STYLES = `
 .${tag}-chat-vn-card[data-delivery="whisper"] .${tag}-chat-vn-text { font-style: italic; }
 .${tag}-chat-vn-aside[data-register="shout"] .${tag}-chat-vn-aside-text { font-weight: 600; }
-/* Override the retired fixed phone offset; asides never size the dialogue dock. */
+/* Anchor phone asides above the dialogue dock without affecting its height. */
 .${tag}-room-screen .${tag}-chat-vn-asides[data-mobile] {
   bottom: calc(100% + .375rem); z-index: 1; padding: 0; pointer-events: none;
   max-height: min(14rem, var(--villages-aside-available-height, 20cqh));

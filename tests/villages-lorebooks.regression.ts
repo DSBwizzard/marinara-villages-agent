@@ -601,14 +601,12 @@ async function main() {
     ];
     const admission = {
       writingContractVersion: 4,
-      gmVersion: 1,
       semanticPipelineVersion: 3,
       residentActionsVersion: 2,
       interactionScopeVersion: 6,
     };
     const scene = coerceSession({
       version: 4,
-      gmVersion: 1,
       semanticVersion: 2,
       id: "gm-lore",
       villageSeed: world.seed,
@@ -690,7 +688,6 @@ async function main() {
         rejected++;
       },
       venueOperationId: () => "turn",
-      venueOperationInput: () => admission,
       readEffectiveVillagerCard: () => assert.fail("No actors"),
       villagesLogger: () => ({
         warn: (...details: unknown[]) => {
@@ -722,7 +719,7 @@ async function main() {
   console.log("Villages live lorebook selection regressions passed.");
 }
 
-void main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

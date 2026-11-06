@@ -1,9 +1,6 @@
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
-import {
-  createActivationScope,
-  installDefaultActivation,
-} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
+import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { createNativeSchedules } from "../packages/villages/src/server/adapters/engine/native-schedules-service.js";
 import { readNativeScheduleSnapshot } from "../packages/villages/src/server/adapters/engine/native-schedules.js";
@@ -204,40 +201,50 @@ async function assembledDispatch() {
   const releaseB = ownerB.run(() => configureVillagesRuntime(b.host));
   const releaseGalleryA = ownerA.run(() => configureGlobalGallery(ga.service));
   const releaseGalleryB = ownerB.run(() => configureGlobalGallery(gb.service));
-  const clearDefault = installDefaultActivation(ownerB, () => {});
+
   a.pause();
-  const pending = ownerA.run(() => readNativeScheduleSnapshot(now, ids));
+  const pending = ownerB.run(() => ownerA.run(() => readNativeScheduleSnapshot(now, ids)));
   await a.entered.promise;
   try {
-    assert.equal((await readNativeScheduleSnapshot(now, ids)).schedules[0].routineSummary, "scoped-B");
+    await ownerB.run(async () =>
+      assert.equal((await readNativeScheduleSnapshot(now, ids)).schedules[0].routineSummary, "scoped-B"),
+    );
     a.gate.resolve();
     assert.equal((await pending).schedules[0].routineSummary, "scoped-A");
-    await ownerA.run(() => readNativeScheduleSnapshot(new Date(now.getTime() + 31_000), ids));
-    assert.equal((await readNativeScheduleSnapshot(now, ids)).schedules[0].routineSummary, "scoped-B");
-    assert.equal(b.reads(), 1);
-    assert.equal(await ownerA.run(() => ensureVillagesGalleryFolder()), "scoped-A-folder");
-    assert.equal(await ensureVillagesGalleryFolder(), "scoped-B-folder");
-    releaseGalleryA();
-    releaseA();
-    releaseA();
-    assert.equal((await uploadVillageGalleryImage(image)).id, "scoped-B-image");
-    assert.equal((await readNativeScheduleSnapshot(now, ids)).schedules[0].routineSummary, "scoped-B");
-    await assert.rejects(
-      ownerA.run(() => readNativeScheduleSnapshot(now, ids)),
-      /not configured/,
+    await ownerB.run(() => ownerA.run(() => readNativeScheduleSnapshot(new Date(now.getTime() + 31_000), ids)));
+    await ownerB.run(async () =>
+      assert.equal((await readNativeScheduleSnapshot(now, ids)).schedules[0].routineSummary, "scoped-B"),
     );
-    assert.throws(() => ownerA.run(() => ensureVillagesGalleryFolder()), /not configured/);
+    ownerB.run(() => assert.equal(b.reads(), 1));
+    await ownerB.run(async () =>
+      assert.equal(await ownerA.run(() => ensureVillagesGalleryFolder()), "scoped-A-folder"),
+    );
+    await ownerB.run(async () => assert.equal(await ensureVillagesGalleryFolder(), "scoped-B-folder"));
+    ownerB.run(() => releaseGalleryA());
+    ownerB.run(() => releaseA());
+    ownerB.run(() => releaseA());
+    await ownerB.run(async () => assert.equal((await uploadVillageGalleryImage(image)).id, "scoped-B-image"));
+    await ownerB.run(async () =>
+      assert.equal((await readNativeScheduleSnapshot(now, ids)).schedules[0].routineSummary, "scoped-B"),
+    );
+    await ownerB.run(() =>
+      assert.rejects(
+        ownerA.run(() => readNativeScheduleSnapshot(now, ids)),
+        /not configured/,
+      ),
+    );
+    ownerB.run(() => assert.throws(() => ownerA.run(() => ensureVillagesGalleryFolder()), /not configured/));
     ownerA.dispose();
-    assert.throws(() => ownerA.run(() => ensureVillagesGalleryFolder()), /not configured/);
-    assert.equal(gb.lookups(), 1);
+    ownerB.run(() => assert.throws(() => ownerA.run(() => ensureVillagesGalleryFolder()), /not configured/));
+    ownerB.run(() => assert.equal(gb.lookups(), 1));
   } finally {
     a.gate.resolve();
     await pending;
-    releaseGalleryA();
-    releaseGalleryB();
-    releaseA();
-    releaseB();
-    clearDefault();
+    ownerB.run(() => releaseGalleryA());
+    ownerB.run(() => releaseGalleryB());
+    ownerB.run(() => releaseA());
+    ownerB.run(() => releaseB());
+
     ownerA.dispose();
     ownerB.dispose();
   }
@@ -250,4 +257,4 @@ async function main() {
     "Schedule caches, library failure reports and gallery lookup promises belong to their originating activation.",
   );
 }
-void main();
+await main();

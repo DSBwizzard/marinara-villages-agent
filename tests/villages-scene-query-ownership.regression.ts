@@ -4,8 +4,7 @@ import assert from "node:assert/strict";
 import { authorSceneFixture } from "./helpers/village-storage.fixture.js";
 import {
   createActivationScope,
-  installDefaultActivation,
-  scopedActivation,
+  activationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { SESSION_KIND, SESSION_PREFIX } from "../packages/villages/src/server/adapters/storage/scene-slots.js";
 import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
@@ -71,7 +70,6 @@ function scene(id = "same", name = "A Venue"): VenueScene {
 function ownedScene(owner: string): VenueScene {
   const saved = scene("same", owner + " Venue");
   saved.placeId = "venue-" + owner;
-  saved.processingVersion = 1;
   saved.villageSeed = owner;
   saved.lines = [line("reply", { content: owner + " reply" })];
   saved.submissions = [
@@ -81,6 +79,14 @@ function ownedScene(owner: string): VenueScene {
       activeIdsAtTurn: ["mara"],
       replyLineIds: ["reply"],
       progressError: owner + " pending",
+      processing: createExchangeProcessing({
+        seed: owner,
+        sceneId: saved.id,
+        submissionId: "proof",
+        order: 0,
+        lineIds: ["reply"],
+        actionReceiptIds: [],
+      }),
     }),
   ];
   return saved;
@@ -106,27 +112,31 @@ function fixture(name: string) {
     records: Document[] = [],
     calls: string[] = [],
     owners: unknown[] = [];
-  let paused = false,
-    failWorld: Error | undefined,
-    failList: Error | undefined;
+  let paused: "world" | "session" | undefined, failWorld: Error | undefined, failList: Error | undefined;
   const entered = deferred(),
     gate = deferred();
   const note = (call: string) => {
     calls.push(call);
-    owners.push(scopedActivation());
-    if (scopedActivation()?.active === false) throw Error("Original query connection unavailable.");
+    owners.push(activationScope());
+    if (activationScope()?.active === false) throw Error("Original query connection unavailable.");
   };
   const service = createSceneQueryService({
     async readSession(id) {
       note("session:" + id);
+      if (paused === "session") {
+        paused = undefined;
+        entered.resolve();
+        await gate.promise;
+        note("session-resumed");
+      }
       const found = sessions.get(id);
       if (!found) throw Error("Missing Scene");
       return structuredClone(found);
     },
     async readVillageState() {
       note("world");
-      if (paused) {
-        paused = false;
+      if (paused === "world") {
+        paused = undefined;
         entered.resolve();
         await gate.promise;
         note("world-resumed");
@@ -185,8 +195,8 @@ function fixture(name: string) {
     add,
     entered,
     gate,
-    pause() {
-      paused = true;
+    pause(target: "world" | "session" = "world") {
+      paused = target;
     },
     failWorld(error: Error) {
       failWorld = error;
@@ -238,7 +248,7 @@ async function main() {
   assert.deepEqual(f.calls, ["session:same"], "missing submission rejects before world read");
   f.calls.length = 0;
   const evidence = await f.service.readProjectTurnEvidence("same", "proof");
-  assert.deepEqual(f.calls, ["session:same", "world"]);
+  assert.deepEqual(f.calls, ["session:same"], "captured evidence needs no later World lookup");
   assert.equal(evidence.zoneId, "historic-zone");
   assert.deepEqual(evidence.activeIdsAtTurn, ["mara", "visitor"]);
   assert.equal(evidence.contextualInterpretation, true);
@@ -263,7 +273,7 @@ async function main() {
   f.add(fallback);
   const oldShape = await f.service.readProjectTurnEvidence("fallback", "fallback");
   assert.deepEqual(oldShape.activeIdsAtTurn, ["mara"]);
-  assert.equal(oldShape.zoneId, "residence");
+  assert.equal(oldShape.zoneId, undefined, "missing source Zone is never reconstructed from the later Scene");
   assert.deepEqual(
     oldShape.lines.map((l) => l.id),
     ["fallback-visible"],
@@ -272,13 +282,12 @@ async function main() {
     fault = fixture("fault");
   fault.add(saved);
   fault.failWorld(worldFault);
-  await assert.rejects(fault.service.readProjectTurnEvidence("same", "proof"), (cause) => cause === worldFault);
+  assert.equal((await fault.service.readProjectTurnEvidence("same", "proof")).zoneId, "historic-zone");
   await assert.rejects(fault.service.progressBacklog(), (cause) => cause === worldFault);
   assert(!fault.calls.includes("documents"), "failed world read does not open documents");
 
   const backlog = fixture("seed");
   const current = scene("current");
-  current.processingVersion = 1;
   current.villageSeed = "seed";
   const pending = createExchangeProcessing({
     seed: "seed",
@@ -290,14 +299,18 @@ async function main() {
   });
   const complete = structuredClone(pending);
   for (const domain of Object.values(complete.domains)) domain.status = "applied";
+  complete.submissionId = "complete";
   const failed = structuredClone(complete);
+  failed.submissionId = "failed";
   failed.domains.memories.status = "failed";
   current.submissions = [
     turn("pending", { processing: pending, progressError: "Still pending" }),
     turn("complete", { processing: complete }),
     turn("failed", { processing: failed }),
-    turn("plain"),
-    turn("processed", { progressProcessedAt: stamp }),
+    turn("processed", {
+      progressProcessedAt: stamp,
+      processing: { ...structuredClone(complete), submissionId: "processed" },
+    }),
     turn("before-founding", { at: "2026-10-06T12:00:00.000Z" }),
   ];
   current.navigationReceipts = [{ id: "move", originZoneId: "a", destinationZoneId: "b", at: stamp }];
@@ -309,7 +322,7 @@ async function main() {
   const originalRecords = structuredClone(backlog.records);
   assert.deepEqual(
     await backlog.service.progressBacklog(),
-    ["pending", "failed", "plain"].map((submissionId) => ({
+    ["pending", "failed"].map((submissionId) => ({
       sessionId: "current",
       submissionId,
       at: stamp,
@@ -326,6 +339,14 @@ async function main() {
     "Backlog explicitly reads its saved turn pages",
   );
   assert.deepEqual(backlog.records, originalRecords, "backlog is not a storage mutation");
+  const malformed = fixture("malformed"),
+    malformedScene = scene("malformed");
+  malformedScene.villageSeed = "malformed";
+  malformedScene.submissions = [turn("missing-processing")];
+  malformed.add(malformedScene);
+  const malformedBefore = structuredClone(malformed.records);
+  await assert.rejects(malformed.service.progressBacklog(), /processing metadata/);
+  assert.deepEqual(malformed.records, malformedBefore, "backlog refuses missing saved processing without rewriting it");
   const listFault = Error("Exact document list failure"),
     broken = fixture("list-fault");
   broken.failList(listFault);
@@ -338,14 +359,12 @@ async function main() {
     second = fixture("B");
   first.add(ownedScene("A"));
   second.add(ownedScene("B"));
-  const releaseA = a.run(() => configureSceneQueries(first.queries)),
-    clearA = installDefaultActivation(a, () => {});
+  const releaseA = a.run(() => configureSceneQueries(first.queries));
   first.pause();
-  const inFlight = sceneQueries().progressBacklog();
+  const inFlight = a.run(() => sceneQueries().progressBacklog());
   await first.entered.promise;
-  const releaseB = b.run(() => configureSceneQueries(second.queries)),
-    clearB = installDefaultActivation(b, () => {});
-  const bEvidence = await sceneQueries().readProjectTurnEvidence("same", "proof");
+  const releaseB = a.run(() => b.run(() => configureSceneQueries(second.queries)));
+  const bEvidence = await b.run(() => sceneQueries().readProjectTurnEvidence("same", "proof"));
   assert.equal(bEvidence.venueId, "venue-B");
   assert.equal(bEvidence.zoneId, "zone-B");
   assert.equal(bEvidence.message, "B message");
@@ -354,43 +373,48 @@ async function main() {
   first.gate.resolve();
   assert.deepEqual(await inFlight, [{ sessionId: "same", submissionId: "proof", at: stamp, error: "A pending" }]);
   assert.deepEqual(first.calls.slice(0, 4), ["world", "world-resumed", "documents", "list"]);
-  assert(first.calls.slice(4).every((call) => call.startsWith("get:villages-memory-page-")));
+  b.run(() => assert(first.calls.slice(4).every((call) => call.startsWith("get:villages-memory-page-"))));
   assert(first.owners.every((owner) => owner === a));
   assert(second.owners.every((owner) => owner === b));
-  a.run(releaseA);
+  b.run(() => a.run(releaseA));
   a.dispose();
-  clearA();
-  assert.deepEqual(await sceneQueries().progressBacklog(), [
-    { sessionId: "same", submissionId: "proof", at: stamp, error: "B pending" },
-  ]);
+
+  await b.run(async () =>
+    assert.deepEqual(await sceneQueries().progressBacklog(), [
+      { sessionId: "same", submissionId: "proof", at: stamp, error: "B pending" },
+    ]),
+  );
   assert(second.calls.includes("list"), "older cleanup retains B dispatch");
-  await assert.rejects(
-    a.run(async () => sceneQueries().progressBacklog()),
-    /not configured/,
+  await b.run(() =>
+    assert.rejects(
+      a.run(async () => sceneQueries().progressBacklog()),
+      /not configured/,
+    ),
   );
   const missing = createActivationScope();
-  await assert.rejects(
-    missing.run(async () => sceneQueries().readProjectTurnEvidence("same", "proof")),
-    /not configured/,
+  await b.run(() =>
+    assert.rejects(
+      missing.run(async () => sceneQueries().readProjectTurnEvidence("same", "proof")),
+      /not configured/,
+    ),
   );
   missing.dispose();
-  b.run(releaseB);
+  b.run(() => b.run(releaseB));
   b.dispose();
-  clearB();
+
   assert.throws(() => sceneQueries(), /not configured/);
   const retired = createActivationScope(),
     old = fixture("retired");
   old.add(scene());
   retired.run(() => configureSceneQueries(old.queries));
-  const clearRetired = installDefaultActivation(retired, () => {});
+
   old.pause();
-  const abandoned = sceneQueries().progressBacklog();
+  const abandoned = retired.run(() => sceneQueries().progressBacklog());
   await old.entered.promise;
   retired.dispose();
   old.gate.resolve();
   await assert.rejects(abandoned, /Original query connection unavailable/);
   assert(!old.calls.includes("documents"), "retired world connection does not borrow another document store");
-  clearRetired();
 
   const c = createActivationScope(),
     d = createActivationScope(),
@@ -398,34 +422,34 @@ async function main() {
     newer = fixture("D");
   older.add(ownedScene("C"));
   newer.add(ownedScene("D"));
-  const releaseC = c.run(() => configureSceneQueries(older.queries)),
-    clearC = installDefaultActivation(c, () => {});
-  older.pause();
-  const heldEvidence = sceneQueries().readProjectTurnEvidence("same", "proof");
+  const releaseC = c.run(() => configureSceneQueries(older.queries));
+  older.pause("session");
+  const heldEvidence = c.run(() => sceneQueries().readProjectTurnEvidence("same", "proof"));
   await older.entered.promise;
-  const releaseD = d.run(() => configureSceneQueries(newer.queries)),
-    clearD = installDefaultActivation(d, () => {});
-  assert.equal((await sceneQueries().readProjectTurnEvidence("same", "proof")).message, "D message");
+  const releaseD = c.run(() => d.run(() => configureSceneQueries(newer.queries)));
+  await d.run(async () =>
+    assert.equal((await sceneQueries().readProjectTurnEvidence("same", "proof")).message, "D message"),
+  );
   older.gate.resolve();
   const cEvidence = await heldEvidence;
   assert.equal(cEvidence.venueId, "venue-C");
   assert.equal(cEvidence.zoneId, "zone-C");
   assert.equal(cEvidence.message, "C message");
   assert.equal(cEvidence.lines[0]?.content, "C reply");
-  assert.deepEqual(older.calls, ["session:same", "world", "world-resumed"]);
+  assert.deepEqual(older.calls, ["session:same", "session-resumed"]);
   assert(older.owners.every((owner) => owner === c));
   assert(newer.owners.every((owner) => owner === d));
-  c.run(releaseC);
+  d.run(() => c.run(releaseC));
   c.dispose();
-  clearC();
-  d.run(releaseD);
+
+  d.run(() => d.run(releaseD));
   d.dispose();
-  clearD();
+
   console.log(
     "Scene evidence/backlog inertness, historical witness/privacy filters, authoritative progress gates and activation-bound lazy query connections passed without providers.",
   );
 }
-main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

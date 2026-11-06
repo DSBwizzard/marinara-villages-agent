@@ -50,7 +50,6 @@ function fixture() {
   const selected = admitNarrative(state, at, "selection")!.targets[0]!;
   const scene = coerceSession({
     version: 4,
-    gmVersion: 1,
     id: "scene",
     placeId: venue.id,
     placeName: venue.name,
@@ -71,7 +70,6 @@ function fixture() {
       narrativeIntroductionVersion: 1,
       semanticPipelineVersion: 3,
       writingContractVersion: 4,
-      gmVersion: 1,
       sceneBoundaryVersion: 1,
       interactionScopeVersion: 6,
       residentActionsVersion: 2,
@@ -360,7 +358,6 @@ for (const variant of ["normal", "gap", "race-boundary", "quiet"] as const) {
     semantic: createSemanticService(common),
     sceneNarrative,
     venueOperationId: () => scene.operation!.id,
-    venueOperationInput: () => scene.operation!.input,
     readEffectiveVillagerCard: () => assert.fail("No actors"),
     villagesLogger: () => ({ warn() {} }),
     measurePipeline: async (_name: string, _meta: any, work: any) => work(),

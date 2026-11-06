@@ -55,6 +55,7 @@ function fixture() {
   state.venues[0].residentIds = ["a"];
   state.villagers = [
     {
+      letterFontId: "caveat",
       characterId: "a",
       cardSnapshot: snapshotFromCard(readVillagerCard({ id: "a", comment: "", data: { name: "Ada" } }), 1),
       addedAt: at,
@@ -185,15 +186,36 @@ assert.equal(
 );
 
 const spending = fixture().state;
-assert.equal(coerceVillageState(structuredClone(spending)).returnCatchup, undefined, "Older villages need no batch.");
+assert.equal(
+  coerceVillageState(structuredClone(spending)).returnCatchup,
+  undefined,
+  "A fresh Village has no catch-up batch.",
+);
 assert.throws(
   () =>
-    coerceVillageState({ ...structuredClone(spending), returnCatchup: { batch: { id: "batch", status: "invalid" } } }),
+    coerceVillageState({
+      ...structuredClone(spending),
+      returnCatchup: {
+        batch: {
+          budgetDate: dateKey,
+          opportunityLimit: 6,
+          id: "batch",
+          status: "invalid",
+        },
+      },
+    }),
   /catch-up batch/,
 );
 assert.throws(() => coerceVillageState({ ...structuredClone(spending), returnCatchup: [] }), /catch-up/);
 spending.backgroundPace = "balanced";
-spending.returnCatchup = { batch: { id: "batch", status: "running" } };
+spending.returnCatchup = {
+  batch: {
+    budgetDate: dateKey,
+    opportunityLimit: 6,
+    id: "batch",
+    status: "running",
+  },
+};
 assert.equal(eventAttemptAvailable(spending, dateKey, now.getTime()), false, "Ordinary activity waits for catch-up.");
 assert.equal(eventAttemptAvailable(spending, dateKey, now.getTime(), "other"), false);
 reserveEventAttempt(spending, "one", dateKey, now.getTime(), "batch");
@@ -235,11 +257,26 @@ for (const [pace, count, minutes] of [
     "Midnight does not clear cadence.",
   );
   assert.equal(eventAttemptAvailable(state, "2026-10-30", ready.getTime()), true);
-  state.returnCatchup = { batch: { id: "quota", status: "running" } };
-  for (let index = 0; index < count; index++)
+  state.returnCatchup = {
+    batch: {
+      budgetDate: "2026-10-30",
+      opportunityLimit: Math.min(6, count),
+      id: "quota",
+      status: "running",
+    },
+  };
+  const batchCount = Math.min(6, count);
+  for (let index = 0; index < batchCount; index++)
     reserveEventAttempt(state, "quota-" + index, "2026-10-30", ready.getTime() + index, "quota");
   assert.equal(eventAttemptAvailable(state, "2026-10-30", ready.getTime() + count, "quota"), false);
   state.returnCatchup.batch!.status = "completed";
+  for (let index = batchCount; index < count; index++)
+    reserveEventAttempt(
+      state,
+      "ordinary-" + index,
+      "2026-10-30",
+      ready.getTime() + batchCount + (index - batchCount + 1) * minutes * 60_000,
+    );
   assert.equal(nextEventAttemptAt(state, ready), Date.parse("2026-10-31T00:00:00Z"));
   assert.equal(VILLAGE_ACTIVITY_POLICY[pace].reviews, count);
   state.backgroundPace = "off";
@@ -284,6 +321,8 @@ returnOpportunity.zoneId = undefined;
 const returnCapture = captureReturnContext(queuedReturn.state, now);
 queuedReturn.state.returnCatchup = {
   batch: {
+    budgetDate: dateKey,
+    opportunityLimit: 6,
     id: "batch-one",
     status: "running",
     from: returnCapture.at,
@@ -347,6 +386,8 @@ const longOpportunity = {
 };
 longReturn.state.returnCatchup = {
   batch: {
+    budgetDate: dateKey,
+    opportunityLimit: 6,
     id: "long-return",
     status: "running",
     from: longCapture.at,
@@ -406,6 +447,8 @@ const privateOpportunity = {
 };
 privateReturn.state.returnCatchup = {
   batch: {
+    budgetDate: dateKey,
+    opportunityLimit: 6,
     id: "private-return",
     status: "running",
     from: privateCapture.at,

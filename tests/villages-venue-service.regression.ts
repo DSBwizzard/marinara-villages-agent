@@ -108,30 +108,8 @@ async function main() {
   const firstCommands = createVenueCommands(first.ports);
   const secondCommands = createVenueCommands(second.ports);
   assert.deepEqual(first.events, [], "Constructing Venue commands does not resolve image targets.");
-  assert.equal(await firstCommands.imageTarget(undefined), undefined);
-  assert.equal(await firstCommands.imageTarget({ venueId: "missing" }), undefined);
-  await assert.rejects(firstCommands.imageTarget({ zoneId: 7 }), /text IDs/);
-  assert.deepEqual(first.events, [], "No-target and invalid-ID paths never read storage.");
-  const imageZone = {
-    ...defaultVenueSpace("community"),
-    id: "common",
-    kind: "public" as const,
-    name: "Common Space",
-    seen: true,
-  };
-  first.state.venues[0].zones = [imageZone];
-  assert.equal(await firstCommands.imageTarget({ venueId: "venue", zoneId: imageZone.id }), imageZone.id);
-  assert.deepEqual(first.events, ["read"], "A target query performs one owned read and no Scene reconciliation.");
-  await assert.rejects(secondCommands.imageTarget({ venueId: "missing", zoneId: imageZone.id }), /no longer exists/);
-  await assert.rejects(
-    firstCommands.imageTarget({ venueId: "venue", zoneId: imageZone.id, privateSpaceId: "other" }),
-    /Conflicting private/,
-  );
-  await assert.rejects(
-    firstCommands.imageTarget({ venueId: "venue", zoneId: imageZone.id, privateOwnerId: "other" }),
-    /Conflicting personal/,
-  );
-  await assert.rejects(firstCommands.imageTarget({ venueId: "venue", zoneId: "missing" }), /no longer here/);
+  await assert.rejects(firstCommands.assertVenueImageAccess("missing", "common"), /no longer here/);
+  await assert.rejects(firstCommands.assertVenueImageAccess("venue", "missing"), /no longer exists/);
   first.events.length = 0;
   second.events.length = 0;
   const pending = firstCommands.updateVillageVenue("venue", { name: "First revised" });
@@ -145,8 +123,9 @@ async function main() {
 
   const releaseFirst = configureVenueCommands(firstCommands);
   const releaseSecond = configureVenueCommands(secondCommands);
+  const boundSecond = venueCommands();
   releaseFirst();
-  assert.equal(venueCommands(), secondCommands, "an older binding cannot clear its replacement");
+  assert.equal(venueCommands(), boundSecond, "an older binding cannot clear its replacement");
   releaseSecond();
   assert.throws(venueCommands, /not configured/);
 
@@ -189,16 +168,7 @@ async function main() {
   retry.state.venues[0].presentation.image = newImage;
 
   await assert.rejects(
-    () =>
-      createVenueCommands(retry.ports).setVillageVenueImage(
-        "venue",
-        null,
-        undefined,
-        "",
-        false,
-        undefined,
-        "stale-context",
-      ),
+    () => createVenueCommands(retry.ports).setVillageVenueImage("venue", "exterior", null, false, "stale-context"),
     /scenery changed/,
   );
   assert.deepEqual(retry.state.venues[0].presentation.image, newImage);
@@ -241,7 +211,7 @@ async function main() {
     "Venue service ports, overlapping independent stores, binding ownership, Scene timing and retry fences passed.",
   );
 }
-main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

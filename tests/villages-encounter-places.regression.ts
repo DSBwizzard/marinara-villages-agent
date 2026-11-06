@@ -45,6 +45,7 @@ function fixture() {
     timeZone: "UTC",
     venues: [place],
     villagers: ["a", "b"].map((id) => ({
+      letterFontId: "caveat",
       characterId: id,
       addedAt: at,
       cardSnapshot: { id, name: id, revision: 1, sourceStatus: "available", capturedAt: at },
@@ -283,6 +284,8 @@ await runCase("encounter-places/catchup", async () => {
   world.returnCatchup = {
     capture,
     batch: {
+      budgetDate: "2026-10-28",
+      opportunityLimit: 6,
       id: "physical-return",
       status: "running",
       from: at,

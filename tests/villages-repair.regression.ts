@@ -1,3 +1,4 @@
+import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
 import { knownSocialWishes } from "../packages/villages/src/server/domain/rules/social-wishes.js";
 // Test cases: repair/review, repair/review-retirement, repair/review-cancel-race, repair/review-retirement-recovery, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/checkpoint-retention, repair/checkpoint-deletion, repair/snapshot-integrity, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/relationship-history, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/wishes, repair/wish-checkpoints, repair/place-continuity, repair/checkpoint-pages, repair/journal-integrity, repair/places
@@ -14,7 +15,6 @@ import {
   relationshipDocumentId,
 } from "../packages/villages/src/server/adapters/storage/relationship-payload-store.js";
 import { LETTER_FONTS } from "../packages/villages/src/shared/helpers/letter-fonts.js";
-import { legacyLetterFont } from "../packages/villages/src/shared/helpers/letter-font-selection.js";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
   createRepairGate,
@@ -660,8 +660,13 @@ await runCase("repair/checkpoints", async () => {
         attempts: [{ id: "spent", at: memoryTime(10), date: "2026-10-26" }],
       };
       s.returnCatchup = {
-        batch: { id: "pending-return", status: "running" },
-        history: [{ id: "previous-return", status: "completed" }],
+        batch: {
+          budgetDate: "2026-10-26",
+          opportunityLimit: 6,
+          id: "pending-return",
+          status: "running",
+        },
+        history: [{ id: "previous-return", status: "completed", budgetDate: "2026-10-25", opportunityLimit: 6 }],
         capture: captureReturnContext(s, new Date(memoryTime(10))),
       };
       s.clock = {
@@ -1546,75 +1551,82 @@ await runCase("repair/checkpoint-pages", async () => {
 });
 await runCase("repair/http", async () => {
   const f = await fixture();
-  const release = configureVillagesRuntime({
-    persistence: { documents: f.store },
-    resources: {},
-    languageModels: {
-      resolveForRequest() {
-        throw Error("REPAIR cannot request a model");
-      },
-    },
-    isDebugAgentsEnabled: () => false,
-    getAgentConfig: async () => ({ connectionId: "" }),
-    json: { parseJsonish: (value: string) => JSON.parse(value) },
-  } as any);
-  const app = Fastify();
+  const owner = createActivationScope();
   try {
-    await villagesRoutes(app);
-    const index = await app.inject({ url: "/repair" });
-    assert.equal(index.statusCode, 200, index.body);
-    const memories = await app.inject({ url: "/repair/records?topic=memories&inspection=false" });
-    assert.equal(memories.statusCode, 200, memories.body);
-    assert.ok(memories.json().records.some((entry: any) => entry.title.includes("hidden brass compass")));
-    assert.ok(memories.json().creation.people.some((person: any) => person.id === "aqua"));
-    const checkpoint = await app.inject({
-      method: "POST",
-      url: "/repair/checkpoints",
-      payload: { title: "HTTP checkpoint", operationId: "http-checkpoint" },
+    await owner.run(async () => {
+      const release = configureVillagesRuntime({
+        persistence: { documents: f.store },
+        resources: {},
+        languageModels: {
+          resolveForRequest() {
+            throw Error("REPAIR cannot request a model");
+          },
+        },
+        isDebugAgentsEnabled: () => false,
+        getAgentConfig: async () => ({ connectionId: "" }),
+        json: { parseJsonish: (value: string) => JSON.parse(value) },
+      } as any);
+      const app = Fastify();
+      try {
+        await villagesRoutes(app);
+        const index = await app.inject({ url: "/repair" });
+        assert.equal(index.statusCode, 200, index.body);
+        const memories = await app.inject({ url: "/repair/records?topic=memories&inspection=false" });
+        assert.equal(memories.statusCode, 200, memories.body);
+        assert.ok(memories.json().records.some((entry: any) => entry.title.includes("hidden brass compass")));
+        assert.ok(memories.json().creation.people.some((person: any) => person.id === "aqua"));
+        const checkpoint = await app.inject({
+          method: "POST",
+          url: "/repair/checkpoints",
+          payload: { title: "HTTP checkpoint", operationId: "http-checkpoint" },
+        });
+        assert.equal(checkpoint.statusCode, 200, checkpoint.body);
+        const restoration = await app.inject({
+          method: "POST",
+          url: "/repair/restore",
+          payload: { id: checkpoint.json().id, operationId: "http-restoration" },
+        });
+        assert.equal(restoration.statusCode, 200, restoration.body);
+        assert.equal(restoration.json().kind, "restore");
+        const record = (await app.inject({ url: "/repair/record?id=" + encodeURIComponent(repairId("world")) })).json();
+        const input = {
+          ...edit(
+            record.id,
+            { name: "Willowmere", setting: "HTTP correction", worldName: "", worldRules: "" },
+            "http-repair",
+          ),
+          expectedRecord: record.token,
+        };
+        const prepared = await app.inject({ method: "POST", url: "/repair/review", payload: input });
+        assert.equal(prepared.statusCode, 200, prepared.body);
+        assert.equal((await f.read()).setting, "Original setting");
+        const applied = await app.inject({
+          method: "POST",
+          url: "/repair/apply",
+          payload: { id: input.operationId, token: prepared.json().token },
+        });
+        assert.equal(applied.statusCode, 200, applied.body);
+        assert.equal((await f.read()).setting, "HTTP correction");
+        const undo = await app.inject({
+          method: "POST",
+          url: "/repair/undo",
+          payload: { id: input.operationId, operationId: "http-undo" },
+        });
+        assert.equal(undo.statusCode, 200, undo.body);
+        const cancelled = await app.inject({
+          method: "POST",
+          url: "/repair/cancel",
+          payload: { id: undo.json().id, token: undo.json().token },
+        });
+        assert.equal(cancelled.statusCode, 200, cancelled.body);
+        assert.equal(cancelled.json().cancelled, true);
+      } finally {
+        await app.close();
+        release();
+      }
     });
-    assert.equal(checkpoint.statusCode, 200, checkpoint.body);
-    const restoration = await app.inject({
-      method: "POST",
-      url: "/repair/restore",
-      payload: { id: checkpoint.json().id, operationId: "http-restoration" },
-    });
-    assert.equal(restoration.statusCode, 200, restoration.body);
-    assert.equal(restoration.json().kind, "restore");
-    const record = (await app.inject({ url: "/repair/record?id=" + encodeURIComponent(repairId("world")) })).json();
-    const input = {
-      ...edit(
-        record.id,
-        { name: "Willowmere", setting: "HTTP correction", worldName: "", worldRules: "" },
-        "http-repair",
-      ),
-      expectedRecord: record.token,
-    };
-    const prepared = await app.inject({ method: "POST", url: "/repair/review", payload: input });
-    assert.equal(prepared.statusCode, 200, prepared.body);
-    assert.equal((await f.read()).setting, "Original setting");
-    const applied = await app.inject({
-      method: "POST",
-      url: "/repair/apply",
-      payload: { id: input.operationId, token: prepared.json().token },
-    });
-    assert.equal(applied.statusCode, 200, applied.body);
-    assert.equal((await f.read()).setting, "HTTP correction");
-    const undo = await app.inject({
-      method: "POST",
-      url: "/repair/undo",
-      payload: { id: input.operationId, operationId: "http-undo" },
-    });
-    assert.equal(undo.statusCode, 200, undo.body);
-    const cancelled = await app.inject({
-      method: "POST",
-      url: "/repair/cancel",
-      payload: { id: undo.json().id, token: undo.json().token },
-    });
-    assert.equal(cancelled.statusCode, 200, cancelled.body);
-    assert.equal(cancelled.json().cancelled, true);
   } finally {
-    await app.close();
-    release();
+    owner.dispose();
   }
 });
 
@@ -1627,20 +1639,20 @@ await runCase("repair/letter-fonts", async () => {
   const resident = (await f.read()).villagers[0]!;
   const id = repairId("letter-font", resident.characterId);
   const record = await f.api.inspect(id, resident.characterId);
-  const original = legacyLetterFont(resident.characterId);
+  const original = resident.letterFontId;
   assert.equal(record.fields[0]!.value, original);
-  assert.equal(record.fields[0]!.options!.length, 100);
+  assert.equal(record.fields[0]!.options!.length, LETTER_FONTS.length);
   const next = LETTER_FONTS.find((font) => font.id !== original)!.id;
   const request = { ...edit(id, { letterFontId: next }, "font-change"), personId: resident.characterId };
   const review = await f.prepare(request);
-  assert.equal((await f.read()).villagers[0]!.letterFontId, undefined, "Review is read-only");
+  assert.equal((await f.read()).villagers[0]!.letterFontId, original, "Review is read-only");
   await f.api.apply(review.id, review.token);
   assert.equal((await f.read()).villagers[0]!.letterFontId, next);
   f.reopen();
   assert.equal((await f.read()).villagers[0]!.letterFontId, next, "The decoder preserves the saved style");
   const undo = await f.api.undo(review.id, "undo-font-change");
   await f.api.apply(undo.id, undo.token);
-  assert.equal((await f.read()).villagers[0]!.letterFontId, undefined);
+  assert.equal((await f.read()).villagers[0]!.letterFontId, original);
 
   await f.repo.mutateAuthority((state) => {
     state.villagers[0]!.letterFontId = "future-font-id";

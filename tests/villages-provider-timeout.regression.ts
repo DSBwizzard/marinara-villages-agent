@@ -105,4 +105,4 @@ async function main() {
     mock.timers.reset();
   }
 }
-void main();
+await main();

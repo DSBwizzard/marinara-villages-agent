@@ -1,5 +1,4 @@
 import { projectSpeakerAtTurn } from "../../domain/rules/project-scene-evidence.js";
-import { findLocation } from "../../domain/rules/places.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { z } from "zod";
 import type { SceneHistoryPage } from "../../../shared/contracts/scene-history.js";
@@ -24,9 +23,9 @@ import {
   projectSceneHistoryPage,
 } from "../../adapters/storage/scene-public-history.js";
 import { asRecord } from "../../domain/rules/coerce.js";
-import { pendingProgressTurns } from "../../domain/rules/scene-record.js";
+import { requireSceneExchange } from "../../domain/rules/scene-submissions.js";
 import { projectMetadataRejected } from "../../domain/rules/semantic-continuity.js";
-import { legacyZoneId } from "../../domain/rules/venue-zones.js";
+
 import { withRepairWork } from "../../adapters/storage/repair-gate.js";
 import { readVillageRoot } from "../../adapters/storage/village-repository.js";
 import { readSceneMomentFrames, readSceneMomentRange } from "../../adapters/storage/scene-presentation-pages.js";
@@ -323,18 +322,7 @@ export function createSceneQueryService({
     });
     const submission = session.submissions.find((entry) => entry.id === submissionId);
     if (!submission) throw notFound("That roleplay turn was not recorded.");
-    const venue = findLocation(await readVillageState(), session.placeId);
-    const zoneId =
-      submission.zoneIdAtTurn ??
-      session.zoneId ??
-      (venue
-        ? legacyZoneId(
-            venue,
-            submission.areaAtTurn ?? session.area,
-            session.spaceClass,
-            submission.privateOwnerIdAtTurn ?? session.privateOwnerId,
-          )
-        : undefined);
+    const zoneId = submission.zoneIdAtTurn;
     const playerSources = session.lines.filter(
       (line) =>
         line.role === "user" &&
@@ -361,7 +349,7 @@ export function createSceneQueryService({
       submissionId,
       mode: submission.mode,
       message: submission.message,
-      ...(submission.attention || submission.zoneEventsVersion === 1 ? { playerMessagesByActor } : {}),
+      ...(submission.zoneEventsVersion === 1 ? { playerMessagesByActor } : {}),
       at: submission.at ?? "",
       areaAtTurn: submission.areaAtTurn ?? session.area,
       activeIdsAtTurn: [
@@ -414,12 +402,15 @@ export function createSceneQueryService({
     const backlog = [];
     for (const record of records) {
       const header = readSceneIndex(record.data);
-      if (header.processingVersion === 1 && header.villageSeed !== village.seed) continue;
+      if (header.villageSeed !== village.seed) continue;
       const session = await readSceneWorkIndex(documents, record.data);
-      const pending = new Set(pendingProgressTurns(session, village.foundedAt));
+      const eligible = session.submissions.filter(
+        (turn) => turn.at && (!village.foundedAt || Date.parse(turn.at) >= Date.parse(village.foundedAt)),
+      );
+      for (const turn of eligible) requireSceneExchange(session, turn);
       backlog.push(
-        ...session.submissions
-          .filter((turn) => (turn.processing ? unfinishedExchange(turn.processing) : pending.has(turn)))
+        ...eligible
+          .filter((turn) => unfinishedExchange(turn.processing!))
           .map((turn) => ({
             sessionId: session.id,
             submissionId: turn.id,

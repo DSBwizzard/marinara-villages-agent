@@ -2,7 +2,7 @@ import type { VillagePlaceView, VillagePlayerIdentity, VillageState, VillageVill
 import { findLocation } from "./places.js";
 import { agendaAt } from "./agenda-plan.js";
 import { badRequest, conflict } from "./errors.js";
-import { homeBuildingOptions, type VillageHomeLine } from "./prompt-preset.js";
+import { homeBuildingOptions } from "./prompt-preset.js";
 import { MAX_ZONE_VILLAGERS, venueResidentIds } from "./venue-model.js";
 import { canOccupyZone, chooseAgendaZone, venueZones, zoneClosed } from "./venue-zones.js";
 import { evaluateZoneAccess } from "./venue-access.js";
@@ -18,41 +18,6 @@ export function readPlayerIdentity(village: VillageState): VillagePlayerIdentity
     personaId: village.playerPersonaId,
     missing: village.playerPersonaMissing,
   };
-}
-export function projectHomeLines(
-  village: Pick<VillageState, "venues" | "villagers"> & Partial<Pick<VillageState, "homeBuildingNames">>,
-  names: ReadonlyMap<string, string>,
-): VillageHomeLine[] {
-  const occupants = new Map(
-    village.villagers.map((villager) => [
-      villager.characterId,
-      names.get(villager.characterId) ?? villager.cardSnapshot.name,
-    ]),
-  );
-  const lines: VillageHomeLine[] = [];
-  for (const place of village.venues) {
-    if (place.occupancy.playerHome) {
-      lines.push({
-        isPlayerHome: true,
-        occupant: "",
-        building: place.occupancy.homeKind,
-        buildingName: place.occupancy.homeKind ? village.homeBuildingNames?.[place.occupancy.homeKind] : undefined,
-        venueName: place.name,
-      });
-    }
-    for (const residentId of venueResidentIds(place)) {
-      const occupant = occupants.get(residentId) ?? names.get(residentId) ?? "";
-      if (!occupant) continue;
-      lines.push({
-        isPlayerHome: false,
-        occupant,
-        building: place.occupancy.homeKind,
-        buildingName: place.occupancy.homeKind ? village.homeBuildingNames?.[place.occupancy.homeKind] : undefined,
-        venueName: place.name,
-      });
-    }
-  }
-  return lines;
 }
 function preferredVillagerPlace(
   village: VillageState,

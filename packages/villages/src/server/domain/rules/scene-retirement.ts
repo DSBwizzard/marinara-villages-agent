@@ -5,7 +5,7 @@ import { pendingProgressTurns } from "./scene-record.js";
 import { asRecord } from "./coerce.js";
 import { EXCHANGE_DOMAINS } from "../models/exchange-model.js";
 
-/** Do not let permissive compatibility decoding turn corrupt saved work into a settled Scene. */
+/** Corrupt saved work cannot become a settled Scene. */
 export function sceneRetirementSourceIsValid(value: unknown): boolean {
   const raw = asRecord(value);
   if (raw.version !== 4 || raw.status !== "closed" || typeof raw.id !== "string" || !raw.id) return false;

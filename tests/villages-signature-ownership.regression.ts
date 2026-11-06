@@ -2,8 +2,7 @@ import assert from "node:assert/strict";
 import { PNG } from "pngjs";
 import {
   createActivationScope,
-  installDefaultActivation,
-  scopedActivation,
+  activationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import {
   coerceVillageState,
@@ -37,6 +36,7 @@ function documents(name: string) {
     wishSystemVersion: 3,
     villagers: [
       {
+        letterFontId: "caveat",
         characterId: "same",
         addedAt: stamp,
         cardSnapshot: {
@@ -196,26 +196,28 @@ const paused = fixture("paused-A"),
   fresh = fixture("fresh-B");
 const releaseA = ownerA.run(() => configureResidentSignatures(paused.service));
 const releaseB = ownerB.run(() => configureResidentSignatures(fresh.service));
-const clearA = installDefaultActivation(ownerA, () => {});
-paused.pauseRead();
-const delayed = generateResidentSignature("same", action);
+
+ownerA.run(() => paused.pauseRead());
+const delayed = ownerA.run(() => generateResidentSignature("same", action));
 await paused.entered.promise;
-const clearB = installDefaultActivation(ownerB, () => {});
+
 paused.gate.resolve();
 assert.equal((await delayed).saved?.name, "paused-A");
-assert(paused.events.every((event) => event.endsWith("paused-A")));
+ownerB.run(() => assert(paused.events.every((event) => event.endsWith("paused-A"))));
 assert.deepEqual(fresh.events, []);
-ownerA.run(releaseA);
-clearA();
+ownerB.run(() => ownerA.run(releaseA));
+
 ownerA.dispose();
-assert.equal((await readResidentSignature("same")).status, "local");
+await ownerB.run(async () => assert.equal((await readResidentSignature("same")).status, "local"));
 const missing = createActivationScope();
-await assert.rejects(
-  missing.run(() => generateResidentSignature("same", action)),
-  /not configured/,
+await ownerB.run(() =>
+  assert.rejects(
+    missing.run(() => generateResidentSignature("same", action)),
+    /not configured/,
+  ),
 );
-ownerB.run(releaseB);
-clearB();
+ownerB.run(() => ownerB.run(releaseB));
+
 ownerB.dispose();
 await assert.rejects(
   ownerB.run(() => readResidentSignature("same")),
@@ -265,7 +267,7 @@ try {
       if (path === "/api/connections") return Response.json([{ id: "mock-image", provider: "image_generation" }]);
       if (path === "/api/characters/avatar-generation") {
         requests++;
-        assert.equal(scopedActivation(), one);
+        assert.equal(activationScope(), one);
         assert(
           [...store.rows.values()].some((row) => row.kind === "resident-signature" && row.data.status === "running"),
         );
@@ -276,7 +278,7 @@ try {
       if (path === "/api/image-metadata/inspect") return Response.json({ width: 24, height: 16 });
       if (path === "/api/global-gallery/folders") return Response.json([{ id: "villages", name: "Villages" }]);
       if (path === "/api/global-gallery/upload" && init?.method === "POST") {
-        uploadOwners.push(scopedActivation());
+        uploadOwners.push(activationScope());
         return Response.json({
           id: `art-${uploadOwners.length}`,
           url: `/api/global-gallery/art-${uploadOwners.length}/file`,

@@ -1,3 +1,4 @@
+import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
 import { venueDisplayZones } from "../packages/villages/src/client/features/venues/venue-view.js";
 import {
   canOccupyZone,
@@ -751,7 +752,7 @@ planningWorld.villagers = ["visitor", "trina"].map((characterId) => {
       flexible: true,
     },
   ];
-  return { characterId, agenda, cardSnapshot: { name: characterId }, wishes: [] };
+  return { letterFontId: "caveat", characterId, agenda, cardSnapshot: { name: characterId }, wishes: [] };
 }) as any;
 const socialPlan = {
   id: "planned-hours",
@@ -916,7 +917,20 @@ async function recordCurrentInvitation(scene: any, line: any, operationId: strin
   const venue = world.venues.find((row) => row.id === "home")!;
   const current = structuredClone(scene);
   current.lines = [...current.lines.filter((row: any) => row.id !== line.id), { ...line, kind: "dialogue" }];
-  current.submissions.push({ mode: "chat", id: operationId, at: line.at, replyLineIds: [line.id] });
+  current.submissions.push({
+    mode: "chat",
+    id: operationId,
+    at: line.at,
+    replyLineIds: [line.id],
+    processing: createExchangeProcessing({
+      seed: current.villageSeed!,
+      sceneId: current.id,
+      submissionId: operationId,
+      order: current.submissions.length + 1,
+      lineIds: [line.id],
+      actionReceiptIds: [],
+    }),
+  });
   const key = "villages-venue-visit-" + current.id;
   records.set(key, {
     id: key,
@@ -960,14 +974,14 @@ async function recordCurrentInvitation(scene: any, line: any, operationId: strin
 async function main() {
   try {
     failSceneCreate = true;
-    await assert.rejects(() => enterVenue("home", undefined, "", undefined, "bedroom"), /fixture Scene create failed/);
+    await assert.rejects(() => enterVenue("home", "bedroom"), /fixture Scene create failed/);
     assert.equal(
       (await readVillageState({ memories: true })).venues[0].access!.permissions[0].sceneId,
       null,
       "Failed initial Scene save cannot consume a visit.",
     );
     failSceneCreate = false;
-    let entered = await enterVenue("home", undefined, "", undefined, "bedroom");
+    let entered = await enterVenue("home", "bedroom");
     assert.equal(entered.zoneId, "bedroom");
     assert.equal((await readVillageState({ memories: true })).venues[0].access!.permissions[0].sceneId, entered.id);
     const gapManager = "npc:claim-gap-manager",
@@ -1166,6 +1180,7 @@ async function main() {
     );
     await endVenueSession(entered.id);
     const managementWorld = defaultVillageState();
+    managementWorld.seed = "management-world";
     managementWorld.foundedAt = stamp;
     managementWorld.setupAt = stamp;
     managementWorld.visitMemoryBackfilled = true;
@@ -1173,6 +1188,7 @@ async function main() {
     managementWorld.villagers = known
       .filter((id) => id !== "player")
       .map((characterId) => ({
+        letterFontId: "caveat",
         characterId,
         cardSnapshot: { id: characterId, revision: 1, sourceStatus: "available", name: characterId, capturedAt: stamp },
         addedAt: stamp,
@@ -1212,7 +1228,7 @@ async function main() {
         known,
       );
     });
-    const escortedArrival = await enterVenue("home", undefined, "", undefined, "office");
+    const escortedArrival = await enterVenue("home", "office");
     assert.equal(escortedArrival.zoneId, "office", "Initial entry uses captured attendance for the named escort.");
     await endVenueSession(escortedArrival.id);
     await mutateVillageState((current) => {
@@ -1220,14 +1236,14 @@ async function main() {
         "exterior";
     });
     await assert.rejects(
-      () => enterVenue("home", undefined, "", undefined, "office"),
+      () => enterVenue("home", "office"),
       { name: "VillagesRequestError" },
       "An absent escort cannot permit initial entry.",
     );
     await mutateVillageState((current) => {
       current.villagers.find((resident) => resident.characterId === "jim")!.agenda = null;
     });
-    const arrival = await enterVenue("home", undefined, "", "outside", "exterior");
+    const arrival = await enterVenue("home", "exterior");
     const speechAt = new Date().toISOString();
     const invitationLine = {
       id: "immediate-line",
@@ -1282,6 +1298,14 @@ async function main() {
         {
           mode: "chat",
           id: "standing-turn",
+          processing: createExchangeProcessing({
+            seed: arrival.villageSeed!,
+            sceneId: "standing-scene",
+            submissionId: "standing-turn",
+            order: 0,
+            lineIds: ["standing-line"],
+            actionReceiptIds: [],
+          }),
           at: standingAt,
           replyLineIds: ["standing-line"],
           liveProposals: {
@@ -1672,11 +1696,32 @@ async function main() {
       {
         mode: "chat",
         id: "saved-ban-turn",
+        processing: createExchangeProcessing({
+          seed: banScene.villageSeed,
+          sceneId: banScene.id,
+          submissionId: "saved-ban-turn",
+          order: 0,
+          lineIds: ["saved-ban-line"],
+          actionReceiptIds: [],
+        }),
         at: new Date().toISOString(),
         replyLineIds: ["saved-ban-line"],
         accessEvents: savedAccessEvents(banBatch),
       },
-      { mode: "chat", id: "later-unrelated-turn", at: stamp, replyLineIds: [] },
+      {
+        mode: "chat",
+        id: "later-unrelated-turn",
+        at: stamp,
+        replyLineIds: [],
+        processing: createExchangeProcessing({
+          seed: banScene.villageSeed,
+          sceneId: banScene.id,
+          submissionId: "later-unrelated-turn",
+          order: 1,
+          lineIds: [],
+          actionReceiptIds: [],
+        }),
+      },
     ];
     records.set("villages-venue-visit-" + banScene.id, {
       id: "villages-venue-visit-" + banScene.id,
@@ -1736,6 +1781,14 @@ async function main() {
         {
           mode: "chat",
           id: "old-reply-turn",
+          processing: createExchangeProcessing({
+            seed: "previous-village-seed",
+            sceneId: "previous-world-reply",
+            submissionId: "old-reply-turn",
+            order: 0,
+            lineIds: ["previous-world-line"],
+            actionReceiptIds: [],
+          }),
           at: stamp,
           replyLineIds: ["previous-world-line"],
           invitationSignal: {
@@ -1922,7 +1975,7 @@ async function main() {
     "Villages Venue access: evaluator, authority, hours, replay, privacy, multiple Zones and recovery passed (mock document host; no model requests).",
   );
 }
-void main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

@@ -150,7 +150,6 @@ for (const consumer of ["backlog", "operation", "restart"] as const) {
   try {
     await populate(fixture, 8);
     await fixture.repository.changeSession(sceneId, (scene) => {
-      scene.processingVersion = 1;
       mutableSceneSubmission(scene, "turn:7")!.processing!.domains.memories.status = "pending";
     });
     if (consumer === "restart")

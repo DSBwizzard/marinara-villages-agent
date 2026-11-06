@@ -1,8 +1,5 @@
 import assert from "node:assert/strict";
-import {
-  createActivationScope,
-  installDefaultActivation,
-} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
+import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import {
   configureTownMapReview,
   updateVillageMap,
@@ -31,22 +28,23 @@ scopeA.run(() => {
 scopeB.run(() => {
   releaseB = configureTownMapReview(b.service);
 });
-const restoreA = installDefaultActivation(scopeA, () => {});
-const pending = updateVillageMap("map-house", {
-  expectedRevision: 1,
-  image: image("A"),
-  placements: [{ venueId: "home", x: 0.8, y: 0.8 }],
-});
+
+const pending = scopeA.run(() =>
+  updateVillageMap("map-house", {
+    expectedRevision: 1,
+    image: image("A"),
+    placements: [{ venueId: "home", x: 0.8, y: 0.8 }],
+  }),
+);
 await waiting;
-const restoreB = installDefaultActivation(scopeB, () => {});
-resume();
+
+scopeB.run(() => resume());
 await pending;
 assert.equal(a.state.venues[0].presentation.x, 0.8);
 assert.equal(b.state.venues[0].presentation.x, 0.3, "A's in-flight operation cannot mutate a later activation");
-releaseA();
-await updateVillageMap("map-house", { expectedRevision: 1, name: "B" });
+scopeB.run(() => releaseA());
+await scopeB.run(() => updateVillageMap("map-house", { expectedRevision: 1, name: "B" }));
 assert.equal(b.state.maps[0].name, "B");
-restoreB();
-restoreA();
+
 releaseB();
 console.log("Map operations remain owned by the activation that admitted them");

@@ -2,7 +2,6 @@ import type { SpeechDelivery, SpeechPresentation } from "../../../shared/helpers
 import type { StagingCue } from "../../../shared/helpers/scene-staging.js";
 import type { ProjectSpeechContext, ProjectSpeechProposal } from "../rules/project-interpretation.js";
 import type { ResponseDiagnostics } from "../rules/response-diagnostics.js";
-import type { AttentionPlan } from "../rules/scene-attention.js";
 import type { ContactIntent, ContactMove, ContactRelay, DoorwayContact } from "../rules/venue-contact.js";
 import type { VenueSceneChange } from "../rules/venue-scene-state.js";
 import type { ExchangeProcessing } from "./exchange-model.js";
@@ -29,15 +28,12 @@ export type VenueLine = {
   physicalIdsAfter?: string[];
   /** Server-authored attendance notice, retained for staging but outside the dialogue walk. */
   presenceChange?: true;
-  remoteDelivery?: "loud";
   contactHidden?: boolean;
   attentionEvidence?: boolean;
   contactReport?: boolean;
   kind?: "narration" | "dialogue" | "side" | "whisper";
   delivery?: SpeechDelivery;
   presentation?: SpeechPresentation;
-  expression?: string;
-  gazeAt?: string;
   staging?: StagingCue[];
   targetId?: string;
   asideFor?: string;
@@ -61,7 +57,6 @@ export type VenueSubmission = {
     >
   >;
   zoneEventsVersion?: 1;
-  attention?: AttentionPlan;
   wishProposals?: WishProposal[];
   wishAuthority?: import("../rules/social-wishes.js").WishAuthority;
   wishProposalError?: string;
@@ -152,8 +147,6 @@ export type VenueRecordEvent = {
   detail?: string;
 };
 export type VenueScene = {
-  /** Captured at creation; unmarked saved Scenes keep their two-stage contract. */
-  gmVersion?: 1;
   /** Provisional writer cast, validated before publication; never persisted as Scene authority. */
   pendingNpcAdmissions?: import("../rules/npc-participation.js").NpcAdmission[];
   /** Private captured writing context; never part of a client projection. */
@@ -162,11 +155,10 @@ export type VenueScene = {
   semanticVersion?: 2;
   semanticIntent?: import("./semantic-model.js").SemanticIntent;
   version: 4;
-  processingVersion?: 1;
   changeSequence?: number;
   villageSeed?: string;
   sceneRevision: number;
-  /** Absent on saved encounters that retain their original frozen moment. */
+  /** Interactive Scenes follow the Village clock; noninteractive memory inputs omit this marker. */
   liveSceneVersion?: 1;
   operation?: VenueOperation;
   /** Idempotent free navigation, separate from conversational turns. */
@@ -185,7 +177,6 @@ export type VenueScene = {
     outcome: "unknown";
     acknowledgedAt: string;
   }[];
-  stagingVersion?: 1;
   id: string;
   placeId: string;
   placeName: string;
@@ -196,23 +187,18 @@ export type VenueScene = {
   pendingAccessClaim?: string;
   pendingRoomQuestions?: string[];
   pendingProjectQuestions?: string[];
-  privateSpaceId?: string;
   accompanying?: { characterId: string; zoneId: string }[];
   doorwayContacts?: DoorwayContact[];
   entryOffers?: { zoneId: string; label: string; controllerId: string; accompanies: boolean }[];
   /** Ephemeral prompt context; never stored or disclosed. */
   contactGeneration?: {
     zoneEvents?: boolean;
-    attention?: AttentionPlan;
-    acoustics?: boolean;
     venue?: import("./world.js").VillageVenue;
-    replyAudiences?: Record<string, string[]>;
     instruction: string;
     localIds: string[];
     remoteIds: string[];
     /** Selected writers only; physical attendance and witnesses remain independent. */
     actorIds?: string[];
-    delivery?: "voice" | "loud";
   };
   departedIds?: string[];
   /** Server-only destinations for validated forced departures, never another Scene's cast. */
@@ -223,7 +209,6 @@ export type VenueScene = {
   startedAt: string;
   endedAt: string;
   lastActivityAt: string;
-  clockShiftMs?: number;
   endReason: "player" | "scene" | "inactivity" | "debug" | "";
   memoryMode: "live";
   status: "opening" | "active" | "closing" | "closed";
@@ -251,7 +236,6 @@ export type VenueReplyLine = {
   soundOnly?: VenueLine["soundOnly"];
   attentionEvidence?: boolean;
   role?: "user" | "assistant";
-  evidenceId?: string;
   kind: NonNullable<VenueLine["kind"]>;
   delivery?: SpeechDelivery;
   presentation?: SpeechPresentation;
@@ -260,11 +244,8 @@ export type VenueReplyLine = {
   heardBy: string[];
   viaDoorway?: boolean;
   physicalIdsAfter?: string[];
-  remoteDelivery?: "loud";
   contactHidden?: boolean;
   contactReport?: boolean;
-  expression?: string;
-  gazeAt?: string;
   staging?: StagingCue[];
   targetId?: string;
   anchorIndex?: number;

@@ -8,11 +8,6 @@ type SpriteImage = {
   isDefault?: boolean;
 };
 
-export function spriteFacing(index: number, targetIndex: number): SpriteFacing {
-  if (targetIndex < 0 || targetIndex === index) return "front";
-  return targetIndex < index ? "left" : "right";
-}
-
 export function selectSpriteImage(
   images: readonly SpriteImage[],
   expression: string,

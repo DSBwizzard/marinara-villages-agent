@@ -1,15 +1,8 @@
 import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
 import { randomUUID } from "node:crypto";
-import {
-  activationScope,
-  bindActivationService,
-  createActivationScope,
-  installDefaultActivation,
-  scopedActivation,
-} from "../adapters/engine/activation-scope.js";
+import { activationScope, bindActivationService } from "../adapters/engine/activation-scope.js";
 import { villagesAgentConnectionId, villagesAgentImageConnectionId } from "../adapters/engine/agent-config.js";
 import {
-  captureMissingVillagerCardColors,
   findPlayerPersona,
   findVillagerCard,
   listPlayerPersonas,
@@ -786,9 +779,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseVillageSnapshot = configureVillageSnapshot(
     createVillageSnapshot({
       readVillageState,
-      mutateVillageState,
       listVillagerCards,
-      captureMissingVillagerCardColors,
       rollActiveAgendas,
       sceneQueries,
       backgroundWorkSummaries,
@@ -988,10 +979,9 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
         if (!receipt || receipt.villageSeed !== state.seed) return null;
         return {
           ...receipt,
-          recordEvents: filterRelationshipNotices(
-            [...new Map(receipt.recordEvents.map((event) => [event.id, event])).values()],
-            undefined,
-          ).filter((event) => !state.dismissedNoticeIds.includes(event.id)),
+          recordEvents: filterRelationshipNotices([
+            ...new Map(receipt.recordEvents.map((event) => [event.id, event])).values(),
+          ]).filter((event) => !state.dismissedNoticeIds.includes(event.id)),
         };
       },
     }),
@@ -1224,27 +1214,11 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     release();
     releaseMetrics();
   };
-  return { releaseGraph, invalidateHost: release };
+  return releaseGraph;
 }
 
-/** Production uses its explicit owner; direct callers retain synchronous legacy selection. */
+/** Configure only the activation selected by the current call. */
 export function configureVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: object): () => void {
-  if (scopedActivation()) return connectVillagesRuntime(next, backendIdentity).releaseGraph;
-  const scope = createActivationScope();
-  let graph: ReturnType<typeof connectVillagesRuntime>;
-  try {
-    graph = scope.run(() => connectVillagesRuntime(next, backendIdentity));
-  } catch (error) {
-    scope.dispose();
-    throw error;
-  }
-  const clearDefault = installDefaultActivation(scope, graph.invalidateHost);
-  return scope.bind(() => {
-    try {
-      graph.releaseGraph();
-    } finally {
-      scope.dispose();
-      clearDefault();
-    }
-  });
+  if (!activationScope()?.active) throw new Error("An explicit Villages activation is required.");
+  return connectVillagesRuntime(next, backendIdentity);
 }

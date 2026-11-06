@@ -312,7 +312,6 @@ export function createSemanticService(ports: SemanticPorts) {
             venue,
             scene,
             savedInput.context.actors.map((actor) => actor.id),
-            true,
             "redundant",
             true,
           );
@@ -545,11 +544,6 @@ export function createSemanticService(ports: SemanticPorts) {
           };
           access.results.push(result);
         }
-        if (
-          access.results.filter((row) => ["invite-now", "invite-later"].includes(row.outcome)).length > 1 &&
-          access.checks.some((check) => !asRecord(check.facts).accessCommand)
-        )
-          throw badGateway("Multiple legacy invitations require separate exchanges. The draft is preserved.");
         const permissions = asRecord(effects.relationshipChanges).permissions;
         const authority = {
           physical: !!raw.action,

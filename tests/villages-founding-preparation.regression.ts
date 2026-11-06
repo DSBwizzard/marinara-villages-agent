@@ -72,6 +72,7 @@ function fixture(seeded = true) {
     townMapImageSetAt: stamp,
     foundingPreparation: { status: "pending", completedIds: [], currentId: "", error: "", venueDetailsSeeded: seeded },
     villagers: names.map((name, index) => ({
+      letterFontId: "caveat",
       characterId: ["aqua", "feddy", "sneak"][index],
       admission: {
         homeworld: "Othiras",

@@ -1,9 +1,6 @@
 import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
-import {
-  createActivationScope,
-  installDefaultActivation,
-} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
+import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import {
   coerceVillageState,
@@ -52,6 +49,7 @@ function fixture(name: string) {
     foundedAt: stamp,
     foundingPreparation: { status: "pending", completedIds: [], currentId: "", error: "", venueDetailsSeeded: false },
     villagers: ["first", "second"].map((id) => ({
+      letterFontId: "caveat",
       characterId: id,
       addedAt: stamp,
       cardSnapshot: { id, name: id, revision: 1, sourceStatus: "available", capturedAt: stamp },
@@ -237,41 +235,43 @@ async function scopedAndDefaultDispatch() {
     missing = createActivationScope();
   const releaseA = ownerA.run(() => configureFoundingPreparation(a.service));
   const releaseB = ownerB.run(() => configureFoundingPreparation(b.service));
-  const clearA = installDefaultActivation(ownerA, () => {});
-  const pendingA = prepareFoundedVillage();
-  assert.equal(pendingA, ownerA.run(prepareFoundedVillage));
-  const clearB = installDefaultActivation(ownerB, () => {});
-  const pendingB = prepareFoundedVillage();
+
+  const pendingA = ownerA.run(() => prepareFoundedVillage());
+  ownerA.run(() => assert.equal(pendingA, ownerA.run(prepareFoundedVillage)));
+
+  const pendingB = ownerB.run(() => prepareFoundedVillage());
   try {
-    assert.throws(() => missing.run(prepareFoundedVillage), /founding preparation is not configured/);
+    ownerB.run(() => assert.throws(() => missing.run(prepareFoundedVillage), /founding preparation is not configured/));
     await Promise.all([a.entered.promise, b.entered.promise]);
     a.gate.resolve();
     await pendingA;
-    assert.match(a.state().venues[0].zones!.find((zone) => zone.kind === "public")!.description, /scoped-A$/);
-    releaseA();
+    ownerB.run(() =>
+      assert.match(a.state().venues[0].zones!.find((zone) => zone.kind === "public")!.description, /scoped-A$/),
+    );
+    ownerB.run(() => releaseA());
     ownerA.dispose();
-    clearA();
-    assert.throws(() => ownerA.run(prepareFoundedVillage), /founding preparation is not configured/);
+
+    ownerB.run(() => assert.throws(() => ownerA.run(prepareFoundedVillage), /founding preparation is not configured/));
     b.gate.resolve();
     await pendingB;
-    assert.match(b.state().venues[0].zones!.find((zone) => zone.kind === "public")!.description, /scoped-B$/);
-    const snapshot = await foundingPreparationSnapshot();
+    ownerB.run(() =>
+      assert.match(b.state().venues[0].zones!.find((zone) => zone.kind === "public")!.description, /scoped-B$/),
+    );
+    const snapshot = await ownerB.run(() => foundingPreparationSnapshot());
     assert.equal(snapshot.name, "scoped-B");
-    await prepareFoundedVillage();
+    await ownerB.run(() => prepareFoundedVillage());
     assert.deepEqual(b.calls, ["first", "second"]);
   } finally {
     a.gate.resolve();
     b.gate.resolve();
     await Promise.allSettled([pendingA, pendingB]);
     if (ownerA.active) {
-      releaseA();
+      ownerB.run(() => releaseA());
       ownerA.dispose();
     }
-    releaseB();
+    ownerB.run(() => releaseB());
     ownerB.dispose();
     missing.dispose();
-    clearA();
-    clearB();
   }
 }
 async function pendingSnapshotResumes() {
@@ -334,7 +334,7 @@ async function main() {
 const watchdog = setTimeout(() => {
   throw new Error("Founding ownership scenarios did not finish");
 }, 20000);
-main()
+await main()
   .catch((error) => {
     console.error(error);
     process.exitCode = 1;

@@ -34,6 +34,7 @@ const artworkId = "a-" + randomUUID(),
   expressionId = "e-" + randomUUID();
 world.villagers = [
   {
+    letterFontId: "caveat",
     characterId: "a",
     addedAt: "2026-11-01T00:00:00Z",
     wishes: [],
@@ -92,7 +93,6 @@ const sprite = {
 world.villagers[0].sprite = sprite as any;
 const scene = coerceSession({
   version: 4,
-  gmVersion: 1,
   semanticVersion: 2,
   id: "sprite-scene",
   placeId: "studio",
@@ -208,7 +208,6 @@ assert.equal(local[0].expression, "e-side");
 const admission = {
   interactionScopeVersion: 6,
   writingContractVersion: 4,
-  gmVersion: 1,
   semanticPipelineVersion: 3,
   residentActionsVersion: 2,
 };
@@ -229,11 +228,10 @@ for (const failure of ["none", "validation-input", "presentation-publish", "inva
     paid = 0,
     rejected = 0;
   world.villagers[0].sprite = sprite as any;
-  const gmAdmission = { ...admission, gmVersion: 1, writingContractVersion: 4 };
+  const gmAdmission = { ...admission, writingContractVersion: 4 };
   const gmScene = {
     ...writingScene,
     id: "gm-storage-" + failure,
-    gmVersion: 1,
     operation: { input: gmAdmission },
   } as typeof scene;
   Object.assign(gmScene, zoneEventScene(gmScene, world.venues[0]));
@@ -247,7 +245,6 @@ for (const failure of ["none", "validation-input", "presentation-publish", "inva
     measurePipeline: async (_label: string, _metadata: unknown, work: () => Promise<unknown>) => work(),
     runtimeDebug() {},
     venueOperationId: () => gmScene.id,
-    venueOperationInput: () => gmAdmission,
     refreshZoneParticipants: async (current: unknown) => current,
     venueSavedCheckpoint: (key: string) => retained.get(key),
     venueCheckpoint: async (key: string, work: () => Promise<unknown>) => {
@@ -310,8 +307,8 @@ for (const failure of ["none", "validation-input", "presentation-publish", "inva
       );
     } else {
       const written = await gmWriter.generate(gmScene, "", "chat", "", null);
-      assert.equal(written.lines[0].expression, undefined);
-      assert.equal(written.lines[0].gazeAt, undefined);
+      assert(!Object.hasOwn(written.lines[0], "expression"));
+      assert(!Object.hasOwn(written.lines[0], "gazeAt"));
       assert.equal(written.lines[0].staging![0].expression, "e-first");
     }
     assert.equal(paid, 1);

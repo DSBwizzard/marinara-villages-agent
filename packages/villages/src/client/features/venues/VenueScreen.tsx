@@ -240,7 +240,6 @@ function ZoneArtwork({
   const upload = useRef<HTMLInputElement>(null);
   const artwork = zone.dayNight && zone.nightImage && night ? zone.nightImage : zone.image;
   const disabled = busy || !!placeBusyId;
-  const spaceClass = zone.kind === "exterior" ? undefined : zone.venueClass;
   return (
     <>
       <div className={`${ELEMENT_TAG}-zone-artwork-frame`}>
@@ -290,7 +289,7 @@ function ZoneArtwork({
               aria-label="Generate new picture"
               className={`${ELEMENT_TAG}-button`}
               disabled={disabled || zone.pictureGenerateAvailable === false}
-              onClick={() => void drawPlaceImage(place.id, spaceClass, zone.ownerId ?? "", zone.id)}
+              onClick={() => void drawPlaceImage(place.id, zone.id)}
             >
               {zone.image ? "Generate new" : "Generate"}
             </button>
@@ -314,7 +313,7 @@ function ZoneArtwork({
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 event.target.value = "";
-                void keepPlaceImage(place.id, file, spaceClass, zone.ownerId ?? "", zone.id);
+                void keepPlaceImage(place.id, zone.id, file);
               }}
             />
             {zone.image || zone.pictureReference ? (
@@ -323,7 +322,7 @@ function ZoneArtwork({
                 aria-label="Remove artwork"
                 className={`${ELEMENT_TAG}-button`}
                 disabled={disabled}
-                onClick={() => void dropPlaceImage(place.id, spaceClass, zone.ownerId ?? "", zone.id)}
+                onClick={() => void dropPlaceImage(place.id, zone.id)}
               >
                 Remove
               </button>
@@ -497,7 +496,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
     venueEditNotice,
     planVenueRenovation,
   } = controller;
-  const lighting = useVillageLighting(snapshot?.village, snapshot?.clock?.paused);
+  const lighting = useVillageLighting(snapshot?.village);
   const place = snapshot?.settings.venues.find((venue) => venue.id === venueId);
   const navigationSelection = useMemo(
     () => ({ venueId, venueZoneKey, venueSection }),
@@ -583,9 +582,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
       : place.presentation.image;
   const map = snapshot.settings.maps?.find((entry) => entry.id === place.presentation.mapId);
   const visit = () =>
-    activeScene && room.placeId === place.id
-      ? setScreen("room")
-      : void openRoom(place, undefined, "", "outside", exterior?.id);
+    activeScene && room.placeId === place.id ? setScreen("room") : void openRoom(place, exterior?.id);
   const selectPlace = async (id: string) => {
     if (id === place.id) return true;
     if (!(await canLeave())) return false;

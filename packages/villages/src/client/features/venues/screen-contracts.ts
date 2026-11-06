@@ -1,10 +1,5 @@
 import type { useVenueScreenCommands } from "./screen-commands.js";
-import type {
-  BackgroundWork,
-  VenueClass,
-  VillageVenue,
-  VillageVillagerView,
-} from "../../../shared/contracts/village.js";
+import type { BackgroundWork, VillageVenue, VillageVillagerView } from "../../../shared/contracts/village.js";
 
 import type { useLeaveVenue } from "./actions.js";
 
@@ -21,37 +16,15 @@ export type VenueScreenController = {
   readonly openVenueProject: (id: string) => void;
   readonly openVenueRequests: (venueId: string) => void;
   readonly busy: boolean;
-  readonly drawPlaceImage: (
-    venueId: string,
-    spaceClass?: VenueClass,
-    privateOwnerId?: string,
-    zoneId?: string,
-  ) => Promise<void>;
-  readonly dropPlaceImage: (
-    venueId: string,
-    spaceClass?: VenueClass,
-    privateOwnerId?: string,
-    zoneId?: string,
-  ) => Promise<void>;
+  readonly drawPlaceImage: (venueId: string, zoneId: string) => Promise<void>;
+  readonly dropPlaceImage: (venueId: string, zoneId: string) => Promise<void>;
   readonly homeBuildings: readonly import("../../../shared/contracts/village").VillageBuildingOption[];
-  readonly keepPlaceImage: (
-    venueId: string,
-    file: File | undefined,
-    spaceClass?: VenueClass,
-    privateOwnerId?: string,
-    zoneId?: string,
-  ) => Promise<void>;
+  readonly keepPlaceImage: (venueId: string, zoneId: string, file: File | undefined) => Promise<void>;
   readonly leaveVenue: ReturnType<typeof useLeaveVenue>;
   readonly movePrivateZoneId: VenuesState["movePrivateZoneId"];
   readonly moveTargetId: VenuesState["moveTargetId"];
   readonly nameOfCharacter: (characterId: string | null) => string;
-  readonly openRoom: (
-    place: VillageVenue,
-    spaceClass?: VenueClass,
-    privateOwnerId?: string,
-    entryArea?: "outside" | "shared" | "private" | "public",
-    zoneId?: string,
-  ) => Promise<void>;
+  readonly openRoom: (place: VillageVenue, zoneId?: string) => Promise<void>;
   readonly placeBusyId: VenuesState["placeBusyId"];
   readonly placeProblem: VenuesState["placeProblem"];
   readonly playerMovePrivateZoneId: VenuesState["playerMovePrivateZoneId"];

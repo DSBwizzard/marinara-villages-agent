@@ -238,7 +238,7 @@ async function main() {
     "State service read-only hydration, outbox refresh, retry baselines, post-commit failures and storage capture passed.",
   );
 }
-main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

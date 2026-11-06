@@ -24,6 +24,7 @@ const state = defaultVillageState();
 state.seed = "social-opportunity";
 state.venues = [{ id: "commons", classes: ["workplace"], occupancy: {} }] as any;
 state.villagers = ["ada", "ben"].map((characterId) => ({
+  letterFontId: "caveat",
   characterId,
   cardSnapshot: { name: characterId },
   wishes: [],
@@ -69,6 +70,7 @@ capture.villagers = ["ada", "ben"].map((characterId) => {
   agenda.week.Monday = [block];
   agenda.activeDay!.blocks = [block];
   return {
+    letterFontId: "caveat",
     characterId,
     addedAt: now.toISOString(),
     cardSnapshot: { name: characterId, capturedAt: now.toISOString() },
@@ -174,10 +176,10 @@ for (const patch of [{ opportunityLimit: 7 }, { budgetDate: 12 }, { budgetDate: 
   Object.assign(malformed.returnCatchup!.batch!, patch);
   assert.throws(() => coerceVillageState(malformed), /catch-up allowance/);
 }
-const legacyBatch = structuredClone(tracking);
-delete legacyBatch.returnCatchup!.batch!.budgetDate;
-delete legacyBatch.returnCatchup!.batch!.opportunityLimit;
-assert.deepEqual(coerceVillageState(legacyBatch).returnCatchup, legacyBatch.returnCatchup);
+const undatedBatch = structuredClone(tracking);
+delete (undatedBatch.returnCatchup!.batch! as any).budgetDate;
+delete (undatedBatch.returnCatchup!.batch! as any).opportunityLimit;
+assert.throws(() => coerceVillageState(undatedBatch), /catch-up allowance/);
 const malformedBatch = structuredClone(tracking);
 malformedBatch.returnCatchup!.batch!.opportunities![0]!.actorIds.push("player");
 assert.throws(() => coerceVillageState(malformedBatch), /catch-up opportunities/);

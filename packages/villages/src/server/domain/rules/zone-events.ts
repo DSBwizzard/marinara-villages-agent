@@ -135,88 +135,38 @@ export function zoneEventHearingContext(scene: VenueScene, venue: VillageVenue):
   );
 }
 
-function literalPlayerSpeech(row: Record<string, unknown>, message: string): string {
-  const fail = () => {
-    throw badGateway("The reply invented player speech. Your draft is preserved.");
-  };
-  if (Array.isArray(row.fragments)) {
-    if (!row.fragments.length || row.fragments.length > 24) return fail();
-    let cursor = 0;
-    const fragments = row.fragments.map((value) => {
-      const piece = asTrimmedString(value);
-      const index = piece ? message.indexOf(piece, cursor) : -1;
-      if (index < 0) return fail();
-      cursor = index + piece.length;
-      return piece;
-    });
-    const joined = fragments.join(" ");
-    if (row.text !== undefined && asTrimmedString(row.text) !== joined) return fail();
-    return joined;
-  }
-  const text = asTrimmedString(row.text);
-  if (!text) return fail();
-  if (message.includes(text)) return text;
-  // Narrow repair for joined quoted utterances and speech interrupted by *actions*.
-  // Every retained fragment is literal; no punctuation, names or words are invented.
-  const quotes = [...message.matchAll(/"([^"\n]+)"|“([^”\n]+)”|‘([^’\n]+)’|(?<!\p{L})'([^'\n]+)'(?!\p{L})/gu)].map(
-    (match) => asTrimmedString(match[1] ?? match[2] ?? match[3] ?? match[4]),
-  );
-  const outsideActions = message
-    .split(/\*[^*]*\*/u)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  for (const spans of [quotes, outsideActions]) {
-    for (let start = 0; start < spans.length; start++) {
-      let remaining = text;
-      let count = 0;
-      for (const piece of spans.slice(start)) {
-        if (remaining === piece && count > 0) return text;
-        if (remaining.startsWith(piece + " ")) {
-          remaining = remaining.slice(piece.length + 1);
-          count++;
-        }
-      }
-    }
-  }
-  return fail();
-}
-
 /** Adapt only syntax before the existing parser; segment indexes never change. */
 export function zoneEventReply(raw: Record<string, unknown> | null, message: string): Record<string, unknown> | null {
   if (!raw) return raw;
-  const segments = Array.isArray(raw.segments) ? raw.segments : raw.lines;
+  const segments = raw.segments;
   if (!Array.isArray(segments)) return raw;
   return {
     ...raw,
     heardPlayerBy: [],
     segments: segments.map((value) => {
-      const original = asRecord(value);
-      const row: Record<string, unknown> = {
-        ...original,
-        kind:
-          original.kind ?? (original.speakerId && original.speakerId !== "__venue_scene__" ? "dialogue" : "narration"),
-      };
+      const row = { ...asRecord(value) };
       const spoken = ["dialogue", "side", "whisper"].includes(String(row.kind));
       if (row.delivery !== undefined && !["ordinary", "whisper", "shout"].includes(String(row.delivery)))
         throw badGateway("The reply used an unknown speech delivery. Your draft is preserved.");
       if (row.presentation !== undefined && !["main", "aside"].includes(String(row.presentation)))
         throw badGateway("The reply used an unknown speech presentation. Your draft is preserved.");
       if (spoken) {
-        row.delivery ??= row.kind === "whisper" ? "whisper" : row.loud === true ? "shout" : "ordinary";
+        row.delivery ??= row.kind === "whisper" ? "whisper" : "ordinary";
         row.presentation ??= row.kind === "side" || row.kind === "whisper" ? "aside" : "main";
-        // Retain historical semantic tags for existing evidence consumers, independently
-        // of presentation. New model output always uses kind:dialogue for speech.
+        // Saved evidence tags remain independent of presentation.
         row.kind = row.delivery === "whisper" ? "whisper" : row.presentation === "aside" ? "side" : "dialogue";
       } else {
-        // A sound's loud flag owns its range; speech styling cannot make it private.
+        // Narrated sound carries its own range, independent of speech styling.
         delete row.delivery;
         delete row.presentation;
       }
-      if (row.speakerId === "player" && row.kind !== "sound") {
-        if (!spoken) throw badGateway("The reply invented player speech. Your draft is preserved.");
-        row.text = literalPlayerSpeech(row, message);
+      if (row.speakerId === "player") {
+        const text = asTrimmedString(row.text);
+        if (!spoken || !text || !message.includes(text))
+          throw badGateway("The reply invented player speech. Your draft is preserved.");
+        row.text = text;
       }
-      return { ...row, kind: row.kind === "sound" ? "narration" : row.kind, soundEvent: row.kind === "sound" };
+      return row;
     }),
   };
 }
@@ -239,47 +189,35 @@ export function routeZoneEvents(
   const position = (id: string, index: number) =>
     id === "player"
       ? playerZoneAt(index)
-      : (moves.find((move) => move.characterId === id && move.segment !== undefined && move.segment <= index)?.zoneId ??
-        contactPosition(scene, id));
+      : (moves.find((move) => move.characterId === id && move.segment <= index)?.zoneId ?? contactPosition(scene, id));
   const inZones = (zones: string[], index: number) => ids.filter((id) => zones.includes(position(id, index)));
   parsed.heardPlayerBy = [];
   parsed.lines.forEach((line, index) => {
     const playerZone = playerZoneAt(index);
     const row = asRecord((raw.segments as unknown[])[index]);
-    const sound = row.kind === "sound" || row.soundEvent === true;
-    if (sound && moves.some((move) => move.segment === index))
-      throw badGateway("A sound cannot also establish a movement. Your draft is preserved.");
     if (row.kind === "whisper" && line.kind !== "whisper")
       throw badGateway("A whisper needs a recipient. Your draft is preserved.");
-    const actor = sound ? asTrimmedString(row.speakerId) : line.speakerId;
-    const origin = sound || line.kind !== "narration" ? position(actor, index) : playerZone;
+    const actor = line.speakerId;
+    const origin = line.kind !== "narration" ? position(actor, index) : playerZone;
     const sources = scene.contactGeneration?.actorIds ?? [
       ...(scene.contactGeneration?.localIds ?? scene.activeIds),
       ...(scene.contactGeneration?.remoteIds ?? []),
     ];
     if (
       !origin ||
-      ((sound || line.kind !== "narration") && actor !== "player" && (!ids.includes(actor) || !sources.includes(actor)))
+      (line.kind !== "narration" && actor !== "player" && (!ids.includes(actor) || !sources.includes(actor)))
     )
       throw badGateway("The reply used an unknown sound source. Your draft is preserved.");
     line.zoneId = origin;
     const local = inZones([origin], index);
     const near = [origin, ...contactNeighbors(venue, origin, scene)];
     const spoken = line.kind === "dialogue" || line.kind === "side";
-    const loud = sound ? row.loud === true : speechDelivery(line) === "shout" && spoken;
+    const loud = speechDelivery(line) === "shout" && spoken;
     const loudZones = zoneSoundRange(scene, venue, origin);
     const loudIds = inZones(loudZones, index);
     const playerLoud = loudZones.includes(playerZone);
     const playerNear = near.includes(playerZone);
-    line.heardBy = sound
-      ? loud
-        ? loudIds
-        : inZones(near, index)
-      : spoken
-        ? !loud
-          ? local
-          : inZones(near, index)
-        : local;
+    line.heardBy = spoken && loud ? inZones(near, index) : local;
     if (speechDelivery(line) === "whisper") {
       if (
         !line.targetId ||
@@ -289,14 +227,11 @@ export function routeZoneEvents(
         throw badGateway("A whisper needs a recipient in the same Zone. Your draft is preserved.");
       line.heardBy = local.filter((id) => id === actor || id === line.targetId);
     }
-    if (actor === "player" && !sound) {
+    if (actor === "player") {
       line.role = "user";
       line.speakerId = "";
       line.contactHidden = true;
       line.attentionEvidence = true;
-    } else if (sound) {
-      line.speakerId = "__venue_scene__";
-      line.contactHidden = loud ? !playerLoud : !playerNear;
     } else if (line.kind !== "narration") {
       line.viaDoorway = origin !== playerZone;
       line.contactHidden =
@@ -308,7 +243,6 @@ export function routeZoneEvents(
       const sourceId = asTrimmedString(cue.sourceId);
       const text = asTrimmedString(cue.text);
       if (
-        sound ||
         line.kind !== "narration" ||
         !text ||
         text.length > 300 ||

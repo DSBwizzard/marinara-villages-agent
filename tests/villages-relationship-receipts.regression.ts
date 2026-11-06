@@ -18,8 +18,8 @@ import {
 const village = defaultVillageState();
 village.seed = "relationship-history";
 village.villagers = [
-  { characterId: "ada", wishes: [], cardSnapshot: { name: "Ada" } },
-  { characterId: "ben", wishes: [], cardSnapshot: { name: "Ben" } },
+  { letterFontId: "caveat", characterId: "ada", wishes: [], cardSnapshot: { name: "Ada" } },
+  { letterFontId: "caveat", characterId: "ben", wishes: [], cardSnapshot: { name: "Ben" } },
 ] as any;
 const state = (village.relationshipContext = defaultRelationshipState(village.seed));
 const key = relationshipKey("ada", "player"),

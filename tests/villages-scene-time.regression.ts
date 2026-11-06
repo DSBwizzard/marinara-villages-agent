@@ -50,6 +50,7 @@ function fixture(live = false) {
     ],
     villagers: [
       {
+        letterFontId: "caveat",
         characterId: "a",
         addedAt: at,
         cardSnapshot: { id: "a", name: "Ada", capturedAt: at, revision: 1, sourceStatus: "available" },
@@ -69,7 +70,6 @@ function fixture(live = false) {
     version: 4,
     id: "morning",
     ...(live ? { liveSceneVersion: 1 } : {}),
-    processingVersion: 1,
     villageSeed: state.seed,
     placeId: "square",
     placeName: "Square",

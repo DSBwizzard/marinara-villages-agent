@@ -151,9 +151,6 @@ export function coerceSession(value: unknown): VenueScene {
                   ],
                 }
               : {}),
-            ...(row.remoteDelivery === "loud"
-              ? { remoteDelivery: row.remoteDelivery as VenueLine["remoteDelivery"] }
-              : {}),
             ...(row.contactHidden === true ? { contactHidden: true } : {}),
             ...(row.presenceChange === true ? { presenceChange: true as const } : {}),
             ...(row.attentionEvidence === true ? { attentionEvidence: true } : {}),
@@ -176,11 +173,7 @@ export function coerceSession(value: unknown): VenueScene {
             ...(row.kind === "narration" || row.kind === "dialogue" || row.kind === "side" || row.kind === "whisper"
               ? { kind: row.kind as VenueLine["kind"] }
               : {}),
-            ...(typeof row.expression === "string" ? { expression: row.expression } : {}),
             ...(Array.isArray(row.staging) ? { staging: readStagingCues(row.staging, [...participantIds]) } : {}),
-            ...(row.gazeAt === "player" || (typeof row.gazeAt === "string" && participantIds.has(row.gazeAt))
-              ? { gazeAt: row.gazeAt as string }
-              : {}),
             ...(typeof row.targetId === "string" ? { targetId: row.targetId } : {}),
             ...(row.delivery === "ordinary" || row.delivery === "whisper" || row.delivery === "shout"
               ? { delivery: row.delivery as VenueLine["delivery"] }
@@ -197,8 +190,6 @@ export function coerceSession(value: unknown): VenueScene {
     version: 4,
     changeSequence: Math.max(0, Math.floor(Number(raw.changeSequence) || 0)),
     ...(raw.semanticVersion === 2 ? { semanticVersion: 2 as const } : {}),
-    ...(raw.gmVersion === 1 ? { gmVersion: 1 as const } : {}),
-    ...(raw.processingVersion === 1 ? { processingVersion: 1 as const } : {}),
     ...(raw.villageSeed ? { villageSeed: asString(raw.villageSeed) } : {}),
     sceneRevision: sceneRevision(raw),
     operation: raw.operation as VenueOperation | undefined,
@@ -254,7 +245,6 @@ export function coerceSession(value: unknown): VenueScene {
     pendingProjectQuestions: Array.isArray(raw.pendingProjectQuestions)
       ? raw.pendingProjectQuestions.filter((value): value is string => typeof value === "string").slice(0, 8)
       : [],
-    privateSpaceId: asTrimmedString(raw.privateSpaceId) || undefined,
     pendingAccessClaim: asTrimmedString(raw.pendingAccessClaim) || undefined,
     accessPreviousZones: Object.fromEntries(
       Object.entries(asRecord(raw.accessPreviousZones)).filter(
@@ -310,7 +300,6 @@ export function coerceSession(value: unknown): VenueScene {
     ...(raw.continuity !== undefined ? { continuity: readSceneContinuity(raw.continuity) } : {}),
     endedAt: asString(raw.endedAt),
     lastActivityAt: asString(raw.lastActivityAt) || asString(raw.startedAt),
-    clockShiftMs: typeof raw.clockShiftMs === "number" && Number.isFinite(raw.clockShiftMs) ? raw.clockShiftMs : 0,
     endReason:
       raw.endReason === "player" ||
       raw.endReason === "scene" ||
@@ -318,7 +307,6 @@ export function coerceSession(value: unknown): VenueScene {
       raw.endReason === "debug"
         ? raw.endReason
         : "",
-    ...(raw.stagingVersion === 1 ? { stagingVersion: 1 as const } : {}),
     memoryMode: "live",
     status: raw.status === "opening" || raw.status === "closing" || raw.status === "closed" ? raw.status : "active",
     participants,
@@ -381,7 +369,6 @@ export function coerceSession(value: unknown): VenueScene {
                 ? { physicalContext: row.physicalContext as VenueSubmission["physicalContext"] }
                 : {}),
               ...(row.contact ? { contact: row.contact as ContactIntent } : {}),
-              ...(row.attention ? { attention: row.attention as VenueSubmission["attention"] } : {}),
               ...(Array.isArray(row.speechIdsAtTurn) ? { speechIdsAtTurn: row.speechIdsAtTurn as string[] } : {}),
               ...(row.contactEvidence
                 ? { contactEvidence: row.contactEvidence as VenueSubmission["contactEvidence"] }

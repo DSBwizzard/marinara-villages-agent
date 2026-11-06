@@ -3,10 +3,7 @@ import {
   createProgressTask,
   coerceProgressTasks,
   ingestProgressEvent,
-  revealProgress,
-  reviseProgress,
   submitProgressEvidence,
-  visibleProgress,
   type ProgressDefinition,
   type ProgressEvidence,
   type ProgressRegistry,
@@ -82,18 +79,12 @@ const event = (id: string, excerpt: string, speakerId = "rosa", venueId = "bar")
 });
 
 const task = createProgressTask(definition);
-assert.equal(visibleProgress(task), null);
 ingestProgressEvent([task], event("wrong", "I tasted it", "sneak"), state, registry);
 assert.equal(task.phaseIndex, 0);
 assert.equal(task.attempts.at(-1)?.reason, "No witnessed taste at the bar with the drink present.");
 ingestProgressEvent([task], event("taste", "I tasted it"), state, registry);
 assert.equal(task.phaseIndex, 1);
 assert.equal(task.receipts[0]?.evidence.lineId, "taste");
-assert.equal(visibleProgress(task), null);
-revealProgress(task, "2026-09-29T12:01:00.000Z");
-revealProgress(task, "2026-09-29T12:01:00.000Z", "taste-record");
-assert.equal(visibleProgress(task)?.phases[0]?.requirements[0]?.complete, true);
-assert.deepEqual(visibleProgress(task)?.phases[1]?.requirements, []);
 state.itemPresent = false;
 assert.equal(
   submitProgressEvidence(task, "positive-response", "reply", event("reply", "I like it"), state, registry).status,
@@ -112,8 +103,6 @@ submitProgressEvidence(revised, "taste-record", "scene", proof, state, registry)
 state.itemPresent = true;
 submitProgressEvidence(revised, "taste-record", "scene", proof, state, registry);
 assert.equal(revised.receipts.length, 1);
-reviseProgress(revised, { ...definition, revision: 2 }, [revised.receipts[0]!.id]);
-assert.equal(revised.receipts.length, 1);
-assert.equal(revised.phaseIndex, 0);
+assert.equal(revised.phaseIndex, 1);
 assert.equal(revised.resolvedAt, "");
-console.log("Villages Progress Engine regression: typed proof, hidden progress, replay, resolution, revision ok");
+console.log("Villages Progress Engine regression: typed proof, hidden progress, replay and resolution ok");

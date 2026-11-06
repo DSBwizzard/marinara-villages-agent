@@ -16,7 +16,6 @@ async function main() {
   const scene = {
     version: 4,
     id: sceneId,
-    processingVersion: 1,
     memoryMode: "live",
     villageSeed: state.seed,
     status: "active",
@@ -102,7 +101,7 @@ async function main() {
     release();
   }
 }
-void main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

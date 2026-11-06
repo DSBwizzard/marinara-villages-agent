@@ -39,9 +39,7 @@ async function main() {
   );
   const { deriveVillageMoment } = await import(moduleUrl("packages/villages/src/server/domain/rules/village-clock.ts"));
   const { reconcileVillage } = await import(moduleUrl("packages/villages/src/server/features/world/village.ts"));
-  const { projectHomeLines } = await import(
-    moduleUrl("packages/villages/src/server/domain/rules/village-projections.ts")
-  );
+  const { villageSettings } = await import(moduleUrl("packages/villages/src/server/domain/rules/world-snapshot.ts"));
   const { proposeVillageResidence, decideVillageResidence, completeVillageResidence } = await import(
     moduleUrl("packages/villages/src/server/features/venues/residences.ts")
   );
@@ -242,6 +240,7 @@ async function main() {
       state.lastKnownTimeZone = "Etc/Old";
       state.villagers = [
         {
+          letterFontId: "caveat",
           characterId: "retained",
           cardSnapshot: {
             id: "retained",
@@ -302,6 +301,7 @@ async function main() {
       const week = workingAgendaWeek();
       state.villagers = [
         {
+          letterFontId: "caveat",
           characterId: "lina",
           cardSnapshot: {
             id: "lina",
@@ -374,6 +374,7 @@ async function main() {
     await mutateVillageState((state) => {
       state.villagers = [
         {
+          letterFontId: "caveat",
           characterId: "housing-resident",
           wishes: [],
           cardSnapshot: {
@@ -488,8 +489,8 @@ async function main() {
       "moving without a selected Private Space never creates a room",
     );
     assert.ok(
-      projectHomeLines(await readVillageState(), new Map()).some(
-        (home) => home.occupant === "Rosa" && home.venueName === "The bakery",
+      villageSettings(movedState, { name: "", description: "", personaId: "", missing: false }).venues.some(
+        (home) => home.residentIds?.includes("housing-resident") && home.name === "The bakery",
       ),
       "a move into a public venue remains in the home projection",
     );
@@ -519,7 +520,7 @@ async function main() {
   console.log("Villages continuous time regression: exact time, migration, restart, idempotence, failure, timer ok");
 }
 
-void main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

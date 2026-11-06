@@ -7,7 +7,7 @@ import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { conflict } from "./errors.js";
 import { clearRepairedConditions } from "./narrative-development.js";
 import { applyPlaceUpdate, assertPlaceAuthority, readPlaceUpdate } from "./zone-continuity.js";
-import { canOccupyZone, legacyZoneId, resolveVenueZone, zoneClosed, zoneControllerIds } from "./venue-zones.js";
+import { canOccupyZone, resolveVenueZone, zoneClosed, zoneControllerIds } from "./venue-zones.js";
 
 /** Committed physical proofs survive recent-feed trimming. */
 export function physicalVenueEvents(state: VillageState): VillageVenueEvent[] {
@@ -58,7 +58,8 @@ export function applyVenueSceneChange(
 ): PlaceAfter {
   const venue = findLocation(state, placeId);
   if (!venue) throw conflict("That place is no longer in the Village.");
-  const zone = resolveVenueZone(venue, zoneId || legacyZoneId(venue, area, spaceClass, privateOwnerId));
+  if (!zoneId) throw conflict("The physical change has no captured Zone.");
+  const zone = resolveVenueZone(venue, zoneId);
   if (!zone || zoneClosed(state, venue, zone) || venue.constructionStatus === "worksite")
     throw conflict("Physical changes are unavailable in this Zone.");
   if (area === "private" && zone.ownerId !== privateOwnerId) throw conflict("The private Zone owner changed.");

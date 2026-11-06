@@ -1,6 +1,6 @@
 import type { VillageBackgroundPace } from "../contracts/village.js";
 
-/** One policy for automatic activity; stored pace values remain compatible. */
+/** One policy for automatic activity. */
 export const VILLAGE_ACTIVITY_POLICY = {
   off: { label: "Off", reviews: 0, intervalMs: 0 },
   quiet: { label: "Quiet", reviews: 2, intervalMs: 60 * 60_000 },

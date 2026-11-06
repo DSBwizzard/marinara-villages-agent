@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import Fastify from "fastify";
+import { configureFoundingSuggestions } from "../packages/villages/src/server/features/founding/founding-suggestions.js";
+import { configureFoundingDrafts } from "../packages/villages/src/server/features/founding/founding-drafts.js";
+import { registerFoundingRoutes } from "../packages/villages/src/server/features/founding/routes.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { createDocumentMutator } from "../packages/villages/src/server/adapters/storage/document-store.js";
 import {
@@ -54,6 +58,32 @@ const ports: FoundingSuggestionsPorts = {
 };
 const service = createFoundingSuggestions(ports);
 const input = { actionId: "suggestion-attempt-1", sourceKey: "setting-1" };
+{
+  const app = Fastify();
+  const releaseSuggestions = configureFoundingSuggestions(createFoundingSuggestions(ports));
+  const releaseDrafts = configureFoundingDrafts({
+    suggestStartingVenues: async () => {
+      calls++;
+      return { venues: [] };
+    },
+  } as any);
+  registerFoundingRoutes(app);
+  const before = JSON.stringify([...records]);
+  try {
+    const response = await app.inject({
+      method: "POST",
+      url: "/setup/venues/suggest",
+      payload: { sourceKey: input.sourceKey },
+    });
+    assert.equal(response.statusCode, 400, response.body);
+    assert.equal(calls, 0, "A missing durable action ID cannot dispatch either suggestion path");
+    assert.equal(JSON.stringify([...records]), before, "A refused request creates no saved claim");
+  } finally {
+    await app.close();
+    releaseDrafts();
+    releaseSuggestions();
+  }
+}
 // Receipt returns while the provider is still blocked, with one durable claim.
 assert.equal((await service.requestFoundingSuggestions(input)).status, "running");
 assert.equal(calls, 1);

@@ -54,6 +54,7 @@ async function main() {
     const historyState = defaultVillageState();
     historyState.seed = "bounded-system-history";
     historyState.villagers = ["a", "b", "c"].map((characterId) => ({
+      letterFontId: "caveat",
       characterId,
       cardSnapshot: { id: characterId, name: characterId },
       wishes: [],
@@ -327,7 +328,9 @@ async function main() {
   });
   initializeVenueAccess(venue);
   state.venues = [venue];
-  state.villagers = [{ characterId: "host", cardSnapshot: { id: "host", name: "Host" }, wishes: [] }] as any;
+  state.villagers = [
+    { letterFontId: "caveat", characterId: "host", cardSnapshot: { id: "host", name: "Host" }, wishes: [] },
+  ] as any;
   const stamp = "2026-11-05T20:00:00.000Z";
   const scene = coerceSession({
     version: 4,
@@ -337,9 +340,7 @@ async function main() {
     status: "active",
     startedAt: stamp,
     villageSeed: state.seed,
-    gmVersion: 1,
     semanticVersion: 2,
-    processingVersion: 1,
     activeIds: ["host"],
     participants: [{ characterId: "host", name: "Host", doing: "Waiting" }],
     sceneAttendance: {
@@ -353,7 +354,6 @@ async function main() {
   scene.operation = {
     id: "turn",
     input: {
-      gmVersion: 1,
       semanticPipelineVersion: 3,
       interactionScopeVersion: 6,
       residentMovementReviewVersion: 1,
@@ -607,6 +607,22 @@ async function main() {
   assert.equal(invitations.access?.checks.length, 2);
   assert.equal((invitations.access?.checks[0].facts as any).accessCommand.accompanied, true);
   assert.equal(invitations.access?.results[0].source, "gm");
+  const mixedInvitations = await run(
+    "",
+    response("", {
+      access: [row, { ...row, zoneId: "other" }, { ...row, outcome: "unresolved", conditions: ["after supper"] }],
+    }),
+    [accessLine],
+  );
+  assert.equal(mixedInvitations.access?.checks.length, 3);
+  assert.deepEqual(
+    mixedInvitations.access?.results.map((result) => result.outcome),
+    ["invite-now", "invite-now", "unresolved"],
+  );
+  const mixedCommands = mixedInvitations.access!.checks.map((check) => (check.facts as any).accessCommand);
+  assert(mixedCommands[0] && mixedCommands[1]);
+  assert.notEqual(mixedCommands[0].operationId, mixedCommands[1].operationId);
+  assert.equal(mixedCommands[2], undefined);
   assert.equal(
     (
       await run("", response("", { access: [{ ...row, outcome: "unresolved", conditions: ["after supper"] }] }), [
@@ -810,4 +826,4 @@ async function main() {
     "Current GM local validation preserves full source coverage, authority, private evidence and checkpoint identity without a System purchase.",
   );
 }
-void main();
+await main();

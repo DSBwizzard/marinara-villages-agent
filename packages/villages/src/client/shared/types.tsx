@@ -12,20 +12,6 @@ export type SetupVenueDraft = VillageVenue & {
 };
 
 /**
- * One thing somebody said, already built into the walk the card reads.
- *
- * The split is the Engine's own rule for its Visual Novel presentation — see
- * `splitVillagesParagraphs` — and it is done once, in `villagesWalk`, so that the
- * arrows can count what they are walking: an index means nothing unless something
- * has already decided where the paragraphs are. That is also where the beats are
- * spent, and what comes back is the two lists the drawing needs rather than the
- * three the wire carried.
- *
- * `player` is there because the card walks the whole conversation rather than one
- * half of it, and a card that cannot tell the two voices apart would draw the
- * player's own sentence under the villager's face and name. See `turns`.
- */
-/**
  * The two registers the CARD can draw a step in, and there is one list of them.
  *
  * It is down from four to two, and that is this release rather than a tidy-up.
@@ -227,18 +213,15 @@ export type RoomStep = {
   anchorCursor?: string;
   presentation: StagingPresentation;
   viaDoorway?: boolean;
-  remoteDelivery?: "loud";
   /** A character id, or `""` for the player's own paragraph. */
   speakerId: string;
   /** What is printed over the paragraph: their name, or the player's. */
   name: string;
   player: boolean;
   text: string;
-  asides: Array<VillagesWalkAside & { speakerId?: string; name?: string; expression?: string; gazeAt?: string }>;
+  asides: Array<VillagesWalkAside & { speakerId?: string; name?: string }>;
   register?: VillageBeatRegister;
   delivery?: SpeechDelivery;
-  expression?: string;
-  gazeAt?: string;
 };
 
 /**

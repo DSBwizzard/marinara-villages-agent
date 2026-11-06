@@ -31,6 +31,7 @@ export async function packagedSceneServer(
   });
   world.villagers = [
     {
+      letterFontId: "caveat",
       characterId: "mara",
       addedAt: now,
       cardSnapshot: {
@@ -75,7 +76,6 @@ export async function packagedSceneServer(
   options.configure?.(world, now);
   const scene = coerceSession({
     version: 4,
-    gmVersion: 1,
     liveSceneVersion: 1,
     accompanying: [{ characterId: "mara", zoneId: "common" }],
     id: "browser",
@@ -84,7 +84,6 @@ export async function packagedSceneServer(
     area: "public",
     zoneId: "common",
     villageSeed: world.seed,
-    processingVersion: 1,
     semanticVersion: 2,
     status: "active",
     startedAt: now,

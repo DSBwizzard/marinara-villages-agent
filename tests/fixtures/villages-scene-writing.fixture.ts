@@ -22,7 +22,7 @@ export async function currentScenePrompt(
   mode: "greet" | "chat" | "leave" = "chat",
   message = "What do you think?",
   overrides: Partial<VenueScene> = {},
-  operationInput: ReturnType<SceneWritingPorts["venueOperationInput"]> = {},
+  operationInput: Record<string, unknown> = {},
 ) {
   const snapshot = {
     ...snapshotFromCard(
@@ -42,11 +42,15 @@ export async function currentScenePrompt(
     ...defaultVillageState(),
 
     ...state,
+    seed: state.seed || "prompt-fixture",
     villagers: state.villagers.some((resident) => resident.characterId === card.id)
       ? state.villagers.map((resident) =>
           resident.characterId === card.id ? { ...resident, cardSnapshot: snapshot } : resident,
         )
-      : [...state.villagers, { characterId: card.id, cardSnapshot: snapshot, addedAt: "2026-10-07T12:00:00.000Z" }],
+      : [
+          ...state.villagers,
+          { letterFontId: "caveat", characterId: card.id, cardSnapshot: snapshot, addedAt: "2026-10-07T12:00:00.000Z" },
+        ],
   });
   assert.deepEqual(
     world.villagers.map((resident) => resident.characterId).sort(),
@@ -55,7 +59,6 @@ export async function currentScenePrompt(
   );
   const session = coerceSession({
     version: 4,
-    gmVersion: 1,
     semanticVersion: 2,
     id: "prompt-fixture",
     placeId: "common-room",
@@ -75,12 +78,12 @@ export async function currentScenePrompt(
   session.contactGeneration = overrides.contactGeneration;
   const admission = {
     writingContractVersion: 4,
-    gmVersion: 1,
     semanticPipelineVersion: 3,
     residentActionsVersion: 2,
     interactionScopeVersion: 6,
     ...operationInput,
   };
+  session.operation ??= { input: admission } as VenueScene["operation"];
   const forbidden = () => assert.fail("Prompt preparation must not generate, interpret, or mutate a Scene.");
   type Model = Awaited<ReturnType<ReturnType<SceneWritingPorts["villagesLanguageModels"]>["resolveForRequest"]>>;
   const model: Model = {
@@ -119,7 +122,6 @@ export async function currentScenePrompt(
     measurePipeline: forbidden,
     runtimeDebug() {},
     venueOperationId: () => "",
-    venueOperationInput: () => admission,
     rejectVenueCompletion: forbidden,
     completeWithRoom: forbidden,
     refreshZoneParticipants: forbidden,

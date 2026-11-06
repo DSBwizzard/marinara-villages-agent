@@ -5,10 +5,7 @@ import {
   backgroundResponseClaim,
   retainBackgroundJob,
 } from "../packages/villages/src/server/adapters/storage/background-responses.js";
-import {
-  createActivationScope,
-  installDefaultActivation,
-} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
+import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { createBackgroundContext } from "../packages/villages/src/server/adapters/operations/background-context-service.js";
 import {
   backgroundCalls,
@@ -55,6 +52,7 @@ function fixture(label: string) {
   world.villagers = ["same", "next", "automatic", "offline", "other"].map(
     (characterId) =>
       ({
+        letterFontId: "caveat",
         characterId,
         cardSnapshot: {
           id: characterId,
@@ -454,36 +452,35 @@ async function defaultContextDispatch() {
     b = createActivationScope();
   const releaseA = a.run(() => configureBackgroundContext(createBackgroundContext()));
   const releaseB = b.run(() => configureBackgroundContext(createBackgroundContext()));
-  const clearA = installDefaultActivation(a, () => {});
-  let clearB: (() => void) | undefined;
+
   const completion = Object.assign(async () => ({ content: "fixture" }), {
     metadata: { id: "A", kind: "agenda", cause: "fixture" },
   });
   const entered = deferred(),
     resume = deferred();
   try {
-    const pending = backgroundCalls.run(completion, async () => {
-      entered.resolve();
-      await resume.promise;
-      assert.equal(
-        backgroundCalls.getStore(),
-        completion,
-        "direct run retains its selected owner after default replacement",
-      );
-    });
+    const pending = a.run(() =>
+      backgroundCalls.run(completion, async () => {
+        entered.resolve();
+        await resume.promise;
+        assert.equal(
+          backgroundCalls.getStore(),
+          completion,
+          "direct run retains its selected owner after default replacement",
+        );
+      }),
+    );
     await entered.promise;
-    clearB = installDefaultActivation(b, () => {});
-    assert.equal(backgroundCalls.getStore(), undefined);
+
+    b.run(() => assert.equal(backgroundCalls.getStore(), undefined));
     resume.resolve();
     await pending;
   } finally {
     resume.resolve();
-    releaseA();
-    releaseB();
+    b.run(() => releaseA());
+    b.run(() => releaseB());
     a.dispose();
     b.dispose();
-    clearA();
-    clearB?.();
   }
 }
 
@@ -843,7 +840,7 @@ async function main() {
 const watchdog = setTimeout(() => {
   throw new Error("Background ownership scenarios did not finish");
 }, 20000);
-main()
+await main()
   .catch((error) => {
     console.error(error);
     process.exitCode = 1;

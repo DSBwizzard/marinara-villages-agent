@@ -28,8 +28,6 @@ import {
   readResidentAdmission,
   readWorldName,
   renderResidentAdmission,
-  sameWorld,
-  sharedWorldContext,
 } from "../packages/villages/src/shared/helpers/resident-admission.js";
 
 assert.deepEqual(readResidentAdmission({ homeworld: " Koront ", startingSituation: " Already living here. " }), {
@@ -52,17 +50,6 @@ assert.equal(readWorldName("x".repeat(121)), null);
 assert.deepEqual({ ...readFoundingResidentAdmissions(undefined, ["buster"]).buster }, EMPTY_RESIDENT_ADMISSION);
 assert.throws(() => readFoundingResidentAdmissions({ stranger: EMPTY_RESIDENT_ADMISSION }, ["buster"]), /selected/);
 assert.throws(() => readFoundingResidentAdmissions({ buster: {} }, ["buster"]), /120/);
-assert.ok(sameWorld(" OTHIRAS ", "Othiras"));
-assert.ok(!sameWorld("", ""));
-assert.ok(!sameWorld("Korant", "Koront"));
-const shared = sharedWorldContext("Othiras", [
-  { name: "A", admission: { homeworld: " othiras ", startingSituation: "" } },
-  { name: "B", admission: { homeworld: "Othiras", startingSituation: "" } },
-  { name: "C", admission: { ...EMPTY_RESIDENT_ADMISSION } },
-]);
-assert.match(shared, /A, B: homeworld/);
-assert.match(shared, /the Village's world/);
-assert.ok(!shared.includes("C:"));
 assert.equal(
   admissionLoreContext("Othiras", [{ homeworld: "Koront", startingSituation: "PRIVATE-UNRELATED" }]),
   "Othiras\nKoront",

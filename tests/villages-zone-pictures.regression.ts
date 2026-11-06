@@ -159,6 +159,22 @@ const connection = (imageService: string, model = "") => ({
 });
 {
   const f = fixture();
+  f.zone().kind = "private-residence";
+  f.zone().ownerId = "resident";
+  let admissions = 0;
+  f.ports.canGenerateZonePicture = async () => {
+    admissions++;
+    return false;
+  };
+  const before = structuredClone(f.world());
+  await f.service.requestZonePicture("home", "resident");
+  assert.equal(admissions, 0, "an owner ID cannot stand in for the exact artwork Zone");
+  assert.deepEqual(f.world(), before);
+  assert.equal(f.calls.length, 0);
+}
+
+{
+  const f = fixture();
   const reference = {
     path: "/api/lorebooks/entry-images/11111111-1111-1111-1111-111111111111.png",
     caption: "Blue arches",
@@ -398,7 +414,7 @@ assert.equal(
   assert.ok(f.zone().initialImageAttemptedAt);
   await f.enter();
   assert.equal(f.calls.length, 1);
-  await f.ports.setVillageVenueImage("home", null, undefined, "", false, "living");
+  await f.ports.setVillageVenueImage("home", "living", null, false);
   f.advance(60 * 60_000);
   await f.enter();
   assert.equal(f.calls.length, 1, "automatic work respects explicit removal");
@@ -490,10 +506,7 @@ assert.equal(
       return result;
     };
     if (replacement)
-      await assert.rejects(
-        f.service.generateVillageLocationImage("home", undefined, undefined, "", false, "living"),
-        /scenery changed/,
-      );
+      await assert.rejects(f.service.generateVillageLocationImage("home", "living", undefined), /scenery changed/);
     else await f.enter();
     assert.equal(f.calls.length, 0, "reset after admission fences fresh creation and Replace before dispatch");
     assert.equal(f.zone().picture?.problem, "New world marker");
@@ -520,7 +533,7 @@ assert.equal(
   await f.enter();
   assert.equal(f.calls.length, 0);
   assert.match(f.zone().picture!.problem!, /baseline/);
-  await f.service.generateVillageLocationImage("home", undefined, undefined, "", false, "living");
+  await f.service.generateVillageLocationImage("home", "living", undefined);
   assert.equal(f.calls.length, 1, "Replace recovers malformed metadata without breaking snapshots");
 }
 {
@@ -542,7 +555,7 @@ assert.equal(
 {
   const f = fixture();
   f.fail(true);
-  await assert.rejects(f.service.generateVillageLocationImage("home", undefined, undefined, "", false, "living"));
+  await assert.rejects(f.service.generateVillageLocationImage("home", "living", undefined));
   f.fail(false);
   await f.service.retryZonePicture("home", "living");
   assert.equal(f.calls.length, 2);
@@ -616,7 +629,7 @@ assert.equal(
   f.zone().dayNight = true;
   f.zone().observed!.dayNight = true;
   await f.service.updateZonePicture("home", "living");
-  await f.ports.setVillageVenueImage("home", image("uploaded"), undefined, "", false, "living");
+  await f.ports.setVillageVenueImage("home", "living", image("uploaded"), false);
   assert.equal(f.zone().dayNight, true, "artwork replacement does not change automatic lighting behavior");
   assert.equal(f.zone().picture?.night, undefined);
   assert.equal(f.calls.length, 2);
@@ -733,12 +746,12 @@ console.log(
   f.zone().observed!.dayNight = true;
   f.present(false);
   const oldImage = f.zone().image!.id;
-  await f.service.storeVillageVenueImage("home", "data:image/png;base64,AA==", undefined, "", "living");
+  await f.service.storeVillageVenueImage("home", "living", "data:image/png;base64,AA==");
   assert.equal(f.zone().image!.id, oldImage, "an upload never becomes a backdrop");
   assert.equal(f.zone().picture?.reference?.id, "render-0");
   assert.equal(f.calls.length, 0, "saving a reference is model-free");
   await f.enter();
-  await f.service.generateVillageLocationImage("home", undefined, undefined, "", false, "living");
+  await f.service.generateVillageLocationImage("home", "living", undefined);
   assert.equal(f.calls.length, 2, "Generate new can use the observed account after leaving");
   f.present(true);
   await f.enter();
@@ -762,7 +775,7 @@ console.log(
   f.zone().dayNight = true;
   f.zone().observed!.dayNight = true;
   f.during(() => f.present(false));
-  await f.service.generateVillageLocationImage("home", undefined, undefined, "", false, "living");
+  await f.service.generateVillageLocationImage("home", "living", undefined);
   assert.equal(f.calls.length, 2, "an observed manual pair can finish after departure");
   assert.equal(f.zone().image?.id, "render-1", "the admitted result remains reusable after departure");
   assert.equal(f.zone().picture?.night?.sourceId, "render-1");
@@ -875,13 +888,18 @@ console.log(
     "a held observation cannot buy current hidden facts",
   );
   f.zone().observed = captureZoneObservation(f.world().venues[0], f.zone());
-  const release = configureVillageClock({ observe: async () => ({ paused: true }) } as VillageClockAuthority);
+  const clockFailure = new Error("Clock authority could not be read");
+  const release = configureVillageClock({
+    observe: async () => {
+      throw clockFailure;
+    },
+  } as VillageClockAuthority);
   try {
-    assert.equal(await live.canGenerateZonePicture("home", "living"), false, "paused Scenes cannot dispatch imagery");
-    assert.equal(
-      await live.canGenerateZonePicture("home", "living", undefined, true),
-      false,
-      "historical generation respects a global pause",
+    await assert.rejects(live.canGenerateZonePicture("home", "living"), (error) => error === clockFailure);
+    await assert.rejects(
+      live.canGenerateZonePicture("home", "living", undefined, true),
+      (error) => error === clockFailure,
+      "Historical artwork also requires clock observation",
     );
   } finally {
     release();
@@ -956,14 +974,7 @@ console.log(
   f.ports.readVillageImageLore = async () => {
     throw Error("Observed generation must not expand live Lore");
   };
-  const result = await createLocationImages(f.ports).generateVillageLocationImage(
-    "home",
-    undefined,
-    undefined,
-    "",
-    false,
-    "living",
-  );
+  const result = await createLocationImages(f.ports).generateVillageLocationImage("home", "living", undefined);
   assert.equal(f.calls.length, 2, "an absent player can explicitly regenerate the remembered day/night pair");
   assert.doesNotMatch(JSON.stringify(f.calls), /SECRET_NEW/);
   assert.match(String(f.calls[0].prompt), /White walls|known brick cottage/);
@@ -1002,7 +1013,7 @@ console.log(
   f.during(() => {
     if (f.calls.length === 2) f.fail(true);
   });
-  await assert.rejects(f.service.generateVillageLocationImage("home", undefined, undefined, "", false, "living"));
+  await assert.rejects(f.service.generateVillageLocationImage("home", "living", undefined));
   assert.equal(f.zone().image?.id, "render-1");
   f.fail(false);
   f.during();
@@ -1018,10 +1029,7 @@ console.log(
   f.during(() => {
     f.zone().observed!.purpose = "A newly observed purpose";
   });
-  await assert.rejects(
-    f.service.generateVillageLocationImage("home", undefined, undefined, "", false, "living"),
-    /changed/,
-  );
+  await assert.rejects(f.service.generateVillageLocationImage("home", "living", undefined), /changed/);
   assert.equal(f.calls.length, 1);
   assert.equal(
     f.zone().image?.id,
@@ -1040,7 +1048,7 @@ console.log(
     f.zone().observed!.purpose = "A newer observation after day completed";
     return saved;
   };
-  await createLocationImages(f.ports).generateVillageLocationImage("home", undefined, undefined, "", false, "living");
+  await createLocationImages(f.ports).generateVillageLocationImage("home", "living", undefined);
   assert.equal(f.calls.length, 1, "the night continuation is bound to the committed day's observation");
 }
 {
@@ -1048,10 +1056,7 @@ console.log(
   f.present(false);
   f.zone().seen = false;
   delete f.zone().observed;
-  await assert.rejects(
-    f.service.generateVillageLocationImage("home", undefined, undefined, "", false, "living"),
-    /Visit this Zone/,
-  );
+  await assert.rejects(f.service.generateVillageLocationImage("home", "living", undefined), /Visit this Zone/);
   assert.equal(f.calls.length, 0, "an unvisited Zone has no historical rendering authority");
 }
 
@@ -1158,18 +1163,11 @@ for (const failed of [false, true]) {
       await releaseB.promise;
     }
   });
-  const first = f.service.generateVillageLocationImage("home", undefined, undefined, "", false, "living");
+  const first = f.service.generateVillageLocationImage("home", "living", undefined);
   const rejected = assert.rejects(first, /changed/);
   await startedA.promise;
   f.zone().observed!.purpose = "Newly observed use";
-  const second = createLocationImages(f.ports).generateVillageLocationImage(
-    "home",
-    undefined,
-    undefined,
-    "",
-    false,
-    "living",
-  );
+  const second = createLocationImages(f.ports).generateVillageLocationImage("home", "living", undefined);
   await startedB.promise;
   const claim = f.zone().picture!.claim;
   releaseA.resolve();

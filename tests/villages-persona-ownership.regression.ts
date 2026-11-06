@@ -7,8 +7,7 @@ import {
 } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
 import {
   createActivationScope,
-  installDefaultActivation,
-  scopedActivation,
+  activationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { createPersonaQueries } from "../packages/villages/src/server/features/settings/persona-service.js";
 import {
@@ -45,17 +44,17 @@ function fixture(name: string) {
   const service = createPersonaQueries({
     async listPlayerPersonas() {
       calls.push("list");
-      owners.push(scopedActivation());
+      owners.push(activationScope());
       return [structuredClone(persona)];
     },
     async findPlayerPersona(id) {
       calls.push(id);
-      owners.push(scopedActivation());
+      owners.push(activationScope());
       if (pause) {
         pause = false;
         entered.resolve();
         await gate.promise;
-        owners.push(scopedActivation());
+        owners.push(activationScope());
       }
       return wrongRecord ? { ...persona, id: "different" } : id === persona.id ? structuredClone(persona) : null;
     },
@@ -109,43 +108,49 @@ const first = fixture("first"),
   second = fixture("second");
 const releaseFirst = one.run(() => configurePersonaQueries(first.service));
 const releaseSecond = two.run(() => configurePersonaQueries(second.service));
-const clearFirst = installDefaultActivation(one, () => {});
+
 first.pause();
-const pending = readLinkedPersona("same");
+const pending = one.run(() => readLinkedPersona("same"));
 await first.entered.promise;
-const clearSecond = installDefaultActivation(two, () => {});
-assert.equal((await readLinkedPersona("same")).identity, "private second");
+
+await two.run(async () => assert.equal((await readLinkedPersona("same")).identity, "private second"));
 first.gate.resolve();
 assert.equal((await pending).identity, "private first");
 assert(first.owners.every((owner) => owner === one));
 assert(second.owners.every((owner) => owner === two));
-one.run(releaseFirst);
+two.run(() => one.run(releaseFirst));
 one.dispose();
-clearFirst();
-assert.equal((await buildVillagePersonaCatalog())[0]!.name, "second");
-const app = Fastify();
-try {
-  registerPersonaRoutes(app);
-  const catalogResponse = await app.inject({ method: "GET", url: "/personas" });
-  assert.equal(catalogResponse.statusCode, 200);
-  assert.equal(catalogResponse.json().personas[0].name, "second");
-  assert(!catalogResponse.body.includes("private second"));
-  const previewResponse = await app.inject({ method: "GET", url: "/personas/same" });
-  assert.equal(previewResponse.statusCode, 200);
-  assert.equal(previewResponse.json().persona.description, "description second");
-  assert(!previewResponse.body.includes("private second"));
-  assert.equal((await app.inject({ method: "GET", url: "/personas/missing" })).statusCode, 404);
-} finally {
-  await app.close();
-}
+
+await two.run(async () => assert.equal((await buildVillagePersonaCatalog())[0]!.name, "second"));
+await two.run(async () => {
+  const app = two.run(() => Fastify());
+  try {
+    two.run(() => registerPersonaRoutes(app));
+    const catalogResponse = await two.run(() => app.inject({ method: "GET", url: "/personas" }));
+    assert.equal(catalogResponse.statusCode, 200);
+    two.run(() => assert.equal(catalogResponse.json().personas[0].name, "second"));
+    assert(!catalogResponse.body.includes("private second"));
+    const previewResponse = await two.run(() => app.inject({ method: "GET", url: "/personas/same" }));
+    assert.equal(previewResponse.statusCode, 200);
+    two.run(() => assert.equal(previewResponse.json().persona.description, "description second"));
+    assert(!previewResponse.body.includes("private second"));
+    await two.run(async () =>
+      assert.equal((await app.inject({ method: "GET", url: "/personas/missing" })).statusCode, 404),
+    );
+  } finally {
+    await app.close();
+  }
+});
 const missing = createActivationScope();
-await assert.rejects(
-  missing.run(() => readVillagePersonaPreview("same")),
-  /not configured/,
+await two.run(() =>
+  assert.rejects(
+    missing.run(() => readVillagePersonaPreview("same")),
+    /not configured/,
+  ),
 );
-two.run(releaseSecond);
+two.run(() => two.run(releaseSecond));
 two.dispose();
-clearSecond();
+
 await assert.rejects(
   two.run(() => readLinkedPersona("same")),
   /not configured/,

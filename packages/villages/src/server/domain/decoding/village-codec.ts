@@ -34,7 +34,7 @@ import type {
 } from "../models/world.js";
 import { completeAgendaWeek, workingAgendaWeek } from "../rules/agenda-week.js";
 import { projectAgendaReservations, readProjectFocus } from "../rules/project-focus.js";
-import { decodeVillageClock } from "../rules/clock-recovery.js";
+import { decodeVillageClock } from "../rules/clock-state.js";
 import { asFraction, asIsoString, asRecord, asString, asStringArray, asTrimmedString } from "../rules/coerce.js";
 import { coerceFoundingTasks } from "../rules/founding-tasks.js";
 import { coerceLoreTokenBudget, coerceSelectedLorebookIds, DEFAULT_LORE_TOKEN_BUDGET } from "../rules/lore-policy.js";
@@ -184,11 +184,11 @@ function coerceVillager(value: unknown): VillageVillager | null {
   if (characterId.length === 0) return null;
   const cardSnapshot = coerceVillagerCardSnapshot(raw.cardSnapshot);
   if (!cardSnapshot || cardSnapshot.id !== characterId) return null;
+  if (typeof raw.letterFontId !== "string" || raw.letterFontId.length > 120)
+    throw new Error("This saved resident needs a current writing-style assignment.");
   return {
     characterId,
-    ...(typeof raw.letterFontId === "string" && raw.letterFontId.length <= 120
-      ? { letterFontId: raw.letterFontId }
-      : {}),
+    letterFontId: raw.letterFontId,
     agendaGeneration: asString(raw.agendaGeneration),
     cardSnapshot,
     ...(typeof asRecord(raw.identityDescription).revision === "string"
@@ -634,7 +634,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
           ...(observed.form ? { form: observed.form } : {}),
         });
       } catch {
-        /* Legacy pictures without an account retain their saved presentation. */
+        /* Unusable artwork context leaves the captured physical account intact. */
       }
       zone.observed = observed;
     }
@@ -1209,13 +1209,11 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
     if (historical && !["completed", "cancelled"].includes(String(batch.status)))
       throw new Error("The saved Village catch-up history contains unfinished work.");
     if (
-      (batch.budgetDate !== undefined &&
-        (typeof batch.budgetDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(batch.budgetDate))) ||
-      (batch.opportunityLimit !== undefined &&
-        (!Number.isSafeInteger(batch.opportunityLimit) ||
-          Number(batch.opportunityLimit) < 0 ||
-          Number(batch.opportunityLimit) > 6)) ||
-      (batch.budgetDate === undefined) !== (batch.opportunityLimit === undefined)
+      typeof batch.budgetDate !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(batch.budgetDate) ||
+      !Number.isSafeInteger(batch.opportunityLimit) ||
+      Number(batch.opportunityLimit) < 0 ||
+      Number(batch.opportunityLimit) > 6
     )
       throw new Error("The saved Village catch-up allowance could not be read.");
     if (batch.labels !== undefined) {
@@ -1245,7 +1243,7 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
       if (
         !Array.isArray(batch.opportunities) ||
         batch.opportunities.length > 6 ||
-        (batch.opportunityLimit !== undefined && batch.opportunities.length > Number(batch.opportunityLimit)) ||
+        batch.opportunities.length > Number(batch.opportunityLimit) ||
         typeof batch.from !== "string" ||
         typeof batch.until !== "string"
       )

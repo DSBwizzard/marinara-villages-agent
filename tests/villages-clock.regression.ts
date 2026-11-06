@@ -11,7 +11,7 @@ import {
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageRepository } from "../packages/villages/src/server/domain/models/world-repository.js";
 import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
-import { calendarReplay } from "../packages/villages/src/server/domain/rules/clock-recovery.js";
+import { calendarReplay } from "../packages/villages/src/server/domain/rules/clock-state.js";
 import { emptyRelationshipReview } from "../packages/villages/src/server/domain/rules/relationship-review.js";
 import {
   applyRelationshipReview,
@@ -21,7 +21,7 @@ import {
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { ZonedDate, calendarDate } from "../packages/villages/src/shared/helpers/zoned-date.js";
 import { runCase } from "../scripts/test-cases.mjs";
-// Test cases: village-clock-recovery, village-time-advance, founding-timezone
+// Test cases: village-clock, village-time-advance, founding-timezone
 const DAY = 86_400_000;
 function fixture() {
   let wall = Date.parse("2026-10-15T02:30:00Z"),
@@ -85,7 +85,7 @@ async function main() {
     );
     await new Promise((resolve) => setImmediate(resolve));
     f.jump(3 * 3600000); // Sleep: no monotonic tick.
-    assert.equal((await f.clock.observe()).paused, false);
+    await f.clock.observe();
     assert.equal(f.clock.now().getTime(), f.wall);
     finish();
     assert.equal(await work, "saved reply", "sleep cannot discard an in-flight provider result");
@@ -97,40 +97,18 @@ async function main() {
     assert.ok(Date.parse(deadline) <= f.wall, "unfinished work becomes due during absence");
     f.jump(3650 * DAY); // A decade off is still ordinary downtime.
     const restarted = createVillageClock(f.repository, f.sources);
-    assert.equal((await restarted.observe()).paused, false);
+    await restarted.observe();
     assert.equal(restarted.now().getTime(), f.wall);
-    assert.equal(f.state.clock!.shiftTotalMs, 0);
     f.jump(-3651 * DAY);
-    assert.equal((await f.clock.observe()).paused, false, "backward clocks never block gameplay");
+    await f.clock.observe();
     assert.ok(calendarReplay(f.state, f.clock.now()), "already-visited days do not refill opportunities");
     const backwardRestart = createVillageClock(f.repository, f.sources);
-    assert.equal((await backwardRestart.observe()).paused, false);
+    await backwardRestart.observe();
     assert.equal(backwardRestart.now().getTime(), f.wall);
     assert.equal(f.state.projects[0]!.lifecycle!.workOrder!.completesAt, deadline);
   } finally {
     binding();
   }
-  const legacy = fixture();
-  await legacy.clock.observe();
-  await legacy.repository.mutateAuthority((state) => {
-    state.clock!.recovery = {
-      frozenAt: state.setupAt,
-      expectedAt: state.setupAt,
-      observedAt: new Date(legacy.wall + 3 * DAY).toISOString(),
-      differenceMs: 3 * DAY,
-    };
-    state.clock!.shiftTotalMs = 12345;
-  });
-  legacy.jump(3 * DAY);
-  const fresh = createVillageClock(legacy.repository, legacy.sources);
-  const before = JSON.stringify(legacy.state.projects);
-  assert.equal((await fresh.observe()).paused, false, "old saved pauses clear without any button");
-  assert.equal(legacy.state.clock!.recovery, null);
-  assert.equal(legacy.state.clock!.shiftTotalMs, 12345, "old accepted offsets remain compatible");
-  assert.equal(JSON.stringify(legacy.state.projects), before, "migration never shifts timers or history");
-  await fresh.resolve(0, "accept");
-  await fresh.resolve(0, "accept");
-  assert.equal(JSON.stringify(legacy.state.projects), before, "old client requests are harmless and idempotent");
   const migrated = fixture();
   await migrated.repository.mutateAuthority((state) => {
     state.timeZone = "";
@@ -236,12 +214,10 @@ async function main() {
     "future calendar history cannot erase a fresh contact",
   );
 
-  console.log(
-    "Nonblocking sleep, long downtime, backward clocks, old-pause migration, calendar replay and DST passed.",
-  );
+  console.log("Nonblocking sleep, long downtime, backward clocks, calendar replay and DST passed.");
 }
 async function verify() {
-  await runCase("village-clock-recovery", main);
+  await runCase("village-clock", main);
   await runCase("village-time-advance", async () => {
     const f = fixture();
     await f.repository.mutateAuthority((state) => {
@@ -261,7 +237,6 @@ async function verify() {
     await f.clock.advance!(request);
     assert.equal(f.clock.now().getTime(), f.wall + request.milliseconds);
     assert.equal(f.state.clock!.advanceMs, request.milliseconds);
-    assert.equal(f.state.clock!.shiftTotalMs, 0, "Development time never rebases legacy recovery timers.");
     assert.equal(f.state.projects[0]!.lifecycle!.workOrder!.completesAt, deadline);
     await f.clock.advance!(request);
     assert.equal(f.state.clock!.advanceMs, request.milliseconds, "A lost response cannot double the advance.");
@@ -427,7 +402,12 @@ async function verify() {
     const repeat = calendarDate(summer, 2026, 10, 1, 1, 30);
     assert.equal(repeat.toISOString(), "2026-11-01T08:30:00.000Z");
     assert.throws(
-      () => coerceVillageState({ version: 6, ...defaultVillageState(), clock: { revision: 1, recovery: {} } }),
+      () =>
+        coerceVillageState({
+          version: 6,
+          ...defaultVillageState(),
+          clock: { revision: 1, trustedAt: "invalid", replayUntilDate: "" },
+        }),
       /saved village clock/,
     );
     assert.equal(winter.getTimezoneOffset(), 480);
@@ -453,7 +433,7 @@ async function verify() {
     assert.equal(new ZonedDate("2026-12-01T12:00:00Z", "America/Phoenix").getTimezoneOffset(), 420);
   });
 }
-verify().catch((error) => {
+await verify().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

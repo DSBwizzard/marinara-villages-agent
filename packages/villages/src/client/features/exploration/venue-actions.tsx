@@ -4,7 +4,6 @@ import type { ExplorationState } from "./useExplorationState.js";
 
 /**
  * Every placed Venue uses its public photograph or a plain placeholder.
- * Keep legacy MapPin identifiers for callers; the presentation is always a Polaroid.
  * Unplaced Venues remain available in play without guessing map coordinates.
  */
 export function createVenueExplorationActions(ports: {
@@ -12,9 +11,6 @@ export function createVenueExplorationActions(ports: {
   readonly openPlace: (place: import("../../../shared/contracts/village").VillageVenue) => void;
   readonly openRoom: (
     place: import("../../../shared/contracts/village").VillageVenue,
-    spaceClass?: "residence" | "workplace" | "community" | "other",
-    privateOwnerId?: string,
-    entryArea?: "private" | "outside" | "shared" | "public",
     zoneId?: string,
   ) => Promise<void>;
   readonly setExploreSheet: ExplorationState["setExploreSheet"];

@@ -9,7 +9,6 @@ import {
   immutableMemoryRecord,
   immutableMemoryValue,
 } from "./memory-integrity.js";
-import { memoryTerms } from "./memory-protection.js";
 
 export function captureMemoryScene(
   collection: MemoryCollection,
@@ -100,10 +99,6 @@ export function sceneMemoryCollection(collection: MemoryCollection, snapshot: Me
   });
   return { format: 1, revision: snapshot.capturedRevision, records };
 }
-/** Privileged inspection does not grant conversational knowledge. */
-export function inspectMemory(collection: MemoryCollection, id: string) {
-  return structuredClone(collection.records.find((row) => row.id === id) ?? null);
-}
 /** Deliberate privileged view. Reading suppressed knowledge never teaches it. */
 export function inspectMemoryCandidates(collection: MemoryCollection, knower: string): MemoryCandidate[] {
   memoryKnowerId(knower);
@@ -139,52 +134,6 @@ export function inspectMemoryCandidates(collection: MemoryCollection, knower: st
     });
   }
   return visible;
-}
-/** Pure ordinary player projection. Domain existence never supplies disclosure visibility. */
-export function pagePlayerMemories(
-  collection: MemoryCollection,
-  request: { limit?: number; query?: string; cursor?: { revision: number; afterId: string } } = {},
-) {
-  const limit = request.limit ?? 50;
-  memoryRequire(Number.isSafeInteger(limit) && limit > 0 && limit <= 100, "invalid page size");
-  memoryRequire(!request.cursor || request.cursor.revision === collection.revision, "stale page cursor");
-  const terms = memoryTerms(request.query ?? "");
-  const eligible = projectMemories(collection, ["player"])
-    .filter((row) => {
-      const text = [
-        row.text,
-        row.id,
-        row.rootId,
-        row.domainRef?.id ?? "",
-        ...Object.values(row.knowers).flatMap((state) => state.support.map((e) => e.excerpt)),
-      ]
-        .join(" ")
-        .toLocaleLowerCase("en-US");
-      return terms.every((term) => text.includes(term));
-    })
-    .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || a.id.localeCompare(b.id));
-  const after = request.cursor ? eligible.findIndex((row) => row.id === request.cursor!.afterId) : -1;
-  memoryRequire(!request.cursor || after >= 0, "unknown page cursor");
-  const rows = eligible.slice(after + 1, after + 1 + limit);
-  return {
-    revision: collection.revision,
-    total: eligible.length,
-    rows: rows.map(({ knowers, ...row }) => ({
-      ...row,
-      knowledge: {
-        learnedAt: knowers.player.learnedAt,
-        reinforcedAt: knowers.player.reinforcedAt,
-        basis: knowers.player.basis,
-        ...(knowers.player.repair ? { repair: knowers.player.repair } : {}),
-        ...(knowers.player.disclosed ? { disclosed: knowers.player.disclosed } : {}),
-      },
-    })),
-    next: after + 1 + limit < eligible.length ? { revision: collection.revision, afterId: rows.at(-1)!.id } : null,
-  };
-}
-export function playerMemoryEvidence(collection: MemoryCollection, id: string) {
-  const row = projectMemories(collection, ["player"]).find((row) => row.id === id);
-  return row ? structuredClone({ id: row.id, rootId: row.rootId, ...row.knowers.player }) : null;
 }
 /** No domain reads. Subjects, domain existence and Inspect never grant knowledge. */
 export function projectMemories(collection: MemoryCollection, audience: readonly string[]): MemoryCandidate[] {
