@@ -35,6 +35,7 @@ assert.equal(
 for (const scenario of [
   "npc",
   "project",
+  "project-conclude",
   "wish",
   "relationship",
   "occupancy",
@@ -62,7 +63,7 @@ for (const scenario of [
           characterId,
           cardSnapshot: { ...world.villagers[0].cardSnapshot, id: characterId, name: characterId },
         }));
-      if (scenario === "project") {
+      if (scenario === "project" || scenario === "project-conclude") {
         initializeVenueAccess(world.venues[0]);
         world.venues[0].access!.managerIds = ["mara"];
         draftRenovationProject(
@@ -101,7 +102,11 @@ for (const scenario of [
   host.model.chatComplete = async () => {
     calls++;
     const message =
-      scenario === "empty-conclude" ? "" : scenario === "occupancy" ? "Mara and Bryn, come outside now." : "Hello.";
+      scenario === "empty-conclude" || scenario === "project-conclude"
+        ? ""
+        : scenario === "occupancy"
+          ? "Mara and Bryn, come outside now."
+          : "Hello.";
     const common = { input: message ? [{ kind: "speech", text: message }] : [] };
     const content =
       scenario === "npc"
@@ -164,7 +169,7 @@ for (const scenario of [
                   ],
                 },
               }
-            : scenario === "project"
+            : scenario === "project" || scenario === "project-conclude"
               ? {
                   ...common,
                   segments: [
@@ -223,12 +228,19 @@ for (const scenario of [
       sessionId: "browser",
       submissionId: "b1111111-1111-4111-8111-111111111111",
       message:
-        scenario === "empty-conclude" ? "" : scenario === "occupancy" ? "Mara and Bryn, come outside now." : "Hello.",
-      mode: scenario === "empty-conclude" ? "leave" : "chat",
+        scenario === "empty-conclude" || scenario === "project-conclude"
+          ? ""
+          : scenario === "occupancy"
+            ? "Mara and Bryn, come outside now."
+            : "Hello.",
+      mode: scenario === "empty-conclude" || scenario === "project-conclude" ? "leave" : "chat",
       targetId: "",
       expectedSceneRevision: host.scene().sceneRevision,
     };
-    const url = scenario === "empty-conclude" ? "/api/villages/rooms/leave" : "/api/villages/rooms/turn";
+    const url =
+      scenario === "empty-conclude" || scenario === "project-conclude"
+        ? "/api/villages/rooms/leave"
+        : "/api/villages/rooms/turn";
     const response = await host.app.inject({ method: "POST", url, payload });
     assert.equal(response.statusCode, 200, scenario + ": " + response.body);
     assert.equal(calls, scenario === "draft-appointment" ? 2 : 1, scenario);
@@ -254,7 +266,7 @@ for (const scenario of [
       assert(JSON.stringify(world.memories).includes("pressed leaves"), "Bound NPC Memory commits");
       assert(!JSON.stringify(world.memories).includes("new:nell"));
     }
-    if (scenario === "project") {
+    if (scenario === "project" || scenario === "project-conclude") {
       const project = world.projects.find((row) => row.id === "project:common")!;
       assert.equal(project.status, "planning", "Speech never starts work");
       assert(project.lifecycle!.approvals.some((row) => row.residentId === "mara"));

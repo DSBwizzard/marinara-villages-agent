@@ -423,7 +423,7 @@ export function createSceneWriting({
     signal?.throwIfAborted();
     if (!captured) optionalKnowledge.push({ text: fitWishWritingContext(model, wishWritingActors), optional: "wish" });
     const projectContexts =
-      mode === "chat" || mode === "ask"
+      gm || mode === "chat" || mode === "ask"
         ? projectSpeechContexts(
             village,
             audience,
