@@ -25,7 +25,7 @@ export const isolatedTests = new Set([
   "tests/villages-sprite-entry.e2e.mjs",
   // Reviewed: child-process-local mocks, read-only bundles and distinct suite outputs.
   "tests/villages-automatic-refresh.regression.ts",
-  "tests/villages-clock-recovery.e2e.mjs",
+  "tests/villages-clock.e2e.mjs",
   "tests/villages-doorway-continuity.e2e.mjs",
   "tests/villages-founding-flow.regression.ts",
   "tests/villages-location-image.regression.ts",
@@ -38,7 +38,7 @@ export const isolatedTests = new Set([
   "tests/villages-attention.regression.ts",
   "tests/villages-scene-room-application.regression.ts",
   "tests/villages-writing-settings-ownership.regression.ts",
-  "tests/villages-clock-recovery.regression.ts",
+  "tests/villages-clock.regression.ts",
   "tests/villages-time-advance.regression.ts",
   "tests/villages-time-advance.e2e.mjs",
   "tests/villages-project-interpretation.regression.ts",

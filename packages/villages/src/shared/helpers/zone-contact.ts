@@ -1,5 +1,5 @@
 /** Structural doorways carry no information about attendance or entry permission. */
-export function legacyContactNeighborIds(
+function initialContactNeighborIds(
   zones: readonly { id: string; kind: string; venueClass?: string }[],
   zoneId: string,
 ): string[] {
@@ -19,8 +19,6 @@ export type ConnectedSpace = { id: string; kind?: string; venueClass?: string; c
 
 /** Connections are undirected physical passages, independent of access policy. */
 export function contactNeighborIds(zones: readonly ConnectedSpace[], zoneId: string): string[] {
-  if (!zones.some((zone) => zone.connectedTo !== undefined))
-    return legacyContactNeighborIds(zones as readonly { id: string; kind: string; venueClass?: string }[], zoneId);
   const ids = new Set(zones.map((zone) => zone.id));
   return [
     ...new Set(
@@ -36,11 +34,11 @@ export function contactNeighborIds(zones: readonly ConnectedSpace[], zoneId: str
 }
 
 export function materializeConnections<T extends ConnectedSpace>(zones: readonly T[]): T[] {
-  const legacy = !zones.some((zone) => zone.connectedTo !== undefined);
+  const initialize = !zones.some((zone) => zone.connectedTo !== undefined);
   return zones.map((zone) => ({
     ...zone,
-    connectedTo: legacy
-      ? legacyContactNeighborIds(zones as readonly { id: string; kind: string; venueClass?: string }[], zone.id)
+    connectedTo: initialize
+      ? initialContactNeighborIds(zones as readonly { id: string; kind: string; venueClass?: string }[], zone.id)
       : [...(zone.connectedTo ?? [])],
   }));
 }

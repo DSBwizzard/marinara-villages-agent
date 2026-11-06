@@ -15,8 +15,6 @@ await withBrowser(browser, async () => {
       timeZone: "UTC",
       instant: new Date(initial).toISOString(),
       advanceMs: 0,
-      paused: false,
-      recovery: null,
     };
     const actions = [];
     const receipts = new Map();

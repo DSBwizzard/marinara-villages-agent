@@ -223,7 +223,14 @@ try {
       admitted: {
         seed: world.seed,
         setupAt: world.setupAt,
-        villagers: [{ characterId: "actor", cardSnapshot: { name: "Actor", capturedAt: world.setupAt }, wishes: [] }],
+        villagers: [
+          {
+            letterFontId: "caveat",
+            characterId: "actor",
+            cardSnapshot: { name: "Actor", capturedAt: world.setupAt },
+            wishes: [],
+          },
+        ],
       },
       opportunity: { actorIds: ["actor"] },
       actorIncarnations: { actor: world.setupAt },

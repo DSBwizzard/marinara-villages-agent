@@ -17,7 +17,12 @@ import { createSocialMail } from "../packages/villages/src/server/features/resid
 import { coerceRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 
 function fixture(count: number) {
-  const village = { ...defaultVillageState(), seed: "mailbox-pages", setupAt: "2026-10-30T12:00:00.000Z" };
+  const village = {
+    ...defaultVillageState(),
+    seed: "mailbox-pages",
+    setupAt: "2026-10-30T12:00:00.000Z",
+    formerLetterFonts: { ada: "caveat" },
+  };
   const state = defaultRelationshipState(village.seed);
   const thread = (state.mailThreads.personal = {
     id: "personal",
@@ -116,6 +121,15 @@ await runCase("mailbox-pages/navigation", async () => {
   assert.throws(() => readMailboxQuery({ folder: "all" }));
 });
 await runCase("mailbox-pages/privacy", async () => {
+  const missing = fixture(1);
+  delete (missing.village.formerLetterFonts as Record<string, string>).ada;
+  const beforeMissing = JSON.stringify({ village: missing.village, state: missing.state });
+  assert.throws(() => missing.present().mailbox({}), /no writing-style assignment/);
+  assert.throws(
+    () => missing.present().letter(missing.thread.id, missing.thread.messages[0].id),
+    /no writing-style assignment/,
+  );
+  assert.equal(JSON.stringify({ village: missing.village, state: missing.state }), beforeMissing);
   const f = fixture(1),
     message = f.thread.messages[0];
   message.readAt = undefined;

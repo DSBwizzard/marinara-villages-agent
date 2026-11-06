@@ -34,6 +34,7 @@ const artworkId = "a-" + randomUUID(),
   expressionId = "e-" + randomUUID();
 world.villagers = [
   {
+    letterFontId: "caveat",
     characterId: "a",
     addedAt: "2026-11-01T00:00:00Z",
     wishes: [],
@@ -309,8 +310,8 @@ for (const failure of ["none", "validation-input", "presentation-publish", "inva
       );
     } else {
       const written = await gmWriter.generate(gmScene, "", "chat", "", null);
-      assert.equal(written.lines[0].expression, undefined);
-      assert.equal(written.lines[0].gazeAt, undefined);
+      assert(!Object.hasOwn(written.lines[0], "expression"));
+      assert(!Object.hasOwn(written.lines[0], "gazeAt"));
       assert.equal(written.lines[0].staging![0].expression, "e-first");
     }
     assert.equal(paid, 1);

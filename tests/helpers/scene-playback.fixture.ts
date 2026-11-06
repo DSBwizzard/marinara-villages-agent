@@ -1,6 +1,6 @@
 import type { ScenePlaybackWindow } from "../../packages/villages/src/shared/contracts/scene-playback.js";
 import { groupSceneMoments } from "../../packages/villages/src/shared/helpers/scene-speech.js";
-import { villagesWalk } from "../../packages/villages/src/shared/helpers/scene-paragraphs.js";
+import { splitVillagesParagraphs } from "../../packages/villages/src/shared/helpers/scene-paragraphs.js";
 import {
   advanceStaging,
   createStagingCursor,
@@ -60,7 +60,7 @@ export function fixturePlaybackPage(
       cues: asides.flatMap(lineStagingCues),
     });
     const end = stagingPresentation(cursor),
-      paragraphs = line.presenceChange ? 0 : villagesWalk(line.content, line.beats ?? null).paragraphs.length;
+      paragraphs = line.presenceChange ? 0 : splitVillagesParagraphs(line.content).length;
     const moment = {
       id: line.id,
       index,
@@ -118,7 +118,7 @@ export function fixturePlaybackPage(
 export function authorSceneView(scene: any, scope: string) {
   const { lines, participants, ...playback } = fixturePlaybackPage(scene, scope);
   const current = new Set([...(scene.activeIds ?? []), ...participants.map((person) => person.characterId)]);
-  const { submissions, initialActiveIds: _initial, stagingVersion: _staging, ...authority } = scene;
+  const { submissions, initialActiveIds: _initial, ...authority } = scene;
   const last = submissions?.at(-1);
   return {
     ...authority,
