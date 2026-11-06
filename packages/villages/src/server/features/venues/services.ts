@@ -13,9 +13,6 @@ export function venueCommands(): VenueCommands {
   return commandsBinding.get();
 }
 
-export function imageTarget(...args: Parameters<VenueCommands["imageTarget"]>) {
-  return venueCommands().imageTarget(...args);
-}
 export function setVillageVenueImage(...args: Parameters<VenueCommands["setVillageVenueImage"]>) {
   return venueCommands().setVillageVenueImage(...args);
 }

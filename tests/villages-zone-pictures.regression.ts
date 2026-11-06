@@ -162,7 +162,10 @@ const connection = (imageService: string, model = "") => ({
   f.zone().kind = "private-residence";
   f.zone().ownerId = "resident";
   let admissions = 0;
-  f.ports.canGenerateZonePicture = async () => { admissions++; return false; };
+  f.ports.canGenerateZonePicture = async () => {
+    admissions++;
+    return false;
+  };
   const before = structuredClone(f.world());
   await f.service.requestZonePicture("home", "resident");
   assert.equal(admissions, 0, "an owner ID cannot stand in for the exact artwork Zone");
@@ -503,10 +506,7 @@ assert.equal(
       return result;
     };
     if (replacement)
-      await assert.rejects(
-        f.service.generateVillageLocationImage("home", "living", undefined),
-        /scenery changed/,
-      );
+      await assert.rejects(f.service.generateVillageLocationImage("home", "living", undefined), /scenery changed/);
     else await f.enter();
     assert.equal(f.calls.length, 0, "reset after admission fences fresh creation and Replace before dispatch");
     assert.equal(f.zone().picture?.problem, "New world marker");
@@ -974,8 +974,7 @@ console.log(
   f.ports.readVillageImageLore = async () => {
     throw Error("Observed generation must not expand live Lore");
   };
-  const result = await createLocationImages(f.ports).generateVillageLocationImage("home", "living", undefined
-  );
+  const result = await createLocationImages(f.ports).generateVillageLocationImage("home", "living", undefined);
   assert.equal(f.calls.length, 2, "an absent player can explicitly regenerate the remembered day/night pair");
   assert.doesNotMatch(JSON.stringify(f.calls), /SECRET_NEW/);
   assert.match(String(f.calls[0].prompt), /White walls|known brick cottage/);
@@ -1030,10 +1029,7 @@ console.log(
   f.during(() => {
     f.zone().observed!.purpose = "A newly observed purpose";
   });
-  await assert.rejects(
-    f.service.generateVillageLocationImage("home", "living", undefined),
-    /changed/,
-  );
+  await assert.rejects(f.service.generateVillageLocationImage("home", "living", undefined), /changed/);
   assert.equal(f.calls.length, 1);
   assert.equal(
     f.zone().image?.id,
@@ -1060,10 +1056,7 @@ console.log(
   f.present(false);
   f.zone().seen = false;
   delete f.zone().observed;
-  await assert.rejects(
-    f.service.generateVillageLocationImage("home", "living", undefined),
-    /Visit this Zone/,
-  );
+  await assert.rejects(f.service.generateVillageLocationImage("home", "living", undefined), /Visit this Zone/);
   assert.equal(f.calls.length, 0, "an unvisited Zone has no historical rendering authority");
 }
 
@@ -1174,8 +1167,7 @@ for (const failed of [false, true]) {
   const rejected = assert.rejects(first, /changed/);
   await startedA.promise;
   f.zone().observed!.purpose = "Newly observed use";
-  const second = createLocationImages(f.ports).generateVillageLocationImage("home", "living", undefined
-  );
+  const second = createLocationImages(f.ports).generateVillageLocationImage("home", "living", undefined);
   await startedB.promise;
   const claim = f.zone().picture!.claim;
   releaseA.resolve();

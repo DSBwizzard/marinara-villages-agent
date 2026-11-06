@@ -2,14 +2,14 @@ import { rememberZoneArtwork, observedPictureKey } from "../../domain/rules/zone
 import { sceneActorIds } from "../../domain/rules/places.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
-import type { VillageSnapshot, VillageState, VillageVenueClass, VillageVenueImage } from "../../domain/models/world.js";
+import type { VillageSnapshot, VillageState, VillageVenueImage } from "../../domain/models/world.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { boundText, MAX_VENUE_NAME_LENGTH } from "../../domain/rules/prompt-preset.js";
 import { keepAgendaPlaces } from "../../domain/rules/resident-agenda.js";
 import { sceneryImageKey } from "../../domain/rules/scenery-context.js";
 import { applyAccessCommand, readAccessCommand } from "../../domain/rules/venue-access.js";
 import { hasVenueClass, venueAssignedCount, venueResidentIds } from "../../domain/rules/venue-model.js";
-import { defaultVenueZoneId, privateTarget, resolveVenueZone, zoneClosed } from "../../domain/rules/venue-zones.js";
+import { resolveVenueZone, zoneClosed } from "../../domain/rules/venue-zones.js";
 import { readVenueImageContext } from "../../domain/rules/village-projections.js";
 import { readHomeBuildingNames } from "../../domain/rules/world-input.js";
 import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
@@ -46,82 +46,26 @@ export function createVenueCommands({
   sceneQueries,
   withSceneNavigation,
 }: VenueCommandPorts) {
-  async function imageTarget(
-    body: { venueId?: unknown; zoneId?: unknown; privateSpaceId?: unknown; privateOwnerId?: unknown } | undefined,
-  ): Promise<string | undefined> {
-    for (const key of ["zoneId", "privateSpaceId", "privateOwnerId"] as const)
-      if (body?.[key] !== undefined && body[key] !== null && typeof body[key] !== "string")
-        throw badRequest("Room targets must be text IDs.");
-    if (!body?.privateSpaceId && !body?.zoneId && !body?.privateOwnerId) return undefined;
-    const state = await readVillageState(),
-      venue = state.venues.find((entry) => entry.id === body.venueId);
-    if (!venue) throw badRequest("That Venue no longer exists.");
-    return privateTarget(
-      venue,
-      typeof body.zoneId === "string" ? body.zoneId : undefined,
-      typeof body.privateSpaceId === "string" ? body.privateSpaceId : undefined,
-      typeof body.privateOwnerId === "string" ? body.privateOwnerId : "",
-    );
-  }
-
-  /**
-   * Give one place its picture, or take it away again with null.
-   *
-   * Deliberately not part of `setVillageVenues`. The list is typed into the
-   * settings panel and saved as a whole in one gesture, while a picture arrives
-   * from an upload or from a generation that took twenty seconds and may land
-   * long after the panel was closed. Folding the two together would mean any edit
-   * made while a generation was running threw the generation away.
-   *
-   * A place that has since been deleted is refused rather than ignored, and it is
-   * refused INSIDE the write so there is no window between checking and saving.
-   * By the time this runs the picture is already in the gallery, so quietly doing
-   * nothing would leave the player holding an image they never asked to keep with
-   * no hint of where it came from.
-   */
+  /** Artwork rechecks its Zone and generation context inside the mutation. */
   async function setVillageVenueImage(
     venueId: string,
+    zoneId: string,
     image: VillageVenueImage | null,
-    spaceClass?: VillageVenueClass,
-    privateOwnerId = "",
     onlyIfEmpty = false,
-    zoneId?: string,
     expectedContext?: string,
     daylight = false,
     guard?: (state: VillageState) => boolean,
     fromObservation = false,
   ): Promise<VillageSnapshot> {
-    await assertVenueImageAccess(venueId, spaceClass, privateOwnerId, zoneId, fromObservation);
+    await assertVenueImageAccess(venueId, zoneId, fromObservation);
     await mutateVillageState((state) => {
       const venue = state.venues.find((entry) => entry.id === venueId);
       if (!venue) throw notFound("That place is no longer in the village.");
       if (guard && !guard(state)) throw conflict("The scenery changed while its image was generated. Generate again.");
-      if (
-        !fromObservation &&
-        expectedContext &&
-        expectedContext !==
-          sceneryImageKey(
-            state,
-            venue,
-            zoneId ??
-              defaultVenueZoneId(
-                venue,
-                privateOwnerId ? "private" : spaceClass === "residence" ? "shared" : spaceClass ? "public" : "outside",
-                spaceClass,
-                privateOwnerId,
-              ),
-          )
-      )
+      if (!fromObservation && expectedContext && expectedContext !== sceneryImageKey(state, venue, zoneId))
         throw conflict("The scenery changed while its image was generated. Generate again.");
-      const targetId =
-        zoneId ??
-        defaultVenueZoneId(
-          venue,
-          privateOwnerId ? "private" : spaceClass === "residence" ? "shared" : spaceClass ? "public" : "outside",
-          spaceClass,
-          privateOwnerId,
-        );
-      const zone = resolveVenueZone(venue, targetId);
+
+      const zone = resolveVenueZone(venue, zoneId);
       if (!zone) throw notFound("That zone no longer exists.");
       if (
         fromObservation &&
@@ -151,27 +95,12 @@ export function createVenueCommands({
     return buildVillageSnapshot();
   }
 
-  async function assertVenueImageAccess(
-    venueId: string,
-    spaceClass?: VillageVenueClass,
-    privateOwnerId = "",
-    zoneId?: string,
-    fromObservation = false,
-  ): Promise<void> {
+  async function assertVenueImageAccess(venueId: string, zoneId: string, fromObservation = false): Promise<void> {
     const village = await readVillageState();
     const venue = village.venues.find((entry) => entry.id === venueId);
     if (!venue) throw notFound("That Venue is no longer here.");
-    if (!fromObservation && spaceClass && !hasVenueClass(venue, spaceClass))
-      throw notFound("That Venue space no longer exists.");
-    const targetId =
-      zoneId ??
-      defaultVenueZoneId(
-        venue,
-        privateOwnerId ? "private" : spaceClass === "residence" ? "shared" : spaceClass ? "public" : "outside",
-        spaceClass,
-        privateOwnerId,
-      );
-    const zone = resolveVenueZone(venue, targetId);
+
+    const zone = resolveVenueZone(venue, zoneId);
     if (!zone) throw notFound("That Zone no longer exists.");
     if (fromObservation) {
       if (!zone.seen || !zone.observed) throw conflict("Visit this Zone before generating its artwork.");
@@ -331,7 +260,6 @@ export function createVenueCommands({
     return buildVillageSnapshot();
   }
   return {
-    imageTarget,
     setVillageVenueImage,
     assertVenueImageAccess,
     setVillageHomeBuildingNames,

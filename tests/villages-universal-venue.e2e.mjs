@@ -365,7 +365,7 @@ await withBrowser(browser, async () => {
     assert.equal((await detail.locator(`.${prefix}-zone-artwork-frame`).boundingBox()).height, emptyFrame.height);
     assert.deepEqual(writes.at(-1), {
       path: "/api/villages/locations/venue/image",
-      body: { venueId: place.id, spaceClass: "residence", privateOwnerId: "", zoneId: "bay" },
+      body: { venueId: place.id, zoneId: "bay" },
     });
     const openPicture = async () => {
       const menu = detail.locator("details." + prefix + "-picture-menu");

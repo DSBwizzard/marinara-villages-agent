@@ -80,7 +80,11 @@ const commands = createVenueCommands({
     },
   }),
 });
-await commands.setVillageVenueImage("home", "room", { id: "replacement", ref: "global-gallery:replacement", url: "/replacement.webp" }, false
+await commands.setVillageVenueImage(
+  "home",
+  "room",
+  { id: "replacement", ref: "global-gallery:replacement", url: "/replacement.webp" },
+  false,
 );
 assert.equal(room().image?.id, "replacement", "an internal artwork commit grants no entry permission");
 assert.equal(room().seen, false);

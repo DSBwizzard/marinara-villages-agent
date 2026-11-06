@@ -1,8 +1,6 @@
-import type { VillageVenueClass } from "../../domain/models/world.js";
 import { badRequest, statusCodeOf } from "../../domain/rules/errors.js";
 import { MAX_LOCATION_IMAGE_BASE64_LENGTH } from "../../domain/rules/image-limits.js";
 import { MAX_SUBMISSION_ID_LENGTH, MAX_TOWN_MAP_IMAGE_LENGTH } from "../../domain/rules/prompt-preset.js";
-import { VENUE_CLASSES } from "../../domain/rules/venue-model.js";
 import { villagesLogger } from "../engine/runtime-host.js";
 import { runtimeDebug } from "../observability/runtime-debug.js";
 import { venueRefusal } from "../operations/operation-context.js";
@@ -18,12 +16,7 @@ export function readVenueId(value: unknown): string {
   if (venueId.length === 0) throw badRequest("A place id is required.");
   return venueId;
 }
-export function readVenueSpaceClass(value: unknown): VillageVenueClass | undefined {
-  if (value === undefined) return undefined;
-  if (typeof value !== "string" || !VENUE_CLASSES.includes(value as VillageVenueClass))
-    throw badRequest("Choose a valid Venue Class space.");
-  return value as VillageVenueClass;
-}
+
 export function readChatId(value: unknown): string {
   const chatId = typeof value === "string" ? value.trim() : "";
   if (chatId.length === 0) throw badRequest("A chat id is required.");
