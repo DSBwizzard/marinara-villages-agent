@@ -240,11 +240,12 @@ try {
   );
 
   now = new Date("2026-11-02T09:50:00Z");
-  const legacy = fixture(false);
+  const incomplete = fixture(false);
   now = new Date("2026-11-02T11:57:00Z");
-  await legacy.service.activeVenueSession();
-  assert.deepEqual(legacy.scene.activeIds, ["maya"], "old Scenes retain their original temporal contract");
-  assert.throws(() => coerceSession({ ...legacy.scene, liveSceneVersion: 2 }), /Unsupported live Scene/);
+  const incompleteSource = structuredClone(incomplete.scene);
+  await assert.rejects(incomplete.service.activeVenueSession(), /no current live admission/);
+  assert.deepEqual(incomplete.scene, incompleteSource);
+  assert.throws(() => coerceSession({ ...f.scene, liveSceneVersion: 2 }), /Unsupported live Scene/);
 
   now = new Date("2026-11-02T09:50:00Z");
   const crowded = fixture();

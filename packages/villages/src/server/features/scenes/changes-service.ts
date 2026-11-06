@@ -164,7 +164,6 @@ export function createSceneChanges({
         processing: turn.processing ?? null,
         receipts: {
           physical: turn.action ?? null,
-          movement: turn.movement ?? null,
           domainEffects: effectsBySubmission.get(turn.id) ?? [],
           relationships: (turn.processing?.domains.relationships.receiptIds ?? []).flatMap((id) =>
             relationshipState?.receipts[id] ? [relationshipState.receipts[id]] : [],
@@ -186,9 +185,7 @@ export function createSceneChanges({
           (line) => turn.processing?.lineIds.includes(line.id) || turn.liveProposals?.earlierLineIds.includes(line.id),
         ),
         interpretations: {
-          source: turn.movement
-            ? "confirmed movement; code transition"
-            : (turn.interpretationHistory?.at(-1)?.source ?? "saved narration reply"),
+          source: turn.interpretationHistory?.at(-1)?.source ?? "saved narration reply",
           version: turn.processing?.interpretationVersion,
           memory: turn.liveProposals?.memoryChanges,
           relationship: turn.liveProposals?.relationshipChanges,

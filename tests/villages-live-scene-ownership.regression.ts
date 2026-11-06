@@ -1,3 +1,6 @@
+import { agendaFixture } from "./helpers/agenda.fixture.js";
+import { configureVillageClock } from "../packages/villages/src/server/adapters/time/clock-gate.js";
+import { captureSceneAttendance } from "../packages/villages/src/server/domain/rules/scene-attendance.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import {
@@ -22,11 +25,20 @@ import {
   configureLiveScenes,
   touchVenueSession,
 } from "../packages/villages/src/server/features/scenes/live-session.js";
+const now = new Date();
+let paused = false;
+const releaseClock = configureVillageClock({
+  now: () => new Date(now),
+  observe: async () => ({ paused }) as any,
+  resolve: async () => {
+    throw Error("No clock administration in this test");
+  },
+});
 function deferred() {
   return Promise.withResolvers<void>();
 }
 function fixture(name: string) {
-  const stamp = new Date().toISOString(),
+  const stamp = now.toISOString(),
     calls: string[] = [],
     owners: unknown[] = [],
     active: ActiveVenue = { sessionId: "same", placeId: "venue" },
@@ -35,6 +47,16 @@ function fixture(name: string) {
       ...defaultVillageState(),
       seed: name,
       foundedAt: stamp,
+      villagers: [
+        {
+          characterId: "mara",
+          addedAt: stamp,
+          cardSnapshot: { id: "mara", name: name + " Mara", capturedAt: stamp, revision: 1, sourceStatus: "available" },
+          agenda: agendaFixture({
+            day: [{ startMinute: 0, endMinute: 1440, venueId: "venue", zoneId: "community", activity: "listening" }],
+          }),
+        },
+      ],
       venues: [
         venueFixture({
           residentIds: [null].filter((id) => typeof id === "string" && !!id),
@@ -48,6 +70,7 @@ function fixture(name: string) {
   initializeVenueAccess(world.venues[0]!);
   const saved = coerceSession({
     version: 4,
+    liveSceneVersion: 1,
     id: "same",
     villageSeed: world.seed,
     placeId: "venue",
@@ -59,17 +82,11 @@ function fixture(name: string) {
     area: "public",
     participants: [{ characterId: "mara", name: name + " Mara", doing: "listening" }],
     activeIds: ["mara"],
-    sceneAttendance: {
-      capturedAt: stamp,
-      layout: captureSceneLayout(world.venues[0]!),
-      occupants: [
-        { characterId: "mara", name: name + " Mara", doing: "listening", availability: "online", zoneId: "community" },
-      ],
-    },
+    sceneAttendance: captureSceneAttendance(world, "venue", now),
     lines: [],
     submissions: [],
   });
-  saved.continuity = captureSceneContinuity(world, saved, Date.now());
+  saved.continuity = captureSceneContinuity(world, saved, now.getTime());
   sessions.set(saved.id, saved);
   let busy = false,
     pauseAt = "",
@@ -173,6 +190,82 @@ function fixture(name: string) {
   };
 }
 async function main() {
+  for (const completing of [false, true]) {
+    const invalid = fixture("missing-native-access");
+    invalid.saved.liveSceneVersion = 1;
+    delete invalid.world.venues[0]!.access;
+    if (completing) delete invalid.saved.continuity!.facts.venues[0]!.access;
+    const before = structuredClone({ scene: invalid.saved, world: invalid.world });
+    await assert.rejects(invalid.service.refreshZoneParticipants(invalid.saved, completing), /no native access record/);
+    assert.deepEqual({ scene: invalid.saved, world: invalid.world }, before);
+    assert(!invalid.calls.some((call) => call.startsWith("change:") || call === "world-change"));
+  }
+  for (const hold of ["busy", "failed", "semantic"] as const) {
+    const held = fixture("native-access-" + hold);
+    held.saved.liveSceneVersion = 1;
+    delete held.world.venues[0]!.access;
+    if (hold === "busy") held.setBusy(true);
+    if (hold === "failed")
+      held.saved.operation = {
+        id: "paid",
+        kind: "turn",
+        status: "interrupted",
+        error: "Unknown provider outcome",
+      } as any;
+    if (hold === "semantic")
+      held.saved.submissions.push({ id: "accepted", semanticProvenance: { version: 2 }, semanticReady: false } as any);
+    const before = structuredClone(held.saved);
+    assert.equal(await held.service.refreshZoneParticipants(held.saved), held.saved);
+    assert.deepEqual(held.saved, before);
+    assert(!held.calls.includes("world"));
+  }
+  const capturedAccess = fixture("captured-native-access");
+  capturedAccess.saved.liveSceneVersion = 1;
+  delete capturedAccess.world.venues[0]!.access;
+  const admitted = structuredClone(capturedAccess.saved);
+  const completed = await capturedAccess.service.refreshZoneParticipants(capturedAccess.saved, true);
+  assert.deepEqual(completed, admitted, "completion uses its valid captured ledger and attendance");
+  for (const missing of ["zoneId", "sceneAttendance", "liveSceneVersion"] as const) {
+    const invalid = fixture("missing-" + missing);
+    delete invalid.saved[missing];
+    const before = structuredClone(invalid.saved);
+    await assert.rejects(invalid.service.refreshZoneParticipants(invalid.saved), /no current live admission/);
+    await assert.rejects(invalid.service.refreshZoneParticipants(invalid.saved, true), /no current live admission/);
+    assert.deepEqual(invalid.saved, before);
+    assert(!invalid.calls.some((call) => call === "world" || call.startsWith("change:")));
+    for (const hold of ["pause", "busy", "failed", "semantic"] as const) {
+      const held = fixture(missing + "-" + hold);
+      delete held.saved[missing];
+      if (hold === "busy") held.setBusy(true);
+      if (hold === "failed")
+        held.saved.operation = { id: "paid", kind: "turn", status: "failed", error: "Unknown provider outcome" } as any;
+      if (hold === "semantic")
+        held.saved.submissions.push({
+          id: "accepted",
+          semanticProvenance: { version: 2 },
+          semanticReady: false,
+        } as any);
+      const retained = structuredClone(held.saved);
+      paused = hold === "pause";
+      try {
+        assert.equal(await held.service.refreshZoneParticipants(held.saved), held.saved);
+      } finally {
+        paused = false;
+      }
+      assert.deepEqual(held.saved, retained);
+      assert(!held.calls.some((call) => call === "world" || call.startsWith("change:")));
+    }
+  }
+  const setup = fixture("interrupted-setup");
+  setup.saved.continuity = undefined;
+  setup.saved.sceneAttendance!.layout = undefined;
+  const sourceAt = setup.saved.sceneAttendance!.capturedAt;
+  const resumed = await setup.service.refreshZoneParticipants(setup.saved, true);
+  assert(resumed.continuity);
+  assert(resumed.sceneAttendance!.layout);
+  assert.equal(resumed.sceneAttendance!.capturedAt, sourceAt);
+  const synthetic = coerceSession({ version: 4, id: "offscreen", status: "closed", lines: [], submissions: [] });
+  assert.equal(synthetic.liveSceneVersion, undefined, "closed synthetic Scenes need no live admission");
   const empty = fixture("empty");
   assert.deepEqual(empty.calls, [], "construction is inert");
   empty.active.sessionId = "";
@@ -307,7 +400,7 @@ async function main() {
   const attendance = fixture("attendance");
   const captured = structuredClone(attendance.saved.sceneAttendance);
   attendance.world.villagers = [];
-  const continued = await attendance.service.refreshZoneParticipants(attendance.saved);
+  const continued = await attendance.service.refreshZoneParticipants(attendance.saved, true);
   assert.deepEqual(
     continued.sceneAttendance,
     captured,
@@ -323,7 +416,7 @@ async function main() {
     availability: "online",
     zoneId: "community",
   }));
-  await assert.rejects(crowded.service.refreshZoneParticipants(crowded.saved), /Five residents/);
+  await assert.rejects(crowded.service.refreshZoneParticipants(crowded.saved, true), /Five residents/);
   assert(!crowded.calls.includes("change:same"));
   const claim = fixture("claim"),
     venue = claim.world.venues[0]!,
@@ -344,7 +437,7 @@ async function main() {
     sourceLineIds: [],
   });
   claim.saved.pendingAccessClaim = "permission";
-  const settled = await claim.service.refreshZoneParticipants(claim.saved);
+  const settled = await claim.service.refreshZoneParticipants(claim.saved, true);
   assert.equal(venue.access!.permissions[0]!.sceneId, "same");
   assert.equal(settled.pendingAccessClaim, undefined);
   assert(
@@ -360,7 +453,7 @@ async function main() {
   privateExit.saved.zoneId = "exterior";
   privateExit.saved.activeIds = [];
   privateExit.retry();
-  const displaced = await privateExit.service.refreshZoneParticipants(privateExit.saved);
+  const displaced = await privateExit.service.refreshZoneParticipants(privateExit.saved, true);
   assert.deepEqual(displaced.accompanying, [{ characterId: "mara", zoneId: "exterior" }]);
   assert.equal(displaced.lines.length, 1, "abandoned retry narration is not persisted");
   assert.equal(displaced.lines[0]!.zoneId, "community");
@@ -387,7 +480,7 @@ async function main() {
   });
   unseen.saved.participants.push({ characterId: "unrelated", name: "Unrelated witness", doing: "reading" });
   unseen.saved.activeIds = ["unrelated"];
-  const hiddenExit = await unseen.service.refreshZoneParticipants(unseen.saved);
+  const hiddenExit = await unseen.service.refreshZoneParticipants(unseen.saved, true);
   assert.equal(hiddenExit.zoneId, "community");
   assert.equal(hiddenExit.lines.length, 1);
   assert.equal(hiddenExit.lines[0]!.contactHidden, true, "unseen third-Zone movement stays server-only");
@@ -404,7 +497,7 @@ async function main() {
   concurrent.onChange(() => {
     concurrent.saved.accompanying = [{ characterId: "mara", zoneId: "exterior" }];
   });
-  const alreadyMoved = await concurrent.service.refreshZoneParticipants(structuredClone(concurrent.saved));
+  const alreadyMoved = await concurrent.service.refreshZoneParticipants(structuredClone(concurrent.saved), true);
   assert.equal(alreadyMoved.lines.length, 0, "exits recomputed from winning CAS positions add no duplicate narration");
   assert.deepEqual(alreadyMoved.activeIds, ["mara"]);
   const failure = fixture("failure"),
@@ -473,7 +566,9 @@ async function main() {
     "PASS live Scene ownership, persistent absence, activity compatibility, captured attendance and access ordering",
   );
 }
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+main()
+  .finally(releaseClock)
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });

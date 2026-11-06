@@ -65,7 +65,7 @@ export function sceneRetirementSourceIsValid(value: unknown): boolean {
     const turn = asRecord(value);
     if (typeof turn.id !== "string" || !turn.id || submissionIds.has(turn.id)) return false;
     submissionIds.add(turn.id);
-    if (!turn.movement && (typeof turn.at !== "string" || !Number.isFinite(Date.parse(turn.at)))) return false;
+    if (typeof turn.at !== "string" || !Number.isFinite(Date.parse(turn.at))) return false;
     if (turn.processing !== undefined) {
       const processing = asRecord(turn.processing);
       const domains = asRecord(processing.domains);
