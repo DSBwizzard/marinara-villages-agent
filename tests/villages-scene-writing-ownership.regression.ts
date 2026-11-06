@@ -150,7 +150,6 @@ function fixture(label: string, checkpointed = false) {
     },
     completeWithRoom: async (selected, _messages, _tokens, options) => {
       assert.equal(selected, model);
-      assert.equal(options.retryEmpty, false);
       assert.equal(options.usagePurpose, "conversation");
       assert.equal(options.temperature, 0.85);
       await touch("completion");

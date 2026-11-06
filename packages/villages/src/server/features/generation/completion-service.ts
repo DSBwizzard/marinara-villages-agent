@@ -149,22 +149,6 @@ export function createModelCompletions(ports: ModelCompletionPorts) {
               }),
           ),
         ),
-        options.responseFormat
-          ? createHash("sha256")
-              .update(
-                JSON.stringify([
-                  model.connectionId,
-                  model.model,
-                  messages,
-                  tokens,
-                  options.temperature,
-                  options.replayReasoningEffort ?? options.reasoningEffort,
-                  options.verbosity,
-                  ...(options.replayReasoningEffort ? [options.responseFormat] : []),
-                ]),
-              )
-              .digest("hex")
-          : undefined,
         {
           inputTokens:
             (typeof model.fitContext === "function"

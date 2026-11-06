@@ -153,7 +153,6 @@ async function main() {
     const running = completeWithRoom(model, [{ role: "user", content: "DO NOT STORE THIS" }], 100, {
       temperature: null,
       debugMode: false,
-      retryEmpty: false,
     });
     while (!held) await new Promise((r) => setTimeout(r, 1));
     const live = await readUsageMeter();

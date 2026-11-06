@@ -87,10 +87,9 @@ const service = createStartingTies({
       };
     },
   }),
-  completeWithRoom: async (_model: any, _messages: any, _limit: any, options: any) => {
+  completeWithRoom: async (_model: any, _messages: any, _limit: any) => {
     calls++;
     assert.equal(_limit, 2400, "Starting history respects the configured model's output ceiling");
-    assert.equal(options.retryEmpty, false);
     return {
       finishReason: "stop",
       content: JSON.stringify({

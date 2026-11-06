@@ -268,7 +268,6 @@ export async function generatePlace(value: unknown, placeId?: string) {
         completion = await completeWithRoom(model, admitted.messages, Math.min(4096, fitted.maxTokens ?? 4096), {
           temperature: 0.3,
           responseFormat: { type: "json_object" },
-          retryEmpty: false,
           savedRequest: {
             key: `place:${world.seed}:${admitted.id}:${admitted.attempt}`,
             retry: false,

@@ -77,7 +77,7 @@ const model: any = {
   },
 };
 const messages = [{ role: "user" as const, content: "Private conversation context" }];
-const options = { temperature: 0.3, debugMode: false, retryEmpty: false };
+const options = { temperature: 0.3, debugMode: false };
 async function main() {
   try {
     assert.deepEqual(await readRuntimeDebug(), {

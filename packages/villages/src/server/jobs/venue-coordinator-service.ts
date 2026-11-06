@@ -268,7 +268,6 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
   async function coordinatedCompletion<T>(
     fingerprint: string,
     work: (signal?: AbortSignal) => Promise<T>,
-    legacyFingerprint?: string,
     reservation?: { inputTokens: number; outputTokens: number },
   ): Promise<T> {
     const current = context.getStore();
@@ -277,16 +276,8 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
     const index = current.counts.get(current.scope) ?? 0;
     current.counts.set(current.scope, index + 1);
     const key = `${current.scope}:${index}:${fingerprint}`;
-    const legacyKey = legacyFingerprint ? `${current.scope}:${index}:${legacyFingerprint}` : undefined;
-    const legacy = legacyFingerprint
-      ? current.operation.attempts[`${current.scope}:${index}:${legacyFingerprint}`]
-      : undefined;
-    // Only exact completed legacy inputs can be replayed; never override a newer rejected or unknown attempt.
-    const prior = current.operation.attempts[key] ?? (legacy?.status === "complete" ? legacy : undefined);
-    current.usedAttemptKeys.set(
-      `${current.scope}:${index}`,
-      current.operation.attempts[key] || !legacyKey || legacy?.status !== "complete" ? key : legacyKey,
-    );
+    const prior = current.operation.attempts[key];
+    current.usedAttemptKeys.set(`${current.scope}:${index}`, key);
     if (prior?.status === "complete") {
       runtimeDebug("completion replay", { key });
       return immutableMemoryValue(prior.result) as T;
@@ -301,26 +292,15 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
     const documents = villagesDocuments(),
       receipts = createSceneResponseReceipts(documents);
     const owner = { id: current.sessionId, villageSeed: current.villageSeed };
-    // A policy upgrade may replay a completed late response too. A newer exact attempt always wins.
-    for (const savedKey of current.operation.attempts[key] || !legacyKey ? [key] : [key, legacyKey]) {
-      const savedSignature = JSON.stringify([
-        current.sessionId,
-        current.operation.id,
-        current.operation.sceneRevision,
-        current.operation.input,
-        savedKey,
-      ]);
-      const saved = await withResponseWork(current.sessionId, () => receipts.read(owner, savedSignature));
-      if (saved) {
-        current.operation.attempts[savedKey] = {
-          status: "complete",
-          result: saved.value,
-          response: { ...saved.ref, claim: saved.claim },
-        };
-        current.usedAttemptKeys.set(`${current.scope}:${index}`, savedKey);
-        await persist(current);
-        return saved.value as T;
-      }
+    const saved = await withResponseWork(current.sessionId, () => receipts.read(owner, signature));
+    if (saved) {
+      current.operation.attempts[key] = {
+        status: "complete",
+        result: saved.value,
+        response: { ...saved.ref, claim: saved.claim },
+      };
+      await persist(current);
+      return saved.value as T;
     }
     if (!current.allowPaid) {
       current.blocked.add(current.scope);

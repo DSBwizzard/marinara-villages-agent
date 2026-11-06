@@ -76,7 +76,6 @@ export function createScheduleInfluence(ports: ScheduleInfluencePorts) {
         throw new Error("Schedule interpretation does not fit; no request was made.");
       const answer = await ports.completeWithRoom(model, messages, Math.min(maxTokens, fitted.maxTokens ?? maxTokens), {
         responseFormat: { type: "json_object" },
-        retryEmpty: false,
         debugMode: false,
         temperature: 0.1,
         reasoningEffort: "low",

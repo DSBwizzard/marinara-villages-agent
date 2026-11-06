@@ -59,7 +59,6 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
     await recordLoreUse(loreUse, "Venue descriptions");
     const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 2_500, {
       responseFormat: { type: "json_object" },
-      retryEmpty: false,
       temperature: 0.7,
     });
     const payload = extractModelJsonObject(completion);
@@ -124,7 +123,6 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
       throw new Error("Offscreen semantic evidence does not fit System context.");
     const judged = await completeWithRoom(model, reviewMessages, Math.min(fittedReview.maxTokens ?? 4096, 4096), {
       responseFormat: { type: "json_object" },
-      retryEmpty: false,
       temperature: 0.1,
       reasoningEffort: "low",
       debugMode: false,

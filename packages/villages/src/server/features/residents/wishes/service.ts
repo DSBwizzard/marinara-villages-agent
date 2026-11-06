@@ -90,7 +90,6 @@ export function createWishes(ports: Ports) {
       await recordLoreUse(input.context.loreUse, `Initial Wish · ${input.context.card.name}`);
       const response = await ports.completeWithRoom(model, messages, fit.maxTokens ?? 1536, {
         responseFormat: { type: "json_object" },
-        retryEmpty: false,
         temperature: 0.7,
         reasoningEffort: "none",
         usagePurpose: "background",

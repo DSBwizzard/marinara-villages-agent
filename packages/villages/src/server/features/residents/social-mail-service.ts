@@ -174,7 +174,6 @@ export function createSocialMail(ports: SocialMailPorts) {
     let requestTokens = Math.min(maxTokens, model.maxOutputTokens ?? maxTokens);
     const result = await ports.completeWithRoom(model, messages, requestTokens, {
       responseFormat: { type: "json_object" },
-      retryEmpty: false,
       debugMode: false,
       checkpointId: key,
       beforeBackgroundDispatch: async () => {

@@ -60,9 +60,9 @@ await completions().completeWithRoom(
   },
   messages,
   1024,
-  { temperature: null, retryEmpty: true },
+  { temperature: null },
 );
-assert.equal(emptyCalls, 1, "Legacy retryEmpty cannot authorize a second paid request");
+assert.equal(emptyCalls, 1, "Empty output never dispatches an automatic replacement");
 let malformedCalls = 0;
 const malformed = {
   ...model,
