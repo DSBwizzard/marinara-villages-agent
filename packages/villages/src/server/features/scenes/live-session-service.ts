@@ -14,13 +14,13 @@ import {
   sameSceneRoutine,
 } from "../../domain/rules/scene-attendance.js";
 import { captureSceneContinuity, sceneContinuityView } from "../../domain/rules/scene-continuity.js";
-import { captureSceneLayout } from "../../domain/rules/scene-layout.js";
+import { requireSceneZoneId, captureSceneLayout } from "../../domain/rules/scene-layout.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import { semanticBlocker } from "../../domain/rules/semantic-continuity.js";
 import { appendLine } from "../../domain/rules/scene-record.js";
 import { claimVisitPermission, evaluateZoneAccess } from "../../domain/rules/venue-access.js";
 import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
-import { legacyZoneId, resolveVenueZone, zoneArea, zoneClosed } from "../../domain/rules/venue-zones.js";
+import { resolveVenueZone, zoneArea, zoneClosed } from "../../domain/rules/venue-zones.js";
 export interface LiveScenePorts {
   readActive: typeof import("../../adapters/storage/scene-store.js").readActive;
   readSession: typeof import("../../adapters/storage/scene-store.js").readSession;
@@ -82,7 +82,7 @@ export function createLiveScenes({
       (guard && !guard(state)) ||
       scene.status !== "active" ||
       scene.placeId !== venueId ||
-      (scene.zoneId ?? legacyZoneId(venue, scene.area, scene.spaceClass, scene.privateOwnerId)) !== zoneId ||
+      scene.zoneId !== zoneId ||
       scene.villageSeed !== state.seed ||
       (scene.continuity && scene.continuity.setupAt !== state.setupAt) ||
       semanticBlocker(scene) ||
@@ -176,7 +176,7 @@ export function createLiveScenes({
     if (venue.access && session.pendingAccessClaim) {
       await mutateVillageState((state) => {
         const current = findLocation(state, venue.id);
-        const target = current && resolveVenueZone(current, session.zoneId ?? "exterior");
+        const target = current && resolveVenueZone(current, requireSceneZoneId(session));
         if (!current) return;
         if (!target) return;
         const decision = evaluateZoneAccess(current, target, "player", {
@@ -189,7 +189,7 @@ export function createLiveScenes({
       });
       const settled = await changeSession(session.id, (state) => {
         const captured = findLocation(state.continuity?.facts, venue.id);
-        const target = captured && resolveVenueZone(captured, state.zoneId ?? "exterior");
+        const target = captured && resolveVenueZone(captured, requireSceneZoneId(state));
         if (captured && target) {
           const decision = evaluateZoneAccess(captured, target, "player", {
             ...sceneAccessContext(state, village),
@@ -201,7 +201,7 @@ export function createLiveScenes({
       });
       return refreshZoneParticipants(settled, completing);
     }
-    const zoneId = session.zoneId ?? legacyZoneId(venue, session.area, session.spaceClass, session.privateOwnerId);
+    const zoneId = requireSceneZoneId(session);
     if (venue.access && session.sceneAttendance) {
       const exits = accessExits(session, village, venue);
       if (exits.length) {
@@ -215,7 +215,7 @@ export function createLiveScenes({
                   .map(([actor]) => actor),
               ),
             ].filter((actor) => actor !== "player");
-            const playerPosition = state.zoneId ?? "exterior";
+            const playerPosition = requireSceneZoneId(state);
             appendLine(state, {
               id: randomUUID(),
               role: "assistant",
@@ -237,7 +237,6 @@ export function createLiveScenes({
               state.area = zoneArea(destination);
               state.spaceClass = destination.venueClass;
               state.privateOwnerId = destination.ownerId ?? "";
-              state.privateSpaceId = destination.kind === "private-residence" ? destination.id : undefined;
               state.recap = "";
               state.doorwayContacts = [];
             } else if (!exit.to) {
@@ -297,7 +296,7 @@ export function createLiveScenes({
   async function rememberCurrentZone(session: VenueScene): Promise<void> {
     if (session.status !== "active" || semanticBlocker(session) || hasVenueOperation(session.id)) return;
     const captured = findLocation(session.continuity?.facts, session.placeId);
-    const source = captured && resolveVenueZone(captured, session.zoneId ?? "exterior");
+    const source = captured && resolveVenueZone(captured, requireSceneZoneId(session));
     if (!source || !captured || (await readActive()).sessionId !== session.id) return;
     const latest = await readSession(session.id);
     if (
@@ -406,7 +405,7 @@ export function createLiveScenes({
       );
       state.doorwayContacts = (state.doorwayContacts ?? []).filter((row) => sameRoutine(row.characterId));
       state.entryOffers = (state.entryOffers ?? []).filter((row) => sameRoutine(row.controllerId));
-      const people = sceneZoneOccupants(state, venue, state.zoneId ?? "exterior");
+      const people = sceneZoneOccupants(state, venue, requireSceneZoneId(state));
       if (
         people.filter((person) => village.villagers.some((resident) => resident.characterId === person.characterId))
           .length > 4

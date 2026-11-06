@@ -9,7 +9,7 @@ import { keepAgendaPlaces } from "../../domain/rules/resident-agenda.js";
 import { sceneryImageKey } from "../../domain/rules/scenery-context.js";
 import { applyAccessCommand, readAccessCommand } from "../../domain/rules/venue-access.js";
 import { hasVenueClass, venueAssignedCount, venueResidentIds } from "../../domain/rules/venue-model.js";
-import { legacyZoneId, privateTarget, resolveVenueZone, zoneClosed } from "../../domain/rules/venue-zones.js";
+import { defaultVenueZoneId, privateTarget, resolveVenueZone, zoneClosed } from "../../domain/rules/venue-zones.js";
 import { readVenueImageContext } from "../../domain/rules/village-projections.js";
 import { readHomeBuildingNames } from "../../domain/rules/world-input.js";
 import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
@@ -104,7 +104,7 @@ export function createVenueCommands({
             state,
             venue,
             zoneId ??
-              legacyZoneId(
+              defaultVenueZoneId(
                 venue,
                 privateOwnerId ? "private" : spaceClass === "residence" ? "shared" : spaceClass ? "public" : "outside",
                 spaceClass,
@@ -115,7 +115,7 @@ export function createVenueCommands({
         throw conflict("The scenery changed while its image was generated. Generate again.");
       const targetId =
         zoneId ??
-        legacyZoneId(
+        defaultVenueZoneId(
           venue,
           privateOwnerId ? "private" : spaceClass === "residence" ? "shared" : spaceClass ? "public" : "outside",
           spaceClass,
@@ -165,7 +165,7 @@ export function createVenueCommands({
       throw notFound("That Venue space no longer exists.");
     const targetId =
       zoneId ??
-      legacyZoneId(
+      defaultVenueZoneId(
         venue,
         privateOwnerId ? "private" : spaceClass === "residence" ? "shared" : spaceClass ? "public" : "outside",
         spaceClass,

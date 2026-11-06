@@ -232,6 +232,15 @@ await runCase("places/scene-replay", () => {
     "decoder never modifies rejected bytes",
   );
   scene.submissions.push({ mode: "chat", id: "turn" } as any);
+  const unlocated = structuredClone(state);
+  delete unlocated.exchangeReceipts[id].physicalOutcome!.zoneId;
+  const unlocatedBefore = structuredClone(unlocated);
+  assert.throws(() => sceneContinuityView(unlocated, scene), /physical receipt has no captured Zone/);
+  assert.deepEqual(
+    unlocated,
+    unlocatedBefore,
+    "Missing receipt locations are refused without rewriting saved evidence",
+  );
   zone.description = "Unrelated later renovation.";
   zone.state.revision++;
   const before = structuredClone(state);

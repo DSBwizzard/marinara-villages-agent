@@ -57,6 +57,15 @@ for (const mode of ["cancel", "complete", "removed-zone"]) {
       physicalOutcomeVersion: 1,
       replyLineIds: ["reply"],
       areaAtTurn: "outside",
+      privateOwnerIdAtTurn: "",
+      physicalContext: {
+        zoneId: scene.zoneId,
+        actorIds: ["player"],
+        witnessIds: [],
+        consentIds: [],
+        positions: { player: scene.zoneId },
+        segment: 0,
+      },
       zoneIdAtTurn: mode === "removed-zone" ? "common" : "exterior",
       semanticReady: false,
       semanticProvenance: {

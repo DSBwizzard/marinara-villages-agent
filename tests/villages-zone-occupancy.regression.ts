@@ -456,6 +456,15 @@ assert.equal(paint.description, "A yellow motorcycle.", "closing never replays a
     at: stamp,
     areaAtTurn: "public",
     zoneIdAtTurn: "a",
+    privateOwnerIdAtTurn: "",
+    physicalContext: {
+      zoneId: "a",
+      actorIds: ["player"],
+      witnessIds: ids,
+      consentIds: [ids[0]],
+      positions: { ...Object.fromEntries(ids.map((id) => [id, "a"])), player: "a" },
+      segment: 0,
+    },
     activeIdsAtTurn: ids,
     semanticProvenance: { version: 2 },
     placeUpdate: {

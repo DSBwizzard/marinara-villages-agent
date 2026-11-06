@@ -45,13 +45,7 @@ export type VenueScreenController = {
   readonly movePrivateZoneId: VenuesState["movePrivateZoneId"];
   readonly moveTargetId: VenuesState["moveTargetId"];
   readonly nameOfCharacter: (characterId: string | null) => string;
-  readonly openRoom: (
-    place: VillageVenue,
-    spaceClass?: VenueClass,
-    privateOwnerId?: string,
-    entryArea?: "outside" | "shared" | "private" | "public",
-    zoneId?: string,
-  ) => Promise<void>;
+  readonly openRoom: (place: VillageVenue, zoneId?: string) => Promise<void>;
   readonly placeBusyId: VenuesState["placeBusyId"];
   readonly placeProblem: VenuesState["placeProblem"];
   readonly playerMovePrivateZoneId: VenuesState["playerMovePrivateZoneId"];

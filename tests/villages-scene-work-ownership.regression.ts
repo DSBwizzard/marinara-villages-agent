@@ -23,7 +23,6 @@ import { createSceneWork } from "../packages/villages/src/server/features/scenes
 import { configureSceneWork, sceneWork } from "../packages/villages/src/server/features/scenes/scene-work.js";
 import {
   configureSceneCommands,
-  enterResidencePrivateSpace,
   enterVenue,
   greetVenue,
   moveVenueZone,
@@ -249,6 +248,65 @@ function commandFixture(
     },
   };
 }
+{
+  let writes = 0;
+  const physical = commandFixture("Missing captured physical Zone", ({ scene, world, stamp }) => {
+    const venue = venueDraft({ name: "Hall", description: "A hall", classes: ["other"] }, null);
+    venue.id = scene.placeId;
+    world.venues = [venue];
+    scene.zoneId = "other";
+    scene.navigationReceipts = [
+      {
+        id: "later-move",
+        originZoneId: "exterior",
+        destinationZoneId: "other",
+        at: new Date(Date.parse(stamp) + 1000).toISOString(),
+      },
+    ];
+    return {
+      mutateVillageState: async (change) => {
+        const draft = structuredClone(world);
+        await change(draft);
+        writes++;
+        Object.assign(world, draft);
+        return world;
+      },
+    };
+  });
+  try {
+    const turn = physical.scene.submissions[0];
+    turn.placeUpdate = { narration: "The wall is blue.", expectedRevision: 0, append: "Blue paint." };
+    turn.areaAtTurn = "outside";
+    turn.privateOwnerIdAtTurn = "";
+    turn.semanticProvenance = { version: 2 } as any;
+    turn.physicalContext = {
+      actorIds: ["player"],
+      witnessIds: [],
+      consentIds: [],
+      positions: { player: "exterior" },
+    } as any;
+    const effects = physical.owner.run(() => physical.service.sceneReplayEffects());
+    const before = structuredClone(physical.world);
+    await assert.rejects(effects.applyVenueTurnChange(physical.scene, turn), /physical source.*captured Zone/);
+    assert.equal(writes, 0);
+    assert.equal(physical.modelAccess, 0);
+    assert.deepEqual(physical.world, before, "Later navigation cannot supply a missing physical source address");
+    const id = "venue-chat:" + physical.scene.id + ":" + turn.id;
+    physical.world.exchangeReceipts[id] = {
+      ...physical.world.exchangeReceipts["same-effect"],
+      id,
+      sceneId: physical.scene.id,
+      submissionId: turn.id,
+    };
+    const committed = structuredClone(physical.world);
+    await effects.applyVenueTurnChange(physical.scene, turn);
+    assert.deepEqual(physical.world, committed, "Committed receipt replay never reinterprets missing source data");
+    assert.equal(physical.modelAccess, 0);
+  } finally {
+    physical.owner.dispose();
+  }
+}
+
 function fixture(name: string, pause = false, navigationIdentity?: object) {
   const gate = deferred(),
     entered = deferred();
@@ -575,18 +633,18 @@ for (const canonical of [false, true]) {
   }
 }
 
-// Residence's first Scene read must pin the application before its later Village read.
+// Movement's first Scene read pins its owner before subsequent Village reads.
 const residenceA = fixture("Residence A", true),
   residenceB = fixture("Residence B");
 const clearResidenceA = installDefaultActivation(residenceA.scope, () => {});
-const residence = enterResidencePrivateSpace("same", "resident");
+const residence = moveVenueZone("same", "bedroom", 0);
 await residenceA.entered.promise;
 const clearResidenceB = installDefaultActivation(residenceB.scope, () => {});
 try {
   residenceA.gate.resolve();
-  await assert.rejects(residence, /Residence is no longer here/);
+  await assert.rejects(residence, /current live admission/);
   assert(residenceA.allReads.includes("villages-village"));
-  assert.deepEqual(residenceB.allReads, [], "default replacement cannot redirect the pending residence to B's Village");
+  assert.deepEqual(residenceB.allReads, [], "default replacement cannot redirect pending movement to B's Village");
 } finally {
   residenceA.gate.resolve();
   clearResidenceA();
@@ -619,7 +677,7 @@ for (const source of ["fresh", "same-zone", "captured"] as const) {
   try {
     const before = structuredClone({ scene: invalid.scene, world: invalid.world });
     await assert.rejects(
-      invalid.owner.run(() => invalid.service.enterVenue(invalid.scene.placeId, undefined, "", undefined, "community")),
+      invalid.owner.run(() => invalid.service.enterVenue(invalid.scene.placeId, "community")),
       /no native access record/,
     );
     assert.deepEqual({ scene: invalid.scene, world: invalid.world }, before);

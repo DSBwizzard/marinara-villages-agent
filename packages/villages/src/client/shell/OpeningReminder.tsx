@@ -27,7 +27,7 @@ export function OpeningReminder({ controller }: { controller: ReturnType<typeof 
     const common = venue.zones?.find(
       (zone) => zone.kind === "public" && !zone.closed && zone.access?.mode === "public",
     );
-    if (common) void controller.openRoom(venue, common.venueClass, "", "public", common.id);
+    if (common) void controller.openRoom(venue, common.id);
   }, [controller, opening, snapshot, sceneRestoration.status, screen, roomBusy, room, placingProjectId]);
   return null;
 }

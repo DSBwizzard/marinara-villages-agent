@@ -190,7 +190,6 @@ export type VenueScene = {
   pendingAccessClaim?: string;
   pendingRoomQuestions?: string[];
   pendingProjectQuestions?: string[];
-  privateSpaceId?: string;
   accompanying?: { characterId: string; zoneId: string }[];
   doorwayContacts?: DoorwayContact[];
   entryOffers?: { zoneId: string; label: string; controllerId: string; accompanies: boolean }[];

@@ -376,7 +376,8 @@ await withBrowser(browser, async () => {
         path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, `villages-venue-${width}x${height}.png`),
       });
     await doors.getByRole("button", { name: "Visit venue" }).click();
-    await expect.poll(() => lastEntry?.entryArea).toBe("outside");
+    await expect.poll(() => lastEntry?.zoneId).toBe("exterior");
+    assert.equal(Object.hasOwn(lastEntry, "entryArea"), false);
     assert.equal(lastEntry?.zoneId, "exterior", "Venue visits always enter through Exterior");
     const composer = page.getByRole("textbox", { name: mobile ? "Message at The Market" : "Message at The Mill" });
     const dock = page.locator(".marinara-capability-villages-chat-vn");
