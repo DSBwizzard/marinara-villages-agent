@@ -583,29 +583,9 @@ async function main() {
   const put = (url: string, payload?: any) => app.inject({ method: "PUT", url, payload });
 
   const deactivate = await activate(context);
-  const originalSettings = await get("/api/villages/interpretation-settings");
-  assert.equal(originalSettings.json().settings.decisionsEnabled, false);
-  assert.equal(originalSettings.json().settings.compareSystem, undefined, "legacy comparison setting is inert");
-  const enabled = await app.inject({
-    method: "PATCH",
-    url: "/api/villages/interpretation-settings",
-    payload: { decisionsEnabled: true },
-  });
-  assert.equal(enabled.json().settings.decisionsEnabled, true);
-  assert.equal(enabled.json().status.available, true, "activation exposes the supplied public capability");
-  assert.equal(decisionRequests, 0, "configuration and status never probe the selected model");
-  const malformed = await app.inject({
-    method: "PATCH",
-    url: "/api/villages/interpretation-settings",
-    payload: { decisionsEnabled: "yes" },
-  });
-  assert.equal(malformed.statusCode, 400);
-  await app.inject({
-    method: "PATCH",
-    url: "/api/villages/interpretation-settings",
-    payload: { decisionsEnabled: false },
-  });
-  assert.deepEqual((await get("/api/villages/interpretation-diagnostics/old-scene")).json(), { checks: [] });
+  assert.equal((await get("/api/villages/interpretation-settings")).statusCode, 404);
+  assert.equal((await get("/api/villages/interpretation-diagnostics/old-scene")).statusCode, 404);
+  assert.equal(decisionRequests, 0, "Activation never probes the retired capability");
   if (process.env.VILLAGES_TEST_PACKAGED) {
     assert.ok(![...documentsByKey.values()].some((row) => row.kind === "chat"));
     await deactivate();

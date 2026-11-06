@@ -14,7 +14,6 @@ const shutdownOrder = [
   "storage",
   "routes",
   "coordinator",
-  "decisions",
   "map",
   "runtime",
 ];
@@ -37,7 +36,6 @@ function fixture(failure = "", cleanupFailures: string[] = []) {
   const services: ApplicationServices = {
     configureRuntime: () => start("runtime"),
     startTownMapGeneration: () => start("map"),
-    configureDecisions: () => start("decisions"),
     async readRuntimeDebug() {
       events.push("read:debug");
       if (failure === "debug") throw admissionError;
@@ -88,13 +86,12 @@ async function main() {
   const failedAdmissions: Record<string, string[]> = {
     runtime: [],
     map: ["runtime"],
-    decisions: ["map", "runtime"],
-    recover: ["coordinator", "decisions", "map", "runtime"],
-    routes: ["coordinator", "decisions", "map", "runtime"],
-    storage: ["routes", "coordinator", "decisions", "map", "runtime"],
-    background: ["storage", "routes", "coordinator", "decisions", "map", "runtime"],
-    refresh: ["background", "storage", "routes", "coordinator", "decisions", "map", "runtime"],
-    progress: ["refresh", "background", "storage", "routes", "coordinator", "decisions", "map", "runtime"],
+    recover: ["coordinator", "map", "runtime"],
+    routes: ["coordinator", "map", "runtime"],
+    storage: ["routes", "coordinator", "map", "runtime"],
+    background: ["storage", "routes", "coordinator", "map", "runtime"],
+    refresh: ["background", "storage", "routes", "coordinator", "map", "runtime"],
+    progress: ["refresh", "background", "storage", "routes", "coordinator", "map", "runtime"],
     private: shutdownOrder.slice(1),
   };
   for (const [failure, expected] of Object.entries(failedAdmissions)) {
@@ -107,7 +104,7 @@ async function main() {
       app = await startVillagesApplication(f.context, f.services);
     assert.deepEqual(
       f.events.filter((event) => event.startsWith("start:")),
-      ["runtime", "map", "decisions", "routes", "storage", "background", "refresh", "progress", "private"].map(
+      ["runtime", "map", "routes", "storage", "background", "refresh", "progress", "private"].map(
         (name) => "start:" + name,
       ),
     );

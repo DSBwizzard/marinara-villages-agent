@@ -6,7 +6,6 @@ import type { VenueOperation } from "../packages/villages/src/server/domain/mode
 import { applySceneMutation } from "../packages/villages/src/server/domain/rules/scene-mutation.js";
 import { createVenueCoordinator } from "../packages/villages/src/server/jobs/venue-coordinator-service.js";
 import { createVenueOperationContext } from "../packages/villages/src/server/adapters/operations/operation-context-service.js";
-import { coerceInterpretationSettings } from "../packages/villages/src/server/domain/rules/interpretation-policy.js";
 import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { createSceneWishContexts } from "../packages/villages/src/server/adapters/storage/scene-wish-contexts.js";
@@ -82,7 +81,6 @@ function coordinatorFor(f: ReturnType<typeof sceneHistoryFixture>) {
     villagesDocuments: () => f.gate.documents,
     villagesLogger: () => logger,
     runtimeDebug() {},
-    readInterpretationSettings: async () => coerceInterpretationSettings({}),
     withSceneWork: (id, work) => fence.run(id, work),
     withRepairWork: (work) => f.gate.work(work),
   });

@@ -93,7 +93,6 @@ function graph(label: "A" | "B") {
   village.narrationStyle.writingGuidance = `${label} writing`;
   seed("villages-village", "village", village);
   seed("villages-ai-usage", "settings", { since: `${label}-ledger`, requests: [] });
-  seed("villages-interpretation-settings", "settings", { decisionsEnabled: false, compareSystem: label === "A" });
   seed("villages-connections", "settings", {
     systemConnectionId: "same-connection",
     narrationConnectionId: "same-connection",

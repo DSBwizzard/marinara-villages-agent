@@ -4,8 +4,6 @@
  */
 export const isolatedTests = new Set([
   "tests/villages-activity-policy.regression.ts",
-  "tests/villages-decision-owner.regression.ts",
-  "tests/villages-decision-routing.regression.ts",
   "tests/villages-work-retention.regression.ts",
   "tests/villages-agenda-focus.regression.ts",
   "tests/villages-zone-layout.regression.ts",
@@ -38,12 +36,12 @@ export const isolatedTests = new Set([
   "tests/villages-town-map-image.regression.ts",
   // Reviewed: fixed domain inputs and process-local fake runtime/document stores;
   // these suites open no provider, port, shared output or real saved world.
-  "tests/villages-attention-sources.regression.ts",
   "tests/villages-attention.regression.ts",
+  "tests/villages-scene-room-application.regression.ts",
+  "tests/villages-writing-settings-ownership.regression.ts",
   "tests/villages-clock-recovery.regression.ts",
   "tests/villages-time-advance.regression.ts",
   "tests/villages-time-advance.e2e.mjs",
-  "tests/villages-interpretation.regression.ts",
   "tests/villages-project-interpretation.regression.ts",
   "tests/villages-scene-json-hardening.regression.ts",
   "tests/villages-founding-phone-layout.e2e.mjs",

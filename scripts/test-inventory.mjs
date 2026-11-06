@@ -8,11 +8,7 @@ export async function testInventory(root = new URL("../", import.meta.url)) {
     .filter((name) => /\.(?:regression\.ts|regression\.mjs|e2e\.mjs)$/.test(name))
     .map((name) => ({
       path: `tests/${name}`,
-      group: [
-        "villages-decision-transport.regression.ts",
-        "villages-engine-shell.e2e.mjs",
-        "villages-image-engine-contract.regression.ts",
-      ].includes(name)
+      group: ["villages-engine-shell.e2e.mjs", "villages-image-engine-contract.regression.ts"].includes(name)
         ? "engine"
         : name.endsWith(".e2e.mjs")
           ? "browser"
@@ -25,9 +21,6 @@ export async function testInventory(root = new URL("../", import.meta.url)) {
             : name.endsWith(".e2e.mjs")
               ? "mocked-browser"
               : "provider-free",
-      ...(["villages-decision-transport.regression.ts"].includes(name)
-        ? { requirements: "Existing compatible Engine runtime; synthetic local provider" }
-        : {}),
       ...(name === "villages-image-engine-contract.regression.ts"
         ? { requirements: "MARINARA_ENGINE_ROOT: read-only selected Engine source; no runtime or providers" }
         : {}),

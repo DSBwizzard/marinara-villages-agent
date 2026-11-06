@@ -3,7 +3,6 @@ import type { VenueScene } from "../models/scene-model.js";
 import type { VillageVenue } from "../models/world.js";
 import { attentionQuotes, attentionSourceSpan, sourceAttentionCheck } from "./attention-sources.js";
 import { asRecord } from "./coerce.js";
-import { validDecisionEvidence } from "./decision-candidates.js";
 import { fingerprint } from "./interpretation-rules.js";
 import { acousticFingerprint } from "./scene-acoustics.js";
 import { contactNeighbors, contactPosition, type DoorwayContact } from "./venue-contact.js";
@@ -369,11 +368,6 @@ export function readAttentionPlan(
   sourceReferences = false,
 ): AttentionPlan {
   const neighbors = contactNeighbors(venue, scene.zoneId ?? "exterior", scene);
-  if (
-    result.source === "decisions" &&
-    !validDecisionEvidence(attentionCheck(message, venue, scene, false, sourceReferences), result)
-  )
-    return clarifyAttention();
   if (result.failure) return clarifyAttention();
   if (result.outcome === "unresolved")
     return {

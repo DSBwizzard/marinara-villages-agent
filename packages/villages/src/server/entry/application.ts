@@ -1,5 +1,4 @@
 import { recoverFoundingPreparation } from "../features/founding/preparation.js";
-import { configureDecisionsAdapter } from "../adapters/engine/decisions-adapter.js";
 import {
   bindActivationService,
   createActivationScope,
@@ -37,7 +36,6 @@ type Cleanup = () => void | Promise<void>;
 export interface ApplicationServices {
   configureRuntime(runtime: CapabilityRuntimeHost): Cleanup;
   startTownMapGeneration(): Cleanup;
-  configureDecisions(runtime: CapabilityRuntimeHost): Cleanup;
   readRuntimeDebug(): Promise<unknown>;
   warnRuntimeDebug(error: unknown): void;
   recoverVenueSceneWork(): Promise<unknown>;
@@ -55,7 +53,6 @@ export interface ApplicationServices {
 const applicationServices: ApplicationServices = {
   configureRuntime: configureVillagesRuntime,
   startTownMapGeneration,
-  configureDecisions: configureDecisionsAdapter,
   readRuntimeDebug,
   warnRuntimeDebug(error) {
     villagesLogger().warn("[villages] runtime logging settings could not be read: %s", String(error));
@@ -129,7 +126,6 @@ async function assembleApplication({ api }: ActivationContext, services: Applica
     cleanups.push(services.configureRuntime(api.runtime));
     await services.assertSocialContract?.();
     cleanups.push(services.startTownMapGeneration());
-    cleanups.push(services.configureDecisions(api.runtime));
     await services.readRuntimeDebug().catch(services.warnRuntimeDebug);
     cleanups.push(services.stopVenueCoordinator);
     await services.recoverFoundingPreparation?.();

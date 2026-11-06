@@ -1,6 +1,5 @@
 import { bindActivationService, createActivationBinding } from "../adapters/engine/activation-scope.js";
 import type { VenueCoordinatorService } from "./venue-coordinator-service.js";
-import type { InterpretationSettings } from "../domain/rules/interpretation-policy.js";
 import type { VenueOperation } from "../domain/models/operation-model.js";
 export type { VenueOperation } from "../adapters/operations/operation-context.js";
 export {
@@ -24,9 +23,6 @@ export function configureVenueCoordinator(service: VenueCoordinatorService): () 
 }
 export function hasVenueOperation(id: string): boolean {
   return coordinatorBinding.get().hasVenueOperation(id);
-}
-export function venueInterpretationSettings(): InterpretationSettings {
-  return coordinatorBinding.get().venueInterpretationSettings();
 }
 export async function coordinatedOptionalCompletion<T>(
   fingerprint: string,

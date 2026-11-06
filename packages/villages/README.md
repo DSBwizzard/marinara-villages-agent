@@ -252,7 +252,7 @@ Each new expression cue chooses an approved variant for its facing and saves tha
 
 ## Settings and saved worlds
 
-In **General Settings**, choose your connections. **Writing Settings** control person, tense, rating, and prose guidance while preserving character identity and the game's rules. Optional **Use Decisions** defaults Off; when its Engine feature is unavailable, System handles the work instead.
+In **General Settings**, choose your connections. **Writing Settings** control person, tense, rating, and prose guidance while preserving character identity and the game's rules.
 
 **Send on Enter** defaults Off. Normally, Enter adds a newline. When enabled, Enter sends and Shift+Enter adds a newline.
 

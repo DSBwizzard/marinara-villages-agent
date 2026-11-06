@@ -3,19 +3,6 @@
   "routes": [
     {
       "method": "get",
-      "path": "/interpretation-settings"
-    },
-    {
-      "method": "patch",
-      "path": "/interpretation-settings",
-      "bodyLimit": 1024
-    },
-    {
-      "method": "get",
-      "path": "/interpretation-diagnostics/:sceneId"
-    },
-    {
-      "method": "get",
       "path": "/villagers/:characterId/wishes/inspect"
     },
     {
@@ -255,6 +242,10 @@
     {
       "method": "get",
       "path": "/rooms/:id/changes"
+    },
+    {
+      "method": "get",
+      "path": "/rooms/:id/changes/diagnostics"
     },
     {
       "method": "get",

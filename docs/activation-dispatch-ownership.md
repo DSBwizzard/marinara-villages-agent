@@ -2,7 +2,7 @@
 
 Previously, runtime and service lookup selected module-wide current bindings. An asynchronous request or old self-check could resume after replacement configuration and read the replacement's storage or feature services. Entry ownership and guarded cleanup alone did not pin those later lookups.
 
-Production activation now owns an asynchronous dispatch scope and host-backed connection factory. Scene queries, relationship coordination, Village state, Venue/Zone services and Decisions select that owner's registrations. Actual registered handlers, plugin execution, cleanup and self-check retain the owner across asynchronous work. A missing or disposed scoped owner never falls back to another activation. Runtime epochs remain unique while active and become null after release.
+Production activation now owns an asynchronous dispatch scope and host-backed connection factory. Scene queries, relationship coordination, Village state, Venue/Zone services select that owner's registrations. Actual registered handlers, plugin execution, cleanup and self-check retain the owner across asynchronous work. A missing or disposed scoped owner never falls back to another activation. Runtime epochs remain unique while active and become null after release.
 
 Direct configuration remains synchronous for existing callers and provider-free tests. It selects one legacy default; replacing that default invalidates the old host epoch, preserving existing replacement fences. Standalone service configuration still works without a host. Each registration has its own cleanup token, even when the same service object is registered repeatedly. Bound functions preserve synchronous results, thrown errors and their receiver.
 

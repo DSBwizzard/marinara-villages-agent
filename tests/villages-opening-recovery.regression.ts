@@ -303,7 +303,6 @@ for (const how of ["semantic", "abandon"] as const) {
     villagesDocuments: () => ({ getById: async () => null }) as any,
     villagesLogger: () => ({ debug: () => {} }) as any,
     runtimeDebug: () => {},
-    readInterpretationSettings: async () => ({}) as any,
   });
   const dispatch = async () => {
     systemCalls++;

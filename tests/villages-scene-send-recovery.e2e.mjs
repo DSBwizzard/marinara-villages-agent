@@ -168,10 +168,7 @@ await withBrowser(browser, async () => {
       } else if (/\/rooms\/[^/]+\/recovery$/.test(path)) {
         if (hideReads) return fulfill(route, { status: 503, json: { error: "Read unavailable" } });
         value = { visit: session };
-      } else if (path.endsWith("/interpretation-settings")) {
-        value = { settings: { decisionsEnabled: false, compareSystem: true }, status: { available: false } };
-      } else if (path.includes("/interpretation-diagnostics/")) value = { checks: [] };
-      else if (path.endsWith("/settings") && request.method() === "PATCH") {
+      } else if (path.endsWith("/settings") && request.method() === "PATCH") {
         const input = request.postDataJSON();
         settingsWrites.push(input);
         Object.assign(fixture.settings, input);

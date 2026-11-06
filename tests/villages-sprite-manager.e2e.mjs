@@ -236,8 +236,6 @@ await withBrowser(browser, async () => {
       else if (path.endsWith("/catalog")) value = { characters: [] };
       else if (path.endsWith("/lorebooks")) value = { books: [] };
       else if (path.endsWith("/personas")) value = { personas: [] };
-      else if (path.endsWith("/interpretation-settings"))
-        value = { settings: { decisionsEnabled: false }, status: { available: false } };
       await fulfill(route, { contentType: "application/json", body: JSON.stringify(value) });
     });
     async function openManager() {

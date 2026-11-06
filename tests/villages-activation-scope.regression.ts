@@ -27,13 +27,14 @@ import { repairStorageId } from "../packages/villages/src/server/features/repair
 function deferred<T = void>() {
   return Promise.withResolvers<T>();
 }
-function fixture(name: string, decisionsEnabled: boolean) {
+function fixture(name: string) {
   const reads: string[] = [];
   const checkpointId = repairStorageId("repair-checkpoint", "shared-checkpoint");
   let checkpoint: { id: string; packageId: string; kind: string; revision: number; data: any } | undefined;
-  let onInterpretation: (() => Promise<void>) | undefined;
+  let onVillageRead: (() => Promise<void>) | undefined;
   const state = defaultVillageState();
   state.name = name;
+  state.narrationStyle.writingGuidance = name;
   state.timeZone = "UTC";
   state.clock = { revision: 1, trustedAt: new Date().toISOString(), recovery: null, replayUntilDate: "" };
   const runtime = {
@@ -42,10 +43,7 @@ function fixture(name: string, decisionsEnabled: boolean) {
         async getById(_package: string, id: string) {
           reads.push(id);
           if (id === checkpointId) return structuredClone(checkpoint ?? null);
-          if (id === "villages-interpretation-settings") {
-            await onInterpretation?.();
-            return { id, revision: 1, data: { decisionsEnabled } };
-          }
+          if (id === "villages-village") await onVillageRead?.();
           return id === "villages-village" ? { id, revision: 1, data: structuredClone(state) } : null;
         },
         async list() {
@@ -91,15 +89,15 @@ function fixture(name: string, decisionsEnabled: boolean) {
       };
     },
     checkpoint: () => structuredClone(checkpoint),
-    holdInterpretation(work: typeof onInterpretation) {
-      onInterpretation = work;
+    holdVillageRead(work: typeof onVillageRead) {
+      onVillageRead = work;
     },
   };
 }
 async function scopeDispatch() {
   const a = createActivationScope(),
-    b = fixture("B", true),
-    f = fixture("A", false);
+    b = fixture("B"),
+    f = fixture("A");
   const releaseA = a.run(() => configureVillagesRuntime(f.runtime));
   a.run(() => configureSceneQueries({ activeVenueSession: async () => ({ owner: "A" }) } as unknown as SceneQueries));
   const epochA = a.run(villagesRuntimeEpoch);
@@ -185,23 +183,23 @@ async function productionHandlers() {
   try {
     const entered = deferred(),
       resume = deferred();
-    a.holdInterpretation(async () => {
+    a.holdVillageRead(async () => {
       entered.resolve();
       await resume.promise;
     });
-    const paused = a.engine.inject({ url: "/api/villages/interpretation-settings" });
+    const paused = a.engine.inject({ url: "/api/villages/narration" });
     await entered.promise;
     b = await activate("application-B", true);
     assert.equal(requireHost(), b.runtime, "direct helpers select the latest successful activation");
-    const responseB = await b.engine.inject({ url: "/api/villages/interpretation-settings" });
+    const responseB = await b.engine.inject({ url: "/api/villages/narration" });
     assert.equal(responseB.statusCode, 200);
-    assert.equal(responseB.json().settings.decisionsEnabled, true);
+    assert.equal(responseB.json().writingGuidance, "application-B");
     resume.resolve();
     const responseA = await paused;
     assert.equal(responseA.statusCode, 200);
     assert.equal(
-      responseA.json().settings.decisionsEnabled,
-      false,
+      responseA.json().writingGuidance,
+      "application-A",
       "actual late handler retains its original document store",
     );
     a.state.setupAt = "already-founded";
@@ -245,7 +243,7 @@ async function productionHandlers() {
     await assert.rejects(
       startVillagesApplication({
         api: {
-          runtime: fixture("failed-replacement", false).runtime,
+          runtime: fixture("failed-replacement").runtime,
           async registerPrivilegedRoutes() {
             failedOwner = activationScope();
             throw failedSetup;
@@ -271,9 +269,9 @@ async function productionHandlers() {
     assert.equal(requireHost(), b.runtime, "old production cleanup cannot clear the new default");
     await assert.rejects(a.application.selfCheck(), /state service is not configured/);
     await b.application.selfCheck();
-    const stillB = await b.engine.inject({ url: "/api/villages/interpretation-settings" });
+    const stillB = await b.engine.inject({ url: "/api/villages/narration" });
     assert.equal(stillB.statusCode, 200);
-    assert.equal(stillB.json().settings.decisionsEnabled, true);
+    assert.equal(stillB.json().writingGuidance, "application-B");
   } finally {
     await a.application.stop();
     await b?.application.stop();
