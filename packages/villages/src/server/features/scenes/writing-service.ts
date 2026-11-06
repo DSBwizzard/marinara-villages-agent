@@ -705,7 +705,6 @@ export function createSceneWriting({
         verbosity: null,
         debugMode: false,
         signal,
-        retryEmpty: false,
         onAttempt: trace
           ? (result, elapsedMs, limit) =>
               trace(

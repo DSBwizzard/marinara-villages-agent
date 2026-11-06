@@ -6,7 +6,6 @@ import type { VillageState } from "./world.js";
 export type BackgroundKind =
   | "schedule-influence"
   | "starting-ties"
-  | "story" // Read-only compatibility for retired prose jobs.
   | "resident-planning"
   | "world-development"
   | "agenda"
@@ -64,7 +63,7 @@ export type BackgroundInput = {
   finite: boolean;
   label: string;
   input: unknown;
-  legacyError?: string;
+  initialError?: string;
   automaticDate?: string;
   expectedAttempt?: number;
   /** Paired with expectedAttempt; null asserts that the slot is empty. */

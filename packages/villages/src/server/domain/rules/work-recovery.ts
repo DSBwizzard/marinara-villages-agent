@@ -24,7 +24,6 @@ const record = (value: unknown): value is Record<string, unknown> =>
 const kinds: Record<Job["kind"], true> = {
   "schedule-influence": true,
   "starting-ties": true,
-  story: true,
   "resident-planning": true,
   "world-development": true,
   agenda: true,

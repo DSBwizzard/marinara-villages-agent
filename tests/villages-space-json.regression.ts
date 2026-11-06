@@ -88,7 +88,6 @@ async function main() {
     completeWithRoom: async (_m: any, messages: any[], limit: number, options: any) => {
       calls++;
       assert.deepEqual(options.responseFormat, { type: "json_object" });
-      assert.equal(options.retryEmpty, false);
       assert.match(messages[0].content, /JSON/);
       assert.equal(limit, 3000);
       return response;

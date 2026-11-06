@@ -1,7 +1,5 @@
 import { fixtureWishIdentity, fixtureRelationshipIdentity } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
-import { authorBackgroundFixture } from "./helpers/village-storage.fixture.js";
-import { validateBackgroundResponse } from "../packages/villages/src/server/adapters/storage/background-responses.js";
 import {
   readEffectiveVillagerCard,
   readVillagerCard,
@@ -10,7 +8,6 @@ import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
 import {
   eventAttemptAvailable,
   reserveEventAttempt,
@@ -25,7 +22,6 @@ import { nextEventAttemptAt } from "../packages/villages/src/server/domain/rules
 import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import { venueZones } from "../packages/villages/src/server/domain/rules/venue-zones.js";
 import { createResidentPlanning } from "../packages/villages/src/server/features/residents/resident-planning-service.js";
-import { createBackgroundWork } from "../packages/villages/src/server/jobs/background-service.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 
 const now = new Date(),
@@ -86,7 +82,7 @@ function fixture() {
   let payload: any = { social: null, routineIdea: null, housingRequests: [] },
     activeScene: any = null,
     memoryChanges: any[] = [],
-    legacy: any = null;
+    prior: any = null;
   const model: any = {
     connectionId: "fixture",
     model: "fixture",
@@ -103,7 +99,7 @@ function fixture() {
     queueBackgroundJob: async (input) => {
       queued.push(input);
     },
-    backgroundJobSnapshot: async (kind) => (kind === "story" ? legacy : null),
+    backgroundJobSnapshot: async (kind) => (kind === "resident-planning" ? prior : null),
     villagesLanguageModels: () => ({ resolveForRequest: async () => model }) as any,
     villagesConnectionIdFor: async () => "fixture",
     completeWithRoom: async (_model, messages, _tokens, options) => {
@@ -140,7 +136,7 @@ function fixture() {
     scene: (value: any) => (activeScene = value),
     payload: (value: any) => (payload = value),
     memoryChanges: (value: any[]) => (memoryChanges = value),
-    legacy: (value: any) => (legacy = value),
+    prior: (value: any) => (prior = value),
   };
 }
 const f = fixture();
@@ -476,14 +472,14 @@ const off = fixture();
 off.state.backgroundPace = "off";
 await off.service.reconcile(now);
 assert.equal(off.queued.length, 0);
-for (const status of ["failed", "interrupted", "paused", "obsolete", "completed"]) {
+for (const status of ["queued", "running", "failed", "interrupted", "paused"]) {
   const old = fixture();
-  old.legacy({ seed: old.state.seed, status, highWaterDate: dateKey });
+  old.prior({ seed: old.state.seed, status, highWaterDate: dateKey });
   await old.service.reconcile(now);
-  assert.equal(old.queued.length, 0, status + " legacy attempts retain their spending floor");
+  assert.equal(old.queued.length, 0, status + " current work prevents duplicate admission");
 }
 const oldWorld = fixture();
-oldWorld.legacy({ seed: "previous", highWaterDate: dateKey });
+oldWorld.prior({ seed: "previous", highWaterDate: dateKey });
 await oldWorld.service.reconcile(now);
 assert.equal(oldWorld.queued.length, 1, "Another world's job cannot block this world");
 
@@ -596,118 +592,6 @@ for (const planningUsage of [null, { dateKey: "2026-10-24", count: -1 }, { dateK
   assert.throws(() => coerceVillageState({ ...currentRaw, planningUsage }), /Invalid saved planning allowance/);
 }
 
-// Retired purchased responses are never dispatched, applied or retried, but retain normal reset cleanup.
-const rows = new Map<string, any>(),
-  state = defaultVillageState();
-state.seed = "retirement";
-let dispatched = 0,
-  applied = 0;
-const work = createBackgroundWork({
-  withCurrentJobWrite: (work) => work(),
-  villagesDocuments: () =>
-    ({
-      getById: async (_p: string, id: string) => structuredClone(rows.get(id) ?? null),
-      list: async (_p: string, kind: string) =>
-        [...rows.values()].filter((row) => row.kind === kind).map((row) => structuredClone(row)),
-      create: async (input: any) => {
-        const row = { ...input, revision: 1, updatedAt: at };
-        rows.set(row.id, row);
-        return row;
-      },
-      update: async (input: any) => {
-        const previous = rows.get(input.id);
-        if (!previous || previous.revision !== input.expectedRevision) return null;
-        const row = { ...previous, ...input, revision: previous.revision + 1, updatedAt: at };
-        rows.set(row.id, row);
-        return row;
-      },
-      remove: async (_p: string, id: string) => rows.delete(id),
-    }) as any,
-  villagesLogger: () => ({ warn() {}, debug() {}, info() {}, error() {} }) as any,
-  readVillageState: async () => state,
-  mutateVillageState: async (edit) => {
-    edit(state);
-    return state;
-  },
-  withUsagePurpose: async (_purpose: any, fn: any) => fn(),
-  measurePipeline: async (_name: any, _meta: any, fn: any) => fn(),
-  runtimeDebug: () => {},
-  backgroundCalls: { run: (_complete: any, fn: any) => fn() } as any,
-  handlers: [
-    [
-      "story",
-      {
-        generate: async () => {
-          dispatched++;
-        },
-        valid: () => true,
-        apply: () => {
-          applied++;
-        },
-      },
-    ],
-  ],
-} as any);
-const rawResponse = { content: "purchased private response", finishReason: "stop" };
-const ids: string[] = [];
-for (const status of ["queued", "paused", "failed", "interrupted", "completed"]) {
-  const id = "villages-background-" + backgroundRevision(["story", status]);
-  ids.push(id);
-  rows.set(id, {
-    id,
-    kind: "background-work",
-    updatedAt: at,
-    revision: 1,
-    data: {
-      id: "job-" + status,
-      kind: "story",
-      subjectId: status,
-      seed: state.seed,
-      status,
-      owner: "old",
-      attempt: 1,
-      steps: [{ fingerprint: "old", status: "completed", response: rawResponse }],
-      input: { context: { setting: "private" } },
-      result: { housingRequests: [] },
-      hasResult: true,
-      highWaterDate: dateKey,
-      requests: 1,
-      tokens: 12,
-      retryActions: [],
-    },
-  });
-}
-for (const row of [...rows.values()]) {
-  row.data = authorBackgroundFixture(rows, row.data);
-  row.packageId = "villages";
-}
-const stop = work.startBackgroundWork();
-await work.recoverBackgroundWork();
-await work.settleBackgroundWork();
-for (const id of ids) {
-  assert.equal(rows.get(id).data.status, "obsolete");
-  assert.deepEqual(
-    validateBackgroundResponse(rows.get(rows.get(id).data.steps[0].responseRef.id)).response,
-    rawResponse,
-  );
-  await assert.rejects(work.retryBackgroundJob(id, 1, "retry-old", rows.get(id).data.instanceId), /retired/);
-}
-assert.equal(dispatched, 0);
-assert.equal(applied, 0);
-assert.deepEqual(await work.backgroundWorkSummaries(), []);
-assert.equal(
-  [...rows.values()].filter((row) => row.kind === "background-work").length,
-  ids.length,
-  "Current-world purchased evidence is retained",
-);
-state.seed = "reset-world";
-await work.backgroundWorkSummaries();
-assert.equal(
-  [...rows.values()].filter((row) => row.kind === "background-work").length,
-  0,
-  "Reset still removes another world's private job records",
-);
-stop();
 {
   const spatial = fixture();
   spatial.scene(

@@ -59,7 +59,6 @@ export function createCompactFounding(ports: CompactFoundingServicePorts) {
         responseFormat: { type: "json_object" },
         temperature: 0.3,
         reasoningEffort: "none",
-        retryEmpty: false,
         usagePurpose: "background",
         checkpointId: context.contractVersion === 2 ? "founding-routine-v2" : "founding-routine-v1",
         debugMode,
