@@ -59,7 +59,8 @@ import { villageFixtureDocuments, authorSceneFixture } from "./helpers/village-s
 
 import { changeVenueAccess } from "../packages/villages/src/server/features/venues/services.js";
 
-import { contactPath } from "../packages/villages/src/server/domain/rules/venue-contact.js";
+import { contactPath, sceneAccessContext } from "../packages/villages/src/server/domain/rules/venue-contact.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 
 import type { VillageVenue, VillageVenueZone } from "../packages/villages/src/server/domain/models/world.js";
@@ -235,6 +236,112 @@ const snapshot = villageSettings(state, { name: "Player", missing: false } as an
 assert.equal(snapshot.venues[0]!.access, undefined);
 assert.ok(snapshot.venues[0]!.zones!.every((zone) => !zone.access));
 assert.equal(snapshot.venues[0]!.zones!.find((zone) => zone.id === "mara-bedroom")!.description, "");
+for (const scenario of [
+  "invited",
+  "revoked",
+  "escort-left",
+  "escort-departed",
+  "escort-cannot-enter",
+  "banned",
+  "closed",
+  "hours-closed",
+  "not-accompanying",
+  "escort-already-inside",
+]) {
+  const world = defaultVillageState();
+  const home = fixture();
+  world.venues = [home];
+  const target = home.zones!.find((zone) => zone.id === "office")!;
+  const scene = coerceSession({
+    version: 3,
+    id: "escort-scene",
+    villageSeed: world.seed,
+    placeId: home.id,
+    zoneId: "exterior",
+    area: "outside",
+    status: "active",
+    startedAt: stamp,
+    activeIds: ["jim"],
+    participants: [{ characterId: "jim", name: "Jim" }],
+    sceneAttendance: { capturedAt: stamp, occupants: [{ characterId: "jim", name: "Jim", zoneId: "exterior" }] },
+    entryOffers: [{ zoneId: target.id, controllerId: "jim", accompanies: true }],
+  });
+  applyAccessCommand(
+    home,
+    {
+      action: "invite",
+      operationId: "escorted-visit",
+      expectedRevision: home.access!.revision,
+      zoneId: target.id,
+      visitorId: "player",
+      duration: "visit",
+      accompanied: true,
+      outsideHours: false,
+      sceneId: scene.id,
+    },
+    "jim",
+    stamp,
+    known,
+  );
+  if (scenario === "revoked") home.access!.permissions[0].revoked = true;
+  if (scenario === "escort-left") scene.sceneAttendance!.occupants[0].zoneId = "living";
+  if (scenario === "escort-departed") {
+    scene.accompanying = [{ characterId: "jim", zoneId: target.id }];
+    scene.departedIds = ["jim"];
+  }
+  if (scenario === "escort-cannot-enter") {
+    target.access!.managerIds = [];
+    target.access!.memberIds = [];
+    target.access!.inviterIds = ["jim"];
+  }
+  if (scenario === "banned")
+    applyAccessCommand(
+      home,
+      {
+        action: "ban",
+        operationId: "new-ban",
+        expectedRevision: home.access!.revision,
+        zoneId: target.id,
+        visitorId: "player",
+      },
+      "jim",
+      stamp,
+      known,
+    );
+  if (scenario === "closed") home.constructionStatus = "worksite";
+  if (scenario === "hours-closed") target.access!.visitorHours = [];
+  if (scenario === "not-accompanying") scene.entryOffers![0].accompanies = false;
+  if (scenario === "escort-already-inside") {
+    scene.sceneAttendance!.occupants[0].zoneId = target.id;
+    scene.entryOffers = [];
+  }
+  const original = JSON.stringify({ home, scene });
+  const context = sceneAccessContext(scene, world);
+  const view = villageSettings(
+    world,
+    { name: "Player", description: "", personaId: "", missing: false },
+    scene,
+    context,
+  );
+  const projected = view.venues[0].zones!.find((zone) => zone.id === target.id)!;
+  assert.equal(
+    projected.accessView!.decision.allowed,
+    ["invited", "escort-already-inside"].includes(scenario),
+    scenario,
+  );
+  assert.equal(projected.description, "", "An invitation never reveals the unvisited interior");
+  assert.equal(
+    JSON.stringify({ home, scene }),
+    original,
+    "Previewing entry mutates no positions, attendance or permission ledger",
+  );
+  if (scenario === "invited")
+    assert.equal(
+      evaluateZoneAccess(home, target, "player", { ...context, accepting: true }).reason,
+      "accompaniment-required",
+      "Actual presence remains outside until Move",
+    );
+}
 assert.equal(
   publicSceneResponse({
     access: venue.access,

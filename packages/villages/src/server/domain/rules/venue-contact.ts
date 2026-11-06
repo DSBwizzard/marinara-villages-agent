@@ -3,7 +3,7 @@ import { sceneRelationshipView } from "./relationship-rules.js";
 import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import type { AttentionPlan } from "./scene-attention.js";
 import type { VenueLine, VenueScene } from "../models/scene-model.js";
-import type { VillageState, VillageVenue } from "../models/world.js";
+import type { VillageState, VillageVenue, VillageVenueZone } from "../models/world.js";
 import { badRequest } from "./errors.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { type AccessContext, evaluateZoneAccess } from "./venue-access.js";
@@ -76,13 +76,33 @@ const normalize = (value: string) =>
 export function contactNeighbors(venue: VillageVenue, zoneId: string, scene?: VenueScene): string[] {
   return contactNeighborIds(venueZones(sceneLayoutVenue(venue, scene)), zoneId);
 }
-export function contactPosition(scene: VenueScene, characterId: string): string {
+export function contactPosition(
+  scene: Pick<VenueScene, "departedIds" | "accompanying" | "sceneAttendance">,
+  characterId: string,
+): string {
   if (scene.departedIds?.includes(characterId)) return "";
   return (
     scene.accompanying?.find((entry) => entry.characterId === characterId)?.zoneId ??
     scene.sceneAttendance?.occupants.find((entry) => entry.characterId === characterId)?.zoneId ??
     ""
   );
+}
+
+/** Project the existing invitation's escort only for deliberate entry checks. */
+export function sceneMoveAccompanying(
+  scene: Pick<VenueScene, "entryOffers" | "accompanying" | "sceneAttendance" | "departedIds" | "zoneId">,
+  venue: VillageVenue,
+  zone: VillageVenueZone,
+) {
+  const offered = scene.entryOffers?.find((entry) => entry.zoneId === zone.id);
+  return offered?.accompanies &&
+    canOccupyZone(venue, zone, offered.controllerId) &&
+    (!venue.access || contactPosition(scene, offered.controllerId) === scene.zoneId)
+    ? [
+        ...(scene.accompanying ?? []).filter((entry) => entry.characterId !== offered.controllerId),
+        { characterId: offered.controllerId, zoneId: zone.id },
+      ]
+    : scene.accompanying;
 }
 export function sceneAccessContext(
   scene: Pick<

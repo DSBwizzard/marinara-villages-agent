@@ -140,6 +140,35 @@ for (const invited of [false, true]) {
     const replay = await host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
     assert.equal(replay.statusCode, 200, replay.body);
     assert.equal(calls, 1, "Replay cannot repurchase the GM response");
+    if (invited) {
+      const view = await host.app.inject({ method: "GET", url: "/api/villages" });
+      assert.equal(view.statusCode, 200, view.body);
+      const destination = view.json().sceneVenue.venue.zones.find((zone: any) => zone.id === "workshop");
+      assert.equal(
+        destination.accessView.decision.allowed,
+        true,
+        "The Move picker must offer an accompanied invitation before the escort crosses",
+      );
+      assert.equal(
+        host.scene().accompanying?.find((row) => row.characterId === "mara")?.zoneId,
+        "common",
+        "Previewing entry never moves the escort",
+      );
+      const moved = await host.app.inject({
+        method: "POST",
+        url: "/api/villages/rooms/zone",
+        payload: {
+          sessionId: "browser",
+          zoneId: "workshop",
+          expectedSceneRevision: host.scene().sceneRevision,
+          operationId: "c2222222-2222-4222-8222-222222222222",
+        },
+      });
+      assert.equal(moved.statusCode, 200, moved.body);
+      assert.equal(host.scene().zoneId, "workshop");
+      assert.equal(host.scene().accompanying?.find((row) => row.characterId === "mara")?.zoneId, "workshop");
+      assert.equal(calls, 1, "Accepting the saved invitation needs no new model response");
+    }
   } finally {
     await host.stop();
   }

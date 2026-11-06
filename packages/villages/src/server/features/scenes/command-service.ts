@@ -82,6 +82,7 @@ import {
   contactPath,
   contactPosition,
   sceneAccessContext,
+  sceneMoveAccompanying,
   type ContactIntent,
 } from "../../domain/rules/venue-contact.js";
 import { venueClasses, venueInArea, venueResidentIds } from "../../domain/rules/venue-model.js";
@@ -684,16 +685,7 @@ export function createSceneCommands({
         });
       });
     if (zoneClosed(village, venue, zone)) throw conflict("This zone is closed for Renovation.");
-    const offered = session.entryOffers?.find((entry) => entry.zoneId === zone.id);
-    const accompanying =
-      offered?.accompanies &&
-      canOccupyZone(venue, zone, offered.controllerId) &&
-      (!venue.access || contactPosition(session, offered.controllerId) === session.zoneId)
-        ? [
-            ...(session.accompanying ?? []).filter((entry) => entry.characterId !== offered.controllerId),
-            { characterId: offered.controllerId, zoneId: zone.id },
-          ]
-        : session.accompanying;
+    const accompanying = sceneMoveAccompanying(session, venue, zone);
     const savedInvitation = asRecord(session.operation?.checkpoints["move-invitation"]);
     const recoveredPermission =
       typeof savedInvitation.sourceLineId === "string" &&
