@@ -390,7 +390,10 @@ try {
     assert.equal(modelCalls, callsBeforeUnsupported);
     assert.deepEqual(state(), beforeUnsupported, "unsupported modes cannot admit or mutate a Scene");
   }
-  answer = { input: [{ kind: "action", text: "*waits*" }], segments: [{ speakerId: "aqua", text: "I am here." }] };
+  answer = {
+    input: [{ kind: "action", text: "*waits*" }],
+    segments: [{ kind: "dialogue", speakerId: "aqua", text: "I am here." }],
+  };
   const currentContact = await app.inject({
     method: "POST",
     url: "/api/villages/rooms/turn",
@@ -402,7 +405,7 @@ try {
   restore();
   await turn(
     "memory",
-    [{ speakerId: "aqua", text: "Then let us talk about the harbour tomorrow." }],
+    [{ kind: "dialogue", speakerId: "aqua", text: "Then let us talk about the harbour tomorrow." }],
     {
       input: [{ kind: "speech", text: spoken }],
       memoryChanges: [
@@ -440,8 +443,8 @@ try {
   restore();
 
   const distant = await turn("distant-call", [
-    { speakerId: "distant", text: "PRIVATE WORDS NEVER DELIVERED", delivery: "shout" },
-    { text: "You pause by the railing." },
+    { kind: "dialogue", speakerId: "distant", text: "PRIVATE WORDS NEVER DELIVERED", delivery: "shout" },
+    { kind: "narration", text: "You pause by the railing." },
   ]);
   const distantHistory = await publicHistory(distant.session.playback.scope);
   assert.match(distantHistory, /indistinct/);
@@ -449,7 +452,9 @@ try {
     JSON.stringify(distant) + distantHistory,
     /PRIVATE WORDS NEVER DELIVERED|Distant Resident|"distant"|soundOnly|heardHistory/,
   );
-  const local = await turn("local-speech", [{ speakerId: "aqua", text: "Only the terrace hears these words." }]);
+  const local = await turn("local-speech", [
+    { kind: "dialogue", speakerId: "aqua", text: "Only the terrace hears these words." },
+  ]);
   const localLine = state().lines.findLast((line: any) => line.content === "Only the terrace hears these words.");
   assert.deepEqual(localLine.heardBy, ["aqua", "feddy"]);
   assert.deepEqual(localLine.soundOnly.characterIds, ["neighbor"]);
@@ -473,9 +478,10 @@ try {
   const arrived = await turn(
     "doorway-crossing",
     [
-      { speakerId: "neighbor", text: "PRIVATE WORDS BEFORE ARRIVAL" },
-      { text: "Neighbor steps out of the Kitchen onto the Terrace beside you." },
+      { kind: "dialogue", speakerId: "neighbor", text: "PRIVATE WORDS BEFORE ARRIVAL" },
+      { kind: "narration", text: "Neighbor steps out of the Kitchen onto the Terrace beside you." },
       {
+        kind: "dialogue",
         speakerId: "neighbor",
         text: "I'm Neighbor. I work in the harbour workshop.",
         delivery: "whisper",
@@ -505,7 +511,7 @@ try {
   const intentionSpeech = "I enjoy a quiet conversation.";
   const intention = await turn(
     "private-intention",
-    [{ speakerId: "aqua", text: intentionSpeech }],
+    [{ kind: "dialogue", speakerId: "aqua", text: intentionSpeech }],
     {
       input: [{ kind: "speech", text: "I am happy to listen." }],
       relationshipChanges: {
@@ -601,9 +607,14 @@ try {
     const request = payload("invalid-" + failure);
     answerContent = undefined;
     answerFinishReason = "stop";
-    answer = { input: [{ kind: "action", text: request.message }], segments: [{ text: "Aqua sets her cup down." }] };
+    answer = {
+      input: [{ kind: "action", text: request.message }],
+      segments: [{ kind: "narration", text: "Aqua sets her cup down." }],
+    };
     if (failure === "sound")
-      answer.segments = [{ text: "Aqua sets her cup down.", sound: { sourceId: "aqua", text: "x".repeat(301) } }];
+      answer.segments = [
+        { kind: "narration", text: "Aqua sets her cup down.", sound: { sourceId: "aqua", text: "x".repeat(301) } },
+      ];
     if (failure === "input") answer.input = [{ kind: "action", text: "*waits" }];
     if (failure === "capture") answer.input = [{ kind: "action", text: "NOT IN THE ORIGINAL" }];
     if (failure === "json" || failure === "truncated") answerContent = '{"input":';
@@ -614,7 +625,7 @@ try {
     if (failure === "event-moves") answer.events = { moves: null };
     if (failure === "access-null") answer.access = null;
     if (failure === "project") {
-      answer.segments = [{ speakerId: "aqua", text: "I approve the unknown project." }];
+      answer.segments = [{ kind: "dialogue", speakerId: "aqua", text: "I approve the unknown project." }];
       answer.projectSpeech = [
         { projectId: "unknown-project", revision: 0, kind: "approval", speakerId: "aqua", citations: [{ segment: 0 }] },
       ];
@@ -626,7 +637,7 @@ try {
       });
     if (failure === "disclosure")
       Object.assign(answer, {
-        segments: [{ speakerId: "neighbor", text: "I'm Neighbor. I work in the harbour workshop." }],
+        segments: [{ kind: "dialogue", speakerId: "neighbor", text: "I'm Neighbor. I work in the harbour workshop." }],
         relationshipChanges: { disclosures: [{ ...disclosure, lineIds: [0] }] },
       });
     const before = clone(state()),
@@ -634,6 +645,8 @@ try {
       calls = modelCalls;
     const rejected = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload: request });
     assert.equal(rejected.statusCode, 502, failure + ": " + rejected.body);
+    if (failure === "sound") assert.match(rejected.body, /sound/i);
+    if (failure === "project") assert.match(rejected.body, /project/i);
     assert.deepEqual(state().lines, before.lines);
     assert.deepEqual(state().submissions, before.submissions);
     assert.deepEqual(state().sceneAttendance, before.sceneAttendance);
@@ -660,7 +673,10 @@ try {
     assert.equal(modelCalls, calls + 1);
     answerContent = undefined;
     answerFinishReason = "stop";
-    answer = { input: [{ kind: "action", text: request.message }], segments: [{ text: "The terrace is quiet." }] };
+    answer = {
+      input: [{ kind: "action", text: request.message }],
+      segments: [{ kind: "narration", text: "The terrace is quiet." }],
+    };
     const acceptedRequest = { ...request, retryOfAttemptId: state().operation.attemptId };
     const accepted = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload: acceptedRequest });
     assert.equal(accepted.statusCode, 200, accepted.body);
@@ -675,7 +691,7 @@ try {
     failedSaveId = "save-fault-" + fault;
     saveFault = fault;
     const text = "Exactly once prose " + fault;
-    answer = { input: [{ kind: "action", text: "*waits*" }], segments: [{ text }] };
+    answer = { input: [{ kind: "action", text: "*waits*" }], segments: [{ kind: "narration", text }] };
     const request = payload(failedSaveId),
       calls = modelCalls;
     const failed = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload: request });
@@ -710,7 +726,7 @@ try {
   ] as const) {
     const id = "malformed-" + domain + "-" + variant,
       text = "Accepted prose for " + domain + ".";
-    await turn(id, [{ speakerId: "aqua", text }], { [field]: proposal });
+    await turn(id, [{ kind: "dialogue", speakerId: "aqua", text }], { [field]: proposal });
     const held = () => state().submissions.find((entry: any) => entry.id === id);
     assert.equal(held().processing.domains[domain].status, "failed");
     assert(held().effectFailures[domain]);
@@ -786,7 +802,7 @@ try {
         : "Your standing permission to visit my Kitchen is withdrawn.";
     answer = {
       input: [{ kind: "action", text: "*waits*" }],
-      segments: [{ speakerId: "aqua", text }],
+      segments: [{ kind: "dialogue", speakerId: "aqua", text }],
       relationshipChanges: { changes: "malformed", permissions: [permission], disclosures: [] },
     };
     const request = payload(id),
@@ -858,7 +874,7 @@ try {
   for (const failSceneSave of [false, true]) {
     const id = "continued-social-" + failSceneSave,
       discardedText = "Aqua prefers red notebooks.";
-    await turn(id, [{ speakerId: "aqua", text: "I prefer red notebooks." }], {
+    await turn(id, [{ kind: "dialogue", speakerId: "aqua", text: "I prefer red notebooks." }], {
       relationshipChanges: {
         changes: "discarded malformed metadata",
         permissions: [],
@@ -922,7 +938,9 @@ try {
         { kind: "speech", text: "Hello." },
         { kind: "action", text: "*I sleep for two months*" },
       ],
-      segments: [{ speakerId: "aqua", text: "A generated farewell must never replace the held input." }],
+      segments: [
+        { kind: "dialogue", speakerId: "aqua", text: "A generated farewell must never replace the held input." },
+      ],
       halt: { reason, source: "player", quote: "two months", appointments: [] },
     };
     const request = { ...payload("halt-" + mode, message), mode },

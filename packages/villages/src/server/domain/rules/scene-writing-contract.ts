@@ -52,22 +52,6 @@ export function normalizeSparseSceneReply(raw: Record<string, unknown>): Record<
       if (!Object.hasOwn(relationships, key)) relationships[key] = [];
   }
   const segments = Array.isArray(result.segments) ? result.segments.map(asRecord) : [];
-  for (const line of segments) if (!Object.hasOwn(line, "kind")) line.kind = line.speakerId ? "dialogue" : "narration";
-  // Legacy kind:side is an ordinary aside, never a whisper. Accept its misplaced
-  // delivery alias only with explicit aside presentation and no conflicting channel.
-  for (const line of segments) {
-    const ordinaryAside =
-      line.delivery === "aside" || (line.delivery === "side" && line.presentation === "aside" && line.loud !== true);
-    if (
-      ordinaryAside &&
-      ["dialogue", "side"].includes(String(line.kind)) &&
-      (line.presentation === undefined || line.presentation === "aside") &&
-      line.targetId === undefined
-    ) {
-      line.delivery = "ordinary";
-      line.presentation = "aside";
-    }
-  }
   const source = (value: unknown, speech = true): Record<string, unknown> => {
     if (!Number.isSafeInteger(value) || Number(value) < 0 || !segments[Number(value)])
       throw badGateway("The Scene reply used an invalid source reference. Your draft is preserved.");

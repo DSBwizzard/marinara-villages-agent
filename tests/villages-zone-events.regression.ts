@@ -119,14 +119,28 @@ const scene = zoneEventScene(base, venue);
   assert.deepEqual(ordinary.heardBy, ["local"]);
   assert.deepEqual(ordinary.soundOnly?.characterIds, ["near"]);
   assert.ok(!ordinary.soundOnly?.text.includes("PRIVATE"));
-  const loud = route(event({ kind: "sound", speakerId: "local", text: "A crash.", loud: true }));
-  assert.deepEqual(loud.heardBy, ["local", "near", "far"]);
+  const loud = route(
+    event({
+      kind: "narration",
+      text: "A crash rings out.",
+      sound: { sourceId: "local", text: "A crash.", loud: true },
+    }),
+  );
+  assert.deepEqual(loud.heardBy, ["local"]);
+  assert.deepEqual(loud.soundOnly?.characterIds, ["near", "far"]);
   const shout = route(event({ kind: "dialogue", speakerId: "local", text: "A shouted warning!", delivery: "shout" }));
   assert.deepEqual(shout.heardBy, ["local", "near"]);
   assert.deepEqual(shout.soundOnly?.characterIds, ["far"]);
-  assert.equal(
-    route(event({ kind: "sound", speakerId: "veryFar", text: "Distant crash", loud: true })).contactHidden,
-    true,
+  assert.throws(
+    () =>
+      route(
+        event({
+          kind: "narration",
+          text: "Distant crash",
+          sound: { sourceId: "veryFar", text: "A crash.", loud: true },
+        }),
+      ),
+    /outside hearing range/,
   );
   const voice = route(event({ kind: "dialogue", speakerId: "near", text: "PRIVATE NEARBY WORDS" }));
   assert.equal(voice.contactHidden, true);
@@ -159,6 +173,23 @@ function routed(raw: ReturnType<typeof response>, text = message, moves: any[] =
   applyResidentMovementTimeline(context, venue, parsed.lines, moves);
   return parsed;
 }
+
+assert.throws(
+  () => parseVenueReply(zoneEventReply({ lines: [{ kind: "narration", text: "Retired wrapper." }] }, ""), ["local"]),
+  /segments must be an array/,
+);
+assert.throws(() => routed(response([{ kind: "sound", speakerId: "local", text: "Retired sound." }])), /kind must be/);
+assert.throws(() => routed(response([{ speakerId: "local", text: "Missing required kind." }])), /kind must be/);
+const ignoredSoundFlag = routed(
+  response([{ kind: "narration", text: "An ordinary observation.", soundEvent: true, speakerId: "far", loud: true }]),
+);
+assert.deepEqual(ignoredSoundFlag.lines[0].heardBy, ["local"]);
+assert.equal(ignoredSoundFlag.lines[0].soundOnly, undefined);
+const ignoredLoudAlias = routed(
+  response([{ kind: "dialogue", speakerId: "local", text: "PRIVATE WORDS", loud: true }]),
+);
+assert.deepEqual(ignoredLoudAlias.lines[0].heardBy, ["local"]);
+assert.deepEqual(ignoredLoudAlias.lines[0].soundOnly?.characterIds, ["near"]);
 
 // No hearing metadata is required for an ordinary local answer.
 let result = routed(response([{ kind: "dialogue", speakerId: "local", text: "Hello there." }]));
@@ -211,22 +242,30 @@ for (const input of [
 ]) {
   const reply = routed(
     response([
-      { kind: "dialogue", speakerId: "player", text: "Hello. How are you?" },
+      { kind: "dialogue", speakerId: "player", text: "Hello." },
+      { kind: "dialogue", speakerId: "player", text: "How are you?" },
       { kind: "dialogue", speakerId: "local", text: "Fine." },
     ]),
     input,
   );
-  assert.equal(reply.lines[0].content, "Hello. How are you?");
-  assert.equal(reply.lines.length, 2, "fragment repair never renumbers evidence");
+  assert.deepEqual(
+    reply.lines.slice(0, 2).map((line) => line.content),
+    ["Hello.", "How are you?"],
+  );
+  assert.equal(reply.lines.length, 3, "Interrupted speech retains separate exact sources");
+  assert.throws(
+    () => routed(response([{ kind: "dialogue", speakerId: "player", text: "Hello. How are you?" }]), input),
+    /invented player speech/,
+  );
 }
-const fragments = routed(
-  response([
-    { kind: "dialogue", speakerId: "player", fragments: ["Hello.", "How are you?"] },
-    { kind: "dialogue", speakerId: "local", text: "Fine." },
-  ]),
-  "Hello. I turn around. How are you?",
+assert.throws(
+  () =>
+    routed(
+      response([{ kind: "dialogue", speakerId: "player", fragments: ["Hello.", "How are you?"] }]),
+      "Hello. I turn around. How are you?",
+    ),
+  /invented player speech/,
 );
-assert.equal(fragments.lines[0].content, "Hello. How are you?");
 assert.throws(
   () =>
     routed(
@@ -265,10 +304,17 @@ assert.match(reach, /wordsReach|alertOnly/);
 assert.doesNotMatch(reach, /bedroom|exterior|hall/, "hearing context omits hidden room identities");
 const decoratedSound = routed(
   response([
-    { kind: "sound", speakerId: "local", text: "A crash.", loud: true, delivery: "whisper", presentation: "aside" },
+    {
+      kind: "narration",
+      text: "A crash rings out.",
+      sound: { sourceId: "local", text: "A crash.", loud: true },
+      delivery: "whisper",
+      presentation: "aside",
+    },
   ]),
 );
-assert.deepEqual(decoratedSound.lines[0].heardBy, ["local", "near", "far"]);
+assert.deepEqual(decoratedSound.lines[0].heardBy, ["local"]);
+assert.deepEqual(decoratedSound.lines[0].soundOnly?.characterIds, ["near", "far"]);
 assert.equal(decoratedSound.lines[0].delivery, undefined);
 
 result = routed(
@@ -332,17 +378,21 @@ const evidence = liveEvidence(
 assert.equal(evidence[2].playerHeard, false, "a distant voice cannot establish player-heard words or permission");
 assert(!evidence[0].heardBy.includes("far"), "a loud player call gives far listeners no word evidence");
 
-// NPCs can originate sounds without any player speech; ordinary sound stops after one edge.
-for (const loud of [false, true]) {
-  const sounds = routed(
-    response([{ kind: "sound", speakerId: "far", text: "A heavy crash rings out.", loud }]),
-    "I wait quietly.",
-  );
-  assert.deepEqual(sounds.lines[0].heardBy, loud ? ["local", "near", "far"] : ["near", "far"]);
-  assert.equal(sounds.lines[0].contactHidden, !loud);
-  assert.equal(sounds.lines[0].speakerId, "__venue_scene__");
-  assert.equal(sounds.lines[0].zoneId, "bedroom");
-}
+// Distant audible cues reveal only their sound, while narration stays local.
+const npcCrash = {
+  kind: "narration",
+  text: "A heavy crash rings out beyond the wall.",
+  sound: { sourceId: "far", text: "A heavy crash rings out.", loud: true },
+};
+const sounds = routed(response([npcCrash]), "I wait quietly.");
+assert.deepEqual(sounds.lines[0].heardBy, ["local"]);
+assert.deepEqual(sounds.lines[0].soundOnly?.characterIds, ["near", "far"]);
+assert.equal(sounds.lines[0].soundOnly?.text, npcCrash.sound.text);
+assert.equal(sounds.lines[0].speakerId, "__venue_scene__");
+assert.throws(
+  () => routed(response([{ ...npcCrash, sound: { ...npcCrash.sound, loud: false } }])),
+  /outside hearing range/,
+);
 const failed = routed(
   response([{ kind: "narration", text: "The stone lands softly." }]),
   "I try to hit the railing with a stone.",
@@ -550,7 +600,7 @@ assert.throws(
 );
 assert.throws(
   () => routed(response([{ kind: "sound", speakerId: "__venue_scene__", text: "A click." }])),
-  /unknown sound source/,
+  /kind must be/,
 );
 const movingSound = routed(
   response([
@@ -618,7 +668,7 @@ assert.equal(
   "the selected recipient takes first priority",
 );
 const broadcast = routed(
-  response([{ kind: "dialogue", speakerId: "local", text: "Everyone, watch out!", loud: true }]),
+  response([{ kind: "dialogue", speakerId: "local", text: "Everyone, watch out!", delivery: "shout" }]),
   message,
   [],
   bounded,

@@ -776,10 +776,6 @@ export function createSceneWriting({
         }
         diagnostics.missingFields = sceneMissingFields(raw);
       }
-      if (captureSources && raw && Array.isArray(raw.segments)) {
-        for (const [index, spans] of captureSources)
-          asRecord(raw.segments[index]).fragments = spans.map((span) => span.text);
-      }
       if (raw) {
         raw.npcIntroductions ??= originalRaw?.npcIntroductions;
         const introductions = prepareNpcIntroductions(raw, village, session, requestKey);
