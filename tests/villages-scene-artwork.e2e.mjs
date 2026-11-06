@@ -1,3 +1,5 @@
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
 const { authorSceneResponse } = await scenePlaybackFixtures();
 import assert from "node:assert/strict";
@@ -11,11 +13,13 @@ const bundle = await build({
     resolveDir: process.cwd(),
     contents: `
 import {installFeature} from './tests/fixtures/feature-root.js';
+import {useState} from 'react';
 import {SceneScreen} from './packages/villages/src/client/features/scenes/SceneScreen.js';
 import {VenueScreen} from './packages/villages/src/client/features/venues/VenueScreen.js';
 import {venuePictureOf} from './packages/villages/src/client/shared/presentation.js';
 window.pictureFor=venuePictureOf;
-installFeature(c=>c.screen==='venue'?<VenueScreen controller={c}/>:<SceneScreen controller={c}/>);
+function VenueHarness({c}) { const [founded,setFounded]=useState(true); window.setBackdropFounded=setFounded; return <VenueScreen controller={{...c,snapshot:{...c.snapshot,isFounded:founded}}}/>; }
+installFeature(c=>c.screen==='venue'?<VenueHarness c={c}/>:<SceneScreen controller={c}/>);
 `,
   },
   bundle: true,
@@ -43,9 +47,15 @@ await withBrowser(browser, async () => {
     const old = image("#635344"),
       generated = image("#346755"),
       uploaded = image("#664477");
+    const night = image("#182944");
+    venue.presentation.image = { url: old, id: "header-day", ref: "header-day" };
+    snapshot.village = { ...snapshot.village, instant: "2026-11-06T04:00:00Z", timeZone: "America/Los_Angeles" };
+    snapshot.clock = { ...snapshot.clock, paused: true };
     venue.zones = [
       {
         id: "exterior",
+        dayNight: true,
+        nightImage: { url: night, id: "header-night", ref: "header-night" },
         kind: "exterior",
         name: "Entrance",
         venueClass: "community",
@@ -97,22 +107,27 @@ await withBrowser(browser, async () => {
         path = new URL(req.url()).pathname;
       let value = snapshot;
       if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session: scene };
-      if (
-        (path.endsWith("/locations/venue/image") || path.endsWith("/locations/venue/image/update")) &&
-        req.method() !== "GET"
-      ) {
+      if (path.endsWith("/locations/venue/image") && req.method() !== "GET") {
         const body = req.postDataJSON();
         mutations.push({ path, method: req.method(), body });
         const zone = venue.zones.find((z) => z.id === body.zoneId);
         assert.ok(zone);
-        zone.image =
-          req.method() === "DELETE"
-            ? null
-            : {
-                url: req.method() === "POST" ? generated : uploaded,
-                id: "new-" + mutations.length,
-                ref: "new-" + mutations.length,
-              };
+        if (req.method() === "PUT") {
+          zone.pictureReference = { id: "reference", ref: "global-gallery:reference", url: uploaded };
+          zone.referencePending = true;
+        } else
+          zone.image =
+            req.method() === "DELETE"
+              ? null
+              : {
+                  url: req.method() === "POST" ? generated : uploaded,
+                  id: "new-" + mutations.length,
+                  ref: "new-" + mutations.length,
+                };
+        if (req.method() === "DELETE") {
+          zone.pictureReference = undefined;
+          zone.referencePending = false;
+        }
       } else if (req.method() !== "GET" && /\/rooms(?:\/|$)/.test(path))
         assert.fail("artwork must not mutate the Scene");
       await fulfill(route, { json: authorSceneResponse(value, snapshot.worldScope) });
@@ -133,6 +148,18 @@ await withBrowser(browser, async () => {
     };
     const returnToScene = () => page.getByRole("button", { name: "Back to Scene", exact: true }).click();
     await openSettings();
+    const header = page.locator(".marinara-capability-villages-workspace-venue-header > img");
+    await expect(header).toHaveAttribute("src", night);
+    if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS && area === "outside") {
+      await mkdir(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, { recursive: true });
+      await page.screenshot({ path: join(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `play-night-${width}.png`) });
+    }
+    await page.evaluate(() => window.setBackdropFounded(false));
+    await expect(header).toHaveAttribute("src", old);
+    if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS && area === "outside")
+      await page.screenshot({ path: join(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `founding-day-${width}.png`) });
+    await page.evaluate(() => window.setBackdropFounded(true));
+    await expect(header).toHaveAttribute("src", night);
     await page.getByRole("button", { name: "Generate new picture", exact: true }).click();
     await expect.poll(() => mutations.length).toBe(1);
     await expect(page.getByRole("button", { name: "Picture", exact: true })).toBeVisible();
@@ -140,7 +167,7 @@ await withBrowser(browser, async () => {
     await expect(backdrop).toHaveAttribute("src", generated);
     await expect(composer).toHaveValue("Keep this unsent Scene draft.");
     await openSettings();
-    await page.getByLabel(`Upload ${targetName} artwork`).setInputFiles({
+    await page.getByLabel(`Upload ${targetName} reference`).setInputFiles({
       name: "upload.png",
       mimeType: "image/png",
       buffer: Buffer.from(
@@ -151,16 +178,11 @@ await withBrowser(browser, async () => {
     await expect.poll(() => mutations.length).toBe(2);
     await expect(page.getByRole("button", { name: "Remove artwork", exact: true })).toBeEnabled();
     await returnToScene();
-    await expect(backdrop).toHaveAttribute("src", uploaded);
-    await openSettings();
-    await page.getByRole("button", { name: "Refresh picture", exact: true }).click();
-    await expect.poll(() => mutations.length).toBe(3);
-    assert.ok(mutations.at(-1).path.endsWith("/image/update"));
-    await returnToScene();
     await expect(backdrop).toHaveAttribute("src", generated);
     await openSettings();
+    await expect(page.getByRole("button", { name: "Refresh picture", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "Remove artwork", exact: true }).click();
-    await expect.poll(() => mutations.length).toBe(4);
+    await expect.poll(() => mutations.length).toBe(3);
     await expect(page.getByRole("button", { name: "Remove artwork", exact: true })).toHaveCount(0);
     await returnToScene();
     await expect(backdrop).toHaveCount(0);

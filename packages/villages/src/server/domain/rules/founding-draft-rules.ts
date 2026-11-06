@@ -117,8 +117,14 @@ export function parseFoundingVenueSuggestions(
       );
       if (problem) throw badRequest(problem);
     }
+    for (const key of ["dayNight", "commonDayNight", "privateDayNight"] as const)
+      if (row[key] !== undefined && typeof row[key] !== "boolean")
+        throw badRequest("The Zone daylight decision must be on or off.");
     return {
       id,
+      ...(typeof row.dayNight === "boolean" ? { dayNight: row.dayNight } : {}),
+      ...(typeof row.commonDayNight === "boolean" ? { commonDayNight: row.commonDayNight } : {}),
+      ...(typeof row.privateDayNight === "boolean" ? { privateDayNight: row.privateDayNight } : {}),
       ...(connections === undefined ? {} : { connections: connections as [string, string][] }),
       name: text("name", 60, true),
       form: text("form", 2000, true),

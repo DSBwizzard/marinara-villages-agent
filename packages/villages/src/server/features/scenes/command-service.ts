@@ -1,3 +1,5 @@
+import { zonePictureBaseline } from "../../domain/rules/zone-picture.js";
+import { captureZoneObservation } from "../../domain/rules/zone-observation.js";
 import { findLocation, sceneActorIds } from "../../domain/rules/places.js";
 import { admitNpcParticipants, type NpcAdmission } from "../../domain/rules/npc-participation.js";
 import { applyPlaceExchange } from "../../domain/rules/place-exchange.js";
@@ -904,6 +906,18 @@ export function createSceneCommands({
         if (venue && zone && contactCanEnter(state, venue, zone.id, "player", session)) zone.seen = true;
       });
     }
+    if (!findLocation(await readVillageState(), session.placeId)) return;
+    const pointer = await readActive();
+    const currentScene = await readSession(session.id);
+    if (
+      pointer.sessionId !== session.id ||
+      currentScene.status === "closed" ||
+      currentScene.zoneId !== session.zoneId ||
+      semanticBlocker(currentScene)
+    )
+      return;
+    const observedVenue = findLocation(currentScene.continuity?.facts, session.placeId);
+    const observed = observedVenue && resolveVenueZone(observedVenue, session.zoneId ?? "exterior");
     let admitted = false;
     await mutateVillageState((state) => {
       admitted = false;
@@ -927,11 +941,27 @@ export function createSceneCommands({
       )
         return;
       zone.seen = true;
+      const account =
+        observed && observedVenue
+          ? captureZoneObservation(observedVenue, observed)
+          : captureZoneObservation(venue, zone);
+      // Saved artwork follows its observed physical account, even while an old Scene owns captured facts.
+      zone.observed =
+        zonePictureBaseline(zone.picture?.context ?? zone.picture?.baseline ?? "") === account.context
+          ? {
+              ...account,
+              image: zone.image,
+              daylight: zone.picture?.daylight,
+              night: zone.picture?.night,
+              pictureContext: zone.picture?.context ?? zone.picture?.baseline,
+            }
+          : account;
       admitted = true;
     });
     if (!admitted) return;
     if (
       !generateImage ||
+      hasVenueOperation(session.id) ||
       !findLocation(await readVillageState(), session.placeId) ||
       !(await readVillageState()).venues.some((venue) => venue.id === session.placeId)
     )

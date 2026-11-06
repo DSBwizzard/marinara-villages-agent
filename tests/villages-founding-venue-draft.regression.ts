@@ -1,3 +1,4 @@
+import { createFoundingWithSetupImage } from "../packages/villages/src/client/features/founding/image-controller.js";
 import assert from "node:assert/strict";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { createDocumentMutator } from "../packages/villages/src/server/adapters/storage/document-store.js";
@@ -48,12 +49,14 @@ const raw = {
   venueType: "Home",
   form: "A reclaimed boathouse",
   description: "A weathered entrance faces the sea.",
+  dayNight: true,
   zones: [
     ...[...(home.spaces ?? []), ...(home.privateSpaces ?? [])].map((zone) => ({
       id: zone.id,
       name: zone.name,
       purpose: zone.purpose,
       description: "A freshly drafted physical description.",
+      dayNight: true,
       private: home.privateSpaces!.some((room) => room.id === zone.id),
       ownerId: zone.ownerId ?? "",
       connectedTo: ["exterior"],
@@ -63,6 +66,7 @@ const raw = {
       name: "Kitchen",
       purpose: "Cooking",
       description: "A bright kitchen with a tiled stove.",
+      dayNight: false,
       private: false,
       ownerId: "",
       connectedTo: ["common:base"],
@@ -73,6 +77,32 @@ assert.deepEqual(readFoundingZoneIds(["new-kitchen"], source), ["new-kitchen"]);
 const plan = parseFoundingVenueDraft({ venues: [raw] }, source, ["new-kitchen"], false, now);
 const drafted = applyFoundingVenueDraft(home, plan);
 assert.deepEqual(home, original);
+assert.equal(drafted.dayNight, true);
+assert.equal(drafted.dayNightManual, false);
+assert.equal(drafted.spaces!.at(-1)!.dayNight, false);
+const persisted = readFoundingVenueDraftSource(drafted);
+assert.equal(persisted.zones!.find((z) => z.id === "exterior")!.dayNightManual, false);
+assert.equal(persisted.zones!.find((z) => z.id === "new-kitchen")!.dayNight, false);
+const manual = structuredClone(home);
+manual.dayNight = false;
+manual.dayNightManual = true;
+manual.spaces![0].dayNight = false;
+manual.spaces![0].dayNightManual = true;
+const held = applyFoundingVenueDraft(manual, plan);
+assert.equal(held.dayNight, true);
+assert.equal(held.spaces![0].dayNight, true);
+const same = applyFoundingVenueDraft(drafted, {
+  ...plan,
+  dayNight: false,
+  zones: plan.zones!.map((z) => ({ ...z, dayNight: !z.dayNight })),
+});
+assert.equal(same.dayNight, drafted.dayNight, "unchanged Entrance prose keeps its existing automatic choice");
+assert.equal(same.spaces![0].dayNight, drafted.spaces![0].dayNight, "unchanged Zone prose keeps its automatic choice");
+assert.throws(
+  () => parseFoundingVenueDraft({ venues: [{ ...raw, dayNight: "yes" }] }, source, ["new-kitchen"], false, now),
+  /daylight decision/,
+);
+
 for (const key of ["residentIds", "occupancy", "residenceCapacity", "destinations", "presentation"] as const)
   assert.deepEqual(drafted[key], home[key], key);
 for (const old of [...home.spaces!, ...home.privateSpaces!]) {
@@ -459,3 +489,17 @@ try {
 console.log(
   "Complete Venue drafts: stable Zones, privacy and sleep routes, optional Entrance artwork, durable text and no paid-stage replay passed.",
 );
+
+{
+  const keep = createFoundingWithSetupImage();
+  const generated = keep(drafted, "exterior", { id: "day", ref: "global-gallery:day", url: "/day.png" });
+  const saved = readFoundingVenueDraftSource(generated).zones!.find((zone) => zone.id === "exterior")!;
+  assert.equal(saved.picture?.daylight, true, "Founding-generated daytime artwork retains its provenance");
+  assert.equal(saved.picture?.context, JSON.stringify({ description: drafted.description, form: drafted.form }));
+  const edited = readFoundingVenueDraftSource({
+    ...generated,
+    description: generated.description + " A new doorway.",
+  }).zones!.find((zone) => zone.id === "exterior")!;
+  assert.equal(edited.picture?.context, saved.picture?.context, "later Founding edits do not relabel existing pixels");
+  assert.equal(edited.picture?.dirty, true);
+}

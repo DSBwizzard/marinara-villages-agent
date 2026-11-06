@@ -2127,10 +2127,13 @@ ${VILLAGES_FORGING_STYLES}
 .${ELEMENT_TAG}-zone-title h2 > button { cursor:text; }
 .${ELEMENT_TAG}-zone-title h2 > button span { font-size:.7em; opacity:.6; }
 .${ELEMENT_TAG}-zone-title h2 > input { outline-offset:3px; }
-.${ELEMENT_TAG}-zone-artwork-frame { width:100%; height:clamp(200px,34dvh,340px); overflow:hidden; display:grid; place-items:center; }
+.${ELEMENT_TAG}-zone-artwork-frame { position:relative; width:100%; height:clamp(200px,34dvh,340px); overflow:hidden; display:grid; place-items:center; }
 .${ELEMENT_TAG}-zone-artwork-frame .${ELEMENT_TAG}-venue-profile-image { display:block; height:100%; width:100%; max-height:none; object-fit:contain; margin:0; }
 .${ELEMENT_TAG}-zone-artwork-frame .${ELEMENT_TAG}-venue-image-empty { width:100%; height:100%; min-height:0; margin:0; box-sizing:border-box; }
 .${ELEMENT_TAG}-zone-artwork-actions { position:relative; display:flex; flex-wrap:wrap; min-height:44px; gap:.4rem; align-items:start; }
+.${ELEMENT_TAG}-visual-setting { margin:.75rem 0; }
+.${ELEMENT_TAG}-visual-setting > label { margin-bottom:.15rem; }
+.villages-style-hint { display:block; line-height:1.4; }
 .${ELEMENT_TAG}-picture-menu summary { display:flex; align-items:center; gap:.7rem; min-height:44px; box-sizing:border-box; padding:.5rem .8rem; border:1px solid #65799c; border-radius:.5rem; background:#1f3050; cursor:pointer; list-style:none; }
 .${ELEMENT_TAG}-picture-menu summary::-webkit-details-marker { display:none; }
 .${ELEMENT_TAG}-picture-menu summary:focus-visible { outline:3px solid #bfa9ff; outline-offset:2px; }

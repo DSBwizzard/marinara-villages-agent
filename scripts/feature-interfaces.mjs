@@ -26,6 +26,7 @@ export const serverFeatureInterfaces = Object.freeze({
   "generation/system-interpretation.ts": ["systemInterpretations"],
   "media/image-generation.ts": [
     "resolveVillageImageConnectionId",
+    "resolveVillageImageEditing",
     "generateVillageImage",
     "readVillageImageStyleCatalog",
   ],

@@ -559,3 +559,24 @@ console.log("Places: shared Zones, identity, scoped control, private projection 
   assert.equal(projectSpeakerAtTurn(turn, { id: "consent", speakerId: sameNpc.id }), true);
   assert.deepEqual(turn.activeIdsAtTurn, []);
 }
+
+{
+  const world = defaultVillageState();
+  const draft = {
+    name: "Sunroom",
+    description: "A conservatory with a glass roof.",
+    dayNight: true,
+    zones: [{ id: "cellar", name: "Cellar", kind: "public", description: "A windowless cellar.", dayNight: false }],
+  };
+  const first = establishPlace(world, draft, "light-place", "map", "test", "2026-11-05T12:00:00Z", true);
+  assert.equal(first.location.zones![0].dayNight, true);
+  assert.equal(first.location.zones![0].dayNightManual, false);
+  first.location.zones![0].dayNight = false;
+  first.location.zones![0].dayNightManual = true;
+  const next = establishPlace(world, draft, "light-place", "map", "test", "2026-11-05T13:00:00Z", true, first);
+  assert.equal(next.location.zones![0].dayNight, true, "preparing a Place uses its automatic lighting decision");
+  assert.equal(next.location.zones![0].dayNightManual, false);
+  assert.equal(next.location.zones![1].dayNight, false);
+  assert.equal(projectPlace(world, next).zones![1].description, "");
+  assert.equal(projectPlace(world, next).zones![1].dayNight, undefined, "hidden lighting metadata remains private");
+}

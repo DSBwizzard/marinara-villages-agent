@@ -1,3 +1,5 @@
+import { ZONE_DAY_NIGHT_INSTRUCTION } from "../../shared/helpers/zone-day-night.js";
+import { applyZoneDayNightDefault } from "../domain/rules/zone-picture.js";
 import { recordLoreUse } from "../adapters/observability/runtime-debug.js";
 import { currentVillageCircumstances } from "../domain/rules/prompt-preset.js";
 import { backgroundRevision } from "../domain/rules/background-revision.js";
@@ -80,6 +82,9 @@ function readPrivateReply(
       : entries.length !== 1
         ? ["room_count"]
         : [
+            ...(generated.dayNight !== undefined && typeof generated.dayNight !== "boolean"
+              ? ["invalid_day_night"]
+              : []),
             ...(generated.venueId !== venueId ? ["venue_id_mismatch"] : []),
             ...(generated.id !== zoneId ? ["space_id_mismatch"] : []),
             ...(!asTrimmedString(generated.description) ? ["missing_description"] : []),
@@ -231,7 +236,8 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
             role: "system",
             content:
               (room.characters.some((person) => person.admissionContext) ? RESIDENT_CONTINUITY_RULE + "\n" : "") +
-              'Define exactly the one saved private space in the input. Respect venue form, world facts, roomSpecification, selected lore and occupant personalities. A tent corner is valid; never assume a bedroom. Respect the saved layout, including a private-only interior or no Common Space. Never invent adjoining rooms, named people or exceptional possessions. Without occupants prepare a functional neutral interior. If existingInterior is supplied, apply the approved roomSpecification to that interior, preserving unrelated furnishings, damage and history. Return the complete reconciled description, removing only details contradicted by the approved work; preserve unrelated established details. For a Private work area derive a fitting short name (vault, office, staff room, storage, etc.). Return JSON only: {"rooms":[{"venueId":"exact input","id":"exact input","name":"short room name","description":"complete current physical account, at most 4000 characters"}]}. Keep the complete reply concise.',
+              'Define exactly the one saved private space in the input. Respect venue form, world facts, roomSpecification, selected lore and occupant personalities. A tent corner is valid; never assume a bedroom. Respect the saved layout, including a private-only interior or no Common Space. Never invent adjoining rooms, named people or exceptional possessions. Without occupants prepare a functional neutral interior. If existingInterior is supplied, apply the approved roomSpecification to that interior, preserving unrelated furnishings, damage and history. Return the complete reconciled description, removing only details contradicted by the approved work; preserve unrelated established details. For a Private work area derive a fitting short name (vault, office, staff room, storage, etc.). Return JSON only: {"rooms":[{"venueId":"exact input","id":"exact input","name":"short room name","description":"complete current physical account, at most 4000 characters"}]}. Keep the complete reply concise.' +
+              ZONE_DAY_NIGHT_INSTRUCTION,
           },
           {
             role: "user",
@@ -296,6 +302,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
                     id: zone.id,
                     name: asTrimmedString(generated.name).slice(0, 100),
                     description: asTrimmedString(generated.description),
+                    ...(typeof generated.dayNight === "boolean" ? { dayNight: generated.dayNight } : {}),
                   },
                 ],
               });
@@ -385,6 +392,8 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
             target.name = asTrimmedString(generated.name).slice(0, 100) || target.name;
           if (target.description !== asTrimmedString(generated.description) && target.image)
             target.picture = { ...target.picture, base: target.picture?.base ?? target.image, dirty: true };
+          if (target.description !== asTrimmedString(generated.description))
+            applyZoneDayNightDefault(target, generated.dayNight as boolean | undefined);
           target.description = asTrimmedString(generated.description);
           target.state = { ...target.state, revision: target.state.revision + 1, updatedAt: new Date().toISOString() };
           target.preparation = {

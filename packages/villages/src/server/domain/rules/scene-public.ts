@@ -1,6 +1,7 @@
 import type { VenueRecordEvent, VenueScene } from "../models/scene-model.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { deriveVillageMoment } from "./village-clock.js";
+import { villageLighting } from "../../../shared/helpers/village-lighting.js";
 import { readLoreUse } from "../../../shared/helpers/lore.js";
 export function sceneTurnPublished(value: unknown) {
   const turn = asRecord(value);
@@ -123,6 +124,14 @@ export function publicSceneAuthority(scene: VenueScene) {
             });
             return `${moment.weekday}, ${moment.dateLabel} · ${moment.localTime}`;
           })(),
+        }
+      : {}),
+    ...(scene.continuity
+      ? {
+          lighting:
+            villageLighting(scene.continuity.capturedAt, scene.continuity.facts.timeZone || undefined) === "night"
+              ? ("night" as const)
+              : ("day" as const),
         }
       : {}),
     version: 1 as const,

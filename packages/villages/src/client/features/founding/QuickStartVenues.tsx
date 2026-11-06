@@ -345,14 +345,20 @@ export function QuickStartVenues({
                   <QuickStartZoneArtwork
                     key={selected.id + ":" + zoneId}
                     image={image}
+                    reference={artworkZone?.pictureReference ?? (!artworkZone ? selected.pictureReference : undefined)}
                     name={artworkName}
                     busy={busy || imageBusy}
                     onUpload={(file) => onUploadImage(selected, artworkArea, file, artworkZone?.id)}
                     onGenerate={() => onGenerateImage(selected, artworkArea, artworkZone?.id)}
                     onRemove={() =>
                       !artworkZone
-                        ? patch({ ...selected, presentation: { ...selected.presentation, image: null } })
-                        : patchZone({ image: null })
+                        ? patch({
+                            ...selected,
+                            pictureReference: undefined,
+                            referenceAppliedId: undefined,
+                            presentation: { ...selected.presentation, image: null },
+                          })
+                        : patchZone({ image: null, pictureReference: undefined, referenceAppliedId: undefined })
                     }
                   />
                 </div>

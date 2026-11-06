@@ -1,4 +1,5 @@
-import { zonePictureBaseline, zonePictureContext } from "./zone-picture.js";
+import { observedZone } from "./zone-observation.js";
+import { zonePictureContext } from "./zone-picture.js";
 import { copyDate } from "../../../shared/helpers/zoned-date.js";
 import { legacyLetterFont } from "../../../shared/helpers/letter-font-selection.js";
 import { residentSignature } from "../../../shared/helpers/resident-signature.js";
@@ -238,23 +239,40 @@ export function villageSettings(
                 }),
               ),
             };
+      const authoring = !isVillageFounded(village);
       const zones = venueZones(venue).map((originalZone) => {
+        const visible = observedZone(originalZone, authoring);
+        const present =
+          residenceAccess?.placeId === venue.id &&
+          residenceAccess?.zoneId === originalZone.id &&
+          originalZone.observed?.context === zonePictureContext(village, venue, originalZone);
         const zone = {
-          ...originalZone,
+          ...visible,
+          observed: undefined,
+          dayNightManual: undefined,
           picture: undefined,
+          pictureReference: originalZone.picture?.reference,
+          referencePending:
+            !!originalZone.picture?.reference &&
+            originalZone.picture.referenceAppliedId !== originalZone.picture.reference.id,
+          pictureGenerateAvailable: authoring || (!!originalZone.seen && !!originalZone.observed),
+          daylightReady: visible.picture?.daylight === true,
+          nightImage:
+            visible.dayNight && visible.image && visible.picture?.night?.sourceId === visible.image.id
+              ? visible.picture!.night.image
+              : undefined,
+          nightPending:
+            visible.dayNight === true &&
+            (!visible.picture?.daylight || !visible.image || visible.picture?.night?.sourceId !== visible.image.id),
           pictureRevision: undefined,
-          pictureRetryAvailable: originalZone.picture?.failed === true,
-          pictureUpdateAvailable:
-            !originalZone.image ||
-            originalZone.picture?.dirty === true ||
-            (originalZone.picture?.context || originalZone.picture?.baseline
-              ? zonePictureBaseline(originalZone.picture.context ?? originalZone.picture.baseline!) !==
-                zonePictureContext(village, venue, originalZone)
-              : false),
-          pictureProblem: originalZone.picture?.problem,
-          pictureUpdating: !!originalZone.picture?.claim && originalZone.picture?.failed !== true,
-          preparation: originalZone.preparation
-            ? { status: originalZone.preparation.status, error: originalZone.preparation.error }
+          pictureRetryAvailable:
+            !!originalZone.observed &&
+            originalZone.observed.image?.id === originalZone.image?.id &&
+            originalZone.picture?.failed === true,
+          pictureProblem: present ? originalZone.picture?.problem : undefined,
+          pictureUpdating: present && !!originalZone.picture?.claim && originalZone.picture?.failed !== true,
+          preparation: visible.preparation
+            ? { status: visible.preparation.status, error: visible.preparation.error }
             : undefined,
           access: undefined,
           controllerIds: venue.access ? undefined : originalZone.controllerIds,
@@ -278,30 +296,20 @@ export function villageSettings(
         };
         return {
           ...zone,
-          ...(venue.discovered && !zone.seen
-            ? {
-                description: "",
-                roomSpecification: undefined,
-                purpose: "",
-                image: null,
-                pictureRetryAvailable: false,
-                pictureUpdateAvailable: false,
-                pictureProblem: undefined,
-                pictureUpdating: false,
-                preparation: undefined,
-              }
-            : {}),
-          state: {
-            ...(venue.discovered && !zone.seen ? { revision: 0, updatedAt: "", recent: null } : zone.state),
-            recent:
-              (!venue.discovered || zone.seen) && recentPlaceText(zone.state, now.getTime()) ? zone.state.recent : null,
-          },
+          state: { ...zone.state, recent: recentPlaceText(zone.state, now.getTime()) ? zone.state.recent : null },
           closed: zoneClosed(village, venue, zone),
         };
       });
+      const entrance = zones.find((zone) => zone.kind === "exterior");
       const primary = zones.find((zone) => zone.kind !== "exterior" && zone.kind !== "private-residence");
       return {
         ...venue,
+        dayNight: zones.find((zone) => zone.kind === "exterior")?.dayNight,
+        dayNightManual: undefined,
+        description: entrance?.description ?? "",
+        form: authoring ? venue.form : venue.zones?.find((zone) => zone.kind === "exterior")?.observed?.form,
+        presentation: { ...venue.presentation, image: entrance?.image ?? null },
+        exteriorState: entrance?.state,
         access: undefined,
         accessView: projectVenueAccess(venue, "player", village.communityVenueId),
         zones,

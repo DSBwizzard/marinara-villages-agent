@@ -41,7 +41,7 @@ home.zones = [
 ];
 initializeVenueAccess(home);
 source.venues = [home];
-// A saved pre-change observation must neither mask current details nor require conversion.
+// Retired observation fields are ignored; a new visit records the current observation.
 const legacy = {
   ...home.zones[1],
   lastObserved: { description: "Old remembered room", state: home.zones[1].state, observedAt: at },
@@ -57,8 +57,8 @@ assert.equal(access().allowed, false);
 const before = JSON.stringify(state);
 const view = villageSettings(state, player, null, undefined, new Date(at));
 const shown = view.venues[0].zones!.find((zone) => zone.id === "room")!;
-assert.equal(shown.description, "An oak desk beside a green bed.");
-assert.equal(shown.image?.id, "room-art");
+assert.equal(shown.description, "");
+assert.equal(shown.image, null);
 assert.equal(shown.seen, false);
 assert.equal(shown.accessView!.decision.allowed, false);
 assert.equal(JSON.stringify(state), before, "reading a Zone neither visits nor changes it");
@@ -88,7 +88,7 @@ await commands.setVillageVenueImage(
   false,
   "room",
 );
-assert.equal(room().image?.id, "replacement", "artwork can be replaced without visiting or receiving entry permission");
+assert.equal(room().image?.id, "replacement", "an internal artwork commit grants no entry permission");
 assert.equal(room().seen, false);
 assert.equal(room().freezePicture, true);
 assert.equal(access().allowed, false, "editing art grants no gameplay access");

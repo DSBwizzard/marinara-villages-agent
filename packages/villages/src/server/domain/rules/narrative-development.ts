@@ -1,3 +1,4 @@
+import { applyZoneDayNightDefault } from "./zone-picture.js";
 import type { VillageState } from "../models/world.js";
 import type {
   NarrativeAdmission,
@@ -205,7 +206,7 @@ export function readNarrativeDevelopment(value: unknown, grant: NarrativeAdmissi
     exact(change, ["venueId", "zoneId", "update"]);
     const admitted = target(change.venueId, change.zoneId);
     const update = object(change.update);
-    exact(update, ["narration", "expectedRevision", "appearanceChanged", "edits", "append", "recent"]);
+    exact(update, ["narration", "expectedRevision", "appearanceChanged", "dayNight", "edits", "append", "recent"]);
     return {
       venueId: admitted.venueId,
       zoneId: admitted.zoneId,
@@ -374,6 +375,7 @@ export function applyNarrativeDevelopment(
     const after = applyPlaceUpdate(zone, update, grant.at);
     if (after.description !== zone.description && update.appearanceChanged === true)
       zone.picture = { ...zone.picture, base: zone.picture?.base ?? zone.image, dirty: true };
+    if (after.description !== zone.description) applyZoneDayNightDefault(zone, update.dayNight);
     zone.description = after.description;
     zone.state = after.state;
     return { ...after, venueId, zoneId, appearanceChanged: update.appearanceChanged === true };

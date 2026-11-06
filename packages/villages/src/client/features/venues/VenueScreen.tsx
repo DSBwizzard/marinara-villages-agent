@@ -1,3 +1,4 @@
+import { useVillageLighting } from "../../shared/useVillageLighting.js";
 import { useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react";
 import { useConfirmation } from "../../shared/confirmation.js";
 import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
@@ -228,22 +229,25 @@ function ZoneArtwork({
   place,
   zone,
   controller,
+  night,
 }: {
+  night: boolean;
   place: VillageVenue;
   zone: VenueDisplayZone;
   controller: VenueScreenController;
 }) {
   const { busy, placeBusyId, drawPlaceImage, keepPlaceImage, dropPlaceImage } = controller;
   const upload = useRef<HTMLInputElement>(null);
+  const artwork = zone.dayNight && zone.nightImage && night ? zone.nightImage : zone.image;
   const disabled = busy || !!placeBusyId;
   const spaceClass = zone.kind === "exterior" ? undefined : zone.venueClass;
   return (
     <>
       <div className={`${ELEMENT_TAG}-zone-artwork-frame`}>
-        {zone.image ? (
+        {artwork ? (
           <img
             className={`${ELEMENT_TAG}-venue-profile-image`}
-            src={zone.image.url}
+            src={artwork.url}
             alt={`${zone.name} at ${place.name}`}
           />
         ) : (
@@ -281,34 +285,23 @@ function ZoneArtwork({
             Picture <span aria-hidden="true">▾</span>
           </summary>
           <div>
-            {zone.image && zone.pictureUpdateAvailable !== false ? (
-              <button
-                type="button"
-                aria-label="Refresh picture"
-                className={`${ELEMENT_TAG}-button`}
-                disabled={disabled}
-                onClick={() => void controller.updateZonePicture(place, zone.id)}
-              >
-                Refresh
-              </button>
-            ) : null}
             <button
               type="button"
               aria-label="Generate new picture"
               className={`${ELEMENT_TAG}-button`}
-              disabled={disabled}
+              disabled={disabled || zone.pictureGenerateAvailable === false}
               onClick={() => void drawPlaceImage(place.id, spaceClass, zone.ownerId ?? "", zone.id)}
             >
               {zone.image ? "Generate new" : "Generate"}
             </button>
             <button
               type="button"
-              aria-label="Upload artwork"
+              aria-label="Upload image reference"
               className={`${ELEMENT_TAG}-button`}
               disabled={disabled}
               onClick={() => upload.current?.click()}
             >
-              Upload
+              Upload reference
             </button>
             <input
               autoComplete="off"
@@ -316,7 +309,7 @@ function ZoneArtwork({
               hidden
               type="file"
               accept="image/*"
-              aria-label={`Upload ${zone.name} artwork`}
+              aria-label={`Upload ${zone.name} reference`}
               disabled={disabled}
               onChange={(event) => {
                 const file = event.target.files?.[0];
@@ -324,7 +317,7 @@ function ZoneArtwork({
                 void keepPlaceImage(place.id, file, spaceClass, zone.ownerId ?? "", zone.id);
               }}
             />
-            {zone.image ? (
+            {zone.image || zone.pictureReference ? (
               <button
                 type="button"
                 aria-label="Remove artwork"
@@ -339,8 +332,15 @@ function ZoneArtwork({
           </div>
         </details>
       </div>
-      {zone.pictureProblem || zone.pictureUpdating ? (
-        <p role="status">{zone.pictureProblem || "Artwork pending"}</p>
+      {zone.pictureProblem || zone.pictureUpdating || zone.nightPending || zone.referencePending ? (
+        <p role="status">
+          {zone.pictureProblem ||
+            (zone.pictureUpdating
+              ? "Artwork pending"
+              : zone.referencePending
+                ? "Reference saved for your next visit."
+                : "Artwork pending")}
+        </p>
       ) : null}
     </>
   );
@@ -497,6 +497,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
     venueEditNotice,
     planVenueRenovation,
   } = controller;
+  const lighting = useVillageLighting(snapshot?.village, snapshot?.clock?.paused);
   const place = snapshot?.settings.venues.find((venue) => venue.id === venueId);
   const navigationSelection = useMemo(
     () => ({ venueId, venueZoneKey, venueSection }),
@@ -575,6 +576,11 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
   const activeScene = !!room && room.status !== "closed";
   const residents =
     place.residentIds ?? (place.occupancy.residentCharacterId ? [place.occupancy.residentCharacterId] : []);
+  const entrance = place.zones?.find((zone) => zone.kind === "exterior");
+  const backdrop =
+    snapshot.isFounded && lighting === "night" && entrance?.dayNight && entrance.nightImage
+      ? entrance.nightImage
+      : place.presentation.image;
   const map = snapshot.settings.maps?.find((entry) => entry.id === place.presentation.mapId);
   const visit = () =>
     activeScene && room.placeId === place.id
@@ -643,7 +649,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
     <WorkspaceShell active="places" onNavigate={navigate} sidebar={sidebar} disabled={navigationBusy}>
       <div className={`${ELEMENT_TAG}-venue-profile`}>
         <header className={`${ELEMENT_TAG}-header ${ELEMENT_TAG}-workspace-venue-header`}>
-          {place.presentation.image ? <img src={place.presentation.image.url} alt="" /> : null}
+          {backdrop ? <img src={backdrop.url} alt="" /> : null}
           <div>
             <h1 className={`${ELEMENT_TAG}-title`}>{place.name}</h1>
             {snapshot.settings.communityVenueId === place.id ? <p>Community Venue</p> : null}
@@ -775,7 +781,13 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
                 ) : (
                   <h2>{selected.name}</h2>
                 )}
-                <ZoneArtwork key={selected.id} place={place} zone={selected} controller={controller} />
+                <ZoneArtwork
+                  key={selected.id}
+                  place={place}
+                  zone={selected}
+                  controller={controller}
+                  night={snapshot.isFounded && lighting === "night"}
+                />
                 <label className={`${ELEMENT_TAG}-zone-picture-freeze`}>
                   <input
                     autoComplete="off"

@@ -1,5 +1,6 @@
 import type { VillageVenueImage } from "./village.js";
 export type FoundingDraftZone = {
+  dayNight?: boolean;
   id: string;
   name: string;
   purpose: string;
@@ -9,6 +10,9 @@ export type FoundingDraftZone = {
   connectedTo: string[];
 };
 export type FoundingVenueSuggestion = {
+  dayNight?: boolean;
+  commonDayNight?: boolean;
+  privateDayNight?: boolean;
   zones?: FoundingDraftZone[];
   id: string;
   name: string;

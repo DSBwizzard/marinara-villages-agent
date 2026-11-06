@@ -90,6 +90,7 @@ export function createVillageSnapshot({
     const player = readPlayerIdentity(village);
     const { activeVenueSession } = sceneQueries();
     const residenceAccess = await activeVenueSession();
+    if (residenceAccess) village = await readVillageState({ memories: true });
     const sceneWorld = residenceAccess ? sceneContinuityView(village, residenceAccess, false) : village;
     const capturedVenue = residenceAccess && findLocation(sceneWorld, residenceAccess.placeId);
     // ONE schedule read for the whole village, so every villager's pin and their

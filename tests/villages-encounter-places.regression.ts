@@ -211,7 +211,8 @@ await runCase("encounter-places/settlement", async () => {
     villageSettings(await f.snapshot(), { name: "Player", missing: false } as any).venues[0].zones!.find(
       (z) => z.id === "common",
     )!.description,
-    f.zone().description,
+    "White walls. Two windows. An oak table.",
+    "off-screen physical work waits for a visit before changing player-facing details",
   );
   assert.equal(f.state().venueEvents.length, 0, "hidden deed narration never becomes a public room feed");
   assert.ok(

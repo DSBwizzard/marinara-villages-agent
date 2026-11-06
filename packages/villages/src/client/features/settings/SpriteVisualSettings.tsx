@@ -5,10 +5,22 @@ import { ELEMENT_TAG } from "../../shared/constants.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 
 type VisualSetting = "spriteVariantsEnabled" | "spriteCardFlipEnabled" | "characterSpeechColors";
-const controls: Array<{ key: VisualSetting; label: string }> = [
-  { key: "spriteVariantsEnabled", label: "Random sprite variants" },
-  { key: "spriteCardFlipEnabled", label: "Card-flip sprite changes" },
-  { key: "characterSpeechColors", label: "Character chat colors" },
+const controls: Array<{ key: VisualSetting; label: string; description: string }> = [
+  {
+    key: "spriteVariantsEnabled",
+    label: "Random sprite variants",
+    description: "Use different saved images for the same expression.",
+  },
+  {
+    key: "spriteCardFlipEnabled",
+    label: "Card-flip sprite changes",
+    description: "Animate sprite changes with a card flip. Respects reduced motion.",
+  },
+  {
+    key: "characterSpeechColors",
+    label: "Character chat colors",
+    description: "Use each character’s color for their dialogue.",
+  },
 ];
 
 /** Mounted by the shell so a save retains ownership while navigating between settings pages. */
@@ -66,17 +78,23 @@ export function SpriteVisualSettings({
   if (!snapshot) return null;
   return (
     <section className={`${ELEMENT_TAG}-venue-card`} aria-label="Sprite and dialogue settings">
-      {controls.map(({ key, label }) => (
-        <label className={`${ELEMENT_TAG}-row`} key={key}>
-          <input
-            type="checkbox"
-            autoComplete="off"
-            checked={draft[key] ?? snapshot.settings[key] !== false}
-            disabled={disabled || saving}
-            onChange={(event) => void save(key, event.target.checked)}
-          />
-          {label}
-        </label>
+      {controls.map(({ key, label, description }) => (
+        <div key={key} className={`${ELEMENT_TAG}-visual-setting`}>
+          <label className={`${ELEMENT_TAG}-row`}>
+            <input
+              type="checkbox"
+              autoComplete="off"
+              aria-describedby={`${ELEMENT_TAG}-${key}-help`}
+              checked={draft[key] ?? snapshot.settings[key] !== false}
+              disabled={disabled || saving}
+              onChange={(event) => void save(key, event.target.checked)}
+            />
+            {label}
+          </label>
+          <small id={`${ELEMENT_TAG}-${key}-help`} className={`${ELEMENT_TAG}-hint`}>
+            {description}
+          </small>
+        </div>
       ))}
       {error ? (
         <p className={`${ELEMENT_TAG}-error`} role="alert">

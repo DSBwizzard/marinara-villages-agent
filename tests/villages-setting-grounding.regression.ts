@@ -268,13 +268,7 @@ async function main() {
     });
     assert.ok(farmPrompt.includes("The repaired roof is watertight"));
     assert.ok(farmPrompt.includes(savedFarm.setting), "the complete authored background remains intact");
-    const farmImage = buildLocationPrompt(
-      savedFarm,
-      venueInZone(currentFarmhouse, currentZone.id),
-      moment,
-      "",
-      "interior",
-    );
+    const farmImage = buildLocationPrompt(savedFarm, venueInZone(currentFarmhouse, currentZone.id), "", "interior");
     assert.ok(farmImage.includes("The repaired roof is watertight"));
     assert.ok(
       farmImage.includes(savedFarm.setting),

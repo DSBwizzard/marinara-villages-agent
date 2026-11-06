@@ -66,6 +66,7 @@ export function useVillageMutationLifetime(
   return useMemo(
     () => ({
       begin: () => lifetime.begin(selection),
+      isCurrent: () => active.current && selected.current === selection,
       owns: lifetime.owns,
       finish: lifetime.finish,
     }),

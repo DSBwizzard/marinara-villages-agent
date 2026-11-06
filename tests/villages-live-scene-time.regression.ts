@@ -342,6 +342,17 @@ try {
     true,
     "the same preflight preserves the older frozen contract",
   );
+  const lighting = fixture();
+  const captured = lighting.scene.continuity!;
+  captured.capturedAt = "2026-11-05T04:00:00Z";
+  captured.facts.timeZone = "America/Los_Angeles";
+  assert.equal(
+    publicSceneAuthority(lighting.scene).lighting,
+    "night",
+    "Scene lighting follows the admitted instant and timezone",
+  );
+  captured.facts.timeZone = "Asia/Tokyo";
+  assert.equal(publicSceneAuthority(lighting.scene).lighting, "day");
 } finally {
   releaseClock();
 }

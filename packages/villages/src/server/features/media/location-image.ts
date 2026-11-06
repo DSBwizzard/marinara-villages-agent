@@ -10,9 +10,6 @@ export async function setZonePictureFrozen(...args: Parameters<LocationImageServ
 export async function retryZonePicture(...args: Parameters<LocationImageService["retryZonePicture"]>) {
   return binding.get().retryZonePicture(...args);
 }
-export async function updateZonePicture(...args: Parameters<LocationImageService["updateZonePicture"]>) {
-  return binding.get().updateZonePicture(...args);
-}
 export function configureLocationImages(service: LocationImageService): () => void {
   return binding.configure(bindActivationService(service));
 }
