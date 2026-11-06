@@ -30,6 +30,8 @@ import {
   conflict,
   UnsupportedPlayerAgency,
   UnsupportedScenePerception,
+  InvalidGmReply,
+  VillagesRequestError,
 } from "../../domain/rules/errors.js";
 import { extractJsonObject } from "../../domain/rules/json-reply.js";
 import { recallMemories } from "../../domain/rules/memory-recall.js";
@@ -1086,7 +1088,7 @@ export function createSceneWriting({
         materializedRaw = materializeGmReply(normalizeGmEffects(complete, gmContext), message, mode === "greet");
         captureSources = playerSpeechCapture(materializedRaw, message, mode === "greet");
       } catch (error) {
-        if (!(error instanceof HaltedSceneTurn))
+        if (error instanceof VillagesRequestError && error.statusCode === 502)
           await rejectVenueCompletion(undefined, { stages: ["writing-completion:" + requestKey] });
         throw error;
       }
@@ -1320,7 +1322,8 @@ export function createSceneWriting({
               : undefined,
           )
           .catch(async (error: unknown) => {
-            if (gm) await rejectVenueCompletion(undefined, { stages: ["writing-completion:" + requestKey] });
+            if (gm && error instanceof InvalidGmReply)
+              await rejectVenueCompletion(undefined, { stages: ["writing-completion:" + requestKey] });
             if (
               error instanceof UnsupportedPlayerAgency ||
               error instanceof UnsupportedScenePerception ||
@@ -1850,7 +1853,8 @@ export function createSceneWriting({
         wishContexts,
       };
     } catch (error) {
-      if (gm) await rejectVenueCompletion(undefined, { stages: ["writing-completion:" + requestKey] });
+      if (gm && error instanceof VillagesRequestError && error.statusCode === 502)
+        await rejectVenueCompletion(undefined, { stages: ["writing-completion:" + requestKey] });
       if (semanticResult) await semantic?.rejectExchange?.(semanticResult);
       throw error;
     }

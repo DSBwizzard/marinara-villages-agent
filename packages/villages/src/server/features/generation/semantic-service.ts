@@ -19,6 +19,8 @@ import {
   conflict,
   UnsupportedPlayerAgency,
   UnsupportedScenePerception,
+  InvalidGmReply,
+  VillagesRequestError,
 } from "../../domain/rules/errors.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { LIVE_MEMORY_INSTRUCTION } from "../../domain/rules/live-exchange.js";
@@ -385,7 +387,12 @@ export function createSemanticService(ports: SemanticPorts) {
         input,
         hash: semanticHash(input),
       }));
-      return validate(provided, saved.hash, saved.input);
+      try {
+        return validate(provided, saved.hash, saved.input);
+      } catch (error) {
+        if (error instanceof VillagesRequestError && error.statusCode === 409) throw error;
+        throw new InvalidGmReply(error);
+      }
     }
     return ports.venueCheckpoint(key, async () => {
       const requested = await ports.villagesConnectionIdFor("system");
@@ -770,7 +777,7 @@ export function createSemanticService(ports: SemanticPorts) {
         sceneContinuityView(state, scene),
         lines.map((line) => line.content).join("\n"),
       );
-    return ask(
+    const result = await ask(
       "exchange",
       {
         message,
@@ -1210,6 +1217,14 @@ export function createSemanticService(ports: SemanticPorts) {
       combined && actionContractV2 ? 1 : undefined,
       gm ? normalizeGmEffects(gm.raw, context) : undefined,
     );
+    if (gm && result.presentation?.length) {
+      const presentation = result.presentation;
+      result.presentation = await ports.venueCheckpoint(
+        "gm-presentation:" + result.sourceHash + ":" + semanticHash(gm.raw.presentation),
+        async () => presentation,
+      );
+    }
+    return result;
   }
   async function rejectExchange(result: SemanticExchange) {
     if (result.producer === "gm") return;
