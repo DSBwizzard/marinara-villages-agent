@@ -74,7 +74,6 @@ export function createSceneProgress({
     const submission = session.submissions.find((entry) => entry.id === submissionId);
     if (
       !submission ||
-      submission.movement ||
       submission.progressProcessedAt ||
       !submission.at ||
       (village.foundedAt && Date.parse(submission.at) < Date.parse(village.foundedAt))
@@ -174,7 +173,6 @@ export function createSceneProgress({
       await mutateVillageState((state) => applyPlaceExchange(state, scene, turn), { memories: true });
     if (turn?.accessEvents?.length) await applySavedAccessEvents(scene, turn);
     if (turn?.invitationSignal) await recordSpokenInvitation(scene, turn.invitationSignal);
-    if (turn?.movement) return;
     if (!turn?.processing) return processSavedProgressSubmission(sessionId, submissionId);
     const village = await readVillageState();
     const processing = structuredClone(turn.processing);
