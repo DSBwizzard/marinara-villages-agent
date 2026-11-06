@@ -1,3 +1,4 @@
+import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
 const { authorSceneResponse } = await scenePlaybackFixtures();
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
@@ -81,10 +82,13 @@ const documents = {
     return structuredClone(native);
   },
 };
-const release = configureVillagesRuntime({
-  persistence: { documents },
-  logger: { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} },
-});
+const owner = createActivationScope();
+const release = owner.run(() =>
+  configureVillagesRuntime({
+    persistence: { documents },
+    logger: { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} },
+  }),
+);
 let calls = 0,
   held = null,
   started = null,
@@ -107,87 +111,90 @@ await withBrowser(browser, async () => {
         body: "<style>:root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7;--secondary:#384253}html,body{margin:0;height:100%;background:var(--background);color:var(--foreground);font-family:Arial}marinara-capability-villages{display:block;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
       }),
     );
-    await context.route("**/api/villages**", async (route) => {
-      const path = new URL(route.request().url()).pathname;
-      try {
-        let value = { ...snapshot, villagers: residents.slice(0, 1) };
-        if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session: publicRoom() };
-        else if (path.endsWith("/town-map")) value = { image: mapImage };
-        else if (path.includes("/operations/"))
-          value = { operation: await readVenueOperation("browser", decodeURIComponent(path.split("/").at(-1))) };
-        else if (path.endsWith("/rooms/turn")) {
-          const body = route.request().postDataJSON();
-          await coordinateVenue(
-            "browser",
-            body.submissionId,
-            "turn",
-            { message: body.message, mode: body.mode, targetId: body.targetId },
-            body.expectedSceneRevision,
-            body.retryOfAttemptId,
-            async () => {
-              const answer = await venueCheckpoint("turn-reply", () =>
-                coordinatedCompletion("browser-reply", async () => {
-                  calls++;
-                  if (holdNext) {
-                    holdNext = false;
-                    started?.();
-                    await new Promise((done) => {
-                      held = done;
-                    });
-                  }
-                  if (disconnectNext) {
-                    disconnectNext = false;
-                    throw new Error("Provider connection interrupted");
-                  }
-                  return "I heard your new message.";
-                }),
-              );
-              assertVenueOwnership(record.data);
-              record.data.lines.push(
-                {
-                  id: body.submissionId + ":player",
-                  role: "user",
-                  speakerId: "",
-                  name: "",
-                  content: body.message,
-                  at: now,
-                },
-                {
-                  id: body.submissionId + ":reply",
-                  role: "assistant",
-                  kind: "dialogue",
-                  speakerId: "mara",
-                  name: "Mara",
-                  content: answer,
-                  at: now,
-                },
-              );
-              record.data.submissions.push({
-                mode: "chat",
-                id: body.submissionId,
-                activeIdsAtTurn: ["mara"],
-                activeIdsAfterTurn: ["mara"],
-                replyLineIds: [body.submissionId + ":reply"],
-              });
-              record.data.sceneRevision++;
-            },
-          );
-          value = { session: publicRoom(), verdict: null, recordEvents: [] };
+    await context.route(
+      "**/api/villages**",
+      owner.bind(async (route) => {
+        const path = new URL(route.request().url()).pathname;
+        try {
+          let value = { ...snapshot, villagers: residents.slice(0, 1) };
+          if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session: publicRoom() };
+          else if (path.endsWith("/town-map")) value = { image: mapImage };
+          else if (path.includes("/operations/"))
+            value = { operation: await readVenueOperation("browser", decodeURIComponent(path.split("/").at(-1))) };
+          else if (path.endsWith("/rooms/turn")) {
+            const body = route.request().postDataJSON();
+            await coordinateVenue(
+              "browser",
+              body.submissionId,
+              "turn",
+              { message: body.message, mode: body.mode, targetId: body.targetId },
+              body.expectedSceneRevision,
+              body.retryOfAttemptId,
+              async () => {
+                const answer = await venueCheckpoint("turn-reply", () =>
+                  coordinatedCompletion("browser-reply", async () => {
+                    calls++;
+                    if (holdNext) {
+                      holdNext = false;
+                      started?.();
+                      await new Promise((done) => {
+                        held = done;
+                      });
+                    }
+                    if (disconnectNext) {
+                      disconnectNext = false;
+                      throw new Error("Provider connection interrupted");
+                    }
+                    return "I heard your new message.";
+                  }),
+                );
+                assertVenueOwnership(record.data);
+                record.data.lines.push(
+                  {
+                    id: body.submissionId + ":player",
+                    role: "user",
+                    speakerId: "",
+                    name: "",
+                    content: body.message,
+                    at: now,
+                  },
+                  {
+                    id: body.submissionId + ":reply",
+                    role: "assistant",
+                    kind: "dialogue",
+                    speakerId: "mara",
+                    name: "Mara",
+                    content: answer,
+                    at: now,
+                  },
+                );
+                record.data.submissions.push({
+                  mode: "chat",
+                  id: body.submissionId,
+                  activeIdsAtTurn: ["mara"],
+                  activeIdsAfterTurn: ["mara"],
+                  replyLineIds: [body.submissionId + ":reply"],
+                });
+                record.data.sceneRevision++;
+              },
+            );
+            value = { session: publicRoom(), verdict: null, recordEvents: [] };
+          }
+          await fulfill(route, {
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify(authorSceneResponse(value, snapshot.worldScope)),
+          });
+        } catch (error) {
+          routeErrors.push(error.message);
+          await fulfill(route, {
+            status: error.statusCode ?? 502,
+            contentType: "application/json",
+            body: JSON.stringify({ error: error.message, code: error.code }),
+          });
         }
-        await fulfill(route, {
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify(authorSceneResponse(value, snapshot.worldScope)),
-        });
-      } catch (error) {
-        routeErrors.push(error.message);
-        await fulfill(route, {
-          status: error.statusCode ?? 502,
-          contentType: "application/json",
-          body: JSON.stringify({ error: error.message, code: error.code }),
-        });
-      }
-    });
+      }),
+    );
     const one = await context.newPage(),
       two = await context.newPage();
     for (const page of [one, two]) {
@@ -305,5 +312,6 @@ await withBrowser(browser, async () => {
     );
   } finally {
     release();
+    owner.dispose();
   }
 });
