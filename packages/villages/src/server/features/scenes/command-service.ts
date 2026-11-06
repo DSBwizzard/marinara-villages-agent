@@ -9,7 +9,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 import { SESSION_PREFIX, sessionSlot } from "../../adapters/storage/scene-slots.js";
 import { createSceneHistory } from "../../adapters/storage/scene-history.js";
-import { villageClockShiftMs, villageNow } from "../../adapters/time/clock-gate.js";
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
 import type { InterpretationBatch } from "../../domain/models/interpretation-model.js";
 import type {
@@ -28,7 +28,7 @@ import { bindProjectSpeech, validateProjectSpeech } from "../../domain/rules/pro
 import { structuralShape as projectZoneShape } from "../../domain/rules/project-structure.js";
 import { rejectedInputHash, rejectedSubmission } from "../../domain/rules/rejected-submissions.js";
 import { publishRelationshipDisclosures } from "../../domain/rules/relationship-memories.js";
-import { filterRelationshipNotices, relationshipChangeNotices } from "../../domain/rules/relationship-presentation.js";
+import { filterRelationshipNotices } from "../../domain/rules/relationship-presentation.js";
 import { parseRelationshipProposals, RELATIONSHIP_REVIEW_INSTRUCTION } from "../../domain/rules/relationship-review.js";
 import { startingRelationshipsReady } from "../../domain/rules/relationship-rules.js";
 import { assertSceneMovementCapacity, UnavailableResidentMovement } from "../../domain/rules/resident-movement.js";
@@ -1004,7 +1004,6 @@ export function createSceneCommands({
       startedAt: sceneAttendance.capturedAt,
       endedAt: "",
       lastActivityAt: villageNow().toISOString(),
-      clockShiftMs: villageClockShiftMs(),
       endReason: "",
       memoryMode: "live",
       status: participants.length === 0 && !discovery ? "active" : "opening",
@@ -2582,26 +2581,10 @@ export function createSceneCommands({
     // Domain bookkeeping can finish after the reply's original Scene object was read.
     submission = (await readSession(session.id)).submissions.find((turn) => turn.id === submission.id) ?? submission;
     const village = await readVillageSnapshot();
-    const presentation = sceneContinuityView(village, session);
     // Saved notices were authorized at delivery; later Forget cannot rewrite that history.
-    const cached = filterRelationshipNotices(submission.recordEvents ?? [], presentation.relationshipContext);
+    const cached = filterRelationshipNotices(submission.recordEvents ?? []);
     if (session.status === "closed" && !village.memoryScenes[session.id]) return structuredClone(cached);
     const events: VenueRecordEvent[] = [];
-    if (village.relationshipContext && submission.liveProposals) {
-      const receiptIds = new Set(submission.processing?.domains.relationships.receiptIds ?? []);
-      // A retry reconstructs notices from effects committed in the relationship document.
-      const receipts = Object.values(village.relationshipContext.receipts).filter(
-        (receipt) =>
-          receiptIds.has(receipt.id) || (receipt.sceneId === session.id && receipt.submissionId === submission.id),
-      );
-      events.push(
-        ...relationshipChangeNotices(
-          receipts,
-          presentation.relationshipContext ?? village.relationshipContext,
-          presentation,
-        ),
-      );
-    }
     for (const receipt of Object.values(village.exchangeReceipts))
       if (receipt.sceneId === session.id && receipt.submissionId === submission.id && receipt.notice)
         events.push(receipt.notice);

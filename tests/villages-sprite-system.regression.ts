@@ -34,6 +34,7 @@ const artworkId = "a-" + randomUUID(),
   expressionId = "e-" + randomUUID();
 world.villagers = [
   {
+    letterFontId: "caveat",
     characterId: "a",
     addedAt: "2026-11-01T00:00:00Z",
     wishes: [],
@@ -247,7 +248,6 @@ for (const failure of ["none", "validation-input", "presentation-publish", "inva
     measurePipeline: async (_label: string, _metadata: unknown, work: () => Promise<unknown>) => work(),
     runtimeDebug() {},
     venueOperationId: () => gmScene.id,
-    venueOperationInput: () => gmAdmission,
     refreshZoneParticipants: async (current: unknown) => current,
     venueSavedCheckpoint: (key: string) => retained.get(key),
     venueCheckpoint: async (key: string, work: () => Promise<unknown>) => {

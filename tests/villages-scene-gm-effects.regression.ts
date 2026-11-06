@@ -61,6 +61,7 @@ for (const scenario of [
       }
       if (scenario === "occupancy")
         world.villagers = ["mara", "bryn", "cora", "dev", "eli"].map((characterId) => ({
+          letterFontId: "caveat",
           ...structuredClone(world.villagers[0]),
           characterId,
           cardSnapshot: { ...world.villagers[0].cardSnapshot, id: characterId, name: characterId },

@@ -50,7 +50,6 @@ await withBrowser(browser, async () => {
     const night = image("#182944");
     venue.presentation.image = { url: old, id: "header-day", ref: "header-day" };
     snapshot.village = { ...snapshot.village, instant: "2026-11-06T04:00:00Z", timeZone: "America/Los_Angeles" };
-    snapshot.clock = { ...snapshot.clock, paused: true };
     venue.zones = [
       {
         id: "exterior",

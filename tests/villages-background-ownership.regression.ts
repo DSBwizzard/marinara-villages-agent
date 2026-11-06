@@ -55,6 +55,7 @@ function fixture(label: string) {
   world.villagers = ["same", "next", "automatic", "offline", "other"].map(
     (characterId) =>
       ({
+        letterFontId: "caveat",
         characterId,
         cardSnapshot: {
           id: characterId,

@@ -83,6 +83,7 @@ function world(groups: Record<string, string> = {}) {
   state.venues = restorePlaces(drafts(groups));
   state.communityVenueId = "community";
   state.villagers = actors.slice(1).map((actor) => ({
+    letterFontId: "caveat",
     characterId: actor.id,
     cardSnapshot: { id: actor.id, name: actor.name, capturedAt: at },
     addedAt: at,

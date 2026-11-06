@@ -38,6 +38,7 @@ world.venues = [
   }),
 ] as typeof world.venues;
 world.villagers = ["local", "near", "far"].map((id) => ({
+  letterFontId: "caveat",
   characterId: id,
   cardSnapshot: {
     id,

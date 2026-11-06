@@ -17,6 +17,7 @@ export function wishWorld() {
     foundedAt: wishTime(),
     timeZone: "UTC",
     villagers: ["a", "b"].map((characterId) => ({
+      letterFontId: "caveat",
       characterId,
       addedAt: wishTime(),
       wishes: [],

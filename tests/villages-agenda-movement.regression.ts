@@ -1,5 +1,6 @@
 import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
+import { flexibleAgendaBlock } from "../packages/villages/src/server/domain/rules/agenda-flexibility.js";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -18,8 +19,6 @@ import {
   agendaBlocksFor,
   agendaDateKey,
   completeAgendaWeek,
-  flexibleAgendaInterval,
-  replaceRemainingAgendaDay,
   workingAgendaWeek,
 } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import { captureSceneAttendance } from "../packages/villages/src/server/domain/rules/scene-attendance.js";
@@ -87,27 +86,13 @@ assert.deepEqual(
   "turning schedule ingestion on cannot change today",
 );
 assert.deepEqual(agendaBlocksFor(activeAgenda, new Date()), week.Monday, "turning it off cannot change today either");
-const replacement = replaceRemainingAgendaDay(week.Monday!, repairedWeek.Monday!, 690);
-assert.deepEqual(
-  replacement.filter((part) => part.endMinute <= 690),
-  week
-    .Monday!.filter((part) => part.startMinute < 690)
-    .map((part) => ({
-      ...part,
-      endMinute: Math.min(part.endMinute, 690),
-    })),
-  "elapsed agenda intervals stay intact during an immediate refresh",
-);
-assert.equal(
-  replacement.find((part) => part.startMinute <= 690 && part.endMinute > 690)?.activity,
-  "meeting a neighbour",
-);
 const recovered = coerceVillageState({
   ...defaultVillageState(),
 
   wishSystemVersion: 3,
   villagers: [
     {
+      letterFontId: "caveat",
       characterId: "r1",
       cardSnapshot: {
         id: "r1",
@@ -200,10 +185,10 @@ for (const status of ["online", "idle", "dnd", "offline", "away", "unknown", und
     reason: "To rest",
   };
   const normalized = completeAgendaWeek({ Monday: [old] }, week).Monday!;
-  assert.ok(flexibleAgendaInterval(normalized, 60, 120));
+  assert.ok(flexibleAgendaBlock(normalized[0]));
   assert.ok(!("status" in normalized[0]!));
   assert.ok(!("reason" in normalized[0]!));
   for (const protectedFields of [{ essential: true }, { commitmentId: "promised-work" }, { flexible: false }])
-    assert.equal(flexibleAgendaInterval([{ ...old, ...protectedFields }], 60, 120), false);
+    assert.equal(flexibleAgendaBlock({ ...old, ...protectedFields }), false);
 }
 console.log("villages-agenda-movement: ok");

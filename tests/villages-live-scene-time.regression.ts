@@ -55,6 +55,7 @@ function fixture(live = true) {
       }),
     ],
     villagers: ["Maya", "Jimmy"].map((name) => ({
+      letterFontId: "caveat",
       characterId: name.toLowerCase(),
       addedAt: now.toISOString(),
       cardSnapshot: {

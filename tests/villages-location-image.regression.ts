@@ -102,9 +102,8 @@ async function main() {
   const moduleUrl = (relativePath: string) => pathToFileURL(join(repoRoot, relativePath)).href;
   const services = "packages/villages/src/server";
 
-  const { avatarPromptId, buildLocationPrompt } = await import(
-    moduleUrl(`${services}/domain/rules/location-image-rules.ts`)
-  );
+  const { buildLocationPrompt } = await import(moduleUrl(`${services}/domain/rules/location-image-rules.ts`));
+  const { imagePromptId } = await import(moduleUrl(`${services}/domain/rules/image-generation-rules.ts`));
   const { decodeImageDataUrl } = await import(moduleUrl(`${services}/features/media/location-image-codec.ts`));
   const {
     GLOBAL_GALLERY_REF_PREFIX,
@@ -150,7 +149,7 @@ async function main() {
       .slice(0, 120) || "character";
   for (const name of ["the mill pond", "  The  Mill Pond!  ", "Mill_Pond-2", "???", "", "   ", "x".repeat(400)]) {
     assert.equal(
-      avatarPromptId(name),
+      imagePromptId(name),
       `avatar:${slugOf(name)}`,
       `the prompt id for ${JSON.stringify(name)} has to be the one the Engine computes`,
     );
@@ -1041,7 +1040,7 @@ async function main() {
   assert.equal(request.promptOverrides.length, 1, "exactly one override, so the Engine has exactly one key to match");
   assert.equal(
     request.promptOverrides[0].id,
-    avatarPromptId("Entrance", "avatar"),
+    imagePromptId("Entrance", "avatar"),
     "the override id is built by the one function that knows the Engine's arithmetic",
   );
   assert.equal(

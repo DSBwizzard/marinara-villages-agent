@@ -31,6 +31,7 @@ state.seed = "semantic-lifecycle";
 state.foundedAt = new Date().toISOString();
 state.playerBackground = "I have been a friend of a for years.";
 state.villagers = ["a", "b"].map((id) => ({
+  letterFontId: "caveat",
   characterId: id,
   cardSnapshot: { id, name: id, revision: 1, description: "Authored context", sourceStatus: "available" },
   wishes: [],
@@ -487,6 +488,7 @@ for (const historyKind of ["culture", "private", "marriage"]) {
   world.foundedAt = new Date().toISOString();
   world.selectedLorebookIds = ["world-book"];
   world.villagers = ["a", "b"].map((id) => ({
+    letterFontId: "caveat",
     characterId: id,
     wishes: [],
     cardSnapshot: { id, name: id, description: "A member of the Tidewatch Guild.", sourceStatus: "available" },
@@ -655,6 +657,7 @@ for (const historyKind of ["culture", "private", "marriage"]) {
     assert.deepEqual(world.relationshipContext, separated);
 
     world.villagers.push({
+      letterFontId: "caveat",
       ...world.villagers[0]!,
       characterId: "c",
       cardSnapshot: { ...world.villagers[0]!.cardSnapshot, id: "c", name: "c" },

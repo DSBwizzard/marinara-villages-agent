@@ -751,7 +751,7 @@ planningWorld.villagers = ["visitor", "trina"].map((characterId) => {
       flexible: true,
     },
   ];
-  return { characterId, agenda, cardSnapshot: { name: characterId }, wishes: [] };
+  return { letterFontId: "caveat", characterId, agenda, cardSnapshot: { name: characterId }, wishes: [] };
 }) as any;
 const socialPlan = {
   id: "planned-hours",
@@ -1173,6 +1173,7 @@ async function main() {
     managementWorld.villagers = known
       .filter((id) => id !== "player")
       .map((characterId) => ({
+        letterFontId: "caveat",
         characterId,
         cardSnapshot: { id: characterId, revision: 1, sourceStatus: "available", name: characterId, capturedAt: stamp },
         addedAt: stamp,

@@ -9,7 +9,6 @@ import {
 } from "../adapters/engine/activation-scope.js";
 import { villagesAgentConnectionId, villagesAgentImageConnectionId } from "../adapters/engine/agent-config.js";
 import {
-  captureMissingVillagerCardColors,
   findPlayerPersona,
   findVillagerCard,
   listPlayerPersonas,
@@ -786,9 +785,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseVillageSnapshot = configureVillageSnapshot(
     createVillageSnapshot({
       readVillageState,
-      mutateVillageState,
       listVillagerCards,
-      captureMissingVillagerCardColors,
       rollActiveAgendas,
       sceneQueries,
       backgroundWorkSummaries,
@@ -988,10 +985,9 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
         if (!receipt || receipt.villageSeed !== state.seed) return null;
         return {
           ...receipt,
-          recordEvents: filterRelationshipNotices(
-            [...new Map(receipt.recordEvents.map((event) => [event.id, event])).values()],
-            undefined,
-          ).filter((event) => !state.dismissedNoticeIds.includes(event.id)),
+          recordEvents: filterRelationshipNotices([
+            ...new Map(receipt.recordEvents.map((event) => [event.id, event])).values(),
+          ]).filter((event) => !state.dismissedNoticeIds.includes(event.id)),
         };
       },
     }),

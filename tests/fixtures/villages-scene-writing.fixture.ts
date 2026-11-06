@@ -22,7 +22,7 @@ export async function currentScenePrompt(
   mode: "greet" | "chat" | "leave" = "chat",
   message = "What do you think?",
   overrides: Partial<VenueScene> = {},
-  operationInput: ReturnType<SceneWritingPorts["venueOperationInput"]> = {},
+  operationInput: Record<string, unknown> = {},
 ) {
   const snapshot = {
     ...snapshotFromCard(
@@ -46,7 +46,10 @@ export async function currentScenePrompt(
       ? state.villagers.map((resident) =>
           resident.characterId === card.id ? { ...resident, cardSnapshot: snapshot } : resident,
         )
-      : [...state.villagers, { characterId: card.id, cardSnapshot: snapshot, addedAt: "2026-10-07T12:00:00.000Z" }],
+      : [
+          ...state.villagers,
+          { letterFontId: "caveat", characterId: card.id, cardSnapshot: snapshot, addedAt: "2026-10-07T12:00:00.000Z" },
+        ],
   });
   assert.deepEqual(
     world.villagers.map((resident) => resident.characterId).sort(),
@@ -81,6 +84,7 @@ export async function currentScenePrompt(
     interactionScopeVersion: 6,
     ...operationInput,
   };
+  session.operation ??= { input: admission } as VenueScene["operation"];
   const forbidden = () => assert.fail("Prompt preparation must not generate, interpret, or mutate a Scene.");
   type Model = Awaited<ReturnType<ReturnType<SceneWritingPorts["villagesLanguageModels"]>["resolveForRequest"]>>;
   const model: Model = {
@@ -119,7 +123,6 @@ export async function currentScenePrompt(
     measurePipeline: forbidden,
     runtimeDebug() {},
     venueOperationId: () => "",
-    venueOperationInput: () => admission,
     rejectVenueCompletion: forbidden,
     completeWithRoom: forbidden,
     refreshZoneParticipants: forbidden,

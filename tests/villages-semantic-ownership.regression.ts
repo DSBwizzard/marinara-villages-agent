@@ -54,6 +54,7 @@ async function main() {
     const historyState = defaultVillageState();
     historyState.seed = "bounded-system-history";
     historyState.villagers = ["a", "b", "c"].map((characterId) => ({
+      letterFontId: "caveat",
       characterId,
       cardSnapshot: { id: characterId, name: characterId },
       wishes: [],
@@ -327,7 +328,9 @@ async function main() {
   });
   initializeVenueAccess(venue);
   state.venues = [venue];
-  state.villagers = [{ characterId: "host", cardSnapshot: { id: "host", name: "Host" }, wishes: [] }] as any;
+  state.villagers = [
+    { letterFontId: "caveat", characterId: "host", cardSnapshot: { id: "host", name: "Host" }, wishes: [] },
+  ] as any;
   const stamp = "2026-11-05T20:00:00.000Z";
   const scene = coerceSession({
     version: 4,

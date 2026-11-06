@@ -18,7 +18,6 @@ import {
 import type { RelationshipChange } from "../packages/villages/src/server/domain/models/relationship-types.js";
 import type { VenueSubmission } from "../packages/villages/src/server/domain/models/scene-model.js";
 import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
-import { relationshipChangeNotices } from "../packages/villages/src/server/domain/rules/relationship-presentation.js";
 import { emptyRelationshipReview } from "../packages/villages/src/server/domain/rules/relationship-review.js";
 import {
   applyRelationshipReview,
@@ -67,10 +66,12 @@ function fixture(name: string) {
     foundedAt: stamp,
     villagers: [
       {
+        letterFontId: "caveat",
         characterId: "mara",
         cardSnapshot: { id: "mara", name: "Mara", revision: 1, sourceStatus: "available", capturedAt: stamp },
       },
       {
+        letterFontId: "caveat",
         characterId: "ivy",
         cardSnapshot: { id: "ivy", name: "Ivy", revision: 1, sourceStatus: "available", capturedAt: stamp },
       },
@@ -397,7 +398,6 @@ async function main() {
       noticeSequence: ++state.noticeSequence,
     });
   }
-  assert.deepEqual(relationshipChangeNotices([state.receipts.unchanged!], state, relationships.world), []);
   const invisible = await relationships.service.readSceneChanges("same", "50:50:0", 1);
   assert.deepEqual(invisible.notices, []);
   assert.equal(invisible.nextCursor, "50:0:1");
