@@ -138,6 +138,7 @@ export function readPlaceRegistry(value: unknown): PlaceRegistry {
       if (!parsed.success) throw badRequest("Invalid saved Place.");
       const place = parsed.data as WorldPlace;
       place.location.access = readVenueAccess(place.location.access);
+      if (!place.location.access) throw badRequest("Saved Place has no access record.");
       for (const zone of place.location.zones ?? []) {
         if (zone.kind === "exterior") {
           if (zone.access !== undefined) throw badRequest("Entrance has no access policy.");

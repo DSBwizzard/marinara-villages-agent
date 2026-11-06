@@ -160,10 +160,15 @@ export function createLiveScenes({
   async function refreshZoneParticipants(session: VenueScene, completing = false): Promise<VenueScene> {
     if ((await observeVillageClock())?.paused) return session;
     if (!completing && hasVenueOperation(session.id)) return session;
-    if (session.liveSceneVersion === 1 && !completing) {
+    if (!completing) {
       // Durable failed work owns its admitted context even after the in-memory operation has gone.
       if (session.operation && (session.operation.status !== "complete" || session.operation.error)) return session;
       if (semanticBlocker(session)) return session;
+    }
+    if (session.status === "closed") return session;
+    if (session.liveSceneVersion !== 1 || !session.zoneId || !session.sceneAttendance)
+      throw conflict("That Scene has no current live admission.");
+    if (!completing) {
       session = await refreshLiveScene(session);
       await rememberCurrentZone(session);
       if (hasVenueOperation(session.id)) return session;
@@ -263,42 +268,8 @@ export function createLiveScenes({
         return refreshZoneParticipants(displaced, completing);
       }
     }
-    if (!session.zoneId) {
-      const migrated = await changeSession(session.id, (state) => {
-        if (!completing && hasVenueOperation(session.id)) return;
-        state.zoneId = zoneId;
-        state.legacyCast = true;
-        if (state.area !== "outside") state.grantedZoneIds = [...new Set([...(state.grantedZoneIds ?? []), zoneId])];
-      });
-      return refreshZoneParticipants(migrated, completing);
-    }
-    if (!session.sceneAttendance) {
-      // Older Scenes cannot reconstruct rewritten agendas. Preserve their current cast,
-      // and capture unencountered residents at the original Scene time once.
-      const captured = captureSceneAttendance(village, venue.id, new Date(session.startedAt));
-      // An older Scene already established its visible cast. Schedule reconstruction cannot add a witness there.
-      const known = new Set(session.participants.map((person) => person.characterId));
-      captured.occupants = captured.occupants.filter(
-        (person) => person.zoneId !== zoneId || known.has(person.characterId),
-      );
-      for (const person of session.participants) {
-        const original = captured.occupants.find((entry) => entry.characterId === person.characterId);
-        const lastZone =
-          session.lines.findLast((line) => line.heardBy.includes(person.characterId))?.zoneId ?? original?.zoneId;
-        captured.occupants = captured.occupants.filter((entry) => entry.characterId !== person.characterId);
-        if (session.activeIds.includes(person.characterId) || (lastZone && lastZone !== zoneId))
-          captured.occupants.push({
-            ...person,
-            zoneId: session.activeIds.includes(person.characterId) ? zoneId : lastZone!,
-          });
-      }
-      session = await changeSession(session.id, (state) => {
-        if (!state.sceneAttendance) state.sceneAttendance = captured;
-      });
-    }
     if (!session.continuity) {
-      // The document exists before its expiry hold. Interrupted setup can safely
-      // retry; an old Scene captures available facts once, without inventing history.
+      // The document exists before its expiry hold; interrupted setup can retry.
       const now = villageNow().getTime();
       if (!session.villageSeed)
         session = await changeSession(session.id, (state) => {

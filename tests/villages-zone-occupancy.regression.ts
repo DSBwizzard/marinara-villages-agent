@@ -643,6 +643,7 @@ assert.equal(paint.description, "A yellow motorcycle.", "closing never replays a
     version: 4,
     ...scene,
     id: "forced",
+    liveSceneVersion: 1,
     status: "active",
     zoneId: "exterior",
     activeIds: ids.slice(1),
@@ -685,7 +686,7 @@ assert.equal(paint.description, "A yellow motorcycle.", "closing never replays a
       return structuredClone(saved);
     },
   } as any);
-  saved = await live.refreshZoneParticipants(saved);
+  saved = await live.refreshZoneParticipants(saved, true);
   assert(
     saved.departedIds!.includes(ids[0]),
     JSON.stringify({

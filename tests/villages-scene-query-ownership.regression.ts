@@ -299,10 +299,8 @@ async function main() {
     turn("plain"),
     turn("processed", { progressProcessedAt: stamp }),
     turn("before-founding", { at: "2026-10-06T12:00:00.000Z" }),
-    turn("movement", {
-      movement: { operationId: "move", originZoneId: "a", destinationZoneId: "b", transitionLineId: "move-line" },
-    }),
   ];
+  current.navigationReceipts = [{ id: "move", originZoneId: "a", destinationZoneId: "b", at: stamp }];
   backlog.add(current);
   const foreign = structuredClone(current);
   foreign.id = "foreign";
