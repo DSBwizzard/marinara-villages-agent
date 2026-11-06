@@ -689,7 +689,7 @@ async function reusedNativeRevisions() {
       release = deferred();
     const stop = f.service.startBackgroundWork();
     try {
-      await f.service.queueBackgroundJob({ ...input(), legacyError: "Hold without purchasing" });
+      await f.service.queueBackgroundJob({ ...input(), initialError: "Hold without purchasing" });
       await f.service.settleBackgroundWork();
       const old = [...f.records.values()].find((row) => row.kind === "background-work")!;
       Object.assign(old.data, { owner: "previous-activation", status: "queued", requests: 0 });
