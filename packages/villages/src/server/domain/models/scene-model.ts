@@ -68,7 +68,7 @@ export type VenueSubmission = {
   processing?: ExchangeProcessing;
   id: string;
   message: string;
-  mode: "chat" | "ask" | "fulfill" | "act" | "leave" | "contact";
+  mode: "chat" | "leave" | "contact";
   contact?: ContactIntent;
   speechIdsAtTurn?: string[];
   contactEvidence?: { moves: ContactMove[]; relay: ContactRelay | null };
@@ -91,7 +91,6 @@ export type VenueSubmission = {
   actionReplyDone?: boolean;
   physicalOutcomeVersion?: 1;
   narrativeSource?: import("../rules/scene-narrative-effects.js").SceneNarrativeSource;
-  requestMode?: "act" | "fulfill";
   movement?: { operationId: string; originZoneId: string; destinationZoneId: string; transitionLineId: string };
   placeUpdate?: VenueSceneChange;
   semanticPlayerMoves?: import("../rules/semantic-timeline.js").SemanticPlayerMove[];

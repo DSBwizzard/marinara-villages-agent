@@ -729,6 +729,69 @@ for (const stage of ["session", "admission", "snapshot", "persistence"]) {
     second.owner.dispose();
   }
 }
+// Unsupported persisted modes cannot enter admission or discard saved paid evidence.
+for (const mode of ["ask", "act", "fulfill", "greet", "unknown", null, undefined]) {
+  const held = commandFixture("Unsupported mode", ({ scene }) => {
+    scene.operation = {
+      id: "held-action",
+      kind: "turn",
+      status: "interrupted",
+      attemptId: "paid-attempt",
+      input: { message: "Exact saved words", mode, targetId: "", semanticBudget: SEMANTIC_OPERATION_BUDGET },
+      attempts: { paid: { status: "complete", result: { content: "Exact paid result", finishReason: "stop" } } },
+      checkpoints: { "turn-reply": { retained: "Original response evidence" } },
+    } as any;
+    return {
+      recoverVenueOperations: async (recover) => {
+        await recover(scene.id, scene.operation!);
+      },
+      coordinateVenue: async () => {
+        throw Error("Unsupported action reached admission");
+      },
+    };
+  });
+  const before = structuredClone(held.scene);
+  try {
+    await assert.rejects(held.service.recoverVenueSceneWork(), /Unsupported Scene action/);
+    await assert.rejects(
+      held.service.sendVenueTurn({
+        sessionId: held.scene.id,
+        submissionId: "held-action",
+        message: "Exact saved words",
+        mode,
+        targetId: "",
+      } as any),
+      /Unsupported Scene action/,
+    );
+    assert.deepEqual(held.scene, before);
+    assert.deepEqual(held.calls, []);
+    assert.equal(held.modelAccess, 0);
+    assert.deepEqual(held.unexpected, []);
+    const raw = { version: 4, id: "invalid-mode", status: "closed", submissions: [{ id: "turn", mode }] };
+    assert.throws(() => coerceSession(raw), /Unsupported saved Scene action/);
+    assert.deepEqual(raw.submissions[0].mode, mode);
+  } finally {
+    held.owner.dispose();
+  }
+}
+for (const mode of ["chat", "contact", "leave"] as const)
+  assert.equal(
+    coerceSession({
+      version: 4,
+      id: "current-mode",
+      status: "closed",
+      submissions: [
+        {
+          id: "turn",
+          mode,
+          ...(mode === "contact"
+            ? { contact: { kind: "call", boundaryZoneId: "interior", quote: "Hello", targetId: "" } }
+            : {}),
+        },
+      ],
+    }).submissions[0].mode,
+    mode,
+  );
 // Free navigation replay retains its owner and never starts image work.
 {
   const first = commandFixture("Image A", ({ scene, world, touch, stamp }) => {

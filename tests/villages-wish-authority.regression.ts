@@ -272,7 +272,13 @@ for (const altered of ["unrelated-addition", "history", "order"] as const) {
     villageSeed: world.seed,
     lines,
     submissions: [
-      { id: "turn", wishProposals: original.proposals, wishAuthority: original.authority, wishContexts: snapshots },
+      {
+        mode: "chat",
+        id: "turn",
+        wishProposals: original.proposals,
+        wishAuthority: original.authority,
+        wishContexts: snapshots,
+      },
     ],
   });
   assert.equal(Object.hasOwn(publicSceneResponse(scene).submissions[0], "wishAuthority"), false);
@@ -282,7 +288,11 @@ for (const altered of ["unrelated-addition", "history", "order"] as const) {
       assert.fail("No Wish changes require no World read/write");
     },
   } as never);
-  const noChanges = coerceSession({ version: 4, id: "s", submissions: [{ id: "empty", wishProposals: [] }] });
+  const noChanges = coerceSession({
+    version: 4,
+    id: "s",
+    submissions: [{ mode: "chat", id: "empty", wishProposals: [] }],
+  });
   assert.deepEqual((await service.processWishExchange(noChanges, "empty")).receiptIds, []);
   assert.throws(() => readSocialWishChanges([{ ...change(), captured: world.villagers }]), /Invalid/);
 }

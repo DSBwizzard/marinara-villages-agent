@@ -187,7 +187,7 @@ export function createSceneWriting({
   async function prepareVenueTurnMessages(
     session: VenueScene,
     message: string,
-    mode: "greet" | "chat" | "ask" | "fulfill" | "act" | "leave",
+    mode: "greet" | "chat" | "leave",
     targetId: string,
     settled: {
       fulfilled: boolean;
@@ -932,7 +932,7 @@ export function createSceneWriting({
     }
     try {
       const validatedMoves =
-        storedPlace && (semanticResult || session.contactGeneration || mode === "chat" || mode === "ask")
+        storedPlace && (semanticResult || session.contactGeneration || mode === "chat")
           ? readContactMoves(
               raw?.contactMoves,
               parsed.lines,
@@ -1134,7 +1134,7 @@ export function createSceneWriting({
       try {
         if (
           (!session.contactGeneration || session.contactGeneration.attention || session.contactGeneration.zoneEvents) &&
-          (semanticResult || mode === "chat" || mode === "ask")
+          (semanticResult || mode === "chat")
         )
           placeUpdate = readVenueSceneChange(
             raw?.placeUpdate,
@@ -1265,7 +1265,7 @@ export function createSceneWriting({
         physicalContext,
         movementIntent,
         residenceSignal:
-          (semanticResult || mode === "chat" || mode === "ask") &&
+          (semanticResult || mode === "chat") &&
           requestedVenueId &&
           village.venues.some(
             (venue) =>
@@ -1275,9 +1275,7 @@ export function createSceneWriting({
               venueAssignedCount(venue) < venueCapacity(venue),
           )
             ? { kind: "request" as const, characterId: request!.speakerId, venueId: requestedVenueId }
-            : (semanticResult || mode === "chat" || mode === "ask") &&
-                pendingDecision &&
-                typeof decision!.entry.approved === "boolean"
+            : (semanticResult || mode === "chat") && pendingDecision && typeof decision!.entry.approved === "boolean"
               ? {
                   kind: "decision" as const,
                   characterId: pendingDecision.characterId,
@@ -1288,9 +1286,7 @@ export function createSceneWriting({
                 }
               : null,
         venueRequestSignal:
-          (semanticResult || mode === "chat" || mode === "ask") &&
-          venueRequest &&
-          readVenueRequestCore(venueRequest.entry)
+          (semanticResult || mode === "chat") && venueRequest && readVenueRequestCore(venueRequest.entry)
             ? {
                 characterId: venueRequest.speakerId,
                 ...readVenueRequestCore(venueRequest.entry)!,
@@ -1444,7 +1440,7 @@ export function createSceneWriting({
   async function generate(
     session: VenueScene,
     message: string,
-    mode: "greet" | "chat" | "ask" | "fulfill" | "act" | "leave",
+    mode: "greet" | "chat" | "leave",
     targetId: string,
     settled: {
       fulfilled: boolean;

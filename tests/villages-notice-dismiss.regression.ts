@@ -23,6 +23,7 @@ async function main() {
     startedAt: new Date().toISOString(),
     submissions: [
       {
+        mode: "chat",
         id: "turn",
         recordEvents: [
           { id: noticeId, kind: "relationship-up", text: "A relationship changed." },

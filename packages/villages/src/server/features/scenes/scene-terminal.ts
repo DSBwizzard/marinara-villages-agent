@@ -156,7 +156,7 @@ export function terminalForScene(scene: VenueScene, sourceRevision: number): Sce
     submissions: scene.submissions.map((turn) => ({
       id: turn.id,
       inputHash: createHash("sha256")
-        .update(JSON.stringify([turn.requestMode ?? turn.mode, turn.message, turn.targetId, turn.contact ?? null]))
+        .update(JSON.stringify([turn.mode, turn.message, turn.targetId, turn.contact ?? null]))
         .digest("hex"),
     })),
     navigationReceipts: structuredClone(scene.navigationReceipts ?? []),

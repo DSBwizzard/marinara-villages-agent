@@ -206,6 +206,7 @@ async function main() {
         held.saved.operation = { id: "paid", kind: "turn", status: "failed", error: "Unknown provider outcome" } as any;
       if (hold === "semantic")
         held.saved.submissions.push({
+          mode: "chat",
           id: "accepted",
           semanticProvenance: { version: 2 },
           semanticReady: false,
@@ -276,7 +277,7 @@ async function main() {
         at: interrupted.saved.startedAt,
         heardBy: ["player"],
       });
-      interrupted.saved.submissions.push({ id: "greeting", replyLineIds: ["greeting-line"] } as any);
+      interrupted.saved.submissions.push({ mode: "chat", id: "greeting", replyLineIds: ["greeting-line"] } as any);
       interrupted.saved.operation = {
         id: "greeting",
         kind: "greet",

@@ -970,6 +970,7 @@ async function main() {
       lines: [{ ...invitationLine, id: "standing-line", at: standingAt }],
       submissions: [
         {
+          mode: "chat",
           id: "standing-turn",
           at: standingAt,
           replyLineIds: ["standing-line"],
@@ -1185,7 +1186,7 @@ async function main() {
       id: "speech-scene",
       placeId: "home",
       lines: [{ ...draft[0], id: "speech-line" }],
-      submissions: [{ id: "speech-turn", at: stamp, replyLineIds: ["speech-line"] }],
+      submissions: [{ mode: "chat", id: "speech-turn", at: stamp, replyLineIds: ["speech-line"] }],
     } as any;
     const result = {
       outcome: "access-management",
@@ -1277,7 +1278,7 @@ async function main() {
       id: "recovery-scene",
       placeId: "home",
       lines: [{ ...recoveryDraft[0], id: "recovery-line" }],
-      submissions: [{ id: "recovery-turn", at: stamp, replyLineIds: ["recovery-line"] }],
+      submissions: [{ mode: "chat", id: "recovery-turn", at: stamp, replyLineIds: ["recovery-line"] }],
     } as any;
     const recoveryBatch = {
       checks: recoveryChecks,
@@ -1326,13 +1327,14 @@ async function main() {
     } as any;
     banScene.submissions = [
       {
+        mode: "chat",
         id: "saved-ban-turn",
         at: new Date().toISOString(),
         replyLineIds: ["saved-ban-line"],
         movement: {},
         accessEvents: savedAccessEvents(banBatch),
       },
-      { id: "later-unrelated-turn", at: stamp, replyLineIds: [] },
+      { mode: "chat", id: "later-unrelated-turn", at: stamp, replyLineIds: [] },
     ];
     records.set("villages-venue-visit-" + banScene.id, {
       id: "villages-venue-visit-" + banScene.id,
@@ -1390,6 +1392,7 @@ async function main() {
       lines: [{ ...invitationLine, id: "previous-world-line", at: stamp }],
       submissions: [
         {
+          mode: "chat",
           id: "old-reply-turn",
           at: stamp,
           replyLineIds: ["previous-world-line"],

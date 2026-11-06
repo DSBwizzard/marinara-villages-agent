@@ -243,6 +243,7 @@ for (const how of ["semantic", "abandon"] as const) {
     ],
     submissions: [
       {
+        mode: "chat",
         id: "offer",
         processing,
         semanticProvenance: {
