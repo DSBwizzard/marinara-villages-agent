@@ -14,7 +14,7 @@ import { zoneEventReply } from "../packages/villages/src/server/domain/rules/zon
 // Compact optional metadata and citation syntax survive player-speech insertion.
 {
   const core = {
-    segments: [{ speakerId: "rosa", text: "I prefer ginger tea." }],
+    segments: [{ kind: "dialogue", speakerId: "rosa", text: "I prefer ginger tea." }],
     playerSpeechCapture: { status: "captured", utterances: [{ text: "Hello.", occurrence: 1 }] },
   };
   for (const relationshipChanges of [undefined, {}, { changes: [] }, { disclosures: [] }, { permissions: [] }]) {
@@ -154,7 +154,7 @@ const implicitKinds = normalizeSparseSceneReply({
   ...raw,
   segments: raw.segments.map(({ kind: _kind, ...segment }) => segment),
 });
-assert.deepEqual(implicitKinds, sparse, "inferred segment kinds preserve attribution, delivery and exact prose");
+assert.throws(() => parseVenueReply(zoneEventReply(implicitKinds, "")!, ["rosa"]), /kind must be/);
 const complete = JSON.stringify(raw);
 assert(completeSceneObject(complete, "stop"));
 assert(completeSceneObject("```json\n" + complete + "\n```", "stop"));
@@ -211,12 +211,16 @@ const continuityOnly = sceneWritingHistory({ lines: [narration] } as any, []);
 assert.deepEqual(continuityOnly.evidence, [], "narrator visibility never becomes resident evidence");
 assert(continuityOnly.context.includes('"citable":false'));
 
-const asideShorthand = normalizeSparseSceneReply({
-  segments: [{ kind: "dialogue", speakerId: "rosa", delivery: "aside", text: "A spoken aside." }],
+const explicitAside = normalizeSparseSceneReply({
+  segments: [
+    { kind: "dialogue", speakerId: "rosa", delivery: "ordinary", presentation: "aside", text: "A spoken aside." },
+  ],
 });
-assert.equal((asideShorthand.segments as any[])[0].delivery, "ordinary");
-assert.equal((asideShorthand.segments as any[])[0].presentation, "aside");
+assert.equal((explicitAside.segments as any[])[0].delivery, "ordinary");
+assert.equal((explicitAside.segments as any[])[0].presentation, "aside");
 for (const supplied of [
+  { delivery: "aside" },
+  { delivery: "side", presentation: "aside" },
   { delivery: "aside", presentation: "main" },
   { delivery: "aside", targetId: "player" },
   { delivery: "quiet" },
@@ -466,8 +470,8 @@ for (const supplied of [
       playerSpeechCapture(
         {
           segments: [
-            { speakerId: "player", text: "second" },
-            { speakerId: "player", text: "first" },
+            { kind: "dialogue", speakerId: "player", text: "second" },
+            { kind: "dialogue", speakerId: "player", text: "first" },
           ],
           playerSpeechCapture: {
             status: "captured",

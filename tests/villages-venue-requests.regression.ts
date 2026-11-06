@@ -50,6 +50,7 @@ const state = defaultVillageState();
 state.setupAt = state.foundedAt = at;
 state.foundedAt = at;
 state.villagers.push({
+  letterFontId: "caveat",
   characterId: "rosa",
   cardSnapshot: { id: "rosa", revision: 1, sourceStatus: "available", name: "Rosa", capturedAt: at },
   agenda: null,
@@ -166,6 +167,7 @@ assert.match(persisted.memories.records.at(-1)?.text ?? "", /declined Rosa's req
 const competing = defaultVillageState();
 competing.setupAt = competing.foundedAt = at;
 competing.villagers.push({
+  letterFontId: "caveat",
   characterId: "rosa",
   cardSnapshot: { id: "rosa", revision: 1, sourceStatus: "available", name: "Rosa", capturedAt: at },
   agenda: null,

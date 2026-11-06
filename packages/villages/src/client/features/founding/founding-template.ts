@@ -41,7 +41,7 @@ export function startingZone(venue: VillageVenue, personal: boolean) {
   };
 }
 
-/** Preserve inferred legacy passages before adding an explicitly connected Zone. */
+/** Initialize draft passages before adding an explicitly connected Zone. */
 export function addFoundingZone(venue: VillageVenue, personal: boolean, id: string): VillageVenue {
   if ((venue.spaces?.length ?? 0) + (venue.privateSpaces?.length ?? 0) >= 6) return venue;
   const graph = materializeConnections([

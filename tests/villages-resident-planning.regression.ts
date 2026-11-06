@@ -55,6 +55,7 @@ function fixture() {
   state.venues[0].residentIds = ["a"];
   state.villagers = [
     {
+      letterFontId: "caveat",
       characterId: "a",
       cardSnapshot: snapshotFromCard(readVillagerCard({ id: "a", comment: "", data: { name: "Ada" } }), 1),
       addedAt: at,

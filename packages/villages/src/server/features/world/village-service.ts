@@ -13,7 +13,7 @@ import { advanceVillageClock, villageNow, villageTimeAdvanceSettled } from "../.
 import { defaultVillageState } from "../../domain/decoding/village-codec.js";
 import type { MemoryCandidate } from "../../domain/models/memories.js";
 import type { VillageSnapshot, VillageState } from "../../domain/models/world.js";
-import { calendarReplay } from "../../domain/rules/clock-recovery.js";
+import { calendarReplay } from "../../domain/rules/clock-state.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { MEMORY_TEXT_LIMIT } from "../../domain/rules/memory-integrity.js";
 import { memoryTerms } from "../../domain/rules/memory-protection.js";

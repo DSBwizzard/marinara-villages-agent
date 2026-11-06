@@ -102,6 +102,7 @@ const raw = {
   venues: [],
   villagers: [
     {
+      letterFontId: "caveat",
       characterId: "a",
       addedAt: "2026-09-01",
       scheduleInfluence: influenceSettings({ enabled: true }),
@@ -522,6 +523,7 @@ async function main() {
       ...raw,
       venues: [safeVenue],
       villagers: Array.from({ length: 6 }, (_, i) => ({
+        letterFontId: "caveat",
         ...raw.villagers[0],
         characterId: "crowd" + i,
         cardSnapshot: { ...raw.villagers[0]!.cardSnapshot, id: "crowd" + i, name: "Crowd " + i },

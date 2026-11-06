@@ -39,6 +39,7 @@ const world = coerceVillageState({
     error: "Explicit retry required",
   },
   villagers: ["a", "b"].map((id) => ({
+    letterFontId: "caveat",
     characterId: id,
     identityDescription: { text: "", revision: "initial-description-" + id, initialGenerationComplete: false },
     addedAt: now,

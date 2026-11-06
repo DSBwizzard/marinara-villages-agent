@@ -48,7 +48,6 @@ await withBrowser(browser, async () => {
       startedAt: now,
       lastActivityAt: now,
       sceneRevision: 0,
-      stagingVersion: 1,
       activeIds: [],
       participants: [],
       submissions: [],

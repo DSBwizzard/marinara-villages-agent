@@ -285,7 +285,6 @@ await runCase("departure-history/comparison", async () => {
   try {
     const live = await f.social.readRelationshipState(f.root().data.seed);
     const capture = (await f.repository.readAuthority()).returnCatchup!.capture!;
-    live.clockShiftMs = undefined;
     assert(sameRelationshipContext(live, capture.world.relationshipContext));
     const prior = f.identify({ ...capture.world, relationshipContext: live });
     assert.equal(prior, f.identify(capture.world));

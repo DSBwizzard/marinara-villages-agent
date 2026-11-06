@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot as base } from "./fixtures/villages-scene-browser.fixture.mjs";
 
-// Test cases: village-clock-recovery, founding-timezone
+// Test cases: village-clock, founding-timezone
 const browser = await chromium.launch({
   headless: true,
 });
@@ -20,13 +20,12 @@ await withBrowser(browser, async () => {
     page.on("pageerror", (error) => errors.push(error.message));
     let founding = false;
     let serverInstant = "2026-10-15T02:30:00Z";
-    const actions = [];
     const state = () => {
       const value = structuredClone(base);
       value.isFounded = !founding;
       value.village.timeZone = "America/Los_Angeles";
       value.village.instant = serverInstant;
-      value.clock = { revision: 2, timeZone: "America/Los_Angeles", paused: false, recovery: null };
+      value.clock = { revision: 2, timeZone: "America/Los_Angeles" };
       return value;
     };
     await page.route("http://villages.test/", (route) =>
@@ -41,9 +40,7 @@ await withBrowser(browser, async () => {
         return fulfill(route, { json: { status: "ready", snapshot: state() } });
       let value = state();
       const status = 200;
-      if (path.endsWith("/clock/recover")) {
-        actions.push("unexpected recovery");
-      } else if (path.endsWith("/rooms/active")) value = { session: null };
+      if (path.endsWith("/rooms/active")) value = { session: null };
       else if (path.endsWith("/connections"))
         value = { systemConnectionId: "", narrationConnectionId: "", imageConnectionId: "" };
       else if (path.endsWith("/catalog")) value = { characters: [] };
@@ -65,18 +62,14 @@ await withBrowser(browser, async () => {
     });
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-    await runCase("village-clock-recovery/" + width, async () => {
-      const notice = page.getByRole("region", { name: "Village clock recovery" });
-      await expect(notice).toHaveCount(0);
+    await runCase("village-clock/" + width, async () => {
       await expect(page.locator(".marinara-capability-villages-mobile-clock")).toContainText("07:30");
       assert.ok(await page.getByRole("button", { name: /^(Open settings menu|More)$/ }).isEnabled());
       await page.screenshot({ path: ".build-tmp/clock-visual/nonblocking-" + width + ".png" });
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1), false);
-      assert.deepEqual(actions, []);
       serverInstant = "2026-10-15T05:30:00Z";
       await page.evaluate(() => window.dispatchEvent(new Event("focus")));
       await expect(page.locator(".marinara-capability-villages-mobile-clock")).toContainText("10:30");
-      await expect(notice).toHaveCount(0);
     });
     await runCase("founding-timezone/" + width, async () => {
       founding = true;

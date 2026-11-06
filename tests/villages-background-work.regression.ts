@@ -233,7 +233,7 @@ function capturedInput(kind: "resident-planning" | "personal-mail" | "social-rec
   const admitted = {
     seed: "fixture",
     setupAt: capturedAt,
-    villagers: [{ characterId: "a", cardSnapshot: { name: "A", capturedAt }, wishes: [] }],
+    villagers: [{ letterFontId: "caveat", characterId: "a", cardSnapshot: { name: "A", capturedAt }, wishes: [] }],
   };
   const opportunity = { actorIds: ["a"] };
   if (kind === "personal-mail")
@@ -319,6 +319,7 @@ async function reset() {
     ].map(
       (id) =>
         ({
+          letterFontId: "caveat",
           characterId: id,
           cardSnapshot: {
             id,
@@ -999,6 +1000,7 @@ async function main() {
     await mutateVillageState((state) => {
       state.villagers = [
         {
+          letterFontId: "caveat",
           characterId: "cycle",
           cardSnapshot: {
             id: "cycle",

@@ -56,7 +56,9 @@ const original = relationship("1"),
 const frame = (capturedAt = "first-incarnation") => ({
   admissionFormat: 1,
   ...scope,
-  villagers: [{ characterId: "ada", cardSnapshot: { name: "Ada", capturedAt }, wishHead: head }],
+  villagers: [
+    { letterFontId: "caveat", characterId: "ada", cardSnapshot: { name: "Ada", capturedAt }, wishHead: head },
+  ],
 });
 const planning = (capturedAt = "first-incarnation") => ({
   admitted: frame(capturedAt),
@@ -239,6 +241,7 @@ assert.deepEqual(
       Object.assign(state, scope);
       state.villagers = [
         {
+          letterFontId: "caveat",
           characterId: "ada",
           cardSnapshot: { id: "ada", revision: 1, sourceStatus: "available", name: "Ada", capturedAt: wishTime() },
           wishes: [],
@@ -445,7 +448,12 @@ for (const change of [
     const logicalFrame = {
       ...scope,
       villagers: [
-        { characterId: "ada", cardSnapshot: { name: "Ada", capturedAt: "first-incarnation" }, wishes: [wish] },
+        {
+          letterFontId: "caveat",
+          characterId: "ada",
+          cardSnapshot: { name: "Ada", capturedAt: "first-incarnation" },
+          wishes: [wish],
+        },
       ],
     };
     function social(label: string) {
@@ -792,7 +800,12 @@ for (const change of [
   try {
     const world = defaultVillageState();
     Object.assign(world, scope);
-    const person = { characterId: "ada", cardSnapshot: { name: "Ada", capturedAt: "first-incarnation" }, wishes: [] };
+    const person = {
+      letterFontId: "caveat",
+      characterId: "ada",
+      cardSnapshot: { name: "Ada", capturedAt: "first-incarnation" },
+      wishes: [],
+    };
     world.villagers = [person] as any;
     const social = defaultRelationshipState(scope.seed);
     const source = {
@@ -1261,6 +1274,7 @@ for (const patch of [
       state.venues = [venue()];
       state.villagers = [
         {
+          letterFontId: "caveat",
           characterId: "ada",
           cardSnapshot: { id: "ada", revision: 1, sourceStatus: "available", name: "Ada", capturedAt: wishTime() },
           wishes: [],

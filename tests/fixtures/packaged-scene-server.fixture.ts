@@ -31,6 +31,7 @@ export async function packagedSceneServer(
   });
   world.villagers = [
     {
+      letterFontId: "caveat",
       characterId: "mara",
       addedAt: now,
       cardSnapshot: {

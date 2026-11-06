@@ -108,7 +108,6 @@ export function sceneErrorMessage(original: string, domain?: string): string {
       /attention fragments|attention beyond its adjacent audience|without hearing the attention event/iu,
       "The AI didn’t identify who heard the sound.",
     ],
-    [/Multiple legacy invitations/iu, "The AI combined invitations the game must handle separately."],
     [
       /resident action|standing permission|access (?:event|effects|interpretation|scope|condition|issuer|evidence|command|management)|standing (?:grant|withdrawal)|permission.*(?:scope|authority)/iu,
       "The game couldn’t confirm who gave permission or what they allowed.",

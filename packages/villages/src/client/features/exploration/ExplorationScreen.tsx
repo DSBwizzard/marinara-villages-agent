@@ -21,7 +21,7 @@ type MarkerDraft = {
 };
 
 export function ExplorationScreen({ controller }: { controller: ExplorationScreenController }) {
-  const lighting = useVillageLighting(controller.snapshot?.village, controller.snapshot?.clock?.paused);
+  const lighting = useVillageLighting(controller.snapshot?.village);
   const { visible } = useVillageActivity();
   const {
     selectedMap,
@@ -289,11 +289,7 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
       <div className={`${ELEMENT_TAG}-home-bar`}>
         <span className={`${ELEMENT_TAG}-map-identity`}>
           <strong>{snapshot?.village.name}</strong>
-          <HomeDateWeather
-            weather={snapshot?.village.weather ?? ""}
-            village={snapshot?.village}
-            paused={snapshot?.clock?.paused}
-          />
+          <HomeDateWeather weather={snapshot?.village.weather ?? ""} village={snapshot?.village} />
           <span role="img" aria-label={lighting} title={lighting}>
             {lighting === "night" ? "🌙" : lighting === "evening" ? "🌇" : lighting === "morning" ? "🌅" : "☀️"}
           </span>
