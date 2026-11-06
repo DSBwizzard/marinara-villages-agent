@@ -44,8 +44,6 @@ function fixture(name: string) {
       wishes: [],
       ingestSchedule: false,
       agenda: unwrittenVillageAgenda(state.venues, card.name),
-      remap: { signature: "retained-remap" } as any,
-      remapFailure: { signature: "retained-failure" } as any,
     },
   ];
   const calls: string[] = [],
@@ -174,16 +172,12 @@ assert.deepEqual(recovered.state.villagers[0]!.agenda, recoveredAgenda);
 
 const color = fixture("Color");
 const retainedAgenda = structuredClone(color.state.villagers[0]!.agenda);
-const retainedRemap = structuredClone(color.state.villagers[0]!.remap);
-const retainedFailure = structuredClone(color.state.villagers[0]!.remapFailure);
 color.card.nameColor = "#123456";
 color.card.dialogueColor = "#654321";
 await color.service.applyVillagerRefresh("same");
 assert.equal(color.state.villagers[0]!.cardSnapshot.revision, 5);
 assert.equal(color.state.villagers[0]!.cardSnapshot.nameColor, "#123456");
 assert.deepEqual(color.state.villagers[0]!.agenda, retainedAgenda);
-assert.deepEqual(color.state.villagers[0]!.remap, retainedRemap);
-assert.deepEqual(color.state.villagers[0]!.remapFailure, retainedFailure);
 
 const prose = fixture("Prose");
 prose.state.villagers[0]!.identityDescription = {
@@ -216,8 +210,6 @@ assert.equal(
 assert(prose.attempts[0]!.villagers[0]!.agenda!.day.some((block) => block.venueId === firstVenue.id));
 assert(prose.state.villagers[0]!.agenda!.day.some((block) => block.venueId === retryVenue.id));
 assert(!prose.state.villagers[0]!.agenda!.day.some((block) => block.venueId === firstVenue.id));
-assert.equal(prose.state.villagers[0]!.remap, null);
-assert.equal(prose.state.villagers[0]!.remapFailure, null);
 assert.equal(prose.state.villagers[0]!.agenda!.personalizationPending, true);
 
 const removed = fixture("Removed");

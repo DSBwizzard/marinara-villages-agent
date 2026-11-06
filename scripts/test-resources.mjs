@@ -165,7 +165,6 @@ export const isolatedTests = new Set([
   "tests/villages-scene-text.regression.ts",
   "tests/villages-scene-work-ownership.regression.ts",
   "tests/villages-scene-writing-ownership.regression.ts",
-  "tests/villages-schedule-remap.regression.ts",
   "tests/villages-setting-grounding.regression.ts",
   "tests/villages-settings-drift.regression.ts",
   "tests/villages-settings-navigation.e2e.mjs",

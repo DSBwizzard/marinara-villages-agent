@@ -33,7 +33,7 @@ import {
 } from "../../domain/rules/village-memories.js";
 import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
 import type { preparePrivateSpaces } from "../../jobs/private-space-preparation.js";
-import type { backfillAgendas, refreshVillagerRemaps, rollActiveAgendas } from "../residents/resident-agendas.js";
+import type { backfillAgendas, refreshScheduleInfluence, rollActiveAgendas } from "../residents/resident-agendas.js";
 import type { completeVillageResidence } from "../venues/residences.js";
 import type { buildVillageSnapshot } from "./snapshot.js";
 import type { mutateVillageState, readVillageState } from "./village-store.js";
@@ -50,7 +50,7 @@ export interface WorldCoordinationPorts {
   outsideVenueOperation: typeof outsideVenueOperation;
   completeVillageResidence: typeof completeVillageResidence;
   backfillAgendas: typeof backfillAgendas;
-  refreshVillagerRemaps: typeof refreshVillagerRemaps;
+  refreshScheduleInfluence: typeof refreshScheduleInfluence;
   preparePrivateSpaces: typeof preparePrivateSpaces;
   reconcileProjectLifecycles: typeof reconcileProjectLifecycles;
   rollActiveAgendas: typeof rollActiveAgendas;
@@ -69,7 +69,7 @@ export function createWorldCoordination({
   outsideVenueOperation,
   completeVillageResidence,
   backfillAgendas,
-  refreshVillagerRemaps,
+  refreshScheduleInfluence,
   preparePrivateSpaces,
   reconcileProjectLifecycles,
   rollActiveAgendas,
@@ -212,7 +212,7 @@ export function createWorldCoordination({
       void preparePrivateSpaces().catch(() => {});
     });
     const withAgendas = await backfillAgendas(await readVillageState(), now);
-    await refreshVillagerRemaps(withAgendas, now);
+    await refreshScheduleInfluence(withAgendas, now);
     await reconcileResidentPlanning?.(now);
     return buildVillageSnapshot(now);
   }

@@ -17,19 +17,8 @@ export function stampTime(at: string): string {
   const when = new Date(at);
   return Number.isNaN(when.getTime()) ? "" : CLOCK_TIME.format(when);
 }
-
-/**
- * Which place an id names, for the panel that prints the table.
- *
- * The id is the only thing the translation stores, on purpose — a stored name
- * would re-point at whatever building now answers to it. So the name is looked
- * up at the moment it is drawn, out of the places the player can see in the
- * settings panel, and an id that matches nothing is said to match nothing rather
- * than left blank. That distinction is the point of showing this at all: "the
- * translator said nowhere" and "the place it named has been deleted" look
- * identical in the drawer, and only one of them is a fault.
- */
-export function remapPlaceName(venues: readonly VillageVenue[], venueId: string): string {
+/** Resolve the current name of an Agenda location. */
+export function agendaPlaceName(venues: readonly VillageVenue[], venueId: string): string {
   return venues.find((venue) => venue.id === venueId)?.name ?? "a place that is gone";
 }
 

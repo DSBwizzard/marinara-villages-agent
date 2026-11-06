@@ -224,7 +224,6 @@ export function villageSettings(
                   const destination = villagerPlaceView(
                     village,
                     resident,
-                    null,
                     deriveVillageMoment({
                       foundedAt: village.foundedAt,
                       environment: village.narrative,

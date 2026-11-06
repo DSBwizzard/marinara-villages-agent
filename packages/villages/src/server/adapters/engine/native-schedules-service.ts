@@ -1,9 +1,4 @@
-import {
-  blockAt,
-  type NativeDayBlock,
-  type NativeRoutine,
-  type NativeWeekSchedule,
-} from "../../domain/rules/schedule-rules.js";
+import { type NativeDayBlock, type NativeWeekSchedule } from "../../domain/rules/schedule-rules.js";
 
 import { VILLAGE_WEEKDAYS } from "../../domain/rules/village-clock.js";
 
@@ -63,12 +58,6 @@ export function createNativeSchedules(ports: NativeSchedulesPorts) {
    * thing that would have made the live bug above visible from outside.
    */
   let cardsReadFailureReported = false;
-
-  /** Drop the cached read. Used by the regression proof so one case cannot leak into the next. */
-  function resetNativeScheduleCache(): void {
-    cache = null;
-    cardsReadFailureReported = false;
-  }
 
   function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -201,77 +190,15 @@ export function createNativeSchedules(ports: NativeSchedulesPorts) {
     return snapshot;
   }
 
-  /**
-   * The read the schedules view and the translation both start from, in one hit.
-   *
-   * A caller that only wants the weeks uses `readNativeWeekSchedules` below; a
-   * caller that is going to TELL the player something about those weeks needs the
-   * emptiness to be explained, and that is this function.
-   */
+  /** Read source schedules and whether their library was available. */
   async function readNativeScheduleSnapshot(
     now: Date,
     characterIds?: readonly string[],
   ): Promise<NativeScheduleSnapshot> {
     return readSnapshot(now, characterIds);
   }
-
-  /**
-   * Every character's WHOLE week, keyed by character id. Never throws, for the
-   * same reason the narrower read does not.
-   *
-   * One read of the library — plus, at most, one read of the chats behind it —
-   * answers this for the entire village at once, which is why it is the entry
-   * point a translation uses: a translation is written per character but the week
-   * it is written from was already fetched, so a village of sixty does not go
-   * looking sixty times.
-   */
-  async function readNativeWeekSchedules(
-    now: Date,
-    characterIds?: readonly string[],
-  ): Promise<Map<string, NativeWeekSchedule>> {
-    const weeks = new Map<string, NativeWeekSchedule>();
-    for (const schedule of (await readSnapshot(now, characterIds)).schedules) weeks.set(schedule.characterId, schedule);
-    return weeks;
-  }
-
-  /**
-   * The village's read of the Engine's schedules: one entry per character that
-   * has one. Never throws — a library that cannot be read at all simply produces
-   * an empty map and the village falls back to its own routine.
-   */
-  async function readNativeSchedules(now: Date, characterIds?: readonly string[]): Promise<Map<string, NativeRoutine>> {
-    const routines = new Map<string, NativeRoutine>();
-    // The weekday the whole read is taken on, derived ONCE. `activityAt` and the
-    // key the translation is looked up under both have to be about the same day,
-    // and a caller that rebuilt this per character would be rebuilding it off a
-    // clock that had moved on.
-    const weekday = VILLAGE_WEEKDAYS[(now.getDay() + 6) % 7]!;
-    for (const schedule of (await readSnapshot(now, characterIds)).schedules) {
-      const blocks = schedule.days[weekday] ?? [];
-      const block = blockAt(blocks, now.getHours(), now.getMinutes());
-      routines.set(schedule.characterId, {
-        routineSummary: schedule.routineSummary,
-        activity: block?.activity ?? "",
-        talkativeness: schedule.talkativeness,
-        weekStart: schedule.weekStart,
-        weekday,
-        block,
-        blocks,
-      });
-    }
-    return routines;
-  }
-
-  /** The routine the village knows for one character, or null when the Engine has none. */
-  async function readNativeRoutine(characterId: string, now: Date): Promise<NativeRoutine | null> {
-    return (await readNativeSchedules(now)).get(characterId) ?? null;
-  }
   return {
-    resetNativeScheduleCache,
     readNativeScheduleSnapshot,
-    readNativeWeekSchedules,
-    readNativeSchedules,
-    readNativeRoutine,
   };
 }
 export type NativeSchedules = ReturnType<typeof createNativeSchedules>;

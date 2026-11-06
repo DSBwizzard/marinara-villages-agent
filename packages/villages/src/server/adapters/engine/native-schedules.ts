@@ -11,9 +11,6 @@ function selected(): NativeSchedules {
 export function configureNativeSchedules(service: NativeSchedules): () => void {
   return binding.configure(bindActivationService(service));
 }
-export function resetNativeScheduleCache(): void {
-  return selected().resetNativeScheduleCache();
-}
 export async function readNativeScheduleSnapshot(
   now: Date,
   characterIds?: readonly string[],

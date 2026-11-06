@@ -87,206 +87,8 @@ export type VillageAgendaBlock = {
   zoneId?: string;
   activity: string;
   /** The original schedule slot, when this block was informed by one. */
-  sourceTime?: string;
 };
-
-/**
- * One BLOCK of the Engine's week, translated into this village's own terms.
- *
- * One entry per block rather than one per distinct phrase, and that is the
- * whole of the fidelity rule: the Engine's week is a TIMETABLE — an hour range
- * with a sentence in it — and a translation that collapsed its five "sleeping"
- * blocks into one entry called "sleeping, 50 hours a week" has thrown the
- * timetable away. What the player asked to see is the same week, hour for hour,
- * translated into the village's own nouns.
- *
- * So the key is the SLOT, not the sentence. `day` and `time` are a COPY of the
- * Engine's own weekday and hour range, kept verbatim because they are what this
- * entry is found by — see `lookupRemap`. Neither is ever shown to anybody: they
- * exist so that the same slot in the week the schedule wrote is the slot the
- * lookup finds, and normalising them at write time would be the village editing
- * the Engine's own bookkeeping to make its own matching easier.
- *
- * `activity` is carried for the same reason and one more. It is the Engine's
- * sentence for the slot, copied exactly, and it is the only record of what the
- * village was translating — a translation read back off disk is otherwise a
- * list of empty slots with village nouns in them. It also feeds the staleness
- * digest, so an Engine week regenerated under the same Monday with different
- * hours in it re-asks rather than serving yesterday's timetable.
- *
- * `here` is the point of the whole record. The Engine writes a schedule from
- * the CARD alone and has never heard of this village, so a pilot's week says
- * "flying the Halcyon on a supply run" in a village that has no spaceship. The
- * village cannot change that — the schedule is the Engine's and is shared
- * across every chat the character appears in — so it supplies the NOUN
- * instead: same slot, same length, same status, happening here. That is the
- * "translate the verb, keep the shape" rule, made into a stored fact.
- */
-export type VillageRemapMove = {
-  flexible?: boolean;
-  /** The Engine's weekday this block falls on, copied exactly. Half of the lookup key. */
-  day: string;
-  /**
-   * The block's own hour range, exactly as the Engine wrote it, and the other
-   * half of the lookup key.
-   *
-   * Matched with its whitespace removed rather than character for character, so
-   * a model that copies "18:00 - 20:00" out of "18:00-20:00" still lands on the
-   * block it meant. See `remapBlockKey`.
-   */
-  time: string;
-  /** The Engine's activity for this block, copied exactly. */
-  activity: string;
-  /** What that same thing is, here, written to read after "Right now you are". */
-  here: string;
-  /**
-   * Which place that happens at, as the venue's own `id`, or "" for none.
-   *
-   * The whole reason the translation is a record rather than a sentence. The
-   * `here` phrase names the place in prose — "mending the fence down at the
-   * allotments" — which is exactly what a prompt wants and exactly useless to a
-   * program: nothing can ask a sentence which building it means. So the model is
-   * asked for the place a SECOND time, as a number off the list of venues it was
-   * given, and the number is resolved to the venue's stable id the moment the
-   * answer is read.
-   *
-   * Resolved at WRITE time rather than resolved by name at read time, and that
-   * is the point of storing an id at all: a place can be renamed or added or
-   * deleted after a translation is written, and a translation that had stored
-   * the NAME would silently re-point at whatever now answers to it. An id that
-   * no longer matches anything is a miss, and a miss is the ordinary degrade.
-   *
-   * "" is a real answer rather than a broken one. A villager whose week has them
-   * asleep, or walking, or doing something this village genuinely has no room
-   * for has no place to be at, and a translator that was forced to pick one would
-   * invent a discrepancy rather than admit to one.
-   */
-  venueId: string;
-  zoneId?: string;
-  /**
-   * Which of their own wishes coloured this hour, as that wish's own `id`, or ""
-   * for none.
-   *
-   * The same trick as `venueId` and for the same reason. The wishes are handed to
-   * the translator as a numbered list beside the places, the answer names one by
-   * its NUMBER, and the number is resolved to an id the moment the answer is read
-   * — at WRITE time, because a wish's position in that list is not stable. The
-   * list is rewritten whenever a wish is replaced, so a stored position would
-   * point at whatever wish moved into the slot afterwards, and a stored name
-   * would silently re-point at whatever wish later happened to read the same way.
-   *
-   * "" is the ordinary answer rather than a damaged one: most hours of anybody's
-   * week have nothing to do with what they wish for, and the prompt asks for 0
-   * rather than an invention for exactly that reason. A wish that has since been
-   * fulfilled, or has aged out, leaves this pointing at an id that is no longer
-   * on the list, which is an ordinary miss: the one reader this id has is the
-   * debug tab naming the wish, and a miss prints nothing there rather than a
-   * fault. What that hour READS as is the `here` phrase beside it, and this field
-   * is only the record of whose wish bent that phrase.
-   */
-  wishId: string;
-};
-
-/**
- * How this villager's week happens HERE, written once per schedule.
- *
- * This is the join between the two systems made concrete, and it is a separate
- * record from the agenda on purpose. The agenda is about the PERSON — what they
- * wish, in this place — and is written once and kept. This is about the
- * ENGINE'S WEEK, and it is superseded every time that week is: the Engine
- * regenerates a character's schedule when the current Monday passes the one it
- * was generated for, so a translation carries the `weekStart` it was written
- * against and is thrown away the moment the Engine's own changes.
- *
- * `weekStart` is still the week it translates, and it is still the field the tab
- * shows, but it is no longer the key on its own. `signature` is, because a
- * Monday is not enough to notice that the ENGINE replaced the same Monday's
- * contents, or that the player rewrote the village's places or its setting — the
- * two corrections that change what a correct translation of the same week is.
- * `weekStart` is the human-readable half of the same fact; `signature` is the
- * half a string comparison can act on. See `remapSignature`.
- *
- * `routine` replaces the agenda's `routineSummary` at render time rather than
- * overwriting it. Both sentences are true facts about different things: the
- * agenda holds the Engine's own wording, which is what the player generated and
- * may still be reading in Conversation mode, and this holds the village's. Only
- * one of them can be said to a villager, the village's wins, and keeping the
- * Engine's means a village whose translation is thrown away goes straight back
- * to the sentence it had before with nothing to rewrite.
- */
-export type VillageRemap = {
-  /** The Monday of the week this translates, matching the Engine's own `weekStart`. */
-  weekStart: string;
-  moves: VillageRemapMove[];
-  /** One line about an ordinary day for them here, in this village's words. */
-  routine: string;
-  /**
-   * The digest of the question this answered: the week, its activities and
-   * statuses, and the village's own places and setting. "" only when the Engine
-   * wrote no `weekStart`, which is the one case the village leaves alone.
-   *
-   * Stored rather than recomputed because it is the same digest the village will
-   * compare against tomorrow, and because a record read off disk has no other way
-   * to say which question it was the answer to.
-   */
-  signature: string;
-  /**
-   * How many times the village has asked about THIS signature, counting the one
-   * that produced this record.
-   *
-   * It exists so that an incomplete answer terminates. A move the model will
-   * never copy back exactly — a phrase it keeps paraphrasing — makes the
-   * translation owed again on every read, and without a count the village would
-   * spend one model call a day, forever, re-learning the same nothing. Once this
-   * reaches `MAX_REMAP_ATTEMPTS` the table is kept as it is, and the hours it
-   * cannot explain read as the village's own default.
-   *
-   * 0 is a record written before this field existed, and reads as "the village
-   * has not tried, as far as anyone can tell" — which is exactly the state that
-   * should be allowed another try.
-   */
-  attempts: number;
-  /** Display-only, Read by nothing. */
-  generatedAt: string;
-  /** Present on compact founding translations so later schedule drift can be applied locally. */
-  foundingLens?: string;
-};
-
-/**
- * One block of the Engine's week, as the translation is asked about it.
- *
- * The INPUT to a translation rather than a part of one, and it lives here rather
- * than beside the translator because the debug view carries it out to the tab:
- * the field is never stored, but it does cross the wire, and everything that
- * crosses the wire is declared in one file.
- *
- * It is `NativeDayBlock` with the day it belongs to attached, and that is the
- * whole difference: the Engine's week is a map of weekday to blocks, and a
- * question about one block has to name which day's copy of it is being asked
- * about. Nothing is grouped and nothing is summed — seven copies of "sleeping"
- * are seven questions here, because they are seven slots in somebody's
- * timetable and the answer is one phrase per slot.
- */
-export type RemapBlock = {
-  /** The Engine's weekday this block falls on, one of `VILLAGE_WEEKDAYS`. */
-  day: string;
-  /** The block's hour range, exactly as the Engine wrote it. With the day, the key. */
-  time: string;
-  /** The Engine's own sentence for the block, verbatim. */
-  activity: string;
-};
-
-/**
- * One day of somebody's week as the schedules tab draws it.
- *
- * The Engine's week is a weekly PATTERN keyed by weekday name — it holds no
- * dates at all — so a day here is a weekday plus the village's own calendar date
- * for the occurrence of it the tab is showing, and nothing joins the two on the
- * server. Walking forward from today over `VILLAGE_WEEKDAYS` is what makes "their
- * week, starting today" answerable at all: Sunday's tomorrow is Monday, whose
- * blocks are whatever the Engine wrote for a Monday, and the walk wraps so all
- * seven days come back in the only consecutive order the pattern has.
- */
+/** Calendar label for one Agenda day. */
 export type VillageDayView = {
   /** The Engine's weekday name, one of `VILLAGE_WEEKDAYS`. */
   weekday: string;
@@ -294,44 +96,6 @@ export type VillageDayView = {
   dateLabel: string;
   /** Whether this is the day the listing was built on. Exactly one entry has it. */
   isToday: boolean;
-  /**
-   * The Engine's blocks for this weekday, joined to the stored translation.
-   *
-   * Empty when the Engine wrote nothing for this weekday, which is an ordinary
-   * answer rather than a fault: a card with no schedule at all has seven empty
-   * days, and a day the tab is showing a week ahead of a regenerated one may be
-   * empty too. The tab draws an empty day as a day with nothing in it rather
-   * than as a missing one.
-   */
-  blocks: VillageDayBlock[];
-};
-
-/**
- * The last time the village tried to translate somebody's week and could not.
- *
- * The record exists because a failed translation and a translation nobody has got
- * round to yet are the SAME record — a `remap` of null — and they are not the same
- * fact. Until 0.4.61 they were also the same SCREEN: the schedules tab said "no
- * translation yet" for both, and the only trace of a model that refused every
- * week was a warn line in a console the player is not reading. A village whose
- * translations had all failed for a week looked exactly like a village that had
- * never been asked.
- *
- * So this is the failure it is possible to act on. `at` is when it was last tried
- * (so a failure from three days ago is distinguishable from one from five minutes
- * ago) and `message` is the model host's own words where it had any, which is
- * what makes the difference between "the model has no room" and "the model
- * answered prose" readable without a log.
- *
- * Cleared by the next write that succeeds, and never cleared by a read: a
- * translation that arrives later is the whole answer to a failure, which is why
- * nothing has to be dismissed by hand.
- */
-export type VillageRemapFailure = {
-  /** When the village last asked and could not. */
-  at: string;
-  /** What went wrong, in the model host's own words where it had them. */
-  message: string;
 };
 
 /** One library card the village has adopted. */
@@ -344,7 +108,6 @@ export type VillageVillager = {
   admission: import("../../../shared/helpers/resident-admission.js").ResidentAdmission;
   wishes: VillageWish[];
   agendaGeneration?: string;
-  translationGeneration?: string;
   characterId: string;
   /** Card prose captured at move-in; deliberately excludes the Engine-only first message. */
   cardSnapshot: VillageVillagerCardSnapshot;
@@ -370,34 +133,6 @@ export type VillageVillager = {
   /** Schedule changes influence tomorrow's agenda, never today's. */
   ingestSchedule?: boolean;
   scheduleInfluence?: import("../rules/owned-routine.js").ScheduleInfluence;
-  /**
-   * How the Engine's week happens here, or null when there is nothing to say.
-   *
-   * Null is a NORMAL state rather than a pending one, and it means one of two
-   * things that the village tells apart by looking at the schedule instead of
-   * at this field: the character has no native schedule at all, so there is
-   * nothing to translate and the village's own routine stands; or the Engine
-   * regenerated their week and this is a week old. Both are read as "use the
-   * village's own default", which is now what a villager with no translation
-   * reads as — see `VILLAGE_UNTRANSLATED_ACTIVITY` for why the fallback stopped
-   * being the Engine's own sentence.
-   *
-   * Deliberately NOT cleared when the translation is superseded. A stale
-   * translation stays on the record until the village next writes, and the
-   * superseded moves are simply never looked up, which means a model that is down
-   * for a week costs the villagers a plainer sentence and not their day.
-   */
-  remap: VillageRemap | null;
-  /**
-   * The last attempt at a translation that came back with nothing usable, or null
-   * for a villager the village has never been refused.
-   *
-   * Kept BESIDE `remap` rather than folded into it, because it is a fact about the
-   * last QUESTION and `remap` is the last answer. A villager with a stale
-   * translation and a failed rewrite has both: the old table, which is what they
-   * are still living by, and the reason the new one is not here.
-   */
-  remapFailure: VillageRemapFailure | null;
 };
 
 export type VillageResidentSprite = {
@@ -488,7 +223,7 @@ export type VillageVenueImage = {
  * `x`/`y`; who is in it is `characterId`; and a place with none of those set is
  * simply somewhere the village knows about and has not drawn yet.
  *
- * A home is a place with `isPlayerHome` or a `characterId` — see `remapVenues`,
+ * A home is a place with `isPlayerHome` or a `characterId` — see `routineVenues`,
  * which is the one place that distinction is drawn, because a home is where
  * somebody is when nothing has sent them anywhere and is therefore never one of
  * the places a villager's week is translated against.
@@ -1141,23 +876,7 @@ export type VillageTownMapView = {
   /** How far the picture is magnified inside the frame. Never below 1. */
   zoom: number;
 };
-
-/**
- * Where a villager is standing, as the conversation drawer draws it.
- *
- * The resolved end of the join the translation only half makes: the remap says
- * which venue id an activity belongs to, and this is that id turned back into a
- * place with a picture. A copy rather than the venue itself because the drawer
- * reads it and never writes it, and because a conversation is answered on every
- * turn — carrying the venue's `note` out on each of those would be carrying the
- * prompt's business into the view.
- *
- * Null means "not anywhere in particular", which is the ordinary state rather
- * than an error: a villager with no week, or a week the village has not
- * translated since it learned about places, or an hour that happens nowhere this
- * village has a name for. All three draw the same thing, and none of them is
- * worth telling the player apart.
- */
+/** Current location and activity shown for a resident. */
 export type VillagePlaceView = {
   id: string;
   zoneId?: string;
@@ -1437,25 +1156,7 @@ export type VillageSnapshot = ClientVisibleSnapshot<{
   isFounded: boolean;
   settings: VillageSettingsView;
 }>;
-
-/**
- * One villager's wishes, as the debug listing draws them.
- *
- * A separate view rather than a field on `VillageVillagerView`, for the reason
- * the story is a separate route rather than a field on the snapshot: an agenda
- * is a model answer the player can delete, and nothing in the village acts on it
- * between the moment it is written and the next part of the day.
- *
- * `agenda` is null exactly when the villager has not been written for yet, which
- * is what makes the debug list able to say "not yet" rather than showing a
- * villager who simply wants nothing.
- *
- * The translation travels on this view rather than on a route of its own, which
- * is a deliberate exception to "one route per thing". A translation is not
- * interesting by itself: it is interesting against the week it was written from,
- * and the two together are the whole answer to "why does this villager's prompt
- * say that". Every field below exists so a human can see the join.
- */
+/** Current routine and optional schedule-influence controls. */
 export type VillageAgendaView = {
   canInterpretSchedule?: boolean;
   effectiveDays?: Record<string, VillageAgendaBlock[]>;
@@ -1493,12 +1194,6 @@ export type VillageAgendaView = {
     days: Record<string, { time: string; activity: string }[]>;
   } | null;
   /**
-   * How this villager's week happens here, or null when the village has not
-   * translated it — no native schedule, or the Engine has regenerated the week
-   * and the village has not caught up yet.
-   */
-  remap: VillageRemap | null;
-  /**
    * The Engine's whole week in order from today, each day of it joined to the
    * stored translation.
    *
@@ -1514,168 +1209,6 @@ export type VillageAgendaView = {
    * showing nothing is the honest render of that.
    */
   days: VillageDayView[];
-  /**
-   * The Engine's `weekStart` for the week these days come from, which is also
-   * half the key the translation is invalidated by. Shown so "this translation
-   * is a week old" is visible rather than inferred from a pair of dates. Empty
-   * when the Engine is keeping no week for this character.
-   */
-  weekStart: string;
-  /**
-   * Whether the village still wants to write this translation again.
-   *
-   * The same answer `remapNeedsWriting` gives the backfill, so the tab cannot
-   * disagree with the code about whether a translation is due. False when the
-   * Engine is keeping no week at all, which is not a translation being out of
-   * date — it is nothing to translate.
-   */
-  stale: boolean;
-  /**
-   * How many of the hours the translation was ASKED about have no move of their
-   * own.
-   *
-   * The number the tab needs to tell a whole translation from a half one. The
-   * retry budget is capped, so a week a model answered badly is kept as it is
-   * rather than chased forever, and until 0.4.61 that settled-for table was
-   * indistinguishable from a good one on screen: `stale` is false once the village
-   * has given up, so there was no badge, and the footer under the table is only
-   * drawn for a translation with no moves at all. A week missing eleven hours read
-   * as a finished translation in which eleven hours happened to be spent at home.
-   *
-   * Retained for saved translation compatibility. Current generation never retries translation.
-   */
-  missingMoves: number;
-  /**
-   * The last attempt at this translation that came back with nothing usable, or
-   * null when the village has not been refused.
-   *
-   * Existing so that the two ways a villager can have no translation are
-   * distinguishable on the panel: waiting for the next part of the day, and having
-   * been turned down by the model on this one and every one before it.
-   */
-  remapFailure: VillageRemapFailure | null;
-  /**
-   * What an hour with no translation reads as, in the village's own words.
-   *
-   * It is here because the tab has to be able to finish a sentence the server
-   * starts. Every activity the translation missed appears on this listing marked
-   * as untouched, and "untouched" on its own does not tell a player what the
-   * villager will do with that hour — which is the exact thing this feature
-   * exists to change. A player reading a miss has two possibilities in mind and
-   * only one of them is true: the villager keeps the Engine's sentence, or the
-   * village substitutes its own default. It used to be the first, and it is now
-   * the second, and the difference is not one a reader can infer from a list of
-   * activities.
-   *
-   * Sent from the one place that decides it rather than written into the tab,
-   * because a copy in the tab would be a second definition of what an
-   * untranslated hour means, and the two would drift the first time anybody
-   * tuned the wording.
-   */
-  fallback: string;
-  /**
-   * The exact messages the translation WOULD BE written from, rebuilt on every
-   * read.
-   *
-   * This is the point of the whole view. The translation prompt is the part of
-   * this feature that is a matter of taste rather than of correctness, and the
-   * only way to argue with it is to read it. Rebuilt rather than stored, because
-   * a stored copy is a copy that can disagree with what was sent, and a debug
-   * view showing something other than the prompt is worse than no debug view.
-   *
-   * It is always rendered from the week the Engine is keeping NOW, so a stored
-   * translation older than that was written by a different prompt — which is
-   * what `stale` is for, and why both are shown together.
-   *
-   * null when the villager has no native schedule, since there is then no week
-   * to translate and no prompt to show.
-   */
-  remapPrompt: VillagePromptMessage[] | null;
-  /**
-   * The signature the village is asking this villager's translation to answer
-   * for RIGHT NOW, computed on every read from the live week, the live setting
-   * and the live list of places.
-   *
-   * It is here so that `stale` can be seen rather than trusted. A stale badge is
-   * a comparison between a stored signature and a live one, and a comparison a
-   * player cannot inspect is a comparison they cannot argue with: a translation
-   * that reads as out of date with an unchanged week and unchanged places is
-   * either a bug or something the player has forgotten they changed. Empty when
-   * there is no week to answer for.
-   */
-  signature: string;
-};
-
-/**
- * One block of somebody's day, said the way it happens here.
- *
- * The whole of the fidelity the weave rests on. A translation is a lookup table
- * keyed by `day|time`, and the hours live only in the Engine's raw week, so a
- * plan is the join of that table back onto one day's blocks. One entry per block
- * the Engine wrote, in the order it wrote them, with the block's own hour range
- * kept as written.
- *
- * Deliberately NOT grouped into mornings and afternoons, and deliberately not a
- * summary. The rule the village works to is that a card with a distinct activity
- * in every hour of the day gives that villager a distinct hour in the village,
- * and any grouping here would be the village deciding which of somebody's hours
- * are the same hour.
- *
- * `activity` is the ENGINE's string and `here` is the village's, carried side by
- * side for the same reason a `VillageRemapMove` carries both: the first is the
- * key the second was found by, and a reader that cannot see the input beside the
- * output has no way to tell a bad translation from a stale schedule.
- */
-export type VillageDayBlock = {
-  zoneId?: string;
-  flexible?: boolean;
-  commitmentId?: string;
-  /** The block's hour range, exactly as the Engine wrote it: "06:00-08:00". */
-  time: string;
-  /** The Engine's own activity string, verbatim. Shown to nobody but the schedule tab. */
-  activity: string;
-  /** What that same block reads as here, or the village's own default. */
-  here: string;
-  /**
-   * Whether the village had words for this block.
-   *
-   * Carried rather than derived from `here`, because "at home" is a legitimate
-   * translation as well as the default, and the two mean opposite things to a
-   * reader checking the join: one says the village understood, and the other says
-   * it did not.
-   */
-  translated: boolean;
-  /** The place the village puts this block at, as a venue id, or "" for nowhere. */
-  venueId: string;
-  /**
-   * The wish this hour was translated FOR, as the id of a wish on the villager's
-   * own agenda, or "" for the ordinary answer.
-   *
-   * Copied out to the panel rather than left on the move it came from, because
-   * the tab draws HOURS and a wish that bent one of them is only checkable
-   * beside the hour it bent: a row whose `here` phrase has nothing to do with the
-   * wish named on it is the one failure this can catch, and neither half of the
-   * pair can show that alone. It is an id and not a name for the reason
-   * `VillageRemapMove.wishId` gives — a stored name would be a copy of a wish
-   * that may since have been answered and replaced. An id matching nothing on
-   * the agenda is an ordinary miss, and the panel then says nothing about a wish
-   * rather than printing an id nobody can read.
-   */
-  wishId: string;
-  /** Whether this is the block the hour asked for falls in. */
-  current: boolean;
-};
-
-/**
- * One message of a prompt, as the debug listing shows it.
- *
- * Only ever produced for display. The real call builds its messages with the
- * Engine's own type, and this exists so that a package type never has to carry
- * that import out to the client.
- */
-export type VillagePromptMessage = {
-  role: "system" | "user";
-  content: string;
 };
 
 export type VillageMap = {

@@ -99,7 +99,6 @@ export type BackgroundWork = {
     | "resident-planning"
     | "world-development"
     | "agenda"
-    | "translation"
     | "wish"
     | "personal-mail"
     | "social-recovery"
@@ -965,73 +964,6 @@ export type AgendaBlock = {
   activity: string;
 };
 export /**
- * How this villager's week happens here.
- *
- * `activity` is the Engine's own string, kept exactly, and `here` is the village's
- * answer for it. The pair is the whole idea, so the panel draws it as one — and
- * the panel draws the `day` and `time` beside it too, because the lookup is by
- * that SLOT and nothing else, and a player reading this is reading the table the
- * village actually uses.
- */
-type VillageRemapMove = {
-  /** The Engine's weekday this entry was written for, exactly as the Engine names it. */
-  day?: string;
-  /** The hour range this entry was written for, exactly as the Engine wrote it. */
-  time?: string;
-  activity?: string;
-  here: string;
-  /**
-   * The place this happens at, as the venue's own id, or "" for none.
-   *
-   * Optional here because this list is written for a person to read and the
-   * panel draws the pair above — but it is on the wire, and the panel does show
-   * it, because a translation whose place resolves to nothing is the one part
-   * of this table that fails invisibly: the sentence still reads correctly, and
-   * the drawer's stage quietly falls back to the village's name.
-   */
-  venueId?: string;
-};
-export type VillageRemap = {
-  weekStart: string;
-  moves: VillageRemapMove[];
-  routine: string;
-  /**
-   * What the translation was asked at the time it was written, stored beside it.
-   *
-   * Shown next to the live signature below, because "translation out of date" is a
-   * comparison between two strings and a player shown only the verdict has no way
-   * to tell a translation made from a different week from one made from a
-   * different list of places.
-   */
-  signature?: string;
-  generatedAt: string;
-};
-export /**
- * One block of somebody's day, translated into this village's own terms.
- *
- * The panel's copy of the server's `VillageDayBlock`, and the one type on this
- * side that exists to prove something rather than to draw something. A
- * translation is a lookup table keyed by `day|time`, so it has no hours of its
- * own: the hours live only in the Engine's raw week. A day view is the join of
- * the two, which means every row here is a claim the table alone cannot make —
- * this block, at these hours, reads as this — and the whole of what the player
- * needs in order to tell a bad translation from an hour the village never had
- * words for.
- *
- * `translated` is carried rather than derived from `here`, because "at home" is a
- * legitimate translation as well as the fallback, and the two mean opposite
- * things: one says the village understood this hour, and the other says it did
- * not.
- */
-type VillageDayBlock = {
-  time: string;
-  activity: string;
-  here: string;
-  translated: boolean;
-  venueId: string;
-  current: boolean;
-};
-export /**
  * One day of somebody's week, as the panel shows it.
  *
  * The village's window onto a week the Engine keeps as a PATTERN: the Engine's
@@ -1057,21 +989,8 @@ type VillageDayView = {
   weekday: string;
   dateLabel: string;
   isToday: boolean;
-  blocks: VillageDayBlock[];
 };
-export /**
- * One message of the translation prompt, as the panel prints it.
- *
- * Only the role and the text — the real call builds its messages with the
- * Engine's own type and this exists so the package type never has to cross to the
- * client.
- */
-type VillagePromptMessage = {
-  role: "system" | "user";
-  content: string;
-};
-
-/** Owned resolved Agenda and optional influence controls. Legacy remap fields are inert compatibility data. */
+/** Current routine and optional schedule-influence controls. */
 export type VillagerAgendaView = {
   canInterpretSchedule?: boolean;
   effectiveDays?: Record<string, AgendaBlock[]>;
@@ -1096,47 +1015,6 @@ export type VillagerAgendaView = {
     weekStart: string;
     days: Record<string, { time: string; activity: string }[]>;
   } | null;
-  remap: VillageRemap | null;
-  weekStart: string;
-  stale: boolean;
-  /**
-   * How many hours of the window the stored translation cannot explain: the size
-   * of the gap between the week and the village's reading of it.
-   *
-   * A whole translation leaves this at zero, and so does a villager with no week
-   * at all — there is nothing to explain. Anything between the two is the one
-   * failure this tab could not previously show: the village asked, the model
-   * answered badly, and the retry budget ran out before the week was covered. The
-   * rows it leaves read as `at home` forever, and before this was on the view
-   * there was no way to tell that from a translation that had never been
-   * attempted.
-   */
-  missingMoves: number;
-  /**
-   * The last attempt to write a translation that was refused, or null if the last
-   * attempt succeeded and if there has never been one.
-   *
-   * Kept beside `missingMoves` because the two are the two halves of the same
-   * question. This one says the village was told no and roughly why; that one says
-   * how much of the week the answer it settled for actually covers. A villager
-   * with neither is working.
-   */
-  remapFailure: { at: string; message: string } | null;
-  /** What an hour with no translation reads as, in the village's own words. */
-  fallback: string;
-  remapPrompt: VillagePromptMessage[] | null;
-  /**
-   * The signature the village is asking this villager's translation to answer
-   * for right now, recomputed on the server from the live week, setting and
-   * places.
-   *
-   * Printed so the `translation out of date` badge can be argued with rather than
-   * trusted:
-   * a badge is a comparison between this and the signature stored inside the
-   * translation, and a comparison the player cannot see is one they cannot check
-   * when it disagrees with what they remember changing.
-   */
-  signature: string;
   /**
    * The Engine's whole week, beginning at today, each block by block, joined on
    * the server against the stored translation.

@@ -70,7 +70,6 @@ function villager(id: string, venueId: string, zoneId: string, activity = "Visit
     },
     addedAt: stamp,
     wishes: [],
-    remap: null,
     ingestSchedule: false,
     agenda: {
       routineSummary: "",

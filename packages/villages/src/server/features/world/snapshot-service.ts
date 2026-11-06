@@ -99,7 +99,7 @@ export function createVillageSnapshot({
     // the poll — a map with no locators on it is a map, and an error is not.
     const villagers = village.villagers.map((villager) => {
       const card = cardsById.get(villager.characterId) ?? null;
-      let destination = villagerPlaceView(village, villager, null, minuteOfDay, now);
+      let destination = villagerPlaceView(village, villager, minuteOfDay, now);
       const companion = residenceAccess?.accompanying?.find((entry) => entry.characterId === villager.characterId);
       const companionVenue = companion && capturedVenue;
       const companionZone = companionVenue && resolveVenueZone(companionVenue, companion!.zoneId);

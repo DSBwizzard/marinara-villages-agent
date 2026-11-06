@@ -1,7 +1,7 @@
-import type { VillageAgenda, VillageAgendaBlock, VillageDayBlock, VillageVenue } from "../models/world.js";
+import type { VillageAgenda, VillageAgendaBlock, VillageVenue } from "../models/world.js";
 import { agendaBlocksFor, agendaDateKey, workingAgendaWeek } from "./agenda-week.js";
 import { adoptedProfile } from "./owned-routine.js";
-import { boundText, isHousePlace, MAX_REMAP_HERE_LENGTH } from "./prompt-preset.js";
+import { boundText, isHousePlace, MAX_AGENDA_ACTIVITY_LENGTH } from "./prompt-preset.js";
 import { VILLAGE_CLOCK_WINDOWS, VILLAGE_CLOCKS, VILLAGE_WEEKDAYS } from "./village-clock.js";
 
 type Day = VillageAgenda["day"];
@@ -11,13 +11,6 @@ export const VILLAGE_AGENDA_WINDOWS = VILLAGE_CLOCK_WINDOWS.map((window, index) 
   startMinute: [0, 300, 720, 1020][index]!,
   endMinute: [300, 720, 1020, 1440][index]!,
 }));
-
-const minuteLabel = (minute: number): string => {
-  const bounded = Math.max(0, Math.min(1440, minute));
-  const hours = Math.floor(bounded / 60);
-  const minutes = bounded % 60;
-  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
-};
 
 /** A complete, repeatable day, even when a model or an older record supplies no itinerary. */
 export function villageAgendaDay(proposed: unknown, venues: readonly VillageVenue[], name: string): Day {
@@ -47,7 +40,7 @@ export function villageAgendaDay(proposed: unknown, venues: readonly VillageVenu
     const venueId =
       typeof raw.venue === "number" && Number.isInteger(raw.venue) ? (sendable[raw.venue - 1]?.id ?? "") : "";
     const activity =
-      boundText(raw.activity, MAX_REMAP_HERE_LENGTH) ||
+      boundText(raw.activity, MAX_AGENDA_ACTIVITY_LENGTH) ||
       (venueId
         ? `spending time at ${sendable.find((venue) => venue.id === venueId)?.name ?? "the village"}`
         : "taking it easy at home");
@@ -90,26 +83,4 @@ export function agendaAt(
         (entry) => minuteOfDay >= entry.startMinute && minuteOfDay < entry.endMinute,
       ) ?? null)
     : null;
-}
-
-export function agendaDayPlan(
-  agenda: VillageAgenda | null,
-  minuteOfDay: number,
-  at = new Date(),
-  ingestSchedule = true,
-): VillageDayBlock[] {
-  return (agenda ? agendaBlocksFor(agenda, ingestSchedule, at) : []).map((entry) => {
-    return {
-      time: `${minuteLabel(entry.startMinute)}-${minuteLabel(entry.endMinute)}`,
-      activity: entry.activity,
-      here: entry.activity,
-      translated: true,
-      venueId: entry.venueId,
-      zoneId: entry.zoneId,
-      wishId: entry.commitmentId ?? "",
-      commitmentId: entry.commitmentId,
-      flexible: entry.flexible,
-      current: minuteOfDay >= entry.startMinute && minuteOfDay < entry.endMinute,
-    };
-  });
 }

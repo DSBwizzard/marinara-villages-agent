@@ -63,8 +63,6 @@ function fixture() {
       cardSnapshot: snapshotFromCard(readVillagerCard({ id: "a", comment: "", data: { name: "Ada" } }), 1),
       addedAt: at,
       wishes: [],
-      remap: null,
-      remapFailure: null,
       agenda: {
         day: [],
         routineSummary: "A quiet day",

@@ -48,7 +48,6 @@ export function residentPlanningOpportunity(
     const place = villagerPlaceView(
       village,
       resident,
-      null,
       moment.minuteOfDay,
       new ZonedDate(moment.instant, moment.timeZone),
     );

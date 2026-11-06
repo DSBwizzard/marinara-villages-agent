@@ -28,7 +28,7 @@ export type InfluenceSnapshot = {
   adopted: string[];
   unresolved: string[];
 };
-export type RoutineActivity = Omit<VillageAgendaBlock, "startMinute" | "endMinute" | "sourceTime"> & {
+export type RoutineActivity = Omit<VillageAgendaBlock, "startMinute" | "endMinute"> & {
   duration: number;
   parts: number[];
   essential: boolean;
@@ -351,7 +351,7 @@ export function adoptedProfile(week: Record<string, VillageAgendaBlock[]>): Rout
         if (!existing.parts.includes(part)) existing.parts.push(part);
         continue;
       }
-      const { startMinute, endMinute, sourceTime: _source, ...activity } = block;
+      const { startMinute, endMinute, ...activity } = block;
       unique.set(key, {
         ...activity,
         duration: Math.max(30, Math.min(240, endMinute - startMinute)),

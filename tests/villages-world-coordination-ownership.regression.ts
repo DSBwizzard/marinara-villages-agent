@@ -130,7 +130,7 @@ function fixture(name: string) {
       times.push(now);
       return village;
     },
-    async refreshVillagerRemaps(_village, now) {
+    async refreshScheduleInfluence(_village, now) {
       note("remaps");
       times.push(now);
     },
@@ -248,8 +248,6 @@ for (const f of [a, b]) {
       addedAt: stamp,
       wishes: [],
       agenda: null,
-      remap: null,
-      remapFailure: null,
     },
   ];
   f.state.memories = addMemory(f.state.memories, {

@@ -20,9 +20,6 @@ import type {
   VillageBackgroundPace,
   VillagePendingDecision,
   VillageProject,
-  VillageRemap,
-  VillageRemapFailure,
-  VillageRemapMove,
   VillageResidence,
   VillageState,
   VillageTownMapView,
@@ -45,7 +42,6 @@ import { coerceLoreTokenBudget, coerceSelectedLorebookIds, DEFAULT_LORE_TOKEN_BU
 import { memoryRequire, readMemoryCollection } from "../rules/memory-integrity.js";
 import { readPlaceContinuity, readPlaceDescription } from "../rules/zone-continuity.js";
 import { coerceVillageNarrationStyle, defaultVillageNarrationStyle } from "../rules/narration-style.js";
-import { MAX_REMAP_ATTEMPTS, MAX_REMAP_FAILURE_LENGTH, remapBlockKey } from "../rules/native-remap.js";
 import { readOpening } from "../rules/opening-project.js";
 import { adoptedProfile, coerceRoutineProfile, influenceSettings } from "../rules/owned-routine.js";
 import { coercePlayerBackground } from "../rules/player-background.js";
@@ -66,10 +62,7 @@ import {
   MAX_PLAYER_PERSONA_ID_LENGTH,
   MAX_PLAYER_PERSONA_IDENTITY_LENGTH,
   MAX_PLAYER_PERSONA_NAME_LENGTH,
-  MAX_REMAP_ACTIVITY_LENGTH,
-  MAX_REMAP_HERE_LENGTH,
-  MAX_REMAP_MOVES,
-  MAX_REMAP_SLOT_LENGTH,
+  MAX_AGENDA_ACTIVITY_LENGTH,
   MAX_ROUTINE_SUMMARY_LENGTH,
   MAX_SETTING_LENGTH,
   MAX_VENUE_DESCRIPTION_LENGTH,
@@ -201,7 +194,6 @@ function coerceVillager(value: unknown, venues: readonly VillageVenue[]): Villag
       ? { letterFontId: raw.letterFontId }
       : {}),
     agendaGeneration: asString(raw.agendaGeneration),
-    translationGeneration: asString(raw.translationGeneration),
     cardSnapshot,
     ...(typeof asRecord(raw.identityDescription).revision === "string"
       ? {
@@ -225,14 +217,6 @@ function coerceVillager(value: unknown, venues: readonly VillageVenue[]): Villag
     wishes: copySocialWishes(raw.wishes),
     ingestSchedule: influenceSettings(raw.scheduleInfluence, raw.ingestSchedule !== false).enabled,
     scheduleInfluence: influenceSettings(raw.scheduleInfluence, raw.ingestSchedule !== false),
-    // Read on the same terms as the agenda, and for the same reason — but null
-    // here is a settled state rather than a pending one. A translation carries
-    // the week it was written for, and without that week it cannot be
-    // recognised as stale, so it is dropped rather than stored: a record nothing
-    // can invalidate is worse than no record. The village reads the Engine's own
-    // words until the Engine hands it a week to key on.
-    remap: coerceRemap(raw.remap),
-    remapFailure: coerceRemapFailure(raw.remapFailure),
   };
 }
 function coerceVillagerCardSnapshot(value: unknown): VillageVillagerCardSnapshot | null {
@@ -264,13 +248,6 @@ function coerceVillagerCardSnapshot(value: unknown): VillageVillagerCardSnapshot
     ...(typeof raw.dialogueColor === "string" ? { dialogueColor: asTrimmedString(raw.dialogueColor) } : {}),
     capturedAt,
   };
-}
-function coerceRemapFailure(value: unknown): VillageRemapFailure | null {
-  const raw = asRecord(value);
-  const at = asIsoString(raw.at);
-  const message = boundText(raw.message, MAX_REMAP_FAILURE_LENGTH);
-  if (!at || message.length === 0) return null;
-  return { at, message };
 }
 function coerceAgenda(
   value: unknown,
@@ -306,7 +283,7 @@ function coerceAgenda(
               endMinute,
               venueId: asTrimmedString(item.venueId),
               zoneId: asTrimmedString(item.zoneId) || undefined,
-              activity: boundText(item.activity, MAX_REMAP_HERE_LENGTH),
+              activity: boundText(item.activity, MAX_AGENDA_ACTIVITY_LENGTH),
             },
           ];
         })
@@ -403,57 +380,6 @@ function coerceAgenda(
   else if (alias.current === current && typeof alias.previous === "string" && /^[a-f0-9]{64}$/.test(alias.previous))
     agenda.legacyRoutineRevision = { previous: alias.previous, current };
   return agenda;
-}
-export function coerceRemap(value: unknown): VillageRemap | null {
-  if (value === null || value === undefined) return null;
-  const raw = asRecord(value);
-  if (Object.keys(raw).length === 0) return null;
-  const weekStart = asTrimmedString(raw.weekStart);
-  if (weekStart.length === 0) return null;
-  const moves: VillageRemapMove[] = [];
-  const seen = new Set<string>();
-  if (Array.isArray(raw.moves)) {
-    for (const entry of raw.moves) {
-      if (moves.length >= MAX_REMAP_MOVES) break;
-      const move = coerceRemapMove(entry);
-      if (!move || seen.has(move.key)) continue;
-      seen.add(move.key);
-      moves.push(move.move);
-    }
-  }
-  const attempts = typeof raw.attempts === "number" && Number.isFinite(raw.attempts) ? raw.attempts : 0;
-  return {
-    weekStart,
-    moves,
-    routine: boundText(raw.routine, MAX_ROUTINE_SUMMARY_LENGTH),
-    signature: asTrimmedString(raw.signature),
-    ...(typeof raw.foundingLens === "string" ? { foundingLens: raw.foundingLens.slice(0, 100) } : {}),
-    attempts: Math.max(0, Math.min(MAX_REMAP_ATTEMPTS, Math.floor(attempts))),
-    // Left empty rather than stamped with "now", exactly as the agenda is: a
-    // record read off disk has no answer to when it was written.
-    generatedAt: asIsoString(raw.generatedAt) ?? "",
-  };
-}
-function coerceRemapMove(value: unknown): { key: string; move: VillageRemapMove } | null {
-  const raw = asRecord(value);
-  const day = boundText(raw.day, MAX_REMAP_SLOT_LENGTH);
-  const time = boundText(raw.time, MAX_REMAP_SLOT_LENGTH);
-  const activity = boundText(raw.activity, MAX_REMAP_ACTIVITY_LENGTH);
-  const here = boundText(raw.here, MAX_REMAP_HERE_LENGTH);
-  if (day.length === 0 || time.length === 0 || here.length === 0) return null;
-  return {
-    key: remapBlockKey(day, time),
-    move: {
-      day,
-      time,
-      activity,
-      here,
-      venueId: asTrimmedString(raw.venueId),
-      ...(asTrimmedString(raw.zoneId) ? { zoneId: asTrimmedString(raw.zoneId) } : {}),
-      wishId: asTrimmedString(raw.wishId),
-      ...(raw.flexible === true ? { flexible: true } : {}),
-    },
-  };
 }
 function coerceVenue(value: unknown): VillageVenue | null {
   const original = asRecord(value);
@@ -1821,11 +1747,6 @@ export function coerceVillageState(value: unknown): VillageState {
       : [],
   };
   for (const villager of state.villagers) {
-    for (const move of villager.remap?.moves ?? []) {
-      const venue = state.venues.find((entry) => entry.id === move.venueId);
-      if (venue && !venue.access)
-        move.zoneId = chooseAgendaZone(venue, villager.characterId, move.here, move.zoneId, state).id;
-    }
     const agenda = villager.agenda;
     if (!agenda) continue;
     const blocks = [

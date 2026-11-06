@@ -87,8 +87,6 @@ function world(groups: Record<string, string> = {}) {
     cardSnapshot: { id: actor.id, name: actor.name, capturedAt: at },
     addedAt: at,
     agenda: null,
-    remap: null,
-    remapFailure: null,
     wishes: [],
   })) as VillageState["villagers"];
   return state;

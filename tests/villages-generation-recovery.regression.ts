@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
-
-import { proposeRemap } from "../packages/villages/src/server/domain/rules/native-remap.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { proposeCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact.js";
 let mode = "truncated",
@@ -84,12 +82,10 @@ async function main() {
         (day) => day.length && day[0]!.startMinute === 0 && day.at(-1)!.endMinute === 1440,
       ),
     );
-    await assert.rejects(proposeRemap({} as any), /retired/i);
-    assert.equal(calls, 2, "retired translation never dispatches");
   } finally {
     release();
   }
-  console.log("Routine recovery: one request, no automatic repairs; translation deprecated.");
+  console.log("Routine recovery: one request, no automatic repairs.");
 }
 void main().catch((error) => {
   console.error(error);

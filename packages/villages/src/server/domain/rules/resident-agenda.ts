@@ -2,7 +2,7 @@ import { calendarDate } from "../../../shared/helpers/zoned-date.js";
 import type { VillageAgenda, VillageState, VillageVillager } from "../models/world.js";
 import { agendaBlocksFor, agendaDateKey } from "./agenda-week.js";
 import { influenceSettings, routineDay, validateRoutineDay } from "./owned-routine.js";
-import { remapVenues } from "./prompt-preset.js";
+import { routineVenues } from "./prompt-preset.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 
 export function planRoutineDays(state: VillageState, now: Date): void {
@@ -54,7 +54,7 @@ export function activateVillagerDay(villager: VillageVillager, now: Date, state:
 }
 /** An edited map cannot leave a daily plan pointing at a vanished public place. */
 export function keepAgendaPlaces(state: VillageState): void {
-  const publicIds = new Set(remapVenues(state.venues).map((venue) => venue.id));
+  const publicIds = new Set(routineVenues(state.venues).map((venue) => venue.id));
   for (const villager of state.villagers) {
     if (!villager.agenda) continue;
     villager.agenda.day = villager.agenda.day.map((part) =>

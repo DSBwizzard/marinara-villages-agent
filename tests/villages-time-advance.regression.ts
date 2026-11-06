@@ -136,7 +136,7 @@ async function fixture() {
     preparePrivateSpaces: async () => {},
     retryResidencePrivateSpaceAdaptation: async () => {},
     backfillAgendas: async (value: VillageState) => value,
-    refreshVillagerRemaps: async () => {},
+    refreshScheduleInfluence: async () => {},
     listVillagerCards: async () => [],
   } as any);
   return {
