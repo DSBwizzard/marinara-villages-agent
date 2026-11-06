@@ -65,8 +65,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     (message: string) => reportSettingsError("diagnostics", "Saved change diagnostics unavailable", message),
     [reportSettingsError],
   );
-  const clarificationId = controller.room?.attentionClarification?.id;
-  const clarificationMessage = controller.room?.attentionClarification?.message;
   const restoreRoomDraft = controller.setRoomDraft;
   const currentOperation = controller.room?.operation;
   const editVersionRef = controller.composerEditVersionRef;
@@ -81,9 +79,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     restoreRoomDraft((current) => current || operation.input?.message || "");
     showInformation(sceneTurnOutcomeMessage(operation.turnOutcome));
   }, [sceneId, currentOperation, editVersionRef, showInformation, restoreRoomDraft]);
-  useEffect(() => {
-    if (clarificationId && clarificationMessage) restoreRoomDraft((current) => current || clarificationMessage);
-  }, [controller.room?.id, clarificationId, clarificationMessage, restoreRoomDraft]);
   const {
     closeRoom,
     composerEditVersionRef,
@@ -226,7 +221,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
             if (legacyRecovery?.sceneId === room.id) void retrySavedScene(legacyRecovery);
           }}
           onReplaceLegacy={() => {
-            if (legacyRecovery?.sceneId === room.id) void sendRoom(undefined, legacyRecovery);
+            if (legacyRecovery?.sceneId === room.id) void sendRoom(legacyRecovery);
           }}
           onReviewLegacy={() => {
             if (legacyReviewPending.current || roomBusy || !legacyRecovery) return;
@@ -357,7 +352,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           }}
           sendOnEnter={snapshot?.settings.sendOnEnter === true}
           onSend={() => void (roomMode === "conclude" ? leaveRoom() : sendRoom())}
-          onAttentionChoice={(zoneId) => void sendRoom(zoneId)}
           onViewVenue={() => {
             const place = snapshot?.settings.venues.find((place) => place.id === room.placeId);
             if (place) openVenue(place);

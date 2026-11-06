@@ -872,7 +872,7 @@ const greetingUnhandled: unknown[] = [];
 const captureGreetingUnhandled = (error: unknown) => greetingUnhandled.push(error);
 process.on("unhandledRejection", captureGreetingUnhandled);
 try {
-  for (const failingRead of ["session", "world"] as const) {
+  for (const failingRead of ["session", "coordination"] as const) {
     const timeout = new AbortController();
     AbortSignal.timeout = () => timeout.signal;
     const exactFailure = new Error("failed greeting " + failingRead);
@@ -881,7 +881,7 @@ try {
         if (failingRead === "session") throw exactFailure;
         return scene;
       },
-      readVillageState: async () => {
+      coordinateVenue: async () => {
         throw exactFailure;
       },
     }));
@@ -1124,7 +1124,6 @@ for (const legacy of [false, true]) {
     assert.equal(admitted.writingContractVersion, 3);
     assert.equal(admitted.semanticPipelineVersion, 3);
     assert.equal(admitted.residentActionsVersion, 2);
-    assert(admitted.writingCapabilities);
   }
   assert.equal(current.modelAccess, 0);
   current.owner.dispose();

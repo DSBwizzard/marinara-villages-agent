@@ -756,7 +756,6 @@ export function useSendRoom(ports: {
     roomCompletionRef,
     roomDraft,
     roomEnded,
-    roomMode,
     roomSendInFlightRef,
     roomSubmissionIdRef,
     seenRoomEventIdsRef,
@@ -798,22 +797,16 @@ export function useSendRoom(ports: {
   });
   const { pending: recoveryPending, begin: beginRecovery } = recovery;
   const sendRoom = useCallback(
-    async (attentionZoneId?: string, replacement?: LegacySceneRecovery) => {
+    async (replacement?: LegacySceneRecovery) => {
       if (recoveryPending || (legacyRecovery?.sceneId === room?.id && !replacement)) return;
       const editVersion = composerEditVersionRef?.current ?? 0;
       const text = roomDraft.trim();
-      const attentionChoice =
-        attentionZoneId && roomMode === "chat" && room.attentionClarification?.message === text
-          ? { id: room.attentionClarification.id, zoneId: attentionZoneId }
-          : undefined;
       if (room === null || !room.id || roomEnded || roomBusy || roomSendInFlightRef.current || text.length === 0)
         return;
       const claim = lifetime.begin(room.id);
       if (!claim) return;
       const owns = () => lifetime.owns(claim);
-      let submissionId = attentionChoice
-        ? createVillagesClientId()
-        : (roomSubmissionIdRef.current ?? createVillagesClientId());
+      let submissionId = roomSubmissionIdRef.current ?? createVillagesClientId();
       let resend: ReturnType<typeof sceneResend>;
       const before = room;
       setRoomRuling("");
@@ -837,7 +830,6 @@ export function useSendRoom(ports: {
             message: text,
             mode: "chat",
             targetId: "",
-            ...(attentionChoice ? { attentionChoice } : {}),
           },
           submissionId,
         );
@@ -889,7 +881,6 @@ export function useSendRoom(ports: {
             message: text,
             mode: "chat",
             targetId: "",
-            ...(attentionChoice ? { attentionChoice } : {}),
             ...resend,
             expectedSceneRevision: room.sceneRevision ?? 0,
           }),
@@ -910,12 +901,6 @@ export function useSendRoom(ports: {
             setRoomDraft(text);
             setRoomRuling(sceneTurnOutcomeMessage(answer.turnOutcome));
           }
-          roomSubmissionIdRef.current = null;
-          claim.submission = null;
-          return;
-        }
-        if (answer.session.attentionClarification) {
-          setRoomDraft(text);
           roomSubmissionIdRef.current = null;
           claim.submission = null;
           return;
@@ -1011,7 +996,6 @@ export function useSendRoom(ports: {
       recoveryPending,
       composerEditVersionRef,
       roomDraft,
-      roomMode,
       legacyRecovery,
       setLegacyRecovery,
       room,

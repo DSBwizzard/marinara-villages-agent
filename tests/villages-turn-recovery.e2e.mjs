@@ -37,8 +37,6 @@ await withBrowser(browser, async () => {
     for (const mode of [
       "receipt",
       "error",
-      "clarify",
-      "stale-clarify",
       "draft",
       "same-draft",
       "selection",
@@ -107,29 +105,7 @@ await withBrowser(browser, async () => {
         scene.submissions = [];
       } else if (mode === "error")
         scene.operation = { id: "submission", status: "complete", error: "Confirmed validation failure" };
-      else if (mode === "clarify")
-        scene.attentionClarification = {
-          id: "submission",
-          message: "sent",
-          question: "Which surface?",
-          choices: [],
-        };
       else scene.submissions = [{ id: "submission" }];
-      if (mode === "stale-clarify") {
-        scene.attentionClarification = {
-          id: "old-submission",
-          message: "sent",
-          question: "Which surface?",
-          choices: [],
-        };
-        scene.submissions = [];
-        await page.evaluate(() => window.h.check());
-        await expect(page.locator("#state")).toContainText('"pending":true');
-        const current = JSON.parse(await page.locator("#state").textContent());
-        assert.equal(current.submission, "submission");
-        scene.attentionClarification = undefined;
-        scene.submissions = [{ id: "submission" }];
-      }
       if (mode === "hidden-return") await page.evaluate(() => window.h.visible(true));
       else await page.evaluate(() => window.h.check());
       if (mode === "selection") {
@@ -141,7 +117,7 @@ await withBrowser(browser, async () => {
           state.draft,
           mode === "draft" || mode === "retired-draft"
             ? "new draft"
-            : mode === "clarify" || mode === "error" || mode === "same-draft" || mode === "retired-unknown"
+            : mode === "error" || mode === "same-draft" || mode === "retired-unknown"
               ? "sent"
               : "",
         );

@@ -24,7 +24,6 @@ export const isolatedTests = new Set([
   "tests/villages-build-reproducibility.regression.mjs",
   "tests/villages-sprite-entry.e2e.mjs",
   // Reviewed: child-process-local mocks, read-only bundles and distinct suite outputs.
-  "tests/villages-attention.e2e.mjs",
   "tests/villages-automatic-refresh.regression.ts",
   "tests/villages-clock-recovery.e2e.mjs",
   "tests/villages-doorway-continuity.e2e.mjs",

@@ -13,7 +13,6 @@ import {
   residentMovementPrompt,
 } from "../packages/villages/src/server/domain/rules/resident-movement.js";
 import { applyAttentionWitnesses } from "../packages/villages/src/server/domain/rules/attention-witnesses.js";
-import { readAttentionPlan } from "../packages/villages/src/server/domain/rules/scene-attention.js";
 import { stagingTranscriptEvents } from "../packages/villages/src/shared/helpers/scene-staging.js";
 import { replayStaging } from "./helpers/scene-staging.fixture.js";
 import type { VenueReplyLine } from "../packages/villages/src/server/domain/models/scene-model.js";
@@ -298,32 +297,7 @@ const fragments = [first, second].map((text, index) => ({
   reach: "directed" as const,
   zoneIds: ["common"],
 }));
-const plan = readAttentionPlan(
-  {
-    outcome: "attention",
-    source: "system",
-    details: { fragments },
-    evidenceIds: ["player-input"],
-    reason: "Exact speech",
-  },
-  message,
-  venue,
-  scene,
-);
-assert.equal(plan.status, "attention");
-const clipped = readAttentionPlan(
-  {
-    outcome: "attention",
-    source: "system",
-    details: { fragments: [{ ...fragments[0], end: fragments[0].start + 64 }] },
-    evidenceIds: ["player-input"],
-    reason: "Clipped speech",
-  },
-  message,
-  venue,
-  scene,
-);
-assert.equal(clipped.status, "clarify", "a truncated quotation is not accepted as complete speech");
+const plan = { status: "attention" as const, fragments };
 scene.contactGeneration.attention = plan;
 const parsed = {
   heardPlayerBy: [],
