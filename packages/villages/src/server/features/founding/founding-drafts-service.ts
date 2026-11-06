@@ -297,7 +297,6 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       responseFormat: { type: "json_object" },
       temperature: 0.7,
       reasoningEffort: "none",
-      retryEmpty: false,
       debugMode: false,
     });
     if (["length", "max_tokens"].includes(completion.finishReason ?? ""))

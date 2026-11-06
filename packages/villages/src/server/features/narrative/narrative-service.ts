@@ -56,7 +56,6 @@ export function createNarrative(ports: Ports) {
     );
     const completion = await ports.complete(model, fitted.messages, fitted.maxTokens ?? allowance, {
       responseFormat: { type: "json_object" },
-      retryEmpty: false,
       temperature: 0.8,
     });
     const result = extractModelJsonObject(completion);

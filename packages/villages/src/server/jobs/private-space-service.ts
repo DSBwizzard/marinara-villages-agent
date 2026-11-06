@@ -311,7 +311,6 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
           responseFormat: { type: "json_object" },
           temperature: 0.7,
           reasoningEffort: "none",
-          retryEmpty: false,
           usagePurpose: "background",
           debugMode: false,
           signal,

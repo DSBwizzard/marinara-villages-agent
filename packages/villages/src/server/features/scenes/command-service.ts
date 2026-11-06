@@ -370,7 +370,6 @@ export function createSceneCommands({
           verbosity: null,
           debugMode: false,
           signal: venueOperationSignal(),
-          retryEmpty: false,
           usagePurpose: "checks",
         },
       );

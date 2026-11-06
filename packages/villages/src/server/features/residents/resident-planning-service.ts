@@ -460,7 +460,6 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
     );
     const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? output, {
       responseFormat: { type: "json_object" },
-      retryEmpty: false,
       temperature: 0.85,
     });
     const payload = extractModelJsonObject(completion);

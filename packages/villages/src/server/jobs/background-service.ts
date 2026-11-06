@@ -888,10 +888,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       const fingerprint = backgroundRevision(messages);
       const sequential = cursor++;
       const named = options.checkpointId ? job!.steps.findIndex((step) => step.key === options.checkpointId) : -1;
-      const legacy = options.checkpointId
-        ? job!.steps.findIndex((step) => !step.key && step.fingerprint === fingerprint)
-        : -1;
-      const index = options.checkpointId ? (named >= 0 ? named : legacy >= 0 ? legacy : job!.steps.length) : sequential;
+      const index = options.checkpointId ? (named >= 0 ? named : job!.steps.length) : sequential;
       lastIndex = index;
       const saved = job!.steps[index];
       if (saved?.status === "completed") {
