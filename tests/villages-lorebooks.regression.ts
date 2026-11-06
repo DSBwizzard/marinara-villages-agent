@@ -690,7 +690,6 @@ async function main() {
         rejected++;
       },
       venueOperationId: () => "turn",
-      venueOperationInput: () => admission,
       readEffectiveVillagerCard: () => assert.fail("No actors"),
       villagesLogger: () => ({
         warn: (...details: unknown[]) => {

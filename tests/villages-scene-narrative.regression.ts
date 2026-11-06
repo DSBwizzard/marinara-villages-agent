@@ -360,7 +360,6 @@ for (const variant of ["normal", "gap", "race-boundary", "quiet"] as const) {
     semantic: createSemanticService(common),
     sceneNarrative,
     venueOperationId: () => scene.operation!.id,
-    venueOperationInput: () => scene.operation!.input,
     readEffectiveVillagerCard: () => assert.fail("No actors"),
     villagesLogger: () => ({ warn() {} }),
     measurePipeline: async (_name: string, _meta: any, work: any) => work(),

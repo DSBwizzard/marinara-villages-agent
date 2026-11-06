@@ -167,58 +167,6 @@ export function createProgressTask(
   };
 }
 
-export function revealProgress(task: ProgressTask, at: string, requirementId = ""): void {
-  if (requirementId) {
-    if (!task.definition.phases.some((phase) => phase.requirements.some((row) => row.id === requirementId)))
-      throw new Error("Unknown progress requirement.");
-    task.requirementVisibleAt[requirementId] ||= at;
-  } else task.visibleAt ||= at;
-}
-
-export function visibleProgress(task: ProgressTask) {
-  if (!task.visibleAt) return null;
-  return {
-    id: task.definition.id,
-    owner: task.definition.owner,
-    phaseIndex: task.phaseIndex,
-    resolvedAt: task.resolvedAt,
-    phases: task.definition.phases.map((phase) => ({
-      id: phase.id,
-      title: phase.title,
-      requirements: phase.requirements
-        .filter((requirement) => !!task.requirementVisibleAt[requirement.id])
-        .map((requirement) => ({
-          id: requirement.id,
-          title: requirement.title,
-          complete: task.receipts.some((receipt) => receipt.requirementId === requirement.id),
-        })),
-    })),
-  };
-}
-
-export function reviseProgress(task: ProgressTask, definition: ProgressDefinition, carryReceiptIds: string[]): void {
-  if (task.resolvedAt) throw new Error("A resolved task cannot be revised.");
-  if (definition.id !== task.definition.id || definition.revision <= task.definition.revision)
-    throw new Error("Progress revisions must increase for the same task.");
-  const retained = new Set(carryReceiptIds);
-  task.revisionHistory.push({
-    definition: task.definition,
-    receipts: task.receipts.map((receipt) => ({ ...receipt, evidence: { ...receipt.evidence } })),
-    transitions: task.transitions.map((transition) => ({ ...transition })),
-  });
-  task.receipts = task.receipts.filter((receipt) => retained.has(receipt.id));
-  task.definition = definition;
-  task.phaseIndex = 0;
-  task.resolvedAt = "";
-  task.resolutionKey = "";
-  task.transitions = [];
-  task.requirementVisibleAt = Object.fromEntries(
-    Object.entries(task.requirementVisibleAt).filter(([id]) =>
-      definition.phases.some((phase) => phase.requirements.some((requirement) => requirement.id === id)),
-    ),
-  );
-}
-
 export function submitProgressEvidence<Context>(
   task: ProgressTask,
   requirementId: string,

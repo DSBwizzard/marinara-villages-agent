@@ -71,9 +71,6 @@ export function createVenueOperationContext(villagesLogger: () => CapabilityRunt
   function venueOperationSnapshot<T>(): T | undefined {
     return context.getStore()?.operation.snapshot as T | undefined;
   }
-  function venueOperationInput(): Record<string, unknown> | undefined {
-    return context.getStore()?.operation.input;
-  }
   function venueDebugContext(): Record<string, unknown> {
     const current = context.getStore();
     return current
@@ -91,7 +88,6 @@ export function createVenueOperationContext(villagesLogger: () => CapabilityRunt
     venueRequestMetrics,
     assertVenueOwnership,
     venueOperationSnapshot,
-    venueOperationInput,
     venueDebugContext,
   };
 }
