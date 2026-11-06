@@ -107,7 +107,7 @@ export function returnCatchupOpportunities(
           omissions.add("Some scheduled Venues were unavailable.");
           continue;
         }
-        const place = villagerPlaceView(projected, resident, null, minute, at);
+        const place = villagerPlaceView(projected, resident, minute, at);
         if (
           !place ||
           place.id !== venue.id ||

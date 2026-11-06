@@ -78,11 +78,6 @@ export function createResidentRoster({
         // "somebody moves in" and then "and here is what they are after". A move
         // that failed because the model was down would be a villager who exists
         // everywhere except on the map.
-        // No translation either, for the same reason: it is derived from a week
-        // the villager may not even have, and it arrives behind the agenda rather
-        // than in front of it. No refusal on it either — a villager who has just
-        // arrived has not been asked and turned down, and a born-clean record is
-        // what lets the tab tell those two apart.
         state.villagers.push({
           characterId,
           letterFontId:
@@ -118,8 +113,6 @@ export function createResidentRoster({
           wishes: [],
           ingestSchedule: false,
           scheduleInfluence: influenceSettings(null),
-          remap: null,
-          remapFailure: null,
         });
       });
     }

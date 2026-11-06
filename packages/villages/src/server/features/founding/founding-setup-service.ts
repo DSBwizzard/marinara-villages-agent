@@ -265,8 +265,6 @@ export function createFoundingSetup({
           wishes: [],
           ingestSchedule: false,
           scheduleInfluence: influenceSettings(null),
-          remap: null,
-          remapFailure: null,
         });
         addedResidents.push(card);
       }

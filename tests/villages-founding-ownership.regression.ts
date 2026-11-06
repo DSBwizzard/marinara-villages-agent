@@ -17,7 +17,7 @@ import {
   foundingTaskRevision,
 } from "../packages/villages/src/server/domain/rules/founding-tasks.js";
 import { initialOpening } from "../packages/villages/src/server/domain/rules/opening-project.js";
-import { remapVenues } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
+import { routineVenues } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
 import {
   createFoundingPreparation,
   type FoundingPreparationPorts,
@@ -132,7 +132,7 @@ function fixture(name: string) {
       ({
         sourceRevision: foundingTaskRevision(state, id, "routine"),
         card: readEffectiveVillagerCard(state.villagers.find((row) => row.characterId === id)!),
-        venues: remapVenues(state.venues),
+        venues: routineVenues(state.venues),
         circumstances: { worldRules: state.worldRules },
       }) as any,
     adoptFoundingRoutine: () => {},

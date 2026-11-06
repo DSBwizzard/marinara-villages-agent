@@ -109,8 +109,6 @@ try {
         cardSnapshot: snapshotFromCard(cachedCard, 2),
         addedAt: "2026-10-06T12:00:00Z",
         agenda: null,
-        remap: null,
-        remapFailure: null,
         wishes: [],
       },
     ];

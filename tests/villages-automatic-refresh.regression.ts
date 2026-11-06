@@ -344,8 +344,6 @@ async function main() {
             generatedAt: start.toISOString(),
             activeDay: { dateKey: "2026-09-25", weekday: "Friday", blocks: week.Friday!, scheduleInformed: false },
           },
-          remap: null,
-          remapFailure: null,
         } as never,
       ];
     });

@@ -43,14 +43,13 @@ export function createUsageMeter({
       bursts: details
         ? (await previewBackgroundJobs())
             .filter((job) => !["completed", "obsolete"].includes(job.status))
-            .map(({ id, kind, label, status, cause, remainingRequests, remainingBlocks }) => ({
+            .map(({ id, kind, label, status, cause, remainingRequests }) => ({
               id,
               kind,
               label,
               status,
               cause,
               remainingRequests,
-              remainingBlocks,
             }))
         : [],
     };

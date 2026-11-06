@@ -24,7 +24,7 @@ import {
 import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
-import { resetNativeScheduleCache } from "../packages/villages/src/server/adapters/engine/native-schedules.js";
+import { readNativeScheduleSnapshot } from "../packages/villages/src/server/adapters/engine/native-schedules.js";
 import {
   agendaBlocksFor,
   agendaDateKey,
@@ -438,7 +438,6 @@ async function main() {
     await buildVillageAgendas();
     await buildVillageAgendas();
     assert.equal(calls, 0, "local plan initialization, influence and repeated reads cost no requests");
-    assert.equal((await previewVillageBurst({ action: "translation", characterId: "a" })).requests, 0);
     assert.equal((await previewVillageBurst({ action: "influence", characterId: "a" })).requests, 0);
     assert.deepEqual((await previewVillageBurst({ action: "influence", characterId: "a" })).dollars, {
       min: 0,
@@ -494,7 +493,7 @@ async function main() {
       scheduleInformed: false,
     };
     source = null;
-    resetNativeScheduleCache();
+    await readNativeScheduleSnapshot(new Date(Date.now() + 31_000), ["a"]);
     await buildVillageAgendas();
     assert.equal(calls, 1);
     assert.equal(

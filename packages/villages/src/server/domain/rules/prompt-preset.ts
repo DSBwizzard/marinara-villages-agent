@@ -17,43 +17,7 @@ export const MAX_VENUE_EVENTS = 200;
 export const MAX_SUBMISSION_ID_LENGTH = 100;
 /** How long the village's fallback line about an ordinary day may be. */
 export const MAX_ROUTINE_SUMMARY_LENGTH = 240;
-/**
- * How much of the Engine's week one translation may cover, and how long each
- * field of an entry may be.
- *
- * The move list is a LOOKUP TABLE keyed by `day|time`, so its cap is a cap on how
- * many BLOCKS of one character's week the village is willing to ask about. A week
- * is seven days of a handful of blocks each, which lands near fifty; eighty is a
- * ceiling on a week nobody has, and it is set that high because of what a miss
- * costs: a block past this cap has no move, so it renders as the village's own
- * default and the plan says the same nothing for that stretch of somebody's day.
- *
- * ponytail: eighty blocks in one week is past the point where more cap would
- * help, and a week that somehow exceeds it loses the tail of its list — the last
- * day or so of the week reads as the village's default. Ceiling accepted because
- * the alternative — a targeted follow-up call asking only for the keys the first
- * answer omitted — is a second model call path for a shape of schedule the Engine
- * does not generate. Upgrade path if it ever turns up: keep this cap, and ask
- * again for exactly the missing keys, merging into the same table rather than
- * re-asking the whole question.
- *
- * The length caps are separate because the fields answer different questions.
- * `activity` is a copy of the Engine's own sentence and only has to be long
- * enough to be copied back exactly; it is never shown to anybody. `here` is the
- * sentence a villager and the narrator actually read, so it is capped at the same
- * length as an ordinary-day line. `MAX_REMAP_SLOT_LENGTH` bounds the day and the
- * hour range an answer names before they are turned into a key — not because a
- * real weekday or hour range is ever long, but because the key is built by
- * string work on a model's answer and this is the cheapest place to stop a
- * paragraph being treated as a timestamp.
- *
- * A full week of half-hour waking activity can exceed two hundred slots, so
- * stored moves must fit the whole week even though model calls use small batches.
- */
-export const MAX_REMAP_MOVES = 512;
-export const MAX_REMAP_SLOT_LENGTH = 40;
-export const MAX_REMAP_ACTIVITY_LENGTH = 200;
-export const MAX_REMAP_HERE_LENGTH = 200;
+export const MAX_AGENDA_ACTIVITY_LENGTH = 200;
 /**
  * How long a Persona id the village will remember.
  *
@@ -84,76 +48,17 @@ export const MAX_VILLAGE_NAME_LENGTH = 60;
 export const MAX_VENUE_NAME_LENGTH = 60;
 export const MAX_VENUE_NOTE_LENGTH = 240;
 export const MAX_VENUE_DESCRIPTION_LENGTH = 4_000;
-
-/**
- * How many places a village holds, and how many of them a villager may be SENT
- * to. Two numbers rather than one, because they answer two different questions:
- * a village holds a house for everybody who lives in it as well as the places
- * they go, so what the map can show is a larger list than what one translation
- * prompt can usefully read.
- *
- * The four houses a village is founded with therefore take up room on the map
- * without taking any of the translator's budget, because a house is not one of
- * the places a villager is sent to — see `remapVenues`.
- */
+/** Maximum authored Places in a Village, including housing. */
 export const MAX_PLACES = 48;
-
-/**
- * The places a villager may be SENT to: everything the village holds except the
- * houses people live in.
- *
- * This is the one list the translation prompt is shown and the one list
- * `remapSignature` digests, and both read it from HERE rather than filtering for
- * themselves — which is the whole of what keeps the numbered list the model is
- * handed and the signature stored beside its answer from ever disagreeing.
- * Filtering at each call site instead would be two answers to one question, and
- * the failure would be silent: a translation argued over a different list than
- * the one it was written from is a translation that re-asks forever.
- *
- * A home is excluded because it is not a destination. It is where somebody is
- * when nothing has sent them anywhere, which the village already answers with
- * its own fallback — so numbering the houses would hand the model a set of
- * places whose only honest reading is "at home", and would put four identically
- * named buildings into a list whose uniqueness is enforced by name.
- */
-export function remapVenues(venues: readonly VillageVenue[]): VillageVenue[] {
+/** Routine destinations exclude worksites and residence-only Places. */
+export function routineVenues(venues: readonly VillageVenue[]): VillageVenue[] {
   return venues.filter(
     (venue) =>
       venue.constructionStatus !== "worksite" &&
       (venue.classes?.length ? venue.classes.some((venueClass) => venueClass !== "residence") : !isHousePlace(venue)),
   );
 }
-
-/**
- * Whether a place is a house — somebody's home, or a building that is one of the
- * kinds the village builds houses out of.
- *
- * This is the ONE place the house/place line is drawn, and every reader that
- * needs it draws it here rather than deciding for itself: the translation list,
- * the room a villager is drawn in, the founding flow's count of the houses the
- * wizard placed, and whether a place is even allowed to be nameless. Two
- * readings of one question is how a village ends up disagreeing with itself
- * about who lives where, and the disagreement is silent — a place listed as a
- * destination that also has somebody living in it looks like nothing at all
- * until the translation it went into is thrown away and asked for again.
- *
- * A BUILDING counts, not only an occupant, because an empty house is still a
- * house: the wizard asks for four houses on the map and the player may fill them
- * in later, so a house nobody has moved into yet must not become a place the
- * model can send somebody to. Today every kind in `HOME_BUILDINGS` is housing,
- * which is why the building alone settles it; that constant's `category` is what
- * to read on the day a kind that is not a house is added.
- *
- * Read as "does this place SAY it is a house" rather than "is this place a
- * house", and the difference is the failure it prevents. Every place the store
- * hands out has been through `coerceVenue`, so nothing the village reads back is
- * missing a field. But an object that says NOTHING is read as a place you can go,
- * because the two mistakes are not the same size: dropping a destination out of
- * this list shortens the prompt the model is shown and lengthens the digest
- * beside it, which re-asks every villager for a translation the moment they next
- * speak, while keeping a house in the list only offers the model a destination
- * whose only reading is "at home".
- */
+/** Housing classification also applies before residents move in. */
 export function isHousePlace(place: Pick<VillageVenue, "occupancy" | "classes">): boolean {
   return hasVenueClass(place, "residence");
 }

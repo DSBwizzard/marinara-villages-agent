@@ -112,7 +112,7 @@ function completedJob(job: Job): Job {
   };
 }
 export function retireBackgroundResident(state: VillageState, characterId: string): void {
-  for (const kind of ["agenda", "translation", "wish"] as const)
+  for (const kind of ["agenda", "wish"] as const)
     delete state.backgroundReceipts[slotId({ kind, subjectId: characterId })];
 }
 export interface BackgroundWorkPorts {
@@ -153,13 +153,6 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   function registerBackgroundHandler(kind: BackgroundKind, handler: Handler): void {
     handlers.set(kind, handler);
   }
-  registerBackgroundHandler("translation", {
-    generate: async () => {
-      throw new Error("Schedule translation is retired.");
-    },
-    valid: () => false,
-    apply: () => {},
-  });
   for (const [kind, handler] of ports.handlers) registerBackgroundHandler(kind, handler);
   registerBackgroundHandler("story", {
     generate: async () => {
@@ -860,21 +853,6 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       });
       return;
     }
-    if (
-      job &&
-      (job.kind === "translation" ||
-        (job.kind === "agenda" &&
-          typeof asRecord(asRecord(job.input).context).name === "string" &&
-          !asRecord(asRecord(job.input).context).card))
-    ) {
-      await updateJob((current) => ({
-        ...current!,
-        status: "obsolete",
-        error: "Legacy schedule translation and detailed Agenda generation are retired.",
-        replacement: undefined,
-      }));
-      return;
-    }
     if (job?.kind === "story") {
       await retireStory(id, documents);
       return;
@@ -1202,11 +1180,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       id: job.id,
       kind: job.kind,
       attempt: job.attempt,
-      cause: job.finite
-        ? "Player-requested generation"
-        : job.kind === "translation"
-          ? "Deprecated translation: no new requests"
-          : "Automatic: village time or resident agenda update",
+      cause: job.finite ? "Player-requested generation" : "Automatic: village time or resident agenda update",
     };
     try {
       checkCurrent(job, await readForJob(job));
@@ -1543,19 +1517,6 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         await retireStory(record.id, documents);
         continue;
       }
-      if (job.kind === "translation" && !["completed", "obsolete"].includes(job.status)) {
-        await changeJob(
-          record.id,
-          (current) => ({
-            ...current!,
-            status: "obsolete",
-            error: "Schedule translation is retired.",
-            replacement: undefined,
-          }),
-          documents,
-        );
-        continue;
-      }
       if (job.connectionPaused) pausedConnections.add(job.connectionId);
       if (interruptedDispatch && !["completed", "obsolete"].includes(job.status)) {
         await changeJob(
@@ -1717,10 +1678,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       const completedSteps =
         job.completedCount ||
         job.steps.filter((step, i) => step.status === "completed" && (i !== job.failedStep || recovered)).length;
-      const context = asRecord(asRecord(job.input).context);
-      const blocks = Array.isArray(context.blocks) ? context.blocks.length : 0;
-      const planned =
-        job.kind === "agenda" ? agendaRequestCount(VILLAGE_WEEKDAYS) : job.kind === "translation" ? 0 : null;
+      const planned = job.kind === "agenda" ? agendaRequestCount(VILLAGE_WEEKDAYS) : null;
       previews.push({
         id: record.id,
         seed: job.seed,
@@ -1736,12 +1694,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             : planned === null
               ? null
               : remainingRequests(planned, completedSteps),
-        cause: job.finite
-          ? "Player-requested generation"
-          : job.kind === "translation"
-            ? "Deprecated translation: no new requests"
-            : "Automatic: village time or resident agenda update",
-        remainingBlocks: job.kind === "translation" ? blocks : null,
+        cause: job.finite ? "Player-requested generation" : "Automatic: village time or resident agenda update",
       });
     }
     return previews;

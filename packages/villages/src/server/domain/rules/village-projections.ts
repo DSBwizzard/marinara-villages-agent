@@ -3,7 +3,6 @@ import { findLocation } from "./places.js";
 import { agendaAt } from "./agenda-plan.js";
 import { badRequest, conflict } from "./errors.js";
 import { homeBuildingOptions, type VillageHomeLine } from "./prompt-preset.js";
-import type { NativeRoutine } from "./schedule-rules.js";
 import { MAX_ZONE_VILLAGERS, venueResidentIds } from "./venue-model.js";
 import { canOccupyZone, chooseAgendaZone, venueZones, zoneClosed } from "./venue-zones.js";
 import { evaluateZoneAccess } from "./venue-access.js";
@@ -58,7 +57,6 @@ export function projectHomeLines(
 function preferredVillagerPlace(
   village: VillageState,
   villager: VillageVillager,
-  _routine: NativeRoutine | null,
   minuteOfDay = deriveVillageMoment({
     foundedAt: village.foundedAt,
     environment: village.narrative,
@@ -69,10 +67,7 @@ function preferredVillagerPlace(
 ): VillagePlaceView | null {
   const agenda = agendaAt(villager.agenda, minuteOfDay, at, villager.ingestSchedule !== false);
   const venueId = agenda?.venueId ?? "";
-  // A translation can name a place that has since been deleted from the village,
-  // so the lookup is by id against the current list rather than by position into
-  // the one the translation was written from. A place that is gone reads as
-  // unplaced, which is where the fallback below picks the villager up.
+  // Resolve the saved location against current Places, then fall back if it was removed.
   const venue = venueId.length > 0 ? findLocation(village, venueId) : undefined;
   if (venue) {
     const zone = chooseAgendaZone(venue, villager.characterId, agenda?.activity, agenda?.zoneId, village, {
@@ -134,12 +129,12 @@ export function villagePresence(
   };
   for (const resident of residents) {
     const preferred =
-      positions?.get(resident.characterId) ?? preferredVillagerPlace(village, resident, null, minuteOfDay, at);
+      positions?.get(resident.characterId) ?? preferredVillagerPlace(village, resident, minuteOfDay, at);
     if (preferred && !place(resident, preferred)) pending.push(resident);
   }
   for (const resident of pending) {
     const preferred =
-      positions?.get(resident.characterId) ?? preferredVillagerPlace(village, resident, null, minuteOfDay, at)!;
+      positions?.get(resident.characterId) ?? preferredVillagerPlace(village, resident, minuteOfDay, at)!;
     const origin = findLocation(village, preferred.id)!;
     const home = village.venues.find((venue) => venueResidentIds(venue).includes(resident.characterId));
     const destinations = [...new Set([origin, home, ...village.venues].filter((venue) => !!venue))];
@@ -182,7 +177,6 @@ export function villagePresence(
 export function villagerPlaceView(
   village: VillageState,
   villager: VillageVillager,
-  _routine: NativeRoutine | null,
   minuteOfDay = deriveVillageMoment({
     foundedAt: village.foundedAt,
     environment: village.narrative,

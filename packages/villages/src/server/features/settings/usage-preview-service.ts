@@ -6,7 +6,7 @@ import type { VillageState } from "../../domain/models/world.js";
 import { asRecord } from "../../domain/rules/coerce.js";
 import { badRequest } from "../../domain/rules/errors.js";
 import { agendaRequestCount, remainingRequests } from "../../domain/rules/generation-budgets.js";
-import { remapVenues } from "../../domain/rules/prompt-preset.js";
+import { routineVenues } from "../../domain/rules/prompt-preset.js";
 import { VILLAGE_WEEKDAYS } from "../../domain/rules/village-clock.js";
 import type { previewBackgroundJobs } from "../../jobs/background-work.js";
 import { privatePreparationRooms } from "../../jobs/private-space-preparation.js";
@@ -44,7 +44,7 @@ export function createUsagePreview({
   async function previewVillageBurst(raw: unknown): Promise<BurstPreviewResult> {
     const args = asRecord(raw),
       action = String(args.action);
-    if (!["agenda", "translation", "influence", "change", "images", "retry", "founding"].includes(action))
+    if (!["agenda", "influence", "change", "images", "retry", "founding"].includes(action))
       throw badRequest("Choose a supported generation preview.");
     // This inert estimator uses mechanical settings, never conversational history.
     const snapshot = await readVillageAuthority();
@@ -72,7 +72,7 @@ export function createUsagePreview({
       action === "change" &&
       typeof asRecord(args.settings).setting === "string" &&
       proposed.setting.trim().length > 0 &&
-      remapVenues(original.venues).length === 0;
+      routineVenues(original.venues).length === 0;
 
     let system: Awaited<ReturnType<ReturnType<typeof villagesLanguageModels>["resolveForRequest"]>> | null = null;
     try {
@@ -139,7 +139,6 @@ export function createUsagePreview({
       const job = jobs.find((j) => j.id === args.jobId && j.seed === original.seed);
       if (job?.kind === "agenda" && !["completed", "obsolete"].includes(job.status))
         return previewVillageBurst({ action: "agenda", characterId: job.subjectId });
-      if (job?.kind === "translation") languageRequests = 0;
       else if (job && !["completed", "obsolete"].includes(job.status)) {
         if (job.remainingRequests === null)
           return {

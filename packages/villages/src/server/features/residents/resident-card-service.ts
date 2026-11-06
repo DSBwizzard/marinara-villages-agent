@@ -77,8 +77,6 @@ export function createResidentCards({
       };
       if (proseChanged) {
         resident.agenda = unwrittenVillageAgenda(state.venues, card.name, villageNow());
-        resident.remap = null;
-        resident.remapFailure = null;
       }
     });
     return buildVillageSnapshot();

@@ -52,7 +52,6 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
     playerHome: false,
     workerCharacterIds: [],
     pendingResidenceCharacterIds: [],
-    remapCount: 0,
     roomPresent: false,
     eventCount: 0,
   };

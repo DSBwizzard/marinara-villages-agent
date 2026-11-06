@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import {
-  foundingNativeActivities,
   parseCompactFounding,
   parseCompactFoundingCompletion,
 } from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
@@ -28,13 +27,12 @@ const palette = [
   "Sharing garden advice",
   "Resting at home",
 ].map((activity) => ({ activity, venue: 0, status: "idle" }));
-const payload = (count: number) => ({
+const payload = () => ({
   routine: "Ada tends herbs and spends quiet time at home.",
   wishes: [{ wish: "A new watering can", intensity: 1, tell: "She checks the old one for leaks" }],
   palette,
   days,
   rhythm: [],
-  native: Array.from({ length: count }, () => 0),
 });
 const schedule = (count: number, unique: boolean) => ({
   characterId: "a",
@@ -67,7 +65,7 @@ const context = (native: ReturnType<typeof schedule> | null) => ({
 // A single choice per daypart is complete and normalizes without inventing choices.
 {
   const answer = {
-    ...payload(0),
+    ...payload(),
     wishes: [],
     palette: palette.map((row) => ({ ...row, duration: 90, flexible: false, essential: true, parts: [0, 1, 2, 3] })),
     days: Array.from({ length: 7 }, () => [0, 1, 2, 3]),
@@ -86,7 +84,7 @@ const context = (native: ReturnType<typeof schedule> | null) => ({
 // Ordinary activity bounds do not limit fixed overnight rest windows.
 for (const endMinute of [360, 480]) {
   const answer = {
-    ...payload(0),
+    ...payload(),
     wishes: [],
     palette: palette.map((row) => ({ ...row, duration: 90, flexible: false, essential: true, parts: [0, 1, 2, 3] })),
     rhythm: [{ startMinute: 0, endMinute, activity: 0 }],
@@ -104,7 +102,7 @@ for (const endMinute of [360, 480]) {
 }
 
 async function main() {
-  const unscheduled = parseCompactFounding(payload(0), context(null) as any);
+  const unscheduled = parseCompactFounding(payload(), context(null) as any);
   assert.equal(Object.hasOwn(unscheduled, "wishes"), false, "Routine output cannot establish a desire");
   assert.equal(Object.keys(unscheduled.agenda.week ?? {}).length, 7);
   for (const weekday of VILLAGE_WEEKDAYS) {
@@ -114,7 +112,7 @@ async function main() {
     assert.ok(blocks.some((block) => block.activity === "Tending the herb beds"));
   }
   const compactDayparts = {
-    ...payload(0),
+    ...payload(),
     days: Array.from({ length: 7 }, () => [0, 1, 2, 3]),
   };
   const semanticContext = { ...context(null), semanticVersion: 2 } as any;
@@ -131,7 +129,7 @@ async function main() {
     "local recovery preserves the purchased response",
   );
   assert.deepEqual(
-    parseCompactFounding({ ...payload(0), wishes: [] }, semanticContext).agenda.routineProfile!.days,
+    parseCompactFounding({ ...payload(), wishes: [] }, semanticContext).agenda.routineProfile!.days,
     days,
     "existing eight-choice plans retain every supplied alternative",
   );
@@ -153,20 +151,13 @@ async function main() {
     /truncated/,
   );
 
-  for (const count of [50, 111]) {
-    const native = schedule(count, count === 111);
-    const unique = foundingNativeActivities(native);
-    assert.equal(unique.length, count === 111 ? 111 : 1);
-    const result = parseCompactFounding(payload(unique.length), context(native) as any);
-    assert.equal(result.moves.length, 0, "native schedules are not translated");
-  }
-  assert.throws(() => parseCompactFounding({ ...payload(0), days: [] }, context(null) as any), /seven-day/);
-  assert.throws(() => parseCompactFounding({ ...payload(0), rhythm: undefined }, context(null) as any), /rest windows/);
+  assert.throws(() => parseCompactFounding({ ...payload(), days: [] }, context(null) as any), /seven-day/);
+  assert.throws(() => parseCompactFounding({ ...payload(), rhythm: undefined }, context(null) as any), /rest windows/);
 
   let calls = 0;
   let capturedPrompt = "";
   let options: Record<string, unknown> = {};
-  let answer = payload(0);
+  let answer = payload();
   let usageDocument: any = null;
   const release = configureVillagesRuntime({
     isDebugAgentsEnabled: () => false,
@@ -214,7 +205,7 @@ async function main() {
       [schedule(50, false), 50],
       [schedule(111, true), 111],
     ] as const) {
-      answer = payload(native ? foundingNativeActivities(native).length : 0);
+      answer = payload();
       const before = calls;
       await proposeCompactFounding(context(native) as any, async () => {});
       assert.equal(calls, before + 1, "one package-level request handles this villager's full founding plan");
@@ -222,7 +213,7 @@ async function main() {
     for (const playerBackground of ["", "I arrived to help the harbor."]) {
       const roleContext = { ...context(null), setting: "S".repeat(4000), playerBackground, playerPersonaName: "Robin" };
       const before = calls;
-      answer = payload(0);
+      answer = payload();
       await proposeCompactFounding(roleContext as any, async () => {});
       assert.ok(
         capturedPrompt.includes(JSON.stringify({ name: "Robin", startingBackground: playerBackground })),

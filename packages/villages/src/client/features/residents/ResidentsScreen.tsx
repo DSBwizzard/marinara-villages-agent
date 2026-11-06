@@ -1,7 +1,7 @@
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import { agendaMinuteLabel, agendaUpdatePending, remapPlaceName } from "../../shared/presentation.js";
+import { agendaMinuteLabel, agendaUpdatePending, agendaPlaceName } from "../../shared/presentation.js";
 import { IdentityDescriptionEditor } from "./IdentityDescriptionEditor.js";
 import { VillagerMemoriesPanel } from "./MemoriesPanel.js";
 import { AvatarFace } from "./ResidentPanels.js";
@@ -319,7 +319,7 @@ export function ResidentsScreen({
                                     <strong>{part.activity}</strong>
                                     <span>
                                       {part.venueId
-                                        ? remapPlaceName(snapshot?.settings.venues ?? [], part.venueId)
+                                        ? agendaPlaceName(snapshot?.settings.venues ?? [], part.venueId)
                                         : "Home"}
                                     </span>
                                   </li>

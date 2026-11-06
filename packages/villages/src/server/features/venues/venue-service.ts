@@ -23,7 +23,6 @@ export type VillageVenueDeletionDependencies = {
   playerHome: boolean;
   workerCharacterIds: string[];
   pendingResidenceCharacterIds: string[];
-  remapCount: number;
   roomPresent: boolean;
   eventCount: number;
 };
@@ -200,10 +199,6 @@ export function createVenueCommands({
       pendingResidenceCharacterIds: village.residences
         .filter((residence) => residence.status === "pending" && residence.proposedVenueId === venueId)
         .map((residence) => residence.characterId),
-      remapCount: village.villagers.reduce(
-        (count, villager) => count + (villager.remap?.moves.filter((move) => move.venueId === venueId).length ?? 0),
-        0,
-      ),
       roomPresent: (await activeVisitAtVenue(venueId)) === true,
       eventCount: village.venueEvents.filter((event) => event.venueId === venueId).length,
     };
@@ -332,10 +327,6 @@ export function createVenueCommands({
       state.residences = state.residences.filter(
         (residence) => residence.venueId !== venueId && residence.proposedVenueId !== venueId,
       );
-      for (const villager of state.villagers) {
-        if (!villager.remap) continue;
-        villager.remap.moves = villager.remap.moves.filter((move) => move.venueId !== venueId);
-      }
     });
     return buildVillageSnapshot();
   }

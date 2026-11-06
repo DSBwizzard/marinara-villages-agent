@@ -1,14 +1,7 @@
 import type { VillagerCard } from "../models/catalog-model.js";
-import type {
-  VillageAgenda,
-  VillagePlayerBackground,
-  VillageRemapMove,
-  VillageVenue,
-  VillageWish,
-} from "../models/world.js";
+import type { VillageAgenda, VillagePlayerBackground, VillageVenue, VillageWish } from "../models/world.js";
 import { villageAgendaDay } from "./agenda-plan.js";
 import { extractModelJsonObject } from "./json-reply.js";
-import { remapBlocks } from "./native-remap.js";
 import type { RoutineProfile } from "./owned-routine.js";
 import {
   influenceSettings,
@@ -63,21 +56,7 @@ export type CompactFoundingContext = {
 export type CompactFoundingResult = {
   identityDescription?: string;
   agenda: VillageAgenda;
-  moves: VillageRemapMove[];
 };
-
-const compactKey = (activity: string): string => activity.trim().replace(/\s+/g, " ").toLocaleLowerCase();
-
-export function foundingNativeActivities(schedule: NativeWeekSchedule | null): string[] {
-  if (!schedule) return [];
-  const seen = new Set<string>();
-  return remapBlocks(schedule).flatMap((block) => {
-    const key = compactKey(block.activity);
-    if (!key || seen.has(key)) return [];
-    seen.add(key);
-    return [block.activity];
-  });
-}
 
 const validIndex = (value: unknown, length: number): value is number =>
   Number.isInteger(value) && (value as number) >= 0 && (value as number) < length;
@@ -322,7 +301,6 @@ export function parseCompactFounding(
       source: "village",
       generatedAt: at,
     },
-    moves: [],
   };
 }
 
