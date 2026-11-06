@@ -45,6 +45,7 @@ function fixture() {
     timeZone: "UTC",
     venues: [place],
     villagers: ["a", "b"].map((id) => ({
+      letterFontId: "caveat",
       characterId: id,
       addedAt: at,
       cardSnapshot: { id, name: id, revision: 1, sourceStatus: "available", capturedAt: at },

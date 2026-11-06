@@ -9,7 +9,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 import { SESSION_PREFIX, sessionSlot } from "../../adapters/storage/scene-slots.js";
 import { createSceneHistory } from "../../adapters/storage/scene-history.js";
-import { villageClockShiftMs, villageNow } from "../../adapters/time/clock-gate.js";
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
 import type { InterpretationBatch } from "../../domain/models/interpretation-model.js";
 import type {
@@ -540,8 +540,6 @@ export function createSceneCommands({
         kind: line.kind,
         ...(line.delivery ? { delivery: line.delivery } : {}),
         ...(line.presentation ? { presentation: line.presentation } : {}),
-        ...(line.expression ? { expression: line.expression } : {}),
-        ...(line.gazeAt ? { gazeAt: line.gazeAt } : {}),
         ...(line.staging?.length ? { staging: line.staging } : {}),
         ...(line.targetId ? { targetId: line.targetId } : {}),
         ...(line.anchorIndex !== undefined ? { asideFor: lineIds[line.anchorIndex]! } : {}),
@@ -991,7 +989,6 @@ export function createSceneCommands({
       processingVersion: 1,
       semanticVersion: 2,
       villageSeed: village.seed,
-      stagingVersion: 1,
       id,
       placeId,
       placeName: place.name,
@@ -1006,7 +1003,6 @@ export function createSceneCommands({
       startedAt: sceneAttendance.capturedAt,
       endedAt: "",
       lastActivityAt: villageNow().toISOString(),
-      clockShiftMs: villageClockShiftMs(),
       endReason: "",
       memoryMode: "live",
       status: participants.length === 0 && !discovery ? "active" : "opening",

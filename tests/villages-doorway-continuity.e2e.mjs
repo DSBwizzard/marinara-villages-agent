@@ -54,7 +54,6 @@ await withBrowser(browser, async () => {
       startedAt: now,
       lastActivityAt: now,
       sceneRevision: 2,
-      stagingVersion: 1,
       activeIds: [],
       participants: [{ characterId: "mara", name: "Mara", doing: "Talking" }],
       lines: [
@@ -117,7 +116,11 @@ await withBrowser(browser, async () => {
       });
     });
     await page.goto("http://villages.test/");
-    await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+    // Restoration has its own read deadline; scenario assertions start after that read completes.
+    const initialSceneRead = page
+      .waitForResponse((response) => new URL(response.url()).pathname.endsWith("/rooms/active"), { timeout: 10_000 })
+      .then(async (response) => assert.equal(await response.finished(), null));
+    await Promise.all([page.addScriptTag({ path: resolve("packages/villages/client.js") }), initialSceneRead]);
     const chip = page.getByRole("button", { name: "1 Scene error", exact: true });
     await expect(chip).toBeVisible();
     await expect(page.getByText("not witnessed by everyone", { exact: false })).toHaveCount(0);

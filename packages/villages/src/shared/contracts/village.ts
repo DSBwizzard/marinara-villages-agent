@@ -1,7 +1,6 @@
 import type { SpeechDelivery, SpeechPresentation } from "../helpers/scene-speech.js";
 import type { StagingCue } from "../helpers/scene-staging.js";
 import type { PlayerBackground } from "./player-background.js";
-import type { VillagesWalkBeat } from "./scene-beat.js";
 
 /** Client-visible wire data. Private saved-world and Scene records stay on the server. */
 
@@ -657,40 +656,6 @@ export type PersonaResponse = {
   personas: PersonaEntry[];
 };
 export /**
- * One register-bearing line of a villager's answer, as the SERVER read it.
- *
- * The whole of this type is a mirror of `VillagesTurnBeat` in the package's own
- * server service, and it is mirrored rather than imported for the reason every
- * other shared shape in this tab is: the two ends are two bundles and the server
- * half is not on the client's side of the boundary at all. It is a type and not a
- * value, so the one thing that keeps the mirror honest is that the walk on the
- * other side of it is written against the SAME declaration — see below.
- *
- * It is presentation and never content. `content` on the same message is the same
- * words with the tags taken off — the server writes it that way, which is what
- * keeps a tag out of the six other readers of a transcript — so a tab that has
- * never heard of this field loses the register and nothing else.
- *
- * `side` is a remark said out loud but not offered to whoever is in front of
- * them, `whisper` is something said to one named listener, and `untagged` is an
- * ordinary turn: still read by SHAPE, because most of what a villager writes
- * carries no tag at all. The two tagged names are the Engine's own — Game Mode's
- * party agent writes them and its parser reads them — so the word is the same
- * word in both places.
- *
- * `thought` is deliberately not here. The Engine has one and Game Mode draws it
- * as italic purple prose, and an inner monologue the player is SHOWN is a
- * different decision from something said out of the side of somebody's mouth. The
- * name is free when somebody makes that decision.
- *
- * It is an ALIAS rather than a second three-field copy, and that is the whole of
- * this release's structural change: the walk lives beside the splitter in
- * `villages-chat-paragraphs.ts` and takes this type, so a field that appears on
- * one side and not the other is a compile error rather than a list that quietly
- * stops lining up.
- */
-type ChatBeat = VillagesWalkBeat;
-export /**
  * Where the villager is standing, as the drawer draws it.
  *
  * The server resolves the whole join and sends the answer: which place an hour
@@ -750,12 +715,9 @@ export type RoomLine = {
   physicalIdsAfter?: string[];
   presenceChange?: true;
   /** The registers of this line's own paragraphs, on the same terms as a message's. */
-  beats?: ChatBeat[];
   kind?: "narration" | "dialogue" | "side" | "whisper";
   delivery?: SpeechDelivery;
   presentation?: SpeechPresentation;
-  expression?: string;
-  gazeAt?: string;
   staging?: StagingCue[];
   targetId?: string;
   asideFor?: string;

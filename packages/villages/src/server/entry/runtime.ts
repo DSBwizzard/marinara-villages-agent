@@ -9,7 +9,6 @@ import {
 } from "../adapters/engine/activation-scope.js";
 import { villagesAgentConnectionId, villagesAgentImageConnectionId } from "../adapters/engine/agent-config.js";
 import {
-  captureMissingVillagerCardColors,
   findPlayerPersona,
   findVillagerCard,
   listPlayerPersonas,
@@ -786,9 +785,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseVillageSnapshot = configureVillageSnapshot(
     createVillageSnapshot({
       readVillageState,
-      mutateVillageState,
       listVillagerCards,
-      captureMissingVillagerCardColors,
       rollActiveAgendas,
       sceneQueries,
       backgroundWorkSummaries,

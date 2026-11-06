@@ -34,8 +34,6 @@ export type VenueLine = {
   kind?: "narration" | "dialogue" | "side" | "whisper";
   delivery?: SpeechDelivery;
   presentation?: SpeechPresentation;
-  expression?: string;
-  gazeAt?: string;
   staging?: StagingCue[];
   targetId?: string;
   asideFor?: string;
@@ -182,7 +180,6 @@ export type VenueScene = {
     outcome: "unknown";
     acknowledgedAt: string;
   }[];
-  stagingVersion?: 1;
   id: string;
   placeId: string;
   placeName: string;
@@ -216,7 +213,6 @@ export type VenueScene = {
   startedAt: string;
   endedAt: string;
   lastActivityAt: string;
-  clockShiftMs?: number;
   endReason: "player" | "scene" | "inactivity" | "debug" | "";
   memoryMode: "live";
   status: "opening" | "active" | "closing" | "closed";
@@ -254,8 +250,6 @@ export type VenueReplyLine = {
   physicalIdsAfter?: string[];
   contactHidden?: boolean;
   contactReport?: boolean;
-  expression?: string;
-  gazeAt?: string;
   staging?: StagingCue[];
   targetId?: string;
   anchorIndex?: number;

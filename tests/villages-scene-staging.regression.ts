@@ -11,6 +11,7 @@ import {
 } from "../packages/villages/src/shared/helpers/scene-staging.js";
 import { replayStaging } from "./helpers/scene-staging.fixture.js";
 
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 import { validateSpriteExpression } from "../packages/villages/src/server/domain/rules/sprite-expressions.js";
 import { selectSpriteImage } from "../packages/villages/src/client/features/scenes/villages-sprite-stage.js";
@@ -70,13 +71,11 @@ assert.deepEqual(lone[0], lone[2], "quiet paragraphs keep expression, position, 
 assert.equal(stagingLayout(["mara"], lone[2].state).mara.facing, "left", "a lone resident can look into empty space");
 assert.equal(initialStaging(["mara"]).mara.position, "left", "replay never mutates defaults");
 
-const legacy = lineStagingCues({
+const explicit = lineStagingCues({
   speakerId: "mara",
-  expression: "e-thinking",
-  gazeAt: "eli",
-  staging: [{ characterId: "mara", position: "right", look: { target: "player" } }],
+  staging: [{ characterId: "mara", expression: "e-thinking", position: "right", look: { target: "player" } }],
 });
-assert.deepEqual(legacy, [
+assert.deepEqual(explicit, [
   { characterId: "mara", position: "right", expression: "e-thinking", look: { target: "player" } },
 ]);
 assert.deepEqual(lineStagingCues({ speakerId: "mara", kind: "whisper", targetId: "eli" }), [
@@ -156,35 +155,47 @@ const parsed = parseVenueReply(
   },
   ids,
 );
-assert.equal(parsed.lines[0].staging?.[0].characterId, "mara");
-assert.deepEqual(
-  parsed.lines[1].staging,
-  [{ characterId: "eli", position: "right" }],
-  "invalid optional cues retain speech and valid fields",
+assert(
+  parsed.lines.every((line) => !Object.hasOwn(line, "staging")),
+  "Narrative segments cannot supply cues",
 );
+assert.equal(parsed.lines[1].content, "Perhaps.");
 
-const validatedReply = parseVenueReply(
-  {
-    heardPlayerBy: [],
-    segments: [
-      {
-        kind: "narration",
-        text: "A quiet reaction.",
-        staging: [
-          { characterId: "mara", expression: "e-thinking", position: "right" },
-          { characterId: "mara", expression: "e-outsider", look: { target: "player" } },
-        ],
-      },
-    ],
-  },
+const validatedCues = readStagingCues(
+  [
+    { characterId: "mara", expression: "e-thinking", position: "right" },
+    { characterId: "mara", expression: "e-outsider", look: { target: "player" } },
+  ],
   ids,
   (id, requested) => validateSpriteExpression(id === "mara" ? sprite : null, requested),
 );
-assert.equal(
-  validatedReply.lines[0].staging?.[0].expression,
-  "e-thinking",
-  "invalid later fields do not overwrite earlier valid fields",
-);
+assert.equal(validatedCues[0].expression, "e-thinking", "Invalid later fields do not overwrite earlier valid fields");
+const rawScene = {
+  version: 4,
+  id: "current-cues",
+  status: "closed",
+  participants: [{ characterId: "mara", name: "Mara" }],
+  lines: [
+    {
+      id: "line",
+      speakerId: "mara",
+      content: "Perhaps.",
+      role: "assistant",
+      at: "2026-11-06T00:00:00Z",
+      heardBy: ["mara"],
+      expression: "forged",
+      gazeAt: "outsider",
+      staging: validatedCues,
+    },
+  ],
+};
+const beforeScene = JSON.stringify(rawScene);
+const saved = coerceSession(rawScene);
+assert(!Object.hasOwn(saved.lines[0], "expression"));
+assert(!Object.hasOwn(saved.lines[0], "gazeAt"));
+assert.deepEqual(saved.lines[0].staging, validatedCues);
+assert.deepEqual(coerceSession(JSON.parse(JSON.stringify(saved))).lines[0].staging, validatedCues);
+assert.equal(JSON.stringify(rawScene), beforeScene);
 
 const lines: (StagingLine & { id: string; role: string; asideFor?: string })[] = [
   { id: "player", role: "user", speakerId: "" },

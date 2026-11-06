@@ -3,7 +3,7 @@ import type { RoomLine } from "../../../shared/contracts/village.js";
 import { speechDelivery } from "../../../shared/helpers/scene-speech.js";
 import { createStagingCursor, stagingPresentation } from "../../../shared/helpers/scene-staging.js";
 import type { RoomStep } from "../../shared/types.js";
-import { villagesWalk } from "../../../shared/helpers/scene-paragraphs.js";
+import { splitVillagesParagraphs } from "../../../shared/helpers/scene-paragraphs.js";
 
 /** Build only this window; historical presentation never depends on a preceding browser page. */
 export function scenePlaybackSteps(window: ScenePlaybackWindow, playerName: string, activeIds: string[]): RoomStep[] {
@@ -28,13 +28,11 @@ export function scenePlaybackSteps(window: ScenePlaybackWindow, playerName: stri
         : {}),
       speakerId: line.speakerId,
       name: line.name,
-      expression: line.expression,
-      gazeAt: line.gazeAt,
     }));
     const player = line.speakerId.length === 0;
-    const walk = villagesWalk(line.content, line.beats ?? null);
-    walk.paragraphs.forEach((text, paragraph) => {
-      const last = paragraph === walk.paragraphs.length - 1;
+    const paragraphs = splitVillagesParagraphs(line.content);
+    paragraphs.forEach((text, paragraph) => {
+      const last = paragraph === paragraphs.length - 1;
       built.push({
         key: JSON.stringify([window.scope, window.sceneId, line.id, paragraph]),
         lineId: line.id!,
@@ -48,10 +46,8 @@ export function scenePlaybackSteps(window: ScenePlaybackWindow, playerName: stri
         player,
         text,
         delivery: speechDelivery(line),
-        asides: [...(walk.asides[paragraph] ?? []), ...(last ? asides : [])],
+        asides: last ? asides : [],
         ...(line.kind ? { register: line.kind === "narration" ? "narration" : "speech" } : {}),
-        ...(line.expression ? { expression: line.expression } : {}),
-        ...(line.gazeAt ? { gazeAt: line.gazeAt } : {}),
         ...(line.viaDoorway ? { viaDoorway: true } : {}),
       });
     });

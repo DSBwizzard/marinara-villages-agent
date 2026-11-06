@@ -37,11 +37,6 @@ export function decodeVillageClock(raw: unknown): VillageClockRecord | null {
   )
     throw new Error("The saved Village time requests could not be read. Restore them from a backup.");
   if (
-    value.shiftTotalMs !== undefined &&
-    (typeof value.shiftTotalMs !== "number" || !Number.isSafeInteger(value.shiftTotalMs))
-  )
-    throw new Error("The saved village clock could not be read. Restore it from a backup.");
-  if (
     value.replayUntilDate !== undefined &&
     value.replayUntilDate !== "" &&
     (typeof value.replayUntilDate !== "string" ||
@@ -57,33 +52,10 @@ export function decodeVillageClock(raw: unknown): VillageClockRecord | null {
     !Number.isFinite(Date.parse(value.trustedAt))
   )
     throw new Error("The saved village clock could not be read. Restore it from a backup.");
-  let recovery: VillageClockRecord["recovery"] = null;
-  if (value.recovery !== undefined && value.recovery !== null) {
-    if (typeof value.recovery !== "object" || Array.isArray(value.recovery))
-      throw new Error("The saved village clock recovery could not be read. Restore it from a backup.");
-    const r = value.recovery as Record<string, unknown>;
-    if (
-      !["frozenAt", "expectedAt", "observedAt"].every(
-        (key) => typeof r[key] === "string" && Number.isFinite(Date.parse(r[key] as string)),
-      ) ||
-      typeof r.differenceMs !== "number" ||
-      !Number.isFinite(r.differenceMs)
-    )
-      throw new Error("The saved village clock recovery could not be read. Restore it from a backup.");
-    recovery = {
-      frozenAt: r.frozenAt as string,
-      expectedAt: r.expectedAt as string,
-      observedAt: r.observedAt as string,
-      differenceMs: r.differenceMs,
-    };
-  }
   return {
     revision: Number(value.revision),
     trustedAt: value.trustedAt,
-    recovery,
     replayUntilDate: typeof value.replayUntilDate === "string" ? value.replayUntilDate : "",
-    shiftTotalMs:
-      typeof value.shiftTotalMs === "number" && Number.isFinite(value.shiftTotalMs) ? value.shiftTotalMs : 0,
     ...(value.advanceMs !== undefined ? { advanceMs: Number(value.advanceMs) } : {}),
     ...(lastAdvance ? { lastAdvance: { actionId: lastAdvance.actionId, milliseconds: lastAdvance.milliseconds } } : {}),
     ...(Array.isArray(advanceReceipts)

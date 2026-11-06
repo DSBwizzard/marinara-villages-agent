@@ -52,6 +52,7 @@ function fixture(name: string) {
     foundedAt: stamp,
     foundingPreparation: { status: "pending", completedIds: [], currentId: "", error: "", venueDetailsSeeded: false },
     villagers: ["first", "second"].map((id) => ({
+      letterFontId: "caveat",
       characterId: id,
       addedAt: stamp,
       cardSnapshot: { id, name: id, revision: 1, sourceStatus: "available", capturedAt: stamp },

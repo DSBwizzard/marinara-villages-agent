@@ -3,7 +3,7 @@ import { zonePictureContext } from "../../domain/rules/zone-picture.js";
 import { findLocation } from "../../domain/rules/places.js";
 import { findNpc } from "../../domain/rules/places.js";
 import { randomUUID } from "node:crypto";
-import { observeVillageClock, villageClockShiftMs, villageNow } from "../../adapters/time/clock-gate.js";
+import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
 import { conflict } from "../../domain/rules/errors.js";
 
@@ -45,16 +45,6 @@ export function createLiveScenes({
     readVillageStateWithoutPlaces({ ...options, memories: true });
   const mutateVillageState: typeof mutateVillageStateWithoutPlaces = (change, options) =>
     mutateVillageStateWithoutPlaces(change, { ...options, memories: true });
-  async function alignSceneClock(session: VenueScene): Promise<VenueScene> {
-    const total = villageClockShiftMs();
-    if (session.status === "closed" || (session.clockShiftMs ?? 0) === total) return session;
-    return changeSession(session.id, (current) => {
-      const delta = total - (current.clockShiftMs ?? 0);
-      const at = Date.parse(current.lastActivityAt || current.startedAt);
-      if (Number.isFinite(at)) current.lastActivityAt = new Date(at + delta).toISOString();
-      current.clockShiftMs = total;
-    });
-  }
   async function completeGathering(session: VenueScene): Promise<void> {
     if (!session.openingGatheringId) return;
     await mutateVillageState((state) => {
@@ -73,7 +63,7 @@ export function createLiveScenes({
     guard?: (state: import("../../domain/models/world.js").VillageState) => boolean,
     fromObservation = false,
   ): Promise<boolean> {
-    if ((await observeVillageClock())?.paused) return false;
+    await observeVillageClock();
     if (fromObservation) {
       const state = await readVillageState();
       const zone = state.venues.find((row) => row.id === venueId)?.zones?.find((row) => row.id === zoneId);
@@ -127,9 +117,8 @@ export function createLiveScenes({
   async function activeVenueSession(): Promise<VenueScene | null> {
     const active = await readActive();
     if (!active.sessionId) return null;
-    let session = await readSession(active.sessionId);
-    if ((await observeVillageClock())?.paused) return session;
-    session = await alignSceneClock(session);
+    const session = await readSession(active.sessionId);
+    await observeVillageClock();
     if (session.status === "closed") {
       await completeGathering(session);
       await clearActivePointer(session.id, true);
@@ -140,7 +129,7 @@ export function createLiveScenes({
   }
 
   async function requireLiveVenueSession(id: string): Promise<VenueScene> {
-    const session = await alignSceneClock(await readSession(id));
+    const session = await readSession(id);
     if (session.status === "closed") throw conflict("That Scene has already ended.");
     if ((await readActive()).sessionId !== id) throw conflict("That Scene is not active.");
     return refreshZoneParticipants(session);
@@ -158,7 +147,7 @@ export function createLiveScenes({
   }
 
   async function refreshZoneParticipants(session: VenueScene, completing = false): Promise<VenueScene> {
-    if ((await observeVillageClock())?.paused) return session;
+    await observeVillageClock();
     if (!completing && hasVenueOperation(session.id)) return session;
     if (!completing) {
       // Durable failed work owns its admitted context even after the in-memory operation has gone.

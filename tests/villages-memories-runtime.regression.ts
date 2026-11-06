@@ -37,7 +37,7 @@ function writerFixture() {
   let state = defaultVillageState();
   state.seed = "native-memory-world";
   state.villagers = ["aqua", "gidget", "ella"].map(
-    (characterId) => ({ characterId, cardSnapshot: { name: characterId } }) as any,
+    (characterId) => ({ letterFontId: "caveat", characterId, cardSnapshot: { name: characterId } }) as any,
   );
   const scene: any = {
     id: "native-scene",
@@ -310,8 +310,8 @@ await runCase("memories-runtime/public-inspection", async () => {
   state.seed = "memory-api-world";
   state.memories = realisticMemoryHistory(1000);
   state.villagers = [
-    { characterId: "aqua", cardSnapshot: { name: "Aqua" } },
-    { characterId: "ella", cardSnapshot: { name: "Ella" } },
+    { letterFontId: "caveat", characterId: "aqua", cardSnapshot: { name: "Aqua" } },
+    { letterFontId: "caveat", characterId: "ella", cardSnapshot: { name: "Ella" } },
   ] as any;
   let writes = 0;
   const api = createWorldCoordination({

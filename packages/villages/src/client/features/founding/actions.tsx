@@ -175,32 +175,13 @@ export function usePatchSetupVenue(ports: {
         rows.map((row) => {
           if (row.id !== id) return row;
           const changed = next(row);
-          const fields = ["name", "venueType", "form", "description", "layout", "spaces", "privateSpaces"] as const;
-          const edited = fields.filter((field) => JSON.stringify(row[field]) !== JSON.stringify(changed[field]));
-          const zoneFields: string[] = [];
-          for (const key of ["spaces", "privateSpaces"] as const) {
-            if (!edited.includes(key)) continue;
-            zoneFields.push(`zone:${key}:structure`);
-            for (const current of changed[key] ?? []) {
-              const previous = row[key]?.find((zone) => zone.id === current.id);
-              if (!previous) continue;
-              for (const field of ["name", "purpose", "description"] as const)
-                if (previous[field] !== current[field]) zoneFields.push(`zone:${key}:${current.id}:${field}`);
-            }
-          }
+          const fields = ["name", "venueType", "form", "description"] as const;
+          const edited = fields.filter((field) => row[field] !== changed[field]);
           if (edited.length)
-            setSetupAuthoredFields((current) => {
-              const previous = current[id] ?? [];
-              const legacy = (["spaces", "privateSpaces"] as const)
-                .filter(
-                  (key) =>
-                    edited.includes(key) &&
-                    previous.includes(key) &&
-                    !previous.some((entry) => entry.startsWith(`zone:${key}:`)),
-                )
-                .map((key) => `zone:${key}:legacy`);
-              return { ...current, [id]: [...new Set([...previous, ...edited, ...legacy, ...zoneFields])] };
-            });
+            setSetupAuthoredFields((current) => ({
+              ...current,
+              [id]: [...new Set([...(current[id] ?? []), ...edited])],
+            }));
           return changed;
         }),
       );

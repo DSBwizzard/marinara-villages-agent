@@ -13,7 +13,6 @@ import { bindSceneMemorySuggestion } from "../packages/villages/src/server/domai
 import assert from "node:assert/strict";
 import {
   contactNeighborIds,
-  legacyContactNeighborIds,
   materializeConnections,
   connectionProblem,
   applyConnectionEdits,
@@ -69,11 +68,19 @@ assert.deepEqual(
   ["kitchen"],
   "access never changes physical placement",
 );
-const older = layout.map(({ connectedTo: _links, ...entry }: any) => entry);
-const migrated = materializeConnections(older);
-for (const entry of older)
-  assert.deepEqual(contactNeighborIds(migrated, entry.id).sort(), legacyContactNeighborIds(older, entry.id).sort());
-assert.deepEqual(materializeConnections(migrated), migrated);
+const draft = layout.map(({ connectedTo: _links, ...entry }: any) => entry);
+assert.deepEqual(contactNeighborIds(draft, "exterior"), [], "Reading missing connections never invents passages");
+assert.notEqual(connectionProblem(draft), "");
+const initialized = materializeConnections(draft);
+assert.deepEqual(
+  initialized.map((entry: any) => entry.connectedTo),
+  [["kitchen"], ["kitchen"], ["exterior", "bedroom"]],
+);
+assert.equal(connectionProblem(initialized), "");
+assert.deepEqual(materializeConnections(initialized), initialized);
+const disconnected = layout.map((entry: any) => ({ ...entry, connectedTo: [] }));
+assert.deepEqual(materializeConnections(disconnected), disconnected, "An explicit empty graph stays empty");
+assert.notEqual(connectionProblem(disconnected), "");
 const rewired = applyConnectionEdits(layout, [
   { ...layout[0], connectedTo: ["bedroom"] },
   { ...layout[1], connectedTo: ["exterior", "kitchen"] },
@@ -104,15 +111,11 @@ world.venues = [
 ] as any;
 const village = coerceVillageState(world),
   venue = village.venues[0];
-const oldWorld = structuredClone(world);
-oldWorld.venues[0].zones = older;
-oldWorld.venues = oldWorld.venues.map(venueFixture);
-const migratedWorld = coerceVillageState(oldWorld);
-assert.deepEqual(
-  migratedWorld.venues[0].zones?.map((entry) => entry.connectedTo),
-  coerceVillageState(migratedWorld).venues[0].zones?.map((entry) => entry.connectedTo),
-  "saved migration is stable",
-);
+const missingGraph = structuredClone(world);
+for (const entry of missingGraph.venues[0].zones!) delete entry.connectedTo;
+const beforeMissingGraph = JSON.stringify(missingGraph);
+assert.throws(() => coerceVillageState(missingGraph), /explicit connections/);
+assert.equal(JSON.stringify(missingGraph), beforeMissingGraph);
 
 const base: any = {
   version: 4,
@@ -142,6 +145,11 @@ const base: any = {
     ],
   },
 };
+const missingCapturedGraph = structuredClone(base);
+for (const entry of missingCapturedGraph.sceneAttendance.layout) delete entry.connectedTo;
+const beforeMissingCapturedGraph = JSON.stringify(missingCapturedGraph);
+assert.throws(() => coerceSession(missingCapturedGraph), /invalid connection map/);
+assert.equal(JSON.stringify(missingCapturedGraph), beforeMissingCapturedGraph);
 const scene = coerceSession(base);
 const changedVenue = {
   ...venue,

@@ -12,7 +12,7 @@ const bundle = await build({
     import { useVillageLighting } from './packages/villages/src/client/shared/useVillageLighting.js';
     import { venuePictureOf } from './packages/villages/src/client/shared/presentation.js';
     function VillageMap({clock}) {
-      const lighting=useVillageLighting(clock, clock.paused);
+      const lighting=useVillageLighting(clock);
       useLayoutEffect(() => {
         const map=document.querySelector('[data-lighting]');
         (window.initialLighting??=[]).push({ phase:map.dataset.lighting, filter:map.querySelector('img').style.filter });
@@ -21,7 +21,7 @@ const bundle = await build({
       return <><output id='scene'>{image}</output><MapStage lighting={lighting} src={window.mapImage} alt='Village map' pins={[]} placing={false} view={{fit:'contain',zoom:1,x:0,y:0}} shape={null} /></>;
     }
     function Harness() {
-      const [clock, setClock] = useState({ instant:'2026-11-05T03:59:59Z', timeZone:'America/Los_Angeles', paused:false });
+      const [clock, setClock] = useState({ instant:'2026-11-05T03:59:59Z', timeZone:'America/Los_Angeles' });
       const [visible,setVisible]=useState(true);
       window.setVillageClock=setClock;
       window.setMapVisible=setVisible;
@@ -43,6 +43,7 @@ await withBrowser(browser, async () => {
   for (const width of [1366, 390]) {
     const page = await browser.newPage({ viewport: { width, height: 900 }, timezoneId: "Asia/Tokyo" });
     await page.clock.install({ time: new Date("2030-01-01T12:00:00Z") });
+    await page.clock.pauseAt(new Date("2030-01-01T12:01:00Z"));
     await page.route("http://lighting.test/", (route) =>
       fulfill(route, {
         contentType: "text/html",
@@ -66,20 +67,18 @@ await withBrowser(browser, async () => {
     await expect(map).toHaveAttribute("data-lighting", "night");
     await expect(page.locator("#scene")).toHaveText("night");
     await page.evaluate(() =>
-      window.setVillageClock({ instant: "2026-11-05T03:59:59Z", timeZone: "America/Los_Angeles", paused: true }),
+      window.setVillageClock({ instant: "2026-11-05T03:59:58Z", timeZone: "America/Los_Angeles" }),
     );
     await expect(map).toHaveAttribute("data-lighting", "evening");
     await page.clock.fastForward(60_000);
-    await expect(map).toHaveAttribute("data-lighting", "evening");
-    await page.evaluate(() =>
-      window.setVillageClock({ instant: "2026-11-05T04:00:00Z", timeZone: "Asia/Tokyo", paused: false }),
-    );
+    await expect(map).toHaveAttribute("data-lighting", "night");
+    await page.evaluate(() => window.setVillageClock({ instant: "2026-11-05T04:00:00Z", timeZone: "Asia/Tokyo" }));
     await expect(map).toHaveAttribute("data-lighting", "day");
     assert.equal(await page.locator("img").evaluate((image) => image.style.filter), "none");
     await page.evaluate(() => window.setMapVisible(false));
     await expect(map).toHaveCount(0);
     await page.evaluate(() =>
-      window.setVillageClock({ instant: "2026-11-05T04:00:00Z", timeZone: "America/Los_Angeles", paused: true }),
+      window.setVillageClock({ instant: "2026-11-05T04:00:00Z", timeZone: "America/Los_Angeles" }),
     );
     for (let visit = 0; visit < 2; visit++) {
       await page.evaluate(() => window.setMapVisible(true));
@@ -99,5 +98,5 @@ await withBrowser(browser, async () => {
   }
 });
 console.log(
-  "Village lighting: server time, timezone, boundary switching and paused clocks passed on desktop and phone.",
+  "Village lighting: server time, timezone, boundary switching and continuous time passed on desktop and phone.",
 );

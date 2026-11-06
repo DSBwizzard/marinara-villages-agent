@@ -34,7 +34,7 @@ import { useReadingPages } from "./villages-reading-viewport.js";
 import { hasCompletedRoomSubmission } from "./villages-room-reading";
 import { SceneAsides } from "./villages-scene-asides.js";
 import { SceneHistory } from "./SceneHistory.js";
-import { selectSpriteImage, spriteFacing } from "./villages-sprite-stage";
+import { selectSpriteImage } from "./villages-sprite-stage";
 import { shouldSubmitVenueKey } from "./villages-venue-send";
 import { LoreActivityButton } from "../../shared/LoreActivity.js";
 
@@ -580,22 +580,7 @@ export function RoomPanel({
         ) : undefined,
     });
 
-  /**
-   * The whole room, one paragraph at a time, each paragraph wearing a name.
-   *
-   * A line's beats are handed to the walk exactly as the private drawer hands
-   * them, so an aside is lifted out of the paragraph it was tagged under and
-   * printed in a bubble over the card instead — the same reading, for the same
-   * reason: a remark said to one person is not a paragraph said to the room.
-   *
-   * The player's own lines go through the same walk as the villagers'. They are
-   * plain prose with no beats on them, which is what makes it safe to hand their
-   * content to a parser at all — and it means a player who types a line starting
-   * with a name and a colon gets it drawn as themselves anyway, because the name
-   * drawn over a step comes off the LINE and never off what the line says. That
-   * is the whole defence this drawing needs against a player writing somebody
-   * else's name into the room's record.
-   */
+  /** Each playback moment supplies its captured presentation and source lines. */
   const steps = useMemo(
     () => scenePlaybackSteps(playback.window, playerName, room.activeIds),
     [playback.window, playerName, room.activeIds],
@@ -1215,19 +1200,9 @@ export function RoomPanel({
             const sprite = sprites[villager.characterId];
             const isSpeaker = villager.characterId === speaker?.characterId;
             const mobileSlot = mobileLayout[villager.characterId];
-            const aside = step?.asides.find((item) => item.speakerId === villager.characterId);
             const slot = stageLayout[villager.characterId];
-            const wanted = slot
-              ? stagingState[villager.characterId].expression
-              : isSpeaker
-                ? (step?.expression ?? "")
-                : (aside?.expression ?? "");
-            const gazeAt = isSpeaker
-              ? step?.gazeAt
-              : (aside?.gazeAt ?? (villager.characterId === step?.gazeAt ? speaker?.characterId : undefined));
-            const targetIndex = displayed.findIndex((person) => person.characterId === gazeAt);
-            const facing =
-              (slot ? (mobile ? mobileSlot?.facing : slot.facing) : undefined) ?? spriteFacing(index, targetIndex);
+            const wanted = stagingState[villager.characterId]?.expression ?? "";
+            const facing = (mobile ? mobileSlot?.facing : slot?.facing) ?? "front";
             const selected = selectSpriteImage(
               (sprite?.images ?? []).filter((image) => !failedSpriteUrls.has(image.url)),
               wanted,
