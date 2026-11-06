@@ -10,7 +10,6 @@ import type {
   RoomOperation,
   RoomRecordEvent,
   SceneView,
-  VenueClass,
   VillageSnapshot,
   VillageVenue,
   WishVerdict,
@@ -1442,13 +1441,7 @@ export function useOpenRoom(ports: {
     setBusy: setRoomBusy,
   });
   return useCallback(
-    async (
-      place: VillageVenue,
-      spaceClass?: VenueClass,
-      privateOwnerId = "",
-      entryArea?: "outside" | "shared" | "private" | "public",
-      zoneId?: string,
-    ) => {
+    async (place: VillageVenue, zoneId?: string) => {
       if (roomBusy) return;
       const zoneOnly = !!(room?.id && room.status === "active" && room.placeId === place.id && zoneId);
       if (room?.id && room.status !== "closed" && !zoneOnly) {
@@ -1516,9 +1509,6 @@ export function useOpenRoom(ports: {
           method: "POST",
           body: JSON.stringify({
             venueId: place.id,
-            spaceClass,
-            privateOwnerId,
-            entryArea,
             zoneId,
             expectedSceneRevision: room?.sceneRevision,
           }),

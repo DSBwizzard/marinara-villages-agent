@@ -33,7 +33,7 @@ import {
   sceneryPrompt,
 } from "../../domain/rules/scenery-context.js";
 import { venueClasses } from "../../domain/rules/venue-model.js";
-import { legacyZoneId, resolveVenueZone, venueInZone } from "../../domain/rules/venue-zones.js";
+import { defaultVenueZoneId, resolveVenueZone, venueInZone } from "../../domain/rules/venue-zones.js";
 import type { mutateVillageState, readVillageState } from "../world/village-store.js";
 import type { assertVenueImageAccess, setVillageVenueImage } from "../venues/services.js";
 import type { generateVillageImage } from "./image-generation.js";
@@ -98,7 +98,7 @@ export function createLocationImages(ports: LocationImagePorts) {
     }
     if (!fromObservation && spaceClass && !venueClasses(found.venue).includes(spaceClass))
       throw notFound("That Venue space no longer exists.");
-    zoneId ??= legacyZoneId(
+    zoneId ??= defaultVenueZoneId(
       found.venue,
       privateOwnerId ? "private" : spaceClass === "residence" ? "shared" : spaceClass ? "public" : "outside",
       spaceClass,
@@ -121,7 +121,7 @@ export function createLocationImages(ports: LocationImagePorts) {
           village,
           found.venue,
           zoneId ??
-            legacyZoneId(
+            defaultVenueZoneId(
               found.venue,
               privateOwnerId ? "private" : spaceClass === "residence" ? "shared" : spaceClass ? "public" : "outside",
               spaceClass,
@@ -328,7 +328,7 @@ export function createLocationImages(ports: LocationImagePorts) {
     const { venue } = await requireVenue(args[0]);
     const targetId =
       args[5] ??
-      legacyZoneId(
+      defaultVenueZoneId(
         venue,
         args[3] ? "private" : args[2] === "residence" ? "shared" : args[2] ? "public" : "outside",
         args[2],
@@ -362,7 +362,7 @@ export function createLocationImages(ports: LocationImagePorts) {
     });
     const targetId =
       zoneId ??
-      legacyZoneId(
+      defaultVenueZoneId(
         venue,
         privateOwnerId ? "private" : spaceClass === "residence" ? "shared" : spaceClass ? "public" : "outside",
         spaceClass,

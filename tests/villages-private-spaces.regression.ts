@@ -398,8 +398,8 @@ async function main() {
       });
       const { enterVenue } = await import("../packages/villages/src/server/features/scenes/venue-session.js");
       const { activeVenueSession } = await import("../packages/villages/src/server/features/scenes/live-session.js");
-      const visit = await enterVenue("bank", undefined, "", undefined, "staff");
-      assert.equal(visit.privateSpaceId, "staff");
+      const visit = await enterVenue("bank", "staff");
+      assert.equal(visit.zoneId, "staff");
       await Promise.all([generateFirstZoneImage("bank", "staff"), generateFirstZoneImage("bank", "staff")]);
       saved = await readVillageState({ memories: true });
       assert.ok(resolveVenueZone(saved.venues[2]!, "staff")!.initialImageAttemptedAt);

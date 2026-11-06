@@ -583,9 +583,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
       : place.presentation.image;
   const map = snapshot.settings.maps?.find((entry) => entry.id === place.presentation.mapId);
   const visit = () =>
-    activeScene && room.placeId === place.id
-      ? setScreen("room")
-      : void openRoom(place, undefined, "", "outside", exterior?.id);
+    activeScene && room.placeId === place.id ? setScreen("room") : void openRoom(place, exterior?.id);
   const selectPlace = async (id: string) => {
     if (id === place.id) return true;
     if (!(await canLeave())) return false;

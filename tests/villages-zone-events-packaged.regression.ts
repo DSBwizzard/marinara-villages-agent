@@ -364,6 +364,21 @@ try {
   const initialized = await app.inject({ method: "GET", url: "/api/villages" });
   assert.equal(initialized.statusCode, 200, initialized.body);
   assert.equal(modelCalls, 0, "Calendar preparation is provider-free");
+  const beforeInvalidNavigation = clone(records);
+  const missingZone = await app.inject({
+    method: "POST",
+    url: "/api/villages/rooms/zone",
+    payload: { sessionId: scene.id, privateSpaceId: "common", expectedSceneRevision: state().sceneRevision },
+  });
+  assert.equal(missingZone.statusCode, 400, "Zone movement requires its native Zone ID");
+  const retiredEntry = await app.inject({
+    method: "POST",
+    url: "/api/villages/rooms/enter-private",
+    payload: { sessionId: scene.id, ownerId: "a", expectedSceneRevision: state().sceneRevision },
+  });
+  assert.equal(retiredEntry.statusCode, 404, "The retired owner-targeted movement route is absent");
+  assert.equal(modelCalls, 0);
+  assert.deepEqual(records, beforeInvalidNavigation, "Unsupported navigation performs no writes or requests");
   editFixtureScene((saved) => {
     saved.continuity = captureSceneContinuity(
       fixtureVillageState(records.get("villages-village").data, records),
