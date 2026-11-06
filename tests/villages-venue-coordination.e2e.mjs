@@ -163,6 +163,7 @@ await withBrowser(browser, async () => {
                 },
               );
               record.data.submissions.push({
+                mode: "chat",
                 id: body.submissionId,
                 activeIdsAtTurn: ["mara"],
                 activeIdsAfterTurn: ["mara"],

@@ -1367,7 +1367,7 @@ export function createSceneCommands({
   type VenueTurnInput = {
     sessionId: string;
     message: string;
-    mode: "chat" | "ask" | "fulfill" | "act" | "leave" | "contact";
+    mode: "chat" | "leave" | "contact";
     contact?: ContactIntent;
     targetId: string;
     submissionId: string;
@@ -1376,8 +1376,9 @@ export function createSceneCommands({
     replaceOfOperationId?: string;
   };
 
-  function matchesSavedTurnMode(turn: VenueSubmission, mode: VenueTurnInput["mode"]) {
-    return (turn.requestMode ?? turn.mode) === mode;
+  function assertSceneTurnMode(mode: unknown): asserts mode is VenueTurnInput["mode"] {
+    if (mode !== "chat" && mode !== "contact" && mode !== "leave")
+      throw conflict("Unsupported Scene action. Its saved request is preserved.");
   }
 
   function venueTurnPayload(scene: VenueScene, input: VenueTurnInput) {
@@ -1403,6 +1404,7 @@ export function createSceneCommands({
   }
 
   async function sendVenueTurn(input: VenueTurnInput) {
+    assertSceneTurnMode(input.mode);
     const rejected = await readSession(input.sessionId);
     if (rejectedSubmission(rejected, input.submissionId, input)) {
       if (rejected.operation?.id === input.submissionId && rejected.operation.status !== "complete")
@@ -1425,10 +1427,7 @@ export function createSceneCommands({
     const payload = venueTurnPayload(scene, input);
     if (prior && JSON.stringify(prior.contact ?? null) !== JSON.stringify(input.contact ?? null))
       throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID belongs to a different contact attempt.");
-    if (
-      prior &&
-      (prior.message !== input.message || !matchesSavedTurnMode(prior, input.mode) || prior.targetId !== input.targetId)
-    )
+    if (prior && (prior.message !== input.message || prior.mode !== input.mode || prior.targetId !== input.targetId))
       throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID belongs to a different line.");
     return coordinateVenue(
       input.sessionId,
@@ -1496,7 +1495,6 @@ export function createSceneCommands({
     let session = await readSession(input.sessionId);
     if (rejectedSubmission(session, input.submissionId, input))
       return unavailableTurnResult(session, input.submissionId);
-    const requestMode = input.mode === "act" || input.mode === "fulfill" ? input.mode : undefined;
     const prior = session.submissions.find((entry) => entry.id === input.submissionId);
     if (!prior && session.semanticVersion === 2) {
       await finishSemanticScene(session.id);
@@ -1504,11 +1502,7 @@ export function createSceneCommands({
       if (session.status === "closed") throw conflict("This Scene has concluded.");
     }
     if (prior) {
-      if (
-        prior.message !== input.message ||
-        !matchesSavedTurnMode(prior, input.mode) ||
-        prior.targetId !== input.targetId
-      )
+      if (prior.message !== input.message || prior.mode !== input.mode || prior.targetId !== input.targetId)
         throw conflict("That submission ID belongs to a different line.");
       await sceneNarrative?.settle(session, prior.narrativeSource);
       try {
@@ -1545,8 +1539,6 @@ export function createSceneCommands({
     session = await requireLiveVenueSession(session.id);
     const blocker = semanticBlocker(session);
     if (blocker) throw conflict(blocker);
-    // Act and Fulfill aliases use the current Chat interpretation.
-    if (requestMode) input = { ...input, mode: "chat" };
     const admitted = venueOperationSnapshot<unknown>();
     if (admitted)
       session = { ...(await createSceneHistory(villagesDocuments()).decode(admitted)), operation: session.operation };
@@ -1754,7 +1746,6 @@ export function createSceneCommands({
           ...{ zoneEventsVersion: 1 as const },
           message: input.message,
           mode: input.mode,
-          ...(requestMode ? { requestMode } : {}),
           targetId: input.targetId,
           ...(input.contact ? { contact: input.contact } : {}),
           ...{},
@@ -3020,6 +3011,7 @@ export function createSceneCommands({
           { recovery: true },
         );
       if (operation.kind === "turn") {
+        assertSceneTurnMode(operation.input.mode);
         const input = { ...operation.input, sessionId: id, submissionId: operation.id } as VenueTurnInput;
         return coordinateVenue(
           id,

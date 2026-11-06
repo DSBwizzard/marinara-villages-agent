@@ -27,7 +27,10 @@ await runCase("scene-retirement/eligibility", () => {
   const closed = coerceSession({ version: 4, id: "scene", villageSeed: world.seed, status: "closed" });
   assert.equal(sceneRetirementSourceIsValid(closed), true);
   assert.equal(
-    sceneRetirementSourceIsValid({ ...closed, submissions: [{ id: "turn", processing: { version: 99 } }] }),
+    sceneRetirementSourceIsValid({
+      ...closed,
+      submissions: [{ mode: "chat", id: "turn", processing: { version: 99 } }],
+    }),
     false,
   );
   assert.equal(sceneRetirementSourceIsValid({ ...closed, lines: null }), false);
@@ -45,13 +48,16 @@ await runCase("scene-retirement/eligibility", () => {
       }),
       false,
     );
-  assert.equal(sceneRetirementSourceIsValid({ ...closed, submissions: [{ id: "t", at: "invalid" }] }), false);
+  assert.equal(
+    sceneRetirementSourceIsValid({ ...closed, submissions: [{ mode: "chat", id: "t", at: "invalid" }] }),
+    false,
+  );
   assert.equal(
     sceneRetirementSourceIsValid({
       ...closed,
       submissions: [
-        { id: "t", at: "2026-01-01" },
-        { id: "t", at: "2026-01-01" },
+        { mode: "chat", id: "t", at: "2026-01-01" },
+        { mode: "chat", id: "t", at: "2026-01-01" },
       ],
     }),
     false,
@@ -297,12 +303,11 @@ await runCase("scene-retirement/terminal", () => {
   assert.deepEqual(terminal.abandonedRequest, { id: "old", kind: "turn", attemptId: "old-attempt" });
   assert.ok(!JSON.stringify(terminal).includes("private"));
   assert.throws(() => terminalForScene({ ...scene, status: "active" }, 1), /not ready/);
-  for (const mode of ["act", "fulfill", "leave", "contact"] as const) {
+  for (const mode of ["chat", "leave", "contact"] as const) {
     const turn = {
       ...scene.submissions[0],
       id: mode,
-      mode: mode === "act" || mode === "fulfill" ? ("chat" as const) : mode,
-      requestMode: mode === "act" || mode === "fulfill" ? mode : undefined,
+      mode,
     };
     const hash = terminalForScene({ ...scene, submissions: [turn] }, 1).submissions[0].inputHash;
     assert.equal(

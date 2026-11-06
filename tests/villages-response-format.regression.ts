@@ -254,7 +254,7 @@ async function main() {
     makeSaved("saved-paid", "complete", priorHash);
     const paidScene = rows.get("villages-venue-visit-saved-paid").data;
     paidScene.operation.attempts["turn:0:" + formatHash] = { status: "rejected" };
-    paidScene.submissions = [{ id: "saved-paid" }];
+    paidScene.submissions = [{ mode: "chat", id: "saved-paid" }];
     output = "not JSON";
     const beforePaid = calls;
     await assert.rejects(

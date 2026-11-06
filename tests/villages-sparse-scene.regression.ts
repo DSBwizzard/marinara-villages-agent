@@ -333,8 +333,8 @@ for (const supplied of [
   const floodedScene = {
     lines: [preference, correction, ...flooded],
     submissions: [
-      { message: topic, replyLineIds: ["topic-68"] },
-      { message: topic, replyLineIds: ["topic-69"] },
+      { mode: "chat", message: topic, replyLineIds: ["topic-68"] },
+      { mode: "chat", message: topic, replyLineIds: ["topic-69"] },
     ],
   };
   const focused = sceneWritingHistory(
@@ -351,7 +351,7 @@ for (const supplied of [
   const contextual = line("older-detail", "The larch workshop uses the scarlet dovetail pattern.");
   const contextScene = {
     lines: [contextual, ...filler, line("followup", "The scarlet dovetail pattern.")],
-    submissions: [{ message: "scarlet dovetail", replyLineIds: ["followup"] }],
+    submissions: [{ mode: "chat", message: "scarlet dovetail", replyLineIds: ["followup"] }],
   };
   const followup = sceneWritingHistory(contextScene as any, contextScene.lines as any, "?", ["rosa"]);
   assert(
@@ -448,6 +448,7 @@ for (const supplied of [
       lines: [],
       submissions: [
         {
+          mode: "chat",
           zoneEventsVersion: 1,
           effectFailures: {
             projects: {

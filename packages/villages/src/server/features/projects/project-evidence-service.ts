@@ -154,7 +154,7 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
     return visits
       .flatMap((visit) =>
         visit.submissions.flatMap((submission) => {
-          if (!["greet", "chat", "ask", "leave"].includes(submission.mode) || !submission.at) return [];
+          if (!["chat", "leave"].includes(submission.mode) || !submission.at) return [];
           const lines = visit.lines.filter((line) =>
             submission.replyLineIds?.length
               ? submission.replyLineIds.includes(line.id) && projectSpeakerAtTurn(submission, line)

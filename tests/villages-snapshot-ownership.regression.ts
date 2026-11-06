@@ -186,7 +186,7 @@ async function main() {
     lines: [],
     submissions: [],
   });
-  scene.submissions.push({ id: "late", changeSequence: 1, semanticReady: false } as any);
+  scene.submissions.push({ mode: "chat", id: "late", changeSequence: 1, semanticReady: false } as any);
   marker.setScene(scene);
   marker.world.foundingPreparation = { status: "ready", completedIds: [], currentId: "", error: "" };
   assert.equal(

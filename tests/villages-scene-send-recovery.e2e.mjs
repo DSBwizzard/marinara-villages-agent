@@ -263,7 +263,7 @@ await withBrowser(browser, async () => {
             at: now,
           },
         );
-        session.submissions.push({ id: input.submissionId });
+        session.submissions.push({ mode: "chat", id: input.submissionId });
         session.sceneRevision++;
         session.operation = null;
         if (loseSuccessResponse) {
@@ -307,7 +307,8 @@ await withBrowser(browser, async () => {
     };
     const composer = page.getByRole("textbox", { name: "Message at The Mill" });
     const send = page.getByRole("button", { name: "Send", exact: true });
-    for (const mode of ["contact", "fulfill"]) {
+    {
+      const mode = "contact";
       for (const edit of [false, true]) {
         for (const status of ["interrupted", "complete"]) {
           const message = `Saved ${mode} action`;
@@ -320,8 +321,6 @@ await withBrowser(browser, async () => {
                   contact: {
                     kind: "call",
                     boundaryZoneId: "interior",
-                    delivery: "device",
-                    deviceFeatureId: "old-intercom",
                   },
                 }
               : {}),
@@ -337,9 +336,7 @@ await withBrowser(browser, async () => {
           const before = turns.length;
           await load();
           await expect(composer).toHaveValue(message);
-          await expect(
-            page.getByText(new RegExp(`Saved ${mode === "contact" ? "Contact" : "Fulfill"} action`)),
-          ).toBeVisible();
+          await expect(page.getByText(/Saved Contact action/)).toBeVisible();
           assert.equal(turns.length, before, "restoration never sends a request");
           if (edit) await composer.fill(message + " changed");
           await expect(send).toBeDisabled();
@@ -458,10 +455,15 @@ await withBrowser(browser, async () => {
       status: "interrupted",
       attemptId: "outcome-attempt",
       error: "Interrupted",
-      input: { message: "Older saved request", mode: "fulfill", targetId: "mara" },
+      input: {
+        message: "Older saved request",
+        mode: "contact",
+        targetId: "mara",
+        contact: { kind: "call", boundaryZoneId: "interior" },
+      },
     };
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-    await expect(page.getByText(/Saved Fulfill action/)).toBeVisible();
+    await expect(page.getByText(/Saved Contact action/)).toBeVisible();
     occupancyUnavailable = true;
     await page.getByRole("button", { name: "Retry original action", exact: true }).click();
     await expect.poll(() => turns.length).toBe(beforeConflict + 1);

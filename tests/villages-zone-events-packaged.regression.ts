@@ -377,6 +377,28 @@ try {
   };
 
   const spoken = "We can discuss the harbour tomorrow.";
+  const beforeUnsupported = clone(state()),
+    callsBeforeUnsupported = modelCalls;
+  for (const mode of ["ask", "act", "fulfill", "unknown", "leave", null, undefined]) {
+    const refused = await app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/turn",
+      payload: { ...payload("unsupported-" + String(mode)), mode },
+    });
+    assert.equal(refused.statusCode, 400, refused.body);
+    assert.equal(modelCalls, callsBeforeUnsupported);
+    assert.deepEqual(state(), beforeUnsupported, "unsupported modes cannot admit or mutate a Scene");
+  }
+  answer = { input: [{ kind: "action", text: "*waits*" }], segments: [{ speakerId: "aqua", text: "I am here." }] };
+  const currentContact = await app.inject({
+    method: "POST",
+    url: "/api/villages/rooms/turn",
+    payload: { ...payload("current-contact"), mode: "contact", contact: { kind: "call", boundaryZoneId: "kitchen" } },
+  });
+  assert.equal(currentContact.statusCode, 200, currentContact.body);
+  assert.equal(state().submissions.at(-1).mode, "contact");
+  assert.equal(modelCalls, callsBeforeUnsupported + 1);
+  restore();
   await turn(
     "memory",
     [{ speakerId: "aqua", text: "Then let us talk about the harbour tomorrow." }],
