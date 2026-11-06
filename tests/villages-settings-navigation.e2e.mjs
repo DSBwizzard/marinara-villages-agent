@@ -11,7 +11,6 @@ import { snapshot as fixture } from "./fixtures/villages-scene-browser.fixture.m
 function initialSnapshot() {
   const snapshot = structuredClone(fixture);
   Object.assign(snapshot.settings, {
-    promptKnowledge: "Saved knowledge",
     playerPersonaId: "saved-persona",
     setting: "Saved setting",
     selectedLorebookIds: ["saved-book"],
@@ -46,8 +45,8 @@ const bundle = await build({
         setSiteProjectId:unused,setSettingsError:settings.setSettingsError});
       const save=useSaveSettings({...settings,snapshot,setBusy,setSnapshot,acceptSavedSettings:session.acceptSavedSettings});
       window.settingsHarness={settings,open,save:()=>{const promise=save(); (window.pendingSettingsSaves??=[]).push(promise); return promise;},setSnapshot,setBusy,loadPersonas,setSceneryStyle,setSceneryStyleProfileId,setPersonalizeHomes,setVenuesDraft};
-      return <pre id='state'>{JSON.stringify({knowledge:settings.knowledgeDraft,persona:settings.personaDraft,lore:settings.lorebookDraft,
-        budget:settings.loreTokenBudgetDraft,setting:settings.settingDraft,scenery:sceneryStyle,personalizeHomes,
+      return <pre id='state'>{JSON.stringify({persona:settings.personaDraft,lore:settings.lorebookDraft,
+        budget:settings.loreTokenBudgetDraft,scenery:sceneryStyle,personalizeHomes,
         venues:venuesDraft,founded:snapshot.isFounded,screen,menuPage,busy,error:settings.settingsError,personas:personas.length})}</pre>;
     }
     const root=createRoot(document.getElementById('root'));
@@ -105,11 +104,10 @@ async function checkHooks(width) {
   };
   await open("village");
   assert.equal((await state()).personas, 0, "Settings no longer loads Persona choices");
-  assert.equal((await state()).knowledge, "Saved knowledge");
+  assert.equal((await state()).lore[0], "saved-book");
   assert.equal((await state()).persona, "saved-persona");
   await call(() => {
     const h = window.settingsHarness;
-    h.settings.setKnowledgeDraft("Retained unsaved knowledge");
     h.settings.setPersonaDraft("");
     h.settings.setLorebookDraft(["edited-book"]);
     h.setSceneryStyle("Retained scenery");
@@ -118,12 +116,12 @@ async function checkHooks(width) {
       current.map((venue, index) => (index ? venue : { ...venue, name: "Retained Venue draft" })),
     );
   });
-  await expect.poll(async () => (await state()).knowledge).toBe("Retained unsaved knowledge");
+  await expect.poll(async () => (await state()).lore[0]).toBe("edited-book");
   for (let i = 0; i < 2; i++) {
     await open("index");
     await open("village");
   }
-  assert.equal((await state()).knowledge, "Retained unsaved knowledge");
+  assert.equal((await state()).lore[0], "edited-book");
   assert.equal((await state()).persona, "", "catalog loading must preserve an explicit None selection");
   assert.deepEqual((await state()).lore, ["edited-book"]);
   assert.equal((await state()).scenery, "Retained scenery");
@@ -134,20 +132,14 @@ async function checkHooks(width) {
   const changed = structuredClone(snapshot);
   Object.assign(changed.settings, {
     setting: "Updated saved setting",
-    promptKnowledge: "Externally saved knowledge",
     loreTokenBudget: 2200,
   });
   await page.evaluate((next) => window.settingsHarness.setSnapshot(next), changed);
-  assert.equal(
-    (await state()).knowledge,
-    "Retained unsaved knowledge",
-    "an incoming snapshot cannot reseed an open form",
-  );
+  assert.equal((await state()).lore[0], "edited-book", "an incoming snapshot cannot reseed an open form");
   await open("index");
   await open("village");
-  assert.equal((await state()).setting, "Updated saved setting");
   assert.equal((await state()).budget, 2200, "untouched fields refresh on reopening");
-  assert.equal((await state()).knowledge, "Retained unsaved knowledge");
+  assert.equal((await state()).lore[0], "edited-book");
 
   await call(() => void window.settingsHarness.save());
   await expect.poll(() => requests.length).toBe(1);
@@ -156,32 +148,27 @@ async function checkHooks(width) {
     loreTokenBudget: 2200,
   });
   await call(() => {
-    window.settingsHarness.settings.setKnowledgeDraft("Newer edit during save");
+    window.settingsHarness.settings.setLorebookDraft(["newer-book"]);
   });
   const saved = structuredClone(changed);
   Object.assign(saved.settings, {
-    promptKnowledge: "Canonical saved knowledge",
     playerPersonaId: "",
     selectedLorebookIds: ["canonical-book"],
     loreTokenBudget: 2300,
   });
   await respond(0, saved);
-  assert.equal(
-    (await state()).knowledge,
-    "Newer edit during save",
-    "a completed save cannot overwrite a newer field edit",
-  );
-  assert.deepEqual((await state()).lore, ["canonical-book"]);
+  assert.equal((await state()).lore[0], "newer-book", "a completed save cannot overwrite a newer field edit");
+  assert.deepEqual((await state()).lore, ["newer-book"]);
   assert.equal((await state()).budget, 2300);
   await open("index");
   await open("village");
-  assert.equal((await state()).knowledge, "Newer edit during save");
+  assert.equal((await state()).lore[0], "newer-book");
   assert.equal((await state()).scenery, "Retained scenery");
 
   await call(() => void window.settingsHarness.save());
   await expect.poll(() => requests.length).toBe(2);
   await respond(1, { error: "Settings unavailable" }, 500);
-  assert.equal((await state()).knowledge, "Newer edit during save");
+  assert.equal((await state()).lore[0], "newer-book");
   assert.match((await state()).error, /Settings unavailable/);
   assert.equal(requests.length, 2, "failure does not retry the request");
 
@@ -196,11 +183,11 @@ async function checkHooks(width) {
     await expect.poll(() => requests.length).toBe(requestIndex + 1);
     return { requestIndex, saveIndex };
   };
-  const replaceWorld = async (knowledge) => {
+  const replaceWorld = async (book) => {
     await page.evaluate((next) => window.settingsHarness.setSnapshot(next), reset);
     await expect.poll(async () => (await state()).founded).toBe(false);
     const next = structuredClone(snapshot);
-    next.settings.promptKnowledge = knowledge;
+    next.settings.selectedLorebookIds = [book];
     await page.evaluate((next) => window.settingsHarness.setSnapshot(next), next);
     await expect.poll(async () => (await state()).founded).toBe(true);
     await open("index");
@@ -218,11 +205,7 @@ async function checkHooks(width) {
   await call(() => window.settingsHarness.settings.setSettingsError("Reset owner marker"));
   await respond(held.requestIndex, saved, 200, held.saveIndex, false);
   assert.equal((await state()).founded, false, "a retired save cannot restore the reset world");
-  assert.equal(
-    (await state()).knowledge,
-    "Newer edit during save",
-    "a retired save cannot acknowledge old draft fields",
-  );
+  assert.equal((await state()).lore[0], "newer-book", "a retired save cannot acknowledge old draft fields");
   assert.equal((await state()).error, "Reset owner marker");
   assert.equal((await state()).busy, true, "a retired save cannot clear another operation busy state");
   await call(() => window.settingsHarness.setBusy(false));
@@ -240,13 +223,13 @@ async function checkHooks(width) {
       a.saveIndex,
       false,
     );
-    assert.equal((await state()).knowledge, "World B");
+    assert.equal((await state()).lore[0], "World B");
     assert.equal((await state()).error, "World B marker");
     assert.equal((await state()).busy, true, "old completion cannot release the newer pending save");
     const accepted = structuredClone(bSnapshot);
-    accepted.settings.promptKnowledge = "World B canonical";
+    accepted.settings.selectedLorebookIds = ["World B canonical"];
     await respond(b.requestIndex, accepted, 200, b.saveIndex);
-    assert.equal((await state()).knowledge, "World B canonical");
+    assert.equal((await state()).lore[0], "World B canonical");
     const before = requests.length;
     await call(() => void window.settingsHarness.save());
     await expect.poll(() => requests.length).toBe(before + 1);
@@ -261,22 +244,22 @@ async function checkHooks(width) {
   await open("village");
   const remounted = await beginSave();
   await respond(disposed.requestIndex, saved, 200, disposed.saveIndex, false);
-  assert.equal((await state()).knowledge, "Saved knowledge");
+  assert.equal((await state()).lore[0], "saved-book");
   assert.equal((await state()).busy, true, "disposal cleanup cannot release the remounted save");
   await respond(remounted.requestIndex, snapshot, 200, remounted.saveIndex);
 
   await page.evaluate((next) => window.settingsHarness.setSnapshot(next), reset);
   await open("index");
   const newWorld = structuredClone(snapshot);
-  newWorld.settings.promptKnowledge = "New world knowledge";
+  newWorld.settings.selectedLorebookIds = ["New world book"];
   await page.evaluate((next) => window.settingsHarness.setSnapshot(next), newWorld);
   await open("village");
-  assert.equal((await state()).knowledge, "New world knowledge", "reset retires the former draft baseline");
+  assert.equal((await state()).lore[0], "New world book", "reset retires the former draft baseline");
   await call(() => window.unmountSettings());
   await expect(page.locator("#state")).toHaveCount(0);
   await call(() => window.mountSettings());
   await open("village");
-  assert.equal((await state()).knowledge, "Saved knowledge", "unmount/reload starts a fresh draft session");
+  assert.equal((await state()).lore[0], "saved-book", "unmount/reload starts a fresh draft session");
   await call(() => window.settingsHarness.settings.setPersonaDraft(""));
   await call(() => window.settingsHarness.loadPersonas());
   await expect

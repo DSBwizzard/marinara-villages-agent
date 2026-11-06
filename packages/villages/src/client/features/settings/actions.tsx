@@ -5,28 +5,24 @@ import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import type { SavedSettingsDraft } from "./draft-session.js";
 
 export function useSaveSettings(ports: {
-  knowledgeDraft: string;
   lorebookDraft: string[];
   loreTokenBudgetDraft: number;
   personaDraft: string;
   setBusy: React.Dispatch<SetStateAction<boolean>>;
   setSettingsError: React.Dispatch<SetStateAction<string>>;
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
-  settingDraft: string;
   acceptSavedSettings: (next: VillageSnapshot, submitted: SavedSettingsDraft) => void;
   snapshot: VillageSnapshot | null;
 }) {
   const { snapshot } = ports;
 
   const {
-    knowledgeDraft,
     lorebookDraft,
     loreTokenBudgetDraft,
     personaDraft,
     setBusy,
     setSettingsError,
     setSnapshot,
-    settingDraft,
     acceptSavedSettings,
   } = ports;
   const lifetime = useVillageMutationLifetime(snapshot?.isFounded, setBusy);
@@ -46,9 +42,7 @@ export function useSaveSettings(ports: {
       if (!lifetime.owns(claim)) return;
       setSnapshot(saved);
       acceptSavedSettings(saved, {
-        knowledgeDraft,
         personaDraft,
-        settingDraft,
         lorebookDraft,
         loreTokenBudgetDraft,
       });
@@ -61,9 +55,7 @@ export function useSaveSettings(ports: {
     lifetime,
     setBusy,
     setSettingsError,
-    knowledgeDraft,
     personaDraft,
-    settingDraft,
     lorebookDraft,
     loreTokenBudgetDraft,
     setSnapshot,

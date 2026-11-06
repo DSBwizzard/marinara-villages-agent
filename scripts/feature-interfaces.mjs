@@ -100,7 +100,6 @@ export const serverFeatureInterfaces = Object.freeze({
   "settings/interpretation-settings.ts": ["readInterpretationSettings", "saveInterpretationSettings"],
   "settings/personas.ts": ["readLinkedPersona", "buildVillagePersonaCatalog", "readVillagePersonaPreview"],
   "settings/village-settings.ts": [
-    "setVillagePromptKnowledge",
     "setVillageLoreSettings",
     "setVillageBackgroundPace",
     "setVillageSpriteCardFlipEnabled",

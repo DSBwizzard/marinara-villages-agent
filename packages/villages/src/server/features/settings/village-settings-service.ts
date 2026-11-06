@@ -5,7 +5,7 @@ import { badRequest } from "../../domain/rules/errors.js";
 import { readLoreTokenBudget, readSelectedLorebookIds } from "../../domain/rules/lore-policy.js";
 import { readSceneryStyle } from "../../domain/rules/scenery-context.js";
 import { readBool } from "../../domain/rules/village-projections.js";
-import { readPromptBox, readVillageName } from "../../domain/rules/world-input.js";
+import { readVillageName } from "../../domain/rules/world-input.js";
 
 export interface VillageSettingsPorts {
   mutateVillageState(update: (state: VillageState) => void): Promise<VillageState>;
@@ -21,15 +21,6 @@ export function createVillageSettings({
   readLinkedPersona,
   activityChanged,
 }: VillageSettingsPorts) {
-  /** Store the box: what a villager in this village knows. */
-  async function setVillagePromptKnowledge(value: unknown): Promise<VillageSnapshot> {
-    const text = readPromptBox(value, "The information villagers know");
-    await mutateVillageState((state) => {
-      state.promptKnowledge = text;
-    });
-    return buildVillageSnapshot();
-  }
-
   async function setVillageLoreSettings(idsValue?: unknown, budgetValue?: unknown): Promise<VillageSnapshot> {
     const ids = idsValue === undefined ? undefined : readSelectedLorebookIds(idsValue);
     const budget = budgetValue === undefined ? undefined : readLoreTokenBudget(budgetValue);
@@ -184,7 +175,6 @@ export function createVillageSettings({
   }
 
   return {
-    setVillagePromptKnowledge,
     setVillageLoreSettings,
     setVillageBackgroundPace,
     setVillageNarrativeConsequence,

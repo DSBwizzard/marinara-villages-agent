@@ -37,10 +37,7 @@ import {
   TOWN_MAP_ZOOM_MAX,
   TOWN_MAP_ZOOM_MIN,
   TOWN_MAP_ZOOM_STEP,
-  VILLAGE_PRESET_MACROS,
-  VILLAGES_DEFAULT_KNOWLEDGE,
   VILLAGES_GALLERY_FOLDER_NAME,
-  VILLAGES_PROMPT_BOX_MAX_LENGTH,
 } from "./prompt-preset.js";
 import { relationshipZoneController } from "./relationship-rules.js";
 import { DEFAULT_TOWN_MAP_LAYOUT_PROMPT, DEFAULT_TOWN_MAP_NEGATIVE_PROMPT } from "./town-map-prompts.js";
@@ -169,7 +166,6 @@ export function villageSettings(
   now = new Date(),
 ): VillageSettingsView {
   return {
-    promptKnowledge: village.promptKnowledge,
     foundingLore: [
       ...village.villagers.flatMap((resident) =>
         (["routine", "wish"] as const).map((kind) => ({
@@ -184,9 +180,6 @@ export function villageSettings(
           .map((zone) => ({ label: `${venue.name} · ${zone.name}`, entries: readLoreUse(zone.preparation?.lore) })),
       ),
     ].filter((row) => row.entries.length),
-    defaultPromptKnowledge: VILLAGES_DEFAULT_KNOWLEDGE,
-    promptBoxMaxLength: VILLAGES_PROMPT_BOX_MAX_LENGTH,
-    macros: VILLAGE_PRESET_MACROS,
     backgroundPace: village.backgroundPace,
     narrativeConsequence: village.narrativeConsequence ?? "gentle",
     backgroundPaces: ["off", "quiet", "balanced", "lively"],

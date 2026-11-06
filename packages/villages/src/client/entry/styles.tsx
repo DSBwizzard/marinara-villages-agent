@@ -809,14 +809,6 @@ ${LORE_ACTIVITY_STYLES}
   padding: .4375rem .5rem; font-size: .6875rem; line-height: 1.55;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
-.${ELEMENT_TAG}-macros { display: flex; flex-wrap: wrap; gap: .375rem; margin-top: .5rem; }
-.${ELEMENT_TAG}-macro {
-  border: 1px solid var(--border); border-radius: .375rem;
-  background: var(--background); color: var(--foreground);
-  padding: .1875rem .4375rem; cursor: pointer;
-  font-size: .625rem; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-.${ELEMENT_TAG}-macro:hover { border-color: var(--primary); color: var(--primary); }
 .${ELEMENT_TAG}-macro-help { margin: .5rem 0 0; font-size: .625rem; line-height: 1.55; color: var(--muted-foreground); }
 
 .${ELEMENT_TAG}-off { opacity: .5; }
@@ -1668,7 +1660,6 @@ ${ELEMENT_TAG} {
   .${ELEMENT_TAG}-select,
   .${ELEMENT_TAG}-search,
   .${ELEMENT_TAG}-notice-input,
-  .${ELEMENT_TAG}-macro,
   .${ELEMENT_TAG}-chat-mode-button,
   .${ELEMENT_TAG}-chat-send,
   .${ELEMENT_TAG}-step[data-clickable="true"],

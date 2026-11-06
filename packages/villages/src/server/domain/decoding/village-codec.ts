@@ -82,7 +82,6 @@ import {
   TOWN_MAP_FOCUS_MIN,
   TOWN_MAP_ZOOM_MAX,
   TOWN_MAP_ZOOM_MIN,
-  VILLAGES_PROMPT_BOX_MAX_LENGTH,
 } from "../rules/prompt-preset.js";
 import { localDateKey } from "../rules/resident-planning.js";
 
@@ -169,7 +168,6 @@ export function defaultVillageState(): VillageState {
     // and is applied at render time, so improving it reaches villages that never
     // touched the setting. An empty box is what the renderer reads as "this
     // village has written nothing" and answers with the shipped text.
-    promptKnowledge: "",
     // The resolved pair: written by nothing here, filled from the Persona's
     // cached copy by whatever code is about to build a prompt. Empty is a
     // village with nothing linked, and the renderer answers it with "the
@@ -1777,7 +1775,6 @@ export function coerceVillageState(value: unknown): VillageState {
     //
     // The old `promptVoice` and `promptPreset` keys remain unread. Live venue
     // writing now reads the per-village narrationStyle above.
-    promptKnowledge: asString(raw.promptKnowledge).slice(0, VILLAGES_PROMPT_BOX_MAX_LENGTH),
     // Read as empty, always. These two used to be the player's own typed name and
     // description, and a record that still carries them keeps them as unread
     // keys until its next write drops them: the coercer returns a fresh object,
