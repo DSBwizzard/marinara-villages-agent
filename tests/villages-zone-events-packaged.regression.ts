@@ -358,6 +358,10 @@ async function restart() {
 }
 try {
   await start();
+  // Prepare the synthetic world through the installed Village calendar before saving its baseline.
+  const initialized = await app.inject({ method: "GET", url: "/api/villages" });
+  assert.equal(initialized.statusCode, 200, initialized.body);
+  assert.equal(modelCalls, 0, "Calendar preparation is provider-free");
   editFixtureScene((saved) => {
     saved.continuity = captureSceneContinuity(
       fixtureVillageState(records.get("villages-village").data, records),
