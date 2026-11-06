@@ -231,7 +231,7 @@ await runCase("places/scene-replay", () => {
     99,
     "decoder never modifies rejected bytes",
   );
-  scene.submissions.push({ id: "turn" } as any);
+  scene.submissions.push({ mode: "chat", id: "turn" } as any);
   zone.description = "Unrelated later renovation.";
   zone.state.revision++;
   const before = structuredClone(state);

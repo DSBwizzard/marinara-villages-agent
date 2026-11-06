@@ -264,7 +264,7 @@ window.mount();
         true,
       );
       Object.assign(scene.lines[2], { role: "user", speakerId: "", name: "Player" });
-      scene.submissions = [{ id: "owned-request", replyLineIds: ["owned-3", "owned-4"] }];
+      scene.submissions = [{ mode: "chat", id: "owned-request", replyLineIds: ["owned-3", "owned-4"] }];
       window.r.publish(scene);
     });
     await expect(text).toHaveText("Reply first.");

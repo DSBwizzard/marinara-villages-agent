@@ -296,7 +296,7 @@ assert.equal(
   ])
     assert.throws(() => residentMovementUnavailable(bad, intent, state, saved), /interpretation is incomplete/);
   assert.deepEqual(saved, before, "request review never changes attendance or fictional state");
-  const submitted = { message: "Come here. Also fold the cloth.", mode: "act", targetId: "" };
+  const submitted = { message: "Come here. Also fold the cloth.", mode: "chat", targetId: "" };
   saved.rejectedSubmissions = [
     { id: "blocked", inputHash: rejectedInputHash(submitted), sceneRevision: 0, turnOutcome: "occupancy-unavailable" },
   ];
@@ -413,7 +413,7 @@ state.venueEvents.push({
   at: stamp,
   actionReceipt: { ...red, happened: true, submissionId: "red", witnessIds: ids.slice(0, 4), after },
 });
-scene.submissions.push({ id: "red" } as any);
+scene.submissions.push({ mode: "chat", id: "red" } as any);
 paint.description = "A yellow motorcycle.";
 paint.state.revision++;
 assert.equal(resolveVenueZone(sceneContinuityView(state, scene).venues[0], "a")!.description, "A red motorcycle.");
@@ -628,7 +628,7 @@ assert.equal(paint.description, "A yellow motorcycle.", "closing never replays a
     liveAfter: { connection: "Close friends", stance: "", expectations: [], concerns: [], records: [] },
     at: stamp,
   } as any;
-  saved.submissions.push({ id: "friendship-turn" } as any);
+  saved.submissions.push({ mode: "chat", id: "friendship-turn" } as any);
   assert.equal(contactCanEnter(state, venue, "b", "player", saved), false, "Entry still requires explicit permission");
 }
 

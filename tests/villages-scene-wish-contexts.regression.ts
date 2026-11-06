@@ -114,7 +114,7 @@ try {
     "Publication keeps the detached descriptor actually validated",
   );
   await f.repository.changeSession(scene.id, (value) =>
-    value.submissions.push({ id: "captured", message: "Exact capture", wishContexts: saved } as any),
+    value.submissions.push({ mode: "chat", id: "captured", message: "Exact capture", wishContexts: saved } as any),
   );
   const native = f.rows.get("villages-venue-visit-" + scene.id).data,
     foreign = structuredClone(native);
@@ -155,11 +155,11 @@ try {
       wishes: row.wishes,
     }));
     await f.repository.changeSession(scene.id, (value) =>
-      value.submissions.push({ id: "older-ab", message: "Both", wishContexts: owners } as any),
+      value.submissions.push({ mode: "chat", id: "older-ab", message: "Both", wishContexts: owners } as any),
     );
     const next = { ...owners[0], wishes: [{ ...owners[0].wishes[0], wish: "Latest A" }] };
     await f.repository.changeSession(scene.id, (value) =>
-      value.submissions.push({ id: "latest-a", message: "A", wishContexts: [next] } as any),
+      value.submissions.push({ mode: "chat", id: "latest-a", message: "A", wishContexts: [next] } as any),
     );
     const current = await f.repository.readSession(scene.id),
       latest = current.submissions[1].wishContexts!;
@@ -172,6 +172,7 @@ try {
     };
     await f.repository.changeSession(scene.id, (value) =>
       value.submissions.push({
+        mode: "chat",
         id: "next-a",
         message: "Next A",
         wishContexts: [{ ...next, wishes: [{ ...next.wishes[0], wish: "Next exact A" }] }],
@@ -208,7 +209,7 @@ try {
   for (const [index, [wishId, text]] of changes.entries()) {
     const id = "effect:" + index,
       submissionId = "turn:" + index;
-    scene.submissions.push({ id: submissionId } as any);
+    scene.submissions.push({ mode: "chat", id: submissionId } as any);
     world.exchangeReceipts[id] = {
       id,
       sceneId: scene.id,
@@ -294,7 +295,7 @@ try {
       wishes: [{ ...baseline.villagers[0].wishes[0], wish: "Exact Scene B" }, baseline.villagers[0].wishes[1]],
     };
     await f.repository.changeSession(id, (value) =>
-      value.submissions.push({ id: "turn:0", message: "First capture", wishContexts: [owner] } as any),
+      value.submissions.push({ mode: "chat", id: "turn:0", message: "First capture", wishContexts: [owner] } as any),
     );
     await repository.mutateAuthority((state) => {
       state.exchangeReceipts["capture-effect"] = {
@@ -316,6 +317,7 @@ try {
     );
     await f.repository.changeSession(archived.id, (value) =>
       value.submissions.push({
+        mode: "chat",
         id: "archived-turn",
         message: "Earlier independent capture",
         wishContexts: [
@@ -385,7 +387,12 @@ try {
         });
         owner = { ...owner, wishes: immutableSocialWishes([wish, owner.wishes[1]]) };
         await f.repository.changeSession(id, (value) =>
-          value.submissions.push({ id: "turn:" + index, message: "Next capture", wishContexts: [owner] } as any),
+          value.submissions.push({
+            mode: "chat",
+            id: "turn:" + index,
+            message: "Next capture",
+            wishContexts: [owner],
+          } as any),
         );
         const io = f.metrics();
         maxRead = Math.max(maxRead, io.readBytes);

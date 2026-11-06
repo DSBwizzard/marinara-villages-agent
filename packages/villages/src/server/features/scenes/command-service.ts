@@ -84,7 +84,6 @@ import {
 } from "../../domain/rules/venue-scene-state.js";
 import {
   canInviteToZone,
-  canOccupyZone,
   legacyZoneId,
   resolveVenueZone,
   venueInZone,
@@ -648,6 +647,7 @@ export function createSceneCommands({
       venue = location && sceneLayoutVenue(location, session);
     const zone = venue && resolveVenueZone(venue, zoneId);
     if (!venue || !zone) throw notFound("That zone is not in this Venue.");
+    if (!venue.access) throw conflict("That Place has no native access record.");
     if (session.zoneId === zone.id)
       return changeSession(sessionId, (state) => {
         state.navigationReceipts ??= [];
@@ -660,34 +660,9 @@ export function createSceneCommands({
       });
     if (zoneClosed(village, venue, zone)) throw conflict("This zone is closed for Renovation.");
     const accompanying = sceneMoveAccompanying(session, venue, zone);
-    const savedInvitation = asRecord(session.operation?.checkpoints["move-invitation"]);
-    const recoveredPermission =
-      typeof savedInvitation.sourceLineId === "string" &&
-      venue.usedInvitationIds?.includes(savedInvitation.sourceLineId) &&
-      savedInvitation.zoneId === zone.id &&
-      typeof savedInvitation.residentId === "string";
-    const routingVenue = recoveredPermission
-      ? {
-          ...venue,
-          playerInvitations: [
-            ...(venue.playerInvitations ?? []),
-            savedInvitation as NonNullable<VillageVenue["playerInvitations"]>[number],
-          ],
-        }
-      : venue;
-    const routingScene = recoveredPermission
-      ? {
-          ...session,
-          grantedZoneIds: [...new Set([...(session.grantedZoneIds ?? []), zone.id])],
-          zoneGrants: [
-            ...(session.zoneGrants ?? []),
-            { zoneId: zone.id, controllerId: String(savedInvitation.residentId) },
-          ],
-        }
-      : session;
     if (
-      !contactPath(village, routingVenue, session.zoneId ?? "exterior", zone.id, "player", {
-        ...routingScene,
+      !contactPath(village, venue, session.zoneId ?? "exterior", zone.id, "player", {
+        ...session,
         accompanying,
       })
     )
@@ -698,90 +673,37 @@ export function createSceneCommands({
     if (people.filter((person) => !person.characterId.startsWith("npc:")).length > 4)
       throw conflict("Five residents occupy this Zone in the Scene. Choose another Zone.");
     let controllerId = "";
-    const priorGrant = session.zoneGrants?.find((grant) => grant.zoneId === zone.id);
     if (session.dismissedZoneIds?.includes(zone.id))
       throw conflict("Permission for this Zone was withdrawn during this Scene. Its controller can invite you again.");
-    const revokedGrant =
-      priorGrant &&
-      (!canInviteToZone(venue, zone, priorGrant.controllerId) ||
-        (priorGrant.source === "relationship" &&
-          !relationshipZoneController(village.relationshipContext, village, venue, zone, "player")));
     const ongoingController = relationshipZoneController(village.relationshipContext, village, venue, zone, "player");
     if (ongoingController) controllerId = ongoingController;
-    if (venue.access) {
-      const decision = evaluateZoneAccess(venue, zone, "player", {
-        ...sceneAccessContext({ ...session, accompanying }, village),
+    const decision = evaluateZoneAccess(venue, zone, "player", {
+      ...sceneAccessContext({ ...session, accompanying }, village),
+      accepting: true,
+      unavailable: zoneClosed(village, venue, zone),
+      environment: village.narrative,
+    });
+    if (!decision.allowed) throw conflict(decision.explanation);
+    await changeSceneVenues(session, (state) => {
+      const captured = findLocation(state, venue.id)!;
+      claimVisitPermission(captured, decision.permissionId, session.id);
+    });
+    await mutateVillageState((state) => {
+      const current = findLocation(state, venue.id);
+      const target = current && resolveVenueZone(current, zone.id);
+      if (!current || !target) return;
+      const decision = evaluateZoneAccess(current, target, "player", {
+        ...sceneAccessContext({ ...session, accompanying }, state),
         accepting: true,
-        unavailable: zoneClosed(village, venue, zone),
-        environment: village.narrative,
+        unavailable: zoneClosed(state, current, target),
+        environment: state.narrative,
       });
-      if (!decision.allowed) throw conflict(decision.explanation);
-      await changeSceneVenues(session, (state) => {
-        const captured = findLocation(state, venue.id)!;
-        claimVisitPermission(captured, decision.permissionId, session.id);
-      });
-      await mutateVillageState((state) => {
-        const current = findLocation(state, venue.id);
-        const target = current && resolveVenueZone(current, zone.id);
-        if (!current || !target) return;
-        const decision = evaluateZoneAccess(current, target, "player", {
-          ...sceneAccessContext({ ...session, accompanying }, state),
-          accepting: true,
-          unavailable: zoneClosed(state, current, target),
-          environment: state.narrative,
-        });
-        if (!decision.allowed) {
-          if (session.continuity) return;
-          throw conflict(decision.explanation);
-        }
-        claimVisitPermission(current, decision.permissionId, session.id);
-      });
-    } else if (
-      !canOccupyZone(venue, zone, "player") &&
-      !ongoingController &&
-      (!session.grantedZoneIds?.includes(zone.id) || revokedGrant)
-    ) {
-      const invitation = await venueCheckpoint("move-invitation", async () => {
-        const selected = venue.playerInvitations?.find(
-          (entry) => entry.zoneId === zone.id && canInviteToZone(venue, zone, entry.residentId),
-        );
-        if (!selected) throw conflict("This zone needs its controller's invitation.");
-        return selected;
-      });
-      controllerId = invitation.residentId;
-      await changeSceneVenues(session, (state) => {
-        const captured = findLocation(state, venue.id)!;
-        captured.playerInvitations = captured.playerInvitations?.filter(
-          (row) => row.sourceLineId !== invitation.sourceLineId,
-        );
-        captured.usedInvitationIds = [...new Set([...(captured.usedInvitationIds ?? []), invitation.sourceLineId])];
-      });
-      await mutateVillageState((state) => {
-        const current = findLocation(state, venue.id);
-        if (!current && session.continuity) return;
-        if (!current) throw conflict("This Venue is no longer here.");
-        const target = resolveVenueZone(current, zone.id);
-        if (!target || zoneClosed(state, current, target) || !canInviteToZone(current, target, invitation.residentId)) {
-          if (session.continuity) return;
-          throw conflict("This zone's invitation is no longer valid.");
-        }
-        // The Village receipt closes the crash gap between consuming access and committing the scene.
-        if (current.usedInvitationIds?.includes(invitation.sourceLineId)) return;
-        const index =
-          current.playerInvitations?.findIndex(
-            (entry) =>
-              entry.zoneId === zone.id &&
-              entry.sourceLineId === invitation.sourceLineId &&
-              entry.residentId === invitation.residentId,
-          ) ?? -1;
-        if (index < 0) {
-          if (session.continuity) return;
-          throw conflict("This zone needs its controller's invitation.");
-        }
-        const consumed = current.playerInvitations!.splice(index, 1)[0]!;
-        current.usedInvitationIds = [...new Set([...(current.usedInvitationIds ?? []), consumed.sourceLineId])];
-      });
-    }
+      if (!decision.allowed) {
+        if (session.continuity) return;
+        throw conflict(decision.explanation);
+      }
+      claimVisitPermission(current, decision.permissionId, session.id);
+    });
     const moved = await changeSession(sessionId, (state) => {
       if (state.navigationReceipts?.some((entry) => entry.id === operationId)) return;
       const originZoneId = state.zoneId ?? legacyZoneId(venue, state.area, state.spaceClass, state.privateOwnerId);
@@ -942,6 +864,7 @@ export function createSceneCommands({
     const village = existing ? sceneContinuityView(live, existing) : live;
     const place = findLocation(village, placeId);
     if (!place) throw notFound("That place is not in this village.");
+    if (!place.access) throw conflict("That Place has no native access record.");
     const discovery = live.worldPlaces.places[placeId];
     if (discovery && (!discovery.knownBy.includes("player") || !discovery.prepared))
       throw conflict("Prepare this known Place before visiting.");
@@ -1050,54 +973,26 @@ export function createSceneCommands({
       grantedZoneIds.push(zone.id);
       zoneGrants.push({ zoneId: zone.id, controllerId: ongoingController, source: "relationship" });
     }
-    if (place.access) {
-      const decision = evaluateZoneAccess(place, zone, "player", {
-        ...entryAccessContext,
-        relationships: village.relationshipContext,
+    const decision = evaluateZoneAccess(place, zone, "player", {
+      ...entryAccessContext,
+      relationships: village.relationshipContext,
+    });
+    if (!decision.allowed) {
+      if (requestedZoneId || entryArea) throw conflict(decision.explanation);
+      zone = resolveVenueZone(place, "exterior")!;
+    } else
+      await mutateVillageState((state) => {
+        const current = findLocation(state, place.id)!;
+        const target = resolveVenueZone(current, zone!.id)!;
+        const checked = evaluateZoneAccess(current, target, "player", {
+          ...entryAccessContext,
+          relationships: state.relationshipContext,
+          unavailable: zoneClosed(state, current, target),
+          environment: state.narrative,
+        });
+        if (!checked.allowed) throw conflict(checked.explanation);
+        initialPermissionId = checked.permissionId;
       });
-      if (!decision.allowed) {
-        if (requestedZoneId || entryArea) throw conflict(decision.explanation);
-        zone = resolveVenueZone(place, "exterior")!;
-      } else
-        await mutateVillageState((state) => {
-          const current = findLocation(state, place.id)!;
-          const target = resolveVenueZone(current, zone!.id)!;
-          const checked = evaluateZoneAccess(current, target, "player", {
-            ...entryAccessContext,
-            relationships: state.relationshipContext,
-            unavailable: zoneClosed(state, current, target),
-            environment: state.narrative,
-          });
-          if (!checked.allowed) throw conflict(checked.explanation);
-          initialPermissionId = checked.permissionId;
-        });
-    } else if (!canOccupyZone(place, zone, "player") && !ongoingController) {
-      const target = zone;
-      const invitation = place.playerInvitations?.find(
-        (entry) => entry.zoneId === target.id && canInviteToZone(place, target, entry.residentId),
-      );
-      if (!invitation) {
-        if (requestedZoneId || entryArea) throw conflict("This zone needs its controller's invitation.");
-        zone = resolveVenueZone(place, "exterior")!;
-      } else {
-        await mutateVillageState((state) => {
-          const current = findLocation(state, placeId)!;
-          const index =
-            current.playerInvitations?.findIndex(
-              (entry) =>
-                entry.zoneId === target.id &&
-                entry.sourceLineId === invitation.sourceLineId &&
-                entry.residentId === invitation.residentId &&
-                canInviteToZone(current, resolveVenueZone(current, target.id)!, entry.residentId),
-            ) ?? -1;
-          if (index < 0) throw conflict("That invitation has already been used.");
-          const consumed = current.playerInvitations!.splice(index, 1)[0]!;
-          current.usedInvitationIds = [...new Set([...(current.usedInvitationIds ?? []), consumed.sourceLineId])];
-        });
-        grantedZoneIds.push(target.id);
-        zoneGrants.push({ zoneId: target.id, controllerId: invitation.residentId });
-      }
-    }
     const participants = sceneAttendance.occupants
       .filter((person) => person.zoneId === zone.id)
       .map(({ characterId, name, doing }) => ({ characterId, name, doing }));
@@ -1444,7 +1339,7 @@ export function createSceneCommands({
   type VenueTurnInput = {
     sessionId: string;
     message: string;
-    mode: "chat" | "ask" | "fulfill" | "act" | "leave" | "contact";
+    mode: "chat" | "leave" | "contact";
     contact?: ContactIntent;
     targetId: string;
     submissionId: string;
@@ -1453,8 +1348,9 @@ export function createSceneCommands({
     replaceOfOperationId?: string;
   };
 
-  function matchesSavedTurnMode(turn: VenueSubmission, mode: VenueTurnInput["mode"]) {
-    return (turn.requestMode ?? turn.mode) === mode;
+  function assertSceneTurnMode(mode: unknown): asserts mode is VenueTurnInput["mode"] {
+    if (mode !== "chat" && mode !== "contact" && mode !== "leave")
+      throw conflict("Unsupported Scene action. Its saved request is preserved.");
   }
 
   function venueTurnPayload(scene: VenueScene, input: VenueTurnInput) {
@@ -1480,6 +1376,7 @@ export function createSceneCommands({
   }
 
   async function sendVenueTurn(input: VenueTurnInput) {
+    assertSceneTurnMode(input.mode);
     const rejected = await readSession(input.sessionId);
     if (rejectedSubmission(rejected, input.submissionId, input)) {
       if (rejected.operation?.id === input.submissionId && rejected.operation.status !== "complete")
@@ -1502,10 +1399,7 @@ export function createSceneCommands({
     const payload = venueTurnPayload(scene, input);
     if (prior && JSON.stringify(prior.contact ?? null) !== JSON.stringify(input.contact ?? null))
       throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID belongs to a different contact attempt.");
-    if (
-      prior &&
-      (prior.message !== input.message || !matchesSavedTurnMode(prior, input.mode) || prior.targetId !== input.targetId)
-    )
+    if (prior && (prior.message !== input.message || prior.mode !== input.mode || prior.targetId !== input.targetId))
       throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID belongs to a different line.");
     return coordinateVenue(
       input.sessionId,
@@ -1573,7 +1467,6 @@ export function createSceneCommands({
     let session = await readSession(input.sessionId);
     if (rejectedSubmission(session, input.submissionId, input))
       return unavailableTurnResult(session, input.submissionId);
-    const requestMode = input.mode === "act" || input.mode === "fulfill" ? input.mode : undefined;
     const prior = session.submissions.find((entry) => entry.id === input.submissionId);
     if (!prior && session.semanticVersion === 2) {
       await finishSemanticScene(session.id);
@@ -1581,11 +1474,7 @@ export function createSceneCommands({
       if (session.status === "closed") throw conflict("This Scene has concluded.");
     }
     if (prior) {
-      if (
-        prior.message !== input.message ||
-        !matchesSavedTurnMode(prior, input.mode) ||
-        prior.targetId !== input.targetId
-      )
+      if (prior.message !== input.message || prior.mode !== input.mode || prior.targetId !== input.targetId)
         throw conflict("That submission ID belongs to a different line.");
       await sceneNarrative?.settle(session, prior.narrativeSource);
       try {
@@ -1622,8 +1511,6 @@ export function createSceneCommands({
     session = await requireLiveVenueSession(session.id);
     const blocker = semanticBlocker(session);
     if (blocker) throw conflict(blocker);
-    // Act and Fulfill aliases use the current Chat interpretation.
-    if (requestMode) input = { ...input, mode: "chat" };
     const admitted = venueOperationSnapshot<unknown>();
     if (admitted)
       session = { ...(await createSceneHistory(villagesDocuments()).decode(admitted)), operation: session.operation };
@@ -1831,7 +1718,6 @@ export function createSceneCommands({
           ...{ zoneEventsVersion: 1 as const },
           message: input.message,
           mode: input.mode,
-          ...(requestMode ? { requestMode } : {}),
           targetId: input.targetId,
           ...(input.contact ? { contact: input.contact } : {}),
           ...{},
@@ -3097,6 +2983,7 @@ export function createSceneCommands({
           { recovery: true },
         );
       if (operation.kind === "turn") {
+        assertSceneTurnMode(operation.input.mode);
         const input = { ...operation.input, sessionId: id, submissionId: operation.id } as VenueTurnInput;
         return coordinateVenue(
           id,

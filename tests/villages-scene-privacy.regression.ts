@@ -57,7 +57,12 @@ async function main() {
         { id: "unaccepted", content: "Unaccepted draft" },
       ],
       submissions: [
-        { semanticProvenance: { version: 2 }, semanticReady: false, processing: { lineIds: ["unaccepted"] } },
+        {
+          mode: "chat",
+          semanticProvenance: { version: 2 },
+          semanticReady: false,
+          processing: { lineIds: ["unaccepted"] },
+        },
       ],
     };
     const { positions, privateHearing } = publicSceneHistoryProjection(scene as any);
@@ -119,6 +124,7 @@ async function main() {
     ],
     submissions: [
       {
+        mode: "chat",
         id: "turn",
         liveProposals: { secret: "private proposal sentinel" },
         requestMetrics: { secret: "private metrics sentinel" },

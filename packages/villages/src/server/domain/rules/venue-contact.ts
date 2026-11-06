@@ -2,7 +2,7 @@ import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import type { VenueLine, VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue, VillageVenueZone } from "../models/world.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
-import { badRequest } from "./errors.js";
+
 import { sceneRelationshipView } from "./relationship-rules.js";
 import type { AttentionPlan } from "./scene-attention.js";
 import { sceneAccessState, sceneLayoutVenue } from "./scene-layout.js";
@@ -25,18 +25,6 @@ export type DoorwayContact = {
   characterZoneId: string;
   delivery?: ContactDelivery;
 };
-export function readContactDelivery(value: unknown, message: string): ContactDelivery {
-  const row = asRecord(value);
-  if (row.delivery === "device") throw badRequest("Device links are not supported by Contact.");
-  const citation = asTrimmedString(row.deliveryQuote) || message;
-  const loud =
-    /\b(?:shout|shouting|yell|yelling|holler|hollering|scream|screaming|loudly|raise\s+my\s+voice|top\s+of\s+my\s+lungs)\b/iu;
-  const hypothetical =
-    /\b(?:if|would|could|might|yesterday|earlier|don't|do not)\s+(?:i\s+)?(?:shout|shouted|yell|yelled|holler|scream|call|knock|use)\b/iu;
-  return normalize(message).includes(normalize(citation)) && loud.test(citation) && !hypothetical.test(citation)
-    ? "loud"
-    : "voice";
-}
 export type ContactMove = {
   characterId: string;
   zoneId: string;

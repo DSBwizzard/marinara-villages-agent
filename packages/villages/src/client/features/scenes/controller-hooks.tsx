@@ -311,7 +311,7 @@ export function useSceneInterruptedSubmission(ports: {
   composerEditVersionRef: React.RefObject<number>;
   restoredSceneDraftRef: React.RefObject<string>;
   room: import("../../../shared/contracts/village.js").SceneView;
-  setLegacyRecovery: React.Dispatch<React.SetStateAction<import("./useScenesState.js").LegacySceneRecovery | null>>;
+  setContactRecovery: React.Dispatch<React.SetStateAction<import("./useScenesState.js").ContactRecovery | null>>;
   roomMoveOperationIdRef: React.RefObject<string>;
   setRoomContactBoundary: React.Dispatch<React.SetStateAction<string>>;
   setRoomContactKind: React.Dispatch<React.SetStateAction<"knock" | "call">>;
@@ -324,7 +324,7 @@ export function useSceneInterruptedSubmission(ports: {
     composerEditVersionRef,
     restoredSceneDraftRef,
     room,
-    setLegacyRecovery,
+    setContactRecovery,
     roomMoveOperationIdRef,
     setRoomContactBoundary,
     setRoomContactKind,
@@ -358,9 +358,8 @@ export function useSceneInterruptedSubmission(ports: {
           }
           return;
         }
-        const legacy = ["contact", "fulfill"].includes(operation.input.mode ?? "");
-        if (legacy) {
-          setLegacyRecovery((current) => (current?.sceneId === room.id ? current : { sceneId: room.id, operation }));
+        if (operation.input.mode === "contact") {
+          setContactRecovery((current) => (current?.sceneId === room.id ? current : { sceneId: room.id, operation }));
         }
         if (!operation.input.message) return;
         restoredSceneDraftRef.current = restoreKey;
@@ -385,7 +384,7 @@ export function useSceneInterruptedSubmission(ports: {
     setRoomTargetId,
     setRoomContactKind,
     setRoomContactBoundary,
-    setLegacyRecovery,
+    setContactRecovery,
   ]);
 }
 

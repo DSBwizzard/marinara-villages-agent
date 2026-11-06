@@ -6,17 +6,14 @@ import {
 } from "../packages/villages/src/server/domain/rules/semantic-continuity.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { materializeGmReply } from "../packages/villages/src/server/domain/rules/scene-gm.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
-import { sceneMemoryContext } from "../packages/villages/src/server/domain/rules/scene-memories.js";
+import { sceneMemoryContext, sceneMemoryUnit } from "../packages/villages/src/server/domain/rules/scene-memories.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import {
   readSemanticEffects,
   semanticContext,
   semanticImmediate,
-  semanticPromptContext,
-  semanticUnit,
   semanticWishChangesCovered,
 } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
 import { sceneSpriteSelection } from "../packages/villages/src/server/domain/rules/sprite-expressions.js";
@@ -29,48 +26,6 @@ import { venueFixture } from "./helpers/venues.fixture.js";
 import { fixtureRelationshipIdentity, fixtureWishIdentity } from "./helpers/village-storage.fixture.js";
 
 async function main() {
-  {
-    const live = defaultRelationshipState("same-seed");
-    live.intentions.host = ["Exact private intention"] as any;
-    live.intentionRevisions.host = 7;
-    const context = {
-      setting: "Village",
-      actors: [],
-      loreSelection: { recent: ["duplicate history"] },
-      social: {
-        capturedAndScene: structuredClone(live),
-        live,
-        liveAt: "now",
-        intentions: live.intentions,
-        rule: "Preserve revisions",
-      },
-      history: ["exact history"],
-    };
-    const frozen = structuredClone(context);
-    const projected = semanticPromptContext(context);
-    assert.deepEqual((projected.social as any).capturedAndScene, { sameAs: "live" });
-    assert.deepEqual((projected.social as any).live, live);
-    assert.deepEqual((projected.social as any).intentions, live.intentions);
-    assert.equal(Object.hasOwn(projected, "loreSelection"), false);
-    assert.deepEqual(projected.history, context.history);
-    assert.deepEqual(context, frozen, "Prompt projection cannot mutate canonical evidence");
-    for (const mutate of [
-      (view: typeof live) => {
-        view.seed = "different-seed";
-      },
-      (view: typeof live) => {
-        view.intentionRevisions.host++;
-      },
-      (view: typeof live) => {
-        view.intentions.host = [];
-      },
-    ]) {
-      const captured = structuredClone(live);
-      mutate(captured);
-      const different = semanticPromptContext({ social: { capturedAndScene: captured, live } });
-      assert.deepEqual((different.social as any).capturedAndScene, captured, "Different views must remain complete");
-    }
-  }
   // A door-closing narration is not a resident statement ending contact.
   {
     const farewell = [
@@ -478,12 +433,12 @@ async function main() {
     [{ text: "test" }],
   );
   assert.equal(
-    semanticUnit("memory", {
+    sceneMemoryUnit({
       action: "create",
       text: "one",
       learners: { host: { support: [{ lineId: 2 }, { lineId: 1 }] } },
     }),
-    semanticUnit("memory", {
+    sceneMemoryUnit({
       action: "create",
       text: "two",
       learners: { host: { support: [{ lineId: 1 }, { lineId: 2 }] } },

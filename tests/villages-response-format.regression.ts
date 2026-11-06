@@ -11,8 +11,7 @@ import {
   responseDiagnostics,
   sceneMissingFields,
 } from "../packages/villages/src/server/domain/rules/response-diagnostics.js";
-import { extractSceneReply } from "../packages/villages/src/server/domain/rules/scene-reply-json.js";
-import { buildVenueTextContract } from "../packages/villages/src/server/domain/rules/venue-response-contract.js";
+import { completeSceneObject } from "../packages/villages/src/server/domain/rules/scene-writing-contract.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { WorkFailureError } from "../packages/villages/src/server/domain/rules/work-failure.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
@@ -111,30 +110,19 @@ async function main() {
     recent: [],
   };
   const jsonOptions = { temperature: 0, debugMode: false, responseFormat: { type: "json_object" } };
-  const examples = buildVenueTextContract("a", ["a"], true)
-    .split("\n")
-    .filter((line) => line.startsWith("{"));
-  assert.equal(examples.length, 2);
-  for (const example of examples) {
-    const raw = JSON.parse(example);
-    assert.deepEqual(sceneMissingFields(raw), []);
-    assert.deepEqual(raw.heardPlayerBy, []);
-  }
   const truncated =
-    '{"heardPlayerBy":[],"segments":[{"kind":"narration","text":"The gate creaks.","heardBy":[]}],"memoryChanges":[{"text":"cut';
-  const salvaged = extractSceneReply(truncated);
-  assert.ok(salvaged?.segments);
-  assert.equal(salvaged.memoryChanges, undefined);
+    '{"input":[],"segments":[{"kind":"narration","text":"The gate creaks."}],"memoryChanges":[{"text":"cut';
+  assert.equal(completeSceneObject(truncated, "length"), null);
   assert.equal(
     responseDiagnostics(
       model,
       { content: truncated, finishReason: "length" },
       1600,
-      salvaged,
-      true,
-      sceneMissingFields(salvaged),
+      null,
+      false,
+      sceneMissingFields(null),
     ).parseStatus,
-    "salvaged",
+    "invalid",
   );
   const prompt = buildResidentPlanningMessages(context);
   assert.match(prompt[1].content, /Review the supplied resident choices/);
@@ -254,7 +242,7 @@ async function main() {
     makeSaved("saved-paid", "complete", priorHash);
     const paidScene = rows.get("villages-venue-visit-saved-paid").data;
     paidScene.operation.attempts["turn:0:" + formatHash] = { status: "rejected" };
-    paidScene.submissions = [{ id: "saved-paid" }];
+    paidScene.submissions = [{ mode: "chat", id: "saved-paid" }];
     output = "not JSON";
     const beforePaid = calls;
     await assert.rejects(

@@ -209,7 +209,7 @@ function development(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
   source.grant.consequence = "gentle";
   settleSceneNarrative(state, scene, source);
   settleSceneNarrative(state, scene, source);
-  scene.submissions.push({ id: "greeting", narrativeSource: source } as any);
+  scene.submissions.push({ mode: "chat", id: "greeting", narrativeSource: source } as any);
   assert.equal(state.narrative!.receipts.length, 1);
   assert.equal(sceneContinuityView(state, scene).narrative!.conditions.length, 1);
   assert.equal(sceneAccessState(state, scene).narrative!.conditions.length, 1);

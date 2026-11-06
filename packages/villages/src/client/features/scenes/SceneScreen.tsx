@@ -31,16 +31,16 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
   >([]);
   const sceneId = controller.room?.id;
   const sceneLifetime = useRef<string | undefined>(sceneId);
-  const [legacyReviewBusy, setLegacyReviewBusy] = useState(false);
-  const legacyReviewPending = useRef(false);
-  const legacyReviewGeneration = useRef(0);
-  const heldRecovery = useRef(controller.legacyRecovery);
-  heldRecovery.current = controller.legacyRecovery;
+  const [contactReviewBusy, setContactReviewBusy] = useState(false);
+  const contactReviewPending = useRef(false);
+  const contactReviewGeneration = useRef(0);
+  const heldRecovery = useRef(controller.contactRecovery);
+  heldRecovery.current = controller.contactRecovery;
   useEffect(() => {
     sceneLifetime.current = sceneId;
-    legacyReviewPending.current = false;
-    legacyReviewGeneration.current++;
-    setLegacyReviewBusy(false);
+    contactReviewPending.current = false;
+    contactReviewGeneration.current++;
+    setContactReviewBusy(false);
     return () => {
       sceneLifetime.current = undefined;
     };
@@ -109,8 +109,8 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     roomGreetingNotice,
     roomLeaveSubmissionIdRef,
     roomMode,
-    legacyRecovery,
-    setLegacyRecovery,
+    contactRecovery,
+    setContactRecovery,
     roomNotices,
     roomOpen,
     roomRuling,
@@ -152,11 +152,11 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
                   room.operation?.status === "interrupted" && room.status !== "opening" ? (
                     <button
                       type="button"
-                      disabled={roomBusy || legacyReviewBusy}
+                      disabled={roomBusy || contactReviewBusy}
                       onClick={() =>
                         void retrySavedScene(
-                          room.operation?.kind === "turn" && legacyRecovery?.sceneId === room.id
-                            ? legacyRecovery
+                          room.operation?.kind === "turn" && contactRecovery?.sceneId === room.id
+                            ? contactRecovery
                             : undefined,
                         )
                       }
@@ -205,38 +205,38 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           picture={venuePictureOf(room.status === "closed" ? sceneVenues : (snapshot?.settings.venues ?? []), room)}
           draft={roomDraft}
           mode={roomMode}
-          legacyRecovery={legacyRecovery?.sceneId === room.id ? legacyRecovery : null}
-          legacyDestination={(() => {
-            const input = legacyRecovery?.sceneId === room.id ? legacyRecovery.operation.input : undefined;
+          contactRecovery={contactRecovery?.sceneId === room.id ? contactRecovery : null}
+          recoveryDestination={(() => {
+            const input = contactRecovery?.sceneId === room.id ? contactRecovery.operation.input : undefined;
             const recipient = input?.targetId
               ? (room.participants.find((person) => person.characterId === input.targetId)?.name ?? "saved recipient")
               : "";
-            if (input?.mode !== "contact") return recipient || "saved recipient";
+            if (!input) return recipient || "saved recipient";
             const zone = sceneVenues
               .find((venue) => venue.id === room.placeId)
               ?.zones?.find((entry) => entry.id === input.contact?.boundaryZoneId);
             return [zone ? sceneZoneLabel(zone) : "saved Zone", recipient].filter(Boolean).join(" · ");
           })()}
-          onRetryLegacy={() => {
-            if (legacyRecovery?.sceneId === room.id) void retrySavedScene(legacyRecovery);
+          onRetryContact={() => {
+            if (contactRecovery?.sceneId === room.id) void retrySavedScene(contactRecovery);
           }}
-          onReplaceLegacy={() => {
-            if (legacyRecovery?.sceneId === room.id) void sendRoom(legacyRecovery);
+          onReplaceContact={() => {
+            if (contactRecovery?.sceneId === room.id) void sendRoom(contactRecovery);
           }}
-          onReviewLegacy={() => {
-            if (legacyReviewPending.current || roomBusy || !legacyRecovery) return;
+          onReviewContact={() => {
+            if (contactReviewPending.current || roomBusy || !contactRecovery) return;
             const id = room.id;
-            const held = legacyRecovery;
-            legacyReviewPending.current = true;
-            const generation = ++legacyReviewGeneration.current;
-            setLegacyReviewBusy(true);
+            const held = contactRecovery;
+            contactReviewPending.current = true;
+            const generation = ++contactReviewGeneration.current;
+            setContactReviewBusy(true);
             void (async () => {
               try {
                 const { session } = await request<{ session: SceneView | null }>("/rooms/active");
                 if (
                   sceneLifetime.current !== id ||
                   heldRecovery.current !== held ||
-                  legacyReviewGeneration.current !== generation
+                  contactReviewGeneration.current !== generation
                 )
                   return;
                 if (!session || session.id !== id) throw new Error("This Scene changed. Reopen it before continuing.");
@@ -257,7 +257,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
                   if (
                     sceneLifetime.current !== id ||
                     heldRecovery.current !== held ||
-                    legacyReviewGeneration.current !== generation
+                    contactReviewGeneration.current !== generation
                   )
                     return;
                   if (
@@ -268,28 +268,26 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
                   )
                     throw new Error("The saved action changed again. Review it before continuing.");
                 }
-                if (latest && !["contact", "fulfill"].includes(latest.input?.mode ?? ""))
+                if (latest && latest.input?.mode !== "contact")
                   throw new Error(
                     "A different saved action needs attention. Review its Scene error before continuing.",
                   );
                 setRoom(currentRoom(session));
-                setLegacyRecovery(
-                  latest && ["contact", "fulfill"].includes(latest.input?.mode ?? "")
-                    ? { sceneId: id, operation: latest }
-                    : null,
+                setContactRecovery(
+                  latest && latest.input?.mode === "contact" ? { sceneId: id, operation: latest } : null,
                 );
                 setRoomError("");
               } catch (cause) {
                 if (
                   sceneLifetime.current === id &&
                   heldRecovery.current === held &&
-                  legacyReviewGeneration.current === generation
+                  contactReviewGeneration.current === generation
                 )
                   setRoomError(messageFrom(cause, "The saved action could not be checked."));
               } finally {
-                if (legacyReviewGeneration.current === generation) {
-                  legacyReviewPending.current = false;
-                  if (sceneLifetime.current === id) setLegacyReviewBusy(false);
+                if (contactReviewGeneration.current === generation) {
+                  contactReviewPending.current = false;
+                  if (sceneLifetime.current === id) setContactReviewBusy(false);
                 }
               }
             })();
@@ -320,7 +318,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           currentZoneLabel={sceneZoneLabel(
             sceneVenues.find((venue) => venue.id === room.placeId)?.zones?.find((zone) => zone.id === room.zoneId),
           )}
-          busy={roomBusy || legacyReviewBusy || controller.replyPending || room.operation?.status === "running"}
+          busy={roomBusy || contactReviewBusy || controller.replyPending || room.operation?.status === "running"}
           error={
             roomError ||
             room.operation?.error ||

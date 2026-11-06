@@ -155,11 +155,6 @@ export const VILLAGE_CLOCK_WINDOWS: readonly VillageClockWindow[] = CLOCKS.map((
 /** Just the part-of-day names, in the order the day runs them. */
 export const VILLAGE_CLOCKS: readonly string[] = VILLAGE_CLOCK_WINDOWS.map((window) => window.clock);
 
-/** Where a part of day sits in the order, or -1 when it is not one at all. */
-export function villageClockIndex(clock: unknown): number {
-  return typeof clock === "string" ? VILLAGE_CLOCKS.indexOf(clock) : -1;
-}
-
 /**
  * Weather a season can plausibly produce. Deliberately plain: every entry has
  * to read naturally straight after "the weather is ".
