@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
-import { snapshot, residents, now } from "./fixtures/villages-scene-browser.fixture.mjs";
+import { snapshot, residents, now, venueSnapshotFixture } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const tag = "marinara-capability-villages";
 const browser = await chromium.launch({
@@ -37,6 +37,7 @@ await withBrowser(browser, async () => {
       { id: "exterior", name: "Outside", kind: "exterior", seen: true },
       { id: "hall", name: "Hall", kind: "public", seen: true },
     ];
+    fixture.settings.venues[0] = venueSnapshotFixture(fixture.settings.venues[0]);
     const session = {
       version: 2,
       id: "send-recovery",

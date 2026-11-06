@@ -5,7 +5,7 @@ const { authorSceneResponse } = await scenePlaybackFixtures();
 import assert from "node:assert/strict";
 import { build } from "../scripts/esbuild.mjs";
 import { chromium, expect, fulfill, mockEngineLookups, withBrowser } from "./fixtures/browser-diagnostics.mjs";
-import { snapshot as fixture, image, now } from "./fixtures/villages-scene-browser.fixture.mjs";
+import { snapshot as fixture, image, now, venueSnapshotFixture } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const bundle = await build({
   stdin: {
@@ -74,6 +74,7 @@ await withBrowser(browser, async () => {
         connectedTo: ["exterior"],
       },
     ];
+    Object.assign(venue, venueSnapshotFixture(venue));
     const scene = {
       id: "artwork-scene",
       version: 2,

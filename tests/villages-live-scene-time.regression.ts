@@ -228,7 +228,6 @@ try {
     snapshot: null,
   } as any;
   completing.scene.accompanying = [{ characterId: "maya", zoneId: "exterior" }];
-  completing.scene.zoneGrants = [{ zoneId: "removed", controllerId: "maya" }];
   completing.setBusy(true);
   now = new Date("2026-11-02T11:57:00Z");
   await completing.service.refreshZoneParticipants(completing.scene, true);

@@ -139,6 +139,8 @@ export function quietContactReply(text: string, localIds: string[]) {
   };
 }
 export function savedAccessEvents(batch?: InterpretationBatch | null): SavedAccessEvent[] {
+  if (batch?.checks.some((check) => asRecord(check.facts).semanticVersion !== 2))
+    throw new Error("This access effect needs current evidence.");
   return batch
     ? batch.checks.flatMap((check, index) => {
         const facts = asRecord(check.facts),
@@ -158,8 +160,8 @@ export function savedAccessEvents(batch?: InterpretationBatch | null): SavedAcce
               venueId: String(facts.venueId),
               zoneId: typeof facts.zoneId === "string" ? facts.zoneId : null,
               accessRevision: Number(facts.accessRevision),
-              ...(facts.semanticVersion === 2 ? { semanticVersion: 2 as const } : {}),
-              ...(facts.semanticVersion === 2 ? { accompanies: facts.accompanies === true } : {}),
+              semanticVersion: 2,
+              accompanies: facts.accompanies === true,
               ...(facts.accessCommand
                 ? { accessCommand: structuredClone(facts.accessCommand) as SavedAccessEvent["facts"]["accessCommand"] }
                 : {}),
