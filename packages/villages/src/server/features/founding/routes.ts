@@ -6,7 +6,7 @@ import { readTownMapGeneration, requestTownMapGeneration } from "../../jobs/town
 import { resetVenueSessions } from "../scenes/archive.js";
 import { draftVenueDescriptions, runVillageSetup } from "./founding-setup.js";
 import { foundingPreparationSnapshot, retryFoundedVillagePreparation } from "./preparation.js";
-import { generateFoundingVenueImage, suggestStartingVenues, uploadFoundingVenueImage } from "./founding-drafts.js";
+import { generateFoundingVenueImage, uploadFoundingVenueImage } from "./founding-drafts.js";
 import type { FastifyInstance } from "fastify";
 
 export function registerFoundingRoutes(engine: FastifyInstance) {
@@ -70,9 +70,7 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
   });
   app.post<{ Body: unknown }>("/setup/venues/suggest", async (request, reply) => {
     try {
-      const body = request.body as { actionId?: unknown } | null;
-      if (body?.actionId !== undefined) return await requestFoundingSuggestions(request.body);
-      return await suggestStartingVenues(request.body);
+      return await requestFoundingSuggestions(request.body);
     } catch (error) {
       return fail(reply, error, "suggesting starting spaces");
     }
