@@ -4,48 +4,10 @@ import type { VillageNarrationStyle } from "../rules/narration-style.js";
 import type { ProgressTask } from "../rules/progress-engine.js";
 import type { HomeBuildingKind } from "../rules/prompt-preset.js";
 
-// Villages — the shapes the server half of the package trades in.
-//
-// Everything the village remembers lives in Engine-owned `capability_documents`
-// rows, so these types are the only contract between the store, the routes and
-// the tab. Stored `data` always comes back as `unknown`, so every read runs
-// through the coercion helpers before it reaches these shapes.
-//
-// Three layers meet in this package, and keeping them apart is what lets one
-// village hold an anime ninja and a Brooklyn cop at the same time:
-//
-//   * the Person — the card. Portable. Owns temperament, voice, skills, values.
-//   * the World  — this record. Local. Owns the setting and which venues exist.
-//   * the Agenda — the derived join, Phase B.
-//
-// The move that makes the join work is "translate the activity, not the place":
-// the card supplies the verb and the village supplies the noun. So the village
-// stores the world and nothing about any particular character — the card is
-// authoritative for who a villager IS, and the village caches only a name.
-
-/** One stable desired outcome. Size controls scope/lifetime; intensity remains emotional attention.
- * Legacy tells stay readable but are excluded from Scene writing. Essential conditions are
- * separately versioned, explicitly witnessed journal facts, not generated solution steps. */
+/** Resident Wish authority and its witnessed conditions. */
 export type VillageWish = import("../../../shared/contracts/wishes.js").SocialWish;
 
-/**
- * What a villager is after, written once when they move in and then kept.
- *
- * This is the third grounded input of a village's news, after the residents
- * themselves and the village's history: without it the writer can only say what
- * happens TO people, and with it it can say what they do about it.
- *
- * It is cached rather than derived per call for two reasons. A wish that
- * changed every part of the day would not be a wish, it would be weather; and
- * one model call at move-in is a cost the player pays once per villager instead
- * of once per part of day, forever.
- *
- * `source` records where `routineSummary` came from and nothing else reads it.
- * The Engine's own schedule wins when a character has one — it was generated
- * for that exact character and is keyed to real weekdays — so a villager who
- * already has a life in Conversation mode keeps it, and `routineSummary` here
- * is the village's own fallback for the ones who do not.
- */
+/** Owned routines and dated commitments. */
 export type VillageAgenda = {
   plannedDays?: Record<string, VillageAgendaBlock[]>;
   routineProfile?: import("../rules/owned-routine.js").RoutineProfile;
@@ -673,10 +635,8 @@ export type VillageState = {
   worldRules: string;
   worldName: string;
   communityVenueId: string;
-  /** Founding-only narrative role; null preserves legacy framing. */
+  /** Optional Founding role. */
   playerBackground: VillagePlayerBackground | null;
-  /** The reviewed starting point. Historical after setup; never a live plot instruction. */
-  /** Internal admission policy; older founded saves retain their original limits. */
   /** Engine lorebook links; entry content is always read live. */
   selectedLorebookIds: string[];
   sceneryArtStyle: string;

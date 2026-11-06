@@ -3,8 +3,7 @@ import type { VenueCommands } from "./venue-service.js";
 
 export type { VillageVenueDeletionDependencies, VenueCommands } from "./venue-service.js";
 
-// Transitional dispatch for existing routes. The factory owns command behavior;
-// runtime and queue isolation are separate parts of the activation migration.
+// Dispatch commands through their owning activation.
 const commandsBinding = createActivationBinding<VenueCommands>("Villages Venue commands are not configured.");
 export function configureVenueCommands(commands: VenueCommands): () => void {
   return commandsBinding.configure(bindActivationService(commands));
