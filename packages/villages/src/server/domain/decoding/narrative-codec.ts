@@ -3,7 +3,7 @@ import type { NarrativeState } from "../models/narrative-model.js";
 import { badGateway } from "../rules/errors.js";
 import { readPlaceContinuity, readPlaceDescription } from "../rules/zone-continuity.js";
 
-/** Saved authority fails closed; absence of the additive feature remains compatible. */
+/** Validate saved authority; new Worlds initialize narrative state on first use. */
 export function readNarrativeState(value: unknown): NarrativeState | undefined {
   if (value === undefined) return undefined;
   const fail = () => {

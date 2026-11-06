@@ -262,7 +262,7 @@ function clockLabel(now: Date, timeZone?: string): string {
         new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", timeZone }).format(now)
       );
     } catch {
-      /* Legacy snapshots may not name an IANA zone. */
+      /* Display local time until a valid Village time zone is available. */
     }
   }
   return `${CLOCK_DATE.format(now)} · ${CLOCK_TIME.format(now)}`;

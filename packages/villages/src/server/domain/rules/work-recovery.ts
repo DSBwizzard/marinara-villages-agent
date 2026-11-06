@@ -43,7 +43,7 @@ export function isBackgroundInput(value: unknown): value is BackgroundInput {
   );
 }
 
-/** Minimum evidence/identity shape required for retention and summary projection, not a legacy decoder. */
+/** Minimum evidence and identity required to retain and summarize an owned operation. */
 export function isBackgroundRecoveryRecord(value: unknown): value is Job {
   if (!record(value)) return false;
   if (value.automaticRetryUsed !== undefined && value.automaticRetryUsed !== true) return false;
