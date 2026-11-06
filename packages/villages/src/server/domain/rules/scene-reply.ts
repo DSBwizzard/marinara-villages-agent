@@ -3,7 +3,6 @@ import { readStagingCues } from "../../../shared/helpers/scene-staging.js";
 import type { InterpretationBatch } from "../models/interpretation-model.js";
 import type { SavedAccessEvent, VenueReplyLine } from "../models/scene-model.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
-import type { MovementIntent } from "./venue-movement.js";
 
 export function parseVenueReply(
   raw: Record<string, unknown> | null,
@@ -128,7 +127,6 @@ export function quietContactReply(text: string, localIds: string[]) {
     projectContexts: [],
     projectSpeech: [],
     placeUpdate: null,
-    movementIntent: null as MovementIntent | null,
     residenceSignal: null,
     venueRequestSignal: null,
     invitationSignal: null,

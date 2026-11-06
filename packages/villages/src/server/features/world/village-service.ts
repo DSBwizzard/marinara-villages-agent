@@ -9,12 +9,7 @@ import type {
 } from "../../../shared/contracts/village.js";
 import type { villagesLogger } from "../../adapters/engine/runtime-host.js";
 import type { outsideVenueOperation } from "../../adapters/operations/operation-context.js";
-import {
-  advanceVillageClock,
-  assertVillageClockWrite,
-  villageNow,
-  villageTimeAdvanceSettled,
-} from "../../adapters/time/clock-gate.js";
+import { advanceVillageClock, villageNow, villageTimeAdvanceSettled } from "../../adapters/time/clock-gate.js";
 import { defaultVillageState } from "../../domain/decoding/village-codec.js";
 import type { MemoryCandidate } from "../../domain/models/memories.js";
 import type { VillageSnapshot, VillageState } from "../../domain/models/world.js";
@@ -115,7 +110,6 @@ export function createWorldCoordination({
     return result;
   }
   async function reconcileAt(options: { now?: Date; advanceTime?: VillageTimeAdvance }): Promise<VillageSnapshot> {
-    await assertVillageClockWrite();
     if (!options.advanceTime) await reconcileNarrative?.(options.now ?? villageNow());
     if (options.advanceTime) {
       const request = options.advanceTime;

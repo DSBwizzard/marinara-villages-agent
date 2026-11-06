@@ -349,13 +349,7 @@ async function main() {
     ),
     "terminal replay does not repeat domain work",
   );
-  const movement = fixture("movement");
-  movement.turn().movement = {
-    operationId: "move",
-    originZoneId: "exterior",
-    destinationZoneId: "community",
-    transitionLineId: "transition",
-  };
+  const movement = fixture("access-ordering");
   movement.turn().accessEvents = [
     {
       id: "access",
@@ -377,8 +371,8 @@ async function main() {
     movement.calls.filter((call) =>
       ["access", "invitation", "physical", "wishes", "memories", "relationships"].includes(call),
     ),
-    ["access", "invitation"],
-    "saved movement applies access/invitation without entering exchange domains",
+    ["access", "invitation", "physical", "wishes", "memories", "relationships"],
+    "saved access and invitation settle before exchange domains",
   );
   const finalExchange = fixture("final-exchange");
   finalExchange.saved.status = "closed";
@@ -413,16 +407,9 @@ async function main() {
   assert.equal(receipts[0]!.evidence.excerpt, "evidence reply");
   await evidence.service.processSavedProgressSubmission("same", "turn");
   assert.equal(receipts.length, 1, "completed progress is not repeated");
-  for (const reason of ["movement", "complete", "missing-time", "old-world"] as const) {
+  for (const reason of ["complete", "missing-time", "old-world"] as const) {
     const skipped = fixture("skipped");
-    if (reason === "movement")
-      skipped.turn().movement = {
-        operationId: "move",
-        originZoneId: "exterior",
-        destinationZoneId: "community",
-        transitionLineId: "transition",
-      };
-    else if (reason === "complete") skipped.turn().progressProcessedAt = skipped.saved.startedAt;
+    if (reason === "complete") skipped.turn().progressProcessedAt = skipped.saved.startedAt;
     else if (reason === "missing-time") skipped.turn().at = "";
     else skipped.turn().at = "2020-01-01T00:00:00.000Z";
     await skipped.service.processSavedProgressSubmission("same", "turn");

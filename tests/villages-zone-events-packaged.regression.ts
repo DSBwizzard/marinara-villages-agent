@@ -125,6 +125,7 @@ const village = coerceVillageState(world);
 const scene = coerceSession({
   version: 4,
   id: "harbour-scene",
+  liveSceneVersion: 1,
   placeId: "harbour",
   placeName: "The Harbour Terrace",
   zoneId: "terrace",
@@ -137,6 +138,7 @@ const scene = coerceSession({
   startedAt: now,
   lastActivityAt: now,
   activeIds: ["aqua", "feddy"],
+  accompanying: people.map(({ id, zone }) => ({ characterId: id, zoneId: zone })),
   participants: people
     .filter((person) => person.zone === "terrace")
     .map(({ id, name }) => ({ characterId: id, name, doing: "Looking at the water" })),

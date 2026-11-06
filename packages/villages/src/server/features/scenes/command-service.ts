@@ -77,7 +77,6 @@ import {
   type ContactIntent,
 } from "../../domain/rules/venue-contact.js";
 import { venueClasses, venueInArea, venueResidentIds } from "../../domain/rules/venue-model.js";
-import { movementTransition } from "../../domain/rules/venue-movement.js";
 import {
   applyVenueSceneChange,
   physicalVenueEvents,
@@ -94,7 +93,6 @@ import {
   zoneClosed,
   zoneControllerIds,
 } from "../../domain/rules/venue-zones.js";
-import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
 import { metadataFailure, completionFailure as typedCompletionFailure } from "../../domain/rules/work-failure.js";
 import { zoneEventScene } from "../../domain/rules/zone-events.js";
 import { type SceneReply } from "./writing.js";
@@ -604,10 +602,8 @@ export function createSceneCommands({
     operationId ??= `move:${zoneId}:${expectedSceneRevision ?? (await readSession(sessionId)).sceneRevision}`;
     const saved = await readSession(sessionId);
     const receipt = saved.navigationReceipts?.find((entry) => entry.id === operationId);
-    const legacy = saved.submissions.find((turn) => turn.movement?.operationId === operationId)?.movement;
-    if (receipt || legacy) {
-      if ((receipt ?? legacy)!.destinationZoneId !== zoneId)
-        throw conflict("That navigation ID belongs to a different Zone.");
+    if (receipt) {
+      if (receipt.destinationZoneId !== zoneId) throw conflict("That navigation ID belongs to a different Zone.");
       // A delayed retry must never move the player back after newer navigation.
       if (saved.operation?.id !== operationId || saved.operation.status === "complete")
         return requireLiveVenueSession(sessionId);
@@ -630,22 +626,16 @@ export function createSceneCommands({
           }
         });
       },
-      { replay: !!(receipt || legacy) },
+      { replay: !!receipt },
     );
   }
 
-  async function moveVenueZoneOnce(
-    sessionId: string,
-    zoneId: string,
-    written?: { message: string; targetId: string; requestMode?: "act" | "fulfill" },
-  ): Promise<VenueScene> {
+  async function moveVenueZoneOnce(sessionId: string, zoneId: string): Promise<VenueScene> {
     assertVenueOwnership();
     let session = await requireLiveVenueSession(sessionId);
     if (!session.sceneAttendance) session = await refreshZoneParticipants(session, true);
     const operationId = venueOperationId();
-    const recorded =
-      session.navigationReceipts?.some((entry) => entry.id === operationId) ||
-      session.submissions.some((turn) => turn.movement?.operationId === operationId);
+    const recorded = session.navigationReceipts?.some((entry) => entry.id === operationId);
     if (recorded) {
       await markZoneSeen(session, false);
       return refreshZoneParticipants(session, true);
@@ -716,54 +706,11 @@ export function createSceneCommands({
       claimVisitPermission(current, decision.permissionId, session.id);
     });
     const moved = await changeSession(sessionId, (state) => {
-      if (
-        state.navigationReceipts?.some((entry) => entry.id === operationId) ||
-        state.submissions.some((turn) => turn.movement?.operationId === operationId)
-      )
-        return;
+      if (state.navigationReceipts?.some((entry) => entry.id === operationId)) return;
       const originZoneId = state.zoneId ?? legacyZoneId(venue, state.area, state.spaceClass, state.privateOwnerId);
       const at = villageNow().toISOString();
-      // Older admitted written turns retain their saved replay contract.
-      if (written) {
-        const origin = resolveVenueZone(venue, originZoneId);
-        const transitionLineId = randomUUID();
-        appendLine(state, {
-          id: transitionLineId,
-          role: "assistant",
-          speakerId: "__venue_scene__",
-          name: "Narration",
-          kind: "narration",
-          content: movementTransition(
-            origin?.name ?? originZoneId,
-            zone.name,
-            village.narrationStyle,
-            readPlayerIdentity(village).name,
-          ),
-          at,
-          heardBy: [...session.activeIds],
-        });
-        state.submissions.push({
-          id: operationId,
-          message: written?.message ?? `Move to ${zone.name}`,
-          mode: "chat",
-          ...(written?.requestMode ? { requestMode: written.requestMode } : {}),
-          targetId: written?.targetId ?? "",
-          verdict: null,
-          wishId: "",
-          wishMemory: "",
-          areaAtTurn: state.area,
-          zoneIdAtTurn: originZoneId,
-          activeIdsAtTurn: [...session.activeIds],
-          activeIdsAfterTurn: people.map((person) => person.characterId),
-          replyLineIds: [transitionLineId],
-          movement: { operationId, originZoneId, destinationZoneId: zone.id, transitionLineId },
-          requestMetrics: venueRequestMetrics(),
-          at,
-        });
-      } else {
-        state.navigationReceipts ??= [];
-        state.navigationReceipts.push({ id: operationId, originZoneId, destinationZoneId: zone.id, at });
-      }
+      state.navigationReceipts ??= [];
+      state.navigationReceipts.push({ id: operationId, originZoneId, destinationZoneId: zone.id, at });
       state.enteredFromZoneId = state.zoneId;
       state.zoneId = zone.id;
       state.accessPreviousZones ??= {};
@@ -1563,7 +1510,6 @@ export function createSceneCommands({
         prior.targetId !== input.targetId
       )
         throw conflict("That submission ID belongs to a different line.");
-      if (prior.movement) return { session, verdict: null, action: null, recordEvents: [] };
       await sceneNarrative?.settle(session, prior.narrativeSource);
       try {
         await processSavedExchange(session.id, prior.id);
@@ -1693,8 +1639,6 @@ export function createSceneCommands({
     }
 
     // Validate retained replies before any effects; only the explicit Move route owns travel.
-    if (reply.movementIntent && reply.movementIntent.zoneId !== session.zoneId)
-      throw badGateway("System invented player Zone travel. The draft is preserved.");
     semanticPlayerMoves(reply.semanticPlayerMoves, session, reply.lines);
 
     const contactSpeakers = [

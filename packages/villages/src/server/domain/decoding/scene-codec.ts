@@ -396,7 +396,6 @@ export function coerceSession(value: unknown): VenueScene {
               ...(row.requestMode === "act" || row.requestMode === "fulfill"
                 ? { requestMode: row.requestMode as "act" | "fulfill" }
                 : {}),
-              ...(row.movement ? { movement: row.movement as VenueSubmission["movement"] } : {}),
               ...(row.semanticConclude === true ? { semanticConclude: true } : {}),
               ...(Array.isArray(row.semanticPlayerMoves)
                 ? { semanticPlayerMoves: row.semanticPlayerMoves as VenueSubmission["semanticPlayerMoves"] }

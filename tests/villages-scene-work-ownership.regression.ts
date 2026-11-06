@@ -773,7 +773,42 @@ for (const scenario of ["missing-same-zone", "missing-move", "forged-checkpoint"
     refused.owner.dispose();
   }
 }
-// Free navigation replay retains its owner and never starts image work.
+// A delayed navigation retry cannot move the player back after a later accepted move.
+{
+  const replay = commandFixture("Navigation replay", ({ scene, stamp, touch }) => {
+    scene.zoneId = "zone-b";
+    scene.submissions = [];
+    scene.navigationReceipts = [
+      { id: "move-a", originZoneId: "exterior", destinationZoneId: "zone-a", at: stamp },
+      { id: "move-b", originZoneId: "zone-a", destinationZoneId: "zone-b", at: stamp },
+    ];
+    return {
+      requireLiveVenueSession: async () => {
+        await touch("require-live");
+        return scene;
+      },
+      coordinateVenue: async () => {
+        throw Error("Settled navigation must not acquire new work");
+      },
+    };
+  });
+  const before = structuredClone(replay.scene);
+  try {
+    const result = await replay.service.moveVenueZone("same-scene", "zone-a", undefined, undefined, "move-a");
+    assert.equal(result.zoneId, "zone-b");
+    assert.deepEqual(replay.scene, before);
+    await assert.rejects(
+      replay.service.moveVenueZone("same-scene", "zone-c", undefined, undefined, "move-a"),
+      /different Zone/,
+    );
+    assert.deepEqual(replay.scene, before);
+    assert.equal(replay.modelAccess, 0);
+    assert(!replay.calls.includes("progress"));
+  } finally {
+    replay.owner.dispose();
+  }
+}
+// Interrupted free navigation replay retains its owner and never starts image work.
 {
   const first = commandFixture("Image A", ({ scene, world, touch, stamp }) => {
     const venue = venueDraft({ name: "Staff hall", description: "A staff hall", classes: ["community"] }, null);
@@ -782,14 +817,18 @@ for (const scenario of ["missing-same-zone", "missing-move", "forged-checkpoint"
     world.venues = [venue];
     scene.zoneId = "staff-zone";
     scene.sceneAttendance = { capturedAt: stamp, occupants: [] };
-    scene.submissions[0].movement = {
-      operationId: "same-image-operation",
-      originZoneId: "outside",
-      destinationZoneId: "staff-zone",
-      transitionLineId: "line",
-    };
+    scene.operation = { id: "same-image-operation", kind: "move", status: "interrupted" } as any;
+    scene.navigationReceipts = [
+      {
+        id: "same-image-operation",
+        originZoneId: "exterior",
+        destinationZoneId: "staff-zone",
+        at: stamp,
+      },
+    ];
     return {
-      coordinateVenue: async (_id, id, kind, input, _expected, _retry, run) => {
+      coordinateVenue: async (_id, id, kind, input, _expected, _retry, run, options) => {
+        assert.equal(options?.replay, true);
         assert.equal(id, "same-image-operation");
         assert.equal(kind, "move");
         assert.deepEqual(input, { zoneId: "staff-zone" });
@@ -825,6 +864,8 @@ for (const scenario of ["missing-same-zone", "missing-move", "forged-checkpoint"
   const clearSecond = installDefaultActivation(second.owner, () => {});
   try {
     assert.equal((await pending).placeName, "Image A");
+    assert.equal(first.scene.navigationReceipts!.length, 1, "recovery cannot duplicate committed navigation");
+    assert.equal(first.scene.submissions.length, 1, "navigation creates no conversational submission");
     assert.equal(first.calls.includes("image-command"), false);
     releaseFirst();
     clearFirst();
