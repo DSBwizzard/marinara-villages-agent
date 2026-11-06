@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { z } from "zod";
 import { groupSceneMoments } from "../../../shared/helpers/scene-speech.js";
-import { villagesWalk } from "../../../shared/helpers/scene-paragraphs.js";
+import { splitVillagesParagraphs } from "../../../shared/helpers/scene-paragraphs.js";
 import {
   advanceStaging,
   createStagingCursor,
@@ -518,7 +518,7 @@ export function encodeScenePresentations(
     }
     const project = (line: typeof source.line) => publicSceneResponse([line], visible, privateHearing)[0];
     const main = project(source.line);
-    const paragraphs = main.presenceChange ? 0 : villagesWalk(main.content, null).paragraphs.length,
+    const paragraphs = main.presenceChange ? 0 : splitVillagesParagraphs(main.content).length,
       offset = paragraphStart;
     paragraphStart += paragraphs;
     advanceStaging(cursor, { beforeIds: source.beforeIds, cues: lineStagingCues(main) });

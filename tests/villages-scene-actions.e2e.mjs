@@ -33,7 +33,6 @@ await withBrowser(browser, async () => {
       sceneRevision: 1,
       status: "active",
       memoryMode: "live",
-      stagingVersion: 1,
       startedAt: now,
       lastActivityAt: now,
       activeIds: ["mara"],

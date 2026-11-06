@@ -45,7 +45,6 @@ await withBrowser(browser, async () => {
     };
     const session = {
       version: 2,
-      stagingVersion: 1,
       id: "aside-scene",
       placeId: "mill",
       placeName: "The Mill",

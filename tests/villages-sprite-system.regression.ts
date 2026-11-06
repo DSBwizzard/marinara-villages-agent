@@ -310,8 +310,8 @@ for (const failure of ["none", "validation-input", "presentation-publish", "inva
       );
     } else {
       const written = await gmWriter.generate(gmScene, "", "chat", "", null);
-      assert.equal(written.lines[0].expression, undefined);
-      assert.equal(written.lines[0].gazeAt, undefined);
+      assert(!Object.hasOwn(written.lines[0], "expression"));
+      assert(!Object.hasOwn(written.lines[0], "gazeAt"));
       assert.equal(written.lines[0].staging![0].expression, "e-first");
     }
     assert.equal(paid, 1);

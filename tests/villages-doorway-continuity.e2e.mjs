@@ -54,7 +54,6 @@ await withBrowser(browser, async () => {
       startedAt: now,
       lastActivityAt: now,
       sceneRevision: 2,
-      stagingVersion: 1,
       activeIds: [],
       participants: [{ characterId: "mara", name: "Mara", doing: "Talking" }],
       lines: [

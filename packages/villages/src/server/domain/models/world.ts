@@ -3,7 +3,6 @@ import type { VillageSettings } from "../../../shared/contracts/village.js";
 import type { VillageNarrationStyle } from "../rules/narration-style.js";
 import type { ProgressTask } from "../rules/progress-engine.js";
 import type { HomeBuildingKind } from "../rules/prompt-preset.js";
-import type { VillagesWalkBeat as VillagesTurnBeat } from "../../../shared/contracts/scene-beat.js";
 
 // Villages — the shapes the server half of the package trades in.
 //
@@ -864,21 +863,6 @@ export type VillageChatMessage = {
   content: string;
   at: string;
   id?: string;
-  /**
-   * The registers of this message's own paragraphs, when it has any.
-   *
-   * Absent on every ordinary turn and absent on everything already stored, and
-   * that absence is meaningful rather than lazy: a message with no beats is read
-   * by SHAPE, which is what the tab has always done, so the field only appears
-   * on an answer that said something the shape cannot describe — a remark out of
-   * the side of somebody's mouth, or something said to one person only.
-   *
-   * It is presentation and never content. `content` is the same words with the
-   * tags taken off, so the six other readers of a transcript are reading prose,
-   * and a reader that has never heard of this field loses nothing but the
-   * register.
-   */
-  beats?: VillagesTurnBeat[];
   /**
    * Who said it, when it was not the villager whose transcript this is.
    *

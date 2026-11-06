@@ -176,11 +176,7 @@ export function coerceSession(value: unknown): VenueScene {
             ...(row.kind === "narration" || row.kind === "dialogue" || row.kind === "side" || row.kind === "whisper"
               ? { kind: row.kind as VenueLine["kind"] }
               : {}),
-            ...(typeof row.expression === "string" ? { expression: row.expression } : {}),
             ...(Array.isArray(row.staging) ? { staging: readStagingCues(row.staging, [...participantIds]) } : {}),
-            ...(row.gazeAt === "player" || (typeof row.gazeAt === "string" && participantIds.has(row.gazeAt))
-              ? { gazeAt: row.gazeAt as string }
-              : {}),
             ...(typeof row.targetId === "string" ? { targetId: row.targetId } : {}),
             ...(row.delivery === "ordinary" || row.delivery === "whisper" || row.delivery === "shout"
               ? { delivery: row.delivery as VenueLine["delivery"] }
@@ -318,7 +314,6 @@ export function coerceSession(value: unknown): VenueScene {
       raw.endReason === "debug"
         ? raw.endReason
         : "",
-    ...(raw.stagingVersion === 1 ? { stagingVersion: 1 as const } : {}),
     memoryMode: "live",
     status: raw.status === "opening" || raw.status === "closing" || raw.status === "closed" ? raw.status : "active",
     participants,
