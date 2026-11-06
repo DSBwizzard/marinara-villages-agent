@@ -222,7 +222,7 @@ assert.equal(a.queued.length, 0);
 const weatherOnly = fixture("Weather-only"),
   weatherOwner = install(weatherOnly);
 weatherOnly.state.setupAt = weatherOnly.state.foundedAt = weatherOnly.state.simulatedThrough = stamp;
-weatherOnly.state.storyPace = "balanced";
+weatherOnly.state.backgroundPace = "balanced";
 weatherOnly.state.venues = [{ id: "commons", classes: ["workplace"], occupancy: {} }] as any;
 await weatherOwner.scope.run(() => reconcileVillage({ now }));
 assert.equal(weatherOnly.queued.length, 0, "Weather alone queues no automatic model work");

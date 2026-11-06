@@ -100,53 +100,16 @@ async function main() {
   );
   assert.equal(villageSchedulerDelayMs(new Date("bad")), REFRESH_MAX_DELAY_MS);
 
-  const migrated = coerceVillageState({
+  const current = coerceVillageState({
     ...defaultVillageState(),
     backgroundPace: "quiet",
-
-    wishSystemVersion: 3,
     foundedAt: "2026-09-01T07:00:00.000Z",
-    lastHappeningKey: "2:morning",
-    refreshClocks: ["morning"],
-    happenings: [{ id: "old", dayIndex: 1, clock: "evening", text: "An old line." }],
-    villagers: [
-      {
-        characterId: "old-resident",
-        cardSnapshot: {
-          id: "old-resident",
-          name: "Old resident",
-          revision: 1,
-          sourceStatus: "available",
-          capturedAt: "2026-09-01T00:00:00.000Z",
-        },
-        wishes: [],
-        agenda: { day: [{ clock: "morning", venueId: "square", activity: "walking" }] },
-      },
-    ],
+    simulatedThrough: "2026-09-03T19:00:00.000Z",
   });
-  assert.equal(migrated.backgroundPace, "quiet");
-  assert.ok(Date.parse(migrated.simulatedThrough) > 0);
-  assert.equal(Object.hasOwn(migrated, "happenings"), false);
-  assert.equal(migrated.villagers[0]?.agenda?.day[0]?.startMinute, 300);
-  assert.equal(
-    coerceVillageState({
-      ...defaultVillageState(),
-
-      wishSystemVersion: 3,
-      backgroundPace: "off",
-      refreshClocks: [],
-    }).backgroundPace,
-    "off",
-  );
-  assert.equal(
-    coerceVillageState({
-      ...defaultVillageState(),
-
-      wishSystemVersion: 3,
-      refreshClocks: ["morning", "evening"],
-    }).backgroundPace,
-    "balanced",
-  );
+  assert.equal(current.backgroundPace, "quiet");
+  assert.equal(current.simulatedThrough, "2026-09-03T19:00:00.000Z");
+  assert.equal(coerceVillageState({ ...defaultVillageState(), backgroundPace: "off" }).backgroundPace, "off");
+  assert.equal(coerceVillageState(defaultVillageState()).backgroundPace, "balanced");
 
   const documentsByKey = new Map<string, any>();
   const documents = {
