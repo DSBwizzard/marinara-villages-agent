@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import { mock } from "node:test";
 import { pathToFileURL } from "node:url";
 import { readPrivateDiagnostics } from "../packages/villages/src/server/adapters/observability/private-diagnostics.js";
+import { relationshipDocumentId } from "../packages/villages/src/server/adapters/storage/relationship-payload-store.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
   coerceVillageState,
@@ -20,6 +21,7 @@ import { venueFixture } from "./helpers/venues.fixture.js";
 import {
   authorSceneFixture,
   fixtureSceneState,
+  fixtureRelationshipState,
   fixtureVillageState,
   villageFixtureDocuments,
 } from "./helpers/village-storage.fixture.js";
@@ -471,6 +473,53 @@ try {
   );
   restore();
 
+  const privatePlan = "PRIVATE_PLAN_AQUA_TEA: invite the player for tea when the terrace is quiet.";
+  const intentionSpeech = "I enjoy a quiet conversation.";
+  const intention = await turn(
+    "private-intention",
+    [{ speakerId: "aqua", text: intentionSpeech }],
+    {
+      input: [{ kind: "speech", text: "I am happy to listen." }],
+      relationshipChanges: {
+        intentions: [
+          {
+            actorId: "aqua",
+            expectedRevision: 0,
+            lineIds: [0],
+            items: [
+              { id: "", targetIds: ["player"], text: privatePlan, reason: "Enjoys conversation.", status: "active" },
+            ],
+          },
+        ],
+      },
+    },
+    "I am happy to listen.",
+  );
+  const social = fixtureRelationshipState(records.get(relationshipDocumentId(village.seed)), records);
+  assert.equal(social.intentions.aqua.length, 1);
+  assert.equal(social.intentions.aqua[0].text, privatePlan);
+  assert.equal(social.intentionRevisions.aqua, 1);
+  assert.deepEqual(
+    social.intentions.aqua[0].evidenceIds,
+    [state().lines.find((line: any) => line.content === intentionSpeech).id],
+    "Inserted player speech cannot shift an intention's resident source",
+  );
+  const activeIntention = await app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+  const intentionChanges = await app.inject({ method: "GET", url: "/api/villages/rooms/" + scene.id + "/changes" });
+  const intentionSnapshot = await app.inject({ method: "GET", url: "/api/villages" });
+  for (const response of [activeIntention, intentionChanges, intentionSnapshot])
+    assert.equal(response.statusCode, 200, response.body);
+  for (const [name, text] of [
+    ["turn", JSON.stringify(intention)],
+    ["active", activeIntention.body],
+    ["changes notices", JSON.stringify(intentionChanges.json().notices)],
+    ["snapshot", intentionSnapshot.body],
+    ["history", await publicHistory(intention.session.playback.scope)],
+  ])
+    assert(!text.includes(privatePlan), "Private intention exposed by " + name);
+
+  restore();
+
   const mixedMessage = 'I whisper "PRIVATE WORDS." to Feddy. *drops a pebble*';
   await turn(
     "mixed-private-noise",
@@ -512,6 +561,11 @@ try {
     "capture",
     "json",
     "truncated",
+    "events",
+    "events-array",
+    "events-null",
+    "event-moves",
+    "access-null",
     "project",
     "agency",
     "disclosure",
@@ -526,6 +580,11 @@ try {
     if (failure === "capture") answer.input = [{ kind: "action", text: "NOT IN THE ORIGINAL" }];
     if (failure === "json" || failure === "truncated") answerContent = '{"input":';
     if (failure === "truncated") answerFinishReason = "length";
+    if (failure === "events") answer.events = "malformed";
+    if (failure === "events-array") answer.events = [];
+    if (failure === "events-null") answer.events = null;
+    if (failure === "event-moves") answer.events = { moves: null };
+    if (failure === "access-null") answer.access = null;
     if (failure === "project") {
       answer.segments = [{ speakerId: "aqua", text: "I approve the unknown project." }];
       answer.projectSpeech = [
@@ -609,18 +668,21 @@ try {
     restore();
   }
 
-  for (const [field, domain] of [
-    ["memoryChanges", "memories"],
-    ["relationshipChanges", "relationships"],
-    ["wishChanges", "wishes"],
-    ["projectSpeech", "projects"],
-  ]) {
-    const id = "malformed-" + domain,
+  for (const [field, domain, proposal, variant] of [
+    ["memoryChanges", "memories", "malformed", "text"],
+    ["memoryChanges", "memories", null, "null"],
+    ["relationshipChanges", "relationships", { changes: "malformed", permissions: [], disclosures: [] }, "nested"],
+    ["relationshipChanges", "relationships", "malformed", "outer-text"],
+    ["relationshipChanges", "relationships", null, "outer-null"],
+    ["relationshipChanges", "relationships", [], "outer-array"],
+    ["wishChanges", "wishes", "malformed", "text"],
+    ["wishChanges", "wishes", null, "null"],
+    ["projectSpeech", "projects", "malformed", "text"],
+    ["projectSpeech", "projects", null, "null"],
+  ] as const) {
+    const id = "malformed-" + domain + "-" + variant,
       text = "Accepted prose for " + domain + ".";
-    await turn(id, [{ speakerId: "aqua", text }], {
-      [field]:
-        field === "relationshipChanges" ? { changes: "malformed", permissions: [], disclosures: [] } : "malformed",
-    });
+    await turn(id, [{ speakerId: "aqua", text }], { [field]: proposal });
     const held = () => state().submissions.find((entry: any) => entry.id === id);
     assert.equal(held().processing.domains[domain].status, "failed");
     assert(held().effectFailures[domain]);
@@ -641,6 +703,127 @@ try {
     assert.equal(modelCalls, calls + 1, "Only the explicit effect repair purchases a request");
     assert.deepEqual(state().lines, lines);
     assert.equal(held().processing.domains[domain].status, "applied");
+    restore();
+  }
+
+  for (const action of ["grant", "revoke"] as const) {
+    const venue = records.get("villages-village").data.venues[0];
+    const kitchen = venue.zones.find((zone: any) => zone.id === "kitchen");
+    kitchen.kind = "restricted";
+    kitchen.access = {
+      mode: "permission-required",
+      managerIds: ["aqua"],
+      memberIds: ["aqua"],
+      memberRoles: [],
+      inviterIds: ["aqua"],
+      visitorHours: "always",
+      accompanied: false,
+    };
+    venue.access.managerIds = ["aqua"];
+    if (action === "revoke")
+      venue.access.permissions.push({
+        id: "existing-standing",
+        zoneId: "kitchen",
+        visitorId: "player",
+        issuerId: "aqua",
+        duration: "standing",
+        sceneId: null,
+        accompaniedBy: null,
+        outsideHours: false,
+        revoked: false,
+        issuedAt: now,
+        sourceLineIds: ["earlier-standing"],
+      });
+    editFixtureScene((saved) => {
+      saved.sceneAttendance.layout = captureSceneLayout(venue);
+      saved.continuity = captureSceneContinuity(
+        fixtureVillageState(records.get("villages-village").data, records),
+        saved,
+        Date.parse(now),
+      );
+    });
+    const permission = {
+      controllerId: "aqua",
+      visitorId: "player",
+      venueId: "harbour",
+      zoneId: "kitchen",
+      action,
+      lineIds: [0],
+    };
+    await app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+    const id = "malformed-standing-" + action;
+    const text =
+      action === "grant"
+        ? "You can visit my Kitchen whenever you like."
+        : "Your standing permission to visit my Kitchen is withdrawn.";
+    answer = {
+      input: [{ kind: "action", text: "*waits*" }],
+      segments: [{ speakerId: "aqua", text }],
+      relationshipChanges: { changes: "malformed", permissions: [permission], disclosures: [] },
+    };
+    const request = payload(id),
+      before = clone(state()),
+      worldBefore = clone(records.get("villages-village").data),
+      calls = modelCalls;
+    const response = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload: request });
+    assert.equal(response.statusCode, 502, response.body);
+    assert.match(response.body, /malformed authority metadata/);
+    assert.equal(modelCalls, calls + 1);
+    assert.deepEqual(state().lines, before.lines);
+    assert.deepEqual(state().submissions, before.submissions);
+    assert.deepEqual(
+      records.get("villages-village").data,
+      worldBefore,
+      "No authority or prose applies from the malformed response",
+    );
+    assert(
+      readPrivateDiagnostics(records.get("villages-private-diagnostics").data).entries.some(
+        (row: any) => row.operationId === id && row.content.includes('"permissions"'),
+      ),
+    );
+    const continued = await app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/" + scene.id + "/changes/" + id + "/continue",
+      payload: { domain: "relationships" },
+    });
+    assert.equal(continued.statusCode, 404, continued.body);
+    await restart();
+    const next = await app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/turn",
+      payload: payload("blocked-after-" + action),
+    });
+    assert.equal(next.statusCode, 409, next.body);
+    assert.equal(modelCalls, calls + 1, "A held authority response cannot be skipped or replaced implicitly");
+    answer.relationshipChanges = { changes: [], permissions: [permission], disclosures: [] };
+    const repaired = await app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/turn",
+      payload: {
+        ...request,
+        retryOfAttemptId: state().operation.attemptId,
+      },
+    });
+    assert.equal(repaired.statusCode, 200, repaired.body);
+    assert.equal(state().submissions.at(-1).processing.domains.relationships.status, "applied");
+    const permissions = fixtureVillageState(records.get("villages-village").data, records).venues[0].access!
+      .permissions;
+    assert.equal(
+      permissions.some(
+        (entry: any) =>
+          entry.zoneId === "kitchen" && entry.visitorId === "player" && entry.duration === "standing" && !entry.revoked,
+      ),
+      action === "grant",
+    );
+    assert.equal(modelCalls, calls + 2, "Only matching explicit retry can replace and settle the authority response");
+    const settledAccess = clone(fixtureVillageState(records.get("villages-village").data, records).venues[0].access);
+    const replay = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload: request });
+    assert.equal(replay.statusCode, 200, replay.body);
+    assert.deepEqual(
+      fixtureVillageState(records.get("villages-village").data, records).venues[0].access,
+      settledAccess,
+    );
+    assert.equal(modelCalls, calls + 2, "Successful retry replay cannot duplicate a permission or its revision");
     restore();
   }
 

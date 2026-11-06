@@ -101,17 +101,28 @@ export function materializeGmReply(raw: Record<string, unknown>, message: string
 /** Expand sparse proposals into existing domain contracts, never a fabricated System verdict. */
 export function normalizeGmEffects(raw: Record<string, unknown>, context: ReturnType<typeof semanticContext>) {
   const result = structuredClone(raw);
-  for (const key of ["memoryChanges", "wishChanges", "projectSpeech", "access"]) result[key] ??= [];
+  for (const key of ["memoryChanges", "wishChanges", "projectSpeech", "access"])
+    if (result[key] === undefined) result[key] = [];
   result.action ??= null;
-  result.halt ??= { reason: "none", quote: "", appointments: [] };
-  result.events = { moves: [], departures: [], contactEnd: [], ...asRecord(result.events) };
-  result.narrativeIntroduction ??= { status: "quiet", development: null };
-  result.relationshipChanges = {
-    changes: [],
-    permissions: [],
-    disclosures: [],
-    ...asRecord(result.relationshipChanges),
-  };
+  if (result.halt === undefined) result.halt = { reason: "none", quote: "", appointments: [] };
+  if (
+    result.events === undefined ||
+    (result.events && typeof result.events === "object" && !Array.isArray(result.events))
+  )
+    result.events = { moves: [], departures: [], contactEnd: [], ...asRecord(result.events) };
+  if (result.narrativeIntroduction === undefined) result.narrativeIntroduction = { status: "quiet", development: null };
+  if (
+    result.relationshipChanges === undefined ||
+    (result.relationshipChanges &&
+      typeof result.relationshipChanges === "object" &&
+      !Array.isArray(result.relationshipChanges))
+  )
+    result.relationshipChanges = {
+      changes: [],
+      permissions: [],
+      disclosures: [],
+      ...asRecord(result.relationshipChanges),
+    };
   const social = asRecord(result.relationshipChanges);
   if (Array.isArray(social.changes))
     social.changes = social.changes.map((value) => {

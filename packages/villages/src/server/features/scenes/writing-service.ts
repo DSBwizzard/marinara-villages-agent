@@ -5,6 +5,7 @@ import { admissionLoreContext } from "../../../shared/helpers/resident-admission
 import { readStagingCues } from "../../../shared/helpers/scene-staging.js";
 import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import type { InterpretationBatch } from "../../domain/models/interpretation-model.js";
+import { semanticAuthorityDomain } from "../../domain/rules/semantic-continuity.js";
 import type { NarrativeAdmission } from "../../domain/models/narrative-model.js";
 import type { GreetingTrace, VenueReplyFailureKind, VenueScene } from "../../domain/models/scene-model.js";
 import type { VillageState } from "../../domain/models/world.js";
@@ -1266,6 +1267,14 @@ export function createSceneWriting({
             "System Project commitment metadata did not validate. " + projectFailure + " The draft is preserved.",
           );
       }
+      if (
+        ["relationships", "projects"].some((domain) =>
+          semanticAuthorityDomain({ effectFailures }, domain as "relationships" | "projects"),
+        )
+      )
+        throw badGateway(
+          "The GM response contains malformed authority metadata. Explicitly retry; your draft is preserved.",
+        );
       return {
         ...parsed,
         lore: mergeLoreUse(fitted.lore, semanticResult?.lore),

@@ -772,7 +772,7 @@ async function main() {
   );
   assert.equal(checkpoints.size, 1, "Replay reuses the exact captured validation input");
 
-  for (const [domain, authority, proposals, action, allowed] of [
+  for (const [domain, authority, proposals, action, allowed, retained = false] of [
     ["memories", {}, {}, undefined, true],
     ["relationships", {}, {}, undefined, true],
     ["relationships", { standing: true }, {}, undefined, false],
@@ -781,6 +781,13 @@ async function main() {
     ["relationships", {}, { changes: [{ liveAfter: { records: [{ kind: "agreement" }] } }] }, undefined, false],
     ["projects", { projects: true }, {}, undefined, false],
     ["projects", {}, {}, { happened: true }, false],
+    ["relationships", {}, { permissions: [{ action: "grant" }] }, undefined, false, true],
+    ["relationships", {}, { permissions: [{ action: "revoke" }] }, undefined, false, true],
+    ["relationships", {}, { permissions: "malformed" }, undefined, false, true],
+    ["relationships", {}, { changes: [{ liveAfter: { connection: "Partners" } }] }, undefined, false, true],
+    ["relationships", {}, { changes: [{ liveAfter: { records: [{ kind: "agreement" }] } }] }, undefined, false, true],
+    ["projects", {}, { projectSpeech: [{ kind: "approval" }] }, undefined, false, true],
+    ["projects", {}, [{ kind: "approval" }], undefined, false, true],
   ] as const) {
     const processing = createExchangeProcessing({
       seed: state.seed,
@@ -797,7 +804,10 @@ async function main() {
       semanticProvenance: { ...plain, pipelineVersion: 3, authority },
       semanticReady: true,
       processing,
-      liveProposals: { relationshipChanges: proposals },
+      liveProposals: { relationshipChanges: retained ? {} : proposals },
+      effectFailures: retained
+        ? { [domain]: { proposal: domain === "relationships" ? { relationshipChanges: proposals } : proposals } }
+        : undefined,
       action,
     } as any;
     if (allowed) {
