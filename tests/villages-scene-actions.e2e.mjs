@@ -4,7 +4,12 @@ import { mockEngineLookups, fulfill, abort } from "./fixtures/browser-diagnostic
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
-import { snapshot as fixture, residents, now } from "./fixtures/villages-scene-browser.fixture.mjs";
+import {
+  snapshot as fixture,
+  residents,
+  now,
+  venueSnapshotFixture,
+} from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const browser = await chromium.launch({
   headless: true,
@@ -17,6 +22,7 @@ await withBrowser(browser, async () => {
       { id: "exterior", name: "Exterior", kind: "exterior", venueClass: "workplace", state: {}, seen: true },
       { id: "hall", name: "Common Space", kind: "public", venueClass: "community", state: {}, seen: true },
     ];
+    snapshot.settings.venues[0] = venueSnapshotFixture(snapshot.settings.venues[0]);
     let scene = {
       id: "actions",
       placeId: "mill",

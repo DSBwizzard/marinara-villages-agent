@@ -400,7 +400,6 @@ export type VillageVenue = {
   zones?: Array<
     NonNullable<VillageVenue["spaces"]>[number] & {
       name: string;
-      relationshipAccess?: boolean;
       kind: "exterior" | "public" | "shared-residence" | "private-residence" | "staff" | "restricted";
       closed?: boolean;
       ownerId?: string;
@@ -442,14 +441,6 @@ export type VillageVenue = {
   }>;
   residenceCapacity?: number;
   residentIds?: string[];
-  playerInvitations?: {
-    privateSpaceId?: string;
-    zoneId?: string;
-    residentId: string;
-    recordedAt: string;
-    scope?: "shared" | "private";
-    ownerId?: string;
-  }[];
   exteriorState?: NonNullable<VillageVenue["spaces"]>[number]["state"];
   privateSpaces?: Array<
     NonNullable<VillageVenue["spaces"]>[number] & {
@@ -832,9 +823,7 @@ export type SceneView = {
   placeName: string;
   spaceClass?: VenueClass;
   zoneId?: string;
-  grantedZoneIds?: string[];
   privateSpaceId?: string;
-  zoneGrants?: { zoneId: string; controllerId: string }[];
   doorwayContacts?: { characterId: string; playerZoneId: string }[];
   entryOffers?: { zoneId: string; label: string; controllerId: string; accompanies: boolean }[];
   area?: "outside" | "shared" | "private" | "public";
@@ -859,15 +848,6 @@ export type RoomRecordEvent = {
   kind: "memory" | "wish" | "venue" | "request" | "project" | "relationship-up" | "relationship-down";
   text: string;
   detail?: string;
-};
-
-export type ArchiveVisitSummary = Pick<
-  SceneView,
-  "id" | "placeId" | "placeName" | "startedAt" | "endedAt" | "endReason" | "participants"
-> & {
-  lineCount: number;
-  memoryUnits: number;
-  recollectionCount: number;
 };
 
 /**

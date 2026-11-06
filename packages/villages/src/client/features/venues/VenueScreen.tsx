@@ -12,7 +12,7 @@ import { WorkspaceShell, type WorkspaceDestination } from "../../shared/Workspac
 import type { VenueScreenController } from "./screen-contracts.js";
 import { venueDisplayZones, type VenueDisplayZone } from "./venue-view.js";
 import { VenueLayoutEditor } from "./VenueLayoutEditor.js";
-import { ZoneAccessLabels } from "./VenueLayout.js";
+import { ZoneAccessLabels } from "./ZoneAccessLabels.js";
 import { LoreActivityButton } from "../../shared/LoreActivity.js";
 
 function VenueName({ place, controller }: { place: VillageVenue; controller: VenueScreenController }) {
@@ -566,7 +566,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
         </button>
       </div>
     );
-  const zones = venueDisplayZones(place, room);
+  const zones = venueDisplayZones(place);
   const selected =
     zones.find((zone) => zone.id === venueZoneKey) ?? zones.find((zone) => zone.kind === "exterior") ?? zones[0];
   const exterior = zones.find((zone) => zone.kind === "exterior");

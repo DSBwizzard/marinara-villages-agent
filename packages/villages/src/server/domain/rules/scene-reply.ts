@@ -12,8 +12,7 @@ export function parseVenueReply(
   lines: VenueReplyLine[];
   heardPlayerBy: string[];
 } {
-  const structured = Array.isArray(raw?.segments);
-  const segments = structured ? raw!.segments : raw?.lines;
+  const segments = raw?.segments;
   if (!raw) throw new Error("Scene reply must be an object.");
   if (!Array.isArray(segments)) throw new Error("segments must be an array.");
   if (!Array.isArray(raw.heardPlayerBy)) throw new Error("heardPlayerBy must be an array.");
@@ -28,13 +27,7 @@ export function parseVenueReply(
   if (segments.length > 24) throw new Error("segments must contain at most 24 lines.");
   const lines: VenueReplyLine[] = segments.map((value, index): VenueReplyLine => {
     const row = asRecord(value);
-    if (
-      structured &&
-      row.kind !== "narration" &&
-      row.kind !== "dialogue" &&
-      row.kind !== "side" &&
-      row.kind !== "whisper"
-    )
+    if (row.kind !== "narration" && row.kind !== "dialogue" && row.kind !== "side" && row.kind !== "whisper")
       throw new Error(`segments[${index}].kind must be narration, dialogue, side or whisper.`);
     let kind: VenueReplyLine["kind"] =
       row.kind === "narration" || row.kind === "side" || row.kind === "whisper" ? row.kind : "dialogue";
@@ -107,6 +100,8 @@ export function parseVenueReply(
   };
 }
 export function savedAccessEvents(batch?: InterpretationBatch | null): SavedAccessEvent[] {
+  if (batch?.checks.some((check) => asRecord(check.facts).semanticVersion !== 2))
+    throw new Error("This access effect needs current evidence.");
   return batch
     ? batch.checks.flatMap((check, index) => {
         const facts = asRecord(check.facts),
@@ -126,8 +121,8 @@ export function savedAccessEvents(batch?: InterpretationBatch | null): SavedAcce
               venueId: String(facts.venueId),
               zoneId: typeof facts.zoneId === "string" ? facts.zoneId : null,
               accessRevision: Number(facts.accessRevision),
-              ...(facts.semanticVersion === 2 ? { semanticVersion: 2 as const } : {}),
-              ...(facts.semanticVersion === 2 ? { accompanies: facts.accompanies === true } : {}),
+              semanticVersion: 2,
+              accompanies: facts.accompanies === true,
               ...(facts.accessCommand
                 ? { accessCommand: structuredClone(facts.accessCommand) as SavedAccessEvent["facts"]["accessCommand"] }
                 : {}),

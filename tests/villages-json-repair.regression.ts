@@ -5,7 +5,6 @@ import {
   readModelJsonObject,
   MODEL_JSON_MAX_CHARACTERS,
 } from "../packages/villages/src/server/domain/rules/json-reply.js";
-import { extractSceneReply } from "../packages/villages/src/server/domain/rules/scene-reply-json.js";
 import { completeSceneObject } from "../packages/villages/src/server/domain/rules/scene-writing-contract.js";
 import { extractFoundingVenueReply } from "../packages/villages/src/server/domain/rules/founding-venue-reply.js";
 import { retainJsonRepair } from "../packages/villages/src/server/adapters/observability/json-repair-diagnostics.js";
@@ -48,7 +47,7 @@ for (const text of [
 for (const reason of ["length", "max_tokens", "content_filter", "tool_calls", "unknown"])
   assert.equal(read(malformed, reason).value, null, reason);
 for (const suffix of [' {"other":', " [", ', "action": null']) {
-  assert.equal(extractSceneReply('{"segments":[],"heardPlayerBy":[]}' + suffix, "stop"), null);
+  assert.equal(completeSceneObject('{"segments":[],"heardPlayerBy":[]}' + suffix, "stop"), null);
   assert.equal(completeSceneObject('{"segments":[],"heardPlayerBy":[]}' + suffix, "stop"), null);
 }
 assert.equal(extractFoundingVenueReply('{"venues":[],"venues":[{"id":"v"}]}'), null);
@@ -57,7 +56,7 @@ assert.deepEqual(extractFoundingVenueReply('[{"id":"v"}]'), { venues: [{ id: "v"
 assert.deepEqual(extractFoundingVenueReply(JSON.stringify('{"venues":[{"id":"v"}]}')), { venues: [{ id: "v" }] });
 const deep = '{"venues":[],"a":' + "[".repeat(65) + "0" + "]".repeat(65) + "}";
 assert.equal(extractFoundingVenueReply(deep), null);
-assert.equal(extractSceneReply(deep, "stop"), null);
+assert.equal(completeSceneObject(deep, "stop"), null);
 assert.equal(completeSceneObject(deep, "stop"), null);
 const records = new Map<string, any>();
 let failWrites = false;

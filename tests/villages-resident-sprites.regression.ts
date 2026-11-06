@@ -20,22 +20,16 @@ import {
   resolveSceneSpriteExpressions,
   validateSpriteExpression,
 } from "../packages/villages/src/server/domain/rules/sprite-expressions.js";
-import {
-  parseVillagesTurnBeats,
-  renderVillagesTurnBeats,
-} from "../packages/villages/src/server/domain/rules/turn-beats.js";
-const answer = `[expression:happy] "Welcome home."\n\n[expression:unknown] "Maybe."\n\n[side] "Quiet now."`;
-const beats = parseVillagesTurnBeats(answer);
-assert.ok(beats);
-assert.deepEqual(
-  beats.map((beat) => beat.expression ?? null),
-  ["happy", "unknown", null],
-);
-assert.equal(renderVillagesTurnBeats(beats).includes("[expression:"), false);
-const walk = villagesWalk(renderVillagesTurnBeats(beats), beats);
+import type { VillagesWalkBeat } from "../packages/villages/src/shared/contracts/scene-beat.js";
+const beats: VillagesWalkBeat[] = [
+  { kind: "untagged", text: '"Welcome home."', expression: "happy" },
+  { kind: "untagged", text: '"Maybe."', expression: "unknown" },
+  { kind: "side", text: '"Quiet now."' },
+];
+const walk = villagesWalk(beats.map((beat) => beat.text).join("\n\n"), beats);
 assert.deepEqual(walk.expressions, ["happy", "unknown"]);
 assert.equal(walk.asides[1]?.[0]?.text, '"Quiet now."');
-assert.deepEqual(villagesWalk('"Old line."', null).expressions, [null]);
+assert.deepEqual(villagesWalk('"An ordinary line."', null).expressions, [null]);
 const directions = [spriteFacing(1, -1), spriteFacing(1, 0), spriteFacing(1, 2)];
 assert.deepEqual(directions, ["front", "left", "right"]);
 const images = [

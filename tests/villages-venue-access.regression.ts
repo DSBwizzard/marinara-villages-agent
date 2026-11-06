@@ -1,3 +1,4 @@
+import { venueDisplayZones } from "../packages/villages/src/client/features/venues/venue-view.js";
 import {
   canOccupyZone,
   chooseAgendaZone,
@@ -16,7 +17,7 @@ import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { accessManagementChecks } from "../packages/villages/src/server/domain/rules/access-speech.js";
+
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
 import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import { bindLiveProposals } from "../packages/villages/src/server/domain/rules/live-exchange.js";
@@ -38,6 +39,7 @@ import {
   projectVenueAccess,
   projectZoneAccess,
   readVenueAccess,
+  readAccessCommand,
   reconcileVenueAccess,
   settleStandingAccess,
   withinVisitorHours,
@@ -120,6 +122,77 @@ function fixture(): VillageVenue {
   initializeVenueAccess(result);
   result.access!.managerIds = ["jim"];
   return result;
+}
+{
+  const current = fixture();
+  applyAccessCommand(
+    current,
+    {
+      action: "invite",
+      operationId: "current-format-grant",
+      expectedRevision: 0,
+      zoneId: "bedroom",
+      visitorId: "player",
+      duration: "visit",
+      accompanied: false,
+      outsideHours: false,
+    },
+    "jim",
+    stamp,
+    known,
+    ["exact-native-source"],
+  );
+  claimVisitPermission(current, "current-format-grant", "native-scene");
+  const raw = { ...current, usedInvitationIds: ["old"], playerInvitations: [{ residentId: "jim", zoneId: "living" }] };
+  const roundtrip = coerceVillageState({ ...defaultVillageState(), venues: [raw] }).venues[0];
+  assert(!Object.hasOwn(roundtrip, "playerInvitations"));
+  assert(!Object.hasOwn(roundtrip, "usedInvitationIds"));
+  assert.deepEqual(roundtrip.access, current.access, "Native receipts and claimed visits survive current reload");
+  const scene = coerceSession({
+    version: 4,
+    id: "native-scene",
+    placeId: "home",
+    zoneId: "exterior",
+    legacyCast: true,
+    dismissedZoneIds: ["bedroom"],
+    grantedZoneIds: ["living"],
+    zoneGrants: [{ zoneId: "living", controllerId: "jim" }],
+  });
+  for (const field of ["legacyCast", "dismissedZoneIds", "grantedZoneIds", "zoneGrants"])
+    assert(!Object.hasOwn(scene, field), field);
+  const projected = {
+    ...current,
+    zones: current.zones!.map((zone) => ({
+      ...zone,
+      accessView: projectZoneAccess(current, zone, "player", { sceneId: "native-scene" }),
+    })),
+  };
+  const visible = venueDisplayZones(projected as any);
+  assert(visible.find((zone) => zone.id === "exterior")!.allowed);
+  assert(visible.find((zone) => zone.id === "bedroom")!.allowed);
+  assert.equal(visible.find((zone) => zone.id === "living")!.allowed, false);
+  assert.equal(
+    venueDisplayZones({ ...projected, zones: projected.zones.map((zone) => ({ ...zone, closed: true })) } as any).some(
+      (zone) => zone.allowed,
+    ),
+    false,
+  );
+  const noProjection = {
+    ...projected,
+    occupancy: { ...projected.occupancy, playerHome: true },
+    playerInvitations: raw.playerInvitations,
+    zones: projected.zones.map((zone) => ({ ...zone, accessView: undefined })),
+  };
+  assert.equal(
+    venueDisplayZones(noProjection as any).some((zone) => zone.allowed),
+    false,
+    "Retired grants, ownership and Zone kind cannot replace a current access projection",
+  );
+  assert.deepEqual(
+    venueDisplayZones({ ...noProjection, zones: undefined } as any),
+    [],
+    "No retired layout reconstruction",
+  );
 }
 for (const retainZonePolicy of [false, true]) {
   const missing = fixture();
@@ -838,6 +911,52 @@ const release = configureVillagesRuntime({
     },
   },
 } as any);
+async function recordCurrentInvitation(scene: any, line: any, operationId: string) {
+  const world = await readVillageState({ memories: true });
+  const venue = world.venues.find((row) => row.id === "home")!;
+  const current = structuredClone(scene);
+  current.lines = [...current.lines.filter((row: any) => row.id !== line.id), { ...line, kind: "dialogue" }];
+  current.submissions.push({ mode: "chat", id: operationId, at: line.at, replyLineIds: [line.id] });
+  const key = "villages-venue-visit-" + current.id;
+  records.set(key, {
+    id: key,
+    kind: "venue-visit",
+    revision: (records.get(key)?.revision ?? 0) + 1,
+    data: authorSceneFixture(records, current, world),
+  });
+  const saved = await readSession(current.id);
+  const facts = {
+    actorId: "jim",
+    venueId: "home",
+    zoneId: "living",
+    accessRevision: venue.access!.revision,
+    semanticVersion: 2,
+    accessCommand: {
+      action: "invite",
+      operationId,
+      expectedRevision: venue.access!.revision,
+      zoneId: "living",
+      visitorId: "player",
+      duration: "visit",
+      accompanied: false,
+      outsideHours: false,
+      sceneId: current.id,
+    },
+  };
+  await recordRoomAccessEvents(saved, {
+    checks: [{ id: operationId, facts }],
+    results: [{ outcome: "invite-now", evidenceIds: [line.id] }],
+  } as any);
+  await recordSpokenInvitation(saved, {
+    accessOperationId: operationId,
+    residentId: "jim",
+    venueId: "home",
+    zoneId: "living",
+    zoneLabel: "Living room",
+    timing: "now",
+    quote: line.content,
+  });
+}
 async function main() {
   try {
     failSceneCreate = true;
@@ -1115,24 +1234,13 @@ async function main() {
       speakerId: "jim",
       role: "assistant",
       content: "You are always welcome in the living room; come in now.",
-      kind: "main",
+      kind: "dialogue",
       heardBy: ["jim", "player"],
       at: speechAt,
     } as any;
     const invitationScene = structuredClone(arrival);
     invitationScene.lines.push(invitationLine);
-    await recordSpokenInvitation(invitationScene, {
-      interpretationVersion: 1,
-      residentId: "jim",
-      venueId: "home",
-      scope: "shared",
-      ownerId: "jim",
-      zoneId: "living",
-      timing: "now",
-      quote: invitationLine.content,
-      sourceLineId: invitationLine.id,
-      accessRevision: managementWorld.venues[0].access!.revision,
-    });
+    await recordCurrentInvitation(invitationScene, invitationLine, "immediate-invitation");
     assert.equal(
       evaluateZoneAccess(
         (await readVillageState({ memories: true })).venues[0],
@@ -1151,23 +1259,10 @@ async function main() {
       false,
       "A revoked interleaved move cannot reveal an unseen Zone.",
     );
-    await recordSpokenInvitation(
-      {
-        ...refusedMove,
-        lines: [...refusedMove.lines, { ...invitationLine, id: "immediate-retry", at: new Date().toISOString() }],
-      } as any,
-      {
-        interpretationVersion: 1,
-        residentId: "jim",
-        venueId: "home",
-        scope: "shared",
-        ownerId: "jim",
-        zoneId: "living",
-        timing: "now",
-        quote: invitationLine.content,
-        sourceLineId: "immediate-retry",
-        accessRevision: (await readVillageState({ memories: true })).venues[0].access!.revision,
-      },
+    await recordCurrentInvitation(
+      refusedMove,
+      { ...invitationLine, id: "immediate-retry", at: new Date().toISOString() },
+      "immediate-retry-invitation",
     );
     const admittedMove = await moveVenueZone(arrival.id, "living", refusedMove.sceneRevision);
     assert.equal(
@@ -1179,6 +1274,7 @@ async function main() {
 
     const standingAt = new Date().toISOString();
     const standingScene = {
+      ...arrival,
       id: "standing-scene",
       villageSeed: (await readVillageState({ memories: true })).seed,
       lines: [{ ...invitationLine, id: "standing-line", at: standingAt }],
@@ -1211,18 +1307,7 @@ async function main() {
         },
       ],
     } as any;
-    await recordSpokenInvitation(standingScene, {
-      interpretationVersion: 1,
-      residentId: "jim",
-      venueId: "home",
-      scope: "shared",
-      ownerId: "jim",
-      zoneId: "living",
-      timing: "now",
-      quote: invitationLine.content,
-      sourceLineId: "standing-line",
-      accessRevision: (await readVillageState({ memories: true })).venues[0].access!.revision,
-    });
+    await recordCurrentInvitation(standingScene, standingScene.lines[0], "standing-visit-invitation");
     const turn = standingScene.submissions[0];
     turn.liveProposals = bindLiveProposals(
       turn.liveProposals,
@@ -1367,7 +1452,7 @@ async function main() {
         speakerId: "jim",
         content:
           "Mara will manage the shared living room from now on; she is its only named manager. All its other rules stay the same.",
-        kind: "main",
+        kind: "dialogue",
         heardBy: ["player"],
       },
     ] as any;
@@ -1384,17 +1469,24 @@ async function main() {
         command: { action: "zone-policy", zoneId: "living", policy: commandPolicy },
       },
     ];
-    const checks = accessManagementChecks(await readVillageState({ memories: true }), draft, events, "speech-fixture");
-    assert.equal(checks.length, 1);
-    assert.equal(
-      accessManagementChecks(
-        await readVillageState({ memories: true }),
-        [{ ...draft[0], speakerId: "visitor" }],
-        events,
-        "wrong-speaker",
-      ).length,
-      0,
-    );
+    const speechAuthority = (await readVillageState({ memories: true })).venues[0].access!;
+    const checks = [
+      {
+        id: "speech-fixture",
+        facts: {
+          actorId: "jim",
+          venueId: "home",
+          zoneId: "living",
+          accessRevision: speechAuthority.revision,
+          semanticVersion: 2,
+          accessCommand: readAccessCommand({
+            ...events[0].command,
+            operationId: "speech-fixture",
+            expectedRevision: speechAuthority.revision,
+          }),
+        },
+      },
+    ];
     const speechScene = {
       version: 4,
       id: "speech-scene",
@@ -1405,13 +1497,27 @@ async function main() {
     const result = {
       outcome: "access-management",
       evidenceIds: ["draft:0"],
-      source: "system",
+      source: "gm",
       reason: "secret-policy-data",
     };
     const batch = {
       checks,
       results: [result],
     } as any;
+    const wrongSpeaker = structuredClone(batch);
+    wrongSpeaker.checks[0].id = "wrong-speaker";
+    wrongSpeaker.checks[0].facts.accessCommand.operationId = "wrong-speaker";
+    const speechPolicy = structuredClone(
+      (await readVillageState({ memories: true })).venues[0].zones!.find((zone) => zone.id === "living")!.access,
+    );
+    await recordRoomAccessEvents(
+      { ...speechScene, lines: [{ ...speechScene.lines[0], speakerId: "visitor" }] },
+      wrongSpeaker,
+    );
+    const refusedSpeech = (await readVillageState({ memories: true })).venues[0];
+    assert.deepEqual(refusedSpeech.zones!.find((zone) => zone.id === "living")!.access, speechPolicy);
+    assert.equal(refusedSpeech.access!.receipts["wrong-speaker"].outcome, "rejected");
+    assert.equal(refusedSpeech.access!.revision, speechAuthority.revision);
     await recordRoomAccessEvents(speechScene, batch);
     assert.deepEqual(
       (await readVillageState({ memories: true })).venues[0].zones!.find((zone) => zone.id === "living")!.access!
@@ -1458,7 +1564,7 @@ async function main() {
       {
         speakerId: "jim",
         content: "The office has no manager left. Mara is its new manager. All its other rules and bans stay the same.",
-        kind: "main",
+        kind: "dialogue",
         heardBy: ["player", "jim"],
       },
     ] as any;
@@ -1471,22 +1577,24 @@ async function main() {
         command: { action: "recover-managers", zoneId: "office", managerIds: ["mara"] },
       },
     ];
-    const recoveryChecks = accessManagementChecks(
-      await readVillageState({ memories: true }),
-      recoveryDraft,
-      recoveryEvents,
-      "npc-recovery",
-    );
-    assert.equal(recoveryChecks.length, 1, "A current NPC Venue manager can propose scoped orphan recovery.");
-    assert.equal(
-      accessManagementChecks(
-        await readVillageState({ memories: true }),
-        recoveryDraft,
-        [{ ...recoveryEvents[0], actorId: "visitor" }],
-        "guest-recovery",
-      ).length,
-      0,
-    );
+    const recoveryAuthority = (await readVillageState({ memories: true })).venues[0].access!;
+    const recoveryChecks = [
+      {
+        id: "npc-recovery",
+        facts: {
+          actorId: "jim",
+          venueId: "home",
+          zoneId: "office",
+          accessRevision: recoveryAuthority.revision,
+          semanticVersion: 2,
+          accessCommand: readAccessCommand({
+            ...recoveryEvents[0].command,
+            operationId: "npc-recovery",
+            expectedRevision: recoveryAuthority.revision,
+          }),
+        },
+      },
+    ];
     const recoveryScene = {
       version: 4,
       id: "recovery-scene",
@@ -1498,6 +1606,21 @@ async function main() {
       checks: recoveryChecks,
       results: [result],
     } as any;
+    const guestRecovery = structuredClone(recoveryBatch);
+    guestRecovery.checks[0].id = "guest-recovery";
+    guestRecovery.checks[0].facts.actorId = "visitor";
+    guestRecovery.checks[0].facts.accessCommand.operationId = "guest-recovery";
+    const officePolicy = structuredClone(
+      (await readVillageState({ memories: true })).venues[0].zones!.find((zone) => zone.id === "office")!.access,
+    );
+    await recordRoomAccessEvents(
+      { ...recoveryScene, lines: [{ ...recoveryScene.lines[0], speakerId: "visitor", heardBy: ["visitor"] }] },
+      guestRecovery,
+    );
+    const refusedRecovery = (await readVillageState({ memories: true })).venues[0];
+    assert.deepEqual(refusedRecovery.zones!.find((zone) => zone.id === "office")!.access, officePolicy);
+    assert.equal(refusedRecovery.access!.receipts["guest-recovery"].outcome, "rejected");
+    assert.equal(refusedRecovery.access!.revision, recoveryAuthority.revision);
     await recordRoomAccessEvents(recoveryScene, recoveryBatch);
     assert.deepEqual(
       (await readVillageState({ memories: true })).venues[0].zones!.find((zone) => zone.id === "office")!.access!
@@ -1510,7 +1633,7 @@ async function main() {
       {
         speakerId: "jim",
         content: "Visitor is banned from this venue. You are banned from this venue.",
-        kind: "main",
+        kind: "dialogue",
         heardBy: ["jim", "player"],
       },
     ] as any;
@@ -1530,7 +1653,13 @@ async function main() {
       id: "saved-ban",
       domain: "room",
       question: "Did Jim ban the player from this Venue?",
-      facts: { actorId: "jim", venueId: "home", zoneId: null, accessRevision: banWorld.venues[0].access!.revision },
+      facts: {
+        semanticVersion: 2,
+        actorId: "jim",
+        venueId: "home",
+        zoneId: null,
+        accessRevision: banWorld.venues[0].access!.revision,
+      },
       outcomes: [{ id: "ban-venue", statement: "Jim bans the player from the Venue." }],
       evidence: [{ id: "draft:0", speakerId: "jim", name: "Jim", content: savedDraft[0].content, current: true }],
     };
@@ -1634,7 +1763,7 @@ async function main() {
       ),
       revision: 1,
     });
-    await processSavedExchange(oldReply.id, "old-reply-turn");
+    await assert.rejects(processSavedExchange(oldReply.id, "old-reply-turn"), /needs recovery/);
     assert.deepEqual(
       (await readVillageState({ memories: true })).venues[0].access,
       beforeOldReply,

@@ -8,11 +8,7 @@ import {
 import type { VillageVenue, VillageVillager } from "../packages/villages/src/server/domain/models/world.js";
 import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
-import {
-  contactNeighbors,
-  contactPath,
-  readContactDelivery,
-} from "../packages/villages/src/server/domain/rules/venue-contact.js";
+import { contactNeighbors, contactPath } from "../packages/villages/src/server/domain/rules/venue-contact.js";
 const now = new Date(),
   stamp = now.toISOString(),
   dateKey = agendaDateKey(now),
@@ -112,6 +108,5 @@ assert.deepEqual(contactNeighbors(house, "exterior").sort(), ["common", "public"
 assert.deepEqual(contactPath(saved, house, "common", "public", "messenger"), ["common", "exterior", "public"]);
 assert.equal(contactPath(saved, house, "common", "office", "messenger"), null, "staff permission is enforced");
 assert.equal(contactPath(saved, house, "common", "private:alex", "messenger"), null, "private ownership is enforced");
-assert.throws(() => readContactDelivery({ delivery: "device" }, "I use an intercom."), /not supported/);
 
-console.log("Contact geometry, private ownership and unsupported delivery passed without generation.");
+console.log("Contact geometry and private ownership passed without generation.");

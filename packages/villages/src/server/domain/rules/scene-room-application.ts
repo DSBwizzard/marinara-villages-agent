@@ -32,12 +32,6 @@ export function applyInterpretedRoomEvents(
       )
     )
       continue;
-    session.dismissedZoneIds = session.dismissedZoneIds?.filter((id) => id !== zone.id);
-    session.grantedZoneIds = [...new Set([...(session.grantedZoneIds ?? []), zone.id])];
-    session.zoneGrants = [
-      ...(session.zoneGrants ?? []).filter((row) => row.zoneId !== zone.id),
-      { zoneId: zone.id, controllerId: actor },
-    ];
     session.entryOffers = [
       ...(session.entryOffers ?? []).filter((row) => row.zoneId !== zone.id),
       { zoneId: zone.id, label: zone.name, controllerId: actor, accompanies: facts.accompanies === true },
