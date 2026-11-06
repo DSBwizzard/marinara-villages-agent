@@ -596,6 +596,40 @@ try {
   residenceB.scope.dispose();
 }
 
+for (const source of ["fresh", "same-zone", "captured"] as const) {
+  const invalid = commandFixture("Missing entry authority " + source, ({ scene, world }) => {
+    const place = venueDraft({ name: "Hall", description: "A public hall", classes: ["community"] }, null);
+    place.id = scene.placeId;
+    place.playerInvitations = [{ zoneId: "community", residentId: "player", sourceLineId: "forged" } as any];
+    world.venues = [place];
+    scene.zoneId = "community";
+    if (source === "captured") {
+      scene.continuity = captureSceneContinuity(world, scene, Date.parse(scene.startedAt));
+      delete scene.continuity.facts.venues[0]!.access;
+    } else delete place.access;
+    return {
+      readActive: async () => ({ sessionId: source === "fresh" ? "" : scene.id, placeId: scene.placeId }),
+      hasVenueOperation: () => false,
+      activeVenueSession: async () => (source === "fresh" ? null : scene),
+      applySavedStartingTies: async () => {},
+      rollActiveAgendas: async () => {},
+    };
+  });
+  try {
+    const before = structuredClone({ scene: invalid.scene, world: invalid.world });
+    await assert.rejects(
+      invalid.owner.run(() => invalid.service.enterVenue(invalid.scene.placeId, undefined, "", undefined, "community")),
+      /no native access record/,
+    );
+    assert.deepEqual({ scene: invalid.scene, world: invalid.world }, before);
+    assert(!invalid.calls.includes("world") && !invalid.calls.includes("persistence"));
+    assert.equal(invalid.modelAccess, 0);
+    assert.deepEqual(invalid.unexpected, []);
+  } finally {
+    invalid.owner.dispose();
+  }
+}
+
 const savedInput = {
   sessionId: "same-scene",
   submissionId: "same-turn",
