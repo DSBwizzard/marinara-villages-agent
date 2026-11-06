@@ -1,3 +1,9 @@
+import {
+  canOccupyZone,
+  canInviteToZone,
+  canRevokeZonePermission,
+  zoneControllerIds,
+} from "../packages/villages/src/server/domain/rules/venue-zones.js";
 import { residenceProposal } from "../packages/villages/src/server/domain/rules/residence-agreement.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
@@ -107,6 +113,52 @@ function fixture(): VillageVenue {
   result.access!.managerIds = ["jim"];
   return result;
 }
+for (const retainZonePolicy of [false, true]) {
+  const missing = fixture();
+  delete missing.access;
+  for (const target of missing.zones!) {
+    if (target.kind === "exterior") continue;
+    target.ownerId = "jim";
+    target.controllerIds = ["jim", "employee"];
+    if (!retainZonePolicy) delete target.access;
+    for (const actor of ["jim", "employee"]) {
+      assert.equal(
+        canOccupyZone(missing, target, actor),
+        false,
+        "Role and owner fields cannot replace native access authority",
+      );
+      assert.equal(canInviteToZone(missing, target, actor), false);
+      assert.equal(canRevokeZonePermission(missing, target, actor), false);
+    }
+    assert.deepEqual(zoneControllerIds(missing, target), []);
+  }
+  assert.equal(
+    canOccupyZone(
+      missing,
+      missing.zones!.find((zone) => zone.id === "exterior")!,
+      "player",
+    ),
+    true,
+    "Entrance remains available for egress",
+  );
+  assert.deepEqual(zoneControllerIds(missing, undefined), []);
+}
+{
+  const native = fixture(),
+    target = native.zones!.find((zone) => zone.id === "bedroom")!;
+  target.closed = true;
+  assert.equal(canInviteToZone(native, target, "jim"), false);
+  assert.equal(
+    canRevokeZonePermission(native, target, "jim"),
+    true,
+    "Closing a Zone cannot remove native withdrawal authority",
+  );
+  assert.equal(canRevokeZonePermission(native, target, "visitor"), false);
+  assert.deepEqual(zoneControllerIds(native, target), ["jim"]);
+  delete target.access;
+  assert.equal(canOccupyZone(native, target, "jim"), false, "An interior Zone needs its own native policy");
+}
+
 const venue = fixture(),
   zone = (id: string) => venue.zones!.find((zone) => zone.id === id)!;
 const context = { sceneId: "scene-a", at: new Date(2026, 9, 5, 12), accepting: true };
