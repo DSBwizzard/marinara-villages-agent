@@ -141,6 +141,7 @@ village = coerceVillageState({
 
   villagers: [
     {
+      letterFontId: "caveat",
       characterId: "bupkis",
       addedAt: new Date().toISOString(),
       cardSnapshot: {
@@ -356,6 +357,7 @@ village = coerceVillageState({
   ...defaultVillageState(),
   villagers: [
     {
+      letterFontId: "caveat",
       characterId: "resident",
       addedAt: new Date().toISOString(),
       cardSnapshot: {

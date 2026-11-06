@@ -178,14 +178,6 @@ export function resolveSceneSpriteExpressions(
     const cues = line.staging ?? [];
     for (const cue of cues)
       if (cue.look && currentStage[cue.characterId]) currentStage[cue.characterId].look = cue.look;
-    if (
-      line.gazeAt &&
-      currentStage[line.speakerId] &&
-      !cues.some((cue) => cue.characterId === line.speakerId && cue.look)
-    ) {
-      currentStage[line.speakerId].look =
-        line.gazeAt === "player" ? { target: "player" } : { target: "villager", characterId: line.gazeAt };
-    }
     const choices = new Map<string, string>();
     const resolveExpression = (characterId: string, requested: string) => {
       const key = characterId + ":" + requested;
@@ -208,9 +200,5 @@ export function resolveSceneSpriteExpressions(
       if (expression) cue.expression = expression;
       else delete cue.expression;
     }
-    if (!line.expression) continue;
-    const expression = resolveExpression(line.speakerId, line.expression);
-    if (expression) line.expression = expression;
-    else delete line.expression;
   }
 }

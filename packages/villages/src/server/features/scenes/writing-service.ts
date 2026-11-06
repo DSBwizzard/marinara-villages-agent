@@ -792,12 +792,6 @@ export function createSceneWriting({
         session.contactGeneration?.localIds ?? session.activeIds,
         false,
       );
-      // Validated GM presentation supplies staging separately from narrative segments.
-      for (const line of parsed.lines) {
-        delete line.expression;
-        delete line.gazeAt;
-        delete line.staging;
-      }
       for (const [index, spans] of captureSources ?? []) parsed.lines[index].speechSource = { version: 3, spans };
     } catch (cause) {
       await rejectVenueCompletion({

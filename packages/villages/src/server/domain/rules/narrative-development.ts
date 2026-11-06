@@ -79,7 +79,7 @@ export function admitNarrative(
   local?: { venueId: string; zoneId: string },
 ): NarrativeAdmission | null {
   const narrative = state.narrative;
-  if (!narrative || at < narrative.adoptedAt || !state.setupAt || state.clock?.recovery) return null;
+  if (!narrative || at < narrative.adoptedAt || !state.setupAt) return null;
   const targets = state.venues
     .flatMap((venue) =>
       venueZones(venue)

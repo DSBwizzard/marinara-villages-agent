@@ -23,6 +23,7 @@ function fixture() {
   state.seed = "social-memory";
   state.relationshipContext = defaultRelationshipState(state.seed);
   state.villagers = ["a", "b"].map((characterId) => ({
+    letterFontId: "caveat",
     characterId,
     cardSnapshot: { name: characterId },
     wishes: [],

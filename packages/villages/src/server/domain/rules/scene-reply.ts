@@ -1,5 +1,4 @@
 import { isSceneAside } from "../../../shared/helpers/scene-speech.js";
-import { readStagingCues } from "../../../shared/helpers/scene-staging.js";
 import type { InterpretationBatch } from "../models/interpretation-model.js";
 import type { SavedAccessEvent, VenueReplyLine } from "../models/scene-model.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
@@ -7,7 +6,6 @@ import { asRecord, asTrimmedString } from "./coerce.js";
 export function parseVenueReply(
   raw: Record<string, unknown> | null,
   audience: readonly string[],
-  expressionId?: (characterId: string, requested: string) => string,
 ): {
   lines: VenueReplyLine[];
   heardPlayerBy: string[];
@@ -41,21 +39,11 @@ export function parseVenueReply(
             ? `segments[${index}].text must be a nonempty string.`
             : `segments[${index}].text exceeds 2000 characters.`,
       );
-    const expression = asTrimmedString(row.expression).toLowerCase().slice(0, 40);
     const requestedTarget = asTrimmedString(row.targetId);
     const targetId = allowed.has(requestedTarget) || requestedTarget === "player" ? requestedTarget : "";
     // An invalid whisper target must never make the whole greeting or turn fail.
     // Treat it as an ordinary spoken line, without claiming anyone heard a whisper.
     if (kind === "whisper" && !targetId) kind = "dialogue";
-    const requestedGaze = asTrimmedString(row.gazeAt);
-    const gazeAt =
-      kind === "narration"
-        ? ""
-        : requestedGaze === "player" || (allowed.has(requestedGaze) && requestedGaze !== speakerId)
-          ? requestedGaze
-          : kind === "whisper"
-            ? targetId
-            : "";
     return {
       kind,
       ...(row.delivery === "ordinary" || row.delivery === "whisper" || row.delivery === "shout"
@@ -74,9 +62,6 @@ export function parseVenueReply(
                 ...(kind === "whisper" && allowed.has(targetId) ? [targetId] : []),
               ]),
             ],
-      ...(expression ? { expression } : {}),
-      ...(gazeAt ? { gazeAt } : {}),
-      ...(Array.isArray(row.staging) ? { staging: readStagingCues(row.staging, audience, expressionId) } : {}),
       ...(targetId ? { targetId } : {}),
     };
   });

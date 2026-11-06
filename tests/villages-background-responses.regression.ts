@@ -113,7 +113,12 @@ for (const failure of ["before", "after"] as const) {
   const world = defaultVillageState();
   world.seed = "background-evidence";
   world.villagers = [
-    { characterId: "resident", cardSnapshot: { name: "Resident", capturedAt: "2026-10-30T00:00:00.000Z" }, wishes: [] },
+    {
+      letterFontId: "caveat",
+      characterId: "resident",
+      cardSnapshot: { name: "Resident", capturedAt: "2026-10-30T00:00:00.000Z" },
+      wishes: [],
+    },
   ] as any;
   await saveWorld(db, world);
   let calls = 0,

@@ -39,6 +39,7 @@ const village = coerceVillageState({
   visitMemoryBackfilled: true,
   villagers: [
     {
+      letterFontId: "caveat",
       characterId: "mara",
       addedAt: now,
       cardSnapshot: {

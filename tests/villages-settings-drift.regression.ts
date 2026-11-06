@@ -63,11 +63,7 @@ async function mutateVillageState(update: (world: typeof state) => void) {
 }
 const snapshot = createVillageSnapshot({
   readVillageState: async () => state,
-  mutateVillageState,
   listVillagerCards: async () => [],
-  captureMissingVillagerCardColors: () => {
-    throw new Error("No resident cards in this fixture");
-  },
   rollActiveAgendas: async () => false,
   sceneQueries: () => ({ activeVenueSession: async () => null }),
   backgroundWorkSummaries: async () => [],

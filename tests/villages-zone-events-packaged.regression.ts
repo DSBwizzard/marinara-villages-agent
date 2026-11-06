@@ -59,6 +59,7 @@ const people = [
   { id: "distant", name: "Distant Resident", zone: "bedroom" },
 ];
 world.villagers = people.map(({ id, name }) => ({
+  letterFontId: "caveat",
   characterId: id,
   cardSnapshot: {
     id,

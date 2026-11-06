@@ -5,7 +5,6 @@ import {
   MAX_RECENT_PLACE_CONTEXT,
   RECENT_PLACE_DURATION,
 } from "../../../shared/helpers/place-continuity.js";
-import { legacyLetterFont } from "../../../shared/helpers/letter-font-selection.js";
 import type { RepairField, RepairRecord, RepairRequest } from "../../../shared/contracts/repair.js";
 import type { MemoryKnower } from "../models/memories.js";
 import type { VillageState } from "../models/world.js";
@@ -294,7 +293,7 @@ export function worldRepairRecords(state: VillageState, includeMemories = true, 
         source: ["Captured character and admission context. The original library card stays separate."],
       },
     );
-    const fontId = person.letterFontId ?? legacyLetterFont(id);
+    const fontId = person.letterFontId;
     add(
       ["letter-font", id],
       "people",

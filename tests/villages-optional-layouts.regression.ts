@@ -177,6 +177,7 @@ initial.villagers = coerceVillageState({
   wishSystemVersion: 3,
   villagers: [
     {
+      letterFontId: "caveat",
       characterId: "a",
       agenda: unwrittenVillageAgenda(),
       cardSnapshot: {
@@ -188,6 +189,7 @@ initial.villagers = coerceVillageState({
       },
     },
     {
+      letterFontId: "caveat",
       characterId: "b",
       agenda: unwrittenVillageAgenda(),
       cardSnapshot: {

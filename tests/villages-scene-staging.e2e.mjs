@@ -79,7 +79,6 @@ await withBrowser(browser, async () => {
       };
       let session = {
         version: 2,
-        stagingVersion: 1,
         id: `staging-${count}`,
         placeId: "mill",
         placeName: "The Mill",
@@ -137,7 +136,7 @@ await withBrowser(browser, async () => {
                 speakerId: "mara",
                 name: "Mara",
                 content: "A different expression.",
-                expression: body.message.slice(7),
+                staging: [{ characterId: "mara", expression: body.message.slice(7) }],
                 at: now,
               },
             );
@@ -587,7 +586,6 @@ await withBrowser(browser, async () => {
     };
     const session = {
       version: 2,
-      stagingVersion: 1,
       id: "attention-views",
       placeId: "mill",
       placeName: "The Mill",
