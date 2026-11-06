@@ -23,7 +23,7 @@ export function sameSceneRoutine(village: VillageState, scene: VenueScene, actor
   const before = new ZonedDate(scene.sceneAttendance?.capturedAt ?? scene.startedAt, timeZone);
   const after = new ZonedDate(now, timeZone);
   const block = (person: typeof resident, at: Date) =>
-    agendaAt(person.agenda, at.getHours() * 60 + at.getMinutes(), at, person.ingestSchedule !== false);
+    agendaAt(person.agenda, at.getHours() * 60 + at.getMinutes(), at);
   return (
     agendaDateKey(before) === agendaDateKey(after) &&
     JSON.stringify(block(previous, before)) === JSON.stringify(block(resident, after))
@@ -75,7 +75,7 @@ export function captureSceneAttendance(
     occupants: village.villagers.flatMap((villager) => {
       const position = presence.get(villager.characterId);
       if (position?.id !== placeId) return [];
-      const block = agendaAt(villager.agenda, moment.minuteOfDay, now, villager.ingestSchedule !== false);
+      const block = agendaAt(villager.agenda, moment.minuteOfDay, now);
       const zone =
         resolveVenueZone(venue, position.zoneId ?? "") ??
         chooseAgendaZone(venue, villager.characterId, block?.activity, block?.zoneId, village, {

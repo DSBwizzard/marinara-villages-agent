@@ -42,8 +42,7 @@ function fixture(name: string) {
       cardSnapshot: snapshotFromCard(card, 4),
       addedAt: stamp,
       wishes: [],
-      ingestSchedule: false,
-      agenda: unwrittenVillageAgenda(state.venues, card.name),
+      agenda: unwrittenVillageAgenda(),
     },
   ];
   const calls: string[] = [],
@@ -207,9 +206,12 @@ assert.equal(
   prose.attempts[0]!.villagers[0]!.cardSnapshot.capturedAt,
   prose.attempts[1]!.villagers[0]!.cardSnapshot.capturedAt,
 );
-assert(prose.attempts[0]!.villagers[0]!.agenda!.day.some((block) => block.venueId === firstVenue.id));
-assert(prose.state.villagers[0]!.agenda!.day.some((block) => block.venueId === retryVenue.id));
-assert(!prose.state.villagers[0]!.agenda!.day.some((block) => block.venueId === firstVenue.id));
+assert.equal(prose.attempts[0]!.venues[0]!.id, firstVenue.id);
+assert.equal(prose.state.venues[0]!.id, retryVenue.id);
+assert.ok(
+  prose.attempts.every((state) => state.villagers[0]!.agenda!.day.every((block) => !block.venueId)),
+  "Provisional routines never invent destinations from map placement",
+);
 assert.equal(prose.state.villagers[0]!.agenda!.personalizationPending, true);
 
 const removed = fixture("Removed");

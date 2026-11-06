@@ -114,8 +114,7 @@ function fixture(seeded = true) {
       }),
     ),
   });
-  for (const resident of state.villagers)
-    resident.agenda = unwrittenVillageAgenda(state.venues, resident.cardSnapshot.name);
+  for (const resident of state.villagers) resident.agenda = unwrittenVillageAgenda();
   state.relationshipContext = defaultRelationshipState(state.seed);
   state.relationshipContext.reviewedActorIds = state.villagers.map((row) => row.characterId);
   return state;
@@ -367,7 +366,7 @@ async function main() {
       const newcomer = structuredClone(current.villagers[0]!);
       newcomer.characterId = newcomer.cardSnapshot.id = "newcomer";
       newcomer.cardSnapshot.name = "Newcomer";
-      newcomer.agenda = unwrittenVillageAgenda(current.venues, "Newcomer");
+      newcomer.agenda = unwrittenVillageAgenda();
       current.villagers.push(newcomer);
     });
     assert.equal(
@@ -560,9 +559,8 @@ async function main() {
       JSON.stringify((await readVillageState({ memories: true })).foundingPreparation),
     );
 
-    // Simulate the old validator rejecting a purchased venueNumber reply.
-    // Retry must validate it locally before discarding its failed checkpoint.
-    for (const recovery of ["alias", "dayparts", "retired-history", "malformed", "truncated", "stale"]) {
+    // Recover current purchased replies locally before discarding a failed checkpoint.
+    for (const recovery of ["current", "captured-source", "malformed", "truncated", "stale"]) {
       install();
       mode = "routine-invalid";
       await prepareFoundedVillage();
@@ -570,7 +568,7 @@ async function main() {
       const checkpoint = [...rows.values()].find(
         (row) => row.kind === "background-work" && row.data.kind === "agenda",
       )!;
-      if (recovery === "retired-history") {
+      if (recovery === "captured-source") {
         const context = checkpoint.data.input.context;
         context.circumstances.details = "History retained only in an already admitted request";
         const revision = foundingTaskRevision(await readVillageState(), "aqua", "routine", context);
@@ -580,7 +578,7 @@ async function main() {
           live.foundingPreparation!.tasks!.aqua.routine!.revision = revision;
         });
       }
-      if (recovery === "alias") {
+      if (recovery === "current") {
         const current = await readVillageState({ memories: true }),
           old = sourceSnapshots.get("aqua");
         const diffs = Object.keys(current).filter(
@@ -596,9 +594,8 @@ async function main() {
         validateBackgroundResponse(rows.get(checkpoint.data.steps[0].responseRef.id)).response,
       );
       const response = JSON.parse(saved.content);
-      response.palette = response.palette.map(({ venue: _venue, ...row }: any) => ({ ...row, venueNumber: 0 }));
-      response.rhythm = [{ startMinute: 1320, endMinute: 360, activityPaletteIndex: 0 }];
-      if (recovery === "dayparts") response.days = Array.from({ length: 7 }, () => [0, 1, 2, 3]);
+      response.palette = response.palette.map((row: any) => ({ ...row, venue: 0 }));
+      response.rhythm = [{ startMinute: 1320, endMinute: 360, activity: 0 }];
       saved.content = recovery === "malformed" ? "{}" : JSON.stringify(response);
       if (recovery === "truncated") saved.finishReason = "length";
       const { responseStorage: _storage, ...authored } = checkpoint.data;
@@ -607,7 +604,8 @@ async function main() {
         attempt: authored.attempt + 1,
         steps: authored.steps.map((step: any, index: number) => (index === 0 ? { ...step, response: saved } : step)),
       });
-      if (recovery === "alias") assert.ok(parseCompactFoundingCompletion(saved, checkpoint.data.input.context).agenda);
+      if (recovery === "current")
+        assert.ok(parseCompactFoundingCompletion(saved, checkpoint.data.input.context).agenda);
       mode = "valid";
       calls.length = 0;
       if (recovery === "stale") {
@@ -629,7 +627,7 @@ async function main() {
       const previewWrites = writes;
       assert.equal(
         (await previewVillageBurst({ action: "founding" })).requests,
-        ["alias", "dayparts", "retired-history"].includes(recovery) ? 2 : 3,
+        ["current", "captured-source"].includes(recovery) ? 2 : 3,
       );
       assert.equal(writes, previewWrites, "recovery forecasts do not write");
       assert.equal(calls.length, 0, "recovery forecasts do not dispatch");
@@ -641,7 +639,7 @@ async function main() {
       assert.equal(state.foundingPreparation?.completedIds.length, 3);
       assert.equal(
         calls.length,
-        ["alias", "dayparts", "retired-history"].includes(recovery) ? 2 : 3,
+        ["current", "captured-source"].includes(recovery) ? 2 : 3,
         "only invalid saved replies need replacement requests: " + recovery + JSON.stringify(calls),
       );
       assert.ok(
@@ -884,7 +882,4 @@ async function main() {
     globalThis.fetch = originalFetch;
   }
 }
-void main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+await main();

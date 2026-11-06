@@ -59,7 +59,7 @@ export const serverFeatureInterfaces = Object.freeze({
   "residents/resident-agendas.ts": [
     "readFoundingResidentContext",
     "queueVillagerAgenda",
-    "backfillAgendas",
+    "queuePendingAgendas",
     "refreshScheduleInfluence",
     "buildVillageAgendas",
     "clearVillagerAgenda",

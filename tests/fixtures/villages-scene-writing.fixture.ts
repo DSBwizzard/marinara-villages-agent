@@ -79,7 +79,6 @@ export async function currentScenePrompt(
     semanticPipelineVersion: 3,
     residentActionsVersion: 2,
     interactionScopeVersion: 6,
-    playerAgencyVersion: 1,
     ...operationInput,
   };
   const forbidden = () => assert.fail("Prompt preparation must not generate, interpret, or mutate a Scene.");

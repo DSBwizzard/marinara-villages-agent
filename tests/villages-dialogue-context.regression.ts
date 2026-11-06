@@ -1,3 +1,4 @@
+import { agendaFixture } from "./helpers/agenda.fixture.js";
 import assert from "node:assert/strict";
 import { context } from "../packages/villages/src/server/adapters/operations/operation-context.js";
 import { addMemory } from "./helpers/memories-fixture.js";
@@ -43,13 +44,13 @@ state.villagers = ["outgoing", "reserved"].map((id) => ({
     sourceStatus: "available",
     capturedAt: stamp,
   },
-  agenda: {
+  agenda: agendaFixture({
     day: [],
     week: {},
     routineSummary: "",
     generatedAt: stamp,
     source: "village",
-  },
+  }),
 })) as any;
 state.venues = [
   venueFixture({

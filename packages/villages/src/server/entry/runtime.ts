@@ -187,7 +187,7 @@ import {
 import { configureRelationships } from "../features/residents/relationships.js";
 import { createResidentAgendas } from "../features/residents/resident-agenda-service.js";
 import {
-  backfillAgendas,
+  queuePendingAgendas,
   configureResidentAgendas,
   queueVillagerAgenda,
   readFoundingResidentContext,
@@ -1044,7 +1044,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     villagesLogger,
     outsideVenueOperation: operations.outsideVenueOperation,
     completeVillageResidence,
-    backfillAgendas,
+    queuePendingAgendas,
     refreshScheduleInfluence,
     preparePrivateSpaces,
     reconcileProjectLifecycles,

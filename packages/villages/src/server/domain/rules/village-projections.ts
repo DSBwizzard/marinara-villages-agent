@@ -65,7 +65,7 @@ function preferredVillagerPlace(
   }).minuteOfDay,
   at = new Date(),
 ): VillagePlaceView | null {
-  const agenda = agendaAt(villager.agenda, minuteOfDay, at, villager.ingestSchedule !== false);
+  const agenda = agendaAt(villager.agenda, minuteOfDay, at);
   const venueId = agenda?.venueId ?? "";
   // Resolve the saved location against current Places, then fall back if it was removed.
   const venue = venueId.length > 0 ? findLocation(village, venueId) : undefined;

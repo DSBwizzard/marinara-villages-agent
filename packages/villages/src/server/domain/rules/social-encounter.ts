@@ -55,9 +55,7 @@ export function readEncounter(
       const person = village.villagers.find((resident) => resident.characterId === actorId);
       const block =
         person?.agenda &&
-        agendaBlocksFor(person.agenda, person.ingestSchedule !== false, at).find(
-          (row) => row.startMinute <= minute && row.endMinute > minute,
-        );
+        agendaBlocksFor(person.agenda, at).find((row) => row.startMinute <= minute && row.endMinute > minute);
       // A scheduled social overlay is authoritative only while still valid.
       return block?.venueId === venue.id && (!block.zoneId || block.zoneId === zoneId);
     })

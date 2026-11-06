@@ -13,13 +13,12 @@ import type {
   VillageVenue,
   VillageVillager,
 } from "../packages/villages/src/server/domain/models/world.js";
-import { agendaAt, villageAgendaDay } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
+import { agendaAt, unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
 import {
   agendaBlocksFor,
   agendaDateKey,
   completeAgendaWeek,
   flexibleAgendaInterval,
-  legacyAgendaWeek,
   replaceRemainingAgendaDay,
   workingAgendaWeek,
 } from "../packages/villages/src/server/domain/rules/agenda-week.js";
@@ -41,7 +40,7 @@ function place(id: string, residentCharacterId: string | null = null): VillageVe
 }
 
 const venues = [place("home", "r1"), place("square"), place("garden")];
-const week = workingAgendaWeek(venues, "Lina");
+const week = workingAgendaWeek();
 assert.equal(Object.keys(week).length, 7, "a resident has a plan for every weekday immediately");
 for (const blocks of Object.values(week)) {
   assert.equal(blocks[0]?.startMinute, 0);
@@ -80,24 +79,14 @@ assert.equal(repairedWeek.Monday?.at(-1)?.endMinute, 1440);
 const activeAgenda = {
   day: [],
   week,
-  scheduleWeek: { ...week, Monday: repairedWeek.Monday! },
   activeDay: { dateKey: agendaDateKey(new Date()), weekday: "Monday", blocks: week.Monday!, scheduleInformed: false },
 } as unknown as VillageAgenda;
 assert.deepEqual(
-  agendaBlocksFor(activeAgenda, true, new Date()),
+  agendaBlocksFor(activeAgenda, new Date()),
   week.Monday,
   "turning schedule ingestion on cannot change today",
 );
-assert.deepEqual(
-  agendaBlocksFor(activeAgenda, false, new Date()),
-  week.Monday,
-  "turning it off cannot change today either",
-);
-const migrated = legacyAgendaWeek(
-  { day: [{ startMinute: 0, endMinute: 1440, venueId: "square", activity: "visiting the square" }] } as VillageAgenda,
-  week,
-);
-assert.equal(migrated.Sunday?.[0]?.activity, "visiting the square", "legacy activity survives migration");
+assert.deepEqual(agendaBlocksFor(activeAgenda, new Date()), week.Monday, "turning it off cannot change today either");
 const replacement = replaceRemainingAgendaDay(week.Monday!, repairedWeek.Monday!, 690);
 assert.deepEqual(
   replacement.filter((part) => part.endMinute <= 690),
@@ -131,34 +120,19 @@ const recovered = coerceVillageState({
     },
   ],
 });
-assert.equal(
-  recovered.villagers[0]?.agenda?.day.length,
-  4,
-  "an older resident reads with a complete provisional agenda",
-);
-const day = villageAgendaDay(
-  [
-    { clock: "night", venue: 0, activity: "sleeping" },
-    { clock: "morning", venue: 2, activity: "watering flowers" },
-    { clock: "afternoon", venue: 1, activity: "reading in the square" },
-    { clock: "evening", venue: 0, activity: "making supper" },
-  ],
-  venues.slice(1),
-  "Lina",
-);
-assert.deepEqual(
-  day.map((part) => part.venueId),
-  ["", "garden", "square", ""],
-);
+assert.equal(recovered.villagers[0]?.agenda, null, "Reading a missing agenda cannot create a routine");
+const provisional = unwrittenVillageAgenda();
+assert.equal(provisional.day[0]!.startMinute, 0);
+assert.equal(provisional.day.at(-1)!.endMinute, 1440, "Fresh provisional life covers the complete day without a model");
+const day = [
+  { startMinute: 0, endMinute: 300, venueId: "", activity: "sleeping" },
+  { startMinute: 300, endMinute: 720, venueId: "garden", activity: "watering flowers" },
+  { startMinute: 720, endMinute: 1020, venueId: "square", activity: "reading in the square" },
+  { startMinute: 1020, endMinute: 1440, venueId: "", activity: "making supper" },
+];
 assert.equal(agendaAt({ day } as VillageAgenda, 300)?.activity, "watering flowers");
 assert.equal(agendaAt({ day } as VillageAgenda, 719)?.activity, "watering flowers");
 assert.equal(agendaAt({ day } as VillageAgenda, 720)?.activity, "reading in the square");
-assert.equal(villageAgendaDay(null, venues.slice(1), "Lina").length, 4, "an unparseable plan still covers the day");
-assert.equal(
-  villageAgendaDay([{ clock: "morning", venue: 99, activity: "walking" }], venues.slice(1), "Lina")[1]?.venueId,
-  "",
-  "a model cannot send somebody to a made-up venue",
-);
 
 const agenda = {
   wishes: [],

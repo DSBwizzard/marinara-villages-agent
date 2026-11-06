@@ -71,7 +71,7 @@ async function main() {
     now: new Date("2026-10-02T12:00:00Z"),
   });
   const palette = ["Resting", "Reading", "Preparing a meal", "Maintaining equipment", "Talking", "Taking a break"].map(
-    (activity) => ({ activity, venue: 0, status: "idle" }),
+    (activity) => ({ activity, venue: 0, flexible: true, essential: false, duration: 90, parts: [0, 1, 2, 3] }),
   );
   let answer: unknown = null;
   let captured = "";

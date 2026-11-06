@@ -70,7 +70,6 @@ world.villagers = people.map(({ id, name }) => ({
     tags: [],
   },
   addedAt: now,
-  ingestSchedule: false,
 })) as typeof world.villagers;
 world.venues = [
   venueFixture({

@@ -1,6 +1,5 @@
 import type { VillagerCard } from "../models/catalog-model.js";
 import type { VillageAgenda, VillagePlayerBackground, VillageVenue, VillageWish } from "../models/world.js";
-import { villageAgendaDay } from "./agenda-plan.js";
 import { extractModelJsonObject } from "./json-reply.js";
 import type { RoutineProfile } from "./owned-routine.js";
 import {
@@ -33,11 +32,8 @@ type PaletteEntry = {
 export type CompactFoundingContext = {
   loreUse?: import("../../../shared/contracts/lore.js").LoreUse[];
   identityDescriptionRevision?: string;
-  playerAgencyVersion?: 1;
   sourceRevision?: string;
-  contractVersion?: 1 | 2;
   circumstances?: unknown;
-  semanticVersion?: 2;
   playerBackground?: VillagePlayerBackground | null;
   playerPersonaName?: string;
   village: string;
@@ -69,11 +65,7 @@ function checkedPalette(value: unknown, venues: readonly VillageVenue[]): Palett
       throw new RoutineResponseError(`Village activity ${index + 1} is invalid.`);
     const row = raw as Record<string, unknown>;
     const activity = typeof row.activity === "string" ? row.activity.trim() : "";
-    if (row.venue !== undefined && row.venueNumber !== undefined && row.venue !== row.venueNumber)
-      throw new RoutineResponseError(`Village activity ${index + 1} has conflicting venue fields.`);
-    // Older prompts said "venue number", and some saved replies use that spelling.
-    // Preserve exact numeric indexes and reject ambiguous or invented destinations.
-    const venue = row.venue ?? row.venueNumber;
+    const venue = row.venue;
     if (!activity || activity.length > ROUTINE_CONTRACT.maxActivityCharacters)
       throw new RoutineResponseError(`Village activity ${index + 1} needs activity text of 1–160 characters.`);
     if (!Number.isInteger(venue) || (venue as number) < 0 || (venue as number) > venues.length)
@@ -121,7 +113,7 @@ export function parseCompactFounding(
   payload: Record<string, unknown>,
   context: CompactFoundingContext,
 ): CompactFoundingResult {
-  if (context.contractVersion && Array.isArray(payload.palette))
+  if (Array.isArray(payload.palette))
     for (const [index, value] of payload.palette.entries()) {
       const row = value as Record<string, unknown>;
       if (
@@ -159,27 +151,16 @@ export function parseCompactFounding(
       if (
         row.zoneId !== undefined &&
         (typeof row.zoneId !== "string" ||
-          !(context.venues[Number(row.venue ?? row.venueNumber) - 1]?.zones ?? []).some(
+          !(context.venues[Number(row.venue) - 1]?.zones ?? []).some(
             (zone) => zone.id === row.zoneId && ["exterior", "public"].includes(zone.kind),
           ))
       )
         throw new RoutineResponseError("Routine activity has an unavailable Zone identifier.");
     }
   const palette = checkedPalette(payload.palette, context.venues);
-  if (
-    context.contractVersion &&
-    (!Array.isArray(payload.palette) || payload.palette.length > ROUTINE_CONTRACT.maxActivities)
-  )
+  if (!Array.isArray(payload.palette) || payload.palette.length > ROUTINE_CONTRACT.maxActivities)
     throw new RoutineResponseError("Routine requires 6–8 activities.");
-  const days = context.contractVersion === 2 ? compileRoutineDays(palette, context.card.id) : payload.days;
-  if (
-    !Array.isArray(days) ||
-    days.length !== 7 ||
-    days.some(
-      (day) => !Array.isArray(day) || ![4, 8].includes(day.length) || day.some((id) => !validIndex(id, palette.length)),
-    )
-  )
-    throw new RoutineResponseError("The model did not provide a complete seven-day activity pattern.");
+  const days = compileRoutineDays(palette, context.card.id);
   if (typeof payload.routine !== "string" || !payload.routine.trim())
     throw new RoutineResponseError("The model did not describe the villager's routine.");
   const at = new Date().toISOString();
@@ -189,13 +170,7 @@ export function parseCompactFounding(
     if (!value || typeof value !== "object" || Array.isArray(value))
       throw new RoutineResponseError("Invalid resident rest pattern.");
     const row = value as Record<string, unknown>;
-    if (
-      row.activity !== undefined &&
-      row.activityPaletteIndex !== undefined &&
-      row.activity !== row.activityPaletteIndex
-    )
-      throw new RoutineResponseError("Resident rest pattern has conflicting activity fields.");
-    const activity = row.activity ?? row.activityPaletteIndex;
+    const activity = row.activity;
     if (
       !Number.isInteger(row.startMinute) ||
       !Number.isInteger(row.endMinute) ||
@@ -212,15 +187,13 @@ export function parseCompactFounding(
   if (!validRoutineRhythm(rhythm)) throw new RoutineResponseError("Resident rest windows overlap.");
   const profile: RoutineProfile = {
     version: 1,
-    ...(context.semanticVersion === 2 ? { semanticVersion: 2 as const } : {}),
+    semanticVersion: 2,
     activities: palette,
-    // A single supplied option per daypart is also a complete plan; duplicate only its choice slot.
-    days: (days as number[][]).map((day) => (day.length === 4 ? day.flatMap((id) => [id, id]) : [...day])),
+    days,
     rhythm,
   };
   const influence = payload.scheduleInfluence;
   if (
-    context.semanticVersion === 2 &&
     context.schedule &&
     context.influenceSettings?.enabled &&
     (!influence || typeof influence !== "object" || Array.isArray(influence))
@@ -267,12 +240,10 @@ export function parseCompactFounding(
       unresolved: [],
     };
     if (
-      context.semanticVersion === 2 &&
-      (!readPreparedInfluence(profile.influence) ||
-        ["rhythms", "busy", "interests", "entities"].some(
-          (key) =>
-            !Array.isArray(row[key]) || (row[key] as unknown[]).length !== (profile.influence as any)[key].length,
-        ))
+      !readPreparedInfluence(profile.influence) ||
+      ["rhythms", "busy", "interests", "entities"].some(
+        (key) => !Array.isArray(row[key]) || (row[key] as unknown[]).length !== (profile.influence as any)[key].length,
+      )
     )
       throw new RoutineResponseError("System schedule interpretation has invalid fields.");
     profile.influenceSource = scheduleSemanticSource(
@@ -293,12 +264,10 @@ export function parseCompactFounding(
     agenda: {
       routineProfile: profile,
       routineSummary: boundText(payload.routine, MAX_ROUTINE_SUMMARY_LENGTH),
-      day: villageAgendaDay(null, context.venues, context.card.name),
+      day: week[VILLAGE_WEEKDAYS[(new Date(at).getDay() + 6) % 7]!]!,
       week,
-      scheduleWeek: null,
       personalizationPending: false,
       personalizationFailure: "",
-      source: "village",
       generatedAt: at,
     },
   };

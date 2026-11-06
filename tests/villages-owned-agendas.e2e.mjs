@@ -33,7 +33,6 @@ await withBrowser(browser, async () => {
       characterId: "mara",
       name: "Mara",
       missing: false,
-      ingestSchedule: false,
       canInterpretSchedule: true,
       scheduleInfluence: { version: 1, enabled: false, categories },
       nativeSchedule: { weekStart: "", days: {} },
@@ -64,7 +63,7 @@ await withBrowser(browser, async () => {
         assert.equal(route.request().method(), "PATCH");
         const body = route.request().postDataJSON();
         patches.push(body);
-        if (body.enabled !== undefined) resident.ingestSchedule = resident.scheduleInfluence.enabled = body.enabled;
+        if (body.enabled !== undefined) resident.scheduleInfluence.enabled = body.enabled;
         Object.assign(categories, body.categories ?? {});
         value = { villagers: [resident] };
       } else if (path.endsWith("/agendas")) value = { villagers: [resident] };

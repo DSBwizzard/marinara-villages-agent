@@ -12,7 +12,6 @@ state.villagers = [
   {
     characterId: "ada",
     addedAt: at,
-    ingestSchedule: false,
     wishes: [],
     cardSnapshot: {
       id: "ada",

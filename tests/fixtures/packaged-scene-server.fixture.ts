@@ -33,7 +33,6 @@ export async function packagedSceneServer(
     {
       characterId: "mara",
       addedAt: now,
-      ingestSchedule: false,
       cardSnapshot: {
         id: "mara",
         name: "Mara",

@@ -1,3 +1,4 @@
+import { agendaFixture } from "./helpers/agenda.fixture.js";
 import assert from "node:assert/strict";
 import {
   readEffectiveVillagerCard,
@@ -59,14 +60,13 @@ state.villagers = [
     cardSnapshot: snapshot,
     addedAt: stamp,
     wishes: [fixtureWish({ wish: "See a concert" }, "concert", stamp)],
-    ingestSchedule: false,
-    agenda: {
+    agenda: agendaFixture({
       day: [],
       week: {},
       routineSummary: "",
       generatedAt: stamp,
       source: "village",
-    },
+    }),
   },
 ] as any;
 let row: any = { id: "villages-village", kind: "village", data: coerceVillageState(state), revision: 1 };

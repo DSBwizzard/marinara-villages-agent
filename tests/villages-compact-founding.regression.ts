@@ -18,7 +18,6 @@ const card = {
   tags: [],
   description: "Grows herbs",
 };
-const days = Array.from({ length: 7 }, () => [0, 1, 2, 3, 4, 5, 0, 1]);
 const palette = [
   "Tending the herb beds",
   "Reading at home",
@@ -26,12 +25,11 @@ const palette = [
   "Preparing lunch",
   "Sharing garden advice",
   "Resting at home",
-].map((activity) => ({ activity, venue: 0, status: "idle" }));
+].map((activity) => ({ activity, venue: 0, duration: 90, flexible: true, essential: false, parts: [0, 1, 2, 3] }));
 const payload = () => ({
   routine: "Ada tends herbs and spends quiet time at home.",
   wishes: [{ wish: "A new watering can", intensity: 1, tell: "She checks the old one for leaks" }],
   palette,
-  days,
   rhythm: [],
 });
 const schedule = (count: number, unique: boolean) => ({
@@ -62,24 +60,14 @@ const context = (native: ReturnType<typeof schedule> | null) => ({
   schedule: native,
 });
 
-// A single choice per daypart is complete and normalizes without inventing choices.
+// Code builds complete days from allowed dayparts; missing coverage is rejected.
 {
-  const answer = {
-    ...payload(),
-    wishes: [],
-    palette: palette.map((row) => ({ ...row, duration: 90, flexible: false, essential: true, parts: [0, 1, 2, 3] })),
-    days: Array.from({ length: 7 }, () => [0, 1, 2, 3]),
-  };
-  const contextV1 = { ...context(null), contractVersion: 1 as const, allowInitialWish: false };
-  assert.deepEqual(parseCompactFounding(answer, contextV1).agenda.routineProfile!.days[0], [0, 0, 1, 1, 2, 2, 3, 3]);
-  for (const invalid of [
-    [0, 1, 2],
-    [0, 1, 2, 99],
-  ])
-    assert.throws(
-      () => parseCompactFounding({ ...answer, days: [invalid, ...answer.days.slice(1)] }, contextV1),
-      /complete seven-day/,
-    );
+  const answer = payload();
+  assert.equal(parseCompactFounding(answer, context(null)).agenda.routineProfile!.days[0].length, 8);
+  assert.throws(
+    () => parseCompactFounding({ ...answer, palette: palette.map((row) => ({ ...row, parts: [0] })) }, context(null)),
+    /cover every daypart/,
+  );
 }
 // Ordinary activity bounds do not limit fixed overnight rest windows.
 for (const endMinute of [360, 480]) {
@@ -89,7 +77,7 @@ for (const endMinute of [360, 480]) {
     palette: palette.map((row) => ({ ...row, duration: 90, flexible: false, essential: true, parts: [0, 1, 2, 3] })),
     rhythm: [{ startMinute: 0, endMinute, activity: 0 }],
   };
-  const strictContext = { ...context(null), contractVersion: 1 as const, allowInitialWish: false };
+  const strictContext = context(null);
   const profile = parseCompactFounding(answer, strictContext).agenda.routineProfile!;
   const day = routineDay(profile, "a", new Date(2026, 0, 5, 12));
   assert.equal(day[0].startMinute, 0);
@@ -111,47 +99,21 @@ async function main() {
     assert.equal(blocks.at(-1)!.endMinute, 1440);
     assert.ok(blocks.some((block) => block.activity === "Tending the herb beds"));
   }
-  const compactDayparts = {
-    ...payload(),
-    days: Array.from({ length: 7 }, () => [0, 1, 2, 3]),
-  };
-  const semanticContext = { ...context(null), semanticVersion: 2 } as any;
-  const savedResponse = { content: JSON.stringify(compactDayparts), finishReason: "stop" };
-  const recovered = parseCompactFoundingCompletion(savedResponse, semanticContext).agenda;
-  assert.deepEqual(
-    recovered.routineProfile!.days,
-    Array.from({ length: 7 }, () => [0, 0, 1, 1, 2, 2, 3, 3]),
-    "one supplied option per daypart normalizes without inventing an activity or changing its daypart",
-  );
+  const currentPayload = payload();
+  const savedResponse = { content: JSON.stringify(currentPayload), finishReason: "stop" };
+  const recovered = parseCompactFoundingCompletion(savedResponse, context(null)).agenda;
+  assert.equal(recovered.routineProfile!.days.length, 7);
+  assert.ok(recovered.routineProfile!.days.every((day) => day.length === 8));
   assert.deepEqual(
     JSON.parse(savedResponse.content),
-    compactDayparts,
-    "local recovery preserves the purchased response",
-  );
-  assert.deepEqual(
-    parseCompactFounding({ ...payload(), wishes: [] }, semanticContext).agenda.routineProfile!.days,
-    days,
-    "existing eight-choice plans retain every supplied alternative",
-  );
-  for (const invalid of [[], [0, 1, 2], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4, 5, 0], [0, 1, 2, 99], [0, 1, 2, "3"]])
-    assert.throws(
-      () =>
-        parseCompactFounding(
-          { ...compactDayparts, days: [invalid, ...compactDayparts.days.slice(1)] },
-          semanticContext,
-        ),
-      /seven-day/,
-    );
-  assert.throws(
-    () => parseCompactFounding({ ...compactDayparts, days: compactDayparts.days.slice(1) }, semanticContext),
-    /seven-day/,
+    currentPayload,
+    "Recovery leaves the purchased response unchanged",
   );
   assert.throws(
-    () => parseCompactFoundingCompletion({ ...savedResponse, finishReason: "length" }, semanticContext),
+    () => parseCompactFoundingCompletion({ ...savedResponse, finishReason: "length" }, context(null)),
     /truncated/,
   );
 
-  assert.throws(() => parseCompactFounding({ ...payload(), days: [] }, context(null) as any), /seven-day/);
   assert.throws(() => parseCompactFounding({ ...payload(), rhythm: undefined }, context(null) as any), /rest windows/);
 
   let calls = 0;
@@ -238,7 +200,4 @@ async function main() {
   console.log("Villages compact founding regressions passed.");
 }
 
-void main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+await main();

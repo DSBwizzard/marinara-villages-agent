@@ -224,7 +224,7 @@ await withBrowser(browser, async () => {
         name: person(characterId).name,
         missing: false,
         weekUnreadable: false,
-        ingestSchedule: false,
+        scheduleInfluence: { version: 1, enabled: false, categories: {} },
         nativeSchedule: null,
         wishes: [
           fixtureWish(
@@ -524,7 +524,7 @@ await withBrowser(browser, async () => {
           pending.started++;
           await pending.gate;
         }
-        agendas.villagers[0].ingestSchedule = true;
+        agendas.villagers[0].scheduleInfluence.enabled = true;
         value = agendas;
       } else if (path.endsWith("/agendas/mara/regenerate") || path.endsWith("/agendas")) value = agendas;
       else if (path.endsWith("/usage/preview")) value = { requests: { min: 1, max: 1 }, warnings: [] };

@@ -57,7 +57,7 @@ function fixture() {
     ],
   });
   const resident = state.villagers[0]!;
-  resident.agenda = unwrittenVillageAgenda(state.venues, "Ada");
+  resident.agenda = unwrittenVillageAgenda();
   resident.wishes = [fixtureWish({ wish: "Share stories about motorcycles" }, "ride", at)];
   state.relationshipContext = defaultRelationshipState(state.seed);
   state.relationshipContext.reviewedActorIds = ["a"];

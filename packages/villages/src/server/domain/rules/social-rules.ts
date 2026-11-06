@@ -83,7 +83,7 @@ export function socialPlanValid(
         !canEnter(village, plan.venueId, plan.zoneId, actorId, calendarAt(now, plan.dateKey, plan.startMinute))
       )
         return false;
-      const blocks = agendaBlocksFor({ ...agenda, socialActivities: [] }, actor!.ingestSchedule !== false, now);
+      const blocks = agendaBlocksFor({ ...agenda, socialActivities: [] }, now);
       let covered = plan.startMinute;
       for (const block of blocks.filter(
         (entry) => entry.endMinute > plan.startMinute && entry.startMinute < plan.endMinute,
@@ -110,9 +110,7 @@ export function socialPlanCandidates(village: VillageState, now = new Date()): S
   for (const group of groups) {
     const actorIds = group.actors.map((actor) => actor.characterId);
     const blocks = group.actors.map((actor) =>
-      agendaBlocksFor({ ...actor.agenda!, socialActivities: [] }, actor.ingestSchedule !== false, now).filter(
-        flexibleAgendaBlock,
-      ),
+      agendaBlocksFor({ ...actor.agenda!, socialActivities: [] }, now).filter(flexibleAgendaBlock),
     );
     for (const first of blocks[0] ?? [])
       for (const second of blocks[1] ?? [first]) {

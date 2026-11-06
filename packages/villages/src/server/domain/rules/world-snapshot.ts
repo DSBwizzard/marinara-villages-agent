@@ -136,7 +136,7 @@ export function exactSnapshotTransition(village: VillageState, now: Date): strin
     candidates.push(at.getTime());
   };
   for (const villager of village.villagers) {
-    for (const row of villager.agenda ? agendaBlocksFor(villager.agenda, villager.ingestSchedule !== false, now) : []) {
+    for (const row of villager.agenda ? agendaBlocksFor(villager.agenda, now) : []) {
       addMinute(row.startMinute);
       addMinute(row.endMinute);
     }

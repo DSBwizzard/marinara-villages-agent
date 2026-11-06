@@ -50,7 +50,7 @@ export function returnCatchupOpportunities(
       const resident = projected.villagers.find((row) => row.characterId === original.characterId)!;
       return {
         resident,
-        blocks: resident.agenda ? agendaBlocksFor(resident.agenda, resident.ingestSchedule !== false, day) : [],
+        blocks: resident.agenda ? agendaBlocksFor(resident.agenda, day) : [],
       };
     });
     const scheduleBoundaries = new Set(

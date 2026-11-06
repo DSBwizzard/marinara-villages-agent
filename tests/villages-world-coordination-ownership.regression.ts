@@ -125,7 +125,7 @@ function fixture(name: string) {
       note(`adapt:${id}`);
       return {} as Awaited<ReturnType<WorldCoordinationPorts["retryResidencePrivateSpaceAdaptation"]>>;
     },
-    async backfillAgendas(village, now) {
+    async queuePendingAgendas(village, now) {
       note("agendas");
       times.push(now);
       return village;

@@ -1,3 +1,8 @@
+import { agendaFixture } from "./helpers/agenda.fixture.js";
+import {
+  routineProfileFromWeek,
+  influenceSettings,
+} from "../packages/villages/src/server/domain/rules/owned-routine.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { clientImplementation } from "./client-source.js";
@@ -74,7 +79,16 @@ async function main() {
   );
   assert.equal(
     villageSchedulerDelayMs(at(9, 42, 30), {
-      villagers: [{ agenda: { day: [{ startMinute: 0, endMinute: 583 }] } }],
+      villagers: [
+        {
+          agenda: agendaFixture({
+            day: [
+              { startMinute: 0, endMinute: 583, activity: "Morning", venueId: "" },
+              { startMinute: 583, endMinute: 1440, activity: "Later", venueId: "" },
+            ],
+          }),
+        },
+      ],
       scheduledEvents: [],
     } as any),
     30_250,
@@ -86,16 +100,19 @@ async function main() {
     villagers: [
       {
         wishes: [{ size: "larger", learnedAt: at(9, 40).toISOString(), expiresAt: at(9, 43).toISOString() }],
-        agenda: {
+        agenda: agendaFixture({
           day: [],
-        },
+        }),
       },
     ],
     scheduledEvents: [],
   } as any;
   assert.equal(
     villageSchedulerDelayMs(at(9, 42, 30), retainedDeadline),
-    villageSchedulerDelayMs(at(9, 42, 30)),
+    villageSchedulerDelayMs(at(9, 42, 30), {
+      ...retainedDeadline,
+      villagers: retainedDeadline.villagers.map((resident: any) => ({ ...resident, wishes: [] })),
+    }),
     "A retained discovered wish creates no expiry wake",
   );
   assert.equal(villageSchedulerDelayMs(new Date("bad")), REFRESH_MAX_DELAY_MS);
@@ -234,10 +251,10 @@ async function main() {
             sourceStatus: "available",
           },
           wishes: [fixtureWish({ wish: "Share a conversation" }, "retained", start.toISOString())],
-          agenda: {
+          agenda: agendaFixture({
             day: [],
             generatedAt: start.toISOString(),
-          },
+          }),
         },
       ] as any;
       state.venues = [
@@ -282,9 +299,7 @@ async function main() {
 
     // A restart or first read after local midnight commits the queued week once.
     await mutateVillageState((state) => {
-      const week = workingAgendaWeek(state.venues, "Lina");
-      const scheduleWeek = structuredClone(week);
-      scheduleWeek.Sunday[0]!.activity = "Keeping watch";
+      const week = workingAgendaWeek();
       state.villagers = [
         {
           characterId: "lina",
@@ -296,13 +311,13 @@ async function main() {
             capturedAt: start.toISOString(),
           },
           addedAt: start.toISOString(),
-          ingestSchedule: false,
           wishes: [],
+          scheduleInfluence: influenceSettings(null),
           agenda: {
             routineSummary: "",
             day: [],
             week,
-            scheduleWeek,
+            routineProfile: routineProfileFromWeek(week),
             source: "village",
             generatedAt: start.toISOString(),
             activeDay: { dateKey: "2026-09-25", weekday: "Friday", blocks: week.Friday!, scheduleInformed: false },
@@ -315,7 +330,7 @@ async function main() {
     const saturdayBlocks = (await readVillageState()).villagers[0]!.agenda!.activeDay!.blocks;
     assert.equal((await readVillageState()).villagers[0]!.agenda!.activeDay!.scheduleInformed, false);
     await mutateVillageState((state) => {
-      state.villagers[0]!.ingestSchedule = true;
+      state.villagers[0]!.scheduleInfluence.enabled = true;
       state.villagers[0]!.agenda!.week!.Sunday[0]!.activity = "A new village plan";
     });
     assert.equal(await rollActiveAgendas(saturday), false, "a same-day toggle and regeneration do not roll early");
@@ -325,7 +340,7 @@ async function main() {
     const activeSunday = (await readVillageState()).villagers[0]!.agenda!.activeDay!;
     assert.equal(activeSunday.dateKey, "2026-09-27");
     assert.equal(activeSunday.scheduleInformed, false);
-    assert.notEqual(activeSunday.blocks[0]!.activity, "Keeping watch", "Engine translation no longer owns Sunday");
+    assert.ok(activeSunday.blocks.length > 0, "Owned Sunday still covers the day after an influence toggle");
 
     // One compact request, deliberate recovery, and deduplicated action IDs.
     agendaMode = true;
