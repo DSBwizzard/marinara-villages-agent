@@ -1,7 +1,7 @@
 import type { VillageState, VillageVenue, VillageVenueZone, ZoneObservation } from "../models/world.js";
 import { zonePictureContext } from "./zone-picture.js";
 
-/** Presentation remembered at a settled visit; never physical or access authority. */
+/** Known presentation from authoring or a settled visit; never physical or access authority. */
 export function captureZoneObservation(venue: VillageVenue, zone: VillageVenueZone): ZoneObservation {
   return {
     context: zonePictureContext({}, venue, zone),

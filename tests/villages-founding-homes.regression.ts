@@ -98,6 +98,18 @@ const saved = restored.map((row: any, index: number) =>
 assert.equal(saved[0].destinations!.a.sleep, "ada-room");
 assert.equal(saved[0].residenceCapacity, 2);
 assert.equal("foundingCapacity" in saved[0], false, "Setup choices do not leak into the saved-world contract");
+for (const venue of saved)
+  for (const zone of venue.zones!) {
+    assert.equal(zone.observed?.description, zone.description, "Founding preserves every authored Zone appearance");
+    assert.deepEqual(zone.observed?.image, zone.image);
+    if (zone.kind !== "exterior" && zone.ownerId !== "player") assert.equal(zone.seen, false);
+  }
+const foundingImage = { id: "founding", ref: "global-gallery:founding", url: "/api/global-gallery/file/founding.png" };
+const illustrated = parsePlace({
+  ...restored[0],
+  spaces: restored[0].spaces.map((zone: any) => ({ ...zone, image: foundingImage })),
+});
+assert.equal(illustrated.zones!.find((zone) => zone.image)?.observed?.image?.id, "founding");
 const retained = { ...newSetupVenue("existing", "residence", 0.1, 0.1, true), residenceCapacity: 3 };
 const vacant = newSetupVenue("vacant", "residence", 0.4, 0.4);
 const { draftZonePolicy } =

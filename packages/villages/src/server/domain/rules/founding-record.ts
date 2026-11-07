@@ -14,6 +14,7 @@ import { accessibleVenueRoute } from "./venue-path.js";
 import { readVenueImageContext } from "./village-projections.js";
 import { readZoneLayout } from "../../../shared/helpers/zone-layout.js";
 import { communityVenueEligible } from "./community-venue.js";
+import { captureZoneObservation } from "./zone-observation.js";
 
 export function foundingImage(value: unknown): VillageVenueImage | null {
   if (value === null || value === undefined) return null;
@@ -142,6 +143,7 @@ export function parsePlace(value: unknown): VillageVenue {
       result.destinations![actor][role] = target;
     }
   }
+  for (const zone of zones) zone.observed = captureZoneObservation(result, zone);
   return result;
 }
 export function parsePlaces(

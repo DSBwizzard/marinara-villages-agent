@@ -67,7 +67,8 @@ await withBrowser(browser, async () => {
         kind: "public",
         name: "Workroom",
         venueClass: "community",
-        seen: true,
+        seen: false,
+        pictureGenerateAvailable: true,
         image: { url: old, id: "old", ref: "old" },
         description: "A captured workroom.",
         connectedTo: ["exterior"],
@@ -148,6 +149,7 @@ await withBrowser(browser, async () => {
     };
     const returnToScene = () => page.getByRole("button", { name: "Back to Scene", exact: true }).click();
     await openSettings();
+    await expect(page.getByRole("button", { name: "Generate new picture", exact: true })).toBeEnabled();
     const header = page.locator(".marinara-capability-villages-workspace-venue-header > img");
     await expect(header).toHaveAttribute("src", night);
     if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS && area === "outside") {
@@ -195,7 +197,7 @@ await withBrowser(browser, async () => {
       page
         .getByRole("combobox", { name: "Move to Zone" })
         .locator(`option[value="${area === "outside" ? "workroom" : "exterior"}"]`),
-    ).toHaveText(area === "outside" ? "Workroom" : "Entrance");
+    ).toHaveText(area === "outside" ? "Interior entrance" : "Entrance");
     scene.status = "closed";
     await page.evaluate(() => window.featureController.setRoom({ ...window.featureController.room, status: "closed" }));
     await expect(backdrop).toHaveAttribute("src", old);

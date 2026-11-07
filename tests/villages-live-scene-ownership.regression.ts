@@ -190,6 +190,14 @@ function fixture(name: string) {
   };
 }
 async function main() {
+  {
+    const f = fixture("authored-unvisited");
+    const zone = f.world.venues[0].zones!.find((row) => row.id === "community")!;
+    zone.seen = false;
+    assert.ok(zone.observed);
+    await f.service.requireLiveVenueSession(f.saved.id);
+    assert.equal(zone.seen, true, "entering a Zone records the visit even when its authored appearance is unchanged");
+  }
   for (const completing of [false, true]) {
     const invalid = fixture("missing-native-access");
     invalid.saved.liveSceneVersion = 1;

@@ -103,7 +103,7 @@ export function createVenueCommands({
     const zone = resolveVenueZone(venue, zoneId);
     if (!zone) throw notFound("That Zone no longer exists.");
     if (fromObservation) {
-      if (!zone.seen || !zone.observed) throw conflict("Visit this Zone before generating its artwork.");
+      if (!zone.observed) throw conflict("Reload this Zone before generating its artwork.");
     } else if (zoneClosed(village, venue, zone)) throw conflict("This Zone is not physically available yet.");
   }
 
