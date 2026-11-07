@@ -622,8 +622,29 @@ function coerceVenue(value: unknown): VillageVenue | null {
       ids.add(zone.id);
       return [zone];
     });
-    for (const zone of venue.zones) {
-      if (!zone.seen || zone.observed) continue;
+    for (const [index, zone] of venue.zones.entries()) {
+      if (zone.observed) continue;
+      if (!zone.seen) {
+        // Only persisted artwork context proves an older unvisited appearance; readZone may synthesize a live baseline.
+        const picture = asRecord(asRecord(raw.zones[index]).picture);
+        const baseline =
+          zonePictureBaseline(boundText(picture.context, 24000)) ||
+          zonePictureBaseline(boundText(picture.baseline, 24000));
+        const physical = baseline ? JSON.parse(baseline) : { description: "" };
+        const form = physical.form ?? venue.zones.find((row) => row.kind === "exterior")?.observed?.form;
+        zone.observed = readZoneObservation({
+          context: JSON.stringify({ description: physical.description, ...(form ? { form } : {}) }),
+          name: zone.name,
+          description: physical.description,
+          form,
+          image: baseline ? zone.image : null,
+          dayNight: true,
+          daylight: !!baseline && zone.picture?.daylight,
+          night: baseline ? zone.picture?.night : undefined,
+          pictureContext: baseline || undefined,
+        });
+        continue;
+      }
       const observed = captureZoneObservation(venue, zone);
       try {
         const prior = JSON.parse(zone.picture?.context ?? zone.picture?.baseline ?? "{}");

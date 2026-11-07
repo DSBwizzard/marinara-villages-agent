@@ -67,7 +67,7 @@ export function createLiveScenes({
     if (fromObservation) {
       const state = await readVillageState();
       const zone = state.venues.find((row) => row.id === venueId)?.zones?.find((row) => row.id === zoneId);
-      return !!zone?.seen && !!zone.observed && (!guard || guard(state));
+      return !!zone?.observed && (!guard || guard(state));
     }
     const pointer = await readActive();
     if (!pointer.sessionId) return false;
@@ -314,7 +314,7 @@ export function createLiveScenes({
       !venue ||
       zoneClosed(village, venue, zone) ||
       zonePictureContext(village, venue, zone) !== observed.context ||
-      JSON.stringify(zone.observed) === JSON.stringify(observed)
+      (zone.seen && JSON.stringify(zone.observed) === JSON.stringify(observed))
     )
       return;
     await mutateVillageState((state) => {

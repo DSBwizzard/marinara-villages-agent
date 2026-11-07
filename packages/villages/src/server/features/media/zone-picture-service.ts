@@ -94,7 +94,7 @@ export function createZonePictures(
             current.seen);
         if (!eligible(village, zone)) return;
         if (!(await ports.canGenerateZonePicture(venueId, zone.id, undefined, !automatic))) {
-          if (!automatic && !canonical) throw conflict("Visit this Zone before generating its artwork.");
+          if (!automatic && !canonical) throw conflict("Reload this Zone before generating its artwork.");
           return;
         }
         const referencePending =
@@ -381,7 +381,7 @@ export function createZonePictures(
                   !automatic,
                 ))
               )
-                throw conflict("Visit this Zone before generating its artwork.");
+                throw conflict("Reload this Zone before generating its artwork.");
             },
             connectionId: support!.connectionId,
             referenceImages: references,

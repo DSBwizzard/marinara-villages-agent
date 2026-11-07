@@ -108,7 +108,7 @@ export function createLocationImages(ports: LocationImagePorts) {
       ? observedPictureKey(village, targetZone)
       : sceneryImageKey(village, found.venue, zoneId);
     if (!(await ports.canGenerateZonePicture(venueId, targetZone.id, guard, fromObservation)))
-      throw conflict("Visit this Zone before generating its artwork.");
+      throw conflict("Reload this Zone before generating its artwork.");
     const reference = targetZone.picture?.reference;
     const support = reference ? await ports.resolveVillageImageEditing?.() : undefined;
     if (reference && (!support || !ports.readZonePictureReference))
@@ -198,14 +198,14 @@ export function createLocationImages(ports: LocationImagePorts) {
       ? sceneryPrompt(
           [
             venueImageCompositionPrompt(targetZone.id === "exterior" ? "exterior" : "interior"),
-            "Generate this last-observed Zone only: " + remembered!.name,
+            "Generate this known Zone appearance only: " + remembered!.name,
             "Shared architecture: follow the remembered physical form and account. Do not invent adjoining rooms, windows or furnishings.",
             "Remembered physical form: " + (remembered!.form || "Follow only the saved physical account."),
           ],
           [],
           village.sceneryArtStyle,
           [
-            "Complete last-observed physical account: " + remembered!.context,
+            "Complete known physical account: " + remembered!.context,
             remembered!.purpose ? "Observed use: " + remembered!.purpose : "",
             remembered!.roomSpecification ? "Observed room specification: " + remembered!.roomSpecification : "",
             village.worldRules ? "Player-authored standing world rules: " + village.worldRules : "",
@@ -257,7 +257,7 @@ export function createLocationImages(ports: LocationImagePorts) {
         await assertVenueImageAccess(venueId, zoneId, fromObservation);
         await recordLoreUse(usedLore, `Zone artwork · ${venue.name} · ${targetZone?.name ?? "Entrance"}`);
         if (!(await ports.canGenerateZonePicture(venueId, zoneId, guard, fromObservation)))
-          throw conflict("Visit this Zone before generating its artwork.");
+          throw conflict("Reload this Zone before generating its artwork.");
       },
       sceneryStyleProfileId: village.sceneryStyleProfileId,
       connectionId: support?.connectionId ?? connectionId,
@@ -313,7 +313,7 @@ export function createLocationImages(ports: LocationImagePorts) {
 
   async function storeVillageVenueImage(venueId: string, zoneId: string, dataUrl: unknown): Promise<VillageSnapshot> {
     const { village, venue } = await requireVenue(venueId);
-    await assertVenueImageAccess(venueId, zoneId);
+    await assertVenueImageAccess(venueId, zoneId, true);
     const decoded = decodeImageDataUrl(dataUrl);
     const image = await uploadVillageGalleryImage({
       bytes: decoded.bytes,

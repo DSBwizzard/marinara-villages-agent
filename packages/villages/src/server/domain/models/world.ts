@@ -241,6 +241,7 @@ export type VillageVenueZone = VillageVenueSpace & {
   kind: VillageZoneKind;
   ownerId?: string;
   seen?: boolean;
+  /** Authored or last observed appearance; independent of visit history. */
   observed?: ZoneObservation;
   initialImageAttemptedAt?: string;
 };

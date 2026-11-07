@@ -75,8 +75,7 @@ function fixture() {
       fromObservation = false,
     ) =>
       (present || fromObservation) &&
-      zone(zoneId).seen &&
-      (!fromObservation || !!zone(zoneId).observed) &&
+      (fromObservation ? !!zone(zoneId).observed : zone(zoneId).seen) &&
       (!guard || guard(state)),
     decodeImageDataUrl: () => ({ bytes: new Uint8Array([1]), mime: "image/png" }),
     pictureNow: () => new Date(stamp),
@@ -880,6 +879,10 @@ console.log(
     true,
     "a closed visit still has a valid remembered account",
   );
+  f.zone().seen = false;
+  assert.equal(await live.canGenerateZonePicture("home", "living", undefined, true), true);
+  assert.equal(await live.canGenerateZonePicture("home", "living", () => false, true), false);
+  f.zone().seen = true;
   scene.status = "active";
   f.zone().description += " Unobserved physical change.";
   assert.equal(
@@ -1055,9 +1058,74 @@ console.log(
   const f = fixture();
   f.present(false);
   f.zone().seen = false;
-  delete f.zone().observed;
-  await assert.rejects(f.service.generateVillageLocationImage("home", "living", undefined), /Visit this Zone/);
-  assert.equal(f.calls.length, 0, "an unvisited Zone has no historical rendering authority");
+  const known = structuredClone(f.zone().observed!);
+  f.zone().description = "SECRET new couch";
+  f.zone().purpose = "SECRET current purpose";
+  f.zone().roomSpecification = "SECRET current specification";
+  f.world().venues[0].form = "SECRET new architecture";
+  f.zone().state = { revision: 2, updatedAt: "2026-11-05T12:00:00Z", recent: null };
+  const physical = f.zone().description;
+  await f.service.generateVillageLocationImage("home", "living", undefined);
+  assert.equal(f.calls.length, 1, "an unvisited Zone can render its authored appearance");
+  assert.ok(String(f.calls[0].prompt).includes(known.description));
+  assert.doesNotMatch(JSON.stringify(f.calls), /SECRET/);
+  assert.equal(f.zone().seen, false, "artwork does not record a visit");
+  assert.equal(f.zone().description, physical, "artwork does not change physical facts");
+  const projected = (await f.ports.buildVillageSnapshot!()).settings.venues[0].zones!.find((z) => z.id === "living")!;
+  assert.equal(projected.image?.id, "render-1");
+  assert.equal(projected.pictureGenerateAvailable, true);
+  assert.doesNotMatch(JSON.stringify(projected), /SECRET/);
+  f.zone().closed = true;
+  f.zone().preparation = { status: "pending" };
+  f.zone().dayNight = true;
+  await f.service.storeVillageVenueImage("home", "living", "synthetic-reference");
+  assert.equal(f.zone().picture?.reference?.id, "render-1");
+  await f.ports.setVillageVenueImage("home", "living", null, false, undefined, false, undefined, true);
+  assert.equal(f.zone().observed!.image, null, "Remove remains cosmetic while a Zone is unavailable");
+  assert.equal(f.zone().observed!.dayNight, false, "Remove does not reveal unseen lighting changes");
+  assert.equal(f.zone().seen, false);
+  assert.equal(f.zone().description, physical);
+}
+{
+  const f = fixture();
+  const raw = structuredClone(f.world());
+  const venue = raw.venues[0],
+    zone = venue.zones!.find((z) => z.id === "living")!;
+  zone.seen = false;
+  delete zone.observed;
+  zone.picture = {
+    base: zone.image,
+    context: JSON.stringify({ description: "Original Founding sofa.", form: "Original house." }),
+    daylight: true,
+    dirty: true,
+  };
+  venue.form = "SECRET renovated form";
+  zone.description = "SECRET new couch";
+  zone.purpose = "SECRET purpose";
+  zone.roomSpecification = "SECRET room specification";
+  zone.state = { revision: 3, updatedAt: "2026-11-05T12:00:00Z", recent: null };
+  const restored = coerceVillageState(raw);
+  const known = restored.venues[0].zones!.find((z) => z.id === "living")!;
+  assert.equal(known.observed!.description, "Original Founding sofa.");
+  assert.equal(known.observed!.form, "Original house.");
+  assert.equal(known.observed!.image?.id, "original");
+  assert.equal(known.seen, false);
+  assert.doesNotMatch(JSON.stringify(known.observed), /SECRET/);
+  assert.deepEqual(
+    coerceVillageState(restored).venues[0].zones!.find((z) => z.id === "living")!.observed,
+    known.observed,
+  );
+  delete zone.picture;
+  const unknown = coerceVillageState(raw).venues[0].zones!.find((z) => z.id === "living")!;
+  assert.equal(unknown.observed!.description, "", "a synthesized live baseline cannot establish known facts");
+  assert.equal(unknown.observed!.image, null);
+  assert.doesNotMatch(JSON.stringify(unknown.observed), /SECRET/);
+  await f.ports.mutateVillageState((state) => Object.assign(state, coerceVillageState(raw)));
+  f.present(false);
+  await f.service.generateVillageLocationImage("home", "living", undefined);
+  assert.ok(f.calls.length > 0, "public Zone identity permits manual artwork without a historical account");
+  assert.doesNotMatch(JSON.stringify(f.calls), /SECRET/);
+  assert.equal(f.zone().seen, false);
 }
 
 {
