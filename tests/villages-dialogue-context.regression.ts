@@ -15,6 +15,7 @@ import {
 } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { prepareVenueTurnMessages } from "../packages/villages/src/server/features/scenes/writing.js";
+import { scenePromptHistory, scenePromptPacket } from "./fixtures/villages-scene-writing.fixture.js";
 
 const stamp = new Date().toISOString();
 const state = defaultVillageState();
@@ -256,6 +257,20 @@ async function run() {
     assert.ok(!originalSystem.content.includes('"calendar":'));
     assert.equal(changing.gmContext.revision, 99);
     assert.deepEqual(changing.fitted.messages.at(-1), { role: "user", content: "A new input." });
+    const changedPrompt = changing.fitted.messages.map((entry) => entry.content).join("\n");
+    assert.deepEqual(
+      scenePromptPacket(changedPrompt).scene,
+      scenePromptPacket(prompt).scene,
+      "Clock, query and actor ordering leave reusable Scene facts unchanged",
+    );
+    for (const row of scenePromptHistory(prompt))
+      assert.deepEqual(
+        scenePromptHistory(changedPrompt).find((next) => next.id === row.id),
+        row,
+        "Appending history cannot rewrite prior evidence records",
+      );
+    assert.equal(scenePromptPacket(changedPrompt).context.revision, 99);
+    assert.ok(prompt.indexOf("## Scene facts") < prompt.indexOf("## Witnessed conversation"));
     const positions = [
       "## Writing direction",
       "## Complete authored character identity",

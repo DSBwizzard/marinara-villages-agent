@@ -154,5 +154,32 @@ export function scenePromptPacket(prompt: string): any {
   const packet = prompt.split("\n").find((line) => line.startsWith('{"context":'));
   assert(packet, "The GM receives a structured current Scene context");
   const stable = prompt.split("\n").find((line) => line.startsWith('{"player":'));
-  return { ...(stable ? JSON.parse(stable) : {}), ...JSON.parse(packet) };
+  const scene = prompt.split("\n").find((line) => line.startsWith('{"scene":'));
+  return { ...(stable ? JSON.parse(stable) : {}), ...(scene ? JSON.parse(scene) : {}), ...JSON.parse(packet) };
+}
+
+export function scenePromptHistory(prompt: string): any[] {
+  const prefix = "Partial active Scene history (omission never proves historical absence): ";
+  const line = prompt.split("\n").find((line) => line.startsWith(prefix));
+  return line ? JSON.parse(line.slice(prefix.length, line.lastIndexOf(" Continue after these events."))) : [];
+}
+
+export function scenePromptPositions(prompt: string) {
+  const packet = scenePromptPacket(prompt);
+  const zone = (id: string) => {
+    const found = packet.scene.zones.find((row: any) => row.id === id);
+    return found ? { id, name: found.name, kind: found.kind } : undefined;
+  };
+  return {
+    venue: packet.scene.placeName,
+    player: { zone: zone(packet.context.zoneId) ?? { id: packet.context.zoneId } },
+    residents: packet.context.actors
+      .filter((actor: any) => actor.location !== undefined)
+      .map((actor: any) => ({
+        characterId: actor.id,
+        name: actor.name,
+        location: actor.location,
+        ...(actor.zoneId ? { zone: zone(actor.zoneId) } : {}),
+      })),
+  };
 }

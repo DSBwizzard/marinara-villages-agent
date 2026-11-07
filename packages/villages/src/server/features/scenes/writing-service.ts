@@ -73,6 +73,7 @@ import {
   SCENE_OUTCOME_BOUNDARY,
 } from "../../domain/rules/scene-halt.js";
 import { SCENE_MEMORY_INSTRUCTION, sceneMemoryContext } from "../../domain/rules/scene-memories.js";
+import { sceneLayoutVenue } from "../../domain/rules/scene-layout.js";
 import { provisionalSceneNarrative, type SceneNarrativeSource } from "../../domain/rules/scene-narrative-effects.js";
 import { parseVenueReply } from "../../domain/rules/scene-reply.js";
 import {
@@ -103,6 +104,7 @@ import {
 } from "../../domain/rules/venue-writing.js";
 import { canInviteToZone, resolveVenueZone, venueInZone, zoneClosed } from "../../domain/rules/venue-zones.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
+import { zoneEventHearingGroups } from "../../domain/rules/zone-events.js";
 import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
 import {
   completionFailure as typedCompletionFailure,
@@ -385,8 +387,41 @@ export function createSceneWriting({
         gmContext.memory = memory.envelope;
         gmContext._memoryWrite = memory.saved;
       }
+      const positions = storedPlace ? sceneLocationContext(session, storedPlace, audience) : undefined;
+      const actorState = sceneGmContext(gmContext).actors.map((actor) => {
+        const location = positions?.residents.find((row) => row.characterId === actor.id);
+        const person = active.find((row) => row.characterId === actor.id);
+        const sprite = gmPresentation.sprites[actor.id];
+        return {
+          ...actor,
+          doing: session.sceneAttendance?.occupants.find((row) => row.characterId === actor.id)?.doing || person?.doing,
+          homes: village.venues
+            .filter((venue) => venueResidentIds(venue).includes(actor.id))
+            .map((venue) => ({ id: venue.id, name: venue.name })),
+          ...(location ? { location: location.location, zoneId: location.zone?.id } : {}),
+          presentation: gmPresentation.state[actor.id],
+          expressions: sprite ? describeSpriteExpressions(sprite, gmPresentation.variants) : undefined,
+        };
+      });
+      const contextFor = (rows: typeof history.rows = []) => ({
+        ...sceneGmContext(gmContext, rows),
+        actors: actorState,
+      });
+      const presentationOnly = [
+        ...new Set([...Object.keys(gmPresentation.state), ...Object.keys(gmPresentation.sprites)]),
+      ]
+        .filter((id) => !actorState.some((actor) => actor.id === id))
+        .toSorted()
+        .map((actorId) => ({
+          actorId,
+          state: gmPresentation.state[actorId],
+          expressions: gmPresentation.sprites[actorId]
+            ? describeSpriteExpressions(gmPresentation.sprites[actorId], gmPresentation.variants)
+            : undefined,
+        }));
       const circumstances = {
-        context: sceneGmContext(gmContext),
+        context: contextFor(),
+        ...(presentationOnly.length ? { presentationOnly } : {}),
         turn: {
           mode,
           direction: [
@@ -400,32 +435,15 @@ export function createSceneWriting({
             .filter(Boolean)
             .join("\n"),
         },
-        residentActivity: active.map((person) => ({
-          characterId: person.characterId,
-          doing:
-            session.sceneAttendance?.occupants.find((row) => row.characterId === person.characterId)?.doing ||
-            person.doing,
-          homes: village.venues
-            .filter((venue) => venueResidentIds(venue).includes(person.characterId))
-            .map((venue) => ({ id: venue.id, name: venue.name })),
-        })),
         supportingCandidates,
         pendingProjectQuestions: session.pendingProjectQuestions,
         pendingRoomQuestions: session.pendingRoomQuestions,
         pendingMoves,
         residentRequestLocalIds: residentLocalIdsAt(session, [], 0),
         weather: moment.weather,
-        positions: storedPlace ? sceneLocationContext(session, storedPlace, audience) : undefined,
         environment: village.narrative
           ? environmentCircumstances(village.narrative, session.placeId, session.zoneId ?? "exterior")
           : undefined,
-        presentation: {
-          state: gmPresentation.state,
-          sprites: Object.entries(gmPresentation.sprites).map(([actorId, sprite]) => ({
-            actorId,
-            expressions: describeSpriteExpressions(sprite, gmPresentation.variants),
-          })),
-        },
       };
       blocks = buildVenueSceneBlocks({
         direction: blocksFor([
@@ -451,6 +469,24 @@ export function createSceneWriting({
             }),
           },
         ],
+        sceneContext: [
+          {
+            text: JSON.stringify({
+              scene: {
+                rule: "Hearing groups give exact audiences for every source. Whisper targets are wordsReach excluding the source itself. Hearing is not shared knowledge. Actor positions reference the Zone definitions. presentationOnly supplies cosmetic cues, never speaker eligibility or private motives.",
+                placeName: session.placeName,
+                zones: gmContext.zones.toSorted((a, b) => a.id.localeCompare(b.id)),
+                accessScopes: gmContext.accessScopes.toSorted((a, b) => a.id.localeCompare(b.id)),
+                hearing: storedPlace ? zoneEventHearingGroups(session, sceneLayoutVenue(storedPlace, session)) : [],
+                timeRule: gmContext.time?.rule,
+                memoryRule:
+                  typeof asRecord(gmContext.memory.administrative).rule === "string"
+                    ? String(asRecord(gmContext.memory.administrative).rule).replace(" and this fingerprint", "")
+                    : undefined,
+              },
+            }),
+          },
+        ],
         conversation: blocksFor([
           earlierContext,
           ...lore.map((text, index) => ({
@@ -464,7 +500,7 @@ export function createSceneWriting({
             text: JSON.stringify(circumstances),
             withHistory: {
               source: earlierContext,
-              text: JSON.stringify({ ...circumstances, context: sceneGmContext(gmContext, history.rows) }),
+              text: JSON.stringify({ ...circumstances, context: contextFor(history.rows) }),
             },
           },
         ],
@@ -477,7 +513,7 @@ export function createSceneWriting({
           SCENE_GM_ACCESS,
           SCENE_GM_SOCIAL,
           SCENE_GM_WISHES,
-          SCENE_MEMORY_INSTRUCTION,
+          SCENE_MEMORY_INSTRUCTION.replace(",fingerprint", ""),
           SCENE_GM_PROJECTS,
           PLACE_UPDATE_INSTRUCTION.replace("placeUpdate:", "action:"),
           'Physical action needs happened:true and its exact narration segment. Omit action when nothing changes. Memory screening uses the captured administrative rules; code binds the context fingerprint. Newly introduced narrative circumstances use narrativeIntroduction:{status:"introduced",segment,quote,development}; only an admitted grant permits it. Omit it when quiet.',

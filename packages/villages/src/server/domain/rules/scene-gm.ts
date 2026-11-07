@@ -51,7 +51,6 @@ export function sceneGmContext(
   return {
     time: {
       calendar,
-      rule: context.time?.rule,
       ...(context.time?.capturedAt && context.time.capturedAt !== calendar.instant
         ? { capturedAt: context.time.capturedAt }
         : {}),
@@ -62,49 +61,64 @@ export function sceneGmContext(
     revision: context.revision,
     zoneId: context.zoneId,
     possibleMemoryEffects: context.possibleMemoryEffects,
-    history: history.map((line) => {
+    history: history.flatMap((line) => {
       const covered = includedHistory.some(
         (row) =>
           row.id === line.id &&
           row.text === line.content &&
           row.speakerId === (line.role === "user" ? "player" : line.speakerId) &&
           row.kind === line.kind &&
-          JSON.stringify(row.heardBy) === JSON.stringify(line.heardBy),
+          JSON.stringify(row.heardBy) === JSON.stringify(line.heardBy) &&
+          [
+            "name",
+            "at",
+            "zoneId",
+            "delivery",
+            "presentation",
+            "targetId",
+            "staging",
+            "physicalIdsAfter",
+            "soundOnly",
+          ].every(
+            (key) => JSON.stringify(row[key as keyof typeof row]) === JSON.stringify(line[key as keyof typeof line]),
+          ),
       );
-      return {
-        id: line.id,
-        name: line.name,
-        at: line.at,
-        zoneId: line.zoneId,
-        delivery: line.delivery,
-        presentation: line.presentation,
-        targetId: line.targetId,
-        staging: line.staging,
-        physicalIdsAfter: line.physicalIdsAfter,
-        soundOnly: line.soundOnly,
-        ...sceneEvidencePerception(line),
-        ...(!covered
-          ? {
-              speakerId: line.role === "user" ? "player" : line.speakerId,
-              kind: line.kind,
-              content: line.content,
-              heardBy: line.heardBy,
-              visibleToPlayer: !line.contactHidden,
-            }
-          : {}),
-      };
+      if (covered) return [];
+      return [
+        {
+          id: line.id,
+          name: line.name,
+          at: line.at,
+          zoneId: line.zoneId,
+          delivery: line.delivery,
+          presentation: line.presentation,
+          targetId: line.targetId,
+          staging: line.staging,
+          physicalIdsAfter: line.physicalIdsAfter,
+          soundOnly: line.soundOnly,
+          ...sceneEvidencePerception(line),
+          speakerId: line.role === "user" ? "player" : line.speakerId,
+          kind: line.kind,
+          content: line.content,
+          heardBy: line.heardBy,
+          visibleToPlayer: !line.contactHidden,
+        },
+      ];
     }),
     historyBounded: context.historyBounded,
     actors: actors.map(({ id, name, wishes }) => ({ id, name, wishes })).toSorted((a, b) => a.id.localeCompare(b.id)),
-    zones: context.zones,
     access: context.access,
     accessManagement: context.accessManagement,
     referenceActors: context.referenceActors.filter(
       (row) => !actors.some((actor) => actor.id === row.id && actor.name === row.name),
     ),
-    memory: context.memory,
-    reach: context.reach,
-    accessScopes: context.accessScopes,
+    memory: {
+      administrative: {
+        roots: asRecord(context.memory.administrative).roots,
+        incomplete: asRecord(context.memory.administrative).incomplete,
+      },
+      memories: context.memory.memories,
+    },
     projects: context.projects,
     requests: context.requests,
     social: {

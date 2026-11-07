@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { VenueLine, VenueScene } from "../models/scene-model.js";
+import { sceneEvidencePerception } from "./scene-evidence-perception.js";
 
 /** Retrieval cannot widen witnessed knowledge through a keyword in private or offstage text. */
 export function sharedLoreHistory(scene: VenueScene, retained: readonly VenueLine[], actors: readonly string[]) {
@@ -26,7 +27,7 @@ export function sharedLoreHistory(scene: VenueScene, retained: readonly VenueLin
 
 const HISTORY_PREFIX = "Partial active Scene history (omission never proves historical absence): ";
 const HISTORY_SUFFIX =
-  " Continue after these events. Narrator-visible actions are not shared resident knowledge. Residents know only heardBy text or their own soundOnly projection. Only citable IDs support effects. Statements establish what a speaker said/believed, not the truth of their claims.";
+  " Continue after these events. Metadata describes that event, never current attendance. Narrator-visible actions are not shared resident knowledge. Residents know only heardBy text or their own soundOnly projection. Only citable IDs support effects. Statements establish what a speaker said/believed, not the truth of their claims.";
 const tokens = (text: string) =>
   text
     .normalize("NFKC")
@@ -58,10 +59,31 @@ export function sceneWritingHistory(
       speakerId: acousticOnly ? "__venue_scene__" : line.role === "user" ? "player" : line.speakerId,
       kind: acousticOnly ? "narration" : line.kind,
       heardBy: acousticOnly ? [] : full,
-      ...(sound.length ? { soundOnly: { characterIds: sound, text: line.soundOnly!.text } } : {}),
+      ...(sound.length
+        ? {
+            soundOnly: {
+              characterIds: sound,
+              text: line.soundOnly!.text,
+              ...(line.soundOnly!.player !== undefined ? { player: line.soundOnly!.player } : {}),
+            },
+          }
+        : {}),
       visibleToPlayer: !line.contactHidden,
       citable,
       text,
+      at: line.at,
+      ...(!acousticOnly
+        ? {
+            name: line.name,
+            zoneId: line.zoneId,
+            delivery: line.delivery,
+            presentation: line.presentation,
+            targetId: line.targetId,
+            staging: line.staging,
+            physicalIdsAfter: line.physicalIdsAfter,
+            ...sceneEvidencePerception(line),
+          }
+        : { playerPerception: line.soundOnly?.player ? ("sound-only" as const) : ("none" as const) }),
     };
     return [{ line, index, row, terms: tokens(text), cost: JSON.stringify(row).length + 1 }];
   });

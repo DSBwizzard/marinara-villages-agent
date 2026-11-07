@@ -52,6 +52,7 @@ export type VenueWritingSections = {
   authoredInstructions: VenueWritingBlock[];
   metadata: VenueWritingBlock[];
   stableContext: VenueWritingBlock[];
+  sceneContext: VenueWritingBlock[];
 };
 
 /** Keep the writing task distinct from evidence bookkeeping within one request. */
@@ -61,13 +62,14 @@ export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWrit
     metadata: "Response format and evidence metadata",
     identity: "Complete authored character identity",
     stableContext: "World and player context",
+    sceneContext: "Scene facts",
     conversation: "Witnessed conversation and recalled memories",
     circumstances: "Current Scene circumstances",
     authoredInstructions: "Authored post-history direction",
   };
   return (Object.keys(headings) as (keyof VenueWritingSections)[]).flatMap((section) => {
     const blocks = sections[section].filter((block) => block.text.trim());
-    const dynamic = ["conversation", "circumstances", "authoredInstructions"].includes(section);
+    const dynamic = ["sceneContext", "conversation", "circumstances", "authoredInstructions"].includes(section);
     return blocks.length
       ? [{ text: `## ${headings[section]}`, dynamic }, ...blocks.map((block) => ({ ...block, dynamic }))]
       : [];

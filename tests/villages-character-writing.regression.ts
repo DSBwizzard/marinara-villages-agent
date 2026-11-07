@@ -10,7 +10,7 @@ import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { scenePromptPacket } from "./fixtures/villages-scene-writing.fixture.js";
+import { scenePromptHistory, scenePromptPacket } from "./fixtures/villages-scene-writing.fixture.js";
 import { fixtureWish } from "./helpers/social-wishes-fixture.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
@@ -23,6 +23,7 @@ import {
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { SCENE_GM_WORLD, sceneGmContext } from "../packages/villages/src/server/domain/rules/scene-gm.js";
 import { sceneWritingHistory } from "../packages/villages/src/server/domain/rules/scene-writing-history.js";
+import { SCENE_MEMORY_INSTRUCTION } from "../packages/villages/src/server/domain/rules/scene-memories.js";
 import { LORE_REFERENCE_RULE } from "../packages/villages/src/server/domain/rules/lore-context.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
@@ -180,7 +181,7 @@ async function run() {
           zoneId: "exterior",
           delivery: "ordinary",
           physicalIdsAfter: [card.id],
-          soundOnly: { characterIds: ["outside"], text: "Distant voices.", player: true },
+          soundOnly: { characterIds: [card.id], text: "Distant voices.", player: true },
         },
       ],
     };
@@ -189,15 +190,35 @@ async function run() {
     const deduplicatedPrompt = deduplicated.fitted.messages.map((entry) => entry.content).join("\n");
     const projected = scenePromptPacket(deduplicatedPrompt);
     assert.equal(deduplicatedPrompt.split(witnessed.lines[0].content).length - 1, 1);
-    assert.equal(projected.context.history[0].content, undefined);
-    assert.equal(projected.context.history[0].heardBy, undefined);
+    assert.deepEqual(projected.context.history, [], "Covered evidence is sent only in the canonical transcript");
+    const historical = scenePromptHistory(deduplicatedPrompt)[0];
     for (const field of ["id", "at", "zoneId", "delivery", "physicalIdsAfter", "soundOnly"])
-      assert.deepEqual(projected.context.history[0][field], (witnessed.lines[0] as any)[field]);
+      assert.deepEqual(historical[field], (witnessed.lines[0] as any)[field]);
+    assert.equal(historical.text, witnessed.lines[0].content);
+    assert.equal(historical.playerPerception, "full");
+    assert.equal(projected.context.memory.administrative.fingerprint, undefined);
+    assert.ok(
+      SCENE_MEMORY_INSTRUCTION.includes(",fingerprint"),
+      "Shared Memory callers retain their fingerprint contract",
+    );
+    assert.ok(!deduplicatedPrompt.includes(deduplicated.gmContext._memoryWrite.protection.fingerprint));
     assert.equal(projected.context.setting, undefined, "The authored setting is supplied by the outer setting");
     assert.ok(projected.setting.includes(deduplicated.gmContext.setting));
     assert.equal(deduplicated.gmContext.history[0].content, witnessed.lines[0].content);
     assert.equal(JSON.stringify(witnessed.lines), beforeHistory, "Prompt projection cannot mutate saved history");
     const canonical = sceneWritingHistory(witnessed, witnessed.lines, "promise", [card.id]);
+    const outsideSound = {
+      ...witnessed.lines[0],
+      soundOnly: { characterIds: [card.id, "UNSEEN_LISTENER"], text: "A murmur.", player: true },
+    };
+    const projectedSound = sceneWritingHistory({ ...witnessed, lines: [outsideSound] }, [outsideSound], "promise", [
+      card.id,
+    ]);
+    assert.deepEqual(projectedSound.rows[0].soundOnly?.characterIds, [card.id]);
+    assert.ok(
+      !projectedSound.context.includes("UNSEEN_LISTENER"),
+      "Retrieved metadata cannot reveal an out-of-cast sound audience",
+    );
     const leaked = {
       ...deduplicated.gmContext,
       futureStorageField: "PRIVATE STORAGE SENTINEL",
@@ -247,6 +268,7 @@ async function run() {
       { ...canonical.rows[0], heardBy: [] },
       { ...canonical.rows[0], speakerId: "other" },
       { ...canonical.rows[0], kind: "narration" as const },
+      { ...canonical.rows[0], at: "another-time" },
     ])
       assert.equal(
         sceneGmContext(deduplicated.gmContext, [altered]).history[0].content,
@@ -260,6 +282,8 @@ async function run() {
     acoustic.lines[0].soundOnly = { characterIds: [card.id], text: "Distant voices.", player: true };
     const acousticHistory = sceneWritingHistory(acoustic, acoustic.lines, "", [card.id]);
     assert.ok(!acousticHistory.context.includes("UNHEARD PRIVATE WORDS"));
+    for (const field of ["name", "zoneId", "targetId", "staging", "physicalIdsAfter"])
+      assert.equal((acousticHistory.rows[0] as any)[field], undefined, "Sound-only history keeps the source anonymous");
     const acousticContext = { ...deduplicated.gmContext, history: acoustic.lines } as any;
     const acousticView = sceneGmContext(acousticContext, acousticHistory.rows).history[0];
     for (const field of ["id", "content", "heardBy", "soundOnly"])
@@ -421,7 +445,7 @@ async function run() {
       assert.ok(!outsidePrompt.includes("The player is outside this Venue."));
       assert.ok(outsidePrompt.includes("Neighbors know me through harbor projects."));
       assert.ok(!outsidePrompt.includes("look to them to coordinate Projects"));
-      assert.equal(outsidePacket.residentActivity[0].doing, "Checking a map");
+      assert.equal(outsidePacket.context.actors[0].doing, "Checking a map");
 
       for (const fragment of ["DESCRIPTION TAIL", "SYSTEM TAIL", "POST TAIL", "Appearance:\nFeathered arms; no wings"])
         assert.ok(outsidePrompt.includes(fragment), fragment);
