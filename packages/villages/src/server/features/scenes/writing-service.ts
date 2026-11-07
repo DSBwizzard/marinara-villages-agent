@@ -19,7 +19,7 @@ import {
   VillagesRequestError,
 } from "../../domain/rules/errors.js";
 import { extractJsonObject } from "../../domain/rules/json-reply.js";
-import { inspectedLoreUse, villageLoreContext } from "../../domain/rules/lore-context.js";
+import { inspectedLoreUse, LORE_REFERENCE_RULE, villageLoreContext } from "../../domain/rules/lore-context.js";
 import { venueAdditionalWritingGuidance, venueWritingDirection } from "../../domain/rules/narration-style.js";
 import { environmentCircumstances } from "../../domain/rules/narrative-environment.js";
 import { SCENE_DEVELOPMENT_SCHEMA, SCENE_DEVELOPMENT_WRITING } from "../../domain/rules/narrative-prompts.js";
@@ -31,14 +31,12 @@ import {
 } from "../../domain/rules/npc-participation.js";
 import { openingSceneDirection } from "../../domain/rules/opening-project.js";
 import { findLocation, findNpc, npcProfile } from "../../domain/rules/places.js";
-import { renderPlayerBackgroundContext } from "../../domain/rules/player-background.js";
 import { playerSpeechCapture } from "../../domain/rules/player-speech-capture.js";
 import {
   bindProjectSpeech,
   projectSpeechContexts,
   validateProjectSpeech,
 } from "../../domain/rules/project-interpretation.js";
-import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
 import { privateRejectedText, rejectedSyntaxError } from "../../domain/rules/rejected-response.js";
 import { renderResidentAdmission } from "../../domain/rules/resident-admission.js";
 import {
@@ -57,12 +55,15 @@ import {
   normalizeGmEffects,
   SCENE_GM_ACCESS,
   SCENE_GM_BOUNDARY,
+  SCENE_GM_CONTEXT,
   SCENE_GM_DIRECTION,
   SCENE_GM_EVENTS,
+  SCENE_GM_PRESENTATION,
   SCENE_GM_PROJECTS,
   SCENE_GM_RESPONSE,
   SCENE_GM_SOCIAL,
   SCENE_GM_WISHES,
+  SCENE_GM_WORLD,
   sceneGmContext,
 } from "../../domain/rules/scene-gm.js";
 import {
@@ -245,7 +246,8 @@ export function createSceneWriting({
     );
     const history = sceneWritingHistory(session, eligibleEarlierEvidence, message, audibleIds);
     const earlierEvidence = history?.evidence ?? eligibleEarlierEvidence.slice(-18);
-    const profiles = active.map((person) => {
+    const writingCast = active.toSorted((a, b) => a.characterId.localeCompare(b.characterId));
+    const profiles = writingCast.map((person) => {
       const resident = village.villagers.find((entry) => entry.characterId === person.characterId);
       if (!resident) {
         const npc = findNpc(village, person.characterId);
@@ -351,7 +353,7 @@ export function createSceneWriting({
     const maxTokens = Math.min(model.maxOutputTokens ?? VENUE_REPLY_MAX_TOKENS, VENUE_REPLY_MAX_TOKENS);
     const fitStarted = performance.now();
     const authoredInstructions = blocksFor(
-      active.map((person) => {
+      writingCast.map((person) => {
         const resident = village.villagers.find((entry) => entry.characterId === person.characterId);
         const card = resident ? readEffectiveVillagerCard(resident) : null;
         return card?.postHistoryInstructions
@@ -385,10 +387,18 @@ export function createSceneWriting({
       }
       const circumstances = {
         context: sceneGmContext(gmContext),
-        player: {
-          name: player.name,
-          description: player.description,
-          background: renderPlayerBackgroundContext(village),
+        turn: {
+          mode,
+          direction: [
+            mode === "greet"
+              ? "Opening: the player's presence is established, never voluntary speech or actions. input:[]."
+              : mode === "leave"
+                ? "Conclude the entire authored input naturally; do not invent a player goodbye. Empty input means input:[]."
+                : "",
+            openingSceneDirection(village, session),
+          ]
+            .filter(Boolean)
+            .join("\n"),
         },
         residentActivity: active.map((person) => ({
           characterId: person.characterId,
@@ -404,7 +414,6 @@ export function createSceneWriting({
         pendingRoomQuestions: session.pendingRoomQuestions,
         pendingMoves,
         residentRequestLocalIds: residentLocalIdsAt(session, [], 0),
-        setting: villageCurrentSetting(village),
         weather: moment.weather,
         positions: storedPlace ? sceneLocationContext(session, storedPlace, audience) : undefined,
         environment: village.narrative
@@ -421,17 +430,27 @@ export function createSceneWriting({
       blocks = buildVenueSceneBlocks({
         direction: blocksFor([
           SCENE_GM_DIRECTION,
+          SCENE_GM_CONTEXT,
+          LORE_REFERENCE_RULE,
           venueWritingDirection(village.narrationStyle, player.name),
           venueAdditionalWritingGuidance(village.narrationStyle),
-          mode === "greet"
-            ? "Opening: the player's presence is established, never their voluntary speech or actions. input:[]."
-            : "",
-          mode === "leave"
-            ? "Conclude: interpret the ENTIRE authored input, then close naturally; do not invent a player goodbye. Empty input means input:[]."
-            : "",
-          openingSceneDirection(village, session),
+          SCENE_GM_WORLD,
         ]),
         identity: blocksFor(profiles),
+        stableContext: [
+          {
+            text: JSON.stringify({
+              player: {
+                name: player.name,
+                description: player.description,
+                background: village.playerBackground || "",
+              },
+              setting: village.setting,
+              worldName: village.worldName,
+              worldRules: village.worldRules,
+            }),
+          },
+        ],
         conversation: blocksFor([
           earlierContext,
           ...lore.map((text, index) => ({
@@ -459,17 +478,11 @@ export function createSceneWriting({
           SCENE_GM_SOCIAL,
           SCENE_GM_WISHES,
           SCENE_MEMORY_INSTRUCTION,
-          projectContexts.length ? SCENE_GM_PROJECTS : "",
+          SCENE_GM_PROJECTS,
           PLACE_UPDATE_INSTRUCTION.replace("placeUpdate:", "action:"),
-          'Physical action needs happened:true and its exact narration segment. Omit action when nothing changes. Memory screening uses the captured administrative rules; code binds the context fingerprint. Newly introduced narrative circumstances use narrativeIntroduction:{status:"introduced",segment,quote,development}; only an admitted grant permits it. Omit it when quiet. Optional presentation:[{segment,staging:[{characterId,expression?,look?:{target:"player"}|{target:"villager",characterId}|{target:"direction",direction:"left|right"}}]}] selects only supplied expression IDs; omit uncertain cues. Cues never establish actions, hearing, consent or positions.',
+          'Physical action needs happened:true and its exact narration segment. Omit action when nothing changes. Memory screening uses the captured administrative rules; code binds the context fingerprint. Newly introduced narrative circumstances use narrativeIntroduction:{status:"introduced",segment,quote,development}; only an admitted grant permits it. Omit it when quiet.',
+          SCENE_GM_PRESENTATION,
         ]),
-      });
-      const contractAt = blocks.findIndex((block) => block.text === "## Response format and evidence metadata");
-      const contract = blocks.splice(contractAt).slice(1);
-      const identityAt = blocks.findIndex((block) => block.text === "## Complete authored character identity");
-      blocks.splice(identityAt < 0 ? blocks.length : identityAt, 0, ...contract);
-      blocks.push({
-        text: 'Return one complete JSON object with BOTH required keys: {"input":[...],"segments":[...],...optional effects}. Always classify the entire exact original input, even when returning effects or a halt. Empty input means input:[]. Every current explicit access choice and Project approval, builder commitment or withdrawal needs its matching cited effect; include each separately.',
       });
     }
     const ordinary = captured
@@ -477,6 +490,7 @@ export function createSceneWriting({
       : fitVenueWritingMessages(model, blocks, input, maxTokens);
     if (introduction)
       blocks.push({
+        dynamic: true,
         text:
           SCENE_DEVELOPMENT_WRITING +
           ' Return narrativeIntroduction:{status:"introduced",segment,quote,development} in this same response for an introduced circumstance, citing its exact narration segment and quote. Omit it when quiet. ' +

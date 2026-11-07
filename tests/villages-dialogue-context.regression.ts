@@ -227,6 +227,35 @@ async function run() {
         .map((entry) => entry.content)
         .join("\n"),
     );
+    const changing = await prepareVenueTurnMessages(
+      {
+        ...scene,
+        startedAt: new Date(Date.parse(stamp) + 60_000).toISOString(),
+        sceneRevision: 99,
+        participants: [...scene.participants].reverse(),
+        activeIds: [...scene.activeIds].reverse(),
+        lines: [...scene.lines, { ...scene.lines[0], id: "another-source", content: "A newly witnessed fact." }],
+      },
+      "A new input.",
+      "chat",
+      "",
+      null,
+    );
+    const originalSystem = (
+      await prepareVenueTurnMessages(scene, "What about Alex’s violin music?", "chat", "outgoing", null)
+    ).fitted.messages[0];
+    assert.deepEqual(
+      changing.fitted.messages[0],
+      originalSystem,
+      "The entire system message is stable, not merely its opening prefix",
+    );
+    assert.equal(changing.fitted.messages[1].role, "user");
+    assert.ok(changing.fitted.messages[1].content.includes("another-source"));
+    assert.ok(originalSystem.content.includes("## World and player context"));
+    assert.ok(!originalSystem.content.includes("earlier-spoken"));
+    assert.ok(!originalSystem.content.includes('"calendar":'));
+    assert.equal(changing.gmContext.revision, 99);
+    assert.deepEqual(changing.fitted.messages.at(-1), { role: "user", content: "A new input." });
     const positions = [
       "## Writing direction",
       "## Complete authored character identity",

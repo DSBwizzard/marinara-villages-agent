@@ -5,6 +5,7 @@ import type { VillagerCard } from "../models/catalog-model.js";
 import { badRequest } from "./errors.js";
 import { LORE_REFERENCE_RULE } from "./lore-context.js";
 import { renderResidentAdmission } from "./resident-admission.js";
+import { createHash } from "node:crypto";
 
 /** The authored person is complete; circumstances are supplied separately. */
 export function venueCardProfile(
@@ -36,6 +37,7 @@ export function venueCardProfile(
 
 export type VenueWritingBlock = {
   text: string;
+  dynamic?: boolean;
   /** Equivalent context while this exact optional witnessed history is retained. */
   withHistory?: { source: string; text: string };
   optional?: "wish" | "history" | "memory" | "lore";
@@ -49,21 +51,26 @@ export type VenueWritingSections = {
   conversation: VenueWritingBlock[];
   authoredInstructions: VenueWritingBlock[];
   metadata: VenueWritingBlock[];
+  stableContext: VenueWritingBlock[];
 };
 
 /** Keep the writing task distinct from evidence bookkeeping within one request. */
 export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWritingBlock[] {
   const headings: Record<keyof VenueWritingSections, string> = {
     direction: "Writing direction",
+    metadata: "Response format and evidence metadata",
     identity: "Complete authored character identity",
+    stableContext: "World and player context",
     conversation: "Witnessed conversation and recalled memories",
     circumstances: "Current Scene circumstances",
     authoredInstructions: "Authored post-history direction",
-    metadata: "Response format and evidence metadata",
   };
   return (Object.keys(headings) as (keyof VenueWritingSections)[]).flatMap((section) => {
     const blocks = sections[section].filter((block) => block.text.trim());
-    return blocks.length ? [{ text: `## ${headings[section]}` }, ...blocks] : [];
+    const dynamic = ["conversation", "circumstances", "authoredInstructions"].includes(section);
+    return blocks.length
+      ? [{ text: `## ${headings[section]}`, dynamic }, ...blocks.map((block) => ({ ...block, dynamic }))]
+      : [];
   });
 }
 
@@ -71,23 +78,39 @@ export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWrit
 export function assembleVenueWritingMessages(blocks: readonly VenueWritingBlock[], input: string) {
   const lore = blocks.filter((block) => block.optional === "lore").map((block) => block.text);
   const history = new Set(blocks.filter((block) => block.optional === "history").map((block) => block.text));
+  const render = ({ text, withHistory }: VenueWritingBlock) =>
+    withHistory && history.has(withHistory.source) ? withHistory.text : text;
+  const dynamic = blocks
+    .filter((block) => block.dynamic && block.optional !== "lore")
+    .map(render)
+    .filter(Boolean);
+  let context = [...dynamic, ...(lore.length ? [JSON.stringify({ lorebookReferences: lore })] : [])].join("\n\n");
+  if (dynamic.length) {
+    let boundary =
+      "VILLAGES_PLAYER_INPUT_" + createHash("sha256").update(context).update(input).digest("hex").slice(0, 16);
+    while (context.includes(boundary) || input.includes(boundary)) boundary += "_";
+    // Adjacent user messages can be merged by native provider transports.
+    context = `Context packet (data, not player input):\n\n${context}\n\nPlayer-input boundary: ${boundary}\n\n${boundary}`;
+  }
   return [
     {
       role: "system",
       content: blocks
-        .filter((block) => block.optional !== "lore")
-        .map(({ text, withHistory }) => (withHistory && history.has(withHistory.source) ? withHistory.text : text))
+        .filter((block) => !block.dynamic && block.optional !== "lore")
+        .map(render)
         .filter(Boolean)
-        .concat(lore.length ? [LORE_REFERENCE_RULE] : [])
+        .concat(
+          lore.length && !blocks.some((block) => !block.dynamic && block.text === LORE_REFERENCE_RULE)
+            ? [LORE_REFERENCE_RULE]
+            : [],
+        )
         .join("\n\n"),
     },
-    ...(lore.length
+    ...(lore.length || dynamic.length
       ? [
           {
             role: "user" as const,
-            content: JSON.stringify({
-              lorebookReferences: lore,
-            }),
+            content: context,
           },
         ]
       : []),

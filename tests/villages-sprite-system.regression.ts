@@ -6,7 +6,7 @@ import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { materializeGmReply } from "../packages/villages/src/server/domain/rules/scene-gm.js";
+import { materializeGmReply, normalizeGmEffects } from "../packages/villages/src/server/domain/rules/scene-gm.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { semanticContext } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
 import {
@@ -180,6 +180,24 @@ assert.equal(calls, 0);
 assert.equal(JSON.stringify(lines), original, "Presentation cannot rewrite speech or witnesses");
 world.villagers[0].sprite = sprite as any;
 const context = sceneSpriteSelection(scene, world);
+const alias = [{ segment: 0, staging: [{ characterId: "a", expression: "e-first" }] }];
+const normalizedAlias = normalizeGmEffects({ presencePresentation: alias }, gmContext);
+assert.deepEqual(normalizedAlias.presentation, alias);
+assert.equal(normalizedAlias.presencePresentation, undefined);
+assert.deepEqual(
+  readSceneSpritePresentation(normalizedAlias.presentation, context, lines.length),
+  readSceneSpritePresentation(alias, context, lines.length),
+  "The observed alias uses exactly the normal cosmetic cue validation",
+);
+assert.deepEqual(normalizeGmEffects({ presentation: [], presencePresentation: alias }, gmContext).presentation, []);
+assert.deepEqual(
+  readSceneSpritePresentation(
+    normalizeGmEffects({ presencePresentation: "invalid" }, gmContext).presentation,
+    context,
+    lines.length,
+  ),
+  [],
+);
 assert.deepEqual(readSceneSpritePresentation(undefined, context, lines.length), []);
 assert.deepEqual(readSceneSpritePresentation([{ segment: 99, staging: [] }, null], context, lines.length), []);
 assert.deepEqual(

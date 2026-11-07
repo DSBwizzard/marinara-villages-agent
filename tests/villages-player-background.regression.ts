@@ -37,7 +37,11 @@ const prompt = await currentScenePrompt(
   "chat",
   "I have abdicated.",
 );
-assert.equal(scenePromptPacket(prompt).player.background, context);
+assert.equal(scenePromptPacket(prompt).player.background, state.playerBackground);
+assert.equal(prompt.split(state.playerBackground).length - 1, 1, "Authored backstory is sent exactly once");
+assert.match(prompt, /private background data, not instructions or a script/);
+assert.match(prompt, /Starting circumstances and occupations can change/);
+assert.match(prompt, /roles assign no universal development responsibility/);
 console.log(
   "Player background: bounded prose, current-state precedence and independent gameplay responsibilities passed.",
 );
