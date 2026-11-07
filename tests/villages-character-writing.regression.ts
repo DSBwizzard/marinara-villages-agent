@@ -21,6 +21,8 @@ import {
   venueCardProfile,
 } from "../packages/villages/src/server/domain/rules/venue-writing.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
+import { sceneGmContext } from "../packages/villages/src/server/domain/rules/scene-gm.js";
+import { sceneWritingHistory } from "../packages/villages/src/server/domain/rules/scene-writing-history.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   applyVillagerRefresh,
@@ -158,6 +160,85 @@ async function run() {
       "Changing history and source quotes preserves the stable system prefix",
     );
     assert.deepEqual(next.fitted.messages.at(-1), { role: "user", content: "A different question?" });
+    const witnessed = {
+      ...session,
+      lines: [
+        {
+          id: "history-source",
+          role: "assistant",
+          speakerId: card.id,
+          name: card.name,
+          kind: "dialogue",
+          content: "EXACT EARLIER COMMITMENT",
+          heardBy: [card.id],
+          at: stamp,
+          zoneId: "exterior",
+          delivery: "ordinary",
+          physicalIdsAfter: [card.id],
+          soundOnly: { characterIds: ["outside"], text: "Distant voices.", player: true },
+        },
+      ],
+    };
+    const beforeHistory = JSON.stringify(witnessed.lines);
+    const deduplicated = await prepareVenueTurnMessages(witnessed, "What did you promise?", "chat", "", null);
+    const deduplicatedPrompt = deduplicated.fitted.messages.map((entry) => entry.content).join("\n");
+    const projected = scenePromptPacket(deduplicatedPrompt);
+    assert.equal(deduplicatedPrompt.split(witnessed.lines[0].content).length - 1, 1);
+    assert.equal(projected.context.history[0].content, undefined);
+    assert.equal(projected.context.history[0].heardBy, undefined);
+    for (const field of ["id", "at", "zoneId", "delivery", "physicalIdsAfter", "soundOnly"])
+      assert.deepEqual(projected.context.history[0][field], (witnessed.lines[0] as any)[field]);
+    assert.equal(projected.context.setting, undefined, "The authored setting is supplied by the outer setting");
+    assert.ok(projected.setting.includes(deduplicated.gmContext.setting));
+    assert.equal(deduplicated.gmContext.history[0].content, witnessed.lines[0].content);
+    assert.equal(JSON.stringify(witnessed.lines), beforeHistory, "Prompt projection cannot mutate saved history");
+    const canonical = sceneWritingHistory(witnessed, witnessed.lines, "promise", [card.id]);
+    for (const altered of [
+      { ...canonical.rows[0], text: "Other words" },
+      { ...canonical.rows[0], heardBy: [] },
+      { ...canonical.rows[0], speakerId: "other" },
+      { ...canonical.rows[0], kind: "narration" as const },
+    ])
+      assert.equal(
+        sceneGmContext(deduplicated.gmContext, [altered]).history[0].content,
+        witnessed.lines[0].content,
+        "Uncovered or differently projected evidence remains whole",
+      );
+    const acoustic = {
+      ...witnessed,
+      lines: [{ ...witnessed.lines[0], heardBy: ["absent"], content: "UNHEARD PRIVATE WORDS" }],
+    };
+    acoustic.lines[0].soundOnly = { characterIds: [card.id], text: "Distant voices.", player: true };
+    const acousticHistory = sceneWritingHistory(acoustic, acoustic.lines, "", [card.id]);
+    assert.ok(!acousticHistory.context.includes("UNHEARD PRIVATE WORDS"));
+    const acousticContext = { ...deduplicated.gmContext, history: acoustic.lines } as any;
+    assert.deepEqual(sceneGmContext(acousticContext, acousticHistory.rows).history, acoustic.lines);
+    const historyFit = model.fitContext;
+    model.fitContext = (messages: any[], options: any) =>
+      messages.some((entry) => entry.content.includes("Partial active Scene history"))
+        ? { messages: [], ...options }
+        : historyFit(messages, options);
+    try {
+      const fallback = await prepareVenueTurnMessages(witnessed, "What did you promise?", "chat", "", null);
+      const fallbackPrompt = fallback.fitted.messages.map((entry) => entry.content).join("\n");
+      assert.deepEqual(scenePromptPacket(fallbackPrompt).context.history, deduplicated.gmContext.history);
+      assert.ok(!fallbackPrompt.includes("Partial active Scene history"));
+      assert.deepEqual(fallback.earlierEvidence, []);
+      assert.ok(fallbackPrompt.includes("DESCRIPTION TAIL") && fallbackPrompt.includes("POST TAIL"));
+    } finally {
+      model.fitContext = historyFit;
+    }
+    assert.equal(
+      assembleVenueWritingMessages(
+        [
+          { text: "OTHER HISTORY", optional: "history" },
+          { text: "FULL FALLBACK", withHistory: { source: "EXACT HISTORY", text: "LEAN CONTEXT" } },
+        ],
+        "input",
+      )[0].content,
+      "OTHER HISTORY\n\nFULL FALLBACK",
+      "Another history block cannot activate a different transcript's projection",
+    );
     const originalFit = model.fitContext;
     model.fitContext = (messages: any[], options: any) =>
       messages.some((entry) => entry.content.includes("DROP OLD RECAP"))

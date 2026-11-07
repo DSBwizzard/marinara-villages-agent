@@ -4,6 +4,7 @@ import { badGateway } from "./errors.js";
 import { neutralRelationship, relationshipKey } from "./relationship-rules.js";
 import { materializePlayerSpeech } from "./player-speech-capture.js";
 import { semanticContext } from "./semantic-contract.js";
+import type { sceneWritingHistory } from "./scene-writing-history.js";
 
 export const SCENE_GM_DIRECTION =
   "You are the Game Master of Villages, a persistent character-driven life game. Interpret the player's entire input and write the next exchange, with small updates only when something changes. Residents have their own motives, opinions, abilities and right to refuse. Preserve complete authored identity and post-history direction. Write specific, natural, emotionally responsive prose; avoid repeated questions, ceremonial consent and filler. Let addressed people respond. Server facts govern positions, time, access and consequences. Private context belongs to its named knowers, never the whole cast. No invented player words, thoughts, agreement or travel. Thoughts and quoted examples are not audible. Later arrivals never hear earlier dialogue. Hearing is not sight, presence or access. A proposal or promise is not physical completion. Only explicit Move changes the player's Zone, and only Start/Resume begins Project work. Ordinary conversation needs no persistent update. You propose meaning and consequences; server validation determines what applies.";
@@ -30,11 +31,28 @@ export const SCENE_GM_BOUNDARY =
   'Optional halt:{reason:"time|activity|condition|world",source:"player|draft",quote:"exact source substring",appointments:[]}. Preserve attempts/hypotheticals as such; do not silently turn an unsupported asserted outcome into a failed action, dream or dialogue. No unsupported death/resurrection, permanent incapacity, time travel, calendar rewrite or large time skip; ordinary local actions and compatible character powers are allowed. Appointments need rows {source:"player|draft",quote,date:"YYYY-MM-DD",minute:0-1439|null}; null means no exact time. Player quotes bind to original input, draft quotes to generated text. Resolve today/tomorrow/next weekday from the supplied calendar. Report appointment rows even with no other halt, using reason:"none",quote:""; code decides whether an appointment is past. Ordinary scheduling alone is not a time halt. A halt may use segments:[].';
 
 /** Compact model view; private Memory authority is retained by the saved writing request. */
-export function sceneGmContext(context: ReturnType<typeof semanticContext>) {
-  const { _memoryWrite: _private, loreSelection: _lore, actors, social, ...rest } = context;
+export function sceneGmContext(
+  context: ReturnType<typeof semanticContext>,
+  includedHistory: ReturnType<typeof sceneWritingHistory>["rows"] = [],
+) {
+  const { _memoryWrite: _private, loreSelection: _lore, setting: _setting, history, actors, social, ...rest } = context;
   const live = asRecord(social.live);
   return {
     ...rest,
+    history: history.map((line) => {
+      const covered = includedHistory.some(
+        (row) =>
+          row.id === line.id &&
+          row.text === line.content &&
+          row.speakerId === (line.role === "user" ? "player" : line.speakerId) &&
+          row.kind === line.kind &&
+          JSON.stringify(row.heardBy) === JSON.stringify(line.heardBy),
+      );
+      if (!covered) return line;
+      // Keep unique saved metadata; the retained witnessed row supplies these exact fields by ID.
+      const { content: _content, speakerId: _speaker, kind: _kind, heardBy: _heard, ...metadata } = line;
+      return metadata;
+    }),
     actors: actors.map(({ character: _card, ...actor }) => actor),
     social: {
       edges: live.edges,

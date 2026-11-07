@@ -58,6 +58,7 @@ function fixture(label: string, checkpointed = false) {
     brokenReply: string | null = null;
   const owner = createActivationScope();
   const checkpoints = new Map<string, unknown>();
+  const requests: unknown[] = [];
   let roomInterpretation:
     import("../packages/villages/src/server/domain/models/interpretation-model.js").InterpretationBatch | null = null;
   async function touch(stage: string) {
@@ -144,6 +145,7 @@ function fixture(label: string, checkpointed = false) {
       assert.equal(selected, model);
       assert.equal(options.usagePurpose, "conversation");
       assert.equal(options.temperature, 0.85);
+      requests.push(structuredClone(_messages));
       await touch("completion");
       return {
         content:
@@ -200,6 +202,7 @@ function fixture(label: string, checkpointed = false) {
     entered,
     gate,
     exact,
+    requests,
     pause(stage: string) {
       paused = stage;
     },
@@ -269,6 +272,8 @@ assert.equal(complete.calls.filter((x) => x === "interpretation").length, 1);
     sceneFacts: { wish: { actorId: "a", wishId: initial.id, value: updated } },
   } as never;
   replay.fail("");
+  const recovered = await replay.service.prepareVenueTurnMessages(replay.scene, "I wait.", "chat", "", null);
+  assert.deepEqual(recovered.fitted.messages, replay.requests[0], "Recovery keeps the exact purchased prompt");
   const reply = await replay.run();
   assert.equal(
     reply.wishContexts[0].wishes[0].wish,

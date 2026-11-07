@@ -36,6 +36,8 @@ export function venueCardProfile(
 
 export type VenueWritingBlock = {
   text: string;
+  /** Equivalent context while this exact optional witnessed history is retained. */
+  withHistory?: { source: string; text: string };
   optional?: "wish" | "history" | "memory" | "lore";
   lore?: LoreUse;
 };
@@ -68,12 +70,13 @@ export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWrit
 /** Shared by live generation and isolated evaluations. Never silently shrink a character. */
 export function assembleVenueWritingMessages(blocks: readonly VenueWritingBlock[], input: string) {
   const lore = blocks.filter((block) => block.optional === "lore").map((block) => block.text);
+  const history = new Set(blocks.filter((block) => block.optional === "history").map((block) => block.text));
   return [
     {
       role: "system",
       content: blocks
         .filter((block) => block.optional !== "lore")
-        .map((block) => block.text)
+        .map(({ text, withHistory }) => (withHistory && history.has(withHistory.source) ? withHistory.text : text))
         .filter(Boolean)
         .concat(lore.length ? [LORE_REFERENCE_RULE] : [])
         .join("\n\n"),

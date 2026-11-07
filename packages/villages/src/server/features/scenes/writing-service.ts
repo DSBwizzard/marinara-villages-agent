@@ -383,6 +383,41 @@ export function createSceneWriting({
         gmContext.memory = memory.envelope;
         gmContext._memoryWrite = memory.saved;
       }
+      const circumstances = {
+        context: sceneGmContext(gmContext),
+        player: {
+          name: player.name,
+          description: player.description,
+          background: renderPlayerBackgroundContext(village),
+        },
+        residentActivity: active.map((person) => ({
+          characterId: person.characterId,
+          doing:
+            session.sceneAttendance?.occupants.find((row) => row.characterId === person.characterId)?.doing ||
+            person.doing,
+          homes: village.venues
+            .filter((venue) => venueResidentIds(venue).includes(person.characterId))
+            .map((venue) => ({ id: venue.id, name: venue.name })),
+        })),
+        supportingCandidates,
+        pendingProjectQuestions: session.pendingProjectQuestions,
+        pendingRoomQuestions: session.pendingRoomQuestions,
+        pendingMoves,
+        residentRequestLocalIds: residentLocalIdsAt(session, [], 0),
+        setting: villageCurrentSetting(village),
+        weather: moment.weather,
+        positions: storedPlace ? sceneLocationContext(session, storedPlace, audience) : undefined,
+        environment: village.narrative
+          ? environmentCircumstances(village.narrative, session.placeId, session.zoneId ?? "exterior")
+          : undefined,
+        presentation: {
+          state: gmPresentation.state,
+          sprites: Object.entries(gmPresentation.sprites).map(([actorId, sprite]) => ({
+            actorId,
+            expressions: describeSpriteExpressions(sprite, gmPresentation.variants),
+          })),
+        },
+      };
       blocks = buildVenueSceneBlocks({
         direction: blocksFor([
           SCENE_GM_DIRECTION,
@@ -407,41 +442,11 @@ export function createSceneWriting({
         ]),
         circumstances: [
           {
-            text: JSON.stringify({
-              context: sceneGmContext(gmContext),
-              player: {
-                name: player.name,
-                description: player.description,
-                background: renderPlayerBackgroundContext(village),
-              },
-              residentActivity: active.map((person) => ({
-                characterId: person.characterId,
-                doing:
-                  session.sceneAttendance?.occupants.find((row) => row.characterId === person.characterId)?.doing ||
-                  person.doing,
-                homes: village.venues
-                  .filter((venue) => venueResidentIds(venue).includes(person.characterId))
-                  .map((venue) => ({ id: venue.id, name: venue.name })),
-              })),
-              supportingCandidates,
-              pendingProjectQuestions: session.pendingProjectQuestions,
-              pendingRoomQuestions: session.pendingRoomQuestions,
-              pendingMoves,
-              residentRequestLocalIds: residentLocalIdsAt(session, [], 0),
-              setting: villageCurrentSetting(village),
-              weather: moment.weather,
-              positions: storedPlace ? sceneLocationContext(session, storedPlace, audience) : undefined,
-              environment: village.narrative
-                ? environmentCircumstances(village.narrative, session.placeId, session.zoneId ?? "exterior")
-                : undefined,
-              presentation: {
-                state: gmPresentation.state,
-                sprites: Object.entries(gmPresentation.sprites).map(([actorId, sprite]) => ({
-                  actorId,
-                  expressions: describeSpriteExpressions(sprite, gmPresentation.variants),
-                })),
-              },
-            }),
+            text: JSON.stringify(circumstances),
+            withHistory: {
+              source: earlierContext,
+              text: JSON.stringify({ ...circumstances, context: sceneGmContext(gmContext, history.rows) }),
+            },
           },
         ],
         authoredInstructions,

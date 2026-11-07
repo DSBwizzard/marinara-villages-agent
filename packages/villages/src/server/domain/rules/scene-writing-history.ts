@@ -130,12 +130,14 @@ export function sceneWritingHistory(
   take(ranked, capacity - used);
   take(recent, capacity - used);
   const ordered = [...selected.values()].sort((a, b) => a.index - b.index);
+  const projected = ordered.map((item) => item.row);
   return {
+    rows: projected,
     evidence: ordered.filter((item) => item.row.citable).map((item) => item.line),
     fingerprints: Object.fromEntries(
       ordered.map(({ line }) => [line.id, createHash("sha256").update(JSON.stringify(line)).digest("hex")]),
     ),
     partial: ordered.length < rows.length,
-    context: ordered.length ? HISTORY_PREFIX + JSON.stringify(ordered.map((item) => item.row)) + HISTORY_SUFFIX : "",
+    context: ordered.length ? HISTORY_PREFIX + JSON.stringify(projected) + HISTORY_SUFFIX : "",
   };
 }
