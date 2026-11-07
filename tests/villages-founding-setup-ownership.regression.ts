@@ -279,6 +279,45 @@ for (const invalid of ["missing-purpose", "layout-mismatch"]) {
   }
 }
 
+{
+  const api = fixture("Starting location"),
+    server = Fastify();
+  const dispose = configureFoundingSetup(api.service);
+  registerFoundingRoutes(server);
+  try {
+    for (const startingLocationName of ["", "  ", "x".repeat(81), 42, null]) {
+      const response = await server.inject({
+        method: "POST",
+        url: "/setup",
+        payload: { ...input("Willowmere"), startingLocationName },
+      });
+      assert.equal(response.statusCode, 400, response.body);
+      assert.equal(api.calls.includes("map"), false, "Invalid location names cannot upload artwork");
+      assert.equal(api.calls.includes("mutate"), false, "Invalid location names cannot change saved state");
+    }
+    const missingDescription = await server.inject({
+      method: "POST",
+      url: "/setup",
+      payload: { ...input("Willowmere"), startingLocationName: "Old Harbour", setting: "" },
+    });
+    assert.equal(missingDescription.statusCode, 400, missingDescription.body);
+    assert.equal(api.calls.includes("map"), false);
+    assert.equal(api.calls.includes("mutate"), false);
+    const response = await server.inject({
+      method: "POST",
+      url: "/setup",
+      payload: { ...input("Willowmere"), startingLocationName: "  Old Harbour  " },
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    assert.equal(api.state.name, "Willowmere");
+    assert.equal(api.state.maps[0].name, "Old Harbour");
+    assert.ok(api.state.venues.every((venue) => venue.presentation.mapId === api.state.maps[0].id));
+  } finally {
+    dispose();
+    await server.close();
+  }
+}
+
 const direct = fixture("Direct");
 for (const setting of ["A farm", "An abandoned farm"]) {
   const everyday = fixture("Everyday");
@@ -296,6 +335,7 @@ const invalid = { ...input("Invalid"), foundingResidentAdmissions: { stranger: E
 await assert.rejects(direct.service.runVillageSetup(invalid), /selected/);
 const result = await direct.service.runVillageSetup(input("Direct"));
 assert.equal(result.village.name, "Direct");
+assert.equal(direct.state.maps[0].name, "Direct", "Older setup callers retain the original map name");
 assert.equal(direct.state.playerPersonaIdentity, "Private Persona Direct");
 assert.equal(direct.state.villagers[0]!.cardSnapshot.description, "Private card Direct");
 assert.equal(direct.state.villagers[0]!.agenda!.personalizationPending, true);

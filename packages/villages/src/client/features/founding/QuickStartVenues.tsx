@@ -12,6 +12,7 @@ import { foundingVenueIssues, type FoundingIssue } from "./villages-founding-wor
 
 export function QuickStartVenues({
   venues,
+  locationName,
   people,
   selectedId,
   busy,
@@ -31,6 +32,7 @@ export function QuickStartVenues({
   onRetrySaving,
 }: {
   venues: SetupVenueDraft[];
+  locationName: string;
   people: { id: string; name: string }[];
   selectedId: string | null;
   busy: boolean;
@@ -383,9 +385,9 @@ export function QuickStartVenues({
           </footer>
         </FoundingDialog>
       ) : null}
-      <section className="villages-forging-card villages-quick-map-panel" aria-label="Village map">
+      <section className="villages-forging-card villages-quick-map-panel" aria-label="Starting location map">
         <div className="villages-quick-map-toolbar">
-          <h2>Village map</h2>
+          <h2>{locationName || "Starting location"}</h2>
           {mapArtwork}
         </div>
         <section className="villages-quick-map" aria-label="Venue placement">

@@ -68,6 +68,7 @@ async function reviewNavigation() {
     setupMapBusy: false,
     setupMapSrc: "map",
     setupName: "Village",
+    setupLocationName: "Old Harbour",
     setupPlayerBackground: "I came to help the community.",
     setupSetting: "Coastal rooms",
     setupStep: 3,
@@ -107,6 +108,11 @@ async function reviewNavigation() {
   assert.equal(step, 0, "missing Place fields return to the first tab");
   assert.equal(problem, "Give the village a name.");
   ports.setupName = "Village";
+  ports.setupLocationName = "";
+  goto(2);
+  assert.equal(step, 0);
+  assert.equal(problem, "Name the starting location.");
+  ports.setupLocationName = "Old Harbour";
   ports.personaDraft = "player";
   reviewed = false;
   ports.setupMapSrc = "";
@@ -907,6 +913,7 @@ await main()
   );
   const draft = {
     version: 2,
+    name: "Willowmere",
     context: { rules: "", circumstances: [], communityVenueId: "community", households: {} },
     workspace: emptyFoundingWorkspace(),
     zoneDrafts: {},
@@ -915,6 +922,13 @@ await main()
     step: 0,
   } as any;
   createFoundingRestoreSetupDraft(setters as any)(JSON.parse(JSON.stringify(draft)));
+  assert.equal(values.setSetupName, "Willowmere");
+  assert.equal(values.setSetupLocationName, "Willowmere", "Older v2 drafts retain their original first-map name");
+  for (const startingLocationName of ["Old Harbour", ""]) {
+    createFoundingRestoreSetupDraft(setters as any)({ ...draft, startingLocationName });
+    assert.equal(values.setSetupName, "Willowmere");
+    assert.equal(values.setSetupLocationName, startingLocationName, "Authored location names restore without backfill");
+  }
   assert.equal(values.setScreen, "setup", "A freshly serialized v2 draft resumes without old-format backfill");
   assert.deepEqual(values.setSetupWorkspace, draft.workspace);
   assert.equal(

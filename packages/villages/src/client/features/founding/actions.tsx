@@ -224,6 +224,7 @@ export function useOpenSetup(ports: {
   setSetupMapSize: React.Dispatch<SetStateAction<{ width: number; height: number }>>;
   setSetupMapSource: React.Dispatch<SetStateAction<SetupMapSource>>;
   setSetupName: React.Dispatch<SetStateAction<string>>;
+  setSetupLocationName: React.Dispatch<SetStateAction<string>>;
   setSetupPlacementError: React.Dispatch<SetStateAction<string>>;
   setSetupPlayerBackground: React.Dispatch<SetStateAction<PlayerBackground>>;
   setSetupProblem: React.Dispatch<SetStateAction<string>>;
@@ -269,6 +270,7 @@ export function useOpenSetup(ports: {
     setSetupMapSize,
     setSetupMapSource,
     setSetupName,
+    setSetupLocationName,
     setSetupPlacementError,
     setSetupPlayerBackground,
     setSetupProblem,
@@ -299,6 +301,7 @@ export function useOpenSetup(ports: {
       setSetupFocusIssue(null);
       // Unfounded snapshots have a server fallback name; authored drafts restore their own name separately.
       setSetupName("");
+      setSetupLocationName("");
       setSetupWorldName?.(fresh ? "" : (village?.settings.worldName ?? ""));
       setSetupSetting(fresh ? "" : (village?.village.setting ?? ""));
       setSetupPlayerBackground(fresh ? "" : (village?.settings.playerBackground ?? ""));
@@ -373,6 +376,7 @@ export function useOpenSetup(ports: {
       setSetupMapSize,
       setSetupMapSource,
       setSetupName,
+      setSetupLocationName,
       setSetupPlacementError,
       setSetupPlayerBackground,
       setSetupProblem,
@@ -417,6 +421,7 @@ export function useFoundVillage(ports: {
   setupLoreTokenBudgetDraft: number;
   setupMapSrc: string;
   setupName: string;
+  setupLocationName: string;
   setupTimeZone?: string;
   setupPlayerBackground: PlayerBackground;
   setupWorldName?: string;
@@ -449,6 +454,7 @@ export function useFoundVillage(ports: {
     setupLoreTokenBudgetDraft,
     setupMapSrc,
     setupName,
+    setupLocationName,
     setupPlayerBackground,
     setupWorldName,
     setupSetting,
@@ -497,6 +503,7 @@ export function useFoundVillage(ports: {
         method: "POST",
         body: JSON.stringify({
           name: setupName.trim(),
+          startingLocationName: setupLocationName.trim(),
           timeZone: snapshot.clock?.timeZone || snapshot.village.timeZone,
           worldName: setupWorldName,
           setting: setupSetting.trim(),
@@ -544,6 +551,7 @@ export function useFoundVillage(ports: {
     element,
     flushSetupDraft,
     setupName,
+    setupLocationName,
     setupWorldName,
     setupSetting,
     ports.setupContext,

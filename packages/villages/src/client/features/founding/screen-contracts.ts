@@ -91,6 +91,7 @@ export type FoundingScreenController = {
   readonly setSetupMapReviewed: FoundingState["setSetupMapReviewed"];
   readonly setSetupMapSource: FoundingState["setSetupMapSource"];
   readonly setSetupName: FoundingState["setSetupName"];
+  readonly setSetupLocationName: FoundingState["setSetupLocationName"];
   readonly setSetupPlacementError: FoundingState["setSetupPlacementError"];
   readonly setSetupPlayerBackground: FoundingState["setSetupPlayerBackground"];
   readonly setSetupProblem: FoundingState["setSetupProblem"];
@@ -123,6 +124,7 @@ export type FoundingScreenController = {
   readonly setupMapSource: FoundingState["setupMapSource"];
   readonly setupMapSrc: string;
   readonly setupName: FoundingState["setupName"];
+  readonly setupLocationName: FoundingState["setupLocationName"];
   readonly setupPlacementError: FoundingState["setupPlacementError"];
   readonly setupPlayerBackground: FoundingState["setupPlayerBackground"];
   readonly setupProblem: FoundingState["setupProblem"];

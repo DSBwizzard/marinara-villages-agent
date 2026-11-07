@@ -373,9 +373,6 @@ async function main() {
   assert.ok(routes.includes('>("/maps/generate"'));
 
   const village = await readFile(join(services, "features/founding/founding-setup-service.ts"), "utf8");
-  assert.ok(
-    village.includes('if (setting.length === 0) throw badRequest("Describe the place and world before founding.")'),
-  );
   assert.ok(village.includes("state.maps = [townMap]"));
 
   const builder = await readFile(join(root, "packages/villages/package-definition.mjs"), "utf8");
