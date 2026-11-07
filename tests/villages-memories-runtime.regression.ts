@@ -396,6 +396,25 @@ await runCase("memories-runtime/acoustic-privacy", () => {
     residentIds: ["aqua"],
   };
   assert.doesNotThrow(() => bindSceneMemorySuggestion(suggestion, input));
+  const acousticActor = {
+    ...input,
+    lines: [{ ...line, soundOnly: { ...line.soundOnly, characterIds: ["rosa"] } }],
+    residentIds: ["aqua", "rosa"],
+  };
+  const actorSuggestion = { ...suggestion, learners: { rosa: suggestion.learners.player } };
+  assert.doesNotThrow(() => bindSceneMemorySuggestion(actorSuggestion, acousticActor));
+  assert.throws(
+    () =>
+      bindSceneMemorySuggestion(
+        {
+          ...actorSuggestion,
+          learners: { rosa: { basis: "observation", support: [{ lineId: "sound", excerpt: line.content }] } },
+        },
+        acousticActor,
+      ),
+    /unwitnessed source quotation/,
+    "An acoustic learner can cite only the supplied noise, not private words",
+  );
   for (const patch of [
     { domainRef: { kind: "pursuit", id: "secret", characterId: "aqua" } },
     { subjects: ["aqua"] },

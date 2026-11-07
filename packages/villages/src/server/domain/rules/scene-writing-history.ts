@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { VenueLine, VenueScene } from "../models/scene-model.js";
 import { sceneEvidencePerception } from "./scene-evidence-perception.js";
+import type { VenueWritingBlock } from "./venue-writing.js";
 
 /** Retrieval cannot widen witnessed knowledge through a keyword in private or offstage text. */
 export function sharedLoreHistory(scene: VenueScene, retained: readonly VenueLine[], actors: readonly string[]) {
@@ -50,8 +51,8 @@ export function sceneWritingHistory(
     const full = line.heardBy.filter((id) => cast.has(id));
     const sound = line.soundOnly?.characterIds.filter((id) => cast.has(id)) ?? [];
     const visible = !line.contactHidden && line.kind === "narration";
-    const citable = allowed.has(line.id) && (full.length > 0 || sound.length > 0);
-    if (!citable && !visible) return [];
+    const citable = allowed.has(line.id) && full.length > 0;
+    if (!citable && !visible && !sound.length) return [];
     const acousticOnly = !full.length && !visible && sound.length > 0;
     const text = acousticOnly ? line.soundOnly!.text : line.content;
     const row = {
@@ -153,7 +154,60 @@ export function sceneWritingHistory(
   take(recent, capacity - used);
   const ordered = [...selected.values()].sort((a, b) => a.index - b.index);
   const projected = ordered.map((item) => item.row);
+  // Source references are request-local; saved event IDs and exact evidence stay private.
+  let prefix = "h";
+  while (rows.some((item) => unique.has(prefix + (item.index + 1)))) prefix += "h";
+  const references = new Map(rows.map((item) => [item.line.id, prefix + (item.index + 1)]));
+  const owners = new Map(
+    (scene.submissions ?? []).flatMap((turn, index) => (turn.replyLineIds ?? []).map((id) => [id, index] as const)),
+  );
+  const recentOwners = new Set([...new Set(owners.values())].toSorted((a, b) => b - a).slice(0, 2));
+  const chunks: { owner: number | undefined; rows: typeof rows }[] = [];
+  for (const item of rows) {
+    const owner = owners.get(item.line.id);
+    const last = chunks.at(-1);
+    if (last && owner !== undefined && last.owner === owner) last.rows.push(item);
+    else chunks.push({ owner, rows: [item] });
+  }
+  const render = (items: typeof rows) => {
+    const groups: { facts: Record<string, unknown>; lines: Record<string, unknown>[] }[] = [];
+    for (const item of items) {
+      const { at, heardBy, visibleToPlayer, playerPerception, zoneId, ...line } = { zoneId: undefined, ...item.row };
+      const facts = { at, heardBy, visibleToPlayer, playerPerception, zoneId };
+      const entry = { ...line, id: references.get(item.line.id) };
+      const previous = groups.at(-1);
+      if (previous && JSON.stringify(previous.facts) === JSON.stringify(facts)) previous.lines.push(entry);
+      else groups.push({ facts, lines: [entry] });
+    }
+    return "Scene exchange: " + JSON.stringify(groups);
+  };
+  const block = (items: typeof rows): VenueWritingBlock => ({
+    text: render(items),
+    evidence: items.filter((item) => item.row.citable).map((item) => item.line),
+    references: Object.fromEntries(
+      items.filter((item) => item.row.citable).map((item) => [references.get(item.line.id)!, item.line.id]),
+    ),
+  });
+  const firstRequired = Math.min(
+    ...chunks.flatMap((chunk, index) => (chunk.owner !== undefined && recentOwners.has(chunk.owner) ? [index] : [])),
+    Math.max(0, chunks.length - 2),
+  );
+  const blocks = chunks.map((chunk, index) => ({
+    ...block(chunk.rows),
+    ...(index < firstRequired ? { optional: "history" as const } : {}),
+  }));
+  let recallSize = 0;
+  const recall = ranked.flatMap((item): VenueWritingBlock[] => {
+    const index = chunks.findIndex((chunk) => chunk.rows.includes(item));
+    if (index >= firstRequired) return [];
+    const recalled = block([item]);
+    if (recallSize + recalled.text.length > 4000) return [];
+    recallSize += recalled.text.length;
+    return [{ ...recalled, optional: "history", withHistory: { source: blocks[index].text, text: "" } }];
+  });
   return {
+    blocks,
+    recall,
     rows: projected,
     evidence: ordered.filter((item) => item.row.citable).map((item) => item.line),
     fingerprints: Object.fromEntries(

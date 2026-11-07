@@ -160,6 +160,13 @@ export function scenePromptPacket(prompt: string): any {
 
 export function scenePromptHistory(prompt: string): any[] {
   const prefix = "Partial active Scene history (omission never proves historical absence): ";
+  const chunks = prompt.split("\n").filter((line) => line.startsWith("Scene exchange: "));
+  if (chunks.length)
+    return chunks.flatMap((line) =>
+      JSON.parse(line.slice("Scene exchange: ".length)).flatMap((group: any) =>
+        group.lines.map((row: any) => ({ ...group.facts, ...row })),
+      ),
+    );
   const line = prompt.split("\n").find((line) => line.startsWith(prefix));
   return line ? JSON.parse(line.slice(prefix.length, line.lastIndexOf(" Continue after these events."))) : [];
 }

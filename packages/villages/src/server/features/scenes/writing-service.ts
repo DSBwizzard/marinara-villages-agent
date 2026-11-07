@@ -204,6 +204,7 @@ export function createSceneWriting({
       wishContexts: NonNullable<VenueScene["submissions"][number]["wishContexts"]>;
       gmContext?: ReturnType<typeof semanticContext>;
       gmPresentation?: ReturnType<typeof sceneSpriteSelection>;
+      historyContract?: { version: 1; references: Record<string, string> };
     }>("writing-request:" + requestKey);
     if (captured && !captured.wishContexts)
       throw conflict("The saved Wish writing context is unavailable. Its source is retained.");
@@ -305,6 +306,21 @@ export function createSceneWriting({
         return value;
       });
     const [lore, model] = await Promise.all([lorePromise, modelPromise]);
+    const historyBlocks = [...history.blocks];
+    // This Engine cannot expose saved output defaults without an explicit connection cap.
+    if (!captured && (model.maxOutputTokens == null || model.maxContext == null)) {
+      let size = historyBlocks.filter((block) => !block.optional).reduce((sum, block) => sum + block.text.length, 0);
+      if (size > 12000)
+        throw badGateway(
+          "The recent exchanges exceed the safe history allowance. Set explicit connection context and output limits to use its full history. Your input is preserved.",
+        );
+      for (let index = historyBlocks.length - 1; index >= 0; index--) {
+        const block = historyBlocks[index];
+        if (!block.optional) continue;
+        if (size + block.text.length <= 12000) size += block.text.length;
+        else historyBlocks.splice(index, 1);
+      }
+    }
     const loreUses = inspectedLoreUse(loreInspection, "GM");
     signal?.throwIfAborted();
     const projectContexts = projectSpeechContexts(
@@ -321,36 +337,8 @@ export function createSceneWriting({
       message,
       session.placeId,
     );
-    const earlierContext =
-      history?.context ??
-      "Earlier evidence: " +
-        JSON.stringify(
-          earlierEvidence.map((line) => ({
-            id: line.id,
-            speakerId: line.role === "user" ? "player" : line.speakerId,
-            kind: line.kind,
-            ...(line.soundOnly ? { soundOnly: line.soundOnly } : {}),
-            heardBy: line.heardBy,
-            text: line.content.slice(0, 500),
-          })),
-        );
     const blocksFor = (parts: (string | VenueWritingBlock)[]): VenueWritingBlock[] =>
-      parts.map((part) =>
-        typeof part !== "string"
-          ? part
-          : {
-              text: part,
-              optional:
-                (part === earlierContext ? "history" : undefined) ??
-                (/^(Recent scene history:|Earlier Scene recap:)/u.test(part)
-                  ? "history"
-                  : /^(Shared village memories:|Only .* knows:)/u.test(part)
-                    ? "memory"
-                    : part.startsWith("Relevant world lore:")
-                      ? "lore"
-                      : undefined),
-            },
-      );
+      parts.map((part) => (typeof part === "string" ? { text: part } : part));
     const input = message;
     const maxTokens = Math.min(model.maxOutputTokens ?? VENUE_REPLY_MAX_TOKENS, VENUE_REPLY_MAX_TOKENS);
     const fitStarted = performance.now();
@@ -403,8 +391,8 @@ export function createSceneWriting({
           expressions: sprite ? describeSpriteExpressions(sprite, gmPresentation.variants) : undefined,
         };
       });
-      const contextFor = (rows: typeof history.rows = []) => ({
-        ...sceneGmContext(gmContext, rows),
+      const contextFor = () => ({
+        ...sceneGmContext({ ...gmContext, history: [] }),
         actors: actorState,
       });
       const presentationOnly = [
@@ -488,7 +476,7 @@ export function createSceneWriting({
           },
         ],
         conversation: blocksFor([
-          earlierContext,
+          ...historyBlocks,
           ...lore.map((text, index) => ({
             text: "Relevant world lore: " + text,
             optional: "lore" as const,
@@ -498,11 +486,8 @@ export function createSceneWriting({
         circumstances: [
           {
             text: JSON.stringify(circumstances),
-            withHistory: {
-              source: earlierContext,
-              text: JSON.stringify({ ...circumstances, context: contextFor(history.rows) }),
-            },
           },
+          ...history.recall,
         ],
         authoredInstructions,
         metadata: blocksFor([
@@ -574,6 +559,7 @@ export function createSceneWriting({
       writingVersion,
       gmContext,
       gmPresentation,
+      historyContract: captured ? captured.historyContract : { version: 1 as const, references: fitted.references },
       maxTokens,
       model,
       village: authority,
@@ -607,9 +593,7 @@ export function createSceneWriting({
           : undefined;
       })(),
       projectContexts,
-      earlierEvidence: fitted.messages.some((message) => message.content.includes(earlierContext))
-        ? earlierEvidence
-        : [],
+      earlierEvidence: fitted.evidence ?? [],
     };
   }
   type BoundaryReplacement = {
@@ -691,6 +675,7 @@ export function createSceneWriting({
     let ordinary = prepared.ordinary;
     let gmContext = prepared.gmContext;
     let gmPresentation = prepared.gmPresentation;
+    let historyContract = prepared.historyContract;
     {
       const saved = await venueCheckpoint("writing-request:" + originalKey, async () => ({
         fitted,
@@ -700,11 +685,13 @@ export function createSceneWriting({
         wishContexts,
         gmContext,
         gmPresentation,
+        historyContract,
       }));
       ({ fitted, earlierEvidence, loreInspection, wishContexts } = saved);
       ordinary = saved.ordinary;
       gmContext = saved.gmContext;
       gmPresentation = saved.gmPresentation;
+      historyContract = saved.historyContract;
     }
     const dispatch = narrativeVersion
       ? await venueCheckpoint("narrative-dispatch:" + requestKey, async () => {
@@ -732,12 +719,23 @@ export function createSceneWriting({
               SCENE_OUTCOME_BOUNDARY,
           },
         ];
-        const correction = model.fitContext(messages, { maxTokens: fitted.maxTokens ?? maxTokens });
-        if (correction.trimmed || JSON.stringify(correction.messages) !== JSON.stringify(messages))
+        const reserve = Math.max(fitted.maxTokens ?? maxTokens, model.maxOutputTokens ?? 0);
+        const correction = model.fitContext(messages, { maxTokens: reserve });
+        if (
+          correction.trimmed ||
+          JSON.stringify(correction.messages) !== JSON.stringify(messages) ||
+          (correction.maxTokens !== undefined && correction.maxTokens < reserve)
+        )
           throw badGateway("The replacement context does not fit. Your input is saved.");
-        return correction;
+        return { ...correction, maxTokens: fitted.maxTokens ?? maxTokens };
       });
-      fitted = { ...corrected, loreEntries: fitted.loreEntries, lore: fitted.lore };
+      fitted = { ...fitted, ...corrected };
+    }
+    if (historyContract) {
+      if (!fitted.evidence || !fitted.references)
+        throw conflict("The saved Scene evidence context is unavailable. Your draft is preserved.");
+      earlierEvidence = fitted.evidence;
+      historyContract = { version: 1, references: fitted.references };
     }
     if (loreInspection) runtimeDebug("lore inspection", loreInspection);
     {
@@ -785,7 +783,11 @@ export function createSceneWriting({
           const finding = readSceneBoundary(playerHalt, gmContext.preservation, message, []);
           if (finding?.source === "player") throw new HaltedSceneTurn(finding.outcome);
         }
-        materializedRaw = materializeGmReply(normalizeGmEffects(complete, gmContext), message, mode === "greet");
+        materializedRaw = materializeGmReply(
+          normalizeGmEffects(complete, gmContext, historyContract?.references),
+          message,
+          mode === "greet",
+        );
         captureSources = playerSpeechCapture(materializedRaw, message, mode === "greet");
       } catch (error) {
         if (error instanceof VillagesRequestError && error.statusCode === 502)
@@ -887,7 +889,7 @@ export function createSceneWriting({
             session,
             message,
             parsed.lines,
-            { raw, context: gmContext, presentation: gmPresentation },
+            { raw, context: gmContext, presentation: gmPresentation, ...(historyContract ? { earlierEvidence } : {}) },
             narrativeVersion ? (narrativeGrant ?? null) : undefined,
             session.contactGeneration?.zoneEvents ? (eventRaw ?? undefined) : undefined,
           )

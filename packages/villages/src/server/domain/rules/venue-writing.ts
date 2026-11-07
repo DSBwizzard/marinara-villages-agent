@@ -6,6 +6,7 @@ import { badRequest } from "./errors.js";
 import { LORE_REFERENCE_RULE } from "./lore-context.js";
 import { renderResidentAdmission } from "./resident-admission.js";
 import { createHash } from "node:crypto";
+import type { VenueLine } from "../models/scene-model.js";
 
 /** The authored person is complete; circumstances are supplied separately. */
 export function venueCardProfile(
@@ -42,6 +43,8 @@ export type VenueWritingBlock = {
   withHistory?: { source: string; text: string };
   optional?: "wish" | "history" | "memory" | "lore";
   lore?: LoreUse;
+  evidence?: readonly VenueLine[];
+  references?: Record<string, string>;
 };
 
 export type VenueWritingSections = {
@@ -62,8 +65,8 @@ export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWrit
     metadata: "Response format and evidence metadata",
     identity: "Complete authored character identity",
     stableContext: "World and player context",
-    sceneContext: "Scene facts",
     conversation: "Witnessed conversation and recalled memories",
+    sceneContext: "Scene facts",
     circumstances: "Current Scene circumstances",
     authoredInstructions: "Authored post-history direction",
   };
@@ -79,7 +82,7 @@ export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWrit
 /** Shared by live generation and isolated evaluations. Never silently shrink a character. */
 export function assembleVenueWritingMessages(blocks: readonly VenueWritingBlock[], input: string) {
   const lore = blocks.filter((block) => block.optional === "lore").map((block) => block.text);
-  const history = new Set(blocks.filter((block) => block.optional === "history").map((block) => block.text));
+  const history = new Set(blocks.filter((block) => !block.withHistory).map((block) => block.text));
   const render = ({ text, withHistory }: VenueWritingBlock) =>
     withHistory && history.has(withHistory.source) ? withHistory.text : text;
   const dynamic = blocks
@@ -121,24 +124,39 @@ export function assembleVenueWritingMessages(blocks: readonly VenueWritingBlock[
 }
 
 export function fitVenueWritingMessages(
-  model: Pick<CapabilityResolvedLanguageModel, "fitContext">,
+  model: Pick<CapabilityResolvedLanguageModel, "fitContext"> &
+    Partial<Pick<CapabilityResolvedLanguageModel, "maxOutputTokens">>,
   blocks: readonly VenueWritingBlock[],
   input: string,
   maxTokens: number,
   connectionName = "Narration",
 ) {
   const kept = [...blocks];
+  const outputReserve = Math.max(maxTokens, model.maxOutputTokens ?? 0);
   // Old history first, then optional memories/lore. Essential blocks and the
   // latest player input must survive fitting byte-for-byte before any paid call.
   for (;;) {
     const messages = assembleVenueWritingMessages(kept, input);
-    const fitted = model.fitContext(messages, { maxTokens });
-    if (JSON.stringify(fitted.messages) === JSON.stringify(messages))
+    const fitted = model.fitContext(messages, { maxTokens: outputReserve });
+    if (
+      JSON.stringify(fitted.messages) === JSON.stringify(messages) &&
+      (fitted.maxTokens === undefined || fitted.maxTokens >= outputReserve)
+    ) {
+      const texts = new Set(kept.filter((block) => !block.withHistory).map((block) => block.text));
+      const shown = kept.filter(
+        (block) => !block.withHistory || !texts.has(block.withHistory.source) || block.withHistory.text,
+      );
       return {
         ...fitted,
+        maxTokens,
+        evidence: [
+          ...new Map(shown.flatMap((block) => (block.evidence ?? []).map((line) => [line.id, line] as const))).values(),
+        ],
+        references: Object.assign({}, ...shown.map((block) => block.references ?? {})) as Record<string, string>,
         loreEntries: kept.filter((block) => block.optional === "lore").map((block) => block.text),
         lore: mergeLoreUse(kept.flatMap((block) => (block.lore ? [block.lore] : []))),
       };
+    }
     const optional =
       ["wish", "history", "memory", "lore"]
         .map((kind) =>

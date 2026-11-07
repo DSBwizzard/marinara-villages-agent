@@ -251,7 +251,8 @@ async function run() {
       "The entire system message is stable, not merely its opening prefix",
     );
     assert.equal(changing.fitted.messages[1].role, "user");
-    assert.ok(changing.fitted.messages[1].content.includes("another-source"));
+    assert.ok(changing.fitted.messages[1].content.includes("A newly witnessed fact."));
+    assert.ok(Object.values(changing.historyContract!.references).includes("another-source"));
     assert.ok(originalSystem.content.includes("## World and player context"));
     assert.ok(!originalSystem.content.includes("earlier-spoken"));
     assert.ok(!originalSystem.content.includes('"calendar":'));
@@ -270,11 +271,11 @@ async function run() {
         "Appending history cannot rewrite prior evidence records",
       );
     assert.equal(scenePromptPacket(changedPrompt).context.revision, 99);
-    assert.ok(prompt.indexOf("## Scene facts") < prompt.indexOf("## Witnessed conversation"));
     const positions = [
       "## Writing direction",
       "## Complete authored character identity",
       "## Witnessed conversation",
+      "## Scene facts",
       "## Current Scene circumstances",
       "## Authored post-history direction",
     ].map((heading) => prompt.indexOf(heading));
@@ -282,7 +283,8 @@ async function run() {
     for (const person of state.villagers)
       for (const suffix of ["DESCRIPTION TAIL", "APPEARANCE", "BACKSTORY", "VOICE EXAMPLE", "AUTHORED INSTRUCTION"])
         assert.ok(prompt.includes(person.characterId + " " + suffix), suffix);
-    assert.ok(prompt.indexOf('"id":"earlier-spoken"') < prompt.indexOf("outgoing AUTHORED INSTRUCTION"));
+    const historyAt = prompt.indexOf("I prefer an early start.");
+    assert.ok(historyAt >= 0 && historyAt < prompt.indexOf("outgoing AUTHORED INSTRUCTION"));
     assert.ok(prompt.includes("where compatible with character identity"));
     assert.ok(prompt.includes("Preserve complete authored identity"));
     assert.ok(!prompt.includes("LEGACY TELL SECRET"));

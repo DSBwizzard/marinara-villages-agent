@@ -192,7 +192,8 @@ async function run() {
     assert.equal(deduplicatedPrompt.split(witnessed.lines[0].content).length - 1, 1);
     assert.deepEqual(projected.context.history, [], "Covered evidence is sent only in the canonical transcript");
     const historical = scenePromptHistory(deduplicatedPrompt)[0];
-    for (const field of ["id", "at", "zoneId", "delivery", "physicalIdsAfter", "soundOnly"])
+    assert.equal(deduplicated.historyContract!.references[historical.id], witnessed.lines[0].id);
+    for (const field of ["at", "zoneId", "delivery", "physicalIdsAfter", "soundOnly"])
       assert.deepEqual(historical[field], (witnessed.lines[0] as any)[field]);
     assert.equal(historical.text, witnessed.lines[0].content);
     assert.equal(historical.playerPerception, "full");
@@ -282,6 +283,15 @@ async function run() {
     acoustic.lines[0].soundOnly = { characterIds: [card.id], text: "Distant voices.", player: true };
     const acousticHistory = sceneWritingHistory(acoustic, acoustic.lines, "", [card.id]);
     assert.ok(!acousticHistory.context.includes("UNHEARD PRIVATE WORDS"));
+    assert.equal(
+      acousticHistory.rows[0].citable,
+      false,
+      "Anonymous noise supplies continuity, never hidden full-speech authority",
+    );
+    assert.deepEqual(
+      acousticHistory.blocks.flatMap((block) => block.evidence ?? []),
+      [],
+    );
     for (const field of ["name", "zoneId", "targetId", "staging", "physicalIdsAfter"])
       assert.equal((acousticHistory.rows[0] as any)[field], undefined, "Sound-only history keeps the source anonymous");
     const acousticContext = { ...deduplicated.gmContext, history: acoustic.lines } as any;
@@ -290,18 +300,15 @@ async function run() {
       assert.deepEqual((acousticView as any)[field], (acoustic.lines[0] as any)[field]);
     const historyFit = model.fitContext;
     model.fitContext = (messages: any[], options: any) =>
-      messages.some((entry) => entry.content.includes("Partial active Scene history"))
+      messages.some((entry) => entry.content.includes("Scene exchange: "))
         ? { messages: [], ...options }
         : historyFit(messages, options);
     try {
-      const fallback = await prepareVenueTurnMessages(witnessed, "What did you promise?", "chat", "", null);
-      const fallbackPrompt = fallback.fitted.messages.map((entry) => entry.content).join("\n");
-      const fallbackHistory = scenePromptPacket(fallbackPrompt).context.history[0];
-      for (const field of ["id", "content", "heardBy", "at", "zoneId", "soundOnly", "physicalIdsAfter"])
-        assert.deepEqual(fallbackHistory[field], (deduplicated.gmContext.history[0] as any)[field]);
-      assert.ok(!fallbackPrompt.includes("Partial active Scene history"));
-      assert.deepEqual(fallback.earlierEvidence, []);
-      assert.ok(fallbackPrompt.includes("DESCRIPTION TAIL") && fallbackPrompt.includes("POST TAIL"));
+      await assert.rejects(
+        () => prepareVenueTurnMessages(witnessed, "What did you promise?", "chat", "", null),
+        /required context do not fit/,
+        "A required recent exchange must fail before spending rather than disappear or become a second evidence view",
+      );
     } finally {
       model.fitContext = historyFit;
     }
