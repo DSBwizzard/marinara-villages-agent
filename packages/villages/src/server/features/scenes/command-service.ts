@@ -1,4 +1,5 @@
 import { zonePictureBaseline } from "../../domain/rules/zone-picture.js";
+import { rememberDomainFact } from "../../domain/rules/domain-memories.js";
 import { captureZoneObservation } from "../../domain/rules/zone-observation.js";
 import { findLocation, sceneActorIds } from "../../domain/rules/places.js";
 import { admitNpcParticipants, type NpcAdmission } from "../../domain/rules/npc-participation.js";
@@ -1029,6 +1030,7 @@ export function createSceneCommands({
         assertCurrentSceneGeneration(admission);
         signal.throwIfAborted();
         const writingInput = {
+          ...sceneHearingContract(admission, "greeting"),
           semanticBudget:
             admission.operation?.id === "greeting"
               ? admission.operation.input.semanticBudget
@@ -1117,6 +1119,7 @@ export function createSceneCommands({
         );
         state.submissions.push({
           id: "greeting",
+          ...(session.operation?.input.sceneHearingVersion === 2 ? { sceneHearingVersion: 2 as const } : {}),
           zoneIdAtTurn: state.zoneId,
           mode: "chat",
           message: "",
@@ -1272,8 +1275,13 @@ export function createSceneCommands({
       throw conflict("Unsupported Scene action. Its saved request is preserved.");
   }
 
+  function sceneHearingContract(scene: VenueScene, id: string) {
+    const prior = scene.operation?.id === id ? scene.operation.input : scene.submissions.find((turn) => turn.id === id);
+    return !prior || prior.sceneHearingVersion === 2 ? { sceneHearingVersion: 2 } : {};
+  }
   function venueTurnPayload(scene: VenueScene, input: VenueTurnInput) {
     return {
+      ...sceneHearingContract(scene, input.submissionId),
       message: input.message,
       mode: input.mode,
       targetId: input.targetId,
@@ -1464,6 +1472,7 @@ export function createSceneCommands({
     const eventVenue = movementVenue ?? findLocation(village, session.placeId);
     if (!eventVenue) throw conflict("This Venue is no longer available. End the Scene.");
     const eventScene = zoneEventScene(session, eventVenue!, {
+      contact: input.mode === "contact",
       targetId: input.targetId || session.semanticIntent?.timeline.find((step) => step.targetId)?.targetId,
       message: input.message,
       zoneId: input.contact?.boundaryZoneId,
@@ -1590,6 +1599,25 @@ export function createSceneCommands({
           );
         }
         {
+          if (session.operation?.input.sceneHearingVersion === 2) {
+            const ended = new Set(reply.contactEndIds ?? []);
+            const contacts = reply.lines
+              .filter((line) => line.viaDoorway && !line.contactHidden && line.speakerId)
+              .filter((line) => !ended.has(line.speakerId))
+              .map((line) => ({
+                characterId: line.speakerId,
+                playerZoneId: state.zoneId,
+                characterZoneId: line.zoneId,
+                delivery: "voice" as const,
+              }));
+            state.doorwayContacts = [
+              ...new Map(
+                [...(state.doorwayContacts ?? []).filter((row) => !ended.has(row.characterId)), ...contacts].map(
+                  (row) => [row.characterId, row],
+                ),
+              ).values(),
+            ];
+          }
           const identities = new Set([
             ...reply.lines
               .filter((line) => line.kind !== "narration" && !line.contactHidden)
@@ -1629,6 +1657,7 @@ export function createSceneCommands({
         if (reply.recap) state.recap = reply.recap;
         state.submissions.push({
           id: input.submissionId,
+          ...(session.operation?.input.sceneHearingVersion === 2 ? { sceneHearingVersion: 2 as const } : {}),
           speechCapture: reply.speechCapture,
           effectFailures: { ...reply.effectFailures, ...(projectFailure ? { projects: projectFailure } : {}) },
           ...{ zoneEventsVersion: 1 as const },
@@ -2511,6 +2540,29 @@ export function createSceneCommands({
         reason: "Confirmed physical outcome",
         physicalOutcome: state.venueEvents[0]!,
       };
+      if (submission.sceneHearingVersion === 2) {
+        const details = [
+          ...(change.edits ?? []).map((edit) => edit.after || `Removed: ${edit.before}`),
+          change.append,
+          change.recent?.text,
+        ]
+          .filter(Boolean)
+          .join(" ");
+        if (details)
+          rememberDomainFact(state, {
+            id,
+            effectId: id,
+            event: true,
+            at,
+            recordedAt: villageNow().toISOString(),
+            committedAt: state.exchangeReceipts[id]!.committedAt,
+            sceneId: session.id,
+            text: `${venue.name}: ${details}`,
+            knowers: ["player", ...witnesses],
+            subjects: [],
+            domainRef: { kind: "physical", id: venue.id },
+          });
+      }
     });
   }
 

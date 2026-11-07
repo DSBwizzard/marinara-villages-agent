@@ -242,9 +242,8 @@ async function run() {
       "",
       null,
     );
-    const originalSystem = (
-      await prepareVenueTurnMessages(scene, "What about Alex’s violin music?", "chat", "outgoing", null)
-    ).fitted.messages[0];
+    const original = await prepareVenueTurnMessages(scene, "What about Alex’s violin music?", "chat", "outgoing", null);
+    const originalSystem = original.fitted.messages[0];
     assert.deepEqual(
       changing.fitted.messages[0],
       originalSystem,
@@ -270,7 +269,11 @@ async function run() {
         row,
         "Appending history cannot rewrite prior evidence records",
       );
-    assert.equal(scenePromptPacket(changedPrompt).context.revision, 99);
+    assert.equal(
+      scenePromptPacket(changedPrompt).context.revision,
+      undefined,
+      "Global CAS revision stays in captured authority, not model data",
+    );
     const positions = [
       "## Writing direction",
       "## Complete authored character identity",
@@ -291,7 +294,11 @@ async function run() {
     assert.ok(prompt.includes(state.memories.records[0].text), "Relevant native memory is recalled");
     assert.ok(prompt.includes(state.memories.records[2].text), "Contextual memory is recalled");
     assert.ok(prompt.includes('"audience":["reserved"]'));
-    assert.ok(prompt.includes('"rootRevision":'));
+    assert.ok(!prompt.includes('"rootRevision":'));
+    assert.ok(
+      original.gmContext._memoryWrite.recall.candidates.some((row) => typeof row.rootRevision === "number"),
+      "Captured Memory revisions remain available for stale-write validation",
+    );
     assert.ok(!prompt.includes("ABSENT PERSON SECRET"));
     assert.ok(!prompt.includes("Pending exact Residence edit proposals:"));
     assert.ok(!prompt.includes("Pending player requests to move:"));

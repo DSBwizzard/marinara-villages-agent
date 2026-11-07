@@ -155,7 +155,7 @@ export function recallMemories(collection: MemoryCollection, request: MemoryReca
 /** Effective repaired text may guide future Scenes without inventing a witnessed event
  * or presenting administrative edit identities and source pointers as character knowledge. */
 export function promptMemoryCandidates(rows: readonly MemoryCandidate[]) {
-  return rows.map((row) => ({
+  return rows.map(({ revision: _revision, rootRevision: _rootRevision, ...row }) => ({
     ...row,
     knowers: Object.fromEntries(
       Object.entries(row.knowers).map(([id, state]) => {

@@ -21,6 +21,9 @@ import {
 } from "../packages/villages/src/server/features/scenes/writing.js";
 import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
+import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
+import { addMemory, emptyMemories, memoryRepair, memoryTime } from "./helpers/memories-fixture.js";
+import { applyMemoryRepair } from "../packages/villages/src/server/domain/rules/memory-application.js";
 const stamp = "2026-10-07T12:00:00.000Z";
 function deferred() {
   return Promise.withResolvers<void>();
@@ -234,7 +237,182 @@ assert.ok(
 );
 assert.equal(direct.calls.includes("completion"), false, "prompt fitting requests no completion");
 assert.equal(direct.calls.includes("interpretation"), false);
+{
+  const protectedWorld = fixture("protected-policy");
+  const before = await protectedWorld.service.prepareVenueTurnMessages(
+    protectedWorld.scene,
+    "Greenhouse promises?",
+    "chat",
+    "",
+    null,
+  );
+  let collection = emptyMemories();
+  for (let i = 0; i < 40; i++)
+    collection = addMemory(collection, {
+      text: `Greenhouse promise ${i}: ` + "Specific remembered detail. ".repeat(6),
+      audience: ["player"],
+    });
+  for (const record of [...collection.records])
+    collection = applyMemoryRepair(
+      collection,
+      memoryRepair(collection, "forget", ["player"], undefined, record.id),
+      memoryTime(200),
+    ).collection;
+  protectedWorld.world.memories = collection;
+  const after = await protectedWorld.service.prepareVenueTurnMessages(
+    protectedWorld.scene,
+    "Greenhouse promises?",
+    "chat",
+    "",
+    null,
+  );
+  assert.equal(after.gmContext._memoryWrite.protection.complete, false);
+  assert.equal(
+    before.fitted.messages[0]!.content,
+    after.fitted.messages[0]!.content,
+    "Incomplete protection envelopes cannot rewrite the standing policy",
+  );
+  assert.equal(protectedWorld.calls.includes("completion"), false);
+}
+{
+  const remote = fixture("remote-card");
+  remote.world.villagers = ["local", "remote"].map((characterId) => {
+    const row = structuredClone(wishWorld().villagers[0]!);
+    row.characterId = characterId;
+    row.cardSnapshot.id = characterId;
+    row.cardSnapshot.name = characterId;
+    row.cardSnapshot.description = characterId + " DISTINCTIVE COMPLETE CARD";
+    row.cardSnapshot.postHistoryInstructions = characterId + " AUTHORED POST HISTORY";
+    return row;
+  });
+  remote.world.venues = [
+    venueFixture({
+      id: "same-place",
+      zones: [
+        { ...defaultVenueSpace("other"), id: "exterior", kind: "exterior", connectedTo: ["hall"] },
+        { ...defaultVenueSpace("other"), id: "hall", kind: "public", connectedTo: ["exterior"] },
+      ],
+    }),
+  ];
+  remote.scene.activeIds = ["local"];
+  remote.scene.participants = remote.world.villagers.map((row) => ({
+    characterId: row.characterId,
+    name: row.characterId,
+    doing: "Waiting",
+  }));
+  remote.scene.operation = { input: { sceneHearingVersion: 2 } } as any;
+  remote.scene.sceneAttendance = {
+    capturedAt: stamp,
+    occupants: remote.scene.participants.map((row) => ({
+      ...row,
+      zoneId: row.characterId === "local" ? "exterior" : "hall",
+    })),
+  };
+  const selected = zoneEventScene(remote.scene, remote.world.venues[0]!, { targetId: "remote", contact: true });
+  const prepared = await remote.service.prepareVenueTurnMessages(selected, "Remote, hello!", "chat", "remote", null);
+  assert.ok(prepared.fitted.messages[0]!.content.includes("local DISTINCTIVE COMPLETE CARD"));
+  assert.ok(!prepared.fitted.messages[0]!.content.includes("remote DISTINCTIVE COMPLETE CARD"));
+  assert.ok(
+    prepared.fitted.messages.slice(1).some((row) => row.content.includes("remote DISTINCTIVE COMPLETE CARD")),
+    "Selected remote people retain full authored identity after cached history",
+  );
+  assert.ok(prepared.fitted.messages.slice(1).some((row) => row.content.includes("remote AUTHORED POST HISTORY")));
+}
 const complete = fixture("A");
+{
+  const arrival = fixture("fifth-arrival");
+  arrival.world.villagers = ["a", "b", "c", "d"].map((characterId) => {
+    const row = structuredClone(wishWorld().villagers[0]!);
+    row.characterId = characterId;
+    row.cardSnapshot.name = characterId;
+    return row;
+  });
+  arrival.world.venues = [venueFixture({ id: "same-place" })];
+  arrival.scene.activeIds = ["a", "b", "c", "d"];
+  arrival.scene.participants = arrival.scene.activeIds.map((characterId) => ({
+    characterId,
+    name: characterId,
+    doing: "Talking",
+  }));
+  arrival.scene.sceneAttendance = {
+    capturedAt: stamp,
+    occupants: arrival.scene.participants.map((row) => ({ ...row, zoneId: "exterior" })),
+  };
+  arrival.scene.operation = { input: { sceneHearingVersion: 2 } } as any;
+  arrival.scene.lines = [
+    {
+      id: "prior",
+      role: "assistant",
+      speakerId: "a",
+      name: "a",
+      kind: "dialogue",
+      content: "A public remark.",
+      at: stamp,
+      heardBy: ["a", "b", "c", "d"],
+      zoneId: "exterior",
+      delivery: "ordinary",
+      presentation: "main",
+    },
+    {
+      id: "private",
+      role: "assistant",
+      speakerId: "d",
+      name: "d",
+      kind: "whisper",
+      content: "An exact private remark.",
+      at: stamp,
+      heardBy: ["d"],
+      zoneId: "exterior",
+      delivery: "whisper",
+      targetId: "player",
+      presentation: "aside",
+    },
+  ] as any;
+  arrival.scene.submissions = [{ replyLineIds: ["prior", "private"] }] as any;
+  const beforeScene = zoneEventScene(arrival.scene, arrival.world.venues[0]!);
+  const before = await arrival.service.prepareVenueTurnMessages(beforeScene, "Continue.", "chat", "", null);
+  arrival.world.worldPlaces.npcs["npc:fifth"] = {
+    id: "npc:fifth",
+    name: "Fifth",
+    characterization: "A fifth known person.",
+    facts: [],
+    associations: [],
+    availability: "",
+  } as any;
+  arrival.scene.activeIds.push("npc:fifth");
+  arrival.scene.participants.push({ characterId: "npc:fifth", name: "Fifth", doing: "Arriving" });
+  arrival.scene.sceneAttendance.occupants.push({
+    characterId: "npc:fifth",
+    name: "Fifth",
+    doing: "Arriving",
+    zoneId: "exterior",
+  });
+  const selected = zoneEventScene(arrival.scene, arrival.world.venues[0]!, {
+    targetId: "npc:fifth",
+    message: "Fifth, hello.",
+  });
+  const after = await arrival.service.prepareVenueTurnMessages(selected, "Fifth, hello.", "chat", "npc:fifth", null);
+  assert.equal(selected.contactGeneration?.actorIds?.length, 4);
+  assert.equal(
+    after.fitted.messages[0]!.content,
+    before.fitted.messages[0]!.content,
+    "Fifth local NPC cannot replace a resident in the cached identity prefix",
+  );
+  const exchanges = (prepared: typeof before) =>
+    prepared.fitted.messages.flatMap((row) =>
+      row.content.split("\n").filter((line) => line.startsWith("Scene exchange: ")),
+    );
+  assert.deepEqual(
+    exchanges(after),
+    exchanges(before),
+    "Passive local witnesses preserve historical cache bytes when writer slots change",
+  );
+  assert.deepEqual(
+    after.fitted.evidence.find((row) => row.id === "private")!.heardBy,
+    ["d"],
+    "New arrivals never inherit earlier whispers",
+  );
+}
 const reply = await complete.run();
 assert.equal(reply.lines[0]?.content, "A room remains quiet.");
 assert.equal(reply.roomInterpretation, null);

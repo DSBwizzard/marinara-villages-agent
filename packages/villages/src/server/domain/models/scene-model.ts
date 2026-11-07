@@ -85,6 +85,7 @@ export type VenueSubmission = {
   action?: VenueActionResult;
   actionReplyDone?: boolean;
   physicalOutcomeVersion?: 1;
+  sceneHearingVersion?: 2;
   narrativeSource?: import("../rules/scene-narrative-effects.js").SceneNarrativeSource;
   placeUpdate?: VenueSceneChange;
   semanticPlayerMoves?: import("../rules/semantic-timeline.js").SemanticPlayerMove[];

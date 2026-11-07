@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { VenueLine, VenueScene } from "../models/scene-model.js";
 import { sceneEvidencePerception } from "./scene-evidence-perception.js";
+import { mapScenePeople, sceneAudienceReference } from "./scene-prompt-references.js";
 import type { VenueWritingBlock } from "./venue-writing.js";
 
 /** Retrieval cannot widen witnessed knowledge through a keyword in private or offstage text. */
@@ -41,6 +42,7 @@ export function sceneWritingHistory(
   eligible: readonly VenueLine[],
   query: string,
   audience: readonly string[],
+  people?: Readonly<Record<string, string>>,
 ) {
   const allowed = new Set(eligible.map((line) => line.id));
   const cast = new Set(audience);
@@ -169,17 +171,42 @@ export function sceneWritingHistory(
     if (last && owner !== undefined && last.owner === owner) last.rows.push(item);
     else chunks.push({ owner, rows: [item] });
   }
+  const audiences: Record<string, string[]> = {};
+  const encodedPeople = people && Object.fromEntries(Object.entries(people).map(([alias, id]) => [id, alias]));
   const render = (items: typeof rows) => {
     const groups: { facts: Record<string, unknown>; lines: Record<string, unknown>[] }[] = [];
+    const names: Record<string, string> = {};
+    if (people)
+      for (const item of items) {
+        const own = items.filter((row) => row.row.speakerId === item.row.speakerId);
+        const name = "name" in item.row ? item.row.name : undefined;
+        if (typeof name === "string" && own.every((row) => "name" in row.row && row.row.name === name))
+          names[item.row.speakerId] = name;
+      }
     for (const item of items) {
       const { at, heardBy, visibleToPlayer, playerPerception, zoneId, ...line } = { zoneId: undefined, ...item.row };
-      const facts = { at, heardBy, visibleToPlayer, playerPerception, zoneId };
-      const entry = { ...line, id: references.get(item.line.id) };
+      const audience = sceneAudienceReference(heardBy);
+      if (people) {
+        const previous = audiences[audience];
+        if (previous && JSON.stringify(previous) !== JSON.stringify(heardBy))
+          throw new Error("The Scene audience references conflict.");
+        audiences[audience] = heardBy;
+      }
+      const facts = { at, heardBy: people ? audience : heardBy, visibleToPlayer, playerPerception, zoneId };
+      const entry: Record<string, unknown> = { ...line, id: references.get(item.line.id) };
+      if (people) {
+        if (entry.citable === true) delete entry.citable;
+        if (entry.kind === "dialogue" && entry.delivery === "ordinary") delete entry.delivery;
+        if (entry.kind === "dialogue" && entry.presentation === "main") delete entry.presentation;
+        if (Object.hasOwn(names, item.row.speakerId)) delete entry.name;
+      }
       const previous = groups.at(-1);
       if (previous && JSON.stringify(previous.facts) === JSON.stringify(facts)) previous.lines.push(entry);
       else groups.push({ facts, lines: [entry] });
     }
-    return "Scene exchange: " + JSON.stringify(groups);
+    return (
+      "Scene exchange: " + JSON.stringify(encodedPeople ? mapScenePeople({ names, groups }, encodedPeople) : groups)
+    );
   };
   const block = (items: typeof rows): VenueWritingBlock => ({
     text: render(items),
@@ -207,6 +234,7 @@ export function sceneWritingHistory(
   });
   return {
     blocks,
+    audiences,
     recall,
     rows: projected,
     evidence: ordered.filter((item) => item.row.citable).map((item) => item.line),

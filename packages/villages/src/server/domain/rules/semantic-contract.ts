@@ -11,7 +11,7 @@ import { environmentCircumstances, environmentObservations } from "./narrative-e
 import { findLocation, findNpc, npcProfile } from "./places.js";
 import { currentVillageCircumstances } from "./prompt-preset.js";
 
-import { projectSpeechContexts, projectSpeechPrompt } from "./project-interpretation.js";
+import { projectSpeechContexts, relevantProjectSpeechContexts, projectSpeechData } from "./project-interpretation.js";
 import { capturedSceneCalendar } from "./scene-halt.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
 import { sceneMemoryContext } from "./scene-memories.js";
@@ -240,7 +240,12 @@ export function semanticContext(
         }))
       : [],
 
-    projects: projectSpeechPrompt(state, projectSpeechContexts(state, actors, "", query, scene.placeId)),
+    projects: projectSpeechData(state, relevantProjectSpeechContexts(state, actors, "", query, scene.placeId)),
+    projectIndex: projectSpeechContexts(state, actors, "", query, scene.placeId).map((context) => ({
+      projectId: context.projectId,
+      phase: context.phase,
+      title: state.projects.find((project) => project.id === context.projectId)!.title,
+    })),
     requests: {
       venues: state.venues.map((row) => ({
         id: row.id,
@@ -249,7 +254,50 @@ export function semanticContext(
         occupancy: row.occupancy,
         constructionStatus: row.constructionStatus,
       })),
-      residences: state.residences.filter((row) => row.status === "pending"),
+      residences: state.residences
+        .filter(
+          (row) =>
+            row.status !== "current" &&
+            (actors.includes(row.characterId) || (row.agreement?.requiredIds ?? []).some((id) => actors.includes(id))),
+        )
+        .map(
+          ({
+            characterId,
+            venueId,
+            proposedVenueId,
+            proposedPrivateZoneId,
+            status,
+            requestedBy,
+            villagerDecision,
+            holdReason,
+            completesAt,
+            requestedAt,
+            approvedAt,
+            agreement,
+          }) => ({
+            characterId,
+            venueId,
+            proposedVenueId,
+            proposedPrivateZoneId,
+            status,
+            requestedBy,
+            villagerDecision,
+            holdReason,
+            completesAt,
+            requestedAt,
+            approvedAt,
+            ...(agreement
+              ? {
+                  agreement: {
+                    requiredIds: agreement.requiredIds,
+                    householdIds: agreement.householdIds,
+                    sleepZoneId: agreement.sleepZoneId,
+                    approvals: agreement.approvals,
+                  },
+                }
+              : {}),
+          }),
+        ),
     },
   };
 }

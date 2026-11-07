@@ -52,6 +52,7 @@ export type VenueWritingSections = {
   identity: VenueWritingBlock[];
   circumstances: VenueWritingBlock[];
   conversation: VenueWritingBlock[];
+  dynamicIdentity?: VenueWritingBlock[];
   authoredInstructions: VenueWritingBlock[];
   metadata: VenueWritingBlock[];
   stableContext: VenueWritingBlock[];
@@ -66,13 +67,20 @@ export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWrit
     identity: "Complete authored character identity",
     stableContext: "World and player context",
     conversation: "Witnessed conversation and recalled memories",
+    dynamicIdentity: "Current supporting and remote identities",
     sceneContext: "Scene facts",
     circumstances: "Current Scene circumstances",
     authoredInstructions: "Authored post-history direction",
   };
   return (Object.keys(headings) as (keyof VenueWritingSections)[]).flatMap((section) => {
-    const blocks = sections[section].filter((block) => block.text.trim());
-    const dynamic = ["sceneContext", "conversation", "circumstances", "authoredInstructions"].includes(section);
+    const blocks = (sections[section] ?? []).filter((block) => block.text.trim());
+    const dynamic = [
+      "dynamicIdentity",
+      "sceneContext",
+      "conversation",
+      "circumstances",
+      "authoredInstructions",
+    ].includes(section);
     return blocks.length
       ? [{ text: `## ${headings[section]}`, dynamic }, ...blocks.map((block) => ({ ...block, dynamic }))]
       : [];

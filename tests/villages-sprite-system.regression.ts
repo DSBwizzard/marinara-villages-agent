@@ -128,9 +128,10 @@ const selectedRemote = await currentScenePrompt(
 );
 const remotePacket = scenePromptPacket(selectedRemote);
 assert.ok(!remotePacket.context.actors.some((actor: any) => actor.id === "a"));
-assert.match(
-  remotePacket.presentationOnly.find((actor: any) => actor.actorId === "a").expressions,
-  /special-sprite-label/,
+assert.ok(
+  remotePacket.presentationOnly
+    .find((actor: any) => actor.actorId === "a")
+    .expressions.some((expression: any) => expression.name === "special-sprite-label"),
 );
 assert.equal(remotePacket.presentationOnly[0].doing, undefined);
 assert.equal(remotePacket.presentationOnly[0].wishes, undefined);
@@ -310,7 +311,11 @@ for (const failure of ["none", "validation-input", "presentation-publish", "inva
     completeWithRoom: async (_model: unknown, messages: { content: string }[]) => {
       paid++;
       const catalog = scenePromptPacket(messages.map((message) => message.content).join("\n")).context.actors;
-      assert.match(catalog.find((actor: any) => actor.id === "a").expressions, /g-e-first/);
+      assert.ok(
+        catalog
+          .find((actor: any) => actor.id === "a")
+          .expressions.some((expression: any) => expression.id === "g-e-first"),
+      );
       assert.doesNotMatch(JSON.stringify(catalog), /happy_01|happy_blush|"expressionId"/);
       return {
         finishReason: "stop",

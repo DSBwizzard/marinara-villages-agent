@@ -358,6 +358,7 @@ export function coerceSession(value: unknown): VenueScene {
                 : {}),
               message: asString(row.message),
               ...(row.physicalOutcomeVersion === 1 ? { physicalOutcomeVersion: 1 as const } : {}),
+              ...(row.sceneHearingVersion === 2 ? { sceneHearingVersion: 2 as const } : {}),
               ...(row.narrativeSource
                 ? { narrativeSource: structuredClone(row.narrativeSource) as VenueSubmission["narrativeSource"] }
                 : {}),

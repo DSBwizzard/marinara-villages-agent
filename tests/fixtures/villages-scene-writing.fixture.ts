@@ -10,6 +10,7 @@ import type { VenueScene } from "../../packages/villages/src/server/domain/model
 import type { VillageState } from "../../packages/villages/src/server/domain/models/world.js";
 import { snapshotFromCard } from "../../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
 import { wishFingerprint } from "../../packages/villages/src/server/domain/rules/social-wishes.js";
+import { mapScenePeople } from "../../packages/villages/src/server/domain/rules/scene-prompt-references.js";
 import {
   createSceneWriting,
   type SceneWritingPorts,
@@ -155,18 +156,39 @@ export function scenePromptPacket(prompt: string): any {
   assert(packet, "The GM receives a structured current Scene context");
   const stable = prompt.split("\n").find((line) => line.startsWith('{"player":'));
   const scene = prompt.split("\n").find((line) => line.startsWith('{"scene":'));
-  return { ...(stable ? JSON.parse(stable) : {}), ...(scene ? JSON.parse(scene) : {}), ...JSON.parse(packet) };
+  const parsed = JSON.parse(packet);
+  return {
+    ...(stable ? JSON.parse(stable) : {}),
+    ...(scene ? JSON.parse(scene) : {}),
+    ...(mapScenePeople(parsed, parsed.people ?? {}) as object),
+  };
 }
 
 export function scenePromptHistory(prompt: string): any[] {
   const prefix = "Partial active Scene history (omission never proves historical absence): ";
   const chunks = prompt.split("\n").filter((line) => line.startsWith("Scene exchange: "));
-  if (chunks.length)
-    return chunks.flatMap((line) =>
-      JSON.parse(line.slice("Scene exchange: ".length)).flatMap((group: any) =>
-        group.lines.map((row: any) => ({ ...group.facts, ...row })),
-      ),
-    );
+  if (chunks.length) {
+    const packet = scenePromptPacket(prompt);
+    return chunks.flatMap((line) => {
+      const parsed = mapScenePeople(JSON.parse(line.slice("Scene exchange: ".length)), packet.people ?? {}) as any;
+      if (Array.isArray(parsed))
+        return parsed.flatMap((group: any) => group.lines.map((row: any) => ({ ...group.facts, ...row })));
+      return parsed.groups.flatMap((group: any) =>
+        group.lines.map((row: any) => ({
+          ...group.facts,
+          ...row,
+          citable: row.citable ?? true,
+          name: row.name ?? parsed.names[row.speakerId],
+          ...(row.kind === "dialogue"
+            ? { delivery: row.delivery ?? "ordinary", presentation: row.presentation ?? "main" }
+            : {}),
+          heardBy: (
+            mapScenePeople({ heardBy: packet.historyAudiences[group.facts.heardBy] }, packet.people ?? {}) as any
+          ).heardBy,
+        })),
+      );
+    });
+  }
   const line = prompt.split("\n").find((line) => line.startsWith(prefix));
   return line ? JSON.parse(line.slice(prefix.length, line.lastIndexOf(" Continue after these events."))) : [];
 }

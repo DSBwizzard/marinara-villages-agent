@@ -2,6 +2,7 @@ import { projectPhysicalDesign } from "../../../shared/helpers/project-design.js
 import type { VillageState } from "../models/world.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { renovationTerms } from "./project-terms.js";
+import { shape } from "./project-structure.js";
 export type ProjectSpeechContext = { projectId: string; revision: number; phase: string };
 export type ProjectSpeechProposal = ProjectSpeechContext & {
   version: 1;
@@ -27,26 +28,77 @@ export function projectSpeechContexts(
       : [],
   );
 }
+/** Prompt selection does not change legacy server eligibility or purchased request replay. */
+export function relevantProjectSpeechContexts(
+  state: VillageState,
+  activeIds: string[],
+  conversation: string,
+  message = "",
+  venueId = "",
+): ProjectSpeechContext[] {
+  const query = normalized(conversation + " " + message);
+  return projectSpeechContexts(state, activeIds, conversation, message, venueId).filter((context) => {
+    const project = state.projects.find((row) => row.id === context.projectId)!;
+    return (
+      project.venueId === venueId ||
+      project.lifecycle!.affectedIds.some((id) => activeIds.includes(id)) ||
+      activeIds.includes(project.lifecycle?.builderId ?? "") ||
+      project.participantIds.some((id) => activeIds.includes(id)) ||
+      query.includes(normalized(project.id)) ||
+      (!!project.title && query.includes(normalized(project.title)))
+    );
+  });
+}
+export function projectSpeechData(state: VillageState, contexts: ProjectSpeechContext[]) {
+  return contexts.map((context) => {
+    const project = state.projects.find((row) => row.id === context.projectId)!;
+    const plan = project.plan;
+    const change = project.lifecycle?.change;
+    return {
+      ...context,
+      title: project.title,
+      establishment: project.establishment
+        ? {
+            ...project.establishment,
+            objectives: project.establishment.objectives.map(({ id, text, met }) => ({ id, text, met })),
+          }
+        : undefined,
+      description: project.lifecycle?.change
+        ? renovationTerms(project.lifecycle.change)
+        : projectPhysicalDesign(project),
+      ...(plan
+        ? {
+            design: {
+              capacity: plan.capacity,
+              ...(plan.form !== projectPhysicalDesign(project) ? { form: plan.form } : {}),
+              venueType: plan.venueType,
+              exteriorDescription: plan.exteriorDescription,
+              layout: plan.layout,
+              zones: [...plan.spaces, ...plan.privateSpaces].map(shape),
+            },
+          }
+        : {}),
+      ...(change
+        ? {
+            change: {
+              form: change.form,
+              exteriorDescription: change.exteriorDescription,
+              classes: change.classes,
+              capacity: change.capacity,
+              zones: change.zones?.map((zone) => [...shape(zone), zone.preserveDescription ?? false]),
+            },
+          }
+        : {}),
+      leadId: project.lifecycle?.builderId,
+      affectedIds: project.lifecycle?.affectedIds,
+    };
+  });
+}
 export function projectSpeechPrompt(state: VillageState, contexts: ProjectSpeechContext[]): string {
   if (!contexts.length) return "";
   return (
     "Relevant Projects: " +
-    JSON.stringify(
-      contexts.map((context) => {
-        const project = state.projects.find((project) => project.id === context.projectId)!;
-        return {
-          ...context,
-          title: project.title,
-          establishment: project.establishment,
-          description: project.lifecycle?.change
-            ? renovationTerms(project.lifecycle.change)
-            : projectPhysicalDesign(project),
-          design: project.plan,
-          leadId: project.lifecycle?.builderId,
-          affectedIds: project.lifecycle?.affectedIds,
-        };
-      }),
-    ) +
+    JSON.stringify(projectSpeechData(state, contexts)) +
     ". Scoped supporting controllers may approve their own Place or later Renovations; only Villagers can volunteer to lead physical work. Establishment objectives may be social and require actual witnessed outcomes, not promises of future results. Social establishment uses no timer or lead. Residents may approve a relevant physical design, willingly commit to lead it, decline or withdraw in natural language. Approval and volunteering can occur in the same exchange. No speech starts, resumes or completes work. Physical Projects take 24 elapsed real hours after the player's explicit Start. Gifts and objects provide no Project benefit."
   );
 }
