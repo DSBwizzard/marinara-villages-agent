@@ -17,6 +17,7 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
       foundingSpriteRevisions?: unknown;
       foundingResidentAdmissions?: unknown;
       name?: unknown;
+      startingLocationName?: unknown;
       timeZone?: unknown;
       setting?: unknown;
       worldRules?: unknown;
@@ -45,6 +46,7 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
         foundingSpriteRevisions: body.foundingSpriteRevisions,
         foundingResidentAdmissions: body.foundingResidentAdmissions,
         name: body.name,
+        startingLocationName: body.startingLocationName,
         timeZone: body.timeZone,
         setting: body.setting,
         worldRules: body.worldRules,

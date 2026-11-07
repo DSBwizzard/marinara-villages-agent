@@ -33,6 +33,7 @@ import { readBool } from "../../domain/rules/village-projections.js";
 import { loreText } from "../../domain/rules/lore-context.js";
 import { readHomeBuildingNames, readVillageName, readVillageSetting } from "../../domain/rules/world-input.js";
 import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
+import { mapName } from "../../domain/rules/village-maps.js";
 import type { prepareVillageMap } from "../media/town-map-review.js";
 import type { readVillageConnectionSettings, validateVillageSetupConnections } from "../settings/connections.js";
 import type { readLinkedPersona } from "../settings/personas.js";
@@ -84,6 +85,7 @@ export function createFoundingSetup({
     foundingSpriteRevisions?: unknown;
     foundingResidentAdmissions?: unknown;
     name?: unknown;
+    startingLocationName?: unknown;
     timeZone?: unknown;
     setting?: unknown;
     worldRules?: unknown;
@@ -106,10 +108,11 @@ export function createFoundingSetup({
     if (isVillageFounded(await peekVillageAuthority()))
       throw conflict("This Village is already founded. Use World Configuration.");
     const name = readVillageName(input.name);
+    const startingLocationName = mapName(input.startingLocationName === undefined ? name : input.startingLocationName);
     if (input.timeZone !== undefined && !validTimeZone(input.timeZone))
       throw badRequest("Choose a valid village timezone.");
     const setting = readVillageSetting(input.setting);
-    if (setting.length === 0) throw badRequest("Describe the place and world before founding.");
+    if (setting.length === 0) throw badRequest("Describe the starting location before founding.");
     if (typeof (input.worldRules ?? "") !== "string" || String(input.worldRules ?? "").length > 4096)
       throw badRequest("Standing rules must be text of at most 4,096 characters.");
     const worldRules = asTrimmedString(input.worldRules);
@@ -126,7 +129,7 @@ export function createFoundingSetup({
     const townMap = await prepareVillageMap(
       {
         id: randomUUID(),
-        name,
+        name: startingLocationName,
         image: input.townMapImage,
         view: input.townMapView,
       },

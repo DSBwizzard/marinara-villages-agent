@@ -55,7 +55,7 @@ export function useFoundingGenerateSetupTownMap(ports: {
   return useCallback(async () => {
     if (setupMapRequestRef.current?.phase === "starting" || setupMapRequestRef.current?.phase === "waiting") return;
     if (setupSetting.trim().length === 0) {
-      setSetupMapProblem("Describe what the village is like before generating its map.");
+      setSetupMapProblem("Describe the starting location before generating its map.");
       return;
     }
     setSetupMapBusy(true);
@@ -99,7 +99,7 @@ export function useFoundingGenerateSetupTownMap(ports: {
       });
     } catch (cause) {
       setSetupMapProblem(
-        `${messageFrom(cause, "The village map could not be requested.")}${dispatched ? " Check map status before starting another attempt." : ""}`,
+        `${messageFrom(cause, "The starting location map could not be requested.")}${dispatched ? " Check map status before starting another attempt." : ""}`,
       );
       updateSetupMapRequest(dispatched ? { ...pending, phase: "paused" } : null);
       setSetupMapBusy(false);

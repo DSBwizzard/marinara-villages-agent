@@ -133,6 +133,7 @@ export function createFoundingRestoreSetupDraft(ports: {
   readonly setSetupMapSize: FoundingState["setSetupMapSize"];
   readonly setSetupMapSource: FoundingState["setSetupMapSource"];
   readonly setSetupName: FoundingState["setSetupName"];
+  readonly setSetupLocationName: FoundingState["setSetupLocationName"];
   readonly setSetupTimeZone?: FoundingState["setSetupTimeZone"];
   readonly setSetupPlayerBackground: FoundingState["setSetupPlayerBackground"];
   readonly setSetupProblem: FoundingState["setSetupProblem"];
@@ -184,6 +185,7 @@ export function createFoundingRestoreSetupDraft(ports: {
       setSetupMapSize,
       setSetupMapSource,
       setSetupName,
+      setSetupLocationName,
       setSetupPlayerBackground,
       setSetupProblem,
       setSetupResidentAdmissions,
@@ -219,6 +221,7 @@ export function createFoundingRestoreSetupDraft(ports: {
     }
     setSetupStep(savedFoundingStep(data));
     setSetupName(data.name);
+    setSetupLocationName(data.startingLocationName ?? data.name);
     ports.setSetupTimeZone?.(data.timeZone ?? "");
     setSetupWorldName(data.worldName ?? "");
     setSetupSetting(data.setting);
