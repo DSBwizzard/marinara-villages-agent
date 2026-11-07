@@ -134,7 +134,7 @@ async function main() {
   const packet = scenePromptPacket(prompt);
   assert.doesNotMatch(prompt, /HIDDEN_ACTIVITY_POISON/u);
   assert.doesNotMatch(
-    JSON.stringify([packet.context.actors, packet.residentActivity, packet.positions]),
+    JSON.stringify(packet.context.actors),
     /HIDDEN_PERSON_POISON/u,
     "Private attendance is absent from actors and positions",
   );

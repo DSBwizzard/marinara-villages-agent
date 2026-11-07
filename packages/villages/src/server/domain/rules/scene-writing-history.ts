@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import type { VenueLine, VenueScene } from "../models/scene-model.js";
+import { sceneEvidencePerception } from "./scene-evidence-perception.js";
+import type { VenueWritingBlock } from "./venue-writing.js";
 
 /** Retrieval cannot widen witnessed knowledge through a keyword in private or offstage text. */
 export function sharedLoreHistory(scene: VenueScene, retained: readonly VenueLine[], actors: readonly string[]) {
@@ -26,7 +28,7 @@ export function sharedLoreHistory(scene: VenueScene, retained: readonly VenueLin
 
 const HISTORY_PREFIX = "Partial active Scene history (omission never proves historical absence): ";
 const HISTORY_SUFFIX =
-  " Continue after these events. Narrator-visible actions are not shared resident knowledge. Residents know only heardBy text or their own soundOnly projection. Only citable IDs support effects. Statements establish what a speaker said/believed, not the truth of their claims.";
+  " Continue after these events. Metadata describes that event, never current attendance. Narrator-visible actions are not shared resident knowledge. Residents know only heardBy text or their own soundOnly projection. Only citable IDs support effects. Statements establish what a speaker said/believed, not the truth of their claims.";
 const tokens = (text: string) =>
   text
     .normalize("NFKC")
@@ -49,8 +51,8 @@ export function sceneWritingHistory(
     const full = line.heardBy.filter((id) => cast.has(id));
     const sound = line.soundOnly?.characterIds.filter((id) => cast.has(id)) ?? [];
     const visible = !line.contactHidden && line.kind === "narration";
-    const citable = allowed.has(line.id) && (full.length > 0 || sound.length > 0);
-    if (!citable && !visible) return [];
+    const citable = allowed.has(line.id) && full.length > 0;
+    if (!citable && !visible && !sound.length) return [];
     const acousticOnly = !full.length && !visible && sound.length > 0;
     const text = acousticOnly ? line.soundOnly!.text : line.content;
     const row = {
@@ -58,10 +60,31 @@ export function sceneWritingHistory(
       speakerId: acousticOnly ? "__venue_scene__" : line.role === "user" ? "player" : line.speakerId,
       kind: acousticOnly ? "narration" : line.kind,
       heardBy: acousticOnly ? [] : full,
-      ...(sound.length ? { soundOnly: { characterIds: sound, text: line.soundOnly!.text } } : {}),
+      ...(sound.length
+        ? {
+            soundOnly: {
+              characterIds: sound,
+              text: line.soundOnly!.text,
+              ...(line.soundOnly!.player !== undefined ? { player: line.soundOnly!.player } : {}),
+            },
+          }
+        : {}),
       visibleToPlayer: !line.contactHidden,
       citable,
       text,
+      at: line.at,
+      ...(!acousticOnly
+        ? {
+            name: line.name,
+            zoneId: line.zoneId,
+            delivery: line.delivery,
+            presentation: line.presentation,
+            targetId: line.targetId,
+            staging: line.staging,
+            physicalIdsAfter: line.physicalIdsAfter,
+            ...sceneEvidencePerception(line),
+          }
+        : { playerPerception: line.soundOnly?.player ? ("sound-only" as const) : ("none" as const) }),
     };
     return [{ line, index, row, terms: tokens(text), cost: JSON.stringify(row).length + 1 }];
   });
@@ -130,12 +153,67 @@ export function sceneWritingHistory(
   take(ranked, capacity - used);
   take(recent, capacity - used);
   const ordered = [...selected.values()].sort((a, b) => a.index - b.index);
+  const projected = ordered.map((item) => item.row);
+  // Source references are request-local; saved event IDs and exact evidence stay private.
+  let prefix = "h";
+  while (rows.some((item) => unique.has(prefix + (item.index + 1)))) prefix += "h";
+  const references = new Map(rows.map((item) => [item.line.id, prefix + (item.index + 1)]));
+  const owners = new Map(
+    (scene.submissions ?? []).flatMap((turn, index) => (turn.replyLineIds ?? []).map((id) => [id, index] as const)),
+  );
+  const recentOwners = new Set([...new Set(owners.values())].toSorted((a, b) => b - a).slice(0, 2));
+  const chunks: { owner: number | undefined; rows: typeof rows }[] = [];
+  for (const item of rows) {
+    const owner = owners.get(item.line.id);
+    const last = chunks.at(-1);
+    if (last && owner !== undefined && last.owner === owner) last.rows.push(item);
+    else chunks.push({ owner, rows: [item] });
+  }
+  const render = (items: typeof rows) => {
+    const groups: { facts: Record<string, unknown>; lines: Record<string, unknown>[] }[] = [];
+    for (const item of items) {
+      const { at, heardBy, visibleToPlayer, playerPerception, zoneId, ...line } = { zoneId: undefined, ...item.row };
+      const facts = { at, heardBy, visibleToPlayer, playerPerception, zoneId };
+      const entry = { ...line, id: references.get(item.line.id) };
+      const previous = groups.at(-1);
+      if (previous && JSON.stringify(previous.facts) === JSON.stringify(facts)) previous.lines.push(entry);
+      else groups.push({ facts, lines: [entry] });
+    }
+    return "Scene exchange: " + JSON.stringify(groups);
+  };
+  const block = (items: typeof rows): VenueWritingBlock => ({
+    text: render(items),
+    evidence: items.filter((item) => item.row.citable).map((item) => item.line),
+    references: Object.fromEntries(
+      items.filter((item) => item.row.citable).map((item) => [references.get(item.line.id)!, item.line.id]),
+    ),
+  });
+  const firstRequired = Math.min(
+    ...chunks.flatMap((chunk, index) => (chunk.owner !== undefined && recentOwners.has(chunk.owner) ? [index] : [])),
+    Math.max(0, chunks.length - 2),
+  );
+  const blocks = chunks.map((chunk, index) => ({
+    ...block(chunk.rows),
+    ...(index < firstRequired ? { optional: "history" as const } : {}),
+  }));
+  let recallSize = 0;
+  const recall = ranked.flatMap((item): VenueWritingBlock[] => {
+    const index = chunks.findIndex((chunk) => chunk.rows.includes(item));
+    if (index >= firstRequired) return [];
+    const recalled = block([item]);
+    if (recallSize + recalled.text.length > 4000) return [];
+    recallSize += recalled.text.length;
+    return [{ ...recalled, optional: "history", withHistory: { source: blocks[index].text, text: "" } }];
+  });
   return {
+    blocks,
+    recall,
+    rows: projected,
     evidence: ordered.filter((item) => item.row.citable).map((item) => item.line),
     fingerprints: Object.fromEntries(
       ordered.map(({ line }) => [line.id, createHash("sha256").update(JSON.stringify(line)).digest("hex")]),
     ),
     partial: ordered.length < rows.length,
-    context: ordered.length ? HISTORY_PREFIX + JSON.stringify(ordered.map((item) => item.row)) + HISTORY_SUFFIX : "",
+    context: ordered.length ? HISTORY_PREFIX + JSON.stringify(projected) + HISTORY_SUFFIX : "",
   };
 }

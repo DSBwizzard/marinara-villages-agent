@@ -110,29 +110,49 @@ export function zoneEventScene(
 }
 
 /** The writer needs reach relationships, not the names of hidden occupied rooms. */
-export function zoneEventHearingContext(scene: VenueScene, venue: VillageVenue): string {
+function zoneEventHearingRows(scene: VenueScene, venue: VillageVenue) {
   const actors = ["player", ...scene.participants.map((person) => person.characterId)];
   const position = (id: string) => (id === "player" ? (scene.zoneId ?? "exterior") : contactPosition(scene, id));
+  return actors.map((source) => {
+    const origin = position(source);
+    const near = [origin, ...contactNeighbors(venue, origin, scene)];
+    return {
+      source,
+      onstage: origin === position("player"),
+      wordsReach: actors.filter((id) => position(id) === origin),
+      raisedWordsReach: actors.filter((id) => near.includes(position(id))),
+      muffledVoicesReach: actors.filter((id) => near.includes(position(id)) && position(id) !== origin),
+      whisperTargets: actors.filter((id) => id !== source && position(id) === origin),
+      alertOnly: actors.filter(
+        (id) => !near.includes(position(id)) && zoneSoundRange(scene, venue, origin).includes(position(id)),
+      ),
+    };
+  });
+}
+
+export function zoneEventHearingContext(scene: VenueScene, venue: VillageVenue): string {
   return (
-    "Hearing relationships (not shared character knowledge): " +
-    JSON.stringify(
-      actors.map((source) => {
-        const origin = position(source);
-        const near = [origin, ...contactNeighbors(venue, origin, scene)];
-        return {
-          source,
-          onstage: origin === position("player"),
-          wordsReach: actors.filter((id) => position(id) === origin),
-          raisedWordsReach: actors.filter((id) => near.includes(position(id))),
-          muffledVoicesReach: actors.filter((id) => near.includes(position(id)) && position(id) !== origin),
-          whisperTargets: actors.filter((id) => id !== source && position(id) === origin),
-          alertOnly: actors.filter(
-            (id) => !near.includes(position(id)) && zoneSoundRange(scene, venue, origin).includes(position(id)),
-          ),
-        };
-      }),
-    )
+    "Hearing relationships (not shared character knowledge): " + JSON.stringify(zoneEventHearingRows(scene, venue))
   );
+}
+
+/** Group identical server-computed ranges; a source cannot whisper to itself. */
+export function zoneEventHearingGroups(scene: VenueScene, venue: VillageVenue) {
+  const groups = new Map<
+    string,
+    { sources: string[] } & Omit<ReturnType<typeof zoneEventHearingRows>[number], "source" | "whisperTargets">
+  >();
+  for (const { source, whisperTargets: _whisperTargets, ...ranges } of zoneEventHearingRows(scene, venue)) {
+    for (const key of ["wordsReach", "raisedWordsReach", "muffledVoicesReach", "alertOnly"] as const)
+      ranges[key] = ranges[key].toSorted();
+    const key = JSON.stringify(ranges);
+    const group = groups.get(key);
+    if (group) group.sources.push(source);
+    else groups.set(key, { sources: [source], ...ranges });
+  }
+  return [...groups.values()]
+    .map((group) => ({ ...group, sources: group.sources.toSorted() }))
+    .toSorted((a, b) => a.sources[0].localeCompare(b.sources[0]));
 }
 
 /** Adapt only syntax before the existing parser; segment indexes never change. */

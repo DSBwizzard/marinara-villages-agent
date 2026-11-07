@@ -58,6 +58,7 @@ function fixture(label: string, checkpointed = false) {
     brokenReply: string | null = null;
   const owner = createActivationScope();
   const checkpoints = new Map<string, unknown>();
+  const requests: unknown[] = [];
   let roomInterpretation:
     import("../packages/villages/src/server/domain/models/interpretation-model.js").InterpretationBatch | null = null;
   async function touch(stage: string) {
@@ -144,6 +145,7 @@ function fixture(label: string, checkpointed = false) {
       assert.equal(selected, model);
       assert.equal(options.usagePurpose, "conversation");
       assert.equal(options.temperature, 0.85);
+      requests.push(structuredClone(_messages));
       await touch("completion");
       return {
         content:
@@ -194,12 +196,15 @@ function fixture(label: string, checkpointed = false) {
     owners,
     owner,
     service,
+    model,
+    checkpoints,
     interpretation(value: typeof roomInterpretation) {
       roomInterpretation = value;
     },
     entered,
     gate,
     exact,
+    requests,
     pause(stage: string) {
       paused = stage;
     },
@@ -269,6 +274,8 @@ assert.equal(complete.calls.filter((x) => x === "interpretation").length, 1);
     sceneFacts: { wish: { actorId: "a", wishId: initial.id, value: updated } },
   } as never;
   replay.fail("");
+  const recovered = await replay.service.prepareVenueTurnMessages(replay.scene, "I wait.", "chat", "", null);
+  assert.deepEqual(recovered.fitted.messages, replay.requests[0], "Recovery keeps the exact purchased prompt");
   const reply = await replay.run();
   assert.equal(
     reply.wishContexts[0].wishes[0].wish,
@@ -277,6 +284,52 @@ assert.equal(complete.calls.filter((x) => x === "interpretation").length, 1);
   );
   assert.equal(reply.wishContexts[0].wishes[0].revision, 1);
   assert.equal(replay.calls.filter((stage) => stage === "completion").length, 1, "Retry reuses the purchased response");
+}
+{
+  const replay = fixture("legacy-unbounded-default", true);
+  replay.model.maxOutputTokens = null;
+  replay.world.villagers = [wishWorld().villagers[0]];
+  replay.scene.participants = [{ characterId: "a", name: "Ada", doing: "Waiting" }];
+  replay.scene.activeIds = ["a"];
+  replay.fail("interpretation");
+  await assert.rejects(replay.run(), (error) => error === replay.exact);
+  for (const [key, value] of replay.checkpoints)
+    if (key.startsWith("writing-request:")) delete (value as any).historyContract;
+  replay.scene.lines = Array.from({ length: 20 }, (_, index) => ({
+    id: `oversized-${index}`,
+    speakerId: "a",
+    name: "Ada",
+    role: "assistant",
+    kind: "dialogue",
+    content: "A complete prior exchange. ".repeat(40),
+    heardBy: ["a"],
+    at: stamp,
+  }));
+  replay.scene.submissions = [0, 1].map((turn) => ({
+    id: `old-${turn}`,
+    message: "Private source",
+    replyLineIds: replay.scene.lines.slice(turn * 10, turn * 10 + 10).map((line) => line.id),
+  })) as any;
+  const fits = replay.calls.filter((stage) => stage === "fit").length;
+  const captured = await replay.service.prepareVenueTurnMessages(replay.scene, "I wait.", "chat", "", null);
+  assert.deepEqual(
+    captured.fitted.messages,
+    replay.requests[0],
+    "Legacy paid prompts replay even when complete newer history exceeds the unknown-cap allowance",
+  );
+  assert.equal(captured.historyContract, undefined);
+  assert.equal(
+    replay.calls.filter((stage) => stage === "fit").length,
+    fits,
+    "Recovery never refits a purchased request",
+  );
+  assert.equal(replay.calls.filter((stage) => stage === "completion").length, 1);
+  replay.checkpoints.clear();
+  await assert.rejects(
+    () => replay.service.prepareVenueTurnMessages(replay.scene, "I wait.", "chat", "", null),
+    /safe history allowance/,
+    "A fresh request with the same unverified cap must fail before spending",
+  );
 }
 for (const source of ["decisions", "system"] as const) {
   const invitation = fixture(source);

@@ -16,6 +16,7 @@ import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/
 import {
   routeZoneEvents,
   zoneEventHearingContext,
+  zoneEventHearingGroups,
   zoneEventReply,
   zoneEventScene,
 } from "../packages/villages/src/server/domain/rules/zone-events.js";
@@ -80,6 +81,39 @@ const base = coerceSession({
   submissions: [],
 });
 const scene = zoneEventScene(base, venue);
+
+function assertHearingGroups(context: typeof scene, layout: typeof venue) {
+  const original = JSON.parse(
+    zoneEventHearingContext(context, layout).slice("Hearing relationships (not shared character knowledge): ".length),
+  );
+  const groups = zoneEventHearingGroups(context, layout);
+  const expanded = groups.flatMap(({ sources, ...ranges }) =>
+    sources.map((source) => ({
+      source,
+      ...ranges,
+      whisperTargets: ranges.wordsReach.filter((id) => id !== source),
+    })),
+  );
+  const normalize = (rows: any[]) =>
+    rows
+      .map((row) =>
+        Object.fromEntries(
+          Object.entries(row).map(([key, value]) => [key, Array.isArray(value) ? value.toSorted() : value]),
+        ),
+      )
+      .sort((a, b) => String(a.source).localeCompare(String(b.source)));
+  assert.deepEqual(
+    normalize(expanded),
+    normalize(original),
+    "Grouped ranges preserve every server audience, including whisper exclusions",
+  );
+  assert.deepEqual(
+    zoneEventHearingGroups({ ...context, participants: [...context.participants].reverse() }, layout),
+    groups,
+    "Participant ordering cannot invalidate hearing groups",
+  );
+}
+assertHearingGroups(scene, venue);
 
 // New connection sound rules apply only to new admissions. Retained work keeps its purchased contract.
 {
@@ -157,6 +191,7 @@ const scene = zoneEventScene(base, venue);
     /outside hearing range/,
   );
   const relationships = JSON.parse(zoneEventHearingContext(marked, chain).split(": ").slice(1).join(": "));
+  assertHearingGroups(marked, chain);
   assert.deepEqual(relationships.find((row: any) => row.source === "player").alertOnly, ["far"]);
 }
 const message = 'I privately think SECRET. "Aqua, help!" I turn around.';

@@ -48,6 +48,7 @@ function semanticCheckpointKey(stage: string, identity: Record<string, unknown>)
     1,
     identity.message,
     identity.evidence,
+    ...(Object.hasOwn(identity, "earlierEvidence") ? [identity.earlierEvidence] : []),
     ...(identity.zoneEventSource ? [identity.zoneEventSource] : []),
     ...(Object.hasOwn(identity, "narrativeGrant") ? [identity.narrativeGrant] : []),
   ])}`;
@@ -229,6 +230,7 @@ export function createSemanticService(ports: SemanticPorts) {
       raw: Record<string, unknown>;
       context: ReturnType<typeof semanticContext>;
       presentation: SpriteSelectionContext;
+      earlierEvidence?: import("../../domain/models/scene-model.js").VenueLine[];
     },
     narrativeGrant?: NarrativeAdmission | null,
     zoneEventSource?: Record<string, unknown>,
@@ -245,11 +247,13 @@ export function createSemanticService(ports: SemanticPorts) {
         evidence,
         ...(zoneEventSource ? { zoneEventSource } : {}),
         context,
+        ...(gm.earlierEvidence !== undefined ? { earlierEvidence: gm.earlierEvidence } : {}),
         ...(narrativeGrant !== undefined ? { narrativeGrant } : {}),
       },
       normalizeGmEffects(gm.raw, context),
       (raw, hash, savedInput): SemanticExchange => {
         raw = { ...raw, sourceHash: hash };
+        const earlierHistory = savedInput.earlierEvidence ?? savedInput.context.history;
         if (savedInput.context.preservation) {
           const finding = readSceneBoundary(
             raw.halt,
@@ -359,11 +363,16 @@ export function createSemanticService(ports: SemanticPorts) {
         semanticPlayerMoves(asRecord(raw.events).playerMoves, { ...scene, semanticIntent: interpretedIntent }, lines);
         const effects = readSemanticEffects(raw, hash);
         if (effects.relationshipChanges !== undefined) {
-          const earlier = savedInput.context.history.map((line) => ({
-            ...line,
-            speakerId: line.role === "user" ? "player" : line.speakerId,
-            playerHeard: sceneEvidencePerception(line).playerPerception === "full",
-          }));
+          const actors = new Set(savedInput.context.actors.map((actor) => actor.id));
+          const earlier = earlierHistory
+            .filter((line) => savedInput.earlierEvidence === undefined || line.heardBy.some((id) => actors.has(id)))
+            .map((line) => ({
+              ...line,
+              heardBy:
+                savedInput.earlierEvidence === undefined ? line.heardBy : line.heardBy.filter((id) => actors.has(id)),
+              speakerId: line.role === "user" ? "player" : line.speakerId,
+              playerHeard: sceneEvidencePerception(line).playerPerception === "full",
+            }));
           const { rejections } = parseRelationshipProposals(
             effects.relationshipChanges,
             scene.id + ":" + scene.operation?.id,
@@ -425,7 +434,7 @@ export function createSemanticService(ports: SemanticPorts) {
         effects.memoryContexts = {
           [savedInput.context._memoryWrite.protection.fingerprint]: savedInput.context._memoryWrite,
         };
-        effects.earlierLineIds = savedInput.context.history.map((row) => row.id);
+        effects.earlierLineIds = earlierHistory.map((row) => row.id);
         const access: InterpretationBatch = {
           checks: [],
           results: [],

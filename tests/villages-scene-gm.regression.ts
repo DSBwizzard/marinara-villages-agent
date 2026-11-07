@@ -9,6 +9,7 @@ import { fixtureVillageState } from "./helpers/village-storage.fixture.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { createSemanticService } from "../packages/villages/src/server/features/generation/semantic-service.js";
+import { venueFixture } from "./helpers/venues.fixture.js";
 
 const segments = [{ kind: "dialogue", speakerId: "mara", text: "Tea sounds good." }];
 const raw = materializeGmReply(
@@ -52,6 +53,132 @@ await assert.rejects(
 );
 
 mock.timers.enable({ apis: ["Date"], now: new Date("2026-11-05T20:00:00Z") });
+{
+  const world = defaultVillageState();
+  world.seed = "matched-evidence";
+  world.venues = [venueFixture({ id: "room", name: "Room" })];
+  world.villagers = ["a", "b"].map((characterId) => ({
+    characterId,
+    wishes: [],
+    cardSnapshot: { id: characterId, name: characterId },
+  })) as any;
+  const scene = coerceSession({
+    version: 4,
+    semanticVersion: 2,
+    liveSceneVersion: 1,
+    id: "history-validation",
+    villageSeed: world.seed,
+    placeId: "room",
+    zoneId: "common",
+    startedAt: "2026-11-05T20:00:00Z",
+    activeIds: ["a", "b"],
+    lines: [],
+    submissions: [],
+  });
+  const source = {
+    id: "old-source",
+    name: "a",
+    role: "assistant",
+    speakerId: "a",
+    kind: "dialogue",
+    content: "I enjoy this conversation.",
+    heardBy: ["a", "b"],
+    at: scene.startedAt,
+  } as const;
+  const context = semanticContext(scene, world, "Okay.", true, true);
+  const aliases = { h1: source.id };
+  const proposal = {
+    input: [{ kind: "speech", text: "Okay." }],
+    segments: [{ kind: "dialogue", speakerId: "a", text: "h1 remains literal prose." }],
+    relationshipChanges: {
+      changes: [
+        {
+          fromId: "a",
+          toId: "player",
+          expectedRevision: 0,
+          patch: { stance: "Interested" },
+          lineIds: ["h1"],
+          reason: "A witnessed statement",
+        },
+      ],
+    },
+  };
+  const raw = materializeGmReply(normalizeGmEffects(proposal, context, aliases), "Okay.");
+  assert.equal((raw.segments as any[]).at(-1).text, proposal.segments[0].text, "References never rewrite prose");
+  assert.equal(
+    (
+      normalizeGmEffects(
+        { memoryChanges: [{ learners: { a: { support: [{ lineId: "constructor", excerpt: "h1" }] } } }] },
+        context,
+        aliases,
+      ).memoryChanges as any[]
+    )[0].learners.a.support[0].lineId,
+    "constructor",
+  );
+  raw.heardPlayerBy = ["a", "b"];
+  const parsed = (await import("../packages/villages/src/server/domain/rules/scene-reply.js")).parseVenueReply(raw, [
+    "a",
+    "b",
+    "player",
+  ]);
+  const service = createSemanticService({
+    readVillageState: async () => world,
+    venueCheckpoint: async (_key, work) => work(),
+  } as any);
+  const gm = { raw, context, presentation: { state: {}, sprites: {}, variants: false } };
+  const accepted = await service.exchange(scene, "Okay.", parsed.lines, { ...gm, earlierEvidence: [source] as any });
+  assert.deepEqual(
+    accepted.effects.earlierLineIds,
+    [source.id],
+    "The fitted evidence, not a second history selector, owns citations",
+  );
+  context.history = [source] as any;
+  await assert.rejects(
+    () => service.exchange(scene, "Okay.", parsed.lines, { ...gm, earlierEvidence: [] }),
+    /Citation was not supplied/,
+    "Explicit empty evidence must not fall back",
+  );
+  await service.exchange(scene, "Okay.", parsed.lines, gm);
+  context.history = [];
+  await assert.rejects(
+    () => service.exchange(scene, "Okay.", parsed.lines, gm),
+    /Citation was not supplied/,
+    "Legacy requests retain their captured whitelist",
+  );
+  const sound = {
+    ...source,
+    id: "sound-source",
+    speakerId: "b",
+    heardBy: ["b"],
+    content: "PRIVATE WORDS",
+    contactHidden: true,
+    soundOnly: { characterIds: ["a"], player: false, text: "A murmur." },
+  };
+  const acousticContext = { ...context, actors: context.actors.filter((actor) => actor.id === "a") };
+  const acousticRaw = materializeGmReply(
+    normalizeGmEffects(
+      {
+        ...proposal,
+        relationshipChanges: {
+          changes: [{ ...proposal.relationshipChanges.changes[0], fromId: "b", lineIds: [sound.id] }],
+        },
+      },
+      acousticContext,
+    ),
+    "Okay.",
+  );
+  await assert.rejects(
+    () =>
+      service.exchange(scene, "Okay.", parsed.lines, {
+        ...gm,
+        raw: acousticRaw,
+        context: acousticContext,
+        earlierEvidence: [sound] as any,
+      }),
+    /Citation was not supplied/,
+    "An anonymous acoustic source cannot authorize social effects for its unseen speaker",
+  );
+}
 for (const invited of [false, true]) {
   const host = await packagedSceneServer({
     configure(world) {

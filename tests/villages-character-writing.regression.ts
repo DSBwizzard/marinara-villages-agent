@@ -10,7 +10,7 @@ import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { scenePromptPacket } from "./fixtures/villages-scene-writing.fixture.js";
+import { scenePromptHistory, scenePromptPacket } from "./fixtures/villages-scene-writing.fixture.js";
 import { fixtureWish } from "./helpers/social-wishes-fixture.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
@@ -21,6 +21,10 @@ import {
   venueCardProfile,
 } from "../packages/villages/src/server/domain/rules/venue-writing.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
+import { SCENE_GM_WORLD, sceneGmContext } from "../packages/villages/src/server/domain/rules/scene-gm.js";
+import { sceneWritingHistory } from "../packages/villages/src/server/domain/rules/scene-writing-history.js";
+import { SCENE_MEMORY_INSTRUCTION } from "../packages/villages/src/server/domain/rules/scene-memories.js";
+import { LORE_REFERENCE_RULE } from "../packages/villages/src/server/domain/rules/lore-context.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   applyVillagerRefresh,
@@ -139,7 +143,7 @@ async function run() {
     const prepared = await prepareVenueTurnMessages(session, "What is your vision for our future?", "chat", "", null);
     const prompt = prepared.fitted.messages.map((entry) => entry.content).join("\n");
     assert.equal(
-      prompt.split(RESIDENT_CONTINUITY_RULE).length - 1,
+      prompt.split(SCENE_GM_WORLD).length - 1,
       1,
       "Scene policy occurs once while authored admission stays complete",
     );
@@ -158,6 +162,190 @@ async function run() {
       "Changing history and source quotes preserves the stable system prefix",
     );
     assert.deepEqual(next.fitted.messages.at(-1), { role: "user", content: "A different question?" });
+    assert.ok(
+      prompt.indexOf("## Complete authored character identity") < 18000,
+      "Built-in instruction budget excludes authored identities",
+    );
+    const witnessed = {
+      ...session,
+      lines: [
+        {
+          id: "history-source",
+          role: "assistant",
+          speakerId: card.id,
+          name: card.name,
+          kind: "dialogue",
+          content: "EXACT EARLIER COMMITMENT",
+          heardBy: [card.id],
+          at: stamp,
+          zoneId: "exterior",
+          delivery: "ordinary",
+          physicalIdsAfter: [card.id],
+          soundOnly: { characterIds: [card.id], text: "Distant voices.", player: true },
+        },
+      ],
+    };
+    const beforeHistory = JSON.stringify(witnessed.lines);
+    const deduplicated = await prepareVenueTurnMessages(witnessed, "What did you promise?", "chat", "", null);
+    const deduplicatedPrompt = deduplicated.fitted.messages.map((entry) => entry.content).join("\n");
+    const projected = scenePromptPacket(deduplicatedPrompt);
+    assert.equal(deduplicatedPrompt.split(witnessed.lines[0].content).length - 1, 1);
+    assert.deepEqual(projected.context.history, [], "Covered evidence is sent only in the canonical transcript");
+    const historical = scenePromptHistory(deduplicatedPrompt)[0];
+    assert.equal(deduplicated.historyContract!.references[historical.id], witnessed.lines[0].id);
+    for (const field of ["at", "zoneId", "delivery", "physicalIdsAfter", "soundOnly"])
+      assert.deepEqual(historical[field], (witnessed.lines[0] as any)[field]);
+    assert.equal(historical.text, witnessed.lines[0].content);
+    assert.equal(historical.playerPerception, "full");
+    assert.equal(projected.context.memory.administrative.fingerprint, undefined);
+    assert.ok(
+      SCENE_MEMORY_INSTRUCTION.includes(",fingerprint"),
+      "Shared Memory callers retain their fingerprint contract",
+    );
+    assert.ok(!deduplicatedPrompt.includes(deduplicated.gmContext._memoryWrite.protection.fingerprint));
+    assert.equal(projected.context.setting, undefined, "The authored setting is supplied by the outer setting");
+    assert.ok(projected.setting.includes(deduplicated.gmContext.setting));
+    assert.equal(deduplicated.gmContext.history[0].content, witnessed.lines[0].content);
+    assert.equal(JSON.stringify(witnessed.lines), beforeHistory, "Prompt projection cannot mutate saved history");
+    const canonical = sceneWritingHistory(witnessed, witnessed.lines, "promise", [card.id]);
+    const outsideSound = {
+      ...witnessed.lines[0],
+      soundOnly: { characterIds: [card.id, "UNSEEN_LISTENER"], text: "A murmur.", player: true },
+    };
+    const projectedSound = sceneWritingHistory({ ...witnessed, lines: [outsideSound] }, [outsideSound], "promise", [
+      card.id,
+    ]);
+    assert.deepEqual(projectedSound.rows[0].soundOnly?.characterIds, [card.id]);
+    assert.ok(
+      !projectedSound.context.includes("UNSEEN_LISTENER"),
+      "Retrieved metadata cannot reveal an out-of-cast sound audience",
+    );
+    const leaked = {
+      ...deduplicated.gmContext,
+      futureStorageField: "PRIVATE STORAGE SENTINEL",
+      actors: deduplicated.gmContext.actors.map((actor) => ({
+        ...actor,
+        futureStorageField: "PRIVATE STORAGE SENTINEL",
+      })),
+      history: deduplicated.gmContext.history.map((line) => ({
+        ...line,
+        futureStorageField: "PRIVATE STORAGE SENTINEL",
+      })),
+    };
+    const modelView = JSON.stringify(sceneGmContext(leaked, canonical.rows));
+    assert.ok(!modelView.includes("PRIVATE STORAGE SENTINEL"), "New storage fields cannot enter the model projection");
+    assert.ok(!modelView.includes("speechSource") && !modelView.includes("attentionEvidence"));
+    assert.equal(leaked.futureStorageField, "PRIVATE STORAGE SENTINEL");
+    const perceptionSource = {
+      ...witnessed.lines[0],
+      speakerId: "player",
+      role: "user",
+      attentionEvidence: true,
+      contactHidden: true,
+      soundOnly: undefined,
+    } as const;
+    const perceptionView = sceneGmContext({ ...deduplicated.gmContext, history: [perceptionSource] } as any).history[0];
+    assert.equal(perceptionView.playerPerception, "full", "Hidden own speech remains known to the player");
+    const privateSpeech = sceneGmContext({
+      ...deduplicated.gmContext,
+      history: [{ ...perceptionSource, role: "assistant", speakerId: card.id }],
+    } as any).history[0];
+    assert.equal(privateSpeech.playerPerception, "none", "Hidden third-party speech is not player knowledge");
+    const soundView = sceneGmContext({
+      ...deduplicated.gmContext,
+      history: [
+        {
+          ...perceptionSource,
+          role: "assistant",
+          speakerId: card.id,
+          soundOnly: { characterIds: [card.id], player: true, text: "Only a murmur." },
+        },
+      ],
+    } as any).history[0];
+    assert.equal(soundView.playerPerception, "sound-only");
+    assert.equal(soundView.playerSound, "Only a murmur.");
+    for (const altered of [
+      { ...canonical.rows[0], text: "Other words" },
+      { ...canonical.rows[0], heardBy: [] },
+      { ...canonical.rows[0], speakerId: "other" },
+      { ...canonical.rows[0], kind: "narration" as const },
+      { ...canonical.rows[0], at: "another-time" },
+    ])
+      assert.equal(
+        sceneGmContext(deduplicated.gmContext, [altered]).history[0].content,
+        witnessed.lines[0].content,
+        "Uncovered or differently projected evidence remains whole",
+      );
+    const acoustic = {
+      ...witnessed,
+      lines: [{ ...witnessed.lines[0], heardBy: ["absent"], content: "UNHEARD PRIVATE WORDS" }],
+    };
+    acoustic.lines[0].soundOnly = { characterIds: [card.id], text: "Distant voices.", player: true };
+    const acousticHistory = sceneWritingHistory(acoustic, acoustic.lines, "", [card.id]);
+    assert.ok(!acousticHistory.context.includes("UNHEARD PRIVATE WORDS"));
+    assert.equal(
+      acousticHistory.rows[0].citable,
+      false,
+      "Anonymous noise supplies continuity, never hidden full-speech authority",
+    );
+    assert.deepEqual(
+      acousticHistory.blocks.flatMap((block) => block.evidence ?? []),
+      [],
+    );
+    for (const field of ["name", "zoneId", "targetId", "staging", "physicalIdsAfter"])
+      assert.equal((acousticHistory.rows[0] as any)[field], undefined, "Sound-only history keeps the source anonymous");
+    const acousticContext = { ...deduplicated.gmContext, history: acoustic.lines } as any;
+    const acousticView = sceneGmContext(acousticContext, acousticHistory.rows).history[0];
+    for (const field of ["id", "content", "heardBy", "soundOnly"])
+      assert.deepEqual((acousticView as any)[field], (acoustic.lines[0] as any)[field]);
+    const historyFit = model.fitContext;
+    model.fitContext = (messages: any[], options: any) =>
+      messages.some((entry) => entry.content.includes("Scene exchange: "))
+        ? { messages: [], ...options }
+        : historyFit(messages, options);
+    try {
+      await assert.rejects(
+        () => prepareVenueTurnMessages(witnessed, "What did you promise?", "chat", "", null),
+        /required context do not fit/,
+        "A required recent exchange must fail before spending rather than disappear or become a second evidence view",
+      );
+    } finally {
+      model.fitContext = historyFit;
+    }
+    assert.equal(
+      assembleVenueWritingMessages(
+        [
+          { text: "OTHER HISTORY", optional: "history" },
+          { text: "FULL FALLBACK", withHistory: { source: "EXACT HISTORY", text: "LEAN CONTEXT" } },
+        ],
+        "input",
+      )[0].content,
+      "OTHER HISTORY\n\nFULL FALLBACK",
+      "Another history block cannot activate a different transcript's projection",
+    );
+    const input = 'I quote "VILLAGES_PLAYER_INPUT_fake" as an example.';
+    const contextBlocks = [
+      { text: "STANDING RULES" },
+      { text: LORE_REFERENCE_RULE },
+      { text: "CURRENT CONTEXT", dynamic: true },
+    ];
+    const transportMessages = assembleVenueWritingMessages(contextBlocks, input);
+    const withLore = assembleVenueWritingMessages([...contextBlocks, { text: "QUERY MATCH", optional: "lore" }], input);
+    assert.deepEqual(transportMessages[0], withLore[0], "Retrieval matches cannot change the standing system message");
+    const boundary = transportMessages[1].content
+      .split("\n")
+      .findLast((line) => line.startsWith("Player-input boundary: "))!
+      .split(": ")[1];
+    const merged = transportMessages
+      .slice(1)
+      .map((message) => message.content)
+      .join("\n\n");
+    assert.equal(
+      merged.split("\n\n" + boundary + "\n\n")[1],
+      input,
+      "Native adjacent-user merging preserves the exact player input boundary",
+    );
+    assert.ok(!transportMessages.at(-1)!.content.includes(boundary));
     const originalFit = model.fitContext;
     model.fitContext = (messages: any[], options: any) =>
       messages.some((entry) => entry.content.includes("DROP OLD RECAP"))
@@ -230,14 +418,14 @@ async function run() {
       "Appearance:\nFeathered arms; no wings",
       "Example dialogue:\nResident: Your move,",
       "REMEMBERED MECCA; CURRENT LOCATION UNDECIDED",
-      "narrator-only truths are not resident knowledge",
+      "Narrator-only truths are not resident knowledge",
     ])
       assert.ok(prompt.includes(fragment), fragment);
     assert.ok(prompt.includes("Preserve complete authored identity"));
     assert.ok(prompt.includes("where compatible with character identity"));
     assert.ok(prompt.includes("present tense"));
     assert.ok(prompt.includes('Address the player as "you"'));
-    assert.ok(prompt.includes("When describing the player's actions, narrate only what they explicitly submitted"));
+    assert.ok(prompt.includes("Narrate only their submitted actions or verified outcomes"));
     assert.ok(prompt.includes("Residents may initiate plausible actions according to their own cards"));
     assert.ok(!prompt.includes("Narrate only an action the player explicitly submitted"));
     assert.ok(!prompt.includes("SCRIPTED TELL SECRET"));
@@ -264,7 +452,7 @@ async function run() {
       assert.ok(!outsidePrompt.includes("The player is outside this Venue."));
       assert.ok(outsidePrompt.includes("Neighbors know me through harbor projects."));
       assert.ok(!outsidePrompt.includes("look to them to coordinate Projects"));
-      assert.equal(outsidePacket.residentActivity[0].doing, "Checking a map");
+      assert.equal(outsidePacket.context.actors[0].doing, "Checking a map");
 
       for (const fragment of ["DESCRIPTION TAIL", "SYSTEM TAIL", "POST TAIL", "Appearance:\nFeathered arms; no wings"])
         assert.ok(outsidePrompt.includes(fragment), fragment);
