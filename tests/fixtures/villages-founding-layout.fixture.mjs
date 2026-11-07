@@ -325,8 +325,11 @@ export async function verifyFoundingLayout(group) {
         await button("Continue to People").click();
         await expect(root.getByLabel("Village Name", { exact: true })).toBeFocused();
         await root.getByLabel("Village Name", { exact: true }).fill("Coastal Community");
+        await button("Continue to People").click();
+        await expect(root.getByLabel("Location name", { exact: true })).toBeFocused();
+        await root.getByLabel("Location name", { exact: true }).fill("Old Harbour");
         await root
-          .getByLabel("Local area", { exact: true })
+          .getByLabel("Location description", { exact: true })
           .fill("An oceanfront expanse between the cliffs and river.");
         await root.getByLabel("World rules", { exact: true }).fill("The sun never sets.");
         await expect(root.getByLabel("Historical backstory", { exact: true })).toHaveCount(0);
@@ -634,7 +637,7 @@ export async function verifyFoundingLayout(group) {
           await expect(sheet.getByRole("img", { name: "Artwork for Common Space", exact: true })).toBeVisible();
           await sheet.getByRole("button", { name: "Done", exact: true }).click();
           await root
-            .getByRole("region", { name: "Village map", exact: true })
+            .getByRole("region", { name: "Starting location map", exact: true })
             .getByRole("button", { name: "Generate artwork", exact: true })
             .click();
           await expect.poll(() => page.evaluate(() => window.featureController.setupMapSource)).toBe("generate");
@@ -713,7 +716,7 @@ export async function verifyFoundingLayout(group) {
         );
         if (view.width > 1100) {
           const options = await root.getByRole("region", { name: "Starting Venues", exact: true }).boundingBox();
-          const map = await root.getByRole("region", { name: "Village map", exact: true }).boundingBox();
+          const map = await root.getByRole("region", { name: "Starting location map", exact: true }).boundingBox();
           await expect(sheet).toHaveCount(0);
           assert.ok(map.x >= options.x + options.width, "The map sits beside Starting Venues");
           assert.ok(map.width > options.width * 2, "The overview gives the map most of the room");
@@ -749,6 +752,12 @@ export async function verifyFoundingLayout(group) {
         await bounds("review");
         await button("Found village").click();
         await expect.poll(() => payload).toBeTruthy();
+        assert.equal(payload.name, "Coastal Community");
+        assert.equal(
+          payload.startingLocationName,
+          "Old Harbour",
+          "The saved draft retains the location separately from the Village",
+        );
         assert.equal(payload.communityVenueId, "founding-community");
         assert.equal(payload.worldRules, "The sun never sets.");
         assert.deepEqual(payload.circumstances, [
@@ -825,6 +834,7 @@ createRoot(document.getElementById('root')).render(window.strict?<StrictMode><Ha
         continue;
       }
       assert.equal(values.setSetupName, "", "Unfounded drafts restore independently");
+      assert.equal(values.setSetupLocationName, "");
       assert.equal(values.setSetupWorldName, "", "World identity is optional and has no generated default");
       assert.equal(Object.hasOwn(values, "setSetupFoundingReason"), false);
       assert.equal(Object.hasOwn(values, "setSetupFoundingDetails"), false);
@@ -837,6 +847,7 @@ createRoot(document.getElementById('root')).render(window.strict?<StrictMode><Ha
       return window.values;
     });
     assert.equal(fresh.setSetupName, "");
+    assert.equal(fresh.setSetupLocationName, "");
     assert.equal(Object.hasOwn(fresh, "setSetupFoundingReason"), false);
     assert.equal(Object.hasOwn(fresh, "setSetupFoundingGuidance"), false);
     assert.notEqual(fresh.setSetupFoundingDetails, "x".repeat(2000));

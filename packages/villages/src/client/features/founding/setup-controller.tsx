@@ -269,6 +269,7 @@ export function createFoundingGotoSetupStep(ports: {
   readonly setupMapBusy: FoundingState["setupMapBusy"];
   readonly setupMapSrc: string | null;
   readonly setupName: FoundingState["setupName"];
+  readonly setupLocationName: FoundingState["setupLocationName"];
   readonly setupPlayerBackground: FoundingState["setupPlayerBackground"];
   readonly setupWorldName?: string;
   readonly setupSetting: FoundingState["setupSetting"];
@@ -299,6 +300,7 @@ export function createFoundingGotoSetupStep(ports: {
       setupMapBusy,
       setupMapSrc,
       setupName,
+      setupLocationName,
       setupPlayerBackground,
       setupSetting,
       setupStep,
@@ -325,9 +327,11 @@ export function createFoundingGotoSetupStep(ports: {
               : "");
       const placeProblem = !setupName.trim()
         ? "Give the village a name."
-        : !setupSetting.trim()
-          ? "Describe the place."
-          : "";
+        : !setupLocationName.trim()
+          ? "Name the starting location."
+          : !setupSetting.trim()
+            ? "Describe the starting location."
+            : "";
       const mapProblem =
         !snapshot?.isFounded && !setupMapSrc && !setupMapBusy
           ? "Generate or upload map artwork on Map before continuing."

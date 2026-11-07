@@ -114,6 +114,7 @@ export function useFoundingSetupDraftData(ports: {
   setupMapSize: { width: number; height: number };
   setupMapSource: import("../../shared/types.js").SetupMapSource;
   setupName: string;
+  setupLocationName: string;
   setupTimeZone?: string;
   setupPlayerBackground: import("../../../shared/contracts/player-background.js").PlayerBackground;
   setupResidentAdmissions: Record<string, import("../../../shared/helpers/resident-admission.js").ResidentAdmission>;
@@ -159,6 +160,7 @@ export function useFoundingSetupDraftData(ports: {
     setupMapSize,
     setupMapSource,
     setupName,
+    setupLocationName,
     setupTimeZone,
     setupPlayerBackground,
     setupResidentAdmissions,
@@ -178,6 +180,7 @@ export function useFoundingSetupDraftData(ports: {
       step: setupStep,
       phase: SETUP_STEPS[setupStep],
       name: setupName,
+      startingLocationName: setupLocationName,
       timeZone: setupTimeZone,
       worldName: setupWorldName,
       setting: setupSetting,
@@ -220,6 +223,7 @@ export function useFoundingSetupDraftData(ports: {
     [
       setupStep,
       setupName,
+      setupLocationName,
       setupTimeZone,
       setupWorldName,
       setupSetting,
@@ -378,6 +382,7 @@ export function useFoundingSetupBlocker(ports: {
   setupMapReviewed: boolean;
   setupMapSrc: string;
   setupName: string;
+  setupLocationName: string;
   setupPlayerBackground: import("../../../shared/contracts/player-background.js").PlayerBackground;
   setupSetting: string;
   setupVenues: import("../../../shared/contracts/village.js").VillageVenue[];
@@ -394,6 +399,7 @@ export function useFoundingSetupBlocker(ports: {
     setupMapReviewed,
     setupMapSrc,
     setupName,
+    setupLocationName,
     setupPlayerBackground,
     setupSetting,
     setupVenues,
@@ -403,13 +409,14 @@ export function useFoundingSetupBlocker(ports: {
   return useCallback(
     (reviewingMap = false): string => {
       if (setupName.trim().length === 0) return "Give the village a name.";
+      if (!setupLocationName.trim()) return "Name the starting location.";
       if (personaDraft.trim().length === 0) return "Choose the Persona who lives in this village.";
       if (!snapshot?.isFounded && playerBackgroundProblem(setupPlayerBackground))
         return playerBackgroundProblem(setupPlayerBackground);
       const presentFacts = setupContext.circumstances.map((line) => line.summary.trim()).filter(Boolean);
       if (presentFacts.length > 4 || presentFacts.some((line) => line.length > FOUNDING_CIRCUMSTANCE_MAX_LENGTH))
         return "Use at most four starting circumstances of 4000 characters each.";
-      if (setupSetting.trim().length === 0) return "Describe what the village is like.";
+      if (setupSetting.trim().length === 0) return "Describe the starting location.";
       if (!snapshot?.isFounded && setupMapBusy) return "Wait for the requested map artwork.";
       if (!snapshot?.isFounded && !setupMapSrc) return "Generate or upload map artwork on Map before founding.";
       if (
@@ -502,6 +509,7 @@ export function useFoundingSetupBlocker(ports: {
       personaDraft,
       setupMapSrc,
       setupName,
+      setupLocationName,
       setupPlayerBackground,
       snapshot?.isFounded,
       setupContext,

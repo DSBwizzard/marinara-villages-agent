@@ -32,7 +32,8 @@ import { type FoundingIssue, foundingVenueIssues } from "./villages-founding-wor
 import { playerBackgroundProblem } from "./villages-player-background.js";
 const PLACE_ERRORS = {
   name: "Give the village a name.",
-  setting: "Describe the place.",
+  locationName: "Name the starting location.",
+  setting: "Describe the starting location.",
 };
 export function FoundingScreen({ controller }: { controller: FoundingScreenController }) {
   const {
@@ -74,6 +75,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setSetupMapProblem,
     setSetupMapReviewed,
     setSetupName,
+    setSetupLocationName,
     setSetupProblem,
     setSetupPlacementError,
     setSetupSetting,
@@ -95,6 +97,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setupMapSource,
     setupMapSrc,
     setupName,
+    setupLocationName,
     setupPlacementError,
     setupPlayerBackground,
     setupProblem: currentSetupProblem,
@@ -248,7 +251,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
         <div className={`${ELEMENT_TAG}-setup-map-viewport`} aria-label="Venue placement map">
           <MapStage
             src={setupMapSrc || simpleFoundingMap()}
-            alt={`Map of ${setupName || "your village"}`}
+            alt={`Map of ${setupLocationName || "your starting location"}`}
             pins={draftPins.map((pin) => ({
               ...pin,
               selected: selectedSetupVenueId === pin.id,
@@ -350,7 +353,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               </li>
             ))}
           </ol>
-          <h1>Forging the Village</h1>
+          <h1>Begin your Village</h1>
 
           {setupStep === 0 ? (
             <button
@@ -366,7 +369,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
         {setupStep === 0 && artSettingsOpen ? (
           <FoundingDialog title="Art settings" onClose={() => setArtSettingsOpen(false)}>
             <div className="villages-founding-editor-body">
-              <p>One style for the Village map and all Venue images. Changes apply to new generations.</p>
               <SceneryStyleFields
                 value={controller.sceneryStyle}
                 profileId={controller.sceneryStyleProfileId}
@@ -475,53 +477,78 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
             </div>
           </div>
           <div hidden={setupStep !== 0} className="villages-place-panels">
-            <section className="villages-forging-card">
-              <h3>Setting</h3>
-              <FoundingField
-                title="Village Name"
-                error={validatedFields.includes("place-name") && !setupName.trim() ? PLACE_ERRORS.name : ""}
-              >
-                <input
-                  autoComplete="off"
-                  aria-label="Village Name"
-                  maxLength={snapshot?.settings.villageNameMaxLength ?? 80}
-                  value={setupName}
-                  disabled={busy}
-                  onChange={(event) => {
-                    setSetupName(event.target.value);
-                    clearFieldValidation("place-name");
-                  }}
-                />
-              </FoundingField>
-              <FoundingField title="Village world" optional>
-                <input
-                  autoComplete="off"
-                  aria-label="Village world"
-                  maxLength={120}
-                  value={setupWorldName}
-                  disabled={busy}
-                  onChange={(event) => setSetupWorldName(event.target.value)}
-                />
-              </FoundingField>
-              <FoundingField
-                title="Local area"
-                error={validatedFields.includes("place-setting") && !setupSetting.trim() ? PLACE_ERRORS.setting : ""}
-              >
-                <textarea
-                  autoComplete="off"
-                  aria-label="Local area"
-                  maxLength={snapshot?.settings.settingMaxLength ?? 4096}
-                  rows={4}
-                  value={setupSetting}
-                  disabled={busy}
-                  onChange={(event) => {
-                    setSetupSetting(event.target.value);
-                    clearFieldValidation("place-setting");
-                  }}
-                />
-              </FoundingField>
-              <small>Engine time · {snapshot?.clock?.timeZone || snapshot?.village.timeZone || "UTC"}</small>
-            </section>
+            <div className="villages-founding-setting">
+              <section className="villages-forging-card">
+                <h3>Village</h3>
+                <FoundingField
+                  title="Village Name"
+                  error={validatedFields.includes("place-name") && !setupName.trim() ? PLACE_ERRORS.name : ""}
+                >
+                  <input
+                    autoComplete="off"
+                    aria-label="Village Name"
+                    maxLength={snapshot?.settings.villageNameMaxLength ?? 80}
+                    value={setupName}
+                    disabled={busy}
+                    onChange={(event) => {
+                      setSetupName(event.target.value);
+                      clearFieldValidation("place-name");
+                    }}
+                  />
+                </FoundingField>
+                <FoundingField title="World" optional>
+                  <input
+                    autoComplete="off"
+                    aria-label="World"
+                    maxLength={120}
+                    value={setupWorldName}
+                    disabled={busy}
+                    onChange={(event) => setSetupWorldName(event.target.value)}
+                  />
+                </FoundingField>
+              </section>
+              <section className="villages-forging-card">
+                <h3>Starting location</h3>
+                <FoundingField
+                  title="Location name"
+                  error={
+                    validatedFields.includes("location-name") && !setupLocationName.trim()
+                      ? PLACE_ERRORS.locationName
+                      : ""
+                  }
+                >
+                  <input
+                    autoComplete="off"
+                    aria-label="Location name"
+                    maxLength={80}
+                    value={setupLocationName}
+                    disabled={busy}
+                    onChange={(event) => {
+                      setSetupLocationName(event.target.value);
+                      clearFieldValidation("location-name");
+                    }}
+                  />
+                </FoundingField>
+                <FoundingField
+                  title="Location description"
+                  error={validatedFields.includes("place-setting") && !setupSetting.trim() ? PLACE_ERRORS.setting : ""}
+                >
+                  <textarea
+                    autoComplete="off"
+                    aria-label="Location description"
+                    maxLength={snapshot?.settings.settingMaxLength ?? 4096}
+                    rows={4}
+                    value={setupSetting}
+                    disabled={busy}
+                    onChange={(event) => {
+                      setSetupSetting(event.target.value);
+                      clearFieldValidation("place-setting");
+                    }}
+                  />
+                </FoundingField>
+                <small>Engine time · {snapshot?.clock?.timeZone || snapshot?.village.timeZone || "UTC"}</small>
+              </section>
+            </div>
             <section className="villages-forging-card villages-place-options">
               <div className="villages-founding-tabs" role="group" aria-label="Village context">
                 {["World rules", "Circumstances", "Lorebooks", "Connections"].map((view) => (
@@ -600,6 +627,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
             <div className="villages-founding-places">
               <QuickStartVenues
                 venues={setupVenues}
+                locationName={setupLocationName}
                 saveStatus={draftStatus}
                 onRetrySaving={() => void retrySetupSaving()}
                 actions={
@@ -682,7 +710,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
           {setupStep === 3 ? (
             <>
               <h2>Review {setupName}</h2>
-              <p>Check your complete starting situation before founding.</p>
               <div className="villages-forging-columns">
                 <div>
                   <section className="villages-forging-card">
@@ -699,7 +726,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   </section>
                   <section className="villages-forging-card">
                     <div className="villages-forging-card-heading">
-                      <h3>Setting</h3>
+                      <h3>Starting location · {setupLocationName}</h3>
                       <button type="button" onClick={() => gotoSetupStep(0)}>
                         Change setting
                       </button>
@@ -716,12 +743,12 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                           : {row.summary}
                         </p>
                       ))}
-                    {setupWorldName ? <p>Village world: {setupWorldName}</p> : null}
+                    {setupWorldName ? <p>World: {setupWorldName}</p> : null}
                     <p>{setupLorebookDraft.length} lorebooks selected</p>
                   </section>
                   <section className="villages-forging-card">
                     <div className="villages-forging-card-heading">
-                      <h3>Map</h3>
+                      <h3>Map · {setupLocationName}</h3>
                       <button type="button" onClick={() => gotoSetupStep(2)}>
                         Change map
                       </button>
@@ -876,6 +903,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   ...fields,
                   "connections",
                   "place-name",
+                  "location-name",
                   "place-setting",
                   ...(setupStep === 2 ? ["map"] : []),
                   ...(setupStep >= 1
