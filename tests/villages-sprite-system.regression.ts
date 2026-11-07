@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { scenePersonReferences } from "../packages/villages/src/server/domain/rules/scene-prompt-references.js";
 import { randomUUID } from "node:crypto";
 import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -310,7 +311,10 @@ for (const failure of ["none", "validation-input", "presentation-publish", "inva
     },
     completeWithRoom: async (_model: unknown, messages: { content: string }[]) => {
       paid++;
-      const catalog = scenePromptPacket(messages.map((message) => message.content).join("\n")).context.actors;
+      const catalog = scenePromptPacket(
+        messages.map((message) => message.content).join("\n"),
+        scenePersonReferences(["a", "b"]),
+      ).context.actors;
       assert.ok(
         catalog
           .find((actor: any) => actor.id === "a")

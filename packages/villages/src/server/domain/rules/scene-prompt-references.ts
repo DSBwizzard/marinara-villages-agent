@@ -32,6 +32,13 @@ const actorLists = new Set([
   "participants",
   "subjects",
   "heardBy",
+  "sources",
+  "localReach",
+  "wordsReach",
+  "raisedWordsReach",
+  "muffledVoicesReach",
+  "alertOnly",
+  "residentRequestLocalIds",
 ]);
 const actorRecords = new Set(["learners", "knowers", "intentions", "intentionRevisions", "names", "approvals"]);
 

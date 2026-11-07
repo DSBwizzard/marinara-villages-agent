@@ -188,10 +188,10 @@ async function run() {
     const beforeHistory = JSON.stringify(witnessed.lines);
     const deduplicated = await prepareVenueTurnMessages(witnessed, "What did you promise?", "chat", "", null);
     const deduplicatedPrompt = deduplicated.fitted.messages.map((entry) => entry.content).join("\n");
-    const projected = scenePromptPacket(deduplicatedPrompt);
+    const projected = scenePromptPacket(deduplicatedPrompt, deduplicated.historyContract?.people);
     assert.equal(deduplicatedPrompt.split(witnessed.lines[0].content).length - 1, 1);
     assert.deepEqual(projected.context.history ?? [], [], "Covered evidence is sent only in the canonical transcript");
-    const historical = scenePromptHistory(deduplicatedPrompt)[0];
+    const historical = scenePromptHistory(deduplicatedPrompt, deduplicated.historyContract?.people)[0];
     assert.equal(deduplicated.historyContract!.references[historical.id], witnessed.lines[0].id);
     for (const field of ["at", "zoneId", "delivery", "physicalIdsAfter", "soundOnly"])
       assert.deepEqual(historical[field], (witnessed.lines[0] as any)[field]);

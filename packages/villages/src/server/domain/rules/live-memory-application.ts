@@ -67,19 +67,9 @@ export function applyLiveMemories(
           playerLineId: saved.playerLineId,
           replyLineIds: saved.replyLineIds,
           residentIds: sceneActorIds(state),
+          learningVersion: context.learningVersion,
         });
         proposal = bound.proposal;
-        if (
-          proposal.action === "create" &&
-          proposal.domainRef?.kind === "relationship" &&
-          proposal.learners.player &&
-          Array.isArray(asRecord(saved.relationshipChanges).disclosures) &&
-          (asRecord(saved.relationshipChanges).disclosures as unknown[]).length
-        ) {
-          delete proposal.learners.player;
-          if (!Object.keys(proposal.learners).length)
-            throw new Error("Relationship disclosure learning belongs to source publication.");
-        }
         const expectedEffects = [
           ...(turn.physicalOutcomeVersion === 1 ? [`venue-chat:${scene.id}:${turn.id}`] : []),
           ...(turn.wishProposals ?? []).map(

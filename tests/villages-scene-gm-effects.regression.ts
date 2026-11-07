@@ -17,6 +17,7 @@ import { fixtureRelationshipState } from "./helpers/village-storage.fixture.js";
 import { relationshipDocumentId } from "../packages/villages/src/server/adapters/storage/relationship-payload-store.js";
 import { ensureNarrative } from "../packages/villages/src/server/domain/rules/narrative-development.js";
 import { SCENE_DEVELOPMENT_SCHEMA } from "../packages/villages/src/server/domain/rules/narrative-prompts.js";
+import { projectRelationshipProfiles } from "../packages/villages/src/server/domain/rules/relationship-knowledge.js";
 
 await import(pathToFileURL(resolve("packages/villages/server.mjs")).href);
 mock.timers.enable({ apis: ["Date"], now: new Date("2026-11-05T20:00:00Z") });
@@ -46,6 +47,12 @@ for (const scenario of [
   "draft-appointment",
   "physical",
   "policy",
+  "learning",
+  "mixed-learning",
+  "whisper",
+  "mixed-long-learning",
+  "missing-learning",
+  "wrong-learning",
 ] as const) {
   const host = await packagedSceneServer({
     configure(world, now) {
@@ -122,148 +129,227 @@ for (const scenario of [
             : "Hello.";
     const common = { input: message ? [{ kind: "speech", text: message }] : [] };
     const content =
-      scenario === "physical"
+      scenario === "whisper"
         ? {
-            input: [{ kind: "action", text: message }],
-            segments: [{ kind: "narration", text: "You paint the white walls blue with the available paint." }],
-            action: {
-              happened: true,
-              segment: 0,
-              actorIds: ["player"],
-              consent: [],
-              appearanceChanged: true,
-              edits: [{ before: "White walls.", after: "Blue walls." }],
-              dayNight: true,
-            },
+            input: [{ kind: "speech", text: message, delivery: "whisper", targetId: "mara" }],
+            segments: [{ kind: "dialogue", speakerId: "mara", text: "Good evening." }],
           }
-        : scenario === "policy"
+        : ["learning", "mixed-learning", "mixed-long-learning", "missing-learning", "wrong-learning"].includes(scenario)
           ? {
-              ...common,
+              input: "speech",
               segments: [
-                { kind: "dialogue", speakerId: "mara", text: "You are now a co-manager of the Mill with me." },
-              ],
-              access: [
                 {
-                  actorId: "mara",
-                  venueId: "mill",
-                  zoneId: null,
-                  outcome: "access-management",
-                  evidence: [0],
-                  command: { action: "venue-policy", managerIds: ["mara", "player"], visitorHours: null },
+                  kind: "dialogue",
+                  speakerId: "mara",
+                  text:
+                    "I live in the old mill." +
+                    (scenario === "mixed-long-learning" ? " I tend the garden every morning.".repeat(20) : ""),
+                },
+                { kind: "dialogue", speakerId: "mara", text: "I enjoy collecting leaves." },
+              ],
+              memoryChanges: [
+                {
+                  text: "Mara says she lives in the old mill.",
+                  subjects: ["mara"],
+                  support: [
+                    {
+                      lineId: 0,
+                      ...(scenario === "mixed-long-learning" ? { excerpt: "I live in the old mill." } : {}),
+                    },
+                  ],
+                  learners: {
+                    player: {
+                      basis: "report",
+                      ...(scenario !== "missing-learning" ? { disclosed: { kind: "home", toId: "mara" } } : {}),
+                    },
+                  },
+                  domainRef: { kind: "relationship", characterId: scenario === "wrong-learning" ? "player" : "mara" },
+                  screening: { disposition: "clear" },
                 },
               ],
-            }
-          : scenario === "npc"
-            ? {
-                ...common,
-                segments: [
-                  { kind: "narration", text: "A courier enters and introduces herself as Nell." },
-                  { kind: "dialogue", speakerId: "new:nell", text: "I enjoy collecting pressed leaves." },
-                ],
-                npcIntroductions: [
-                  {
-                    ref: "new:nell",
-                    name: "Nell",
-                    label: "Courier",
-                    characterization: "A cheerful courier who collects leaves.",
-                    segment: 0,
-                  },
-                ],
-                memoryChanges: [
-                  {
-                    action: "create",
-                    kind: "experience",
-                    text: "Nell told the player she enjoys collecting pressed leaves.",
-                    subjects: ["new:nell", "player"],
-                    learners: {
-                      "new:nell": {
-                        basis: "observation",
-                        support: [{ lineId: 1, excerpt: "I enjoy collecting pressed leaves." }],
-                      },
-                      player: {
-                        basis: "observation",
-                        support: [{ lineId: 1, excerpt: "I enjoy collecting pressed leaves." }],
-                      },
-                    },
-                    screening: { disposition: "clear" },
-                  },
-                ],
-              }
-            : scenario === "occupancy"
-              ? {
-                  ...common,
-                  segments: [{ kind: "dialogue", speakerId: "mara", text: "I'll see." }],
-                  immediateResidentMoves: [{ characterIds: ["mara", "bryn"], zoneId: "exterior", source: 0 }],
-                }
-              : scenario === "relationship"
+              ...(scenario === "mixed-learning"
                 ? {
-                    ...common,
-                    segments: [
-                      { kind: "dialogue", speakerId: "mara", text: "Thank you for hearing me. I feel more at ease." },
-                    ],
                     relationshipChanges: {
-                      changes: [
+                      disclosures: [
                         {
                           fromId: "mara",
-                          toId: "player",
-                          expectedRevision: 3,
-                          patch: { stance: "More at ease" },
+                          toId: "mara",
+                          kind: "preference",
+                          text: "Mara enjoys collecting leaves.",
+                          lineIds: [1],
+                          excerpts: ["I enjoy collecting leaves."],
+                        },
+                      ],
+                    },
+                  }
+                : {}),
+              ...(scenario === "mixed-long-learning"
+                ? {
+                    relationshipChanges: {
+                      disclosures: [
+                        {
+                          fromId: "mara",
+                          toId: "mara",
+                          kind: "home",
+                          text: "Mara says she lives in the old mill.",
                           lineIds: [0],
                         },
                       ],
                     },
                   }
-                : scenario === "project" || scenario === "project-conclude" || scenario === "project-greet"
+                : {}),
+            }
+          : scenario === "physical"
+            ? {
+                input: [{ kind: "action", text: message }],
+                segments: [{ kind: "narration", text: "You paint the white walls blue with the available paint." }],
+                action: {
+                  happened: true,
+                  segment: 0,
+                  actorIds: ["player"],
+                  consent: [],
+                  appearanceChanged: true,
+                  edits: [{ before: "White walls.", after: "Blue walls." }],
+                  dayNight: true,
+                },
+              }
+            : scenario === "policy"
+              ? {
+                  ...common,
+                  segments: [
+                    { kind: "dialogue", speakerId: "mara", text: "You are now a co-manager of the Mill with me." },
+                  ],
+                  access: [
+                    {
+                      actorId: "mara",
+                      venueId: "mill",
+                      zoneId: null,
+                      outcome: "access-management",
+                      evidence: [0],
+                      command: { action: "venue-policy", managerIds: ["mara", "player"], visitorHours: null },
+                    },
+                  ],
+                }
+              : scenario === "npc"
+                ? {
+                    ...common,
+                    segments: [
+                      { kind: "narration", text: "A courier enters and introduces herself as Nell." },
+                      { kind: "dialogue", speakerId: "new:nell", text: "I enjoy collecting pressed leaves." },
+                    ],
+                    npcIntroductions: [
+                      {
+                        ref: "new:nell",
+                        name: "Nell",
+                        label: "Courier",
+                        characterization: "A cheerful courier who collects leaves.",
+                        segment: 0,
+                      },
+                    ],
+                    memoryChanges: [
+                      {
+                        action: "create",
+                        kind: "experience",
+                        text: "Nell told the player she enjoys collecting pressed leaves.",
+                        subjects: ["new:nell", "player"],
+                        learners: {
+                          "new:nell": {
+                            basis: "observation",
+                            support: [{ lineId: 1, excerpt: "I enjoy collecting pressed leaves." }],
+                          },
+                          player: {
+                            basis: "observation",
+                            support: [{ lineId: 1, excerpt: "I enjoy collecting pressed leaves." }],
+                          },
+                        },
+                        screening: { disposition: "clear" },
+                      },
+                    ],
+                  }
+                : scenario === "occupancy"
                   ? {
                       ...common,
-                      segments: [
-                        {
-                          kind: "dialogue",
-                          speakerId: "mara",
-                          text: "I approve the exact Larger Common room design, and I want to lead its construction.",
-                        },
-                      ],
-                      projectSpeech: ["approval", "builder"].map((kind) => ({
-                        projectId: "project:common",
-                        revision: 1,
-                        kind,
-                        speakerId: "mara",
-                        citations: [{ segment: 0 }],
-                      })),
+                      segments: [{ kind: "dialogue", speakerId: "mara", text: "I'll see." }],
+                      immediateResidentMoves: [{ characterIds: ["mara", "bryn"], zoneId: "exterior", source: 0 }],
                     }
-                  : scenario === "wish"
+                  : scenario === "relationship"
                     ? {
                         ...common,
                         segments: [
                           {
                             kind: "dialogue",
                             speakerId: "mara",
-                            text: "My favorite leek soup uses sliced leeks, potatoes and broth, simmered until tender.",
+                            text: "Thank you for hearing me. I feel more at ease.",
                           },
                         ],
-                        wishChanges: [
-                          {
-                            actorId: "mara",
-                            wishId: "recipe",
-                            intent: "fulfilled",
-                            evidence: [0],
-                            reason: "Shared her recipe in conversation.",
-                          },
-                        ],
+                        relationshipChanges: {
+                          changes: [
+                            {
+                              fromId: "mara",
+                              toId: "player",
+                              expectedRevision: 3,
+                              patch: { stance: "More at ease" },
+                              lineIds: [0],
+                            },
+                          ],
+                        },
                       }
-                    : scenario === "draft-appointment" && calls === 1
+                    : scenario === "project" || scenario === "project-conclude" || scenario === "project-greet"
                       ? {
                           ...common,
-                          segments: [{ kind: "dialogue", speakerId: "mara", text: "Meet me today at 19:30." }],
-                          halt: {
-                            reason: "none",
-                            quote: "",
-                            appointments: [
-                              { source: "draft", quote: "Meet me today at 19:30.", date: "2026-11-05", minute: 1170 },
-                            ],
-                          },
+                          segments: [
+                            {
+                              kind: "dialogue",
+                              speakerId: "mara",
+                              text: "I approve the exact Larger Common room design, and I want to lead its construction.",
+                            },
+                          ],
+                          projectSpeech: ["approval", "builder"].map((kind) => ({
+                            projectId: "project:common",
+                            revision: 1,
+                            kind,
+                            speakerId: "mara",
+                            citations: [{ segment: 0 }],
+                          })),
                         }
-                      : { ...common, segments: [{ kind: "dialogue", speakerId: "mara", text: "Good evening." }] };
+                      : scenario === "wish"
+                        ? {
+                            ...common,
+                            segments: [
+                              {
+                                kind: "dialogue",
+                                speakerId: "mara",
+                                text: "My favorite leek soup uses sliced leeks, potatoes and broth, simmered until tender.",
+                              },
+                            ],
+                            wishChanges: [
+                              {
+                                actorId: "mara",
+                                wishId: "recipe",
+                                intent: "fulfilled",
+                                evidence: [0],
+                                reason: "Shared her recipe in conversation.",
+                              },
+                            ],
+                          }
+                        : scenario === "draft-appointment" && calls === 1
+                          ? {
+                              ...common,
+                              segments: [{ kind: "dialogue", speakerId: "mara", text: "Meet me today at 19:30." }],
+                              halt: {
+                                reason: "none",
+                                quote: "",
+                                appointments: [
+                                  {
+                                    source: "draft",
+                                    quote: "Meet me today at 19:30.",
+                                    date: "2026-11-05",
+                                    minute: 1170,
+                                  },
+                                ],
+                              },
+                            }
+                          : { ...common, segments: [{ kind: "dialogue", speakerId: "mara", text: "Good evening." }] };
     return { content: JSON.stringify(content), finishReason: "stop", usage: { inputTokens: 10, outputTokens: 10 } };
   };
   try {
@@ -294,6 +380,49 @@ for (const scenario of [
     assert.equal(response.statusCode, 200, scenario + ": " + response.body);
     assert.equal(calls, scenario === "draft-appointment" ? 2 : 1, scenario);
     const world = fixtureVillageState(host.records.get("villages-village").data, host.records);
+    if (scenario === "whisper") {
+      const spoken = host.scene().lines.find((line) => line.role === "user" && line.speechSource?.version === 3)!;
+      assert(
+        spoken,
+        JSON.stringify(
+          host.scene().lines.map(({ role, speakerId, kind, delivery, targetId, speechSource }) => ({
+            role,
+            speakerId,
+            kind,
+            delivery,
+            targetId,
+            speechSource,
+          })),
+        ),
+      );
+      assert.equal(spoken.kind, "whisper");
+      assert.equal(spoken.targetId, "mara");
+      assert.deepEqual(
+        spoken.heardBy.filter((id) => id !== "player"),
+        ["mara"],
+      );
+    }
+    if (scenario === "learning" || scenario === "mixed-learning" || scenario === "mixed-long-learning") {
+      const profiles = projectRelationshipProfiles(defaultRelationshipState(world.seed), world);
+      assert(
+        profiles[0].knownPlaces.some((row) => row.kind === "home" && row.text.includes("old mill")),
+        "Unified learning persists in the player's known-place profile",
+      );
+      if (scenario === "mixed-learning")
+        assert(profiles[0].interests.includes("leaves"), "Unrelated legacy disclosure and new Memory both survive");
+      if (scenario === "mixed-long-learning")
+        assert.equal(
+          profiles[0].knownPlaces.length,
+          1,
+          "Valid short-quoted Memory survives a legacy disclosure whose long source cannot publish",
+        );
+    }
+    if (scenario === "missing-learning" || scenario === "wrong-learning")
+      assert.equal(
+        world.memories.records.length,
+        0,
+        "Invalid typed player disclosure is rejected without losing the spoken reply",
+      );
     if (scenario === "occupancy") {
       assert.equal(response.json().turnOutcome, "occupancy-unavailable");
       assert.equal(host.scene().lines.length, 0, "The whole request is held even without emitted moves");

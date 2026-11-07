@@ -14,6 +14,7 @@ export function venueCardProfile(
   playerName = "the player",
   includePostHistory = true,
   includeAdmissionPolicy = true,
+  personReference = card.id,
 ): string {
   const fields = [
     ["System prompt", card.systemPrompt],
@@ -27,7 +28,7 @@ export function venueCardProfile(
   ];
   const expand = (text: string) => text.replace(/\{\{char\}\}/gi, card.name).replace(/\{\{user\}\}/gi, playerName);
   return (
-    `## Character: ${card.name} (${card.id})\n` +
+    `## Character: ${card.name} (${personReference})\n` +
     fields
       .filter(([, value]) => value?.trim())
       .map(([label, value]) => `${label}:\n${expand(value!)}`)
@@ -40,7 +41,7 @@ export type VenueWritingBlock = {
   text: string;
   dynamic?: boolean;
   /** Equivalent context while this exact optional witnessed history is retained. */
-  withHistory?: { source: string; text: string };
+  withHistory?: { source: string | string[]; text: string };
   optional?: "wish" | "history" | "memory" | "lore";
   lore?: LoreUse;
   evidence?: readonly VenueLine[];
@@ -57,6 +58,7 @@ export type VenueWritingSections = {
   metadata: VenueWritingBlock[];
   stableContext: VenueWritingBlock[];
   sceneContext: VenueWritingBlock[];
+  replyReminder?: VenueWritingBlock[];
 };
 
 /** Keep the writing task distinct from evidence bookkeeping within one request. */
@@ -71,6 +73,7 @@ export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWrit
     sceneContext: "Scene facts",
     circumstances: "Current Scene circumstances",
     authoredInstructions: "Authored post-history direction",
+    replyReminder: "Reply reminder",
   };
   return (Object.keys(headings) as (keyof VenueWritingSections)[]).flatMap((section) => {
     const blocks = (sections[section] ?? []).filter((block) => block.text.trim());
@@ -80,6 +83,7 @@ export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWrit
       "conversation",
       "circumstances",
       "authoredInstructions",
+      "replyReminder",
     ].includes(section);
     return blocks.length
       ? [{ text: `## ${headings[section]}`, dynamic }, ...blocks.map((block) => ({ ...block, dynamic }))]
@@ -92,7 +96,7 @@ export function assembleVenueWritingMessages(blocks: readonly VenueWritingBlock[
   const lore = blocks.filter((block) => block.optional === "lore").map((block) => block.text);
   const history = new Set(blocks.filter((block) => !block.withHistory).map((block) => block.text));
   const render = ({ text, withHistory }: VenueWritingBlock) =>
-    withHistory && history.has(withHistory.source) ? withHistory.text : text;
+    withHistory && [withHistory.source].flat().every((source) => history.has(source)) ? withHistory.text : text;
   const dynamic = blocks
     .filter((block) => block.dynamic && block.optional !== "lore")
     .map(render)
@@ -152,7 +156,10 @@ export function fitVenueWritingMessages(
     ) {
       const texts = new Set(kept.filter((block) => !block.withHistory).map((block) => block.text));
       const shown = kept.filter(
-        (block) => !block.withHistory || !texts.has(block.withHistory.source) || block.withHistory.text,
+        (block) =>
+          !block.withHistory ||
+          ![block.withHistory.source].flat().every((source) => texts.has(source)) ||
+          block.withHistory.text,
       );
       return {
         ...fitted,

@@ -54,6 +54,9 @@ import { sceneContinuityView, sceneLocationContext, sceneWishEffectIds } from ".
 import {
   materializeGmReply,
   normalizeGmEffects,
+  compactSceneRead,
+  sceneGmMemory,
+  sceneMemoryHistorySources,
   SCENE_GM_ACCESS,
   SCENE_GM_BOUNDARY,
   SCENE_GM_CONTEXT,
@@ -199,7 +202,7 @@ export function createSceneWriting({
   ) {
     assertCurrentSceneGeneration(session);
 
-    const writingVersion = 5;
+    const writingVersion = 6;
     const requestKey = writingRequestKey(session, message, mode);
     const captured = venueSavedCheckpoint?.<{
       fitted: ReturnType<typeof fitVenueWritingMessages>;
@@ -279,10 +282,12 @@ export function createSceneWriting({
       const resident = village.villagers.find((entry) => entry.characterId === person.characterId);
       if (!resident) {
         const npc = findNpc(village, person.characterId);
-        return npc ? npcProfile(npc) : `${person.name} (${person.characterId}): no longer available.`;
+        return npc
+          ? npcProfile(npc, encodedPeople[npc.id] ?? npc.id)
+          : `${person.name} (${encodedPeople[person.characterId] ?? person.characterId}): no longer available.`;
       }
       const card = readEffectiveVillagerCard(resident);
-      return venueCardProfile(card, player.name, false, false);
+      return venueCardProfile(card, player.name, false, false, encodedPeople[card.id] ?? card.id);
     });
     const fixedProfiles = profiles.filter(
       (_profile, index) =>
@@ -408,7 +413,7 @@ export function createSceneWriting({
             npc.associations.some((association) => association.placeId === session.placeId),
         )
         .slice(0, 4)
-        .map((npc) => ({ id: npc.id, name: npc.name, description: npcProfile(npc) }));
+        .map((npc) => ({ id: npc.id, name: npc.name, description: npcProfile(npc, encodedPeople[npc.id] ?? npc.id) }));
       if (!captured) {
         const memory = sceneMemoryContext(
           authority,
@@ -422,7 +427,7 @@ export function createSceneWriting({
           ]).join("\n"),
         );
         gmContext.memory = memory.envelope;
-        gmContext._memoryWrite = memory.saved;
+        gmContext._memoryWrite = { ...memory.saved, learningVersion: 1 };
       }
       const positions = storedPlace ? sceneLocationContext(session, storedPlace, audience) : undefined;
       const actorState = sceneGmContext(gmContext).actors.map((actor) => {
@@ -431,17 +436,20 @@ export function createSceneWriting({
         const sprite = gmPresentation.sprites[actor.id];
         return {
           ...actor,
-          doing: session.sceneAttendance?.occupants.find((row) => row.characterId === actor.id)?.doing || person?.doing,
+          doing:
+            session.sceneAttendance?.occupants.find((row) => row.characterId === actor.id)?.doing ||
+            person?.doing ||
+            undefined,
           homes: village.venues
             .filter((venue) => venueResidentIds(venue).includes(actor.id))
             .map((venue) => ({ id: venue.id, name: venue.name })),
           ...(location ? { location: location.location, zoneId: location.zone?.id } : {}),
-          presentation: gmPresentation.state[actor.id],
+          presentation: sprite ? gmPresentation.state[actor.id] : undefined,
           expressions: sprite ? spriteExpressionData(sprite, gmPresentation.variants) : undefined,
         };
       });
       const contextFor = () => ({
-        ...sceneGmContext({ ...gmContext, history: [] }),
+        ...sceneGmContext({ ...gmContext, history: [], memory: { ...gmContext.memory, memories: [] } }),
         actors: actorState,
       });
       const presentationOnly = [
@@ -478,7 +486,6 @@ export function createSceneWriting({
         pendingRoomQuestions: session.pendingRoomQuestions,
         residentRequestLocalIds: residentLocalIdsAt(session, [], 0),
         weather: moment.weather,
-        people,
         historyAudiences: Object.fromEntries(
           Object.entries(history.audiences).map(([id, ids]) => [
             id,
@@ -516,14 +523,36 @@ export function createSceneWriting({
         ],
         sceneContext: [
           {
-            text: JSON.stringify({
-              scene: {
-                placeName: session.placeName,
-                zones: gmContext.zones.toSorted((a, b) => a.id.localeCompare(b.id)),
-                accessScopes: gmContext.accessScopes.toSorted((a, b) => a.id.localeCompare(b.id)),
-                hearing: storedPlace ? zoneEventHearingGroups(session, sceneLayoutVenue(storedPlace, session)) : [],
-              },
-            }),
+            text: JSON.stringify(
+              compactSceneRead(
+                mapScenePeople(
+                  {
+                    scene: {
+                      placeName: session.placeName,
+                      zones: gmContext.zones
+                        .toSorted((a, b) => a.id.localeCompare(b.id))
+                        .map(({ revision: _revision, ...zone }) => zone),
+                      accessScopes: gmContext.accessScopes.toSorted((a, b) => a.id.localeCompare(b.id)),
+                      hearing: storedPlace
+                        ? zoneEventHearingGroups(session, sceneLayoutVenue(storedPlace, session)).map((group) =>
+                            Object.fromEntries(
+                              Object.entries(group).filter(
+                                ([key, value]) =>
+                                  !(key === "onstage" && value === true) &&
+                                  !(
+                                    ["localReach", "wordsReach", "raisedWordsReach"].includes(key) &&
+                                    JSON.stringify(value) === JSON.stringify(group.sources)
+                                  ),
+                              ),
+                            ),
+                          )
+                        : [],
+                    },
+                  },
+                  encodedPeople,
+                ),
+              ),
+            ),
           },
         ],
         conversation: blocksFor([
@@ -536,8 +565,21 @@ export function createSceneWriting({
         ]),
         circumstances: [
           {
-            text: JSON.stringify(mapScenePeople(circumstances, encodedPeople)),
+            text: JSON.stringify(compactSceneRead(mapScenePeople(circumstances, encodedPeople))),
           },
+          ...gmContext.memory.memories.map((memory) => {
+            const sources = sceneMemoryHistorySources(
+              memory,
+              session.id,
+              historyBlocks,
+              gmContext._memoryWrite.recall.targetIds,
+              history.renderedRows,
+            );
+            return {
+              text: "Recalled Memory: " + JSON.stringify(mapScenePeople(sceneGmMemory(memory), encodedPeople)),
+              ...(sources.length ? { withHistory: { source: sources, text: "" } } : {}),
+            };
+          }),
           ...history.recall,
         ],
         authoredInstructions,
@@ -556,8 +598,13 @@ export function createSceneWriting({
             " Project zone tuples are [id,name,purpose,kind,venueClass,ownerId,controllerIds,connectedTo,description,roomSpecification,preserveDescription?]. A true preserveDescription retains existing private prose; index-only Projects supply no approval terms.",
           SCENE_GM_PHYSICAL,
           'Physical action needs happened:true and its exact narration segment. Omit action when nothing changes. Memory screening uses the captured administrative rules; code binds the context fingerprint. Newly introduced narrative circumstances use narrativeIntroduction:{status:"introduced",segment,quote,development}; only an admitted grant permits it. Omit it when quiet.',
-          SCENE_GM_PRESENTATION,
         ]),
+        replyReminder: [
+          ...(Object.keys(gmPresentation.sprites).length ? [{ text: SCENE_GM_PRESENTATION }] : []),
+          {
+            text: 'Return {"input":"speech|action|thought|context" for ordinary untargeted input, or an exact span array for mixed input/whispers/shouts/targets,"segments":[...]}. Both keys are required. Empty input:[]. Use supplied speaker IDs; max4 non-player speakers. Include only actual effects, with exact root keys and cited segments. Ordinary conversation needs no effect checklist. Write the next exchange now.',
+          },
+        ],
       });
     }
     const ordinary = captured

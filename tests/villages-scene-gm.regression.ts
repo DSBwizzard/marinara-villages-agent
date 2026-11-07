@@ -4,7 +4,16 @@ import {
   materializeGmReply,
   normalizeGmEffects,
   sceneGmContext,
+  sceneGmMemory,
+  sceneMemoryHistorySources,
 } from "../packages/villages/src/server/domain/rules/scene-gm.js";
+import {
+  assembleVenueWritingMessages,
+  fitVenueWritingMessages,
+} from "../packages/villages/src/server/domain/rules/venue-writing.js";
+import { bindSceneMemorySuggestion } from "../packages/villages/src/server/domain/rules/scene-memories.js";
+import { addMemory, emptyMemories, memoryProposal, targetOf } from "./helpers/memories-fixture.js";
+import { applyMemoryProposal } from "../packages/villages/src/server/domain/rules/memory-application.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { semanticContext } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
@@ -79,6 +88,7 @@ import { sceneWritingHistory } from "../packages/villages/src/server/domain/rule
   const original = JSON.parse(legacy.blocks[0]!.text.slice("Scene exchange: ".length));
   const packet = mapScenePeople(JSON.parse(compact.blocks[0]!.text.slice("Scene exchange: ".length)), people) as any;
   for (const group of packet.groups) {
+    group.facts = { ...packet.facts, ...group.facts };
     group.facts.heardBy = compact.audiences[group.facts.heardBy];
     for (const line of group.lines) {
       line.citable ??= true;
@@ -104,7 +114,237 @@ import { sceneWritingHistory } from "../packages/villages/src/server/domain/rule
   assert.equal(arrived.blocks[0]!.text, compact.blocks[0]!.text, "An arrival cannot rewrite prior history references");
 }
 
+{
+  const source = { kind: "scene", sceneId: "own-scene", id: "accepted", revision: 1, fingerprint: "a".repeat(64) };
+  const row: any = {
+    id: "memory",
+    rootId: "memory",
+    revision: 1,
+    rootRevision: 1,
+    kind: "information",
+    text: "A useful fact",
+    subjects: ["resident"],
+    occurredAt: "2026-11-01",
+    recordedAt: "PRIVATE DATE",
+    knowers: {
+      resident: {
+        basis: "report",
+        attributedTo: "resident",
+        support: [1, 2].map((n) => ({ source, lineId: "line" + n, excerpt: "Exact quote " + n })),
+        learnedAt: "PRIVATE DATE",
+        reinforcedAt: "PRIVATE DATE",
+      },
+    },
+  };
+  const lines: any[] = [1, 2].map((n) => ({
+    id: "line" + n,
+    content: "Exact quote " + n,
+    text: "Exact quote " + n,
+    heardBy: ["resident"],
+    playerPerception: "none",
+  }));
+  const blocks = lines.map((line, n) => ({ text: "HISTORY " + n, optional: "history" as const, evidence: [line] }));
+  assert.deepEqual(
+    sceneMemoryHistorySources(row, "own-scene", blocks, [], lines),
+    blocks.map((b) => b.text),
+  );
+  for (const changed of [
+    { ...row, corrects: "root" },
+    { ...row, resolves: "root" },
+    { ...row, knowers: { resident: { ...row.knowers.resident, repair: { text: "Repaired" } } } },
+    { ...row, knowers: { resident: { ...row.knowers.resident, basis: "interpretation" } } },
+  ])
+    assert.deepEqual(sceneMemoryHistorySources(changed, "own-scene", blocks, [], lines), []);
+  assert.deepEqual(sceneMemoryHistorySources(row, "own-scene", blocks.slice(0, 1), [], lines), []);
+  assert.deepEqual(sceneMemoryHistorySources(row, "own-scene", blocks, ["memory"], lines), []);
+  assert.deepEqual(
+    sceneMemoryHistorySources(
+      row,
+      "own-scene",
+      blocks,
+      [],
+      lines.map((l) => ({ ...l, heardBy: [] })),
+    ),
+    [],
+    "Canonical evidence cannot grant a missing rendered NPC knowledge",
+  );
+  const playerRow = { ...row, knowers: { player: row.knowers.resident } };
+  assert.deepEqual(
+    sceneMemoryHistorySources(playerRow, "own-scene", blocks, [], lines),
+    [],
+    "Unheard whispers cannot replace player recall",
+  );
+  const dto = JSON.stringify(sceneGmMemory(row));
+  assert(!dto.includes("PRIVATE") && !dto.includes("fingerprint") && !dto.includes("support"));
+  assert(dto.length < JSON.stringify(row).length / 2);
+  const recalled = {
+    text: "RESTORED MEMORY",
+    dynamic: true,
+    withHistory: { source: blocks.map((b) => b.text), text: "" },
+  };
+  const fitting = fitVenueWritingMessages(
+    {
+      fitContext(messages: any[]) {
+        return { messages: messages.some((m) => m.content.includes("HISTORY 0")) ? [] : messages };
+      },
+    },
+    [...blocks.map((b) => ({ ...b, dynamic: true })), recalled],
+    "Exact player input",
+    100,
+  );
+  assert(
+    fitting.messages.some((m) => m.content.includes("RESTORED MEMORY")),
+    "Dropping either source restores the complete read DTO during fitting",
+  );
+  assert.deepEqual(fitting.messages.at(-1), { role: "user", content: "Exact player input" });
+  assert(!assembleVenueWritingMessages([...blocks, recalled], "")[1]!.content.includes("RESTORED MEMORY"));
+  const valid: any = {
+    action: "create",
+    text: "A resident's own home",
+    learners: {
+      player: {
+        basis: "report",
+        attributedTo: "resident",
+        support: [{ lineId: 0, excerpt: "I live here." }],
+        disclosed: { kind: "home", toId: "resident" },
+      },
+    },
+    domainRef: { kind: "relationship", id: "fact", characterId: "resident" },
+    screening: {},
+  };
+  const binding: any = {
+    source,
+    operationId: "op",
+    proposalId: "proposal",
+    collectionRevision: 0,
+    lines: [
+      {
+        id: "spoken",
+        role: "assistant",
+        speakerId: "resident",
+        kind: "dialogue",
+        content: "I live here.",
+        heardBy: ["resident"],
+        playerHeard: true,
+      },
+    ],
+    playerLineId: "player-line",
+    replyLineIds: ["spoken"],
+    residentIds: ["resident", "other"],
+    learningVersion: 1,
+  };
+  assert.doesNotThrow(() => bindSceneMemorySuggestion(valid, binding));
+  const shortEvidence = {
+    ...valid,
+    learners: { player: { ...valid.learners.player, attributedTo: undefined, support: [{ lineId: 0 }] } },
+  };
+  for (const text of ["a".repeat(320), "é".repeat(160)]) {
+    const bound = bindSceneMemorySuggestion(shortEvidence, {
+      ...binding,
+      lines: [{ ...binding.lines[0], content: text }],
+    });
+    assert.equal(bound.proposal.learners.player.attributedTo, "resident");
+    assert.equal(bound.evidence[0].excerpt, text, "Short evidence is exact and never truncated");
+  }
+  assert.throws(() =>
+    bindSceneMemorySuggestion(shortEvidence, {
+      ...binding,
+      lines: [{ ...binding.lines[0], content: "é".repeat(160) + "a" }],
+    }),
+  );
+  assert.throws(
+    () => bindSceneMemorySuggestion(shortEvidence, { ...binding, learningVersion: 0 }),
+    "Legacy captures still require explicit source fields",
+  );
+  assert.throws(
+    () =>
+      bindSceneMemorySuggestion(
+        { ...valid, learners: { player: { ...valid.learners.player, attributedTo: "other" } } },
+        binding,
+      ),
+    /attribution changed/,
+  );
+  assert.throws(
+    () =>
+      bindSceneMemorySuggestion(
+        {
+          ...shortEvidence,
+          learners: { player: { ...shortEvidence.learners.player, support: [{ lineId: 0 }, { lineId: 1 }] } },
+        },
+        {
+          ...binding,
+          lines: [...binding.lines, { ...binding.lines[0], id: "other-line", speakerId: "other" }],
+          replyLineIds: ["spoken", "other-line"],
+        },
+      ),
+    /attribution changed/,
+  );
+  const withoutDisclosed = { ...valid, learners: { player: { ...valid.learners.player, disclosed: undefined } } };
+  assert.throws(() => bindSceneMemorySuggestion(withoutDisclosed, binding), /requires disclosed/);
+  assert.doesNotThrow(
+    () =>
+      bindSceneMemorySuggestion(
+        { ...valid, learners: { player: { ...valid.learners.player, basis: "interpretation" } } },
+        { ...binding, learningVersion: 0 },
+      ),
+    "Old captured interpretation semantics are unchanged",
+  );
+  assert.doesNotThrow(
+    () => bindSceneMemorySuggestion(withoutDisclosed, { ...binding, learningVersion: 0 }),
+    "Previously captured generic learning retains its original contract",
+  );
+  assert.throws(
+    () => bindSceneMemorySuggestion({ ...valid, domainRef: { ...valid.domainRef, characterId: "other" } }, binding),
+    /actual speaker/,
+  );
+  const anonymous = {
+    ...binding.lines[0],
+    id: "anonymous",
+    content: "HIDDEN WORDS",
+    playerHeard: false,
+    soundOnly: { player: true, characterIds: [], text: "Muffled voices." },
+  };
+  for (const supports of [
+    [
+      { lineId: 0, excerpt: "Muffled voices." },
+      { lineId: 1, excerpt: "I live here." },
+    ],
+    [
+      { lineId: 1, excerpt: "I live here." },
+      { lineId: 0, excerpt: "Muffled voices." },
+    ],
+  ])
+    assert.throws(
+      () =>
+        bindSceneMemorySuggestion(
+          { ...valid, learners: { player: { ...valid.learners.player, attributedTo: undefined, support: supports } } },
+          { ...binding, lines: [anonymous, ...binding.lines], replyLineIds: ["anonymous", "spoken"] },
+        ),
+      /fully heard speech/,
+      "A fully heard line cannot reveal an anonymous acoustic speaker",
+    );
+  assert.throws(
+    () =>
+      bindSceneMemorySuggestion(
+        { ...valid, learners: { player: { ...valid.learners.player, disclosed: { kind: "home", toId: "other" } } } },
+        binding,
+      ),
+    /describe the speaker/,
+  );
+  assert.throws(
+    () =>
+      bindSceneMemorySuggestion(valid, {
+        ...binding,
+        lines: binding.lines.map((l: any) => ({ ...l, playerHeard: false })),
+      }),
+    /unwitnessed/,
+  );
+}
+
 const segments = [{ kind: "dialogue", speakerId: "mara", text: "Tea sounds good." }];
+assert.equal((materializeGmReply({ input: "speech", segments }, "Tea?").segments as any[])[0].text, "Tea?");
+assert.equal((materializeGmReply({ input: "thought", segments }, "Private thought").segments as any[]).length, 1);
+assert.throws(() => materializeGmReply({ segments }, "Tea?"), /incomplete/);
 const raw = materializeGmReply(
   {
     input: [
@@ -135,6 +375,31 @@ const context = semanticContext(
   true,
 );
 const empty = normalizeGmEffects({}, context);
+for (const action of ["reinforce", "correct", "resolve"] as const) {
+  const collection = addMemory(emptyMemories(), { audience: ["resident"] });
+  const fixture = memoryProposal(collection, {
+    audience: ["resident"],
+    text: "The telescope work is complete.",
+    patch: {
+      action,
+      target: targetOf(collection),
+      ...(action === "reinforce" ? { text: undefined, kind: undefined, subjects: undefined } : { kind: "information" }),
+    },
+  });
+  const captured = {
+    ...context,
+    _memoryWrite: { protection: fixture.context.protection, recall: fixture.context.recall },
+  } as any;
+  const normalized = (
+    normalizeGmEffects({ memoryChanges: [fixture.proposal] }, captured, {}, true).memoryChanges as any[]
+  )[0];
+  if (action === "reinforce") assert.equal(normalized.kind, undefined);
+  assert.equal(
+    applyMemoryProposal(collection, normalized, fixture.context).status,
+    "applied",
+    "Normalized " + action + " preserves the actual domain contract",
+  );
+}
 {
   const captured = structuredClone(context);
   captured._memoryWrite.recall.candidates = [{ id: "memory", rootId: "memory", revision: 2, rootRevision: 2 }] as any;

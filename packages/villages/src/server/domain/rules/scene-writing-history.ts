@@ -199,13 +199,22 @@ export function sceneWritingHistory(
         if (entry.kind === "dialogue" && entry.delivery === "ordinary") delete entry.delivery;
         if (entry.kind === "dialogue" && entry.presentation === "main") delete entry.presentation;
         if (Object.hasOwn(names, item.row.speakerId)) delete entry.name;
+        if (entry.kind === "narration" && entry.speakerId === "__venue_scene__") delete entry.speakerId;
       }
       const previous = groups.at(-1);
       if (previous && JSON.stringify(previous.facts) === JSON.stringify(facts)) previous.lines.push(entry);
       else groups.push({ facts, lines: [entry] });
     }
+    const facts: Record<string, unknown> = {};
+    if (people && groups.length)
+      for (const [key, value] of Object.entries(groups[0]!.facts))
+        if (groups.every((group) => JSON.stringify(group.facts[key]) === JSON.stringify(value))) {
+          facts[key] = value;
+          for (const group of groups) delete group.facts[key];
+        }
     return (
-      "Scene exchange: " + JSON.stringify(encodedPeople ? mapScenePeople({ names, groups }, encodedPeople) : groups)
+      "Scene exchange: " +
+      JSON.stringify(encodedPeople ? mapScenePeople({ names, facts, groups }, encodedPeople) : groups)
     );
   };
   const block = (items: typeof rows): VenueWritingBlock => ({
@@ -237,6 +246,7 @@ export function sceneWritingHistory(
     audiences,
     recall,
     rows: projected,
+    renderedRows: rows.map((item) => item.row),
     evidence: ordered.filter((item) => item.row.citable).map((item) => item.line),
     fingerprints: Object.fromEntries(
       ordered.map(({ line }) => [line.id, createHash("sha256").update(JSON.stringify(line)).digest("hex")]),

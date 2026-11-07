@@ -1,5 +1,6 @@
 import { agendaFixture } from "./helpers/agenda.fixture.js";
 import assert from "node:assert/strict";
+import { mapScenePeople } from "../packages/villages/src/server/domain/rules/scene-prompt-references.js";
 import { context } from "../packages/villages/src/server/adapters/operations/operation-context.js";
 import { addMemory } from "./helpers/memories-fixture.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
@@ -293,7 +294,17 @@ async function run() {
     assert.ok(!prompt.includes("LEGACY TELL SECRET"));
     assert.ok(prompt.includes(state.memories.records[0].text), "Relevant native memory is recalled");
     assert.ok(prompt.includes(state.memories.records[2].text), "Contextual memory is recalled");
-    assert.ok(prompt.includes('"audience":["reserved"]'));
+    const recalled = prompt
+      .split("\n")
+      .filter((line) => line.startsWith("Recalled Memory: "))
+      .map(
+        (line) =>
+          mapScenePeople(JSON.parse(line.slice("Recalled Memory: ".length)), original.historyContract!.people!) as any,
+      );
+    assert(
+      recalled.some((row) => JSON.stringify(Object.keys(row.knowers)) === '["reserved"]'),
+      "Read DTO preserves the private Memory's exact knower scope",
+    );
     assert.ok(!prompt.includes('"rootRevision":'));
     assert.ok(
       original.gmContext._memoryWrite.recall.candidates.some((row) => typeof row.rootRevision === "number"),

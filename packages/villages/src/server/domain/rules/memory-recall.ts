@@ -3,6 +3,15 @@ import { memoryRequire } from "./memory-integrity.js";
 import { estimatedMemoryTokens, memoryTerms, type MemoryProtectionContext } from "./memory-protection.js";
 import { projectMemories, sceneMemoryCollection } from "./memory-views.js";
 
+// Retrieval noise is not an administrative permission to forget or repair knowledge.
+const recallNoise = new Set(
+  "s t don one same no nothing something anything everything just also very really".split(" "),
+);
+const recallTerms = (text: string, names: ReadonlySet<string>) =>
+  memoryTerms(text.replace(/n['’]t\b/giu, "").replace(/['’](?:s|re|ve|ll|d|m)\b/giu, "")).filter(
+    (term) => !recallNoise.has(term) || names.has(term),
+  );
+
 export type MemoryRecallRequest = {
   query: string;
   /** Optional topic cues; never evidence for selecting a mutation target. */
@@ -38,8 +47,9 @@ export function recallMemories(collection: MemoryCollection, request: MemoryReca
     return Object.keys(candidate.knowers).map((id) => ({ ...candidate, knowers: { [id]: candidate.knowers[id] } }));
   });
   const query = request.query + " " + (request.purpose === "system" ? (request.narration ?? "") : "");
-  const terms = new Set(memoryTerms(query));
-  const contextTerms = new Set(memoryTerms((request.context ?? "").slice(-4000)));
+  const names = new Set(Object.values(request.names ?? {}).flatMap(memoryTerms));
+  const terms = new Set(recallTerms(query, names));
+  const contextTerms = new Set(recallTerms((request.context ?? "").slice(-4000), names));
   const documents = new Map<string, number>();
   const rows = candidates.map((candidate, index) => {
     const counts = new Map<string, number>();
@@ -49,7 +59,7 @@ export function recallMemories(collection: MemoryCollection, request: MemoryReca
       ...candidate.subjects.map((id) => request.names?.[id] ?? ""),
       ...Object.values(candidate.knowers).flatMap((state) => state.support.map((e) => e.excerpt)),
     ].join(" ");
-    const tokens = memoryTerms(text);
+    const tokens = recallTerms(text, names);
     for (const term of tokens) counts.set(term, (counts.get(term) ?? 0) + 1);
     for (const term of counts.keys()) documents.set(term, (documents.get(term) ?? 0) + 1);
     return { candidate, counts, length: tokens.length, index, score: 0, contextScore: 0, explicit: false };

@@ -16,6 +16,7 @@ import {
   type SceneWritingPorts,
 } from "../../packages/villages/src/server/features/scenes/writing-service.js";
 
+const promptPeople = new Map<string, Record<string, string>>();
 /** Exercise the current Scene prompt path with a fitting model that cannot generate. */
 export async function currentScenePrompt(
   state: VillageState,
@@ -148,33 +149,43 @@ export async function currentScenePrompt(
       { role: "user", content: message },
       "the actual submitted player line remains a separate final user message",
     );
+  promptPeople.set(prompt, result.historyContract?.people ?? {});
   return prompt;
 }
 
-export function scenePromptPacket(prompt: string): any {
+export function scenePromptPacket(prompt: string, people = promptPeople.get(prompt) ?? {}): any {
   const packet = prompt.split("\n").find((line) => line.startsWith('{"context":'));
   assert(packet, "The GM receives a structured current Scene context");
   const stable = prompt.split("\n").find((line) => line.startsWith('{"player":'));
   const scene = prompt.split("\n").find((line) => line.startsWith('{"scene":'));
   const parsed = JSON.parse(packet);
-  return {
-    ...(stable ? JSON.parse(stable) : {}),
-    ...(scene ? JSON.parse(scene) : {}),
-    ...(mapScenePeople(parsed, parsed.people ?? {}) as object),
-  };
+  const combined = mapScenePeople(
+    {
+      ...(stable ? JSON.parse(stable) : {}),
+      ...(scene ? JSON.parse(scene) : {}),
+      ...parsed,
+    },
+    people,
+  ) as any;
+  combined.people = people;
+  combined.context.actors ??= [];
+  combined.context.memory ??= {};
+  combined.context.memory.administrative ??= {};
+  return combined;
 }
 
-export function scenePromptHistory(prompt: string): any[] {
+export function scenePromptHistory(prompt: string, people = promptPeople.get(prompt) ?? {}): any[] {
   const prefix = "Partial active Scene history (omission never proves historical absence): ";
   const chunks = prompt.split("\n").filter((line) => line.startsWith("Scene exchange: "));
   if (chunks.length) {
-    const packet = scenePromptPacket(prompt);
+    const packet = scenePromptPacket(prompt, people);
     return chunks.flatMap((line) => {
       const parsed = mapScenePeople(JSON.parse(line.slice("Scene exchange: ".length)), packet.people ?? {}) as any;
       if (Array.isArray(parsed))
         return parsed.flatMap((group: any) => group.lines.map((row: any) => ({ ...group.facts, ...row })));
       return parsed.groups.flatMap((group: any) =>
         group.lines.map((row: any) => ({
+          ...parsed.facts,
           ...group.facts,
           ...row,
           citable: row.citable ?? true,
@@ -183,7 +194,10 @@ export function scenePromptHistory(prompt: string): any[] {
             ? { delivery: row.delivery ?? "ordinary", presentation: row.presentation ?? "main" }
             : {}),
           heardBy: (
-            mapScenePeople({ heardBy: packet.historyAudiences[group.facts.heardBy] }, packet.people ?? {}) as any
+            mapScenePeople(
+              { heardBy: packet.historyAudiences[group.facts.heardBy ?? parsed.facts?.heardBy] },
+              packet.people ?? {},
+            ) as any
           ).heardBy,
         })),
       );
