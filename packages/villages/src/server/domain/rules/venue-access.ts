@@ -107,7 +107,13 @@ const commandSchema = z.discriminatedUnion("action", [
   z.object({ ...base, action: z.literal("refuse-entry"), visitorId: id, sceneId: id.optional() }).strict(),
   z.object({ ...base, action: z.literal("leave-now"), visitorId: id, sceneId: id.optional() }).strict(),
   z
-    .object({ ...base, action: z.literal("venue-policy"), managerIds: ids, visitorHours: hoursSchema.nullable() })
+    .object({
+      ...base,
+      action: z.literal("venue-policy"),
+      zoneId: z.null(),
+      managerIds: ids,
+      visitorHours: hoursSchema.nullable(),
+    })
     .strict(),
   z.object({ ...base, action: z.literal("zone-policy"), policy: zonePolicySchema }).strict(),
   z

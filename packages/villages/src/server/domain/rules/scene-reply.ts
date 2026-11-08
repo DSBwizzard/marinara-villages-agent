@@ -114,6 +114,13 @@ export function savedAccessEvents(batch?: InterpretationBatch | null): SavedAcce
               ...(facts.accessCommand
                 ? { accessCommand: structuredClone(facts.accessCommand) as SavedAccessEvent["facts"]["accessCommand"] }
                 : {}),
+              ...(facts.playerActionSource
+                ? {
+                    playerActionSource: structuredClone(
+                      facts.playerActionSource,
+                    ) as SavedAccessEvent["facts"]["playerActionSource"],
+                  }
+                : {}),
             },
             outcome: result.outcome,
             evidenceIds: [...result.evidenceIds],

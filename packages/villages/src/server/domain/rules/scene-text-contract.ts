@@ -28,11 +28,12 @@ Paragraph headers (supplied IDs only):
 [person-id to:recipient-id] ordinary public speech addressed to that person
 Actions go in narration, words in dialogue. Prose needs no JSON escaping.
 Aside bubbles are presentation, never a private audience. Keep useful asides brief.
-Unlabeled opening prose is narration. Headers begin a new line; never put them inline or write closing tags. Continued lines belong to that paragraph; use [narration] to switch back from speech. Keep ordinary dialogue brief across the whole cast; max2000 characters per paragraph.
+Unlabeled opening prose is narration. Every supplied public header starts a new paragraph, even inline. Private headers must begin a new line. Never write closing tags. Continued text belongs to that paragraph; use [narration] to switch back from speech. Keep ordinary dialogue brief across the whole cast; max2000 characters per paragraph.
 
 For actual effects only, end with CHANGES on its own line and one JSON object using the effect contracts.
+A final standalone effect object after a blank line is also a reserved control footer without CHANGES. JSON examples must be quoted inline, never placed there. After a colon or code example, CHANGES is required.
 Enclose ALL effects in one pair of braces and double-quote their names. Example shape: {"action":{"happened":true,"segment":0,"actorIds":["player"],"consent":[],"append":"The cup rests on the shelf."}}. Include it only when that narration actually establishes the change.
-Generated paragraph indexes start at0 BEFORE player insertion. Player speech references: utterance:N with actual witnesses.
+Generated paragraph indexes count EVERY recognized header, plus any implicit opening narration, starting at0 BEFORE player insertion. Player speech references: utterance:N with actual witnesses.
 Omit unchanged effects; ordinary conversation needs no CHANGES. No input, segments, witnesses or server bookkeeping in CHANGES.
 Optional sounds:[{segment,sourceId,text,loud?:true}] gives a narration paragraph's exact acoustic text, never unseen actions.`;
 
@@ -56,6 +57,8 @@ const changeFields = new Set([
 ]);
 const header =
   /^\[([A-Za-z0-9:_-]+)(?:[ \t]+(main|aside|call(?::[A-Za-z0-9:_-]+)?|(?:whisper|to):[A-Za-z0-9:_-]+))?\][ \t]*(.*)$/u;
+const inlineHeader =
+  /(?<!\\)\[([A-Za-z0-9:_-]+)(?:[ \t]+(main|aside|call(?::[A-Za-z0-9:_-]+)?|(?:whisper|to):[A-Za-z0-9:_-]+))?\]/gu;
 const changesHeader = /^CHANGES(?::[ \t]*|[ \t]+|$)(.*)$/u;
 const invalid = (part: string) => badGateway(`The Scene reply has invalid ${part}. Your draft is preserved.`);
 
@@ -88,7 +91,11 @@ function parseChanges(metadata: string) {
 }
 
 /** Syntax only. Existing source, speaker, consent and effect validation remains authoritative. */
-export function parseSceneTextReply(content: string, finishReason?: string): Record<string, unknown> {
+export function parseSceneTextReply(
+  content: string,
+  finishReason?: string,
+  speakerIds: readonly string[] = [],
+): Record<string, unknown> {
   if (finishReason !== "stop" && finishReason !== "end_turn") throw invalid("completion boundaries");
   if (content.length > MODEL_JSON_MAX_CHARACTERS) throw invalid("reply length");
   let text = content.trim();
@@ -127,10 +134,22 @@ export function parseSceneTextReply(content: string, finishReason?: string): Rec
       return span.delivery === "call" ? { ...span, delivery: "shout" } : value;
     });
   }
-  const changeAt = body.findIndex((line) => changesHeader.test(line));
+  const labeledAt = body.findIndex((line) => changesHeader.test(line));
+  const changeAt = labeledAt >= 0 ? labeledAt : body.findIndex((line) => line.trimStart().startsWith("{"));
   let changes: Record<string, unknown> = {};
   if (changeAt >= 0) {
-    const metadata = [body[changeAt]!.match(changesHeader)![1]!, ...body.slice(changeAt + 1)].join("\n");
+    const label = body[changeAt]!.match(changesHeader);
+    if (!label) {
+      const prefix = body.slice(0, changeAt).join("\n").trimEnd();
+      if (
+        changeAt === 0 ||
+        body[changeAt - 1]!.trim() ||
+        /(?:\bCHANGES:?|:["'”’]*)$/u.test(prefix) ||
+        /^ {0,3}(?:`{3,}|~{3,})/mu.test(prefix)
+      )
+        throw invalid("change fields");
+    }
+    const metadata = label ? [label[1]!, ...body.slice(changeAt + 1)].join("\n") : body.slice(changeAt).join("\n");
     const value = parseChanges(metadata);
     if (
       !value ||
@@ -147,6 +166,26 @@ export function parseSceneTextReply(content: string, finishReason?: string): Rec
       if (typeof action.recent === "string") action.recent = { text: action.recent };
     }
   }
+  const speakers = new Set(["narration", "player", ...speakerIds]);
+  if (Array.isArray(changes.npcIntroductions))
+    for (const value of changes.npcIntroductions) {
+      const ref = asRecord(value).ref;
+      if (typeof ref === "string" && /^new:[a-z0-9-]{1,60}$/u.test(ref)) speakers.add(ref);
+    }
+  const proseLines = body.slice(0, changeAt < 0 ? body.length : changeAt).flatMap((line) => {
+    const parts: string[] = [];
+    let start = 0;
+    for (const match of line.matchAll(inlineHeader)) {
+      if (!match.index || match[2]?.startsWith("whisper")) continue;
+      if (!speakers.has(match[1]!)) {
+        if (match[1]!.startsWith("new:") || match[2]) throw invalid("paragraph headers");
+        continue;
+      }
+      parts.push(line.slice(start, match.index));
+      start = match.index;
+    }
+    return [...parts, line.slice(start)];
+  });
   const segments: Record<string, unknown>[] = [];
   let opening = true;
   let current: { fields: Record<string, unknown>; lines: string[] } | undefined;
@@ -158,14 +197,15 @@ export function parseSceneTextReply(content: string, finishReason?: string): Rec
       throw invalid("change fields");
     if (
       /\[[A-Za-z0-9:_-]+\s+whisper\b/iu.test(prose) ||
-      (opening && /\[(?:narration\b|\/[A-Za-z0-9:_-]+|[A-Za-z0-9:_-]+\s+(?:main|aside|call|to)\b)/iu.test(prose))
+      (opening && /(?<!\\)\[(?:narration\b|\/[A-Za-z0-9:_-]+|[A-Za-z0-9:_-]+\s+(?:main|aside|call|to)\b)/iu.test(prose))
     )
       throw invalid("paragraph headers");
     segments.push({ ...current.fields, text: prose });
   };
-  for (const line of body.slice(0, changeAt < 0 ? body.length : changeAt)) {
+  for (const line of proseLines) {
     const match = line.match(header);
     if (!match) {
+      if (changeFields.has(line.match(/^\s*"?([A-Za-z_$][\w$]*)"?\s*:/u)?.[1] ?? "")) throw invalid("change fields");
       if (line.trimStart().startsWith("[")) throw invalid("paragraph headers");
       if (!current && line.trim()) current = { fields: { kind: "narration" }, lines: [] };
       current?.lines.push(line);

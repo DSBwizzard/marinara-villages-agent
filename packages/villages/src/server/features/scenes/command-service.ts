@@ -94,6 +94,8 @@ import {
 } from "../../domain/rules/venue-zones.js";
 import { metadataFailure, completionFailure as typedCompletionFailure } from "../../domain/rules/work-failure.js";
 import { zoneEventScene } from "../../domain/rules/zone-events.js";
+import { accessIssuerWitnessed } from "../../domain/rules/access-speech.js";
+import { isCapturedPlayerSpeech } from "../../domain/rules/player-speech-capture.js";
 import { type SceneReply } from "./writing.js";
 export interface SceneCommandPorts {
   readCapturedWishContexts: ReturnType<
@@ -1897,6 +1899,19 @@ export function createSceneCommands({
           reject();
           continue;
         }
+        const binding = asRecord(facts.playerActionSource);
+        const boundPlayerAction =
+          actor === "player" &&
+          Number.isInteger(binding.inputSpan) &&
+          Number(binding.inputSpan) >= 0 &&
+          Number(binding.inputSpan) < 24 &&
+          Number.isInteger(binding.start) &&
+          Number.isInteger(binding.end) &&
+          Number(binding.start) >= 0 &&
+          Number(binding.end) > Number(binding.start) &&
+          Number(binding.end) <= turn.message.length &&
+          typeof binding.text === "string" &&
+          turn.message.slice(Number(binding.start), Number(binding.end)) === binding.text;
         const sources = result.evidenceIds
           .map((ref) => {
             const draft = /^draft:(\d+)$/u.exec(ref);
@@ -1905,8 +1920,11 @@ export function createSceneCommands({
           .filter(
             (line): line is VenueLine =>
               !!line &&
-              ((line.speakerId === actor && line.kind !== "narration") ||
-                (line.kind === "narration" && line.heardBy.includes(actor) && !line.contactHidden)) &&
+              accessIssuerWitnessed(line, actor) &&
+              (actor === "player"
+                ? isCapturedPlayerSpeech(line) || (line.kind === "narration" && boundPlayerAction)
+                : (line.speakerId === actor && line.kind !== "narration") ||
+                  (line.kind === "narration" && !line.contactHidden)) &&
               turn.replyLineIds.includes(line.id),
           );
         if (!sources.length) {

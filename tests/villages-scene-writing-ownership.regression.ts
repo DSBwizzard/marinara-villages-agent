@@ -219,7 +219,7 @@ function fixture(label: string, checkpointed = false, sceneNarrative?: SceneWrit
     },
   };
 }
-for (const version of [undefined, 4, 7, 8, 9, 10]) {
+for (const version of [undefined, 4, 7, 8, 9, 10, 11]) {
   let narrativeCalls = 0;
   const retired = fixture("retired-" + version, true, {
     offer: async () => {
@@ -433,7 +433,7 @@ const complete = fixture("A");
     message: "Fifth, hello.",
   });
   const after = await arrival.service.prepareVenueTurnMessages(selected, "Fifth, hello.", "chat", "npc:fifth", null);
-  assert.equal(selected.contactGeneration?.actorIds?.length, 4);
+  assert.equal(selected.contactGeneration?.actorIds?.length, 5);
   assert.equal(
     after.fitted.messages[0]!.content,
     before.fitted.messages[0]!.content,
@@ -505,7 +505,12 @@ const complete = fixture("A");
         "Current persistent changes survive optional history fitting",
       );
     }
-    if (turn >= 50) assert(selected.contactGeneration!.actorIds!.length <= 4);
+    if (turn >= 50)
+      assert.equal(
+        selected.contactGeneration!.actorIds!.length,
+        5,
+        "All five present people remain eligible throughout the long Scene",
+      );
     assert.deepEqual(
       long.scene.lines.slice(0, originalLines.length),
       originalLines,

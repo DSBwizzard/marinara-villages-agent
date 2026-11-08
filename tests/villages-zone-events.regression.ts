@@ -149,11 +149,16 @@ const scene = zoneEventScene(base, venue);
   five.participants = five.activeIds.map((characterId) => ({ characterId, name: characterId, doing: "Talking" }));
   five.sceneAttendance!.occupants = five.participants.map((row) => ({ ...row, zoneId: "exterior" }));
   const selected = zoneEventScene(five, venue, { targetId: "fifth-npc", message: "one two three four fifth-npc" });
-  assert.equal(selected.contactGeneration?.actorIds?.length, 4);
+  assert.equal(selected.contactGeneration?.actorIds?.length, 5);
   assert.equal(
     selected.contactGeneration?.actorIds?.[0],
     "fifth-npc",
     "Explicit fifth local target remains addressable",
+  );
+  const natural = zoneEventScene(five, venue, { message: "fifth-npc, welcome. one two three four, say hello." });
+  assert(
+    natural.contactGeneration?.actorIds?.includes("fifth-npc"),
+    "A present guest remains eligible without a target button",
   );
   const linked = structuredClone(admitted);
   linked.doorwayContacts = [

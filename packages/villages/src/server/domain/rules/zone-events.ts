@@ -30,7 +30,7 @@ export function zoneEventScene(
     (person) => !scene.departedIds?.includes(person.characterId),
   );
   const simple = scene.operation?.input.sceneHearingVersion === 2;
-  // Delivery is never capped. Only the cast offered a reaction/initiative beat is bounded.
+  // Remote opportunities stay bounded; presence does not consume the four actual response slots.
   const neighbors = contactNeighbors(venue, scene.zoneId ?? "exterior", scene);
   const remote = occupants.filter((person) => !scene.activeIds.includes(person.characterId));
   const near = remote.filter((person) => neighbors.includes(contactPosition(scene, person.characterId)));
@@ -109,7 +109,8 @@ export function zoneEventScene(
     ...scene.activeIds,
     ...offered.map((person) => person.characterId),
   ];
-  const actorIds = [...new Set(priority)].slice(0, MAX_ZONE_VILLAGERS);
+  const offeredActors = [...new Set(priority)].slice(0, MAX_ZONE_VILLAGERS);
+  const actorIds = [...new Set([...offeredActors, ...scene.activeIds])];
   const selected = actorIds;
   const cast = selected.flatMap((id) => {
     const person =

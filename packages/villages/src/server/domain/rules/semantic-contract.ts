@@ -20,6 +20,7 @@ import { socialContextState } from "./social-context.js";
 import { readSocialWishChanges } from "./social-wishes.js";
 import { venueZones, zoneControllerIds } from "./venue-zones.js";
 import { zoneEventHearingContext } from "./zone-events.js";
+import { sceneEvidencePerception } from "./scene-evidence-perception.js";
 export const SEMANTIC_OPERATION_BUDGET = {
   version: 1,
   requests: 12,
@@ -215,11 +216,14 @@ export function semanticContext(
           }))
       : [],
     access: compact && venue?.access ? accessRules : venue?.access,
-    accessManagement: accessManagementPrompt(
-      state,
-      actors,
-      state.venues.some((venue) => venue.id === scene.placeId) ? undefined : scene.placeId,
-    ),
+    accessManagement: [
+      ...accessManagementPrompt(
+        state,
+        actors,
+        state.venues.some((venue) => venue.id === scene.placeId) ? undefined : scene.placeId,
+      ),
+      ...accessManagementPrompt(state, ["player"], scene.placeId),
+    ],
     referenceActors: state.villagers.map(({ characterId, cardSnapshot }) => ({
       id: characterId,
       name: cardSnapshot.name,
@@ -363,7 +367,7 @@ export function semanticEvidence(lines: readonly VenueReplyLine[]) {
     speechSource: line.speechSource,
     soundOnly: line.soundOnly,
     heardBy: line.heardBy,
-    playerHeard: !line.contactHidden && (line.kind !== "whisper" || line.targetId === "player"),
+    playerHeard: sceneEvidencePerception(line).playerPerception === "full",
     current: true,
   }));
 }

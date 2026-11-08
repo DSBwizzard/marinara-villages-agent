@@ -29,7 +29,8 @@ import {
 } from "../../domain/rules/npc-participation.js";
 import { openingSceneDirection } from "../../domain/rules/opening-project.js";
 import { findLocation, findNpc, npcProfile } from "../../domain/rules/places.js";
-import { playerSpeechCapture } from "../../domain/rules/player-speech-capture.js";
+import { isCapturedPlayerSpeech, playerSpeechCapture } from "../../domain/rules/player-speech-capture.js";
+import { accessIssuerWitnessed } from "../../domain/rules/access-speech.js";
 import {
   bindProjectSpeech,
   projectSpeechContexts,
@@ -149,7 +150,7 @@ export interface SceneWritingPorts {
 }
 export const VENUE_REPLY_MAX_TOKENS = 4096;
 const VENUE_REPLY_TEMPERATURE = 0.85;
-const SCENE_WRITING_VERSION = 11 as const;
+const SCENE_WRITING_VERSION = 12 as const;
 function requireCurrentSceneRequest(captured?: { writingVersion?: number }) {
   if (captured && captured.writingVersion !== SCENE_WRITING_VERSION)
     throw conflict(
@@ -855,7 +856,12 @@ export function createSceneWriting({
     {
       try {
         if (!gmContext) throw conflict("The saved GM context is unavailable. Your draft is preserved.");
-        const complete = omitGmNoopMetadata(parseSceneTextReply(completion.content ?? "", completion.finishReason));
+        const complete = omitGmNoopMetadata(
+          parseSceneTextReply(completion.content ?? "", completion.finishReason, [
+            ...Object.keys(historyContract?.people ?? {}),
+            ...audience,
+          ]),
+        );
         if (complete.halt && gmContext.preservation) {
           const halt = asRecord(complete.halt);
           const playerHalt = {
@@ -1123,10 +1129,28 @@ export function createSceneWriting({
       if (semanticAccess) {
         // The interpreter proposes events; only the mechanically routed timeline owns witnesses.
         const witnessed = semanticEvidence(parsed.lines);
-        for (const check of semanticAccess.checks) {
+        for (const [index, check] of semanticAccess.checks.entries()) {
           const sources = check.evidence.map((source) => witnessed[Number(source.id.slice(6))]!);
-          const issuer = String(asRecord(check.facts).actorId);
-          if (sources.some((source) => !source || !source.heardBy.includes(issuer) || !source.playerHeard))
+          const facts = asRecord(check.facts);
+          const issuer = String(facts.actorId);
+          const binding = asRecord(facts.playerActionSource);
+          const action = Number.isInteger(binding.inputSpan)
+            ? semanticResult?.intent?.timeline[Number(binding.inputSpan)]
+            : undefined;
+          const boundAction =
+            action?.kind === "action" &&
+            action.text === binding.text &&
+            action.start === binding.start &&
+            action.end === binding.end;
+          const ownSpeech = sources.some((source) => source && isCapturedPlayerSpeech(source));
+          if (
+            issuer === "player" &&
+            semanticAccess.results[index]?.outcome !== "unresolved" &&
+            !ownSpeech &&
+            !boundAction
+          )
+            throw badGateway("The access event lacks an exact player source. The draft is preserved.");
+          if (sources.some((source) => !source || !accessIssuerWitnessed(source, issuer) || !source.playerHeard))
             throw badGateway("The access event lacks current witnessed evidence. The draft is preserved.");
           check.evidence = sources;
         }

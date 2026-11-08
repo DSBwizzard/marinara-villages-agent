@@ -198,11 +198,15 @@ Also return immediateResidentMoves:[{characterIds:[ids],zoneId,source:zero-based
 Exclude future, hypothetical, negated and player-only travel.
 These source indexes refer to input, never generated segments; code checks group availability.`;
 
-export const SCENE_GM_ACCESS = `Optional access:[{actorId,venueId,zoneId,outcome:"invite-now|invite-later|refuse|dismiss|ban-zone|ban-venue|invite-outside-hours|access-management|unresolved",evidence:[segment],accompanies?,conditions?:["accompanied"],command?}].
+export const SCENE_GM_ACCESS = `Optional access:[{actorId,venueId,zoneId,outcome:"invite-now|invite-later|refuse|dismiss|ban-zone|ban-venue|invite-outside-hours|access-management|unresolved",evidence:[segment],accompanies?,conditions?:["accompanied"],command?,inputSpan?}].
 Cite actual current controller consent/refusal.
+Player issuance cites their actual utterance or an original action span (inputSpan; omit only when exactly one action exists). Narration alone never supplies player consent.
 Visits grant no residency or standing access.
 Preserve conditions; unsupported conditions use unresolved. accompanies means the controller goes too. access-management needs command:{action,...fields}: venue-policy:{managerIds,visitorHours}; zone-policy:{policy}; recover-managers:{managerIds}; ban:{visitorId}; lift-ban:{banId}; revoke:{permissionId}; exception:{permissionId,banIds}; destinations:{visitorId,home?,sleep?,work?}.
 Use supplied scope/IDs; code binds revisions/operation IDs.
+venue-policy uses zoneId:null; zone-policy uses the supplied Zone id and its complete current policy. For only a Zone's unrestricted hours use policy.visitorHours:"always", preserving every other field.
+Zone policy shape: {mode:"public|permission-required",managerIds:null|[ids],memberIds:[],memberRoles:[],inviterIds:[],visitorHours:"inherit|always"|hours,accompanied:boolean}. Restore omitted empty collections as [] when writing the complete policy.
+Venue visitorHours:null means all hours; [] means closed. Otherwise use [{days:[day names],start:"HH:mm",end:"HH:mm"}], end exclusive; equal start/end means all day on those days.
 Entrance is Unrestricted.
 No policy changes inferred from friendship, employment or guest admission.
 Standing grants/revocations: relationshipChanges.permissions[{controllerId,visitorId,venueId,zoneId,action:"grant|revoke",expectedRevision,lineIds}].`;

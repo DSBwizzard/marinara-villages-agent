@@ -3,7 +3,7 @@ import { parseSceneTextReply } from "../packages/villages/src/server/domain/rule
 import { materializeGmReply } from "../packages/villages/src/server/domain/rules/scene-gm.js";
 import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 
-const parse = (text: string) => parseSceneTextReply(text, "stop");
+const parse = (text: string) => parseSceneTextReply(text, "stop", ["mara", "bryn"]);
 const source = 'INPUT speech\n[narration] The sign says "Tea: [fresh]".\nA second line.\n[mara] "Please, sit."';
 const raw: any = parse(source);
 const opening: any = parse('INPUT speech\nThe kettle rattles.\nIts label says "[fresh]".\n[mara] Tea?');
@@ -31,6 +31,39 @@ assert.deepEqual(parse("```text\n" + source + "\n```"), raw);
 assert.deepEqual(parse(source + "\nCHANGES\n{}"), raw);
 assert.deepEqual(parse(source + "\nCHANGES {}"), raw);
 assert.deepEqual(parse(source + "\nCHANGES:{}"), raw);
+assert.deepEqual(parse(source + "\n\n{}"), raw);
+for (const footer of ['{"memoryChanges":[]}']) {
+  const reply: any = parse(source + "\n\n" + footer);
+  assert.deepEqual(reply.memoryChanges, []);
+  assert.deepEqual(reply.segments, raw.segments, "An unlabeled complete footer is never dialogue");
+}
+const literal: any = parse(
+  'INPUT [{"kind":"speech","text":"A [mara] label."}]\n[mara] Fine.\n\n{"action":{"recent":"A [bryn] label."}}',
+);
+assert.equal(literal.input[0].text, "A [mara] label.");
+assert.equal(literal.action.recent.text, "A [bryn] label.");
+assert.equal(literal.segments.length, 1);
+const quoted: any = parse("INPUT speech\n[mara] Example: '{\"memoryChanges\":[]}'");
+assert.equal(quoted.memoryChanges, undefined);
+assert.equal(quoted.segments.length, 1);
+const codeExample: any = parse('INPUT speech\n[mara] Example:\n```json\n{"memoryChanges":[]}\n```\nCHANGES {}');
+assert.equal(codeExample.memoryChanges, undefined);
+assert(codeExample.segments[0].text.includes('{"memoryChanges":[]}'));
+const inline: any = parse("INPUT speech\nA pause. [mara] Hello. [narration] She smiles. [bryn aside] Tea?");
+assert.deepEqual(
+  inline.segments.map((s: any) => [s.kind, s.speakerId, s.presentation, s.text]),
+  [
+    ["narration", undefined, undefined, "A pause."],
+    ["dialogue", "mara", undefined, "Hello."],
+    ["narration", undefined, undefined, "She smiles."],
+    ["dialogue", "bryn", "aside", "Tea?"],
+  ],
+);
+assert.equal((parse("INPUT speech\n[mara] The label says [fresh] and \\[bryn].").segments as any[]).length, 1);
+const introduction: any = parse(
+  'INPUT speech\n[narration] A visitor enters. [new:visitor aside] Hello.\nCHANGES {"npcIntroductions":[{"ref":"new:visitor","name":"Visitor","characterization":"Friendly","segment":0}]}',
+);
+assert.equal(introduction.segments[1].speakerId, "new:visitor");
 assert.deepEqual(
   parse("INPUT speech\n[mara whisper:player]Private."),
   parse("INPUT speech\n[mara whisper:player] Private."),
@@ -117,8 +150,8 @@ for (const text of [
   "INPUT speech\nThe kettle rattles. [mara whisper:player] PRIVATE\n[bryn] Hello.",
   "INPUT speech\nThe kettle rattles. [mara\nwhisper:player] PRIVATE\n[bryn] Hello.",
   "INPUT speech\nThe kettle rattles.\nA pause. [mara whisper] PRIVATE\n[bryn] Hello.",
-  "INPUT speech\nThe kettle rattles. [mara aside] Hello.",
-  "INPUT speech\nThe kettle rattles. [narration] Another paragraph.",
+  "INPUT speech\nThe kettle rattles. [unknown aside] Hello.",
+  "INPUT speech\nThe kettle rattles. [new:undeclared] Hello.",
   "INPUT speech\nThe kettle rattles. [/mara] Hello.",
   "INPUT speech\n[mara] Hello. [mara whisper:player] PRIVATE",
   "INPUT speech\n[narration] A public moment.\n[mara whisper] This must never become public continuation text.",
@@ -127,6 +160,13 @@ for (const text of [
   "INPUT speech\n[mara] Hi.\nCHANGES\n{",
   "INPUT speech\n[mara] Hi.\nCHANGES {",
   "INPUT speech\n[mara] Hi.\nCHANGES not metadata",
+  'INPUT speech\n[mara] Hi.\n{"action":',
+  'INPUT speech\n[mara] Hi.\n{"unknown":true}',
+  'INPUT speech\n[mara] Here is an example:\n{"memoryChanges":[]}',
+  'INPUT speech\n[mara] Here is an example:\n\n{"memoryChanges":[]}',
+  'INPUT speech\n[mara] Here is code:\n```json\n\n{"memoryChanges":[]}\n```',
+  "INPUT speech\n[mara] Hi.\n\nmemoryChanges:[]",
+  'INPUT speech\n[mara] Hi.\n{"action":{}}\n[mara] Trailing prose.',
   "INPUT speech\n[mara] Hi. CHANGES {}",
   'INPUT speech\n[mara] Hi. CHANGES action:{"happened":true}',
   'INPUT speech\n[mara] Hi. CHANGES "memoryChanges":[]',
@@ -146,7 +186,7 @@ for (const text of [
   'INPUT speech\n[narration] A change.\nCHANGES\n{"action":' + "[".repeat(70) + "0" + "]".repeat(70) + "}",
   "INPUT speech\n[narration] " + "x".repeat(131073),
 ])
-  assert.throws(() => parse(text), /Scene reply/);
+  assert.throws(() => parse(text), /Scene reply/, text.slice(0, 160));
 assert.throws(() => parseSceneTextReply(source, "length"), /completion boundaries/);
 assert.throws(() => materializeGmReply(parse('INPUT [{"kind":"speech","text":"Invented"}]\n[mara] Hi.'), "Exact."));
 assert.throws(() =>

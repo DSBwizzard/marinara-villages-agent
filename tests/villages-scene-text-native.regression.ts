@@ -27,7 +27,7 @@ try {
   const response = await host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
   assert.equal(response.statusCode, 200, response.body);
   const turn = host.scene().submissions.at(-1)!;
-  assert.equal(turn.sceneContractVersion, 11);
+  assert.equal(turn.sceneContractVersion, 12);
   const aside = host.scene().lines.find((line) => line.content === "The blue cup is yours.")!;
   assert.equal(aside.delivery, "whisper");
   assert.equal(aside.targetId, "player");
@@ -135,6 +135,7 @@ for (const variant of [
   "inline-private",
   "missing-input",
   "inline-changes",
+  "inline-public",
   "misplaced-changes",
   "denied-controller",
   "malformed-consent",
@@ -162,42 +163,52 @@ for (const variant of [
   };
   if (variant === "malformed-consent") action.consent = null;
   if (variant === "recent-string") action.recent = "The stool rests by the west wall.";
+  if (variant === "inline-public") action.segment = 1;
   const memory = [
     {
-      text: "The player's imaginary boat is called Marigold, a story rather than property.",
+      text:
+        variant === "inline-public"
+          ? "The player moved the wooden stool to the west wall."
+          : "The player's imaginary boat is called Marigold, a story rather than property.",
       subjects: ["player"],
-      support: [{ lineId: isMemory ? "utterance:0" : 0 }],
+      support: [{ lineId: isMemory ? "utterance:0" : action.segment }],
       learners: { mara: { basis: "observation" } },
       kind: "information",
       screening: { disposition: "clear" },
     },
   ];
+  const narration = isMemory
+    ? "Mara nods at your story."
+    : "You move the loose stool from beside the table to the west wall.";
   host.model.chatComplete = async () => {
     calls++;
-    const narration = isMemory
-      ? "Mara nods at your story."
-      : "You move the loose stool from beside the table to the west wall.";
     const metadata = isMemory
       ? "memoryChanges:" + JSON.stringify(memory)
-      : variant === "combined"
-        ? "action:" + JSON.stringify(action) + ",memoryChanges:[]"
-        : variant === "action-fragment"
-          ? "action:" + JSON.stringify(action)
-          : JSON.stringify({ action });
+      : variant === "inline-public"
+        ? JSON.stringify({ action, memoryChanges: memory })
+        : variant === "combined"
+          ? "action:" + JSON.stringify(action) + ",memoryChanges:[]"
+          : variant === "action-fragment"
+            ? "action:" + JSON.stringify(action)
+            : JSON.stringify({ action });
     return {
       content:
-        variant === "misplaced-changes"
-          ? "INPUT action\n[narration] You move the stool. CHANGES action:" + JSON.stringify(action)
-          : variant === "missing-input"
-            ? "[narration] The kettle rattles.\n[mara whisper:player] PRIVATE"
-            : variant === "inline-private"
-              ? "INPUT speech\nThe kettle rattles. [mara\nwhisper:player] PRIVATE\n[mara] Hello."
-              : "INPUT " +
-                (isMemory ? "speech" : "action") +
-                (variant === "unlabeled-action" ? "\n" : "\n[narration] ") +
-                narration +
-                (variant === "inline-changes" ? "\n[mara aside]Noted.\nCHANGES " : "\n[mara aside] Noted.\nCHANGES\n") +
-                metadata,
+        variant === "inline-public"
+          ? "INPUT action\n[mara] Watch this. [narration] " + narration + " [mara aside]Noted.\nCHANGES " + metadata
+          : variant === "misplaced-changes"
+            ? "INPUT action\n[narration] You move the stool. CHANGES action:" + JSON.stringify(action)
+            : variant === "missing-input"
+              ? "[narration] The kettle rattles.\n[mara whisper:player] PRIVATE"
+              : variant === "inline-private"
+                ? "INPUT speech\nThe kettle rattles. [mara\nwhisper:player] PRIVATE\n[mara] Hello."
+                : "INPUT " +
+                  (isMemory ? "speech" : "action") +
+                  (variant === "unlabeled-action" ? "\n" : "\n[narration] ") +
+                  narration +
+                  (variant === "inline-changes"
+                    ? "\n[mara aside]Noted.\nCHANGES "
+                    : "\n[mara aside] Noted.\nCHANGES\n") +
+                  metadata,
       finishReason: "stop",
       usage: { inputTokens: 10, outputTokens: 10 },
     };
@@ -236,12 +247,267 @@ for (const variant of [
           "Witnessed player fact is persisted through the native route",
         );
       else assert.match(world.venues[0]!.zones![1]!.description, /stands by the west wall/);
+      if (variant === "inline-public") {
+        assert.equal(host.scene().lines.find((l) => l.content === narration)?.kind, "narration");
+        assert(
+          world.memories.records.some((r) => r.text.includes("moved the wooden stool") && r.knowers.mara),
+          "The inline narration index still binds witnessed Memory",
+        );
+      }
       if (variant === "recent-string") assert.equal(world.venues[0]!.zones![1]!.state.recent!.text, action.recent);
       const replay = await host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
       assert.equal(replay.statusCode, 200, replay.body);
       assert.equal(calls, 1, "Accepted recovery never buys another response");
     }
     assert.equal(calls, 1, "Neither malformed metadata nor missing consent triggers an automatic repair purchase");
+  } finally {
+    await host.stop();
+  }
+}
+for (const variant of [
+  "action",
+  "speech",
+  "whisper",
+  "thought",
+  "context",
+  "ambiguous",
+  "explicit",
+  "bad-index",
+  "bad-null",
+  "bad-string",
+  "denied",
+  "uncited-speech",
+  "zone-hours",
+  "wrong-scope",
+] as const) {
+  const host = await packagedSceneServer({
+    configure(world) {
+      world.venues[0]!.access!.managerIds = [variant === "denied" ? "mara" : "player"];
+      world.venues[0]!.access!.visitorHours = [{ days: ["Sunday"], start: "06:00", end: "22:00" }];
+      if (variant === "zone-hours") {
+        world.venues[0]!.zones![1]!.access!.memberIds = ["mara"];
+        world.venues[0]!.zones![1]!.access!.inviterIds = ["mara"];
+        world.venues[0]!.zones![1]!.access!.accompanied = true;
+      }
+    },
+  });
+  const first =
+    variant === "zone-hours"
+      ? "As manager, I set this common room's visitor hours to all hours."
+      : "As manager, I set this inn's visitor hours to all hours.";
+  const last = "All other restrictions remain unchanged.";
+  const message = first + " " + last;
+  const classification =
+    variant === "whisper"
+      ? JSON.stringify([{ kind: "speech", text: message, delivery: "whisper", targetId: "mara" }])
+      : ["ambiguous", "explicit"].includes(variant)
+        ? JSON.stringify([
+            { kind: "action", text: first },
+            { kind: "action", text: last },
+          ])
+        : ["speech", "uncited-speech"].includes(variant)
+          ? "speech"
+          : ["thought", "context"].includes(variant)
+            ? variant
+            : "action";
+  const proposal: any = {
+    actorId: "player",
+    venueId: "mill",
+    zoneId: null,
+    outcome: "access-management",
+    evidence: ["speech", "whisper"].includes(variant) ? ["utterance:0"] : [0],
+    command: { action: "venue-policy", managerIds: ["player"], visitorHours: null },
+  };
+  if (variant === "explicit") proposal.inputSpan = 0;
+  if (variant === "bad-index") proposal.inputSpan = 99;
+  if (variant === "bad-null") proposal.inputSpan = null;
+  if (variant === "bad-string") proposal.inputSpan = "0";
+  if (["zone-hours", "wrong-scope"].includes(variant)) proposal.zoneId = "common";
+  const succeeds = ["action", "speech", "whisper", "explicit", "zone-hours"].includes(variant);
+  let calls = 0;
+  host.model.chatComplete = async (messages: any[]) => {
+    calls++;
+    if (variant === "zone-hours") {
+      const packet = messages
+        .flatMap((m) =>
+          m.content.split("\n").flatMap((line: string) => {
+            try {
+              return [JSON.parse(line)];
+            } catch {
+              return [];
+            }
+          }),
+        )
+        .find((p) => p.context);
+      const scope = packet.context.accessManagement.find((p: any) => p.actorId === "player" && p.venueId === "mill");
+      assert(scope, "Player management uses its supplied current Venue scope");
+      const zone = scope.zones.find((z: any) => z.id === "common");
+      proposal.command = {
+        action: "zone-policy",
+        policy: { memberIds: [], memberRoles: [], inviterIds: [], ...zone.policy, visitorHours: "always" },
+      };
+    }
+    return {
+      content:
+        "INPUT " +
+        classification +
+        "\n[narration] You change this inn's ordinary visitor hours to all hours; its other restrictions remain unchanged.\n\n" +
+        JSON.stringify({ access: [proposal] }),
+      finishReason: "stop",
+      usage: { inputTokens: 10, outputTokens: 10 },
+    };
+  };
+  try {
+    await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+    const before = fixtureVillageState(host.records.get("villages-village").data, host.records);
+    const payload = {
+      sessionId: "browser",
+      submissionId: "bare-policy-" + variant,
+      mode: "chat",
+      message,
+      expectedSceneRevision: host.scene().sceneRevision,
+    };
+    const result = await host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
+    assert.equal(result.statusCode, succeeds ? 200 : 502, variant + ": " + result.body);
+    const world = fixtureVillageState(host.records.get("villages-village").data, host.records);
+    if (!succeeds) {
+      assert.deepEqual(
+        world.venues[0]!.access,
+        before.venues[0]!.access,
+        "Invalid or ambiguous player sources cannot change access",
+      );
+      assert.equal(host.scene().submissions.length, 0);
+      assert.equal(host.scene().lines.length, 0);
+      assert.equal(calls, 1);
+      continue;
+    }
+    if (variant === "zone-hours") {
+      assert.deepEqual(world.venues[0]!.access!.visitorHours, before.venues[0]!.access!.visitorHours);
+      assert.deepEqual(
+        world.venues[0]!.zones![1]!.access,
+        { ...before.venues[0]!.zones![1]!.access, visitorHours: "always" },
+        "A Zone-hours change preserves every other restriction",
+      );
+    } else {
+      assert.equal(
+        world.venues[0]!.access!.visitorHours,
+        null,
+        "A reserved complete policy footer is applied, not printed",
+      );
+      assert.deepEqual(world.venues[0]!.zones![1]!.access, before.venues[0]!.zones![1]!.access);
+    }
+    assert.deepEqual(world.venues[0]!.access!.managerIds, ["player"]);
+    assert(!host.scene().lines.some((l) => l.content.includes('"access"')));
+    if (!["speech", "whisper"].includes(variant)) {
+      const source = host.scene().submissions[0]!.accessEvents![0]!.facts.playerActionSource!;
+      assert.equal(source.inputSpan, 0);
+      assert.equal(message.slice(source.start, source.end), source.text);
+      assert.equal(source.text, variant === "explicit" ? first : message);
+    } else {
+      const own = host.scene().lines.find((l) => l.speechSource)!;
+      assert(!own.heardBy.includes("player"), "Player perception does not rewrite canonical listener IDs");
+    }
+    const replay = await host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
+    assert.equal(replay.statusCode, 200, replay.body);
+    assert.equal(calls, 1);
+  } finally {
+    await host.stop();
+  }
+}
+{
+  const guestId = "npc:nico";
+  const others = ["bryn", "cory", "dana"];
+  const host = await packagedSceneServer({
+    configure(world) {
+      world.worldPlaces.revision = 1;
+      for (const id of others)
+        world.villagers.push({
+          ...structuredClone(world.villagers[0]!),
+          characterId: id,
+          cardSnapshot: { ...structuredClone(world.villagers[0]!.cardSnapshot), id, name: id },
+        });
+      world.worldPlaces.npcs[guestId] = {
+        id: guestId,
+        revision: 1,
+        name: "Nico",
+        label: "Nico",
+        characterization: "A friendly visitor.",
+        facts: [],
+        associations: [{ placeId: "mill", role: "visitor" }],
+        availability: "",
+        disabled: false,
+        source: "fixture",
+        updatedAt: new Date().toISOString(),
+      };
+    },
+    configureScene(scene) {
+      for (const id of others) {
+        const person = { characterId: id, name: id, doing: "Listening" };
+        scene.participants.push(person);
+        scene.activeIds.push(id);
+        scene.accompanying!.push({ characterId: id, zoneId: "common" });
+        scene.sceneAttendance!.occupants.push({ ...person, zoneId: "common" });
+      }
+    },
+  });
+  let calls = 0;
+  host.model.chatComplete = async (messages: any[]) => {
+    calls++;
+    if (calls === 3) {
+      const packet = messages
+        .flatMap((m) =>
+          m.content.split("\n").flatMap((line: string) => {
+            try {
+              return [JSON.parse(line)];
+            } catch {
+              return [];
+            }
+          }),
+        )
+        .find((p) => p.context);
+      assert.equal(
+        packet.context.actors.length,
+        5,
+        "All five present people are eligible, independently of the response cap",
+      );
+      assert(packet.context.actors.some((a: any) => a.name === "Nico"));
+    }
+    const content =
+      calls === 1
+        ? "INPUT speech\n[mara] Hello."
+        : calls === 2
+          ? 'INPUT speech\n[narration] Nico enters this common room and joins the table. [new:nico aside] Hello, everyone.\nCHANGES {"npcIntroductions":[{"ref":"new:nico","existingId":"npc:nico","name":"Nico","label":"Nico","characterization":"A friendly visitor.","segment":0}]}'
+          : "INPUT speech\n[npc:nico] Thank you. [mara] Welcome. [bryn] Hello. [cory aside] Have a seat." +
+            (calls === 4 ? " [dana] And hello from me." : "");
+    return { content, finishReason: "stop", usage: { inputTokens: 10, outputTokens: 10 } };
+  };
+  try {
+    await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+    for (let turn = 1; turn <= 4; turn++) {
+      const result = await host.app.inject({
+        method: "POST",
+        url: "/api/villages/rooms/turn",
+        payload: {
+          sessionId: "browser",
+          submissionId: "npc-inline-" + turn,
+          mode: "chat",
+          message: turn === 1 ? "Hello before the visitor arrives." : "Nico, mara, bryn, cory and dana, hello.",
+          expectedSceneRevision: host.scene().sceneRevision,
+        },
+      });
+      assert.equal(result.statusCode, turn === 4 ? 502 : 200, "turn " + turn + ": " + result.body);
+      if (turn === 2) {
+        const scene = host.scene();
+        assert.equal(scene.activeIds.length, 5);
+        const arrival = scene.lines.find((l) => l.content === "Hello, everyone.")!;
+        assert.equal(arrival.speakerId, guestId);
+        assert.equal(arrival.presentation, "aside");
+        const earlier = scene.lines.find((l) => l.content === "Hello before the visitor arrives." && l.speechSource)!;
+        assert(!earlier.heardBy.includes(guestId), "Inline introduction never grants old speech to a later arrival");
+      }
+    }
+    assert.equal(host.scene().submissions.length, 3, "Five actual speakers are rejected without publishing the turn");
+    assert.equal(calls, 4, "No automatic repair purchase follows the response cap failure");
   } finally {
     await host.stop();
   }
