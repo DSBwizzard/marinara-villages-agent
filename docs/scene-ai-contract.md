@@ -19,7 +19,7 @@ Quotes and continued lines are ordinary text. The entire unlabeled opening block
 
 ## Read a persistent change
 
-Append `CHANGES` and a JSON object only when needed:
+Append `CHANGES` and a JSON object only when needed. The payload may start on that same line or the next; prose before the footer never contains embedded metadata. Spaces after paragraph headers are optional:
 
 ```text
 INPUT action

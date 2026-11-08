@@ -12,8 +12,8 @@ INPUT speech
 
 INPUT classifies the ORIGINAL player message: speech, action, thought or context. Unmarked dialogue is speech.
 Mixed/private/cross-Zone input uses exact source spans instead:
-[{"kind":"speech","text":"exact words","delivery":"whisper","targetId":"supplied-person-id"}]
-Cover the whole input in order, separated only by quotes/whitespace. Delivery: ordinary, whisper or call.
+[{"kind":"action","text":"*I lean close and whisper:*"},{"kind":"speech","text":"exact words","delivery":"whisper","targetId":"supplied-person-id"}]
+Cover the whole input in order, including stage directions as action spans, separated only by quotes/whitespace. Classifying only the quoted speech is incomplete. Delivery: ordinary, whisper or call.
 Whisper also means an explicitly private one-to-one conversation within the current Zone, such as taking someone aside or speaking at a quiet corner. Use the intended local recipient; ordinary speech addressed to someone remains public.
 Moving to another part of the same room creates no new Zone. Respect a person's refusal and never invent a player decision or cross-Zone move.
 Thoughts/examples/recalled/hypothetical words are inaudible. Empty/opening: INPUT []. Code inserts the player's exact speech; never write it yourself.
@@ -55,8 +55,8 @@ const changeFields = new Set([
   "sounds",
 ]);
 const header =
-  /^\[([A-Za-z0-9:_-]+)(?:[ \t]+(main|aside|call(?::[A-Za-z0-9:_-]+)?|(?:whisper|to):[A-Za-z0-9:_-]+))?\](?:[ \t]+(.*))?$/u;
-const changesHeader = /^CHANGES:?[ \t]*$/u;
+  /^\[([A-Za-z0-9:_-]+)(?:[ \t]+(main|aside|call(?::[A-Za-z0-9:_-]+)?|(?:whisper|to):[A-Za-z0-9:_-]+))?\][ \t]*(.*)$/u;
+const changesHeader = /^CHANGES(?::[ \t]*|[ \t]+|$)(.*)$/u;
 const invalid = (part: string) => badGateway(`The Scene reply has invalid ${part}. Your draft is preserved.`);
 
 /** Only restore an omitted object envelope/key quotes; never repair values or incomplete JSON. */
@@ -130,7 +130,7 @@ export function parseSceneTextReply(content: string, finishReason?: string): Rec
   const changeAt = body.findIndex((line) => changesHeader.test(line));
   let changes: Record<string, unknown> = {};
   if (changeAt >= 0) {
-    const metadata = body.slice(changeAt + 1).join("\n");
+    const metadata = [body[changeAt]!.match(changesHeader)![1]!, ...body.slice(changeAt + 1)].join("\n");
     const value = parseChanges(metadata);
     if (
       !value ||
@@ -154,6 +154,8 @@ export function parseSceneTextReply(content: string, finishReason?: string): Rec
     if (!current) return;
     const prose = current.lines.join("\n").trim();
     if (!prose) throw invalid("empty paragraphs");
+    if (/\bCHANGES:?\s*(?:[\[{]|(?:"(?:[^"\\]|\\.)*"|[A-Za-z_$][\w$]*)\s*:)/u.test(prose))
+      throw invalid("change fields");
     if (
       /\[[A-Za-z0-9:_-]+\s+whisper\b/iu.test(prose) ||
       (opening && /\[(?:narration\b|\/[A-Za-z0-9:_-]+|[A-Za-z0-9:_-]+\s+(?:main|aside|call|to)\b)/iu.test(prose))

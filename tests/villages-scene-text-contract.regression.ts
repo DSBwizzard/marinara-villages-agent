@@ -29,6 +29,12 @@ assert.doesNotThrow(() =>
 );
 assert.deepEqual(parse("```text\n" + source + "\n```"), raw);
 assert.deepEqual(parse(source + "\nCHANGES\n{}"), raw);
+assert.deepEqual(parse(source + "\nCHANGES {}"), raw);
+assert.deepEqual(parse(source + "\nCHANGES:{}"), raw);
+assert.deepEqual(
+  parse("INPUT speech\n[mara whisper:player]Private."),
+  parse("INPUT speech\n[mara whisper:player] Private."),
+);
 
 const privateReply: any = parse(
   'INPUT [{"kind":"speech","text":"A secret.","delivery":"whisper","targetId":"mara"}]\n[mara whisper:player] Between us.',
@@ -119,6 +125,13 @@ for (const text of [
   "INPUT speech\n[narration] A public moment.\n[mara whisper:player A broken private header.",
   "INPUT speech\n[mara]\nCHANGES\n{}",
   "INPUT speech\n[mara] Hi.\nCHANGES\n{",
+  "INPUT speech\n[mara] Hi.\nCHANGES {",
+  "INPUT speech\n[mara] Hi.\nCHANGES not metadata",
+  "INPUT speech\n[mara] Hi. CHANGES {}",
+  'INPUT speech\n[mara] Hi. CHANGES action:{"happened":true}',
+  'INPUT speech\n[mara] Hi. CHANGES "memoryChanges":[]',
+  'INPUT speech\n[mara] Hi. CHANGES\n{"action":{"happened":true}}',
+  "INPUT speech\n[mara] Hi.\nCHANGES {}\n[mara] Discarded prose.",
   "INPUT speech\n[mara] Hi.\nCHANGES\n[]",
   'INPUT speech\n[mara] Hi.\nCHANGES\n{"segments":[]}',
   'INPUT speech\n[mara] Hi.\nCHANGES\n{"input":"thought"}',

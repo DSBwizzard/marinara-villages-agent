@@ -73,7 +73,7 @@ try {
           null,
           2,
         ) +
-        "\nMara joins you at the quiet end of the table.\n[mara whisper:player] I'll leave it here.\n[bryn aside] I'll put the kettle on.\nCHANGES\nmemoryChanges:" +
+        "\n[narration]Mara joins you at the quiet end of the table.\n[mara whisper:player]I'll leave it here.\n[bryn aside]I'll put the kettle on.\nCHANGES memoryChanges:" +
         JSON.stringify([
           {
             text: "The player privately asked Mara to keep the blue cup here.",
@@ -134,6 +134,8 @@ for (const variant of [
   "unlabeled-action",
   "inline-private",
   "missing-input",
+  "inline-changes",
+  "misplaced-changes",
   "denied-controller",
   "malformed-consent",
 ] as const) {
@@ -184,16 +186,18 @@ for (const variant of [
           : JSON.stringify({ action });
     return {
       content:
-        variant === "missing-input"
-          ? "[narration] The kettle rattles.\n[mara whisper:player] PRIVATE"
-          : variant === "inline-private"
-            ? "INPUT speech\nThe kettle rattles. [mara\nwhisper:player] PRIVATE\n[mara] Hello."
-            : "INPUT " +
-              (isMemory ? "speech" : "action") +
-              (variant === "unlabeled-action" ? "\n" : "\n[narration] ") +
-              narration +
-              "\n[mara aside] Noted.\nCHANGES\n" +
-              metadata,
+        variant === "misplaced-changes"
+          ? "INPUT action\n[narration] You move the stool. CHANGES action:" + JSON.stringify(action)
+          : variant === "missing-input"
+            ? "[narration] The kettle rattles.\n[mara whisper:player] PRIVATE"
+            : variant === "inline-private"
+              ? "INPUT speech\nThe kettle rattles. [mara\nwhisper:player] PRIVATE\n[mara] Hello."
+              : "INPUT " +
+                (isMemory ? "speech" : "action") +
+                (variant === "unlabeled-action" ? "\n" : "\n[narration] ") +
+                narration +
+                (variant === "inline-changes" ? "\n[mara aside]Noted.\nCHANGES " : "\n[mara aside] Noted.\nCHANGES\n") +
+                metadata,
       finishReason: "stop",
       usage: { inputTokens: 10, outputTokens: 10 },
     };
@@ -209,7 +213,7 @@ for (const variant of [
     };
     const result = await host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
     const world = fixtureVillageState(host.records.get("villages-village").data, host.records);
-    if (variant === "malformed-consent" || variant === "inline-private" || variant === "missing-input") {
+    if (["malformed-consent", "inline-private", "missing-input", "misplaced-changes"].includes(variant)) {
       assert.equal(result.statusCode, 502, result.body);
       assert.equal(host.scene().submissions.length, 0);
       assert.equal(host.scene().lines.length, 0);
