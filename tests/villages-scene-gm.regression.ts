@@ -399,6 +399,26 @@ const segments = [{ kind: "dialogue", speakerId: "mara", text: "Tea sounds good.
     { kind: "narration", text: "A kettle sings.", sound: { sourceId: "mara", text: "A whistle." } },
   ]);
   assert.equal((source.segments[0] as any[])[0], "mara");
+  const named = {
+    ...source,
+    segments: [
+      { s: "mara", text: "Exact spoken words", delivery: "whisper", targetId: "player" },
+      { s: null, text: "A kettle sings.", sound: { sourceId: "mara", text: "A whistle." } },
+    ],
+  };
+  assert.deepEqual(expandGmSegments(named, 8), decoded);
+  assert.deepEqual(expandGmSegments(named, 7), named, "Saved v7 captures retain their original contract");
+  assert.deepEqual(expandGmSegments({ segments }, 8), { segments }, "Legacy named replies remain supported");
+  for (const row of [
+    { s: 1, text: "text" },
+    { s: "mara", text: 1 },
+    { s: "mara", text: "text", speakerId: "player" },
+    { s: "mara", text: "text", kind: "narration" },
+    { s: null, text: "text", targetId: "player" },
+    { s: "mara", text: "text", sound: {} },
+    Object.assign(Object.create({ hidden: true }), { s: "mara", text: "text" }),
+  ])
+    assert.throws(() => expandGmSegments({ segments: [row] }, 8), /compact Scene segment/);
   for (const row of [
     ["mara"],
     ["mara", "text", {}, "extra"],

@@ -53,16 +53,16 @@ for (const variant of [
   "mixed-long-learning",
   "missing-learning",
   "wrong-learning",
-  "physical-tuples",
-  "policy-tuples",
-  "project-tuples",
-  "wish-tuples",
-  "npc-tuples",
-  "whisper-tuples",
-  "learning-tuples",
-  "late-learning-tuples",
+  "physical-compact",
+  "policy-compact",
+  "project-compact",
+  "wish-compact",
+  "npc-compact",
+  "whisper-compact",
+  "learning-compact",
+  "late-learning-compact",
 ] as const) {
-  const scenario = variant.replace(/-tuples$/u, "").replace(/^late-/u, "");
+  const scenario = variant.replace(/-compact$/u, "").replace(/^late-/u, "");
   const host = await packagedSceneServer({
     configure(world, now) {
       if (scenario === "physical" || scenario === "policy") {
@@ -360,19 +360,19 @@ for (const variant of [
                             }
                           : { ...common, segments: [{ kind: "dialogue", speakerId: "mara", text: "Good evening." }] };
     const reply = content as any;
-    if (variant === "late-learning-tuples") {
+    if (variant === "late-learning-compact") {
       reply.segments = [
         ...Array.from({ length: 62 }, () => ({ kind: "narration", text: "The kettle steams quietly." })),
         reply.segments[0],
       ];
       reply.memoryChanges[0].support[0].lineId = 62;
     }
-    if (variant.endsWith("-tuples"))
-      reply.segments = reply.segments.map(({ kind, speakerId, text, ...options }: any) => [
-        kind === "narration" ? null : speakerId,
+    if (variant.endsWith("-compact"))
+      reply.segments = reply.segments.map(({ kind, speakerId, text, ...options }: any) => ({
+        s: kind === "narration" ? null : speakerId,
         text,
-        ...(Object.keys(options).length ? [options] : []),
-      ]);
+        ...options,
+      }));
     return { content: JSON.stringify(reply), finishReason: "stop", usage: { inputTokens: 10, outputTokens: 10 } };
   };
   try {
@@ -403,7 +403,7 @@ for (const variant of [
     assert.equal(response.statusCode, 200, scenario + ": " + response.body);
     assert.equal(calls, scenario === "draft-appointment" ? 2 : 1, scenario);
     const world = fixtureVillageState(host.records.get("villages-village").data, host.records);
-    if (variant === "late-learning-tuples") {
+    if (variant === "late-learning-compact") {
       assert.equal(host.scene().submissions.at(-1)!.replyLineIds!.length, 64);
       const record = world.memories.records.find((row) => row.domainRef?.kind === "relationship")!;
       assert.equal(
