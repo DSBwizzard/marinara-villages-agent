@@ -1155,6 +1155,7 @@ export function createSceneCommands({
           effectFailures: reply.effectFailures,
 
           speechCapture: reply.speechCapture,
+          sceneContractVersion: reply.sceneContractVersion,
           accessEvents: savedAccessEvents(reply.roomInterpretation),
           ...(state.semanticVersion === 2
             ? {
@@ -1659,6 +1660,7 @@ export function createSceneCommands({
           id: input.submissionId,
           ...(session.operation?.input.sceneHearingVersion === 2 ? { sceneHearingVersion: 2 as const } : {}),
           speechCapture: reply.speechCapture,
+          sceneContractVersion: reply.sceneContractVersion,
           effectFailures: { ...reply.effectFailures, ...(projectFailure ? { projects: projectFailure } : {}) },
           ...{ zoneEventsVersion: 1 as const },
           message: input.message,
@@ -2338,7 +2340,7 @@ export function createSceneCommands({
       await publish();
       return;
     }
-    if (allowProjectRecovery) await recoverProjectMetadata(scene, turn);
+    if (allowProjectRecovery && turn.sceneContractVersion !== 10) await recoverProjectMetadata(scene, turn);
     const currentScene = await readSession(scene.id);
     const currentTurn = currentScene.submissions.find((row) => row.id === turn.id);
     const physicalReceipt = (await readVillageState()).exchangeReceipts["venue-chat:" + scene.id + ":" + turn.id];

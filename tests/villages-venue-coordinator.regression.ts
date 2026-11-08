@@ -1472,10 +1472,10 @@ async function main() {
         gmDispatches++;
         return {
           finishReason: "stop",
-          content: JSON.stringify({
-            input: [{ kind: "action", text: acceptInput ? "I wait." : "I" }],
-            segments: [{ kind: "narration", text: "The room is quiet." }],
-          }),
+          content:
+            "INPUT " +
+            JSON.stringify([{ kind: "action", text: acceptInput ? "I wait." : "I" }]) +
+            "\n[narration] The room is quiet.",
         };
       },
     };
@@ -1541,7 +1541,8 @@ async function main() {
     assert.equal(gmDispatches, 1);
     assert(
       readPrivateDiagnostics(records.get("villages-private-diagnostics").data).entries.some(
-        (entry: any) => entry.sceneId === "typed-review" && entry.content.includes('"input"'),
+        (entry: any) =>
+          entry.sceneId === "typed-review" && entry.content.includes('INPUT [{"kind":"action","text":"I"}]'),
       ),
       "Rejected GM output stays in the private journal",
     );

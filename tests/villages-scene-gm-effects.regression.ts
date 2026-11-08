@@ -399,7 +399,17 @@ for (const variant of [
           ? "/api/villages/rooms/leave"
           : "/api/villages/rooms/turn";
     const requestPayload = scenario === "project-greet" ? { sessionId: "browser" } : payload;
-    const response = await host.app.inject({ method: "POST", url, payload: requestPayload });
+    let response = await host.app.inject({ method: "POST", url, payload: requestPayload });
+    if (scenario === "draft-appointment") {
+      assert.equal(response.statusCode, 502, response.body);
+      assert.equal(calls, 1, "Rejected generated appointment cannot buy an automatic replacement");
+      const attempt = host.scene().operation!.attemptId;
+      response = await host.app.inject({
+        method: "POST",
+        url,
+        payload: { ...requestPayload, retryOfAttemptId: attempt },
+      });
+    }
     assert.equal(response.statusCode, 200, scenario + ": " + response.body);
     assert.equal(calls, scenario === "draft-appointment" ? 2 : 1, scenario);
     const world = fixtureVillageState(host.records.get("villages-village").data, host.records);

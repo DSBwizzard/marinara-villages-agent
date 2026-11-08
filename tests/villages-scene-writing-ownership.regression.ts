@@ -24,6 +24,7 @@ import { venueFixture } from "./helpers/venues.fixture.js";
 import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
 import { addMemory, emptyMemories, memoryRepair, memoryTime } from "./helpers/memories-fixture.js";
 import { applyMemoryRepair } from "../packages/villages/src/server/domain/rules/memory-application.js";
+import { createHash } from "node:crypto";
 const stamp = "2026-10-07T12:00:00.000Z";
 function deferred() {
   return Promise.withResolvers<void>();
@@ -62,6 +63,7 @@ function fixture(label: string, checkpointed = false) {
   const owner = createActivationScope();
   const checkpoints = new Map<string, unknown>();
   const requests: unknown[] = [];
+  const optionsSeen: any[] = [];
   let roomInterpretation:
     import("../packages/villages/src/server/domain/models/interpretation-model.js").InterpretationBatch | null = null;
   async function touch(stage: string) {
@@ -149,20 +151,10 @@ function fixture(label: string, checkpointed = false) {
       assert.equal(options.usagePurpose, "conversation");
       assert.equal(options.temperature, 0.85);
       requests.push(structuredClone(_messages));
+      optionsSeen.push(structuredClone(options));
       await touch("completion");
       return {
-        content:
-          brokenReply ??
-          JSON.stringify({
-            input: _messages.findLast((message) => message.role === "user")?.content
-              ? [{ kind: "action", text: String(_messages.findLast((message) => message.role === "user")!.content) }]
-              : [],
-            segments: [{ kind: "narration", text: label + " room remains quiet." }],
-            heardPlayerBy: [],
-            wishChanges: [],
-            memoryChanges: [],
-            relationshipChanges: { changes: [], permissions: [], disclosures: [] },
-          }),
+        content: brokenReply ?? "INPUT action\n[narration] " + label + " room remains quiet.",
         finishReason: "stop",
       };
     },
@@ -208,6 +200,7 @@ function fixture(label: string, checkpointed = false) {
     gate,
     exact,
     requests,
+    optionsSeen,
     pause(stage: string) {
       paused = stage;
     },
@@ -224,6 +217,42 @@ function fixture(label: string, checkpointed = false) {
       return service.generate(scene, "I wait.", "chat", "", null);
     },
   };
+}
+{
+  const legacy = fixture("legacy-v9", true);
+  const prepared = await legacy.service.prepareVenueTurnMessages(legacy.scene, "I wait.", "chat", "", null);
+  const messages = [
+    { role: "system", content: "Exact retained v9 JSON writer prompt." },
+    { role: "user", content: "I wait." },
+  ];
+  const fitted = { ...prepared.fitted, messages };
+  const key =
+    "writing-request:" +
+    createHash("sha256")
+      .update(JSON.stringify([legacy.scene.id, "chat", "I wait."]))
+      .digest("hex");
+  legacy.checkpoints.set(key, {
+    fitted,
+    ordinary: fitted,
+    writingVersion: 9,
+    earlierEvidence: prepared.earlierEvidence,
+    wishContexts: prepared.wishContexts,
+    gmContext: prepared.gmContext,
+    gmPresentation: prepared.gmPresentation,
+    historyContract: prepared.historyContract,
+  });
+  legacy.invalidReply(
+    JSON.stringify({
+      input: "action",
+      segments: [{ kind: "narration", text: "Retained v9 response." }],
+      heardPlayerBy: [],
+    }),
+  );
+  const reply = await legacy.run();
+  assert.equal(reply.lines[0]!.content, "Retained v9 response.");
+  assert.deepEqual(legacy.requests[0], messages, "Captured provider bytes remain unchanged");
+  assert.deepEqual(legacy.optionsSeen[0].responseFormat, { type: "json_object" });
+  assert.equal(reply.sceneContractVersion, undefined);
 }
 const direct = fixture("A");
 assert.deepEqual(direct.calls, [], "constructing the service starts no work");
@@ -566,23 +595,13 @@ const invalid = fixture("invalid");
 invalid.invalidReply();
 await assert.rejects(invalid.run(), (error: any) => {
   assert.equal(error.statusCode, 502);
-  assert.match(error.message, /GM response was not valid JSON/);
+  assert.match(error.message, /invalid input classification/);
   return true;
 });
 const invalidLine = fixture("invalid-line");
-invalidLine.invalidReply(
-  JSON.stringify({
-    input: [{ kind: "action", text: "I wait." }],
-    segments: [{ kind: "robot", text: "A quiet room." }],
-    heardPlayerBy: [],
-    wishChanges: [],
-    memoryChanges: [],
-    relationshipChanges: { changes: [], permissions: [], disclosures: [] },
-  }),
-);
+invalidLine.invalidReply("INPUT action\n[robot] A quiet room.");
 await assert.rejects(invalidLine.run(), (error: any) => {
-  assert.match(error.failure.detail, /segments\[0\]\.kind/);
-  assert.equal(error.message, "The AI used an unknown kind of Scene text.");
+  assert.match(error.failure.detail, /speakerId/);
   return true;
 });
 assert.equal(

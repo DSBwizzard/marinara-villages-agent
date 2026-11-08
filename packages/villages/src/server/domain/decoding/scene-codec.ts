@@ -348,6 +348,7 @@ export function coerceSession(value: unknown): VenueScene {
               throw conflict("Unsupported saved Scene action.");
             return {
               id: asTrimmedString(row.id),
+              ...(row.sceneContractVersion === 10 ? { sceneContractVersion: 10 as const } : {}),
               ...(row.lore !== undefined ? { lore: readLoreUse(row.lore) } : {}),
               ...(row.zoneEventsVersion === 1 ? { zoneEventsVersion: 1 as const } : {}),
               ...(Array.isArray(row.wishProposals) ? { wishProposals: row.wishProposals as WishProposal[] } : {}),

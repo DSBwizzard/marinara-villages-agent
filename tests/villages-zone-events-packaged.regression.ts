@@ -1,6 +1,7 @@
 import AdmZip from "adm-zip";
 import Fastify from "fastify";
 import assert from "node:assert/strict";
+import { sceneTextCompletion } from "./fixtures/scene-text-reply.fixture.js";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { mock } from "node:test";
@@ -247,11 +248,11 @@ const model = {
     );
     prompts.push(messages.map((row) => row.content).join("\n"));
     assert(answer, "Every GM response must be explicitly supplied");
-    return {
+    return sceneTextCompletion(messages, {
       content: answerContent ?? JSON.stringify(answer),
       finishReason: answerFinishReason,
       usage: { inputTokens: 10, outputTokens: 10 },
-    };
+    });
   },
 };
 const runtime = {
@@ -698,7 +699,9 @@ try {
     assert(!Object.keys(state().operation.checkpoints).some((key) => key.startsWith("writing-completion:")));
     assert(
       readPrivateDiagnostics(records.get("villages-private-diagnostics").data).entries.some(
-        (entry: any) => entry.operationId === request.submissionId && entry.content.includes('"input"'),
+        (entry: any) =>
+          entry.operationId === request.submissionId &&
+          (entry.content.includes("INPUT") || entry.content.includes('"input"')),
       ),
     );
     await restart();

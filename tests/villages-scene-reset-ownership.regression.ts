@@ -66,7 +66,7 @@ function fixture(name: string) {
         async list(packageId, kind) {
           note("list");
           assert.equal(packageId, "villages");
-          assert.ok([SESSION_KIND, "scene-terminal", "project-scene-evidence"].includes(kind));
+          assert.ok([SESSION_KIND, "scene-terminal", "project-scene-evidence", "scene-encounter"].includes(kind));
           if (listFailure) throw listFailure;
           return structuredClone([...records.values()].filter((record) => record.kind === kind));
         },

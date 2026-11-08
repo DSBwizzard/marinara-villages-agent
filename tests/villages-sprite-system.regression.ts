@@ -323,26 +323,20 @@ for (const failure of ["none", "validation-input", "presentation-publish", "inva
       assert.doesNotMatch(JSON.stringify(catalog), /happy_01|happy_blush|"expressionId"/);
       return {
         finishReason: "stop",
-        content: JSON.stringify({
-          input: [],
-          segments: [
-            {
-              kind: "dialogue",
-              speakerId: "a",
-              text: "Hello.",
-              expression: "forged-inline-cue",
-              staging: [{ characterId: "a", expression: "forged-inline-cue" }],
-            },
-          ],
-          presentation: [
-            { segment: 0, staging: [{ characterId: "a", expression: "g-e-first", look: { target: "player" } }] },
-          ],
-          ...(failure === "invalid-response" && paid === 1
-            ? {
-                access: [{ actorId: "a", venueId: "missing", zoneId: "missing", outcome: "invite-now", evidence: [0] }],
-              }
-            : {}),
-        }),
+        content:
+          "INPUT []\n[a] Hello.\nCHANGES\n" +
+          JSON.stringify({
+            presentation: [
+              { segment: 0, staging: [{ characterId: "a", expression: "g-e-first", look: { target: "player" } }] },
+            ],
+            ...(failure === "invalid-response" && paid === 1
+              ? {
+                  access: [
+                    { actorId: "a", venueId: "missing", zoneId: "missing", outcome: "invite-now", evidence: [0] },
+                  ],
+                }
+              : {}),
+          }),
       };
     },
   };

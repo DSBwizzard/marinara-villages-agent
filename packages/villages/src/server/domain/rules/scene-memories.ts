@@ -13,6 +13,7 @@ import { asRecord } from "./coerce.js";
 import { memoryHash, memoryObject, memoryRequire, memoryString, validateMemoryLearning } from "./memory-integrity.js";
 import { estimatedMemoryTokens, memoryProtectionContext, type MemoryProtectionContext } from "./memory-protection.js";
 import { recallMemories } from "./memory-recall.js";
+import { fitEncounterQuotations, type EncounterQuotation } from "./scene-encounters.js";
 
 /** Saved server context for the existing System call; never Narration knowledge. */
 export type SceneMemoryContext = {
@@ -30,6 +31,7 @@ export function sceneMemoryContext(
   input: string,
   narration = "",
   context = "",
+  encounters: EncounterQuotation[] = [],
 ) {
   const budget = 1796;
   const envelopeTokens = estimatedMemoryTokens(JSON.stringify({ administrative: {}, memories: [] }));
@@ -38,6 +40,11 @@ export function sceneMemoryContext(
     { knowers: audience, query: input + " " + narration + " " + context.slice(-4000) },
     budget - envelopeTokens,
   );
+  const continuity = fitEncounterQuotations(
+    encounters,
+    Math.max(0, Math.min(600, budget - protection.tokens - envelopeTokens - 8)),
+  );
+  const continuityTokens = continuity.length ? estimatedMemoryTokens(JSON.stringify({ encounters: continuity })) : 0;
   const recall = recallMemories(state.memories, {
     purpose: "system",
     audience,
@@ -46,10 +53,16 @@ export function sceneMemoryContext(
     context,
     names: Object.fromEntries(state.villagers.map((row) => [row.characterId, row.cardSnapshot.name])),
     protection,
-    budget,
+    budget: budget - continuityTokens,
   });
   // The shown envelope is the complete budgeted memory portion. Server guards stay private.
-  const envelope = JSON.parse(recall.serialized) as { memories: MemoryCandidate[]; administrative: unknown };
+  const envelope = JSON.parse(recall.serialized) as {
+    memories: MemoryCandidate[];
+    administrative: unknown;
+    encounters?: EncounterQuotation[];
+  };
+  if (continuity.length) envelope.encounters = continuity;
+  memoryRequire(estimatedMemoryTokens(JSON.stringify(envelope)) <= budget, "encounter recall exceeds Memory budget");
   const saved: SceneMemoryContext = {
     protection: { ...protection, roots: protection.complete ? protection.roots : [] },
     recall: { candidates: recall.candidates, targetIds: recall.targetIds },
