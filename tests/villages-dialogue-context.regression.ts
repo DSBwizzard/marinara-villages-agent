@@ -340,7 +340,7 @@ async function run() {
         .map((entry) => entry.content)
         .join("\n"),
     );
-    assert.match(controlled, /Optional access:/);
+    assert.match(controlled, /access:\[\{actorId,venueId,zoneId,outcome:/);
     scene.area = "outside";
     scene.activeIds = ["reserved"];
     const one = String(
