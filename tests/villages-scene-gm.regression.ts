@@ -7,6 +7,7 @@ import {
   sceneGmMemory,
   sceneMemoryHistorySources,
   expandGmSegments,
+  omitGmNoopMetadata,
 } from "../packages/villages/src/server/domain/rules/scene-gm.js";
 import { decodePromptHistory } from "./fixtures/villages-scene-writing.fixture.js";
 import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
@@ -385,6 +386,88 @@ import { sceneWritingHistory } from "../packages/villages/src/server/domain/rule
 }
 
 const segments = [{ kind: "dialogue", speakerId: "mara", text: "Tea sounds good." }];
+{
+  for (const halt of [
+    { reason: "none", quote: "" },
+    { reason: "none", quote: "", appointments: [] },
+    { reason: "none", quote: "", source: "player", appointments: [] },
+    { reason: "none", quote: "", source: "draft" },
+  ]) {
+    const raw = { input: "speech", segments, halt };
+    assert.deepEqual(omitGmNoopMetadata(raw), { input: "speech", segments });
+    assert.equal(raw.halt, halt, "Normalization never mutates retained provider output");
+  }
+  for (const halt of [
+    null,
+    [],
+    {},
+    { reason: "none" },
+    { reason: "time", quote: "" },
+    { reason: "none", quote: "Tomorrow" },
+    { reason: "none", quote: "", source: "unknown" },
+    { reason: "none", quote: "", source: undefined },
+    { reason: "none", quote: "", appointments: null },
+    { reason: "none", quote: "", appointments: [{}] },
+    { reason: "none", quote: "", unexpected: "claim" },
+  ]) {
+    const raw = { input: "speech", segments, halt };
+    assert.equal(omitGmNoopMetadata(raw), raw, "Nonempty or unknown proposals retain their validation path");
+  }
+}
+{
+  const message = "I live nearby.";
+  const source = { kind: "scene", id: "source", sceneId: "scene", revision: 1, fingerprint: "f".repeat(64) };
+  const proposal = (lineId: string | number) => ({
+    action: "create",
+    kind: "information",
+    text: "The visitor said they live nearby.",
+    subjects: ["player"],
+    learners: { mara: { basis: "report", attributedTo: "player", support: [{ lineId, excerpt: message }] } },
+    screening: {},
+  });
+  const binding: any = {
+    source,
+    operationId: "op",
+    proposalId: "proposal",
+    collectionRevision: 0,
+    playerLineId: "raw",
+    replyLineIds: ["speech", "answer"],
+    residentIds: ["mara"],
+    learningVersion: 1,
+    lines: [
+      {
+        id: "raw",
+        role: "user",
+        speakerId: "player",
+        kind: "context",
+        content: message,
+        heardBy: [],
+        playerHeard: true,
+      },
+      {
+        id: "speech",
+        role: "user",
+        speakerId: "player",
+        kind: "dialogue",
+        content: message,
+        heardBy: ["mara"],
+        playerHeard: true,
+      },
+    ],
+  };
+  assert.throws(() => bindSceneMemorySuggestion(proposal("player"), binding), /unwitnessed/);
+  const reply = materializeGmReply({ input: "speech", segments, memoryChanges: [proposal("utterance:0")] }, message);
+  const change = (reply.memoryChanges as any[])[0];
+  assert.equal(bindSceneMemorySuggestion(change, binding).evidence[0].lineId, "speech");
+  assert.throws(
+    () =>
+      bindSceneMemorySuggestion(change, {
+        ...binding,
+        lines: binding.lines.map((line: any) => ({ ...line, heardBy: [] })),
+      }),
+    /unwitnessed/,
+  );
+}
 {
   const source = {
     input: "speech",

@@ -55,6 +55,7 @@ import {
   materializeGmReply,
   normalizeGmEffects,
   expandGmSegments,
+  omitGmNoopMetadata,
   compactSceneRead,
   sceneGmMemory,
   sceneMemoryHistorySources,
@@ -203,7 +204,7 @@ export function createSceneWriting({
   ) {
     assertCurrentSceneGeneration(session);
 
-    const writingVersion = 8;
+    const writingVersion = 9;
     const requestKey = writingRequestKey(session, message, mode);
     const captured = venueSavedCheckpoint?.<{
       fitted: ReturnType<typeof fitVenueWritingMessages>;
@@ -877,6 +878,7 @@ export function createSceneWriting({
         let complete = completeSceneObject(completion.content ?? "", completion.finishReason);
         if (!complete) throw badGateway("The GM response was not valid JSON. Your draft is preserved.");
         if (writingVersion >= 7) complete = expandGmSegments(complete, writingVersion);
+        if (writingVersion >= 9) complete = omitGmNoopMetadata(complete);
         if (complete.halt && gmContext.preservation) {
           const halt = asRecord(complete.halt);
           const playerHalt = {
