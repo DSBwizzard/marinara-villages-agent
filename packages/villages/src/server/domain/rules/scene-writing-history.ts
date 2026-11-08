@@ -36,6 +36,26 @@ const tokens = (text: string) =>
     .toLocaleLowerCase("en-US")
     .match(/[\p{L}\p{N}]+/gu) ?? [];
 
+/** Compact transport only; saved evidence and historical knowledge are unchanged. */
+export function compactSceneHistoryPacket(packet: {
+  names: Record<string, string>;
+  facts: Record<string, unknown>;
+  groups: { facts: Record<string, unknown>; lines: Record<string, unknown>[] }[];
+}) {
+  return {
+    ...packet,
+    groups: packet.groups.map((group) => ({
+      facts: group.facts,
+      lines: group.lines.map(({ id, speakerId, kind, text, ...details }) => {
+        if (kind !== "dialogue" && kind !== "narration") details.kind = kind;
+        if (kind === "narration" && speakerId !== undefined && speakerId !== "__venue_scene__")
+          details.speakerId = speakerId;
+        return [id, kind === "narration" ? null : speakerId, text, ...(Object.keys(details).length ? [details] : [])];
+      }),
+    })),
+  };
+}
+
 /** Rank the full eligible active Scene before allocating recent/relevant history. */
 export function sceneWritingHistory(
   scene: VenueScene,
@@ -212,10 +232,13 @@ export function sceneWritingHistory(
           facts[key] = value;
           for (const group of groups) delete group.facts[key];
         }
-    return (
-      "Scene exchange: " +
-      JSON.stringify(encodedPeople ? mapScenePeople({ names, facts, groups }, encodedPeople) : groups)
-    );
+    if (!encodedPeople) return "Scene exchange: " + JSON.stringify(groups);
+    const packet = mapScenePeople({ names, facts, groups }, encodedPeople) as {
+      names: typeof names;
+      facts: typeof facts;
+      groups: typeof groups;
+    };
+    return "Scene exchange: " + JSON.stringify(compactSceneHistoryPacket(packet));
   };
   const block = (items: typeof rows): VenueWritingBlock => ({
     text: render(items),

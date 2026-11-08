@@ -751,7 +751,7 @@ for (const supplied of [
     () =>
       materializePlayerSpeech(
         {
-          segments: Array.from({ length: 24 }, () => ({ kind: "narration", text: "A nod." })),
+          segments: Array.from({ length: 64 }, () => ({ kind: "narration", text: "A nod." })),
           playerSpeechCapture: { status: "captured", utterances: [{ text: "mint", occurrence: 1 }] },
         },
         "mint",

@@ -54,6 +54,7 @@ import { sceneContinuityView, sceneLocationContext, sceneWishEffectIds } from ".
 import {
   materializeGmReply,
   normalizeGmEffects,
+  expandGmSegments,
   compactSceneRead,
   sceneGmMemory,
   sceneMemoryHistorySources,
@@ -202,7 +203,7 @@ export function createSceneWriting({
   ) {
     assertCurrentSceneGeneration(session);
 
-    const writingVersion = 6;
+    const writingVersion = 7;
     const requestKey = writingRequestKey(session, message, mode);
     const captured = venueSavedCheckpoint?.<{
       fitted: ReturnType<typeof fitVenueWritingMessages>;
@@ -602,7 +603,7 @@ export function createSceneWriting({
         replyReminder: [
           ...(Object.keys(gmPresentation.sprites).length ? [{ text: SCENE_GM_PRESENTATION }] : []),
           {
-            text: 'Return {"input":"speech|action|thought|context" for ordinary untargeted input, or an exact span array for mixed input/whispers/shouts/targets,"segments":[...]}. Both keys are required. Empty input:[]. Use supplied speaker IDs; max4 non-player speakers. Include only actual effects, with exact root keys and cited segments. Ordinary conversation needs no effect checklist. Write the next exchange now.',
+            text: "Return valid JSON with required input and segments. Ordinary untargeted input may use its kind string; mixed input/whispers/shouts/targets need exact span arrays. segments entries are [speakerId|null,text,optional options], null for narration. Escape quotes/newlines. Use supplied IDs; max4 non-player speakers, aim<=24 segments. Only actual effects, with exact root keys/citations. No effect checklist. Write the next exchange now.",
           },
         ],
       });
@@ -873,8 +874,9 @@ export function createSceneWriting({
     {
       try {
         if (!gmContext) throw conflict("The saved GM context is unavailable. Your draft is preserved.");
-        const complete = completeSceneObject(completion.content ?? "", completion.finishReason);
+        let complete = completeSceneObject(completion.content ?? "", completion.finishReason);
         if (!complete) throw badGateway("The GM response was not valid JSON. Your draft is preserved.");
+        if (writingVersion >= 7) complete = expandGmSegments(complete);
         if (complete.halt && gmContext.preservation) {
           const halt = asRecord(complete.halt);
           const playerHalt = {

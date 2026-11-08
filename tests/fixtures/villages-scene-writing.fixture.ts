@@ -174,13 +174,31 @@ export function scenePromptPacket(prompt: string, people = promptPeople.get(prom
   return combined;
 }
 
+export function decodePromptHistory(value: any, people: Record<string, string> = {}) {
+  if (Array.isArray(value)) return mapScenePeople(value, people) as any;
+  const groups = value.groups.map((group: any) => ({
+    ...group,
+    lines: group.lines.map((line: any) => {
+      if (!Array.isArray(line)) return line;
+      const [id, speakerId, text, details] = line;
+      return {
+        id,
+        speakerId: speakerId === null ? "__venue_scene__" : speakerId,
+        kind: speakerId === null ? "narration" : "dialogue",
+        text,
+        ...details,
+      };
+    }),
+  }));
+  return mapScenePeople({ ...value, groups }, people) as any;
+}
 export function scenePromptHistory(prompt: string, people = promptPeople.get(prompt) ?? {}): any[] {
   const prefix = "Partial active Scene history (omission never proves historical absence): ";
   const chunks = prompt.split("\n").filter((line) => line.startsWith("Scene exchange: "));
   if (chunks.length) {
     const packet = scenePromptPacket(prompt, people);
     return chunks.flatMap((line) => {
-      const parsed = mapScenePeople(JSON.parse(line.slice("Scene exchange: ".length)), packet.people ?? {}) as any;
+      const parsed = decodePromptHistory(JSON.parse(line.slice("Scene exchange: ".length)), packet.people ?? {});
       if (Array.isArray(parsed))
         return parsed.flatMap((group: any) => group.lines.map((row: any) => ({ ...group.facts, ...row })));
       return parsed.groups.flatMap((group: any) =>

@@ -1,5 +1,6 @@
 import { asRecord } from "./coerce.js";
 import { badGateway } from "./errors.js";
+import { MAX_SCENE_REPLY_LINES } from "./scene-reply.js";
 export type SpeechSource = { start: number; end: number; text: string; occurrence: number };
 /** Resolve exact source occurrences; never derive hearing from punctuation or reactions. */
 export function playerSpeechCapture(raw: Record<string, unknown>, input: string, opening = false) {
@@ -74,7 +75,7 @@ export function materializePlayerSpeech(raw: Record<string, unknown>, input: str
     !["captured", "silent"].includes(String(capture.status)) ||
     !Array.isArray(capture.utterances) ||
     capture.utterances.length > 24 ||
-    raw.segments.length + capture.utterances.length > 24 ||
+    raw.segments.length + capture.utterances.length > MAX_SCENE_REPLY_LINES ||
     (capture.status === "silent") !== (capture.utterances.length === 0) ||
     raw.segments.some((value) => asRecord(value).speakerId === "player")
   )

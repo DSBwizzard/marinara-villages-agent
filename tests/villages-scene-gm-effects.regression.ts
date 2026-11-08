@@ -35,7 +35,7 @@ assert.equal(
   "Input indexes never shift with generated segments",
 );
 
-for (const scenario of [
+for (const variant of [
   "npc",
   "project",
   "project-conclude",
@@ -53,7 +53,16 @@ for (const scenario of [
   "mixed-long-learning",
   "missing-learning",
   "wrong-learning",
+  "physical-tuples",
+  "policy-tuples",
+  "project-tuples",
+  "wish-tuples",
+  "npc-tuples",
+  "whisper-tuples",
+  "learning-tuples",
+  "late-learning-tuples",
 ] as const) {
+  const scenario = variant.replace(/-tuples$/u, "").replace(/^late-/u, "");
   const host = await packagedSceneServer({
     configure(world, now) {
       if (scenario === "physical" || scenario === "policy") {
@@ -350,7 +359,21 @@ for (const scenario of [
                               },
                             }
                           : { ...common, segments: [{ kind: "dialogue", speakerId: "mara", text: "Good evening." }] };
-    return { content: JSON.stringify(content), finishReason: "stop", usage: { inputTokens: 10, outputTokens: 10 } };
+    const reply = content as any;
+    if (variant === "late-learning-tuples") {
+      reply.segments = [
+        ...Array.from({ length: 62 }, () => ({ kind: "narration", text: "The kettle steams quietly." })),
+        reply.segments[0],
+      ];
+      reply.memoryChanges[0].support[0].lineId = 62;
+    }
+    if (variant.endsWith("-tuples"))
+      reply.segments = reply.segments.map(({ kind, speakerId, text, ...options }: any) => [
+        kind === "narration" ? null : speakerId,
+        text,
+        ...(Object.keys(options).length ? [options] : []),
+      ]);
+    return { content: JSON.stringify(reply), finishReason: "stop", usage: { inputTokens: 10, outputTokens: 10 } };
   };
   try {
     await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
@@ -380,6 +403,15 @@ for (const scenario of [
     assert.equal(response.statusCode, 200, scenario + ": " + response.body);
     assert.equal(calls, scenario === "draft-appointment" ? 2 : 1, scenario);
     const world = fixtureVillageState(host.records.get("villages-village").data, host.records);
+    if (variant === "late-learning-tuples") {
+      assert.equal(host.scene().submissions.at(-1)!.replyLineIds!.length, 64);
+      const record = world.memories.records.find((row) => row.domainRef?.kind === "relationship")!;
+      assert.equal(
+        record.knowers.player.support[0].lineId,
+        host.scene().submissions.at(-1)!.replyLineIds![63],
+        "Late tuple evidence binds past inserted player speech",
+      );
+    }
     if (scenario === "whisper") {
       const spoken = host.scene().lines.find((line) => line.role === "user" && line.speechSource?.version === 3)!;
       assert(

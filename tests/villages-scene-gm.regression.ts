@@ -6,7 +6,10 @@ import {
   sceneGmContext,
   sceneGmMemory,
   sceneMemoryHistorySources,
+  expandGmSegments,
 } from "../packages/villages/src/server/domain/rules/scene-gm.js";
+import { decodePromptHistory } from "./fixtures/villages-scene-writing.fixture.js";
+import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 import {
   assembleVenueWritingMessages,
   fitVenueWritingMessages,
@@ -83,10 +86,49 @@ import { sceneWritingHistory } from "../packages/villages/src/server/domain/rule
     contactHidden: false,
   }));
   const scene = { lines, submissions: [{ replyLineIds: lines.map((row) => row.id) }], zoneId: "room" } as any;
+  (lines as any[]).push(
+    {
+      ...lines[0],
+      id: "unowned-notice",
+      speakerId: "unowned-narrator",
+      name: "Notice",
+      kind: "narration",
+      content: "A public notice.",
+    },
+    {
+      ...lines[0],
+      id: "narrator",
+      speakerId: "__venue_scene__",
+      name: "",
+      kind: "narration",
+      content: "A kettle steams.",
+    },
+    {
+      ...lines[0],
+      id: "whisper",
+      kind: "whisper",
+      delivery: "whisper",
+      targetId: "other-long-id",
+      contactHidden: true,
+      content: "Private words.",
+      soundOnly: { characterIds: [], player: true, text: "A murmur." },
+    },
+    {
+      ...lines[0],
+      id: "anonymous-sound",
+      kind: "dialogue",
+      heardBy: ["offstage"],
+      contactHidden: true,
+      name: "UNHEARD NAME",
+      content: "UNHEARD SECRET",
+      soundOnly: { characterIds: ["resident-long-id", "other-long-id"], player: true, text: "Distant voices." },
+    },
+  );
+  scene.submissions[0].replyLineIds = lines.map((line) => line.id);
   const legacy = sceneWritingHistory(scene, lines as any, "", ["resident-long-id", "other-long-id"]);
   const compact = sceneWritingHistory(scene, lines as any, "", ["resident-long-id", "other-long-id"], people);
   const original = JSON.parse(legacy.blocks[0]!.text.slice("Scene exchange: ".length));
-  const packet = mapScenePeople(JSON.parse(compact.blocks[0]!.text.slice("Scene exchange: ".length)), people) as any;
+  const packet = decodePromptHistory(JSON.parse(compact.blocks[0]!.text.slice("Scene exchange: ".length)), people);
   for (const group of packet.groups) {
     group.facts = { ...packet.facts, ...group.facts };
     group.facts.heardBy = compact.audiences[group.facts.heardBy];
@@ -96,10 +138,11 @@ import { sceneWritingHistory } from "../packages/villages/src/server/domain/rule
         line.delivery ??= "ordinary";
         line.presentation ??= "main";
       }
-      line.name ??= packet.names[line.speakerId];
+      if (typeof packet.names[line.speakerId] === "string") line.name ??= packet.names[line.speakerId];
     }
   }
   assert.deepEqual(packet.groups, original, "Compact history restores exact historical names, witnesses and text");
+  assert(!compact.blocks[0].text.includes("UNHEARD SECRET") && !compact.blocks[0].text.includes("UNHEARD NAME"));
   const arrived = sceneWritingHistory(
     {
       ...scene,
@@ -342,6 +385,58 @@ import { sceneWritingHistory } from "../packages/villages/src/server/domain/rule
 }
 
 const segments = [{ kind: "dialogue", speakerId: "mara", text: "Tea sounds good." }];
+{
+  const source = {
+    input: "speech",
+    segments: [
+      ["mara", "Exact spoken words", { delivery: "whisper", targetId: "player" }],
+      [null, "A kettle sings.", { sound: { sourceId: "mara", text: "A whistle." } }],
+    ],
+  };
+  const decoded = expandGmSegments(source);
+  assert.deepEqual(decoded.segments, [
+    { kind: "dialogue", speakerId: "mara", text: "Exact spoken words", delivery: "whisper", targetId: "player" },
+    { kind: "narration", text: "A kettle sings.", sound: { sourceId: "mara", text: "A whistle." } },
+  ]);
+  assert.equal((source.segments[0] as any[])[0], "mara");
+  for (const row of [
+    ["mara"],
+    ["mara", "text", {}, "extra"],
+    [1, "text"],
+    ["mara", 1],
+    [null, "text", { targetId: "player" }],
+    ["mara", "text", { sound: {} }],
+    ["mara", "text", { speakerId: "player" }],
+    ["mara", "text", Object.create({ hidden: true })],
+  ])
+    assert.throws(() => expandGmSegments({ segments: [row] }), /compact Scene segment/);
+  const long = {
+    input: "speech",
+    segments: Array.from({ length: 63 }, (_, index) => ["mara", "Line " + index]),
+    access: [{ actorId: "mara", evidence: [62] }],
+    presentation: [{ segment: 62, staging: [] }],
+    events: { moves: [{ segment: 62 }] },
+    memoryChanges: [{ support: [{ lineId: 62, excerpt: "Line 62" }] }],
+  };
+  const reply = materializeGmReply(expandGmSegments(long), "Hello.");
+  assert.equal((reply.segments as any[]).length, 64);
+  assert.deepEqual((reply.access as any[])[0].evidence, [63]);
+  assert.equal((reply.presentation as any[])[0].segment, 63);
+  assert.equal((reply.events as any).moves[0].segment, 63);
+  assert.equal((reply.memoryChanges as any[])[0].support[0].lineId, 63);
+  assert.doesNotThrow(() => parseVenueReply({ ...reply, heardPlayerBy: [] }, ["mara", "player"]));
+  const unknown = structuredClone(reply);
+  (unknown.segments as any[])[63].speakerId = "unavailable";
+  assert.throws(() => parseVenueReply({ ...unknown, heardPlayerBy: [] }, ["mara", "player"]), /does not identify/);
+  assert.throws(
+    () =>
+      materializeGmReply(
+        expandGmSegments({ input: "speech", segments: Array.from({ length: 64 }, () => ["mara", "Hello."]) }),
+        "Hello.",
+      ),
+    /capture needs recovery/,
+  );
+}
 assert.equal((materializeGmReply({ input: "speech", segments }, "Tea?").segments as any[])[0].text, "Tea?");
 assert.equal((materializeGmReply({ input: "thought", segments }, "Private thought").segments as any[]).length, 1);
 assert.throws(() => materializeGmReply({ segments }, "Tea?"), /incomplete/);
