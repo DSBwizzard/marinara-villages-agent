@@ -65,11 +65,15 @@ try {
     return {
       content:
         "INPUT " +
-        JSON.stringify([
-          { kind: "action", text: action },
-          { kind: "speech", text: words, delivery: "whisper", targetId: "mara" },
-        ]) +
-        "\n[narration] Mara joins you at the quiet end of the table.\n[mara whisper:player] I'll leave it here.\n[bryn aside] I'll put the kettle on.\nCHANGES\nmemoryChanges:" +
+        JSON.stringify(
+          [
+            { kind: "action", text: action },
+            { kind: "speech", text: words, delivery: "whisper", targetId: "mara" },
+          ],
+          null,
+          2,
+        ) +
+        "\nMara joins you at the quiet end of the table.\n[mara whisper:player] I'll leave it here.\n[bryn aside] I'll put the kettle on.\nCHANGES\nmemoryChanges:" +
         JSON.stringify([
           {
             text: "The player privately asked Mara to keep the blue cup here.",
@@ -127,6 +131,8 @@ for (const variant of [
   "recent-string",
   "memory-fragment",
   "combined",
+  "unlabeled-action",
+  "inline-private",
   "denied-controller",
   "malformed-consent",
 ] as const) {
@@ -177,12 +183,14 @@ for (const variant of [
           : JSON.stringify({ action });
     return {
       content:
-        "INPUT " +
-        (isMemory ? "speech" : "action") +
-        "\n[narration] " +
-        narration +
-        "\n[mara aside] Noted.\nCHANGES\n" +
-        metadata,
+        variant === "inline-private"
+          ? "INPUT speech\nThe kettle rattles. [mara\nwhisper:player] PRIVATE\n[mara] Hello."
+          : "INPUT " +
+            (isMemory ? "speech" : "action") +
+            (variant === "unlabeled-action" ? "\n" : "\n[narration] ") +
+            narration +
+            "\n[mara aside] Noted.\nCHANGES\n" +
+            metadata,
       finishReason: "stop",
       usage: { inputTokens: 10, outputTokens: 10 },
     };
@@ -198,9 +206,10 @@ for (const variant of [
     };
     const result = await host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
     const world = fixtureVillageState(host.records.get("villages-village").data, host.records);
-    if (variant === "malformed-consent") {
+    if (variant === "malformed-consent" || variant === "inline-private") {
       assert.equal(result.statusCode, 502, result.body);
       assert.equal(host.scene().submissions.length, 0);
+      assert.equal(host.scene().lines.length, 0);
       assert.equal(world.venues[0]!.zones![1]!.state.revision, 0);
     } else if (variant === "denied-controller") {
       assert.equal(host.scene().submissions.length, 0, "An unauthorized success is not published as a completed turn");

@@ -28,7 +28,7 @@ Paragraph headers (supplied IDs only):
 [person-id to:recipient-id] ordinary public speech addressed to that person
 Actions go in narration, words in dialogue. Prose needs no JSON escaping.
 Aside bubbles are presentation, never a private audience. Keep useful asides brief.
-Headers begin a line; continued lines belong to that paragraph. Keep ordinary dialogue brief across the whole cast; max2000 characters per paragraph.
+Unlabeled opening prose is narration. Headers begin a new line; never put them inline or write closing tags. Continued lines belong to that paragraph; use [narration] to switch back from speech. Keep ordinary dialogue brief across the whole cast; max2000 characters per paragraph.
 
 For actual effects only, end with CHANGES on its own line and one JSON object using the effect contracts.
 Enclose ALL effects in one pair of braces and double-quote their names. Example shape: {"action":{"happened":true,"segment":0,"actorIds":["player"],"consent":[],"append":"The cup rests on the shelf."}}. Include it only when that narration actually establishes the change.
@@ -97,20 +97,36 @@ export function parseSceneTextReply(content: string, finishReason?: string): Rec
   const lines = text.split(/\r?\n/u);
   const inputLine = lines.shift()?.match(/^INPUT:?(?:[ \t]+(.*))?$/u);
   if (!inputLine) throw invalid("input classification");
-  const firstBody = lines.findIndex((line) => header.test(line) || changesHeader.test(line));
-  const inputText = [inputLine[1] ?? "", ...lines.slice(0, firstBody < 0 ? lines.length : firstBody)].join("\n").trim();
+  const inputText = (inputLine[1] ?? "").trim();
   let input: unknown;
+  let body = lines;
   if (["speech", "action", "thought", "context"].includes(inputText)) input = inputText;
   else {
-    const wrapped = '{"input":' + inputText + "}";
+    const section = [inputLine[1] ?? "", ...lines].join("\n").trimStart();
+    if (!section.startsWith("[")) throw invalid("input classification");
+    let depth = 0;
+    let end = -1;
+    for (const match of section.matchAll(/"(?:[^"\\]|\\.)*"|[{}\[\]]/gu)) {
+      if (match[0] === "{" || match[0] === "[") depth++;
+      else if (match[0] === "}" || match[0] === "]") {
+        depth--;
+        if (depth === 0) {
+          end = match.index + 1;
+          break;
+        }
+      }
+    }
+    if (end < 0 || (section.slice(end) && !/^[ \t]*\n/u.test(section.slice(end))))
+      throw invalid("input classification");
+    const wrapped = '{"input":' + section.slice(0, end) + "}";
     input = modelJsonWithinBounds(wrapped) ? parseSceneObject(wrapped)?.input : undefined;
     if (!Array.isArray(input)) throw invalid("input classification");
+    body = section.slice(end).trimStart().split(/\r?\n/u);
     input = input.map((value) => {
       const span = asRecord(value);
       return span.delivery === "call" ? { ...span, delivery: "shout" } : value;
     });
   }
-  const body = firstBody < 0 ? [] : lines.slice(firstBody);
   const changeAt = body.findIndex((line) => changesHeader.test(line));
   let changes: Record<string, unknown> = {};
   if (changeAt >= 0) {
@@ -132,22 +148,29 @@ export function parseSceneTextReply(content: string, finishReason?: string): Rec
     }
   }
   const segments: Record<string, unknown>[] = [];
+  let opening = true;
   let current: { fields: Record<string, unknown>; lines: string[] } | undefined;
   const flush = () => {
     if (!current) return;
     const prose = current.lines.join("\n").trim();
     if (!prose) throw invalid("empty paragraphs");
+    if (
+      /\[[A-Za-z0-9:_-]+\s+whisper\b/iu.test(prose) ||
+      (opening && /\[(?:narration\b|\/[A-Za-z0-9:_-]+|[A-Za-z0-9:_-]+\s+(?:main|aside|call|to)\b)/iu.test(prose))
+    )
+      throw invalid("paragraph headers");
     segments.push({ ...current.fields, text: prose });
   };
   for (const line of body.slice(0, changeAt < 0 ? body.length : changeAt)) {
     const match = line.match(header);
     if (!match) {
       if (line.trimStart().startsWith("[")) throw invalid("paragraph headers");
-      if (!current && line.trim()) throw invalid("paragraph headers");
+      if (!current && line.trim()) current = { fields: { kind: "narration" }, lines: [] };
       current?.lines.push(line);
       continue;
     }
     flush();
+    opening = false;
     const [, speaker, delivery, prose] = match;
     if (speaker === "narration" && delivery) throw invalid("narration delivery");
     current = {

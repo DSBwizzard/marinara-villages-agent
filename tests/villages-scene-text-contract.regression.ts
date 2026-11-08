@@ -6,6 +6,20 @@ import { parseVenueReply } from "../packages/villages/src/server/domain/rules/sc
 const parse = (text: string) => parseSceneTextReply(text, "stop");
 const source = 'INPUT speech\n[narration] The sign says "Tea: [fresh]".\nA second line.\n[mara] "Please, sit."';
 const raw: any = parse(source);
+const opening: any = parse('INPUT speech\nThe kettle rattles.\nIts label says "[fresh]".\n[mara] Tea?');
+assert.deepEqual(opening.segments[0], { kind: "narration", text: 'The kettle rattles.\nIts label says "[fresh]".' });
+assert.equal(opening.segments[1].speakerId, "mara");
+for (const spacing of [undefined, 2]) {
+  const array = JSON.stringify(
+    [{ kind: "speech", text: 'A [bracket] and a "quote".', delivery: "whisper", targetId: "mara" }],
+    null,
+    spacing,
+  );
+  const reply: any = parse("INPUT " + array + "\nThe kettle rattles.\n[mara whisper:player] Only you.");
+  assert.equal(reply.input[0].text, 'A [bracket] and a "quote".');
+  assert.equal(reply.segments[0].kind, "narration");
+  assert.equal(reply.segments[1].delivery, "whisper");
+}
 assert.equal(raw.input, "speech");
 assert.equal(raw.segments[0].text, 'The sign says "Tea: [fresh]".\nA second line.');
 assert.equal(raw.segments[1].speakerId, "mara");
@@ -90,8 +104,17 @@ for (const text of [
   '{"input":"speech","segments":[{"kind":"dialogue","speakerId":"mara","text":"Old writer JSON."}]}',
   "[mara] Hello.",
   "INPUT guessed\n[mara] Hello.",
-  "INPUT speech\nHello.",
+  "INPUT [],\n[mara] Hello.",
+  'INPUT [{"kind":"speech","text":"unfinished"}\n[mara] Hello.',
+  "INPUT [] trailing input text\n[mara] Hello.",
   "INPUT speech\n[narration whisper:player] Hidden.",
+  "INPUT speech\nThe kettle rattles. [mara whisper:player] PRIVATE\n[bryn] Hello.",
+  "INPUT speech\nThe kettle rattles. [mara\nwhisper:player] PRIVATE\n[bryn] Hello.",
+  "INPUT speech\nThe kettle rattles.\nA pause. [mara whisper] PRIVATE\n[bryn] Hello.",
+  "INPUT speech\nThe kettle rattles. [mara aside] Hello.",
+  "INPUT speech\nThe kettle rattles. [narration] Another paragraph.",
+  "INPUT speech\nThe kettle rattles. [/mara] Hello.",
+  "INPUT speech\n[mara] Hello. [mara whisper:player] PRIVATE",
   "INPUT speech\n[narration] A public moment.\n[mara whisper] This must never become public continuation text.",
   "INPUT speech\n[narration] A public moment.\n[mara whisper:player A broken private header.",
   "INPUT speech\n[mara]\nCHANGES\n{}",
