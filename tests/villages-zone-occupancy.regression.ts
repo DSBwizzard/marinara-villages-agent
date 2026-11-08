@@ -173,10 +173,10 @@ const scene = coerceSession({
   submissions: [],
 });
 const selected = zoneEventScene(scene, venue, { targetId: ids[4], message: ids[4] + ", hello!" });
-assert.equal(selected.participants.length, 4);
+assert.equal(selected.participants.length, 5, "The offered remote speaker does not exclude a present local");
 assert.equal(selected.contactGeneration!.actorIds![0], ids[4]);
 assert.equal(selected.activeIds.length, 4, "all four locals remain physically present");
-assert.equal(semanticContext(selected, state, "Hello").actors.length, 4);
+assert.equal(semanticContext(selected, state, "Hello").actors.length, 5);
 assert.deepEqual(
   zoneEventScene(structuredClone(scene), venue, { targetId: ids[4] }).contactGeneration!.actorIds,
   selected.contactGeneration!.actorIds,
