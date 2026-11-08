@@ -281,9 +281,18 @@ for (const variant of [
   "wrong-scope",
 ] as const) {
   const host = await packagedSceneServer({
-    configure(world) {
+    configure(world, now) {
       world.venues[0]!.access!.managerIds = [variant === "denied" ? "mara" : "player"];
-      world.venues[0]!.access!.visitorHours = [{ days: ["Sunday"], start: "06:00", end: "22:00" }];
+      const hour = new Date(now).getHours();
+      const clock = (offset: number) => String((hour + offset) % 24).padStart(2, "0") + ":00";
+      // Keep the recipient present while testing a policy change, regardless of the runner's clock.
+      world.venues[0]!.access!.visitorHours = [
+        {
+          days: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+          start: clock(23),
+          end: clock(2),
+        },
+      ];
       if (variant === "zone-hours") {
         world.venues[0]!.zones![1]!.access!.memberIds = ["mara"];
         world.venues[0]!.zones![1]!.access!.inviterIds = ["mara"];
