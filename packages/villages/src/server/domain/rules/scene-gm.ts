@@ -177,7 +177,7 @@ Correct and resolve require explicit kind, text and subjects; correct the canoni
 Screen proposals against administrative roots; conflict/uncertain is rejected individually.
 Code records committed mechanical outcomes, source hashes and revisions; do not predict receipts or write mechanical Memories.`;
 
-export const SCENE_GM_PHYSICAL = `Optional action:{happened:true,segment,actorIds:[],consent:[{actorId,segment?,lineId?,quote?}],appearanceChanged:boolean,edits:[{before,after}],append?,recent?:{text,renew?},dayNight?,conditionClears?:[{id,expectedRevision}]}.
+export const SCENE_GM_PHYSICAL = `Every completed persistent physical change requires action:{happened:true,segment,actorIds:[],consent:[{actorId,segment?,lineId?,quote?}],appearanceChanged:boolean,edits:[{before,after}],append?,recent?:{text,renew?},dayNight?,conditionClears?:[{id,expectedRevision}]}.
 Cite completed local action narration; only present actors and available supplies. Omitted consent means no consent evidence, never permission; use [] when no nonacting controller needs consent.
 Each nonacting controller needs actual consent: current speech segment or exact supplied earlier line perceived by actors; player uses segment:"player",quote:"exact input".
 Preserve conditions/withdrawals; access permits ordinary temporary use, not enduring edits.
@@ -198,7 +198,8 @@ Also return immediateResidentMoves:[{characterIds:[ids],zoneId,source:zero-based
 Exclude future, hypothetical, negated and player-only travel.
 These source indexes refer to input, never generated segments; code checks group availability.`;
 
-export const SCENE_GM_ACCESS = `Optional access:[{actorId,venueId,zoneId,outcome:"invite-now|invite-later|refuse|dismiss|ban-zone|ban-venue|invite-outside-hours|access-management|unresolved",evidence:[segment],accompanies?,conditions?:["accompanied"],command?,inputSpan?}].
+export const SCENE_GM_ACCESS = `Actual visit invitations, entry refusals, dismissals, bans and policy administration require access:[{actorId,venueId,zoneId,outcome:"invite-now|invite-later|refuse|dismiss|ban-zone|ban-venue|invite-outside-hours|access-management|unresolved",evidence:[segment],accompanies?,conditions?:["accompanied"],command?,inputSpan?}].
+A current valid manager's explicit policy change is administration now, even when INPUT is speech. Record its access-management command; without it the policy has not changed. Restating existing rules, hypothetical discussion and future intentions change nothing.
 Cite actual current controller consent/refusal.
 Player issuance cites their actual utterance or an original action span (inputSpan; omit only when exactly one action exists). Narration alone never supplies player consent.
 Visits grant no residency or standing access.

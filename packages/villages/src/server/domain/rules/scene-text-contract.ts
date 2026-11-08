@@ -30,7 +30,8 @@ Actions go in narration, words in dialogue. Prose needs no JSON escaping.
 Aside bubbles are presentation, never a private audience. Keep useful asides brief.
 Unlabeled opening prose is narration. Every supplied public header starts a new paragraph, even inline. Private headers must begin a new line. Never write closing tags. Continued text belongs to that paragraph; use [narration] to switch back from speech. Keep ordinary dialogue brief across the whole cast; max2000 characters per paragraph.
 
-For actual effects only, end with CHANGES on its own line and one JSON object using the effect contracts.
+Every persistent outcome established in this exchange MUST have its effect data in CHANGES, including changes issued through speech. INPUT speech does not mean effect-free. Never confirm a saved change through prose alone.
+End with CHANGES on its own line and one JSON object using the effect contracts when any effect occurs.
 A final standalone effect object after a blank line is also a reserved control footer without CHANGES. JSON examples must be quoted inline, never placed there. After a colon or code example, CHANGES is required.
 Enclose ALL effects in one pair of braces and double-quote their names. Example shape: {"action":{"happened":true,"segment":0,"actorIds":["player"],"consent":[],"append":"The cup rests on the shelf."}}. Include it only when that narration actually establishes the change.
 Generated paragraph indexes count EVERY recognized header, plus any implicit opening narration, starting at0 BEFORE player insertion. Player speech references: utterance:N with actual witnesses.
