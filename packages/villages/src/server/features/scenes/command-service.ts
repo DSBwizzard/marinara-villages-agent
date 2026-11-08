@@ -2340,7 +2340,7 @@ export function createSceneCommands({
       await publish();
       return;
     }
-    if (allowProjectRecovery && turn.sceneContractVersion !== 10) await recoverProjectMetadata(scene, turn);
+    if (allowProjectRecovery && (turn.sceneContractVersion ?? 0) < 10) await recoverProjectMetadata(scene, turn);
     const currentScene = await readSession(scene.id);
     const currentTurn = currentScene.submissions.find((row) => row.id === turn.id);
     const physicalReceipt = (await readVillageState()).exchangeReceipts["venue-chat:" + scene.id + ":" + turn.id];

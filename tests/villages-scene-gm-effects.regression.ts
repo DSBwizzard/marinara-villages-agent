@@ -18,6 +18,10 @@ import { relationshipDocumentId } from "../packages/villages/src/server/adapters
 import { ensureNarrative } from "../packages/villages/src/server/domain/rules/narrative-development.js";
 import { SCENE_DEVELOPMENT_SCHEMA } from "../packages/villages/src/server/domain/rules/narrative-prompts.js";
 import { projectRelationshipProfiles } from "../packages/villages/src/server/domain/rules/relationship-knowledge.js";
+import {
+  mapScenePeople,
+  scenePersonReferences,
+} from "../packages/villages/src/server/domain/rules/scene-prompt-references.js";
 
 await import(pathToFileURL(resolve("packages/villages/server.mjs")).href);
 mock.timers.enable({ apis: ["Date"], now: new Date("2026-11-05T20:00:00Z") });
@@ -519,6 +523,47 @@ for (const variant of [
         assert.equal(memories.length, 1, "A natural physical edit creates one committed mechanical Memory");
         assert.match(memories[0]!.text, /Blue walls/);
         assert.equal(host.scene().submissions.at(-1)!.sceneHearingVersion, 2);
+      }
+      if (variant === "physical" || variant === "policy") {
+        host.model.chatComplete = async (messages: any[]) => {
+          calls++;
+          const context = messages[1].content as string;
+          if (variant === "physical") {
+            const early = context.split("## Witnessed conversation")[0]!;
+            assert(
+              early.includes("Blue walls"),
+              "The next native request receives the committed physical change before history",
+            );
+            assert(!early.includes("White walls"), "Old geometry is not retained to protect a cache prefix");
+          } else {
+            const late = context.split("\n").find((line) => line.startsWith('{"context":'))!;
+            const packet = mapScenePeople(JSON.parse(late), scenePersonReferences(["mara"])) as any;
+            assert.deepEqual(
+              packet.context.access.managerIds,
+              ["mara", "player"],
+              "The next native request receives committed policy authority",
+            );
+          }
+          return {
+            content: "INPUT speech\n[mara] Yes.",
+            finishReason: "stop",
+            usage: { inputTokens: 10, outputTokens: 10 },
+          };
+        };
+        const active = await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+        assert.equal(active.statusCode, 200, active.body);
+        const next = await host.app.inject({
+          method: "POST",
+          url,
+          payload: {
+            ...payload,
+            submissionId: "b2222222-1111-4111-8111-111111111111",
+            message: "How does it look now?",
+            expectedSceneRevision: active.json().session.sceneRevision,
+          },
+        });
+        assert.equal(next.statusCode, 200, next.body);
+        assert.equal(calls, 2, "Each accepted native exchange buys exactly one answer");
       }
     }
   } finally {

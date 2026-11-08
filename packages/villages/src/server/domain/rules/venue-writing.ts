@@ -65,12 +65,12 @@ export type VenueWritingSections = {
 export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWritingBlock[] {
   const headings: Record<keyof VenueWritingSections, string> = {
     direction: "Writing direction",
-    metadata: "Response format and evidence metadata",
-    identity: "Complete authored character identity",
     stableContext: "World and player context",
+    identity: "Complete authored character identity",
+    metadata: "Response format and evidence metadata",
+    sceneContext: "Current Scene facts",
     conversation: "Witnessed conversation and recalled memories",
     dynamicIdentity: "Current supporting and remote identities",
-    sceneContext: "Scene facts",
     circumstances: "Current Scene circumstances",
     authoredInstructions: "Authored post-history direction",
     replyReminder: "Reply reminder",

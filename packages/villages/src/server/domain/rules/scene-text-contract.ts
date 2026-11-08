@@ -14,17 +14,21 @@ INPUT classifies the ORIGINAL player message: speech, action, thought or context
 Mixed/private/cross-Zone input uses exact source spans instead:
 [{"kind":"speech","text":"exact words","delivery":"whisper","targetId":"supplied-person-id"}]
 Cover the whole input in order, separated only by quotes/whitespace. Delivery: ordinary, whisper or call.
+Whisper also means an explicitly private one-to-one conversation within the current Zone, such as taking someone aside or speaking at a quiet corner. Use the intended local recipient; ordinary speech addressed to someone remains public.
+Moving to another part of the same room creates no new Zone. Respect a person's refusal and never invent a player decision or cross-Zone move.
 Thoughts/examples/recalled/hypothetical words are inaudible. Empty/opening: INPUT []. Code inserts the player's exact speech; never write it yourself.
 
 Paragraph headers (supplied IDs only):
 [narration] description or action
 [person-id] ordinary spoken words
-[person-id whisper:recipient-id] a private local aside
+[person-id aside] a short bubble interjection; public unless explicitly whispered
+[person-id whisper:recipient-id] private local speech
 [person-id call] a call to one directly connected Zone
 [person-id call:recipient-id] a call to that adjacent person
 [person-id to:recipient-id] ordinary public speech addressed to that person
 Actions go in narration, words in dialogue. Prose needs no JSON escaping.
-Headers begin a line; continued lines belong to that paragraph. Aim<=24 paragraphs including inserted player speech; max2000 characters each.
+Aside bubbles are presentation, never a private audience. Keep useful asides brief.
+Headers begin a line; continued lines belong to that paragraph. Keep ordinary dialogue brief across the whole cast; max2000 characters per paragraph.
 
 For actual effects only, end with CHANGES on its own line and one JSON object using the effect contracts.
 Generated paragraph indexes start at0 BEFORE player insertion. Player speech references: utterance:N with actual witnesses.

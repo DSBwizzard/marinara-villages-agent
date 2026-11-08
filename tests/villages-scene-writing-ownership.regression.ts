@@ -254,6 +254,46 @@ function fixture(label: string, checkpointed = false) {
   assert.deepEqual(legacy.optionsSeen[0].responseFormat, { type: "json_object" });
   assert.equal(reply.sceneContractVersion, undefined);
 }
+{
+  const legacy = fixture("legacy-v10", true);
+  const prepared = await legacy.service.prepareVenueTurnMessages(legacy.scene, "I wait.", "chat", "", null);
+  const messages = [
+    { role: "system", content: "Exact retained v10 prose writer prompt." },
+    { role: "user", content: "I wait." },
+  ];
+  const fitted = { ...prepared.fitted, messages };
+  const key =
+    "writing-request:" +
+    createHash("sha256")
+      .update(JSON.stringify([legacy.scene.id, "chat", "I wait."]))
+      .digest("hex");
+  legacy.checkpoints.set(key, {
+    fitted,
+    ordinary: fitted,
+    writingVersion: 10,
+    earlierEvidence: prepared.earlierEvidence,
+    wishContexts: prepared.wishContexts,
+    gmContext: prepared.gmContext,
+    gmPresentation: prepared.gmPresentation,
+    historyContract: prepared.historyContract,
+  });
+  legacy.invalidReply("INPUT action\n[narration] Retained v10 response.");
+  const reply = await legacy.run();
+  assert.equal(reply.lines[0]!.content, "Retained v10 response.");
+  assert.deepEqual(legacy.requests[0], messages, "Captured v10 provider bytes remain unchanged");
+  assert.equal(legacy.optionsSeen[0].responseFormat, undefined);
+  assert.equal(reply.sceneContractVersion, 10);
+}
+{
+  const receipt = fixture("server-only-receipt");
+  receipt.scene.operation = { input: { submissionId: "private-physical-receipt" } } as any;
+  const prepared = await receipt.service.prepareVenueTurnMessages(receipt.scene, "I wait.", "chat", "", null);
+  assert.equal(prepared.gmContext.possibleMemoryEffects!.physical.id, "venue-chat:same-scene:private-physical-receipt");
+  assert(
+    !prepared.fitted.messages.some((row) => row.content.includes("private-physical-receipt")),
+    "Pending receipts stay in server authority, outside the writing prompt",
+  );
+}
 const direct = fixture("A");
 assert.deepEqual(direct.calls, [], "constructing the service starts no work");
 const prompt = await direct.service.prepareVenueTurnMessages(direct.scene, "I wait.", "chat", "", null);
@@ -441,6 +481,95 @@ const complete = fixture("A");
     ["d"],
     "New arrivals never inherit earlier whispers",
   );
+  const long = fixture("hundred-turn-context");
+  Object.assign(long.world, structuredClone(arrival.world));
+  Object.assign(long.scene, structuredClone(beforeScene));
+  const originalLines = structuredClone(long.scene.lines);
+  long.model.fitContext = (messages, options) => ({
+    messages: messages.reduce((size, row) => size + row.content.length, 0) > 36000 ? [] : messages,
+    maxTokens: options?.maxTokens,
+    estimatedTokensBefore: 10,
+    estimatedTokensAfter: 10,
+    trimmed: false,
+  });
+  let previousFacts = "";
+  let lastPrepared = before;
+  for (let turn = 0; turn < 100; turn++) {
+    long.scene.sceneAttendance!.capturedAt = new Date(Date.parse(stamp) + turn * 1000).toISOString();
+    if (turn === 50) {
+      long.scene.activeIds.push("npc:fifth");
+      long.scene.participants.push({ characterId: "npc:fifth", name: "Fifth", doing: "Arriving" });
+      long.scene.sceneAttendance!.occupants.push({
+        characterId: "npc:fifth",
+        name: "Fifth",
+        doing: "Arriving",
+        zoneId: "exterior",
+      });
+    }
+    if (turn === 75) long.world.venues[0]!.zones[0]!.description = "A lasting blue cupboard stands here.";
+    const selected = zoneEventScene(long.scene, long.world.venues[0]!, {
+      message: turn >= 50 ? "Fifth, continue." : "Continue.",
+      ...(turn >= 50 ? { targetId: "npc:fifth" } : {}),
+    });
+    const prepared = await long.service.prepareVenueTurnMessages(
+      selected,
+      turn % 2 ? "Tea?" : "Continue.",
+      "chat",
+      "",
+      null,
+    );
+    const context = prepared.fitted.messages[1]!.content;
+    const facts = context.split("## Witnessed conversation")[0]!;
+    if (turn && turn !== 75)
+      assert.equal(
+        facts,
+        previousFacts,
+        "Clock, query, fitting and fifth arrival leave unchanged physical facts reusable",
+      );
+    if (turn === 75) {
+      assert.notEqual(facts, previousFacts);
+      assert(
+        facts.includes("A lasting blue cupboard stands here."),
+        "Current persistent changes survive optional history fitting",
+      );
+    }
+    if (turn >= 50) assert(selected.contactGeneration!.actorIds!.length <= 4);
+    assert.deepEqual(
+      long.scene.lines.slice(0, originalLines.length),
+      originalLines,
+      "Later attendance never rewrites prior witnesses",
+    );
+    assert.equal(Object.keys(prepared.fitted.references).length, prepared.fitted.evidence.length);
+    previousFacts = facts;
+    lastPrepared = prepared;
+    const replyLineIds = ["a", "b", "c", "d"].map((speakerId, index) => {
+      const id = `long-${turn}-${index}`;
+      long.scene.lines.push({
+        id,
+        speakerId,
+        name: speakerId,
+        role: "assistant",
+        kind: "dialogue",
+        delivery: "ordinary",
+        presentation: "main",
+        content: `Exchange ${turn}, speaker ${index}: ` + "A concrete accepted observation. ".repeat(6),
+        at: long.scene.sceneAttendance!.capturedAt,
+        heardBy: long.scene.sceneAttendance!.occupants.map((person) => person.characterId),
+        zoneId: "exterior",
+      });
+      return id;
+    });
+    long.scene.submissions.push({ id: `long-${turn}`, replyLineIds, message: "Continue.", mode: "chat" } as any);
+  }
+  assert(
+    lastPrepared.fitted.evidence.length < long.scene.lines.length - 4,
+    "A long Scene actually exercises history trimming",
+  );
+  assert(
+    lastPrepared.fitted.evidence.some((line) => line.id === "long-98-3"),
+    "Latest speech stays available",
+  );
+  assert(!long.calls.includes("completion"), "The hundred-turn packaging check makes no provider requests");
 }
 const reply = await complete.run();
 assert.equal(reply.lines[0]?.content, "A room remains quiet.");

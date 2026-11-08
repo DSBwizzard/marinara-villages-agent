@@ -209,7 +209,7 @@ export function createSceneWriting({
   ) {
     assertCurrentSceneGeneration(session);
 
-    const writingVersion = 10;
+    const writingVersion = 11;
     const requestKey = writingRequestKey(session, message, mode);
     const captured = venueSavedCheckpoint?.<{
       fitted: ReturnType<typeof fitVenueWritingMessages>;
@@ -484,9 +484,30 @@ export function createSceneWriting({
             ? spriteExpressionData(gmPresentation.sprites[actorId], gmPresentation.variants)
             : undefined,
         }));
+      const { worldFacts, ...liveContext } = contextFor();
+      // Rebuild current facts from authority: quiet turns reuse the prefix, real changes refresh it.
       const circumstances = {
-        context: contextFor(),
+        context: {
+          ...liveContext,
+          accessScopes: gmContext.accessScopes.toSorted((a, b) => a.id.localeCompare(b.id)),
+          hearing: storedPlace
+            ? zoneEventHearingGroups(session, sceneLayoutVenue(storedPlace, session)).map((group) =>
+                Object.fromEntries(
+                  Object.entries(group).filter(
+                    ([key, value]) =>
+                      !(key === "onstage" && value === true) &&
+                      !(
+                        ["localReach", "wordsReach", "raisedWordsReach"].includes(key) &&
+                        JSON.stringify(value) === JSON.stringify(group.sources)
+                      ),
+                  ),
+                ),
+              )
+            : [],
+        },
         ...(presentationOnly.length ? { presentationOnly } : {}),
+        pendingProjectQuestions: session.pendingProjectQuestions,
+        pendingRoomQuestions: session.pendingRoomQuestions,
         turn: {
           mode,
           direction: [
@@ -502,8 +523,6 @@ export function createSceneWriting({
             .join("\n"),
         },
         supportingCandidates,
-        pendingProjectQuestions: session.pendingProjectQuestions,
-        pendingRoomQuestions: session.pendingRoomQuestions,
         residentRequestLocalIds: residentLocalIdsAt(session, [], 0),
         weather: moment.weather,
         historyAudiences: Object.fromEntries(
@@ -547,23 +566,7 @@ export function createSceneWriting({
               compactSceneRead(
                 mapScenePeople(
                   {
-                    scene: {
-                      ...sceneGmLocation(gmContext, session.placeName),
-                      hearing: storedPlace
-                        ? zoneEventHearingGroups(session, sceneLayoutVenue(storedPlace, session)).map((group) =>
-                            Object.fromEntries(
-                              Object.entries(group).filter(
-                                ([key, value]) =>
-                                  !(key === "onstage" && value === true) &&
-                                  !(
-                                    ["localReach", "wordsReach", "raisedWordsReach"].includes(key) &&
-                                    JSON.stringify(value) === JSON.stringify(group.sources)
-                                  ),
-                              ),
-                            ),
-                          )
-                        : [],
-                    },
+                    scene: { ...sceneGmLocation(gmContext, session.placeName), worldFacts },
                   },
                   encodedPeople,
                 ),
@@ -637,7 +640,7 @@ export function createSceneWriting({
         replyReminder: [
           ...(Object.keys(gmPresentation.sprites).length ? [{ text: SCENE_GM_PRESENTATION }] : []),
           {
-            text: "Return INPUT classification, then labeled prose paragraphs; add CHANGES JSON only for actual effects. Use supplied IDs and actual evidence. Private asides need a local recipient. Maximum4 non-player speakers; aim<=24 paragraphs. Write the next exchange now.",
+            text: "Write a brief next exchange, then stop for the player. Keep ordinary prose across narration and cast below about250-300 words; shorter is welcome. Return INPUT, labeled prose and CHANGES only for actual effects. Private speech needs a local recipient. Maximum4 non-player speakers. Preserve necessary evidence and consequences.",
           },
         ],
       });
@@ -1363,7 +1366,7 @@ export function createSceneWriting({
         );
       return {
         ...parsed,
-        ...(writingVersion >= 10 ? { sceneContractVersion: 10 as const } : {}),
+        ...(writingVersion >= 10 ? { sceneContractVersion: writingVersion >= 11 ? (11 as const) : (10 as const) } : {}),
         lore: mergeLoreUse(fitted.lore, semanticResult?.lore),
         ...(narrativeSource ? { narrativeSource } : {}),
         effectFailures,

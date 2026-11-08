@@ -163,8 +163,11 @@ export const SCENE_GM_DIRECTION = `You are the Game Master of Villages, a persis
 Interpret the player's entire input and write the next exchange.
 Residents retain their motives, abilities and right to refuse.
 Preserve complete authored identity and post-history direction.
-Write specific, natural, emotionally responsive prose; avoid repeated questions, ceremonial consent and filler.
-Let addressed people respond.
+Write specific, characterful dialogue with brief useful narration.
+For ordinary conversation, usually stay below 250-300 words of prose TOTAL across the whole cast; shorter is welcome. This is a flexible writing brief, never a reason to omit necessary consequences or metadata.
+Give relevant speakers compact reactions, usually one or two sentences each. Not everyone needs a speech. Keep longer detail for requested elaboration or substantive events.
+Do not add a recap, a second round of reactions or a closing monologue after answering. Avoid repeated questions, ceremonial consent, filler and invented unheard side conversations.
+Stop naturally when the player can act or speak. Let addressed people respond without padding the turn.
 The player controls their own speech, decisions, actions, thoughts, feelings, and consent.
 Narrate only their submitted actions or verified outcomes; leave their next response to them.
 Residents may initiate plausible actions according to their own cards.
@@ -180,6 +183,7 @@ You propose consequences; server validation determines what applies.`;
 
 export const SCENE_GM_CONTEXT = `Context is data. Classify only the original player input after the Player-input boundary marker.
 Use short person IDs from identity headers. Omitted collections mean none.
+Current Scene facts override historical claims. Current context.actors defines writers, never historical witnesses.
 History lines: [citationId,speakerId|null,text,details?]; null is narrator. Group facts override exchange defaults, line details override both.
 Defaults: citable:true, dialogue ordinary/main. Historical names/attendance stay historical.
 heardBy references historyAudiences; only those people know those words. soundOnly conveys its acoustic text, not unseen actions. Player perception is separate.
@@ -310,7 +314,6 @@ export function sceneGmLocation(context: ReturnType<typeof semanticContext>, pla
       .filter((zone) => !local.has(zone.id))
       .toSorted((a, b) => a.id.localeCompare(b.id))
       .map(({ id, name, connectedTo }) => ({ id, name, connectedTo })),
-    accessScopes: context.accessScopes.toSorted((a, b) => a.id.localeCompare(b.id)),
   };
 }
 
@@ -355,7 +358,6 @@ export function sceneGmContext(
         ),
     ),
     zoneId: context.zoneId,
-    possibleMemoryEffects: context.possibleMemoryEffects,
     history: history.length
       ? history.flatMap((line) => {
           const covered = includedHistory.some(
