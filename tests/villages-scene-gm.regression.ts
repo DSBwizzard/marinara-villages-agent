@@ -6,7 +6,6 @@ import {
   sceneGmContext,
   sceneGmMemory,
   sceneMemoryHistorySources,
-  expandGmSegments,
   omitGmNoopMetadata,
 } from "../packages/villages/src/server/domain/rules/scene-gm.js";
 import { decodePromptHistory } from "./fixtures/villages-scene-writing.fixture.js";
@@ -469,59 +468,19 @@ const segments = [{ kind: "dialogue", speakerId: "mara", text: "Tea sounds good.
   );
 }
 {
-  const source = {
-    input: "speech",
-    segments: [
-      ["mara", "Exact spoken words", { delivery: "whisper", targetId: "player" }],
-      [null, "A kettle sings.", { sound: { sourceId: "mara", text: "A whistle." } }],
-    ],
-  };
-  const decoded = expandGmSegments(source);
-  assert.deepEqual(decoded.segments, [
-    { kind: "dialogue", speakerId: "mara", text: "Exact spoken words", delivery: "whisper", targetId: "player" },
-    { kind: "narration", text: "A kettle sings.", sound: { sourceId: "mara", text: "A whistle." } },
-  ]);
-  assert.equal((source.segments[0] as any[])[0], "mara");
-  const named = {
-    ...source,
-    segments: [
-      { s: "mara", text: "Exact spoken words", delivery: "whisper", targetId: "player" },
-      { s: null, text: "A kettle sings.", sound: { sourceId: "mara", text: "A whistle." } },
-    ],
-  };
-  assert.deepEqual(expandGmSegments(named, 8), decoded);
-  assert.deepEqual(expandGmSegments(named, 7), named, "Saved v7 captures retain their original contract");
-  assert.deepEqual(expandGmSegments({ segments }, 8), { segments }, "Legacy named replies remain supported");
-  for (const row of [
-    { s: 1, text: "text" },
-    { s: "mara", text: 1 },
-    { s: "mara", text: "text", speakerId: "player" },
-    { s: "mara", text: "text", kind: "narration" },
-    { s: null, text: "text", targetId: "player" },
-    { s: "mara", text: "text", sound: {} },
-    Object.assign(Object.create({ hidden: true }), { s: "mara", text: "text" }),
-  ])
-    assert.throws(() => expandGmSegments({ segments: [row] }, 8), /compact Scene segment/);
-  for (const row of [
-    ["mara"],
-    ["mara", "text", {}, "extra"],
-    [1, "text"],
-    ["mara", 1],
-    [null, "text", { targetId: "player" }],
-    ["mara", "text", { sound: {} }],
-    ["mara", "text", { speakerId: "player" }],
-    ["mara", "text", Object.create({ hidden: true })],
-  ])
-    assert.throws(() => expandGmSegments({ segments: [row] }), /compact Scene segment/);
   const long = {
     input: "speech",
-    segments: Array.from({ length: 63 }, (_, index) => ["mara", "Line " + index]),
+    segments: Array.from({ length: 63 }, (_, index) => ({
+      kind: "dialogue",
+      speakerId: "mara",
+      text: "Line " + index,
+    })),
     access: [{ actorId: "mara", evidence: [62] }],
     presentation: [{ segment: 62, staging: [] }],
     events: { moves: [{ segment: 62 }] },
     memoryChanges: [{ support: [{ lineId: 62, excerpt: "Line 62" }] }],
   };
-  const reply = materializeGmReply(expandGmSegments(long), "Hello.");
+  const reply = materializeGmReply(long, "Hello.");
   assert.equal((reply.segments as any[]).length, 64);
   assert.deepEqual((reply.access as any[])[0].evidence, [63]);
   assert.equal((reply.presentation as any[])[0].segment, 63);
@@ -534,7 +493,10 @@ const segments = [{ kind: "dialogue", speakerId: "mara", text: "Tea sounds good.
   assert.throws(
     () =>
       materializeGmReply(
-        expandGmSegments({ input: "speech", segments: Array.from({ length: 64 }, () => ["mara", "Hello."]) }),
+        {
+          input: "speech",
+          segments: Array.from({ length: 64 }, () => ({ kind: "dialogue", speakerId: "mara", text: "Hello." })),
+        },
         "Hello.",
       ),
     /capture needs recovery/,

@@ -105,60 +105,6 @@ export function omitGmNoopMetadata(raw: Record<string, unknown>) {
   return raw;
 }
 
-/** Decode compact replies before alias resolution; downstream authority contracts stay unchanged. */
-export function expandGmSegments(raw: Record<string, unknown>, writingVersion = 7) {
-  if (!Array.isArray(raw.segments)) return raw;
-  return {
-    ...raw,
-    segments: raw.segments.map((value) => {
-      if (
-        writingVersion >= 8 &&
-        value &&
-        typeof value === "object" &&
-        !Array.isArray(value) &&
-        Object.hasOwn(value, "s")
-      ) {
-        if (
-          Object.getPrototypeOf(value) !== Object.prototype ||
-          Object.keys(value).some(
-            (key) => !["s", "text", "delivery", "presentation", "targetId", "sound"].includes(key),
-          )
-        )
-          throw badGateway("The compact Scene segment is malformed. Your draft is preserved.");
-        const { s, text, ...options } = value;
-        value = [s, text, ...(Object.keys(options).length ? [options] : [])];
-      }
-      if (!Array.isArray(value)) return value;
-      const [speakerId, text, options] = value;
-      if (
-        value.length < 2 ||
-        value.length > 3 ||
-        (speakerId !== null && typeof speakerId !== "string") ||
-        typeof text !== "string" ||
-        (options !== undefined &&
-          (!options ||
-            typeof options !== "object" ||
-            Array.isArray(options) ||
-            Object.getPrototypeOf(options) !== Object.prototype ||
-            Object.keys(options).some((key) => !["delivery", "presentation", "targetId", "sound"].includes(key))))
-      )
-        throw badGateway("The compact Scene segment is malformed. Your draft is preserved.");
-      if (
-        (speakerId === null &&
-          ["delivery", "presentation", "targetId"].some((key) => Object.hasOwn(asRecord(options), key))) ||
-        (speakerId !== null && Object.hasOwn(asRecord(options), "sound"))
-      )
-        throw badGateway("The compact Scene segment has incompatible options. Your draft is preserved.");
-      return {
-        kind: speakerId === null ? "narration" : "dialogue",
-        ...(speakerId === null ? {} : { speakerId }),
-        text,
-        ...asRecord(options),
-      };
-    }),
-  };
-}
-
 export const SCENE_GM_DIRECTION = `You are the Game Master of Villages, a persistent character-driven life game.
 Interpret the player's entire input and write the next exchange.
 Residents retain their motives, abilities and right to refuse.
@@ -232,12 +178,12 @@ Screen proposals against administrative roots; conflict/uncertain is rejected in
 Code records committed mechanical outcomes, source hashes and revisions; do not predict receipts or write mechanical Memories.`;
 
 export const SCENE_GM_PHYSICAL = `Optional action:{happened:true,segment,actorIds:[],consent:[{actorId,segment?,lineId?,quote?}],appearanceChanged:boolean,edits:[{before,after}],append?,recent?:{text,renew?},dayNight?,conditionClears?:[{id,expectedRevision}]}.
-Cite completed local action narration; only present actors and available supplies.
+Cite completed local action narration; only present actors and available supplies. Omitted consent means no consent evidence, never permission; use [] when no nonacting controller needs consent.
 Each nonacting controller needs actual consent: current speech segment or exact supplied earlier line perceived by actors; player uses segment:"player",quote:"exact input".
 Preserve conditions/withdrawals; access permits ordinary temporary use, not enduring edits.
 No promises, remote deeds, invented supplies or object/quantity accounting.
 Code binds current Zone/revision and narration.
-Description max4000: unique exact edits (empty after removes) and/or append, preserving unrelated physical facts; unfinished work stays in description. recent is a complete <=600-character paragraph, empty clears; renew:true only for deliberate maintenance/reestablishment of the whole retained arrangement, never mere mention. appearanceChanged means a meaningful visible enduring change, not tiny details/rewording/recent-only activity.
+Description max4000: unique exact edits (empty after removes) and/or append, preserving unrelated physical facts; unfinished work stays in description. recent:{text:"complete <=600-character paragraph",renew?:boolean}; empty text clears. renew:true only for deliberate maintenance/reestablishment of the whole retained arrangement, never mere mention. appearanceChanged means a meaningful visible enduring change, not tiny details/rewording/recent-only activity.
 With enduring description edits include dayNight:true when daylight/outdoor views visibly distinguish day/night; false only for established constant lighting or permanent light/darkness; default true if uncertain, invent no windows and respect the setting.
 Clear only supplied conditions whose complete remedy actually occurs; keep all other restrictions.
 Omit action when nothing changes.`;

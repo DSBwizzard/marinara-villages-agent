@@ -18,7 +18,6 @@ import {
   UnsupportedScenePerception,
   VillagesRequestError,
 } from "../../domain/rules/errors.js";
-import { extractJsonObject } from "../../domain/rules/json-reply.js";
 import { inspectedLoreUse, LORE_REFERENCE_RULE, villageLoreContext } from "../../domain/rules/lore-context.js";
 import { venueAdditionalWritingGuidance, venueWritingDirection } from "../../domain/rules/narration-style.js";
 import { SCENE_DEVELOPMENT_SCHEMA, SCENE_DEVELOPMENT_WRITING } from "../../domain/rules/narrative-prompts.js";
@@ -54,7 +53,6 @@ import { sceneContinuityView, sceneLocationContext, sceneWishEffectIds } from ".
 import {
   materializeGmReply,
   normalizeGmEffects,
-  expandGmSegments,
   omitGmNoopMetadata,
   compactSceneRead,
   sceneGmMemory,
@@ -75,12 +73,7 @@ import {
   sceneGmContext,
 } from "../../domain/rules/scene-gm.js";
 import { SCENE_TEXT_RESPONSE, parseSceneTextReply } from "../../domain/rules/scene-text-contract.js";
-import {
-  GeneratedSceneBoundary,
-  HaltedSceneTurn,
-  readSceneBoundary,
-  SCENE_OUTCOME_BOUNDARY,
-} from "../../domain/rules/scene-halt.js";
+import { GeneratedSceneBoundary, HaltedSceneTurn, readSceneBoundary } from "../../domain/rules/scene-halt.js";
 import { sceneMemoryContext } from "../../domain/rules/scene-memories.js";
 import { sceneLayoutVenue } from "../../domain/rules/scene-layout.js";
 import { MEMORY_ADMINISTRATIVE_RULE } from "../../domain/rules/memory-protection.js";
@@ -89,7 +82,6 @@ import { provisionalSceneNarrative, type SceneNarrativeSource } from "../../doma
 import { parseVenueReply } from "../../domain/rules/scene-reply.js";
 import {
   assertCurrentSceneGeneration,
-  completeSceneObject,
   normalizeRecoverableSceneReply,
 } from "../../domain/rules/scene-writing-contract.js";
 import { sceneWritingHistory, sharedLoreHistory } from "../../domain/rules/scene-writing-history.js";
@@ -139,7 +131,6 @@ export interface SceneWritingPorts {
   semantic?: import("../../domain/models/semantic-model.js").SemanticInterpreter;
   venueCheckpoint?: typeof import("../../jobs/venue-coordinator.js").venueCheckpoint;
   venueSavedCheckpoint?: typeof import("../../jobs/venue-coordinator.js").venueSavedCheckpoint;
-  venueExplicitRetry?: () => boolean;
   refreshZoneParticipants: typeof import("./live-session.js").refreshZoneParticipants;
   readEffectiveVillagerCard: typeof import("../../adapters/engine/catalog.js").readEffectiveVillagerCard;
   readVillageLore: typeof import("../../adapters/engine/lorebooks.js").readVillageLore;
@@ -158,6 +149,13 @@ export interface SceneWritingPorts {
 }
 export const VENUE_REPLY_MAX_TOKENS = 4096;
 const VENUE_REPLY_TEMPERATURE = 0.85;
+const SCENE_WRITING_VERSION = 11 as const;
+function requireCurrentSceneRequest(captured?: { writingVersion?: number }) {
+  if (captured && captured.writingVersion !== SCENE_WRITING_VERSION)
+    throw conflict(
+      "This captured Scene request uses a retired AI contract. Its saved response is preserved; start a new Scene.",
+    );
+}
 /** Inert Scene prompt fitting, response validation and room interpretation with originating connections. */
 export function createSceneWriting({
   readCapturedWishContexts,
@@ -209,7 +207,7 @@ export function createSceneWriting({
   ) {
     assertCurrentSceneGeneration(session);
 
-    const writingVersion = 11;
+    const writingVersion = SCENE_WRITING_VERSION;
     const requestKey = writingRequestKey(session, message, mode);
     const captured = venueSavedCheckpoint?.<{
       fitted: ReturnType<typeof fitVenueWritingMessages>;
@@ -221,6 +219,7 @@ export function createSceneWriting({
       gmPresentation?: ReturnType<typeof sceneSpriteSelection>;
       historyContract?: { version: 1 | 2; references: Record<string, string>; people?: Record<string, string> };
     }>("writing-request:" + requestKey);
+    requireCurrentSceneRequest(captured);
     if (captured && !captured.wishContexts)
       throw conflict("The saved Wish writing context is unavailable. Its source is retained.");
     const capturedWishes = captured
@@ -694,8 +693,7 @@ export function createSceneWriting({
       fitted,
       ordinary,
       loreInspection,
-      sparse: session.contactGeneration?.zoneEvents === true,
-      writingVersion: captured ? (captured.writingVersion ?? 4) : writingVersion,
+      writingVersion,
       gmContext,
       gmPresentation,
       historyContract: captured
@@ -737,10 +735,6 @@ export function createSceneWriting({
       earlierEvidence: fitted.evidence ?? [],
     };
   }
-  type BoundaryReplacement = {
-    requestKey: string;
-    outcome: import("../../../shared/contracts/scene-turn-outcome.js").SceneTurnOutcome;
-  };
   function writingRequestKey(
     session: VenueScene,
     message: string,
@@ -751,52 +745,19 @@ export function createSceneWriting({
       .digest("hex");
   }
   async function generateOnce(...args: Parameters<typeof prepareVenueTurnMessages>) {
+    const requestKey = writingRequestKey(args[0], args[1], args[2]);
+    requireCurrentSceneRequest(venueSavedCheckpoint?.<{ writingVersion?: number }>("writing-request:" + requestKey));
     return measurePipeline("Scene interpretation", { sceneId: args[0].id, mode: args[2] }, async () => {
-      const requestKey = writingRequestKey(args[0], args[1], args[2]);
-      const contract = venueSavedCheckpoint?.<{ writingVersion?: number }>("writing-request:" + requestKey);
-      // New contracts buy one answer. Explicit Retry is the spending decision after a rejected answer.
-      if (!contract || (contract.writingVersion ?? 4) >= 10) {
-        try {
-          return await generateMeasured(undefined, ...args);
-        } catch (error) {
-          if (error instanceof GeneratedSceneBoundary)
-            await rejectVenueCompletion(undefined, { stages: ["writing-completion:" + requestKey] });
-          throw error;
-        }
-      }
-      const replacementKey = "scene-boundary-replacement";
-      const saved = venueSavedCheckpoint?.<BoundaryReplacement>(replacementKey);
-      const replace = async (replacement: BoundaryReplacement) => {
-        if (replacement.requestKey !== requestKey) throw new GeneratedSceneBoundary(replacement.outcome);
-        await sceneNarrative?.retire(
-          args[0],
-          venueSavedCheckpoint?.<{
-            grant: NarrativeAdmission | null;
-          }>("narrative-dispatch:" + requestKey)?.grant,
-        );
-        await rejectVenueCompletion(undefined, { stages: ["writing-completion:" + requestKey] });
-        try {
-          return await generateMeasured(replacement, ...args);
-        } catch (error) {
-          if (error instanceof GeneratedSceneBoundary)
-            await rejectVenueCompletion(undefined, { stages: ["writing-completion:" + requestKey + "-boundary"] });
-          throw error;
-        }
-      };
-      if (saved) return replace(saved);
       try {
-        return await generateMeasured(undefined, ...args);
+        return await generateMeasured(...args);
       } catch (error) {
-        if (!(error instanceof GeneratedSceneBoundary)) throw error;
-        const replacement = await venueCheckpoint(replacementKey, async () => ({ requestKey, outcome: error.outcome }));
-        return replace(replacement);
+        if (error instanceof GeneratedSceneBoundary)
+          await rejectVenueCompletion(undefined, { stages: ["writing-completion:" + requestKey] });
+        throw error;
       }
     });
   }
-  async function generateMeasured(
-    replacement: BoundaryReplacement | undefined,
-    ...args: Parameters<typeof prepareVenueTurnMessages>
-  ) {
+  async function generateMeasured(...args: Parameters<typeof prepareVenueTurnMessages>) {
     let [session] = args;
 
     const [, message, mode] = args;
@@ -818,12 +779,11 @@ export function createSceneWriting({
       args[5],
       args[6],
       args[7],
-      replacement ? null : offer,
+      offer,
     );
     let { fitted, earlierEvidence, loreInspection, wishContexts, audience } = prepared;
-    const { sparse, writingVersion, maxTokens, model, village, pendingMoves, storedPlace, place, projectContexts } =
-      prepared;
-    const requestKey = originalKey + (replacement ? "-boundary" : "");
+    const { writingVersion, maxTokens, model, village, pendingMoves, storedPlace, place, projectContexts } = prepared;
+    const requestKey = originalKey;
     let ordinary = prepared.ordinary;
     let gmContext = prepared.gmContext;
     let gmPresentation = prepared.gmPresentation;
@@ -849,7 +809,6 @@ export function createSceneWriting({
     const dispatch = narrativeVersion
       ? await venueCheckpoint("narrative-dispatch:" + requestKey, async () => {
           const proof =
-            !replacement &&
             offer &&
             fitted.messages.some((row) => row.content.includes(SCENE_DEVELOPMENT_WRITING)) &&
             (await sceneNarrative!.reserve(session, offer));
@@ -859,31 +818,6 @@ export function createSceneWriting({
       : undefined;
     const narrativeGrant = dispatch?.grant;
     if (dispatch) fitted = dispatch.fitted;
-    if (replacement) {
-      const corrected = await venueCheckpoint("writing-request:" + requestKey, async () => {
-        const messages = [
-          ...fitted.messages,
-          {
-            role: "system" as const,
-            content:
-              "Replace the unaccepted reply. Its unsupported consequence was " +
-              replacement.outcome +
-              ". Preserve the original player input and authoritative Scene facts. " +
-              SCENE_OUTCOME_BOUNDARY,
-          },
-        ];
-        const reserve = Math.max(fitted.maxTokens ?? maxTokens, model.maxOutputTokens ?? 0);
-        const correction = model.fitContext(messages, { maxTokens: reserve });
-        if (
-          correction.trimmed ||
-          JSON.stringify(correction.messages) !== JSON.stringify(messages) ||
-          (correction.maxTokens !== undefined && correction.maxTokens < reserve)
-        )
-          throw badGateway("The replacement context does not fit. Your input is saved.");
-        return { ...correction, maxTokens: fitted.maxTokens ?? maxTokens };
-      });
-      fitted = { ...fitted, ...corrected };
-    }
     if (historyContract) {
       if (!fitted.evidence || !fitted.references)
         throw conflict("The saved Scene evidence context is unavailable. Your draft is preserved.");
@@ -900,7 +834,6 @@ export function createSceneWriting({
     let attempts = 0;
     const requestCompletion = () =>
       completeWithRoom(model, fitted.messages, fitted.maxTokens ?? maxTokens, {
-        ...(writingVersion < 10 ? { responseFormat: { type: "json_object" as const } } : {}),
         temperature: VENUE_REPLY_TEMPERATURE,
         usagePurpose: "conversation",
         reasoningEffort: null,
@@ -922,13 +855,7 @@ export function createSceneWriting({
     {
       try {
         if (!gmContext) throw conflict("The saved GM context is unavailable. Your draft is preserved.");
-        let complete =
-          writingVersion >= 10
-            ? parseSceneTextReply(completion.content ?? "", completion.finishReason)
-            : completeSceneObject(completion.content ?? "", completion.finishReason);
-        if (!complete) throw badGateway("The GM response was not valid JSON. Your draft is preserved.");
-        if (writingVersion >= 7 && writingVersion < 10) complete = expandGmSegments(complete, writingVersion);
-        if (writingVersion >= 9) complete = omitGmNoopMetadata(complete);
+        const complete = omitGmNoopMetadata(parseSceneTextReply(completion.content ?? "", completion.finishReason));
         if (complete.halt && gmContext.preservation) {
           const halt = asRecord(complete.halt);
           const playerHalt = {
@@ -952,7 +879,7 @@ export function createSceneWriting({
           mode === "greet",
         );
         captureSources = playerSpeechCapture(materializedRaw, message, mode === "greet");
-        if (writingVersion >= 10) materializedRaw.heardPlayerBy = [];
+        materializedRaw.heardPlayerBy = [];
       } catch (error) {
         if (error instanceof VillagesRequestError && error.statusCode === 502)
           await rejectVenueCompletion(
@@ -963,19 +890,19 @@ export function createSceneWriting({
       }
     }
     const originalRaw = materializedRaw;
-    const completeRaw = sparse ? materializedRaw : null;
+    const completeRaw = materializedRaw;
     let raw = originalRaw;
     const diagnostics = responseDiagnostics(
       model,
       completion,
       fitted.maxTokens ?? maxTokens,
       raw,
-      writingVersion < 10 && !!originalRaw && !extractJsonObject(completion.content ?? ""),
-      sparse && !completeRaw ? ["completeResponse", ...sceneMissingFields(originalRaw)] : sceneMissingFields(raw),
+      false,
+      sceneMissingFields(raw),
     );
     runtimeDebug("Scene writing contract", {
       sceneId: session.id,
-      version: sparse ? writingVersion : 1,
+      version: writingVersion,
       complete: !!completeRaw,
       originalMissingFields: sceneMissingFields(originalRaw),
       inputCharacters: fitted.messages.reduce((sum, message) => sum + message.content.length, 0),
@@ -986,15 +913,10 @@ export function createSceneWriting({
     let effectFailures: NonNullable<import("../../domain/models/scene-model.js").VenueSubmission["effectFailures"]> =
       {};
     try {
-      if (sparse) {
-        if (!completeRaw) throw new Error("The sparse Scene response is incomplete or ambiguous.");
-        {
-          const isolated = normalizeRecoverableSceneReply(completeRaw);
-          raw = isolated.raw;
-          effectFailures = isolated.failures;
-        }
-        diagnostics.missingFields = sceneMissingFields(raw);
-      }
+      const isolated = normalizeRecoverableSceneReply(completeRaw);
+      raw = isolated.raw;
+      effectFailures = isolated.failures;
+      diagnostics.missingFields = sceneMissingFields(raw);
       if (raw) {
         raw.npcIntroductions ??= originalRaw?.npcIntroductions;
         const introductions = prepareNpcIntroductions(raw, village, session, requestKey);
@@ -1366,7 +1288,7 @@ export function createSceneWriting({
         );
       return {
         ...parsed,
-        ...(writingVersion >= 10 ? { sceneContractVersion: writingVersion >= 11 ? (11 as const) : (10 as const) } : {}),
+        sceneContractVersion: SCENE_WRITING_VERSION,
         lore: mergeLoreUse(fitted.lore, semanticResult?.lore),
         ...(narrativeSource ? { narrativeSource } : {}),
         effectFailures,

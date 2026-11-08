@@ -29,7 +29,7 @@ const stamp = "2026-10-07T12:00:00.000Z";
 function deferred() {
   return Promise.withResolvers<void>();
 }
-function fixture(label: string, checkpointed = false) {
+function fixture(label: string, checkpointed = false, sceneNarrative?: SceneWritingPorts["sceneNarrative"]) {
   const world = defaultVillageState();
   world.seed = "same-seed";
   world.name = label;
@@ -99,6 +99,7 @@ function fixture(label: string, checkpointed = false) {
     },
   };
   const ports: SceneWritingPorts = {
+    sceneNarrative,
     readVillageState: async () => {
       await touch("world");
       return world;
@@ -218,71 +219,42 @@ function fixture(label: string, checkpointed = false) {
     },
   };
 }
-{
-  const legacy = fixture("legacy-v9", true);
-  const prepared = await legacy.service.prepareVenueTurnMessages(legacy.scene, "I wait.", "chat", "", null);
-  const messages = [
-    { role: "system", content: "Exact retained v9 JSON writer prompt." },
-    { role: "user", content: "I wait." },
-  ];
-  const fitted = { ...prepared.fitted, messages };
+for (const version of [undefined, 4, 7, 8, 9, 10]) {
+  let narrativeCalls = 0;
+  const retired = fixture("retired-" + version, true, {
+    offer: async () => {
+      narrativeCalls++;
+      return null;
+    },
+    reserve: async () => {
+      narrativeCalls++;
+      return null;
+    },
+  } as unknown as SceneWritingPorts["sceneNarrative"]);
+  const prepared = await retired.service.prepareVenueTurnMessages(retired.scene, "I wait.", "chat", "", null);
   const key =
     "writing-request:" +
     createHash("sha256")
-      .update(JSON.stringify([legacy.scene.id, "chat", "I wait."]))
+      .update(JSON.stringify([retired.scene.id, "chat", "I wait."]))
       .digest("hex");
-  legacy.checkpoints.set(key, {
-    fitted,
-    ordinary: fitted,
-    writingVersion: 9,
-    earlierEvidence: prepared.earlierEvidence,
+  retired.checkpoints.set(key, {
+    fitted: prepared.fitted,
     wishContexts: prepared.wishContexts,
-    gmContext: prepared.gmContext,
-    gmPresentation: prepared.gmPresentation,
-    historyContract: prepared.historyContract,
+    writingVersion: version,
   });
-  legacy.invalidReply(
-    JSON.stringify({
-      input: "action",
-      segments: [{ kind: "narration", text: "Retained v9 response." }],
-      heardPlayerBy: [],
-    }),
+  const before = structuredClone([...retired.checkpoints]);
+  await assert.rejects(retired.run(), /retired AI contract/);
+  await assert.rejects(
+    retired.service.prepareVenueTurnMessages(retired.scene, "I wait.", "chat", "", null),
+    /retired AI contract/,
   );
-  const reply = await legacy.run();
-  assert.equal(reply.lines[0]!.content, "Retained v9 response.");
-  assert.deepEqual(legacy.requests[0], messages, "Captured provider bytes remain unchanged");
-  assert.deepEqual(legacy.optionsSeen[0].responseFormat, { type: "json_object" });
-  assert.equal(reply.sceneContractVersion, undefined);
-}
-{
-  const legacy = fixture("legacy-v10", true);
-  const prepared = await legacy.service.prepareVenueTurnMessages(legacy.scene, "I wait.", "chat", "", null);
-  const messages = [
-    { role: "system", content: "Exact retained v10 prose writer prompt." },
-    { role: "user", content: "I wait." },
-  ];
-  const fitted = { ...prepared.fitted, messages };
-  const key =
-    "writing-request:" +
-    createHash("sha256")
-      .update(JSON.stringify([legacy.scene.id, "chat", "I wait."]))
-      .digest("hex");
-  legacy.checkpoints.set(key, {
-    fitted,
-    ordinary: fitted,
-    writingVersion: 10,
-    earlierEvidence: prepared.earlierEvidence,
-    wishContexts: prepared.wishContexts,
-    gmContext: prepared.gmContext,
-    gmPresentation: prepared.gmPresentation,
-    historyContract: prepared.historyContract,
-  });
-  legacy.invalidReply("INPUT action\n[narration] Retained v10 response.");
-  const reply = await legacy.run();
-  assert.equal(reply.lines[0]!.content, "Retained v10 response.");
-  assert.deepEqual(legacy.requests[0], messages, "Captured v10 provider bytes remain unchanged");
-  assert.equal(legacy.optionsSeen[0].responseFormat, undefined);
-  assert.equal(reply.sceneContractVersion, 10);
+  assert.equal(retired.requests.length, 0, "An obsolete request cannot spend");
+  assert.equal(narrativeCalls, 0, "An obsolete request cannot offer or reserve narrative work");
+  assert.deepEqual(
+    [...retired.checkpoints],
+    before,
+    "An obsolete request cannot create narrative reservations or rewrite captured data",
+  );
 }
 {
   const receipt = fixture("server-only-receipt");

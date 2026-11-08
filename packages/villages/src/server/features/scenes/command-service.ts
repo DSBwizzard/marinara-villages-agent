@@ -49,9 +49,7 @@ import { parseVenueReply, savedAccessEvents } from "../../domain/rules/scene-rep
 import { applyInterpretedRoomEvents } from "../../domain/rules/scene-room-application.js";
 import { assertCurrentSceneGeneration, completeSceneObject } from "../../domain/rules/scene-writing-contract.js";
 import {
-  projectInterpretationNeedsRecovery,
   projectMetadataRejected,
-  rejectProjectMetadata,
   semanticAuthorityDomain,
   semanticBlocker,
 } from "../../domain/rules/semantic-continuity.js";
@@ -256,17 +254,10 @@ export function createSceneCommands({
     );
   }
 
-  class InvalidProjectRecoveryResponse extends VillagesRequestError {
-    constructor(message: string) {
-      super(502, message);
-    }
-  }
-
   async function retrySceneChangeInterpretationOnce(
     id: string,
     submissionId: string,
     domain: "memories" | "relationships" | "wishes" | "projects",
-    automatic = false,
   ) {
     // A failed Project proposal must be reassessed before its newly repaired application can run.
     if (domain !== "projects") await processSavedExchange(id, submissionId);
@@ -411,12 +402,7 @@ export function createSceneCommands({
           (!raw
             ? { cause: "invalid_json" as const, stage: "change-interpretation", message }
             : metadataFailure(message, diagnostics));
-        throw Object.assign(
-          domain === "projects" && automatic
-            ? new InvalidProjectRecoveryResponse(failure.message)
-            : badGateway(failure.message),
-          { failure: { ...failure, responseDiagnostics: diagnostics } },
-        );
+        throw Object.assign(badGateway(failure.message), { failure: { ...failure, responseDiagnostics: diagnostics } });
       }
       let recoveredProjects: NonNullable<VenueSubmission["projectSpeech"]> | undefined;
       if (domain === "projects") {
@@ -443,11 +429,7 @@ export function createSceneCommands({
           recoveredProjects.some((proposal) => !!validateProjectSpeech(proposal, lines))
         ) {
           await rejectVenueCompletion();
-          throw automatic
-            ? new InvalidProjectRecoveryResponse(
-                "Project recovery did not cite valid saved speech and context. Retry interpretation.",
-              )
-            : badGateway("Project recovery did not cite valid saved speech and context. Retry interpretation.");
+          throw badGateway("Project recovery did not cite valid saved speech and context. Retry interpretation.");
         }
       }
       return {
@@ -512,7 +494,7 @@ export function createSceneCommands({
       entry.processing.domains[domain].status = "pending";
     });
     await processSavedExchange(id, submissionId);
-    if (!automatic) await finishSemanticScene(id);
+    await finishSemanticScene(id);
     return readSceneChanges(id);
   }
 
@@ -2126,115 +2108,7 @@ export function createSceneCommands({
     }
   }
 
-  async function recoverProjectMetadata(scene: VenueScene, turn: VenueSubmission): Promise<void> {
-    if (!projectInterpretationNeedsRecovery(turn)) return;
-    const village = await readVillageState();
-    const citedIds = new Set(
-      (turn.projectSpeech ?? []).flatMap((row) => row.citations.map((citation) => citation.lineId)),
-    );
-    // A partial applied outcome requires its existing receipt recovery, never a negative reinterpretation.
-    if (
-      village.projects.some((project) => project.lifecycle?.spokenProofs.some((proof) => citedIds.has(proof.lineId))) ||
-      village.progressTasks.some((task) => task.receipts.some((receipt) => citedIds.has(receipt.evidence.lineId ?? "")))
-    )
-      return;
-    const signature = JSON.stringify(turn.projectSpeech ?? []);
-    const sourceHash = turn.semanticProvenance?.sourceHash;
-    const terminalInvalid = (entry: VenueSubmission) =>
-      entry.interpretationHistory?.some((row) => {
-        const audit = asRecord(row.proposals);
-        return (
-          row.domain === "projects" &&
-          row.source === "Automatic Project retry invalid" &&
-          audit.sourceHash === sourceHash &&
-          audit.submissionId === turn.id &&
-          JSON.stringify(audit.originalProposals) === signature
-        );
-      });
-    const started = turn.interpretationHistory?.some(
-      (row) => row.domain === "projects" && row.source === "Automatic Project retry started",
-    );
-    if (!started) {
-      await changeSession(scene.id, (saved) => {
-        const entry = mutableSceneSubmission(saved, turn.id);
-        if (
-          !entry ||
-          saved.villageSeed !== village.seed ||
-          JSON.stringify(entry.projectSpeech ?? []) !== signature ||
-          entry.semanticProvenance?.sourceHash !== turn.semanticProvenance?.sourceHash
-        )
-          throw conflict("The saved Project proposal changed during recovery.");
-        entry.interpretationHistory ||= [];
-        entry.interpretationHistory.push({
-          at: villageNow().toISOString(),
-          domain: "projects",
-          source: "Automatic Project retry started",
-          proposals: {
-            sourceHash: entry.semanticProvenance?.sourceHash,
-            originalProposals: structuredClone(entry.projectSpeech ?? []),
-          },
-        });
-      });
-      try {
-        await retrySceneChangeInterpretationOnce(scene.id, turn.id, "projects", true);
-      } catch (error) {
-        // Only a returned, specifically invalid response permits a negative disposition.
-        // Dispatch refusal, cancellation, provider and persistence errors remain blocking.
-        if (!(error instanceof InvalidProjectRecoveryResponse)) throw error;
-        await changeSession(scene.id, (saved) => {
-          const entry = mutableSceneSubmission(saved, turn.id);
-          if (
-            !entry ||
-            saved.villageSeed !== village.seed ||
-            entry.semanticProvenance?.sourceHash !== sourceHash ||
-            JSON.stringify(entry.projectSpeech ?? []) !== signature
-          )
-            throw conflict("The saved Project proposal changed during recovery.");
-          entry.interpretationHistory ||= [];
-          entry.interpretationHistory.push({
-            at: villageNow().toISOString(),
-            domain: "projects",
-            source: "Automatic Project retry invalid",
-            proposals: {
-              submissionId: turn.id,
-              sourceHash,
-              originalProposals: structuredClone(entry.projectSpeech ?? []),
-            },
-          });
-        });
-      }
-    }
-    const latestScene = await readSession(scene.id),
-      latestTurn = latestScene.submissions.find((row) => row.id === turn.id);
-    if (!latestTurn || !terminalInvalid(latestTurn)) return;
-    const latestVillage = await readVillageState();
-    const latestCitedIds = new Set(
-      (latestTurn?.projectSpeech ?? []).flatMap((row) => row.citations.map((citation) => citation.lineId)),
-    );
-    if (
-      latestVillage.projects.some((project) =>
-        project.lifecycle?.spokenProofs.some((proof) => latestCitedIds.has(proof.lineId)),
-      ) ||
-      latestVillage.progressTasks.some((task) =>
-        task.receipts.some((receipt) => latestCitedIds.has(receipt.evidence.lineId ?? "")),
-      )
-    )
-      return;
-    await changeSession(scene.id, (saved) => {
-      if (saved.villageSeed !== village.seed) throw conflict("Village identity changed during Project recovery.");
-      const entry = mutableSceneSubmission(saved, turn.id);
-      if (entry?.semanticProvenance?.sourceHash !== turn.semanticProvenance?.sourceHash)
-        throw conflict("The saved Project proposal changed during recovery.");
-      if (entry && terminalInvalid(entry) && projectInterpretationNeedsRecovery(entry))
-        rejectProjectMetadata(
-          entry,
-          "Project interpretation unresolved; no additional Project effect applied",
-          villageNow().toISOString(),
-        );
-    });
-  }
-
-  async function settleSemanticAuthority(scene: VenueScene, turn: VenueSubmission, allowProjectRecovery = true) {
+  async function settleSemanticAuthority(scene: VenueScene, turn: VenueSubmission) {
     if (turn.semanticProvenance?.version !== 2) return;
     if (turn.npcAdmissions?.length || turn.placeDiscoveries?.length || turn.establishmentProgress?.length)
       await mutateVillageState((state) => applyPlaceExchange(state, scene, turn), { memories: true });
@@ -2340,7 +2214,6 @@ export function createSceneCommands({
       await publish();
       return;
     }
-    if (allowProjectRecovery && (turn.sceneContractVersion ?? 0) < 10) await recoverProjectMetadata(scene, turn);
     const currentScene = await readSession(scene.id);
     const currentTurn = currentScene.submissions.find((row) => row.id === turn.id);
     const physicalReceipt = (await readVillageState()).exchangeReceipts["venue-chat:" + scene.id + ":" + turn.id];
@@ -2728,7 +2601,7 @@ export function createSceneCommands({
       (row) => !row.semanticReady || !authority?.socialPublications?.[scene.id + ":" + row.id],
     )) {
       try {
-        await settleSemanticAuthority(scene, turn, false);
+        await settleSemanticAuthority(scene, turn);
       } catch (error) {
         if (asRecord(error).statusCode === 409) return;
         throw error;

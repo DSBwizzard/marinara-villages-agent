@@ -31,6 +31,7 @@ Aside bubbles are presentation, never a private audience. Keep useful asides bri
 Headers begin a line; continued lines belong to that paragraph. Keep ordinary dialogue brief across the whole cast; max2000 characters per paragraph.
 
 For actual effects only, end with CHANGES on its own line and one JSON object using the effect contracts.
+Enclose ALL effects in one pair of braces and double-quote their names. Example shape: {"action":{"happened":true,"segment":0,"actorIds":["player"],"consent":[],"append":"The cup rests on the shelf."}}. Include it only when that narration actually establishes the change.
 Generated paragraph indexes start at0 BEFORE player insertion. Player speech references: utterance:N with actual witnesses.
 Omit unchanged effects; ordinary conversation needs no CHANGES. No input, segments, witnesses or server bookkeeping in CHANGES.
 Optional sounds:[{segment,sourceId,text,loud?:true}] gives a narration paragraph's exact acoustic text, never unseen actions.`;
@@ -57,6 +58,34 @@ const header =
   /^\[([A-Za-z0-9:_-]+)(?:[ \t]+(main|aside|call(?::[A-Za-z0-9:_-]+)?|(?:whisper|to):[A-Za-z0-9:_-]+))?\](?:[ \t]+(.*))?$/u;
 const changesHeader = /^CHANGES:?[ \t]*$/u;
 const invalid = (part: string) => badGateway(`The Scene reply has invalid ${part}. Your draft is preserved.`);
+
+/** Only restore an omitted object envelope/key quotes; never repair values or incomplete JSON. */
+function parseChanges(metadata: string) {
+  let text = metadata.trim();
+  if (!text) return null;
+  if (!text.startsWith("{")) {
+    let depth = 0;
+    let field = true;
+    let cursor = 0;
+    let normalized = "";
+    for (const match of text.matchAll(/"(?:[^"\\]|\\.)*"|[{}\[\],:]|[A-Za-z_$][\w$]*/gu)) {
+      const token = match[0];
+      if (depth === 0 && field) {
+        if (/^[A-Za-z_$]/u.test(token)) {
+          if (!changeFields.has(token)) return null;
+          normalized += text.slice(cursor, match.index) + JSON.stringify(token);
+          cursor = match.index + token.length;
+        }
+        field = false;
+      }
+      if (token === "{" || token === "[") depth++;
+      else if (token === "}" || token === "]") depth--;
+      else if (token === "," && depth === 0) field = true;
+    }
+    text = "{" + normalized + text.slice(cursor) + "}";
+  }
+  return modelJsonWithinBounds(text) ? parseSceneObject(text) : null;
+}
 
 /** Syntax only. Existing source, speaker, consent and effect validation remains authoritative. */
 export function parseSceneTextReply(content: string, finishReason?: string): Record<string, unknown> {
@@ -86,7 +115,7 @@ export function parseSceneTextReply(content: string, finishReason?: string): Rec
   let changes: Record<string, unknown> = {};
   if (changeAt >= 0) {
     const metadata = body.slice(changeAt + 1).join("\n");
-    const value = modelJsonWithinBounds(metadata) ? parseSceneObject(metadata) : null;
+    const value = parseChanges(metadata);
     if (
       !value ||
       typeof value !== "object" ||
@@ -96,6 +125,11 @@ export function parseSceneTextReply(content: string, finishReason?: string): Rec
     )
       throw invalid("change fields");
     changes = value as Record<string, unknown>;
+    if (changes.action && typeof changes.action === "object" && !Array.isArray(changes.action)) {
+      const action = changes.action as Record<string, unknown>;
+      if (!Object.hasOwn(action, "consent")) action.consent = [];
+      if (typeof action.recent === "string") action.recent = { text: action.recent };
+    }
   }
   const segments: Record<string, unknown>[] = [];
   let current: { fields: Record<string, unknown>; lines: string[] } | undefined;

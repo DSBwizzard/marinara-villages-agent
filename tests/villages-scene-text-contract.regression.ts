@@ -33,8 +33,53 @@ const changed: any = parse(
   'INPUT action\n[narration] The white walls become blue.\nCHANGES\n{"action":{"happened":true,"segment":0,"edits":[{"before":"white","after":"blue"}]},"sounds":[{"segment":0,"sourceId":"mara","text":"A brush scrapes."}]}',
 );
 assert.equal(changed.action.edits[0].after, "blue");
+assert.deepEqual(changed.action.consent, []);
 assert.deepEqual(changed.segments[0].sound, { sourceId: "mara", text: "A brush scrapes." });
 assert.equal(Object.hasOwn(changed, "sounds"), false);
+for (const metadata of [
+  'action:{"happened":true,"segment":0,"actorIds":["player"],"recent":"A cup by the shelf."}',
+  '"action":{"happened":true,"segment":0,"actorIds":["player"],"recent":"A cup by the shelf."}',
+  '{"action":{"happened":true,"segment":0,"actorIds":["player"],"recent":"A cup by the shelf."}}',
+]) {
+  const reply: any = parse("INPUT action\n[narration] You put a cup by the shelf.\nCHANGES\n" + metadata);
+  assert.deepEqual(reply.action.consent, []);
+  assert.deepEqual(reply.action.recent, { text: "A cup by the shelf." });
+}
+const exact = 'A quote: "action:", commas, braces {}, and memoryChanges: [] stay literal. 😺';
+const members: any = parse(
+  "INPUT action\n[narration] You move the cup.\nCHANGES\n" +
+    'action:{"segment":0,"recent":' +
+    JSON.stringify(exact) +
+    '},\n"memoryChanges":[], relationshipChanges:{"changes":[]}',
+);
+assert.equal(members.action.recent.text, exact);
+assert.deepEqual(members.memoryChanges, []);
+assert.deepEqual(members.relationshipChanges, { changes: [] });
+for (const consent of [null, "", {}, false]) {
+  const reply: any = parse("INPUT action\n[narration] A change.\nCHANGES\n" + JSON.stringify({ action: { consent } }));
+  assert.deepEqual(reply.action.consent, consent, "Malformed supplied consent is never replaced by an empty list");
+}
+const emptyRecent: any = parse('INPUT action\n[narration] Cleared.\nCHANGES\naction:{"recent":""}');
+assert.deepEqual(
+  emptyRecent.action.recent,
+  { text: "" },
+  "A complete empty paragraph keeps its existing clear meaning",
+);
+for (const metadata of [
+  'action:{"happened":true}, "action":{}',
+  'action:{"segment":0,"segment":1}',
+  "action:{happened:true}",
+  'action:{"recent":"unfinished',
+  'action:{"happened":true',
+  "action:{},",
+  "action:{} trailing explanation",
+  "action:{}; memoryChanges:[]",
+  "action:{},unknown:[]",
+  "segments:[],action:{}",
+  "__proto__:{}",
+  "",
+])
+  assert.throws(() => parse("INPUT action\n[narration] A change.\nCHANGES\n" + metadata), /change fields/);
 assert.deepEqual(
   parse('INPUT []\nCHANGES\n{"halt":{"reason":"world","source":"player","quote":"world ends","appointments":[]}}')
     .segments,
@@ -42,6 +87,7 @@ assert.deepEqual(
 );
 
 for (const text of [
+  '{"input":"speech","segments":[{"kind":"dialogue","speakerId":"mara","text":"Old writer JSON."}]}',
   "[mara] Hello.",
   "INPUT guessed\n[mara] Hello.",
   "INPUT speech\nHello.",
