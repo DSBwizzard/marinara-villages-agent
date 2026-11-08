@@ -252,7 +252,7 @@ export function villageSettings(
           referencePending:
             !!originalZone.picture?.reference &&
             originalZone.picture.referenceAppliedId !== originalZone.picture.reference.id,
-          pictureGenerateAvailable: authoring || (!!originalZone.seen && !!originalZone.observed),
+          pictureGenerateAvailable: authoring || !!originalZone.observed,
           daylightReady: visible.picture?.daylight === true,
           nightImage:
             visible.dayNight && visible.image && visible.picture?.night?.sourceId === visible.image.id

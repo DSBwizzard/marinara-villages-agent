@@ -193,7 +193,16 @@ export function registerVenueImageRoutes(engine: FastifyInstance) {
     };
   }>("/locations/venue/image", async (request, reply) => {
     try {
-      await setVillageVenueImage(readVenueId(request.body?.venueId), readPlaceId(request.body?.zoneId), null);
+      await setVillageVenueImage(
+        readVenueId(request.body?.venueId),
+        readPlaceId(request.body?.zoneId),
+        null,
+        false,
+        undefined,
+        false,
+        undefined,
+        true,
+      );
       return await buildVillageSnapshot();
     } catch (error) {
       return fail(reply, error, "taking a place's picture away");

@@ -184,10 +184,18 @@ const settings = villageSettings(
   { name: "Player", missing: false } as Parameters<typeof villageSettings>[1],
   null,
 );
-assert.ok(
-  settings.venues[0].privateSpaces?.every((zone) => zone.description === "" && zone.state.recent === null),
-  "unvisited private interior details remain undisclosed during play",
+assert.ok(settings.venues[0].privateSpaces?.every((zone) => zone.description === "A hammock"));
+const privateZone = npc.zones!.find((zone) => zone.kind === "private-residence")!;
+assert.equal(privateZone.seen, false, "Founding artwork knowledge is separate from a visit");
+privateZone.description = "SECRET new furnishings";
+privateZone.purpose = "SECRET purpose";
+privateZone.roomSpecification = "SECRET specification";
+const changed = villageSettings(
+  world,
+  { name: "Player", missing: false } as Parameters<typeof villageSettings>[1],
+  null,
 );
+assert.doesNotMatch(JSON.stringify(changed), /SECRET/, "later unvisited changes stay private");
 console.log(
   "Founding template: optional Zones, inclusion retention, neutral access, contract validation, purpose round-trip and server privacy passed.",
 );
