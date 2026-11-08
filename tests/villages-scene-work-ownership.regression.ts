@@ -1282,6 +1282,111 @@ console.log(
   }
 }
 
+for (const variant of [
+  "speech",
+  "private-speech",
+  "action",
+  "missing-speech",
+  "prior-speech",
+  "wrong-text",
+  "wrong-offset",
+  "assistant-source",
+  "raw-draft",
+  "thought",
+  "prior-outcome",
+] as const) {
+  const message = "As manager, I permit ordinary visitors at any hour.";
+  const pending = commandFixture("Player access " + variant, ({ scene, world, stamp }) => {
+    const venue = venueDraft({ name: "Inn", description: "A shared inn", classes: ["other"] }, null);
+    venue.id = scene.placeId;
+    venue.access!.managerIds = ["player"];
+    venue.access!.visitorHours = [{ days: ["Wednesday"], start: "08:00", end: "18:00" }];
+    world.venues = [venue];
+    const speech: any = {
+      id: "player-speech",
+      speakerId: "",
+      role: "user",
+      kind: variant === "private-speech" ? "whisper" : "dialogue",
+      content: message,
+      at: stamp,
+      heardBy: ["ada"],
+      ...(variant === "private-speech" ? { targetId: "ada", delivery: "whisper" } : {}),
+      speechSource: { version: 3, spans: [{ start: 0, end: message.length, text: message, occurrence: 1 }] },
+    };
+    if (variant === "wrong-text") speech.speechSource.spans[0].text = message.replace("permit", "forbid");
+    if (variant === "wrong-offset") speech.speechSource.spans[0].start = 1;
+    if (variant === "assistant-source") {
+      speech.role = "assistant";
+      speech.speakerId = "ada";
+    }
+    if (variant === "raw-draft") {
+      delete speech.kind;
+      delete speech.speechSource;
+    }
+    scene.lines = [
+      ...(variant === "missing-speech" || variant === "action" ? [] : [speech]),
+      {
+        id: "policy-outcome",
+        speakerId: "__venue_scene__",
+        role: "assistant",
+        kind: "narration",
+        content: "The manager changes ordinary visitor hours to all hours.",
+        at: stamp,
+        heardBy: ["ada"],
+      },
+    ];
+    scene.submissions[0].message = message;
+    scene.submissions[0].replyLineIds = scene.lines
+      .filter((line) => !(variant === "prior-speech" && line.id === speech.id))
+      .map((line) => line.id);
+    if (variant === "prior-outcome") scene.submissions[0].replyLineIds = [speech.id];
+    scene.submissions[0].accessEvents = [
+      {
+        id: "player-policy",
+        interpretationVersion: 1,
+        facts: {
+          actorId: "player",
+          venueId: venue.id,
+          zoneId: null,
+          accessRevision: 0,
+          semanticVersion: 2,
+          playerInputSource: {
+            inputSpan: 0,
+            kind: variant === "action" ? "action" : variant === "thought" ? ("thought" as any) : "speech",
+            start: 0,
+            end: message.length,
+            text: message,
+          },
+          accessCommand: {
+            action: "venue-policy",
+            operationId: "player-policy",
+            expectedRevision: 0,
+            zoneId: null,
+            managerIds: ["player"],
+            visitorHours: null,
+          },
+        },
+        outcome: "access-management",
+        evidenceIds: ["policy-outcome"],
+      },
+    ];
+    return { mutateVillageState: async (change) => (await change(world), world) };
+  });
+  try {
+    const turn = pending.scene.submissions[0];
+    await pending.owner.run(() => pending.service.sceneReplayEffects()).applySavedAccessEvents(pending.scene, turn);
+    const allowed = ["speech", "private-speech", "action"].includes(variant);
+    const access = pending.world.venues[0].access!;
+    assert.equal(access.visitorHours === null, allowed, variant);
+    assert.equal(access.receipts["player-policy"].outcome === "rejected", !allowed, variant);
+    assert.equal(access.revision, allowed ? 1 : 0, variant);
+    assert.equal(pending.modelAccess, 0);
+    assert.deepEqual(pending.unexpected, []);
+  } finally {
+    pending.owner.dispose();
+  }
+}
+
 // Greeting admission is observed and cancellable before storage reads settle.
 const originalGreetingTimeout = AbortSignal.timeout;
 const greetingUnhandled: unknown[] = [];

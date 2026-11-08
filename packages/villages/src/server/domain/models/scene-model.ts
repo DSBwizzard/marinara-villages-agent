@@ -45,7 +45,7 @@ export type SceneAttendance = {
   occupants: (VenueParticipant & { zoneId: string })[];
 };
 export type VenueSubmission = {
-  sceneContractVersion?: 10 | 11 | 12;
+  sceneContractVersion?: 10 | 11 | 12 | 13;
   lore?: import("../../../shared/contracts/lore.js").LoreUse[];
   npcAdmissions?: import("../rules/npc-participation.js").NpcAdmission[];
   placeDiscoveries?: unknown[];
@@ -263,7 +263,7 @@ export type SavedAccessEvent = {
     semanticVersion: 2;
     accompanies?: boolean;
     accessCommand?: import("../../../shared/helpers/venue-access.js").AccessCommand;
-    playerActionSource?: { inputSpan: number; start: number; end: number; text: string };
+    playerInputSource?: { inputSpan: number; kind: "speech" | "action"; start: number; end: number; text: string };
   };
   outcome: string;
   evidenceIds: string[];

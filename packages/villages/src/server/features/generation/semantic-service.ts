@@ -38,7 +38,7 @@ import { readVenueSceneChange } from "../../domain/rules/venue-scene-state.js";
 import { canInviteToZone, resolveVenueZone, venueInZone } from "../../domain/rules/venue-zones.js";
 import { routeZoneEvents } from "../../domain/rules/zone-events.js";
 import { accessIssuerWitnessed } from "../../domain/rules/access-speech.js";
-import { isCapturedPlayerSpeech } from "../../domain/rules/player-speech-capture.js";
+import { capturedPlayerSpeechMatches } from "../../domain/rules/player-speech-capture.js";
 
 export interface SemanticPorts {
   readVillageState: typeof import("../world/village-store.js").readVillageState;
@@ -481,21 +481,22 @@ export function createSemanticService(ports: SemanticPorts) {
           if (row.duration === "standing" && ["invite-now", "invite-later"].includes(String(row.outcome)))
             throw badGateway("Standing permission must use the standing grant contract.");
           const zone = typeof row.zoneId === "string" ? resolveVenueZone(venue, row.zoneId) : undefined;
-          const actionIndexes = interpretedIntent.timeline.flatMap((step, index) =>
-            step.kind === "action" ? [index] : [],
+          const sourceIndexes = interpretedIntent.timeline.flatMap((step, index) =>
+            step.kind === "action" || step.kind === "speech" ? [index] : [],
           );
           const inputSpan =
-            row.inputSpan === undefined && actionIndexes.length === 1 ? actionIndexes[0] : row.inputSpan;
+            row.inputSpan === undefined && sourceIndexes.length === 1 ? sourceIndexes[0] : row.inputSpan;
           const source =
             row.actorId === "player" && Number.isInteger(inputSpan)
               ? interpretedIntent.timeline[Number(inputSpan)]
               : undefined;
-          const playerAction = source?.kind === "action" ? source : undefined;
-          const playerSpeech = cited.some(isCapturedPlayerSpeech);
-          if (row.inputSpan !== undefined && !playerAction)
-            throw badGateway("The access change cited an invalid player action.");
-          if (row.actorId === "player" && row.outcome !== "unresolved" && !playerSpeech && !playerAction)
+          const playerInput = source?.kind === "action" || source?.kind === "speech" ? source : undefined;
+          if (row.inputSpan !== undefined && !playerInput)
+            throw badGateway("The access change cited an invalid player input span.");
+          if (row.actorId === "player" && row.outcome !== "unresolved" && !playerInput)
             throw badGateway("The access change needs a current authored player action or statement.");
+          if (playerInput?.kind === "speech" && !lines.some((line) => capturedPlayerSpeechMatches(line, playerInput)))
+            throw badGateway("The access statement was not captured as current player speech.");
           if (
             row.outcome !== "unresolved" &&
             (row.outcome === "ban-venue" || row.outcome === "ban-zone" || row.outcome === "access-management"
@@ -552,13 +553,14 @@ export function createSemanticService(ports: SemanticPorts) {
             accessRevision: venue.access?.revision,
             semanticVersion: 2,
             accompanies: row.accompanies || row.conditions.includes("accompanied"),
-            ...(playerAction
+            ...(playerInput
               ? {
-                  playerActionSource: {
+                  playerInputSource: {
                     inputSpan: Number(inputSpan),
-                    start: playerAction.start,
-                    end: playerAction.end,
-                    text: playerAction.text,
+                    kind: playerInput.kind,
+                    start: playerInput.start,
+                    end: playerInput.end,
+                    text: playerInput.text,
                   },
                 }
               : {}),

@@ -27,7 +27,7 @@ try {
   const response = await host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
   assert.equal(response.statusCode, 200, response.body);
   const turn = host.scene().submissions.at(-1)!;
-  assert.equal(turn.sceneContractVersion, 12);
+  assert.equal(turn.sceneContractVersion, 13);
   const aside = host.scene().lines.find((line) => line.content === "The blue cup is yours.")!;
   assert.equal(aside.delivery, "whisper");
   assert.equal(aside.targetId, "player");
@@ -267,7 +267,14 @@ for (const variant of [
 for (const variant of [
   "action",
   "speech",
+  "speech-explicit",
+  "speech-bad-index",
+  "speech-bad-null",
+  "speech-bad-string",
   "whisper",
+  "whisper-explicit",
+  "mixed-speech",
+  "mixed-speech-explicit",
   "thought",
   "context",
   "ambiguous",
@@ -276,8 +283,8 @@ for (const variant of [
   "bad-null",
   "bad-string",
   "denied",
-  "uncited-speech",
   "zone-hours",
+  "spoken-zone-hours",
   "wrong-scope",
 ] as const) {
   const host = await packagedSceneServer({
@@ -293,50 +300,61 @@ for (const variant of [
           end: clock(2),
         },
       ];
-      if (variant === "zone-hours") {
+      if (variant.endsWith("zone-hours")) {
         world.venues[0]!.zones![1]!.access!.memberIds = ["mara"];
         world.venues[0]!.zones![1]!.access!.inviterIds = ["mara"];
         world.venues[0]!.zones![1]!.access!.accompanied = true;
       }
     },
   });
-  const first =
-    variant === "zone-hours"
-      ? "As manager, I set this common room's visitor hours to all hours."
-      : "As manager, I set this inn's visitor hours to all hours.";
+  const first = variant.endsWith("zone-hours")
+    ? "As manager, I set this common room's visitor hours to all hours."
+    : "As manager, I set this inn's visitor hours to all hours.";
   const last = "All other restrictions remain unchanged.";
   const message = first + " " + last;
-  const classification =
-    variant === "whisper"
-      ? JSON.stringify([{ kind: "speech", text: message, delivery: "whisper", targetId: "mara" }])
-      : ["ambiguous", "explicit"].includes(variant)
-        ? JSON.stringify([
-            { kind: "action", text: first },
-            { kind: "action", text: last },
-          ])
-        : ["speech", "uncited-speech"].includes(variant)
-          ? "speech"
-          : ["thought", "context"].includes(variant)
-            ? variant
-            : "action";
+  const classification = variant.startsWith("whisper")
+    ? JSON.stringify([{ kind: "speech", text: message, delivery: "whisper", targetId: "mara" }])
+    : ["ambiguous", "explicit", "mixed-speech", "mixed-speech-explicit"].includes(variant)
+      ? JSON.stringify([
+          { kind: variant.startsWith("mixed-speech") ? "speech" : "action", text: first },
+          { kind: "action", text: last },
+        ])
+      : variant.startsWith("speech") || variant === "spoken-zone-hours"
+        ? "speech"
+        : ["thought", "context"].includes(variant)
+          ? variant
+          : "action";
   const proposal: any = {
     actorId: "player",
     venueId: "mill",
     zoneId: null,
     outcome: "access-management",
-    evidence: ["speech", "whisper"].includes(variant) ? ["utterance:0"] : [0],
+    evidence: [0],
     command: { action: "venue-policy", managerIds: ["player"], visitorHours: null },
   };
-  if (variant === "explicit") proposal.inputSpan = 0;
-  if (variant === "bad-index") proposal.inputSpan = 99;
-  if (variant === "bad-null") proposal.inputSpan = null;
-  if (variant === "bad-string") proposal.inputSpan = "0";
-  if (["zone-hours", "wrong-scope"].includes(variant)) proposal.zoneId = "common";
-  const succeeds = ["action", "speech", "whisper", "explicit", "zone-hours"].includes(variant);
+  if (
+    ["explicit", "speech-explicit", "whisper-explicit", "mixed-speech-explicit", "spoken-zone-hours"].includes(variant)
+  )
+    proposal.inputSpan = 0;
+  if (["bad-index", "speech-bad-index"].includes(variant)) proposal.inputSpan = 99;
+  if (["bad-null", "speech-bad-null"].includes(variant)) proposal.inputSpan = null;
+  if (["bad-string", "speech-bad-string"].includes(variant)) proposal.inputSpan = "0";
+  if (["zone-hours", "spoken-zone-hours", "wrong-scope"].includes(variant)) proposal.zoneId = "common";
+  const succeeds = [
+    "action",
+    "speech",
+    "speech-explicit",
+    "whisper",
+    "whisper-explicit",
+    "mixed-speech-explicit",
+    "explicit",
+    "zone-hours",
+    "spoken-zone-hours",
+  ].includes(variant);
   let calls = 0;
   host.model.chatComplete = async (messages: any[]) => {
     calls++;
-    if (variant === "zone-hours") {
+    if (variant.endsWith("zone-hours")) {
       const packet = messages
         .flatMap((m) =>
           m.content.split("\n").flatMap((line: string) => {
@@ -361,7 +379,22 @@ for (const variant of [
         "INPUT " +
         classification +
         "\n[narration] You change this inn's ordinary visitor hours to all hours; its other restrictions remain unchanged.\n\n" +
-        JSON.stringify({ access: [proposal] }),
+        JSON.stringify({
+          access: [proposal],
+          ...(variant === "spoken-zone-hours"
+            ? {
+                memoryChanges: [
+                  {
+                    text: "The manager changed Common room visitor hours to all hours, leaving other restrictions unchanged.",
+                    subjects: ["player"],
+                    support: [{ lineId: "utterance:0" }],
+                    learners: { mara: { basis: "observation" } },
+                    screening: { disposition: "clear" },
+                  },
+                ],
+              }
+            : {}),
+        }),
       finishReason: "stop",
       usage: { inputTokens: 10, outputTokens: 10 },
     };
@@ -390,7 +423,7 @@ for (const variant of [
       assert.equal(calls, 1);
       continue;
     }
-    if (variant === "zone-hours") {
+    if (variant.endsWith("zone-hours")) {
       assert.deepEqual(world.venues[0]!.access!.visitorHours, before.venues[0]!.access!.visitorHours);
       assert.deepEqual(
         world.venues[0]!.zones![1]!.access,
@@ -407,15 +440,30 @@ for (const variant of [
     }
     assert.deepEqual(world.venues[0]!.access!.managerIds, ["player"]);
     assert(!host.scene().lines.some((l) => l.content.includes('"access"')));
-    if (!["speech", "whisper"].includes(variant)) {
-      const source = host.scene().submissions[0]!.accessEvents![0]!.facts.playerActionSource!;
-      assert.equal(source.inputSpan, 0);
-      assert.equal(message.slice(source.start, source.end), source.text);
-      assert.equal(source.text, variant === "explicit" ? first : message);
-    } else {
+    const source = host.scene().submissions[0]!.accessEvents![0]!.facts.playerInputSource!;
+    assert.equal(source.inputSpan, 0);
+    assert.equal(message.slice(source.start, source.end), source.text);
+    assert.equal(source.text, ["explicit", "mixed-speech-explicit"].includes(variant) ? first : message);
+    assert.equal(
+      source.kind,
+      variant.startsWith("speech") ||
+        variant.startsWith("whisper") ||
+        variant === "mixed-speech-explicit" ||
+        variant === "spoken-zone-hours"
+        ? "speech"
+        : "action",
+    );
+    if (source.kind === "speech") {
       const own = host.scene().lines.find((l) => l.speechSource)!;
       assert(!own.heardBy.includes("player"), "Player perception does not rewrite canonical listener IDs");
     }
+    if (variant === "spoken-zone-hours")
+      assert(
+        world.memories.records.some(
+          (memory) => memory.text.includes("Common room visitor hours") && memory.knowers.mara,
+        ),
+        "The captured real-provider shape applies policy and witnessed Memory together",
+      );
     const replay = await host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
     assert.equal(replay.statusCode, 200, replay.body);
     assert.equal(calls, 1);

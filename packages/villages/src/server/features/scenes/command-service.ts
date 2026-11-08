@@ -95,7 +95,7 @@ import {
 import { metadataFailure, completionFailure as typedCompletionFailure } from "../../domain/rules/work-failure.js";
 import { zoneEventScene } from "../../domain/rules/zone-events.js";
 import { accessIssuerWitnessed } from "../../domain/rules/access-speech.js";
-import { isCapturedPlayerSpeech } from "../../domain/rules/player-speech-capture.js";
+import { capturedPlayerSpeechMatches } from "../../domain/rules/player-speech-capture.js";
 import { type SceneReply } from "./writing.js";
 export interface SceneCommandPorts {
   readCapturedWishContexts: ReturnType<
@@ -1899,9 +1899,10 @@ export function createSceneCommands({
           reject();
           continue;
         }
-        const binding = asRecord(facts.playerActionSource);
-        const boundPlayerAction =
+        const binding = asRecord(facts.playerInputSource);
+        const boundPlayerInput =
           actor === "player" &&
+          (binding.kind === "action" || binding.kind === "speech") &&
           Number.isInteger(binding.inputSpan) &&
           Number(binding.inputSpan) >= 0 &&
           Number(binding.inputSpan) < 24 &&
@@ -1911,7 +1912,11 @@ export function createSceneCommands({
           Number(binding.end) > Number(binding.start) &&
           Number(binding.end) <= turn.message.length &&
           typeof binding.text === "string" &&
-          turn.message.slice(Number(binding.start), Number(binding.end)) === binding.text;
+          turn.message.slice(Number(binding.start), Number(binding.end)) === binding.text &&
+          (binding.kind === "action" ||
+            scene.lines.some(
+              (line) => turn.replyLineIds.includes(line.id) && capturedPlayerSpeechMatches(line, binding),
+            ));
         const sources = result.evidenceIds
           .map((ref) => {
             const draft = /^draft:(\d+)$/u.exec(ref);
@@ -1922,7 +1927,7 @@ export function createSceneCommands({
               !!line &&
               accessIssuerWitnessed(line, actor) &&
               (actor === "player"
-                ? isCapturedPlayerSpeech(line) || (line.kind === "narration" && boundPlayerAction)
+                ? boundPlayerInput && (line.kind === "narration" || capturedPlayerSpeechMatches(line, binding))
                 : (line.speakerId === actor && line.kind !== "narration") ||
                   (line.kind === "narration" && !line.contactHidden)) &&
               turn.replyLineIds.includes(line.id),

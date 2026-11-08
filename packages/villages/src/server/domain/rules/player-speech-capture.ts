@@ -4,13 +4,18 @@ import { MAX_SCENE_REPLY_LINES } from "./scene-reply.js";
 import type { VenueLine } from "../models/scene-model.js";
 export type SpeechSource = { start: number; end: number; text: string; occurrence: number };
 /** A raw player draft is not an utterance; only server-bound speech can issue a spoken action. */
-export function isCapturedPlayerSpeech(line: Pick<Partial<VenueLine>, "role" | "speakerId" | "kind" | "speechSource">) {
+export function capturedPlayerSpeechMatches(
+  line: Pick<Partial<VenueLine>, "role" | "speakerId" | "kind" | "speechSource">,
+  source: { start?: unknown; end?: unknown; text?: unknown },
+) {
   return (
     line.role !== "assistant" &&
     (line.speakerId === "player" || (line.role === "user" && !line.speakerId)) &&
     ["dialogue", "side", "whisper"].includes(String(line.kind)) &&
     line.speechSource?.version === 3 &&
-    line.speechSource.spans.length > 0
+    line.speechSource.spans.some(
+      (span) => span.start === source.start && span.end === source.end && span.text === source.text,
+    )
   );
 }
 /** Resolve exact source occurrences; never derive hearing from punctuation or reactions. */
