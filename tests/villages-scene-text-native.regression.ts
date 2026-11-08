@@ -133,6 +133,7 @@ for (const variant of [
   "combined",
   "unlabeled-action",
   "inline-private",
+  "missing-input",
   "denied-controller",
   "malformed-consent",
 ] as const) {
@@ -183,14 +184,16 @@ for (const variant of [
           : JSON.stringify({ action });
     return {
       content:
-        variant === "inline-private"
-          ? "INPUT speech\nThe kettle rattles. [mara\nwhisper:player] PRIVATE\n[mara] Hello."
-          : "INPUT " +
-            (isMemory ? "speech" : "action") +
-            (variant === "unlabeled-action" ? "\n" : "\n[narration] ") +
-            narration +
-            "\n[mara aside] Noted.\nCHANGES\n" +
-            metadata,
+        variant === "missing-input"
+          ? "[narration] The kettle rattles.\n[mara whisper:player] PRIVATE"
+          : variant === "inline-private"
+            ? "INPUT speech\nThe kettle rattles. [mara\nwhisper:player] PRIVATE\n[mara] Hello."
+            : "INPUT " +
+              (isMemory ? "speech" : "action") +
+              (variant === "unlabeled-action" ? "\n" : "\n[narration] ") +
+              narration +
+              "\n[mara aside] Noted.\nCHANGES\n" +
+              metadata,
       finishReason: "stop",
       usage: { inputTokens: 10, outputTokens: 10 },
     };
@@ -206,7 +209,7 @@ for (const variant of [
     };
     const result = await host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
     const world = fixtureVillageState(host.records.get("villages-village").data, host.records);
-    if (variant === "malformed-consent" || variant === "inline-private") {
+    if (variant === "malformed-consent" || variant === "inline-private" || variant === "missing-input") {
       assert.equal(result.statusCode, 502, result.body);
       assert.equal(host.scene().submissions.length, 0);
       assert.equal(host.scene().lines.length, 0);

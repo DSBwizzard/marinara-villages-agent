@@ -4,7 +4,7 @@ import { MODEL_JSON_MAX_CHARACTERS, modelJsonWithinBounds } from "./json-reply.j
 import { parseSceneObject } from "./scene-json-syntax.js";
 
 /** The maintained response grammar. Prose is text; only actual changes need JSON. */
-export const SCENE_TEXT_RESPONSE = `Answer in this format, without fences:
+export const SCENE_TEXT_RESPONSE = `The FIRST line of every reply must be INPUT and its classification, before any narration or dialogue. Never omit it. No fences.
 
 INPUT speech
 [narration] The kettle steams.
