@@ -275,6 +275,7 @@ for (const variant of [
   "whisper-explicit",
   "mixed-speech",
   "mixed-speech-explicit",
+  "mixed-private-speech",
   "thought",
   "context",
   "ambiguous",
@@ -311,19 +312,27 @@ for (const variant of [
     ? "As manager, I set this common room's visitor hours to all hours."
     : "As manager, I set this inn's visitor hours to all hours.";
   const last = "All other restrictions remain unchanged.";
-  const message = first + " " + last;
-  const classification = variant.startsWith("whisper")
-    ? JSON.stringify([{ kind: "speech", text: message, delivery: "whisper", targetId: "mara" }])
-    : ["ambiguous", "explicit", "mixed-speech", "mixed-speech-explicit"].includes(variant)
+  const statement = first + " " + last;
+  const approach = "*I lean close.*";
+  const message = variant === "mixed-private-speech" ? approach + " " + statement : statement;
+  const classification =
+    variant === "mixed-private-speech"
       ? JSON.stringify([
-          { kind: variant.startsWith("mixed-speech") ? "speech" : "action", text: first },
-          { kind: "action", text: last },
+          { kind: "action", text: approach },
+          { kind: "speech", text: statement, delivery: "whisper", targetId: "mara" },
         ])
-      : variant.startsWith("speech") || variant === "spoken-zone-hours"
-        ? "speech"
-        : ["thought", "context"].includes(variant)
-          ? variant
-          : "action";
+      : variant.startsWith("whisper")
+        ? JSON.stringify([{ kind: "speech", text: message, delivery: "whisper", targetId: "mara" }])
+        : ["ambiguous", "explicit", "mixed-speech", "mixed-speech-explicit"].includes(variant)
+          ? JSON.stringify([
+              { kind: variant.startsWith("mixed-speech") ? "speech" : "action", text: first },
+              { kind: "action", text: last },
+            ])
+          : variant.startsWith("speech") || variant === "spoken-zone-hours"
+            ? "speech"
+            : ["thought", "context"].includes(variant)
+              ? variant
+              : "action";
   const proposal: any = {
     actorId: "player",
     venueId: "mill",
@@ -336,6 +345,7 @@ for (const variant of [
     ["explicit", "speech-explicit", "whisper-explicit", "mixed-speech-explicit", "spoken-zone-hours"].includes(variant)
   )
     proposal.inputSpan = 0;
+  if (variant === "mixed-private-speech") proposal.inputSpan = 1;
   if (["bad-index", "speech-bad-index"].includes(variant)) proposal.inputSpan = 99;
   if (["bad-null", "speech-bad-null"].includes(variant)) proposal.inputSpan = null;
   if (["bad-string", "speech-bad-string"].includes(variant)) proposal.inputSpan = "0";
@@ -347,6 +357,7 @@ for (const variant of [
     "whisper",
     "whisper-explicit",
     "mixed-speech-explicit",
+    "mixed-private-speech",
     "explicit",
     "zone-hours",
     "spoken-zone-hours",
@@ -441,14 +452,15 @@ for (const variant of [
     assert.deepEqual(world.venues[0]!.access!.managerIds, ["player"]);
     assert(!host.scene().lines.some((l) => l.content.includes('"access"')));
     const source = host.scene().submissions[0]!.accessEvents![0]!.facts.playerInputSource!;
-    assert.equal(source.inputSpan, 0);
+    assert.equal(source.inputSpan, variant === "mixed-private-speech" ? 1 : 0);
     assert.equal(message.slice(source.start, source.end), source.text);
-    assert.equal(source.text, ["explicit", "mixed-speech-explicit"].includes(variant) ? first : message);
+    assert.equal(source.text, ["explicit", "mixed-speech-explicit"].includes(variant) ? first : statement);
     assert.equal(
       source.kind,
       variant.startsWith("speech") ||
         variant.startsWith("whisper") ||
         variant === "mixed-speech-explicit" ||
+        variant === "mixed-private-speech" ||
         variant === "spoken-zone-hours"
         ? "speech"
         : "action",
@@ -456,6 +468,11 @@ for (const variant of [
     if (source.kind === "speech") {
       const own = host.scene().lines.find((l) => l.speechSource)!;
       assert(!own.heardBy.includes("player"), "Player perception does not rewrite canonical listener IDs");
+      if (variant === "mixed-private-speech") {
+        assert.equal(source.start, approach.length + 1);
+        assert.equal(own.delivery, "whisper");
+        assert.deepEqual(own.heardBy, ["mara"]);
+      }
     }
     if (variant === "spoken-zone-hours")
       assert(
