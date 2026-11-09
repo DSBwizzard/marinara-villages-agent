@@ -163,11 +163,11 @@ export const DOSSIER_STYLES = `
  .${P}-dossier-book::after{display:none}
  .${P}-dossier-identity{padding:16px 14px 8px;overflow:visible}
  .${P}-dossier-journal-content{display:grid;grid-template-columns:84px minmax(0,1fr);gap:10px 14px;align-items:start}
- .${P}-dossier-portrait{grid-column:1;grid-row:1/4;width:84px;height:100px;aspect-ratio:auto;padding:4px 4px 8px;margin:0}
+ .${P}-dossier-portrait{grid-column:1;grid-row:1/3;width:84px;height:100px;aspect-ratio:auto;padding:4px 4px 8px;margin:0}
  .${P}-dossier-journal h1{grid-column:2;font-size:27px;text-align:left;line-height:1.1}
- .${P}-dossier-biography{grid-column:2;max-height:none;overflow:visible}
+ .${P}-dossier-biography{grid-column:1/-1;grid-row:3;max-height:none;overflow:visible}
  .${P}-dossier-biography p{font-size:16px}
- .${P}-dossier-journal-content>button{grid-column:1/-1;justify-self:center;margin-top:8px;padding:8px 24px}
+ .${P}-dossier-journal-content>button{grid-column:2;grid-row:2;justify-self:start;align-self:start;margin-top:0;padding:8px 24px}
  .${P}-signature{margin-top:8px}
  .${P}-signature-name{font-size:25px}
  .${P}-signature-art{width:150px}
