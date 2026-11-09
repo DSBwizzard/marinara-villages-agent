@@ -73,7 +73,7 @@ export async function runLiveSceneComparison(config, output) {
       mode,
       caseId: pair.id,
       message: pair.message,
-      submissionId: randomUUID(),
+      submissionId: mode === "villages" ? (pair.submissionId ?? randomUUID()) : randomUUID(),
       startedAt: new Date().toISOString(),
       status: "running",
       actualInvoiceCostUsd: null,
@@ -147,6 +147,7 @@ export async function runLiveSceneComparison(config, output) {
           mode: "chat",
           targetId: "",
           expectedSceneRevision: active.session.sceneRevision,
+          ...(pair.retryOfAttemptId ? { retryOfAttemptId: pair.retryOfAttemptId } : {}),
         };
         const result = await call("/api/villages/rooms/turn", "POST", payload);
         turn.processingSummary = result.session?.processingSummary;
@@ -200,6 +201,8 @@ export async function runLiveSceneComparison(config, output) {
   try {
     for (const pair of config.pairs) {
       assert(typeof pair.id === "string" && typeof pair.message === "string");
+      if (pair.retryOfAttemptId)
+        assert(typeof pair.retryOfAttemptId === "string" && typeof pair.submissionId === "string" && pair.submissionId);
       await append("villages", pair);
       await append("game", pair);
     }

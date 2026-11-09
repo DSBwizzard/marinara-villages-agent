@@ -54,6 +54,7 @@ const server = createServer(async (request, response) => {
     return response.end('data: {"type":"done"}\n\n');
   }
   if (path === "/api/villages/rooms/turn") {
+    if (input.submissionId === "explicit-retry") assert.equal(input.retryOfAttemptId, "previous-attempt");
     if (!submissions.has(input.submissionId)) {
       submissions.add(input.submissionId);
       if (submissions.size === 2) attempts.push({ id: "uncertain", status: "unknown" });
@@ -98,6 +99,18 @@ try {
   assert.equal(report.turns[2].replayAttempts.length, 0);
   assert.equal(generations, 2);
   assert.equal(report.actualInvoiceCostUsd, null);
+  const retried = await runLiveSceneComparison(
+    {
+      chatId: "game",
+      sessionId: "scene",
+      connectionId: "model",
+      pairs: [{ id: "retry", message: "Hello.", submissionId: "explicit-retry", retryOfAttemptId: "previous-attempt" }],
+    },
+    resolve(".build-tmp", `scene-cost-live-test-${randomUUID()}.json`),
+  );
+  assert.equal(retried.turns[0].submissionId, "explicit-retry");
+  assert.equal(retried.turns[0].capabilityAttemptCount, 1);
+  assert.equal(retried.turns[0].replayAttempts.length, 0);
   for (const problem of ["planning", "model", "village-model"]) {
     baselineProblem = problem;
     const output = resolve(".build-tmp", `scene-cost-live-test-${randomUUID()}.json`);
