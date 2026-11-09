@@ -12,6 +12,7 @@ import { decodePromptHistory } from "./fixtures/villages-scene-writing.fixture.j
 import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 import {
   assembleVenueWritingMessages,
+  buildVenueSceneBlocks,
   fitVenueWritingMessages,
 } from "../packages/villages/src/server/domain/rules/venue-writing.js";
 import { bindSceneMemorySuggestion } from "../packages/villages/src/server/domain/rules/scene-memories.js";
@@ -31,6 +32,59 @@ import {
   scenePersonReferences,
 } from "../packages/villages/src/server/domain/rules/scene-prompt-references.js";
 import { sceneWritingHistory } from "../packages/villages/src/server/domain/rules/scene-writing-history.js";
+
+{
+  let previousHistoryPrefix = "";
+  let system;
+  for (let turn = 1; turn <= 100; turn++) {
+    const history = Array.from({ length: turn - 1 }, (_, i) => ({
+      text: JSON.stringify({
+        id: "line-" + i,
+        text: "A witnessed exchange. ".repeat(24),
+        heardBy: ["a", "b", "c", "d", ...(i >= 50 ? ["guest"] : [])],
+      }),
+      optional: "history" as const,
+    }));
+    const scene = { description: "Physical arrangement " + [9, 18, 24, 33, 40, 64].filter((t) => t < turn).length };
+    const messages = assembleVenueWritingMessages(
+      buildVenueSceneBlocks({
+        direction: [{ text: "Current facts override historical claims." }],
+        identity: ["a", "b", "c", "d"].map((id) => ({ text: "Complete identity: " + id })),
+        stableContext: [{ text: "Stable world and player." }],
+        metadata: [{ text: "Response contract." }],
+        conversation: history,
+        dynamicIdentity: turn > 50 ? [{ text: "Guest's complete identity." }] : [],
+        sceneContext: [{ text: JSON.stringify({ scene }) }],
+        circumstances: [
+          { text: JSON.stringify({ turn, actors: ["a", "b", "c", "d", ...(turn > 50 ? ["guest"] : [])] }) },
+        ],
+        authoredInstructions: [],
+      }),
+      "Your next move?",
+    );
+    system ??= messages[0]!.content;
+    assert.equal(
+      messages[0]!.content,
+      system,
+      "Physical changes and arrivals never rewrite fixed identities/instructions",
+    );
+    const live = messages[1]!.content;
+    assert(
+      live.startsWith(previousHistoryPrefix),
+      "New facts and a fifth arrival cannot invalidate the prior transcript prefix",
+    );
+    const factsAt = live.indexOf("## Current Scene facts");
+    assert(
+      live.slice(factsAt).includes(JSON.stringify({ scene })),
+      "Latest authoritative physical facts remain supplied after history",
+    );
+    previousHistoryPrefix = live.slice(
+      0,
+      live.indexOf(turn > 50 ? "## Current supporting and remote identities" : "## Current Scene facts"),
+    );
+    if (turn > 50) assert(live.includes("Guest's complete identity."));
+  }
+}
 
 {
   const people = scenePersonReferences(["resident-long-id", "other-long-id"]);

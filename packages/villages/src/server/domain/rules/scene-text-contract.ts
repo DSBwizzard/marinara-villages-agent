@@ -28,7 +28,7 @@ Paragraph headers (supplied IDs only):
 [person-id to:recipient-id] ordinary public speech addressed to that person
 Actions go in narration, words in dialogue. Prose needs no JSON escaping.
 Aside bubbles are presentation, never a private audience. Keep useful asides brief.
-Unlabeled opening prose is narration. Every supplied public header starts a new paragraph, even inline. Private headers must begin a new line. Never write closing tags. Continued text belongs to that paragraph; use [narration] to switch back from speech. Keep ordinary dialogue brief across the whole cast; max2000 characters per paragraph.
+Unlabeled opening prose is narration. Every supplied public header starts a new paragraph, even inline. Private headers must begin a new line. Never write closing tags. Continued text belongs to that paragraph; use [narration] to switch back from speech. Max2000 characters per paragraph.
 
 Every persistent outcome established in this exchange MUST have its effect data in CHANGES, including changes issued through speech. INPUT speech does not mean effect-free. Never confirm a saved change through prose alone.
 End with CHANGES on its own line and one JSON object using the effect contracts when any effect occurs.
@@ -57,9 +57,9 @@ const changeFields = new Set([
   "sounds",
 ]);
 const header =
-  /^\[([A-Za-z0-9:_-]+)(?:[ \t]+(main|aside|call(?::[A-Za-z0-9:_-]+)?|(?:whisper|to):[A-Za-z0-9:_-]+))?\][ \t]*(.*)$/u;
+  /^[ \t]*\[[ \t]*([A-Za-z0-9:_-]+)(?:[ \t]+(main|aside|call(?::[A-Za-z0-9:_-]+)?|(?:whisper|to):[A-Za-z0-9:_-]+))?[ \t]*\][ \t]*(.*)$/u;
 const inlineHeader =
-  /(?<!\\)\[([A-Za-z0-9:_-]+)(?:[ \t]+(main|aside|call(?::[A-Za-z0-9:_-]+)?|(?:whisper|to):[A-Za-z0-9:_-]+))?\]/gu;
+  /(?<!\\)\[[ \t]*([A-Za-z0-9:_-]+)(?:[ \t]+(main|aside|call(?::[A-Za-z0-9:_-]+)?|(?:whisper|to):[A-Za-z0-9:_-]+))?[ \t]*\]/gu;
 const changesHeader = /^CHANGES(?::[ \t]*|[ \t]+|$)(.*)$/u;
 const invalid = (part: string) => badGateway(`The Scene reply has invalid ${part}. Your draft is preserved.`);
 
@@ -197,8 +197,9 @@ export function parseSceneTextReply(
     if (/\bCHANGES:?\s*(?:[\[{]|(?:"(?:[^"\\]|\\.)*"|[A-Za-z_$][\w$]*)\s*:)/u.test(prose))
       throw invalid("change fields");
     if (
-      /\[[A-Za-z0-9:_-]+\s+whisper\b/iu.test(prose) ||
-      (opening && /(?<!\\)\[(?:narration\b|\/[A-Za-z0-9:_-]+|[A-Za-z0-9:_-]+\s+(?:main|aside|call|to)\b)/iu.test(prose))
+      /\[\s*[A-Za-z0-9:_-]+\s+whisper\b/iu.test(prose) ||
+      (opening &&
+        /(?<!\\)\[\s*(?:narration\b|\/[A-Za-z0-9:_-]+|[A-Za-z0-9:_-]+\s+(?:main|aside|call|to)\b)/iu.test(prose))
     )
       throw invalid("paragraph headers");
     segments.push({ ...current.fields, text: prose });

@@ -485,7 +485,7 @@ export function createSceneWriting({
             : undefined,
         }));
       const { worldFacts, ...liveContext } = contextFor();
-      // Rebuild current facts from authority: quiet turns reuse the prefix, real changes refresh it.
+      // Rebuild live facts after history so physical changes cannot invalidate its cached prefix.
       const circumstances = {
         context: {
           ...liveContext,
@@ -640,7 +640,7 @@ export function createSceneWriting({
         replyReminder: [
           ...(Object.keys(gmPresentation.sprites).length ? [{ text: SCENE_GM_PRESENTATION }] : []),
           {
-            text: "FIRST line: INPUT followed by one classification (speech, action, thought, context) or a JSON array of exact source spans for mixed/private input. This required classification comes BEFORE all prose. Then write a brief exchange and stop for the player: about250-300 words across narration and cast; shorter is welcome. Every established persistent outcome needs CHANGES: physical edits need action; visit/entry decisions and policy administration need access, including spoken changes. Without effect data it is not saved. Omit CHANGES when nothing changes. Private speech needs a local recipient. Maximum4 non-player speakers. Preserve necessary evidence and consequences.",
+            text: "FIRST line: INPUT followed by one classification (speech, action, thought, context) or a JSON array of exact source spans for mixed/private input. This required classification comes BEFORE all prose. Every established persistent outcome needs CHANGES: physical edits need action; visit/entry decisions and policy administration need access, including spoken changes. Without effect data it is not saved. Omit CHANGES when nothing changes. Private speech needs a local recipient. Maximum4 non-player speakers. Preserve necessary evidence and consequences.",
           },
         ],
       });

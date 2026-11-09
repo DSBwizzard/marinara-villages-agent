@@ -28,6 +28,7 @@ assert.doesNotThrow(() =>
   parseVenueReply({ ...materializeGmReply(raw, "Hello."), heardPlayerBy: [] }, ["mara", "player"]),
 );
 assert.deepEqual(parse("```text\n" + source + "\n```"), raw);
+assert.deepEqual(parse(source.replaceAll("[narration]", " [ narration ]").replaceAll("[mara]", "\t[ mara\t]")), raw);
 assert.deepEqual(parse(source + "\nCHANGES\n{}"), raw);
 assert.deepEqual(parse(source + "\nCHANGES {}"), raw);
 assert.deepEqual(parse(source + "\nCHANGES:{}"), raw);
@@ -50,6 +51,7 @@ const codeExample: any = parse('INPUT speech\n[mara] Example:\n```json\n{"memory
 assert.equal(codeExample.memoryChanges, undefined);
 assert(codeExample.segments[0].text.includes('{"memoryChanges":[]}'));
 const inline: any = parse("INPUT speech\nA pause. [mara] Hello. [narration] She smiles. [bryn aside] Tea?");
+assert.deepEqual(parse("INPUT speech\nA pause. [ mara ] Hello. [ narration ] She smiles. [ bryn aside ] Tea?"), inline);
 assert.deepEqual(
   inline.segments.map((s: any) => [s.kind, s.speakerId, s.presentation, s.text]),
   [
@@ -74,6 +76,20 @@ const privateReply: any = parse(
 );
 assert.equal(privateReply.segments[0].delivery, "whisper");
 assert.equal(privateReply.segments[0].targetId, "player");
+assert.deepEqual(
+  parse(
+    'INPUT [{"kind":"speech","text":"A secret.","delivery":"whisper","targetId":"mara"}]\n\t[ mara whisper:player ] Between us.',
+  ),
+  privateReply,
+);
+for (const header of [
+  "[ mara whisper:player ]",
+  "[ mara\nwhisper:player ]",
+  "[ mara whisper :player ]",
+  "[\n mara whisper:player ]",
+  "[ \r\n\tmara whisper:player ]",
+])
+  assert.throws(() => parse("INPUT speech\n[mara] Public. " + header + " PRIVATE"), /paragraph headers/);
 const call: any = parse('INPUT [{"kind":"speech","text":"Hello!","delivery":"call"}]\n[mara call] Down here!');
 assert.equal(call.input[0].delivery, "shout");
 assert.equal(call.segments[0].delivery, "shout");

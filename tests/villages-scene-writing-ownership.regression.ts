@@ -491,12 +491,14 @@ const complete = fixture("A");
       null,
     );
     const context = prepared.fitted.messages[1]!.content;
-    const facts = context.split("## Witnessed conversation")[0]!;
+    const factsAt = context.indexOf("## Current Scene facts\n");
+    assert(factsAt >= 0, "Required current Scene facts survive fitting");
+    const facts = context.slice(factsAt).split("\n\n## ")[0]!;
     if (turn && turn !== 75)
       assert.equal(
         facts,
         previousFacts,
-        "Clock, query, fitting and fifth arrival leave unchanged physical facts reusable",
+        "Clock, query, fitting and fifth arrival preserve unchanged current physical facts",
       );
     if (turn === 75) {
       assert.notEqual(facts, previousFacts);

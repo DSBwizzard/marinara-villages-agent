@@ -9,7 +9,7 @@ host.model.chatComplete = async (_messages: any[], options?: any) => {
   assert.equal(options?.responseFormat, undefined, "New prose contract has no forced JSON-object format");
   return {
     content:
-      'INPUT speech\n[mara whisper:player] The blue cup is yours.\n[narration] Mara smiles.\nCHANGES\n{"halt":{"reason":"none","quote":"","source":"player","appointments":[]}}',
+      'INPUT speech\n\t[ mara whisper:player ] The blue cup is yours.\n[ narration ] Mara smiles.\nCHANGES\n{"halt":{"reason":"none","quote":"","source":"player","appointments":[]}}',
     finishReason: "stop",
     usage: { inputTokens: 10, outputTokens: 10 },
   };
@@ -133,6 +133,7 @@ for (const variant of [
   "combined",
   "unlabeled-action",
   "inline-private",
+  "padded-inline-private",
   "missing-input",
   "inline-changes",
   "inline-public",
@@ -201,14 +202,16 @@ for (const variant of [
               ? "[narration] The kettle rattles.\n[mara whisper:player] PRIVATE"
               : variant === "inline-private"
                 ? "INPUT speech\nThe kettle rattles. [mara\nwhisper:player] PRIVATE\n[mara] Hello."
-                : "INPUT " +
-                  (isMemory ? "speech" : "action") +
-                  (variant === "unlabeled-action" ? "\n" : "\n[narration] ") +
-                  narration +
-                  (variant === "inline-changes"
-                    ? "\n[mara aside]Noted.\nCHANGES "
-                    : "\n[mara aside] Noted.\nCHANGES\n") +
-                  metadata,
+                : variant === "padded-inline-private"
+                  ? "INPUT speech\n[mara] Public. [\n mara whisper:player ] PRIVATE"
+                  : "INPUT " +
+                    (isMemory ? "speech" : "action") +
+                    (variant === "unlabeled-action" ? "\n" : "\n[narration] ") +
+                    narration +
+                    (variant === "inline-changes"
+                      ? "\n[mara aside]Noted.\nCHANGES "
+                      : "\n[mara aside] Noted.\nCHANGES\n") +
+                    metadata,
       finishReason: "stop",
       usage: { inputTokens: 10, outputTokens: 10 },
     };
@@ -224,7 +227,11 @@ for (const variant of [
     };
     const result = await host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
     const world = fixtureVillageState(host.records.get("villages-village").data, host.records);
-    if (["malformed-consent", "inline-private", "missing-input", "misplaced-changes"].includes(variant)) {
+    if (
+      ["malformed-consent", "inline-private", "padded-inline-private", "missing-input", "misplaced-changes"].includes(
+        variant,
+      )
+    ) {
       assert.equal(result.statusCode, 502, result.body);
       assert.equal(host.scene().submissions.length, 0);
       assert.equal(host.scene().lines.length, 0);

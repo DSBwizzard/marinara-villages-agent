@@ -529,12 +529,14 @@ for (const variant of [
           calls++;
           const context = messages[1].content as string;
           if (variant === "physical") {
-            const early = context.split("## Witnessed conversation")[0]!;
+            const factsAt = context.indexOf("## Current Scene facts\n");
+            assert(factsAt >= 0);
+            const facts = context.slice(factsAt).split("\n\n## ")[0]!;
             assert(
-              early.includes("Blue walls"),
-              "The next native request receives the committed physical change before history",
+              facts.includes("Blue walls"),
+              "The next native request receives the committed physical change in current facts after history",
             );
-            assert(!early.includes("White walls"), "Old geometry is not retained to protect a cache prefix");
+            assert(!facts.includes("White walls"), "Current facts do not retain obsolete geometry");
           } else {
             const late = context.split("\n").find((line) => line.startsWith('{"context":'))!;
             const packet = mapScenePeople(JSON.parse(late), scenePersonReferences(["mara"])) as any;
