@@ -847,6 +847,8 @@ await withBrowser(browser, async () => {
     await chooseSection("Wishes");
     await expect(profile.getByText("Learn to swim", { exact: true }).filter({ visible: true }).first()).toBeVisible();
     const sectionControl = width > 700 ? tabs : profile.getByRole("combobox", { name: "Section" });
+    if (width <= 700)
+      await profile.getByRole("button", { name: "Next Wishes page", exact: true }).scrollIntoViewIfNeeded();
     const tabBefore = await sectionControl.boundingBox();
     const reading = profile.locator(`.${P}-dossier-content`);
     let wishPages = 0;
