@@ -21,13 +21,12 @@ export const DESK_STYLES = `
 .${P}-desk-workspace:not([data-desk="none"])>.${P}-desk-stage{overflow:clip;padding:46px 10px 18px}
 .${P}-desk-document{height:100%;min-height:0;position:relative}
 .${P}-desk-workspace:not([data-desk="none"]) .${P}-desk-document{width:94%;max-width:1420px;margin:auto}
-.${P}-desk-workspace[data-desk="projects"]{--desk-art:url('/api/capability-packages/villages/assets/desk-art/projects-desktop.webp')}
+.${P}-desk-workspace[data-desk="projects"]{--desk-art:url('/api/capability-packages/villages/assets/desk-art/projects-desktop.webp');--desk-art-inset:-22px -40px -24px}
 .${P}-desk-workspace[data-desk="places"]{--desk-art:url('/api/capability-packages/villages/assets/desk-art/places-desktop.webp')}
 .${P}-desk-workspace[data-desk="mailbox"]{--desk-art:url('/api/capability-packages/villages/assets/desk-art/mailbox-desktop.webp')}
 .${P}-desk-workspace[data-desk="settings"]{--desk-art:url('/api/capability-packages/villages/assets/desk-art/settings-desktop.webp')}
 .${P}-desk-workspace[data-desk]:not([data-desk="none"]):not([data-desk="people"]) .${P}-desk-document{isolation:isolate}
-.${P}-desk-workspace[data-desk]:not([data-desk="none"]):not([data-desk="people"]) .${P}-desk-document::before{content:"";position:absolute;z-index:-1;inset:-22px -24px -24px;background:var(--desk-art) center/100% 100% no-repeat;pointer-events:none}
-.${P}-desk-workspace[data-desk="projects"] .${P}-desk-document::before{inset:-22px -40px -24px}
+.${P}-desk-workspace[data-desk]:not([data-desk="none"]):not([data-desk="people"]) .${P}-desk-document::before{content:"";position:absolute;z-index:-1;inset:var(--desk-art-inset,-22px -24px -24px);background:var(--desk-art) center/100% 100% no-repeat;pointer-events:none}
 @media(min-width:701px) and (max-height:700px){
  .${P}-desk-workspace[data-desk]:not([data-desk="none"]){padding:12px}
  .${P}-desk-header{margin-bottom:12px}
@@ -104,12 +103,11 @@ export const DESK_STYLES = `
  .${P}-desk-workspace[data-desk="mailbox"] .villages-mailbox-dialog>header h3{font-size:28px}
 }
 @media(max-width:700px){
- .${P}-desk-workspace[data-desk="projects"]{--desk-art:url('/api/capability-packages/villages/assets/desk-art/projects-phone.webp')}
+ .${P}-desk-workspace[data-desk="projects"]{--desk-art:url('/api/capability-packages/villages/assets/desk-art/projects-phone.webp');--desk-art-inset:-28px -20px -10px}
  .${P}-desk-workspace[data-desk="places"]{--desk-art:url('/api/capability-packages/villages/assets/desk-art/places-phone.webp')}
  .${P}-desk-workspace[data-desk="mailbox"]{--desk-art:url('/api/capability-packages/villages/assets/desk-art/mailbox-phone.webp')}
  .${P}-desk-workspace[data-desk="settings"]{--desk-art:url('/api/capability-packages/villages/assets/desk-art/settings-phone.webp')}
- .${P}-desk-workspace[data-desk]:not([data-desk="none"]):not([data-desk="people"]) .${P}-desk-document::before{inset:-14px -2px -10px}
- .${P}-desk-workspace[data-desk="projects"] .${P}-desk-document::before{inset:-28px -20px -10px}
+ .${P}-desk-workspace[data-desk]:not([data-desk="none"]):not([data-desk="people"]) .${P}-desk-document::before{inset:var(--desk-art-inset,-14px -2px -10px)}
  .${P}-desk-workspace[data-desk]:not([data-desk="none"]){padding:8px}
  .${P}-desk-header{gap:4px;flex-wrap:wrap;margin-bottom:5px;width:100%}
  .${P}-desk-nav{flex-basis:100%;padding:3px 1px}
