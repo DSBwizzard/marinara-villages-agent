@@ -315,7 +315,7 @@ for (const variant of ["normal", "gap", "race-boundary", "quiet"] as const) {
     },
     completeWithRoom: async (_model: unknown, messages: any[]) => {
       requests++;
-      assert.match(messages[0].content, /Game Master of Villages/);
+      assert.match(messages[0].content, /GM of Villages/);
       const prompt = messages.map((row) => row.content).join("\n");
       const grant = prompt.match(/Immutable local admission: ([^\n]+)/u)?.[1];
       assert.equal(!!grant, !quiet && !raceBoundary);
@@ -330,19 +330,23 @@ for (const variant of ["normal", "gap", "race-boundary", "quiet"] as const) {
         content: JSON.stringify({
           input: [],
           segments: [{ kind: "narration", text }],
-          ...(grant
-            ? {
-                narrativeIntroduction: {
-                  status: "introduced",
-                  segment: 0,
-                  quote: text,
-                  development: development(JSON.parse(grant)),
+          events: grant
+            ? [
+                {
+                  type: "circumstance",
+                  at: [0],
+                  value: {
+                    severity: "gentle",
+                    occurrence: text,
+                    situation: { title: "Loose sign", summary: "A sign rattles." },
+                    physical: { appearanceChanged: true, append: "The sign hangs from one loose bracket." },
+                    conditions: [{ observation: "The sign rattles in its bracket.", remedy: "Secure the bracket." }],
+                  },
                 },
-              }
-            : {}),
-          ...(raceBoundary && requests === 1
-            ? { halt: { reason: "condition", source: "draft", quote: text, appointments: [] } }
-            : {}),
+              ]
+            : raceBoundary && requests === 1
+              ? [{ type: "boundary", value: { reason: "condition", source: "draft", quote: text } }]
+              : [],
         }),
       };
     },

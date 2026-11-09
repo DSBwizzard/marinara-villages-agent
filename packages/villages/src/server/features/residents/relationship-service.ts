@@ -62,12 +62,6 @@ export function createRelationships(ports: RelationshipPorts) {
         characterId: person.characterId,
         name: name(person.characterId),
         initialized: !!state?.reviewedActorIds.includes(person.characterId),
-        intentions: (state?.intentions[person.characterId] ?? []).map((item) => ({
-          text: item.text,
-          reason: item.reason,
-          targets: item.targetIds.map(name),
-          status: item.status,
-        })),
         perspectives: Object.values(state?.edges ?? {})
           .filter((edge) => edge.fromId === person.characterId)
           .map((edge) => ({

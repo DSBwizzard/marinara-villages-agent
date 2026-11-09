@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { mock } from "node:test";
-import { materializeGmReply, normalizeGmEffects } from "../packages/villages/src/server/domain/rules/scene-gm.js";
+import { materializeGmReply } from "../packages/villages/src/server/domain/rules/scene-gm.js";
+import { expandSceneEvents } from "../packages/villages/src/server/domain/rules/scene-event-proposals.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { semanticContext } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
@@ -13,10 +14,7 @@ import { createSemanticService } from "../packages/villages/src/server/features/
 const segments = [{ kind: "dialogue", speakerId: "mara", text: "Tea sounds good." }];
 const raw = materializeGmReply(
   {
-    input: [
-      { kind: "thought", text: "I privately think about the key, then say " },
-      { kind: "speech", text: "Tea?" },
-    ],
+    input: [{ text: "Tea?" }],
     segments,
     access: [{ evidence: [0], actorId: "mara" }],
   },
@@ -24,7 +22,7 @@ const raw = materializeGmReply(
 );
 assert.equal((raw.segments as any[])[0].text, "Tea?");
 assert.deepEqual((raw.access as any[])[0].evidence, [1], "Sources follow inserted player speech");
-assert.equal((raw.intent as any).timeline[0].kind, "thought");
+assert.equal((raw.intent as any).timeline[0].kind, "context");
 assert.throws(() => materializeGmReply({ input: [{ kind: "speech", text: "Invented" }], segments }, "Tea?"));
 const context = semanticContext(
   coerceSession({
@@ -40,7 +38,7 @@ const context = semanticContext(
   "",
   true,
 );
-const empty = normalizeGmEffects({}, context);
+const empty = expandSceneEvents({ input: [], segments }, context);
 assert.deepEqual(empty.memoryChanges, []);
 assert.deepEqual(empty.wishChanges, []);
 assert.equal(empty.consistent, undefined, "No fabricated independent review");
@@ -82,29 +80,22 @@ for (const invited of [false, true]) {
   const message = invited ? "May I visit with you?" : 'I privately think of the silver key but say "Tea?"';
   host.model.chatComplete = async (messages) => {
     calls++;
-    assert.match(messages[0].content, /Game Master of Villages/);
+    assert.match(messages[0].content, /GM of Villages/);
     assert(!messages[0].content.startsWith("You interpret Villages gameplay."));
     return {
       content: JSON.stringify({
-        input: invited
-          ? [{ kind: "speech", text: message }]
-          : [
-              { kind: "thought", text: "I privately think of the silver key but say " },
-              { kind: "speech", text: "Tea?" },
-            ],
+        input: invited ? [{ kind: "speech", text: message }] : [{ text: "Tea?" }],
         segments: invited
           ? [{ kind: "dialogue", speakerId: "mara", text: "You are welcome to visit my Workshop with me." }]
           : segments,
         ...(invited
           ? {
-              access: [
+              events: [
                 {
-                  actorId: "mara",
-                  venueId: "mill",
-                  zoneId: "workshop",
-                  outcome: "invite-now",
-                  evidence: [0],
-                  accompanies: true,
+                  type: "access",
+                  targetId: "workshop",
+                  at: [0],
+                  value: { venueId: "mill", outcome: "invite-now", accompanies: true },
                 },
               ],
             }

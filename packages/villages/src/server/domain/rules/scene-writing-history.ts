@@ -33,6 +33,28 @@ const tokens = (text: string) =>
     .toLocaleLowerCase("en-US")
     .match(/[\p{L}\p{N}]+/gu) ?? [];
 
+/** Source expansion uses the same projection the model read, including acoustic-only evidence. */
+export function sceneHistoryRow(line: VenueLine, audience: readonly string[], eligible: boolean) {
+  if (line.contactReport) return null;
+  const cast = new Set(audience);
+  const full = line.heardBy.filter((id) => cast.has(id));
+  const sound = line.soundOnly?.characterIds.filter((id) => cast.has(id)) ?? [];
+  const visible = !line.contactHidden && line.kind === "narration";
+  const citable = eligible && (full.length > 0 || sound.length > 0);
+  if (!citable && !visible) return null;
+  const acousticOnly = !full.length && !visible && sound.length > 0;
+  return {
+    id: line.id,
+    speakerId: acousticOnly ? "__venue_scene__" : line.role === "user" ? "player" : line.speakerId,
+    kind: acousticOnly ? "narration" : line.kind,
+    heardBy: acousticOnly ? [] : full,
+    ...(sound.length ? { soundOnly: { characterIds: sound, text: line.soundOnly!.text } } : {}),
+    visibleToPlayer: !line.contactHidden,
+    citable,
+    text: acousticOnly ? line.soundOnly!.text : line.content,
+  };
+}
+
 /** Rank the full eligible active Scene before allocating recent/relevant history. */
 export function sceneWritingHistory(
   scene: VenueScene,
@@ -41,29 +63,12 @@ export function sceneWritingHistory(
   audience: readonly string[],
 ) {
   const allowed = new Set(eligible.map((line) => line.id));
-  const cast = new Set(audience);
   const unique = new Set<string>();
   const rows = scene.lines.flatMap((line, index) => {
     if (unique.has(line.id) || line.contactReport) return [];
     unique.add(line.id);
-    const full = line.heardBy.filter((id) => cast.has(id));
-    const sound = line.soundOnly?.characterIds.filter((id) => cast.has(id)) ?? [];
-    const visible = !line.contactHidden && line.kind === "narration";
-    const citable = allowed.has(line.id) && (full.length > 0 || sound.length > 0);
-    if (!citable && !visible) return [];
-    const acousticOnly = !full.length && !visible && sound.length > 0;
-    const text = acousticOnly ? line.soundOnly!.text : line.content;
-    const row = {
-      id: line.id,
-      speakerId: acousticOnly ? "__venue_scene__" : line.role === "user" ? "player" : line.speakerId,
-      kind: acousticOnly ? "narration" : line.kind,
-      heardBy: acousticOnly ? [] : full,
-      ...(sound.length ? { soundOnly: { characterIds: sound, text: line.soundOnly!.text } } : {}),
-      visibleToPlayer: !line.contactHidden,
-      citable,
-      text,
-    };
-    return [{ line, index, row, terms: tokens(text), cost: JSON.stringify(row).length + 2 }];
+    const row = sceneHistoryRow(line, audience, allowed.has(line.id));
+    return row ? [{ line, index, row, terms: tokens(row.text), cost: JSON.stringify(row).length + 2 }] : [];
   });
   const currentExchanges = (scene.submissions ?? []).slice(-2);
   const latestIds = new Set(currentExchanges.flatMap((turn) => turn.replyLineIds ?? []));

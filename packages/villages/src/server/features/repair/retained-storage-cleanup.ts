@@ -402,7 +402,7 @@ export async function collectRetainedStorage(gate: RepairGate, removeSpriteFile?
         memoryObject(row.data);
         memoryRequire(
           row.id === "villages-village" &&
-            row.data.version === 16 &&
+            row.data.version === 17 &&
             typeof row.data.seed === "string" &&
             typeof row.data.setupAt === "string",
           "unsupported Village ownership",

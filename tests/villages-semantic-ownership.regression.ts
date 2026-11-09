@@ -7,6 +7,7 @@ import {
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { materializeGmReply } from "../packages/villages/src/server/domain/rules/scene-gm.js";
+import { expandSceneEvents } from "../packages/villages/src/server/domain/rules/scene-event-proposals.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { sceneMemoryContext, sceneMemoryUnit } from "../packages/villages/src/server/domain/rules/scene-memories.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
@@ -372,10 +373,13 @@ async function main() {
   const service = createSemanticService(ports);
   const response = (message: string, extra: Record<string, unknown> = {}) => ({
     ...materializeGmReply(
-      {
-        input: message ? [{ kind: "action", text: message }] : [],
-        segments: [{ kind: "narration", text: "A quiet moment." }],
-      },
+      expandSceneEvents(
+        {
+          input: message ? [{ kind: "action", text: message }] : [],
+          segments: [{ kind: "narration", text: "A quiet moment." }],
+        },
+        semanticContext(scene, state, message, true, true),
+      ),
       message,
     ),
     ...extra,
@@ -453,7 +457,7 @@ async function main() {
   assert.equal(visible.semanticProvenance, undefined);
   assert.equal(visible.content, "Visible");
 
-  // Full source coverage includes roleplay punctuation, operators and repeated utterances.
+  // Only code-derived exact spans reach local validation; no model-authored full timeline.
   const intent = (timeline: unknown[]) => ({
     status: "resolved",
     instructions: "",
@@ -461,101 +465,43 @@ async function main() {
     movement: null,
     timeline,
   });
-  for (const kind of ["speech", "thought", "action", "context", "movement"]) {
-    for (const zoneId of [undefined, "common", "other", "invented", null, 7, ""]) {
-      const raw = response("I wave.", {
-        intent: intent([{ kind, text: "I wave.", ...(zoneId === undefined ? {} : { zoneId }) }]),
-      });
-      if (zoneId === "common" || (zoneId === undefined && kind !== "movement")) {
-        assert.deepEqual((await run("I wave.", raw)).intent?.timeline, [
-          { kind: kind === "movement" ? "action" : kind, text: "I wave.", start: 0, end: 7 },
-        ]);
-      } else
-        await assert.rejects(
-          run("I wave.", raw),
-          kind === "movement" && zoneId === "other" ? /Use Move to change Zones/ : /invalid Zone metadata/,
-        );
-    }
+  for (const patch of [
+    { start: 1 },
+    { end: 6 },
+    { end: 99 },
+    { text: "Invented." },
+    { kind: "thought" },
+    { kind: "movement" },
+    { zoneId: "other" },
+    { targetId: "unknown", kind: "speech" },
+    { delivery: "sing", kind: "speech" },
+  ]) {
+    const raw = response("I wave.");
+    const capture = raw.intent as any;
+    capture.timeline[0] = { ...capture.timeline[0], ...patch };
+    await assert.rejects(run("I wave.", raw), /source offsets|unsupported kind|invalid actor|invalid delivery/);
   }
-  const exactMessage = "“Hello.” *(I wave.)* [I think quietly.]";
-  const exact = await run(
-    exactMessage,
-    response(exactMessage, {
-      intent: intent([
-        { kind: "speech", text: "Hello.", targetId: "host", delivery: "whisper", zoneId: "common" },
-        { kind: "action", text: "*(I wave.)*", zoneId: "common" },
-        { kind: "thought", text: "[I think quietly.]", zoneId: "common" },
-      ]),
-    }),
-  );
-  for (const row of exact.intent!.timeline) {
-    assert.equal(exactMessage.slice(row.start, row.end), row.text);
-    assert.equal(row.zoneId, undefined);
-  }
-  assert.equal(exact.intent?.timeline[0].targetId, "host");
-  assert.equal(exact.intent?.timeline[0].delivery, "whisper");
-  assert.deepEqual(
-    (
-      await run(
-        "Yes. Yes.",
-        response("Yes. Yes.", {
-          intent: intent([
-            { kind: "speech", text: "Yes." },
-            { kind: "speech", text: "Yes." },
-          ]),
-        }),
-      )
-    ).intent?.timeline.map(({ start, end }) => [start, end]),
-    [
-      [0, 4],
-      [5, 9],
-    ],
-  );
-  for (const [message, fragments] of [
-    ["I leave. I wave.", ["I wave."]],
-    ["I wave. I leave. I smile.", ["I wave.", "I smile."]],
-    ["I wave. I leave.", ["I wave."]],
-    ["I do not wave.", ["I do", "wave."]],
-    ["I pay $5.", ["I pay", "5."]],
-    ["Hello!", ["Hello"]],
-    ["I transfer 2*5 coins.", ["I transfer 2", "5 coins."]],
-    ["I transfer 2 * 5 coins.", ["I transfer 2", "5 coins."]],
-    ["guest_room", ["guest", "room"]],
-    ["don't", ["don", "t"]],
-    ["𝟚’𝟛", ["𝟚", "𝟛"]],
-    ["é’é", ["é", "é"]],
-  ] as const)
-    await assert.rejects(
-      run(message, response(message, { intent: intent(fragments.map((text) => ({ kind: "action", text }))) })),
-      /omits player input/,
-    );
-  for (const [row, error] of [
-    [{ kind: "action", text: "Invented." }, /invalid or reordered spans/],
-    [{ kind: "invalid", text: "I wave." }, /invalid kind/],
-    [{ kind: "speech", text: "I wave.", targetId: "unknown" }, /invalid actor reference/],
-    [{ kind: "speech", text: "I wave.", delivery: "sing" }, /invalid delivery/],
-  ] as const)
-    await assert.rejects(run("I wave.", response("I wave.", { intent: intent([row]) })), error);
-  await assert.rejects(
-    run(
-      "I wave. I smile.",
-      response("I wave. I smile.", {
-        intent: intent([
-          { kind: "action", text: "I smile." },
-          { kind: "action", text: "I wave." },
-        ]),
-      }),
+  const message = "“Hello.” *(I wave.)* [I think quietly.]";
+  const captured = materializeGmReply(
+    expandSceneEvents(
+      {
+        input: [{ text: "Hello.", delivery: "whisper", targetId: "host" }],
+        segments: [{ kind: "narration", text: "The host listens." }],
+      },
+      semanticContext(scene, state, message, true, true),
     ),
-    /invalid or reordered spans/,
+    message,
   );
+  const exact = await run(message, captured);
+  assert.equal(exact.intent!.timeline.filter((row) => row.kind === "speech").length, 1);
+  for (const row of exact.intent!.timeline) assert.equal(message.slice(row.start, row.end), row.text);
+  assert(exact.intent!.timeline.some((row) => row.kind === "context" && row.text.includes("I think quietly")));
+  const missing = response("I wave.");
+  (missing.intent as any).timeline = [];
+  await assert.rejects(run("I wave.", missing), /omits source bytes/);
   await assert.rejects(
-    run(
-      "I wave.",
-      response("I wave.", {
-        intent: { ...intent([{ kind: "action", text: "I wave." }]), movement: { zoneId: "other", quote: "I wave." } },
-      }),
-    ),
-    /Use Move to change Zones/,
+    run("I wave.", response("I wave.", { intent: { ...intent([]), movement: { zoneId: "other", quote: "I wave." } } })),
+    /Use Move/,
   );
 
   // An unseen Zone exposes only the authority needed to validate access, never its interior.
@@ -661,18 +607,6 @@ async function main() {
     run("", response("", { action: { happened: false, segment: 0 } }), [accessLine]),
     /completed, cited action/,
   );
-  const memory = await run(
-    "",
-    response("", {
-      memoryChanges: [{ action: "create", text: "A quiet greeting", screening: { fingerprint: "forged" } }],
-    }),
-  );
-  const capturedContext = semanticContext(scene, state, "", true, true);
-  assert.equal(
-    (memory.effects.memoryChanges as any[])[0].screening.fingerprint,
-    capturedContext._memoryWrite.protection.fingerprint,
-  );
-
   const invented = {
     kind: "narration",
     speakerId: "__venue_scene__",
@@ -742,7 +676,7 @@ async function main() {
       replayService,
       frozenContext,
     ),
-    /invalid Zone metadata/,
+    /admitted Scene location changed/,
   );
   assert.deepEqual([...checkpoints.values()][0], savedInput, "Changed live state cannot overwrite admitted evidence");
   assert.equal(

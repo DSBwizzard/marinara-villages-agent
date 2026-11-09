@@ -5,13 +5,13 @@ import type { SemanticExchange, SemanticIntent } from "../../domain/models/seman
 import { asRecord } from "../../domain/rules/coerce.js";
 import {
   badGateway,
+  conflict,
   InvalidGmReply,
   UnsupportedPlayerAgency,
   UnsupportedScenePerception,
   VillagesRequestError,
 } from "../../domain/rules/errors.js";
 import { findLocation } from "../../domain/rules/places.js";
-import { normalizeGmEffects } from "../../domain/rules/scene-gm.js";
 import { readSceneNarrativeReview } from "../../domain/rules/scene-narrative-effects.js";
 
 import { fenceIntroductionWitnesses } from "../../domain/rules/npc-participation.js";
@@ -33,9 +33,7 @@ import { wishHistoryLoaded } from "../../domain/rules/social-wishes.js";
 import { readSceneSpritePresentation, type SpriteSelectionContext } from "../../domain/rules/sprite-expressions.js";
 import { managesAccess, readAccessCommand } from "../../domain/rules/venue-access.js";
 import { readContactMoves } from "../../domain/rules/venue-contact.js";
-import { venueInArea } from "../../domain/rules/venue-model.js";
-import { readVenueSceneChange } from "../../domain/rules/venue-scene-state.js";
-import { canInviteToZone, resolveVenueZone, venueInZone } from "../../domain/rules/venue-zones.js";
+import { canInviteToZone, resolveVenueZone } from "../../domain/rules/venue-zones.js";
 import { routeZoneEvents } from "../../domain/rules/zone-events.js";
 
 export interface SemanticPorts {
@@ -89,135 +87,63 @@ export function createSemanticService(ports: SemanticPorts) {
     raw: Record<string, unknown>,
     hash: string,
     savedInput: { message: string; context: ReturnType<typeof semanticContext> },
-    state: Awaited<ReturnType<SemanticPorts["readVillageState"]>>,
     scene: VenueScene,
   ): SemanticIntent {
-    const message = savedInput.message;
-
-    if (!["resolved", "unresolved"].includes(String(raw.status)) || typeof raw.instructions !== "string")
-      throw badGateway("System intent result is incomplete. Explicit retry required.");
-    const movement = asRecord(raw.movement);
-    const rawTimeline = Array.isArray(raw.timeline) ? raw.timeline.map(asRecord) : [];
-    const actionIndex = rawTimeline.findIndex((step) => step.kind === "action");
-    const actionZone = rawTimeline
-      .slice(0, actionIndex < 0 ? 0 : actionIndex)
-      .reverse()
-      .find((step) => step.kind === "movement" && typeof step.zoneId === "string")?.zoneId;
-    const venue = findLocation(sceneContinuityView(state, scene), scene.placeId);
-    const action =
-      raw.action === null
-        ? null
-        : readVenueSceneChange(
-            raw.action,
-            venue
-              ? actionZone || scene.zoneId
-                ? venueInZone(venue, String(actionZone || scene.zoneId))
-                : venueInArea(venue, scene.area, scene.spaceClass, scene.privateOwnerId)
-              : undefined,
-            scene.continuity?.capturedAt ?? scene.startedAt,
-          );
-    if (raw.action !== null && !action) throw badGateway("System prepared action is incomplete.");
+    if (savedInput.context.zoneId !== scene.zoneId || savedInput.context.placeId !== scene.placeId)
+      throw conflict("The admitted Scene location changed. Your draft is preserved.");
+    if (raw.movement !== null) throw badGateway("Use Move to change Zones. Your draft is preserved.");
     if (
+      raw.status !== "resolved" ||
+      raw.instructions !== "" ||
+      raw.action !== null ||
       !Array.isArray(raw.timeline) ||
-      raw.timeline.length > 24 ||
-      (raw.status === "resolved" && savedInput.message.trim() && !raw.timeline.length)
+      raw.timeline.length > 64
     )
-      throw badGateway("System source timeline is incomplete.");
+      throw badGateway("The saved input capture is incomplete. Your draft is preserved.");
     let cursor = 0;
-    // Spoken spans may exclude surrounding quotes, never words, operators or roleplay syntax.
-    const isDelimiterGap = (start: number, end: number) => {
-      const gap = message.slice(start, end);
-      return (
-        /^[\s"'“”‘’]*$/u.test(gap) &&
-        !(
-          gap &&
-          !/\s/u.test(gap) &&
-          /[\p{L}\p{N}\p{M}]$/u.test(message.slice(0, start)) &&
-          /^[\p{L}\p{N}\p{M}]/u.test(message.slice(end))
-        )
-      );
-    };
     const timeline = raw.timeline.map((value) => {
       const row = asRecord(value);
-      const text = typeof row.text === "string" ? row.text : "";
-      const start = text ? savedInput.message.indexOf(text, cursor) : -1;
-      if (!text || start < 0) throw badGateway("System source timeline has invalid or reordered spans.");
-      if (!["speech", "thought", "action", "movement", "context"].includes(String(row.kind)))
-        throw badGateway("System source timeline has an invalid kind.");
+      if (
+        !Number.isSafeInteger(row.start) ||
+        row.start !== cursor ||
+        !Number.isSafeInteger(row.end) ||
+        Number(row.end) <= cursor ||
+        Number(row.end) > savedInput.message.length ||
+        row.text !== savedInput.message.slice(cursor, Number(row.end))
+      )
+        throw badGateway("The saved input capture has invalid source offsets. Your draft is preserved.");
+      if (
+        !["speech", "action", "context"].includes(String(row.kind)) ||
+        Object.keys(row).some((key) => !["kind", "text", "start", "end", "delivery", "targetId"].includes(key))
+      )
+        throw badGateway("The saved input capture has an unsupported kind or field. Your draft is preserved.");
+      if (
+        (row.kind !== "speech" && (row.delivery !== undefined || row.targetId !== undefined)) ||
+        (row.delivery !== undefined && !["ordinary", "whisper", "shout"].includes(String(row.delivery)))
+      )
+        throw badGateway("The saved input capture has invalid delivery. Your draft is preserved.");
       if (
         row.targetId !== undefined &&
         row.targetId !== "player" &&
-        !savedInput.context.referenceActors.some((actor) => actor.id === row.targetId)
+        ![...savedInput.context.referenceActors, ...savedInput.context.actors].some(
+          (actor) => actor.id === row.targetId,
+        )
       )
-        throw badGateway("System source timeline has an invalid actor reference.");
-      if (row.delivery !== undefined && !["ordinary", "whisper", "shout"].includes(String(row.delivery)))
-        throw badGateway("System source timeline has invalid delivery metadata.");
-      if (
-        (raw.status === "resolved" && row.kind === "movement" && typeof row.zoneId !== "string") ||
-        (row.zoneId !== undefined &&
-          (row.kind !== "movement"
-            ? typeof row.zoneId !== "string" || row.zoneId !== savedInput.context.zoneId || row.zoneId !== scene.zoneId
-            : !savedInput.context.zones.some((zone) => zone.id === row.zoneId) &&
-              !savedInput.context.accessScopes?.some(
-                (zone) => zone.id === row.zoneId && Object.hasOwn(zone, "adjacentZoneIds"),
-              )))
-      )
-        throw badGateway("System source timeline has invalid Zone metadata.");
-      cursor = start + text.length;
-      return {
-        kind: row.kind as SemanticIntent["timeline"][number]["kind"],
-        text,
-        start,
-        end: cursor,
-        ...(typeof row.targetId === "string" ? { targetId: row.targetId } : {}),
-        ...(row.delivery ? { delivery: row.delivery as "ordinary" | "whisper" | "shout" } : {}),
-        // Incidental current-Zone metadata must not become a planned Zone or reveal its state.
-        ...(row.kind === "movement" && typeof row.zoneId === "string" ? { zoneId: row.zoneId } : {}),
-      };
+        throw badGateway("The saved input capture has an invalid actor reference. Your draft is preserved.");
+      cursor = Number(row.end);
+      return { ...row } as SemanticIntent["timeline"][number];
     });
-    if (
-      raw.status === "resolved" &&
-      (timeline.some((step, index) => !isDelimiterGap(index === 0 ? 0 : timeline[index - 1].end, step.start)) ||
-        !isDelimiterGap(cursor, message.length))
-    )
-      throw badGateway("System source timeline omits player input. The draft is preserved.");
-    if (timeline.filter((step) => step.kind === "movement").length > 8)
-      throw badGateway("The movement timeline exceeds its supported step limit.");
-    semanticPlayerMoves(
-      [],
-      {
-        ...scene,
-        semanticIntent: {
-          timeline,
-          movement: typeof movement.zoneId === "string" ? { zoneId: movement.zoneId, quote: message } : null,
-        } as SemanticIntent,
-      },
-      [],
-    );
+    if (cursor !== savedInput.message.length)
+      throw badGateway("The saved input capture omits source bytes. Your draft is preserved.");
     return {
-      timeline: timeline.map((step) => {
-        if (step.kind !== "movement") return step;
-        const { zoneId: _zoneId, ...local } = step;
-        return { ...local, kind: "action" as const };
-      }),
       version: 2,
       sourceHash: hash,
-      // Empty greeting input contains no player decision to clarify. Do not alter the raw response.
-      status:
-        !message.trim() &&
-        raw.instructions === "" &&
-        raw.action === null &&
-        raw.movement === null &&
-        rawTimeline.length === 0
-          ? "resolved"
-          : (raw.status as SemanticIntent["status"]),
-      reason: typeof raw.reason === "string" ? raw.reason : "",
-      instructions: raw.instructions,
-      action,
-      movement:
-        typeof movement.zoneId === "string" && movement.zoneId !== scene.zoneId && movement.quote === message
-          ? { zoneId: movement.zoneId, quote: message }
-          : null,
+      status: "resolved",
+      instructions: "",
+      reason: "",
+      action: null,
+      movement: null,
+      timeline,
     };
   }
 
@@ -247,7 +173,7 @@ export function createSemanticService(ports: SemanticPorts) {
         context,
         ...(narrativeGrant !== undefined ? { narrativeGrant } : {}),
       },
-      normalizeGmEffects(gm.raw, context),
+      gm.raw,
       (raw, hash, savedInput): SemanticExchange => {
         raw = { ...raw, sourceHash: hash };
         if (savedInput.context.preservation) {
@@ -268,7 +194,7 @@ export function createSemanticService(ports: SemanticPorts) {
               access: null,
             };
         }
-        const interpretedIntent = readIntent(asRecord(raw.intent), hash, savedInput, state, scene);
+        const interpretedIntent = readIntent(asRecord(raw.intent), hash, savedInput, scene);
         if (interpretedIntent?.status === "unresolved")
           throw badGateway(interpretedIntent.reason || "The action needs clarification. The draft is preserved.");
         if (residentMovementUnavailable(raw.immediateResidentMoves, interpretedIntent, sceneState, scene))

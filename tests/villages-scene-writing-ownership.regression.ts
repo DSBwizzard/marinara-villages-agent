@@ -154,10 +154,6 @@ function fixture(label: string, checkpointed = false) {
               ? [{ kind: "action", text: String(_messages.findLast((message) => message.role === "user")!.content) }]
               : [],
             segments: [{ kind: "narration", text: label + " room remains quiet." }],
-            heardPlayerBy: [],
-            wishChanges: [],
-            memoryChanges: [],
-            relationshipChanges: { changes: [], permissions: [], disclosures: [] },
           }),
         finishReason: "stop",
       };
@@ -409,10 +405,6 @@ invalidLine.invalidReply(
   JSON.stringify({
     input: [{ kind: "action", text: "I wait." }],
     segments: [{ kind: "robot", text: "A quiet room." }],
-    heardPlayerBy: [],
-    wishChanges: [],
-    memoryChanges: [],
-    relationshipChanges: { changes: [], permissions: [], disclosures: [] },
   }),
 );
 await assert.rejects(invalidLine.run(), (error: any) => {

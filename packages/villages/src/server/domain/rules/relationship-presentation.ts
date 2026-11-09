@@ -27,7 +27,6 @@ export function relationshipWritingPrompt(village: VillageState, fromId: string)
         ),
       }),
     ),
-    "Your current social intentions: " + JSON.stringify(state?.intentions[fromId] ?? []),
     "Keep personality and initiative. You may initiate contact, offer something the player may decline, withdraw, refuse or end a bond. Friendship, romance and partnership require particular history; one never automatically implies another. Never decide the player's feelings, consent, speech or actions. Keep private reasons private unless you choose to communicate them. Written or spoken claims do not establish physical deeds. Explicit permissions are separate from friendship.",
   ].join("\n");
 }

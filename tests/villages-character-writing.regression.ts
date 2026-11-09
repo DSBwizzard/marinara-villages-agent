@@ -282,7 +282,6 @@ async function run() {
       "narrator-only truths are not resident knowledge",
     ])
       assert.ok(prompt.includes(fragment), fragment);
-    assert.ok(prompt.includes("Preserve complete authored identity"));
     assert.ok(prompt.includes("where compatible with character identity"));
     assert.ok(prompt.includes("present tense"));
     assert.ok(prompt.includes('Address the player as "you"'));

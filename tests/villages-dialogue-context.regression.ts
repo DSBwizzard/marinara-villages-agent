@@ -246,16 +246,14 @@ async function run() {
     assert.deepEqual(prefix(reordered.fitted.messages), prefix(prepared.fitted.messages));
     assert.equal(prefix(prepared.fitted.messages).length, 2);
     assert.ok(prompt.includes("where compatible with character identity"));
-    assert.ok(prompt.includes("Preserve complete authored identity"));
     assert.ok(!prompt.includes("LEGACY TELL SECRET"));
     assert.ok(prompt.includes(state.memories.records[0].text), "Relevant native memory is recalled");
     assert.ok(prompt.includes(state.memories.records[2].text), "Contextual memory is recalled");
-    assert.ok(prompt.includes('"audience":["reserved"]'));
-    assert.ok(prompt.includes('"rootRevision":'));
+    assert.ok(prompt.includes('"knowers":{"reserved":'));
+    assert.ok(!prompt.includes('"rootRevision":'));
     assert.ok(!prompt.includes("ABSENT PERSON SECRET"));
     assert.ok(!prompt.includes("Pending exact Residence edit proposals:"));
     assert.ok(!prompt.includes("Pending player requests to move:"));
-    assert.match(prompt, /server validation determines what applies/);
 
     assert.ok(RELATIONSHIP_REVIEW_INSTRUCTION.includes("liveAfter"));
 
@@ -282,7 +280,7 @@ async function run() {
         .map((entry) => entry.content)
         .join("\n"),
     );
-    assert.match(controlled, /Optional access:/);
+    assert.match(controlled, /Standing permission uses permission/);
     scene.area = "outside";
     scene.activeIds = ["reserved"];
     const one = String(

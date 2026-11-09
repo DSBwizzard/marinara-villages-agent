@@ -7,6 +7,7 @@ import {
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { materializeGmReply } from "../packages/villages/src/server/domain/rules/scene-gm.js";
+import { expandSceneEvents } from "../packages/villages/src/server/domain/rules/scene-event-proposals.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { semanticContext } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
 import {
@@ -145,16 +146,21 @@ const service = createSemanticService(ports);
 const gmContext = semanticContext(scene, world, "A GM turn.", true);
 const gmSelection = sceneSpriteSelection(scene, world);
 const gmRaw = materializeGmReply(
-  {
-    input: [{ kind: "action", text: "A GM turn." }],
-    segments: lines.map((line: any) => ({ kind: line.kind, speakerId: line.speakerId, text: line.content })),
-    presentation: [
-      {
-        segment: 0,
-        staging: [{ characterId: "a", expression: "g-e-first", look: { target: "villager", characterId: "b" } }],
-      },
-    ],
-  },
+  expandSceneEvents(
+    {
+      input: [{ kind: "action", text: "A GM turn." }],
+      segments: lines.map((line: any) => ({ kind: line.kind, speakerId: line.speakerId, text: line.content })),
+      events: [
+        {
+          type: "presentation",
+          actorId: "a",
+          at: [0],
+          value: { expression: "g-e-first", look: { target: "villager", characterId: "b" } },
+        },
+      ],
+    },
+    gmContext,
+  ),
   "A GM turn.",
 );
 const original = JSON.stringify(lines),
@@ -282,14 +288,17 @@ for (const failure of ["none", "validation-input", "presentation-publish", "inva
               staging: [{ characterId: "a", expression: "forged-inline-cue" }],
             },
           ],
-          presentation: [
-            { segment: 0, staging: [{ characterId: "a", expression: "g-e-first", look: { target: "player" } }] },
+          events: [
+            {
+              type: "presentation",
+              actorId: "a",
+              at: [0],
+              value: { expression: "g-e-first", look: { target: "player" } },
+            },
+            ...(failure === "invalid-response" && paid === 1
+              ? [{ type: "access", at: [0], targetId: "missing", value: { venueId: "missing", outcome: "invite-now" } }]
+              : []),
           ],
-          ...(failure === "invalid-response" && paid === 1
-            ? {
-                access: [{ actorId: "a", venueId: "missing", zoneId: "missing", outcome: "invite-now", evidence: [0] }],
-              }
-            : {}),
         }),
       };
     },

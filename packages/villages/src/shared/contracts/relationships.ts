@@ -34,7 +34,6 @@ export type RelationshipInspectView = {
     characterId: string;
     name: string;
     initialized: boolean;
-    intentions: { text: string; reason: string; targets: string[]; status: string }[];
     perspectives: {
       aboutName: string;
       connection: string;

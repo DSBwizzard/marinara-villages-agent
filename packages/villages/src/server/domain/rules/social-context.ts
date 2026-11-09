@@ -44,9 +44,5 @@ export function socialContextState(
         actors.some((actor) => row.participants.includes(actor) && !["fulfilled", "cancelled"].includes(row.status)),
     ),
   );
-  for (const actor of actors) {
-    packet.intentions[actor] = structuredClone(state.intentions[actor] ?? []);
-    packet.intentionRevisions[actor] = state.intentionRevisions[actor] ?? 0;
-  }
   return packet;
 }

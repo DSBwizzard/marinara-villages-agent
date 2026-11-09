@@ -42,7 +42,6 @@ async function main() {
     );
     assert.match(prompt, /I fixed the gate/u, "the witnessed player line survives current Scene prompt assembly");
     if (mode === "greet") assert.match(prompt, /Opening: the player's presence is established/u);
-    if (mode === "chat") assert.match(prompt, /No invented player words/u);
     if (mode === "leave") assert.match(prompt, /do not invent a player goodbye/u);
   }
   console.log("Villages player voice regression: current greeting, conversation and departure prompts passed");

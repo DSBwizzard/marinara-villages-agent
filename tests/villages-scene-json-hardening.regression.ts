@@ -3,7 +3,7 @@ import { runCase } from "../scripts/test-cases.mjs";
 import assert from "node:assert/strict";
 import {
   completeSceneObject,
-  normalizeRecoverableSceneReply,
+  isolateSceneEffects,
 } from "../packages/villages/src/server/domain/rules/scene-writing-contract.js";
 import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 const scene = {
@@ -94,7 +94,7 @@ await runCase("scene-json-hardening/ambiguity", async () => {
     }
   }
   const malformedEffect = completeSceneObject(JSON.stringify({ ...core, memoryChanges: { bad: true } }), "stop")!;
-  const isolated = normalizeRecoverableSceneReply(malformedEffect);
+  const isolated = isolateSceneEffects(malformedEffect);
   assert.deepEqual(isolated.raw.segments, core.segments);
   assert.deepEqual((isolated.failures.memories!.proposal as any).memoryChanges, { bad: true });
   for (const key of [

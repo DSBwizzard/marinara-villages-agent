@@ -169,7 +169,7 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
     if (rejections.length)
       throw new Error("Social interpretation needs correction: " + rejections.map((row) => row.reason).join("; "));
     const receiptIds = [...review.changes, ...review.permissions, ...review.disclosures].map((row) => row.id);
-    if (!receiptIds.length && !review.intentions?.length)
+    if (!receiptIds.length)
       return {
         status: rejections.length ? (turn.semanticProvenance?.version === 2 ? "failed" : "rejected") : "applied",
         reason: rejections.length ? "Relationship proposals rejected" : "No social changes",
@@ -257,13 +257,6 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
           committedAt: now().toISOString(),
           noticeSequence: ++state.noticeSequence,
         };
-      }
-      for (const item of fresh.review.intentions ?? []) {
-        const id = scene.id + ":" + turn.id + ":intentions:" + item.actorId,
-          receipt = state.intentionReceipts[id];
-        if (receipt) {
-          state.intentionReceipts[id] = { ...receipt, sceneId: scene.id, submissionId: turn.id };
-        }
       }
     });
     return {

@@ -43,9 +43,9 @@ export function readProgressInterpretation(
     grade: "cited-interpretation",
     interpretationVersion: Number(row.interpretationVersion),
     citations: Array.isArray(row.citations)
-      ? row.citations.slice(0, 6).map((value) => {
+      ? row.citations.slice(0, 12).map((value) => {
           const citation = asRecord(value);
-          return { lineId: asTrimmedString(citation.lineId), quote: asTrimmedString(citation.quote).slice(0, 1200) };
+          return { lineId: asTrimmedString(citation.lineId), quote: asTrimmedString(citation.quote) };
         })
       : [],
   };

@@ -16,4 +16,4 @@ The existing limits remain: 16 Venues across the whole Village, two active Proje
 
 Private Place/NPC records and source receipts use the existing immutable history pages and Village CAS. Supporting identity/availability, Place records and Memories are inspectable through REPAIR; corrections use its review, Undo and checkpoint flow. Disabling a record stops its future use. Existing Scenes retain their admitted sources and witnesses.
 
-Version 0.8.0 requires a fresh format-16 Village. Old-save conversion is intentionally omitted by the owner's explicit decision for this unreleased single-tester build. Installing the package does not erase other environments or reset their storage.
+Version 0.8.0 requires a fresh format-17 Village. Old-save conversion is intentionally omitted by the owner's explicit decision for this unreleased single-tester build. Installing the package does not erase other environments or reset their storage.

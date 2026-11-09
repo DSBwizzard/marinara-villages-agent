@@ -1,7 +1,7 @@
 import { requireSceneExchange } from "./scene-submissions.js";
 import type { VenueScene, VenueSubmission } from "../models/scene-model.js";
 import { asRecord } from "./coerce.js";
-import { badGateway, conflict } from "./errors.js";
+import { conflict } from "./errors.js";
 import { extractModelJsonObject, modelJsonWithinBounds } from "./json-reply.js";
 
 /** Refuse an unsupported Scene before generation can replace a retained response. */
@@ -24,117 +24,11 @@ export function completeSceneObject(content: string, finishReason?: string): Rec
   return extractModelJsonObject({ content: text, finishReason });
 }
 
-/** Only a complete current-contract response may omit optional metadata. Never repair a supplied value. */
-export function normalizeSparseSceneReply(raw: Record<string, unknown>): Record<string, unknown> {
-  const result = structuredClone(raw);
-  for (const key of ["wishChanges", "memoryChanges"])
-    if (Object.hasOwn(result, key) && !Array.isArray(result[key]))
-      throw badGateway("The Scene reply supplied malformed effects. Your draft is preserved.");
-  if (Object.hasOwn(result, "relationshipChanges")) {
-    const value = result.relationshipChanges;
-    if (
-      !value ||
-      typeof value !== "object" ||
-      Array.isArray(value) ||
-      Object.entries(value).some(
-        ([key, rows]) => !["changes", "permissions", "disclosures", "intentions"].includes(key) || !Array.isArray(rows),
-      )
-    )
-      throw badGateway("The Scene reply supplied malformed relationships. Your draft is preserved.");
-  }
-  for (const key of ["wishChanges", "memoryChanges"]) if (!Object.hasOwn(result, key)) result[key] = [];
-  if (!Object.hasOwn(result, "relationshipChanges"))
-    result.relationshipChanges = { changes: [], permissions: [], disclosures: [] };
-  else if (
-    result.relationshipChanges &&
-    typeof result.relationshipChanges === "object" &&
-    !Array.isArray(result.relationshipChanges)
-  ) {
-    const relationships = asRecord(result.relationshipChanges);
-    for (const key of ["changes", "permissions", "disclosures"])
-      if (!Object.hasOwn(relationships, key)) relationships[key] = [];
-  }
-  const segments = Array.isArray(result.segments) ? result.segments.map(asRecord) : [];
-  const source = (value: unknown, speech = true): Record<string, unknown> => {
-    if (!Number.isSafeInteger(value) || Number(value) < 0 || !segments[Number(value)])
-      throw badGateway("The Scene reply used an invalid source reference. Your draft is preserved.");
-    const line = segments[Number(value)]!;
-    const dialogue = line.kind === "dialogue" || line.kind === "side" || line.kind === "whisper";
-    if (
-      (speech && !dialogue) ||
-      (!speech && line.kind !== "narration") ||
-      typeof line.text !== "string" ||
-      !line.text.trim()
-    )
-      throw badGateway("The Scene reply cited an incompatible source. Your draft is preserved.");
-    return line;
-  };
-  // Full source lines preserve conditions, negation and qualifications. Existing validators still own authority.
-  const speechSignal = (value: unknown) => {
-    const row = asRecord(value);
-    if (!Object.hasOwn(row, "source")) return value;
-    const line = source(row.source);
-    if (Object.hasOwn(row, "quote") || (row.speakerId !== undefined && row.speakerId !== line.speakerId))
-      throw badGateway("The Scene reply used conflicting source fields. Your draft is preserved.");
-    const { source: _source, ...rest } = row;
-    return { ...rest, speakerId: line.speakerId, quote: line.text };
-  };
-  for (const key of ["invitation", "residenceRequest", "residenceDecision", "venueRequest", "sceneEnded"])
-    if (result[key] !== undefined) result[key] = speechSignal(result[key]);
-  if (Array.isArray(result.departures)) result.departures = result.departures.map(speechSignal);
-  if (Array.isArray(result.contactMoves))
-    result.contactMoves = result.contactMoves.map((value) => {
-      const row = asRecord(value);
-      if (row.quote !== undefined || row.segment === undefined) return value;
-      return { ...row, quote: source(row.segment, false).text };
-    });
-  if (Array.isArray(result.projectSpeech))
-    result.projectSpeech = result.projectSpeech.map((value) => {
-      const row = asRecord(value);
-      if (!Array.isArray(row.citations)) return value;
-      return {
-        ...row,
-        citations: row.citations.map((value) => {
-          const citation = asRecord(value);
-          if (citation.quote !== undefined) return value;
-          const line = source(citation.segment);
-          if (line.speakerId !== row.speakerId)
-            throw badGateway("The Scene reply cited another speaker's project statement. Your draft is preserved.");
-          if ((line.text as string).length > 1200)
-            throw badGateway(
-              "A Project source exceeds its citation limit. Use an explicit supported citation. Your draft is preserved.",
-            );
-          return { ...citation, quote: line.text };
-        }),
-      };
-    });
-  const disclosures = asRecord(result.relationshipChanges).disclosures;
-  if (Array.isArray(disclosures))
-    asRecord(result.relationshipChanges).disclosures = disclosures.map((value) => {
-      const row = asRecord(value);
-      if (!Object.hasOwn(row, "source")) return value;
-      const line = source(row.source);
-      if (
-        Object.hasOwn(row, "text") ||
-        Object.hasOwn(row, "lineIds") ||
-        (row.fromId !== undefined && row.fromId !== line.speakerId)
-      )
-        throw badGateway("The Scene reply used conflicting disclosure sources. Your draft is preserved.");
-      if ((line.text as string).length > 320)
-        throw badGateway(
-          "A disclosure source exceeds its saved text limit. Use a supported summary with lineIds. Your draft is preserved.",
-        );
-      const { source: index, ...rest } = row;
-      return { ...rest, fromId: line.speakerId, toId: row.toId ?? "player", text: line.text, lineIds: [index] };
-    });
-  return result;
-}
-
 /** Core metadata stays strict. Each noncritical effect retains its own failed payload. */
-export function normalizeRecoverableSceneReply(raw: Record<string, unknown>) {
+export function isolateSceneEffects(raw: Record<string, unknown>) {
   const core = structuredClone(raw);
   for (const key of EFFECT_FIELDS) delete core[key];
-  const result = normalizeSparseSceneReply(core);
+  const result = structuredClone(core);
   const failures: NonNullable<VenueSubmission["effectFailures"]> = {};
   for (const [domain, keys] of Object.entries({
     memories: ["memoryChanges"],
@@ -143,6 +37,7 @@ export function normalizeRecoverableSceneReply(raw: Record<string, unknown>) {
     projects: ["projectSpeech", "interpretationRouting"],
   })) {
     const supplied = Object.fromEntries(keys.filter((key) => Object.hasOwn(raw, key)).map((key) => [key, raw[key]]));
+    if (!Object.keys(supplied).length) continue;
     try {
       if (domain === "projects" && Object.values(supplied).some((value) => !Array.isArray(value)))
         throw new Error("Malformed Project metadata");
@@ -184,7 +79,7 @@ export function normalizeRecoverableSceneReply(raw: Record<string, unknown>) {
         )
           throw new Error("Malformed Project routing");
       }
-      const normalized = normalizeSparseSceneReply({ ...core, ...supplied });
+      const normalized: Record<string, unknown> = { ...core, ...supplied };
       let malformedDetail = "";
       const malformed = (rows: unknown, required: string[], arrays: string[], path = domain) => {
         if (!Array.isArray(rows) || rows.length > 16) {
@@ -218,11 +113,17 @@ export function normalizeRecoverableSceneReply(raw: Record<string, unknown>) {
       };
       if (domain === "memories" && (!Array.isArray(normalized.memoryChanges) || normalized.memoryChanges.length > 16))
         throw new Error("Malformed memory proposal array");
+      if (
+        domain === "memories" &&
+        (normalized.memoryChanges as unknown[]).some((row) => Object.hasOwn(asRecord(row), "rejectedEvent"))
+      )
+        throw new Error("The Memory event needs correction; its exact proposal is retained.");
       if (domain === "wishes" && malformed(normalized.wishChanges, ["actorId", "wishId", "intent"], ["evidence"]))
         throw new Error("Malformed Wish proposal: " + malformedDetail);
       if (domain === "relationships") {
         const relationship = asRecord(normalized.relationshipChanges);
         if (
+          Object.keys(relationship).some((key) => !["changes", "permissions", "disclosures"].includes(key)) ||
           malformed(relationship.changes, ["fromId", "toId", "reason"], ["lineIds"], "changes") ||
           malformed(
             relationship.permissions,
@@ -230,8 +131,7 @@ export function normalizeRecoverableSceneReply(raw: Record<string, unknown>) {
             ["lineIds"],
             "permissions",
           ) ||
-          malformed(relationship.disclosures, ["fromId", "toId", "text", "kind"], ["lineIds"], "disclosures") ||
-          malformed(relationship.intentions ?? [], ["actorId"], ["lineIds", "items", "sceneItems"], "intentions")
+          malformed(relationship.disclosures, ["fromId", "toId", "text", "kind"], ["lineIds"], "disclosures")
         )
           throw new Error("Malformed relationship proposal: " + malformedDetail);
       }

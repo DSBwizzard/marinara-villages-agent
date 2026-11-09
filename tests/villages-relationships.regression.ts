@@ -527,32 +527,6 @@ assert.equal(cleanups, 1);
   assert.equal(replay.review.changes.length, 0);
   assert.equal(relationshipFor(current, "ada", "player").revision, 2);
 
-  const intention = {
-    actorId: "ada",
-    expectedRevision: 0,
-    lineIds: ["a"],
-    sceneItems: [],
-    items: [{ id: "", targetIds: ["player"], text: "Send a dinner note", reason: "A shared plan", status: "active" }],
-  };
-  const intentions = parseLive({ ...emptyRelationshipReview(), intentions: [intention] }, "live-intentions");
-  assert.deepEqual(intentions.rejections, []);
-  applyRelationshipReview(
-    current,
-    intentions.review,
-    liveWorld,
-    "live-intentions",
-    village.foundedAt,
-    Date.now(),
-    current,
-  );
-  const receipt = current.intentionReceipts["live-intentions:intentions:ada"]!;
-  assert.equal(receipt.sceneRevision, 1, "aliased live authority does not double-advance the intention revision");
-  assert.equal(receipt.liveRevision, 1);
-  assert.deepEqual(receipt.sceneAfter, receipt.liveAfter);
-  assert.deepEqual(
-    parseLive({ ...emptyRelationshipReview(), intentions: [intention] }, "live-intentions").rejections,
-    [],
-  );
   const stale = parseLive({ ...emptyRelationshipReview(), changes: [proposal("Friends")] }, "another-source");
   assert.throws(
     () => applyRelationshipReview(current, stale.review, liveWorld, "another-source", village.foundedAt),

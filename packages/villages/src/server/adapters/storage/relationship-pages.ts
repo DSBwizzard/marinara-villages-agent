@@ -16,17 +16,7 @@ import {
   type MemoryPageData,
 } from "./memory-pages.js";
 
-const MAPS = [
-  "intentions",
-  "intentionRevisions",
-  "intentionReceipts",
-  "grants",
-  "receipts",
-  "applied",
-  "disclosureReceipts",
-  "sharedRecords",
-  "mailDeliveries",
-] as const;
+const MAPS = ["grants", "receipts", "applied", "disclosureReceipts", "sharedRecords", "mailDeliveries"] as const;
 const LISTS = [
   "reviewedActorIds",
   "startingTies",
@@ -134,7 +124,7 @@ export function readRelationshipPageManifest(raw: unknown, world: string): Relat
   memoryRequire(raw.format === 1, "unsupported relationship page manifest");
   memoryObject(raw.header, ["version", "seed", "noticeSequence", "eventSequence"]);
   memoryRequire(
-    raw.header.version === 3 &&
+    raw.header.version === 4 &&
       typeof raw.header.seed === "string" &&
       [raw.header.noticeSequence, raw.header.eventSequence].every((n) => Number.isSafeInteger(n) && n >= 0),
     "invalid relationship page header",

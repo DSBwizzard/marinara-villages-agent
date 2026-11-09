@@ -240,11 +240,7 @@ const model = {
       assert(domainRecoveryAnswer, "Explicit effect recovery needs a supplied fixture response");
       return { content: JSON.stringify(domainRecoveryAnswer), finishReason: "stop" };
     }
-    assert.match(
-      messages[0].content,
-      /Game Master of Villages/,
-      "Only the current GM writer may purchase a Scene response",
-    );
+    assert.match(messages[0].content, /GM of Villages/, "Only the current GM writer may purchase a Scene response");
     prompts.push(messages.map((row) => row.content).join("\n"));
     assert(answer, "Every GM response must be explicitly supplied");
     return {
@@ -421,19 +417,16 @@ try {
     [{ kind: "dialogue", speakerId: "aqua", text: "Then let us talk about the harbour tomorrow." }],
     {
       input: [{ kind: "speech", text: spoken }],
-      memoryChanges: [
+      events: [
         {
-          action: "create",
-          kind: "open-matter",
-          screening: { disposition: "clear" },
-          subjects: ["aqua"],
-          text: "Aqua suggested discussing the harbour tomorrow.",
-          learners: {
-            aqua: {
-              basis: "report",
-              attributedTo: "aqua",
-              support: [{ lineId: 0, excerpt: "Then let us talk about the harbour tomorrow." }],
-            },
+          type: "memory",
+          at: [0],
+          value: {
+            kind: "open-matter",
+            subjects: ["aqua"],
+            text: "Aqua suggested discussing the harbour tomorrow.",
+            knowers: ["aqua"],
+            basis: "report",
           },
         },
       ],
@@ -502,8 +495,21 @@ try {
       },
     ],
     {
-      events: { moves: [{ characterId: "neighbor", zoneId: "terrace", segment: 1 }] },
-      relationshipChanges: { disclosures: [disclosure] },
+      events: [
+        { type: "move", actorId: "neighbor", targetId: "terrace", at: [1] },
+        {
+          type: "memory",
+          at: [2],
+          value: {
+            kind: "information",
+            text: disclosure.text,
+            knowers: ["neighbor", "player"],
+            basis: "report",
+            domain: { kind: "relationship", id: "neighbor" },
+            disclosed: { kind: "work", toId: "neighbor" },
+          },
+        },
+      ],
     },
   );
   const heard = state().lines.findLast((line: any) => line.content === "I'm Neighbor. I work in the harbour workshop.");
@@ -520,51 +526,39 @@ try {
   );
   restore();
 
-  const privatePlan = "PRIVATE_PLAN_AQUA_TEA: invite the player for tea when the terrace is quiet.";
-  const intentionSpeech = "I enjoy a quiet conversation.";
-  const intention = await turn(
-    "private-intention",
-    [{ kind: "dialogue", speakerId: "aqua", text: intentionSpeech }],
+  const privateConcern = "PRIVATE_CONCERN_AQUA: unsure whether the player enjoys quiet conversation.";
+  const concernSpeech = "I enjoy a quiet conversation.";
+  const perspective = await turn(
+    "private-perspective",
+    [{ kind: "dialogue", speakerId: "aqua", text: concernSpeech }],
     {
       input: [{ kind: "speech", text: "I am happy to listen." }],
-      relationshipChanges: {
-        intentions: [
-          {
-            actorId: "aqua",
-            expectedRevision: 0,
-            lineIds: [0],
-            items: [
-              { id: "", targetIds: ["player"], text: privatePlan, reason: "Enjoys conversation.", status: "active" },
-            ],
-          },
-        ],
-      },
+      events: [
+        { type: "relationship", actorId: "aqua", targetId: "player", at: [0], value: { stance: privateConcern } },
+      ],
     },
     "I am happy to listen.",
   );
   const social = fixtureRelationshipState(records.get(relationshipDocumentId(village.seed)), records);
-  assert.equal(social.intentions.aqua.length, 1);
-  assert.equal(social.intentions.aqua[0].text, privatePlan);
-  assert.equal(social.intentionRevisions.aqua, 1);
-  assert.deepEqual(
-    social.intentions.aqua[0].evidenceIds,
-    [state().lines.find((line: any) => line.content === intentionSpeech).id],
-    "Inserted player speech cannot shift an intention's resident source",
+  assert.equal(social.edges[JSON.stringify(["aqua", "player"])].stance, privateConcern);
+  const applied = Object.values(social.receipts).find(
+    (row: any) =>
+      row.reason && row.lineIds.includes(state().lines.find((line: any) => line.content === concernSpeech).id),
   );
-  const activeIntention = await app.inject({ method: "GET", url: "/api/villages/rooms/active" });
-  const intentionChanges = await app.inject({ method: "GET", url: "/api/villages/rooms/" + scene.id + "/changes" });
-  const intentionSnapshot = await app.inject({ method: "GET", url: "/api/villages" });
-  for (const response of [activeIntention, intentionChanges, intentionSnapshot])
+  assert(applied, "Inserted player speech preserves the resident's perspective source");
+  const activePerspective = await app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+  const perspectiveChanges = await app.inject({ method: "GET", url: "/api/villages/rooms/" + scene.id + "/changes" });
+  const perspectiveSnapshot = await app.inject({ method: "GET", url: "/api/villages" });
+  for (const response of [activePerspective, perspectiveChanges, perspectiveSnapshot])
     assert.equal(response.statusCode, 200, response.body);
-  for (const [name, text] of [
-    ["turn", JSON.stringify(intention)],
-    ["active", activeIntention.body],
-    ["changes notices", JSON.stringify(intentionChanges.json().notices)],
-    ["snapshot", intentionSnapshot.body],
-    ["history", await publicHistory(intention.session.playback.scope)],
+  for (const text of [
+    JSON.stringify(perspective),
+    activePerspective.body,
+    JSON.stringify(perspectiveChanges.json().notices),
+    perspectiveSnapshot.body,
+    await publicHistory(perspective.session.playback.scope),
   ])
-    assert(!text.includes(privatePlan), "Private intention exposed by " + name);
-
+    assert(!text.includes(privateConcern));
   restore();
 
   const mixedMessage = 'I whisper "PRIVATE WORDS." to Feddy. *drops a pebble*';
@@ -579,9 +573,7 @@ try {
     ],
     {
       input: [
-        { kind: "context", text: "I whisper" },
         { kind: "speech", text: "PRIVATE WORDS.", delivery: "whisper", targetId: "feddy" },
-        { kind: "context", text: "to Feddy." },
         { kind: "action", text: "*drops a pebble*" },
       ],
     },
@@ -609,13 +601,11 @@ try {
     "json",
     "truncated",
     "events",
-    "events-array",
     "events-null",
     "event-moves",
     "access-null",
     "project",
     "agency",
-    "disclosure",
   ] as const) {
     const request = payload("invalid-" + failure);
     answerContent = undefined;
@@ -628,30 +618,24 @@ try {
       answer.segments = [
         { kind: "narration", text: "Aqua sets her cup down.", sound: { sourceId: "aqua", text: "x".repeat(301) } },
       ];
-    if (failure === "input") answer.input = [{ kind: "action", text: "*waits" }];
+    if (failure === "input")
+      answer.input = [
+        { kind: "action", text: request.message },
+        { kind: "action", text: request.message },
+      ];
     if (failure === "capture") answer.input = [{ kind: "action", text: "NOT IN THE ORIGINAL" }];
     if (failure === "json" || failure === "truncated") answerContent = '{"input":';
     if (failure === "truncated") answerFinishReason = "length";
     if (failure === "events") answer.events = "malformed";
-    if (failure === "events-array") answer.events = [];
     if (failure === "events-null") answer.events = null;
     if (failure === "event-moves") answer.events = { moves: null };
     if (failure === "access-null") answer.access = null;
-    if (failure === "project") {
-      answer.segments = [{ kind: "dialogue", speakerId: "aqua", text: "I approve the unknown project." }];
-      answer.projectSpeech = [
-        { projectId: "unknown-project", revision: 0, kind: "approval", speakerId: "aqua", citations: [{ segment: 0 }] },
-      ];
-    }
+    if (failure === "project")
+      answer.events = [{ type: "project", targetId: "unknown-project", at: [0], value: "approval" }];
     if (failure === "agency")
       Object.assign(answer, {
         consistent: false,
         playerAgencyViolation: { segment: 0, quote: "Aqua sets her cup down." },
-      });
-    if (failure === "disclosure")
-      Object.assign(answer, {
-        segments: [{ kind: "dialogue", speakerId: "neighbor", text: "I'm Neighbor. I work in the harbour workshop." }],
-        relationshipChanges: { disclosures: [{ ...disclosure, lineIds: [0] }] },
       });
     const before = clone(state()),
       beforeWorld = clone(records.get("villages-village")),
@@ -659,7 +643,6 @@ try {
     const rejected = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload: request });
     assert.equal(rejected.statusCode, 502, failure + ": " + rejected.body);
     if (failure === "sound") assert.match(rejected.body, /sound/i);
-    if (failure === "project") assert.match(rejected.body, /project/i);
     assert.deepEqual(state().lines, before.lines);
     assert.deepEqual(state().submissions, before.submissions);
     assert.deepEqual(state().sceneAttendance, before.sceneAttendance);
@@ -725,24 +708,25 @@ try {
     restore();
   }
 
-  for (const [field, domain, proposal, variant] of [
-    ["memoryChanges", "memories", "malformed", "text"],
-    ["memoryChanges", "memories", null, "null"],
-    ["relationshipChanges", "relationships", { changes: "malformed", permissions: [], disclosures: [] }, "nested"],
-    ["relationshipChanges", "relationships", "malformed", "outer-text"],
-    ["relationshipChanges", "relationships", null, "outer-null"],
-    ["relationshipChanges", "relationships", [], "outer-array"],
-    ["wishChanges", "wishes", "malformed", "text"],
-    ["wishChanges", "wishes", null, "null"],
-    ["projectSpeech", "projects", "malformed", "text"],
-    ["projectSpeech", "projects", null, "null"],
+  for (const [field, domain, proposal] of [
+    ["memoryChanges", "memories", { type: "memory", at: [0], value: { unsupported: true } }],
+    [
+      "relationshipChanges",
+      "relationships",
+      { type: "relationship", actorId: "aqua", targetId: "player", at: [0], value: { concerns: "malformed" } },
+    ],
+    [
+      "wishChanges",
+      "wishes",
+      { type: "wish", actorId: "aqua", targetId: "unknown", at: [0], value: { unsupported: true } },
+    ],
   ] as const) {
-    const id = "malformed-" + domain + "-" + variant,
+    const id = "malformed-" + domain,
       text = "Accepted prose for " + domain + ".";
-    await turn(id, [{ kind: "dialogue", speakerId: "aqua", text }], { [field]: proposal });
+    await turn(id, [{ kind: "dialogue", speakerId: "aqua", text }], { events: [proposal] });
     const held = () => state().submissions.find((entry: any) => entry.id === id);
     assert.equal(held().processing.domains[domain].status, "failed");
-    assert(held().effectFailures[domain]);
+    assert(held().effectFailures?.[domain] || held().liveProposals);
     const lines = clone(state().lines),
       calls = modelCalls;
     const replay = await app.inject({ method: "POST", url: "/api/villages/rooms/" + scene.id + "/changes/replay" });
@@ -799,14 +783,6 @@ try {
         Date.parse(now),
       );
     });
-    const permission = {
-      controllerId: "aqua",
-      visitorId: "player",
-      venueId: "harbour",
-      zoneId: "kitchen",
-      action,
-      lineIds: [0],
-    };
     await app.inject({ method: "GET", url: "/api/villages/rooms/active" });
     const id = "malformed-standing-" + action;
     const text =
@@ -816,7 +792,10 @@ try {
     answer = {
       input: [{ kind: "action", text: "*waits*" }],
       segments: [{ kind: "dialogue", speakerId: "aqua", text }],
-      relationshipChanges: { changes: "malformed", permissions: [permission], disclosures: [] },
+      events: [
+        { type: "relationship", actorId: "aqua", targetId: "player", at: [0], value: { concerns: "malformed" } },
+        { type: "permission", targetId: "kitchen", at: [0], value: { action } },
+      ],
     };
     const request = payload(id),
       before = clone(state()),
@@ -824,7 +803,6 @@ try {
       calls = modelCalls;
     const response = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload: request });
     assert.equal(response.statusCode, 502, response.body);
-    assert.match(response.body, /malformed authority metadata/);
     assert.equal(modelCalls, calls + 1);
     assert.deepEqual(state().lines, before.lines);
     assert.deepEqual(state().submissions, before.submissions);
@@ -835,7 +813,7 @@ try {
     );
     assert(
       readPrivateDiagnostics(records.get("villages-private-diagnostics").data).entries.some(
-        (row: any) => row.operationId === id && row.content.includes('"permissions"'),
+        (row: any) => row.operationId === id && row.content.includes('"permission"'),
       ),
     );
     const continued = await app.inject({
@@ -852,7 +830,7 @@ try {
     });
     assert.equal(next.statusCode, 409, next.body);
     assert.equal(modelCalls, calls + 1, "A held authority response cannot be skipped or replaced implicitly");
-    answer.relationshipChanges = { changes: [], permissions: [permission], disclosures: [] };
+    answer.events = [{ type: "permission", targetId: "kitchen", at: [0], value: { action } }];
     const repaired = await app.inject({
       method: "POST",
       url: "/api/villages/rooms/turn",
@@ -888,11 +866,15 @@ try {
     const id = "continued-social-" + failSceneSave,
       discardedText = "Aqua prefers red notebooks.";
     await turn(id, [{ kind: "dialogue", speakerId: "aqua", text: "I prefer red notebooks." }], {
-      relationshipChanges: {
-        changes: "discarded malformed metadata",
-        permissions: [],
-        disclosures: [{ fromId: "aqua", toId: "aqua", kind: "preference", text: discardedText, lineIds: [0] }],
-      },
+      events: [
+        {
+          type: "relationship",
+          actorId: "aqua",
+          targetId: "player",
+          at: [0],
+          value: { stance: discardedText, concerns: "discarded malformed metadata" },
+        },
+      ],
     });
     const held = () => state().submissions.find((entry: any) => entry.id === id);
     const failedEvidence = clone(held().effectFailures.relationships);
@@ -954,7 +936,7 @@ try {
       segments: [
         { kind: "dialogue", speakerId: "aqua", text: "A generated farewell must never replace the held input." },
       ],
-      halt: { reason, source: "player", quote: "two months", appointments: [] },
+      events: [{ type: "boundary", value: { reason, source: "player", quote: "two months" } }],
     };
     const request = { ...payload("halt-" + mode, message), mode },
       before = clone(state()),

@@ -219,21 +219,6 @@ export function sceneContinuityView(current: VillageState, scene: VenueScene, in
   for (const [resident, wishes] of wishUpdates) resident.wishes = immutableSocialWishes([...wishes.values()]);
 
   if (view.relationshipContext && current.relationshipContext) {
-    const ledger = current.relationshipContext.intentionReceipts;
-    const byTurn = new Map<string, Array<[string, (typeof ledger)[string]]>>();
-    for (const [id, receipt] of Object.entries(ledger)) {
-      if (receipt.sceneId !== scene.id || !receipt.submissionId) continue;
-      const entries = byTurn.get(receipt.submissionId) ?? [];
-      entries.push([id, receipt]);
-      byTurn.set(receipt.submissionId, entries);
-    }
-    for (const turn of scene.submissions)
-      for (const [id, receipt] of byTurn.get(turn.id) ?? []) {
-        if (view.relationshipContext.intentionReceipts[id]) continue;
-        view.relationshipContext.intentions[receipt.actorId] = structuredClone(receipt.sceneAfter);
-        view.relationshipContext.intentionRevisions[receipt.actorId] = receipt.sceneRevision;
-        view.relationshipContext.intentionReceipts[id] = structuredClone(receipt);
-      }
     replaySceneRelationships(view.relationshipContext, current.relationshipContext, scene);
   }
 
