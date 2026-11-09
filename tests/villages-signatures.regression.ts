@@ -162,6 +162,44 @@ assert.ok(
   shadedPNG.data.some((v, i) => i % 4 === 2 && v > 100 && shadedPNG.data[i - 2]! < 50 && shadedPNG.data[i + 1]! > 0),
   "Colored strokes survive paper normalization",
 );
+// JPEG paper shading must stay transparent as it crosses the light-paper cutoff.
+for (const shadow of [70, 110]) {
+  const image = new PNG({ width: 512, height: 320 });
+  for (let y = 0; y < image.height; y++)
+    for (let x = 0; x < image.width; x++) {
+      const shade = Math.round(245 - shadow * (x / (image.width - 1)) * (y / (image.height - 1)));
+      image.data.set([shade + 4, shade + 1, shade - 4, 255], (y * image.width + x) * 4);
+    }
+  for (let y = 100; y < 180; y++)
+    for (let x = 160; x < 166; x++) image.data.set([20, 60, 190, 255], (y * image.width + x) * 4);
+  for (let y = 110; y < 114; y++)
+    for (let x = 200; x < 204; x++) image.data.set([20, 20, 20, 255], (y * image.width + x) * 4);
+  for (let y = 100; y < 160; y++)
+    for (let x = 240; x < 300; x++) image.data.set([120, 120, 120, 255], (y * image.width + x) * 4);
+  const jpeg = await sharp(PNG.sync.write(image)).jpeg({ quality: 85 }).toBuffer();
+  const decoded = await sharp(jpeg).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const crop = await trimSignatureImage({ ...decoded.info, data: decoded.data });
+  assert.ok(crop.width < 180 && crop.height < 120, "Shadowed JPEG corners cannot extend the ink bounds");
+  assert.ok(crop.width >= 140, "The broad gray mark remains part of the signature");
+  const ink = PNG.sync.read(crop.bytes);
+  assert.ok(
+    ink.data.some(
+      (value, index) =>
+        index % 4 === 3 &&
+        value > 180 &&
+        ink.data[index - 1]! < 15 &&
+        ink.data[index - 2]! < 15 &&
+        ink.data[index - 3]! < 15,
+    ),
+    "The detached dark dot survives background removal",
+  );
+  assert.ok(
+    ink.data.some(
+      (value, index) => index % 4 === 2 && value > 100 && ink.data[index - 2]! < 50 && ink.data[index + 1]! > 0,
+    ),
+    "Colored ink survives shadow removal",
+  );
+}
 // Invisible RGB is not paper and must not affect real ink extraction.
 const nativeGray = (hidden: number) => {
   const image = new PNG({ width: 256, height: 256 });
