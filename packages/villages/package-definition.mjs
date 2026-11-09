@@ -10,6 +10,8 @@ const deskArtAssets = [
   "desk-art/projects-phone.webp",
   "desk-art/places-desktop.webp",
   "desk-art/places-phone.webp",
+  "desk-art/venue-desktop.webp",
+  "desk-art/venue-phone.webp",
   "desk-art/mailbox-desktop.webp",
   "desk-art/mailbox-phone.webp",
   "desk-art/settings-desktop.webp",
