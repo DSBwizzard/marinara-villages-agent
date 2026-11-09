@@ -1,6 +1,6 @@
 # Pinned Engine public declarations
 
-The public declaration closure comes from Marinara Engine **2.5.2**, Capability API **1.818**, at staging revision `27805040eed0d91d4ea7b49f478b0b197b13676d`. Source: https://github.com/Pasta-Devs/Marinara-Engine. Upstream AGPL-3.0 licensing is retained. Ordinary builds never refresh these files.
+The public declaration closure comes from Marinara Engine **2.5.2**, Capability API **1.818**, at staging revision `73441f9a620dfdd94a28b94b68aa8f8b8ef1321c`. Source: https://github.com/Pasta-Devs/Marinara-Engine. Upstream AGPL-3.0 licensing is retained. Ordinary builds never refresh these files.
 
 `sources/package-shared.ts` declares the public roots. The generator follows their public dependencies, including Scene origin types, into one closure. `pin.json` records exact upstream declaration input hashes, retained symbols and output hashes. There are no separately maintained supplemental declarations or private runtime dependencies.
 
@@ -13,7 +13,7 @@ node node_modules/typescript/bin/tsc --ignoreConfig --declaration --emitDeclarat
 Then run from the Villages root:
 
 ```sh
-node scripts/engine-public-declarations.mjs --refresh --from <full-declaration-directory> --revision 27805040eed0d91d4ea7b49f478b0b197b13676d --engine-version 2.5.2 --capability-api 1.818
+node scripts/engine-public-declarations.mjs --refresh --from <full-declaration-directory> --revision 73441f9a620dfdd94a28b94b68aa8f8b8ef1321c --engine-version 2.5.2 --capability-api 1.818
 node scripts/engine-public-declarations.mjs --check --from <full-declaration-directory>
 corepack npm run check:engine-types
 ```
