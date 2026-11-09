@@ -4,6 +4,7 @@ import { coerceSession } from "../packages/villages/src/server/domain/decoding/s
 import { expandSceneEvents } from "../packages/villages/src/server/domain/rules/scene-event-proposals.js";
 import { materializeGmReply } from "../packages/villages/src/server/domain/rules/scene-gm.js";
 import { semanticContext } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
+import { isolateSceneEffects } from "../packages/villages/src/server/domain/rules/scene-writing-contract.js";
 import { bindSceneMemorySuggestion } from "../packages/villages/src/server/domain/rules/scene-memories.js";
 import {
   bindProjectSpeech,
@@ -82,6 +83,18 @@ const relationship = expand([
 assert.equal(relationship.relationshipChanges.changes[0].expectedRevision, 7);
 assert.deepEqual(relationship.relationshipChanges.changes[0].liveAfter.concerns, ["Keep this concern"]);
 assert.equal(relationship.relationshipChanges.changes[0].sceneAfter.stance, "Reassured");
+{
+  const proposal = { type: "relationship", actorId: "a", targetId: "player", at: [2], value: { stance: "Reassured" } };
+  const rejected = expand([proposal]);
+  const isolated = isolateSceneEffects(rejected);
+  assert.match(isolated.failures.relationships!.message, /invalid Scene source/);
+  assert.deepEqual(
+    (isolated.failures.relationships!.proposal as any).relationshipChanges.changes[0].rejectedEvent,
+    proposal,
+  );
+  assert.equal(isolated.raw.relationshipChanges, undefined, "An invalid source must never become an empty success");
+  assert.deepEqual(isolated.raw.segments, segments, "Independent dialogue survives the failed proposal");
+}
 const decisions = expand(
   ["approval", "builder"].map((value) => ({ type: "project", targetId: projectId, at: [0], value })),
 );

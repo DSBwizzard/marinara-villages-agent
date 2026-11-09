@@ -9,7 +9,7 @@
   "pricingCheckedAt": "2026-11-09T16:24:55.000Z",
   "limitations": [
     "One synthetic resident and one continuous quiet world, with matching player inputs but naturally different generated histories.",
-    "This records all 77 reported requests across implementation iterations. It is not a randomized before/after experiment.",
+    "This records all 83 reported requests across implementation iterations. It is not a randomized before/after experiment.",
     "Rates change from peak to off-peak at 10:00 UTC; same-rate mode comparisons and token counts must be used for improvement claims.",
     "Costs are usage multiplied by published rates, not invoice amounts. Cache writes and provider-internal retries are unreported.",
     "Reasoning tokens are a subset of output and are charged once. Saved model and reasoning parameters were preserved.",
@@ -2300,6 +2300,198 @@
           "replayAdditionalRequests": null
         }
       ]
+    },
+    {
+      "id": "live-qualified",
+      "engineRevision": "73441f9a620dfdd94a28b94b68aa8f8b8ef1321c",
+      "sourceRevision": "727c3cd3b235f6d4455064446311b9ff8ac9e791",
+      "archiveHash": "3ae1dbab36a33655337da9bc5e6c673c4b6b14a2552a7ea617e23dc8b056b82d",
+      "turns": [
+        {
+          "mode": "villages",
+          "caseId": "qualified-warmup",
+          "message": "Thank you for taking that distinction seriously.",
+          "startedAt": "2026-11-09T16:35:10.222Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 26244,
+          "cachedInputTokens": 1664,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 611,
+          "reasoningTokens": 330,
+          "latencyMs": 6798,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.004058592,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 2
+          },
+          "replayAdditionalRequests": 0
+        },
+        {
+          "mode": "game",
+          "caseId": "qualified-warmup",
+          "message": "Thank you for taking that distinction seriously.",
+          "startedAt": "2026-11-09T16:35:17.022Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 17951,
+          "cachedInputTokens": 17152,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 421,
+          "reasoningTokens": 136,
+          "latencyMs": 4876,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.00042390599999999994,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "memory-full-qualification",
+          "message": "Please update what you remember about my visits to Hazelbrook's spring fair. The fair can be noisy, with the brass band beside the seed stalls and muddy lanes around the square. I still prefer the old north path, and I look forward to seeing familiar faces. But the full condition is this: I go only when cousin Delia can come with me and the north path is open. If either condition fails, I stay home. It is a conditional visit, not an annual commitment.",
+          "startedAt": "2026-11-09T16:35:21.900Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 26757,
+          "cachedInputTokens": 25216,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 1732,
+          "reasoningTokens": 924,
+          "latencyMs": 13736,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.001345998,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 2
+          },
+          "replayAdditionalRequests": 0,
+          "semanticAssessment": "passed-native-qualified-memory-persistence",
+          "semanticEvidence": "Native owner inspection verified root revision 3, correcting the supplied current leaf. Only Mara knows the player-attributed report. Its 72-byte excerpt now includes both material conditions: Delia can accompany the player and the north path is open. The excerpt does not repeat every incidental source detail; full original input is retained."
+        },
+        {
+          "mode": "game",
+          "caseId": "memory-full-qualification",
+          "message": "Please update what you remember about my visits to Hazelbrook's spring fair. The fair can be noisy, with the brass band beside the seed stalls and muddy lanes around the square. I still prefer the old north path, and I look forward to seeing familiar faces. But the full condition is this: I go only when cousin Delia can come with me and the north path is open. If either condition fails, I stay home. It is a conditional visit, not an annual commitment.",
+          "startedAt": "2026-11-09T16:35:35.638Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 18337,
+          "cachedInputTokens": 17536,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 440,
+          "reasoningTokens": 48,
+          "latencyMs": 4719,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.000436758,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "friendship-declaration",
+          "message": "I would like to be friends with you, Mara. Would you want that too? You can say no.",
+          "startedAt": "2026-11-09T16:35:40.358Z",
+          "status": "failed",
+          "requests": 1,
+          "inputTokens": 27554,
+          "cachedInputTokens": 25728,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 1566,
+          "reasoningTokens": 906,
+          "latencyMs": 13813,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.0012906839999999998,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": "native-consequence-validation",
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 1,
+            "rejected": 2
+          },
+          "replayAdditionalRequests": null,
+          "behaviorFindings": [
+            "The GM omitted the direct spoken offer with input:[], so code did not create player-speech witness evidence.",
+            "The GM cited generated segment 9, but returned only segments 0 through 8. Native validation held the relationship consequence.",
+            "The proposed accepted agreement contained new Mara qualifications without the player assenting to those terms."
+          ],
+          "failureDisposition": "Native Continue retained the failed consequence as rejected with zero additional provider requests. Matching Game generation was purchased separately; the planned Wish pair was never purchased."
+        }
+      ]
+    },
+    {
+      "id": "live-qualified-game-catchup",
+      "engineRevision": "73441f9a620dfdd94a28b94b68aa8f8b8ef1321c",
+      "sourceRevision": "727c3cd3b235f6d4455064446311b9ff8ac9e791",
+      "archiveHash": "3ae1dbab36a33655337da9bc5e6c673c4b6b14a2552a7ea617e23dc8b056b82d",
+      "turns": [
+        {
+          "mode": "game",
+          "caseId": "friendship-declaration",
+          "message": "I would like to be friends with you, Mara. Would you want that too? You can say no.",
+          "startedAt": "2026-11-09T16:41:42.591Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 18754,
+          "cachedInputTokens": 17920,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 491,
+          "reasoningTokens": 91,
+          "latencyMs": 5473,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.00047345999999999993,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        }
+      ]
     }
   ],
   "engineRevisions": [
@@ -2307,13 +2499,13 @@
     "73441f9a620dfdd94a28b94b68aa8f8b8ef1321c"
   ],
   "observedTotals": {
-    "requests": 77,
-    "runtimeFailedComparisons": 3,
+    "requests": 83,
+    "runtimeFailedComparisons": 4,
     "semanticFailedComparisons": 1,
     "semanticQualityGaps": 1,
-    "failedComparisons": 4,
+    "failedComparisons": 5,
     "replacementRequests": 1,
-    "knownRatedCostUsd": 0.07722628499999995,
+    "knownRatedCostUsd": 0.08525568299999994,
     "actualInvoiceCostUsd": null
   }
 }

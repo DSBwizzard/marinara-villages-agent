@@ -122,6 +122,15 @@ export function isolateSceneEffects(raw: Record<string, unknown>) {
         throw new Error("Malformed Wish proposal: " + malformedDetail);
       if (domain === "relationships") {
         const relationship = asRecord(normalized.relationshipChanges);
+        const rejected = Array.isArray(relationship.changes)
+          ? relationship.changes.map(asRecord).find((row) => Object.hasOwn(row, "rejectedEvent"))
+          : undefined;
+        if (rejected)
+          throw new Error(
+            typeof rejected.message === "string"
+              ? rejected.message
+              : "The relationship event needs correction; its exact proposal is retained.",
+          );
         if (
           Object.keys(relationship).some((key) => !["changes", "permissions", "disclosures"].includes(key)) ||
           malformed(relationship.changes, ["fromId", "toId", "reason"], ["lineIds"], "changes") ||
