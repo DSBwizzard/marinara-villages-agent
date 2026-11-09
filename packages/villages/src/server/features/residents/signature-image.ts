@@ -40,14 +40,44 @@ export async function trimSignatureImage(pixels: { width: number; height: number
     .png()
     .toBuffer();
   const paper = await sharp(paperSmall).resize(width, height).removeAlpha().raw().toBuffer();
+  // Follow matching paper inward from the margins, including shadowed corners below the light-paper cutoff.
+  const background = new Uint8Array(width * height);
+  const queue = new Uint32Array(width * height);
+  let count = 0;
+  const visit = (index: number) => {
+    if (background[index] || data[index * 4 + 3] !== 255) return;
+    const offset = index * 3;
+    const low = Math.min(paper[offset]!, paper[offset + 1]!, paper[offset + 2]!);
+    const high = Math.max(paper[offset]!, paper[offset + 1]!, paper[offset + 2]!);
+    if (low === 0 || high - low > 15) return;
+    for (let channel = 0; channel < 3; channel++)
+      if (Math.abs(data[index * 4 + channel]! - paper[offset + channel]!) > 10) return;
+    background[index] = 1;
+    queue[count++] = index;
+  };
+  for (let x = 0; x < width; x++) {
+    visit(x);
+    visit((height - 1) * width + x);
+  }
+  for (let y = 1; y < height - 1; y++) {
+    visit(y * width);
+    visit(y * width + width - 1);
+  }
+  for (let head = 0; head < count; head++) {
+    const index = queue[head]!;
+    const x = index % width;
+    if (x > 0) visit(index - 1);
+    if (x < width - 1) visit(index + 1);
+    if (index >= width) visit(index - width);
+    if (index + width < background.length) visit(index + width);
+  }
   const normalized = new Uint8Array(data);
   for (let index = 0; index < width * height; index++) {
     const offset = index * 3;
     const low = Math.min(paper[offset]!, paper[offset + 1]!, paper[offset + 2]!);
     const high = Math.max(paper[offset]!, paper[offset + 1]!, paper[offset + 2]!);
-    // Only light, near-neutral fields are plausible paper. Do not normalize
-    // colored marks or estimate paper from a dark, solid part of the artwork.
-    if (low < 180 || high - low > 15) continue;
+    // Dark fields must also match margin-connected paper; preserve solid or colored ink.
+    if (low === 0 || high - low > 15 || (low < 180 && !background[index])) continue;
     for (let channel = 0; channel < 3; channel++) {
       normalized[index * 4 + channel] = Math.min(
         255,
