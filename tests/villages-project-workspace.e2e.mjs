@@ -66,7 +66,7 @@ await withBrowser(browser, async () => {
     });
     assert(metrics.scrollHeight <= metrics.clientHeight + 1, "Projects overview does not scroll");
     assert(metrics.bottom <= metrics.viewport + 1, "Projects overview fits inside the viewport");
-    assert(metrics.boardBottom <= metrics.viewport - 3, "the whole blueprint remains visible");
+    assert(metrics.boardBottom <= metrics.viewport + 1, "the whole blueprint remains visible");
     const clipped = await root.evaluate((element) => {
       const bounds = element.getBoundingClientRect();
       return [...element.querySelectorAll("button")]

@@ -66,9 +66,10 @@ export const DESK_STYLES = `
 .${P}-desk-workspace[data-desk="places"] .${P}-location-navigator{background:linear-gradient(90deg,#f8eed8,#eee1c3);color:#362a20}
 .${P}-desk-workspace[data-desk="places"] .${P}-location-navigator h2{font:400 27px/1.3 Georgia,serif}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-mailbox-overlay{position:relative;inset:auto;height:100%;padding:0;background:transparent;z-index:auto}
+.${P}-desk-workspace[data-desk="mailbox"]>.${P}-desk-stage{padding-top:8px}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-mailbox-dialog{width:100%;height:100%;max-height:100%;border:0;background:transparent;box-shadow:none}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-mailbox-dialog>header{padding:0 20px 10px}
-.${P}-desk-workspace[data-desk="mailbox"] .villages-mailbox-dialog>header h3{font:400 28px/1.2 Georgia,serif;text-shadow:none}
+.${P}-desk-workspace[data-desk="mailbox"] .villages-mailbox-dialog>header h3{margin:0;font:400 28px/1.2 Georgia,serif;text-shadow:none}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-layout{padding:0 12px 12px}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-row[aria-pressed="true"]{background:#d6dfc1;border-color:#9fae82}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-mailbox-dialog :is(button,select,input,textarea){font-family:system-ui,sans-serif}

@@ -158,18 +158,28 @@ await withBrowser(browser, async () => {
     await page.goto("http://continuity.test/");
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
     const tabs = page.getByRole("navigation", { name: "Villager profile sections" });
+    const chooseSection = (label) =>
+      width <= 700
+        ? page.getByRole("combobox", { name: "Section" }).selectOption({ label })
+        : tabs.getByRole("button", { name: label, exact: true }).click();
+    const overviewControl =
+      width <= 700
+        ? page.getByRole("combobox", { name: "Section" })
+        : tabs.getByRole("button", { name: "Overview", exact: true });
     const overview = page.getByRole("region", { name: "Overview content" });
     await expect(overview.getByText(summary)).toBeVisible();
 
-    const scroller = page.locator(".marinara-capability-villages-dossier-content");
+    const scroller = page.locator(
+      width <= 700 ? ".marinara-capability-villages-dossier-book" : ".marinara-capability-villages-dossier-content",
+    );
     const position = await scroller.evaluate((element) => {
       element.style.height = "80px";
       element.scrollTop = 60;
       return element.scrollTop;
     });
     assert.ok(position > 0);
-    await tabs.getByRole("button", { name: "Agenda", exact: true }).click();
-    await tabs.getByRole("button", { name: "Overview", exact: true }).click();
+    await chooseSection("Agenda");
+    await chooseSection("Overview");
     assert.equal(await scroller.evaluate((element) => element.scrollTop), position);
     await page.getByText("Character tools", { exact: true }).click();
     const draft = page.getByRole("textbox", { name: "Identity draft" });
@@ -189,13 +199,13 @@ await withBrowser(browser, async () => {
       element.style.height = "620px";
     });
     const node = await overview.getByText(summary).elementHandle();
-    await tabs.getByRole("button", { name: "Overview", exact: true }).focus();
+    await overviewControl.focus();
     const pending = pause("/api/villages/relationships");
     await page.evaluate(() => window.h.refresh());
     await expect.poll(() => pending.started).toBeGreaterThan(0);
     await expect(overview.getByText(summary)).toBeVisible();
     assert.equal(await node.evaluate((element) => element.isConnected), true);
-    await expect(tabs.getByRole("button", { name: "Overview", exact: true })).toBeFocused();
+    await expect(overviewControl).toBeFocused();
     pending.gate.resolve();
     hold = null;
     summary = "Updated relationship";
@@ -218,7 +228,7 @@ await withBrowser(browser, async () => {
     await page.evaluate(() => window.h.refresh());
     await expect(overview.getByText(summary)).toBeVisible();
 
-    await tabs.getByRole("button", { name: "Wishes", exact: true }).click();
+    await chooseSection("Wishes");
     await page.getByRole("button", { name: "Open Wish: mara shared Wish" }).click();
     const beforeFollow = pause("/api/villages/relationships");
     await page.evaluate(() => window.h.refresh());
@@ -233,16 +243,21 @@ await withBrowser(browser, async () => {
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     hold = null;
     await expect(page.getByRole("button", { name: "Following", exact: true })).toHaveAttribute("aria-pressed", "true");
-    await tabs.getByRole("button", { name: "Overview", exact: true }).click();
-    await tabs.getByRole("button", { name: "Wishes", exact: true }).click();
+    await chooseSection("Overview");
+    await chooseSection("Wishes");
     await expect(page.getByRole("button", { name: "← Wishes", exact: true })).toBeVisible();
     for (let attempt = 0; attempt < 2; attempt++) {
-      await tabs.getByRole("button", { name: "Overview", exact: true }).click();
+      await chooseSection("Overview");
       await page.evaluate(() => window.h.navigateWish());
-      await expect(tabs.getByRole("button", { name: "Wishes", exact: true })).toHaveAttribute("aria-pressed", "true");
+      if (width <= 700) await expect(page.getByRole("combobox", { name: "Section" })).toHaveValue("wishes");
+      else
+        await expect(tabs.getByRole("button", { name: "Wishes", exact: true })).toHaveAttribute("aria-pressed", "true");
       await expect(page.getByRole("button", { name: "← Wishes", exact: true })).toBeVisible();
     }
-    await tabs.getByRole("button", { name: "Inspect", exact: true }).click();
+    await page
+      .getByRole("group", { name: "Profile actions" })
+      .getByRole("button", { name: "Inspect", exact: true })
+      .click();
     await page.getByRole("button", { name: "Open Wish: Private Wish" }).click();
     const privateNode = await page.getByText("Private reason", { exact: true }).elementHandle();
     const privateRead = pause(
@@ -273,7 +288,7 @@ await withBrowser(browser, async () => {
     assert.equal(await privateNode.evaluate((element) => element.isConnected), true);
     privateRead.gate.resolve();
     hold = null;
-    await tabs.getByRole("button", { name: "Agenda", exact: true }).click();
+    await chooseSection("Agenda");
     await expect.poll(() => page.evaluate(() => window.h.agendas?.[0]?.name)).toBe("Current agenda");
     agendaName = "Returned agenda";
     const resumedAgenda = pause("/api/villages/agendas");
@@ -288,11 +303,11 @@ await withBrowser(browser, async () => {
     agendaName = "Focused agenda";
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect.poll(() => page.evaluate(() => window.h.agendas?.[0]?.name)).toBe("Focused agenda");
-    await tabs.getByRole("button", { name: "Memories", exact: true }).click();
+    await chooseSection("Memories");
     await expect(page.getByText("Saved memory")).toBeVisible();
     await page.getByRole("searchbox", { name: "Search memories" }).fill("unfinished query");
-    await tabs.getByRole("button", { name: "Agenda", exact: true }).click();
-    await tabs.getByRole("button", { name: "Memories", exact: true }).click();
+    await chooseSection("Agenda");
+    await chooseSection("Memories");
     await expect(page.getByRole("searchbox", { name: "Search memories" })).toHaveValue("unfinished query");
     const memoryRead = pause("/api/villages/memories/inspect");
     await page.getByRole("searchbox", { name: "Search memories" }).fill("");
@@ -301,19 +316,27 @@ await withBrowser(browser, async () => {
     await expect(page.getByText("Saved memory")).toBeVisible();
     memoryRead.gate.resolve();
     hold = null;
-    await tabs.getByRole("button", { name: "Leave Inspect", exact: true }).click();
+    await page
+      .getByRole("group", { name: "Profile actions" })
+      .getByRole("button", { name: "Leave Inspect", exact: true })
+      .click();
     await expect(page.getByText("Private reason", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Saved memory")).toHaveCount(0);
 
-    await tabs.getByRole("button", { name: "Wishes", exact: true }).click();
-    await tabs.getByRole("button", { name: "Inspect", exact: true }).click();
+    await chooseSection("Wishes");
+    await page
+      .getByRole("group", { name: "Profile actions" })
+      .getByRole("button", { name: "Inspect", exact: true })
+      .click();
     await page.getByRole("button", { name: "Open Wish: Private Wish" }).click();
     const siblingDenied = pause("/api/villages/memories/inspect", 403);
-    await tabs.getByRole("button", { name: "Memories", exact: true }).click();
+    await chooseSection("Memories");
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
     await expect.poll(() => siblingDenied.started).toBeGreaterThan(0);
     siblingDenied.gate.resolve();
-    await expect(tabs.getByRole("button", { name: "Inspect", exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("group", { name: "Profile actions" }).getByRole("button", { name: "Inspect", exact: true }),
+    ).toBeVisible();
     await expect(page.getByText("Private reason", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Saved memory")).toHaveCount(0);
     hold = null;
@@ -350,7 +373,7 @@ await withBrowser(browser, async () => {
     oldAgenda.gate.resolve();
     oldMutation.gate.resolve();
     hold = null;
-    await tabs.getByRole("button", { name: "Wishes", exact: true }).click();
+    await chooseSection("Wishes");
     await expect(page.getByRole("button", { name: "Open Wish: eli shared Wish" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Open Wish: mara shared Wish" })).toHaveCount(0);
     await expect(page.getByText("Saved memory")).toHaveCount(0);

@@ -846,7 +846,8 @@ await withBrowser(browser, async () => {
     await expect(profile.getByText("Agenda destination", { exact: true })).toHaveCount(0);
     await chooseSection("Wishes");
     await expect(profile.getByText("Learn to swim", { exact: true }).filter({ visible: true }).first()).toBeVisible();
-    const tabBefore = await tabs.boundingBox();
+    const sectionControl = width > 700 ? tabs : profile.getByRole("combobox", { name: "Section" });
+    const tabBefore = await sectionControl.boundingBox();
     const reading = profile.locator(`.${P}-dossier-content`);
     let wishPages = 0;
     while (
@@ -859,7 +860,7 @@ await withBrowser(browser, async () => {
       await reading.evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
       "Wishes use bounded pages instead of scrolling",
     );
-    const tabAfter = await tabs.boundingBox();
+    const tabAfter = await sectionControl.boundingBox();
     assert.equal(tabAfter.y, tabBefore.y, "Sticky notes stay fixed while changing Wish pages");
     assert.equal(tabAfter.x, tabBefore.x);
     await expect(profile.getByText("Shared wish 12", { exact: true }).filter({ visible: true }).first()).toBeVisible();
@@ -1408,7 +1409,7 @@ await withBrowser(browser, async () => {
     if (
       (await page
         .getByRole("group", { name: "Profile actions", exact: true })
-        .getByRole("button", { name: "Inspect", exact: true })
+        .getByRole("button", { name: /^(?:Leave )?Inspect$/, exact: true })
         .getAttribute("aria-pressed")) === "false"
     )
       await page
@@ -1589,6 +1590,8 @@ await withBrowser(browser, async () => {
     await page.getByRole("button", { name: "← Back to Villagers", exact: true }).click();
     await expect(directory.getByRole("button", { name: "Open Mara profile" })).toBeVisible();
     await page.getByRole("button", { name: "Close ×", exact: true }).click();
+    await expect(page.locator(`[data-desk]`)).not.toHaveAttribute("data-desk", "people");
+    await expect(page.locator(`[data-desk]`)).toHaveAttribute("data-phase", "open");
     await page.getByRole("button", { name: "People", exact: true }).click();
     await expect(page.locator(`.${P}-desk-workspace`)).toHaveAttribute("data-phase", "open");
     await page.emulateMedia({ reducedMotion: "reduce" });

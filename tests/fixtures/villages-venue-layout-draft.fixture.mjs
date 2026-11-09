@@ -11,19 +11,21 @@ export async function verifyVenueLayoutDraft(browser) {
       loader: "tsx",
       resolveDir: process.cwd(),
       contents: `
-import {createRoot} from 'react-dom/client';import {StrictMode,useState} from 'react';
+import {createRoot} from 'react-dom/client';import {StrictMode,useState,useRef,useMemo} from 'react';
 import {useVenueScreenCommands} from './packages/villages/src/client/features/venues/screen-commands.js';
 import {VenueScreen} from './packages/villages/src/client/features/venues/VenueScreen.js';
 import {ConfirmationProvider} from './packages/villages/src/client/shared/confirmation.js';
+import {DeskLeaveGuard} from './packages/villages/src/client/shared/DeskWorkspace.js';
 function Harness(){
+ const guard=useRef(null),[navigationDisabled,setDisabled]=useState(false),registration=useMemo(()=>({guard,setDisabled}),[]);
  const [snapshot,setSnapshot]=useState(window.seed),[screen,setScreen]=useState('venue'),[venueId,setVenueId]=useState('a'),[venueSection,setVenueSection]=useState('zones'),[venueZoneKey,setVenueZoneKey]=useState('exterior');
  const [room,setRoom]=useState(null),[busy,setBusy]=useState(false),[venueEditBusy,setVenueEditBusy]=useState(false),[venueEditError,setVenueEditError]=useState(''),[venueEditNotice,setVenueEditNotice]=useState(''),[venueEditDraft,setVenueEditDraft]=useState(null),[placeProblem,setPlaceProblem]=useState(null);
  const ports={snapshot,screen,venueId,venuePage:'view',venueZoneKey,setSnapshot,setBusy,setSettingsError:()=>{},setVenueEditBusy,setVenueEditError,setVenueEditNotice,setVenueEditDraft,setVenueProposalDraft:()=>{},setPlaceProblem};
  const commands=useVenueScreenCommands(ports);
  window.h={scene:setRoom,read:()=>({snapshot,screen,venueId,layouts:commands.venueLayouts}),reset:()=>setSnapshot({...window.seed,isFounded:false}),refound:()=>setSnapshot(window.seed),snapshot:next=>setSnapshot(next)};
  const openPlace=place=>{setVenueId(place.id);setScreen('venue')};
- return <><pre id="state">{JSON.stringify(window.h.read())}</pre>{screen==='venue'?<VenueScreen controller={{...ports,...commands,venueSection,setVenueSection,setVenueZoneKey,venueEditBusy,venueEditError,venueEditNotice,venueEditDraft,placeProblem,busy,room,roomBusy:false,homeBuildings:[],placeBusyId:'',nameOfCharacter:id=>id,standingAt:()=>[],setScreen,
- goHome:()=>setScreen('home'),openMenu:()=>setScreen('menu'),openPlace,leaveVenue:()=>setScreen('home'),openRoom:async()=>{},planVenueRenovation:()=>{},openVenueProject:()=>{},openVenueRequests:()=>{},drawPlaceImage:async()=>{},dropPlaceImage:async()=>{},keepPlaceImage:async()=>{},retryWork:async()=>{},setPlayerMovePrivateZoneId:()=>{},setMoveTargetId:()=>{},setMovePrivateZoneId:()=>{}}}/>:<button onClick={()=>openPlace(snapshot.settings.venues[0])}>Return to Places</button>}</>;
+ return <DeskLeaveGuard value={registration}><pre id="state">{JSON.stringify(window.h.read())}</pre>{screen==='venue'?<><button disabled={navigationDisabled} onClick={async()=>{if(!guard.current||await guard.current())setScreen('home')}}>Return to village</button><VenueScreen controller={{...ports,...commands,venueSection,setVenueSection,setVenueZoneKey,venueEditBusy,venueEditError,venueEditNotice,venueEditDraft,placeProblem,busy,room,roomBusy:false,homeBuildings:[],placeBusyId:'',nameOfCharacter:id=>id,standingAt:()=>[],setScreen,
+ goHome:()=>setScreen('home'),openMenu:()=>setScreen('menu'),openPlace,leaveVenue:()=>setScreen('home'),openRoom:async()=>{},planVenueRenovation:()=>{},openVenueProject:()=>{},openVenueRequests:()=>{},drawPlaceImage:async()=>{},dropPlaceImage:async()=>{},keepPlaceImage:async()=>{},retryWork:async()=>{},setPlayerMovePrivateZoneId:()=>{},setMoveTargetId:()=>{},setMovePrivateZoneId:()=>{}}}/></>:<button onClick={()=>openPlace(snapshot.settings.venues[0])}>Return to Places</button>}</DeskLeaveGuard>;
 }
 createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProvider><Harness/></ConfirmationProvider></StrictMode>);
 `,

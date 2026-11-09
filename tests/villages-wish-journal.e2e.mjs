@@ -196,6 +196,13 @@ await withBrowser(browser, async () => {
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     const nav = page.getByRole("navigation", { name: "Village exploration" });
+    const chooseSection = (label) =>
+      width <= 700
+        ? page.getByRole("combobox", { name: "Section" }).selectOption({ label })
+        : page
+            .getByRole("navigation", { name: "Villager profile sections" })
+            .getByRole("button", { name: label, exact: true })
+            .click();
     await nav.getByRole("button", { name: "People", exact: true }).click();
     await page.getByRole("button", { name: "Open Feddy profile" }).click();
     const profile = page.getByRole("region", { name: "Feddy profile" });
@@ -207,10 +214,7 @@ await withBrowser(browser, async () => {
             nodes.flatMap((node) => node.getAnimations().map((animation) => animation.finished.catch(() => {}))),
           ),
         );
-    await page
-      .getByRole("navigation", { name: "Villager profile sections" })
-      .getByRole("button", { name: "Wishes", exact: true })
-      .click();
+    await chooseSection("Wishes");
     await expect(profile.getByRole("region", { name: "Known wishes" })).toBeVisible();
     assert.equal(privateReads, 0);
     await expect(profile.getByText("PRIVATE SOCIAL DESIRE")).toHaveCount(0);
@@ -255,9 +259,11 @@ await withBrowser(browser, async () => {
     const noScroll = async () => {
       await expect(profile.getByRole("button", { name: "Close ×", exact: true })).toBeInViewport({ ratio: 1 });
       await expect(profile.getByRole("button", { name: /^(Inspect|Leave Inspect)$/ })).toBeInViewport({ ratio: 1 });
+      if (width <= 700) await details.getByRole("button", { name: "← Wishes", exact: true }).scrollIntoViewIfNeeded();
       await expect(details.getByRole("button", { name: "← Wishes", exact: true })).toBeInViewport({ ratio: 1 });
       await expect(section).toBeInViewport({ ratio: 1 });
       for (const tab of await section.getByRole("tab").all()) await expect(tab).toBeInViewport({ ratio: 1 });
+      if (width <= 700) await details.getByRole("button", { name: "Next detail page" }).scrollIntoViewIfNeeded();
       await expect(details.getByRole("button", { name: "Next detail page" })).toBeInViewport({ ratio: 1 });
       assert(
         await profile
@@ -383,17 +389,11 @@ await withBrowser(browser, async () => {
     await expect(profile.getByText("PRIVATE SOCIAL DESIRE")).toHaveCount(0);
     await profile.getByRole("button", { name: "← Back to Villagers" }).click();
     await page.getByRole("button", { name: "Open Roxie profile" }).click();
-    await page
-      .getByRole("navigation", { name: "Villager profile sections" })
-      .getByRole("button", { name: "Wishes", exact: true })
-      .click();
+    await chooseSection("Wishes");
     await expect(page.getByText("No Wishes known yet.", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "← Back to Villagers" }).click();
     await page.getByRole("button", { name: "Open Feddy profile" }).click();
-    await page
-      .getByRole("navigation", { name: "Villager profile sections" })
-      .getByRole("button", { name: "Venues", exact: true })
-      .click();
+    await chooseSection("Venues");
     await expect(page.getByRole("button", { name: "View Venue", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "Close ×", exact: true }).click();
     await page

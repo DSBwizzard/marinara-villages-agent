@@ -276,6 +276,8 @@ export function Mailbox({
     )
       setLetterPage(0);
     navigationEpoch.current++;
+    setError("");
+    setReadError("");
     setSelection(next);
     setLoadedLetter(null);
   }, []);

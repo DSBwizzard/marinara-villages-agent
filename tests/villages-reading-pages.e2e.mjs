@@ -145,7 +145,10 @@ await withBrowser(browser, async () => {
       await page.getByRole("menuitem", { name: "View Venue", exact: true }).click();
       await expect(page.getByRole("heading", { name: "The Mill", exact: true })).toBeVisible();
       await expect(page.getByRole("region", { name: "About this venue" })).toBeVisible();
-      await page.getByRole("button", { name: "Return to Scene", exact: true }).click();
+      await page
+        .locator(".marinara-capability-villages-desk-header")
+        .getByRole("button", { name: "Return to Scene", exact: true })
+        .click();
       await expect(reading).toBeVisible();
     };
 
