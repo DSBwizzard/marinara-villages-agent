@@ -2,13 +2,13 @@
 
 The current architecture uses one GM response, `{input, segments, events?}`, followed by provider-free validation and application. The model supplies fiction, audible input selections and meaningful proposals. Code derives exact offsets, source identities, witnesses, revisions, defaults and native operations. Full authored identities remain intact. There are no automatic Memory, Wish, Project or access critics.
 
-The cost target remains unmet. The latest three warm ordinary conversations averaged **1.75× Game Mode**; the engineering aim is 1.0–1.25×. An earlier two-pair sample averaged 1.36×, and an intervening two-pair sample averaged 1.74×. The later changes have not established lower successful-turn cost. One latest explicit learning request was acknowledged without a persisted Memory, so its apparently successful HTTP response is a semantic failure. These are observations, not a general parity claim or a measured reduction from the previously established 3× baseline.
+The cost target remains unmet. The latest three warm ordinary conversations averaged **1.65× Game Mode**; the engineering aim is 1.0–1.25×. Earlier small samples averaged 1.36×, 1.74× and 1.75×. The changing histories and small samples do not establish a causal improvement between these iterations. An earlier explicit learning request was acknowledged without a persisted Memory and remains a semantic failure; the latest new learning did persist correctly. These are observations, not a general parity claim or a measured reduction from the previously established 3× baseline.
 
 ## Revisions and integration
 
 - Villages staging base: `9251988b00ec3ebaf743d4337d30cb4e71d1f0f1`.
 - Current integration target: Engine staging `73441f9a620dfdd94a28b94b68aa8f8b8ef1321c`, version 2.5.2, Capability API 1.818. Exact unmodified source was built and activated in the same isolated Linux world. Installed package bytes, saved records/assets, model settings and credentials passed guarded checks; startup purchased no model requests. The default runtime pin and personal installations were unchanged.
-- The first 49 provider requests used Engine staging `27805040eed0d91d4ea7b49f478b0b197b13676d`; the next 12 used `73441f9a620dfdd94a28b94b68aa8f8b8ef1321c`. Each measurement stage identifies its actual Engine revision. The newer revision reproduces the identical public declaration closure. Its Advanced Memory changes do not participate in this baseline: the native Game chat has no saved Advanced Memory setting and the default is disabled.
+- The first 49 provider requests used Engine staging `27805040eed0d91d4ea7b49f478b0b197b13676d`; the next 22 used `73441f9a620dfdd94a28b94b68aa8f8b8ef1321c`. Each measurement stage identifies its actual Engine revision. The newer revision reproduces the identical public declaration closure. Its Advanced Memory changes do not participate in this baseline: the native Game chat has no saved Advanced Memory setting and the default is disabled.
 - Earlier successful sample product source: `485e7214b810ba28d74af06904be796cda9c3b02`; archive SHA-256 `fe904498414b77d30a7d62a7b841748ea66571f38c7ba51d05c4d7ab696f0d96`. Subsequent source and archive identities are retained per sample in the measurements.
 
 The API requirement and generated public declaration closure are in [#458](https://github.com/DSBwizzard/marinara-villages-agent/pull/458). Stable authored prompt prefixes and request/cache accounting are in [#459](https://github.com/DSBwizzard/marinara-villages-agent/pull/459). The coupled Scene contract, native consequences, context selection, retirement and measurement harnesses are in [#460](https://github.com/DSBwizzard/marinara-villages-agent/pull/460). Source merging and runtime deployment remain separate outcomes.
@@ -29,13 +29,13 @@ Each cell below gives Villages / Game Mode. Reasoning is already included in out
 
 The final pairs ran after 10:00 UTC on 2026-11-09 at Flash off-peak rates per million tokens: $0.15 uncached input, $0.003 cached input and $0.60 output. Earlier recorded iterations used the then-applicable peak rates, twice those amounts. See [DeepSeek pricing](https://api-docs.deepseek.com/quick_start/pricing/). Absolute dollar changes across this boundary do not demonstrate a product improvement.
 
-[The machine-readable measurements](scene-cost-results.json) retain all 61 reported requests across twelve sample files, including cold prefixes, expensive Memory interpretation, one explicit replacement and intermediate layouts. Their known rated cost is $0.061059441; invoice cost is unavailable. No intermediate attempt has been removed from the spend total. Provider-internal HTTP retries are not exposed by the public Engine APIs. The tracked Village capability attempts and Game request counts are the observable request accounting; unknown billing must never be treated as free.
+[The machine-readable measurements](scene-cost-results.json) retain all 71 reported requests across thirteen sample files, including cold prefixes, expensive Memory interpretation, one explicit replacement and intermediate layouts. Their known rated cost is $0.069916845; invoice cost is unavailable. No intermediate attempt has been removed from the spend total. Provider-internal HTTP retries are not exposed by the public Engine APIs. The tracked Village capability attempts and Game request counts are the observable request accounting; unknown billing must never be treated as free.
 
 The follow-up includes three failed comparisons. A scalar source on an optional cosmetic cue rejected an otherwise usable response; the fix now discards invalid cosmetic cues while keeping consequential validation strict. Its already-rejected receipt remained rejected, and one explicit native Retry purchased a replacement using the frozen original prompt. Two later Memory proposals cited invalid or mismatched sources. Their dialogue survived, their unsupported Memory updates did not apply, and native Continue retained both failures. The missing matching Game inputs were then generated separately. Those failed purchases are included above; none counts as a successful consequence or a zero-cost retry.
 
-The latest pass used product source `a4190b2f847299368308ae2fb91fb2ad16674c17`, archive SHA-256 `24b31e4532750f68b15b30b775e99a20133fb5dfc55dda2312b9395460b59ab2`, on Engine `73441f9a`. Its six pairs purchased one request per mode per input, with zero replay purchases or native validation failures:
+The preceding pass used product source `a4190b2f847299368308ae2fb91fb2ad16674c17`, archive SHA-256 `24b31e4532750f68b15b30b775e99a20133fb5dfc55dda2312b9395460b59ab2`, on Engine `73441f9a`. Its six pairs purchased one request per mode per input, with zero replay purchases or native validation failures:
 
-| Latest pair | Rated USD, Villages / Game | Cost ratio | Observed behavior |
+| Preceding pair | Rated USD, Villages / Game | Cost ratio | Observed behavior |
 | --- | ---: | ---: | --- |
 | Changed-prefix warmup | .002752608 / .000425994 | 6.46× | Dialogue completed; transition cost retained |
 | Ordinary quiet | .000616206 / .000368196 | 1.67× | Dialogue completed |
@@ -44,7 +44,19 @@ The latest pass used product source `a4190b2f847299368308ae2fb91fb2ad16674c17`, 
 | Learn kettle name | .001003164 / .000424302 | 2.36× | Failed semantic check: acknowledged “Tawny” but emitted no Memory |
 | Recall kettle name | .000466650 / .000458154 | 1.02× | Immediate Scene-history recall only; no long-term Memory proof |
 
-The native Memory owner inspection still contained the same three records after this pass; none contained Tawny. Completion status therefore does not establish successful persistence. A subsequent prompt adjustment clarifies meaningful lasting learning and supplies full Project instructions only with relevant Project terms. Those changes require fresh provider measurement.
+The native Memory owner inspection still contained the same three records after that pass; none contained Tawny. Completion status therefore does not establish successful persistence.
+
+The latest pass used product source `742a861737191ca8a1bbe0ab5ba4e1f52f73526f`, archive SHA-256 `c19230399f1f2857e3efc8c36e27419f598203f0699afdd068786e8818c6cf37`, on the same Engine. It clarifies meaningful lasting learning and supplies Project grammar together with full terms only when relevant. All ten requests completed without native validation failures; replay and the subsequent restart purchased zero additional requests.
+
+| Latest pair | Rated USD, Villages / Game | Cost ratio | Observed behavior |
+| --- | ---: | ---: | --- |
+| Changed-prefix warmup | .003545850 / .000501306 | 7.07× | Cold Village prefix retained in spend |
+| Ordinary company | .000516756 / .000378408 | 1.37× | Dialogue completed |
+| Ordinary window light | .000512658 / .000368544 | 1.39× | Dialogue completed |
+| Ordinary rainy day | .000823044 / .000374712 | 2.20× | Dialogue completed |
+| Learn family craft history | .001222962 / .000613164 | 1.99× | New private report Memory persisted and survived restart |
+
+The new native Memory records the player's report that father Rowan taught chair repair and made the wooden mallet. It cites exact audible `input:0`; only Mara is a knower, and player is a subject rather than an automatic added knower. The owner inspection grew from three to four Memories. Exact owner records and Game history survived an ordinary restart with no added requests. This establishes persistence for that fact; it does not repair the earlier missed name or establish broad semantic reliability.
 
 ## What improved and what remains
 
@@ -56,7 +68,7 @@ Native Memories retain individual knowers, reports versus observations, exact ac
 
 Current Wishes remain compact characterization context, with complete relevant conditions and history before fulfillment judgments. Project terms are narrowed conservatively; approval, builder willingness, conditions, refusal, withdrawal and Start remain distinct. Relationships retain directional qualitative perspectives and authoritative agreements. Standalone social intentions and duplicate Scene disclosure proposals are retired. The old all-input classification and domain transaction model contract are replaced by sparse source selections/events. Existing native domain validators remain authoritative. Village format 17 and relationship contract 4 reject older saves without migration.
 
-Remaining cost comes from complete source metadata on newly appended history, current authoritative context, JSON/output structure, natural differences in prose and provider reasoning. In the latest three warm ordinary pairs, visible output was nearly equal: 1,081 tokens versus 1,055. Reported reasoning was 1,082 versus 120, accounting for about 67% of the $0.000856998 excess cost; uncached input accounted for about 25%. Reasoning is already part of total completion tokens. Both modes retained their saved settings and the provider's default thinking effort; an omitted effort option does not mean thinking was disabled. More prompt text does not necessarily imply greater cost when cached, and this small sample does not establish a universal consequence-cost ceiling.
+Remaining cost comes from complete source metadata on newly appended history, current authoritative context, JSON/output structure, natural differences in prose and provider reasoning. In the latest three warm ordinary pairs, visible output was 1,035 tokens versus 981. Reported reasoning was 916 versus 137, accounting for about 64% of the $0.000730794 excess cost; uncached input accounted for about 24%. Reasoning is already part of total completion tokens. Both modes retained their saved settings and the provider's default thinking effort; an omitted effort option does not mean thinking was disabled. More prompt text does not necessarily imply greater cost when cached, and this small sample does not establish a universal consequence-cost ceiling.
 
 The sample is one synthetic resident, one continuously growing world and a small set of matched inputs. Generated histories diverged naturally. The native Game prompt represents the stored card differently: exact scenario/example strings were absent from the inspected prompt, while Villages preserves all authored fields. No shortened Villages identity or inflated Game prompt was used to improve the comparison. Broader multi-resident/provider quality and repeated cost samples remain necessary before promising general parity.
 

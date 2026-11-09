@@ -191,6 +191,32 @@ const memory = expand([
 assert.equal(memory.learners.player.attributedTo, "a");
 assert.equal(memory.learners.player.support[0].excerpt, segments[0].text);
 assert.equal(memory.screening.fingerprint, context._memoryWrite.protection.fingerprint);
+{
+  const value = { kind: "information", text: "Ada's report.", basis: "report", knowers: ["a"] };
+  const source = "é".repeat(160);
+  const response = (texts: string[], quotes?: string[]) =>
+    (
+      expandSceneEvents(
+        {
+          input: [],
+          segments: texts.map((text) => ({ kind: "dialogue", speakerId: "a", text })),
+          events: [
+            { type: "memory", at: texts.map((_, index) => index), value: { ...value, ...(quotes ? { quotes } : {}) } },
+          ],
+        },
+        context,
+      ) as any
+    ).memoryChanges[0];
+  assert.equal(response([source]).learners.a.support[0].excerpt, source, "Code copies a full 320-byte source");
+  assert(response([source + "é"]).rejectedEvent, "A 322-byte source needs an explicit supporting excerpt");
+  assert.deepEqual(
+    response(["A short source.", source + "é"], ["A short source.", source]).learners.a.support.map(
+      (row: { excerpt: string }) => row.excerpt,
+    ),
+    ["A short source.", source],
+    "Mixed short and long sources retain their own exact support",
+  );
+}
 const binding = {
   source: { kind: "scene" as const, id: "turn", revision: 1, fingerprint: "a".repeat(64) },
   operationId: "operation",

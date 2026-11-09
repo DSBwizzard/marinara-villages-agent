@@ -6,10 +6,10 @@
   "model": "deepseek-flash",
   "providerEndpoint": "https://api.deepseek.com",
   "pricingSource": "https://api-docs.deepseek.com/quick_start/pricing/",
-  "pricingCheckedAt": "2026-11-09T15:44:28.775Z",
+  "pricingCheckedAt": "2026-11-09T15:56:35.178Z",
   "limitations": [
     "One synthetic resident and one continuous quiet world, with matching player inputs but naturally different generated histories.",
-    "This records all 61 reported requests across implementation iterations. It is not a randomized before/after experiment.",
+    "This records all 71 reported requests across implementation iterations. It is not a randomized before/after experiment.",
     "Rates change from peak to off-peak at 10:00 UTC; same-rate mode comparisons and token counts must be used for improvement claims.",
     "Costs are usage multiplied by published rates, not invoice amounts. Cache writes and provider-internal retries are unreported.",
     "Reasoning tokens are a subset of output and are charged once. Saved model and reasoning parameters were preserved.",
@@ -1828,6 +1828,296 @@
           "replayAdditionalRequests": null
         }
       ]
+    },
+    {
+      "id": "live-conditional",
+      "engineRevision": "73441f9a620dfdd94a28b94b68aa8f8b8ef1321c",
+      "sourceRevision": "742a861737191ca8a1bbe0ab5ba4e1f52f73526f",
+      "archiveHash": "c19230399f1f2857e3efc8c36e27419f598203f0699afdd068786e8818c6cf37",
+      "turns": [
+        {
+          "mode": "villages",
+          "caseId": "conditional-warmup",
+          "message": "I like how calm it is here.",
+          "startedAt": "2026-11-09T15:49:24.004Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 21071,
+          "cachedInputTokens": 0,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 642,
+          "reasoningTokens": 374,
+          "latencyMs": 7389,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.0035458499999999997,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 2
+          },
+          "replayAdditionalRequests": 0
+        },
+        {
+          "mode": "game",
+          "caseId": "conditional-warmup",
+          "message": "I like how calm it is here.",
+          "startedAt": "2026-11-09T15:49:31.396Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 14687,
+          "cachedInputTokens": 13952,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 582,
+          "reasoningTokens": 127,
+          "latencyMs": 6289,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.000501306,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "ordinary-company",
+          "message": "I am happy to keep you company for a while.",
+          "startedAt": "2026-11-09T15:49:37.688Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 21494,
+          "cachedInputTokens": 20352,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 474,
+          "reasoningTokens": 227,
+          "latencyMs": 5526,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.0005167559999999999,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 2
+          },
+          "replayAdditionalRequests": 0
+        },
+        {
+          "mode": "game",
+          "caseId": "ordinary-company",
+          "message": "I am happy to keep you company for a while.",
+          "startedAt": "2026-11-09T15:49:43.217Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 15156,
+          "cachedInputTokens": 14336,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 354,
+          "reasoningTokens": 71,
+          "latencyMs": 4588,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.000378408,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "ordinary-window",
+          "message": "Is the light from that window good for working?",
+          "startedAt": "2026-11-09T15:49:47.806Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 21883,
+          "cachedInputTokens": 20736,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 464,
+          "reasoningTokens": 158,
+          "latencyMs": 6040,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.0005126579999999999,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 2
+          },
+          "replayAdditionalRequests": 0
+        },
+        {
+          "mode": "game",
+          "caseId": "ordinary-window",
+          "message": "Is the light from that window good for working?",
+          "startedAt": "2026-11-09T15:49:53.847Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 15452,
+          "cachedInputTokens": 14848,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 389,
+          "reasoningTokens": 54,
+          "latencyMs": 4740,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.000368544,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "ordinary-weather",
+          "message": "Does a rainy day change the mood in here?",
+          "startedAt": "2026-11-09T15:49:58.590Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 22258,
+          "cachedInputTokens": 21248,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 1013,
+          "reasoningTokens": 531,
+          "latencyMs": 10300,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.000823044,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 2
+          },
+          "replayAdditionalRequests": 0
+        },
+        {
+          "mode": "game",
+          "caseId": "ordinary-weather",
+          "message": "Does a rainy day change the mood in here?",
+          "startedAt": "2026-11-09T15:50:08.892Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 15800,
+          "cachedInputTokens": 15104,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 375,
+          "reasoningTokens": 12,
+          "latencyMs": 4444,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.00037471199999999997,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "memory-father",
+          "message": "Please remember this about me: my father Rowan taught me to mend chairs. I still use the little wooden mallet he made for me.",
+          "startedAt": "2026-11-09T15:50:13.338Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 22939,
+          "cachedInputTokens": 21504,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 1572,
+          "reasoningTokens": 844,
+          "latencyMs": 13057,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.001222962,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 2
+          },
+          "replayAdditionalRequests": 0,
+          "semanticAssessment": "passed-native-memory-persistence",
+          "semanticEvidence": "Native owner inspection contains a fourth Memory: the player reported that father Rowan taught chair repair and made the wooden mallet. Only Mara is a knower; the event cites input:0 with basis report. Exact owner records survived an ordinary restart with zero added provider requests. Current Scene recall was not used as proof."
+        },
+        {
+          "mode": "game",
+          "caseId": "memory-father",
+          "message": "Please remember this about me: my father Rowan taught me to mend chairs. I still use the little wooden mallet he made for me.",
+          "startedAt": "2026-11-09T15:50:26.397Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 16194,
+          "cachedInputTokens": 15488,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 768,
+          "reasoningTokens": 371,
+          "latencyMs": 7772,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.000613164,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        }
+      ]
     }
   ],
   "engineRevisions": [
@@ -1835,12 +2125,12 @@
     "73441f9a620dfdd94a28b94b68aa8f8b8ef1321c"
   ],
   "observedTotals": {
-    "requests": 61,
+    "requests": 71,
     "runtimeFailedComparisons": 3,
     "semanticFailedComparisons": 1,
     "failedComparisons": 4,
     "replacementRequests": 1,
-    "knownRatedCostUsd": 0.06105944099999999,
+    "knownRatedCostUsd": 0.06991684499999996,
     "actualInvoiceCostUsd": null
   }
 }
