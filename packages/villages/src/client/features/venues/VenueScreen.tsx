@@ -638,11 +638,12 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
           <button
             type="button"
             className={`${ELEMENT_TAG}-venue-back`}
-            data-scene={activeScene || undefined}
             disabled={navigationBusy}
-            onClick={back}
+            onClick={async () => {
+              if (await canLeave()) leaveVenue("map");
+            }}
           >
-            {activeScene ? "Back to Scene" : "← Back"}
+            ← Map
           </button>
           <div>
             <h1 className={`${ELEMENT_TAG}-title`}>{place.name}</h1>
@@ -671,6 +672,11 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
               ) : null}
             </dl>
           </div>
+          {activeScene ? (
+            <button type="button" className={`${ELEMENT_TAG}-venue-back`} disabled={navigationBusy} onClick={back}>
+              Back to Scene
+            </button>
+          ) : null}
         </header>
         <nav className={`${ELEMENT_TAG}-venue-sections`} aria-label="Venue sections">
           {(["about", "zones", "manage"] as const).map((section) => (

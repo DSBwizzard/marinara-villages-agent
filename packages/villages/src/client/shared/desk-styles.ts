@@ -26,7 +26,7 @@ export const DESK_STYLES = `
 .${P}-desk-workspace[data-phase="closing"] .${P}-desk-document{transform:translateY(calc(100% + 120px))}
 .${P}-desk-workspace[data-desk="people"]{--desk-art:var(--desk-art-desktop,url('/api/capability-packages/villages/assets/people-desk.webp'))}
 .${P}-desk-workspace[data-desk="projects"]{--desk-art:var(--desk-art-desktop,url('/api/capability-packages/villages/assets/desk-art/projects-desktop.webp'));--desk-art-inset:-22px -40px -24px}
-.${P}-desk-workspace[data-desk="places"]{--desk-art:var(--desk-art-desktop,url('/api/capability-packages/villages/assets/desk-art/places-desktop.webp'))}
+.${P}-desk-workspace[data-desk="places"]{--desk-art:var(--desk-art-desktop,url('/api/capability-packages/villages/assets/desk-art/places-desktop.webp'));--desk-art-inset:-22px -24px 0}
 .${P}-desk-workspace[data-desk="places"][data-venue="true"]{--desk-art:var(--desk-venue-desktop,url('/api/capability-packages/villages/assets/desk-art/venue-desktop.webp'))}
 .${P}-desk-workspace[data-desk="mailbox"]{--desk-art:var(--desk-art-desktop,url('/api/capability-packages/villages/assets/desk-art/mailbox-desktop.webp'))}
 .${P}-desk-workspace[data-desk="settings"]{--desk-art:var(--desk-art-desktop,url('/api/capability-packages/villages/assets/desk-art/settings-desktop.webp'))}
@@ -70,8 +70,7 @@ export const DESK_STYLES = `
 .${P}-venue-metadata{display:flex;flex-wrap:wrap;gap:4px 12px;margin:10px 0 0;color:#6b5a49;font-size:clamp(14px,1.3vw,18px)}
 .${P}-venue-metadata>div{display:flex;min-width:0;max-width:100%}.${P}-venue-metadata>div+div::before{content:"·";margin-right:12px}
 .${P}-venue-metadata dt{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}.${P}-venue-metadata dd{margin:0;overflow-wrap:break-word}
-.${P}-venue-back{display:none;order:2;flex:none;min-height:44px;padding:8px 0;background:transparent;color:#52663b;border:0;font:inherit;cursor:pointer}
-.${P}-venue-back[data-scene="true"]{display:block}
+.${P}-venue-back{display:block;order:2;flex:none;min-height:44px;padding:8px 0;background:transparent;color:#52663b;border:0;font:inherit;cursor:pointer}
 .${P}-workspace-content .${P}-venue-profile-body{max-width:none;margin:0;padding:24px 0 8px}
 .${P}-workspace-content .${P}-venue-sections{display:flex;gap:12px;border-bottom:1px solid #b9a480;background:transparent}
 .${P}-workspace-content .${P}-venue-sections button{flex:0 1 auto;min-width:0;padding:10px 22px;border:0;border-bottom:3px solid transparent;border-radius:0;background:transparent;color:#362a20;font:400 20px/1.3 Georgia,serif}
@@ -131,7 +130,7 @@ export const DESK_STYLES = `
 @media(max-width:700px){
  .${P}-desk-workspace[data-desk="people"]{--desk-art:var(--desk-art-phone,url('/api/capability-packages/villages/assets/people-phone.webp'))}
  .${P}-desk-workspace[data-desk="projects"]{--desk-art:var(--desk-art-phone,url('/api/capability-packages/villages/assets/desk-art/projects-phone.webp'));--desk-art-inset:-28px -20px -10px}
- .${P}-desk-workspace[data-desk="places"]{--desk-art:var(--desk-art-phone,url('/api/capability-packages/villages/assets/desk-art/places-phone.webp'))}
+ .${P}-desk-workspace[data-desk="places"]{--desk-art:var(--desk-art-phone,url('/api/capability-packages/villages/assets/desk-art/places-phone.webp'));--desk-art-inset:-14px -2px 0}
  .${P}-desk-workspace[data-desk="places"][data-venue="true"]{--desk-art:var(--desk-venue-phone,url('/api/capability-packages/villages/assets/desk-art/venue-phone.webp'))}
  .${P}-desk-workspace[data-desk="mailbox"]{--desk-art:var(--desk-art-phone,url('/api/capability-packages/villages/assets/desk-art/mailbox-phone.webp'))}
  .${P}-desk-workspace[data-desk="settings"]{--desk-art:var(--desk-art-phone,url('/api/capability-packages/villages/assets/desk-art/settings-phone.webp'))}

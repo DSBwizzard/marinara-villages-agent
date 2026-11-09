@@ -102,35 +102,39 @@ export function useLeaveVenue(ports: {
     observer.observe(element, { childList: true, subtree: true });
     return () => observer.disconnect();
   }, [screen, element]);
-  return useCallback(() => {
-    const places = (!venueReturnTo || venueReturnTo === "home") && explorationReturnTab?.current === "places";
-    const pinId =
-      explorationReturnTab?.current === "map" ? venueId : explorationOrigin?.current?.getAttribute("data-pin-id");
-    setExploreSheet(places ? { tab: "places" } : null);
-    setVenuePage("view");
-    setVenueEditDraft(null);
-    setVenueProposalDraft(null);
-    setOpenPlaceId(null);
-    setScreen(venueReturnTo ?? "home");
-    if (!venueReturnTo || venueReturnTo === "home")
-      focusSelector.current =
-        places && venueId
-          ? `[data-exploration-row="${CSS.escape(venueId)}"]`
-          : pinId
-            ? `[data-pin-id="${CSS.escape(pinId)}"]`
-            : `[data-explore-tab="${explorationReturnTab?.current ?? "map"}"]`;
-  }, [
-    explorationReturnTab,
-    venueId,
-    explorationOrigin,
-    setExploreSheet,
-    setVenuePage,
-    setVenueEditDraft,
-    setVenueProposalDraft,
-    setOpenPlaceId,
-    setScreen,
-    venueReturnTo,
-  ]);
+  return useCallback(
+    (destination?: "map") => {
+      const returnTo = destination === "map" ? "home" : (venueReturnTo ?? "home");
+      const places = returnTo === "home" && (destination === "map" || explorationReturnTab?.current === "places");
+      const pinId =
+        explorationReturnTab?.current === "map" ? venueId : explorationOrigin?.current?.getAttribute("data-pin-id");
+      setExploreSheet(places ? { tab: "places" } : null);
+      setVenuePage("view");
+      setVenueEditDraft(null);
+      setVenueProposalDraft(null);
+      setOpenPlaceId(null);
+      setScreen(returnTo);
+      if (returnTo === "home")
+        focusSelector.current =
+          places && venueId
+            ? `[data-exploration-row="${CSS.escape(venueId)}"]`
+            : pinId
+              ? `[data-pin-id="${CSS.escape(pinId)}"]`
+              : `[data-explore-tab="${explorationReturnTab?.current ?? "map"}"]`;
+    },
+    [
+      explorationReturnTab,
+      venueId,
+      explorationOrigin,
+      setExploreSheet,
+      setVenuePage,
+      setVenueEditDraft,
+      setVenueProposalDraft,
+      setOpenPlaceId,
+      setScreen,
+      venueReturnTo,
+    ],
+  );
 }
 
 export function useSaveVenue(ports: {

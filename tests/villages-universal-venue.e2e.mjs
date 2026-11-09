@@ -244,10 +244,31 @@ await withBrowser(browser, async () => {
         return range.getClientRects().length;
       });
     assert.equal(typeLines, 1, "Venue type words remain readable without splitting across lines");
+    const desk = page.locator(`.${prefix}-desk-workspace`);
+    const checkArtworkBottom = async () => {
+      const margin = await desk.evaluate((root) => {
+        const stage = root.querySelector(".marinara-capability-villages-desk-stage");
+        const paper = root.querySelector(".marinara-capability-villages-desk-document");
+        const bottom = paper.getBoundingClientRect().bottom - parseFloat(getComputedStyle(paper, "::before").bottom);
+        return stage.getBoundingClientRect().bottom - bottom;
+      });
+      assert(margin >= 6, "The complete artwork ends inside the desk clipping area");
+    };
+    await checkArtworkBottom();
+    const deskNavigation = page.getByRole("navigation", { name: "Village navigation", exact: true });
+    await deskNavigation.getByRole("button", { name: "Settings", exact: true }).click();
+    await expect(desk).toHaveAttribute("data-desk", "settings");
+    await deskNavigation.getByRole("button", { name: "Places", exact: true }).click();
+    await expect(profile.getByRole("heading", { name: "Warehouse home", exact: true })).toBeVisible();
+    await profile.getByRole("button", { name: "← Map", exact: true }).click();
+    await expect(page.getByRole("complementary", { name: "Places navigator" })).toBeVisible();
+    await expect(desk).not.toHaveAttribute("data-venue", "true");
+    await checkArtworkBottom();
+    await openProfile();
     let selectedVenue = place.id;
     const chooseVenue = async (id, name) => {
       if (width < 700) {
-        await profile.getByRole("button", { name: "← Back", exact: true }).click();
+        await profile.getByRole("button", { name: "← Map", exact: true }).click();
         const row = page
           .getByRole("complementary", { name: "Places navigator" })
           .locator(`[data-exploration-row="${selectedVenue}"]`);
@@ -483,7 +504,7 @@ await withBrowser(browser, async () => {
     await expect(profile.getByRole("button", { name: "Generate new picture" })).toHaveCount(0);
     const beforeName = writes.length;
     await profile.getByLabel("Venue name", { exact: true }).fill("Renamed warehouse");
-    if (width < 700) await profile.getByRole("button", { name: "← Back", exact: true }).click();
+    if (width < 700) await profile.getByRole("button", { name: "← Map", exact: true }).click();
     else await chooseVenue(otherId, "The Harbour");
     await page
       .getByRole("dialog", { name: "Confirm", exact: true })
