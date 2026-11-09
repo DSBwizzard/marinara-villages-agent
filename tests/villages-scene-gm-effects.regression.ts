@@ -157,6 +157,7 @@ for (const scenario of [
                   { kind: "dialogue", speakerId: "mara", text: "Thank you for hearing me. I feel more at ease." },
                 ],
                 events: [
+                  { type: "presentation", actorId: "mara", at: 0, value: { look: { target: "player" } } },
                   {
                     type: "relationship",
                     actorId: "mara",

@@ -228,7 +228,14 @@ const writingScene = {
   },
   operation: { input: admission },
 } as typeof scene;
-for (const failure of ["none", "validation-input", "presentation-publish", "invalid-response"]) {
+for (const failure of [
+  "none",
+  "invalid-cue",
+  "invalid-cue-envelope",
+  "validation-input",
+  "presentation-publish",
+  "invalid-response",
+]) {
   const retained = new Map<string, unknown>();
   let pending = true,
     paid = 0,
@@ -309,8 +316,9 @@ for (const failure of ["none", "validation-input", "presentation-publish", "inva
             {
               type: "presentation",
               actorId: "a",
-              at: [0],
+              at: failure === "invalid-cue" ? 0 : [0],
               value: { expression: "g-e-first", look: { target: "player" } },
+              ...(failure === "invalid-cue-envelope" ? { expression: "g-e-first" } : {}),
             },
             ...(failure === "invalid-response" && paid === 1
               ? [{ type: "access", at: [0], targetId: "missing", value: { venueId: "missing", outcome: "invite-now" } }]
@@ -326,7 +334,7 @@ for (const failure of ["none", "validation-input", "presentation-publish", "inva
   } as unknown as SceneWritingPorts);
   Math.random = () => 0;
   try {
-    if (failure !== "none") {
+    if (failure !== "none" && !failure.startsWith("invalid-cue")) {
       await assert.rejects(
         () => gmWriter.generate(gmScene, "", "chat", "", null),
         failure === "invalid-response" ? /unknown target|scope|authority/ : /Checkpoint persistence/,
@@ -335,7 +343,8 @@ for (const failure of ["none", "validation-input", "presentation-publish", "inva
       const written = await gmWriter.generate(gmScene, "", "chat", "", null);
       assert(!Object.hasOwn(written.lines[0], "expression"));
       assert(!Object.hasOwn(written.lines[0], "gazeAt"));
-      assert.equal(written.lines[0].staging![0].expression, "e-first");
+      if (failure.startsWith("invalid-cue")) assert.deepEqual(written.lines[0].staging ?? [], []);
+      else assert.equal(written.lines[0].staging![0].expression, "e-first");
     }
     assert.equal(paid, 1);
     assert.equal(rejected, failure === "invalid-response" ? 1 : 0, "Storage failures cannot reject valid paid writing");

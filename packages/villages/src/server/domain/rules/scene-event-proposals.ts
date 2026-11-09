@@ -93,9 +93,11 @@ export function expandSceneEvents(
   const createdWishes = new Set<string>();
   for (const candidate of events) {
     const event = object(candidate);
-    if (Object.keys(event).some((key) => !["type", "actorId", "targetId", "at", "value", "reason"].includes(key)))
-      return fail("An event includes unsupported authority fields.");
     const type = String(event.type);
+    if (Object.keys(event).some((key) => !["type", "actorId", "targetId", "at", "value", "reason"].includes(key))) {
+      if (type === "presentation") continue;
+      return fail("An event includes unsupported authority fields.");
+    }
     const domain = (
       {
         memory: "memoryChanges",
@@ -550,6 +552,8 @@ export function expandSceneEvents(
           fail("The GM proposed an unsupported event type.");
       }
     } catch (error) {
+      // Cosmetic cues cannot invalidate otherwise usable dialogue or domain proposals.
+      if (type === "presentation") continue;
       if (!domain) throw error;
       const rejected = { rejectedEvent: candidate, message: error instanceof Error ? error.message : String(error) };
       if (domain === "relationshipChanges") result.relationshipChanges.changes.push(rejected);
