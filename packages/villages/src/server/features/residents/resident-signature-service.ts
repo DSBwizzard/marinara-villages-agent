@@ -214,6 +214,10 @@ export function createResidentSignatures({
       matchesRevision(previous?.data, initial) &&
       Boolean(previous.data.response || (previous.data.original && previous.data.image));
     const connectionId = recover ? "" : await resolveVillageImageConnectionId();
+    if (!recover && JSON.stringify(initial.resident.cardSnapshot.name).length > 4000)
+      throw badRequest(
+        "This Villager's name is too long for signature artwork. Shorten the character name before generating a signature.",
+      );
     const reuseSelection =
       !recover &&
       previous?.data.status !== "saved" &&

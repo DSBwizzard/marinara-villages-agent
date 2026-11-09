@@ -602,17 +602,19 @@ async function main() {
         "Elided evidence changes fence paid recovery",
       );
 
-      const requestsBeforeLongName = requests;
-      await mutateVillageState((state) => {
-        state.villagers[0]!.cardSnapshot.name = "a".repeat(5000);
-      });
-      const invalidText = await generateResidentSignature(
-        "mara",
-        action(56, (await readResidentSignature("mara")).attempt),
-      );
-      assert.equal(invalidText.status, "failed");
-      assert.match(invalidText.error, /complete signing habit/);
+      const requestsBeforeLongName = requests,
+        textBeforeLongName = textRequests;
+      for (const name of ["a".repeat(9000), '"'.repeat(2500)]) {
+        await mutateVillageState((state) => {
+          state.villagers[0]!.cardSnapshot.name = name;
+        });
+        await assert.rejects(
+          generateResidentSignature("mara", action(56, (await readResidentSignature("mara")).attempt)),
+          /name is too long/,
+        );
+      }
       assert.equal(requests, requestsBeforeLongName, "Oversized names fail before image dispatch");
+      assert.equal(textRequests, textBeforeLongName, "Oversized serialized names fail before System spending");
       console.log(
         "Villager signatures: stable handwriting, transparent crop, persistence, free recovery, explicit retries and late-effect fences passed",
       );
