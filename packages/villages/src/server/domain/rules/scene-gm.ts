@@ -31,11 +31,11 @@ export const SCENE_GM_BOUNDARY =
 
 /** Compact model view; private Memory authority is retained by the saved writing request. */
 export function sceneGmContext(context: ReturnType<typeof semanticContext>) {
-  const { _memoryWrite: _private, loreSelection: _lore, actors, social, ...rest } = context;
+  const { _memoryWrite: _private, loreSelection: _lore, history: _history, actors, social, ...rest } = context;
   const live = asRecord(social.live);
   return {
     ...rest,
-    actors: actors.map(({ character: _card, ...actor }) => actor),
+    actors: actors.map(({ character: _card, admission: _admission, ...actor }) => actor),
     social: {
       edges: live.edges,
       intentions: live.intentions,

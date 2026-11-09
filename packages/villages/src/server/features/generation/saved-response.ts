@@ -5,10 +5,17 @@ import type { VillageCompletionOptions } from "../../domain/models/completion-mo
 import { retainPrivateDiagnostic } from "../../adapters/observability/private-diagnostics.js";
 
 type Response = { token: string; digest: string; result: Completion };
-const usageFields = ["promptTokens", "completionTokens", "completionReasoningTokens", "totalTokens"] as const;
+const usageFields = [
+  "promptTokens",
+  "completionTokens",
+  "completionReasoningTokens",
+  "totalTokens",
+  "cachedPromptTokens",
+  "cacheWritePromptTokens",
+] as const;
 type UsageField = (typeof usageFields)[number];
 type Receipt = {
-  format: 1;
+  format: 2;
   purpose: "standalone-generation";
   fingerprint: string;
   dispatched: number;
@@ -46,7 +53,7 @@ export async function claimSavedResponse(
     coerce: (raw: unknown): Receipt => {
       if (raw === undefined)
         return {
-          format: 1,
+          format: 2,
           purpose: "standalone-generation",
           fingerprint,
           dispatched: 0,
@@ -68,7 +75,7 @@ export async function claimSavedResponse(
           replayDigest(value.result) === value.digest);
       if (
         !row ||
-        row.format !== 1 ||
+        row.format !== 2 ||
         row.purpose !== "standalone-generation" ||
         typeof row.fingerprint !== "string" ||
         !/^[a-f0-9]{64}$/.test(row.fingerprint) ||
