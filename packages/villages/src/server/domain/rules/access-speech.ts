@@ -5,6 +5,16 @@ import { managesAccess, zoneManagers } from "./venue-access.js";
 import { sceneEvidencePerception } from "./scene-evidence-perception.js";
 import type { VenueLine } from "../models/scene-model.js";
 
+export const accessOutcomeActions: ReadonlyMap<string, string> = new Map([
+  ["invite-now", "invite"],
+  ["invite-later", "invite"],
+  ["invite-outside-hours", "invite"],
+  ["ban-zone", "ban"],
+  ["ban-venue", "ban"],
+  ["refuse", "refuse-entry"],
+  ["dismiss", "leave-now"],
+]);
+
 /** Player perception is separate from resident listener IDs; this grants no authority by itself. */
 export function accessIssuerWitnessed(
   line: Pick<VenueLine, "heardBy" | "speakerId" | "kind"> & Partial<VenueLine> & { playerHeard?: boolean },
@@ -19,7 +29,7 @@ export function accessIssuerWitnessed(
 export function accessManagementPrompt(village: VillageState, actors: string[], venueId?: string) {
   const locations = venueId ? [findLocation(village, venueId)].filter((venue) => !!venue) : village.venues;
   const scopes = locations
-    .filter((venue) => venue.access && (!venueId || venue.id === venueId))
+    .filter((venue) => venue.access && venue.id !== village.communityVenueId && (!venueId || venue.id === venueId))
     .flatMap((venue) =>
       actors.flatMap((actor) => {
         const venueManager = managesAccess(venue, null, actor);

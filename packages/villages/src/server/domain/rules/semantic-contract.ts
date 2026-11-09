@@ -215,7 +215,12 @@ export function semanticContext(
               : {}),
           }))
       : [],
-    access: compact && venue?.access ? accessRules : venue?.access,
+    access: venue?.access
+      ? {
+          ...(compact ? accessRules : venue.access),
+          ...(venue.id === state.communityVenueId ? { neutralCommunity: true } : {}),
+        }
+      : undefined,
     accessManagement: [
       ...accessManagementPrompt(
         state,

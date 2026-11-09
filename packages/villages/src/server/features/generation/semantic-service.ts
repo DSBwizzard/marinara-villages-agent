@@ -2,6 +2,7 @@ import type { InterpretationBatch } from "../../domain/models/interpretation-mod
 import type { NarrativeAdmission } from "../../domain/models/narrative-model.js";
 import type { VenueReplyLine, VenueScene } from "../../domain/models/scene-model.js";
 import type { SemanticExchange, SemanticIntent } from "../../domain/models/semantic-model.js";
+import type { VillageVenue } from "../../domain/models/world.js";
 import { asRecord } from "../../domain/rules/coerce.js";
 import {
   badGateway,
@@ -10,7 +11,7 @@ import {
   UnsupportedScenePerception,
   VillagesRequestError,
 } from "../../domain/rules/errors.js";
-import { findLocation } from "../../domain/rules/places.js";
+import { findLocation, sceneActorIds } from "../../domain/rules/places.js";
 import { normalizeGmEffects } from "../../domain/rules/scene-gm.js";
 import { readSceneNarrativeReview } from "../../domain/rules/scene-narrative-effects.js";
 
@@ -31,13 +32,13 @@ import {
 import { semanticPlayerMoves } from "../../domain/rules/semantic-timeline.js";
 import { wishHistoryLoaded } from "../../domain/rules/social-wishes.js";
 import { readSceneSpritePresentation, type SpriteSelectionContext } from "../../domain/rules/sprite-expressions.js";
-import { managesAccess, readAccessCommand } from "../../domain/rules/venue-access.js";
+import { applyAccessCommand, managesAccess, readAccessCommand } from "../../domain/rules/venue-access.js";
 import { readContactMoves } from "../../domain/rules/venue-contact.js";
 import { venueInArea } from "../../domain/rules/venue-model.js";
 import { readVenueSceneChange } from "../../domain/rules/venue-scene-state.js";
 import { canInviteToZone, resolveVenueZone, venueInZone } from "../../domain/rules/venue-zones.js";
 import { routeZoneEvents } from "../../domain/rules/zone-events.js";
-import { accessIssuerWitnessed } from "../../domain/rules/access-speech.js";
+import { accessIssuerWitnessed, accessOutcomeActions } from "../../domain/rules/access-speech.js";
 import { capturedPlayerSpeechMatches } from "../../domain/rules/player-speech-capture.js";
 
 export interface SemanticPorts {
@@ -443,6 +444,7 @@ export function createSemanticService(ports: SemanticPorts) {
         };
         if (!Array.isArray(raw.access) || raw.access.length > 16)
           throw badGateway("System access interpretation is incomplete.");
+        const accessPreviews = new Map<string, VillageVenue>();
         for (const value of raw.access) {
           const row = asRecord(value);
           if (
@@ -481,6 +483,11 @@ export function createSemanticService(ports: SemanticPorts) {
           if (row.duration === "standing" && ["invite-now", "invite-later"].includes(String(row.outcome)))
             throw badGateway("Standing permission must use the standing grant contract.");
           const zone = typeof row.zoneId === "string" ? resolveVenueZone(venue, row.zoneId) : undefined;
+          if (
+            (row.outcome === "ban-zone" && (!zone || zone.kind === "exterior")) ||
+            (row.outcome === "ban-venue" && row.zoneId !== null)
+          )
+            throw badGateway("The access ban must identify its exact Zone or whole-Venue scope.");
           const sourceIndexes = interpretedIntent.timeline.flatMap((step, index) =>
             step.kind === "action" || step.kind === "speech" ? [index] : [],
           );
@@ -511,7 +518,7 @@ export function createSemanticService(ports: SemanticPorts) {
             throw badGateway("System access evidence was not witnessed by its issuer.");
           const id = `semantic:${hash}:access:${access.checks.length}`;
           const visit =
-            venue.access && ["invite-now", "invite-later"].includes(String(row.outcome))
+            venue.access && accessOutcomeActions.get(String(row.outcome)) === "invite"
               ? readAccessCommand({
                   action: "invite",
                   operationId: id,
@@ -520,8 +527,8 @@ export function createSemanticService(ports: SemanticPorts) {
                   visitorId: "player",
                   duration: "visit",
                   accompanied: row.accompanies || row.conditions.includes("accompanied"),
-                  outsideHours: false,
-                  ...(row.outcome === "invite-now" && venue.id === scene.placeId ? { sceneId: scene.id } : {}),
+                  outsideHours: row.outcome === "invite-outside-hours",
+                  ...(row.outcome !== "invite-later" && venue.id === scene.placeId ? { sceneId: scene.id } : {}),
                 })
               : null;
           let management;
@@ -546,10 +553,41 @@ export function createSemanticService(ports: SemanticPorts) {
               throw badGateway("The access command does not match the interpreted scope and conditions.");
           } else if (row.outcome === "access-management")
             throw badGateway("The access management event is missing its exact command.");
+          const action = accessOutcomeActions.get(String(row.outcome));
+          const inferred =
+            !management && !visit && action && (action === "ban" || venue.id === scene.placeId)
+              ? readAccessCommand({
+                  operationId: id,
+                  expectedRevision: venue.access?.revision,
+                  zoneId: row.outcome === "ban-venue" ? null : (row.zoneId ?? null),
+                  action,
+                  visitorId: "player",
+                  ...(action !== "ban" ? { sceneId: scene.id } : {}),
+                })
+              : undefined;
+          const command = management ?? visit ?? inferred;
+          if (command) {
+            const preview = accessPreviews.get(venue.id) ?? structuredClone(venue);
+            try {
+              applyAccessCommand(
+                preview,
+                { ...command, expectedRevision: preview.access!.revision },
+                row.actorId,
+                savedInput.context.preservation.chosenAt,
+                ["player", ...sceneActorIds(sceneState), ...admissions.map(({ npc }) => npc.id)],
+                [],
+                sceneState.communityVenueId,
+              );
+            } catch (error) {
+              if (error instanceof VillagesRequestError) throw badGateway(error.message);
+              throw error;
+            }
+            accessPreviews.set(venue.id, preview);
+          }
           const facts = {
             actorId: row.actorId,
             venueId: venue.id,
-            zoneId: row.zoneId ?? null,
+            zoneId: command ? command.zoneId : (row.zoneId ?? null),
             accessRevision: venue.access?.revision,
             semanticVersion: 2,
             accompanies: row.accompanies || row.conditions.includes("accompanied"),
@@ -564,7 +602,7 @@ export function createSemanticService(ports: SemanticPorts) {
                   },
                 }
               : {}),
-            ...(visit ? { accessCommand: visit } : management ? { accessCommand: management } : {}),
+            ...(command ? { accessCommand: command } : {}),
           };
           access.checks.push({
             id,

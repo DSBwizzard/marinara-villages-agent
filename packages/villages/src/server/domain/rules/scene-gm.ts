@@ -200,6 +200,7 @@ These source indexes refer to input, never generated segments; code checks group
 
 export const SCENE_GM_ACCESS = `Actual visit invitations, entry refusals, dismissals, bans and policy administration require access:[{actorId,venueId,zoneId,outcome:"invite-now|invite-later|refuse|dismiss|ban-zone|ban-venue|invite-outside-hours|access-management|unresolved",evidence:[segment],accompanies?,conditions?:["accompanied"],command?,inputSpan?}].
 A current valid manager's explicit policy change is administration now, even when INPUT is speech. Record its access-management command; without it the policy has not changed. Restating existing rules, hypothetical discussion and future intentions change nothing.
+The neutralCommunity flag protects a Community Venue: no policy/manager changes, bans, entry refusals or dismissals there. Entry refusals/dismissals apply only to the current Venue; declining a future visit elsewhere is dialogue, not a lasting entry restriction. Commands apply in listed order and must remain permitted after earlier changes.
 Cite actual current controller consent/refusal.
 For player-issued changes, inputSpan identifies the exact original INPUT speech or action span; omit it only when exactly one such span exists. Speech must match code's captured utterance. Thoughts, context and prior dialogue never authorize a current change.
 For player-issued changes, evidence cites the generated narration establishing the outcome, separately from inputSpan. A player policy change with INPUT speech uses inputSpan:0 and evidence:[0] when the first generated narration establishes it. NPC-issued decisions cite the issuer's actual current words. Narration alone never supplies player consent.
@@ -387,6 +388,7 @@ export function sceneGmContext(
     access: context.access
       ? {
           revision: access.revision,
+          ...(access.neutralCommunity === true ? { neutralCommunity: true } : {}),
           managerIds: access.managerIds,
           visitorHours: access.visitorHours,
           permissions,

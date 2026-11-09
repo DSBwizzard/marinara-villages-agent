@@ -94,12 +94,7 @@ export function savedAccessEvents(batch?: InterpretationBatch | null): SavedAcce
     ? batch.checks.flatMap((check, index) => {
         const facts = asRecord(check.facts),
           result = batch.results[index];
-        if (
-          !result ||
-          (!facts.accessCommand &&
-            !["refuse", "dismiss", "ban-zone", "ban-venue", "invite-outside-hours"].includes(result.outcome))
-        )
-          return [];
+        if (!result || !facts.accessCommand) return [];
         return [
           {
             id: check.id,

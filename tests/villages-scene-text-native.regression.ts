@@ -450,6 +450,7 @@ for (const variant of [
       assert.deepEqual(world.venues[0]!.zones![1]!.access, before.venues[0]!.zones![1]!.access);
     }
     assert.deepEqual(world.venues[0]!.access!.managerIds, ["player"]);
+    assert.equal(world.venues[0]!.access!.revision, 1, "Validation previews never write to the real ledger");
     assert(!host.scene().lines.some((l) => l.content.includes('"access"')));
     const source = host.scene().submissions[0]!.accessEvents![0]!.facts.playerInputSource!;
     assert.equal(source.inputSpan, variant === "mixed-private-speech" ? 1 : 0);
@@ -483,6 +484,227 @@ for (const variant of [
       );
     const replay = await host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
     assert.equal(replay.statusCode, 200, replay.body);
+    assert.equal(calls, 1);
+    assert.equal(
+      fixtureVillageState(host.records.get("villages-village").data, host.records).venues[0]!.access!.revision,
+      1,
+    );
+  } finally {
+    await host.stop();
+  }
+}
+for (const variant of [
+  "ban-zone",
+  "ban-venue",
+  "refuse",
+  "dismiss",
+  "zone-policy",
+  "ordered-revocation",
+  "outside-hours",
+  "ban-zone-null",
+  "ban-zone-missing",
+  "ban-venue-zone",
+] as const) {
+  const protectedCommunity = ["ban-zone", "ban-venue", "refuse", "dismiss", "zone-policy"].includes(variant);
+  const host = await packagedSceneServer({
+    configure(world) {
+      world.communityVenueId = protectedCommunity ? "mill" : "";
+      world.venues[0]!.access!.managerIds = ["mara"];
+    },
+  });
+  let calls = 0;
+  host.model.chatComplete = async (messages: any[]) => {
+    calls++;
+    const packet = messages
+      .flatMap((m) =>
+        m.content.split("\n").flatMap((line: string) => {
+          try {
+            return [JSON.parse(line)];
+          } catch {
+            return [];
+          }
+        }),
+      )
+      .find((p) => p.context);
+    assert.equal(packet.context.access.neutralCommunity === true, protectedCommunity);
+    if (protectedCommunity)
+      assert(
+        !(packet.context.accessManagement ?? []).some((scope: any) => scope.venueId === "mill"),
+        "Protected Community management is not advertised",
+      );
+    const access =
+      variant === "ordered-revocation"
+        ? [
+            {
+              actorId: "mara",
+              venueId: "mill",
+              zoneId: null,
+              outcome: "access-management",
+              evidence: [0],
+              command: { action: "venue-policy", managerIds: ["player"], visitorHours: null },
+            },
+            { actorId: "mara", venueId: "mill", zoneId: "common", outcome: "ban-zone", evidence: [1] },
+          ]
+        : [
+            {
+              actorId: "mara",
+              venueId: "mill",
+              zoneId:
+                variant === "ban-zone-missing"
+                  ? undefined
+                  : ["ban-venue", "ban-zone-null"].includes(variant)
+                    ? null
+                    : "common",
+              outcome:
+                variant === "zone-policy"
+                  ? "access-management"
+                  : variant === "outside-hours"
+                    ? "invite-outside-hours"
+                    : variant.startsWith("ban-zone")
+                      ? "ban-zone"
+                      : variant === "ban-venue-zone"
+                        ? "ban-venue"
+                        : variant,
+              evidence: [0],
+              ...(variant === "zone-policy"
+                ? {
+                    command: {
+                      action: "zone-policy",
+                      policy: {
+                        mode: "public",
+                        managerIds: null,
+                        memberIds: [],
+                        memberRoles: [],
+                        inviterIds: [],
+                        visitorHours: "always",
+                        accompanied: false,
+                      },
+                    },
+                  }
+                : {}),
+            },
+          ];
+    return {
+      content:
+        variant === "ordered-revocation"
+          ? "INPUT speech\n[mara] I give you sole management of this Venue.\n[mara] I now ban you from the common room.\nCHANGES " +
+            JSON.stringify({ access })
+          : "INPUT speech\n[mara] I make this access decision now, including explicit outside-hours permission if invited.\nCHANGES " +
+            JSON.stringify({ access }),
+      finishReason: "stop",
+      usage: { inputTokens: 10, outputTokens: 10 },
+    };
+  };
+  try {
+    await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+    const before = fixtureVillageState(host.records.get("villages-village").data, host.records);
+    const response = await host.app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/turn",
+      payload: {
+        sessionId: "browser",
+        submissionId: "native-access-" + variant,
+        mode: "chat",
+        message:
+          variant === "ordered-revocation"
+            ? "Mara, give me management, then tell me if you will ban me."
+            : "What is your access decision?",
+        expectedSceneRevision: host.scene().sceneRevision,
+      },
+    });
+    assert.equal(response.statusCode, variant === "outside-hours" ? 200 : 502, variant + ": " + response.body);
+    const after = fixtureVillageState(host.records.get("villages-village").data, host.records);
+    if (variant === "outside-hours") {
+      assert.equal(after.venues[0]!.access!.permissions.length, 1);
+      assert.equal(after.venues[0]!.access!.permissions[0]!.outsideHours, true);
+      assert.equal(after.venues[0]!.access!.revision, 1);
+      assert.equal((host.scene().submissions[0]!.accessEvents![0]!.facts.accessCommand as any).action, "invite");
+    } else {
+      assert.deepEqual(
+        after.venues[0]!.access,
+        before.venues[0]!.access,
+        "A forbidden command or invalid ordered batch cannot partially change access",
+      );
+      assert.equal(host.scene().submissions.length, 0);
+      assert.equal(host.scene().lines.length, 0, "Rejected effects cannot publish dialogue claiming success");
+    }
+    assert.equal(calls, 1, "Invalid access effects never buy an automatic repair");
+  } finally {
+    await host.stop();
+  }
+}
+for (const usesNewAuthority of [false, true]) {
+  const host = await packagedSceneServer({
+    configure(world) {
+      world.venues[0]!.access!.managerIds = ["player"];
+      world.worldPlaces.revision = 1;
+    },
+  });
+  let calls = 0;
+  host.model.chatComplete = async () => {
+    calls++;
+    const access: any[] = [
+      {
+        actorId: "player",
+        venueId: "mill",
+        zoneId: "common",
+        outcome: "access-management",
+        inputSpan: 0,
+        evidence: [1],
+        command: {
+          action: "zone-policy",
+          policy: {
+            mode: "public",
+            managerIds: ["player", "new:guest"],
+            memberIds: [],
+            memberRoles: [],
+            inviterIds: [],
+            visitorHours: "inherit",
+            accompanied: false,
+          },
+        },
+      },
+    ];
+    if (usesNewAuthority)
+      access.push({ actorId: "new:guest", venueId: "mill", zoneId: "common", outcome: "ban-zone", evidence: [2] });
+    return {
+      content:
+        "INPUT speech\n[narration] Jo enters the common room.\n[narration] You add Jo as a co-manager of this room, retaining its other rules.\n[new:guest] " +
+        (usesNewAuthority ? "I ban you from this room now." : "Thank you.") +
+        "\nCHANGES " +
+        JSON.stringify({
+          npcIntroductions: [{ ref: "new:guest", name: "Jo", characterization: "A friendly traveler", segment: 0 }],
+          access,
+        }),
+      finishReason: "stop",
+      usage: { inputTokens: 10, outputTokens: 10 },
+    };
+  };
+  try {
+    await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+    const before = fixtureVillageState(host.records.get("villages-village").data, host.records);
+    const result = await host.app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/turn",
+      payload: {
+        sessionId: "browser",
+        submissionId: "new-manager-" + usesNewAuthority,
+        mode: "chat",
+        message: "I add the arriving Jo as co-manager of this room, retaining its other rules.",
+        expectedSceneRevision: host.scene().sceneRevision,
+      },
+    });
+    assert.equal(result.statusCode, usesNewAuthority ? 502 : 200, result.body);
+    const world = fixtureVillageState(host.records.get("villages-village").data, host.records);
+    if (usesNewAuthority) {
+      assert.deepEqual(world.venues[0]!.access, before.venues[0]!.access);
+      assert.equal(host.scene().submissions.length, 0);
+    } else {
+      const guest = Object.values(world.worldPlaces.npcs).find((npc) => npc.name === "Jo")!;
+      assert(guest, "The validated new arrival is saved before access effects");
+      assert.deepEqual(world.venues[0]!.zones![1]!.access!.managerIds, ["player", guest.id]);
+      assert.equal(world.venues[0]!.access!.revision, 1);
+    }
     assert.equal(calls, 1);
   } finally {
     await host.stop();

@@ -63,7 +63,6 @@ import {
   applyAccessCommand,
   claimVisitPermission,
   evaluateZoneAccess,
-  managesAccess,
   readAccessCommand,
   settleStandingAccess,
 } from "../../domain/rules/venue-access.js";
@@ -94,7 +93,7 @@ import {
 } from "../../domain/rules/venue-zones.js";
 import { metadataFailure, completionFailure as typedCompletionFailure } from "../../domain/rules/work-failure.js";
 import { zoneEventScene } from "../../domain/rules/zone-events.js";
-import { accessIssuerWitnessed } from "../../domain/rules/access-speech.js";
+import { accessIssuerWitnessed, accessOutcomeActions } from "../../domain/rules/access-speech.js";
 import { capturedPlayerSpeechMatches } from "../../domain/rules/player-speech-capture.js";
 import { type SceneReply } from "./writing.js";
 export interface SceneCommandPorts {
@@ -1826,7 +1825,14 @@ export function createSceneCommands({
 
   async function applySavedAccessEvents(scene: VenueScene, turn: VenueSubmission) {
     const events = turn.accessEvents ?? [];
-    if (events.some((event) => event.interpretationVersion !== 1 || asRecord(event.facts).semanticVersion !== 2))
+    if (
+      events.some(
+        (event) =>
+          event.interpretationVersion !== 1 ||
+          asRecord(event.facts).semanticVersion !== 2 ||
+          !event.facts.accessCommand,
+      )
+    )
       throw conflict("This saved access effect needs current evidence.");
     if (!events.length) return;
     const batch = {
@@ -1853,21 +1859,11 @@ export function createSceneCommands({
           facts = asRecord(check.facts),
           actor = String(facts.actorId);
         const management = asRecord(facts.accessCommand);
-        if (
-          !management.action &&
-          !["refuse", "dismiss", "ban-zone", "ban-venue", "invite-outside-hours"].includes(result.outcome)
-        )
-          continue;
-        const venue = findLocation(state, facts.venueId),
-          zone = venue && resolveVenueZone(venue, String(facts.zoneId));
-        if (!venue?.access || (!management.action && !zone && result.outcome !== "ban-venue")) continue;
+        if (!management.action) continue;
+        const venue = findLocation(state, facts.venueId);
+        if (!venue?.access) continue;
         if (!initialRevisions.has(venue.id)) initialRevisions.set(venue.id, venue.access.revision);
-        const operationId = management.action
-          ? String(management.operationId)
-          : "access-speech:" +
-            createHash("sha256")
-              .update(check.id + ":" + result.outcome)
-              .digest("hex");
+        const operationId = String(management.operationId);
         if (venue.access.receipts[operationId]) {
           continue;
         }
@@ -1891,11 +1887,7 @@ export function createSceneCommands({
           reject();
           continue;
         }
-        if (
-          management.action &&
-          result.outcome !== "access-management" &&
-          !(management.action === "invite" && ["invite-now", "invite-later"].includes(result.outcome))
-        ) {
+        if (result.outcome !== "access-management" && management.action !== accessOutcomeActions.get(result.outcome)) {
           reject();
           continue;
         }
@@ -1936,61 +1928,16 @@ export function createSceneCommands({
           reject();
           continue;
         }
-        const scope = result.outcome === "ban-venue" ? null : (zone?.id ?? null);
-        if (result.outcome.startsWith("ban-") && !managesAccess(venue, scope, actor)) {
-          reject();
-          continue;
-        }
-        const base = { operationId, expectedRevision: venue.access.revision, zoneId: scope, visitorId: "player" };
         try {
-          if (management.action)
-            applyAccessCommand(
-              venue,
-              readAccessCommand({ ...management, expectedRevision: venue.access.revision }),
-              actor,
-              turn.at,
-              ["player", ...sceneActorIds(state)],
-              sources.map((line) => line.id),
-              state.communityVenueId,
-            );
-          else if (result.outcome.startsWith("ban-"))
-            applyAccessCommand(
-              venue,
-              { ...base, action: "ban" },
-              actor,
-              turn.at,
-              ["player", ...sceneActorIds(state)],
-              sources.map((line) => line.id),
-              state.communityVenueId,
-            );
-          else if (result.outcome === "invite-outside-hours")
-            applyAccessCommand(
-              venue,
-              {
-                ...base,
-                action: "invite",
-                duration: "visit",
-                sceneId: venue.id === scene.placeId ? scene.id : undefined,
-                accompanied: facts.accompanies === true,
-                outsideHours: true,
-              },
-              actor,
-              turn.at,
-              ["player", ...sceneActorIds(state)],
-              sources.map((line) => line.id),
-              state.communityVenueId,
-            );
-          else if (venue.id === scene.placeId)
-            applyAccessCommand(
-              venue,
-              { ...base, action: result.outcome === "dismiss" ? "leave-now" : "refuse-entry", sceneId: scene.id },
-              actor,
-              turn.at,
-              ["player", ...sceneActorIds(state)],
-              sources.map((line) => line.id),
-              state.communityVenueId,
-            );
-          else continue;
+          applyAccessCommand(
+            venue,
+            readAccessCommand({ ...management, expectedRevision: venue.access.revision }),
+            actor,
+            turn.at,
+            ["player", ...sceneActorIds(state)],
+            sources.map((line) => line.id),
+            state.communityVenueId,
+          );
         } catch {
           reject();
         }
