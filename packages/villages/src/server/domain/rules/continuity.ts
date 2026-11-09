@@ -32,6 +32,8 @@ export const continuitySourceUnit = (source: ContinuityEvidence) =>
   ]);
 const unit = continuitySourceUnit;
 const same = (a: unknown, b: unknown) => memoryHash(a) === memoryHash(b);
+export const continuityVersionId = (seed: string, operationId: string, holder: ContinuityHolder) =>
+  "continuity-version-" + memoryHash([seed, operationId, continuityHolderKey(holder)]).slice(0, 32);
 
 export function continuityProtectionUnits(
   collection: ContinuityCollection,
@@ -56,6 +58,7 @@ function holderAllowed(holder: ContinuityHolder, context: ContinuityAdmission) {
   return context.actors.some((actor) => actor.id === holder.id && actor.incarnation === holder.incarnation);
 }
 function perceived(source: ContinuityEvidence, actorId: string) {
+  if (source.kind === "context") return false;
   if (source.kind === "self" || source.kind === "private") return source.actorId === actorId;
   if (source.kind === "native") return source.perceptions.some((row) => row.actorId === actorId);
   return source.actorId === actorId || source.perceptions.some((row) => row.actorId === actorId);
@@ -65,6 +68,26 @@ function heardWords(source: ContinuityEvidence, actorId: string) {
     source.kind === "speech" &&
     (source.actorId === actorId || source.perceptions.some((row) => row.actorId === actorId && row.channel === "words"))
   );
+}
+function actorEvidence(source: ContinuityEvidence, actorId: string): ContinuityEvidence {
+  memoryRequire(perceived(source, actorId), "unwitnessed saved continuity source");
+  const perception = source.perceptions.find((row) => row.actorId === actorId),
+    acoustic = perception?.channel === "sound-only" && source.actorId !== actorId;
+  const excerpt = perception?.text ?? source.excerpt;
+  return {
+    id: source.id,
+    seed: source.seed,
+    episodeId: source.episodeId,
+    unitId: source.unitId,
+    fingerprint: source.fingerprint,
+    kind: source.kind,
+    excerpt,
+    perceptions: perception ? [structuredClone(perception)] : [],
+    ...(!acoustic && source.actorId ? { actorId: source.actorId } : {}),
+    ...(!acoustic && source.act ? { act: source.act } : {}),
+    ...(source.range && excerpt === source.excerpt ? { range: { ...source.range } } : {}),
+    ...(source.committedReceiptId ? { committedReceiptId: source.committedReceiptId } : {}),
+  };
 }
 function resolveSources(write: ContinuityWrite, context: ContinuityAdmission) {
   memoryRequire(write.sourceIds.length > 0 && write.sourceIds.length <= 8, "missing continuity support");
@@ -199,8 +222,9 @@ export function applyContinuityWrite(
       );
     } else
       memoryRequire(
-        sources.every((source) => source.kind === "observation" || source.kind === "native") &&
-          sources.some((source) => source.episodeId === context.episodeId),
+        sources.every(
+          (source) => source.kind === "native" || (source.kind === "observation" && source.unitId !== "input"),
+        ) && sources.some((source) => source.episodeId === context.episodeId),
         "room condition needs an actual outcome",
       );
   const original = write.target ? targetRecord(collection, write.target, context) : undefined;
@@ -213,17 +237,22 @@ export function applyContinuityWrite(
   const before = write.holders.map((holder) => {
     const key = continuityHolderKey(holder);
     const head = record.heads[key];
-    memoryRequire(!original || Object.hasOwn(write.target!.heads, key), "target holder was not supplied");
+    memoryRequire(
+      !original || (Object.hasOwn(write.target!.heads, key) && (holder.kind === "actor" || head)),
+      "target holder was not supplied",
+    );
     const version = head && collection.versions.find((row) => row.id === head.versionId);
     memoryRequire(!head || version, "current continuity version is missing");
     return { key, holder, head, version };
   });
   for (const { holder, version } of before)
-    if (sources.some((source) => source.kind === "self"))
+    if (sources.some((source) => source.kind === "self" || (source.kind === "private" && source.actorId !== "player")))
       memoryRequire(
         holder.kind === "actor" &&
           holder.id !== "player" &&
-          sources.filter((source) => source.kind === "self").every((source) => source.actorId === holder.id) &&
+          sources
+            .filter((source) => source.kind === "self" || (source.kind === "private" && source.actorId !== "player"))
+            .every((source) => source.actorId === holder.id) &&
           ["perspective", "desire", "motivation", "commitment"].includes(write.class ?? version?.class ?? ""),
         "self establishes only the non-player owner's perspective",
       );
@@ -290,11 +319,11 @@ export function applyContinuityWrite(
   }
   const created: ContinuityVersion[] = [];
   for (const { key, holder, head, version: prior } of before) {
-    const text = write.text ?? prior?.text;
+    const text = write.text ?? record.protection[key]?.repair?.text ?? prior?.text;
     memoryString(text, CONTINUITY_TEXT_BYTES);
     memoryRequire(!prior?.closed || write.current !== true, "closed continuity cannot be reopened");
     const version: ContinuityVersion = {
-      id: "continuity-version-" + memoryHash([context.seed, operationId, key]).slice(0, 32),
+      id: continuityVersionId(context.seed, operationId, holder),
       rootId,
       createdRevision: collection.revision + 1,
       text,
@@ -473,17 +502,7 @@ export function continuityViews(
       delete version.offerEvents;
       delete version.closed;
     } else if (holder.kind === "actor")
-      version.sources = version.sources.map((source) => {
-        const perception = source.perceptions.find((row) => row.actorId === holder.id);
-        const { actorId, ...safe } = source;
-        memoryRequire(perceived(source, holder.id), "unwitnessed saved continuity source");
-        return {
-          ...safe,
-          ...(actorId && (perception?.channel !== "sound-only" || actorId === holder.id) ? { actorId } : {}),
-          excerpt: perception?.text ?? source.excerpt,
-          perceptions: perception ? [perception] : [],
-        };
-      });
+      version.sources = version.sources.map((source) => actorEvidence(source, holder.id));
     if (holder.kind === "actor") delete version.room;
     const events = record.offer?.events.filter((event) => version.offerEvents?.includes(event.id)) ?? [];
     const closing = events.findLast((event) => event.act === "withdraw" || event.act === "refuse");
@@ -494,10 +513,10 @@ export function continuityViews(
         contributions: events.map((event) => ({
           by: event.by,
           act: event.act,
-          sources: event.sources.map((source) => ({
-            ...structuredClone(source),
-            perceptions: source.perceptions.filter((row) => holder.kind === "actor" && row.actorId === holder.id),
-          })),
+          sources: event.sources.map((source) => {
+            memoryRequire(holder.kind === "actor", "room cannot hold an offer");
+            return actorEvidence(source, holder.id);
+          }),
         })),
         state: closing
           ? closing.act === "refuse"

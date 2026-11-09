@@ -34,8 +34,13 @@ export const continuityEvidenceSchema = z
       .strict()
       .refine((value) => value.end > value.start)
       .optional(),
+    moment: z
+      .object({ index: z.number().int().nonnegative().max(24), side: z.enum(["before", "after"]) })
+      .strict()
+      .optional(),
+    positions: z.record(z.string(), z.string()).optional(),
     excerpt: text(8000),
-    kind: z.enum(["speech", "observation", "self", "private", "native"]),
+    kind: z.enum(["speech", "observation", "self", "private", "native", "context"]),
     actorId: id.optional(),
     perceptions: z
       .array(
@@ -49,7 +54,12 @@ export const continuityEvidenceSchema = z
     committedReceiptId: id.optional(),
   })
   .strict()
-  .refine((value) => value.kind !== "native" || Boolean(value.committedReceiptId));
+  .refine(
+    (value) =>
+      (value.kind !== "native" || Boolean(value.committedReceiptId)) &&
+      (value.kind !== "context" || !value.perceptions.length) &&
+      (!value.act || value.kind === "speech"),
+  );
 const closed = z.object({ reason: z.enum(["fulfilled", "withdrawn", "ended"]) }).strict();
 const version = z
   .object({
@@ -186,14 +196,14 @@ export function readContinuity(raw: unknown, seed?: string): ContinuityCollectio
             source.kind === "private" || source.kind === "self"
               ? source.actorId === actorId
               : source.perceptions.some((row) => row.actorId === actorId) ||
-                (source.kind !== "native" && source.actorId === actorId),
+                (source.kind !== "native" && source.kind !== "context" && source.actorId === actorId),
           ),
           "saved continuity head has unperceived evidence",
         );
         memoryRequire(
           current.sources.every(
             (source) =>
-              source.kind !== "self" ||
+              !(source.kind === "self" || (source.kind === "private" && source.actorId !== "player")) ||
               (actorId !== "player" && ["perspective", "desire", "motivation", "commitment"].includes(current.class)),
           ),
           "saved self source widened its meaning",

@@ -1,7 +1,18 @@
-import type { ContinuityCollection } from "../models/continuity-model.js";
+import type { ContinuityCollection, ContinuityHolder } from "../models/continuity-model.js";
+import type { AcceptedEpisode } from "../models/episode-model.js";
 import type { EpisodeCollection } from "../models/episode-model.js";
 import { continuityHolderKey } from "./continuity.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
+
+export function nativeReceiptSupportsRoom(
+  receipt: AcceptedEpisode["commandReceipts"][number],
+  room: Extract<ContinuityHolder, { kind: "room" }>,
+) {
+  return (
+    (receipt.kind === "structure" && receipt.targetId === JSON.stringify([room.placeId, room.zoneId])) ||
+    (receipt.kind === "discovery" && receipt.targetId === room.placeId)
+  );
+}
 
 /** Retirement cannot sever the accepted episode, canonical meaning or committed native evidence. */
 export function assertContinuityRetention(continuity: ContinuityCollection, episodes: EpisodeCollection) {
@@ -50,18 +61,28 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
     for (const source of version.sources) {
       const episode = byEpisode.get(source.episodeId),
         original = episode?.grounding.find((row) => row.id === source.id);
+      const soundOnly =
+        source.perceptions.length > 0 && source.perceptions.every((row) => row.channel === "sound-only");
       memoryRequire(
         original &&
           original.seed === source.seed &&
           original.unitId === source.unitId &&
           original.fingerprint === source.fingerprint &&
           original.kind === source.kind &&
-          original.act === source.act &&
+          (original.act === source.act || (!source.act && soundOnly)) &&
           original.committedReceiptId === source.committedReceiptId,
         "continuity source lost its canonical evidence",
       );
-      const soundOnly =
-        source.perceptions.length > 0 && source.perceptions.every((row) => row.channel === "sound-only");
+      if (version.room && source.kind === "native") {
+        const room = Object.values(roots.get(version.rootId)!.heads).find(
+          (head) => head.holder.kind === "room",
+        )?.holder;
+        const receipt = episode?.commandReceipts.find((receipt) => receipt.id === source.committedReceiptId);
+        memoryRequire(
+          room?.kind === "room" && receipt && nativeReceiptSupportsRoom(receipt, room),
+          "native receipt does not establish this room outcome",
+        );
+      }
       memoryRequire(
         source.actorId === original.actorId || (!source.actorId && soundOnly),
         "continuity source author changed",

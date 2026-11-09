@@ -12,8 +12,10 @@ export type ContinuityEvidence = {
   fingerprint: string;
   unitId: string;
   range?: { start: number; end: number };
+  moment?: { index: number; side: "before" | "after" };
+  positions?: Record<string, string>;
   excerpt: string;
-  kind: "speech" | "observation" | "self" | "private" | "native";
+  kind: "speech" | "observation" | "self" | "private" | "native" | "context";
   actorId?: string;
   perceptions: { actorId: string; channel: "words" | "sight" | "sound-only" | "private"; text: string }[];
   act?: "offer" | "accept" | "refuse" | "withdraw";

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { materializeGmReply } from "../packages/villages/src/server/domain/rules/scene-gm.js";
-import { playerSourceSpan } from "../packages/villages/src/server/domain/rules/player-speech-capture.js";
+import { exactInputSpan } from "../packages/villages/src/server/domain/rules/source-span.js";
 
 const reply = (input: unknown[], text: string, extra = {}) =>
   materializeGmReply(
@@ -29,13 +29,15 @@ for (const [text, selected] of [
   );
 }
 assert.throws(() => reply([{ text: "hello" }], "I think “hello” but say “hello”."), /ambiguous/u);
-assert.equal(playerSourceSpan({ text: "hello", occurrence: 2 }, "hello hello").start, 6);
+assert.equal(exactInputSpan({ text: "hello", occurrence: 2 }, "hello hello").start, 6);
+assert.throws(() => exactInputSpan({ text: "ana" }, "banana"), /ambiguous/);
+assert.equal(exactInputSpan({ text: "ana", occurrence: 2 }, "banana").start, 3);
 for (const [text, fragment] of [
   ["💬", "\udcac"],
   ["e\u0301", "e"],
   ["👩‍🚀", "👩"],
 ])
-  assert.throws(() => playerSourceSpan({ text: fragment }, text), /invalid player source/u);
+  assert.throws(() => exactInputSpan({ text: fragment }, text), /invalid player source/u);
 assert.throws(() => reply([{ text: "now", kind: "thought" }], "now"), /invalid source spans/u);
 assert.throws(() => reply([{ text: "now", delivery: "invalid" }], "now"), /invalid source spans/u);
 assert.throws(

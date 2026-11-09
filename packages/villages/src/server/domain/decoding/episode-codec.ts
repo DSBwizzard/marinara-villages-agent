@@ -111,9 +111,14 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
     memoryRequire(source.seed === seed && source.episodeId === value.id, "episode source identity changed");
     memoryRequire(!source.actorId || cast.has(source.actorId), "unknown episode source actor");
     memoryRequire(
+      !source.positions || Object.keys(source.positions).every((id) => cast.has(id)),
+      "unknown source position actor",
+    );
+    memoryRequire(
       source.perceptions.every((row) => cast.has(row.actorId)),
       "unknown episode source witness",
     );
+    memoryRequire(source.kind !== "context" || !source.perceptions.length, "context cannot grant character perception");
     if (source.kind === "private" || source.kind === "self")
       memoryRequire(
         source.actorId &&
@@ -164,11 +169,17 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
         : prose === source.excerpt,
       "episode source excerpt changed",
     );
-    if (source.unitId === "input")
+    if (source.unitId === "input") {
       memoryRequire(
         source.actorId === "player" && source.range,
         "input source lacks its exact original range or author",
       );
+      const channel = source.kind === "speech" ? "words" : source.kind === "observation" ? "sight" : "private";
+      memoryRequire(
+        source.perceptions.every((row) => row.text === source.excerpt && row.channel === channel),
+        "input source projection changed its exact content or channel",
+      );
+    }
     if (line) {
       memoryRequire(
         source.kind !== "speech" || (line.kind !== "narration" && source.actorId === line.speakerId),
@@ -184,7 +195,8 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
           perception.channel === "sound-only"
             ? Boolean(
                 sound &&
-                (sound.characterIds.includes(perception.actorId) ||
+                (full ||
+                  sound.characterIds.includes(perception.actorId) ||
                   (perception.actorId === "player" && sound.player)) &&
                 perception.text === sound.text,
               )

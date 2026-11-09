@@ -12,7 +12,7 @@ import type { WishProposal } from "./wish-check-model.js";
 import type { VillageVenueClass } from "./world.js";
 
 export type VenueLine = {
-  speechSource?: { version: 3; spans: import("../rules/player-speech-capture.js").SpeechSource[] };
+  speechSource?: { version: 3; spans: import("../rules/source-span.js").InputSourceSpan[] };
   id: string;
   speakerId: string;
   name: string;

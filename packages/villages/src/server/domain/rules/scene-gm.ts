@@ -1,7 +1,8 @@
 import type { SemanticIntent } from "../models/semantic-model.js";
 import { asRecord } from "./coerce.js";
 import { badGateway } from "./errors.js";
-import { materializePlayerSpeech, playerSourceSpan } from "./player-speech-capture.js";
+import { materializePlayerSpeech } from "./player-speech-capture.js";
+import { exactInputSpan } from "./source-span.js";
 import { semanticContext } from "./semantic-contract.js";
 
 export const SCENE_GM_DIRECTION =
@@ -144,10 +145,10 @@ export function materializeGmReply(raw: Record<string, unknown>, message: string
   const timeline: SemanticIntent["timeline"] = [];
   const inputIndexes = new Map<number, number>();
   const spokenIndexes = new Map<number, number>();
-  const speech: (ReturnType<typeof playerSourceSpan> & { delivery?: unknown; targetId?: unknown })[] = [];
+  const speech: (ReturnType<typeof exactInputSpan> & { delivery?: unknown; targetId?: unknown })[] = [];
   raw.input.forEach((value, index) => {
     const row = asRecord(value);
-    const source = playerSourceSpan(row, message);
+    const source = exactInputSpan(row, message);
     const kind = row.kind ?? "speech";
     if (
       source.start < cursor ||

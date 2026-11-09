@@ -413,6 +413,28 @@ await runCase("continuity/room-sequence", () => {
     2,
     "removal preserves historical appearance",
   );
+  const elsewhere = { ...room, zoneId: "hall" },
+    misplaced = {
+      id: table.id,
+      recordRevision: state.records.find((row) => row.id === table.id)!.revision,
+      heads: { [continuityHolderKey(elsewhere)]: 0 },
+    };
+  assert.throws(
+    () =>
+      applyContinuityWrite(
+        state,
+        {
+          id: "relocate-root",
+          holders: [elsewhere],
+          target: misplaced,
+          text: "A table in another room.",
+          sourceIds: [outcome.id],
+        },
+        { ...context("relocate-root", [outcome], [misplaced]), room: elsewhere },
+      ),
+    /target holder/,
+    "a supplied zero head cannot move a room's canonical identity into another room",
+  );
 });
 
 await runCase("continuity/room-expiry", () => {

@@ -64,7 +64,7 @@ function projectActorEpisode(
 ) {
   if (!admitted(episode, holder)) return null;
   const input = episode.grounding.flatMap((source) => {
-    if (source.unitId !== "input" || blocked.has(continuitySourceUnit(source))) return [];
+    if (source.unitId !== "input" || source.kind === "context" || blocked.has(continuitySourceUnit(source))) return [];
     const own = source.actorId === holder.id;
     if ((source.kind === "private" || source.kind === "self") && !own) return [];
     const perception = source.perceptions.find((row) => row.actorId === holder.id);
