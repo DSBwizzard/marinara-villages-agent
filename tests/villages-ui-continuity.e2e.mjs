@@ -11,6 +11,7 @@ import {VillageActivity,useCapabilityVisibility} from './packages/villages/src/c
 import {RetainedView} from './packages/villages/src/client/shared/RetainedView.js';
 import {request} from './packages/villages/src/client/shared/api.js';
 import {VillagerDossier} from './packages/villages/src/client/features/residents/villages-dossier.js';
+import {DOSSIER_STYLES} from './packages/villages/src/client/features/residents/villages-dossier-styles.js';
 import {VillagerWishJournal} from './packages/villages/src/client/features/residents/villages-wish-journal.js';
 import {VillagerMemoriesPanel} from './packages/villages/src/client/features/residents/MemoriesPanel.js';
 import {useLoadMemoryLibrary,useLoadAgendas,useSetScheduleInfluence} from './packages/villages/src/client/features/residents/actions.js';
@@ -34,7 +35,7 @@ function Harness(){
  const noChange=useCallback(()=>{},[]);
  useSceneSelectionReset({snapshot:{village:{instant:'same'}},loadSnapshot:noChange,observedRoomIdRef:observed,room:validating?{id:'saved-scene',status:'active',liveSceneVersion:1}:null,roomCompletionRef:completion,roomMoveOperationIdRef:movement,screen:'room',seenRoomEventIdsRef:seen,setLastSceneEnding:noChange,setRoom:noChange,setRoomContactBoundary:noChange,setRoomMoveZoneId:noChange,setRoomNotices:noChange,setRoomOpen:noChange,setRoomTargetId:noChange,setScreen:noChange});
  window.h={scope:setScope,actor:setActor,refresh:()=>setRevision(value=>String(Number(value)+1)),active:setActive,hidden:setHidden,visible,sprites:setSprites,loadAgendas,influence,agendas,validate:setValidating,navigateWish:()=>setNavigation({actorId:actor,returnTo:'home',wishId:actor+'-wish'})};
- return <VillageActivity value={{visible,backgroundRevision:revision,worldScope:scope}}>
+ return <VillageActivity value={{visible,backgroundRevision:revision,worldScope:scope}}><style>{DOSSIER_STYLES}</style>
  <RetainedView active={active}><VillagerDossier key={scope+actor} navigation={personProfile} villager={{characterId:actor,name:actor,summary:'A villager',missing:false}}
  portrait={null} request={request} venues={[]} links={[]} controls={<input aria-label='Identity draft'/>} spriteManager={sprites?<button onClick={()=>setSprites(false)}>Back to profile</button>:undefined}
  onInspectSection={setInspection} onBack={()=>setActive(false)} onVenue={()=>{}} inspectors={{
@@ -92,7 +93,7 @@ await withBrowser(browser, async () => {
     await page.route("http://continuity.test/", (route) =>
       fulfill(route, {
         contentType: "text/html",
-        body: '<style>[hidden]{display:none!important}.marinara-capability-villages-dossier-content{height:180px;overflow:auto}input{max-width:90%}</style><div id="root"></div>',
+        body: '<style>html,body,#root{height:100%;margin:0}[hidden]{display:none!important}input{max-width:90%}</style><div id="root"></div>',
       }),
     );
     await page.route("**/api/villages**", async (route) => {
@@ -174,10 +175,22 @@ await withBrowser(browser, async () => {
     );
     const position = await scroller.evaluate((element) => {
       element.style.height = "80px";
+      element.style.maxHeight = "80px";
       element.scrollTop = 60;
       return element.scrollTop;
     });
-    assert.ok(position > 0);
+    assert.ok(
+      position > 0,
+      JSON.stringify({
+        width,
+        position,
+        layout: await scroller.evaluate((node) => ({
+          height: node.clientHeight,
+          scroll: node.scrollHeight,
+          overflow: getComputedStyle(node).overflowY,
+        })),
+      }),
+    );
     await chooseSection("Agenda");
     await chooseSection("Overview");
     assert.equal(await scroller.evaluate((element) => element.scrollTop), position);
@@ -197,6 +210,7 @@ await withBrowser(browser, async () => {
     await page.getByText("Character tools", { exact: true }).click();
     await scroller.evaluate((element) => {
       element.style.height = "620px";
+      element.style.maxHeight = "620px";
     });
     const node = await overview.getByText(summary).elementHandle();
     await overviewControl.focus();
