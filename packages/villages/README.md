@@ -209,7 +209,7 @@ Imports make independent copies and reuse existing copies by their original Engi
 
 Side-facing artwork must look right; Villages mirrors it to look left. Front-facing artwork addresses you. The GM selects expressions and attention while writing new Scenes. Code handles placement, variants, mirroring and animation without another request.
 
-**Generate signature** makes an image request. The original is retained alongside a transparent version; light and white areas are treated as paper. Failed regeneration keeps the previous signature.
+**Generate signature** uses System to choose a character-driven signing habit, then makes one image request to render it. Retries reuse a saved habit or image where available. The original is retained alongside a transparent version; light and white areas are treated as paper. Failed regeneration keeps the previous signature.
 
 ## Background activity and costs
 

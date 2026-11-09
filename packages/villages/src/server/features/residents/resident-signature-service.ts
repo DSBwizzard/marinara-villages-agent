@@ -3,8 +3,13 @@ import { residentSignature, type ResidentSignatureView } from "../../../shared/h
 import type { VillageGalleryUpload } from "../../adapters/engine/global-gallery.js";
 import { decodeVillageImageDataUrl, type DecodedVillageImage } from "../../adapters/engine/image-files.js";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
-import type { CapabilityDocumentStore } from "@marinara-engine/shared";
-import type { VillageState, VillageVenueImage } from "../../domain/models/world.js";
+import type {
+  CapabilityDocumentStore,
+  CapabilityLanguageModelCompletion,
+  CapabilityLanguageModelMessage,
+} from "@marinara-engine/shared";
+import { readSignatureHabit, signatureHabitMessages } from "../../domain/rules/resident-signature-habit.js";
+import type { VillageState, VillageVenueImage, VillageVillager } from "../../domain/models/world.js";
 import { asRecord, asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest, conflict, notFound, safeFailureMessage, statusCodeOf } from "../../domain/rules/errors.js";
 import {
@@ -23,6 +28,9 @@ export interface ResidentSignaturePorts {
   readVillageAuthority(): Promise<VillageState>;
   mutateVillageState(update: (state: VillageState) => void): Promise<VillageState>;
   resolveVillageImageConnectionId(): Promise<string>;
+  villagesLanguageModels: typeof import("../../adapters/models/language-models.js").villagesLanguageModels;
+  villagesConnectionIdFor: typeof import("../settings/connections.js").villagesConnectionIdFor;
+  completeWithRoom: typeof import("../generation/model-requests.js").completeWithRoom;
   generateVillageImage(input: {
     connectionId?: string;
     name: string;
@@ -31,6 +39,7 @@ export interface ResidentSignaturePorts {
     width: number;
     height: number;
     maxBase64Length: number;
+    beforeDispatch?: () => Promise<void>;
   }): Promise<DecodedVillageImage>;
   prepareSignatureImage(
     decoded: DecodedVillageImage,
@@ -47,6 +56,9 @@ export function createResidentSignatures({
   readVillageAuthority,
   mutateVillageState,
   resolveVillageImageConnectionId,
+  villagesLanguageModels,
+  villagesConnectionIdFor,
+  completeWithRoom,
   generateVillageImage,
   prepareSignatureImage,
   uploadVillageGalleryImage,
@@ -63,9 +75,26 @@ export function createResidentSignatures({
     prompt: string;
     name: string;
     error: string;
+    selection?: {
+      key: string;
+      messages: CapabilityLanguageModelMessage[];
+      response?: CapabilityLanguageModelCompletion;
+    };
     response?: string;
     original?: VillageVenueImage;
     image?: VillageVenueImage;
+  };
+  const resolveSystem = async () =>
+    villagesLanguageModels().resolveForRequest({ connectionId: await villagesConnectionIdFor("system") });
+  const renderableHabit = (response: CapabilityLanguageModelCompletion | undefined, resident: VillageVillager) => {
+    const habit = response ? readSignatureHabit(response) : null;
+    if (!habit) return null;
+    try {
+      signaturePrompt(resident, habit);
+      return habit;
+    } catch {
+      return null;
+    }
   };
   async function subject(id: string) {
     const village = await readVillageAuthority();
@@ -112,6 +141,14 @@ export function createResidentSignatures({
       unavailableReason = "";
     try {
       await resolveVillageImageConnectionId();
+      if (!(
+        attempt?.status !== "saved" &&
+        matchesRevision(attempt, current) &&
+        (renderableHabit(attempt?.selection?.response, current.resident) ||
+          attempt?.response ||
+          (attempt?.original && attempt?.image))
+      ))
+        await resolveSystem();
       available = true;
     } catch (error) {
       unavailableReason = safeFailureMessage(error).replace(
@@ -177,6 +214,21 @@ export function createResidentSignatures({
       matchesRevision(previous?.data, initial) &&
       Boolean(previous.data.response || (previous.data.original && previous.data.image));
     const connectionId = recover ? "" : await resolveVillageImageConnectionId();
+    const reuseSelection =
+      !recover &&
+      previous?.data.status !== "saved" &&
+      matchesRevision(previous?.data, initial) &&
+      previous?.data.selection &&
+      (!previous.data.selection.response || renderableHabit(previous.data.selection.response, initial.resident));
+    const selection = recover
+      ? previous!.data.selection
+      : reuseSelection
+        ? previous!.data.selection
+        : {
+            key: `signature-habit:${initial.documentId}:${actionId}`,
+            messages: signatureHabitMessages(initial.resident),
+          };
+    const model = !recover && !selection?.response ? await resolveSystem() : undefined;
     const data: Attempt = {
       ...(recover ? previous!.data : {}),
       attempt: expectedAttempt + 1,
@@ -185,14 +237,11 @@ export function createResidentSignatures({
       runtimeEpoch: initial.runtimeEpoch,
       status: "running",
       revision: initial.revision,
-      prompt: recover ? previous!.data.prompt : signaturePrompt(initial.resident),
+      prompt: recover ? previous!.data.prompt : "",
+      selection,
       name: initial.resident.cardSnapshot.name,
       error: "",
     };
-    if (!recover && data.prompt.length > 4000)
-      throw badRequest(
-        "This Villager\u0027s name is too long for the image connection. Shorten the character name before generating a signature.",
-      );
     await saveAttempt(initial.documentId, data, previous?.record.revision);
     const checkpoint = async () => {
       if (villagesRuntimeEpoch() !== initial.runtimeEpoch) throw conflict("The Villages package runtime changed.");
@@ -210,6 +259,38 @@ export function createResidentSignatures({
     };
     try {
       if (!data.response && !data.image) {
+        const selection = data.selection!;
+        if (!selection.response) {
+          const maxTokens = model!.maxOutputTokens ?? 4096;
+          const fitted = model!.fitContext(selection.messages, { maxTokens });
+          if (fitted.trimmed || JSON.stringify(fitted.messages) !== JSON.stringify(selection.messages))
+            throw badRequest("The character evidence does not fit the System context. No signature request was made.");
+          await stillCurrent();
+          selection.response = await completeWithRoom(
+            model!,
+            selection.messages,
+            Math.min(maxTokens, fitted.maxTokens ?? maxTokens),
+            {
+              temperature: null,
+              responseFormat: { type: "json_object" },
+              debugMode: false,
+              usagePurpose: "checks",
+              savedRequest: {
+                key: selection.key,
+                retry: Boolean(reuseSelection),
+                valid: (response) => Boolean(renderableHabit(response, initial.resident)),
+              },
+            },
+          );
+          await checkpoint();
+        }
+        const habit = readSignatureHabit(selection.response);
+        if (!habit)
+          throw badRequest(
+            "The System response did not contain a complete signing habit. Retry signature deliberately.",
+          );
+        data.prompt = signaturePrompt(initial.resident, habit);
+        await checkpoint();
         await stillCurrent();
         const image = await generateVillageImage({
           connectionId,
@@ -219,6 +300,7 @@ export function createResidentSignatures({
           width: 1536,
           height: 1024,
           maxBase64Length: LIMIT,
+          beforeDispatch: stillCurrent,
         });
         data.response = image.dataUrl;
         await checkpoint();

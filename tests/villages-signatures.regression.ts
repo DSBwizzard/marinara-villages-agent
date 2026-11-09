@@ -5,6 +5,10 @@ import sharp from "sharp";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { residentSignature } from "../packages/villages/src/shared/helpers/resident-signature.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import {
+  signatureHabitMessages,
+  readSignatureHabit,
+} from "../packages/villages/src/server/domain/rules/resident-signature-habit.js";
 
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
@@ -53,7 +57,20 @@ assert.deepEqual(fallback, residentSignature(structuredClone(village.villagers[0
 assert.equal(residentSignature({ id: "x", name: "小雨", personality: "quiet and meticulous" }).hand, "neat");
 assert.equal(residentSignature({ id: "x", name: "عائشة", personality: "playful and curious" }).name, "عائشة");
 assert.equal(residentSignature({ id: "x", name: "未知", personality: "" }).hand, "flowing");
-assert.match(signaturePrompt(village.villagers[0]!), /Confident, assertive and brave/);
+const habit = {
+  habit: "Writes her usual name confidently.",
+  evidence: ["Confident and assertive."],
+  visibleText: ["Mara"],
+  drawingBrief: "Write Mara in confident black pen strokes on pure white.",
+};
+assert.match(signaturePrompt(village.villagers[0]!, habit), /Confident, assertive and brave/);
+assert.equal(readSignatureHabit({ content: JSON.stringify(habit), finishReason: "length" }), null);
+assert.equal(
+  readSignatureHabit({ content: JSON.stringify({ ...habit, visibleText: "Mara" }), finishReason: "stop" }),
+  null,
+);
+assert.equal(readSignatureHabit({ content: "{}", finishReason: "stop" }), null);
+assert.deepEqual(readSignatureHabit({ content: JSON.stringify(habit), finishReason: "stop" }), habit);
 
 const pixels = new PNG({ width: 600, height: 400 });
 pixels.data.fill(255);
@@ -178,20 +195,31 @@ const richResident = structuredClone(village.villagers[0]!);
 richResident.cardSnapshot.backstory = "Signs fishing logs with a tiny hook.";
 richResident.cardSnapshot.exampleDialogue = "Aye, leave it to me.";
 richResident.cardSnapshot.description = "A fast, practical harbor worker.";
-const richPrompt = signaturePrompt(richResident);
+const richPrompt = signaturePrompt(richResident, habit);
 assert.match(richPrompt, /tiny hook/);
 assert.match(richPrompt, /Aye, leave it to me/);
 
 richResident.cardSnapshot.personality = '"\n'.repeat(3000) + "Secretly playful.";
-assert.ok(signaturePrompt(richResident).length <= 4000, "Serialized character evidence fits the Engine contract");
-assert.match(signaturePrompt(richResident), /Secretly playful/);
+assert.ok(
+  signaturePrompt(richResident, habit).length <= 8000,
+  "Serialized character evidence fits the Engine contract",
+);
+assert.match(signaturePrompt(richResident, habit), /Secretly playful/);
+assert.equal(
+  JSON.parse(signatureHabitMessages(richResident)[1]!.content).characterEvidence.personality,
+  richResident.cardSnapshot.personality,
+  "System receives full authored evidence",
+);
 for (const evidence of ["Backstory:", "Voice examples:", "Summary:"]) {
   richResident.cardSnapshot.summary = "Practical but mischievous.";
-  assert.ok(signaturePrompt(richResident).includes(evidence), "Escaped personality cannot remove supporting evidence");
+  assert.ok(
+    signaturePrompt(richResident, habit).includes(evidence),
+    "Escaped personality cannot remove supporting evidence",
+  );
 }
 richResident.cardSnapshot.name = "A".repeat(129) + "𠮷" + "B".repeat(100);
 assert.ok(
-  signaturePrompt(richResident).includes(JSON.stringify(richResident.cardSnapshot.name)),
+  signaturePrompt(richResident, habit).includes(JSON.stringify(richResident.cardSnapshot.name)),
   "Full supplementary-script name survives unchanged",
 );
 const generatedImage = `data:image/png;base64,${PNG.sync.write(pixels).toString("base64")}`;
@@ -200,7 +228,7 @@ const records = new Map<string, any>();
 records.set("villages-village", { id: "villages-village", data: village, revision: 1 });
 records.set("villages-connections", {
   id: "villages-connections",
-  data: { imageConnectionId: "fixture-image" },
+  data: { imageConnectionId: "fixture-image", systemConnectionId: "fixture-system" },
   revision: 1,
 });
 let failVillage = false,
@@ -209,9 +237,44 @@ let failVillage = false,
   blankImage = false,
   requests = 0,
   uploads = 0;
+let textRequests = 0;
+let failSelectionCheckpoint = false;
 let imageGate: Promise<void> | undefined;
 let entered: (() => void) | undefined;
 const host = {
+  languageModels: {
+    resolveForRequest: async (options: any) => {
+      assert.equal(options.connectionId, "fixture-system");
+      return {
+        connectionId: "fixture-system",
+        model: "fixture",
+        maxOutputTokens: 2048,
+        maxContext: 64000,
+        fitContext: (messages: any[], options: any) => ({
+          messages,
+          ...options,
+          trimmed: false,
+          estimatedTokensBefore: 1,
+          estimatedTokensAfter: 1,
+        }),
+        chatComplete: async (messages: any[], options: any) => {
+          textRequests++;
+          const claim = [...records.values()].find(
+            (row) => row.kind === "resident-signature" && row.data.status === "running",
+          );
+          assert.ok(claim?.data.selection?.key, "Selector identity is persisted before a paid text call");
+          assert.ok(
+            !Object.hasOwn(options, "temperature") &&
+              !Object.hasOwn(options, "reasoningEffort") &&
+              !Object.hasOwn(options, "verbosity"),
+            "Configured model and thinking settings are preserved",
+          );
+          const name = JSON.parse(messages[1].content).characterEvidence.name;
+          return { content: JSON.stringify({ ...habit, visibleText: [name] }), finishReason: "stop" };
+        },
+      };
+    },
+  },
   resources: { listCharacters: async () => [] },
   isDebugAgentsEnabled: () => false,
   logger: { warn() {}, error() {}, info() {}, debug() {}, debugOverride() {} },
@@ -226,6 +289,8 @@ const host = {
         return row;
       },
       update: async (input: any) => {
+        if (failSelectionCheckpoint && input.kind === "resident-signature" && input.data.selection?.response)
+          throw Error("Signature checkpoint unavailable");
         if (failVillage && input.id === "villages-village") throw Error("Disk unavailable");
         const prior = records.get(input.id);
         if (!prior || prior.revision !== input.expectedRevision) return null;
@@ -251,7 +316,9 @@ globalThis.fetch = async (url, init) => {
     const body = JSON.parse(String(init?.body));
     assert.deepEqual([body.width, body.height], [1536, 1024]);
     assert.match(body.appearance, /Mara/);
-    assert.ok(body.appearance.length <= 4000);
+    assert.ok(body.appearance.length <= 8000);
+    const claim = [...records.values()].find((row) => row.kind === "resident-signature");
+    assert.ok(claim.data.selection.response, "Selector response is saved before the image call");
     await imageGate;
     if (failProvider) return Response.json({ error: "Provider unavailable" }, { status: 503 });
     return Response.json({
@@ -274,6 +341,7 @@ async function main() {
   try {
     assert.equal((await readResidentSignature("mara")).status, "local");
     assert.equal(requests, 0, "Profile reads never generate");
+    assert.equal(textRequests, 0, "Profile reads never select a habit");
     records.get("villages-connections").data.imageConnectionId = "__villages_image_disabled__";
     const unavailable = await readResidentSignature("mara");
     assert.equal(unavailable.available, false);
@@ -315,6 +383,7 @@ async function main() {
     const first = await generateResidentSignature("mara", action(1, 0));
     assert.equal(first.status, "saved");
     assert.equal(requests, 1);
+    assert.equal(textRequests, 1, "A new signature uses one System call and one image call");
     assert.equal(uploads, 2);
     assert.ok(first.saved?.image.ref.startsWith("global-gallery:"));
     assert.deepEqual(coerceVillageState(await readVillageAuthority()).villagers[0]?.signature, first.saved);
@@ -500,6 +569,20 @@ async function main() {
         imageGate = undefined;
         entered = undefined;
       }
+      // A retained System response survives failure to checkpoint it on the signature attempt.
+      const checkpointAttempt = (await readResidentSignature("mara")).attempt;
+      const beforeText = textRequests,
+        beforeImage = requests;
+      failSelectionCheckpoint = true;
+      await generateResidentSignature("mara", action(150, checkpointAttempt));
+      assert.equal((await readResidentSignature("mara")).status, "interrupted");
+      assert.equal(textRequests, beforeText + 1);
+      assert.equal(requests, beforeImage, "Checkpoint failure stops before image spending");
+      failSelectionCheckpoint = false;
+      assert.equal((await generateResidentSignature("mara", action(151, checkpointAttempt + 1))).status, "saved");
+      assert.equal(textRequests, beforeText + 1, "Saved completion receipt avoids repurchasing text");
+      assert.equal(requests, beforeImage + 1);
+
       // Full evidence, including text omitted from the provider prompt, fences recovery.
       await mutateVillageState((state) => {
         state.villagers[0]!.cardSnapshot.personality = "a".repeat(9000);
@@ -508,11 +591,11 @@ async function main() {
       const evidenceAttempt = (await readResidentSignature("mara")).attempt;
       assert.equal((await generateResidentSignature("mara", action(200, evidenceAttempt))).recoverable, true);
       failUpload = false;
-      const unchangedPrompt = signaturePrompt((await readVillageAuthority()).villagers[0]!);
+      const unchangedPrompt = signaturePrompt((await readVillageAuthority()).villagers[0]!, habit);
       await mutateVillageState((state) => {
         state.villagers[0]!.cardSnapshot.personality = "a".repeat(4500) + "b" + "a".repeat(4499);
       });
-      assert.equal(signaturePrompt((await readVillageAuthority()).villagers[0]!), unchangedPrompt);
+      assert.equal(signaturePrompt((await readVillageAuthority()).villagers[0]!, habit), unchangedPrompt);
       assert.equal(
         (await readResidentSignature("mara")).recoverable,
         false,
@@ -523,10 +606,12 @@ async function main() {
       await mutateVillageState((state) => {
         state.villagers[0]!.cardSnapshot.name = "a".repeat(5000);
       });
-      await assert.rejects(
-        generateResidentSignature("mara", action(56, (await readResidentSignature("mara")).attempt)),
-        /name is too long/,
+      const invalidText = await generateResidentSignature(
+        "mara",
+        action(56, (await readResidentSignature("mara")).attempt),
       );
+      assert.equal(invalidText.status, "failed");
+      assert.match(invalidText.error, /complete signing habit/);
       assert.equal(requests, requestsBeforeLongName, "Oversized names fail before image dispatch");
       console.log(
         "Villager signatures: stable handwriting, transparent crop, persistence, free recovery, explicit retries and late-effect fences passed",
