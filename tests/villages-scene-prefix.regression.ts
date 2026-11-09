@@ -5,6 +5,7 @@ import { configureSceneCostWorld } from "./fixtures/scene-cost.fixture.js";
 import { ensureNarrative } from "../packages/villages/src/server/domain/rules/narrative-development.js";
 import { applyMemoryRepair } from "../packages/villages/src/server/domain/rules/memory-application.js";
 import { addMemory, emptyMemories, memoryRepair, memoryTime } from "./helpers/memories-fixture.js";
+import { SCENE_GM_PROJECTS } from "../packages/villages/src/server/domain/rules/scene-gm.js";
 
 const prefixes: { content: string }[][] = [];
 const calendars: string[] = [];
@@ -15,10 +16,11 @@ for (const [summary, change] of [
   ["The mist has lifted.", "policy"],
   ["The mist has lifted.", "movement"],
   ["The mist has lifted.", "protected"],
+  ["The mist has lifted.", "project"],
 ]) {
   const host = await packagedSceneServer({
     configure(world, now) {
-      configureSceneCostWorld(world, now, "ordinary");
+      configureSceneCostWorld(world, now, change === "project" ? "project-discussion" : "ordinary");
       world.setting = "AUTHORED RIVERSIDE SETTING";
       world.worldRules = "AUTHORED WORLD RULE";
       world.playerBackground = "AUTHORED PRIVATE BACKSTORY";
@@ -70,12 +72,16 @@ for (const [summary, change] of [
       .map((row) => row.content)
       .join("\n");
     assert(changing.includes(summary));
+    assert(!stable.includes(SCENE_GM_PROJECTS), "Project eligibility cannot invalidate authored prefixes");
+    assert.equal(changing.includes(SCENE_GM_PROJECTS), change === "project");
+    assert.equal(changing.includes("Larger Common room"), change === "project");
     assert(!changing.includes("Starting backstories describe"));
     assert(!changing.includes("AUTHORED PRIVATE BACKSTORY"));
     const packet = JSON.parse(changing.split("\n").find((row) => row.startsWith('{"context":'))!);
     calendars.push(packet.context.calendar.time);
     const saved = Object.values(host.scene().operation!.checkpoints).find((value: any) => value?.gmContext) as any;
     assert(saved.gmContext.preservation.calendar.instant);
+    assert.equal(saved.gmContext._projectContexts.length > 0, change === "project");
     assert(saved.gmPresentation.state.mara.position);
     assert(!Object.hasOwn(packet.context.calendar, "instant"));
     assert(!Object.hasOwn(packet.context.actors[0], "name"));
@@ -133,6 +139,11 @@ for (const changed of prefixes.slice(2, 4)) {
   assert.notDeepEqual(changed[2], prefixes[0][2], "Movement and policy changes must invalidate the current frame");
 }
 assert.deepEqual(prefixes[4], prefixes[1], "Memory protection stays after the cached Scene reference");
+assert.deepEqual(
+  prefixes[5],
+  prefixes[1],
+  "Full Project context and its event grammar stay after the cached Scene reference",
+);
 mock.timers.reset();
 console.log(
   "Authored setting, player identity and complete cards keep identical prefixes across changing circumstances; current access policy uses the event contract.",

@@ -422,6 +422,7 @@ export function createSceneWriting({
               : "",
             openingSceneDirection(village, session),
             "The Current Scene reference is the accepted physical, position and access baseline; earlier narration cannot override it. Apply the current calendar and newer developments below.",
+            ...(gmContext._projectContexts.length ? [SCENE_GM_PROJECTS, projects] : []),
           ]),
           {
             text: JSON.stringify({
@@ -435,7 +436,6 @@ export function createSceneWriting({
                   ? { memory }
                   : {}),
                 ...(social.edges.length || social.sharedRecords.length ? { social } : {}),
-                ...(projects ? { projects } : {}),
                 ...(otherProjects.length ? { otherProjects } : {}),
                 ...(zoneDevelopments.length ? { zoneDevelopments } : {}),
               },
@@ -467,7 +467,6 @@ export function createSceneWriting({
           SCENE_GM_SOCIAL,
           SCENE_GM_WISHES,
           SCENE_GM_MEMORY,
-          SCENE_GM_PROJECTS,
           SCENE_GM_PHYSICAL,
         ]),
       });

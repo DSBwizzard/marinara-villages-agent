@@ -1,25 +1,26 @@
 {
   "format": 1,
   "measurement": "provider-reported-native-engine-usage",
-  "engineRevision": "27805040eed0d91d4ea7b49f478b0b197b13676d",
   "engineVersion": "2.5.2",
   "capabilityApi": "1.818",
   "model": "deepseek-flash",
   "providerEndpoint": "https://api.deepseek.com",
   "pricingSource": "https://api-docs.deepseek.com/quick_start/pricing/",
-  "pricingCheckedAt": "2026-11-09T15:01:31.088Z",
+  "pricingCheckedAt": "2026-11-09T15:44:28.775Z",
   "limitations": [
     "One synthetic resident and one continuous quiet world, with matching player inputs but naturally different generated histories.",
-    "This records all 49 reported requests across implementation iterations. It is not a randomized before/after experiment.",
+    "This records all 61 reported requests across implementation iterations. It is not a randomized before/after experiment.",
     "Rates change from peak to off-peak at 10:00 UTC; same-rate mode comparisons and token counts must be used for improvement claims.",
     "Costs are usage multiplied by published rates, not invoice amounts. Cache writes and provider-internal retries are unreported.",
     "Reasoning tokens are a subset of output and are charged once. Saved model and reasoning parameters were preserved.",
     "The same complete stored Mara card is used in both modes. The native Game Mode prompt representation differs from Villages; scenario/example text did not appear verbatim in the inspected Game prompt.",
-    "Changed-prefix and cold-start costs remain in the dataset. One conclusive contract rejection required an explicit replacement; two later Memory-source failures preserved prose and were continued without those unsupported updates. Their purchases remain billed failures."
+    "Changed-prefix and cold-start costs remain in the dataset. One conclusive contract rejection required an explicit replacement; two later Memory-source failures preserved prose and were continued without those unsupported updates. Their purchases remain billed failures.",
+    "Transport completion does not establish semantic success. One later explicit learning request was acknowledged without a persisted Memory; immediate Scene recall is recorded separately."
   ],
   "stages": [
     {
       "id": "live-pilot",
+      "engineRevision": "27805040eed0d91d4ea7b49f478b0b197b13676d",
       "sourceRevision": "1f0e024c4e71de2e5228f805b1becf3555733a98",
       "archiveHash": "12f03b11b17244bc6cd6d2f4e58e0430d1f815837663f38b047f4f15af63c3f3",
       "turns": [
@@ -83,6 +84,7 @@
     },
     {
       "id": "live-followup",
+      "engineRevision": "27805040eed0d91d4ea7b49f478b0b197b13676d",
       "sourceRevision": "1f0e024c4e71de2e5228f805b1becf3555733a98",
       "archiveHash": "12f03b11b17244bc6cd6d2f4e58e0430d1f815837663f38b047f4f15af63c3f3",
       "turns": [
@@ -258,6 +260,7 @@
     },
     {
       "id": "live-post-cache",
+      "engineRevision": "27805040eed0d91d4ea7b49f478b0b197b13676d",
       "sourceRevision": "c6cea6be990d09e7b0ba39adceb403f40c7b590c",
       "archiveHash": "bad97b4a8f07f68aa93201986d296df6b2086cc336fd9e9c4ac237cbebdf6d20",
       "turns": [
@@ -489,6 +492,7 @@
     },
     {
       "id": "live-final",
+      "engineRevision": "27805040eed0d91d4ea7b49f478b0b197b13676d",
       "sourceRevision": "e710e76d0857f2eebed11acef6f8817e7e8f1bba",
       "archiveHash": "8119576b8cc9a31df4896c31500432b5d47a00cd1e3850d74f963b13a04622da",
       "turns": [
@@ -776,6 +780,7 @@
     },
     {
       "id": "live-frame",
+      "engineRevision": "27805040eed0d91d4ea7b49f478b0b197b13676d",
       "sourceRevision": "485e7214b810ba28d74af06904be796cda9c3b02",
       "archiveHash": "fe904498414b77d30a7d62a7b841748ea66571f38c7ba51d05c4d7ab696f0d96",
       "turns": [
@@ -1007,6 +1012,7 @@
     },
     {
       "id": "live-consequence",
+      "engineRevision": "27805040eed0d91d4ea7b49f478b0b197b13676d",
       "sourceRevision": "485e7214b810ba28d74af06904be796cda9c3b02",
       "archiveHash": "fe904498414b77d30a7d62a7b841748ea66571f38c7ba51d05c4d7ab696f0d96",
       "turns": [
@@ -1070,6 +1076,7 @@
     },
     {
       "id": "live-sparse",
+      "engineRevision": "27805040eed0d91d4ea7b49f478b0b197b13676d",
       "sourceRevision": "b78864980a5cf33fe0fb36a666efb9e40aced499",
       "archiveHash": "615711767212edc28435c148461ef0b1c938308850b223d7a2efbad62c249501",
       "turns": [
@@ -1103,6 +1110,7 @@
     },
     {
       "id": "live-sparse-retry",
+      "engineRevision": "27805040eed0d91d4ea7b49f478b0b197b13676d",
       "sourceRevision": "c8329cc6d726c1535cce924580c80c8260a97a60",
       "archiveHash": "32752c255f95066cc170fcb1139c6e949ce0d9aa82c9ca872f0baf958e3cd126",
       "turns": [
@@ -1369,6 +1377,7 @@
     },
     {
       "id": "live-sparse-game-catchup",
+      "engineRevision": "27805040eed0d91d4ea7b49f478b0b197b13676d",
       "sourceRevision": "aa005894388924c2b748f53220691b33d16b2b1d",
       "archiveHash": "f8a5350d2251bdbcd103505909e5f3c29ea0a7b97a3f4587ef3a100ef059bad7",
       "turns": [
@@ -1402,6 +1411,7 @@
     },
     {
       "id": "live-tuples",
+      "engineRevision": "27805040eed0d91d4ea7b49f478b0b197b13676d",
       "sourceRevision": "aa005894388924c2b748f53220691b33d16b2b1d",
       "archiveHash": "f8a5350d2251bdbcd103505909e5f3c29ea0a7b97a3f4587ef3a100ef059bad7",
       "turns": [
@@ -1439,6 +1449,7 @@
     },
     {
       "id": "live-tuples-game-catchup",
+      "engineRevision": "27805040eed0d91d4ea7b49f478b0b197b13676d",
       "sourceRevision": "aa005894388924c2b748f53220691b33d16b2b1d",
       "archiveHash": "f8a5350d2251bdbcd103505909e5f3c29ea0a7b97a3f4587ef3a100ef059bad7",
       "turns": [
@@ -1469,13 +1480,367 @@
           "replayAdditionalRequests": null
         }
       ]
+    },
+    {
+      "id": "live-citations",
+      "engineRevision": "73441f9a620dfdd94a28b94b68aa8f8b8ef1321c",
+      "sourceRevision": "a4190b2f847299368308ae2fb91fb2ad16674c17",
+      "archiveHash": "24b31e4532750f68b15b30b775e99a20133fb5dfc55dda2312b9395460b59ab2",
+      "turns": [
+        {
+          "mode": "villages",
+          "caseId": "citations-warmup",
+          "message": "Do you prefer a bit of company while you work?",
+          "startedAt": "2026-11-09T15:18:36.535Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 17876,
+          "cachedInputTokens": 1536,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 495,
+          "reasoningTokens": 148,
+          "latencyMs": 5794,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.002752608,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 2
+          },
+          "replayAdditionalRequests": 0
+        },
+        {
+          "mode": "game",
+          "caseId": "citations-warmup",
+          "message": "Do you prefer a bit of company while you work?",
+          "startedAt": "2026-11-09T15:18:42.332Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 12455,
+          "cachedInputTokens": 11648,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 450,
+          "reasoningTokens": 144,
+          "latencyMs": 5414,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.000425994,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "ordinary-quiet",
+          "message": "Is this usually your quietest part of the day?",
+          "startedAt": "2026-11-09T15:18:47.748Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 18341,
+          "cachedInputTokens": 17152,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 644,
+          "reasoningTokens": 350,
+          "latencyMs": 6696,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.0006162059999999999,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 2
+          },
+          "replayAdditionalRequests": 0
+        },
+        {
+          "mode": "game",
+          "caseId": "ordinary-quiet",
+          "message": "Is this usually your quietest part of the day?",
+          "startedAt": "2026-11-09T15:18:54.445Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 12778,
+          "cachedInputTokens": 12032,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 367,
+          "reasoningTokens": 49,
+          "latencyMs": 4418,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.000368196,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "ordinary-outside",
+          "message": "What do you like hearing from outside when the door is open?",
+          "startedAt": "2026-11-09T15:18:58.865Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 18792,
+          "cachedInputTokens": 17664,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 541,
+          "reasoningTokens": 133,
+          "latencyMs": 6400,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.0005467919999999999,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 2
+          },
+          "replayAdditionalRequests": 0
+        },
+        {
+          "mode": "game",
+          "caseId": "ordinary-outside",
+          "message": "What do you like hearing from outside when the door is open?",
+          "startedAt": "2026-11-09T15:19:05.268Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 13112,
+          "cachedInputTokens": 12416,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 448,
+          "reasoningTokens": 35,
+          "latencyMs": 5212,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.000410448,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "ordinary-daytime",
+          "message": "Do you prefer the morning here, or the afternoon?",
+          "startedAt": "2026-11-09T15:19:10.482Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 19361,
+          "cachedInputTokens": 18048,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 978,
+          "reasoningTokens": 599,
+          "latencyMs": 10219,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.000837894,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 2
+          },
+          "replayAdditionalRequests": 0
+        },
+        {
+          "mode": "game",
+          "caseId": "ordinary-daytime",
+          "message": "Do you prefer the morning here, or the afternoon?",
+          "startedAt": "2026-11-09T15:19:20.703Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 13539,
+          "cachedInputTokens": 12800,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 360,
+          "reasoningTokens": 36,
+          "latencyMs": 4352,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.00036525,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "memory-name",
+          "message": "Another detail I would like you to remember: I call the blue kettle Tawny, because of its wooden handle.",
+          "startedAt": "2026-11-09T15:19:25.057Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 19882,
+          "cachedInputTokens": 18688,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 1280,
+          "reasoningTokens": 626,
+          "latencyMs": 12057,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.001003164,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": "meaningful-learning-not-persisted",
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 2
+          },
+          "replayAdditionalRequests": 0,
+          "semanticAssessment": "failed",
+          "semanticEvidence": "The response acknowledged Tawny but proposed no events; native owner inspection still contained the same three Memories and no Tawny record."
+        },
+        {
+          "mode": "game",
+          "caseId": "memory-name",
+          "message": "Another detail I would like you to remember: I call the blue kettle Tawny, because of its wooden handle.",
+          "startedAt": "2026-11-09T15:19:37.117Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 13889,
+          "cachedInputTokens": 13184,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 465,
+          "reasoningTokens": 74,
+          "latencyMs": 4762,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.00042430200000000005,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "memory-name-recall",
+          "message": "What name did I give the kettle?",
+          "startedAt": "2026-11-09T15:19:41.880Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 20775,
+          "cachedInputTokens": 19200,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 288,
+          "reasoningTokens": 59,
+          "latencyMs": 4656,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.00046665,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 2
+          },
+          "replayAdditionalRequests": 0,
+          "semanticAssessment": "immediate-scene-recall-only",
+          "semanticEvidence": "The response recalled Tawny from current Scene history. No persisted Tawny Memory exists; this is not long-term Memory evidence."
+        },
+        {
+          "mode": "game",
+          "caseId": "memory-name-recall",
+          "message": "What name did I give the kettle?",
+          "startedAt": "2026-11-09T15:19:46.539Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 14291,
+          "cachedInputTokens": 13568,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 515,
+          "reasoningTokens": 130,
+          "latencyMs": 5791,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.000458154,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        }
+      ]
     }
   ],
+  "engineRevisions": [
+    "27805040eed0d91d4ea7b49f478b0b197b13676d",
+    "73441f9a620dfdd94a28b94b68aa8f8b8ef1321c"
+  ],
   "observedTotals": {
-    "requests": 49,
-    "failedComparisons": 3,
+    "requests": 61,
+    "runtimeFailedComparisons": 3,
+    "semanticFailedComparisons": 1,
+    "failedComparisons": 4,
     "replacementRequests": 1,
-    "knownRatedCostUsd": 0.052383782999999996,
+    "knownRatedCostUsd": 0.06105944099999999,
     "actualInvoiceCostUsd": null
   }
 }
