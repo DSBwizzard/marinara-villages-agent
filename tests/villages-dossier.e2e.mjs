@@ -1364,9 +1364,11 @@ await withBrowser(browser, async () => {
       await mail.getByRole("button", { name: "Close Mailbox", exact: true }).click();
       await page.getByRole("button", { name: "Close ×", exact: true }).click();
       await expect(profile).not.toBeVisible();
+      await expect(page.locator(`[data-desk]`)).toHaveAttribute("data-phase", "open");
       const mapButton = page.getByRole("button", { name: /Return to village|← Village/, exact: true });
       if (await mapButton.isVisible()) await mapButton.click();
-      await page.getByRole("button", { name: "Mailbox", exact: true }).click();
+      await expect(page.locator(`[data-desk]`)).toHaveAttribute("data-desk", "none");
+      await page.getByRole("button", { name: /^Mailbox(?: · Unread mail)?$/, exact: true }).click();
       await expect(paperPages.locator("span")).toHaveText(position);
       reopenProfileAfterMail = true;
 
