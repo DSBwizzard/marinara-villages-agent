@@ -206,14 +206,6 @@ await withBrowser(browser, async () => {
     await nav.getByRole("button", { name: "People", exact: true }).click();
     await page.getByRole("button", { name: "Open Feddy profile" }).click();
     const profile = page.getByRole("region", { name: "Feddy profile" });
-    const settleTurn = () =>
-      profile
-        .locator(".marinara-capability-villages-dossier-turn")
-        .evaluateAll((nodes) =>
-          Promise.all(
-            nodes.flatMap((node) => node.getAnimations().map((animation) => animation.finished.catch(() => {}))),
-          ),
-        );
     await chooseSection("Wishes");
     await expect(profile.getByRole("region", { name: "Known wishes" })).toBeVisible();
     assert.equal(privateReads, 0);
@@ -222,7 +214,6 @@ await withBrowser(browser, async () => {
     await expect(profile.getByRole("region", { name: "Wish details", exact: true })).toHaveCount(0);
     const openWish = profile.getByRole("button", { name: "Open Wish: Go swimming with Roxie.", exact: true });
     await expect(openWish).toBeVisible();
-    await settleTurn();
     const camera = () =>
       page.evaluate(() => [
         window.scrollX,
@@ -292,7 +283,6 @@ await withBrowser(browser, async () => {
     await expect(profile.getByRole("progressbar")).toHaveCount(0);
     assert.equal(writes, 0, "Browsing People and wishes makes no mutation or generation request");
     await expect(profile.getByText("I would prefer the lake.", { exact: true })).toBeVisible();
-    await settleTurn();
     const nextPage = details.getByRole("button", { name: "Next detail page" });
     let pages = 0;
     while (await nextPage.isEnabled()) {
@@ -376,7 +366,6 @@ await withBrowser(browser, async () => {
     }
     if (width <= 700) await details.getByText("Chose to ask Roxie directly.", { exact: true }).scrollIntoViewIfNeeded();
     await expect(details.getByText("Chose to ask Roxie directly.", { exact: true })).toBeInViewport({ ratio: 0.99 });
-    await settleTurn();
     await page.screenshot({ path: resolve(`.build-tmp/wish-journal/inspect-${width}.png`), fullPage: true });
     await details.getByRole("button", { name: "← Wishes", exact: true }).click();
     await expect(details).toHaveCount(0);

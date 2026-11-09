@@ -167,7 +167,6 @@ export function VillagerDossier({
   const [revision, setRevision] = useState(0);
   const content = useRef<HTMLDivElement>(null);
   const positions = useRef<Partial<Record<DossierSection, number>>>({});
-  const [turn, setTurn] = useState({ id: 0, backwards: false });
   const profile = relationships?.profiles?.find((person) => person.characterId === navigation.actorId);
   const name = villager?.name ?? "Former villager";
   useEffect(() => {
@@ -230,10 +229,6 @@ export function VillagerDossier({
       ? content.current?.closest<HTMLElement>(`.${P}-dossier-book`)
       : content.current;
     if (reading) positions.current[section] = reading.scrollTop;
-    if (next !== section) {
-      const order = sections;
-      setTurn((current) => ({ id: current.id + 1, backwards: order.indexOf(next) < order.indexOf(section) }));
-    }
     setSection(next);
     setInspect(inspection);
   };
@@ -580,9 +575,6 @@ export function VillagerDossier({
                 )}
               </div>
             </main>
-            {turn.id > 0 ? (
-              <div key={turn.id} className={`${P}-dossier-turn`} data-backwards={turn.backwards} aria-hidden="true" />
-            ) : null}
           </PeopleBook>
         </div>
       </RetainedView>

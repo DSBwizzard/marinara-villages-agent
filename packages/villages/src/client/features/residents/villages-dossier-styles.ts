@@ -137,10 +137,6 @@ export const DOSSIER_STYLES = `
 .${P}-dossier-root .${P}-week-body { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px 72px; }
 .${P}-dossier-root .${P}-week-body > * { grid-column:1; }
 .${P}-dossier-root .${P}-week-body > .${P}-agenda-days { grid-column:2; grid-row:1 / span 12; display:grid; gap:16px; align-content:start; }
-.${P}-dossier-turn { pointer-events:none; position:absolute; z-index:4; left:50%; right:0; top:0; bottom:0; transform-origin:left center; border-radius:0 12px 12px 0; background:${paper}; box-shadow:-5px 0 18px #67432150; animation:${P}-page-turn 450ms ease-in-out both; backface-visibility:hidden; }
-.${P}-dossier-turn[data-backwards="true"] { animation-name:${P}-page-back; }
-@keyframes ${P}-page-turn { 0% { opacity:1; transform:rotateY(0); } 75% { opacity:.9; } 100% { opacity:0; transform:rotateY(-165deg); } }
-@keyframes ${P}-page-back { 0% { opacity:1; transform:rotateY(-165deg); } 100% { opacity:0; transform:rotateY(0); } }
 .${P}-people-session{height:100%;min-height:0}
 .${P}-people-session[hidden]{display:none}
 
@@ -210,7 +206,6 @@ export const DOSSIER_STYLES = `
  .${P}-dossier-root .${P}-agenda-days{grid-template-columns:minmax(0,1fr);gap:12px}
  .${P}-dossier-root .${P}-week-body{display:block}
  .${P}-dossier-content .villages-relationship-card{grid-column:auto;grid-row:auto}
- .${P}-dossier-turn{display:none}
  .${P}-directory-paper{display:flex;height:100%}
  .${P}-directory-head{display:flex;align-items:center;gap:10px;margin:0 16px 5px;padding:14px 0 12px;border-bottom:1px solid #8c7559}
  .${P}-directory-head h1,.${P}-directory-meta{min-height:0;margin:0;padding:0;border:0}
@@ -226,7 +221,6 @@ export const DOSSIER_STYLES = `
  .${P}-directory-card small{font-size:16px;line-height:1.3}
 }
 @media(prefers-reduced-motion:reduce){
- .${P}-dossier-turn{display:none!important}
  .${P}-dossier-root *,.${P}-directory-root *{transition:none!important;animation:none!important}
 }
 `;

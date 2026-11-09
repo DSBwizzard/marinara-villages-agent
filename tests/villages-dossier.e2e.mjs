@@ -635,14 +635,6 @@ await withBrowser(browser, async () => {
       width <= 700
         ? page.getByRole("combobox", { name: "Section" }).selectOption({ label })
         : tabs.getByRole("button", { name: label, exact: true }).click();
-    const settleTurn = () =>
-      profile
-        .locator(`.${P}-dossier-turn`)
-        .evaluateAll((nodes) =>
-          Promise.all(
-            nodes.flatMap((node) => node.getAnimations().map((animation) => animation.finished.catch(() => {}))),
-          ),
-        );
     await expect(profile).toBeVisible();
     await expect(profile.getByRole("heading", { name: "Mara", exact: true })).toHaveCount(1);
     await expect(profile.getByRole("heading", { name: "Mara", exact: true })).toBeInViewport({ ratio: 1 });
@@ -867,7 +859,7 @@ await withBrowser(browser, async () => {
     assert.equal(tabAfter.y, tabBefore.y, "Sticky notes stay fixed while changing Wish pages");
     assert.equal(tabAfter.x, tabBefore.x);
     await expect(profile.getByText("Shared wish 12", { exact: true }).filter({ visible: true }).first()).toBeVisible();
-    await settleTurn();
+    await expect(profile.locator(`.${P}-dossier-turn`)).toHaveCount(0);
     await page.screenshot({ path: resolve(output, `wishes-${width}-${height}.png`) });
     await page
       .getByRole("group", { name: "Profile actions", exact: true })
@@ -1438,7 +1430,6 @@ await withBrowser(browser, async () => {
     }
     await profile.getByRole("button", { name: "Inspect", exact: true }).last().click();
     await expect(profile.getByText("SOURCE EVIDENCE", { exact: false })).toBeVisible();
-    await settleTurn();
     await page.screenshot({ path: resolve(output, `inspect-${width}-${height}.png`) });
     if (exerciseActions) {
       await profile.getByRole("button", { name: "Correct", exact: true }).click();
@@ -1457,7 +1448,6 @@ await withBrowser(browser, async () => {
       assert.equal(corrections.length, 0, "Cancel makes no write.");
       await profile.getByRole("button", { name: "Correct", exact: true }).click();
       await correction.getByRole("textbox").fill("PRIVATE corrected wording");
-      await settleTurn();
       await page.screenshot({ path: resolve(output, `correct-${width}-${height}.png`) });
       await correction.getByRole("button", { name: "Save correction" }).click();
       await expect(correction.getByRole("alert")).toContainText("Saved response unavailable");
@@ -1605,7 +1595,7 @@ await withBrowser(browser, async () => {
 
     await directory.getByRole("button", { name: `Open ${secondName} profile` }).click();
     await chooseSection("Wishes");
-    await expect(page.locator(`.${P}-dossier-turn`)).toBeHidden();
+    await expect(page.locator(`.${P}-dossier-turn`)).toHaveCount(0);
     assert.equal(
       await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1),
       false,
