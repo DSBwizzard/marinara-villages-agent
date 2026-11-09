@@ -8,7 +8,7 @@ The cost target remains unmet. The latest three warm ordinary conversations aver
 
 - Villages staging base: `9251988b00ec3ebaf743d4337d30cb4e71d1f0f1`.
 - Current integration target: Engine staging `73441f9a620dfdd94a28b94b68aa8f8b8ef1321c`, version 2.5.2, Capability API 1.818. Exact unmodified source was built and activated in the same isolated Linux world. Installed package bytes, saved records/assets, model settings and credentials passed guarded checks; startup purchased no model requests. The default runtime pin and personal installations were unchanged.
-- The first 49 provider requests used Engine staging `27805040eed0d91d4ea7b49f478b0b197b13676d`; the next 22 used `73441f9a620dfdd94a28b94b68aa8f8b8ef1321c`. Each measurement stage identifies its actual Engine revision. The newer revision reproduces the identical public declaration closure. Its Advanced Memory changes do not participate in this baseline: the native Game chat has no saved Advanced Memory setting and the default is disabled.
+- The first 49 provider requests used Engine staging `27805040eed0d91d4ea7b49f478b0b197b13676d`; the next 28 used `73441f9a620dfdd94a28b94b68aa8f8b8ef1321c`. Each measurement stage identifies its actual Engine revision. The newer revision reproduces the identical public declaration closure. Its Advanced Memory changes do not participate in this baseline: the native Game chat has no saved Advanced Memory setting and the default is disabled.
 - Earlier successful sample product source: `485e7214b810ba28d74af06904be796cda9c3b02`; archive SHA-256 `fe904498414b77d30a7d62a7b841748ea66571f38c7ba51d05c4d7ab696f0d96`. Subsequent source and archive identities are retained per sample in the measurements.
 
 The API requirement and generated public declaration closure are in [#458](https://github.com/DSBwizzard/marinara-villages-agent/pull/458). Stable authored prompt prefixes and request/cache accounting are in [#459](https://github.com/DSBwizzard/marinara-villages-agent/pull/459). The coupled Scene contract, native consequences, context selection, retirement and measurement harnesses are in [#460](https://github.com/DSBwizzard/marinara-villages-agent/pull/460). Source merging and runtime deployment remain separate outcomes.
@@ -29,7 +29,7 @@ Each cell below gives Villages / Game Mode. Reasoning is already included in out
 
 The final pairs ran after 10:00 UTC on 2026-11-09 at Flash off-peak rates per million tokens: $0.15 uncached input, $0.003 cached input and $0.60 output. Earlier recorded iterations used the then-applicable peak rates, twice those amounts. See [DeepSeek pricing](https://api-docs.deepseek.com/quick_start/pricing/). Absolute dollar changes across this boundary do not demonstrate a product improvement.
 
-[The machine-readable measurements](scene-cost-results.json) retain all 71 reported requests across thirteen sample files, including cold prefixes, expensive Memory interpretation, one explicit replacement and intermediate layouts. Their known rated cost is $0.069916845; invoice cost is unavailable. No intermediate attempt has been removed from the spend total. Provider-internal HTTP retries are not exposed by the public Engine APIs. The tracked Village capability attempts and Game request counts are the observable request accounting; unknown billing must never be treated as free.
+[The machine-readable measurements](scene-cost-results.json) retain all 77 reported requests across fourteen sample files, including cold prefixes, expensive Memory interpretation, one explicit replacement and intermediate layouts. Their known rated cost is $0.077226285; invoice cost is unavailable. The 39 Village requests and 38 Game requests also match the native usage ledger and paired Game history. No intermediate attempt has been removed from the spend total. Provider-internal HTTP retries are not exposed by the public Engine APIs. The tracked Village capability attempts and Game request counts are the observable request accounting; unknown billing must never be treated as free.
 
 The follow-up includes three failed comparisons. A scalar source on an optional cosmetic cue rejected an otherwise usable response; the fix now discards invalid cosmetic cues while keeping consequential validation strict. Its already-rejected receipt remained rejected, and one explicit native Retry purchased a replacement using the frozen original prompt. Two later Memory proposals cited invalid or mismatched sources. Their dialogue survived, their unsupported Memory updates did not apply, and native Continue retained both failures. The missing matching Game inputs were then generated separately. Those failed purchases are included above; none counts as a successful consequence or a zero-cost retry.
 
@@ -46,7 +46,7 @@ The preceding pass used product source `a4190b2f847299368308ae2fb91fb2ad16674c17
 
 The native Memory owner inspection still contained the same three records after that pass; none contained Tawny. Completion status therefore does not establish successful persistence.
 
-The latest pass used product source `742a861737191ca8a1bbe0ab5ba4e1f52f73526f`, archive SHA-256 `c19230399f1f2857e3efc8c36e27419f598203f0699afdd068786e8818c6cf37`, on the same Engine. It clarifies meaningful lasting learning and supplies Project grammar together with full terms only when relevant. All ten requests completed without native validation failures; replay and the subsequent restart purchased zero additional requests.
+The latest ordinary-conversation sample used product source `742a861737191ca8a1bbe0ab5ba4e1f52f73526f`, archive SHA-256 `c19230399f1f2857e3efc8c36e27419f598203f0699afdd068786e8818c6cf37`, on the same Engine. It clarifies meaningful lasting learning and supplies Project grammar together with full terms only when relevant. All ten requests completed without native validation failures; replay and the subsequent restart purchased zero additional requests.
 
 | Latest pair | Rated USD, Villages / Game | Cost ratio | Observed behavior |
 | --- | ---: | ---: | --- |
@@ -57,6 +57,16 @@ The latest pass used product source `742a861737191ca8a1bbe0ab5ba4e1f52f73526f`, 
 | Learn family craft history | .001222962 / .000613164 | 1.99× | New private report Memory persisted and survived restart |
 
 The new native Memory records the player's report that father Rowan taught chair repair and made the wooden mallet. It cites exact audible `input:0`; only Mara is a knower, and player is a subject rather than an automatic added knower. The owner inspection grew from three to four Memories. Exact owner records and Game history survived an ordinary restart with no added requests. This establishes persistence for that fact; it does not repair the earlier missed name or establish broad semantic reliability.
+
+The subsequent Memory-focused pass used product source `80637e6edb6ca8cde8fde04cd5eb4619e804e5a7`, archive SHA-256 `2e6b73faa731fa5c765a17cb2462319fd3ee756a28115c6c35827d370d07e4c2`, on the same Engine. It clarifies that code supplies full exact support when every cited source is at most 320 UTF-8 bytes; only longer or mixed sources need model-selected excerpts. All six requests completed with zero native validation failures or replay purchases.
+
+| Memory-focused pair | Rated USD, Villages / Game | Cost ratio | Observed behavior |
+| --- | ---: | ---: | --- |
+| Changed-prefix warmup | .003632292 / .000395916 | 9.17× | Transition cost retained |
+| New childhood-village report | .000801054 / .000559068 | 1.43× | New private Memory; 130-byte source needs no duplicate model quote |
+| Long qualified correction | .001466040 / .000455070 | 3.22× | Correction and condition persisted; selected excerpt has a quality gap |
+
+The correction advanced the same Memory root to revision 2 and retained “only when cousin Delia can come; otherwise stay home,” replacing the broader annual-visit claim. Mara remains the sole knower, with report attribution to player. Both complete original submissions remain in native Scene history and the correction's source receipt matches its actual submission. The chosen excerpt names the fair date rather than the important attendance condition. The Memory text and full source preserve that condition, but the excerpt is weak; the measurements record this as a separate semantic quality gap. A successful native write alone does not establish good excerpt selection. The short-Memory result does not establish a general 1.5× consequence ceiling.
 
 ## What improved and what remains
 

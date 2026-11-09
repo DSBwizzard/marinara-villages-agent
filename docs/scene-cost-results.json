@@ -6,16 +6,17 @@
   "model": "deepseek-flash",
   "providerEndpoint": "https://api.deepseek.com",
   "pricingSource": "https://api-docs.deepseek.com/quick_start/pricing/",
-  "pricingCheckedAt": "2026-11-09T15:56:35.178Z",
+  "pricingCheckedAt": "2026-11-09T16:24:55.000Z",
   "limitations": [
     "One synthetic resident and one continuous quiet world, with matching player inputs but naturally different generated histories.",
-    "This records all 71 reported requests across implementation iterations. It is not a randomized before/after experiment.",
+    "This records all 77 reported requests across implementation iterations. It is not a randomized before/after experiment.",
     "Rates change from peak to off-peak at 10:00 UTC; same-rate mode comparisons and token counts must be used for improvement claims.",
     "Costs are usage multiplied by published rates, not invoice amounts. Cache writes and provider-internal retries are unreported.",
     "Reasoning tokens are a subset of output and are charged once. Saved model and reasoning parameters were preserved.",
     "The same complete stored Mara card is used in both modes. The native Game Mode prompt representation differs from Villages; scenario/example text did not appear verbatim in the inspected Game prompt.",
     "Changed-prefix and cold-start costs remain in the dataset. One conclusive contract rejection required an explicit replacement; two later Memory-source failures preserved prose and were continued without those unsupported updates. Their purchases remain billed failures.",
-    "Transport completion does not establish semantic success. One later explicit learning request was acknowledged without a persisted Memory; immediate Scene recall is recorded separately."
+    "Transport completion does not establish semantic success. One later explicit learning request was acknowledged without a persisted Memory; immediate Scene recall is recorded separately.",
+    "A later correction preserved its qualification and root lineage, but its selected supporting excerpt omitted the important condition. This quality gap is retained separately from runtime failures."
   ],
   "stages": [
     {
@@ -2118,6 +2119,187 @@
           "replayAdditionalRequests": null
         }
       ]
+    },
+    {
+      "id": "live-quotes",
+      "engineRevision": "73441f9a620dfdd94a28b94b68aa8f8b8ef1321c",
+      "sourceRevision": "80637e6edb6ca8cde8fde04cd5eb4619e804e5a7",
+      "archiveHash": "2e6b73faa731fa5c765a17cb2462319fd3ee756a28115c6c35827d370d07e4c2",
+      "turns": [
+        {
+          "mode": "villages",
+          "caseId": "quotes-warmup",
+          "message": "It is good to talk without rushing.",
+          "startedAt": "2026-11-09T16:17:12.851Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 23910,
+          "cachedInputTokens": 1664,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 484,
+          "reasoningTokens": 120,
+          "latencyMs": 6641,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.0036322920000000005,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 2
+          },
+          "replayAdditionalRequests": 0
+        },
+        {
+          "mode": "game",
+          "caseId": "quotes-warmup",
+          "message": "It is good to talk without rushing.",
+          "startedAt": "2026-11-09T16:17:19.495Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 16602,
+          "cachedInputTokens": 15872,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 398,
+          "reasoningTokens": 60,
+          "latencyMs": 4447,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.00039591599999999995,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "memory-childhood",
+          "message": "One more thing I would like you to remember: my childhood village was called Hazelbrook. I still visit its spring fair every year.",
+          "startedAt": "2026-11-09T16:17:23.944Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 24441,
+          "cachedInputTokens": 23168,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 901,
+          "reasoningTokens": 359,
+          "latencyMs": 8682,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.000801054,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 2
+          },
+          "replayAdditionalRequests": 0,
+          "semanticAssessment": "passed-native-memory-persistence",
+          "semanticEvidence": "The GM omitted duplicate quotes for the 130-byte input; native application saved a new private Hazelbrook report Memory with Mara as its sole knower."
+        },
+        {
+          "mode": "game",
+          "caseId": "memory-childhood",
+          "message": "One more thing I would like you to remember: my childhood village was called Hazelbrook. I still visit its spring fair every year.",
+          "startedAt": "2026-11-09T16:17:32.629Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 16970,
+          "cachedInputTokens": 16256,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 672,
+          "reasoningTokens": 175,
+          "latencyMs": 6676,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.000559068,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "memory-fair-qualification",
+          "message": "Please remember one qualification about those spring-fair visits. Hazelbrook's fair is usually on the first Saturday after the apple trees blossom. The lanes get muddy and the stalls crowd the square, so I take the old north path rather than the river footbridge. I enjoy the little brass band and the seed stall, but the important condition is this: I only make the trip when my cousin Delia can come with me. If she cannot come, I stay home; calling it an annual visit was too broad.",
+          "startedAt": "2026-11-09T16:17:39.307Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 25280,
+          "cachedInputTokens": 23680,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 1925,
+          "reasoningTokens": 1085,
+          "latencyMs": 15290,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.00146604,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 2
+          },
+          "replayAdditionalRequests": 0,
+          "semanticAssessment": "persisted-correction-with-weak-excerpt",
+          "semanticQualityGap": "supporting-excerpt-omits-critical-condition",
+          "semanticEvidence": "Native Memory root revision advanced to 2, replacing the broad annual-visit report with the condition that cousin Delia must accompany the player. The exact 485-byte submission survives in Scene history. The selected excerpt names the fair date but omits the important attendance condition; the Memory text retains it. This is a source-excerpt quality gap, not a claim of uniformly successful consequence interpretation."
+        },
+        {
+          "mode": "game",
+          "caseId": "memory-fair-qualification",
+          "message": "Please remember one qualification about those spring-fair visits. Hazelbrook's fair is usually on the first Saturday after the apple trees blossom. The lanes get muddy and the stalls crowd the square, so I take the old north path rather than the river footbridge. I enjoy the little brass band and the seed stall, but the important condition is this: I only make the trip when my cousin Delia can come with me. If she cannot come, I stay home; calling it an annual visit was too broad.",
+          "startedAt": "2026-11-09T16:17:54.600Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 17573,
+          "cachedInputTokens": 16640,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 442,
+          "reasoningTokens": 75,
+          "latencyMs": 5036,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.00045507,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        }
+      ]
     }
   ],
   "engineRevisions": [
@@ -2125,12 +2307,13 @@
     "73441f9a620dfdd94a28b94b68aa8f8b8ef1321c"
   ],
   "observedTotals": {
-    "requests": 71,
+    "requests": 77,
     "runtimeFailedComparisons": 3,
     "semanticFailedComparisons": 1,
+    "semanticQualityGaps": 1,
     "failedComparisons": 4,
     "replacementRequests": 1,
-    "knownRatedCostUsd": 0.06991684499999996,
+    "knownRatedCostUsd": 0.07722628499999995,
     "actualInvoiceCostUsd": null
   }
 }
