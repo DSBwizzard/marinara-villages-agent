@@ -72,6 +72,8 @@ export const DESK_STYLES = `
 .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-layout{padding:0 12px 12px}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-row[aria-pressed="true"]{background:#d6dfc1;border-color:#9fae82}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-mailbox-dialog :is(button,select,input,textarea){font-family:system-ui,sans-serif}
+.${P}-desk-workspace[data-desk="mailbox"] .villages-letter-pages{container-type:size}
+.${P}-desk-workspace[data-desk="mailbox"] .villages-letter-signature .${P}-signature-image{max-height:min(7rem,30cqh)}
 @media(max-width:700px){
  .${P}-desk-workspace[data-desk]:not([data-desk="none"]){padding:8px}
  .${P}-desk-header{gap:4px;flex-wrap:wrap;margin-bottom:5px}
