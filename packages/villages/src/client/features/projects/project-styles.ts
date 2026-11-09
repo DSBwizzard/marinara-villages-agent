@@ -2,7 +2,7 @@ import { ELEMENT_TAG as P } from "../../shared/constants.js";
 
 export const projectStyles = `
 .${P}-root.${P}-project-root{display:block;height:100%;padding:0;overflow:auto;gap:0;background:transparent}
-${P} .${P}-project-desk{--bp-ink:#fff6dd;--bp-muted:#d3e0db;--bp-line:#a4bdc1;--bp-panel:#103e5740;--primary:#d9edf2;position:relative;min-height:100%;padding:0 8px;color:var(--bp-ink);background:transparent;font-family:"village-letter-assistant",system-ui,sans-serif;box-sizing:border-box}
+${P} .${P}-project-desk{--bp-ink:#fffaf0;--bp-muted:#dce7ec;--bp-line:#b6cfdd;--bp-panel:#103e5740;--primary:#f6ecd8;position:relative;min-height:100%;padding:0 8px;color:var(--bp-ink);background:transparent;font-family:"village-letter-assistant",system-ui,sans-serif;box-sizing:border-box}
 ${P} .${P}-project-board{position:relative;box-sizing:border-box;max-width:90rem;min-height:100%;margin:auto;padding:clamp(16px,2vw,28px) calc(4.5% + 18px);border:0;box-shadow:none;background:transparent;color:var(--bp-ink);font-size:1rem;line-height:1.45}
 .${P}-project-board *{box-sizing:border-box}
 .${P}-project-board h1,.${P}-project-board h2,.${P}-project-board h3,.${P}-project-board p,.${P}-project-board figure{margin:0}
@@ -13,9 +13,9 @@ ${P} .${P}-project-board{position:relative;box-sizing:border-box;max-width:90rem
 .${P}-project-board .vp-header{display:flex;align-items:center;justify-content:space-between;gap:1rem;border-bottom:1px solid var(--bp-ink);padding-bottom:.45rem;margin-bottom:.55rem}
 .${P}-project-board .vp-eyebrow,.${P}-project-board .vp-label{display:block;text-transform:uppercase;color:var(--bp-muted);font-size:.75rem;font-weight:600;letter-spacing:.035em;margin-bottom:.35rem}
 .${P}-project-board .vp-actions{display:flex;flex-wrap:wrap;align-items:center;gap:.65rem}
-.${P}-project-board button,.${P}-project-board .${P}-artwork-upload{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:.5rem;min-height:44px;min-width:0;max-width:100%;padding:.55rem 1rem;margin:0;border:1px solid var(--bp-line);border-radius:0;background:#41697d;color:var(--bp-ink);font:500 1rem/1.3 system-ui,sans-serif;box-shadow:none;cursor:pointer;text-align:center;text-decoration:none;overflow-wrap:anywhere}
+.${P}-project-board button,.${P}-project-board .${P}-artwork-upload{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:.5rem;min-height:44px;min-width:0;max-width:100%;padding:.55rem 1rem;margin:0;border:1px solid var(--bp-line);border-radius:3px;background:#143d60;color:var(--bp-ink);font:500 1rem/1.3 "village-letter-assistant",system-ui,sans-serif;box-shadow:none;cursor:pointer;text-align:center;text-decoration:none;overflow-wrap:anywhere}
 .${P}-project-board button:hover:not(:disabled),.${P}-project-board .${P}-artwork-upload:hover{background:#4a7487}
-.${P}-project-board button[aria-pressed=true],.${P}-project-board button[aria-selected=true],.${P}-project-board .vp-primary{background:#d1e9ef;color:#2b4c60;border-color:#d1e9ef}
+.${P}-project-board button[aria-pressed=true],.${P}-project-board button[aria-selected=true],.${P}-project-board .vp-primary{background:#f6ecd8;color:#173a57;border-color:#f6ecd8}
 .${P}-project-board button:disabled{opacity:.48;cursor:default}
 .${P}-project-board button:focus-visible,.${P}-project-board input:focus-visible,.${P}-project-board textarea:focus-visible,.${P}-project-board select:focus-visible,.${P}-project-board .${P}-artwork-upload:focus-within{outline:2px solid #f4f3d3;outline-offset:3px}
 .${P}-project-board .vp-subtle{background:transparent}
@@ -61,17 +61,19 @@ ${P} .${P}-project-board{position:relative;box-sizing:border-box;max-width:90rem
 .${P}-project-board .vp-index-tools{display:flex;justify-content:space-between;align-items:center;min-height:2.8rem;gap:.5rem}
 .${P}-project-board .vp-index-tools .vp-note{margin-left:auto}
 .${P}-project-board .vp-workspace{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.7rem;flex:1;min-height:0}
-.${P}-project-board .vp-drafts,.${P}-project-board .vp-active-slot{min-width:0;min-height:0;border:1px solid var(--bp-line);background:transparent;padding:clamp(.6rem,1.4vw,1.2rem)}
+.${P}-project-board .vp-drafts,.${P}-project-board .vp-active-slot{min-width:0;min-height:0;border:0;background:transparent;padding:clamp(.6rem,1.4vw,1.2rem)}
 .${P}-project-board .vp-drafts{display:flex;flex-direction:column;gap:.6rem}
 .${P}-project-board .vp-drafts h2{font-size:clamp(1.15rem,2vw,1.6rem);border-bottom:1px solid var(--bp-line);padding-bottom:.45rem}
 .${P}-project-board .vp-drafts .vp-project-list{gap:.25rem}
 .${P}-project-board .vp-drafts .vp-project-row{min-height:44px;padding:.35rem .65rem}
 .${P}-project-board .vp-drafts .vp-project-row span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .${P}-project-board .vp-draft-create[data-full=false]{display:none}
-.${P}-project-board .vp-active-slot{display:flex}
-.${P}-project-board .vp-empty-slot{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:1rem;width:100%;color:var(--bp-muted)}
+.${P}-project-board .vp-active-slot{display:flex;flex-direction:column;gap:1rem;border-left:1px solid var(--bp-line)}
+.${P}-project-board .vp-slot-title{font-size:clamp(1.15rem,2vw,1.6rem)}
+.${P}-project-board .vp-empty-slot{display:flex;flex:1;min-height:0;flex-direction:column;justify-content:center;align-items:center;gap:1rem;width:100%;color:var(--bp-muted)}
+.${P}-project-board .vp-slot-mark{display:grid;place-items:center;width:min(70%,210px);height:clamp(50px,10vh,110px);border:1px dashed var(--bp-line);color:var(--bp-ink);font:400 48px/1 Georgia,serif}
 .${P}-project-board .vp-new-types{display:grid;grid-template-columns:1fr 1fr;gap:.5rem;width:100%}
-.${P}-project-board .vp-new-types button{min-height:6rem}
+.${P}-project-board .vp-new-types button{min-height:6rem;background:#f6ecd8;color:#173a57;border-color:#f6ecd8}
 .${P}-project-board .vp-active-project{display:flex;width:100%;height:100%;flex-direction:column;align-items:stretch;justify-content:start;text-align:left;gap:.65rem;background:transparent}
 .${P}-project-board .vp-active-project strong{font-size:1.4rem;border-bottom:1px solid var(--bp-line);padding-bottom:.4rem}
 .${P}-project-board .vp-active-project img{width:100%;min-height:0;max-height:48%;object-fit:cover}
@@ -170,14 +172,21 @@ ${P} .${P}-project-board{position:relative;box-sizing:border-box;max-width:90rem
  .${P}-project-root:has(.vp-workspace) .${P}-project-desk{padding:0 4px}
  .${P}-project-board .vp-mobile-sections button{padding:.35rem .2rem;font-size:.85rem}
  .${P}-project-board .vp-workspace{grid-template-columns:minmax(0,1fr)}
+ .${P}-project-board .vp-active-slot{border-left:0}
+ .${P}-project-board .vp-slot-title{display:none}
  .${P}-project-board .vp-draft-create[data-full=false]{display:flex}
  .${P}-project-board .vp-workspace[data-mobile-section="drafts"]>.vp-active-slot,.${P}-project-board .vp-workspace[data-mobile-section="slot1"]>.vp-drafts,.${P}-project-board .vp-workspace[data-mobile-section="slot2"]>.vp-drafts,.${P}-project-board .vp-workspace[data-mobile-section="slot1"]>.vp-active-slot:last-child,.${P}-project-board .vp-workspace[data-mobile-section="slot2"]>.vp-active-slot:nth-child(2){display:none}
 }
 @media(max-width:700px) and (max-height:650px){
  ${P} .${P}-project-desk{padding:0 4px}
  ${P} .${P}-project-board{padding:.4rem 16px}
+ .${P}-project-root:has(.vp-workspace) .${P}-project-board{padding:.4rem 16px}
  .${P}-project-board{font-size:.9rem;line-height:1.2}
  .${P}-project-board .vp-header{padding-bottom:.2rem;margin-bottom:.25rem}
+ .${P}-project-board .vp-index-tools{min-height:1.5rem}
+ .${P}-project-board .vp-drafts{gap:.35rem;padding:.4rem}
+ .${P}-project-board .vp-drafts h2{font-size:1.2rem;padding-bottom:.25rem}
+ .${P}-project-board .vp-slot-mark{display:none}
  .${P}-project-board .vp-project-heading{margin:.25rem 0}
  .${P}-project-board .vp-project-heading h2{font-size:1.1rem}
  .${P}-project-board .vp-tabs{margin:.25rem 0}

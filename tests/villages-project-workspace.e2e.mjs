@@ -14,6 +14,7 @@ await withBrowser(browser, async () => {
     { width: 850, height: 900 },
     { width: 390, height: 740 },
     { width: 390, height: 568 },
+    { width: 320, height: 568 },
   ]) {
     const snapshot = projectSnapshot();
     snapshot.projects = Array.from({ length: 6 }, (_, index) => ({

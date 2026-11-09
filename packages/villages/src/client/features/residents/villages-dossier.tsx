@@ -275,8 +275,7 @@ export function VillagerDossier({
     ) : (
       <p>No known Venues.</p>
     );
-  const personalMail = links.find((link) => link.id === "personal-mail");
-  const relatedLinks = links.filter((link) => link.id !== "personal-mail" && (inspect || link.playerVisible === true));
+  const relatedLinks = links.filter((link) => inspect || link.playerVisible === true);
   const related = (
     <div className={`${P}-dossier-links`}>
       {relatedLinks.length ? (
@@ -353,11 +352,6 @@ export function VillagerDossier({
                       <p className={`${P}-dossier-warning`}>Card missing · saved character remains available.</p>
                     ) : null}
                   </div>
-                  {personalMail ? (
-                    <button type="button" onClick={personalMail.onOpen}>
-                      Message
-                    </button>
-                  ) : null}
                 </div>
                 {villager ? (
                   <VillagerSignature

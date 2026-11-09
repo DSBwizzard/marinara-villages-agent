@@ -629,6 +629,7 @@ await withBrowser(browser, async () => {
     await expect(directory.getByRole("button", { name: /^Open .* profile$/ })).toHaveCount(2);
     await directory.getByRole("button", { name: "Open Mara profile" }).click();
     const profile = page.getByRole("region", { name: "Mara profile", exact: true });
+    await expect(profile.getByRole("button", { name: "Message", exact: true })).toHaveCount(0);
     const tabs = page.getByRole("navigation", { name: "Villager profile sections" });
     const chooseSection = (label) =>
       width <= 700
@@ -951,13 +952,16 @@ await withBrowser(browser, async () => {
       });
       document.body.append(control);
     }, P);
-    await profile.getByText("Message", { exact: true }).click();
+    const mailboxTab = page
+      .getByRole("navigation", { name: "Village navigation" })
+      .getByRole("button", { name: "Mailbox", exact: true });
+    await mailboxTab.click();
     const mail = page.getByRole("dialog", { name: "Mailbox", exact: true });
     await expect(mail).toBeVisible();
     await expect(page.locator(`.${P}-desk-workspace`)).toHaveAttribute("data-phase", "open");
     const reopenLetter = async (folder) => {
       await mail.getByRole("button", { name: "Close Mailbox", exact: true }).click();
-      await profile.getByText("Message", { exact: true }).click();
+      await mailboxTab.click();
       await expect(mail).toBeVisible();
       const back = mail.getByRole("button", { name: "Back to letters" });
       if (await back.isVisible()) await back.click();
@@ -1001,13 +1005,14 @@ await withBrowser(browser, async () => {
     );
     await page.locator("#engine-control").click();
     await expect(page.locator("#engine-control")).toHaveAttribute("data-clicked", "true");
-    await expect(mail.getByLabel("Recipient")).toHaveValue("mara");
+    await mail.getByRole("button", { name: "Write a letter", exact: true }).click();
+    await mail.getByLabel("Recipient").selectOption("mara");
     const draft = mail.getByRole("textbox", { name: "Personal message" });
     const exactMessage = "Let's talk later.\n  Exact text";
     await draft.fill(exactMessage);
     await mail.getByRole("button", { name: "Close Mailbox" }).click();
-    await expect(profile.getByRole("button", { name: "Message", exact: true })).toBeFocused();
-    await profile.getByText("Message", { exact: true }).click();
+    await expect(page.locator(`.${P}-desk-workspace :focus`)).toBeVisible();
+    await mailboxTab.click();
     await expect(draft).toHaveValue(exactMessage);
     await mail.getByRole("button", { name: "Send letter", exact: true }).click();
     await expect(mail.getByLabel("Personal mail").getByText(exactMessage, { exact: true })).toBeVisible();
