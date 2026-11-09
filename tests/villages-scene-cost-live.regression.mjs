@@ -27,6 +27,16 @@ const server = createServer(async (request, response) => {
   if (path === "/api/villages/connections") return send({ narrationConnectionId: "model" });
   if (path === "/api/villages/usage") return send({ requests: attempts, running: 0 });
   if (path === "/api/villages/rooms/active") return send({ session: { sceneRevision: submissions.size + 1 } });
+  if (path === "/api/villages/rooms/scene/changes")
+    return send({
+      unresolved: [
+        { submissionId: "previous-failed", status: "rejected" },
+        ...(baselineProblem === "capped"
+          ? Array.from({ length: 49 }, (_, index) => ({ submissionId: "older-" + index, status: "failed" }))
+          : []),
+        ...(baselineProblem === "rejected" ? [{ submissionId: [...submissions].at(-1), status: "rejected" }] : []),
+      ],
+    });
   if (path === "/api/chats/game/messages") return send(messages);
   if (path === "/api/generate") {
     assert.equal(input.reasoningEffort, undefined);
@@ -66,7 +76,9 @@ const server = createServer(async (request, response) => {
         usage,
       });
     }
-    return send({ session: { processingSummary: { failed: 0, pending: 0, rejected: 0 } } });
+    return send({
+      session: { processingSummary: { failed: 0, pending: 0, rejected: baselineProblem === "rejected" ? 1 : 0 } },
+    });
   }
   response.statusCode = 404;
   send({ error: path });
@@ -111,6 +123,25 @@ try {
   assert.equal(retried.turns[0].submissionId, "explicit-retry");
   assert.equal(retried.turns[0].capabilityAttemptCount, 1);
   assert.equal(retried.turns[0].replayAttempts.length, 0);
+  for (const problem of ["rejected", "capped"]) {
+    baselineProblem = problem;
+    const rejectedOutput = resolve(".build-tmp", `scene-cost-live-test-${randomUUID()}.json`);
+    await assert.rejects(
+      runLiveSceneComparison(
+        {
+          chatId: "game",
+          sessionId: "scene",
+          connectionId: "model",
+          pairs: [{ id: problem, message: "A discarded change." }],
+        },
+        rejectedOutput,
+      ),
+      /discarded consequence|status is incomplete/,
+    );
+    const rejected = JSON.parse(await readFile(rejectedOutput, "utf8")).turns[0];
+    assert.equal(rejected.status, "failed");
+    assert.equal(rejected.attempts[0].usage.completionTokens, 50, "A discarded result remains billed");
+  }
   for (const problem of ["planning", "model", "village-model"]) {
     baselineProblem = problem;
     const output = resolve(".build-tmp", `scene-cost-live-test-${randomUUID()}.json`);

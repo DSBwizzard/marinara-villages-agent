@@ -42,6 +42,33 @@ const empty = expandSceneEvents({ input: [], segments }, context);
 assert.deepEqual(empty.memoryChanges, []);
 assert.deepEqual(empty.wishChanges, []);
 assert.equal(empty.consistent, undefined, "No fabricated independent review");
+for (const at of [[0], ["input:0"]]) {
+  const proposal = expandSceneEvents(
+    {
+      input: [{ text: "My kettle is called Tawny." }],
+      segments,
+      events: [
+        {
+          type: "memory",
+          at,
+          value: {
+            kind: "information",
+            text: "Player calls the kettle Tawny.",
+            knowers: ["mara"],
+            basis: "report",
+            quotes: ["My kettle is called Tawny."],
+          },
+        },
+      ],
+    },
+    context,
+  );
+  assert.equal(
+    Boolean((proposal.memoryChanges as any[])[0].rejectedEvent),
+    at[0] === 0,
+    "A player quote cannot acquire a generated reply's source identity",
+  );
+}
 await assert.rejects(
   createSemanticService({
     readVillageState: () => assert.fail("Missing GM context must stop before any I/O"),

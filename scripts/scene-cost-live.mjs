@@ -153,8 +153,15 @@ export async function runLiveSceneComparison(config, output) {
         turn.processingSummary = result.session?.processingSummary;
         turn.turnOutcome = result.turnOutcome ?? null;
         assert(!turn.turnOutcome, "Villages retained a failed turn");
-        assert.equal(turn.processingSummary?.failed, 0, "Check rejected consequences before comparing costs");
-        assert.equal(turn.processingSummary?.pending, 0);
+        const changes = await call(`/api/villages/rooms/${encodeURIComponent(config.sessionId)}/changes`);
+        assert(Array.isArray(changes.unresolved), "Native consequence status must be available");
+        assert(changes.unresolved.length < 50, "Native consequence status is incomplete; inspect the exact turn");
+        turn.unresolvedConsequences = changes.unresolved.filter((row) => row.submissionId === turn.submissionId);
+        assert.equal(
+          turn.unresolvedConsequences.length,
+          0,
+          "A failed, pending or discarded consequence invalidates this comparison",
+        );
         const after = await call("/api/villages/usage?details=1");
         turn.attempts = after.requests.filter((row) => !beforeUsage.requests.some((old) => old.id === row.id));
         assert(
