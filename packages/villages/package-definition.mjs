@@ -24,7 +24,15 @@ export const villagesDefinition = {
     description,
     runtimeDisabled: false,
   },
-  assetPaths: [...letterFontAssets, "villages-icon.png", "icon-licenses.txt", "menu-desk.jpg"],
+  assetPaths: [
+    ...letterFontAssets,
+    "villages-icon.png",
+    "icon-licenses.txt",
+    "menu-desk.jpg",
+    "paper-ivory.webp",
+    "people-desk.webp",
+    "people-phone.webp",
+  ],
   boundaryDisplayName: "Villages",
   capabilityApi: {
     major: 1,
@@ -38,7 +46,15 @@ export const villagesDefinition = {
       iconPaths: ["villages-icon.png"],
     },
     assets: {
-      paths: [...letterFontAssets.filter((path) => path.endsWith(".json")), "menu-desk.jpg"],
+      paths: [
+        ...letterFontAssets.filter((path) => path.endsWith(".json")),
+        "menu-desk.jpg",
+        "paper-ivory.webp",
+        "people-desk.webp",
+        "people-phone.webp",
+        "letter-fonts/assistant-latin-400-normal.woff2",
+        "letter-fonts/assistant-latin-ext-400-normal.woff2",
+      ],
     },
   },
 };

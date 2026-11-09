@@ -26,8 +26,10 @@ export function PeopleBook({
       data-section={section}
       data-inspect={inspect}
     >
-      {toolbar ? <header className={`${P}-dossier-toolbar`}>{toolbar}</header> : null}
-      <div className={`${P}-dossier-book`}>{children}</div>
+      <div className={`${P}-dossier-book`}>
+        {toolbar ? <header className={`${P}-dossier-toolbar`}>{toolbar}</header> : null}
+        {children}
+      </div>
     </section>
   );
 }

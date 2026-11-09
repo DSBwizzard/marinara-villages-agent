@@ -304,8 +304,8 @@ export function VillagerDossier({
             inspect={inspect}
             toolbar={
               <>
-                <button type="button" className={`${P}-dossier-back`} onClick={onBack}>
-                  ← Back to Villagers
+                <button type="button" className={`${P}-dossier-back`} aria-label="← Back to Villagers" onClick={onBack}>
+                  ← People
                 </button>
                 {section !== "overview" || !villager ? <h1>{name}</h1> : null}
                 <div className={`${P}-dossier-actions`} role="group" aria-label="Profile actions">
@@ -347,17 +347,17 @@ export function VillagerDossier({
                 <div className={`${P}-dossier-journal-content`}>
                   <div className={`${P}-dossier-portrait`}>{portrait}</div>
                   <h1>{name}</h1>
-                  {personalMail ? (
-                    <button type="button" onClick={personalMail.onOpen}>
-                      Message
-                    </button>
-                  ) : null}
                   <div className={`${P}-dossier-biography`}>
                     {villager?.summary ? <p>{villager.summary}</p> : null}
                     {villager?.missing ? (
                       <p className={`${P}-dossier-warning`}>Card missing · saved character remains available.</p>
                     ) : null}
                   </div>
+                  {personalMail ? (
+                    <button type="button" onClick={personalMail.onOpen}>
+                      Message
+                    </button>
+                  ) : null}
                 </div>
                 {villager ? (
                   <VillagerSignature
@@ -372,6 +372,7 @@ export function VillagerDossier({
               </article>
             </div>
             <main className={`${P}-dossier-workspace`}>
+              <h2 className={`${P}-dossier-section-title`}>{titles[section]}</h2>
               <label className={`${P}-dossier-section-picker`}>
                 Section
                 <select value={section} onChange={(event) => choose(event.target.value as DossierSection)}>

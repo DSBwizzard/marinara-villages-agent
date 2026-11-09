@@ -35,11 +35,15 @@ const icons: Record<DeskDestination, ReactNode> = {
       <path d="M2 21v-3a7 7 0 0 1 14 0v3M17 3a4 4 0 0 1 0 8M20 21v-3a7 7 0 0 0-3-6" />
     </>
   ),
-  projects: <path d="m14 5 5 5M3 21l9-9m1-8 3-2 6 6-2 3-7-7ZM3 21l3-1-2-2-1 3Z" />,
+  projects: (
+    <>
+      <path d="m3 3 3 1 3 4-2 2-4-3-1-3 1-1Zm5 6 12 12M21 3l-3 1-3 4 2 2 4-3 1-3-1-1ZM16 9 3 22" />
+    </>
+  ),
   places: (
     <>
-      <path d="m3 5 6-2 6 2 6-2v16l-6 2-6-2-6 2Z" />
-      <path d="M9 3v16M15 5v16" />
+      <path d="M20 9c0 6-8 13-8 13S4 15 4 9a8 8 0 1 1 16 0Z" />
+      <circle cx="12" cy="9" r="3" />
     </>
   ),
   mailbox: (

@@ -26,14 +26,16 @@ export function RosterScreen({
         <main className={`${ELEMENT_TAG}-directory-paper`} aria-label="Villagers directory">
           <header className={`${ELEMENT_TAG}-directory-head`}>
             <h1>People</h1>
-            <span>{villagers.length} villagers</span>
-            <button
-              type="button"
-              className={`${ELEMENT_TAG}-notebook-close`}
-              onClick={onClose ?? (() => setMenuPage("index"))}
-            >
-              Close ×
-            </button>
+            <span className={`${ELEMENT_TAG}-directory-meta`}>
+              <span>{villagers.length} villagers</span>
+              <button
+                type="button"
+                className={`${ELEMENT_TAG}-notebook-close`}
+                onClick={onClose ?? (() => setMenuPage("index"))}
+              >
+                Close ×
+              </button>
+            </span>
           </header>
           {error ? (
             <p role="alert" className={`${ELEMENT_TAG}-dossier-warning`}>
