@@ -168,7 +168,7 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
           ))}
         </nav>
         <label className={ELEMENT_TAG + "-workspace-section-picker"}>
-          Section
+          <span className={ELEMENT_TAG + "-sr-only"}>Section</span>
           <select
             value={selected}
             disabled={navigationBusy}

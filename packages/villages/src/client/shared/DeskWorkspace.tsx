@@ -1,4 +1,4 @@
-import { createContext, useContext, useLayoutEffect, type ReactNode, type RefObject } from "react";
+import { createContext, useContext, useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
 import { useVillageActivity } from "./activity.js";
 import { ELEMENT_TAG as P } from "./constants.js";
 import { DESK_STYLES } from "./desk-styles.js";
@@ -33,13 +33,13 @@ export function useDeskLeaveGuard(check: DeskLeaveCheck, disabled: boolean) {
 const icons: Record<DeskDestination, ReactNode> = {
   people: (
     <>
-      <circle cx="9" cy="7" r="4" />
-      <path d="M2 21v-3a7 7 0 0 1 14 0v3M17 3a4 4 0 0 1 0 8M20 21v-3a7 7 0 0 0-3-6" />
+      <circle cx="12" cy="6" r="3.5" />
+      <path d="M6 21v-3a6 6 0 0 1 12 0v3M4 4a3 3 0 0 0 0 6M20 4a3 3 0 0 1 0 6M1 19v-3a5 5 0 0 1 4-5M23 19v-3a5 5 0 0 0-4-5" />
     </>
   ),
   projects: (
     <>
-      <path d="m3 3 3 1 3 4-2 2-4-3-1-3 1-1Zm5 6 12 12M21 3l-3 1-3 4 2 2 4-3 1-3-1-1ZM16 9 3 22" />
+      <path d="M8 4H5a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1h-3M9 2h6v4H9zM7 10l1 1 2-2M13 10h4M7 15l1 1 2-2M13 15h4M7 19h3M13 19h4" />
     </>
   ),
   places: (
@@ -88,6 +88,17 @@ export function DeskWorkspace({
   children: ReactNode;
 }) {
   useLetterFont(active ? "assistant" : undefined);
+  const scrollPositions = useRef(new Map<string | null, number>());
+  useLayoutEffect(() => {
+    const stage = documentRef.current?.parentElement;
+    if (!stage) return;
+    const key = venue ? "venue" : active;
+    stage.scrollTop = scrollPositions.current.get(key) ?? 0;
+    const positions = scrollPositions.current;
+    return () => {
+      positions.set(key, stage.scrollTop);
+    };
+  }, [active, venue, documentRef]);
   return (
     <div
       className={`${P}-desk-workspace`}

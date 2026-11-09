@@ -594,7 +594,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
   };
   const sidebar = (
     <>
-      <h2>Venues</h2>
+      <h2>Places</h2>
       <label className={`${ELEMENT_TAG}-workspace-venue-picker`}>
         Venue
         <select
@@ -621,11 +621,10 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
             aria-pressed={entry.id === place.id}
             onClick={() => selectPlace(entry.id)}
           >
-            {entry.presentation.image ? <img src={entry.presentation.image.url} alt="" /> : null}
             <span>
               <strong>{entry.name}</strong>
-              <small>{entry.venueType || venueClassesFor(entry).join(" · ")}</small>
             </span>
+            <span aria-hidden="true">›</span>
           </button>
         ))}
       </div>
@@ -643,7 +642,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
               if (await canLeave()) leaveVenue("map");
             }}
           >
-            ← Map
+            ← Back to map
           </button>
           <div>
             <h1 className={`${ELEMENT_TAG}-title`}>{place.name}</h1>

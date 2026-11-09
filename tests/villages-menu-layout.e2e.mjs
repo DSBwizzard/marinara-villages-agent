@@ -208,7 +208,8 @@ await withBrowser(browser, async () => {
     const root = page.locator(`.${tag}-sectioned-menu:visible`);
     await page.getByRole("button", { name: "More" }).click();
     await expect(root).toBeVisible();
-    await expect(root.getByRole("heading", { name: "General Preferences", level: 1 })).toBeVisible();
+    if (mobile) await expect(page.getByRole("combobox", { name: "Section" })).toHaveValue("general");
+    else await expect(root.getByRole("heading", { name: "General Preferences", level: 1 })).toBeVisible();
     await expect(root.getByRole("button", { name: "Events", exact: true })).toHaveCount(0);
     await expect(root.getByRole("button", { name: "Force Village Update", exact: true })).toHaveCount(0);
     const nav = page.getByRole("navigation", { name: "Settings sections" });
@@ -381,11 +382,13 @@ await withBrowser(browser, async () => {
       assert.ok(area > 1000, `${key} occupies a visible area`);
     }
     await selectSection("general");
-    await expect(root.getByRole("heading", { name: "General Preferences", level: 1 })).toBeVisible();
+    if (mobile) await expect(picker).toHaveValue("general");
+    else await expect(root.getByRole("heading", { name: "General Preferences", level: 1 })).toBeVisible();
     await page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();
     await expect(page.getByRole("button", { name: /^Notices \(/ })).toHaveCount(0);
     await page.getByRole("button", { name: "More", exact: true }).click();
-    await expect(root.getByRole("heading", { name: "General Preferences", level: 1 })).toBeVisible();
+    if (mobile) await expect(picker).toHaveValue("general");
+    else await expect(root.getByRole("heading", { name: "General Preferences", level: 1 })).toBeVisible();
     assert.deepEqual(errors, [], `no browser errors at ${width}×${height}`);
     await page.close();
   }

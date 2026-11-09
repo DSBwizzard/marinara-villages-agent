@@ -185,6 +185,11 @@ function VillagesContent({ element }: { element: HTMLElement }) {
   };
   const navigation: Controller = {
     ...controller,
+    setExploreSheet: (value) => {
+      const sheet = typeof value === "function" ? value(controller.exploreSheet) : value;
+      if (sheet?.tab === "places" && active !== "places") void move("places", () => controller.setExploreSheet(sheet));
+      else controller.setExploreSheet(sheet);
+    },
     openMenu: (page) => {
       if (page === "villagers") rememberPeopleOrigin();
       return move(destination("menu", page), () => {

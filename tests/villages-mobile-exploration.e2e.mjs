@@ -281,6 +281,7 @@ await withBrowser(browser, async () => {
       await navigator.getByRole("searchbox").fill(name);
       await navigator.getByRole("button", { name: new RegExp("^" + name) }).click();
       await settleLayout();
+      if (mobile) await canvas.scrollIntoViewIfNeeded();
     };
     const screenshot = async (name) => {
       if (process.env.VILLAGES_VISUAL_OUTPUT)
@@ -318,6 +319,12 @@ await withBrowser(browser, async () => {
     await expect(navigator).toHaveCount(0);
     await showPlaces();
     await expect(navigator).toHaveAttribute("data-layout", mobile ? "navigator-sheet" : "navigator-rail");
+    if (mobile) {
+      const mapBox = await home.locator(`.${P}-home-map-paper`).boundingBox();
+      const listBox = await navigator.boundingBox();
+      assert(mapBox.y + mapBox.height <= listBox.y, "Places lists follow the map on their own paper");
+      await expect(home.getByRole("button", { name: "Zoom in", exact: true })).toBeVisible();
+    }
     await navigator.getByRole("searchbox").fill("unPLACED");
     await expect(navigator.locator("." + P + "-explore-row")).toHaveCount(1);
     await navigator.getByRole("button", { name: /Unplaced Venue/ }).click();

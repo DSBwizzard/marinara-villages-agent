@@ -250,17 +250,25 @@ await withBrowser(browser, async () => {
         const stage = root.querySelector(".marinara-capability-villages-desk-stage");
         const paper = root.querySelector(".marinara-capability-villages-desk-document");
         const bottom = paper.getBoundingClientRect().bottom - parseFloat(getComputedStyle(paper, "::before").bottom);
-        return stage.getBoundingClientRect().bottom - bottom;
+        return (
+          stage.getBoundingClientRect().bottom + stage.scrollHeight - stage.clientHeight - stage.scrollTop - bottom
+        );
       });
       assert(margin >= 6, "The complete artwork ends inside the desk clipping area");
     };
     await checkArtworkBottom();
+    assert(
+      await desk
+        .getByRole("navigation", { name: "Village navigation" })
+        .evaluate((nav) => getComputedStyle(nav).borderImageSource.includes("blob:")),
+      "The first Places entry prepares the shared paper before revealing the menu",
+    );
     const deskNavigation = page.getByRole("navigation", { name: "Village navigation", exact: true });
     await deskNavigation.getByRole("button", { name: "Settings", exact: true }).click();
     await expect(desk).toHaveAttribute("data-desk", "settings");
     await deskNavigation.getByRole("button", { name: "Places", exact: true }).click();
     await expect(profile.getByRole("heading", { name: "Warehouse home", exact: true })).toBeVisible();
-    await profile.getByRole("button", { name: "← Map", exact: true }).click();
+    await profile.getByRole("button", { name: "← Back to map", exact: true }).click();
     await expect(page.getByRole("complementary", { name: "Places navigator" })).toBeVisible();
     await expect(desk).not.toHaveAttribute("data-venue", "true");
     await checkArtworkBottom();
@@ -268,7 +276,7 @@ await withBrowser(browser, async () => {
     let selectedVenue = place.id;
     const chooseVenue = async (id, name) => {
       if (width < 700) {
-        await profile.getByRole("button", { name: "← Map", exact: true }).click();
+        await profile.getByRole("button", { name: "← Back to map", exact: true }).click();
         const row = page
           .getByRole("complementary", { name: "Places navigator" })
           .locator(`[data-exploration-row="${selectedVenue}"]`);
@@ -504,7 +512,7 @@ await withBrowser(browser, async () => {
     await expect(profile.getByRole("button", { name: "Generate new picture" })).toHaveCount(0);
     const beforeName = writes.length;
     await profile.getByLabel("Venue name", { exact: true }).fill("Renamed warehouse");
-    if (width < 700) await profile.getByRole("button", { name: "← Map", exact: true }).click();
+    if (width < 700) await profile.getByRole("button", { name: "← Back to map", exact: true }).click();
     else await chooseVenue(otherId, "The Harbour");
     await page
       .getByRole("dialog", { name: "Confirm", exact: true })
@@ -646,7 +654,7 @@ await withBrowser(browser, async () => {
       .click();
     await expect(page.getByRole("main", { name: "Projects" })).toBeVisible();
     await page.getByRole("main", { name: "Projects" }).getByRole("button", { name: "Close ×", exact: true }).click();
-    await page.getByRole("button", { name: "Back to Scene", exact: true }).click();
+    await page.getByRole("button", { name: "Return to Scene", exact: true }).click();
     await expect(composer).toHaveValue("An unsent Scene draft.");
     assert.deepEqual(
       writes.slice(beforeSceneBrowse).filter((write) => !write.path.endsWith("/rooms/activity")),

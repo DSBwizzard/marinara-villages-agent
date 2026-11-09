@@ -8,6 +8,8 @@ const expectations = new WeakMap();
 const deskAssets = {
   "menu-desk.jpg": "image/jpeg",
   "paper-ivory.webp": "image/webp",
+  "desk-art/paper-calm.webp": "image/webp",
+  "desk-art/button-olive.webp": "image/webp",
   "people-desk.webp": "image/webp",
   "people-phone.webp": "image/webp",
   "desk-art/projects-desktop.webp": "image/webp",

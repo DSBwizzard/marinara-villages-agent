@@ -4,6 +4,8 @@ const description = "A text-first shared-life sim in any setting that reconstruc
 const deskArtAssets = [
   "menu-desk.jpg",
   "paper-ivory.webp",
+  "desk-art/paper-calm.webp",
+  "desk-art/button-olive.webp",
   "people-desk.webp",
   "people-phone.webp",
   "desk-art/projects-desktop.webp",

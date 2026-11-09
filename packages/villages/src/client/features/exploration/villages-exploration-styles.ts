@@ -28,6 +28,7 @@ export const EXPLORATION_STYLES = `
 .${P}-home-full[data-mobile="false"] .${P}-explore-nav button { flex:0 1 auto; flex-direction:row; min-height:40px; gap:6px; padding:0 10px; border-top:0; border-bottom:2px solid transparent; font-size:13px; }
 .${P}-home-full[data-mobile="false"] .${P}-explore-nav button[aria-pressed="true"] { border-bottom-color:var(--explore-selected); }
 .${P}-home-full .${P}-room { display:flex; align-items:stretch; justify-content:flex-start; padding:0; gap:0; margin:0; overflow:hidden; }
+.${P}-home-map-paper { position:relative; display:flex; flex:1 1 auto; min-width:0; min-height:0; }
 .${P}-home-full .${P}-home-map-viewport { position:relative; flex:1 1 auto; width:auto; min-width:0; height:100%; overflow:hidden; }
 .${P}-map-tools { position:absolute; z-index:7; left:12px; top:12px; display:flex; gap:6px; max-width:calc(100% - 24px); }
 .${P}-map-tools > button,.${P}-map-tools summary { display:flex; align-items:center; gap:8px; min-height:44px; max-width:100%; box-sizing:border-box; padding:8px 10px; border:1px solid var(--explore-border); border-radius:var(--explore-radius); background:var(--explore-surface); color:var(--explore-text); font:inherit; font-size:13px; cursor:pointer; list-style:none; }
