@@ -15,7 +15,10 @@ import {
   buildVenueSceneBlocks,
   fitVenueWritingMessages,
 } from "../packages/villages/src/server/domain/rules/venue-writing.js";
-import { bindSceneMemorySuggestion } from "../packages/villages/src/server/domain/rules/scene-memories.js";
+import {
+  bindSceneMemorySuggestion,
+  sceneMemoryContext,
+} from "../packages/villages/src/server/domain/rules/scene-memories.js";
 import { addMemory, emptyMemories, memoryProposal, targetOf } from "./helpers/memories-fixture.js";
 import { applyMemoryProposal } from "../packages/villages/src/server/domain/rules/memory-application.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -589,6 +592,89 @@ const context = semanticContext(
   true,
 );
 const empty = normalizeGmEffects({}, context);
+{
+  const captured = structuredClone(context);
+  captured._memoryWrite.unprotectedKnowerIds = ["player", "resident"];
+  const raw = {
+    segments: [{ kind: "dialogue", speakerId: "resident", text: "I like tart apples." }],
+    memoryChanges: [
+      {
+        text: "A preference",
+        learners: ["player"],
+        disclosure: { kind: "preference", about: "self" },
+        support: [{ lineId: 0, excerpt: "I like tart apples." }],
+      },
+    ],
+  };
+  const proposal = (normalizeGmEffects(raw, captured, {}, true).memoryChanges as any[])[0];
+  assert.equal(proposal.learners.player.basis, "report");
+  assert.equal(proposal.learners.player.disclosed.toId, "resident");
+  assert.equal(proposal.domainRef.characterId, "resident");
+  assert.equal(proposal.screening.disposition, "clear");
+  const other = structuredClone(raw);
+  other.memoryChanges[0].disclosure.about = "player";
+  assert.equal(
+    (normalizeGmEffects(other, captured, {}, true).memoryChanges as any[])[0].learners.player.disclosed.toId,
+    "player",
+  );
+  for (const screening of [null, {}, { disposition: "conflict" }, { disposition: "uncertain" }]) {
+    const supplied = { ...raw, memoryChanges: [{ ...raw.memoryChanges[0], screening }] };
+    assert.notEqual(
+      (normalizeGmEffects(supplied, captured, {}, true).memoryChanges as any[])[0].screening.disposition,
+      "clear",
+    );
+  }
+  captured._memoryWrite.unprotectedKnowerIds = [];
+  assert.equal(
+    (normalizeGmEffects(raw, captured, {}, true).memoryChanges as any[])[0].screening.disposition,
+    undefined,
+    "Empty recalled roots alone cannot bypass screening",
+  );
+  for (const learners of [[], ["player", "player"], [3]])
+    assert.throws(
+      () => normalizeGmEffects({ ...raw, memoryChanges: [{ ...raw.memoryChanges[0], learners }] }, captured, {}, true),
+      /learners/,
+    );
+  const aliases = mapScenePeople({ learners: ["p1"], disclosure: { about: "p1" } }, { p1: "resident" });
+  assert.deepEqual(aliases, { learners: ["resident"], disclosure: { about: "resident" } });
+  const malformed = { ...raw, memoryChanges: [{ ...raw.memoryChanges[0], basis: null, subjects: null }] };
+  const preserved = (normalizeGmEffects(malformed, captured, {}, true).memoryChanges as any[])[0];
+  assert.equal(preserved.learners.player.basis, null);
+  assert.equal(preserved.subjects, null);
+  for (const protection of ["forgotten", "repair"] as const) {
+    const world = defaultVillageState();
+    world.memories = structuredClone(
+      addMemory(emptyMemories(), { audience: ["player"], text: "Zebras cross the remote savanna." }),
+    );
+    const root = world.memories.records[0];
+    const at = root.recordedAt;
+    if (protection === "forgotten") root.knowers.player.forgotten = { at, operationId: "forget" };
+    else
+      root.knowers.player.repair = {
+        at,
+        operationId: "repair",
+        text: "Elephants cross the remote savanna.",
+        repairs: { id: root.id, revision: root.revision },
+      };
+    const memory = sceneMemoryContext(world, ["player", "resident"], "Tea and tart apples.");
+    assert.equal(memory.saved.protection.roots.length, 0, "The unrelated protection is not retrieved");
+    assert.deepEqual(
+      memory.saved.unprotectedKnowerIds,
+      ["resident"],
+      "Full collection proof still protects the player",
+    );
+    const captured = { ...context, _memoryWrite: memory.saved } as any;
+    assert.equal(
+      (normalizeGmEffects(raw, captured, {}, true).memoryChanges as any[])[0].screening.disposition,
+      undefined,
+    );
+    const safe = { ...raw, memoryChanges: [{ text: "Tea.", learners: ["resident"], support: [{ lineId: 0 }] }] };
+    assert.equal(
+      (normalizeGmEffects(safe, captured, {}, true).memoryChanges as any[])[0].screening.disposition,
+      "clear",
+    );
+  }
+}
 for (const action of ["reinforce", "correct", "resolve"] as const) {
   const collection = addMemory(emptyMemories(), { audience: ["resident"] });
   const fixture = memoryProposal(collection, {
@@ -619,7 +705,7 @@ for (const action of ["reinforce", "correct", "resolve"] as const) {
   captured._memoryWrite.recall.candidates = [{ id: "memory", rootId: "memory", revision: 2, rootRevision: 2 }] as any;
   captured._memoryWrite.recall.targetIds = ["memory"];
   captured.zoneId = "room";
-  captured.zones = [{ id: "room", revision: 3 }] as any;
+  captured.zones = [{ id: "room", revision: 3, connectedTo: [] }] as any;
   captured.projects = [{ projectId: "project", revision: 4 }] as any;
   const compact = normalizeGmEffects(
     {

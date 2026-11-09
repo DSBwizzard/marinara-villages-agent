@@ -18,6 +18,7 @@ import { fitEncounterQuotations, type EncounterQuotation } from "./scene-encount
 /** Saved server context for the existing System call; never Narration knowledge. */
 export type SceneMemoryContext = {
   learningVersion?: 1;
+  unprotectedKnowerIds?: string[];
   protection: MemoryProtectionContext;
   recall: { candidates: MemoryCandidate[]; targetIds: string[] };
 };
@@ -64,6 +65,12 @@ export function sceneMemoryContext(
   if (continuity.length) envelope.encounters = continuity;
   memoryRequire(estimatedMemoryTokens(JSON.stringify(envelope)) <= budget, "encounter recall exceeds Memory budget");
   const saved: SceneMemoryContext = {
+    unprotectedKnowerIds: audience.filter(
+      (id) =>
+        !state.memories.records.some(
+          (row) => row.id === row.rootId && (row.knowers[id]?.forgotten || row.knowers[id]?.repair),
+        ),
+    ),
     protection: { ...protection, roots: protection.complete ? protection.roots : [] },
     recall: { candidates: recall.candidates, targetIds: recall.targetIds },
   };

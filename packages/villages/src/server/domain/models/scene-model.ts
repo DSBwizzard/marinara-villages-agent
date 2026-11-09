@@ -45,7 +45,7 @@ export type SceneAttendance = {
   occupants: (VenueParticipant & { zoneId: string })[];
 };
 export type VenueSubmission = {
-  sceneContractVersion?: 10 | 11 | 12 | 13;
+  sceneContractVersion?: 10 | 11 | 12 | 13 | 14;
   lore?: import("../../../shared/contracts/lore.js").LoreUse[];
   npcAdmissions?: import("../rules/npc-participation.js").NpcAdmission[];
   placeDiscoveries?: unknown[];

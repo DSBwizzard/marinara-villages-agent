@@ -27,7 +27,7 @@ try {
   const response = await host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
   assert.equal(response.statusCode, 200, response.body);
   const turn = host.scene().submissions.at(-1)!;
-  assert.equal(turn.sceneContractVersion, 13);
+  assert.equal(turn.sceneContractVersion, 14);
   const aside = host.scene().lines.find((line) => line.content === "The blue cup is yours.")!;
   assert.equal(aside.delivery, "whisper");
   assert.equal(aside.targetId, "player");
@@ -38,6 +38,160 @@ try {
   assert.equal(calls, 1);
 } finally {
   await host.stop();
+}
+for (const learner of ["player", "ordinary", "unheard-person"]) {
+  const host = await packagedSceneServer();
+  let calls = 0;
+  host.model.chatComplete = async () => {
+    calls++;
+    return {
+      content:
+        'INPUT [{"kind":"speech","text":"Hello."},{"kind":"action","text":"*I listen.*"},{"kind":"speech","text":"Tell me about yourself."}]\n[mara whisper:player] [remember]I prefer tart apples.[/remember] They wake me up.\nMEMORY ' +
+        JSON.stringify({
+          text: "Mara prefers tart apples.",
+          learners: [learner === "ordinary" ? "player" : learner],
+          disclosure: learner === "player" ? { kind: "preference", about: "self" } : undefined,
+        }),
+      finishReason: "stop",
+      usage: { inputTokens: 10, outputTokens: 10 },
+    };
+  };
+  try {
+    await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+    const payload = {
+      sessionId: "browser",
+      submissionId: "local-memory-" + learner,
+      message: '"Hello." *I listen.* "Tell me about yourself."',
+      mode: "chat",
+      expectedSceneRevision: host.scene().sceneRevision,
+    };
+    const response = await host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
+    assert.equal(response.statusCode, 200, response.body);
+    const world = fixtureVillageState(host.records.get("villages-village").data, host.records);
+    const memory = world.memories.records.find((row) => row.text === "Mara prefers tart apples.");
+    if (learner === "player" || learner === "ordinary") {
+      assert(memory, "Source-bound self-disclosure becomes a native Memory");
+      assert.equal(memory.knowers.player.basis, "report");
+      assert.equal(memory.knowers.player.attributedTo, "mara");
+      if (learner === "player") assert.equal(memory.knowers.player.disclosed!.toId, "mara");
+      else assert.deepEqual(memory.subjects, [], "An ordinary Memory needs no inferred subject");
+      assert.equal(
+        memory.knowers.player.support[0].lineId,
+        host.scene().submissions.at(-1)!.replyLineIds![2],
+        "Two inserted player utterances shift the source exactly once",
+      );
+      assert.equal(memory.knowers.player.support[0].excerpt, "I prefer tart apples.");
+    } else assert.equal(memory, undefined, "A nominated non-witness learns nothing");
+    assert(!JSON.stringify(host.scene().lines).includes("[remember]"));
+    assert.equal((await host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload })).statusCode, 200);
+    assert.equal(calls, 1, "Replay never purchases a replacement");
+  } finally {
+    await host.stop();
+  }
+}
+for (const policy of [{ visitorHours: "always" }, null, [], {}, { unknown: true }]) {
+  const host = await packagedSceneServer();
+  host.model.chatComplete = async () => ({
+    content:
+      "INPUT speech\n[narration] You change the common room policy.\n[narration] You let Mara invite visitors.\nCHANGES " +
+      JSON.stringify({
+        access: [
+          {
+            actorId: "player",
+            venueId: "mill",
+            zoneId: "common",
+            outcome: "access-management",
+            evidence: [0],
+            command: { action: "zone-policy", policy },
+          },
+          {
+            actorId: "player",
+            venueId: "mill",
+            zoneId: "common",
+            outcome: "access-management",
+            evidence: [1],
+            command: { action: "zone-policy", policy: { inviterIds: ["mara"] } },
+          },
+        ],
+      }),
+    finishReason: "stop",
+    usage: { inputTokens: 10, outputTokens: 10 },
+  });
+  try {
+    await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+    const before = fixtureVillageState(host.records.get("villages-village").data, host.records);
+    const response = await host.app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/turn",
+      payload: {
+        sessionId: "browser",
+        submissionId: "policy-patch",
+        message: "I allow visits at all hours and let Mara invite visitors to this room.",
+        mode: "chat",
+        expectedSceneRevision: host.scene().sceneRevision,
+      },
+    });
+    const valid = policy !== null && !Array.isArray(policy) && "visitorHours" in policy;
+    assert.equal(response.statusCode, valid ? 200 : 502, response.body);
+    const after = fixtureVillageState(host.records.get("villages-village").data, host.records);
+    if (valid) {
+      const zone = after.venues[0]!.zones!.find((zone) => zone.id === "common")!;
+      const old = before.venues[0]!.zones!.find((zone) => zone.id === "common")!;
+      assert.deepEqual(zone.access, { ...old.access, visitorHours: "always", inviterIds: ["mara"] });
+    } else
+      assert.deepEqual(
+        after.venues[0]!.access,
+        before.venues[0]!.access,
+        "Malformed patches never mutate saved access",
+      );
+  } finally {
+    await host.stop();
+  }
+}
+for (const fields of [{ visitorHours: null }, { visitorHours: [] }, {}]) {
+  const host = await packagedSceneServer();
+  host.model.chatComplete = async () => ({
+    content:
+      "INPUT speech\n[narration] You set this Venue policy now.\nCHANGES " +
+      JSON.stringify({
+        access: [
+          {
+            actorId: "player",
+            venueId: "mill",
+            zoneId: null,
+            outcome: "access-management",
+            evidence: [0],
+            command: { action: "venue-policy", ...fields },
+          },
+        ],
+      }),
+    finishReason: "stop",
+    usage: { inputTokens: 10, outputTokens: 10 },
+  });
+  try {
+    await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+    const before = fixtureVillageState(host.records.get("villages-village").data, host.records);
+    const response = await host.app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/turn",
+      payload: {
+        sessionId: "browser",
+        submissionId: "venue-patch",
+        message: "I set the inn's visitor hours now.",
+        mode: "chat",
+        expectedSceneRevision: host.scene().sceneRevision,
+      },
+    });
+    assert.equal(response.statusCode, "visitorHours" in fields ? 200 : 502, response.body);
+    const after = fixtureVillageState(host.records.get("villages-village").data, host.records);
+    assert.deepEqual(after.venues[0]!.access!.managerIds, before.venues[0]!.access!.managerIds);
+    assert.deepEqual(
+      after.venues[0]!.access!.visitorHours,
+      "visitorHours" in fields ? fields.visitorHours : before.venues[0]!.access!.visitorHours,
+    );
+  } finally {
+    await host.stop();
+  }
 }
 {
   const host = await packagedSceneServer({
@@ -386,10 +540,10 @@ for (const variant of [
         .find((p) => p.context);
       const scope = packet.context.accessManagement.find((p: any) => p.actorId === "player" && p.venueId === "mill");
       assert(scope, "Player management uses its supplied current Venue scope");
-      const zone = scope.zones.find((z: any) => z.id === "common");
+      assert(scope.zones.some((z: any) => z.id === "common"));
       proposal.command = {
         action: "zone-policy",
-        policy: { memberIds: [], memberRoles: [], inviterIds: [], ...zone.policy, visitorHours: "always" },
+        policy: { visitorHours: "always" },
       };
     }
     return {

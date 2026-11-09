@@ -158,24 +158,17 @@ Use supplied expression IDs and changed cues only.
 Cues grant no actions, hearing, positions or consent.`;
 
 export const SCENE_GM_MEMORY = `Use memoryChanges as the single path for lasting conversational learning, including personal disclosures.
-Routine dialogue remains in Scene history; do not duplicate chatter or already represented facts. memoryChanges:[{text,subjects:[ids],support:[{lineId,excerpt:"exact <=320-byte quote"}],learners:{personId:{basis:"observation|report|interpretation",attributedTo?,support?:[],disclosed?:{savedField:value}}},action?:"create|reinforce|correct|resolve",kind?:"information|experience|open-matter",target?:{id},domainRef?:{kind:"wish|project|relationship|physical",id?,characterId?},screening:{disposition:"clear|conflict|uncertain",protectedRoots?:[ids]}}].
-Defaults: create, information. text<=600 UTF-8 bytes.
-Shared support applies only to named learners; use learner-specific support for exceptions, 1-2 quotes each.
-For player speech cite utterance:N (zero-based spoken utterance); never cite the raw player input record as heard speech.
-Other lineId values are a generated segment index or supplied history reference.
-Learners must perceive their evidence; subjects do not automatically learn.
-Reports establish claims, not truth; code binds their actual cited speaker.
-Optional attributedTo must match.
-Omit excerpt only when the entire cited line is <=320 UTF-8 bytes; code uses that complete line.
-Longer lines need an exact bounded excerpt.
-Interpretations may be wrong.
-For player learning about a person use domainRef:{kind:"relationship",characterId:speakerId} and learners.player.disclosed:{kind:"explanation|preference|boundary|routine|history|connection|home|work",toId:personDescribed}; home/work must describe the speaker.
-For player Wish learning use its supplied Wish id/characterId and only the title/status actually spoken.
-Never infer private/forgotten values.
-Reinforce uses action/target/support/learners/screening only: omit text, kind and subjects.
-Correct and resolve require explicit kind, text and subjects; correct the canonical root, resolve an open matter.
-Screen proposals against administrative roots; conflict/uncertain is rejected individually.
-Code records committed mechanical outcomes, source hashes and revisions; do not predict receipts or write mechanical Memories.`;
+Routine chatter and already represented facts need no Memory. For meaningful new learning, put MEMORY and one JSON object immediately after its source paragraph. Wrap 1-2 supporting passages in [remember]...[/remember], each <=320 UTF-8 bytes; code removes the markers and binds exact citations. A complete paragraph <=320 bytes needs no markers.
+Example:
+[person-id] [remember]I prefer tart apples to sweet ones.[/remember] They wake me up.
+MEMORY {"text":"The speaker prefers tart apples.","learners":["player"],"disclosure":{"kind":"preference","about":"self"}}
+Choose explicit supplied learner IDs; only actual witnesses may learn, and subjects do not automatically learn. Default basis is report for speech and observation for narration; use basis:"interpretation" for a possibly mistaken inference. Reports preserve claims, not truth. Text <=600 UTF-8 bytes.
+For personal facts actually learned by the player, include disclosure: kind is explanation|preference|boundary|routine|history|connection|home|work; about is self or the explicit person described. home/work must be the speaker's explicit current claim. Code binds speaker, attribution and notebook fields; never infer private or forgotten values.
+Other optional fields: subjects:[ids], action:"create|reinforce|correct|resolve", kind:"information|experience|open-matter", target:{id}, screening:{disposition:"clear|conflict|uncertain",protectedRoots:[ids]}.
+Default create/information. Reinforce has target but no text/kind/subjects; correct/resolve supply those fields and target the canonical root (resolve only open matters).
+Screen against administrative roots when supplied; never restore forgotten or contradict repaired knowledge. Code supplies an omitted screening only for learners proven to have no protected knowledge; conflict/uncertain or incomplete screening stays rejected.
+For player/earlier speech use CHANGES memoryChanges with text, subjects, learners, optional basis/action/kind/target/screening, and support:[{lineId:"utterance:N"|supplied-history-id,excerpt?:"exact <=320-byte passage"}]. Never cite raw input as heard speech. Omit excerpt only for a complete short line. disclosure shorthand is local MEMORY only. Historical personal disclosures and differing learner evidence use learners:{personId:{basis,attributedTo?,support?,disclosed?}}, domainRef:{kind:"relationship",characterId:speakerId}, and learners.player.disclosed:{kind,toId}. Wish learning uses domainRef:{kind:"wish",id,characterId} and only spoken title/status in learners.player.disclosed.
+Code records committed mechanical outcomes; do not write mechanical Memories.`;
 
 export const SCENE_GM_PHYSICAL = `Every completed persistent physical change requires action:{happened:true,segment,actorIds:[],consent:[{actorId,segment?,lineId?,quote?}],appearanceChanged:boolean,edits:[{before,after}],append?,recent?:{text,renew?},dayNight?,conditionClears?:[{id,expectedRevision}]}.
 Cite completed local action narration; only present actors and available supplies. Omitted consent means no consent evidence, never permission; use [] when no nonacting controller needs consent.
@@ -207,8 +200,8 @@ For player-issued changes, evidence cites the generated narration establishing t
 Visits grant no residency or standing access.
 Preserve conditions; unsupported conditions use unresolved. accompanies means the controller goes too. access-management needs command:{action,...fields}: venue-policy:{managerIds,visitorHours}; zone-policy:{policy}; recover-managers:{managerIds}; ban:{visitorId}; lift-ban:{banId}; revoke:{permissionId}; exception:{permissionId,banIds}; destinations:{visitorId,home?,sleep?,work?}.
 Use supplied scope/IDs; code binds revisions/operation IDs.
-venue-policy uses zoneId:null; zone-policy uses the supplied Zone id and its complete current policy. For only a Zone's unrestricted hours use policy.visitorHours:"always", preserving every other field.
-Zone policy shape: {mode:"public|permission-required",managerIds:null|[ids],memberIds:[],memberRoles:[],inviterIds:[],visitorHours:"inherit|always"|hours,accompanied:boolean}. Restore omitted empty collections as [] when writing the complete policy.
+venue-policy uses zoneId:null and only changed managerIds/visitorHours. zone-policy uses the supplied Zone id and policy containing only changed fields; code preserves the rest in listed command order. For unrestricted Zone hours use policy:{visitorHours:"always"}.
+Zone policy fields: mode:"public|permission-required",managerIds:null|[ids],memberIds:[ids],memberRoles:[],inviterIds:[ids],visitorHours:"inherit|always"|hours,accompanied:boolean. Explicit null/[] retain their meanings; omit unchanged fields.
 Venue visitorHours:null means all hours; [] means closed. Otherwise use [{days:[day names],start:"HH:mm",end:"HH:mm"}], end exclusive; equal start/end means all day on those days.
 Entrance is Unrestricted.
 No policy changes inferred from friendship, employment or guest admission.
@@ -229,7 +222,7 @@ Patch meaningful changes only.
 Records:{id:"existing or empty",expectedRevision,kind:"history|declaration|boundary|agreement|commitment",text,participants:[],status:"stated|proposed|accepted|fulfilled|cancelled|overdue",dueAt?:"explicit ISO deadline"}.
 Preserve immutable terms; mutual agreement requires each participant's assent.
 History is stated without deadline.
-Intentions:{actorId,expectedRevision,lineIds:[],items:[{id,targetIds:[],text,reason,status:"active|retired|attempted"}]}; max3 active, retain meaningful unattempted intentions.
+Intentions:{actorId,lineIds:[],items:[{id,targetIds:[],text,reason,status:"active|retired|attempted"}]}; max3 active, retain meaningful unattempted intentions. Code binds revisions.
 Conversational disclosures belong only in memoryChanges, never a second disclosure list.`;
 
 export const SCENE_GM_WISHES = `Optional wishChanges:[{actorId,wishId,intent:"create|reveal|clarify|approach|attention|progress|fulfilled|withdrawn",evidence:[segment],reason:"short reason",desire?:{wish,reason},condition?,quote?,approach?,attention?:{state:"background|foreground",reason},supersedes?,disclosedStatus?,statusQuote?}].
@@ -252,7 +245,7 @@ Ordinary local actions and compatible powers are allowed.
 A halt may omit prose paragraphs.`;
 
 /** Explicit model view: new storage fields never become prompt data by default. */
-export function sceneGmLocation(context: ReturnType<typeof semanticContext>, placeName: string) {
+export function sceneGmLocation(context: ReturnType<typeof semanticContext>, placeName: string, setting = "") {
   const current = context.zones.find((zone) => zone.id === context.zoneId);
   const local = new Set([context.zoneId, ...(current?.connectedTo ?? [])]);
   for (const zone of context.zones) if (zone.connectedTo.includes(context.zoneId)) local.add(zone.id);
@@ -262,7 +255,10 @@ export function sceneGmLocation(context: ReturnType<typeof semanticContext>, pla
     zones: context.zones
       .filter((zone) => local.has(zone.id))
       .toSorted((a, b) => a.id.localeCompare(b.id))
-      .map(({ revision: _revision, ...zone }) => zone),
+      .map(({ revision: _revision, description, ...zone }) => ({
+        ...zone,
+        ...(description === setting ? {} : { description }),
+      })),
     destinations: context.zones
       .filter((zone) => !local.has(zone.id))
       .toSorted((a, b) => a.id.localeCompare(b.id))
@@ -273,10 +269,17 @@ export function sceneGmLocation(context: ReturnType<typeof semanticContext>, pla
 export function sceneGmContext(
   context: ReturnType<typeof semanticContext>,
   includedHistory: ReturnType<typeof sceneWritingHistory>["rows"] = [],
+  venueId = "",
 ) {
   const { history, actors } = context;
   const live = asRecord(context.social.live);
   const calendar = context.preservation.calendar;
+  const currentZone = context.zones.find((zone) => zone.id === context.zoneId);
+  const localZones = new Set([
+    context.zoneId,
+    ...(currentZone?.connectedTo ?? []),
+    ...context.zones.filter((zone) => zone.connectedTo.includes(context.zoneId)).map((zone) => zone.id),
+  ]);
   const access = asRecord(context.access);
   const permissions = (Array.isArray(access.permissions) ? access.permissions : [])
     .map(asRecord)
@@ -408,7 +411,15 @@ export function sceneGmContext(
             .map(({ zoneId, visitorId, issuerId }) => ({ zoneId, visitorId, issuerId })),
         }
       : undefined,
-    accessManagement: context.accessManagement,
+    accessManagement: context.accessManagement.map((scope) =>
+      scope.venueId !== venueId
+        ? scope
+        : {
+            ...scope,
+            ...(scope.venuePolicy ? { venuePolicy: undefined, venueManager: true } : {}),
+            zones: scope.zones.map(({ policy, ...zone }) => (localZones.has(zone.id) ? zone : { ...zone, policy })),
+          },
+    ),
     referenceActors: context.referenceActors.filter(
       (row) => !actors.some((actor) => actor.id === row.id && actor.name === row.name),
     ),
@@ -425,7 +436,6 @@ export function sceneGmContext(
     social: {
       edges: live.edges,
       intentions: live.intentions,
-      intentionRevisions: live.intentionRevisions,
       sharedRecords: live.sharedRecords,
     },
   };
@@ -562,7 +572,15 @@ export function normalizeGmEffects(
   if (Array.isArray(social.intentions))
     social.intentions = social.intentions.map((value) => {
       const row = asRecord(value);
-      return { ...row, sceneItems: row.items };
+      return {
+        ...row,
+        ...(compact && row.expectedRevision === undefined
+          ? {
+              expectedRevision: asRecord(asRecord(context.social.live).intentionRevisions)[String(row.actorId)] ?? 0,
+            }
+          : {}),
+        sceneItems: row.items,
+      };
     });
   if (Array.isArray(result.access))
     result.access = result.access.map((value) => {
@@ -578,7 +596,43 @@ export function normalizeGmEffects(
     });
   if (Array.isArray(result.memoryChanges))
     result.memoryChanges = result.memoryChanges.map((value) => {
-      const row = asRecord(value);
+      let row = asRecord(value);
+      if (compact && Array.isArray(row.learners)) {
+        const { basis, disclosure, ...rest } = row;
+        const ids = row.learners;
+        if (!ids.length || ids.some((id) => typeof id !== "string") || new Set(ids).size !== ids.length)
+          throw badGateway("The Memory learners must be distinct supplied people. Your draft is preserved.");
+        const first = asRecord(Array.isArray(row.support) ? row.support[0] : undefined);
+        const segment =
+          typeof first.lineId === "number" && Array.isArray(result.segments)
+            ? asRecord(result.segments[first.lineId])
+            : undefined;
+        const learning = basis === undefined ? (segment?.kind === "narration" ? "observation" : "report") : basis;
+        const learners = Object.fromEntries(ids.map((id: string) => [id, { basis: learning }]));
+        row = { ...rest, learners };
+        if (disclosure !== undefined) {
+          const fields = asRecord(disclosure);
+          if (
+            !segment ||
+            segment.kind !== "dialogue" ||
+            !learners.player ||
+            row.domainRef !== undefined ||
+            Object.keys(fields).some((key) => !["kind", "about"].includes(key)) ||
+            typeof fields.about !== "string" ||
+            typeof fields.kind !== "string"
+          )
+            throw badGateway(
+              "The Memory disclosure needs its actual speech and an explicit subject. Your draft is preserved.",
+            );
+          const toId = fields.about === "self" ? segment.speakerId : fields.about;
+          row = {
+            ...row,
+            subjects: row.subjects === undefined ? [toId] : row.subjects,
+            domainRef: { kind: "relationship", characterId: segment.speakerId },
+            learners: { ...learners, player: { ...learners.player, disclosed: { kind: fields.kind, toId } } },
+          };
+        }
+      }
       const target = asRecord(row.target);
       const candidate =
         compact &&
@@ -593,7 +647,9 @@ export function normalizeGmEffects(
         ...(compact
           ? {
               action: row.action ?? "create",
-              ...((row.action ?? "create") === "create" ? { kind: row.kind ?? "information" } : {}),
+              ...((row.action ?? "create") === "create"
+                ? { kind: row.kind ?? "information", subjects: row.subjects === undefined ? [] : row.subjects }
+                : {}),
             }
           : {}),
         ...(compact && asRecord(row.domainRef).kind === "relationship" && asRecord(row.domainRef).id === undefined
@@ -625,6 +681,12 @@ export function normalizeGmEffects(
           : {}),
         screening: {
           protectedRoots: [],
+          ...(compact &&
+          row.screening === undefined &&
+          Object.keys(learners).length &&
+          Object.keys(learners).every((id) => context._memoryWrite.unprotectedKnowerIds?.includes(id))
+            ? { disposition: "clear" }
+            : {}),
           ...asRecord(row.screening),
           fingerprint: context._memoryWrite.protection.fingerprint,
         },

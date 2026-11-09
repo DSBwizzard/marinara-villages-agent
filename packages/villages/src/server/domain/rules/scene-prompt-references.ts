@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { badGateway } from "./errors.js";
 
 const actorFields = new Set([
+  "about",
   "speakerId",
   "actorId",
   "characterId",
@@ -18,6 +19,7 @@ const actorFields = new Set([
   "accompaniedBy",
 ]);
 const actorLists = new Set([
+  "learners",
   "actorIds",
   "characterIds",
   "controllerIds",

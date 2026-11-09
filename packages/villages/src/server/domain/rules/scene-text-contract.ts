@@ -30,12 +30,11 @@ Actions go in narration, words in dialogue. Prose needs no JSON escaping.
 Aside bubbles are presentation, never a private audience. Keep useful asides brief.
 Unlabeled opening prose is narration. Every supplied public header starts a new paragraph, even inline. Private headers must begin a new line. Never write closing tags. Continued text belongs to that paragraph; use [narration] to switch back from speech. Max2000 characters per paragraph.
 
-Every persistent outcome established in this exchange MUST have its effect data in CHANGES, including changes issued through speech. INPUT speech does not mean effect-free. Never confirm a saved change through prose alone.
-End with CHANGES on its own line and one JSON object using the effect contracts when any effect occurs.
-A final standalone effect object after a blank line is also a reserved control footer without CHANGES. JSON examples must be quoted inline, never placed there. After a colon or code example, CHANGES is required.
-Enclose ALL effects in one pair of braces and double-quote their names. Example shape: {"action":{"happened":true,"segment":0,"actorIds":["player"],"consent":[],"append":"The cup rests on the shelf."}}. Include it only when that narration actually establishes the change.
+Every persistent outcome needs effect data, including spoken administration; prose alone changes no saved facts. Local Memory uses the MEMORY control below. End with CHANGES and one JSON object for all other effects, only when needed.
+Example: CHANGES {"action":{"happened":true,"segment":0,"actorIds":["player"],"consent":[],"append":"The cup rests on the shelf."}}
+JSON examples in dialogue must be quoted inline, never a standalone final object (reserved for effects).
 Generated paragraph indexes count EVERY recognized header, plus any implicit opening narration, starting at0 BEFORE player insertion. Player speech references: utterance:N with actual witnesses.
-Omit unchanged effects; ordinary conversation needs no CHANGES. No input, segments, witnesses or server bookkeeping in CHANGES.
+Omit unchanged effects. No input, segments, witnesses or server bookkeeping in CHANGES.
 Optional sounds:[{segment,sourceId,text,loud?:true}] gives a narration paragraph's exact acoustic text, never unseen actions.`;
 
 const changeFields = new Set([
@@ -61,6 +60,7 @@ const header =
 const inlineHeader =
   /(?<!\\)\[[ \t]*([A-Za-z0-9:_-]+)(?:[ \t]+(main|aside|call(?::[A-Za-z0-9:_-]+)?|(?:whisper|to):[A-Za-z0-9:_-]+))?[ \t]*\]/gu;
 const changesHeader = /^CHANGES(?::[ \t]*|[ \t]+|$)(.*)$/u;
+const memoryHeader = /^[ \t]*MEMORY(?::[ \t]*|[ \t]+|$)(.*)$/u;
 const invalid = (part: string) => badGateway(`The Scene reply has invalid ${part}. Your draft is preserved.`);
 
 /** Only restore an omitted object envelope/key quotes; never repair values or incomplete JSON. */
@@ -174,6 +174,7 @@ export function parseSceneTextReply(
       if (typeof ref === "string" && /^new:[a-z0-9-]{1,60}$/u.test(ref)) speakers.add(ref);
     }
   const proseLines = body.slice(0, changeAt < 0 ? body.length : changeAt).flatMap((line) => {
+    if (memoryHeader.test(line)) return [line];
     const parts: string[] = [];
     let start = 0;
     for (const match of line.matchAll(inlineHeader)) {
@@ -190,10 +191,29 @@ export function parseSceneTextReply(
   const segments: Record<string, unknown>[] = [];
   let opening = true;
   let current: { fields: Record<string, unknown>; lines: string[] } | undefined;
-  const flush = () => {
+  const localMemories: Record<string, unknown>[] = [];
+  const flush = (memory?: Record<string, unknown>) => {
     if (!current) return;
-    const prose = current.lines.join("\n").trim();
+    const excerpts: string[] = [];
+    const prose = current.lines
+      .join("\n")
+      .trim()
+      .replace(/\[remember\]([\s\S]*?)\[\/remember\]/gu, (_match, excerpt: string) => {
+        excerpts.push(excerpt);
+        return excerpt;
+      })
+      .trim();
+    if (
+      /\[\s*\/?\s*remember\b/iu.test(prose) ||
+      (excerpts.length && !memory) ||
+      excerpts.length > 2 ||
+      excerpts.some(
+        (excerpt) => !excerpt.trim() || Buffer.byteLength(excerpt, "utf8") > 320 || !prose.includes(excerpt),
+      )
+    )
+      throw invalid("Memory source markers");
     if (!prose) throw invalid("empty paragraphs");
+    if (/\bMEMORY:?\s*\{/iu.test(prose)) throw invalid("Memory controls");
     if (/\bCHANGES:?\s*(?:[\[{]|(?:"(?:[^"\\]|\\.)*"|[A-Za-z_$][\w$]*)\s*:)/u.test(prose))
       throw invalid("change fields");
     if (
@@ -202,9 +222,43 @@ export function parseSceneTextReply(
         /(?<!\\)\[\s*(?:narration\b|\/[A-Za-z0-9:_-]+|[A-Za-z0-9:_-]+\s+(?:main|aside|call|to)\b)/iu.test(prose))
     )
       throw invalid("paragraph headers");
+    if (memory) {
+      if (
+        Object.keys(memory).some(
+          (key) =>
+            ![
+              "text",
+              "subjects",
+              "learners",
+              "basis",
+              "disclosure",
+              "action",
+              "kind",
+              "target",
+              "screening",
+              "domainRef",
+              "effectId",
+            ].includes(key),
+        )
+      )
+        throw invalid("local Memory fields");
+      localMemories.push({
+        ...memory,
+        support: (excerpts.length ? excerpts : [prose]).map((excerpt) => ({ lineId: segments.length, excerpt })),
+      });
+    }
     segments.push({ ...current.fields, text: prose });
+    current = undefined;
   };
   for (const line of proseLines) {
+    const local = line.match(memoryHeader);
+    if (local) {
+      const metadata = local[1]!.trim();
+      const memory = modelJsonWithinBounds(metadata) ? parseSceneObject(metadata) : null;
+      if (!current || !memory) throw invalid("local Memory");
+      flush(memory);
+      continue;
+    }
     const match = line.match(header);
     if (!match) {
       if (changeFields.has(line.match(/^\s*"?([A-Za-z_$][\w$]*)"?\s*:/u)?.[1] ?? "")) throw invalid("change fields");
@@ -234,6 +288,10 @@ export function parseSceneTextReply(
     };
   }
   flush();
+  if (localMemories.length) {
+    if (changes.memoryChanges !== undefined && !Array.isArray(changes.memoryChanges)) throw invalid("Memory changes");
+    changes.memoryChanges = [...localMemories, ...((changes.memoryChanges as unknown[] | undefined) ?? [])];
+  }
   if (Object.hasOwn(changes, "sounds")) {
     if (!Array.isArray(changes.sounds)) throw invalid("sounds");
     const used = new Set<number>();

@@ -535,8 +535,29 @@ export function createSemanticService(ports: SemanticPorts) {
           if (row.command !== undefined) {
             if (row.outcome !== "access-management")
               throw badGateway("An access command requires an exact management event.");
+            let fields = asRecord(row.command);
+            const baseline = accessPreviews.get(venue.id) ?? venue;
+            if (fields.action === "venue-policy" && baseline.access) {
+              if (!Object.hasOwn(fields, "managerIds") && !Object.hasOwn(fields, "visitorHours"))
+                throw badGateway("The Venue policy patch has no changed fields.");
+              fields = {
+                managerIds: baseline.access.managerIds,
+                visitorHours: baseline.access.visitorHours,
+                ...fields,
+              };
+            } else if (
+              fields.action === "zone-policy" &&
+              fields.policy &&
+              typeof fields.policy === "object" &&
+              !Array.isArray(fields.policy)
+            ) {
+              if (!Object.keys(fields.policy).length) throw badGateway("The Zone policy patch has no changed fields.");
+              const currentZone = typeof row.zoneId === "string" ? resolveVenueZone(baseline, row.zoneId) : undefined;
+              if (currentZone?.access)
+                fields = { ...fields, policy: { ...currentZone.access, ...asRecord(fields.policy) } };
+            }
             management = readAccessCommand({
-              ...asRecord(row.command),
+              ...fields,
               operationId: id,
               expectedRevision: venue.access?.revision,
             });

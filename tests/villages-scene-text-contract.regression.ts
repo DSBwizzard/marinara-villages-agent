@@ -6,6 +6,52 @@ import { parseVenueReply } from "../packages/villages/src/server/domain/rules/sc
 const parse = (text: string) => parseSceneTextReply(text, "stop", ["mara", "bryn"]);
 const source = 'INPUT speech\n[narration] The sign says "Tea: [fresh]".\nA second line.\n[mara] "Please, sit."';
 const raw: any = parse(source);
+{
+  const local: any = parse(
+    'INPUT speech\n[mara whisper:player] A long lead-in. [remember]I prefer tart apples.[/remember] She waits.\nMEMORY {"text":"Mara prefers tart apples.","learners":["player"],"disclosure":{"kind":"preference","about":"self"}}\n[bryn aside] Tea?',
+  );
+  assert.equal(local.segments.length, 2);
+  assert.equal(local.segments[0].text, "A long lead-in. I prefer tart apples. She waits.");
+  assert.equal(local.segments[0].delivery, "whisper");
+  assert.equal(local.segments[1].presentation, "aside");
+  assert.deepEqual(local.memoryChanges[0].support, [{ lineId: 0, excerpt: "I prefer tart apples." }]);
+  const short: any = parse('INPUT speech\n[mara] I like tea.\nMEMORY {"text":"Mara likes tea.","learners":["player"]}');
+  assert.deepEqual(short.memoryChanges[0].support, [{ lineId: 0, excerpt: "I like tea." }]);
+  for (const control of [
+    '  MEMORY {"text":"Tea.","learners":["player"]}',
+    'MEMORY: {"text":"Tea.","learners":["player"]}',
+  ])
+    assert.equal((parse("INPUT speech\n[mara] Tea.\n" + control) as any).segments[0].text, "Tea.");
+  for (const control of [
+    'Memory: {"text":"PRIVATE"}',
+    'She pauses. MEMORY {"text":"PRIVATE"}',
+    "[Remember]PRIVATE[/Remember]",
+    "[remember ]PRIVATE[/remember ]",
+  ])
+    assert.throws(() => parse("INPUT speech\n[mara] Tea. " + control), /Memory/);
+  for (const passage of ["", "[remember]nested[/remember]", "é".repeat(161)])
+    assert.throws(
+      () =>
+        parse(`INPUT speech\n[mara] [remember]${passage}[/remember]\nMEMORY {"text":"A fact.","learners":["player"]}`),
+      /Memory/,
+    );
+  assert.doesNotThrow(() =>
+    parse(
+      `INPUT speech\n[mara] [remember]${"é".repeat(160)}[/remember]\nMEMORY {"text":"A fact.","learners":["player"]}`,
+    ),
+  );
+  for (const text of [
+    'INPUT speech\n[mara] [remember]Unclosed.\nMEMORY {"text":"A fact."}',
+    'INPUT speech\n[mara] [remember]Crossing.\n[bryn] End.[/remember]\nMEMORY {"text":"A fact."}',
+    "INPUT speech\n[mara] [remember]Unbound.[/remember]",
+    'INPUT speech\nMEMORY {"text":"No source."}',
+    'INPUT speech\n[mara] Fine.\nMEMORY {"text":"One."}\nMEMORY {"text":"Two."}',
+    'INPUT speech\n[mara] Public. [remember][bryn whisper:player] SECRET[/remember]\nMEMORY {"text":"A fact."}',
+  ])
+    assert.throws(() => parse(text), /Memory|paragraph headers/);
+  for (const key of ["support", "lineId", "speakerId", "source"])
+    assert.throws(() => parse(`INPUT speech\n[mara] Fine.\nMEMORY {"text":"A fact.","${key}":0}`), /Memory/);
+}
 const opening: any = parse('INPUT speech\nThe kettle rattles.\nIts label says "[fresh]".\n[mara] Tea?');
 assert.deepEqual(opening.segments[0], { kind: "narration", text: 'The kettle rattles.\nIts label says "[fresh]".' });
 assert.equal(opening.segments[1].speakerId, "mara");

@@ -150,7 +150,7 @@ export interface SceneWritingPorts {
 }
 export const VENUE_REPLY_MAX_TOKENS = 4096;
 const VENUE_REPLY_TEMPERATURE = 0.85;
-const SCENE_WRITING_VERSION = 13 as const;
+const SCENE_WRITING_VERSION = 14 as const;
 function requireCurrentSceneRequest(captured?: { writingVersion?: number }) {
   if (captured && captured.writingVersion !== SCENE_WRITING_VERSION)
     throw conflict(
@@ -469,7 +469,11 @@ export function createSceneWriting({
         };
       });
       const contextFor = () => ({
-        ...sceneGmContext({ ...gmContext, history: [], memory: { ...gmContext.memory, memories: [] } }),
+        ...sceneGmContext(
+          { ...gmContext, history: [], memory: { ...gmContext.memory, memories: [] } },
+          [],
+          session.placeId,
+        ),
         actors: actorState,
       });
       const presentationOnly = [
@@ -489,7 +493,9 @@ export function createSceneWriting({
       const circumstances = {
         context: {
           ...liveContext,
-          accessScopes: gmContext.accessScopes.toSorted((a, b) => a.id.localeCompare(b.id)),
+          accessScopes: gmContext.accessScopes
+            .toSorted((a, b) => a.id.localeCompare(b.id))
+            .map(({ kind: _kind, adjacentZoneIds: _adjacent, ...scope }) => scope),
           hearing: storedPlace
             ? zoneEventHearingGroups(session, sceneLayoutVenue(storedPlace, session)).map((group) =>
                 Object.fromEntries(
@@ -566,7 +572,7 @@ export function createSceneWriting({
               compactSceneRead(
                 mapScenePeople(
                   {
-                    scene: { ...sceneGmLocation(gmContext, session.placeName), worldFacts },
+                    scene: { ...sceneGmLocation(gmContext, session.placeName, village.setting), worldFacts },
                   },
                   encodedPeople,
                 ),
@@ -631,16 +637,15 @@ export function createSceneWriting({
           SCENE_GM_ACCESS,
           SCENE_GM_SOCIAL,
           SCENE_GM_WISHES,
-          SCENE_GM_MEMORY +
-            " Put identical evidence in shared support once; use per-learner support only for exceptions.",
+          SCENE_GM_MEMORY,
           "Project approval requires supplied current terms and explicit witnessed agreement. Speech never starts or completes work. Omit projectSpeech when no current terms are supplied.",
           SCENE_GM_PHYSICAL,
-          'Physical action needs happened:true and its exact narration segment. Omit action when nothing changes. Memory screening uses the captured administrative rules; code binds the context fingerprint. Newly introduced narrative circumstances use narrativeIntroduction:{status:"introduced",segment,quote,development}; only an admitted grant permits it. Omit it when quiet.',
+          'New narrative circumstances use narrativeIntroduction:{status:"introduced",segment,quote,development}; only an admitted grant permits it. Omit it when quiet.',
         ]),
         replyReminder: [
           ...(Object.keys(gmPresentation.sprites).length ? [{ text: SCENE_GM_PRESENTATION }] : []),
           {
-            text: "FIRST line: INPUT followed by one classification (speech, action, thought, context) or a JSON array of exact source spans for mixed/private input. This required classification comes BEFORE all prose. Every established persistent outcome needs CHANGES: physical edits need action; visit/entry decisions and policy administration need access, including spoken changes. Without effect data it is not saved. Omit CHANGES when nothing changes. Private speech needs a local recipient. Maximum4 non-player speakers. Preserve necessary evidence and consequences.",
+            text: "Classify the exact player input, write the exchange, and include data for every persistent outcome. Local MEMORY follows its source paragraph; other effects use CHANGES.",
           },
         ],
       });

@@ -50,7 +50,8 @@ export function compactSceneHistoryPacket(packet: {
         if (kind !== "dialogue" && kind !== "narration") details.kind = kind;
         if (kind === "narration" && speakerId !== undefined && speakerId !== "__venue_scene__")
           details.speakerId = speakerId;
-        return [id, kind === "narration" ? null : speakerId, text, ...(Object.keys(details).length ? [details] : [])];
+        const supplied = Object.fromEntries(Object.entries(details).filter(([, value]) => value !== undefined));
+        return [id, kind === "narration" ? null : speakerId, text, ...(Object.keys(supplied).length ? [supplied] : [])];
       }),
     })),
   };
