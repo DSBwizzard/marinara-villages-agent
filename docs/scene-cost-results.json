@@ -9,7 +9,7 @@
   "pricingCheckedAt": "2026-11-09T16:24:55.000Z",
   "limitations": [
     "One synthetic resident and one continuous quiet world, with matching player inputs but naturally different generated histories.",
-    "This records all 83 reported requests across implementation iterations. It is not a randomized before/after experiment.",
+    "This records all 89 reported requests across implementation iterations. It is not a randomized before/after experiment.",
     "Rates change from peak to off-peak at 10:00 UTC; same-rate mode comparisons and token counts must be used for improvement claims.",
     "Costs are usage multiplied by published rates, not invoice amounts. Cache writes and provider-internal retries are unreported.",
     "Reasoning tokens are a subset of output and are charged once. Saved model and reasoning parameters were preserved.",
@@ -2492,6 +2492,196 @@
           "replayAdditionalRequests": null
         }
       ]
+    },
+    {
+      "id": "live-assent-warmup",
+      "engineRevision": "73441f9a620dfdd94a28b94b68aa8f8b8ef1321c",
+      "sourceRevision": "b2ebc0098541e6dfb78ceadc0252ca2ecab3c9ec",
+      "archiveHash": "06b1eb3d87820c35f3f0e163c1cd8a8af1516c2093ee0fe22c6afa6785d80632",
+      "turns": [
+        {
+          "mode": "villages",
+          "caseId": "assent-warmup",
+          "message": "I appreciate you being clear about what friendship means to you.",
+          "startedAt": "2026-11-09T16:57:22.651Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 28281,
+          "cachedInputTokens": 384,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 1035,
+          "reasoningTokens": 652,
+          "latencyMs": 10128,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.004806702,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 3
+          },
+          "replayAdditionalRequests": 0,
+          "semanticAssessment": "passed-no-premature-agreement",
+          "semanticEvidence": "Native relationship inspection still contained no accepted agreement after thanks without assent; the GM captured the spoken input and did not emit consequences."
+        },
+        {
+          "mode": "game",
+          "caseId": "assent-warmup",
+          "message": "I appreciate you being clear about what friendship means to you.",
+          "startedAt": "2026-11-09T16:57:32.781Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 19169,
+          "cachedInputTokens": 18432,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 351,
+          "reasoningTokens": 88,
+          "latencyMs": 4533,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.000376446,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        }
+      ]
+    },
+    {
+      "id": "live-assent-main",
+      "engineRevision": "73441f9a620dfdd94a28b94b68aa8f8b8ef1321c",
+      "sourceRevision": "b2ebc0098541e6dfb78ceadc0252ca2ecab3c9ec",
+      "archiveHash": "06b1eb3d87820c35f3f0e163c1cd8a8af1516c2093ee0fe22c6afa6785d80632",
+      "turns": [
+        {
+          "mode": "villages",
+          "caseId": "friendship-explicit-assent",
+          "message": "Yes, I agree to those terms: we will speak honestly, respect what each person chooses to share, and say when we are around or away. I would like that friendship.",
+          "startedAt": "2026-11-09T16:58:36.124Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 28857,
+          "cachedInputTokens": 27264,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 3138,
+          "reasoningTokens": 2224,
+          "latencyMs": 23009,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.0022035419999999997,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 3
+          },
+          "replayAdditionalRequests": 0,
+          "semanticAssessment": "passed-native-mutual-assent",
+          "semanticEvidence": "Only after explicit player assent did native inspection show friend connection and one accepted agreement. Its evidence contains the full player assent and Mara agreeing, bound to input:0 and generated segment 1. The earlier rejected proposal remains rejected."
+        },
+        {
+          "mode": "game",
+          "caseId": "friendship-explicit-assent",
+          "message": "Yes, I agree to those terms: we will speak honestly, respect what each person chooses to share, and say when we are around or away. I would like that friendship.",
+          "startedAt": "2026-11-09T16:58:59.136Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 19471,
+          "cachedInputTokens": 18816,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 718,
+          "reasoningTokens": 333,
+          "latencyMs": 6919,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.000585498,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "wish-personal-goal",
+          "message": "What is something you would really like to do for yourself, rather than another repair somebody needs?",
+          "startedAt": "2026-11-09T16:59:06.057Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 29858,
+          "cachedInputTokens": 27904,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 3007,
+          "reasoningTokens": 2117,
+          "latencyMs": 25156,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.002181012,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": "audible-question-not-captured",
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 3
+          },
+          "replayAdditionalRequests": 0,
+          "semanticAssessment": "failed",
+          "semanticEvidence": "A resident-owned boat Wish persisted open with exact Mara speech support and no Project work. However, the GM returned input:[] for the direct spoken question, so player-speech witness evidence was omitted. Native write completion is not full semantic success."
+        },
+        {
+          "mode": "game",
+          "caseId": "wish-personal-goal",
+          "message": "What is something you would really like to do for yourself, rather than another repair somebody needs?",
+          "startedAt": "2026-11-09T16:59:31.215Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 19878,
+          "cachedInputTokens": 19072,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 569,
+          "reasoningTokens": 260,
+          "latencyMs": 5974,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.0005195159999999999,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        }
+      ]
     }
   ],
   "engineRevisions": [
@@ -2499,13 +2689,13 @@
     "73441f9a620dfdd94a28b94b68aa8f8b8ef1321c"
   ],
   "observedTotals": {
-    "requests": 83,
+    "requests": 89,
     "runtimeFailedComparisons": 4,
-    "semanticFailedComparisons": 1,
+    "semanticFailedComparisons": 2,
     "semanticQualityGaps": 1,
-    "failedComparisons": 5,
+    "failedComparisons": 6,
     "replacementRequests": 1,
-    "knownRatedCostUsd": 0.08525568299999994,
+    "knownRatedCostUsd": 0.09592839899999994,
     "actualInvoiceCostUsd": null
   }
 }
