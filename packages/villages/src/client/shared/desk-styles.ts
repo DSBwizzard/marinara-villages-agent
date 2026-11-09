@@ -11,6 +11,7 @@ export const DESK_STYLES = `
 .${P}-desk-nav button[aria-current="page"]{color:#52663b}
 .${P}-desk-nav button[aria-current="page"]::after{content:"";position:absolute;bottom:0;left:10%;right:10%;height:3px;background:#65764a;border-radius:2px}
 .${P}-desk-nav svg{width:24px;height:24px;flex:none;color:inherit;animation:none;stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.${P}-desk-workspace[data-desk] .${P}-desk-nav button svg{color:inherit!important}
 .${P}-desk-nav button:disabled,.${P}-desk-return:disabled{cursor:default;opacity:.65}
 .${P}-desk-return{min-height:44px;flex:none;border:1px solid #889568;border-radius:5px;background:#5e7047;color:#fff9ec;padding:10px 16px;font:500 15px/1.3 system-ui,sans-serif;cursor:pointer;box-shadow:0 3px 7px #25180c60}
 .${P}-desk-return-mobile{display:none}
