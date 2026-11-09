@@ -6,11 +6,9 @@ const paper =
 
 /** Illustrated notebook styling stays local to Villagers, never Engine chrome. */
 export const DOSSIER_STYLES = `
-@font-face{font-family:Villages Desk;src:url('/api/capability-packages/villages/assets/letter-fonts/assistant-latin-400-normal.woff2') format('woff2');font-weight:400;font-style:normal;font-display:swap}
-@font-face{font-family:Villages Desk;src:url('/api/capability-packages/villages/assets/letter-fonts/assistant-latin-ext-400-normal.woff2') format('woff2');font-weight:400;font-style:normal;font-display:swap;unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
 
 @font-face { font-family:Villages Notebook; src:url("${handwriting}") format("truetype"); font-weight:400; font-style:normal; font-display:swap; }
-.${P}-dossier-root,.${P}-directory-root{--background:#f8efdd;--foreground:#362a20;--border:#c8b895;--muted-foreground:#6b5a49;--primary:#5e7047;--primary-foreground:#fff9ec;--secondary:#ede1ca;--popover:#fff6e5;--dossier-paper:#fcf2df;--dossier-ink:#362a20;--dossier-line:#c6b28c80;--notebook-hand:Georgia,"Times New Roman",serif;box-sizing:border-box;color:var(--dossier-ink);background:transparent;padding:2px 8px 8px;display:block;height:100%;min-height:0;overflow:visible;font:18px/1.4 "Villages Desk",system-ui,sans-serif;position:relative;isolation:isolate}
+.${P}-dossier-root,.${P}-directory-root{--background:#f8efdd;--foreground:#362a20;--border:#c8b895;--muted-foreground:#6b5a49;--primary:#5e7047;--primary-foreground:#fff9ec;--secondary:#ede1ca;--popover:#fff6e5;--dossier-paper:#fcf2df;--dossier-ink:#362a20;--dossier-line:#c6b28c80;--notebook-hand:Georgia,"Times New Roman",serif;box-sizing:border-box;color:var(--dossier-ink);background:transparent;padding:2px 8px 8px;display:block;height:100%;min-height:0;overflow:visible;font:18px/1.4 "village-letter-assistant",system-ui,sans-serif;position:relative;isolation:isolate}
 .${P}-dossier-root *,.${P}-directory-root *{box-sizing:border-box}
 .${P}-dossier-root button,.${P}-directory-root button,.${P}-dossier-root summary{font:inherit;color:var(--dossier-ink);min-height:44px;border:1px solid #c8b895;border-radius:4px;background:#fff5e3;padding:8px 12px;cursor:pointer;white-space:normal;overflow-wrap:anywhere;box-shadow:none}
 .${P}-dossier-root button:hover:not(:disabled),.${P}-directory-root button:hover:not(:disabled){filter:brightness(.97)}

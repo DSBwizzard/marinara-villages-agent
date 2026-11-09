@@ -52,8 +52,6 @@ export const villagesDefinition = {
         "paper-ivory.webp",
         "people-desk.webp",
         "people-phone.webp",
-        "letter-fonts/assistant-latin-400-normal.woff2",
-        "letter-fonts/assistant-latin-ext-400-normal.woff2",
       ],
     },
   },

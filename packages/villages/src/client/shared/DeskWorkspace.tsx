@@ -2,6 +2,7 @@ import { createContext, useContext, useLayoutEffect, type ReactNode, type RefObj
 import { useVillageActivity } from "./activity.js";
 import { ELEMENT_TAG as P } from "./constants.js";
 import { DESK_STYLES } from "./desk-styles.js";
+import { useLetterFont } from "./letter-font-css.js";
 
 export type DeskDestination = "people" | "projects" | "places" | "mailbox" | "settings";
 export type DeskLeaveCheck = () => Promise<boolean>;
@@ -81,6 +82,7 @@ export function DeskWorkspace({
   onKeyDown: React.KeyboardEventHandler<HTMLDivElement>;
   children: ReactNode;
 }) {
+  useLetterFont(active ? "assistant" : undefined);
   return (
     <div
       className={`${P}-desk-workspace`}

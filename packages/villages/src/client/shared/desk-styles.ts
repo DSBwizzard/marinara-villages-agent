@@ -2,18 +2,18 @@ const P = "marinara-capability-villages";
 
 export const DESK_STYLES = `
 .${P}-desk-workspace{height:100%;min-height:0;display:flex;flex-direction:column;position:relative;isolation:isolate}
-.${P}-desk-workspace[data-desk]:not([data-desk="none"]){--background:#f8efdd;--foreground:#362a20;--popover:#fff6e5;--muted:#e9ddc3;--muted-foreground:#6b5a49;--border:#c8b895;--primary:#5e7047;--primary-foreground:#fff9ec;--secondary:#ede1ca;color:#362a20;background:#704726 url('/api/capability-packages/villages/assets/menu-desk.jpg') center/cover;padding:clamp(10px,2vw,28px);box-sizing:border-box;overflow:hidden;font-family:"Villages Desk",system-ui,sans-serif}
+.${P}-desk-workspace[data-desk]:not([data-desk="none"]){--background:#f8efdd;--foreground:#362a20;--popover:#fff6e5;--muted:#e9ddc3;--muted-foreground:#6b5a49;--border:#c8b895;--primary:#5e7047;--primary-foreground:#fff9ec;--secondary:#ede1ca;color:#362a20;background:#704726 url('/api/capability-packages/villages/assets/menu-desk.jpg') center/cover;padding:clamp(10px,2vw,28px);box-sizing:border-box;overflow:hidden;font-family:"village-letter-assistant",system-ui,sans-serif}
 .${P}-desk-header{display:flex;align-items:center;gap:clamp(20px,4vw,70px);flex:none;position:relative;z-index:30;margin:0 auto 30px;width:96%;max-width:1380px}
 .${P}-desk-header[hidden]{display:none}
 .${P}-desk-nav{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));flex:1;min-width:0;box-shadow:0 5px 10px #25180c70;border:1px solid #ead9b9;border-radius:9px;background:linear-gradient(#fff8e950,#fff8e950),url('/api/capability-packages/villages/assets/paper-ivory.webp') center/768px;padding:5px 12px}
-.${P}-desk-nav button{position:relative;display:flex;align-items:center;justify-content:center;gap:10px;min-height:52px;min-width:0;border:0;background:transparent;color:#362a20;padding:8px;font:500 clamp(16px,1.5vw,21px)/1.3 "Villages Desk",system-ui,sans-serif;cursor:pointer}
+.${P}-desk-nav button{position:relative;display:flex;align-items:center;justify-content:center;gap:10px;min-height:52px;min-width:0;border:0;background:transparent;color:#362a20;padding:8px;font:500 clamp(16px,1.5vw,21px)/1.3 "village-letter-assistant",system-ui,sans-serif;cursor:pointer}
 .${P}-desk-nav button:last-child{border-right:0}
 .${P}-desk-nav button[aria-current="page"]{color:#52663b}
 .${P}-desk-nav button[aria-current="page"]::after{content:"";position:absolute;bottom:0;left:10%;right:10%;height:3px;background:#65764a;border-radius:2px}
 .${P}-desk-nav svg{width:29px;height:29px;flex:none;color:inherit;animation:none;stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round}
 .${P}-desk-workspace[data-desk] .${P}-desk-nav button svg{color:inherit!important}
 .${P}-desk-nav button:disabled,.${P}-desk-return:disabled{cursor:default;opacity:.65}
-.${P}-desk-return{min-height:44px;flex:none;border:1px solid #596a38;border-radius:8px;background:linear-gradient(#77894c,#60733e);color:#fff9ec;padding:12px 22px;font:500 20px/1.3 "Villages Desk",system-ui,sans-serif;cursor:pointer;box-shadow:0 3px 7px #25180c60}
+.${P}-desk-return{min-height:44px;flex:none;border:1px solid #596a38;border-radius:8px;background:linear-gradient(#77894c,#60733e);color:#fff9ec;padding:12px 22px;font:500 20px/1.3 "village-letter-assistant",system-ui,sans-serif;cursor:pointer;box-shadow:0 3px 7px #25180c60}
 .${P}-desk-return-mobile{display:none}
 .${P}-desk-scene{background:transparent;border:0;box-shadow:none;padding:8px;color:#fff9ec;white-space:nowrap}
 .${P}-desk-workspace :is(button,input,textarea,select,summary,a):focus-visible{outline:3px solid #648096;outline-offset:3px}
@@ -28,7 +28,7 @@ export const DESK_STYLES = `
  .${P}-desk-workspace:not([data-desk="none"])>.${P}-desk-stage{padding:32px 10px 10px}
 }
 .${P}-desk-workspace[data-desk="settings"] .${P}-workspace-body{border:7px solid #526047;border-left-width:15px;border-radius:5px;background:#f7eed9;box-shadow:0 5px 0 #d1c1a0,0 10px 15px #25180c70}
-.${P}-workspace-body{display:flex;height:100%;min-height:0;min-width:0;gap:0;color:#362a20;font:16px/1.45 "Villages Desk",system-ui,sans-serif}
+.${P}-workspace-body{display:flex;height:100%;min-height:0;min-width:0;gap:0;color:#362a20;font:16px/1.45 "village-letter-assistant",system-ui,sans-serif}
 .${P}-workspace-sidebar{flex:0 0 clamp(190px,24%,300px);min-height:0;min-width:0;overflow:auto;padding:24px 20px;background:linear-gradient(90deg,#f8eed8,#eee1c3);border-right:1px solid #cab68d}
 .${P}-workspace-sidebar h2{margin:0 0 18px;font:400 28px/1.2 Georgia,serif}
 .${P}-workspace-content{flex:1;min-height:0;min-width:0;overflow:auto;background:linear-gradient(110deg,#f8f0de,#fff6e7);padding:16px 22px}
@@ -70,7 +70,7 @@ export const DESK_STYLES = `
 .${P}-desk-workspace[data-desk="places"] .${P}-home{background:#f4e9ce;color:#362a20;border:6px solid #76513c;border-radius:5px;box-shadow:0 5px 0 #d3c4a4,0 10px 15px #25180c70;overflow:hidden}
 .${P}-desk-workspace[data-desk="places"] .${P}-home-bar,.${P}-desk-workspace[data-desk="places"] .${P}-explore-nav{display:none}
 .${P}-desk-workspace[data-desk="places"] .${P}-home-map-viewport{background:#e8ddba;border-left:1px solid #c5b187}
-.${P}-desk-workspace[data-desk="places"] .${P}-home{--explore-background:#f5ead1;--explore-panel:#f5ead1;--explore-text:#362a20;--explore-muted:#6b5a49;--explore-border:#c8b895;--explore-surface:#fff7e7;--explore-selected:#536a3d;font-family:"Villages Desk",system-ui,sans-serif}
+.${P}-desk-workspace[data-desk="places"] .${P}-home{--explore-background:#f5ead1;--explore-panel:#f5ead1;--explore-text:#362a20;--explore-muted:#6b5a49;--explore-border:#c8b895;--explore-surface:#fff7e7;--explore-selected:#536a3d;font-family:"village-letter-assistant",system-ui,sans-serif}
 .${P}-desk-workspace[data-desk="places"] .${P}-location-navigator{background:linear-gradient(90deg,#f8eed8,#eee1c3);color:#362a20}
 .${P}-desk-workspace[data-desk="places"] .${P}-location-navigator h2{font:400 27px/1.3 Georgia,serif}
 .${P}-desk-workspace[data-desk="places"] .${P}-explore-search input{background:#fff7e7;color:#362a20;border-color:#b7a787}
@@ -81,7 +81,7 @@ export const DESK_STYLES = `
 .${P}-desk-workspace[data-desk="mailbox"] .villages-mailbox-dialog>header h3{margin:0;font:400 28px/1.2 Georgia,serif;text-shadow:none}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-layout{padding:0 12px 12px}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-row[aria-pressed="true"]{background:#d6dfc1;border-color:#9fae82}
-.${P}-desk-workspace[data-desk="mailbox"] .villages-mailbox-dialog :is(button,select,input,textarea){font-family:"Villages Desk",system-ui,sans-serif}
+.${P}-desk-workspace[data-desk="mailbox"] .villages-mailbox-dialog :is(button,select,input,textarea){font-family:"village-letter-assistant",system-ui,sans-serif}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-error{color:#6d261b}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-pages{container-type:size}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-signature .${P}-signature-image{max-height:min(7rem,30cqh)}
