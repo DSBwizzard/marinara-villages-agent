@@ -1,0 +1,589 @@
+import type {
+  ContinuityAdmission,
+  ContinuityCollection,
+  ContinuityEvidence,
+  ContinuityHolder,
+  ContinuityRecord,
+  ContinuityTarget,
+  ContinuityVersion,
+  ContinuityView,
+  ContinuityWrite,
+} from "../models/continuity-model.js";
+import { memoryHash, memoryKnowerId, memoryRequire, memoryString, memoryTimestamp } from "./memory-integrity.js";
+
+export const CONTINUITY_TEXT_BYTES = 2400;
+export const continuityHolderKey = (holder: ContinuityHolder) =>
+  holder.kind === "actor"
+    ? JSON.stringify(["actor", holder.id, holder.incarnation])
+    : JSON.stringify(["room", holder.placeId, holder.zoneId]);
+export const emptyContinuity = (): ContinuityCollection => ({
+  format: 1,
+  revision: 0,
+  records: [],
+  versions: [],
+  receipts: {},
+});
+export const continuitySourceUnit = (source: ContinuityEvidence) =>
+  JSON.stringify([
+    source.episodeId,
+    source.unitId,
+    source.fingerprint,
+    ...(source.range ? [source.range.start, source.range.end] : []),
+  ]);
+const unit = continuitySourceUnit;
+const same = (a: unknown, b: unknown) => memoryHash(a) === memoryHash(b);
+
+export function continuityProtectionUnits(
+  collection: ContinuityCollection,
+  holder: ContinuityHolder,
+  graph: ReadonlyMap<string, ReadonlySet<string>>,
+) {
+  const key = continuityHolderKey(holder),
+    blocked = new Set(collection.records.flatMap((row) => row.protection[key]?.sourceUnits ?? [])),
+    queue = [...blocked];
+  for (let index = 0; index < queue.length; index++)
+    for (const child of graph.get(queue[index]) ?? [])
+      if (!blocked.has(child)) {
+        blocked.add(child);
+        queue.push(child);
+      }
+  return blocked;
+}
+
+function holderAllowed(holder: ContinuityHolder, context: ContinuityAdmission) {
+  if (holder.kind === "room") return context.room && same(holder, context.room);
+  memoryKnowerId(holder.id);
+  return context.actors.some((actor) => actor.id === holder.id && actor.incarnation === holder.incarnation);
+}
+function perceived(source: ContinuityEvidence, actorId: string) {
+  if (source.kind === "self" || source.kind === "private") return source.actorId === actorId;
+  if (source.kind === "native") return source.perceptions.some((row) => row.actorId === actorId);
+  return source.actorId === actorId || source.perceptions.some((row) => row.actorId === actorId);
+}
+function heardWords(source: ContinuityEvidence, actorId: string) {
+  return (
+    source.kind === "speech" &&
+    (source.actorId === actorId || source.perceptions.some((row) => row.actorId === actorId && row.channel === "words"))
+  );
+}
+function resolveSources(write: ContinuityWrite, context: ContinuityAdmission) {
+  memoryRequire(write.sourceIds.length > 0 && write.sourceIds.length <= 8, "missing continuity support");
+  return write.sourceIds.map((id) => {
+    const source = context.sources.find((row) => row.id === id);
+    memoryRequire(source && source.seed === context.seed, "continuity source was not supplied");
+    memoryRequire(source.kind !== "native" || source.committedReceiptId, "uncommitted native source");
+    return structuredClone(source);
+  });
+}
+function targetRecord(collection: ContinuityCollection, target: ContinuityTarget, context: ContinuityAdmission) {
+  const supplied = context.supplied.find((row) => row.id === target.id);
+  memoryRequire(supplied && same(supplied, target), "continuity target was not supplied");
+  const record = collection.records.find((row) => row.id === target.id);
+  memoryRequire(record && record.revision === target.recordRevision, "continuity target changed");
+  for (const [key, revision] of Object.entries(target.heads))
+    memoryRequire((record.heads[key]?.revision ?? 0) === revision, "continuity holder changed");
+  return record;
+}
+function checkProtection(
+  collection: ContinuityCollection,
+  write: ContinuityWrite,
+  sources: ContinuityEvidence[],
+  context: ContinuityAdmission,
+) {
+  if (context.protectedRoots.length)
+    memoryRequire(
+      write.screening?.disposition === "clear" &&
+        context.protectionFingerprint &&
+        write.screening.fingerprint === context.protectionFingerprint &&
+        write.screening.roots.every((id) => context.protectedRoots.includes(id)),
+      "continuity protection needs clear screening",
+    );
+  for (const holder of write.holders) {
+    const key = continuityHolderKey(holder);
+    memoryRequire(
+      !sources.some((source) => context.blockedSources?.[key]?.includes(unit(source))),
+      "protected continuity source descendant",
+    );
+    for (const record of collection.records) {
+      const protection = record.protection[key];
+      if (!protection) continue;
+      memoryRequire(
+        !sources.some((source) => protection.sourceUnits.includes(unit(source))),
+        "protected continuity source replay",
+      );
+      if (record.id === write.target?.id) {
+        memoryRequire(!protection.forgotten, "forgotten continuity target");
+        memoryRequire(
+          write.text === undefined || write.text === protection.repair?.text,
+          "corrected continuity target conflict",
+        );
+      }
+    }
+  }
+}
+function contribution(
+  sources: ContinuityEvidence[],
+  actorId: string,
+  act: ContinuityEvidence["act"],
+  episodeId: string,
+) {
+  const result = sources.filter(
+    (source) =>
+      source.kind === "speech" && source.actorId === actorId && source.act === act && source.episodeId === episodeId,
+  );
+  memoryRequire(result.length > 0, "offer decision needs actual deciding speech");
+  return result;
+}
+
+/** One common write; the feature commits its result with the episode/native receipts in the Village CAS. */
+export function applyContinuityWrite(
+  collection: ContinuityCollection,
+  write: ContinuityWrite,
+  context: ContinuityAdmission,
+): ContinuityCollection {
+  memoryString(context.seed, 160);
+  memoryString(context.operationId, 160);
+  memoryString(context.episodeId, 160);
+  memoryTimestamp(context.at);
+  memoryString(write.id, 48);
+  memoryRequire(
+    write.holders.length > 0 &&
+      write.holders.length <= 32 &&
+      new Set(write.holders.map(continuityHolderKey)).size === write.holders.length &&
+      write.holders.every((holder) => holderAllowed(holder, context)),
+    "invalid continuity holders",
+  );
+  const room = write.holders.find((holder) => holder.kind === "room");
+  memoryRequire(
+    !room ||
+      (write.class === undefined &&
+        write.current === undefined &&
+        write.about === undefined &&
+        !write.parentId &&
+        !write.facet),
+    "room continuity has no actor classification",
+  );
+  memoryRequire(!room || write.holders.length === 1, "room and actor continuity cannot mix");
+  memoryRequire(!write.room || room, "actor continuity cannot change room condition");
+  memoryRequire(!room || (!write.offer && !write.accept && !write.closeOffer), "room cannot make an agreement");
+  memoryRequire(
+    [write.accept, write.closeOffer, write.retire].filter(Boolean).length <= 1,
+    "conflicting continuity operations",
+  );
+  const operationId = context.operationId + ":" + write.id;
+  const fingerprint = memoryHash([write, context.seed, context.sources]);
+  const receipt = collection.receipts[operationId];
+  if (receipt) {
+    memoryRequire(receipt.fingerprint === fingerprint, "continuity operation identity reused");
+    return collection;
+  }
+  const sources = resolveSources(write, context);
+  const roomKnowers = (write.room?.knownBy ?? []).map((id): ContinuityHolder => {
+    const actor = context.actors.find((actor) => actor.id === id);
+    memoryRequire(actor, "unknown concealed knower");
+    memoryRequire(
+      sources.every(
+        (source) =>
+          source.actorId === id || source.perceptions.some((row) => row.actorId === id && row.channel === "sight"),
+      ),
+      "unwitnessed concealed knowledge",
+    );
+    return { kind: "actor", ...actor };
+  });
+  checkProtection(collection, { ...write, holders: [...write.holders, ...roomKnowers] }, sources, context);
+  for (const holder of write.holders)
+    if (holder.kind === "actor") {
+      memoryRequire(
+        sources.every((source) => perceived(source, holder.id)),
+        "unwitnessed continuity support",
+      );
+    } else
+      memoryRequire(
+        sources.every((source) => source.kind === "observation" || source.kind === "native") &&
+          sources.some((source) => source.episodeId === context.episodeId),
+        "room condition needs an actual outcome",
+      );
+  const original = write.target ? targetRecord(collection, write.target, context) : undefined;
+  memoryRequire(!write.retire || original, "retirement needs a supplied target");
+  memoryRequire(!(write.accept || write.closeOffer) || original?.offer, "decision needs a supplied offer");
+  const rootId = original?.id ?? "continuity-" + memoryHash([context.seed, operationId]).slice(0, 32);
+  const record: ContinuityRecord = original
+    ? structuredClone(original)
+    : { id: rootId, revision: 0, heads: {}, protection: {} };
+  const before = write.holders.map((holder) => {
+    const key = continuityHolderKey(holder);
+    const head = record.heads[key];
+    memoryRequire(!original || Object.hasOwn(write.target!.heads, key), "target holder was not supplied");
+    const version = head && collection.versions.find((row) => row.id === head.versionId);
+    memoryRequire(!head || version, "current continuity version is missing");
+    return { key, holder, head, version };
+  });
+  for (const { holder, version } of before)
+    if (sources.some((source) => source.kind === "self"))
+      memoryRequire(
+        holder.kind === "actor" &&
+          holder.id !== "player" &&
+          sources.filter((source) => source.kind === "self").every((source) => source.actorId === holder.id) &&
+          ["perspective", "desire", "motivation", "commitment"].includes(write.class ?? version?.class ?? ""),
+        "self establishes only the non-player owner's perspective",
+      );
+  if (write.offer) {
+    memoryRequire(!original && !write.accept && !write.closeOffer, "changed terms require a new offer");
+    memoryRequire(
+      write.offer.participants.length >= 2 &&
+        new Set(write.offer.participants).size === write.offer.participants.length &&
+        write.offer.participants.includes(write.offer.proposer) &&
+        write.holders.some((holder) => holder.kind === "actor" && holder.id === write.offer!.proposer),
+      "invalid offer parties",
+    );
+    write.offer.participants.forEach(memoryKnowerId);
+  }
+  if (record.offer) {
+    const terms = collection.versions.find((row) => row.id === record.offer!.termsVersionId);
+    memoryRequire(terms && (!write.text || write.text === terms.text), "offer terms cannot change in place");
+    if (write.accept) {
+      memoryRequire(
+        !record.offer.events.some((event) => event.act === "withdraw" || event.act === "refuse"),
+        "offer was withdrawn or refused",
+      );
+      memoryRequire(record.offer.participants.includes(write.accept), "accepting actor is not a party");
+      memoryRequire(
+        before.some(
+          ({ key, holder, version }) =>
+            holder.kind === "actor" &&
+            holder.id === write.accept &&
+            version?.text === terms.text &&
+            !record.protection[key],
+        ),
+        "accepting actor does not hold the unchanged offer",
+      );
+      record.offer.events.push({
+        id: operationId,
+        by: write.accept,
+        act: "accept",
+        sources: contribution(sources, write.accept, "accept", context.episodeId),
+      });
+    }
+    if (write.closeOffer) {
+      memoryRequire(record.offer.participants.includes(write.closeOffer.by), "withdrawing actor is not a party");
+      memoryRequire(
+        before.some(({ holder }) => holder.kind === "actor" && holder.id === write.closeOffer!.by),
+        "decision must retain the deciding actor",
+      );
+      const act = write.closeOffer.reason === "refused" ? "refuse" : "withdraw";
+      record.offer.events.push({
+        id: operationId,
+        by: write.closeOffer.by,
+        act,
+        sources: contribution(sources, write.closeOffer.by, act, context.episodeId),
+      });
+    }
+  }
+  if (record.offer && (write.accept || write.closeOffer)) {
+    const event = record.offer.events.at(-1)!;
+    memoryRequire(
+      write.holders.every(
+        (holder) => holder.kind === "actor" && event.sources.every((source) => heardWords(source, holder.id)),
+      ),
+      "offer decision was not heard as words",
+    );
+  }
+  const created: ContinuityVersion[] = [];
+  for (const { key, holder, head, version: prior } of before) {
+    const text = write.text ?? prior?.text;
+    memoryString(text, CONTINUITY_TEXT_BYTES);
+    memoryRequire(!prior?.closed || write.current !== true, "closed continuity cannot be reopened");
+    const version: ContinuityVersion = {
+      id: "continuity-version-" + memoryHash([context.seed, operationId, key]).slice(0, 32),
+      rootId,
+      createdRevision: collection.revision + 1,
+      text,
+      class: room ? "information" : (write.class ?? prior?.class ?? "experience"),
+      about: [...(write.about ?? prior?.about ?? [])],
+      ...(write.parentId || prior?.parentId ? { parentId: write.parentId ?? prior!.parentId } : {}),
+      ...(write.facet || prior?.facet ? { facet: write.facet ?? prior!.facet } : {}),
+      sources: structuredClone(sources),
+      at: context.at,
+      operationId,
+      ...(record.offer
+        ? {
+            offerEvents: [
+              ...new Set([
+                ...(prior?.offerEvents ?? []),
+                ...record.offer.events
+                  .filter(
+                    (event) =>
+                      holder.kind === "actor" && event.sources.every((source) => heardWords(source, holder.id)),
+                  )
+                  .map((event) => event.id),
+              ]),
+            ],
+          }
+        : {}),
+      ...(write.retire ? { closed: { reason: write.retire } } : prior?.closed ? { closed: { ...prior.closed } } : {}),
+    };
+    version.about.forEach(memoryKnowerId);
+    if (version.parentId) {
+      const parent = collection.records.find((row) => row.id === version.parentId);
+      memoryRequire(
+        !room && parent && context.supplied.some((row) => row.id === parent.id),
+        "continuity parent was not supplied",
+      );
+      const parentHead = parent.heads[key];
+      const parentVersion = parentHead && collection.versions.find((row) => row.id === parentHead.versionId);
+      memoryRequire(
+        parent.id !== rootId && parentVersion && !parentVersion.parentId && !parent.protection[key],
+        "invalid or protected continuity parent",
+      );
+    }
+    if (holder.kind === "room") {
+      const duration = write.room?.expiresInMinutes;
+      memoryRequire(
+        duration === undefined || (Number.isSafeInteger(duration) && duration > 0 && duration <= 10080),
+        "invalid room expiry",
+      );
+      memoryRequire(duration === undefined || !original, "temporary expiry cannot restore a replaced description");
+      version.room = {
+        order:
+          prior?.room?.order ?? collection.versions.reduce((max, row) => Math.max(max, row.room?.order ?? 0), 0) + 1,
+        visibility: write.room?.visibility ?? prior?.room?.visibility ?? "observable",
+        ...(duration !== undefined
+          ? { expiresAt: new Date(Date.parse(context.at) + duration * 60000).toISOString() }
+          : prior?.room?.expiresAt
+            ? { expiresAt: prior.room.expiresAt }
+            : {}),
+      };
+      if (!write.retire)
+        memoryRequire(
+          !continuityViews(
+            collection,
+            holder,
+            context.at,
+            continuityProtectionUnits(collection, holder, new Map()),
+          ).some((row) => row.id !== rootId && row.version.text === text),
+          "duplicate current room description",
+        );
+    }
+    created.push(version);
+    record.heads[key] = {
+      holder: structuredClone(holder),
+      versionId: version.id,
+      revision: (head?.revision ?? 0) + 1,
+      current: write.retire
+        ? false
+        : (write.current ??
+          head?.current ??
+          Boolean(room || write.offer || write.class === "desire" || write.class === "motivation")),
+    };
+    for (const knower of roomKnowers) {
+      const knowerKey = continuityHolderKey(knower);
+      record.heads[knowerKey] = {
+        holder: knower,
+        versionId: version.id,
+        revision: (record.heads[knowerKey]?.revision ?? 0) + 1,
+        current: false,
+      };
+    }
+  }
+  if (write.offer)
+    record.offer = {
+      termsVersionId: created[0].id,
+      proposer: write.offer.proposer,
+      participants: [...write.offer.participants],
+      events: [
+        {
+          id: operationId,
+          by: write.offer.proposer,
+          act: "offer",
+          sources: contribution(sources, write.offer.proposer, "offer", context.episodeId),
+        },
+      ],
+    };
+  if (write.offer) {
+    const offer = record.offer!;
+    for (const actorId of offer.participants)
+      for (const act of ["accept", "refuse", "withdraw"] as const) {
+        const deciding = sources.filter(
+          (source) =>
+            source.kind === "speech" &&
+            source.actorId === actorId &&
+            source.act === act &&
+            source.episodeId === context.episodeId,
+        );
+        if (deciding.length)
+          offer.events.push({ id: operationId + ":" + actorId + ":" + act, by: actorId, act, sources: deciding });
+      }
+    memoryRequire(
+      write.holders.every(
+        (holder) =>
+          holder.kind === "actor" &&
+          offer.events.every((event) => event.sources.every((source) => heardWords(source, holder.id))),
+      ),
+      "offer terms were not heard as words",
+    );
+    for (const version of created) version.offerEvents = offer.events.map((event) => event.id);
+  }
+  record.revision++;
+  return {
+    ...collection,
+    revision: collection.revision + 1,
+    records: original
+      ? collection.records.map((row) => (row.id === record.id ? record : row))
+      : [...collection.records, record],
+    versions: [...collection.versions, ...created],
+    receipts: {
+      ...collection.receipts,
+      [operationId]: { fingerprint, roots: [rootId], versions: created.map((row) => row.id) },
+    },
+  };
+}
+
+/** Only this holder's current head and eligible source projection are returned. */
+export function continuityViews(
+  collection: ContinuityCollection,
+  holder: ContinuityHolder,
+  at: string,
+  blocked: ReadonlySet<string>,
+): ContinuityView[] {
+  const key = continuityHolderKey(holder);
+  const versions = new Map(collection.versions.map((row) => [row.id, row]));
+  return collection.records.flatMap((record) => {
+    const head = record.heads[key],
+      protection = record.protection[key];
+    if (!head || protection?.forgotten) return [];
+    const original = versions.get(head.versionId);
+    memoryRequire(original, "current continuity version is missing");
+    if (
+      !protection?.repair &&
+      (original.sources.some((source) => blocked.has(unit(source))) ||
+        record.offer?.events.some(
+          (event) =>
+            original.offerEvents?.includes(event.id) && event.sources.some((source) => blocked.has(unit(source))),
+        ))
+    )
+      return [];
+    if (original.parentId && collection.records.find((row) => row.id === original.parentId)?.protection[key]) return [];
+    if (holder.kind === "room" && (!head.current || (original.room?.expiresAt && original.room.expiresAt <= at)))
+      return [];
+    const version = structuredClone(original);
+    if (protection?.repair) {
+      version.text = protection.repair.text;
+      version.sources = [];
+      version.about = [];
+      delete version.offerEvents;
+      delete version.closed;
+    } else if (holder.kind === "actor")
+      version.sources = version.sources.map((source) => {
+        const perception = source.perceptions.find((row) => row.actorId === holder.id);
+        const { actorId, ...safe } = source;
+        memoryRequire(perceived(source, holder.id), "unwitnessed saved continuity source");
+        return {
+          ...safe,
+          ...(actorId && (perception?.channel !== "sound-only" || actorId === holder.id) ? { actorId } : {}),
+          excerpt: perception?.text ?? source.excerpt,
+          perceptions: perception ? [perception] : [],
+        };
+      });
+    if (holder.kind === "actor") delete version.room;
+    const events = record.offer?.events.filter((event) => version.offerEvents?.includes(event.id)) ?? [];
+    const closing = events.findLast((event) => event.act === "withdraw" || event.act === "refuse");
+    const offer = record.offer &&
+      !protection?.repair && {
+        proposer: record.offer.proposer,
+        participants: [...record.offer.participants],
+        contributions: events.map((event) => ({
+          by: event.by,
+          act: event.act,
+          sources: event.sources.map((source) => ({
+            ...structuredClone(source),
+            perceptions: source.perceptions.filter((row) => holder.kind === "actor" && row.actorId === holder.id),
+          })),
+        })),
+        state: closing
+          ? closing.act === "refuse"
+            ? ("refused" as const)
+            : ("withdrawn" as const)
+          : record.offer.participants.every((id) =>
+                events.some((event) => event.by === id && (event.act === "offer" || event.act === "accept")),
+              )
+            ? ("accepted" as const)
+            : ("offered" as const),
+      };
+    return [
+      {
+        id: record.id,
+        recordRevision: record.revision,
+        headRevision: head.revision,
+        holder: structuredClone(holder),
+        current: head.current,
+        version,
+        repaired: Boolean(protection?.repair),
+        ...(holder.kind === "room"
+          ? {
+              roomKnownBy: Object.entries(record.heads).flatMap(([key, value]) =>
+                value.holder.kind === "actor" && value.versionId === head.versionId && !record.protection[key]
+                  ? [value.holder.id]
+                  : [],
+              ),
+            }
+          : {}),
+        ...(offer ? { offer } : {}),
+      },
+    ];
+  });
+}
+
+/** Administrative protection changes no fictional event or native state and teaches nobody. */
+export function protectContinuity(
+  collection: ContinuityCollection,
+  target: ContinuityTarget,
+  holders: ContinuityHolder[],
+  operationId: string,
+  at: string,
+  action: { forget: true } | { text: string },
+): ContinuityCollection {
+  memoryString(operationId, 160);
+  memoryTimestamp(at);
+  if ("text" in action) memoryString(action.text, CONTINUITY_TEXT_BYTES);
+  const fingerprint = memoryHash([target, holders, action]);
+  const receipt = collection.receipts[operationId];
+  if (receipt) {
+    memoryRequire(receipt.fingerprint === fingerprint, "administrative operation identity reused");
+    return collection;
+  }
+  const original = collection.records.find((row) => row.id === target.id);
+  memoryRequire(original && original.revision === target.recordRevision, "administrative target changed");
+  memoryRequire(holders.length > 0, "missing administrative holders");
+  const record = structuredClone(original);
+  for (const holder of holders) {
+    const key = continuityHolderKey(holder),
+      head = record.heads[key];
+    memoryRequire(head && head.revision === target.heads[key], "administrative correction cannot teach");
+    const prior = record.protection[key];
+    memoryRequire(!prior?.forgotten || "forget" in action, "forgotten holder cannot be corrected");
+    record.protection[key] = {
+      operationId,
+      at,
+      ...("forget" in action
+        ? { forgotten: true as const }
+        : { repair: { text: action.text, versionId: head.versionId } }),
+      sourceUnits: [
+        ...new Set([
+          ...(prior?.sourceUnits ?? []),
+          ...collection.versions
+            .filter((row) => row.rootId === record.id || row.parentId === record.id)
+            .flatMap((row) =>
+              row.sources.filter((source) => holder.kind === "room" || perceived(source, holder.id)).map(unit),
+            ),
+        ]),
+      ],
+    };
+  }
+  record.revision++;
+  return {
+    ...collection,
+    revision: collection.revision + 1,
+    records: collection.records.map((row) => (row.id === record.id ? record : row)),
+    receipts: { ...collection.receipts, [operationId]: { fingerprint, roots: [record.id], versions: [] } },
+  };
+}
