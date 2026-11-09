@@ -34,7 +34,7 @@ export const DOSSIER_STYLES = `
 .${P}-dossier-management{margin-left:auto;position:relative;z-index:8}
 .${P}-dossier-management>summary{list-style:none;white-space:nowrap}
 .${P}-dossier-management>summary::before{content:"⚙";margin-right:8px;font-size:24px;vertical-align:middle}
-.${P}-dossier-controls{position:absolute;right:0;top:100%;margin-top:6px;width:min(520px,78vw);max-height:65vh;overflow:auto;display:flex;flex-wrap:wrap;gap:10px;padding:14px;border:1px solid #bba27a;background:${paper};border-radius:5px;box-shadow:0 4px 16px #30201940}
+.${P}-dossier-controls{position:absolute;right:0;top:100%;margin-top:6px;width:min(520px,calc(46vw - 44px));max-height:65vh;overflow:auto;display:flex;flex-wrap:wrap;gap:10px;padding:14px;border:1px solid #bba27a;background:${paper};border-radius:5px;box-shadow:0 4px 16px #30201940}
 .${P}-description-editor{width:100%;min-width:0}
 .${P}-description-editor label,.${P}-description-editor textarea{display:block;width:100%;box-sizing:border-box}
 .${P}-description-editor textarea{resize:vertical;margin:6px 0}
@@ -177,9 +177,10 @@ export const DOSSIER_STYLES = `
  .${P}-dossier-toolbar h1{font-size:22px;flex-basis:100%;order:3}
  .${P}-dossier-toolbar button,.${P}-dossier-toolbar summary{font-size:15px;padding:5px 0}
  .${P}-dossier-management>summary::before{font-size:20px;margin-right:4px}
+ .${P}-dossier-management{position:static}
  .${P}-dossier-toolbar .${P}-notebook-close{position:static;color:#362a20;font-size:13px;margin-left:auto;padding:5px 0}
  .${P}-dossier-toolbar .${P}-dossier-inspect{position:static;order:4;margin-left:auto;padding:4px 8px;font-size:14px;min-height:38px}
- .${P}-dossier-controls{position:absolute;right:0;width:min(78vw,520px);max-height:55vh}
+ .${P}-dossier-controls{left:12px;right:12px;width:auto;max-height:min(55vh,calc(90cqh - 150px))}
  .${P}-dossier-identity{padding:18px 16px 8px;overflow:visible}
  .${P}-dossier-journal-content{display:grid;grid-template-columns:92px minmax(0,1fr);gap:12px 16px;align-items:start}
  .${P}-dossier-portrait{grid-column:1;grid-row:1/3;width:92px;height:108px;aspect-ratio:auto;padding:4px 4px 7px;margin:0}

@@ -261,6 +261,7 @@ await withBrowser(browser, async () => {
       await expect(profile.getByRole("button", { name: /^(Inspect|Leave Inspect)$/ })).toBeInViewport({ ratio: 0.99 });
       if (width <= 700) await details.getByRole("button", { name: "← Wishes", exact: true }).scrollIntoViewIfNeeded();
       await expect(details.getByRole("button", { name: "← Wishes", exact: true })).toBeInViewport({ ratio: 0.99 });
+      if (width <= 700) await section.scrollIntoViewIfNeeded();
       await expect(section).toBeInViewport({ ratio: 0.99 });
       for (const tab of await section.getByRole("tab").all()) await expect(tab).toBeInViewport({ ratio: 0.99 });
       if (width <= 700) await details.getByRole("button", { name: "Next detail page" }).scrollIntoViewIfNeeded();
