@@ -261,7 +261,7 @@ for (const reserved of [false, true]) {
         .flatMap((line) => {
           try {
             const row = JSON.parse(line);
-            return typeof row.id === "string" && row.id.startsWith("history-") ? [row.id] : [];
+            return Array.isArray(row) && typeof row[0] === "string" && row[0].startsWith("history-") ? [row[0]] : [];
           } catch {
             return [];
           }

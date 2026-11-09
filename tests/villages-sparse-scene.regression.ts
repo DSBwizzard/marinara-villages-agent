@@ -280,7 +280,7 @@ for (const supplied of [
     assert(fitted.evidenceIds.includes(row.id), "Latest exchange context is mandatory");
   assert(fitted.evidenceIds.length < selected.evidence.length);
   for (const row of selected.evidence.filter((row) => !fitted.evidenceIds.includes(row.id)))
-    assert(!fitted.messages.some((message) => message.content.includes('"id":' + JSON.stringify(row.id))));
+    assert(!fitted.messages.some((message) => message.content.includes("[" + JSON.stringify(row.id) + ",")));
   assert(selected.evidence.some((row) => row.id === "tea"));
   assert(selected.blocks.some((block) => block.text.includes(preference.content)));
   assert.equal(new Set(selected.evidence.map((row) => row.id)).size, selected.evidence.length);
@@ -365,13 +365,16 @@ for (const supplied of [
     const defaults = encoded.find((row) => row.historyDefaults).historyDefaults;
     assert.deepEqual(defaults.heardBy, [...new Set(audience)].sort());
     for (const original of canonical) {
-      const wire = encoded.find((row) => row.id === original.id);
+      const [id, speakerId, kind, text, overrides] = encoded.find(
+        (row) => Array.isArray(row) && row[0] === original.id,
+      );
+      const wire = { id, speakerId, kind, text, ...overrides };
       assert.deepEqual({ ...defaults, ...wire }, sceneHistoryRow(original as any, audience, original !== visibleOnly));
       if (original !== preference) assert.deepEqual(wire.heardBy, [], "Empty hearing never inherits the current cast");
     }
     if (audience.includes("later"))
       assert.deepEqual(
-        encoded.find((row) => row.id === "tea").heardBy,
+        encoded.find((row) => Array.isArray(row) && row[0] === "tea")[4].heardBy,
         ["rosa"],
         "A later arrival never inherits earlier dialogue through defaults",
       );

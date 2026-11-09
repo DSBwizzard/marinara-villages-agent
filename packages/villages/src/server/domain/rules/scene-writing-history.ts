@@ -134,7 +134,7 @@ export function sceneWritingHistory(
             text:
               HISTORY_PREFIX +
               HISTORY_SUFFIX +
-              " Explicit row fields replace historyDefaults, including empty heardBy.",
+              " Rows are [id,speakerId,kind,text,overrides?]. Overrides replace historyDefaults, including empty heardBy.",
           },
           { text: JSON.stringify({ historyDefaults }) },
           ...rows.map((item) => {
@@ -143,7 +143,10 @@ export function sceneWritingHistory(
               delete wire.heardBy;
             if (wire.visibleToPlayer === true) delete wire.visibleToPlayer;
             if (wire.citable === true) delete wire.citable;
-            const text = JSON.stringify(wire);
+            const { id, speakerId, kind, text: prose, ...overrides } = wire;
+            const text = JSON.stringify(
+              Object.keys(overrides).length ? [id, speakerId, kind, prose, overrides] : [id, speakerId, kind, prose],
+            );
             return {
               text,
               ...(item.row.citable ? { evidenceId: item.line.id } : {}),
