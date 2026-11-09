@@ -218,10 +218,44 @@ richResident.cardSnapshot.exampleDialogue = "Aye, leave it to me.";
 richResident.cardSnapshot.description = "A fast, practical harbor worker.";
 richResident.cardSnapshot.summary = "Thumbnail-only description.";
 richResident.cardSnapshot.appearance = "Visual-only description.";
+richResident.cardSnapshot.comment = "Private-library-only note.";
 const richPrompt = signaturePrompt(richResident);
 assert.match(richPrompt, /tiny hook/);
-for (const omitted of ["Aye, leave it to me", "Thumbnail-only description", "Visual-only description"])
-  assert.ok(!richPrompt.includes(omitted), "Drawing evidence excludes voice, duplicate summary and visual fields");
+assert.match(richPrompt, /Aye, leave it to me/);
+for (const omitted of ["Thumbnail-only description", "Visual-only description", "Private-library-only note"])
+  assert.ok(
+    !richPrompt.includes(omitted),
+    "Narrative evidence excludes duplicate summary, appearance and private metadata",
+  );
+const narrativeResident = structuredClone(richResident);
+narrativeResident.cardSnapshot.scenario = 'Known to the neighborhood as "Harborbird".';
+narrativeResident.cardSnapshot.systemPrompt = "Protects her private identity when introducing herself.";
+narrativeResident.cardSnapshot.postHistoryInstructions = "Usually leaves a quick penciled acknowledgment.";
+const narrativePrompt = signaturePrompt(narrativeResident);
+for (const authored of [
+  narrativeResident.cardSnapshot.scenario,
+  narrativeResident.cardSnapshot.exampleDialogue,
+  narrativeResident.cardSnapshot.systemPrompt,
+  narrativeResident.cardSnapshot.postHistoryInstructions,
+])
+  assert.ok(
+    narrativePrompt.includes(JSON.stringify(authored)),
+    "Other authored narrative evidence is retained verbatim",
+  );
+const minimalResident = structuredClone(richResident);
+minimalResident.cardSnapshot.description = " \n ";
+minimalResident.cardSnapshot.summary = 'A performer known publicly as "Lantern".';
+minimalResident.cardSnapshot.scenario = "\n ";
+minimalResident.cardSnapshot.exampleDialogue = "";
+minimalResident.cardSnapshot.systemPrompt = "";
+minimalResident.cardSnapshot.postHistoryInstructions = "";
+const minimalPrompt = signaturePrompt(minimalResident);
+assert.ok(
+  minimalPrompt.includes(JSON.stringify(minimalResident.cardSnapshot.summary)),
+  "A summary can supply missing identity description",
+);
+for (const emptyField of ["Description", "Scenario", "Voice examples", "Character notes", "Post-history notes"])
+  assert.ok(!minimalPrompt.includes(`\n${emptyField}:`), "Empty narrative fields are omitted");
 const completeResident = structuredClone(richResident);
 completeResident.cardSnapshot.backstory =
   "Keeps a pencil tally at the harbor. ".repeat(60) + "Returns it to his sleeve.";
