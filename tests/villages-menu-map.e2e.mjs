@@ -326,6 +326,8 @@ await withBrowser(browser, async () => {
       .getByRole("button", { name: "Places", exact: true })
       .click();
     await expect(page.getByRole("button", { name: "Visit", exact: true })).toHaveCount(0);
+    await expect(page.locator("[data-desk]")).toHaveAttribute("data-desk", "places");
+    await expect(page.locator("[data-desk]")).toHaveAttribute("data-phase", "open");
     await page.getByRole("button", { name: "Return to Scene", exact: true }).click();
     await expect(composer).toHaveValue("An unfinished thought");
     assert.equal(writes.length, beforeBrowsing, "map browsing preserves the active Scene without world commands");

@@ -381,6 +381,7 @@ await withBrowser(browser, async () => {
     await screenshot("venue");
     assert.equal(sceneRequests.length, 0, "opening a Venue directly never starts a Scene");
     await page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();
+    await expect(page.locator("[data-desk]")).toHaveAttribute("data-desk", "none");
     await settleLayout();
     const beforeMarker = await cameraGeometry();
     await marker.press("Enter");

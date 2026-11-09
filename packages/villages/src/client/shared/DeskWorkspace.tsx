@@ -118,7 +118,7 @@ export function DeskWorkspace({
             <button
               type="button"
               key={destination}
-              disabled={disabled}
+              disabled={disabled || phase !== "open"}
               aria-disabled={disabled || phase !== "open"}
               aria-current={active === destination ? "page" : undefined}
               onClick={() => {
@@ -137,7 +137,7 @@ export function DeskWorkspace({
             type="button"
             className={`${P}-desk-return ${P}-desk-scene`}
             aria-label="Return to Scene"
-            disabled={disabled}
+            disabled={disabled || phase !== "open"}
             aria-disabled={disabled || phase !== "open"}
             onClick={() => {
               if (phase === "open") onScene();
@@ -149,7 +149,7 @@ export function DeskWorkspace({
         <button
           type="button"
           className={`${P}-desk-return`}
-          disabled={disabled}
+          disabled={disabled || phase !== "open"}
           aria-disabled={disabled || phase !== "open"}
           onClick={() => {
             if (phase === "open") onReturn();

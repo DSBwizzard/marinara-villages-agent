@@ -288,6 +288,7 @@ export function LocationNavigator({
             <button
               type="button"
               className={P + "-explore-row"}
+              aria-label={row.name + (row.detail ? " · " + row.detail : "")}
               data-exploration-row={row.id}
               aria-pressed={row.selected === true}
               disabled={disabled || !row.onSelect}
