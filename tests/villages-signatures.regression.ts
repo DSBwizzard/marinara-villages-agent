@@ -194,6 +194,23 @@ assert.ok(
   signaturePrompt(richResident).includes(JSON.stringify(richResident.cardSnapshot.name)),
   "Full supplementary-script name survives unchanged",
 );
+const performer = structuredClone(richResident);
+performer.cardSnapshot.name = "Rowan";
+performer.cardSnapshot.description = 'A musician who performs professionally as "Nightjar".';
+performer.cardSnapshot.summary = 'Uses the stage name "Nightjar".';
+performer.cardSnapshot.backstory = "Signs records and fan letters after every show.";
+performer.cardSnapshot.appearance = "𝄞".repeat(6000);
+const performerPrompt = signaturePrompt(performer);
+assert.ok(performerPrompt.length <= 8000, "Long appearance and escaped personality fit the image contract");
+for (const source of [
+  performer.cardSnapshot.description,
+  performer.cardSnapshot.summary,
+  performer.cardSnapshot.backstory,
+])
+  assert.ok(
+    performerPrompt.includes(JSON.stringify(source)),
+    "Signing identity and practice survive competing card prose",
+  );
 const generatedImage = `data:image/png;base64,${PNG.sync.write(pixels).toString("base64")}`;
 
 const records = new Map<string, any>();
