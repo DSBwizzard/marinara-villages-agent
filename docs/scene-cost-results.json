@@ -1,0 +1,1036 @@
+{
+  "format": 1,
+  "measurement": "provider-reported-native-engine-usage",
+  "engineRevision": "27805040eed0d91d4ea7b49f478b0b197b13676d",
+  "engineVersion": "2.5.2",
+  "capabilityApi": "1.818",
+  "model": "deepseek-flash",
+  "providerEndpoint": "https://api.deepseek.com",
+  "pricingSource": "https://api-docs.deepseek.com/quick_start/pricing/",
+  "pricingCheckedAt": "2026-11-09T10:11:09.371Z",
+  "limitations": [
+    "One synthetic resident and one continuous quiet world, with matching player inputs but naturally different generated histories.",
+    "This records all 36 reported requests across implementation iterations. It is not a randomized before/after experiment.",
+    "Rates change from peak to off-peak at 10:00 UTC; same-rate mode comparisons and token counts must be used for improvement claims.",
+    "Costs are usage multiplied by published rates, not invoice amounts. Cache writes and provider-internal retries are unreported.",
+    "Reasoning tokens are a subset of output and are charged once. Saved model and reasoning parameters were preserved.",
+    "The same complete stored Mara card is used in both modes. The native Game Mode prompt representation differs from Villages; scenario/example text did not appear verbatim in the inspected Game prompt.",
+    "The final first turn rebuilds a changed history prefix against an already warm Game cache. It is retained as a transition cost, not a symmetric cold-start benchmark."
+  ],
+  "stages": [
+    {
+      "id": "live-pilot",
+      "sourceRevision": "1f0e024c4e71de2e5228f805b1becf3555733a98",
+      "archiveHash": "12f03b11b17244bc6cd6d2f4e58e0430d1f815837663f38b047f4f15af63c3f3",
+      "turns": [
+        {
+          "mode": "game",
+          "caseId": "68514b6588",
+          "message": "How are you today?",
+          "startedAt": "2026-11-09T08:30:30.609Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 3956,
+          "cachedInputTokens": 0,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 405,
+          "reasoningTokens": 146,
+          "latencyMs": 5025,
+          "ratePerMillionUsd": {
+            "input": 0.3,
+            "cached": 0.006,
+            "output": 1.2
+          },
+          "ratedCostUsd": 0.0016728,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "68514b6588",
+          "message": "How are you today?",
+          "startedAt": "2026-11-09T08:30:36.007Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 3719,
+          "cachedInputTokens": 0,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 248,
+          "reasoningTokens": 74,
+          "latencyMs": 3232,
+          "ratePerMillionUsd": {
+            "input": 0.3,
+            "cached": 0.006,
+            "output": 1.2
+          },
+          "ratedCostUsd": 0.0014133,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "replayAdditionalRequests": null
+        }
+      ]
+    },
+    {
+      "id": "live-followup",
+      "sourceRevision": "1f0e024c4e71de2e5228f805b1becf3555733a98",
+      "archiveHash": "12f03b11b17244bc6cd6d2f4e58e0430d1f815837663f38b047f4f15af63c3f3",
+      "turns": [
+        {
+          "mode": "villages",
+          "caseId": "a3320af8ee",
+          "message": "Did you notice anything interesting in the wood grain?",
+          "startedAt": "2026-11-09T08:33:55.876Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 4211,
+          "cachedInputTokens": 2048,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 218,
+          "reasoningTokens": 30,
+          "latencyMs": 3353,
+          "ratePerMillionUsd": {
+            "input": 0.3,
+            "cached": 0.006,
+            "output": 1.2
+          },
+          "ratedCostUsd": 0.000922788,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "game",
+          "caseId": "a3320af8ee",
+          "message": "Did you notice anything interesting in the wood grain?",
+          "startedAt": "2026-11-09T08:33:59.356Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 4228,
+          "cachedInputTokens": 3584,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 376,
+          "reasoningTokens": 86,
+          "latencyMs": 4813,
+          "ratePerMillionUsd": {
+            "input": 0.3,
+            "cached": 0.006,
+            "output": 1.2
+          },
+          "ratedCostUsd": 0.000665904,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "0bed321d1c",
+          "message": "Would you prefer company or quiet for the afternoon?",
+          "startedAt": "2026-11-09T08:34:04.207Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 4593,
+          "cachedInputTokens": 2560,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 270,
+          "reasoningTokens": 60,
+          "latencyMs": 3992,
+          "ratePerMillionUsd": {
+            "input": 0.3,
+            "cached": 0.006,
+            "output": 1.2
+          },
+          "ratedCostUsd": 0.00094926,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "game",
+          "caseId": "0bed321d1c",
+          "message": "Would you prefer company or quiet for the afternoon?",
+          "startedAt": "2026-11-09T08:34:08.344Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 4531,
+          "cachedInputTokens": 3840,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 263,
+          "reasoningTokens": 16,
+          "latencyMs": 4175,
+          "ratePerMillionUsd": {
+            "input": 0.3,
+            "cached": 0.006,
+            "output": 1.2
+          },
+          "ratedCostUsd": 0.00054594,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "a61e2c0f62",
+          "message": "I used to make tea with my grandmother. I prefer ginger tea when it is hot; that is a small comfort I still keep.",
+          "startedAt": "2026-11-09T08:34:12.744Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 5053,
+          "cachedInputTokens": 2944,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 400,
+          "reasoningTokens": 113,
+          "latencyMs": 4734,
+          "ratePerMillionUsd": {
+            "input": 0.3,
+            "cached": 0.006,
+            "output": 1.2
+          },
+          "ratedCostUsd": 0.001130364,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "game",
+          "caseId": "a61e2c0f62",
+          "message": "I used to make tea with my grandmother. I prefer ginger tea when it is hot; that is a small comfort I still keep.",
+          "startedAt": "2026-11-09T08:34:17.578Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 4808,
+          "cachedInputTokens": 4224,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 442,
+          "reasoningTokens": 142,
+          "latencyMs": 6221,
+          "ratePerMillionUsd": {
+            "input": 0.3,
+            "cached": 0.006,
+            "output": 1.2
+          },
+          "ratedCostUsd": 0.000730944,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        }
+      ]
+    },
+    {
+      "id": "live-post-cache",
+      "sourceRevision": "c6cea6be990d09e7b0ba39adceb403f40c7b590c",
+      "archiveHash": "bad97b4a8f07f68aa93201986d296df6b2086cc336fd9e9c4ac237cbebdf6d20",
+      "turns": [
+        {
+          "mode": "villages",
+          "caseId": "6452f4ea14",
+          "message": "That sounds like patient work. What is the smallest detail you look for?",
+          "startedAt": "2026-11-09T08:50:00.756Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 5602,
+          "cachedInputTokens": 0,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 319,
+          "reasoningTokens": 20,
+          "latencyMs": 5087,
+          "ratePerMillionUsd": {
+            "input": 0.3,
+            "cached": 0.006,
+            "output": 1.2
+          },
+          "ratedCostUsd": 0.0020634,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "game",
+          "caseId": "6452f4ea14",
+          "message": "That sounds like patient work. What is the smallest detail you look for?",
+          "startedAt": "2026-11-09T08:50:05.950Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 5126,
+          "cachedInputTokens": 4480,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 455,
+          "reasoningTokens": 150,
+          "latencyMs": 6982,
+          "ratePerMillionUsd": {
+            "input": 0.3,
+            "cached": 0.006,
+            "output": 1.2
+          },
+          "ratedCostUsd": 0.0007666799999999999,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "3466670d1f",
+          "message": "What do you enjoy about a quiet afternoon like this?",
+          "startedAt": "2026-11-09T08:50:13.148Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 6237,
+          "cachedInputTokens": 4608,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 347,
+          "reasoningTokens": 104,
+          "latencyMs": 4681,
+          "ratePerMillionUsd": {
+            "input": 0.3,
+            "cached": 0.006,
+            "output": 1.2
+          },
+          "ratedCostUsd": 0.000932748,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "game",
+          "caseId": "3466670d1f",
+          "message": "What do you enjoy about a quiet afternoon like this?",
+          "startedAt": "2026-11-09T08:50:17.943Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 5445,
+          "cachedInputTokens": 4736,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 806,
+          "reasoningTokens": 462,
+          "latencyMs": 9309,
+          "ratePerMillionUsd": {
+            "input": 0.3,
+            "cached": 0.006,
+            "output": 1.2
+          },
+          "ratedCostUsd": 0.0012083159999999999,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "9b36540c65",
+          "message": "What would you do if the seam opened again?",
+          "startedAt": "2026-11-09T08:50:27.311Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 6826,
+          "cachedInputTokens": 5248,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 711,
+          "reasoningTokens": 359,
+          "latencyMs": 7708,
+          "ratePerMillionUsd": {
+            "input": 0.3,
+            "cached": 0.006,
+            "output": 1.2
+          },
+          "ratedCostUsd": 0.001358088,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "game",
+          "caseId": "9b36540c65",
+          "message": "What would you do if the seam opened again?",
+          "startedAt": "2026-11-09T08:50:35.170Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 5802,
+          "cachedInputTokens": 5120,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 486,
+          "reasoningTokens": 179,
+          "latencyMs": 5970,
+          "ratePerMillionUsd": {
+            "input": 0.3,
+            "cached": 0.006,
+            "output": 1.2
+          },
+          "ratedCostUsd": 0.00081852,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "9c5d22bb9e",
+          "message": "Please remember this about me: my grandmother died last winter. Hot ginger tea is something I make to remember her.",
+          "startedAt": "2026-11-09T08:50:41.200Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 7500,
+          "cachedInputTokens": 2688,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 1750,
+          "reasoningTokens": 1247,
+          "latencyMs": 15980,
+          "ratePerMillionUsd": {
+            "input": 0.3,
+            "cached": 0.006,
+            "output": 1.2
+          },
+          "ratedCostUsd": 0.003559728,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "game",
+          "caseId": "9c5d22bb9e",
+          "message": "Please remember this about me: my grandmother died last winter. Hot ginger tea is something I make to remember her.",
+          "startedAt": "2026-11-09T08:50:57.328Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 6135,
+          "cachedInputTokens": 5376,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 559,
+          "reasoningTokens": 184,
+          "latencyMs": 6812,
+          "ratePerMillionUsd": {
+            "input": 0.3,
+            "cached": 0.006,
+            "output": 1.2
+          },
+          "ratedCostUsd": 0.0009307559999999999,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        }
+      ]
+    },
+    {
+      "id": "live-final",
+      "sourceRevision": "e710e76d0857f2eebed11acef6f8817e7e8f1bba",
+      "archiveHash": "8119576b8cc9a31df4896c31500432b5d47a00cd1e3850d74f963b13a04622da",
+      "turns": [
+        {
+          "mode": "villages",
+          "caseId": "history-warmup",
+          "message": "What makes a piece of wood worth saving?",
+          "startedAt": "2026-11-09T09:28:17.988Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 8474,
+          "cachedInputTokens": 5760,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 669,
+          "reasoningTokens": 258,
+          "latencyMs": 8045,
+          "ratePerMillionUsd": {
+            "input": 0.3,
+            "cached": 0.006,
+            "output": 1.2
+          },
+          "ratedCostUsd": 0.00165156,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "replayAdditionalRequests": 0
+        },
+        {
+          "mode": "game",
+          "caseId": "history-warmup",
+          "message": "What makes a piece of wood worth saving?",
+          "startedAt": "2026-11-09T09:28:26.035Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 6522,
+          "cachedInputTokens": 5760,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 453,
+          "reasoningTokens": 143,
+          "latencyMs": 5948,
+          "ratePerMillionUsd": {
+            "input": 0.3,
+            "cached": 0.006,
+            "output": 1.2
+          },
+          "ratedCostUsd": 0.00080676,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "ordinary-company",
+          "message": "Do you prefer to work with company, or alone when the grain is difficult?",
+          "startedAt": "2026-11-09T09:28:31.986Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 9286,
+          "cachedInputTokens": 7296,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 650,
+          "reasoningTokens": 205,
+          "latencyMs": 7480,
+          "ratePerMillionUsd": {
+            "input": 0.3,
+            "cached": 0.006,
+            "output": 1.2
+          },
+          "ratedCostUsd": 0.001420776,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "replayAdditionalRequests": 0
+        },
+        {
+          "mode": "game",
+          "caseId": "ordinary-company",
+          "message": "Do you prefer to work with company, or alone when the grain is difficult?",
+          "startedAt": "2026-11-09T09:28:39.469Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 6851,
+          "cachedInputTokens": 6144,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 358,
+          "reasoningTokens": 62,
+          "latencyMs": 4504,
+          "ratePerMillionUsd": {
+            "input": 0.3,
+            "cached": 0.006,
+            "output": 1.2
+          },
+          "ratedCostUsd": 0.000678564,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "ordinary-sound",
+          "message": "Is there a sound you especially like around the mill?",
+          "startedAt": "2026-11-09T09:28:43.977Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 10106,
+          "cachedInputTokens": 8192,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 483,
+          "reasoningTokens": 121,
+          "latencyMs": 5715,
+          "ratePerMillionUsd": {
+            "input": 0.3,
+            "cached": 0.006,
+            "output": 1.2
+          },
+          "ratedCostUsd": 0.001202952,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "replayAdditionalRequests": 0
+        },
+        {
+          "mode": "game",
+          "caseId": "ordinary-sound",
+          "message": "Is there a sound you especially like around the mill?",
+          "startedAt": "2026-11-09T09:28:49.696Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 7161,
+          "cachedInputTokens": 6528,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 405,
+          "reasoningTokens": 133,
+          "latencyMs": 4639,
+          "ratePerMillionUsd": {
+            "input": 0.3,
+            "cached": 0.006,
+            "output": 1.2
+          },
+          "ratedCostUsd": 0.000715068,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "mixed-input",
+          "message": "*I privately think \"The hidden key is in my boot.\"* I say, \"The bench looks well cared for.\" *I wave lightly.*",
+          "startedAt": "2026-11-09T09:28:54.338Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 10920,
+          "cachedInputTokens": 8960,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 917,
+          "reasoningTokens": 512,
+          "latencyMs": 9100,
+          "ratePerMillionUsd": {
+            "input": 0.3,
+            "cached": 0.006,
+            "output": 1.2
+          },
+          "ratedCostUsd": 0.0017421599999999998,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "replayAdditionalRequests": 0
+        },
+        {
+          "mode": "game",
+          "caseId": "mixed-input",
+          "message": "*I privately think \"The hidden key is in my boot.\"* I say, \"The bench looks well cared for.\" *I wave lightly.*",
+          "startedAt": "2026-11-09T09:29:03.441Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 7466,
+          "cachedInputTokens": 6784,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 531,
+          "reasoningTokens": 219,
+          "latencyMs": 5919,
+          "ratePerMillionUsd": {
+            "input": 0.3,
+            "cached": 0.006,
+            "output": 1.2
+          },
+          "ratedCostUsd": 0.0008825039999999999,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "memory-correction",
+          "message": "A correction to what I said: it was my great-aunt, not my grandmother, who died last winter. I make hot ginger tea to remember her.",
+          "startedAt": "2026-11-09T09:29:09.363Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 11701,
+          "cachedInputTokens": 9728,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 802,
+          "reasoningTokens": 348,
+          "latencyMs": 7511,
+          "ratePerMillionUsd": {
+            "input": 0.3,
+            "cached": 0.006,
+            "output": 1.2
+          },
+          "ratedCostUsd": 0.001612668,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "replayAdditionalRequests": 0
+        },
+        {
+          "mode": "game",
+          "caseId": "memory-correction",
+          "message": "A correction to what I said: it was my great-aunt, not my grandmother, who died last winter. I make hot ginger tea to remember her.",
+          "startedAt": "2026-11-09T09:29:16.877Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 7813,
+          "cachedInputTokens": 7040,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 425,
+          "reasoningTokens": 154,
+          "latencyMs": 4734,
+          "ratePerMillionUsd": {
+            "input": 0.3,
+            "cached": 0.006,
+            "output": 1.2
+          },
+          "ratedCostUsd": 0.00078414,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        }
+      ]
+    },
+    {
+      "id": "live-frame",
+      "sourceRevision": "485e7214b810ba28d74af06904be796cda9c3b02",
+      "archiveHash": "fe904498414b77d30a7d62a7b841748ea66571f38c7ba51d05c4d7ab696f0d96",
+      "turns": [
+        {
+          "mode": "villages",
+          "caseId": "frame-warmup",
+          "message": "What is the first thing you look for when a visitor brings you a damaged piece of furniture?",
+          "startedAt": "2026-11-09T10:00:22.635Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 10848,
+          "cachedInputTokens": 2688,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 631,
+          "reasoningTokens": 45,
+          "latencyMs": 8299,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.001610664,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "replayAdditionalRequests": 0
+        },
+        {
+          "mode": "game",
+          "caseId": "frame-warmup",
+          "message": "What is the first thing you look for when a visitor brings you a damaged piece of furniture?",
+          "startedAt": "2026-11-09T10:00:30.936Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 8106,
+          "cachedInputTokens": 7424,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 422,
+          "reasoningTokens": 36,
+          "latencyMs": 5796,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.000377772,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "ordinary-patience",
+          "message": "Has anyone ever surprised you by being patient enough to learn the work?",
+          "startedAt": "2026-11-09T10:00:36.735Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 11741,
+          "cachedInputTokens": 10240,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 889,
+          "reasoningTokens": 245,
+          "latencyMs": 9828,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.00078927,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "replayAdditionalRequests": 0
+        },
+        {
+          "mode": "game",
+          "caseId": "ordinary-patience",
+          "message": "Has anyone ever surprised you by being patient enough to learn the work?",
+          "startedAt": "2026-11-09T10:00:46.565Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 8509,
+          "cachedInputTokens": 7680,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 644,
+          "reasoningTokens": 319,
+          "latencyMs": 7677,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.0005337899999999999,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "ordinary-craft",
+          "message": "What do you enjoy most about making something that gets used every day?",
+          "startedAt": "2026-11-09T10:00:54.245Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 12781,
+          "cachedInputTokens": 11136,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 501,
+          "reasoningTokens": 84,
+          "latencyMs": 6689,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.000580758,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "replayAdditionalRequests": 0
+        },
+        {
+          "mode": "game",
+          "caseId": "ordinary-craft",
+          "message": "What do you enjoy most about making something that gets used every day?",
+          "startedAt": "2026-11-09T10:01:00.936Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 8851,
+          "cachedInputTokens": 8192,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 578,
+          "reasoningTokens": 150,
+          "latencyMs": 7016,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.000470226,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "memory-recall",
+          "message": "What did I tell you about my great-aunt and the tea I make?",
+          "startedAt": "2026-11-09T10:01:07.955Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 13481,
+          "cachedInputTokens": 12160,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 349,
+          "reasoningTokens": 66,
+          "latencyMs": 4966,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.00044403,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "replayAdditionalRequests": 0
+        },
+        {
+          "mode": "game",
+          "caseId": "memory-recall",
+          "message": "What did I tell you about my great-aunt and the tea I make?",
+          "startedAt": "2026-11-09T10:01:12.923Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 9298,
+          "cachedInputTokens": 8448,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 355,
+          "reasoningTokens": 107,
+          "latencyMs": 4601,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.000365844,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        }
+      ]
+    },
+    {
+      "id": "live-consequence",
+      "sourceRevision": "485e7214b810ba28d74af06904be796cda9c3b02",
+      "archiveHash": "fe904498414b77d30a7d62a7b841748ea66571f38c7ba51d05c4d7ab696f0d96",
+      "turns": [
+        {
+          "mode": "villages",
+          "caseId": "new-memory",
+          "message": "One more thing I'd like you to remember: my great-aunt gave me a little blue kettle. I still use it for the ginger tea.",
+          "startedAt": "2026-11-09T10:09:57.900Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 13991,
+          "cachedInputTokens": 12800,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 746,
+          "reasoningTokens": 280,
+          "latencyMs": 7267,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.00066465,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "replayAdditionalRequests": 0
+        },
+        {
+          "mode": "game",
+          "caseId": "new-memory",
+          "message": "One more thing I'd like you to remember: my great-aunt gave me a little blue kettle. I still use it for the ginger tea.",
+          "startedAt": "2026-11-09T10:10:05.171Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 9579,
+          "cachedInputTokens": 8960,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 548,
+          "reasoningTokens": 236,
+          "latencyMs": 6163,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.00044853,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        }
+      ]
+    }
+  ]
+}

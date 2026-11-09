@@ -59,6 +59,8 @@ The runner executes selected tests afresh. Focused local tests are feedback; pas
 
 `npm run bench:scene:live -- <private-config.json> [report.json]` deliberately purchases model requests through actual Villages and Game Mode HTTP paths. Prepare a quiet synthetic Village and native Game chat on the same isolated Engine and saved connection first. Set `VILLAGES_ENGINE_URL` to its loopback URL (8500 is refused) and `VILLAGES_ENGINE_ADMIN_SECRET` when required. The private JSON supplies `sessionId`, `chatId`, `connectionId` and `pairs: [{id, message}]`; optional `runtimeIdentity` records externally verified package/image identities, while `rate` and `pricingProvider` supply separately verified current pricing. The driver never changes model settings or resets progress. It retains every tracked attempt, unknown billing, replay checks, provider usage and actual Game prompt hashes; rated costs remain distinct from invoices and provider-internal retries are explicitly unobservable. Human review of consequences and identity correspondence remains necessary.
 
+The [Scene cost characterization](docs/scene-cost.md) records the actual staging integration target, measured provider usage, cache behavior and remaining limits.
+
 ## Preview and saved data
 
 Villages is an unreleased prototype without a public installer or official catalog entry. Test installation is arranged separately; historical tagged downloads are not the current prototype distribution.
