@@ -77,13 +77,27 @@ async function run() {
       window.events = [];
       window.guardCalls = 0;
       window.rawGoHomeCalls = 0;
+      window.departedPaperOffsets = [];
       const animate = Element.prototype.animate;
       Element.prototype.animate = function (frames, options) {
         const duration = typeof options === "number" ? options : options.duration;
         window.events.push(
           duration === 0 ? "animate:0" : frames[0].transform.includes("calc") ? "animate:enter" : "animate:exit",
         );
-        return animate.call(this, frames, options);
+        const animation = animate.call(this, frames, options);
+        if (duration && !frames[0].transform.includes("calc")) {
+          const cancel = animation.cancel.bind(animation);
+          animation.cancel = () => {
+            cancel();
+            if (this.closest("[data-phase]")?.dataset.phase === "closing") {
+              window.departedPaperOffsets.push({
+                offset: new DOMMatrixReadOnly(getComputedStyle(this).transform).m42,
+                height: this.clientHeight,
+              });
+            }
+          };
+        }
+        return animation;
       };
     });
     await page.addScriptTag({ content: source });
@@ -110,6 +124,9 @@ async function run() {
       "route:projects",
       "animate:enter",
     ]);
+    const departed = await normal.evaluate(() => window.departedPaperOffsets);
+    assert.equal(departed.length, 1);
+    assert(departed[0].offset > departed[0].height, "The old paper stays below the desk until the new menu commits");
     await normal.close();
 
     const scope = await makePage();
