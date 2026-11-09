@@ -19,6 +19,7 @@ import { MenuScreen } from "./MenuScreen.js";
 import type { useVillageController as ControllerFactory } from "./useVillageController.js";
 import { useVillageController } from "./useVillageController.js";
 import { VillagesFrame } from "./VillagesFrame.js";
+import { prepareDeskArtwork } from "../shared/desk-art.js";
 
 export function VillagesView({ element }: { element: HTMLElement }) {
   return (
@@ -45,7 +46,8 @@ function VillagesContent({ element }: { element: HTMLElement }) {
     null,
   );
   const [mailRecipient, setMailRecipient] = useState("");
-  const [phase, setPhase] = useState<"open" | "opening" | "closing">("open");
+  const [phase, setPhase] = useState<"open" | "preparing" | "opening" | "closing">("open");
+  const [artworkError, setArtworkError] = useState("");
   const bookVisible =
     controller.screen === "person" || (controller.screen === "menu" && controller.menuPage === "villagers");
   const destination = (screen: Controller["screen"], page = controller.menuPage): DeskDestination | null => {
@@ -66,6 +68,7 @@ function VillagesContent({ element }: { element: HTMLElement }) {
     readingPosition.current = 0;
     placesView.current = "atlas";
     setMailRecipient("");
+    setArtworkError("");
     return () => {
       owner.epoch++;
       outgoing.current?.cancel();
@@ -126,6 +129,21 @@ function VillagesContent({ element }: { element: HTMLElement }) {
     if (next === active) return action();
     moving.current = true;
     const ticket = ++lifetime.current.epoch;
+    setArtworkError("");
+    if (next) {
+      setPhase("preparing");
+      try {
+        await prepareDeskArtwork(next);
+      } catch {
+        if (ticket === lifetime.current.epoch) {
+          moving.current = false;
+          setPhase("open");
+          setArtworkError("Menu artwork could not load. Try again.");
+        }
+        return;
+      }
+      if (ticket !== lifetime.current.epoch) return;
+    }
     let exit: Animation | null = null;
     if (active && documentRef.current && !reducedMotion()) {
       setPhase("closing");
@@ -311,6 +329,7 @@ function VillagesContent({ element }: { element: HTMLElement }) {
           active={active}
           phase={phase}
           disabled={navigationDisabled}
+          artworkError={artworkError}
           documentRef={documentRef}
           onNavigate={goTo}
           onReturn={returnToVillage}

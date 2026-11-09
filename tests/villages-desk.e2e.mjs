@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { build } from "../scripts/esbuild.mjs";
-import { chromium, withBrowser } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, withBrowser, fulfill } from "./fixtures/browser-diagnostics.mjs";
 
 async function bundle() {
   const stubs = new Map([
@@ -72,7 +72,13 @@ async function run() {
       reducedMotion: reduced ? "reduce" : "no-preference",
     });
     page.on("pageerror", (error) => errors.push(error.message));
-    await page.setContent('<button id="outside">Engine control</button><div id="root" style="height:700px"></div>');
+    await page.route("https://desk.test/", (route) =>
+      route.fulfill({
+        contentType: "text/html",
+        body: '<button id="outside">Engine control</button><div id="root" style="height:700px"></div>',
+      }),
+    );
+    await page.goto("https://desk.test/");
     await page.evaluate(() => {
       window.events = [];
       window.guardCalls = 0;
@@ -106,6 +112,7 @@ async function run() {
   const settle = (page) => page.waitForFunction(() => document.querySelector("[data-desk]").dataset.phase === "open");
   async function people(page) {
     await page.getByRole("button", { name: "Open People", exact: true }).click();
+    await page.waitForFunction(() => document.querySelector("[data-desk]").dataset.desk === "people");
     await settle(page);
   }
   await withBrowser(browser, async () => {
@@ -128,6 +135,98 @@ async function run() {
     assert.equal(departed.length, 1);
     assert(departed[0].offset > departed[0].height, "The old paper stays below the desk until the new menu commits");
     await normal.close();
+
+    const slow = await makePage();
+    await people(slow);
+    let releaseArt;
+    let artRequests = 0;
+    const waitingArt = new Promise((resolve) => {
+      releaseArt = resolve;
+    });
+    await slow.route("**/desk-art/projects-desktop.webp", async (route) => {
+      artRequests++;
+      await waitingArt;
+      await route.fallback();
+    });
+    await slow.getByRole("button", { name: "Projects", exact: true }).click();
+    await slow.waitForFunction(() => document.querySelector("[data-phase]").dataset.phase === "preparing");
+    assert.equal(await slow.locator("[data-desk]").getAttribute("data-desk"), "people");
+    assert.equal(
+      await slow.locator(".marinara-capability-villages-desk-document").evaluate((node) => node.inert),
+      true,
+    );
+    assert.equal(
+      await slow.getByRole("button", { name: "Resident", exact: true }).isVisible(),
+      true,
+      "Old paper stays visible while artwork loads",
+    );
+    releaseArt();
+    await slow.waitForFunction(() => document.querySelector("[data-desk]").dataset.desk === "projects");
+    await settle(slow);
+    const art = () =>
+      slow
+        .locator(".marinara-capability-villages-desk-document")
+        .evaluate((node) => getComputedStyle(node, "::before").backgroundImage);
+    const desktopArt = await art();
+    assert(desktopArt.includes("blob:"), "Menu paints retained image bytes rather than a no-store asset URL");
+    await slow.getByRole("button", { name: "People", exact: true }).click();
+    await slow.waitForFunction(() => document.querySelector("[data-desk]").dataset.desk === "people");
+    await settle(slow);
+    const cdp = await slow.context().newCDPSession(slow);
+    await cdp.send("Network.clearBrowserCache");
+    await cdp.send("Memory.simulatePressureNotification", { level: "critical" });
+    await slow.getByRole("button", { name: "Projects", exact: true }).click();
+    await slow.waitForFunction(() => document.querySelector("[data-desk]").dataset.desk === "projects");
+    await settle(slow);
+    assert.equal(await art(), desktopArt, "Inactive artwork survives HTTP cache eviction and memory pressure");
+    assert.equal(artRequests, 1, "Returning to the menu never re-downloads its artwork");
+    await slow.setViewportSize({ width: 390, height: 844 });
+    assert(
+      (await art()).includes("blob:") && (await art()) !== desktopArt,
+      "Phone artwork is already retained when the viewport changes",
+    );
+    await slow.close();
+
+    const failed = await makePage();
+    await people(failed);
+    let failArt = true;
+    await failed.route("**/desk-art/projects-desktop.webp", (route) =>
+      failArt ? fulfill(route, { status: 503, body: "Unavailable" }) : route.fallback(),
+    );
+    await failed.getByRole("button", { name: "Projects", exact: true }).click();
+    await failed.getByRole("alert").waitFor();
+    assert.equal(
+      await failed.locator("[data-desk]").getAttribute("data-desk"),
+      "people",
+      "Failed art leaves the existing menu intact",
+    );
+    await settle(failed);
+    assert.equal(
+      await failed.locator(".marinara-capability-villages-desk-document").evaluate((node) => node.inert),
+      false,
+    );
+    failArt = false;
+    await failed.getByRole("button", { name: "Projects", exact: true }).click();
+    await failed.waitForFunction(() => document.querySelector("[data-desk]").dataset.desk === "projects");
+    await settle(failed);
+    assert.equal(await failed.getByRole("alert").count(), 0, "Artwork failures can be retried normally");
+    await failed.close();
+
+    const firstLoad = await makePage();
+    let failFirstArt = true;
+    await firstLoad.route("**/people-desk.webp", (route) =>
+      failFirstArt ? fulfill(route, { status: 503, body: "Unavailable" }) : route.fallback(),
+    );
+    await firstLoad.getByRole("button", { name: "Open People", exact: true }).click();
+    await firstLoad.getByRole("alert").waitFor();
+    assert.equal(
+      await firstLoad.locator("[data-desk]").getAttribute("data-desk"),
+      "none",
+      "The first menu also waits for artwork",
+    );
+    failFirstArt = false;
+    await people(firstLoad);
+    await firstLoad.close();
 
     const scope = await makePage();
     await people(scope);

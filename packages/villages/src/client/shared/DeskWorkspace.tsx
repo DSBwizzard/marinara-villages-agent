@@ -3,6 +3,7 @@ import { useVillageActivity } from "./activity.js";
 import { ELEMENT_TAG as P } from "./constants.js";
 import { DESK_STYLES } from "./desk-styles.js";
 import { useLetterFont } from "./letter-font-css.js";
+import { deskArtworkStyle } from "./desk-art.js";
 
 export type DeskDestination = "people" | "projects" | "places" | "mailbox" | "settings";
 export type DeskLeaveCheck = () => Promise<boolean>;
@@ -65,6 +66,7 @@ export function DeskWorkspace({
   active,
   phase,
   disabled,
+  artworkError,
   documentRef,
   onNavigate,
   onReturn,
@@ -73,8 +75,9 @@ export function DeskWorkspace({
   children,
 }: {
   active: DeskDestination | null;
-  phase: "open" | "opening" | "closing";
+  phase: "open" | "preparing" | "opening" | "closing";
   disabled: boolean;
+  artworkError: string;
   documentRef: RefObject<HTMLDivElement | null>;
   onNavigate(destination: DeskDestination): void;
   onReturn(): void;
@@ -88,6 +91,7 @@ export function DeskWorkspace({
       className={`${P}-desk-workspace`}
       data-desk={active ?? "none"}
       data-phase={phase}
+      style={deskArtworkStyle(active)}
       role={active === "people" ? "dialog" : active ? "region" : undefined}
       aria-label={active === "people" ? "People" : active ? "Village desk" : undefined}
       aria-modal={active === "people" ? true : undefined}
@@ -141,8 +145,13 @@ export function DeskWorkspace({
           <span className={`${P}-desk-return-mobile`}>← Village</span>
         </button>
       </header>
+      {artworkError ? (
+        <p role="alert" className={`${P}-desk-art-error`}>
+          {artworkError}
+        </p>
+      ) : null}
       <div className={`${P}-desk-stage`}>
-        <div ref={documentRef} className={`${P}-desk-document`} inert={phase === "closing"}>
+        <div ref={documentRef} className={`${P}-desk-document`} inert={phase === "closing" || phase === "preparing"}>
           {children}
         </div>
       </div>

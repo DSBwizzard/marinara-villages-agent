@@ -2,7 +2,7 @@ import handwriting from "./art/kalam.js";
 
 const P = "marinara-capability-villages";
 const paper =
-  "linear-gradient(#fff9ef66,#fff9ef66),url('/api/capability-packages/villages/assets/paper-ivory.webp') center/768px repeat";
+  "linear-gradient(#fff9ef66,#fff9ef66),var(--desk-paper,url('/api/capability-packages/villages/assets/paper-ivory.webp')) center/768px repeat";
 
 /** Folder artwork sits beneath the live directory and profile controls. */
 export const DOSSIER_STYLES = `
@@ -20,7 +20,7 @@ export const DOSSIER_STYLES = `
 
 .${P}-dossier-root,.${P}-directory-root{container-type:size}
 .${P}-dossier-desk{height:100%;min-height:0;display:flex;flex-direction:column;position:relative;isolation:isolate;margin:auto;padding:6cqh 13% 8cqh 5%;background:transparent}
-.${P}-dossier-desk::before{content:"";position:absolute;z-index:-1;inset:0;background:url('/api/capability-packages/villages/assets/people-desk.webp') center/100% 100% no-repeat;pointer-events:none}
+.${P}-dossier-desk::before{content:"";position:absolute;z-index:-1;inset:0;background:var(--desk-art,url('/api/capability-packages/villages/assets/people-desk.webp')) center/100% 100% no-repeat;pointer-events:none}
 .${P}-dossier-book{--tab-width:clamp(92px,9vw,140px);position:relative;flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);column-gap:6%;background:transparent}
 .${P}-dossier-toolbar{grid-column:1;grid-row:1;z-index:8;min-height:62px;display:flex;align-items:center;gap:8px;margin:14px 28px 0;padding:0 0 12px;background:transparent;border-bottom:1px solid #8c7559}
 .${P}-dossier-toolbar h1{font-size:26px;line-height:1.2;margin:0;flex:1;min-width:0}
@@ -79,9 +79,9 @@ export const DOSSIER_STYLES = `
 .${P}-dossier-overview>.${P}-dossier-sheet>h2>svg{display:none}
 .${P}-dossier-tabs{position:absolute;z-index:6;right:calc(-1 * var(--tab-width));top:22px;bottom:22px;width:var(--tab-width)}
 .${P}-dossier-tabs>div{display:flex;flex-direction:column;gap:12px;height:100%;overflow:auto;scrollbar-width:thin}
-.${P}-dossier-tabs>div button{position:relative;background:linear-gradient(100deg,#e5ca8690,#fff0bd80),url('/api/capability-packages/villages/assets/paper-ivory.webp') center/768px;border:1px solid #d1b68b;border-left:0;border-radius:1px 3px 3px 0;box-shadow:2px 4px 5px #39291c40;padding:12px 6px;min-height:52px;flex-shrink:0;width:100%;font:400 clamp(13px,1.15vw,17px)/1.3 Georgia,serif;white-space:nowrap;overflow-wrap:normal;text-align:center}
+.${P}-dossier-tabs>div button{position:relative;background:linear-gradient(100deg,#e5ca8690,#fff0bd80),var(--desk-paper,url('/api/capability-packages/villages/assets/paper-ivory.webp')) center/768px;border:1px solid #d1b68b;border-left:0;border-radius:1px 3px 3px 0;box-shadow:2px 4px 5px #39291c40;padding:12px 6px;min-height:52px;flex-shrink:0;width:100%;font:400 clamp(13px,1.15vw,17px)/1.3 Georgia,serif;white-space:nowrap;overflow-wrap:normal;text-align:center}
 .${P}-dossier-tabs>div button::after{content:"";position:absolute;right:0;top:0;border-top:8px solid #fff9e8;border-left:8px solid #c8ac6d80}
-.${P}-dossier-tabs>div button[aria-pressed="true"]{background:linear-gradient(100deg,#99a972c0,#aeb886c0),url('/api/capability-packages/villages/assets/paper-ivory.webp') center/768px;color:#2c351c;border-color:#7a8958}
+.${P}-dossier-tabs>div button[aria-pressed="true"]{background:linear-gradient(100deg,#99a972c0,#aeb886c0),var(--desk-paper,url('/api/capability-packages/villages/assets/paper-ivory.webp')) center/768px;color:#2c351c;border-color:#7a8958}
 .${P}-dossier-toolbar .${P}-dossier-inspect{position:absolute;right:24px;bottom:18px;display:flex;align-items:center;gap:9px;min-height:44px;padding:5px 14px;border:1px solid #70573b;border-radius:7px;background:#fff4dd60;font-size:18px}
 .${P}-dossier-desk:not([data-overview="true"]) .${P}-dossier-inspect{position:static;margin-left:auto}
 .${P}-dossier-inspect[aria-pressed="true"]{outline:2px solid #789573;outline-offset:1px}
@@ -177,7 +177,7 @@ export const DOSSIER_STYLES = `
 @media(max-width:700px){
  .${P}-dossier-root,.${P}-directory-root{padding:0 1px 7px;font-size:17px}
  .${P}-dossier-desk{padding:8cqh 9% 6cqh}
- .${P}-dossier-desk::before{background-image:url('/api/capability-packages/villages/assets/people-phone.webp')}
+ .${P}-dossier-desk::before{background-image:var(--desk-art,url('/api/capability-packages/villages/assets/people-phone.webp'))}
  .${P}-dossier-book{--tab-width:0px;display:block;margin:0;overflow:auto;container-type:normal}
  .${P}-dossier-toolbar{position:sticky;top:0;display:flex;flex-wrap:wrap;gap:5px 12px;margin:0;padding:5px 12px;min-height:48px;background:${paper};border-bottom:1px solid #b59b78;z-index:8}
  .${P}-dossier-toolbar h1{font-size:22px;flex-basis:100%;order:3}

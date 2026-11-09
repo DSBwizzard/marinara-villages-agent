@@ -2,10 +2,11 @@ const P = "marinara-capability-villages";
 
 export const DESK_STYLES = `
 .${P}-desk-workspace{height:100%;min-height:0;display:flex;flex-direction:column;position:relative;isolation:isolate}
-.${P}-desk-workspace[data-desk]:not([data-desk="none"]){--background:#f8efdd;--foreground:#362a20;--popover:#fff6e5;--muted:#e9ddc3;--muted-foreground:#6b5a49;--border:#c8b895;--primary:#5e7047;--primary-foreground:#fff9ec;--secondary:#ede1ca;color:#362a20;background:#704726 url('/api/capability-packages/villages/assets/menu-desk.jpg') center/cover;padding:clamp(10px,2vw,28px);box-sizing:border-box;overflow:hidden;font-family:"village-letter-assistant",system-ui,sans-serif}
+.${P}-desk-workspace[data-desk]:not([data-desk="none"]){--background:#f8efdd;--foreground:#362a20;--popover:#fff6e5;--muted:#e9ddc3;--muted-foreground:#6b5a49;--border:#c8b895;--primary:#5e7047;--primary-foreground:#fff9ec;--secondary:#ede1ca;color:#362a20;background:#704726 var(--desk-wood,url('/api/capability-packages/villages/assets/menu-desk.jpg')) center/cover;padding:clamp(10px,2vw,28px);box-sizing:border-box;overflow:hidden;font-family:"village-letter-assistant",system-ui,sans-serif}
 .${P}-desk-header{display:flex;align-items:center;gap:clamp(20px,4vw,70px);flex:none;position:relative;z-index:30;margin:0 auto 30px;width:96%;max-width:1380px}
 .${P}-desk-header[hidden]{display:none}
-.${P}-desk-nav{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));flex:1;min-width:0;box-shadow:0 5px 10px #25180c70;border:1px solid #ead9b9;border-radius:9px;background:linear-gradient(#fff8e950,#fff8e950),url('/api/capability-packages/villages/assets/paper-ivory.webp') center/768px;padding:5px 12px}
+.${P}-desk-nav{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));flex:1;min-width:0;box-shadow:0 5px 10px #25180c70;border:1px solid #ead9b9;border-radius:9px;background:linear-gradient(#fff8e950,#fff8e950),var(--desk-paper,url('/api/capability-packages/villages/assets/paper-ivory.webp')) center/768px;padding:5px 12px}
+.${P}-desk-art-error{margin:0 2% 12px;padding:8px 12px;background:#fff4df;color:#6b3523;border:1px solid #b8845e;border-radius:4px}
 .${P}-desk-nav button{position:relative;display:flex;align-items:center;justify-content:center;gap:10px;min-height:52px;min-width:0;border:0;background:transparent;color:#362a20;padding:8px;font:500 clamp(16px,1.5vw,21px)/1.3 "village-letter-assistant",system-ui,sans-serif;cursor:pointer}
 .${P}-desk-nav button:last-child{border-right:0}
 .${P}-desk-nav button[aria-current="page"]{color:#52663b}
@@ -23,10 +24,11 @@ export const DESK_STYLES = `
 .${P}-desk-workspace:not([data-desk="none"]) .${P}-desk-document{width:94%;max-width:1420px;margin:auto}
 /* Hold the departed paper offscreen until the next menu commits. */
 .${P}-desk-workspace[data-phase="closing"] .${P}-desk-document{transform:translateY(calc(100% + 120px))}
-.${P}-desk-workspace[data-desk="projects"]{--desk-art:url('/api/capability-packages/villages/assets/desk-art/projects-desktop.webp');--desk-art-inset:-22px -40px -24px}
-.${P}-desk-workspace[data-desk="places"]{--desk-art:url('/api/capability-packages/villages/assets/desk-art/places-desktop.webp')}
-.${P}-desk-workspace[data-desk="mailbox"]{--desk-art:url('/api/capability-packages/villages/assets/desk-art/mailbox-desktop.webp')}
-.${P}-desk-workspace[data-desk="settings"]{--desk-art:url('/api/capability-packages/villages/assets/desk-art/settings-desktop.webp')}
+.${P}-desk-workspace[data-desk="people"]{--desk-art:var(--desk-art-desktop,url('/api/capability-packages/villages/assets/people-desk.webp'))}
+.${P}-desk-workspace[data-desk="projects"]{--desk-art:var(--desk-art-desktop,url('/api/capability-packages/villages/assets/desk-art/projects-desktop.webp'));--desk-art-inset:-22px -40px -24px}
+.${P}-desk-workspace[data-desk="places"]{--desk-art:var(--desk-art-desktop,url('/api/capability-packages/villages/assets/desk-art/places-desktop.webp'))}
+.${P}-desk-workspace[data-desk="mailbox"]{--desk-art:var(--desk-art-desktop,url('/api/capability-packages/villages/assets/desk-art/mailbox-desktop.webp'))}
+.${P}-desk-workspace[data-desk="settings"]{--desk-art:var(--desk-art-desktop,url('/api/capability-packages/villages/assets/desk-art/settings-desktop.webp'))}
 .${P}-desk-workspace[data-desk]:not([data-desk="none"]):not([data-desk="people"]) .${P}-desk-document{isolation:isolate}
 .${P}-desk-workspace[data-desk]:not([data-desk="none"]):not([data-desk="people"]) .${P}-desk-document::before{content:"";position:absolute;z-index:-1;inset:var(--desk-art-inset,-22px -24px -24px);background:var(--desk-art) center/100% 100% no-repeat;pointer-events:none}
 @media(min-width:701px) and (max-height:700px){
@@ -105,10 +107,11 @@ export const DESK_STYLES = `
  .${P}-desk-workspace[data-desk="mailbox"] .villages-mailbox-dialog>header h3{font-size:28px}
 }
 @media(max-width:700px){
- .${P}-desk-workspace[data-desk="projects"]{--desk-art:url('/api/capability-packages/villages/assets/desk-art/projects-phone.webp');--desk-art-inset:-28px -20px -10px}
- .${P}-desk-workspace[data-desk="places"]{--desk-art:url('/api/capability-packages/villages/assets/desk-art/places-phone.webp')}
- .${P}-desk-workspace[data-desk="mailbox"]{--desk-art:url('/api/capability-packages/villages/assets/desk-art/mailbox-phone.webp')}
- .${P}-desk-workspace[data-desk="settings"]{--desk-art:url('/api/capability-packages/villages/assets/desk-art/settings-phone.webp')}
+ .${P}-desk-workspace[data-desk="people"]{--desk-art:var(--desk-art-phone,url('/api/capability-packages/villages/assets/people-phone.webp'))}
+ .${P}-desk-workspace[data-desk="projects"]{--desk-art:var(--desk-art-phone,url('/api/capability-packages/villages/assets/desk-art/projects-phone.webp'));--desk-art-inset:-28px -20px -10px}
+ .${P}-desk-workspace[data-desk="places"]{--desk-art:var(--desk-art-phone,url('/api/capability-packages/villages/assets/desk-art/places-phone.webp'))}
+ .${P}-desk-workspace[data-desk="mailbox"]{--desk-art:var(--desk-art-phone,url('/api/capability-packages/villages/assets/desk-art/mailbox-phone.webp'))}
+ .${P}-desk-workspace[data-desk="settings"]{--desk-art:var(--desk-art-phone,url('/api/capability-packages/villages/assets/desk-art/settings-phone.webp'))}
  .${P}-desk-workspace[data-desk]:not([data-desk="none"]):not([data-desk="people"]) .${P}-desk-document::before{inset:var(--desk-art-inset,-14px -2px -10px)}
  .${P}-desk-workspace[data-desk]:not([data-desk="none"]){padding:8px}
  .${P}-desk-header{gap:4px;flex-wrap:wrap;margin-bottom:5px;width:100%}
