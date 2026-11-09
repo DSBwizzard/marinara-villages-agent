@@ -52,7 +52,14 @@ function documents(name: string) {
   });
   const rows = new Map<string, any>([
     ["villages-village", { id: "villages-village", data: state, revision: 1 }],
-    ["villages-connections", { id: "villages-connections", data: { imageConnectionId: "mock-image" }, revision: 1 }],
+    [
+      "villages-connections",
+      {
+        id: "villages-connections",
+        data: { imageConnectionId: "mock-image", systemConnectionId: "mock-system" },
+        revision: 1,
+      },
+    ],
   ]);
   const api = {
     async getById(_pkg: string, id: string) {
@@ -83,20 +90,50 @@ for (let y = 6; y < 10; y++) for (let x = 4; x < 20; x++) pixels.data.set([0, 0,
 const bytes = PNG.sync.write(pixels),
   image = "data:image/png;base64," + bytes.toString("base64");
 const action = { actionId: "signature-owner-action", expectedAttempt: 0 };
+const habit = {
+  habit: "Writes the name plainly.",
+  evidence: ["Quiet."],
+  visibleText: ["same"],
+  drawingBrief: "A small, plain name written in black pen on white.",
+};
+const model = {
+  connectionId: "mock-system",
+  model: "fixture",
+  maxContext: 64000,
+  maxOutputTokens: 2048,
+  fitContext: (messages: any[], options: any) => ({
+    messages,
+    ...options,
+    trimmed: false,
+    estimatedTokensBefore: 1,
+    estimatedTokensAfter: 1,
+  }),
+  chatComplete: async () => ({ content: JSON.stringify(habit), finishReason: "stop" }),
+};
 function fixture(name: string) {
   const store = documents(name),
     events: string[] = [],
     gate = deferred(),
     entered = deferred();
+  const selection = {
+    pause: false,
+    available: true,
+    imagesAvailable: true,
+    failImage: false,
+    epoch: name === "A" ? 1 : 2,
+    trimmed: false,
+    response: { content: JSON.stringify(habit), finishReason: "stop" },
+  };
   let pauseRead = false,
     pauseProvider = false,
     requests = 0,
     uploads = 0;
+  let selections = 0;
   const ports: ResidentSignaturePorts = {
     owner: "same-process-owner",
     tasks: createResidentSignatureTasks(),
     villagesDocuments: () => store.api,
-    villagesRuntimeEpoch: () => (name === "A" ? 1 : 2),
+    villagesRuntimeEpoch: () => selection.epoch,
     async readVillageAuthority() {
       events.push("authority:" + name);
       if (pauseRead) {
@@ -117,11 +154,45 @@ function fixture(name: string) {
     },
     async resolveVillageImageConnectionId() {
       events.push("connection:" + name);
+      if (!selection.imagesAvailable) throw new Error("Images disabled");
       return name;
     },
+    villagesConnectionIdFor: async () => "mock-system",
+    villagesLanguageModels: () => ({
+      resolve: async () => model,
+      resolveForRequest: async () => {
+        if (!selection.available) throw new Error("System unavailable");
+        return {
+          ...model,
+          fitContext: (messages, options) => ({
+            messages,
+            ...options,
+            trimmed: selection.trimmed,
+            estimatedTokensBefore: 1,
+            estimatedTokensAfter: 1,
+          }),
+        };
+      },
+    }),
+    completeWithRoom: async (_model, _messages, _maxTokens, options) => {
+      selections++;
+      events.push("select:" + name);
+      const claim = [...store.rows.values()].find((row) => row.kind === "resident-signature");
+      assert.ok(claim.data.selection.key, "Selector claim precedes dispatch");
+      assert.equal(options.temperature, null);
+      assert.equal(options.reasoningEffort, undefined);
+      assert.equal(options.verbosity, undefined);
+      if (selection.pause) {
+        entered.resolve();
+        await gate.promise;
+      }
+      return selection.response;
+    },
     async generateVillageImage(input) {
+      await input.beforeDispatch?.();
       events.push("generate:" + name);
       requests++;
+      if (selection.failImage) throw new Error("Image provider unavailable");
       assert.equal(input.connectionId, name);
       const claim = [...store.rows.values()].find((row) => row.kind === "resident-signature");
       assert.equal(claim.data.status, "running", "claim is persisted before any paid request");
@@ -151,6 +222,7 @@ function fixture(name: string) {
     events,
     gate,
     entered,
+    selection,
     pauseRead() {
       pauseRead = true;
     },
@@ -160,7 +232,115 @@ function fixture(name: string) {
     get requests() {
       return requests;
     },
+    get selections() {
+      return selections;
+    },
   };
+}
+
+// The selector is part of the same explicit admission, including late-effect fences.
+const selecting = fixture("selecting");
+selecting.selection.pause = true;
+const selectingTask = selecting.service.generateResidentSignature("same", action);
+await selecting.entered.promise;
+const selectingDuplicate = selecting.service.generateResidentSignature("same", action);
+await assert.rejects(
+  selecting.service.generateResidentSignature("same", { actionId: "another-selection", expectedAttempt: 1 }),
+  /already/,
+);
+selecting.store.rows.get("villages-village").data.villagers[0].cardSnapshot.personality = "Changed during selection";
+selecting.gate.resolve();
+assert.equal((await selectingTask).status, "failed");
+await selectingDuplicate;
+assert.equal(selecting.selections, 1);
+assert.equal(selecting.requests, 0, "A card changed during selection prevents image spending");
+
+for (const kind of ["world", "removed", "runtime"] as const) {
+  const changed = fixture(kind);
+  changed.selection.pause = true;
+  const pending = changed.service.generateResidentSignature("same", action);
+  await changed.entered.promise;
+  if (kind === "world") changed.store.rows.get("villages-village").data.seed = "different-world";
+  if (kind === "removed") changed.store.rows.get("villages-village").data.villagers = [];
+  if (kind === "runtime") changed.selection.epoch++;
+  changed.gate.resolve();
+  if (kind === "removed") await assert.rejects(pending, /no longer/);
+  else assert.equal((await pending).status, kind === "runtime" ? "interrupted" : "local");
+  assert.equal(changed.requests, 0, `${kind} change during selection fences image dispatch`);
+}
+
+for (const kind of ["invalid", "length", "oversized"] as const) {
+  const rejected = fixture(kind);
+  rejected.selection.response =
+    kind === "invalid"
+      ? { content: "{}", finishReason: "stop" }
+      : kind === "length"
+        ? { content: JSON.stringify(habit), finishReason: "length" }
+        : {
+            content: JSON.stringify({ ...habit, habit: "\\".repeat(3000), drawingBrief: "\\".repeat(3000) }),
+            finishReason: "stop",
+          };
+  assert.equal((await rejected.service.generateResidentSignature("same", action)).status, "failed");
+  assert.equal(rejected.requests, 0);
+  const claim = [...rejected.store.rows.values()].find((row) => row.kind === "resident-signature");
+  assert.deepEqual(claim.data.selection.response, rejected.selection.response, "Rejected paid text is retained");
+  const firstKey = claim.data.selection.key;
+  await rejected.service.readResidentSignature("same");
+  await rejected.service.generateResidentSignature("same", action);
+  assert.equal(rejected.selections, 1, "Reads and same-action replay do not repeat rejected text");
+  rejected.selection.response = { content: JSON.stringify(habit), finishReason: "stop" };
+  assert.equal(
+    (await rejected.service.generateResidentSignature("same", { actionId: "explicit-text-retry", expectedAttempt: 1 }))
+      .status,
+    "saved",
+  );
+  const retried = [...rejected.store.rows.values()].find((row) => row.kind === "resident-signature");
+  assert.notEqual(retried.data.selection.key, firstKey, "A deliberate retry replaces invalid selection identity");
+  assert.equal(rejected.selections, 2);
+}
+
+const selected = fixture("selected");
+selected.selection.failImage = true;
+assert.equal((await selected.service.generateResidentSignature("same", action)).status, "failed");
+selected.selection.failImage = false;
+selected.selection.available = false;
+assert.equal(
+  (await selected.service.readResidentSignature("same")).recoverable,
+  false,
+  "A habit alone is not a free image",
+);
+assert.equal(
+  (await selected.service.generateResidentSignature("same", { actionId: "explicit-image-retry", expectedAttempt: 1 }))
+    .status,
+  "saved",
+);
+assert.equal(selected.selections, 1, "Image retry reuses the saved habit even with System unavailable");
+
+const legacy = fixture("legacy");
+await legacy.service.generateResidentSignature("same", action);
+const legacyClaim = [...legacy.store.rows.values()].find((row) => row.kind === "resident-signature");
+delete legacyClaim.data.selection;
+legacyClaim.data.status = "failed";
+legacy.selection.available = false;
+legacy.selection.imagesAvailable = false;
+assert.equal((await legacy.service.readResidentSignature("same")).recoverable, true);
+assert.equal(
+  (await legacy.service.generateResidentSignature("same", { actionId: "legacy-free-recovery", expectedAttempt: 1 }))
+    .status,
+  "saved",
+);
+assert.equal(legacy.selections, 1);
+assert.equal(legacy.requests, 1, "Legacy paid image recovery makes no provider request");
+
+for (const kind of ["trimmed", "unavailable"] as const) {
+  const blocked = fixture(kind);
+  blocked.selection.trimmed = kind === "trimmed";
+  blocked.selection.available = kind !== "unavailable";
+  if (kind === "unavailable")
+    await assert.rejects(blocked.service.generateResidentSignature("same", action), /System unavailable/);
+  else assert.equal((await blocked.service.generateResidentSignature("same", action)).status, "failed");
+  assert.equal(blocked.selections, 0);
+  assert.equal(blocked.requests, 0);
 }
 
 // A delayed request cannot admit, join or return a signature from a different world,
@@ -249,6 +429,7 @@ try {
       two = createActivationScope();
     const host = (api: object) =>
       ({
+        languageModels: { resolve: async () => model, resolveForRequest: async () => model },
         persistence: { documents: villageFixtureDocuments(api) },
         resources: { listCharacters: async () => [] },
         logger: { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} },
