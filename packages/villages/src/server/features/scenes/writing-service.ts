@@ -65,6 +65,7 @@ import {
   SCENE_GM_EVENTS,
   SCENE_GM_PRESENTATION,
   SCENE_GM_MEMORY,
+  SCENE_GM_MEMORY_ADVANCED,
   SCENE_GM_PHYSICAL,
   SCENE_GM_PROJECTS,
   SCENE_GM_SOCIAL,
@@ -618,6 +619,9 @@ export function createSceneWriting({
         ],
         authoredInstructions: [
           ...authoredInstructions,
+          ...(gmContext._memoryWrite.recall.targetIds.length || gmContext.actors.some((actor) => actor.wishes.length)
+            ? [{ text: SCENE_GM_MEMORY_ADVANCED }]
+            : []),
           ...(gmContext.projects.length
             ? [
                 {

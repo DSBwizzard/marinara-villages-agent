@@ -43,12 +43,14 @@ const raw: any = parse(source);
   for (const text of [
     'INPUT speech\n[mara] [remember]Unclosed.\nMEMORY {"text":"A fact."}',
     'INPUT speech\n[mara] [remember]Crossing.\n[bryn] End.[/remember]\nMEMORY {"text":"A fact."}',
-    "INPUT speech\n[mara] [remember]Unbound.[/remember]",
     'INPUT speech\nMEMORY {"text":"No source."}',
     'INPUT speech\n[mara] Fine.\nMEMORY {"text":"One."}\nMEMORY {"text":"Two."}',
     'INPUT speech\n[mara] Public. [remember][bryn whisper:player] SECRET[/remember]\nMEMORY {"text":"A fact."}',
   ])
     assert.throws(() => parse(text), /Memory|paragraph headers/);
+  const unused: any = parse("INPUT speech\n[mara] [remember]She looks at the ceiling.[/remember] Tea?");
+  assert.equal(unused.segments[0].text, "She looks at the ceiling. Tea?");
+  assert.equal(unused.memoryChanges, undefined, "A source hint alone neither invents a Memory nor discards dialogue");
   for (const key of ["support", "lineId", "speakerId", "source"])
     assert.throws(() => parse(`INPUT speech\n[mara] Fine.\nMEMORY {"text":"A fact.","${key}":0}`), /Memory/);
 }

@@ -205,7 +205,6 @@ export function parseSceneTextReply(
       .trim();
     if (
       /\[\s*\/?\s*remember\b/iu.test(prose) ||
-      (excerpts.length && !memory) ||
       excerpts.length > 2 ||
       excerpts.some(
         (excerpt) => !excerpt.trim() || Buffer.byteLength(excerpt, "utf8") > 320 || !prose.includes(excerpt),
