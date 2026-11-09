@@ -374,7 +374,17 @@ export function createSceneWriting({
           venueWritingDirection(village.narrationStyle, player.name),
           venueAdditionalWritingGuidance(village.narrationStyle),
         ]),
-        identity: blocksFor(profiles),
+        identity: blocksFor([
+          ...profiles,
+          JSON.stringify({
+            player: {
+              name: player.name,
+              description: player.description,
+              background: renderPlayerBackgroundContext(village),
+            },
+            setting: villageCurrentSetting({ ...village, narrative: undefined }),
+          }),
+        ]),
         conversation: blocksFor([
           ...history.blocks,
           ...lore.map((text, index) => ({
@@ -396,11 +406,6 @@ export function createSceneWriting({
           {
             text: JSON.stringify({
               context: sceneGmContext(gmContext),
-              player: {
-                name: player.name,
-                description: player.description,
-                background: renderPlayerBackgroundContext(village),
-              },
               residentActivity: active.map((person) => ({
                 characterId: person.characterId,
                 doing:
@@ -415,7 +420,6 @@ export function createSceneWriting({
               pendingRoomQuestions: session.pendingRoomQuestions,
               pendingMoves,
               residentRequestLocalIds: residentLocalIdsAt(session, [], 0),
-              setting: villageCurrentSetting(village),
               weather: moment.weather,
               positions: storedPlace ? sceneLocationContext(session, storedPlace, audience) : undefined,
               environment: village.narrative

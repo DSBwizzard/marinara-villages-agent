@@ -50,6 +50,13 @@ state.seed = "character-writing";
 state.foundedAt = state.setupAt = stamp;
 state.visitMemoryBackfilled = true;
 state.narrationStyle.writingGuidance = "Make everyone cheerful, compliant, and timid.";
+state.playerPersonaId = "player";
+state.playerPersonaName = "Player";
+state.playerPersonaIdentity = "P".repeat(1200) + "PLAYER IDENTITY TAIL";
+state.playerBackground = "B".repeat(1000) + "PLAYER BACKGROUND TAIL";
+state.setting = "S".repeat(2000) + "WORLD SETTING TAIL";
+state.worldRules = "R".repeat(2000) + "WORLD RULES TAIL";
+state.worldName = "WORLD NAME TAIL";
 state.villagers = [
   {
     letterFontId: "caveat",
@@ -161,6 +168,24 @@ async function run() {
     );
     assert.ok(prefix(next.fitted.messages)[1].content.includes("DESCRIPTION TAIL"));
     assert.ok(prefix(next.fitted.messages)[1].content.includes("POST TAIL"));
+    for (const tail of [
+      "PLAYER IDENTITY TAIL",
+      "PLAYER BACKGROUND TAIL",
+      "WORLD SETTING TAIL",
+      "WORLD RULES TAIL",
+      "WORLD NAME TAIL",
+    ]) {
+      assert.ok(prefix(next.fitted.messages)[1].content.includes(tail), tail);
+      assert.equal(prompt.split(tail).length - 1, 1, "Authored identity is not duplicated late: " + tail);
+    }
+    const later = await prepareVenueTurnMessages(
+      { ...session, startedAt: new Date(Date.parse(stamp) + 60000).toISOString(), area: "outside" },
+      "Another question?",
+      "chat",
+      "",
+      null,
+    );
+    assert.deepEqual(prefix(later.fitted.messages), prefix(prepared.fitted.messages));
     assert.deepEqual(next.fitted.messages.at(-1), { role: "user", content: "A different question?" });
     const originalFit = model.fitContext;
     let trims = 0;

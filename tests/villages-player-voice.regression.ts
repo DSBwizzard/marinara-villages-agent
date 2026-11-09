@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { currentScenePrompt, scenePromptPacket } from "./fixtures/villages-scene-writing.fixture.js";
+import { currentScenePrompt, sceneIdentityPacket } from "./fixtures/villages-scene-writing.fixture.js";
 
 async function main() {
   const village = defaultVillageState();
@@ -33,7 +33,7 @@ async function main() {
         },
       ],
     });
-    assert.equal(scenePromptPacket(prompt).player.name, "Robin");
+    assert.equal(sceneIdentityPacket(prompt).player.name, "Robin");
     assert.match(prompt, /The player controls their own speech, decisions, actions, thoughts, feelings, and consent/u);
     assert.match(prompt, /Never write a new player response or imply one/u);
     assert.match(
