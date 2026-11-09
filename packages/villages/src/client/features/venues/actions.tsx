@@ -10,6 +10,7 @@ import type { ExplorationSheet, ExplorationTab } from "../exploration/villages-e
 
 export function useOpenVenue(ports: {
   openPlace: (place: VillageVenue) => void;
+  exploreSheet: ExplorationSheet;
   explorationOrigin: React.RefObject<HTMLElement>;
   explorationReturnTab: React.RefObject<ExplorationTab>;
   setExploreSheet: React.Dispatch<SetStateAction<ExplorationSheet>>;
@@ -23,6 +24,7 @@ export function useOpenVenue(ports: {
   const {
     explorationOrigin,
     explorationReturnTab,
+    exploreSheet,
     setExploreSheet,
     setMovePrivateZoneId,
     setPlayerMovePrivateZoneId,
@@ -34,7 +36,7 @@ export function useOpenVenue(ports: {
       setMovePrivateZoneId("");
       setExploreSheet(null);
       if (!(document.activeElement instanceof HTMLHeadingElement)) {
-        explorationReturnTab.current = "map";
+        explorationReturnTab.current = exploreSheet?.tab === "places" ? "places" : "map";
         explorationOrigin.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       }
       openPlace(place);
@@ -42,6 +44,7 @@ export function useOpenVenue(ports: {
     [
       explorationOrigin,
       explorationReturnTab,
+      exploreSheet,
       openPlace,
       setExploreSheet,
       setMovePrivateZoneId,
@@ -100,18 +103,22 @@ export function useLeaveVenue(ports: {
     return () => observer.disconnect();
   }, [screen, element]);
   return useCallback(() => {
+    const places = (!venueReturnTo || venueReturnTo === "home") && explorationReturnTab?.current === "places";
     const pinId =
       explorationReturnTab?.current === "map" ? venueId : explorationOrigin?.current?.getAttribute("data-pin-id");
-    setExploreSheet(null);
+    setExploreSheet(places ? { tab: "places" } : null);
     setVenuePage("view");
     setVenueEditDraft(null);
     setVenueProposalDraft(null);
     setOpenPlaceId(null);
     setScreen(venueReturnTo ?? "home");
     if (!venueReturnTo || venueReturnTo === "home")
-      focusSelector.current = pinId
-        ? `[data-pin-id="${CSS.escape(pinId)}"]`
-        : `[data-explore-tab="${explorationReturnTab?.current ?? "map"}"]`;
+      focusSelector.current =
+        places && venueId
+          ? `[data-exploration-row="${CSS.escape(venueId)}"]`
+          : pinId
+            ? `[data-pin-id="${CSS.escape(pinId)}"]`
+            : `[data-explore-tab="${explorationReturnTab?.current ?? "map"}"]`;
   }, [
     explorationReturnTab,
     venueId,

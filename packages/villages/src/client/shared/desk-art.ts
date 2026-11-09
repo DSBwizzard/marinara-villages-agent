@@ -5,12 +5,13 @@ const assets = "/api/capability-packages/villages/assets/";
 const images = new Map<string, { image: HTMLImageElement; promise: Promise<HTMLImageElement> }>();
 const paper = "paper-ivory.webp";
 const wood = "menu-desk.jpg";
+const venueFiles = ["desk-art/venue-desktop.webp", "desk-art/venue-phone.webp"];
 const files = (menu: DeskDestination) =>
   menu === "people"
     ? ["people-desk.webp", "people-phone.webp"]
     : [`desk-art/${menu}-desktop.webp`, `desk-art/${menu}-phone.webp`];
 
-// Only the twelve fixed package images are retained, until this client unloads.
+// Only the fourteen fixed package images are retained, until this client unloads.
 function loadImage(file: string): Promise<HTMLImageElement> {
   const cached = images.get(file);
   if (cached) return cached.promise;
@@ -34,7 +35,7 @@ function loadImage(file: string): Promise<HTMLImageElement> {
 
 export async function prepareDeskArtwork(menu: DeskDestination): Promise<void> {
   await Promise.all(
-    [wood, paper, ...files(menu)].map(async (file) => {
+    [wood, paper, ...files(menu), ...(menu === "places" ? venueFiles : [])].map(async (file) => {
       const image = await loadImage(file);
       await image.decode();
     }),
@@ -52,5 +53,7 @@ export function deskArtworkStyle(menu: DeskDestination | null): CSSProperties {
     "--desk-paper": paint(paper),
     "--desk-art-desktop": desktop ? paint(desktop) : undefined,
     "--desk-art-phone": phone ? paint(phone) : undefined,
+    "--desk-venue-desktop": menu === "places" ? paint(venueFiles[0]) : undefined,
+    "--desk-venue-phone": menu === "places" ? paint(venueFiles[1]) : undefined,
   } as CSSProperties;
 }

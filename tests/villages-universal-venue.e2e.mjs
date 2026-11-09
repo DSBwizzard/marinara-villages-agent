@@ -226,17 +226,16 @@ await withBrowser(browser, async () => {
       .getByRole("navigation", { name: "Village exploration" })
       .getByRole("button", { name: "Places", exact: true })
       .click();
-    const openProfile = async () => {
+    const openProfile = async (id = place.id) => {
       const navigator = page.getByRole("complementary", { name: "Places navigator" });
-      await navigator.locator(`[data-exploration-row="${place.id}"]`).click();
+      await navigator.locator(`[data-exploration-row="${id}"]`).click();
       await navigator.getByRole("button", { name: "View venue", exact: true }).click();
     };
     await openProfile();
     const profile = page.locator(`.${prefix}-venue-profile`);
     await expect(profile.getByRole("heading", { name: "Warehouse home", exact: true })).toBeVisible();
     const typeLines = await profile
-      .getByRole("region", { name: "Basic information" })
-      .locator("dd")
+      .locator(`.${prefix}-venue-metadata dd`)
       .first()
       .evaluate((entry) => {
         const range = document.createRange();
@@ -245,13 +244,21 @@ await withBrowser(browser, async () => {
         return range.getClientRects().length;
       });
     assert.equal(typeLines, 1, "Venue type words remain readable without splitting across lines");
+    let selectedVenue = place.id;
     const chooseVenue = async (id, name) => {
-      if (width < 700) await page.getByRole("combobox", { name: "Venue", exact: true }).selectOption(id);
-      else
+      if (width < 700) {
+        await profile.getByRole("button", { name: "← Back", exact: true }).click();
+        const row = page
+          .getByRole("complementary", { name: "Places navigator" })
+          .locator(`[data-exploration-row="${selectedVenue}"]`);
+        await expect(row).toBeFocused();
+        await openProfile(id);
+      } else
         await page
           .getByRole("group", { name: "Venues", exact: true })
           .getByRole("button", { name: new RegExp("^" + name) })
           .click();
+      selectedVenue = id;
     };
     await chooseVenue(otherId, "The Harbour");
     await expect(profile.getByRole("heading", { name: "The Harbour", exact: true })).toBeVisible();
@@ -476,13 +483,14 @@ await withBrowser(browser, async () => {
     await expect(profile.getByRole("button", { name: "Generate new picture" })).toHaveCount(0);
     const beforeName = writes.length;
     await profile.getByLabel("Venue name", { exact: true }).fill("Renamed warehouse");
-    await chooseVenue(otherId, "The Harbour");
+    if (width < 700) await profile.getByRole("button", { name: "← Back", exact: true }).click();
+    else await chooseVenue(otherId, "The Harbour");
     await page
       .getByRole("dialog", { name: "Confirm", exact: true })
       .getByRole("button", { name: "Cancel", exact: true })
       .click();
     await expect(profile.getByLabel("Venue name", { exact: true })).toHaveValue("Renamed warehouse");
-    if (width < 700) await expect(page.getByRole("combobox", { name: "Venue", exact: true })).toHaveValue(place.id);
+    await expect(profile.getByRole("heading", { name: "Warehouse home", exact: true })).toBeVisible();
     await profile.getByRole("button", { name: "Plan a renovation →", exact: true }).click();
     await page
       .getByRole("dialog", { name: "Confirm", exact: true })

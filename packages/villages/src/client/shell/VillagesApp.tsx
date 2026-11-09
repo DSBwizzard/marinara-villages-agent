@@ -207,6 +207,12 @@ function VillagesContent({ element }: { element: HTMLElement }) {
         controller.openPlace(place);
       });
     },
+    openVenue: (place) => {
+      void move("places", () => {
+        controller.setMailboxOpen(false);
+        controller.openVenue(place);
+      });
+    },
     openVenueRequests: (id) => {
       void move("settings", () => controller.openVenueRequests(id));
     },
@@ -327,6 +333,7 @@ function VillagesContent({ element }: { element: HTMLElement }) {
       <DeskLeaveGuard value={guardRegistration}>
         <DeskWorkspace
           active={active}
+          venue={active === "places" && controller.screen === "venue"}
           phase={phase}
           disabled={navigationDisabled}
           artworkError={artworkError}

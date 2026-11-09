@@ -14,6 +14,8 @@ const deskAssets = {
   "desk-art/projects-phone.webp": "image/webp",
   "desk-art/places-desktop.webp": "image/webp",
   "desk-art/places-phone.webp": "image/webp",
+  "desk-art/venue-desktop.webp": "image/webp",
+  "desk-art/venue-phone.webp": "image/webp",
   "desk-art/mailbox-desktop.webp": "image/webp",
   "desk-art/mailbox-phone.webp": "image/webp",
   "desk-art/settings-desktop.webp": "image/webp",

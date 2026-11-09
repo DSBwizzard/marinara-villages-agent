@@ -64,6 +64,7 @@ const icons: Record<DeskDestination, ReactNode> = {
 
 export function DeskWorkspace({
   active,
+  venue,
   phase,
   disabled,
   artworkError,
@@ -75,6 +76,7 @@ export function DeskWorkspace({
   children,
 }: {
   active: DeskDestination | null;
+  venue: boolean;
   phase: "open" | "preparing" | "opening" | "closing";
   disabled: boolean;
   artworkError: string;
@@ -90,6 +92,7 @@ export function DeskWorkspace({
     <div
       className={`${P}-desk-workspace`}
       data-desk={active ?? "none"}
+      data-venue={venue || undefined}
       data-phase={phase}
       style={deskArtworkStyle(active)}
       role={active === "people" ? "dialog" : active ? "region" : undefined}

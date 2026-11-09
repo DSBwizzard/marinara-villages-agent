@@ -635,17 +635,42 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
     <WorkspaceShell sidebar={sidebar} beforeLeave={canLeave} disabled={navigationBusy}>
       <div className={`${ELEMENT_TAG}-venue-profile`}>
         <header className={`${ELEMENT_TAG}-header ${ELEMENT_TAG}-workspace-venue-header`}>
-          {backdrop ? <img src={backdrop.url} alt="" /> : null}
+          <button
+            type="button"
+            className={`${ELEMENT_TAG}-venue-back`}
+            data-scene={activeScene || undefined}
+            disabled={navigationBusy}
+            onClick={back}
+          >
+            {activeScene ? "Back to Scene" : "← Back"}
+          </button>
           <div>
             <h1 className={`${ELEMENT_TAG}-title`}>{place.name}</h1>
-            {snapshot.settings.communityVenueId === place.id ? <p>Community Venue</p> : null}
-            {place.form ? <p className={`${ELEMENT_TAG}-subtitle`}>{place.form}</p> : null}
+            <dl className={`${ELEMENT_TAG}-venue-metadata`} aria-label="Venue details">
+              <div>
+                <dt>Type</dt>
+                <dd>{place.venueType || venueClassesFor(place).join(" · ") || "Venue"}</dd>
+              </div>
+              {map ? (
+                <div>
+                  <dt>Map</dt>
+                  <dd>{map.name}</dd>
+                </div>
+              ) : null}
+              {snapshot.settings.communityVenueId === place.id ? (
+                <div>
+                  <dt>Use</dt>
+                  <dd>Community Venue</dd>
+                </div>
+              ) : null}
+              {place.constructionStatus === "worksite" ? (
+                <div>
+                  <dt>Status</dt>
+                  <dd>Worksite</dd>
+                </div>
+              ) : null}
+            </dl>
           </div>
-          {room && room.status !== "closed" ? (
-            <button type="button" className={`${ELEMENT_TAG}-button`} disabled={navigationBusy} onClick={back}>
-              Back to Scene
-            </button>
-          ) : null}
         </header>
         <nav className={`${ELEMENT_TAG}-venue-sections`} aria-label="Venue sections">
           {(["about", "zones", "manage"] as const).map((section) => (
@@ -667,9 +692,37 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
         <main className={`${ELEMENT_TAG}-venue-profile-body`}>
           {navigationBusy ? <p role="status">Saving…</p> : null}
           {venueSection === "about" ? (
-            <section className={`${ELEMENT_TAG}-workspace-about`} aria-label="About this venue">
-              <div>
-                <p>{place.description || "No description yet."}</p>
+            <section className={`${ELEMENT_TAG}-workspace-about`} data-photo={!!backdrop} aria-label="About this venue">
+              {backdrop ? (
+                <figure className={`${ELEMENT_TAG}-venue-photo`}>
+                  <img src={backdrop.url} alt={place.name} />
+                </figure>
+              ) : null}
+              <div className={`${ELEMENT_TAG}-venue-summary`}>
+                <p className={`${ELEMENT_TAG}-venue-description`}>{place.description || "No description yet."}</p>
+                {place.form ? <p className={`${ELEMENT_TAG}-venue-form`}>{place.form}</p> : null}
+                {place.occupancy.playerHome || residents.length ? (
+                  <div className={`${ELEMENT_TAG}-venue-occupants`}>
+                    <h2>Lives here</h2>
+                    <p>
+                      {[
+                        ...(place.occupancy.playerHome ? [playerDisplayName(snapshot)] : []),
+                        ...residents.filter((id) => id !== "player").map(nameOfCharacter),
+                      ].join(", ")}
+                    </p>
+                  </div>
+                ) : null}
+                {place.workerIds?.length ? (
+                  <div className={`${ELEMENT_TAG}-venue-occupants`}>
+                    <h2>Works here</h2>
+                    <p>{place.workerIds.map(nameOfCharacter).join(", ")}</p>
+                  </div>
+                ) : null}
+                {venueClassesFor(place).includes("residence") ? (
+                  <p className={`${ELEMENT_TAG}-venue-capacity`}>
+                    Residents · {venueAssignedCountFor(place)} / {venueCapacityFor(place)}
+                  </p>
+                ) : null}
                 {(place.constructionStatus === "worksite" || activeProject?.kind === "new-venue") && activeProject ? (
                   <button
                     type="button"
@@ -696,46 +749,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
                         : "Visit venue"}
                   </button>
                 )}
-                {place.occupancy.playerHome || residents.length ? (
-                  <p>
-                    Lives here ·{" "}
-                    {[
-                      ...(place.occupancy.playerHome ? [playerDisplayName(snapshot)] : []),
-                      ...residents.filter((id) => id !== "player").map(nameOfCharacter),
-                    ].join(", ")}
-                  </p>
-                ) : null}
-                {place.workerIds?.length ? <p>Works here · {place.workerIds.map(nameOfCharacter).join(", ")}</p> : null}
               </div>
-              <section className={`${ELEMENT_TAG}-workspace-facts`} aria-label="Basic information">
-                <h2>Basic information</h2>
-                <dl>
-                  <div>
-                    <dt>Type</dt>
-                    <dd>{place.venueType || venueClassesFor(place).join(" · ") || "Venue"}</dd>
-                  </div>
-                  {map ? (
-                    <div>
-                      <dt>Map</dt>
-                      <dd>{map.name}</dd>
-                    </div>
-                  ) : null}
-                  {place.constructionStatus === "worksite" ? (
-                    <div>
-                      <dt>Status</dt>
-                      <dd>Worksite</dd>
-                    </div>
-                  ) : null}
-                  {venueClassesFor(place).includes("residence") ? (
-                    <div>
-                      <dt>Residents</dt>
-                      <dd>
-                        {venueAssignedCountFor(place)} / {venueCapacityFor(place)}
-                      </dd>
-                    </div>
-                  ) : null}
-                </dl>
-              </section>
             </section>
           ) : null}
           {venueSection === "zones" && selected ? (
