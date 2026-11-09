@@ -20,7 +20,7 @@ export const DESK_STYLES = `
 .${P}-desk-stage{position:relative;flex:1;min-width:0;min-height:0}
 .${P}-desk-workspace:not([data-desk="none"])>.${P}-desk-stage{overflow:clip;padding:46px 10px 18px}
 .${P}-desk-document{height:100%;min-height:0;position:relative}
-.${P}-desk-workspace:not([data-desk="none"]) .${P}-desk-document{width:94%;max-width:1420px;margin:auto;will-change:transform}
+.${P}-desk-workspace:not([data-desk="none"]) .${P}-desk-document{width:94%;max-width:1420px;margin:auto}
 /* Hold the departed paper offscreen until the next menu commits. */
 .${P}-desk-workspace[data-phase="closing"] .${P}-desk-document{transform:translateY(calc(100% + 120px))}
 .${P}-desk-workspace[data-desk="projects"]{--desk-art:url('/api/capability-packages/villages/assets/desk-art/projects-desktop.webp');--desk-art-inset:-22px -40px -24px}
