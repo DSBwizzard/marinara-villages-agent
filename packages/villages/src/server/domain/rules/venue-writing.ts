@@ -36,6 +36,8 @@ export function venueCardProfile(
 
 export type VenueWritingBlock = {
   text: string;
+  cacheBreakpoint?: true;
+  evidenceId?: string;
   optional?: "wish" | "history" | "memory" | "lore";
   lore?: LoreUse;
 };
@@ -49,18 +51,23 @@ export type VenueWritingSections = {
   metadata: VenueWritingBlock[];
 };
 
-/** Keep the writing task distinct from evidence bookkeeping within one request. */
+/** Stable rules and complete identities precede all changing Scene facts. */
 export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWritingBlock[] {
   const headings: Record<keyof VenueWritingSections, string> = {
     direction: "Writing direction",
+    metadata: "Response format and evidence metadata",
     identity: "Complete authored character identity",
+    authoredInstructions: "Authored post-history direction",
     conversation: "Witnessed conversation and recalled memories",
     circumstances: "Current Scene circumstances",
-    authoredInstructions: "Authored post-history direction",
-    metadata: "Response format and evidence metadata",
   };
   return (Object.keys(headings) as (keyof VenueWritingSections)[]).flatMap((section) => {
     const blocks = sections[section].filter((block) => block.text.trim());
+    const breakpoint =
+      section === "metadata" ||
+      section ===
+        (sections.authoredInstructions.some((block) => block.text.trim()) ? "authoredInstructions" : "identity");
+    if (breakpoint && blocks.length) blocks[blocks.length - 1] = { ...blocks.at(-1)!, cacheBreakpoint: true };
     return blocks.length ? [{ text: `## ${headings[section]}` }, ...blocks] : [];
   });
 }
@@ -68,16 +75,20 @@ export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWrit
 /** Shared by live generation and isolated evaluations. Never silently shrink a character. */
 export function assembleVenueWritingMessages(blocks: readonly VenueWritingBlock[], input: string) {
   const lore = blocks.filter((block) => block.optional === "lore").map((block) => block.text);
+  const messages: CapabilityLanguageModelMessage[] = [];
+  let text: string[] = [];
+  for (const block of blocks) {
+    if (block.optional === "lore") continue;
+    if (block.text) text.push(block.text);
+    if (block.cacheBreakpoint && text.length) {
+      messages.push({ role: "system", content: text.join("\n\n"), cacheBreakpoint: true });
+      text = [];
+    }
+  }
+  if (lore.length) text.push(LORE_REFERENCE_RULE);
+  if (text.length) messages.push({ role: "system", content: text.join("\n\n") });
   return [
-    {
-      role: "system",
-      content: blocks
-        .filter((block) => block.optional !== "lore")
-        .map((block) => block.text)
-        .filter(Boolean)
-        .concat(lore.length ? [LORE_REFERENCE_RULE] : [])
-        .join("\n\n"),
-    },
+    ...messages,
     ...(lore.length
       ? [
           {
@@ -108,6 +119,7 @@ export function fitVenueWritingMessages(
     if (JSON.stringify(fitted.messages) === JSON.stringify(messages))
       return {
         ...fitted,
+        evidenceIds: kept.flatMap((block) => (block.evidenceId ? [block.evidenceId] : [])),
         loreEntries: kept.filter((block) => block.optional === "lore").map((block) => block.text),
         lore: mergeLoreUse(kept.flatMap((block) => (block.lore ? [block.lore] : []))),
       };

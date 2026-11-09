@@ -220,25 +220,31 @@ async function run() {
       pendingRoomQuestions: [],
       pendingProjectQuestions: [],
     };
-    const prompt = String(
-      (
-        await prepareVenueTurnMessages(scene, "What about Alex’s violin music?", "chat", "outgoing", null)
-      ).fitted.messages
-        .map((entry) => entry.content)
-        .join("\n"),
-    );
+    const prepared = await prepareVenueTurnMessages(scene, "What about Alex’s violin music?", "chat", "outgoing", null);
+    const prompt = prepared.fitted.messages.map((entry) => entry.content).join("\n");
     const positions = [
       "## Writing direction",
+      "## Response format and evidence metadata",
       "## Complete authored character identity",
+      "## Authored post-history direction",
       "## Witnessed conversation",
       "## Current Scene circumstances",
-      "## Authored post-history direction",
     ].map((heading) => prompt.indexOf(heading));
     assert.ok(positions.every((position, i) => position >= 0 && (!i || position > positions[i - 1])));
     for (const person of state.villagers)
       for (const suffix of ["DESCRIPTION TAIL", "APPEARANCE", "BACKSTORY", "VOICE EXAMPLE", "AUTHORED INSTRUCTION"])
         assert.ok(prompt.includes(person.characterId + " " + suffix), suffix);
-    assert.ok(prompt.indexOf('"id":"earlier-spoken"') < prompt.indexOf("outgoing AUTHORED INSTRUCTION"));
+    assert.ok(prompt.indexOf('"id":"earlier-spoken"') > prompt.indexOf("outgoing AUTHORED INSTRUCTION"));
+    const reordered = await prepareVenueTurnMessages(
+      { ...scene, participants: scene.participants.toReversed(), activeIds: scene.activeIds.toReversed() },
+      "A different topic",
+      "chat",
+      "reserved",
+      null,
+    );
+    const prefix = (messages: typeof prepared.fitted.messages) => messages.filter((message) => message.cacheBreakpoint);
+    assert.deepEqual(prefix(reordered.fitted.messages), prefix(prepared.fitted.messages));
+    assert.equal(prefix(prepared.fitted.messages).length, 2);
     assert.ok(prompt.includes("where compatible with character identity"));
     assert.ok(prompt.includes("Preserve complete authored identity"));
     assert.ok(!prompt.includes("LEGACY TELL SECRET"));

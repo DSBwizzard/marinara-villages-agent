@@ -21,6 +21,7 @@ import {
 } from "../packages/villages/src/server/features/scenes/writing.js";
 import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
+import { SCENE_DEVELOPMENT_WRITING } from "../packages/villages/src/server/domain/rules/narrative-prompts.js";
 const stamp = "2026-10-07T12:00:00.000Z";
 function deferred() {
   return Promise.withResolvers<void>();
@@ -194,6 +195,8 @@ function fixture(label: string, checkpointed = false) {
     owners,
     owner,
     service,
+    ports,
+    model,
     interpretation(value: typeof roomInterpretation) {
       roomInterpretation = value;
     },
@@ -218,6 +221,69 @@ function fixture(label: string, checkpointed = false) {
   };
 }
 const direct = fixture("A");
+
+for (const reserved of [false, true]) {
+  const f = fixture("history-dispatch", true);
+  f.world.villagers = [wishWorld().villagers[0]];
+  f.scene.activeIds = ["a"];
+  f.scene.participants = [{ characterId: "a", name: "Ada", doing: "Talking" }];
+  f.scene.lines = Array.from({ length: 8 }, (_, index) => ({
+    id: "history-" + index,
+    role: "assistant" as const,
+    kind: "dialogue" as const,
+    speakerId: "a",
+    content: index === 0 ? "OLD SUPPLIED SOURCE" : "Recent line " + index,
+    heardBy: ["a"],
+    at: stamp,
+  }));
+  const originalFit = f.model.fitContext;
+  let trims = 0;
+  f.model.fitContext = (messages, options) => {
+    if (
+      messages.some((message) => message.content.includes(SCENE_DEVELOPMENT_WRITING)) &&
+      messages.some((message) => message.content.includes("OLD SUPPLIED SOURCE"))
+    ) {
+      trims++;
+      return { messages: [], estimatedTokensBefore: 100, estimatedTokensAfter: 0, trimmed: true };
+    }
+    return originalFit(messages, options);
+  };
+  let dispatchedOld = false;
+  const checked = new Error("checked exact dispatch history");
+  const service = createSceneWriting({
+    ...f.ports,
+    sceneNarrative: {
+      offer: async () => ({ id: "offer", targets: [] }),
+      reserve: async () => reserved,
+      retire: async () => {},
+    } as never,
+    completeWithRoom: async (...args) => {
+      dispatchedOld = args[1].some((message) => message.content.includes("OLD SUPPLIED SOURCE"));
+      return f.ports.completeWithRoom(...args);
+    },
+    semantic: {
+      exchange: async (_scene, _input, _lines, supplied) => {
+        assert.ok(trims > 0, "Only the introduction prompt trims older evidence");
+        assert.equal(dispatchedOld, !reserved);
+        assert.equal(
+          supplied.context.history.some((line) => line.id === "history-0"),
+          dispatchedOld,
+        );
+        if (dispatchedOld)
+          assert.equal(
+            supplied.context.history.find((line) => line.id === "history-0")?.content,
+            "OLD SUPPLIED SOURCE",
+          );
+        throw checked;
+      },
+    },
+  });
+  await assert.rejects(service.generate(f.scene, "I wait.", "chat", "", null), (error) => error === checked);
+  f.scene.lines[0].content = "Later live content cannot rewrite the saved source";
+  await assert.rejects(service.generate(f.scene, "I wait.", "chat", "", null), (error) => error === checked);
+  assert.equal(f.calls.filter((call) => call === "completion").length, 1);
+}
+
 assert.deepEqual(direct.calls, [], "constructing the service starts no work");
 const prompt = await direct.service.prepareVenueTurnMessages(direct.scene, "I wait.", "chat", "", null);
 assert.equal(prompt.model.model, "A");
