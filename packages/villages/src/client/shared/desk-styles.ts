@@ -135,4 +135,9 @@ export const DESK_STYLES = `
  .${P}-desk-workspace[data-desk="mailbox"] .villages-mailbox-dialog>header{padding:0 8px 8px}
  .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-layout{padding:0 3px 7px}
 }
+@media(max-width:700px) and (max-height:700px){
+ .${P}-desk-workspace[data-desk="mailbox"]>.${P}-desk-stage{padding-top:14px}
+ .${P}-desk-workspace[data-desk="mailbox"] .villages-mailbox-dialog{padding:12px 10px 0}
+ .${P}-desk-workspace[data-desk="mailbox"] .villages-mailbox-dialog>header h3{font-size:26px}
+}
 `;
