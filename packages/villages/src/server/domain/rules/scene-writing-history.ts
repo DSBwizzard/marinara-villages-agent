@@ -137,7 +137,7 @@ export function sceneWritingHistory(
     }
     return spent;
   };
-  take(recent, Math.min(8000, capacity));
+  take(recent, Math.max(0, Math.min(8000, capacity) - used));
   take(ranked, Math.min(4000, capacity - used));
   take(ranked, capacity - used);
   take(recent, capacity - used);

@@ -55,6 +55,8 @@ The runner executes selected tests afresh. Focused local tests are feedback; pas
 
 `npm run test:engine` is separate integration coverage. Its tests require an explicitly supplied compatible Engine root, existing built runtime or isolated Engine URL. They do not authorize Engine changes, builds, upgrades or personal installation operations. Mocked tests do not prove real-provider quality. Private Docker tooling verifies packaged activation, desktop/phone rendering, restart and persistence using disposable provider-free storage.
 
+`npm run bench:scene` runs 17 synthetic Scene cases through the built package's HTTP handlers, including consequential events, long history, rich Wishes/Memories and saved-response replay. Build first. It verifies the archive and receipt inputs, then writes `.build-tmp/scene-cost/provider-free.json` with their identities, prompt bytes, explicitly estimated tokens, mocked completion count and accepted-state assertions. This command purchases no provider requests. Its estimates and local timings do not establish provider cache hits, real latency or cost parity; those require an authorized matched run through the actual Engine Game Mode and Villages providers with all retries included.
+
 ## Preview and saved data
 
 Villages is an unreleased prototype without a public installer or official catalog entry. Test installation is arranged separately; historical tagged downloads are not the current prototype distribution.
