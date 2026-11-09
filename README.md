@@ -24,7 +24,7 @@ For a test installation, the person running your Marinara server needs to instal
 
 You need:
 
-- Marinara Engine **2.5.0 or later, before 4.0.0**, with the test package's required capabilities. Engine checks package compatibility during installation.
+- Marinara Engine **2.5.2 or later, before 4.0.0**, with Capability API **1.818**. Engine checks package compatibility during installation.
 - A configured language-model connection. You must explicitly select connections for both **System** and **GM**; they can use the same connection.
 - A Persona and one to three starting characters in your Engine library.
 - Map artwork, either uploaded or generated with an image connection. Image generation is optional if you supply your own artwork.

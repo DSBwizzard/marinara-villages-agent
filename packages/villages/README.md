@@ -18,7 +18,7 @@ Once the package is installed:
 2. Open **Home → Villages**. Villages has its own Home tab; you play there.
 3. If the tab is missing, confirm that the package was installed on the server you are connected to and that the server restarted successfully.
 
-The current package requires **Engine 2.5.0 or later, before 4.0.0**, plus its declared Engine capabilities. An incompatible package needs a compatible Engine build before it can be installed.
+The current package requires **Engine 2.5.2 or later, before 4.0.0**, with Capability API **1.818**. An incompatible package needs a compatible Engine build before it can be installed.
 
 ### Prepare your library and connections
 

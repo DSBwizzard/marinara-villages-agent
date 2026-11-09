@@ -1,18 +1,22 @@
 # Pinned Engine public declarations
 
-The spinoff proof of concept additionally captures the type-only public `packages/shared/src/types/scene.ts` module as `types/scene.d.ts`, byte-for-byte from the same revision `bcc50689fd3885cc4ce7884f25cb2296f8fe400e`. It contains declarations only and requires Capability API 1.66. Its exact source/output SHA-256 and exported roots are recorded in `pin.json` under `supplementalFiles`; `check:engine-types` verifies it with the base closure. Base-closure regeneration preserves the separately captured module. To reproduce it, fetch that exact public file, preserve UTF-8/LF bytes and compare the recorded hash. No Engine source modification, runtime build, or test-runtime repin is involved.
+The public declaration closure comes from Marinara Engine **2.5.2**, Capability API **1.818**, at staging revision `27805040eed0d91d4ea7b49f478b0b197b13676d`. Source: https://github.com/Pasta-Devs/Marinara-Engine. Upstream AGPL-3.0 licensing is retained. Ordinary builds never refresh these files.
 
-The public declaration closure is derived from Marinara Engine **2.5.0**, capability API **1.14**, at exact merged PR #7369 revision `bcc50689fd3885cc4ce7884f25cb2296f8fe400e`. Source: https://github.com/Pasta-Devs/Marinara-Engine. Upstream AGPL-3.0 licensing is retained. Ordinary builds never refresh these files.
+`sources/package-shared.ts` declares the public roots. The generator follows their public dependencies, including Scene origin types, into one closure. `pin.json` records exact upstream declaration input hashes, retained symbols and output hashes. There are no separately maintained supplemental declarations or private runtime dependencies.
 
-`pin.json` records the full upstream declaration input hashes and retained closure hashes. The source archive for the exact revision was read in temporary task storage. TypeScript 5.9.3 emitted declarations only from `packages/shared/src/types/capability-runtime.ts` and its dependencies, with `rootDir=packages/shared/src`, `target=ESNext`, `module=ESNext`, `moduleResolution=Bundler`, `declaration=true`, `emitDeclarationOnly=true`, and `skipLibCheck=true`. No Engine runtime build or source modification was performed.
-
-Reproduce the closure from that full declaration output:
+To reproduce, export that exact Engine tree, install its frozen dependencies, and emit public declarations with its pinned TypeScript 6.0.3 (run from the exported Engine root):
 
 ```sh
-node scripts/engine-public-declarations.mjs --refresh --from <full-declaration-directory> --revision bcc50689fd3885cc4ce7884f25cb2296f8fe400e --engine-version 2.5.0 --capability-api 1.14
-node scripts/engine-public-declarations.mjs --check --from <full-declaration-directory>
-npm run check:engine-types
+node node_modules/typescript/bin/tsc --ignoreConfig --declaration --emitDeclarationOnly --skipLibCheck --target ESNext --module ESNext --moduleResolution Bundler --rootDir packages/shared/src --outDir <full-declaration-directory> packages/shared/src/types/capability-runtime.ts packages/shared/src/types/scene.ts
 ```
 
-The independent `privileged-access.json` fixture retains its own recorded revision/hash. It contains only the public admin-access key and refusal hint and was not recaptured for Decisions. `sources/package-shared.ts` exposes public declarations only; Villages has no private Engine runtime dependencies.
+Then run from the Villages root:
+
+```sh
+node scripts/engine-public-declarations.mjs --refresh --from <full-declaration-directory> --revision 27805040eed0d91d4ea7b49f478b0b197b13676d --engine-version 2.5.2 --capability-api 1.818
+node scripts/engine-public-declarations.mjs --check --from <full-declaration-directory>
+corepack npm run check:engine-types
+```
+
+No generated declarations are patched by hand. The independent `privileged-access.json` fixture retains its own recorded revision/hash; it contains the public admin-access key and refusal hint.
 

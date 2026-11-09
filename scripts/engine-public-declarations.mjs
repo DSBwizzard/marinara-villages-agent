@@ -16,7 +16,6 @@ async function files(dir) {
 }
 if (!args.includes("--refresh") && !args.includes("--check")) {
   const pin = JSON.parse(await readFile(join(output, "pin.json"), "utf8"));
-  pin.files = [...pin.files, ...(pin.supplementalFiles ?? [])];
   for (const file of pin.files)
     if (hash(await readFile(join(output, file.path))) !== file.sha256)
       throw Error("Pinned public declaration changed: " + file.path);
@@ -112,22 +111,23 @@ if (!args.includes("--refresh") && !args.includes("--check")) {
       visit(n);
     }
   }
-  const cap = program.getSourceFile(join(from, "types/capability-runtime.d.ts"));
-  if (!cap) throw Error("Missing upstream capability-runtime.d.ts");
-  const exported = checker.getExportsOfModule(checker.getSymbolAtLocation(cap));
   const facade = await readFile("sources/package-shared.ts", "utf8");
-  const supplementalSymbols = new Set((oldPin.supplementalFiles ?? []).flatMap((file) => file.symbols));
-  const names = [...facade.matchAll(/export type \{([^}]+)\}/g)].flatMap((m) =>
-    m[1]
+  const names = [];
+  for (const match of facade.matchAll(/export type \{([^}]+)\} from "\.\/engine-public\/([^"]+)\.js";/gs)) {
+    const source = program.getSourceFile(join(from, match[2] + ".d.ts"));
+    if (!source) throw Error("Missing upstream public module: " + match[2]);
+    const exported = checker.getExportsOfModule(checker.getSymbolAtLocation(source));
+    for (const name of match[1]
       .split(",")
-      .map((s) => s.trim())
-      .filter((name) => name && !supplementalSymbols.has(name)),
-  );
-  for (const name of names) {
-    const symbol = exported.find((s) => s.name === name);
-    if (!symbol) throw Error("Unknown public root: " + name);
-    enqueue(symbol);
+      .map((name) => name.trim())
+      .filter(Boolean)) {
+      const symbol = exported.find((symbol) => symbol.name === name);
+      if (!symbol) throw Error("Unknown public root: " + name);
+      names.push(name);
+      enqueue(symbol);
+    }
   }
+  if (!names.length) throw Error("The public facade has no declaration roots.");
   const printer = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed }),
     outputs = [];
   for (const [sf, nodes] of retained) {
@@ -179,7 +179,7 @@ if (!args.includes("--refresh") && !args.includes("--check")) {
   const prior = (await files(output)).filter((f) => f.endsWith(".d.ts"));
   for (const f of prior) {
     const rel = relative(output, f).split(sep).join("/");
-    if (!outputs.some((o) => o.path === rel) && !(oldPin.supplementalFiles ?? []).some((o) => o.path === rel)) {
+    if (!outputs.some((o) => o.path === rel)) {
       if (!resolve(f).startsWith(output + sep)) throw Error("Invalid output path");
       await unlink(f);
     }
@@ -188,11 +188,12 @@ if (!args.includes("--refresh") && !args.includes("--check")) {
     await mkdir(dirname(join(output, file.path)), { recursive: true });
     await writeFile(join(output, file.path), file.content);
   }
+  const { supplementalFiles: _retired, ...priorPin } = oldPin;
   await writeFile(
     join(output, "pin.json"),
     JSON.stringify(
       {
-        ...oldPin,
+        ...priorPin,
         revision,
         engineVersion,
         capabilityApi,
