@@ -352,6 +352,10 @@ export function createSceneWriting({
         gmContext.memory = memory.envelope;
         gmContext._memoryWrite = memory.saved;
       }
+      const { calendar, actors, memory, social, projects, otherProjects, zones, ...frame } = sceneGmContext(gmContext);
+      const zoneDevelopments = zones.flatMap(({ id, circumstances, conditions }) =>
+        circumstances?.length || conditions?.length ? [{ zoneId: id, circumstances, conditions }] : [],
+      );
       blocks = buildVenueSceneBlocks({
         direction: blocksFor([
           SCENE_GM_DIRECTION,
@@ -365,6 +369,17 @@ export function createSceneWriting({
             player: { name: player.name, description: player.description },
             startingBackground: renderPlayerBackgroundContext(village),
             setting: villageCurrentSetting({ ...village, narrative: undefined }),
+          }),
+        ]),
+        frame: blocksFor([
+          JSON.stringify({
+            frame: {
+              ...frame,
+              zones: zones.map(({ circumstances: _circumstances, conditions: _conditions, ...zone }) => zone),
+            },
+            supportingCandidates,
+            residentRequestLocalIds: residentLocalIdsAt(session, [], 0),
+            positions: storedPlace ? sceneLocationContext(session, storedPlace, audience) : undefined,
           }),
         ]),
         conversation: blocksFor([
@@ -384,10 +399,11 @@ export function createSceneWriting({
               ? "Conclude: interpret the ENTIRE authored input, then close naturally; do not invent a player goodbye. Empty input means input:[]."
               : "",
             openingSceneDirection(village, session),
+            "The Current Scene reference is the accepted physical, position and access baseline; earlier narration cannot override it. Apply the current calendar and newer developments below.",
           ]),
           {
             text: JSON.stringify({
-              context: sceneGmContext(gmContext),
+              context: { calendar, actors, memory, social, projects, otherProjects, zoneDevelopments },
               residentActivity: active.map((person) => ({
                 characterId: person.characterId,
                 doing:
@@ -397,14 +413,11 @@ export function createSceneWriting({
                   .filter((venue) => venueResidentIds(venue).includes(person.characterId))
                   .map((venue) => ({ id: venue.id, name: venue.name })),
               })),
-              supportingCandidates,
               pendingProjectQuestions: session.pendingProjectQuestions,
               pendingRoomQuestions: session.pendingRoomQuestions,
               pendingMoves,
-              residentRequestLocalIds: residentLocalIdsAt(session, [], 0),
               villageCircumstances: currentVillageCircumstances(village),
               weather: moment.weather,
-              positions: storedPlace ? sceneLocationContext(session, storedPlace, audience) : undefined,
               presentation: {
                 state: gmPresentation.state,
                 sprites: Object.entries(gmPresentation.sprites).map(([actorId, sprite]) => ({

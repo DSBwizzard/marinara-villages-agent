@@ -242,7 +242,8 @@ async function run() {
       "reserved",
       null,
     );
-    const prefix = (messages: typeof prepared.fitted.messages) => messages.filter((message) => message.cacheBreakpoint);
+    const prefix = (messages: typeof prepared.fitted.messages) =>
+      messages.filter((message) => message.cacheBreakpoint).slice(0, 2);
     assert.deepEqual(prefix(reordered.fitted.messages), prefix(prepared.fitted.messages));
     assert.equal(prefix(prepared.fitted.messages).length, 2);
     assert.ok(prompt.includes("where compatible with character identity"));

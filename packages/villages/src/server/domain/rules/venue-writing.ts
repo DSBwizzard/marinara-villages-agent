@@ -46,6 +46,7 @@ export type VenueWritingBlock = {
 export type VenueWritingSections = {
   direction: VenueWritingBlock[];
   identity: VenueWritingBlock[];
+  frame?: VenueWritingBlock[];
   circumstances: VenueWritingBlock[];
   conversation: VenueWritingBlock[];
   authoredInstructions: VenueWritingBlock[];
@@ -59,13 +60,15 @@ export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWrit
     metadata: "Response format and evidence metadata",
     identity: "Complete authored character identity",
     authoredInstructions: "Authored post-history direction",
+    frame: "Current Scene reference",
     conversation: "Witnessed conversation and recalled memories",
     circumstances: "Current Scene circumstances",
   };
   return (Object.keys(headings) as (keyof VenueWritingSections)[]).flatMap((section) => {
-    const blocks = sections[section].filter((block) => block.text.trim());
+    const blocks = (sections[section] ?? []).filter((block) => block.text.trim());
     const breakpoint =
       section === "metadata" ||
+      section === "frame" ||
       section ===
         (sections.authoredInstructions.some((block) => block.text.trim()) ? "authoredInstructions" : "identity");
     if (breakpoint && blocks.length) blocks[blocks.length - 1] = { ...blocks.at(-1)!, cacheBreakpoint: true };

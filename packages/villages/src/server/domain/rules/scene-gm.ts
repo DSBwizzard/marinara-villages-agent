@@ -43,6 +43,7 @@ export function sceneGmContext(context: ReturnType<typeof semanticContext>) {
     _conditions: _conditions,
     loreSelection: _lore,
     history: _history,
+    historyBounded: _historyBounded,
     worldSeed: _seed,
     sceneId: _scene,
     revision: _revision,

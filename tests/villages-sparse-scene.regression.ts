@@ -5,7 +5,10 @@ import {
   completeSceneObject,
   isolateSceneEffects,
 } from "../packages/villages/src/server/domain/rules/scene-writing-contract.js";
-import { sceneWritingHistory } from "../packages/villages/src/server/domain/rules/scene-writing-history.js";
+import {
+  sceneHistoryRow,
+  sceneWritingHistory,
+} from "../packages/villages/src/server/domain/rules/scene-writing-history.js";
 import { fitVenueWritingMessages } from "../packages/villages/src/server/domain/rules/venue-writing.js";
 import { workFailureSummary } from "../packages/villages/src/server/domain/rules/work-failure.js";
 import { zoneEventReply } from "../packages/villages/src/server/domain/rules/zone-events.js";
@@ -343,6 +346,36 @@ for (const supplied of [
   assert(!privacy.blocks.some((block) => block.text.includes(privateLine.content)));
   assert(!privacy.blocks.some((block) => block.text.includes(sound.content)));
   assert(privacy.blocks.some((block) => block.text.includes("An indistinct voice.")));
+  const visibleOnly = line("narrator-only", "A private player observation.", { kind: "narration", heardBy: [] });
+  for (const audience of [["rosa"], ["later", "rosa", "rosa"]]) {
+    const canonical = [preference, sound, visibleOnly];
+    const view = sceneWritingHistory(
+      { lines: canonical, submissions: [] } as any,
+      [preference, sound] as any,
+      "",
+      audience,
+    );
+    const encoded = view.blocks.flatMap((block) => {
+      try {
+        return [JSON.parse(block.text)];
+      } catch {
+        return [];
+      }
+    });
+    const defaults = encoded.find((row) => row.historyDefaults).historyDefaults;
+    assert.deepEqual(defaults.heardBy, [...new Set(audience)].sort());
+    for (const original of canonical) {
+      const wire = encoded.find((row) => row.id === original.id);
+      assert.deepEqual({ ...defaults, ...wire }, sceneHistoryRow(original as any, audience, original !== visibleOnly));
+      if (original !== preference) assert.deepEqual(wire.heardBy, [], "Empty hearing never inherits the current cast");
+    }
+    if (audience.includes("later"))
+      assert.deepEqual(
+        encoded.find((row) => row.id === "tea").heardBy,
+        ["rosa"],
+        "A later arrival never inherits earlier dialogue through defaults",
+      );
+  }
   assert.deepEqual(sceneWritingHistory({ lines: [], submissions: [] } as any, [], "tea", ["rosa"]).evidence, []);
 }
 

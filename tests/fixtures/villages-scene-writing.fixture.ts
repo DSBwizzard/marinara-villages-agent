@@ -150,7 +150,7 @@ export async function currentScenePrompt(
   return prompt;
 }
 
-export function scenePromptPacket(prompt: string, root: "context" | "player" = "context"): any {
+export function scenePromptPacket(prompt: string, root: "context" | "player" | "frame" = "context"): any {
   const packet = prompt.split("\n").find((line) => line.startsWith(`{"${root}":`));
   assert(packet, "The GM receives the requested structured Scene packet");
   return JSON.parse(packet);

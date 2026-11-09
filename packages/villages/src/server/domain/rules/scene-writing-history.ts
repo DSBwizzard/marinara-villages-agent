@@ -117,6 +117,11 @@ export function sceneWritingHistory(
   const exchangeRows = rows.filter((row) => latestIds.has(row.line.id));
   const required = new Set((exchangeRows.length ? exchangeRows : rows.slice(-6)).map((row) => row.line.id));
   const priority = new Map(ranked.map((row, index) => [row.line.id, rows.length - index]));
+  const historyDefaults = {
+    heardBy: [...new Set(audience)].toSorted(),
+    visibleToPlayer: true,
+    citable: true,
+  };
   return {
     evidence: rows.filter((item) => item.row.citable).map((item) => item.line),
     fingerprints: Object.fromEntries(
@@ -125,18 +130,31 @@ export function sceneWritingHistory(
     partial: rows.length < scene.lines.length,
     blocks: rows.length
       ? [
-          { text: HISTORY_PREFIX + HISTORY_SUFFIX },
-          ...rows.map((item) => ({
-            text: JSON.stringify(item.row),
-            ...(item.row.citable ? { evidenceId: item.line.id } : {}),
-            ...(required.has(item.line.id)
-              ? {}
-              : {
-                  optional: "history" as const,
-                  pruningPriority:
-                    (priority.get(item.line.id) ?? item.index / rows.length) / JSON.stringify(item.row).length,
-                }),
-          })),
+          {
+            text:
+              HISTORY_PREFIX +
+              HISTORY_SUFFIX +
+              " Explicit row fields replace historyDefaults, including empty heardBy.",
+          },
+          { text: JSON.stringify({ historyDefaults }) },
+          ...rows.map((item) => {
+            const wire: Partial<typeof item.row> = { ...item.row };
+            if (item.row.heardBy.length && JSON.stringify(item.row.heardBy) === JSON.stringify(historyDefaults.heardBy))
+              delete wire.heardBy;
+            if (wire.visibleToPlayer === true) delete wire.visibleToPlayer;
+            if (wire.citable === true) delete wire.citable;
+            const text = JSON.stringify(wire);
+            return {
+              text,
+              ...(item.row.citable ? { evidenceId: item.line.id } : {}),
+              ...(required.has(item.line.id)
+                ? {}
+                : {
+                    optional: "history" as const,
+                    pruningPriority: (priority.get(item.line.id) ?? item.index / rows.length) / text.length,
+                  }),
+            };
+          }),
         ]
       : [],
   };

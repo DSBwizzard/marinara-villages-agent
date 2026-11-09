@@ -3,14 +3,21 @@ import { packagedSceneServer } from "./fixtures/packaged-scene-server.fixture.js
 import { configureSceneCostWorld } from "./fixtures/scene-cost.fixture.js";
 import { ensureNarrative } from "../packages/villages/src/server/domain/rules/narrative-development.js";
 
-const prefixes: unknown[] = [];
-for (const summary of ["Mist hides the far bank.", "The mist has lifted."]) {
+const prefixes: { content: string }[][] = [];
+const calendars: string[] = [];
+for (const [summary, change] of [
+  ["Mist hides the far bank.", ""],
+  ["The mist has lifted.", ""],
+  ["The mist has lifted.", "policy"],
+  ["The mist has lifted.", "movement"],
+]) {
   const host = await packagedSceneServer({
     configure(world, now) {
       configureSceneCostWorld(world, now, "ordinary");
       world.setting = "AUTHORED RIVERSIDE SETTING";
       world.worldRules = "AUTHORED WORLD RULE";
       world.playerBackground = "AUTHORED PRIVATE BACKSTORY";
+      if (change === "policy") world.venues[0].access!.managerIds = ["player"];
       ensureNarrative(world, now).situations.push({
         id: "mist",
         revision: 1,
@@ -21,6 +28,12 @@ for (const summary of ["Mist hides the far bank.", "The mist has lifted."]) {
         targets: [],
         updatedAt: now,
       });
+    },
+    configureScene(scene) {
+      if (change !== "movement") return;
+      scene.zoneId = "exterior";
+      for (const row of scene.accompanying ?? []) row.zoneId = "exterior";
+      for (const row of scene.sceneAttendance!.occupants) row.zoneId = "exterior";
     },
   });
   host.model.chatComplete = async (messages: any[]) => {
@@ -43,7 +56,13 @@ for (const summary of ["Mist hides the far bank.", "The mist has lifted."]) {
     assert(!changing.includes("Starting backstories describe"));
     assert(!changing.includes("AUTHORED PRIVATE BACKSTORY"));
     const packet = JSON.parse(changing.split("\n").find((row) => row.startsWith('{"context":'))!);
-    assert(Array.isArray(packet.context.accessManagement));
+    calendars.push(packet.context.calendar.instant);
+    const frame = JSON.parse(
+      messages.flatMap((row) => row.content.split("\n")).find((row) => row.startsWith('{"frame":'))!,
+    );
+    assert(Array.isArray(frame.frame.accessManagement));
+    assert.equal(packet.context.calendar.date.length, 10);
+    assert.equal(messages.filter((row) => row.cacheBreakpoint).length, 3);
     assert(!changing.includes("manage-access roomEvent"));
     return {
       content: JSON.stringify({
@@ -73,6 +92,11 @@ for (const summary of ["Mist hides the far bank.", "The mist has lifted."]) {
   }
 }
 assert.deepEqual(prefixes[0], prefixes[1]);
+assert.notEqual(calendars[0], calendars[1], "A new admitted clock does not invalidate the reference frame");
+for (const changed of prefixes.slice(2)) {
+  assert.deepEqual(changed.slice(0, 2), prefixes[0].slice(0, 2));
+  assert.notDeepEqual(changed[2], prefixes[0][2], "Movement and policy changes must invalidate the current frame");
+}
 console.log(
   "Authored setting, player identity and complete cards keep identical prefixes across changing circumstances; current access policy uses the event contract.",
 );
