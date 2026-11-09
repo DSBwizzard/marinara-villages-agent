@@ -352,7 +352,7 @@ await withBrowser(browser, async () => {
     await expect(page.getByRole("heading", { name: "Maps", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Edit map" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Scene History", exact: true })).toHaveCount(0);
-    await page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "Map" }).click();
+    await page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();
 
     await page
       .getByRole("navigation", { name: "Village exploration" })

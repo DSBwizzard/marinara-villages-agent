@@ -8,6 +8,7 @@ import { AvatarFace } from "./ResidentPanels.js";
 import type { ResidentsScreenController } from "./screen-contracts.js";
 import { type DossierLink, type DossierVenue, VillagerDossier } from "./villages-dossier.js";
 import { SpriteManager } from "./villages-sprite-manager.js";
+import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import { VillagerWishJournal } from "./villages-wish-journal.js";
 
 export function ResidentsScreen({
@@ -19,6 +20,7 @@ export function ResidentsScreen({
   onDirectory?: () => void;
   onClose?: () => void;
 }) {
+  const navigationLifetime = useVillageMutationLifetime(controller.snapshot?.isFounded);
   const {
     element,
     agendas,
@@ -115,9 +117,9 @@ export function ResidentsScreen({
         title: "Venue Requests",
         detail: "Open Venue Requests",
         playerVisible: true,
-        onOpen: () => {
+        onOpen: async () => {
           setHousingVenueId("");
-          openMenu("venueRequests");
+          await openMenu("venueRequests");
         },
       },
     );
@@ -135,8 +137,9 @@ export function ResidentsScreen({
         id: "project:" + project.id,
         title: project.title,
         detail: "Project · " + project.status,
-        onOpen: () => {
-          openMenu("projects");
+        onOpen: async () => {
+          await openMenu("projects");
+          if (!navigationLifetime.isCurrent()) return;
           setFocusedProjectId(project.id);
           setSiteProjectId(project.id);
         },
@@ -148,8 +151,9 @@ export function ResidentsScreen({
         id: "request:" + proposal.id,
         title: proposal.venueDraft.name,
         detail: "Venue Request",
-        onOpen: () => {
-          openMenu("venueRequests");
+        onOpen: async () => {
+          await openMenu("venueRequests");
+          if (!navigationLifetime.isCurrent()) return;
           setFocusedRequestId("request:" + proposal.id);
         },
       });
@@ -165,8 +169,9 @@ export function ResidentsScreen({
         id: "residence:" + residence.characterId,
         title: "Residence request",
         detail: "Pending Venue Request",
-        onOpen: () => {
-          openMenu("venueRequests");
+        onOpen: async () => {
+          await openMenu("venueRequests");
+          if (!navigationLifetime.isCurrent()) return;
           setFocusedRequestId("residence:" + residence.characterId);
         },
       });

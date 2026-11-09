@@ -12,7 +12,7 @@ import { renderVillageSettingsPage } from "../features/settings/VillageSettingsP
 import { renderVenueRequestsPage } from "../features/venues/VenueRequestsPage.js";
 import { ELEMENT_TAG } from "../shared/constants.js";
 import type { MenuPage } from "../shared/types.js";
-import { WorkspaceShell, type WorkspaceDestination } from "../shared/WorkspaceShell.js";
+import { WorkspaceShell } from "../shared/WorkspaceShell.js";
 import type { MenuScreenController } from "./menu-contracts.js";
 import { MENU_PAGE_TITLES } from "./navigation.js";
 
@@ -135,14 +135,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
   }
 
   if (screen === "menu") {
-    const navigate = (destination: WorkspaceDestination) => {
-      if (destination === "map") goHome();
-      else if (destination === "places") {
-        const first = snapshot?.settings.venues[0];
-        if (first) openPlace(first);
-        else goHome();
-      } else openMenu(destination === "people" ? "villagers" : destination === "projects" ? "projects" : "index");
-    };
     const selected = menuPage === "index" ? "general" : menuPage;
     const sections: { page: MenuPage; label: string }[] = [
       { page: "general", label: "General Preferences" },
@@ -161,8 +153,8 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     };
     const sidebar = (
       <>
-        <h2>More</h2>
-        <nav className={ELEMENT_TAG + "-workspace-sections"} aria-label="More sections">
+        <h2>Settings</h2>
+        <nav className={ELEMENT_TAG + "-workspace-sections"} aria-label="Settings sections">
           {sections.map(({ page, label }) => (
             <button
               key={page}
@@ -197,7 +189,7 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
       </>
     );
     return (
-      <WorkspaceShell active="more" onNavigate={navigate} sidebar={sidebar} disabled={navigationBusy}>
+      <WorkspaceShell sidebar={sidebar} beforeLeave={canLeave} disabled={navigationBusy}>
         <div
           className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-sectioned-menu`}
           data-section={menuSection}

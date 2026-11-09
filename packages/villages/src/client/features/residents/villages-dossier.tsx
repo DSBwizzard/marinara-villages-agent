@@ -218,12 +218,18 @@ export function VillagerDossier({
     else setInspected((current) => (current.includes(section) ? current : [...current, section]));
   }, [inspect, section]);
   useLayoutEffect(() => {
-    if (content.current) content.current.scrollTop = positions.current[section] ?? 0;
+    const reading = window.matchMedia("(max-width:700px)").matches
+      ? content.current?.closest<HTMLElement>(`.${P}-dossier-book`)
+      : content.current;
+    if (reading) reading.scrollTop = positions.current[section] ?? 0;
   }, [section]);
   const inspectedSection = (tab: DossierSection) => inspect && (section === tab || inspected.includes(tab));
   const choose = (next: DossierSection, inspection = inspect) => {
     setVisited((current) => (current.includes(next) ? current : [...current, next]));
-    if (content.current) positions.current[section] = content.current.scrollTop;
+    const reading = window.matchMedia("(max-width:700px)").matches
+      ? content.current?.closest<HTMLElement>(`.${P}-dossier-book`)
+      : content.current;
+    if (reading) positions.current[section] = reading.scrollTop;
     if (next !== section) {
       const order = sections;
       setTurn((current) => ({ id: current.id + 1, backwards: order.indexOf(next) < order.indexOf(section) }));
@@ -303,6 +309,15 @@ export function VillagerDossier({
                 </button>
                 {section !== "overview" || !villager ? <h1>{name}</h1> : null}
                 <div className={`${P}-dossier-actions`} role="group" aria-label="Profile actions">
+                  <button
+                    type="button"
+                    className={`${P}-dossier-inspect`}
+                    aria-pressed={inspect}
+                    onClick={() => setInspect(!inspect)}
+                  >
+                    <DossierIcon name="inspect" />
+                    {inspect ? "Leave Inspect" : "Inspect"}
+                  </button>
                   {villager ? (
                     <details className={`${P}-dossier-management`} open={manageOpen}>
                       <summary
@@ -357,6 +372,16 @@ export function VillagerDossier({
               </article>
             </div>
             <main className={`${P}-dossier-workspace`}>
+              <label className={`${P}-dossier-section-picker`}>
+                Section
+                <select value={section} onChange={(event) => choose(event.target.value as DossierSection)}>
+                  {sections.map((tab) => (
+                    <option key={tab} value={tab}>
+                      {titles[tab]}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <nav className={`${P}-dossier-tabs`} aria-label="Villager profile sections">
                 <div>
                   {sections.map((tab) => (
@@ -365,16 +390,6 @@ export function VillagerDossier({
                     </button>
                   ))}
                 </div>
-                <button
-                  type="button"
-                  className={`${P}-dossier-inspect`}
-                  aria-pressed={inspect}
-
-                  onClick={() => setInspect(!inspect)}
-                >
-                  <DossierIcon name="inspect" />
-                  {inspect ? "Leave Inspect" : "Inspect"}
-                </button>
               </nav>
               <div
                 ref={content}

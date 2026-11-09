@@ -221,11 +221,11 @@ await withBrowser(browser, async () => {
       .click();
     await expect(page.getByRole("main", { name: "Projects" })).toBeVisible();
     await page.getByRole("main", { name: "Projects" }).getByRole("button", { name: "Close ×", exact: true }).click();
+    await page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();
     await page
-      .getByRole("navigation", { name: "Village navigation" })
-      .getByRole("button", { name: "Map", exact: true })
+      .getByRole("navigation", { name: "Village exploration" })
+      .getByRole("button", { name: "Places", exact: true })
       .click();
-    await page.getByRole("button", { name: "Places", exact: true }).click();
     const openProfile = async () => {
       const navigator = page.getByRole("complementary", { name: "Places navigator" });
       await navigator.locator(`[data-exploration-row="${place.id}"]`).click();
@@ -498,9 +498,7 @@ await withBrowser(browser, async () => {
     holdVenueSave = true;
     await profile.getByRole("button", { name: "Save name", exact: true }).click();
     await expect.poll(() => !!heldVenueSave).toBe(true);
-    await expect(
-      page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "Map", exact: true }),
-    ).toBeDisabled();
+    await expect(page.getByRole("button", { name: /Return to village|← Village/, exact: true })).toBeDisabled();
     await expect(profile.getByRole("button", { name: "Plan a renovation →", exact: true })).toBeDisabled();
     await fulfill(heldVenueSave, { json: snapshot });
     holdVenueSave = false;
@@ -514,11 +512,11 @@ await withBrowser(browser, async () => {
     await expect(page.getByRole("combobox", { name: "Venue", exact: true })).toHaveValue(place.id);
     assert.equal(writes.length, beforeName + 1, "planning does not submit a Project");
     await page.getByRole("button", { name: /^Close/, exact: false }).click();
+    await page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();
     await page
-      .getByRole("navigation", { name: "Village navigation" })
-      .getByRole("button", { name: "Map", exact: true })
+      .getByRole("navigation", { name: "Village exploration" })
+      .getByRole("button", { name: "Places", exact: true })
       .click();
-    await page.getByRole("button", { name: "Places", exact: true }).click();
     await openProfile();
     await tabs.getByRole("button", { name: "Manage", exact: true }).click();
     await profile.getByRole("button", { name: "View housing requests", exact: true }).click();
@@ -580,7 +578,7 @@ await withBrowser(browser, async () => {
     }
     await page
       .getByRole("navigation", { name: "Village navigation" })
-      .getByRole("button", { name: "More", exact: true })
+      .getByRole("button", { name: "Settings", exact: true })
       .click();
     if (width <= 700) await page.getByRole("combobox", { name: "Section" }).selectOption("village");
     else await page.getByRole("button", { name: "World Configuration", exact: true }).click();

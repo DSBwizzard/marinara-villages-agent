@@ -113,11 +113,7 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     };
 
     const map = page.locator(".villages-zone-map");
-    const leave = () =>
-      page
-        .getByRole("navigation", { name: "Village navigation" })
-        .getByRole("button", { name: "Map", exact: true })
-        .click();
+    const leave = () => page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();
     const back = () => page.getByRole("button", { name: "Return to Places" }).click();
     const modify = () => page.getByRole("button", { name: "Modify Zone Connections", exact: true }).click();
     const pair = async (a, b) => {

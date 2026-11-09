@@ -8,7 +8,7 @@ import { createVillagesClientId } from "../../shared/request-id.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import { playerDisplayName } from "../../shared/presentation.js";
 import { venueAssignedCountFor, venueCapacityFor, venueClassesFor } from "../../shared/venue.js";
-import { WorkspaceShell, type WorkspaceDestination } from "../../shared/WorkspaceShell.js";
+import { WorkspaceShell } from "../../shared/WorkspaceShell.js";
 import type { VenueScreenController } from "./screen-contracts.js";
 import { venueDisplayZones, type VenueDisplayZone } from "./venue-view.js";
 import { VenueLayoutEditor } from "./VenueLayoutEditor.js";
@@ -592,17 +592,6 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
     controller.openPlace(next);
     return true;
   };
-  const navigate = async (destination: WorkspaceDestination) => {
-    if (destination === "places" || !(await canLeave())) return;
-    if (destination === "people") {
-      controller.openMenu("villagers");
-      return;
-    }
-    leaveVenue();
-    setZoneNameDirty(false);
-    if (destination === "map") controller.goHome();
-    else controller.openMenu(destination === "projects" ? "projects" : "index");
-  };
   const sidebar = (
     <>
       <h2>Venues</h2>
@@ -643,7 +632,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
     </>
   );
   return (
-    <WorkspaceShell active="places" onNavigate={navigate} sidebar={sidebar} disabled={navigationBusy}>
+    <WorkspaceShell sidebar={sidebar} beforeLeave={canLeave} disabled={navigationBusy}>
       <div className={`${ELEMENT_TAG}-venue-profile`}>
         <header className={`${ELEMENT_TAG}-header ${ELEMENT_TAG}-workspace-venue-header`}>
           {backdrop ? <img src={backdrop.url} alt="" /> : null}

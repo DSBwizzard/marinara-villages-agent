@@ -210,7 +210,7 @@ await withBrowser(browser, async () => {
     await expect(root.getByRole("heading", { name: "General Preferences", level: 1 })).toBeVisible();
     await expect(root.getByRole("button", { name: "Events", exact: true })).toHaveCount(0);
     await expect(root.getByRole("button", { name: "Force Village Update", exact: true })).toHaveCount(0);
-    const nav = page.getByRole("navigation", { name: "More sections" });
+    const nav = page.getByRole("navigation", { name: "Settings sections" });
     const picker = page.getByRole("combobox", { name: "Section" });
     const selectSection = async (key) => {
       if (mobile) await picker.selectOption(key);
@@ -254,10 +254,7 @@ await withBrowser(browser, async () => {
           .click();
         await expect(worldName).toHaveValue("An unsaved world name");
         if (mobile) await expect(picker).toHaveValue("village");
-        await page
-          .getByRole("navigation", { name: "Village navigation" })
-          .getByRole("button", { name: "Map", exact: true })
-          .click();
+        await page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();
         await page
           .getByRole("dialog", { name: "Confirm", exact: true })
           .getByRole("button", { name: "Cancel", exact: true })
@@ -268,11 +265,7 @@ await withBrowser(browser, async () => {
         await expect.poll(() => !!heldWorldSave).toBe(true);
         if (mobile) await expect(picker).toBeDisabled();
         else await expect(nav.getByRole("button", { name: "Visual Settings", exact: true })).toBeDisabled();
-        await expect(
-          page
-            .getByRole("navigation", { name: "Village navigation" })
-            .getByRole("button", { name: "Map", exact: true }),
-        ).toBeDisabled();
+        await expect(page.getByRole("button", { name: /Return to village|← Village/, exact: true })).toBeDisabled();
         await fulfill(heldWorldSave, { json: snapshot });
         holdWorldSave = false;
         await expect(worldName).toBeEnabled();
@@ -373,7 +366,7 @@ await withBrowser(browser, async () => {
     }
     await selectSection("general");
     await expect(root.getByRole("heading", { name: "General Preferences", level: 1 })).toBeVisible();
-    await page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "Map" }).click();
+    await page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();
     await expect(page.getByRole("button", { name: /^Notices \(/ })).toHaveCount(0);
     await page.getByRole("button", { name: "More", exact: true }).click();
     await expect(root.getByRole("heading", { name: "General Preferences", level: 1 })).toBeVisible();

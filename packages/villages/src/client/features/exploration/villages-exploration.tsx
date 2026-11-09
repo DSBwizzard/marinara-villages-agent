@@ -265,9 +265,6 @@ export function LocationNavigator({
           <MapIcon name="close" />
         </button>
       </header>
-      <button type="button" className={P + "-discover-places"} disabled={disabled} onClick={onDiscover}>
-        Discover Places
-      </button>
       <label className={P + "-explore-search"}>
         <span className={P + "-sr-only"}>Search places</span>
         <input
@@ -280,6 +277,9 @@ export function LocationNavigator({
         />
       </label>
       <div ref={listRef} className={P + "-explore-list"}>
+        <button type="button" className={P + "-discover-places"} disabled={disabled} onClick={onDiscover}>
+          Discover Places
+        </button>
         {filtered.map((row) => (
           <div key={row.id} className={P + "-navigator-place"} data-selected={row.selected ? "true" : "false"}>
             <button

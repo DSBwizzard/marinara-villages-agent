@@ -252,10 +252,7 @@ await withBrowser(browser, async () => {
     const stageBox = await editStage.boundingBox();
     await editStage.click({ position: { x: stageBox.width * 0.2, y: stageBox.height * 0.6 } });
     await expect(marker).toHaveValue("");
-    await page
-      .getByRole("navigation", { name: "Village navigation" })
-      .getByRole("button", { name: "Map", exact: true })
-      .click();
+    await page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();
     await page
       .getByRole("dialog", { name: "Confirm", exact: true })
       .getByRole("button", { name: "Cancel", exact: true })
