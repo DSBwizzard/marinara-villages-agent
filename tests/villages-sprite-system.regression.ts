@@ -239,6 +239,20 @@ for (const failure of ["none", "validation-input", "presentation-publish", "inva
     ...writingScene,
     id: "gm-storage-" + failure,
     operation: { input: gmAdmission },
+    lines: [
+      {
+        id: "prior-cue",
+        role: "assistant",
+        kind: "narration",
+        speakerId: "__venue_scene__",
+        name: "Narration",
+        content: "A looks towards the doorway.",
+        at: writingScene.startedAt,
+        zoneId: "exterior",
+        heardBy: ["a"],
+        staging: [{ characterId: "a", expression: "e-side", look: { target: "direction", direction: "left" } }],
+      },
+    ],
   } as typeof scene;
   Object.assign(gmScene, zoneEventScene(gmScene, world.venues[0]));
   const gmPorts = {
@@ -274,6 +288,9 @@ for (const failure of ["none", "validation-input", "presentation-publish", "inva
       paid++;
       const catalog = scenePromptPacket(messages.map((message) => message.content).join("\n")).presentation;
       assert.match(catalog.sprites[0].expressions, /g-e-first/);
+      assert.equal(catalog.state.a.expression, "e-side");
+      assert.deepEqual(catalog.state.a.look, { target: "direction", direction: "left" });
+      assert(!Object.hasOwn(catalog.state.a, "position"), "Sprite placement stays code-owned");
       assert.doesNotMatch(JSON.stringify(catalog), /happy_01|happy_blush|"expressionId"/);
       return {
         finishReason: "stop",

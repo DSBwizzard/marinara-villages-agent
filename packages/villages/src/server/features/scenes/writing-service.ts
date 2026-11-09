@@ -356,6 +356,28 @@ export function createSceneWriting({
       const zoneDevelopments = zones.flatMap(({ id, circumstances, conditions }) =>
         circumstances?.length || conditions?.length ? [{ zoneId: id, circumstances, conditions }] : [],
       );
+      const { instant: _instant, ...calendarView } = calendar;
+      const residentActivity = active.flatMap((person) => {
+        const doing =
+          session.sceneAttendance?.occupants.find((row) => row.characterId === person.characterId)?.doing ||
+          person.doing;
+        const homes = village.venues
+          .filter((venue) => venueResidentIds(venue).includes(person.characterId))
+          .map((venue) => ({ id: venue.id, name: venue.name }));
+        return doing || homes.length
+          ? [{ characterId: person.characterId, ...(doing ? { doing } : {}), ...(homes.length ? { homes } : {}) }]
+          : [];
+      });
+      const villageCircumstances = currentVillageCircumstances(village);
+      const presentationState = Object.fromEntries(
+        Object.entries(gmPresentation.state).flatMap(([id, { expression, look }]) =>
+          expression || (look && look.target !== "player") ? [[id, { expression, look }]] : [],
+        ),
+      );
+      const sprites = Object.entries(gmPresentation.sprites).map(([actorId, sprite]) => ({
+        actorId,
+        expressions: describeSpriteExpressions(sprite, gmPresentation.variants),
+      }));
       blocks = buildVenueSceneBlocks({
         direction: blocksFor([
           SCENE_GM_DIRECTION,
@@ -403,28 +425,36 @@ export function createSceneWriting({
           ]),
           {
             text: JSON.stringify({
-              context: { calendar, actors, memory, social, projects, otherProjects, zoneDevelopments },
-              residentActivity: active.map((person) => ({
-                characterId: person.characterId,
-                doing:
-                  session.sceneAttendance?.occupants.find((row) => row.characterId === person.characterId)?.doing ||
-                  person.doing,
-                homes: village.venues
-                  .filter((venue) => venueResidentIds(venue).includes(person.characterId))
-                  .map((venue) => ({ id: venue.id, name: venue.name })),
-              })),
-              pendingProjectQuestions: session.pendingProjectQuestions,
-              pendingRoomQuestions: session.pendingRoomQuestions,
-              pendingMoves,
-              villageCircumstances: currentVillageCircumstances(village),
-              weather: moment.weather,
-              presentation: {
-                state: gmPresentation.state,
-                sprites: Object.entries(gmPresentation.sprites).map(([actorId, sprite]) => ({
-                  actorId,
-                  expressions: describeSpriteExpressions(sprite, gmPresentation.variants),
+              context: {
+                calendar: calendarView,
+                actors: actors.map(({ name: _name, wishes, ...actor }) => ({
+                  ...actor,
+                  ...(wishes.length ? { wishes } : {}),
                 })),
+                ...(memory.memories.length || memory.administrative.roots.length || memory.administrative.incomplete
+                  ? { memory }
+                  : {}),
+                ...(social.edges.length || social.sharedRecords.length ? { social } : {}),
+                ...(projects ? { projects } : {}),
+                ...(otherProjects.length ? { otherProjects } : {}),
+                ...(zoneDevelopments.length ? { zoneDevelopments } : {}),
               },
+              ...(residentActivity.length ? { residentActivity } : {}),
+              ...(session.pendingProjectQuestions?.length
+                ? { pendingProjectQuestions: session.pendingProjectQuestions }
+                : {}),
+              ...(session.pendingRoomQuestions?.length ? { pendingRoomQuestions: session.pendingRoomQuestions } : {}),
+              ...(pendingMoves.length ? { pendingMoves } : {}),
+              ...(villageCircumstances.length ? { villageCircumstances } : {}),
+              weather: moment.weather,
+              ...(Object.keys(presentationState).length || sprites.length
+                ? {
+                    presentation: {
+                      ...(Object.keys(presentationState).length ? { state: presentationState } : {}),
+                      ...(sprites.length ? { sprites } : {}),
+                    },
+                  }
+                : {}),
             }),
           },
         ],
