@@ -33,7 +33,7 @@ async function main() {
         },
       ],
     });
-    assert.equal(scenePromptPacket(prompt).player.name, "Robin");
+    assert.equal(scenePromptPacket(prompt, "player").player.name, "Robin");
     assert.match(prompt, /The player controls their own speech, decisions, actions, thoughts, feelings, and consent/u);
     assert.match(prompt, /Never write a new player response or imply one/u);
     assert.match(

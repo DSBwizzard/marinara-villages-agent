@@ -6,6 +6,7 @@ import {
   isolateSceneEffects,
 } from "../packages/villages/src/server/domain/rules/scene-writing-contract.js";
 import { sceneWritingHistory } from "../packages/villages/src/server/domain/rules/scene-writing-history.js";
+import { fitVenueWritingMessages } from "../packages/villages/src/server/domain/rules/venue-writing.js";
 import { workFailureSummary } from "../packages/villages/src/server/domain/rules/work-failure.js";
 import { zoneEventReply } from "../packages/villages/src/server/domain/rules/zone-events.js";
 
@@ -210,8 +211,30 @@ for (const supplied of [
   assert.deepEqual(saved, before);
 }
 
-// Retrieval finds old exact evidence without expanding the serialized history allowance.
+// Full history stays appendable; actual model pressure prunes whole low-value rows.
 {
+  let fitCalls = 0;
+  const fit = (history: ReturnType<typeof sceneWritingHistory>) => {
+    fitCalls = 0;
+    return fitVenueWritingMessages(
+      {
+        fitContext(messages, options) {
+          fitCalls++;
+          const size = messages.reduce((sum, row) => sum + row.content.length, 0);
+          return {
+            ...options,
+            messages: size <= 12000 ? messages : [],
+            trimmed: size > 12000,
+            estimatedTokensBefore: Math.ceil(size / 4),
+            estimatedTokensAfter: Math.min(3000, Math.ceil(size / 4)),
+          };
+        },
+      },
+      history.blocks,
+      "Which tea?",
+      4096,
+    );
+  };
   const line = (id: string, content: string, extra: any = {}) => ({
     id,
     content,
@@ -233,7 +256,28 @@ for (const supplied of [
     "Which tea flavour did I dislike?",
     ["rosa"],
   );
-  assert(selected.blocks.map((block) => block.text).join("\n\n").length <= 12000);
+  assert(selected.blocks.map((block) => block.text).join("\n\n").length > 12000);
+  assert.equal(selected.evidence.length, lines.length, "An unrelated byte cap cannot evict fitting history");
+  const appended = sceneWritingHistory(
+    { lines: [...lines, line("new", "A new reply.")], submissions: [] } as any,
+    [...lines, line("new", "A new reply.")] as any,
+    "A different topic",
+    ["rosa"],
+  );
+  assert.deepEqual(
+    appended.blocks.slice(0, selected.blocks.length).map((block) => block.text),
+    selected.blocks.map((block) => block.text),
+  );
+  const fitted = fit(selected);
+  assert(fitted.messages.reduce((sum, row) => sum + row.content.length, 0) <= 12000);
+  assert(fitted.trimmed);
+  assert(fitCalls < 20, "Long histories fit in bounded batches rather than one pass per row");
+  assert(fitted.evidenceIds.includes("tea"));
+  for (const row of lines.slice(-6))
+    assert(fitted.evidenceIds.includes(row.id), "Latest exchange context is mandatory");
+  assert(fitted.evidenceIds.length < selected.evidence.length);
+  for (const row of selected.evidence.filter((row) => !fitted.evidenceIds.includes(row.id)))
+    assert(!fitted.messages.some((message) => message.content.includes('"id":' + JSON.stringify(row.id))));
   assert(selected.evidence.some((row) => row.id === "tea"));
   assert(selected.blocks.some((block) => block.text.includes(preference.content)));
   assert.equal(new Set(selected.evidence.map((row) => row.id)).size, selected.evidence.length);
@@ -263,7 +307,7 @@ for (const supplied of [
     focused.evidence.some((row) => row.id === "tea"),
     "current question outranks unrelated recent topic flood",
   );
-  assert(focused.blocks.map((block) => block.text).join("\n\n").length <= 12000);
+  assert(fit(focused).evidenceIds.includes("tea"));
   const contextual = line("older-detail", "The larch workshop uses the scarlet dovetail pattern.");
   const contextScene = {
     lines: [contextual, ...filler, line("followup", "The scarlet dovetail pattern.")],
@@ -271,7 +315,7 @@ for (const supplied of [
   };
   const followup = sceneWritingHistory(contextScene as any, contextScene.lines as any, "?", ["rosa"]);
   assert(
-    followup.evidence.some((row) => row.id === "older-detail"),
+    fit(followup).evidenceIds.includes("older-detail"),
     "context still retrieves older evidence for a deictic follow-up",
   );
   const huge = line("oversized", "cinnamon ".repeat(2000));
@@ -281,8 +325,9 @@ for (const supplied of [
     "cinnamon",
     ["rosa"],
   );
-  assert(skip.evidence.some((row) => row.id === "tea"));
-  assert(!skip.evidence.some((row) => row.id === "oversized"));
+  const skipFit = fit(skip);
+  assert(skipFit.evidenceIds.includes("tea"));
+  assert(!skipFit.evidenceIds.includes("oversized"));
   const privateLine = line("secret", "Secret mint letter", { heardBy: ["other"], contactHidden: true });
   const sound = line("sound", "Unseen private cinnamon action", {
     heardBy: ["other"],

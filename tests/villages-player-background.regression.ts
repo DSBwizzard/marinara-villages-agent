@@ -37,7 +37,7 @@ const prompt = await currentScenePrompt(
   "chat",
   "I have abdicated.",
 );
-assert.equal(scenePromptPacket(prompt).player.background, context);
+assert.equal(scenePromptPacket(prompt, "player").startingBackground, context);
 console.log(
   "Player background: bounded prose, current-state precedence and independent gameplay responsibilities passed.",
 );

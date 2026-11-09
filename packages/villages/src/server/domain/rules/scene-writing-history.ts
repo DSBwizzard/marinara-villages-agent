@@ -55,7 +55,7 @@ export function sceneHistoryRow(line: VenueLine, audience: readonly string[], el
   };
 }
 
-/** Rank the full eligible active Scene before allocating recent/relevant history. */
+/** Keep witnessed history appendable; rank optional rows only for actual context fitting. */
 export function sceneWritingHistory(
   scene: VenueScene,
   eligible: readonly VenueLine[],
@@ -68,7 +68,7 @@ export function sceneWritingHistory(
     if (unique.has(line.id) || line.contactReport) return [];
     unique.add(line.id);
     const row = sceneHistoryRow(line, audience, allowed.has(line.id));
-    return row ? [{ line, index, row, terms: tokens(row.text), cost: JSON.stringify(row).length + 2 }] : [];
+    return row ? [{ line, index, row, terms: tokens(row.text) }] : [];
   });
   const currentExchanges = (scene.submissions ?? []).slice(-2);
   const latestIds = new Set(currentExchanges.flatMap((turn) => turn.replyLineIds ?? []));
@@ -101,8 +101,6 @@ export function sceneWritingHistory(
     }
     return result;
   };
-  // Recent context is selected first, while ranking still considers the full eligible corpus.
-  const recent = rows.toReversed();
   const ranked = rows
     // The short current question controls relevance; long recent exchanges
     // disambiguate equal matches and supply context when the question has none.
@@ -116,45 +114,28 @@ export function sceneWritingHistory(
         a.row.line.id.localeCompare(b.row.line.id),
     )
     .map((item) => item.row);
-  const selected = new Map<string, (typeof rows)[number]>();
-  const overhead = HISTORY_PREFIX.length + HISTORY_SUFFIX.length + 2;
-  const capacity = 12000 - overhead;
-  let used = 0;
   const exchangeRows = rows.filter((row) => latestIds.has(row.line.id));
   const required = new Set((exchangeRows.length ? exchangeRows : rows.slice(-6)).map((row) => row.line.id));
-  for (const row of rows) {
-    if (!required.has(row.line.id)) continue;
-    selected.set(row.line.id, row);
-    used += row.cost;
-  }
-  const take = (candidates: typeof rows, allowance: number) => {
-    let spent = 0;
-    for (const row of candidates) {
-      if (selected.has(row.line.id) || spent + row.cost > allowance || used + row.cost > capacity) continue;
-      selected.set(row.line.id, row);
-      spent += row.cost;
-      used += row.cost;
-    }
-    return spent;
-  };
-  take(recent, Math.max(0, Math.min(8000, capacity) - used));
-  take(ranked, Math.min(4000, capacity - used));
-  take(ranked, capacity - used);
-  take(recent, capacity - used);
-  const ordered = [...selected.values()].sort((a, b) => a.index - b.index);
+  const priority = new Map(ranked.map((row, index) => [row.line.id, rows.length - index]));
   return {
-    evidence: ordered.filter((item) => item.row.citable).map((item) => item.line),
+    evidence: rows.filter((item) => item.row.citable).map((item) => item.line),
     fingerprints: Object.fromEntries(
-      ordered.map(({ line }) => [line.id, createHash("sha256").update(JSON.stringify(line)).digest("hex")]),
+      rows.map(({ line }) => [line.id, createHash("sha256").update(JSON.stringify(line)).digest("hex")]),
     ),
-    partial: ordered.length < rows.length,
-    blocks: ordered.length
+    partial: rows.length < scene.lines.length,
+    blocks: rows.length
       ? [
           { text: HISTORY_PREFIX + HISTORY_SUFFIX },
-          ...ordered.map((item) => ({
+          ...rows.map((item) => ({
             text: JSON.stringify(item.row),
             ...(item.row.citable ? { evidenceId: item.line.id } : {}),
-            ...(required.has(item.line.id) ? {} : { optional: "history" as const }),
+            ...(required.has(item.line.id)
+              ? {}
+              : {
+                  optional: "history" as const,
+                  pruningPriority:
+                    (priority.get(item.line.id) ?? item.index / rows.length) / JSON.stringify(item.row).length,
+                }),
           })),
         ]
       : [],
