@@ -10,7 +10,7 @@ export const DESK_STYLES = `
 .${P}-desk-nav button:last-child{border-right:0}
 .${P}-desk-nav button[aria-current="page"]{color:#52663b}
 .${P}-desk-nav button[aria-current="page"]::after{content:"";position:absolute;bottom:0;left:10%;right:10%;height:3px;background:#65764a;border-radius:2px}
-.${P}-desk-nav svg{width:24px;height:24px;flex:none;stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.${P}-desk-nav svg{width:24px;height:24px;flex:none;color:inherit;animation:none;stroke:currentColor;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-linejoin:round}
 .${P}-desk-nav button:disabled,.${P}-desk-return:disabled{cursor:default;opacity:.65}
 .${P}-desk-return{min-height:44px;flex:none;border:1px solid #889568;border-radius:5px;background:#5e7047;color:#fff9ec;padding:10px 16px;font:500 15px/1.3 system-ui,sans-serif;cursor:pointer;box-shadow:0 3px 7px #25180c60}
 .${P}-desk-return-mobile{display:none}
@@ -40,6 +40,7 @@ export const DESK_STYLES = `
 .${P}-workspace-content .${P}-menu-content :is(.${P}-panel,.${P}-overlay),.${P}-workspace-content .${P}-menu-content.${P}-panel{background:transparent;color:#362a20;border-color:#c8b895;border-radius:0;box-shadow:none}
 .${P}-workspace-content .${P}-menu-content{font-size:16px;line-height:1.5}
 .${P}-workspace-content .${P}-menu-content :is(.${P}-label,.${P}-hint,.${P}-empty){font-size:15px}
+.${P}-workspace-content :is(.${P}-label,.${P}-hint,.${P}-empty){color:#6b5a49}
 .${P}-workspace-content :is(input,select,textarea){max-width:100%;min-height:44px;background:#fff7e7;color:#362a20;border:1px solid #b7a787;border-radius:3px;padding:8px;font:inherit;box-sizing:border-box}
 .${P}-workspace-content input[type="checkbox"]{min-height:0;accent-color:#5e7047}
 .${P}-workspace-content :is(.${P}-button,button:not([class])){min-height:44px;padding:8px 12px;background:#f4e8ce;color:#362a20;border:1px solid #b7a787;border-radius:3px;font:inherit;cursor:pointer}
@@ -65,6 +66,7 @@ export const DESK_STYLES = `
 .${P}-desk-workspace[data-desk="places"] .${P}-home{--explore-background:#f5ead1;--explore-panel:#f5ead1;--explore-text:#362a20;--explore-muted:#6b5a49;--explore-border:#c8b895;--explore-surface:#fff7e7;--explore-selected:#536a3d;font-family:system-ui,sans-serif}
 .${P}-desk-workspace[data-desk="places"] .${P}-location-navigator{background:linear-gradient(90deg,#f8eed8,#eee1c3);color:#362a20}
 .${P}-desk-workspace[data-desk="places"] .${P}-location-navigator h2{font:400 27px/1.3 Georgia,serif}
+.${P}-desk-workspace[data-desk="places"] .${P}-explore-search input{background:#fff7e7;color:#362a20;border-color:#b7a787}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-mailbox-overlay{position:relative;inset:auto;height:100%;padding:0;background:transparent;z-index:auto}
 .${P}-desk-workspace[data-desk="mailbox"]>.${P}-desk-stage{padding-top:8px}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-mailbox-dialog{width:100%;height:100%;max-height:100%;border:0;background:transparent;box-shadow:none}
@@ -73,6 +75,7 @@ export const DESK_STYLES = `
 .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-layout{padding:0 12px 12px}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-row[aria-pressed="true"]{background:#d6dfc1;border-color:#9fae82}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-mailbox-dialog :is(button,select,input,textarea){font-family:system-ui,sans-serif}
+.${P}-desk-workspace[data-desk="mailbox"] .villages-letter-error{color:#6d261b}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-pages{container-type:size}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-signature .${P}-signature-image{max-height:min(7rem,30cqh)}
 @media(max-width:700px){
