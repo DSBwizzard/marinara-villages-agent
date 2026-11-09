@@ -151,7 +151,7 @@ export interface SceneWritingPorts {
 }
 export const VENUE_REPLY_MAX_TOKENS = 4096;
 const VENUE_REPLY_TEMPERATURE = 0.85;
-const SCENE_WRITING_VERSION = 14 as const;
+const SCENE_WRITING_VERSION = 15 as const;
 function requireCurrentSceneRequest(captured?: { writingVersion?: number }) {
   if (captured && captured.writingVersion !== SCENE_WRITING_VERSION)
     throw conflict(
@@ -649,7 +649,7 @@ export function createSceneWriting({
         replyReminder: [
           ...(Object.keys(gmPresentation.sprites).length ? [{ text: SCENE_GM_PRESENTATION }] : []),
           {
-            text: "Classify the exact player input, write the exchange, and include data for every persistent outcome. Local MEMORY follows its source paragraph; other effects use CHANGES.",
+            text: "Classify the exact player input, then use nonempty paragraphs: [narration] She pauses. [person-id] Tea? [aside] No sugar. No empty speaker labels or provider tags. Local MEMORY follows its source paragraph; other persistent effects use CHANGES.",
           },
         ],
       });

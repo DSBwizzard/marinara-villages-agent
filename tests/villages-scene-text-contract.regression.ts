@@ -99,6 +99,44 @@ const codeExample: any = parse('INPUT speech\n[mara] Example:\n```json\n{"memory
 assert.equal(codeExample.memoryChanges, undefined);
 assert(codeExample.segments[0].text.includes('{"memoryChanges":[]}'));
 const inline: any = parse("INPUT speech\nA pause. [mara] Hello. [narration] She smiles. [bryn aside] Tea?");
+for (const delivery of ["", " to:bryn", " whisper:player", " call:bryn"]) {
+  const bubbles: any = parse(`INPUT speech\n[mara${delivery}] Hello. [aside] Tea?\n[aside] No sugar.`);
+  assert.equal(bubbles.segments.length, 3);
+  for (const bubble of bubbles.segments.slice(1)) {
+    assert.deepEqual(
+      { ...bubble, text: "Hello.", presentation: undefined },
+      { ...bubbles.segments[0], presentation: undefined },
+      "A bubble inherits the exact speaker, delivery and recipient without widening hearing",
+    );
+    assert.equal(bubble.presentation, "aside");
+  }
+}
+for (const body of [
+  "[aside] No speaker.",
+  "[narration] She pauses. [aside] No speaker.",
+  "[mara] [aside] Empty source.",
+  "[mara] Hello. [aside] [bryn] Empty bubble.",
+  "[mara] Hello. [Aside] Wrong control.",
+  "[mara] Hello. [aside whisper:player] Ambiguous control.",
+  "[mara] Hello. </｜｜DSML｜｜ parameter>",
+  "[mara] Hello. <|DSML|parameter>",
+  "[mara] [narration] Empty speech before action.",
+])
+  assert.throws(() => parse("INPUT speech\n" + body), /aside|paragraph|controls/);
+const memoryBubbles: any = parse(
+  'INPUT speech\n[mara whisper:player] Tea.\nMEMORY {"text":"Tea.","learners":["player"]}\n[aside] No sugar.\nMEMORY {"text":"No sugar.","learners":["player"]}\n[aside] None.',
+);
+assert.deepEqual(
+  memoryBubbles.memoryChanges.map((m: any) => m.support[0].lineId),
+  [0, 1],
+);
+assert.equal(memoryBubbles.segments.length, 3);
+for (const bubble of memoryBubbles.segments.slice(1)) {
+  assert.equal(bubble.speakerId, "mara");
+  assert.equal(bubble.delivery, "whisper");
+  assert.equal(bubble.targetId, "player");
+  assert.equal(bubble.presentation, "aside");
+}
 assert.deepEqual(parse("INPUT speech\nA pause. [ mara ] Hello. [ narration ] She smiles. [ bryn aside ] Tea?"), inline);
 assert.deepEqual(
   inline.segments.map((s: any) => [s.kind, s.speakerId, s.presentation, s.text]),

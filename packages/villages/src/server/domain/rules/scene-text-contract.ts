@@ -22,13 +22,14 @@ Paragraph headers (supplied IDs only):
 [narration] description or action
 [person-id] ordinary spoken words
 [person-id aside] a short bubble interjection; public unless explicitly whispered
+[aside] another bubble from the preceding dialogue's speaker, with the same delivery and recipient
 [person-id whisper:recipient-id] private local speech
 [person-id call] a call to one directly connected Zone
 [person-id call:recipient-id] a call to that adjacent person
 [person-id to:recipient-id] ordinary public speech addressed to that person
 Actions go in narration, words in dialogue. Prose needs no JSON escaping.
 Aside bubbles are presentation, never a private audience. Keep useful asides brief.
-Unlabeled opening prose is narration. Every supplied public header starts a new paragraph, even inline. Private headers must begin a new line. Never write closing tags. Continued text belongs to that paragraph; use [narration] to switch back from speech. Max2000 characters per paragraph.
+Unlabeled opening prose is narration. Every recognized header starts a new nonempty paragraph, even inline. [aside] requires preceding nonempty dialogue, never narration. Private headers must begin a new line. Never write closing or provider tags. Continued text belongs to that paragraph; use [narration] to switch back from speech. Max2000 characters per paragraph.
 
 Every persistent outcome needs effect data, including spoken administration; prose alone changes no saved facts. Local Memory uses the MEMORY control below. End with CHANGES and one JSON object for all other effects, only when needed.
 Example: CHANGES {"action":{"happened":true,"segment":0,"actorIds":["player"],"consent":[],"append":"The cup rests on the shelf."}}
@@ -179,7 +180,7 @@ export function parseSceneTextReply(
     let start = 0;
     for (const match of line.matchAll(inlineHeader)) {
       if (!match.index || match[2]?.startsWith("whisper")) continue;
-      if (!speakers.has(match[1]!)) {
+      if (!speakers.has(match[1]!) && !(match[1] === "aside" && !match[2])) {
         if (match[1]!.startsWith("new:") || match[2]) throw invalid("paragraph headers");
         continue;
       }
@@ -212,6 +213,8 @@ export function parseSceneTextReply(
     )
       throw invalid("Memory source markers");
     if (!prose) throw invalid("empty paragraphs");
+    if (/(?<!\\)\[\s*\/?\s*aside\b/iu.test(prose) || /<\/?[|｜]+DSML\b/iu.test(prose))
+      throw invalid("paragraph controls");
     if (/\bMEMORY:?\s*\{/iu.test(prose)) throw invalid("Memory controls");
     if (/\bCHANGES:?\s*(?:[\[{]|(?:"(?:[^"\\]|\\.)*"|[A-Za-z_$][\w$]*)\s*:)/u.test(prose))
       throw invalid("change fields");
@@ -266,23 +269,31 @@ export function parseSceneTextReply(
       current?.lines.push(line);
       continue;
     }
+    const [, speaker, delivery, prose] = match;
+    const asideFields = speaker === "aside" ? (current?.fields ?? segments.at(-1)) : undefined;
+    if (
+      speaker === "aside" &&
+      (delivery || asideFields?.kind !== "dialogue" || (current && !current.lines.some((text) => text.trim())))
+    )
+      throw invalid("aside source");
     flush();
     opening = false;
-    const [, speaker, delivery, prose] = match;
     if (speaker === "narration" && delivery) throw invalid("narration delivery");
     current = {
       fields:
-        speaker === "narration"
-          ? { kind: "narration" }
-          : {
-              kind: "dialogue",
-              speakerId: speaker,
-              ...(delivery === "aside" ? { presentation: "aside" } : {}),
-              ...(delivery === "call" || delivery?.startsWith("call:") ? { delivery: "shout" } : {}),
-              ...(delivery?.startsWith("call:") ? { targetId: delivery.slice(5) } : {}),
-              ...(delivery?.startsWith("to:") ? { targetId: delivery.slice(3) } : {}),
-              ...(delivery?.startsWith("whisper:") ? { delivery: "whisper", targetId: delivery.slice(8) } : {}),
-            },
+        speaker === "aside"
+          ? { ...asideFields, presentation: "aside" }
+          : speaker === "narration"
+            ? { kind: "narration" }
+            : {
+                kind: "dialogue",
+                speakerId: speaker,
+                ...(delivery === "aside" ? { presentation: "aside" } : {}),
+                ...(delivery === "call" || delivery?.startsWith("call:") ? { delivery: "shout" } : {}),
+                ...(delivery?.startsWith("call:") ? { targetId: delivery.slice(5) } : {}),
+                ...(delivery?.startsWith("to:") ? { targetId: delivery.slice(3) } : {}),
+                ...(delivery?.startsWith("whisper:") ? { delivery: "whisper", targetId: delivery.slice(8) } : {}),
+              },
       lines: [prose ?? ""],
     };
   }

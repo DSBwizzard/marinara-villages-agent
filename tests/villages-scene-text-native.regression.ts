@@ -27,7 +27,7 @@ try {
   const response = await host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
   assert.equal(response.statusCode, 200, response.body);
   const turn = host.scene().submissions.at(-1)!;
-  assert.equal(turn.sceneContractVersion, 14);
+  assert.equal(turn.sceneContractVersion, 15);
   const aside = host.scene().lines.find((line) => line.content === "The blue cup is yours.")!;
   assert.equal(aside.delivery, "whisper");
   assert.equal(aside.targetId, "player");
@@ -46,12 +46,13 @@ for (const learner of ["player", "ordinary", "unheard-person", "duplicate"]) {
     calls++;
     return {
       content:
-        'INPUT [{"kind":"speech","text":"Hello."},{"kind":"action","text":"*I listen.*"},{"kind":"speech","text":"Tell me about yourself."}]\n[mara whisper:player] [remember]I prefer tart apples.[/remember] They wake me up.\nMEMORY ' +
+        'INPUT [{"kind":"speech","text":"Hello."},{"kind":"action","text":"*I listen.*"},{"kind":"speech","text":"Tell me about yourself."}]\n[mara whisper:player] One thought. [aside] Another. [aside] [remember]I prefer tart apples.[/remember] They wake me up.\nMEMORY ' +
         JSON.stringify({
           text: "Mara prefers tart apples.",
           learners: learner === "duplicate" ? ["player", "player"] : [learner === "ordinary" ? "player" : learner],
           disclosure: learner === "player" ? { kind: "preference", about: "self" } : undefined,
-        }),
+        }) +
+        "\n[aside] No sugar.",
       finishReason: "stop",
       usage: { inputTokens: 10, outputTokens: 10 },
     };
@@ -77,8 +78,8 @@ for (const learner of ["player", "ordinary", "unheard-person", "duplicate"]) {
       else assert.deepEqual(memory.subjects, [], "An ordinary Memory needs no inferred subject");
       assert.equal(
         memory.knowers.player.support[0].lineId,
-        host.scene().submissions.at(-1)!.replyLineIds![2],
-        "Two inserted player utterances shift the source exactly once",
+        host.scene().submissions.at(-1)!.replyLineIds![4],
+        "Two asides and two inserted player utterances bind the source exactly once",
       );
       assert.equal(memory.knowers.player.support[0].excerpt, "I prefer tart apples.");
     } else assert.equal(memory, undefined, "A nominated non-witness learns nothing");
@@ -281,7 +282,7 @@ for (const fields of [{ visitorHours: null }, { visitorHours: [] }, {}]) {
           null,
           2,
         ) +
-        "\n[narration]Mara joins you at the quiet end of the table.\n[mara whisper:player]I'll leave it here.\n[bryn aside]I'll put the kettle on.\nCHANGES memoryChanges:" +
+        "\n[narration]Mara joins you at the quiet end of the table.\n[mara whisper:player]I'll leave it here. [aside] Between us.\n[bryn aside]I'll put the kettle on. [aside] Strong tea.\nCHANGES memoryChanges:" +
         JSON.stringify([
           {
             text: "The player privately asked Mara to keep the blue cup here.",
@@ -320,10 +321,21 @@ for (const fields of [{ visitorHours: null }, { visitorHours: [] }, {}]) {
     const privateReply = saved.lines.find((line) => line.content === "I'll leave it here.")!;
     assert.equal(privateReply.delivery, "whisper");
     assert(!privateReply.heardBy.includes("bryn"));
+    const privateBubble = saved.lines.find((line) => line.content === "Between us.")!;
+    assert.equal(privateBubble.presentation, "aside");
+    assert.equal(privateBubble.speakerId, privateReply.speakerId);
+    assert.equal(privateBubble.delivery, "whisper");
+    assert.equal(privateBubble.targetId, "player");
+    assert(!privateBubble.heardBy.includes("bryn"), "A shorthand bubble cannot widen a private audience");
     const publicBubble = saved.lines.find((line) => line.content === "I'll put the kettle on.")!;
     assert.equal(publicBubble.presentation, "aside");
     assert.equal(publicBubble.delivery, "ordinary");
     assert(publicBubble.heardBy.includes("mara"), "A side bubble alone does not restrict hearing");
+    const publicContinuation = saved.lines.find((line) => line.content === "Strong tea.")!;
+    assert.equal(publicContinuation.presentation, "aside");
+    assert.equal(publicContinuation.speakerId, publicBubble.speakerId);
+    assert.equal(publicContinuation.delivery, "ordinary");
+    assert(publicContinuation.heardBy.includes("mara"));
     const world = fixtureVillageState(host.records.get("villages-village").data, host.records);
     const learned = world.memories.records.find((r) => r.text.includes("blue cup"))!;
     assert(learned?.knowers.mara, "The intended recipient can retain the whispered fact");

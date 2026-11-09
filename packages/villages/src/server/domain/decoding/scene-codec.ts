@@ -352,7 +352,8 @@ export function coerceSession(value: unknown): VenueScene {
               row.sceneContractVersion === 11 ||
               row.sceneContractVersion === 12 ||
               row.sceneContractVersion === 13 ||
-              row.sceneContractVersion === 14
+              row.sceneContractVersion === 14 ||
+              row.sceneContractVersion === 15
                 ? { sceneContractVersion: row.sceneContractVersion }
                 : {}),
               ...(row.lore !== undefined ? { lore: readLoreUse(row.lore) } : {}),

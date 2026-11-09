@@ -219,7 +219,7 @@ function fixture(label: string, checkpointed = false, sceneNarrative?: SceneWrit
     },
   };
 }
-for (const version of [undefined, 4, 7, 8, 9, 10, 11, 12, 13]) {
+for (const version of [undefined, 4, 7, 8, 9, 10, 11, 12, 13, 14]) {
   let narrativeCalls = 0;
   const retired = fixture("retired-" + version, true, {
     offer: async () => {
