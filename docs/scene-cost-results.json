@@ -7,15 +7,15 @@
   "model": "deepseek-flash",
   "providerEndpoint": "https://api.deepseek.com",
   "pricingSource": "https://api-docs.deepseek.com/quick_start/pricing/",
-  "pricingCheckedAt": "2026-11-09T10:11:09.371Z",
+  "pricingCheckedAt": "2026-11-09T15:01:31.088Z",
   "limitations": [
     "One synthetic resident and one continuous quiet world, with matching player inputs but naturally different generated histories.",
-    "This records all 36 reported requests across implementation iterations. It is not a randomized before/after experiment.",
+    "This records all 49 reported requests across implementation iterations. It is not a randomized before/after experiment.",
     "Rates change from peak to off-peak at 10:00 UTC; same-rate mode comparisons and token counts must be used for improvement claims.",
     "Costs are usage multiplied by published rates, not invoice amounts. Cache writes and provider-internal retries are unreported.",
     "Reasoning tokens are a subset of output and are charged once. Saved model and reasoning parameters were preserved.",
     "The same complete stored Mara card is used in both modes. The native Game Mode prompt representation differs from Villages; scenario/example text did not appear verbatim in the inspected Game prompt.",
-    "The final first turn rebuilds a changed history prefix against an already warm Game cache. It is retained as a transition cost, not a symmetric cold-start benchmark."
+    "Changed-prefix and cold-start costs remain in the dataset. One conclusive contract rejection required an explicit replacement; two later Memory-source failures preserved prose and were continued without those unsupported updates. Their purchases remain billed failures."
   ],
   "stages": [
     {
@@ -44,6 +44,7 @@
           "ratedCostUsd": 0.0016728,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": null,
           "processing": null,
           "replayAdditionalRequests": null
@@ -69,6 +70,7 @@
           "ratedCostUsd": 0.0014133,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": 0,
           "processing": {
             "pending": 0,
@@ -105,6 +107,7 @@
           "ratedCostUsd": 0.000922788,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": 0,
           "processing": {
             "pending": 0,
@@ -134,6 +137,7 @@
           "ratedCostUsd": 0.000665904,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": null,
           "processing": null,
           "replayAdditionalRequests": null
@@ -159,6 +163,7 @@
           "ratedCostUsd": 0.00094926,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": 0,
           "processing": {
             "pending": 0,
@@ -188,6 +193,7 @@
           "ratedCostUsd": 0.00054594,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": null,
           "processing": null,
           "replayAdditionalRequests": null
@@ -213,6 +219,7 @@
           "ratedCostUsd": 0.001130364,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": 0,
           "processing": {
             "pending": 0,
@@ -242,6 +249,7 @@
           "ratedCostUsd": 0.000730944,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": null,
           "processing": null,
           "replayAdditionalRequests": null
@@ -274,6 +282,7 @@
           "ratedCostUsd": 0.0020634,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": 0,
           "processing": {
             "pending": 0,
@@ -303,6 +312,7 @@
           "ratedCostUsd": 0.0007666799999999999,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": null,
           "processing": null,
           "replayAdditionalRequests": null
@@ -328,6 +338,7 @@
           "ratedCostUsd": 0.000932748,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": 0,
           "processing": {
             "pending": 0,
@@ -357,6 +368,7 @@
           "ratedCostUsd": 0.0012083159999999999,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": null,
           "processing": null,
           "replayAdditionalRequests": null
@@ -382,6 +394,7 @@
           "ratedCostUsd": 0.001358088,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": 0,
           "processing": {
             "pending": 0,
@@ -411,6 +424,7 @@
           "ratedCostUsd": 0.00081852,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": null,
           "processing": null,
           "replayAdditionalRequests": null
@@ -436,6 +450,7 @@
           "ratedCostUsd": 0.003559728,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": 0,
           "processing": {
             "pending": 0,
@@ -465,6 +480,7 @@
           "ratedCostUsd": 0.0009307559999999999,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": null,
           "processing": null,
           "replayAdditionalRequests": null
@@ -497,6 +513,7 @@
           "ratedCostUsd": 0.00165156,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": 0,
           "processing": {
             "pending": 0,
@@ -526,6 +543,7 @@
           "ratedCostUsd": 0.00080676,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": null,
           "processing": null,
           "replayAdditionalRequests": null
@@ -551,6 +569,7 @@
           "ratedCostUsd": 0.001420776,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": 0,
           "processing": {
             "pending": 0,
@@ -580,6 +599,7 @@
           "ratedCostUsd": 0.000678564,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": null,
           "processing": null,
           "replayAdditionalRequests": null
@@ -605,6 +625,7 @@
           "ratedCostUsd": 0.001202952,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": 0,
           "processing": {
             "pending": 0,
@@ -634,6 +655,7 @@
           "ratedCostUsd": 0.000715068,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": null,
           "processing": null,
           "replayAdditionalRequests": null
@@ -659,6 +681,7 @@
           "ratedCostUsd": 0.0017421599999999998,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": 0,
           "processing": {
             "pending": 0,
@@ -688,6 +711,7 @@
           "ratedCostUsd": 0.0008825039999999999,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": null,
           "processing": null,
           "replayAdditionalRequests": null
@@ -713,6 +737,7 @@
           "ratedCostUsd": 0.001612668,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": 0,
           "processing": {
             "pending": 0,
@@ -742,6 +767,7 @@
           "ratedCostUsd": 0.00078414,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": null,
           "processing": null,
           "replayAdditionalRequests": null
@@ -774,6 +800,7 @@
           "ratedCostUsd": 0.001610664,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": 0,
           "processing": {
             "pending": 0,
@@ -803,6 +830,7 @@
           "ratedCostUsd": 0.000377772,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": null,
           "processing": null,
           "replayAdditionalRequests": null
@@ -828,6 +856,7 @@
           "ratedCostUsd": 0.00078927,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": 0,
           "processing": {
             "pending": 0,
@@ -857,6 +886,7 @@
           "ratedCostUsd": 0.0005337899999999999,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": null,
           "processing": null,
           "replayAdditionalRequests": null
@@ -882,6 +912,7 @@
           "ratedCostUsd": 0.000580758,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": 0,
           "processing": {
             "pending": 0,
@@ -911,6 +942,7 @@
           "ratedCostUsd": 0.000470226,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": null,
           "processing": null,
           "replayAdditionalRequests": null
@@ -936,6 +968,7 @@
           "ratedCostUsd": 0.00044403,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": 0,
           "processing": {
             "pending": 0,
@@ -965,6 +998,7 @@
           "ratedCostUsd": 0.000365844,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": null,
           "processing": null,
           "replayAdditionalRequests": null
@@ -997,6 +1031,7 @@
           "ratedCostUsd": 0.00066465,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": 0,
           "processing": {
             "pending": 0,
@@ -1026,11 +1061,421 @@
           "ratedCostUsd": 0.00044853,
           "actualInvoiceCostUsd": null,
           "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        }
+      ]
+    },
+    {
+      "id": "live-sparse",
+      "sourceRevision": "b78864980a5cf33fe0fb36a666efb9e40aced499",
+      "archiveHash": "615711767212edc28435c148461ef0b1c938308850b223d7a2efbad62c249501",
+      "turns": [
+        {
+          "mode": "villages",
+          "caseId": "pacing-warmup",
+          "message": "The kettle is probably the thing I'd miss most. The handle has worn smooth where I hold it.",
+          "startedAt": "2026-11-09T13:48:48.844Z",
+          "status": "failed",
+          "requests": 1,
+          "inputTokens": 14593,
+          "cachedInputTokens": 0,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 1577,
+          "reasoningTokens": 1050,
+          "latencyMs": 13752,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.0031351499999999997,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 1,
+          "comparisonFailure": "scene-response-contract",
+          "replacements": 0,
+          "processing": null,
+          "replayAdditionalRequests": null
+        }
+      ]
+    },
+    {
+      "id": "live-sparse-retry",
+      "sourceRevision": "c8329cc6d726c1535cce924580c80c8260a97a60",
+      "archiveHash": "32752c255f95066cc170fcb1139c6e949ce0d9aa82c9ca872f0baf958e3cd126",
+      "turns": [
+        {
+          "mode": "villages",
+          "caseId": "pacing-warmup",
+          "message": "The kettle is probably the thing I'd miss most. The handle has worn smooth where I hold it.",
+          "startedAt": "2026-11-09T14:10:59.659Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 14593,
+          "cachedInputTokens": 14459,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 1256,
+          "reasoningTokens": 563,
+          "latencyMs": 11479,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.000817077,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": 1,
+          "retryOf": {
+            "stage": "live-sparse",
+            "caseId": "pacing-warmup"
+          },
+          "frozenPromptFromEarlierPackage": true,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "replayAdditionalRequests": 0
+        },
+        {
+          "mode": "game",
+          "caseId": "pacing-warmup",
+          "message": "The kettle is probably the thing I'd miss most. The handle has worn smooth where I hold it.",
+          "startedAt": "2026-11-09T14:11:11.142Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 9915,
+          "cachedInputTokens": 9216,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 375,
+          "reasoningTokens": 36,
+          "latencyMs": 4670,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.000357498,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "ordinary-tool",
+          "message": "Do you ever keep a tool because it feels right, even when a newer one would do the job?",
+          "startedAt": "2026-11-09T14:11:15.813Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 15648,
+          "cachedInputTokens": 512,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 696,
+          "reasoningTokens": 152,
+          "latencyMs": 8165,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.002689536,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "replayAdditionalRequests": 0
+        },
+        {
+          "mode": "game",
+          "caseId": "ordinary-tool",
+          "message": "Do you ever keep a tool because it feels right, even when a newer one would do the job?",
+          "startedAt": "2026-11-09T14:11:23.980Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 10278,
+          "cachedInputTokens": 9600,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 461,
+          "reasoningTokens": 93,
+          "latencyMs": 5316,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.0004071,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "ordinary-handle",
+          "message": "What makes a familiar handle feel different from a new one?",
+          "startedAt": "2026-11-09T14:11:29.298Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 16459,
+          "cachedInputTokens": 14976,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 543,
+          "reasoningTokens": 55,
+          "latencyMs": 6341,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.000593178,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "replayAdditionalRequests": 0
+        },
+        {
+          "mode": "game",
+          "caseId": "ordinary-handle",
+          "message": "What makes a familiar handle feel different from a new one?",
+          "startedAt": "2026-11-09T14:11:35.641Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 10661,
+          "cachedInputTokens": 9856,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 370,
+          "reasoningTokens": 16,
+          "latencyMs": 4207,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.000372318,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "ordinary-lesson",
+          "message": "Where would you start if I wanted to learn how to fit a handle properly?",
+          "startedAt": "2026-11-09T14:11:39.849Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 17261,
+          "cachedInputTokens": 15744,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 1256,
+          "reasoningTokens": 502,
+          "latencyMs": 12567,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.001028382,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 0,
+            "rejected": 0
+          },
+          "replayAdditionalRequests": 0
+        },
+        {
+          "mode": "game",
+          "caseId": "ordinary-lesson",
+          "message": "Where would you start if I wanted to learn how to fit a handle properly?",
+          "startedAt": "2026-11-09T14:11:52.418Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 11034,
+          "cachedInputTokens": 10240,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 683,
+          "reasoningTokens": 227,
+          "latencyMs": 7220,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.00055962,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        },
+        {
+          "mode": "villages",
+          "caseId": "new-memory-handle",
+          "message": "One more thing I'd like you to remember: the kettle's wooden handle was fitted by my great-aunt, not bought with it.",
+          "startedAt": "2026-11-09T14:11:59.641Z",
+          "status": "failed",
+          "requests": 1,
+          "inputTokens": 18408,
+          "cachedInputTokens": 16512,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 904,
+          "reasoningTokens": 248,
+          "latencyMs": 7823,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.000876336,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": "native-consequence-validation",
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 1,
+            "rejected": 0
+          },
+          "replayAdditionalRequests": null
+        }
+      ]
+    },
+    {
+      "id": "live-sparse-game-catchup",
+      "sourceRevision": "aa005894388924c2b748f53220691b33d16b2b1d",
+      "archiveHash": "f8a5350d2251bdbcd103505909e5f3c29ea0a7b97a3f4587ef3a100ef059bad7",
+      "turns": [
+        {
+          "mode": "game",
+          "caseId": "new-memory-handle",
+          "message": "One more thing I'd like you to remember: the kettle's wooden handle was fitted by my great-aunt, not bought with it.",
+          "startedAt": "2026-11-09T14:26:56.420Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 11521,
+          "cachedInputTokens": 10624,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 623,
+          "reasoningTokens": 106,
+          "latencyMs": 6923,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.000540222,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
+          "replacements": null,
+          "processing": null,
+          "replayAdditionalRequests": null
+        }
+      ]
+    },
+    {
+      "id": "live-tuples",
+      "sourceRevision": "aa005894388924c2b748f53220691b33d16b2b1d",
+      "archiveHash": "f8a5350d2251bdbcd103505909e5f3c29ea0a7b97a3f4587ef3a100ef059bad7",
+      "turns": [
+        {
+          "mode": "villages",
+          "caseId": "tuple-warmup",
+          "message": "I'd leave it alone while it still fits. It seems a shame to make a change just to have made one.",
+          "startedAt": "2026-11-09T14:27:03.853Z",
+          "status": "failed",
+          "requests": 1,
+          "inputTokens": 17247,
+          "cachedInputTokens": 512,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 1053,
+          "reasoningTokens": 525,
+          "latencyMs": 10516,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.0031435860000000003,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": "native-consequence-validation",
+          "replacements": 0,
+          "processing": {
+            "pending": 0,
+            "failed": 1,
+            "rejected": 1
+          },
+          "replayAdditionalRequests": null
+        }
+      ]
+    },
+    {
+      "id": "live-tuples-game-catchup",
+      "sourceRevision": "aa005894388924c2b748f53220691b33d16b2b1d",
+      "archiveHash": "f8a5350d2251bdbcd103505909e5f3c29ea0a7b97a3f4587ef3a100ef059bad7",
+      "turns": [
+        {
+          "mode": "game",
+          "caseId": "tuple-warmup",
+          "message": "I'd leave it alone while it still fits. It seems a shame to make a change just to have made one.",
+          "startedAt": "2026-11-09T14:35:46.274Z",
+          "status": "complete",
+          "requests": 1,
+          "inputTokens": 12065,
+          "cachedInputTokens": 11136,
+          "cacheWriteInputTokens": null,
+          "outputTokens": 398,
+          "reasoningTokens": 22,
+          "latencyMs": 5093,
+          "ratePerMillionUsd": {
+            "input": 0.15,
+            "cached": 0.003,
+            "output": 0.6
+          },
+          "ratedCostUsd": 0.000411558,
+          "actualInvoiceCostUsd": null,
+          "contractFailures": 0,
+          "comparisonFailure": null,
           "replacements": null,
           "processing": null,
           "replayAdditionalRequests": null
         }
       ]
     }
-  ]
+  ],
+  "observedTotals": {
+    "requests": 49,
+    "failedComparisons": 3,
+    "replacementRequests": 1,
+    "knownRatedCostUsd": 0.052383782999999996,
+    "actualInvoiceCostUsd": null
+  }
 }

@@ -234,7 +234,7 @@ async function run() {
     for (const person of state.villagers)
       for (const suffix of ["DESCRIPTION TAIL", "APPEARANCE", "BACKSTORY", "VOICE EXAMPLE", "AUTHORED INSTRUCTION"])
         assert.ok(prompt.includes(person.characterId + " " + suffix), suffix);
-    assert.ok(prompt.indexOf('"id":"earlier-spoken"') > prompt.indexOf("outgoing AUTHORED INSTRUCTION"));
+    assert.ok(prompt.indexOf('["earlier-spoken",') > prompt.indexOf("outgoing AUTHORED INSTRUCTION"));
     const reordered = await prepareVenueTurnMessages(
       { ...scene, participants: scene.participants.toReversed(), activeIds: scene.activeIds.toReversed() },
       "A different topic",
