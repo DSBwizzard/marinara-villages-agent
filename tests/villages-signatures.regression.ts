@@ -216,15 +216,24 @@ const richResident = structuredClone(village.villagers[0]!);
 richResident.cardSnapshot.backstory = "Signs fishing logs with a tiny hook.";
 richResident.cardSnapshot.exampleDialogue = "Aye, leave it to me.";
 richResident.cardSnapshot.description = "A fast, practical harbor worker.";
+richResident.cardSnapshot.summary = "Thumbnail-only description.";
+richResident.cardSnapshot.appearance = "Visual-only description.";
 const richPrompt = signaturePrompt(richResident);
 assert.match(richPrompt, /tiny hook/);
-assert.match(richPrompt, /Aye, leave it to me/);
+for (const omitted of ["Aye, leave it to me", "Thumbnail-only description", "Visual-only description"])
+  assert.ok(!richPrompt.includes(omitted), "Drawing evidence excludes voice, duplicate summary and visual fields");
+const completeResident = structuredClone(richResident);
+completeResident.cardSnapshot.backstory =
+  "Keeps a pencil tally at the harbor. ".repeat(60) + "Returns it to his sleeve.";
+assert.ok(
+  signaturePrompt(completeResident).includes(JSON.stringify(completeResident.cardSnapshot.backstory)),
+  "A complete backstory survives when the selected evidence fits the image contract",
+);
 
 richResident.cardSnapshot.personality = '"\n'.repeat(3000) + "Secretly playful.";
 assert.ok(signaturePrompt(richResident).length <= 8000, "Serialized character evidence fits the Engine contract");
 assert.match(signaturePrompt(richResident), /Secretly playful/);
-for (const evidence of ["Backstory:", "Voice examples:", "Summary:"]) {
-  richResident.cardSnapshot.summary = "Practical but mischievous.";
+for (const evidence of ["Description:", "Personality:", "Backstory:"]) {
   assert.ok(signaturePrompt(richResident).includes(evidence), "Escaped personality cannot remove supporting evidence");
 }
 richResident.cardSnapshot.name = "A".repeat(129) + "𠮷" + "B".repeat(100);
@@ -234,17 +243,17 @@ assert.ok(
 );
 const performer = structuredClone(richResident);
 performer.cardSnapshot.name = "Rowan";
-performer.cardSnapshot.description = 'A musician who performs professionally as "Nightjar".';
-performer.cardSnapshot.summary = 'Uses the stage name "Nightjar".';
+performer.cardSnapshot.description = 'A fox anthro who performs professionally as "Nightjar".';
+performer.cardSnapshot.summary = performer.cardSnapshot.description;
 performer.cardSnapshot.backstory = "Signs records and fan letters after every show.";
 performer.cardSnapshot.appearance = "𝄞".repeat(6000);
 const performerPrompt = signaturePrompt(performer);
-assert.ok(performerPrompt.length <= 8000, "Long appearance and escaped personality fit the image contract");
-for (const source of [
-  performer.cardSnapshot.description,
-  performer.cardSnapshot.summary,
-  performer.cardSnapshot.backstory,
-])
+assert.ok(performerPrompt.length <= 8000, "Long excluded appearance and escaped personality fit the image contract");
+assert.ok(
+  !performerPrompt.includes("\nSummary:"),
+  "Identity description is supplied once without its duplicate summary",
+);
+for (const source of [performer.cardSnapshot.description, performer.cardSnapshot.backstory])
   assert.ok(
     performerPrompt.includes(JSON.stringify(source)),
     "Signing identity and practice survive competing card prose",
