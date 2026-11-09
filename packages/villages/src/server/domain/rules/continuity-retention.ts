@@ -8,7 +8,9 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
   const owners = new Map<string, string>(),
     versions = new Map(continuity.versions.map((row) => [row.id, row]));
   const byEpisode = new Map(episodes.records.map((row) => [row.id, row]));
-  for (const episode of episodes.records) {
+  const births = new Map<string, number>(),
+    roots = new Map(continuity.records.map((row) => [row.id, row]));
+  for (const [sequence, episode] of episodes.records.entries()) {
     for (const id of episode.continuityVersionIds) {
       const version = versions.get(id);
       memoryRequire(
@@ -16,6 +18,7 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
         "missing or changed episode version owner",
       );
       owners.set(id, episode.id);
+      if (!births.has(version.rootId)) births.set(version.rootId, sequence);
     }
     for (const source of episode.grounding)
       if (source.kind === "self") {
@@ -35,6 +38,13 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
         );
       }
   }
+  for (const [sequence, episode] of episodes.records.entries())
+    for (const offer of episode.offered)
+      for (const id of offer.ids)
+        memoryRequire(
+          roots.get(id)?.heads[continuityHolderKey(offer.holder)] && (births.get(id) ?? Infinity) < sequence,
+          "initiative offer lost its admitted prior root",
+        );
   for (const version of continuity.versions) {
     memoryRequire(owners.has(version.id), "continuity version lost its accepted episode");
     for (const source of version.sources) {

@@ -9,6 +9,7 @@ import { episodeSourceGraph } from "../decoding/episode-codec.js";
 import { continuityHolderKey, continuityProtectionUnits, continuityViews } from "./continuity.js";
 import { memoryRequire } from "./memory-integrity.js";
 import { memoryTerms } from "./memory-protection.js";
+import { recentSharedEpisodes } from "./episodes.js";
 
 function rank<T>(rows: T[], query: string, prose: (row: T) => string) {
   const terms = new Set(memoryTerms(query)),
@@ -122,9 +123,16 @@ export function selectActorContinuity(
     continuityViews(collection, holder, at, continuityProtectionUnits(collection, holder, graph)),
   );
   const active = new Set(holders.map((holder) => holder.id));
+  const recentVersions = new Set(
+    recentSharedEpisodes(episodes, holders).flatMap((episode) => episode.continuityVersionIds),
+  );
+  const recentOffers = new Set(
+    collection.versions.filter((version) => recentVersions.has(version.id)).map((version) => version.rootId),
+  );
   const required = all.filter(
     (row) =>
       request.requiredIds.includes(row.id) ||
+      (row.current && row.offer && recentOffers.has(row.id)) ||
       (row.current &&
         row.version.facet === "boundary" &&
         (!row.version.about.length || row.version.about.some((id) => active.has(id)))),
@@ -146,7 +154,7 @@ export function selectActorContinuity(
   const packet = () => ({ partial: selected.length < all.length, entries: selected.map(actorEntry) });
   const size = () => Buffer.byteLength(JSON.stringify(packet()));
   memoryRequire(size() <= request.bytes, "required actor continuity does not fit before generation");
-  const take = (row: ContinuityView, budget = request.bytes) => {
+  const take = (row: ContinuityView, minimum = false) => {
     if (selected.includes(row)) return;
     const group = [row];
     if (row.version.parentId) {
@@ -154,18 +162,73 @@ export function selectActorContinuity(
         (other) =>
           other.id === row.version.parentId && continuityHolderKey(other.holder) === continuityHolderKey(row.holder),
       );
+      memoryRequire(parent || !minimum, "required initiative parent is unavailable");
       if (!parent) return;
       if (!selected.includes(parent)) group.unshift(parent);
     }
     selected.push(...group);
-    if (size() > budget) selected.splice(-group.length);
+    if (size() > request.bytes) {
+      memoryRequire(!minimum, "minimum resident initiative does not fit before generation");
+      selected.splice(-group.length);
+    }
   };
+  const lastOffered = new Map<string, number>();
+  const created = new Map<string, number>(),
+    versions = new Map(collection.versions.map((version) => [version.id, version]));
+  episodes.records.forEach((episode, sequence) => {
+    for (const id of episode.continuityVersionIds) {
+      const rootId = versions.get(id)?.rootId;
+      if (rootId && !created.has(rootId)) created.set(rootId, sequence + 1);
+    }
+    for (const offer of episode.offered)
+      for (const id of offer.ids)
+        lastOffered.set(JSON.stringify([continuityHolderKey(offer.holder), id]), sequence + 1);
+  });
+  const fair: ContinuityView[] = [],
+    surplus: ContinuityView[] = [];
   for (const holder of holders.filter((holder) => holder.id !== "player")) {
-    const current = all.filter((row) => continuityHolderKey(row.holder) === continuityHolderKey(holder) && row.current);
-    if (current.length)
-      take(current[episodes.revision % current.length], Math.max(size(), Math.floor(request.bytes / 2)));
+    const key = continuityHolderKey(holder);
+    const current = all
+      .filter((row) => continuityHolderKey(row.holder) === key && row.current)
+      .sort(
+        (a, b) =>
+          (lastOffered.get(JSON.stringify([key, a.id])) ?? created.get(a.id) ?? 0) -
+            (lastOffered.get(JSON.stringify([key, b.id])) ?? created.get(b.id) ?? 0) || a.id.localeCompare(b.id),
+      );
+    const available = current.filter((row) => !selected.includes(row));
+    const first = available[0] ?? current[0];
+    if (first) {
+      take(first, true);
+      fair.push(first);
+    }
+    if (available[1]) surplus.push(available[1]);
   }
+  for (const holder of holders.filter((holder) => holder.id !== "player")) {
+    const foreground = all.find(
+      (row) =>
+        continuityHolderKey(row.holder) === continuityHolderKey(holder) &&
+        row.current &&
+        row.version.facet === "attention",
+    );
+    if (foreground) take(foreground);
+  }
+  for (const row of surplus) take(row);
   for (const { row, score } of rank(all, request.query, (row) => [row.version.text, ...row.version.about].join(" ")))
     if (score > 0) take(row);
-  return { packet: packet(), supplied: targets(selected), bytes: size(), eligible: all.length };
+  return {
+    packet: packet(),
+    supplied: targets(selected),
+    fair: targets(fair),
+    offered: holders
+      .filter((holder) => holder.id !== "player")
+      .map((holder) => ({
+        holder,
+        ids: selected
+          .filter((row) => row.current && continuityHolderKey(row.holder) === continuityHolderKey(holder))
+          .map((row) => row.id),
+      }))
+      .filter((row) => row.ids.length > 0),
+    bytes: size(),
+    eligible: all.length,
+  };
 }

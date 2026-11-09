@@ -64,6 +64,7 @@ function episode(id = "one", input = "Why?", reply = "Because I hoped you would 
     ],
     grounding: [],
     continuityVersionIds: [],
+    offered: [],
     commandReceipts: [],
     dependencies: {},
   };

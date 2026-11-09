@@ -27,6 +27,25 @@ function protectedUnit(episode: AcceptedEpisode, unitId: string, blocked: Set<st
 function admitted(episode: AcceptedEpisode, holder: Extract<ContinuityHolder, { kind: "actor" }>) {
   return episode.actors.some((actor) => actor.id === holder.id && actor.incarnation === holder.incarnation);
 }
+export function recentSharedEpisodes(
+  collection: EpisodeCollection,
+  holders: Extract<ContinuityHolder, { kind: "actor" }>[],
+) {
+  const player = holders.find((holder) => holder.id === "player");
+  const pairs = player
+    ? holders.filter((holder) => holder !== player).map((holder) => [player, holder])
+    : holders.flatMap((holder, i) => holders.slice(i + 1).map((other) => [holder, other]));
+  return [
+    ...new Set(
+      (pairs.length ? pairs : holders.map((holder) => [holder])).flatMap((pair) =>
+        collection.records
+          .filter((episode) => pair.every((holder) => admitted(episode, holder)))
+          .slice(-2)
+          .toReversed(),
+      ),
+    ),
+  ];
+}
 
 /** The original input is deliberately absent; only consequential grounded excerpts can enter this view. */
 export function actorEpisodeView(
@@ -226,15 +245,8 @@ export function selectEpisodeHistory(
       },
     ];
   });
-  const player = holders.find((holder) => holder.id === "player");
-  const pairs = player
-    ? holders.filter((holder) => holder !== player).map((holder) => [player, holder])
-    : holders.flatMap((holder, i) => holders.slice(i + 1).map((other) => [holder, other]));
-  const shared = pairs.flatMap((pair) =>
-    candidates
-      .filter((row) => pair.every((holder) => admitted(row.episode, holder)))
-      .slice(-2)
-      .toReversed(),
+  const shared = recentSharedEpisodes(collection, holders).map((episode) =>
+    candidates.find((row) => row.episode.id === episode.id)!,
   );
   const recent = candidates.slice(-2),
     rest = candidates

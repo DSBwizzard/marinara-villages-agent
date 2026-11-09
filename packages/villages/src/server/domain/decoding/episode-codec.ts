@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { AcceptedEpisode, EpisodeCollection } from "../models/episode-model.js";
-import { continuityEvidenceSchema } from "./continuity-codec.js";
+import { continuityEvidenceSchema, continuityHolderSchema } from "./continuity-codec.js";
 import { coerceSession } from "./scene-codec.js";
 import { continuitySourceUnit } from "../rules/continuity.js";
 import { immutableMemoryValue, isImmutableMemoryValue, memoryHash, memoryRequire } from "../rules/memory-integrity.js";
@@ -27,6 +27,7 @@ const episode = z
     segments: z.array(z.unknown()).max(24),
     grounding: z.array(continuityEvidenceSchema).max(256),
     continuityVersionIds: ids,
+    offered: z.array(z.object({ holder: continuityHolderSchema, ids }).strict()).max(32),
     commandReceipts: z
       .array(
         z
@@ -71,6 +72,13 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
   memoryRequire(value.seed === seed && value.acceptedAt >= value.capturedAt, "invalid accepted episode world or time");
   const cast = new Map(value.actors.map((actor) => [actor.id, actor]));
   memoryRequire(cast.size === value.actors.length, "duplicate episode actor");
+  memoryRequire(
+    new Set(value.offered.map((row) => row.holder.id)).size === value.offered.length &&
+      value.offered.every(
+        (row) => row.holder.kind === "actor" && cast.get(row.holder.id)?.incarnation === row.holder.incarnation,
+      ),
+    "initiative offer lacks its admitted actor",
+  );
   const decoded = coerceSession({
     version: 4,
     lines: value.segments,
