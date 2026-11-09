@@ -32,7 +32,7 @@ import { findLocation, findNpc, npcProfile } from "../../domain/rules/places.js"
 import { renderPlayerBackgroundContext } from "../../domain/rules/player-background.js";
 import { playerSpeechCapture } from "../../domain/rules/player-speech-capture.js";
 import { bindProjectSpeech, validateProjectSpeech } from "../../domain/rules/project-interpretation.js";
-import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
+import { currentVillageCircumstances, villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
 import { privateRejectedText, rejectedSyntaxError } from "../../domain/rules/rejected-response.js";
 import {
   applyResidentMovementTimeline,
@@ -355,10 +355,18 @@ export function createSceneWriting({
       blocks = buildVenueSceneBlocks({
         direction: blocksFor([
           SCENE_GM_DIRECTION,
+          gmContext.time?.rule ?? "",
           venueWritingDirection(village.narrationStyle, player.name),
           venueAdditionalWritingGuidance(village.narrationStyle),
         ]),
-        identity: blocksFor(profiles),
+        identity: blocksFor([
+          ...profiles,
+          JSON.stringify({
+            player: { name: player.name, description: player.description },
+            startingBackground: renderPlayerBackgroundContext(village),
+            setting: villageCurrentSetting({ ...village, narrative: undefined }),
+          }),
+        ]),
         conversation: blocksFor([
           ...history.blocks,
           ...lore.map((text, index) => ({
@@ -380,11 +388,6 @@ export function createSceneWriting({
           {
             text: JSON.stringify({
               context: sceneGmContext(gmContext),
-              player: {
-                name: player.name,
-                description: player.description,
-                background: renderPlayerBackgroundContext(village),
-              },
               residentActivity: active.map((person) => ({
                 characterId: person.characterId,
                 doing:
@@ -399,7 +402,7 @@ export function createSceneWriting({
               pendingRoomQuestions: session.pendingRoomQuestions,
               pendingMoves,
               residentRequestLocalIds: residentLocalIdsAt(session, [], 0),
-              setting: villageCurrentSetting(village),
+              villageCircumstances: currentVillageCircumstances(village),
               weather: moment.weather,
               positions: storedPlace ? sceneLocationContext(session, storedPlace, audience) : undefined,
               presentation: {

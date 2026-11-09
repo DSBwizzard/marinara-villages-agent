@@ -3,7 +3,7 @@ import { recentPlaceText } from "../../../shared/helpers/place-continuity.js";
 import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import type { VenueReplyLine, VenueScene } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
-import { accessManagementPrompt } from "./access-speech.js";
+import { accessManagementContext } from "./access-speech.js";
 import { asRecord } from "./coerce.js";
 import { badGateway } from "./errors.js";
 import { memoryTerms } from "./memory-protection.js";
@@ -228,7 +228,7 @@ export function semanticContext(
           }))
       : [],
     access: compact && venue?.access ? accessRules : venue?.access,
-    accessManagement: accessManagementPrompt(
+    accessManagement: accessManagementContext(
       state,
       actors,
       state.venues.some((venue) => venue.id === scene.placeId) ? undefined : scene.placeId,

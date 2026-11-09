@@ -4,7 +4,7 @@ import type { VillageState } from "../models/world.js";
 import { managesAccess, zoneManagers } from "./venue-access.js";
 
 /** Server-only writing context contains authority and policy, never hidden physical contents or positions. */
-export function accessManagementPrompt(village: VillageState, actors: string[], venueId?: string): string {
+export function accessManagementContext(village: VillageState, actors: string[], venueId?: string) {
   const locations = venueId ? [findLocation(village, venueId)].filter((venue) => !!venue) : village.venues;
   const scopes = locations
     .filter((venue) => venue.access && (!venueId || venue.id === venueId))
@@ -56,7 +56,5 @@ export function accessManagementPrompt(village: VillageState, actors: string[], 
           ];
         }),
     );
-  return scopes.length
-    ? `Access management available to current speakers (server-only): ${JSON.stringify(scopes)}. Emit a manage-access roomEvent only when actual current speech explicitly changes these rules. Use exact existing IDs. Never infer a policy change from admitting a guest, friendship or employment. Entrance is always Unrestricted.`
-    : "";
+  return scopes;
 }
