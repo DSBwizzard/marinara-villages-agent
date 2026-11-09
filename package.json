@@ -42,6 +42,8 @@
     "build": "node scripts/build-villages.mjs",
     "verify:package": "node scripts/verify-package.mjs",
     "test": "node scripts/run-tests.mjs regression",
+    "bench:scene": "node --import tsx scripts/scene-cost.mjs",
+    "bench:scene:live": "node --import tsx scripts/scene-cost-live.mjs",
     "test:browser": "node scripts/run-tests.mjs browser",
     "test:engine": "node scripts/run-tests.mjs engine",
     "test:inventory": "node scripts/run-tests.mjs --list",

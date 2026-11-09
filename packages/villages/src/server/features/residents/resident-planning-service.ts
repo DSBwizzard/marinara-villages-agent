@@ -442,7 +442,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
     const messages = buildResidentPlanningMessages(context);
     {
       messages[0].content +=
-        " You are the GM: generate the choices, exact encounter/mail source and its meaningful updates in ONE object. Optional meaning:{relationshipReview:{changes:[],permissions:[],disclosures:[],intentions:[]},memoryChanges:[],wishChanges:[],placeUpdate?}. Omit unchanged sections. No independent review or consistent flag. Numeric source indexes refer to your social.encounter.lines, or index0 for social.mail.text. The player is absent during an encounter: no player disclosures, knowledge or consent. Mail never grants access, performs physical work or creates actionable terms; player learning waits for reading. " +
+        " You are the GM: generate the choices, exact encounter/mail source and its meaningful updates in ONE object. Optional meaning:{relationshipReview:{changes:[],permissions:[],disclosures:[]},memoryChanges:[],wishChanges:[],placeUpdate?}. Omit unchanged sections. No independent review or consistent flag. Numeric source indexes refer to your social.encounter.lines, or index0 for social.mail.text. The player is absent during an encounter: no player disclosures, knowledge or consent. Mail never grants access, performs physical work or creates actionable terms; player learning waits for reading. " +
         RELATIONSHIP_REVIEW_INSTRUCTION +
         " " +
         SCENE_MEMORY_INSTRUCTION +

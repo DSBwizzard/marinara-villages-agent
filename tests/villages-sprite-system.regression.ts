@@ -7,6 +7,7 @@ import {
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { materializeGmReply } from "../packages/villages/src/server/domain/rules/scene-gm.js";
+import { expandSceneEvents } from "../packages/villages/src/server/domain/rules/scene-event-proposals.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { semanticContext } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
 import {
@@ -145,16 +146,21 @@ const service = createSemanticService(ports);
 const gmContext = semanticContext(scene, world, "A GM turn.", true);
 const gmSelection = sceneSpriteSelection(scene, world);
 const gmRaw = materializeGmReply(
-  {
-    input: [{ kind: "action", text: "A GM turn." }],
-    segments: lines.map((line: any) => ({ kind: line.kind, speakerId: line.speakerId, text: line.content })),
-    presentation: [
-      {
-        segment: 0,
-        staging: [{ characterId: "a", expression: "g-e-first", look: { target: "villager", characterId: "b" } }],
-      },
-    ],
-  },
+  expandSceneEvents(
+    {
+      input: [{ kind: "action", text: "A GM turn." }],
+      segments: lines.map((line: any) => ({ kind: line.kind, speakerId: line.speakerId, text: line.content })),
+      events: [
+        {
+          type: "presentation",
+          actorId: "a",
+          at: [0],
+          value: { expression: "g-e-first", look: { target: "villager", characterId: "b" } },
+        },
+      ],
+    },
+    gmContext,
+  ),
   "A GM turn.",
 );
 const original = JSON.stringify(lines),
@@ -222,7 +228,14 @@ const writingScene = {
   },
   operation: { input: admission },
 } as typeof scene;
-for (const failure of ["none", "validation-input", "presentation-publish", "invalid-response"]) {
+for (const failure of [
+  "none",
+  "invalid-cue",
+  "invalid-cue-envelope",
+  "validation-input",
+  "presentation-publish",
+  "invalid-response",
+]) {
   const retained = new Map<string, unknown>();
   let pending = true,
     paid = 0,
@@ -233,6 +246,20 @@ for (const failure of ["none", "validation-input", "presentation-publish", "inva
     ...writingScene,
     id: "gm-storage-" + failure,
     operation: { input: gmAdmission },
+    lines: [
+      {
+        id: "prior-cue",
+        role: "assistant",
+        kind: "narration",
+        speakerId: "__venue_scene__",
+        name: "Narration",
+        content: "A looks towards the doorway.",
+        at: writingScene.startedAt,
+        zoneId: "exterior",
+        heardBy: ["a"],
+        staging: [{ characterId: "a", expression: "e-side", look: { target: "direction", direction: "left" } }],
+      },
+    ],
   } as typeof scene;
   Object.assign(gmScene, zoneEventScene(gmScene, world.venues[0]));
   const gmPorts = {
@@ -268,6 +295,9 @@ for (const failure of ["none", "validation-input", "presentation-publish", "inva
       paid++;
       const catalog = scenePromptPacket(messages.map((message) => message.content).join("\n")).presentation;
       assert.match(catalog.sprites[0].expressions, /g-e-first/);
+      assert.equal(catalog.state.a.expression, "e-side");
+      assert.deepEqual(catalog.state.a.look, { target: "direction", direction: "left" });
+      assert(!Object.hasOwn(catalog.state.a, "position"), "Sprite placement stays code-owned");
       assert.doesNotMatch(JSON.stringify(catalog), /happy_01|happy_blush|"expressionId"/);
       return {
         finishReason: "stop",
@@ -282,14 +312,18 @@ for (const failure of ["none", "validation-input", "presentation-publish", "inva
               staging: [{ characterId: "a", expression: "forged-inline-cue" }],
             },
           ],
-          presentation: [
-            { segment: 0, staging: [{ characterId: "a", expression: "g-e-first", look: { target: "player" } }] },
+          events: [
+            {
+              type: "presentation",
+              actorId: "a",
+              at: failure === "invalid-cue" ? 0 : [0],
+              value: { expression: "g-e-first", look: { target: "player" } },
+              ...(failure === "invalid-cue-envelope" ? { expression: "g-e-first" } : {}),
+            },
+            ...(failure === "invalid-response" && paid === 1
+              ? [{ type: "access", at: [0], targetId: "missing", value: { venueId: "missing", outcome: "invite-now" } }]
+              : []),
           ],
-          ...(failure === "invalid-response" && paid === 1
-            ? {
-                access: [{ actorId: "a", venueId: "missing", zoneId: "missing", outcome: "invite-now", evidence: [0] }],
-              }
-            : {}),
         }),
       };
     },
@@ -300,7 +334,7 @@ for (const failure of ["none", "validation-input", "presentation-publish", "inva
   } as unknown as SceneWritingPorts);
   Math.random = () => 0;
   try {
-    if (failure !== "none") {
+    if (failure !== "none" && !failure.startsWith("invalid-cue")) {
       await assert.rejects(
         () => gmWriter.generate(gmScene, "", "chat", "", null),
         failure === "invalid-response" ? /unknown target|scope|authority/ : /Checkpoint persistence/,
@@ -309,7 +343,8 @@ for (const failure of ["none", "validation-input", "presentation-publish", "inva
       const written = await gmWriter.generate(gmScene, "", "chat", "", null);
       assert(!Object.hasOwn(written.lines[0], "expression"));
       assert(!Object.hasOwn(written.lines[0], "gazeAt"));
-      assert.equal(written.lines[0].staging![0].expression, "e-first");
+      if (failure.startsWith("invalid-cue")) assert.deepEqual(written.lines[0].staging ?? [], []);
+      else assert.equal(written.lines[0].staging![0].expression, "e-first");
     }
     assert.equal(paid, 1);
     assert.equal(rejected, failure === "invalid-response" ? 1 : 0, "Storage failures cannot reject valid paid writing");

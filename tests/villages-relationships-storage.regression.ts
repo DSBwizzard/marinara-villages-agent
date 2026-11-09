@@ -63,7 +63,7 @@ for (const count of [1000, 10_000, 25_000]) {
     description: "",
     createdAt: at,
     updatedAt: at,
-    data: { version: 16, ...scope, memoryHead: null, villagers: [], wishArchiveHead: { count: 0, root: null } },
+    data: { version: 17, ...scope, memoryHead: null, villagers: [], wishArchiveHead: { count: 0, root: null } },
   });
   const gate = createRepairGate(documents),
     release = configureRepairGate(gate);
@@ -189,17 +189,24 @@ for (const count of [1000, 10_000, 25_000]) {
         playerHeard: true,
       },
     ] as any;
-    const items = [
-      { id: "", targetIds: ["player"], text: "Meet tomorrow", reason: "Discussed together", status: "active" },
-    ];
+    const perspective = { connection: "Friends", stance: "Wants to meet", expectations: [], concerns: [], records: [] };
     scene.submissions[0]!.liveProposals = bindLiveProposals(
       {
         memoryChanges: [],
         relationshipChanges: {
-          changes: [],
           permissions: [],
           disclosures: [],
-          intentions: [{ actorId: "a", expectedRevision: 0, lineIds: [0], items, sceneItems: items }],
+          changes: [
+            {
+              fromId: "a",
+              toId: "player",
+              expectedRevision: 0,
+              lineIds: [0],
+              reason: "A shared plan",
+              liveAfter: perspective,
+              sceneAfter: perspective,
+            },
+          ],
         },
       },
       "",
@@ -210,10 +217,12 @@ for (const count of [1000, 10_000, 25_000]) {
     assert.equal(
       (await gate.work(() => live.processLiveRelationships(scene, "turn"))).status,
       "applied",
-      "Retry after ledger commit cannot mutate an immutable intention receipt",
+      "Retry after ledger commit cannot mutate an immutable relationship receipt",
     );
     const acknowledged = await api.readRelationshipState(scope.seed);
-    assert.equal(acknowledged.intentionReceipts["paged-ack:turn:intentions:a"].submissionId, "turn");
+    assert(
+      Object.values(acknowledged.receipts).some((row) => row.sceneId === "paged-ack" && row.submissionId === "turn"),
+    );
     // Keep the subsequent cleanup assertions scoped to the earlier owner under test.
     await gate.work(async () => {
       const row = await gate.documents.getById("villages", id);
@@ -293,7 +302,7 @@ for (const count of [1000, 10_000, 25_000]) {
           packageId: "villages",
           kind: "village",
           revision: 1,
-          data: { version: 16, ...scope, memoryHead: null, villagers: [], wishArchiveHead: { count: 0, root: null } },
+          data: { version: 17, ...scope, memoryHead: null, villagers: [], wishArchiveHead: { count: 0, root: null } },
         },
       ],
     ]);

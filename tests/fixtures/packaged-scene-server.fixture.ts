@@ -158,7 +158,7 @@ export async function packagedSceneServer(
     }),
     chatComplete: async (messages: any[]) => {
       calls++;
-      assert.match(messages[0].content, /Game Master of Villages/, "Only the current GM writer may dispatch");
+      assert.match(messages[0].content, /GM of Villages/, "Only the current GM writer may dispatch");
       const text = messages.at(-1)?.content ?? "";
       return {
         content: JSON.stringify({

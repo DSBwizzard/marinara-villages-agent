@@ -159,7 +159,8 @@ async function run() {
       "Authored text cannot trigger block deletion",
     );
     const next = await prepareVenueTurnMessages(session, "A different question?", "chat", "", null);
-    const prefix = (messages: typeof next.fitted.messages) => messages.filter((message) => message.cacheBreakpoint);
+    const prefix = (messages: typeof next.fitted.messages) =>
+      messages.filter((message) => message.cacheBreakpoint).slice(0, 2);
     assert.equal(prefix(prepared.fitted.messages).length, 2);
     assert.deepEqual(
       prefix(next.fitted.messages),
@@ -307,7 +308,6 @@ async function run() {
       "narrator-only truths are not resident knowledge",
     ])
       assert.ok(prompt.includes(fragment), fragment);
-    assert.ok(prompt.includes("Preserve complete authored identity"));
     assert.ok(prompt.includes("where compatible with character identity"));
     assert.ok(prompt.includes("present tense"));
     assert.ok(prompt.includes('Address the player as "you"'));
@@ -334,7 +334,7 @@ async function run() {
       const outside = await prepareVenueTurnMessages(exterior, "What do you like playing?", "chat", "", null);
       const outsidePrompt = outside.fitted.messages.map((entry) => entry.content).join("\n");
       const outsidePacket = scenePromptPacket(outsidePrompt);
-      assert.equal(outsidePacket.context.zoneId, "exterior");
+      assert.equal(scenePromptPacket(outsidePrompt, "frame").frame.zoneId, "exterior");
       assert.ok(!outsidePrompt.includes("The player is outside this Venue."));
       assert.ok(outsidePrompt.includes("Neighbors know me through harbor projects."));
       assert.ok(!outsidePrompt.includes("look to them to coordinate Projects"));

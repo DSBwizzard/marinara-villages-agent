@@ -21,11 +21,9 @@ import {
 import { extractJsonObject } from "../../domain/rules/json-reply.js";
 import { inspectedLoreUse, villageLoreContext } from "../../domain/rules/lore-context.js";
 import { venueAdditionalWritingGuidance, venueWritingDirection } from "../../domain/rules/narration-style.js";
-import { environmentCircumstances } from "../../domain/rules/narrative-environment.js";
-import { SCENE_DEVELOPMENT_SCHEMA, SCENE_DEVELOPMENT_WRITING } from "../../domain/rules/narrative-prompts.js";
+import { SCENE_DEVELOPMENT_WRITING } from "../../domain/rules/narrative-prompts.js";
 import {
   fenceIntroductionWitnesses,
-  NPC_INTRODUCTION_WRITING,
   prepareNpcIntroductions,
   type NpcAdmission,
 } from "../../domain/rules/npc-participation.js";
@@ -33,12 +31,8 @@ import { openingSceneDirection } from "../../domain/rules/opening-project.js";
 import { findLocation, findNpc, npcProfile } from "../../domain/rules/places.js";
 import { renderPlayerBackgroundContext } from "../../domain/rules/player-background.js";
 import { playerSpeechCapture } from "../../domain/rules/player-speech-capture.js";
-import {
-  bindProjectSpeech,
-  projectSpeechContexts,
-  validateProjectSpeech,
-} from "../../domain/rules/project-interpretation.js";
-import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
+import { bindProjectSpeech, validateProjectSpeech } from "../../domain/rules/project-interpretation.js";
+import { currentVillageCircumstances, villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
 import { privateRejectedText, rejectedSyntaxError } from "../../domain/rules/rejected-response.js";
 import {
   applyResidentMovementTimeline,
@@ -53,7 +47,6 @@ import {
 import { sceneContinuityView, sceneLocationContext, sceneWishEffectIds } from "../../domain/rules/scene-continuity.js";
 import {
   materializeGmReply,
-  normalizeGmEffects,
   SCENE_GM_ACCESS,
   SCENE_GM_BOUNDARY,
   SCENE_GM_DIRECTION,
@@ -62,21 +55,24 @@ import {
   SCENE_GM_RESPONSE,
   SCENE_GM_SOCIAL,
   SCENE_GM_WISHES,
+  SCENE_GM_MEMORY,
+  SCENE_GM_PHYSICAL,
   sceneGmContext,
 } from "../../domain/rules/scene-gm.js";
+import { expandSceneEvents } from "../../domain/rules/scene-event-proposals.js";
 import {
   GeneratedSceneBoundary,
   HaltedSceneTurn,
   readSceneBoundary,
   SCENE_OUTCOME_BOUNDARY,
 } from "../../domain/rules/scene-halt.js";
-import { SCENE_MEMORY_INSTRUCTION, sceneMemoryContext } from "../../domain/rules/scene-memories.js";
+import { sceneMemoryContext } from "../../domain/rules/scene-memories.js";
 import { provisionalSceneNarrative, type SceneNarrativeSource } from "../../domain/rules/scene-narrative-effects.js";
 import { parseVenueReply } from "../../domain/rules/scene-reply.js";
 import {
   assertCurrentSceneGeneration,
   completeSceneObject,
-  normalizeRecoverableSceneReply,
+  isolateSceneEffects,
 } from "../../domain/rules/scene-writing-contract.js";
 import { sceneWritingHistory, sharedLoreHistory } from "../../domain/rules/scene-writing-history.js";
 import { semanticContext, semanticEvidence } from "../../domain/rules/semantic-contract.js";
@@ -107,7 +103,6 @@ import {
   workFailureSummary,
   type WorkFailure,
 } from "../../domain/rules/work-failure.js";
-import { PLACE_UPDATE_INSTRUCTION } from "../../domain/rules/zone-continuity.js";
 import {
   InvalidNarratedSound,
   routeZoneEvents,
@@ -303,20 +298,6 @@ export function createSceneWriting({
     const [lore, model] = await Promise.all([lorePromise, modelPromise]);
     const loreUses = inspectedLoreUse(loreInspection, "GM");
     signal?.throwIfAborted();
-    const projectContexts = projectSpeechContexts(
-      village,
-      audience,
-      `${session.lines
-        .filter(
-          (line) =>
-            (!line.zoneId || line.zoneId === session.zoneId) && audience.every((id) => line.heardBy.includes(id)),
-        )
-        .slice(-12)
-        .map((line) => line.content)
-        .join("\n")}\n${message}`,
-      message,
-      session.placeId,
-    );
     const blocksFor = (parts: (string | VenueWritingBlock)[]): VenueWritingBlock[] =>
       parts.map((part) =>
         typeof part !== "string"
@@ -350,7 +331,10 @@ export function createSceneWriting({
     if (gmContext) {
       const supportingCandidates = Object.values(village.worldPlaces.npcs)
         .filter(
-          (npc) => !npc.disabled && npc.associations.some((association) => association.placeId === session.placeId),
+          (npc) =>
+            !npc.disabled &&
+            !audience.includes(npc.id) &&
+            npc.associations.some((association) => association.placeId === session.placeId),
         )
         .slice(0, 4);
       if (!captured) {
@@ -368,21 +352,56 @@ export function createSceneWriting({
         gmContext.memory = memory.envelope;
         gmContext._memoryWrite = memory.saved;
       }
+      const { calendar, actors, memory, social, projects, otherProjects, zones, ...frame } = sceneGmContext(gmContext);
+      const zoneDevelopments = zones.flatMap(({ id, circumstances, conditions }) =>
+        circumstances?.length || conditions?.length ? [{ zoneId: id, circumstances, conditions }] : [],
+      );
+      const { instant: _instant, ...calendarView } = calendar;
+      const residentActivity = active.flatMap((person) => {
+        const doing =
+          session.sceneAttendance?.occupants.find((row) => row.characterId === person.characterId)?.doing ||
+          person.doing;
+        const homes = village.venues
+          .filter((venue) => venueResidentIds(venue).includes(person.characterId))
+          .map((venue) => ({ id: venue.id, name: venue.name }));
+        return doing || homes.length
+          ? [{ characterId: person.characterId, ...(doing ? { doing } : {}), ...(homes.length ? { homes } : {}) }]
+          : [];
+      });
+      const villageCircumstances = currentVillageCircumstances(village);
+      const presentationState = Object.fromEntries(
+        Object.entries(gmPresentation.state).flatMap(([id, { expression, look }]) =>
+          expression || (look && look.target !== "player") ? [[id, { expression, look }]] : [],
+        ),
+      );
+      const sprites = Object.entries(gmPresentation.sprites).map(([actorId, sprite]) => ({
+        actorId,
+        expressions: describeSpriteExpressions(sprite, gmPresentation.variants),
+      }));
       blocks = buildVenueSceneBlocks({
         direction: blocksFor([
           SCENE_GM_DIRECTION,
+          gmContext.time?.rule ?? "",
           venueWritingDirection(village.narrationStyle, player.name),
           venueAdditionalWritingGuidance(village.narrationStyle),
         ]),
         identity: blocksFor([
           ...profiles,
           JSON.stringify({
-            player: {
-              name: player.name,
-              description: player.description,
-              background: renderPlayerBackgroundContext(village),
-            },
+            player: { name: player.name, description: player.description },
+            startingBackground: renderPlayerBackgroundContext(village),
             setting: villageCurrentSetting({ ...village, narrative: undefined }),
+          }),
+        ]),
+        frame: blocksFor([
+          JSON.stringify({
+            frame: {
+              ...frame,
+              zones: zones.map(({ circumstances: _circumstances, conditions: _conditions, ...zone }) => zone),
+            },
+            supportingCandidates,
+            residentRequestLocalIds: residentLocalIdsAt(session, [], 0),
+            positions: storedPlace ? sceneLocationContext(session, storedPlace, audience) : undefined,
           }),
         ]),
         conversation: blocksFor([
@@ -402,36 +421,40 @@ export function createSceneWriting({
               ? "Conclude: interpret the ENTIRE authored input, then close naturally; do not invent a player goodbye. Empty input means input:[]."
               : "",
             openingSceneDirection(village, session),
+            "The Current Scene reference is the accepted physical, position and access baseline; earlier narration cannot override it. Apply the current calendar and newer developments below.",
+            ...(gmContext._projectContexts.length ? [SCENE_GM_PROJECTS, projects] : []),
           ]),
           {
             text: JSON.stringify({
-              context: sceneGmContext(gmContext),
-              residentActivity: active.map((person) => ({
-                characterId: person.characterId,
-                doing:
-                  session.sceneAttendance?.occupants.find((row) => row.characterId === person.characterId)?.doing ||
-                  person.doing,
-                homes: village.venues
-                  .filter((venue) => venueResidentIds(venue).includes(person.characterId))
-                  .map((venue) => ({ id: venue.id, name: venue.name })),
-              })),
-              supportingCandidates,
-              pendingProjectQuestions: session.pendingProjectQuestions,
-              pendingRoomQuestions: session.pendingRoomQuestions,
-              pendingMoves,
-              residentRequestLocalIds: residentLocalIdsAt(session, [], 0),
-              weather: moment.weather,
-              positions: storedPlace ? sceneLocationContext(session, storedPlace, audience) : undefined,
-              environment: village.narrative
-                ? environmentCircumstances(village.narrative, session.placeId, session.zoneId ?? "exterior")
-                : undefined,
-              presentation: {
-                state: gmPresentation.state,
-                sprites: Object.entries(gmPresentation.sprites).map(([actorId, sprite]) => ({
-                  actorId,
-                  expressions: describeSpriteExpressions(sprite, gmPresentation.variants),
+              context: {
+                calendar: calendarView,
+                actors: actors.map(({ name: _name, wishes, ...actor }) => ({
+                  ...actor,
+                  ...(wishes.length ? { wishes } : {}),
                 })),
+                ...(memory.memories.length || memory.administrative.roots.length || memory.administrative.incomplete
+                  ? { memory }
+                  : {}),
+                ...(social.edges.length || social.sharedRecords.length ? { social } : {}),
+                ...(otherProjects.length ? { otherProjects } : {}),
+                ...(zoneDevelopments.length ? { zoneDevelopments } : {}),
               },
+              ...(residentActivity.length ? { residentActivity } : {}),
+              ...(session.pendingProjectQuestions?.length
+                ? { pendingProjectQuestions: session.pendingProjectQuestions }
+                : {}),
+              ...(session.pendingRoomQuestions?.length ? { pendingRoomQuestions: session.pendingRoomQuestions } : {}),
+              ...(pendingMoves.length ? { pendingMoves } : {}),
+              ...(villageCircumstances.length ? { villageCircumstances } : {}),
+              weather: moment.weather,
+              ...(Object.keys(presentationState).length || sprites.length
+                ? {
+                    presentation: {
+                      ...(Object.keys(presentationState).length ? { state: presentationState } : {}),
+                      ...(sprites.length ? { sprites } : {}),
+                    },
+                  }
+                : {}),
             }),
           },
         ],
@@ -440,15 +463,11 @@ export function createSceneWriting({
           SCENE_GM_RESPONSE,
           SCENE_GM_BOUNDARY,
           SCENE_GM_EVENTS,
-          NPC_INTRODUCTION_WRITING,
           SCENE_GM_ACCESS,
           SCENE_GM_SOCIAL,
           SCENE_GM_WISHES,
-          SCENE_MEMORY_INSTRUCTION,
-          SCENE_GM_PROJECTS,
-          PLACE_UPDATE_INSTRUCTION.replace("placeUpdate:", "action:"),
-          'Physical action needs happened:true and its exact narration segment. Omit action when nothing changes. Memory screening uses the captured administrative rules; code binds the context fingerprint. Newly introduced narrative circumstances use narrativeIntroduction:{status:"introduced",segment,quote,development}; only an admitted grant permits it. Omit it when quiet. Optional presentation:[{segment,staging:[{characterId,expression?,look?:{target:"player"}|{target:"villager",characterId}|{target:"direction",direction:"left|right"}}]}] selects only supplied expression IDs; omit uncertain cues. Cues never establish actions, hearing, consent or positions.',
-          'Return one complete JSON object with BOTH required keys: {"input":[...],"segments":[...],...optional effects}. Always classify the entire exact original input, even when returning effects or a halt. Empty input means input:[]. Every current explicit access choice and Project approval, builder commitment or withdrawal needs its matching cited effect; include each separately.',
+          SCENE_GM_MEMORY,
+          SCENE_GM_PHYSICAL,
         ]),
       });
     }
@@ -459,10 +478,18 @@ export function createSceneWriting({
       blocks.push({
         text:
           SCENE_DEVELOPMENT_WRITING +
-          ' Return narrativeIntroduction:{status:"introduced",segment,quote,development} in this same response for an introduced circumstance, citing its exact narration segment and quote. Omit it when quiet. ' +
-          SCENE_DEVELOPMENT_SCHEMA +
+          ' An introduced circumstance uses event {type:"circumstance",at:[narration],value:{severity?,occurrence?,situation:{id?:existing,title,summary,status?},physical?:{appearanceChanged?,edits?,append?,recent?,dayNight?},conditions?:[{id?:existing,observation,restriction?:"none|ordinary-use",remedy?,durationMinutes?,clear?}]}}. Code supplies scope, revisions, target and timestamps. New restrictions require accessible remedies; no manufactured repair or weather changes. Omit when quiet. ' +
           " Immutable local admission: " +
-          JSON.stringify(introduction),
+          JSON.stringify({
+            consequence: introduction.consequence,
+            targets: introduction.targets.map(({ venueId, zoneId, correctiveActorIds }) => ({
+              venueId,
+              zoneId,
+              correctiveActorIds,
+            })),
+            situations: introduction.situations,
+            conditions: introduction.conditions,
+          }),
       });
     let fitted = captured?.fitted ?? ordinary;
     if (!captured && introduction) {
@@ -500,7 +527,6 @@ export function createSceneWriting({
       fitted,
       ordinary,
       loreInspection,
-      sparse: session.contactGeneration?.zoneEvents === true,
       writingVersion,
       gmContext,
       gmPresentation,
@@ -536,7 +562,7 @@ export function createSceneWriting({
             : venueInArea(current, session.area, session.spaceClass, session.privateOwnerId)
           : undefined;
       })(),
-      projectContexts,
+      projectContexts: gmContext._projectContexts,
       earlierEvidence,
     };
   }
@@ -613,8 +639,7 @@ export function createSceneWriting({
       replacement ? null : offer,
     );
     let { fitted, earlierEvidence, loreInspection, wishContexts, audience } = prepared;
-    const { sparse, writingVersion, maxTokens, model, village, pendingMoves, storedPlace, place, projectContexts } =
-      prepared;
+    const { writingVersion, maxTokens, model, village, pendingMoves, storedPlace, place } = prepared;
     const requestKey = originalKey + (replacement ? "-boundary" : "");
     let ordinary = prepared.ordinary;
     let gmContext = prepared.gmContext;
@@ -634,6 +659,7 @@ export function createSceneWriting({
       gmContext = saved.gmContext;
       gmPresentation = saved.gmPresentation;
     }
+    const projectContexts = gmContext._projectContexts;
     const dispatch = narrativeVersion
       ? await venueCheckpoint("narrative-dispatch:" + requestKey, async () => {
           const proof =
@@ -701,8 +727,9 @@ export function createSceneWriting({
     {
       try {
         if (!gmContext) throw conflict("The saved GM context is unavailable. Your draft is preserved.");
-        const complete = completeSceneObject(completion.content ?? "", completion.finishReason);
-        if (!complete) throw badGateway("The GM response was not valid JSON. Your draft is preserved.");
+        const response = completeSceneObject(completion.content ?? "", completion.finishReason);
+        if (!response) throw badGateway("The GM response was not valid JSON. Your draft is preserved.");
+        const complete = expandSceneEvents(response, gmContext, narrativeGrant ?? null);
         if (complete.halt && gmContext.preservation) {
           const halt = asRecord(complete.halt);
           const playerHalt = {
@@ -715,7 +742,7 @@ export function createSceneWriting({
           const finding = readSceneBoundary(playerHalt, gmContext.preservation, message, []);
           if (finding?.source === "player") throw new HaltedSceneTurn(finding.outcome);
         }
-        materializedRaw = materializeGmReply(normalizeGmEffects(complete, gmContext), message, mode === "greet");
+        materializedRaw = materializeGmReply(complete, message, mode === "greet");
         captureSources = playerSpeechCapture(materializedRaw, message, mode === "greet");
       } catch (error) {
         if (error instanceof VillagesRequestError && error.statusCode === 502)
@@ -727,7 +754,7 @@ export function createSceneWriting({
       }
     }
     const originalRaw = materializedRaw;
-    const completeRaw = sparse ? materializedRaw : null;
+    const completeRaw = materializedRaw;
     let raw = originalRaw;
     const diagnostics = responseDiagnostics(
       model,
@@ -735,11 +762,11 @@ export function createSceneWriting({
       fitted.maxTokens ?? maxTokens,
       raw,
       !!originalRaw && !extractJsonObject(completion.content ?? ""),
-      sparse && !completeRaw ? ["completeResponse", ...sceneMissingFields(originalRaw)] : sceneMissingFields(raw),
+      sceneMissingFields(raw),
     );
     runtimeDebug("Scene writing contract", {
       sceneId: session.id,
-      version: sparse ? writingVersion : 1,
+      version: writingVersion,
       complete: !!completeRaw,
       originalMissingFields: sceneMissingFields(originalRaw),
       inputCharacters: fitted.messages.reduce((sum, message) => sum + message.content.length, 0),
@@ -750,10 +777,10 @@ export function createSceneWriting({
     let effectFailures: NonNullable<import("../../domain/models/scene-model.js").VenueSubmission["effectFailures"]> =
       {};
     try {
-      if (sparse) {
+      {
         if (!completeRaw) throw new Error("The sparse Scene response is incomplete or ambiguous.");
         {
-          const isolated = normalizeRecoverableSceneReply(completeRaw);
+          const isolated = isolateSceneEffects(completeRaw);
           raw = isolated.raw;
           effectFailures = isolated.failures;
         }
@@ -766,7 +793,7 @@ export function createSceneWriting({
         npcAdmissions = introductions.admissions;
         audience = [...audience, ...npcAdmissions.map((admission) => admission.npc.id)];
       }
-      eventRaw = session.contactGeneration?.zoneEvents ? zoneEventReply(raw, message) : raw;
+      eventRaw = zoneEventReply(raw, message);
       parsed = parseVenueReply(eventRaw, session.contactGeneration?.zoneEvents ? [...audience, "player"] : audience);
       fenceIntroductionWitnesses(
         parsed.lines,

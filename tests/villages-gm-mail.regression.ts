@@ -78,8 +78,8 @@ const base: SocialMailInput = {
       return {
         content: JSON.stringify({
           text: replyText,
-          sourceReview: { changes, permissions: [], disclosures: [], intentions: [] },
-          replyReview: { changes: [], permissions: [], disclosures: [], intentions: [] },
+          sourceReview: { changes, permissions: [], disclosures: [] },
+          replyReview: { changes: [], permissions: [], disclosures: [] },
         }),
         finishReason: "stop",
       };

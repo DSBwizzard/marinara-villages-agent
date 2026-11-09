@@ -1385,9 +1385,6 @@ export function createRepairService(ports: RepairPorts) {
           social.applied = { ...live?.applied, ...social.applied };
           social.noticeSequence = Math.max(social.noticeSequence, live?.noticeSequence ?? 0);
           social.eventSequence = Math.max(social.eventSequence, live?.eventSequence ?? 0);
-          for (const key of Object.keys(social.intentionRevisions))
-            social.intentionRevisions[key] =
-              Math.max(social.intentionRevisions[key], live?.intentionRevisions[key] ?? 0) + 1;
           for (const [key, record] of Object.entries(social.sharedRecords))
             social.sharedRecords[key] = {
               ...record,

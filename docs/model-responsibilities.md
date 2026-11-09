@@ -20,6 +20,6 @@ Numeric source references expand into complete original segments, preserving att
 
 Validated movement that merely restates a local resident's current Zone is discarded only after actor, citation, conditional, destination and duplicate validation. Real crossings retain path and authority requirements. No-ops cannot change movement, witnesses or settlement.
 
-Authored cards, instructions and prose preferences remain required. One bounded history block deduplicates eligible exact source lines and visible narration. Retrieval is partial: omitted context never proves historical absence. Narrator continuity does not grant residents knowledge.
+Authored cards, instructions and prose preferences remain required. One bounded history selection deduplicates eligible exact source lines and visible narration. Required recent exchanges survive fitting; optional older evidence is retained only when its matching prompt row survives. Retrieval is partial: omitted context never proves historical absence. Narrator continuity does not grant residents knowledge.
 
 Reservations, failures, explicit retries and background tasks all contribute to play cost. Prompt organization does not establish provider-cache hits or savings. Provider-free tests establish routing, limits and accounting; real-provider characterization, latency, protocol quality and cost require separately authorized observation.

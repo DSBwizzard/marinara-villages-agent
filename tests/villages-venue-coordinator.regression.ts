@@ -1473,7 +1473,7 @@ async function main() {
         return {
           finishReason: "stop",
           content: JSON.stringify({
-            input: [{ kind: "action", text: acceptInput ? "I wait." : "I" }],
+            input: [{ kind: "action", text: acceptInput ? "I wait." : "Invented source" }],
             segments: [{ kind: "narration", text: "The room is quiet." }],
           }),
         };
@@ -1531,7 +1531,7 @@ async function main() {
     };
     await assert.rejects(
       coordinateVenue("typed-review", "typed", "turn", typedInput, 0, undefined, typedWork),
-      /omits player input/,
+      /invalid player source/,
     );
     assert.equal(
       fixtureSceneState(row("typed-review").data, records).lines.length,

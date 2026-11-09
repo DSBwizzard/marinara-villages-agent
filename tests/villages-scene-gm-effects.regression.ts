@@ -16,7 +16,6 @@ import {
 import { fixtureRelationshipState } from "./helpers/village-storage.fixture.js";
 import { relationshipDocumentId } from "../packages/villages/src/server/adapters/storage/relationship-payload-store.js";
 import { ensureNarrative } from "../packages/villages/src/server/domain/rules/narrative-development.js";
-import { SCENE_DEVELOPMENT_SCHEMA } from "../packages/villages/src/server/domain/rules/narrative-prompts.js";
 
 await import(pathToFileURL(resolve("packages/villages/server.mjs")).href);
 mock.timers.enable({ apis: ["Date"], now: new Date("2026-11-05T20:00:00Z") });
@@ -40,6 +39,7 @@ for (const scenario of [
   "project-conclude",
   "project-greet",
   "wish",
+  "wish-new",
   "relationship",
   "occupancy",
   "empty-conclude",
@@ -76,7 +76,7 @@ for (const scenario of [
           "project:common",
         );
       }
-      if (scenario === "wish")
+      if (scenario === "wish") {
         world.villagers[0].wishes = [
           fixtureWish(
             { wish: "Share my leek-soup recipe in conversation.", reason: "Enjoys sharing recipes." },
@@ -84,6 +84,8 @@ for (const scenario of [
             now,
           ),
         ];
+        world.villagers[0].wishes[0].attention = { state: "foreground", reason: "Ready to share the recipe." };
+      }
     },
     configureScene(scene) {
       if (scenario === "project-greet") scene.status = "opening";
@@ -120,32 +122,23 @@ for (const scenario of [
               { kind: "narration", text: "A courier enters and introduces herself as Nell." },
               { kind: "dialogue", speakerId: "new:nell", text: "I enjoy collecting pressed leaves." },
             ],
-            npcIntroductions: [
+            events: [
               {
-                ref: "new:nell",
-                name: "Nell",
-                label: "Courier",
-                characterization: "A cheerful courier who collects leaves.",
-                segment: 0,
+                type: "npc",
+                actorId: "new:nell",
+                at: [0],
+                value: { name: "Nell", label: "Courier", characterization: "A cheerful courier who collects leaves." },
               },
-            ],
-            memoryChanges: [
               {
-                action: "create",
-                kind: "experience",
-                text: "Nell told the player she enjoys collecting pressed leaves.",
-                subjects: ["new:nell", "player"],
-                learners: {
-                  "new:nell": {
-                    basis: "observation",
-                    support: [{ lineId: 1, excerpt: "I enjoy collecting pressed leaves." }],
-                  },
-                  player: {
-                    basis: "observation",
-                    support: [{ lineId: 1, excerpt: "I enjoy collecting pressed leaves." }],
-                  },
+                type: "memory",
+                at: [1],
+                value: {
+                  kind: "information",
+                  text: "Nell said she enjoys collecting pressed leaves.",
+                  subjects: ["new:nell", "player"],
+                  knowers: ["new:nell", "player"],
+                  basis: "report",
                 },
-                screening: { disposition: "clear" },
               },
             ],
           }
@@ -153,7 +146,9 @@ for (const scenario of [
           ? {
               ...common,
               segments: [{ kind: "dialogue", speakerId: "mara", text: "I'll see." }],
-              immediateResidentMoves: [{ characterIds: ["mara", "bryn"], zoneId: "exterior", source: 0 }],
+              events: [
+                { type: "move-request", targetId: "exterior", at: ["input:0"], value: { actors: ["mara", "bryn"] } },
+              ],
             }
           : scenario === "relationship"
             ? {
@@ -161,17 +156,16 @@ for (const scenario of [
                 segments: [
                   { kind: "dialogue", speakerId: "mara", text: "Thank you for hearing me. I feel more at ease." },
                 ],
-                relationshipChanges: {
-                  changes: [
-                    {
-                      fromId: "mara",
-                      toId: "player",
-                      expectedRevision: 3,
-                      patch: { stance: "More at ease" },
-                      lineIds: [0],
-                    },
-                  ],
-                },
+                events: [
+                  { type: "presentation", actorId: "mara", at: 0, value: { look: { target: "player" } } },
+                  {
+                    type: "relationship",
+                    actorId: "mara",
+                    targetId: "player",
+                    at: [0],
+                    value: { stance: "More at ease" },
+                  },
+                ],
               }
             : scenario === "project" || scenario === "project-conclude" || scenario === "project-greet"
               ? {
@@ -183,30 +177,48 @@ for (const scenario of [
                       text: "I approve the exact Larger Common room design, and I want to lead its construction.",
                     },
                   ],
-                  projectSpeech: ["approval", "builder"].map((kind) => ({
-                    projectId: "project:common",
-                    revision: 1,
-                    kind,
-                    speakerId: "mara",
-                    citations: [{ segment: 0 }],
+                  events: ["approval", "builder"].map((value) => ({
+                    type: "project",
+                    targetId: "project:common",
+                    at: [0],
+                    value,
                   })),
                 }
-              : scenario === "wish"
+              : scenario === "wish" || scenario === "wish-new"
                 ? {
                     ...common,
                     segments: [
                       {
                         kind: "dialogue",
                         speakerId: "mara",
-                        text: "My favorite leek soup uses sliced leeks, potatoes and broth, simmered until tender.",
+                        text: "I've wanted to share my recipe with you. My leek soup uses leeks, potatoes and broth, simmered until tender.",
                       },
                     ],
-                    wishChanges: [
+                    events: [
+                      ...(scenario === "wish-new"
+                        ? [
+                            {
+                              type: "wish",
+                              actorId: "mara",
+                              targetId: "new:recipe",
+                              at: [0],
+                              value: {
+                                intent: "create",
+                                desire: {
+                                  wish: "Share my leek-soup recipe in conversation.",
+                                  reason: "Enjoys sharing recipes.",
+                                },
+                              },
+                              reason: "The exchange expresses her desire and its actual outcome.",
+                            },
+                          ]
+                        : []),
                       {
+                        type: "wish",
                         actorId: "mara",
-                        wishId: "recipe",
-                        intent: "fulfilled",
-                        evidence: [0],
+                        targetId: scenario === "wish-new" ? "new:recipe" : "recipe",
+                        at: [0],
+                        value: { intent: "fulfilled" },
                         reason: "Shared her recipe in conversation.",
                       },
                     ],
@@ -215,13 +227,17 @@ for (const scenario of [
                   ? {
                       ...common,
                       segments: [{ kind: "dialogue", speakerId: "mara", text: "Meet me today at 19:30." }],
-                      halt: {
-                        reason: "none",
-                        quote: "",
-                        appointments: [
-                          { source: "draft", quote: "Meet me today at 19:30.", date: "2026-11-05", minute: 1170 },
-                        ],
-                      },
+                      events: [
+                        {
+                          type: "appointment",
+                          value: {
+                            source: "draft",
+                            quote: "Meet me today at 19:30.",
+                            when: { date: "2026-11-05" },
+                            minute: 1170,
+                          },
+                        },
+                      ],
                     }
                   : { ...common, segments: [{ kind: "dialogue", speakerId: "mara", text: "Good evening." }] };
     return { content: JSON.stringify(content), finishReason: "stop", usage: { inputTokens: 10, outputTokens: 10 } };
@@ -286,7 +302,7 @@ for (const scenario of [
         "Project citations bind to saved transcript identities",
       );
     }
-    if (scenario === "wish") assert.equal(world.villagers[0].wishes[0].status, "fulfilled");
+    if (scenario === "wish" || scenario === "wish-new") assert.equal(world.villagers[0].wishes[0].status, "fulfilled");
     if (scenario === "draft-appointment")
       assert(
         !host.scene().lines.some((line) => line.content.includes("19:30")),
@@ -312,47 +328,37 @@ for (const scenario of [
   host.model.chatComplete = async (messages: any[]) => {
     calls++;
     const prompt = messages.map((row) => row.content).join("\n");
-    assert(prompt.includes(SCENE_DEVELOPMENT_SCHEMA), "The GM receives the complete environmental effect schema");
+    assert(prompt.includes('type:"circumstance"'), "The GM receives the compact admitted circumstance contract");
     assert.doesNotMatch(prompt, /Do not emit effect metadata|System independently checks your unchanged prose/);
-    const grant = JSON.parse(prompt.match(/Immutable local admission: ([^\n]+)/u)![1]);
-    const target = grant.targets[0];
     return {
       finishReason: "stop",
       content: JSON.stringify({
         input: [{ kind: "speech", text: "Hello." }],
         segments: [{ kind: "narration", text: "A gust rattles the wooden sign." }],
-        narrativeIntroduction: {
-          status: "introduced",
-          segment: 0,
-          quote: "A gust rattles the wooden sign.",
-          development: {
-            severity: "gentle",
-            occurrence: "A gust rattles the wooden sign.",
-            situation: {
-              scope: "zone",
-              id: null,
-              expectedRevision: 0,
-              title: "Rattling sign",
-              summary: "The sign rattles in the breeze.",
-              status: "active",
-            },
-            physical: [],
-            conditions: [
-              {
-                id: null,
-                expectedRevision: 0,
-                venueId: target.venueId,
-                zoneId: target.zoneId,
-                observation: "The wooden sign rattles in the breeze.",
-                restriction: "none",
-                remedy: "",
-                endsAt: "2026-11-05T20:10:00.000Z",
-                clear: false,
+        events: [
+          {
+            type: "circumstance",
+            at: [0],
+            value: {
+              severity: "gentle",
+              occurrence: "A gust rattles the wooden sign.",
+              situation: {
+                title: "Rattling sign",
+                summary: "The sign rattles in the breeze.",
+                status: "active",
               },
-            ],
-            weather: null,
+              conditions: [
+                {
+                  observation: "The wooden sign rattles in the breeze.",
+                  restriction: "none",
+                  remedy: "",
+                  durationMinutes: 10,
+                  clear: false,
+                },
+              ],
+            },
           },
-        },
+        ],
       }),
     };
   };

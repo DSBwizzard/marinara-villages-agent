@@ -38,7 +38,7 @@ export const LIVE_RELATIONSHIP_INSTRUCTION = RELATIONSHIP_REVIEW_INSTRUCTION.rep
 
 export const LIVE_MEMORY_INSTRUCTION =
   SCENE_MEMORY_INSTRUCTION +
-  " Return relationshipChanges:{changes:[],permissions:[],disclosures:[],intentions:[]} even when empty. Relationship proposals are independent of memories. " +
+  " Return relationshipChanges:{changes:[],permissions:[],disclosures:[]} even when empty. Relationship proposals are independent of memories. " +
   LIVE_RELATIONSHIP_INSTRUCTION;
 
 export function bindLiveProposals(

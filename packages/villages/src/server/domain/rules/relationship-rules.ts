@@ -35,14 +35,11 @@ export const permissionKey = (controllerId: string, visitorId: string, venueId: 
   JSON.stringify([controllerId, visitorId, venueId, zoneId]);
 export function defaultRelationshipState(seed: string): RelationshipState {
   return {
-    version: 3,
+    version: 4,
     noticeSequence: 0,
     eventSequence: 0,
     seed,
     edges: {},
-    intentions: {},
-    intentionRevisions: {},
-    intentionReceipts: {},
     grants: {},
     receipts: {},
     applied: {},
@@ -80,12 +77,12 @@ function validatedRelationshipState(seed: string, value: unknown): RelationshipS
   if (value === undefined) return defaultRelationshipState(seed);
   if (raw.seed !== seed)
     throw new Error("The saved relationships belong to another Village. Their history is preserved.");
-  if (raw.version !== 3)
+  if (raw.version !== 4)
     throw new Error(
       "This Village uses an unsupported relationship contract. Create an independent new Village; its saved data has not been changed.",
     );
   // Package-owned documents have already passed the source and schema validator.
-  const state = { ...defaultRelationshipState(seed), ...raw, seed, version: 3 } as RelationshipState;
+  const state = { ...defaultRelationshipState(seed), ...raw, seed, version: 4 } as RelationshipState;
   // Header field order must survive warm publication, cold hydration and inline capture comparisons.
   state.edges = Object.fromEntries(
     Object.entries(state.edges).map(([id, edge]) => [id, { ...neutralRelationship(edge.fromId, edge.toId), ...edge }]),
@@ -148,9 +145,6 @@ export function coerceRelationshipState(seed: string, value: unknown): Relations
         },
       ]),
     ),
-    intentions: { ...source.intentions },
-    intentionRevisions: { ...source.intentionRevisions },
-    intentionReceipts: { ...source.intentionReceipts },
     grants: { ...source.grants },
     receipts: { ...source.receipts },
     applied: { ...source.applied },
@@ -325,14 +319,6 @@ export function applyRelationshipReview(
 ): RelationshipReceipt[] {
   const residents = new Set(village.villagers.map((person) => person.characterId));
   // Preflight every live revision before changing anything, including disclosures and permissions.
-  for (const entry of review.intentions ?? []) {
-    const id = sourceId + ":intentions:" + entry.actorId;
-    if (state.applied[id]) continue;
-    if (!residents.has(entry.actorId) || entry.items.length > 3 || entry.sceneItems.length > 3)
-      throw new Error("Invalid social intentions.");
-    if ((state.intentionRevisions[entry.actorId] ?? 0) !== entry.expectedRevision)
-      throw new SocialRevisionConflict("Social intentions changed during interpretation.");
-  }
   for (const permission of review.permissions) {
     if (state.applied[permission.id]) continue;
     const venue = findLocation(village, permission.venueId),
@@ -419,25 +405,6 @@ export function applyRelationshipReview(
       evidence: change.evidence,
     };
     state.applied[change.id] = true;
-  }
-  for (const entry of review.intentions ?? []) {
-    if (!residents.has(entry.actorId) || entry.items.length > 3) throw new Error("Invalid social intentions.");
-    const receipt = sourceId + ":intentions:" + entry.actorId;
-    if (state.applied[receipt]) continue;
-    const sceneBeforeRevision = sceneState?.intentionRevisions[entry.actorId] ?? 0;
-    state.intentions[entry.actorId] = structuredClone(entry.items);
-    state.intentionRevisions[entry.actorId] = entry.expectedRevision + 1;
-    state.intentionReceipts[receipt] = {
-      sourceId,
-      actorId: entry.actorId,
-      at,
-      sceneAfter: structuredClone(entry.sceneItems),
-      liveAfter: structuredClone(entry.items),
-      sceneRevision: sceneBeforeRevision + 1,
-      liveRevision: entry.expectedRevision + 1,
-      evidence: entry.evidence,
-    };
-    state.applied[receipt] = true;
   }
   for (const disclosure of review.disclosures) {
     if (state.applied[disclosure.id]) continue;

@@ -226,22 +226,6 @@ export function VillagesRelationships({
                     <h4>
                       {person.name} · {person.initialized ? "History prepared" : "History pending"}
                     </h4>
-                    {person.intentions.length ? (
-                      <>
-                        <h4>Social intentions</h4>
-                        {person.intentions.map((intention, index) => (
-                          <div key={index}>
-                            <p>
-                              {intention.text} · {intention.status}
-                            </p>
-                            <p>{intention.reason}</p>
-                            <small>{intention.targets.join(", ")}</small>
-                          </div>
-                        ))}
-                      </>
-                    ) : (
-                      <p>No saved social intention.</p>
-                    )}
                     {person.perspectives.map((perspective, index) => (
                       <details key={index} open={perspective.technical.toId === "player" || undefined}>
                         <summary>

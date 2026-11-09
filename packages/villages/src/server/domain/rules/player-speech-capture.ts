@@ -1,6 +1,31 @@
 import { asRecord } from "./coerce.js";
 import { badGateway } from "./errors.js";
 export type SpeechSource = { start: number; end: number; text: string; occurrence: number };
+/** Exact source selection; repeated text requires an explicit occurrence. Offsets are always server-derived. */
+export function playerSourceSpan(value: unknown, input: string): SpeechSource {
+  const row = asRecord(value);
+  const text = typeof row.text === "string" ? row.text : "";
+  const fail = (): never => {
+    throw badGateway("The GM used an ambiguous or invalid player source. Your draft is preserved.");
+  };
+  if (!text.trim()) return fail();
+  const first = input.indexOf(text);
+  if (first < 0 || (row.occurrence === undefined && input.indexOf(text, first + text.length) >= 0)) return fail();
+  const occurrence = row.occurrence ?? 1;
+  if (!Number.isSafeInteger(occurrence) || Number(occurrence) < 1 || Number(occurrence) > input.length) return fail();
+  let start = -1;
+  for (let index = 0; index < Number(occurrence); index++) {
+    start = input.indexOf(text, start < 0 ? 0 : start + text.length);
+    if (start < 0) return fail();
+  }
+  const end = start + text.length;
+  const boundaries = new Set(
+    [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(input)].map((part) => part.index),
+  );
+  boundaries.add(input.length);
+  if (!boundaries.has(start) || !boundaries.has(end)) return fail();
+  return { text, start, end, occurrence: Number(occurrence) };
+}
 /** Resolve exact source occurrences; never derive hearing from punctuation or reactions. */
 export function playerSpeechCapture(raw: Record<string, unknown>, input: string, opening = false) {
   const capture = asRecord(raw.playerSpeechCapture);
@@ -43,11 +68,7 @@ export function playerSpeechCapture(raw: Record<string, unknown>, input: string,
         Number(source.occurrence) > input.length
       )
         return fail();
-      let start = -1;
-      for (let occurrence = 0; occurrence < Number(source.occurrence); occurrence++) {
-        start = input.indexOf(source.text, start < 0 ? 0 : start + source.text.length);
-        if (start < 0) return fail();
-      }
+      const { start } = playerSourceSpan(source, input);
       if (start < cursor) return fail();
       cursor = start + source.text.length;
       spans.push({ start, end: cursor, text: source.text, occurrence: Number(source.occurrence) });

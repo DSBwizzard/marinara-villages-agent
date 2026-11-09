@@ -38,6 +38,7 @@ export type VenueWritingBlock = {
   text: string;
   cacheBreakpoint?: true;
   evidenceId?: string;
+  pruningPriority?: number;
   optional?: "wish" | "history" | "memory" | "lore";
   lore?: LoreUse;
 };
@@ -45,6 +46,7 @@ export type VenueWritingBlock = {
 export type VenueWritingSections = {
   direction: VenueWritingBlock[];
   identity: VenueWritingBlock[];
+  frame?: VenueWritingBlock[];
   circumstances: VenueWritingBlock[];
   conversation: VenueWritingBlock[];
   authoredInstructions: VenueWritingBlock[];
@@ -58,13 +60,15 @@ export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWrit
     metadata: "Response format and evidence metadata",
     identity: "Complete authored character identity",
     authoredInstructions: "Authored post-history direction",
+    frame: "Current Scene reference",
     conversation: "Witnessed conversation and recalled memories",
     circumstances: "Current Scene circumstances",
   };
   return (Object.keys(headings) as (keyof VenueWritingSections)[]).flatMap((section) => {
-    const blocks = sections[section].filter((block) => block.text.trim());
+    const blocks = (sections[section] ?? []).filter((block) => block.text.trim());
     const breakpoint =
       section === "metadata" ||
+      section === "frame" ||
       section ===
         (sections.authoredInstructions.some((block) => block.text.trim()) ? "authoredInstructions" : "identity");
     if (breakpoint && blocks.length) blocks[blocks.length - 1] = { ...blocks.at(-1)!, cacheBreakpoint: true };
@@ -110,8 +114,8 @@ export function fitVenueWritingMessages(
   maxTokens: number,
   connectionName = "Narration",
 ) {
-  const kept = [...blocks];
-  // Old history first, then optional memories/lore. Essential blocks and the
+  let kept = [...blocks];
+  // Low-priority history first, then optional memories/lore. Essential blocks and the
   // latest player input must survive fitting byte-for-byte before any paid call.
   for (;;) {
     const messages = assembleVenueWritingMessages(kept, input);
@@ -119,6 +123,7 @@ export function fitVenueWritingMessages(
     if (JSON.stringify(fitted.messages) === JSON.stringify(messages))
       return {
         ...fitted,
+        trimmed: fitted.trimmed || kept.length < blocks.length,
         evidenceIds: kept.flatMap((block) => (block.evidenceId ? [block.evidenceId] : [])),
         loreEntries: kept.filter((block) => block.optional === "lore").map((block) => block.text),
         lore: mergeLoreUse(kept.flatMap((block) => (block.lore ? [block.lore] : []))),
@@ -127,14 +132,23 @@ export function fitVenueWritingMessages(
       ["wish", "history", "memory", "lore"]
         .map((kind) =>
           kind === "lore"
-            ? kept.findLastIndex((block) => block.optional === kind)
-            : kept.findIndex((block) => block.optional === kind),
+            ? kept
+                .map((block, index) => ({ block, index }))
+                .filter(({ block }) => block.optional === kind)
+                .reverse()
+            : kept
+                .map((block, index) => ({ block, index }))
+                .filter(({ block }) => block.optional === kind)
+                .sort((a, b) => (a.block.pruningPriority ?? 0) - (b.block.pruningPriority ?? 0) || a.index - b.index),
         )
-        .find((index) => index >= 0) ?? -1;
-    if (optional < 0)
+        .find((rows) => rows.length) ?? [];
+    if (!optional.length)
       throw badRequest(
         `The complete character cards and required context do not fit the ${connectionName} connection. Increase its context limit or choose a connection with a larger context window. No reply was requested.`,
       );
-    kept.splice(optional, 1);
+    // Drop whole low-priority rows in batches: fitting a long Scene must not scan it once per line.
+    const count = optional[0].block.optional === "history" ? Math.ceil(optional.length / 4) : 1;
+    const remove = new Set(optional.slice(0, count).map(({ block }) => block));
+    kept = kept.filter((block) => !remove.has(block));
   }
 }

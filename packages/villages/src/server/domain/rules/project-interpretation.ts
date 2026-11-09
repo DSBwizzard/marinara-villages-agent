@@ -2,6 +2,7 @@ import { projectPhysicalDesign } from "../../../shared/helpers/project-design.js
 import type { VillageState } from "../models/world.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { renovationTerms } from "./project-terms.js";
+import { memoryTerms } from "./memory-protection.js";
 export type ProjectSpeechContext = { projectId: string; revision: number; phase: string };
 export type ProjectSpeechProposal = ProjectSpeechContext & {
   version: 1;
@@ -16,13 +17,28 @@ const normalized = (text: string) =>
 
 export function projectSpeechContexts(
   state: VillageState,
-  _activeIds: string[],
-  _conversation: string,
-  _message = "",
-  _venueId = "",
+  activeIds: string[],
+  conversation: string,
+  message = "",
+  venueId = "",
 ): ProjectSpeechContext[] {
+  const query = message + "\n" + conversation;
+  const terms = new Set(memoryTerms(query));
   return state.projects.flatMap((project) =>
-    project.lifecycle && ["planning", "paused", "working"].includes(project.status)
+    project.lifecycle &&
+    ["planning", "paused", "working"].includes(project.status) &&
+    (project.venueId === venueId ||
+      project.lifecycle.targetVenueId === venueId ||
+      [
+        ...project.participantIds,
+        ...project.lifecycle.affectedIds,
+        project.requesterCharacterId,
+        project.lifecycle.builderId,
+        ...project.lifecycle.candidates.map((candidate) => candidate.residentId),
+      ].some((id) => id && activeIds.includes(id)) ||
+      query.includes(project.id) ||
+      query.includes(project.title) ||
+      memoryTerms(project.title + " " + projectPhysicalDesign(project)).some((term) => terms.has(term)))
       ? [{ projectId: project.id, revision: project.lifecycle.revision, phase: project.lifecycle.phase }]
       : [],
   );
@@ -35,13 +51,47 @@ export function projectSpeechPrompt(state: VillageState, contexts: ProjectSpeech
       contexts.map((context) => {
         const project = state.projects.find((project) => project.id === context.projectId)!;
         return {
-          ...context,
+          projectId: context.projectId,
+          phase: context.phase,
           title: project.title,
           establishment: project.establishment,
           description: project.lifecycle?.change
             ? renovationTerms(project.lifecycle.change)
             : projectPhysicalDesign(project),
-          design: project.plan,
+          design: project.plan
+            ? {
+                form: project.plan.form,
+                venueType: project.plan.venueType,
+                exteriorDescription: project.plan.exteriorDescription,
+                capacity: project.plan.capacity,
+                layout: project.plan.layout,
+                zones: [...project.plan.spaces, ...project.plan.privateSpaces].map(
+                  ({
+                    id,
+                    name,
+                    kind,
+                    description,
+                    roomSpecification,
+                    venueClass,
+                    purpose,
+                    controllerIds,
+                    ownerId,
+                    connectedTo,
+                  }) => ({
+                    id,
+                    name,
+                    kind,
+                    description,
+                    roomSpecification,
+                    venueClass,
+                    purpose,
+                    controllerIds,
+                    ownerId,
+                    connectedTo,
+                  }),
+                ),
+              }
+            : undefined,
           leadId: project.lifecycle?.builderId,
           affectedIds: project.lifecycle?.affectedIds,
         };
@@ -67,7 +117,7 @@ export function coerceProjectSpeech(value: unknown): ProjectSpeechProposal[] {
         citations: Array.isArray(row.citations)
           ? row.citations.slice(0, 12).map((value) => ({
               lineId: asTrimmedString(asRecord(value).lineId),
-              quote: asTrimmedString(asRecord(value).quote).slice(0, 1200),
+              quote: asTrimmedString(asRecord(value).quote),
             }))
           : [],
         ...(context.version === 1 && ["system", "gm"].includes(String(context.source))
@@ -117,6 +167,7 @@ export function validateProjectSpeech(proposal: ProjectSpeechProposal, lines: Sp
     const line = lines.find((entry) => entry.id === citation.lineId);
     if (
       !line ||
+      citation.quote.length > 2000 ||
       line.speakerId !== proposal.speakerId ||
       line.kind === "narration" ||
       !normalized(citation.quote) ||

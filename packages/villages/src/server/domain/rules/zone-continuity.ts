@@ -186,7 +186,7 @@ export function applyPlaceUpdate(before: PlaceAfter, value: unknown, at: string)
     )
   )
     throw invalid();
-  text(row.narration, 1200);
+  text(row.narration, 2000);
   if (
     row.conditionClears !== undefined &&
     (!Array.isArray(row.conditionClears) ||

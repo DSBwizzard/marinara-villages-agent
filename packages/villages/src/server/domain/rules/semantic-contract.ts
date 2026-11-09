@@ -3,7 +3,7 @@ import { recentPlaceText } from "../../../shared/helpers/place-continuity.js";
 import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import type { VenueReplyLine, VenueScene } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
-import { accessManagementPrompt } from "./access-speech.js";
+import { accessManagementContext } from "./access-speech.js";
 import { asRecord } from "./coerce.js";
 import { badGateway } from "./errors.js";
 import { memoryTerms } from "./memory-protection.js";
@@ -47,10 +47,9 @@ export function semanticSocialContext(
     capturedAndScene: socialContextState(presentation.relationshipContext, actors, query),
     live: socialContextState(authority.relationshipContext, actors, query),
     liveAt: new Date().toISOString(),
-    intentions: Object.fromEntries(actors.map((id) => [id, presentation.relationshipContext?.intentions[id] ?? []])),
     rule:
       scene.liveSceneVersion === 1
-        ? "Each changed pair must cite its exact current live revision. This is one living timeline: sceneAfter and liveAfter describe the same change; sceneItems and items describe the same intentions. Preserve intervening history and never overwrite a changed live revision."
+        ? "Each changed pair must cite its exact current live revision. This is one living timeline: sceneAfter and liveAfter describe the same change. Preserve intervening history and never overwrite a changed live revision."
         : "Each changed pair must cite its exact current live revision. sceneAfter and liveAfter are separate interpretations of this same event; never import later live facts into Scene continuity.",
   };
 }
@@ -90,7 +89,36 @@ export function semanticContext(
   }
   const wishQuery = [query, narration, ...history.map((row) => row.content)].join("\n");
   const wishTerms = new Set(memoryTerms(wishQuery));
+  const fullWish = (wish: VillageState["villagers"][number]["wishes"][number]) =>
+    !compact ||
+    wish.attention.state === "foreground" ||
+    wishQuery.includes(wish.id) ||
+    memoryTerms(
+      [
+        wish.wish,
+        wish.reason,
+        wish.approach,
+        ...wish.conditions.map((condition) => condition.quote),
+        ...wish.history.map((event) => event.text),
+      ].join("\n"),
+    ).some((term) => wishTerms.has(term));
+  const projectContexts = projectSpeechContexts(
+    state,
+    actors,
+    history.map((line) => line.content).join("\n"),
+    query,
+    scene.placeId,
+  );
   return {
+    placeId: scene.placeId,
+    _wishEvidence: state.villagers
+      .filter((row) => actors.includes(row.characterId))
+      .flatMap((row) => row.wishes.filter(fullWish).map((wish) => ({ actorId: row.characterId, wishId: wish.id }))),
+    _projectContexts: projectContexts,
+    _conditions:
+      state.narrative?.conditions.filter(
+        (condition) => condition.venueId === scene.placeId && condition.zoneId === scene.zoneId,
+      ) ?? [],
     preservation: {
       version: 1 as const,
       sceneBoundaryVersion: 1 as const,
@@ -145,23 +173,8 @@ export function semanticContext(
               }
             : row.cardSnapshot,
           admission: row.admission,
-          // shortcut: keep all open Wishes whole; narrow them only if measured open-ledger size blocks play.
           wishes: (row.wishes ?? [])
-            .filter(
-              (wish) =>
-                !compact ||
-                wish.status === "open" ||
-                wishQuery.includes(wish.id) ||
-                memoryTerms(
-                  [
-                    wish.wish,
-                    wish.reason,
-                    wish.approach,
-                    ...wish.conditions.map((condition) => condition.quote),
-                    ...wish.history.map((event) => event.text),
-                  ].join("\n"),
-                ).some((term) => wishTerms.has(term)),
-            )
+            .filter((wish) => wish.status === "open" || fullWish(wish))
             .map((wish) => ({ ...wish })),
         })),
       ...actors.flatMap((id) => {
@@ -215,7 +228,7 @@ export function semanticContext(
           }))
       : [],
     access: compact && venue?.access ? accessRules : venue?.access,
-    accessManagement: accessManagementPrompt(
+    accessManagement: accessManagementContext(
       state,
       actors,
       state.venues.some((venue) => venue.id === scene.placeId) ? undefined : scene.placeId,
@@ -240,7 +253,14 @@ export function semanticContext(
         }))
       : [],
 
-    projects: projectSpeechPrompt(state, projectSpeechContexts(state, actors, "", query, scene.placeId)),
+    projects: projectSpeechPrompt(state, projectContexts),
+    otherProjects: state.projects
+      .filter(
+        (project) =>
+          ["planning", "paused", "working"].includes(project.status) &&
+          !projectContexts.some((context) => context.projectId === project.id),
+      )
+      .map(({ id, title, status }) => ({ id, title, status })),
     requests: {
       venues: state.venues.map((row) => ({
         id: row.id,

@@ -1,55 +1,137 @@
 import type { SemanticIntent } from "../models/semantic-model.js";
 import { asRecord } from "./coerce.js";
 import { badGateway } from "./errors.js";
-import { neutralRelationship, relationshipKey } from "./relationship-rules.js";
-import { materializePlayerSpeech } from "./player-speech-capture.js";
+import { materializePlayerSpeech, playerSourceSpan } from "./player-speech-capture.js";
 import { semanticContext } from "./semantic-contract.js";
 
 export const SCENE_GM_DIRECTION =
-  "You are the Game Master of Villages, a persistent character-driven life game. Interpret the player's entire input and write the next exchange, with small updates only when something changes. Residents have their own motives, opinions, abilities and right to refuse. Preserve complete authored identity and post-history direction. Write specific, natural, emotionally responsive prose; avoid repeated questions, ceremonial consent and filler. Let addressed people respond. Server facts govern positions, time, access and consequences. Private context belongs to its named knowers, never the whole cast. No invented player words, thoughts, agreement or travel. Thoughts and quoted examples are not audible. Later arrivals never hear earlier dialogue. Hearing is not sight, presence or access. A proposal or promise is not physical completion. Only explicit Move changes the player's Zone, and only Start/Resume begins Project work. Ordinary conversation needs no persistent update. You propose meaning and consequences; server validation determines what applies.";
+  "You are the GM of Villages, a persistent character-driven life game. Preserve complete authored identities and directions. Write the next Scene beat with natural, specific dialogue and useful narration. Match the moment: give the player room to answer in active conversation; a short reply or single beat can be enough. Take more space when events or character expression call for it. Residents retain motives, agency, initiative and refusal. Let relevant people respond and converse. Private facts belong only to named knowers; later arrivals never hear earlier dialogue. Hearing is not sight, presence or access. Never invent player words, thoughts, decisions, consent or travel. A promise is not completion. Only Move changes the player's Zone; only Start/Resume starts Project work. Code owns time, witnesses, legality, state and persistence. Add events for meaningful learning or changes that actually occur in this exchange; otherwise input and segments are enough. Empty optional current collections may be omitted. Omitted recalled context never proves an event did not happen.";
 
 export const SCENE_GM_RESPONSE =
-  'Return ONE compact JSON object. Required input:[{kind:"speech|thought|action|context",text:"exact source span",delivery?:"ordinary|whisper|shout",targetId?}] classifies the ENTIRE original input in source order, including roleplay/action wrappers; only whitespace and surrounding quotation marks may fall between spans. Ordinary unmarked dialogue is speech; private thoughts, actions, recalled/hypothetical/example speech are not. A whisper needs a local target. Opening: input:[]. Code inserts the exact spoken spans; never put player in generated segments. Required segments:[{kind:"dialogue",speakerId,text,delivery?,presentation?:"main|aside",targetId?}|{kind:"narration",text,sound?:{sourceId,text,loud?:true}}]. Max24 total segments including player speech; text max2000 characters. Staging is narration, never a speakerless aside. Example shape: {"input":[{"kind":"speech","text":"Hello."}],"segments":[{"kind":"dialogue","speakerId":"resident-id","text":"Evening."}]}. Use actual IDs and words, not the example. Escape every quote inside text. All optional fields belong INSIDE that same object. No self-review, consistent/authority flags, explanations, unchanged projections or empty optional sections. All numeric sources refer to generated segments before code inserts player speech; use "utterance:0" for an input speech source.';
+  'Return one JSON object {input:[{text,occurrence?,kind?:"speech|action",delivery?:"whisper|shout",targetId?}],segments:[{kind:"dialogue",speakerId,text,delivery?,presentation?:"aside",targetId?}|{kind:"narration",text,sound?:{sourceId,text,loud?:true}}],events?:[]}. Select ONLY actual audible speech (default kind), plus actions needed for movement requests or physical consent. Omit thoughts, recalled/hypothetical/example speech and context: code preserves every omitted byte as non-audible context. Include 1-based occurrence whenever exact text repeats in the original; keep source order, negation and qualifications. Whispers name a local target. Capture ordinary direct speech too; input:[] means no audible speech or selected action, and is always empty for opening. Never generate player segments; code inserts selected speech. Max24 segments including player speech, each max2000 characters. Staging is narration. Events share {type,actorId?,targetId?,at:[source],value?,reason?}. at is always an array of 0-based references to your returned segments, before code inserts player speech: [0] cites your first segment (a number, never "0"); ["input:0"] separately cites selected input item 0. Memory, Wish and relationship events may also cite supplied history IDs. No revisions, fingerprints, receipts, unchanged fields or negative reports. Ordinary chatter needs no events.';
 
 export const SCENE_GM_EVENTS =
-  'Optional events:{moves:[{characterId,zoneId,segment}],departures:[{source}],contactEnd:[{source}],residenceRequest?:{source,venueId},residenceDecision?:{source,characterId,approved},venueRequest?:{source,name,classes:["workplace|community|other"]},sceneEnded?:{source}}. moves cite a narration segment establishing a completed permitted resident crossing, never a door opening or a player crossing. Distinct people and destinations stay distinct. A source is the full spoken segment that establishes the event. No silent consent, hidden arrivals or earlier witnesses. Supporting people have native Memories, never Villager Wishes, relationship graphs or builder roles. Optional placeDiscoveries and establishmentProgress cite actual witnessed disclosures/outcomes, never invented resources or promises. Also return immediateResidentMoves:[{characterIds:[ids],zoneId,source:zero-based INPUT span index}] for immediate resident movement REQUESTS in the original input, including the entire requested local group, even if your reply moves fewer or none. Exclude future, hypothetical, negated and player-only travel. These source indexes refer to input, never generated segments; code checks group availability.';
-
-export const SCENE_GM_ACCESS =
-  'Optional access:[{actorId,venueId,zoneId,outcome:"invite-now|invite-later|refuse|dismiss|ban-zone|ban-venue|invite-outside-hours|access-management|unresolved",evidence:[segment],accompanies?:boolean,conditions?:["accompanied"],command?}]. Only actual current consent/refusal by an authorized controller qualifies. Invitation defaults to a visit, never standing permission, entry or residency. accompanies means the resident goes with the player. Conditional consent cannot silently become unconditional; unsupported conditions use unresolved. A management event needs its exact command and current authority. Standing grants/revocations use relationshipChanges.permissions with controllerId,visitorId,venueId,zoneId,action:"grant|revoke",expectedRevision and lineIds. Do not infer permission from friendship, employment, silence or discussion.';
-
-export const SCENE_GM_PROJECTS =
-  'Optional projectSpeech:[{projectId,revision,kind:"approval|builder|withdrawal",speakerId,citations:[{segment}]}]. revision is the supplied CURRENT design revision. Approval and willingness to build are separate, and both may occur together. Preserve every condition/negation in the full cited speech; no silence, hypothetical consent or another speaker. Only Villagers volunteer to build. Actual withdrawal is immediate. Speech never starts, resumes or completes work.';
+  'Events: move(actorId resident,targetId Zone,at narration); move-request(targetId Zone,at:["input:N"],value:{actors:[entire requested local group]}) even when the reply moves fewer; depart/contact-end/scene-end(at deciding speech); residence-request(targetId Venue); residence-decision(targetId person,value:boolean); venue-request(value:{name,classes:["workplace|community|other"]}); npc(actorId:"new:local-key",targetId?:known NPC,value:{name,label?,characterization},at observed introduction narration); discover/establish(value:actual witnessed Place/outcome details); presentation(actorId,at segment,value:{expression?,look?:{target:"player"}|{target:"villager",characterId}|{target:"direction",direction:"left|right"}}). Quoted decisions cite one complete current speech source; Project/access/permission may cite several current sources from one speaker. Supporting people can act, refuse and remember, but have no Villager Wishes, Agenda or builder role. New arrivals cannot hear earlier speech, including player input. Moves are completed permitted resident crossings, never player travel or a door opening. Exclude hypothetical, negated and future movement requests. Code owns sprite defaults, placement and facing; omit unnecessary cues.';
 
 export const SCENE_GM_SOCIAL =
-  'Optional relationshipChanges:{changes:[{fromId,toId,expectedRevision,patch:{connection?,stance?,expectations?:[],concerns?:[],records?:[]},lineIds:[segment],reason:"short reason"}],disclosures:[],intentions:[],permissions:[]}. Only residents own perspectives/intentions; never author player feelings. Patch only meaningful changes and preserve other fields. expectedRevision is CURRENT, not incremented. Records are upserts {id:"existing or empty",expectedRevision,kind:"history|declaration|boundary|agreement|commitment",text,participants:[],status:"stated|proposed|accepted|fulfilled|cancelled|overdue",dueAt?:"explicit ISO deadline"}; immutable terms stay unchanged. History is stated and has no deadline. Mutual acceptance needs each participant\'s actual assent; silence is not consent. Disclosures:{fromId,toId,kind:"explanation|preference|boundary|routine|history|connection|home|work",text:"max240 characters",lineIds:[],excerpts?:["exact <=320-byte quote"]}; record only what the player actually learned, never private stance, intentions or forgotten facts. fromId is the speaker and toId the described person. Do not duplicate a disclosure in Memories. Intentions:{actorId,expectedRevision,lineIds:[],items:[{id,targetIds:[],text,reason,status:"active|retired|attempted"}]}; at most three active, preserving meaningful unattempted intentions. Omit unchanged relationships.';
+  'relationship(actorId owner,targetId person,at,value:{connection?,stance?,expectations?,concerns?,records?:[{id?:existing,kind:"history|declaration|boundary|agreement|commitment",text,participants,status:"stated|proposed|accepted|fulfilled|cancelled|overdue",dueAt?:explicit ISO}]}). Change only meaningful directional perspectives; never player feelings. Omitted fields stay unchanged. Existing terms are immutable; an existing record id can update status without repeating terms. History is stated, without deadlines. Mutual agreement requires each actual assent to the same terms. New agreement qualifications stay proposed until every participant assents to them. Personal goals belong to Wishes; learning and open matters to Memories. No separate disclosure or intention ledger.';
 
 export const SCENE_GM_WISHES =
-  'Optional wishChanges:[{actorId,wishId,intent:"create|reveal|clarify|approach|attention|progress|fulfilled|withdrawn",evidence:[segment],reason:"short reason",desire?:{wish,reason},condition?,quote?,approach?,attention?:{state:"background|foreground",reason},supersedes?,disclosedStatus?,statusQuote?}]. Use supplied Wishes only; create uses a source-local "new:label" ID and desire. Interpret actual outcomes against ALL exact conditions; intent/promise is not fulfillment. Meaningful witnessed progress may fall short of fulfillment. Preserve owner agency, refusals and changed conditions; no automatic completion from time or attention. Only actual disclosed words teach player the title/status, with exact quote/statusQuote. Private context is never disclosure. Omit unchanged Wishes.';
+  'wish(actorId owner,targetId Wish,at,value:{intent:"create|reveal|clarify|approach|attention|progress|fulfilled|withdrawn",desire?:{wish,reason},condition?,quote?,approach?,attention?:{state:"background|foreground",reason},supersedes?,disclosedStatus?,statusQuote?}). Create uses new:local-label and desire. Preserve all conditions, owner agency and refusals. Witnessed progress is not necessarily fulfillment; promises never fulfill. Judge fulfillment only with complete supplied evidence. Exact disclosed words alone teach player title/status; private context is not disclosure. No automatic completion from time or attention. Wishes are separate from Project work.';
+
+export const SCENE_GM_PROJECTS =
+  'project(targetId Project,at full deciding speech,value:"approval|builder|withdrawal|refuse|conditional|uncertain"). Approval and willingness to build are separate events and may coexist. Keep qualifications in cited speech; conditional/uncertain assent cannot become commitment. Commitment requires supplied complete current terms.';
+
+export const SCENE_GM_ACCESS =
+  'access(targetId Zone,at deciding speech,value:{outcome:"invite-now|invite-later|refuse|dismiss|ban-zone|ban-venue|invite-outside-hours|access-management|unresolved",venueId?,visitorId?,accompanies?,conditions?:["accompanied"],command?}). Code verifies the controller; visitor defaults to player, duration to visit. Standing permission uses permission(targetId Zone,at controller speech,value:{action:"grant|revoke",venueId?,visitorId?}). Preserve conditions; unsupported conditions use unresolved. Never infer consent from friendship, employment, silence or general agreement. Consent does not establish entry, residency or player movement.';
+
+export const SCENE_GM_MEMORY =
+  'memory(at 1-2 sources,value:{kind:"experience|information|open-matter",text,knowers:[IDs],basis:"observation|report|interpretation|validated-event",action?:"create|reinforce|correct|resolve",targetId?,subjects?,quotes?:[exact short support per source],domain?:{kind:"wish|project|relationship|physical",id,characterId?},disclosed?,protected?:[related administrative root IDs],uncertain?:true}). Emit a Memory when someone meaningfully learns new information worth retaining, corrects or resolves it. Dialogue history alone is not a persisted Memory. Avoid duplicating supplied Memories; administrative constraints still govern every write. For player speech cite its selected input item, e.g. at:["input:0"] for item 0; [0] instead cites your first generated segment. Text max600 UTF-8 bytes. When every cited source fits320 UTF-8 bytes, omit quotes: code uses the full exact sources. Otherwise provide a short exact quote per source supporting the proposed Memory, including material qualifications. Each quote must occur verbatim inside its own source. Code supplies targets/revisions, attribution, witnesses, fingerprints and persistence. Reports establish what was said, not truth; interpretations can be mistaken. Each knower must witness their source; subjects never automatically learn. Mechanical facts require a committed domain effect; promises are reports. Code records committed Wish/Project facts. Use validated-event here only for a physical effect, domain:{kind:"physical",id:current placeId}. Only actually heard/seen disclosure teaches player. Administrative constraints are never character knowledge. Mark related protected roots and uncertainty; never resurrect forgotten or contradict corrected knowledge. Omit routine chatter.';
+
+export const SCENE_GM_PHYSICAL =
+  "physical(actorId initiator,at one completed local narration,value:{actors?:[IDs],consent?:[{actorId?,at:source}],appearanceChanged?,edits?:[{before,after}],append?,recent?:{text,renew?},dayNight?,clear?:[condition IDs]}). Code supplies revisions, source text, positions, witnesses and receipts. Enduring edits need controller authority and every nonacting controller’s actual cited consent. Player consent cites input:N. Preserve unrelated facts with unique exact edits; appearanceChanged means meaningful enduring visible alteration. Recent is one paragraph max600; renew only deliberately maintained arrangements. Clear a restriction only after its complete remedy occurs. Intentions, promises, unavailable supplies and remote actions cannot become physical outcomes. Unsupported asserted accomplishments require a boundary, never silent rewriting as attempts.";
 
 export const SCENE_GM_BOUNDARY =
-  'Optional halt:{reason:"time|activity|condition|world",source:"player|draft",quote:"exact source substring",appointments:[]}. Preserve attempts/hypotheticals as such; do not silently turn an unsupported asserted outcome into a failed action, dream or dialogue. No unsupported death/resurrection, permanent incapacity, time travel, calendar rewrite or large time skip; ordinary local actions and compatible character powers are allowed. Appointments need rows {source:"player|draft",quote,date:"YYYY-MM-DD",minute:0-1439|null}; null means no exact time. Player quotes bind to original input, draft quotes to generated text. Resolve today/tomorrow/next weekday from the supplied calendar. Report appointment rows even with no other halt, using reason:"none",quote:""; code decides whether an appointment is past. Ordinary scheduling alone is not a time halt. A halt may use segments:[].';
+  'boundary(value:{reason:"time|activity|condition|world",source:"player|draft",quote:exact source}). Preserve attempts/hypotheticals; never quietly rewrite unsupported asserted completion. No unsupported death/resurrection, permanent incapacity, time travel, calendar rewriting or large time skip; ordinary local actions and compatible abilities remain allowed. appointment(value:{source:"player|draft",quote,when:{dayOffset:integer}|{weekday:weekdayName,afterToday?:true}|{date:"YYYY-MM-DD"},minute?:0-1439}) records actual appointments; code judges past instants. Use dayOffset:0 for today, 1 for tomorrow, an explicitly stated number of days, or a weekday; code derives the date from the captured calendar. No empty boundary or negative decisions.';
 
 /** Compact model view; private Memory authority is retained by the saved writing request. */
 export function sceneGmContext(context: ReturnType<typeof semanticContext>) {
   const {
     _memoryWrite: _private,
+    _wishEvidence: wishEvidence,
+    _projectContexts: _projects,
+    _conditions: _conditions,
     loreSelection: _lore,
     history: _history,
+    historyBounded: _historyBounded,
+    worldSeed: _seed,
+    sceneId: _scene,
+    revision: _revision,
+    possibleMemoryEffects: _effects,
     setting: _setting,
     worldName: _worldName,
+    worldFacts: _worldFacts,
+    time: _time,
+    preservation,
+    zones,
     actors,
+    memory,
     social,
     ...rest
   } = context;
   const live = asRecord(social.live);
   return {
     ...rest,
-    actors: actors.map(({ character: _card, admission: _admission, ...actor }) => actor),
+    calendar: preservation.calendar,
+    zones: zones.map(({ revision: _revision, ...zone }) => zone),
+    actors: actors.map(({ character: _card, admission: _admission, wishes, ...actor }) => ({
+      ...actor,
+      wishes: wishes.map((wish) => ({
+        id: wish.id,
+        wish: wish.wish,
+        reason: wish.reason,
+        status: wish.status,
+        approach: wish.approach,
+        attention: wish.attention,
+        ...(wishEvidence.some((row) => row.actorId === actor.id && row.wishId === wish.id)
+          ? {
+              evidence: {
+                conditions: wish.conditions.map(({ quote }) => quote),
+                history: wish.history.map(({ kind, text, at }) => ({ kind, text, at })),
+              },
+            }
+          : { evidence: "not supplied; no fulfillment judgment" }),
+      })),
+    })),
+    memory: {
+      administrative: {
+        ...(asRecord(memory.administrative).incomplete ? { incomplete: true } : {}),
+        roots: (Array.isArray(asRecord(memory.administrative).roots)
+          ? (asRecord(memory.administrative).roots as Record<string, unknown>[])
+          : []
+        ).map(({ rootId, text, knowers }) => ({ rootId, text, knowers })),
+      },
+      memories: memory.memories.map(
+        ({ id, rootId, kind, text, subjects, occurredAt, domainRef, corrects, resolves, knowers }) => ({
+          id,
+          ...(rootId !== id ? { rootId } : {}),
+          kind,
+          text,
+          subjects,
+          occurredAt,
+          ...(domainRef ? { domainRef } : {}),
+          ...(corrects ? { corrects } : {}),
+          ...(resolves ? { resolves } : {}),
+          knowers: Object.fromEntries(
+            Object.entries(knowers).map(([id, state]) => [
+              id,
+              state.repair
+                ? { basis: "player-repaired" }
+                : {
+                    basis: state.basis,
+                    ...(state.attributedTo ? { attributedTo: state.attributedTo } : {}),
+                    ...(state.disclosed ? { disclosed: state.disclosed } : {}),
+                  },
+            ]),
+          ),
+        }),
+      ),
+    },
     social: {
-      edges: live.edges,
-      intentions: live.intentions,
-      intentionRevisions: live.intentionRevisions,
-      sharedRecords: live.sharedRecords,
+      edges: Object.values(asRecord(live.edges)).map((value) => {
+        const { revision: _revision, updatedAt: _at, experiences: _experiences, records, ...edge } = asRecord(value);
+        return {
+          ...edge,
+          records: Object.values(asRecord(records)).map((value) => {
+            const { revision: _revision, evidenceIds: _evidence, ...record } = asRecord(value);
+            return Object.hasOwn(asRecord(live.sharedRecords), String(record.id)) ? record.id : record;
+          }),
+        };
+      }),
+      sharedRecords: Object.values(asRecord(live.sharedRecords)).map((value) => {
+        const { revision: _revision, evidenceIds: _evidence, ...record } = asRecord(value);
+        return record;
+      }),
     },
   };
 }
@@ -59,43 +141,89 @@ export function materializeGmReply(raw: Record<string, unknown>, message: string
   if (!Array.isArray(raw.input) || raw.input.length > 24 || (opening && raw.input.length))
     throw badGateway("The GM input capture is incomplete. Your draft is preserved.");
   let cursor = 0;
-  const timeline: SemanticIntent["timeline"] = raw.input.map((value) => {
+  const timeline: SemanticIntent["timeline"] = [];
+  const inputIndexes = new Map<number, number>();
+  const spokenIndexes = new Map<number, number>();
+  const speech: (ReturnType<typeof playerSourceSpan> & { delivery?: unknown; targetId?: unknown })[] = [];
+  raw.input.forEach((value, index) => {
     const row = asRecord(value);
-    const text = typeof row.text === "string" ? row.text : "";
-    const start = text ? message.indexOf(text, cursor) : -1;
-    if (!text || start < 0 || !["speech", "thought", "action", "context"].includes(String(row.kind)))
+    const source = playerSourceSpan(row, message);
+    const kind = row.kind ?? "speech";
+    if (
+      source.start < cursor ||
+      !["speech", "action"].includes(String(kind)) ||
+      Object.keys(row).some((key) => !["kind", "text", "occurrence", "delivery", "targetId"].includes(key)) ||
+      (row.delivery !== undefined && !["ordinary", "whisper", "shout"].includes(String(row.delivery))) ||
+      (row.targetId !== undefined && (typeof row.targetId !== "string" || !row.targetId)) ||
+      (kind !== "speech" && (row.delivery !== undefined || row.targetId !== undefined))
+    )
       throw badGateway("The GM input capture has invalid source spans. Your draft is preserved.");
-    cursor = start + text.length;
-    return {
-      kind: row.kind as SemanticIntent["timeline"][number]["kind"],
-      text,
-      start,
-      end: cursor,
+    if (source.start > cursor)
+      timeline.push({ kind: "context", text: message.slice(cursor, source.start), start: cursor, end: source.start });
+    inputIndexes.set(index, timeline.length);
+    timeline.push({
+      kind: kind as "speech" | "action",
+      text: source.text,
+      start: source.start,
+      end: source.end,
       ...(row.delivery ? { delivery: row.delivery as "ordinary" | "whisper" | "shout" } : {}),
       ...(typeof row.targetId === "string" ? { targetId: row.targetId } : {}),
-    };
+    });
+    if (kind === "speech") {
+      spokenIndexes.set(index, speech.length);
+      speech.push({ ...source, delivery: row.delivery, targetId: row.targetId });
+    }
+    cursor = source.end;
   });
-  const speech = timeline.filter((row) => row.kind === "speech");
+  if (cursor < message.length)
+    timeline.push({ kind: "context", text: message.slice(cursor), start: cursor, end: message.length });
   const { immediateResidentMoves, ...generated } = raw;
+  const reference = (value: unknown): unknown => {
+    if (typeof value === "string" && /^input:\d+$/u.test(value)) {
+      const index = spokenIndexes.get(Number(value.slice(6)));
+      if (index === undefined)
+        throw badGateway("A non-audible player span cannot be cited as speech. Your draft is preserved.");
+      return "utterance:" + index;
+    }
+    return value;
+  };
+  const bindInput = (value: unknown, key = ""): unknown => {
+    if (Array.isArray(value))
+      return ["evidence", "lineIds", "segments"].includes(key)
+        ? value.map(reference)
+        : value.map((row) => bindInput(row));
+    if (value && typeof value === "object")
+      return Object.fromEntries(
+        Object.entries(value).map(([key, child]) => [
+          key,
+          ["source", "segment", "lineId"].includes(key) ? reference(child) : bindInput(child, key),
+        ]),
+      );
+    return value;
+  };
   const result = materializePlayerSpeech(
     {
-      ...generated,
+      ...asRecord(bindInput(generated)),
       playerSpeechCapture: {
         status: speech.length ? "captured" : "silent",
-        utterances: speech.map(({ text, start, delivery, targetId }) => {
-          let occurrence = 0,
-            at = -1;
-          do {
-            at = message.indexOf(text, at < 0 ? 0 : at + text.length);
-            occurrence++;
-          } while (at < start && at >= 0);
+        utterances: speech.map(({ text, occurrence, delivery, targetId }) => {
           return { text, occurrence, ...(delivery ? { delivery } : {}), ...(targetId ? { targetId } : {}) };
         }),
       },
     },
     message,
   );
-  result.immediateResidentMoves = immediateResidentMoves ?? [];
+  const requests = immediateResidentMoves === undefined ? [] : immediateResidentMoves;
+  if (!Array.isArray(requests)) throw badGateway("The GM movement request is invalid. Your draft is preserved.");
+  result.immediateResidentMoves = requests.map((value: unknown) => {
+    const row = asRecord(value);
+    const source =
+      typeof row.source === "string" && /^input:\d+$/u.test(row.source) ? Number(row.source.slice(6)) : row.source;
+    const mapped = Number.isSafeInteger(source) ? inputIndexes.get(Number(source)) : undefined;
+    if (mapped === undefined)
+      throw badGateway("The GM movement request lacks its exact input source. Your draft is preserved.");
+    return { ...row, source: mapped };
+  });
   result.intent = {
     status: "resolved",
     timeline,
@@ -104,82 +232,5 @@ export function materializeGmReply(raw: Record<string, unknown>, message: string
     action: null,
     movement: null,
   } satisfies Omit<SemanticIntent, "version" | "sourceHash">;
-  return result;
-}
-
-/** Expand sparse proposals into existing domain contracts, never a fabricated System verdict. */
-export function normalizeGmEffects(raw: Record<string, unknown>, context: ReturnType<typeof semanticContext>) {
-  const result = structuredClone(raw);
-  for (const key of ["memoryChanges", "wishChanges", "projectSpeech", "access"])
-    if (result[key] === undefined) result[key] = [];
-  result.action ??= null;
-  if (result.halt === undefined) result.halt = { reason: "none", quote: "", appointments: [] };
-  if (
-    result.events === undefined ||
-    (result.events && typeof result.events === "object" && !Array.isArray(result.events))
-  )
-    result.events = { moves: [], departures: [], contactEnd: [], ...asRecord(result.events) };
-  if (result.narrativeIntroduction === undefined) result.narrativeIntroduction = { status: "quiet", development: null };
-  if (
-    result.relationshipChanges === undefined ||
-    (result.relationshipChanges &&
-      typeof result.relationshipChanges === "object" &&
-      !Array.isArray(result.relationshipChanges))
-  )
-    result.relationshipChanges = {
-      changes: [],
-      permissions: [],
-      disclosures: [],
-      ...asRecord(result.relationshipChanges),
-    };
-  const social = asRecord(result.relationshipChanges);
-  if (Array.isArray(social.changes))
-    social.changes = social.changes.map((value) => {
-      const row = asRecord(value);
-      if (row.patch === undefined) return row;
-      const key = relationshipKey(String(row.fromId), String(row.toId));
-      const before = asRecord(asRecord(asRecord(context.social.live).edges)[key]);
-      const baseline = Object.keys(before).length ? before : neutralRelationship(String(row.fromId), String(row.toId));
-      const patch = asRecord(row.patch);
-      if (
-        Object.keys(patch).some((key) => !["connection", "stance", "expectations", "concerns", "records"].includes(key))
-      )
-        throw badGateway("The GM relationship patch has unknown fields. Your draft is preserved.");
-      const { patch: _patch, ...rest } = row;
-      const after = {
-        connection: baseline.connection,
-        stance: baseline.stance,
-        expectations: baseline.expectations,
-        concerns: baseline.concerns,
-        records: [],
-        ...patch,
-      };
-      return { ...rest, reason: row.reason ?? "Current witnessed development", liveAfter: after, sceneAfter: after };
-    });
-  if (Array.isArray(social.intentions))
-    social.intentions = social.intentions.map((value) => {
-      const row = asRecord(value);
-      return { ...row, sceneItems: row.items };
-    });
-  if (Array.isArray(result.access))
-    result.access = result.access.map((value) => ({
-      visitorId: "player",
-      duration: "visit",
-      conditions: [],
-      accompanies: false,
-      ...asRecord(value),
-    }));
-  if (Array.isArray(result.memoryChanges))
-    result.memoryChanges = result.memoryChanges.map((value) => {
-      const row = asRecord(value);
-      return {
-        ...row,
-        screening: {
-          protectedRoots: [],
-          ...asRecord(row.screening),
-          fingerprint: context._memoryWrite.protection.fingerprint,
-        },
-      };
-    });
   return result;
 }

@@ -10,7 +10,7 @@ import {
   readPlayerBackground,
   renderPlayerBackgroundContext,
 } from "../packages/villages/src/server/domain/rules/player-background.js";
-import { currentScenePrompt, sceneIdentityPacket } from "./fixtures/villages-scene-writing.fixture.js";
+import { currentScenePrompt, scenePromptPacket } from "./fixtures/villages-scene-writing.fixture.js";
 assert.equal(readPlayerBackground("  I came here as king.  "), "I came here as king.");
 for (const raw of [{ title: "King" }, null, 3, "x".repeat(1201)]) assert.throws(() => readPlayerBackground(raw));
 assert.equal(coercePlayerBackground(undefined), "");
@@ -37,7 +37,7 @@ const prompt = await currentScenePrompt(
   "chat",
   "I have abdicated.",
 );
-assert.equal(sceneIdentityPacket(prompt).player.background, context);
+assert.equal(scenePromptPacket(prompt, "player").startingBackground, context);
 console.log(
   "Player background: bounded prose, current-state precedence and independent gameplay responsibilities passed.",
 );

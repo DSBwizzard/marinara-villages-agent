@@ -306,7 +306,7 @@ export function createSocialMail(ports: SocialMailPorts) {
     if (
       input.sourceDelivered &&
       JSON.stringify(raw.sourceReview) !== JSON.stringify(emptyRelationshipReview()) &&
-      ["changes", "permissions", "disclosures", "intentions"].some(
+      ["changes", "permissions", "disclosures"].some(
         (key) =>
           Array.isArray(asRecord(raw.sourceReview)[key]) && (asRecord(raw.sourceReview)[key] as unknown[]).length,
       )
@@ -314,7 +314,7 @@ export function createSocialMail(ports: SocialMailPorts) {
       throw new Error("Delivered mail cannot be reinterpreted as a new source.");
     applyRelationshipReview(state.relationshipContext!, source, state, input.messageId, input.sourceAt);
     if (text)
-      for (const key of ["changes", "disclosures", "intentions"]) {
+      for (const key of ["changes", "disclosures"]) {
         for (const effect of (Array.isArray(asRecord(raw.replyReview)[key])
           ? asRecord(raw.replyReview)[key]
           : []) as unknown[])
@@ -1298,7 +1298,7 @@ export function createSocialMail(ports: SocialMailPorts) {
     };
     const raw = asRecord(row.relationshipReview);
     const bound = Object.fromEntries(
-      ["changes", "disclosures", "intentions"].map((kind) => [
+      ["changes", "disclosures"].map((kind) => [
         kind,
         (Array.isArray(raw[kind]) ? raw[kind] : []).map((value) => ({
           ...asRecord(value),

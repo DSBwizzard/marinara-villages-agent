@@ -154,10 +154,6 @@ function fixture(label: string, checkpointed = false) {
               ? [{ kind: "action", text: String(_messages.findLast((message) => message.role === "user")!.content) }]
               : [],
             segments: [{ kind: "narration", text: label + " room remains quiet." }],
-            heardPlayerBy: [],
-            wishChanges: [],
-            memoryChanges: [],
-            relationshipChanges: { changes: [], permissions: [], disclosures: [] },
           }),
         finishReason: "stop",
       };
@@ -227,7 +223,7 @@ for (const reserved of [false, true]) {
   f.world.villagers = [wishWorld().villagers[0]];
   f.scene.activeIds = ["a"];
   f.scene.participants = [{ characterId: "a", name: "Ada", doing: "Talking" }];
-  f.scene.lines = Array.from({ length: 8 }, (_, index) => ({
+  f.scene.lines = Array.from({ length: 20 }, (_, index) => ({
     id: "history-" + index,
     role: "assistant" as const,
     kind: "dialogue" as const,
@@ -249,6 +245,7 @@ for (const reserved of [false, true]) {
     return originalFit(messages, options);
   };
   let dispatchedOld = false;
+  let dispatchedIds: string[] = [];
   const checked = new Error("checked exact dispatch history");
   const service = createSceneWriting({
     ...f.ports,
@@ -259,12 +256,29 @@ for (const reserved of [false, true]) {
     } as never,
     completeWithRoom: async (...args) => {
       dispatchedOld = args[1].some((message) => message.content.includes("OLD SUPPLIED SOURCE"));
+      dispatchedIds = args[1]
+        .flatMap((message) => message.content.split("\n"))
+        .flatMap((line) => {
+          try {
+            const row = JSON.parse(line);
+            return Array.isArray(row) && typeof row[0] === "string" && row[0].startsWith("history-") ? [row[0]] : [];
+          } catch {
+            return [];
+          }
+        });
       return f.ports.completeWithRoom(...args);
     },
     semantic: {
       exchange: async (_scene, _input, _lines, supplied) => {
         assert.ok(trims > 0, "Only the introduction prompt trims older evidence");
         assert.equal(dispatchedOld, !reserved);
+        assert.deepEqual(
+          supplied.context.history.map((line) => line.id),
+          dispatchedIds,
+          "Only the complete dispatched source set can validate effects, including on frozen replay",
+        );
+        if (reserved)
+          assert(dispatchedIds.length < f.scene.lines.length - 1, "Actual pressure evicts a whole multi-row batch");
         assert.equal(
           supplied.context.history.some((line) => line.id === "history-0"),
           dispatchedOld,
@@ -280,6 +294,7 @@ for (const reserved of [false, true]) {
   });
   await assert.rejects(service.generate(f.scene, "I wait.", "chat", "", null), (error) => error === checked);
   f.scene.lines[0].content = "Later live content cannot rewrite the saved source";
+  f.model.fitContext = () => assert.fail("Replay must restore its exact frozen fitting choice");
   await assert.rejects(service.generate(f.scene, "I wait.", "chat", "", null), (error) => error === checked);
   assert.equal(f.calls.filter((call) => call === "completion").length, 1);
 }
@@ -409,10 +424,6 @@ invalidLine.invalidReply(
   JSON.stringify({
     input: [{ kind: "action", text: "I wait." }],
     segments: [{ kind: "robot", text: "A quiet room." }],
-    heardPlayerBy: [],
-    wishChanges: [],
-    memoryChanges: [],
-    relationshipChanges: { changes: [], permissions: [], disclosures: [] },
   }),
 );
 await assert.rejects(invalidLine.run(), (error: any) => {
