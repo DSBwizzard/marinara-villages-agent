@@ -631,9 +631,13 @@ const empty = normalizeGmEffects({}, context);
     "Empty recalled roots alone cannot bypass screening",
   );
   for (const learners of [[], ["player", "player"], [3]])
-    assert.throws(
-      () => normalizeGmEffects({ ...raw, memoryChanges: [{ ...raw.memoryChanges[0], learners }] }, captured, {}, true),
-      /learners/,
+    assert.deepEqual(
+      (
+        normalizeGmEffects({ ...raw, memoryChanges: [{ ...raw.memoryChanges[0], learners }] }, captured, {}, true)
+          .memoryChanges as any[]
+      )[0].disclosure,
+      raw.memoryChanges[0].disclosure,
+      "Invalid shorthand remains rejectable metadata; normalization does not discard dialogue",
     );
   const aliases = mapScenePeople({ learners: ["p1"], disclosure: { about: "p1" } }, { p1: "resident" });
   assert.deepEqual(aliases, { learners: ["resident"], disclosure: { about: "resident" } });

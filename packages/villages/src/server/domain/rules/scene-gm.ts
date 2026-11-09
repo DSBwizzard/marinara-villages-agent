@@ -164,7 +164,7 @@ Example:
 MEMORY {"text":"The speaker prefers tart apples.","learners":["player"],"disclosure":{"kind":"preference","about":"self"}}
 Choose explicit learner IDs; only actual witnesses may learn. Subjects do not automatically learn. Code binds the actual speaker; speech defaults to report (a claim, not truth), narration to observation. Optional basis:"interpretation" may be mistaken. Text <=600 UTF-8 bytes; optional subjects:[ids], kind:"information|experience|open-matter" (default information).
 For personal facts actually learned by the player include disclosure:{kind:"explanation|preference|boundary|routine|history|connection|home|work",about:"self"|personId}. home/work require the speaker's explicit current claim. Never infer private/forgotten values. disclosure shorthand is local MEMORY only.
-For meaningful player speech use CHANGES {"memoryChanges":[{"text":"fact","learners":["person-id"],"support":[{"lineId":"utterance:0"}]}]}; never cite raw input as heard speech. Long sources need an exact <=320-byte excerpt.
+For meaningful player speech use CHANGES {"memoryChanges":[{"text":"fact","learners":["person-id"],"support":[{"lineId":"utterance:0"}]}]}; this needs no disclosure tag. Never cite raw input as heard speech. Long sources need an exact <=320-byte excerpt.
 Supplied citable history IDs may supplement current evidence. Differing learner evidence or meaning uses learners:{personId:{basis,support?:[{lineId,excerpt}],disclosed?}} instead of a shared learner list.
 Historical player personal learning requires domainRef:{kind:"relationship",characterId:speakerId} and learners.player.disclosed:{kind,toId}; use report basis and the actual speaker.
 When administrative roots are supplied, include screening:{disposition:"clear|conflict|uncertain",protectedRoots:[ids]}; never restore forgotten or contradict repaired knowledge. Code supplies missing screening only when no protected knowledge exists for the selected learners. Code records committed mechanical outcomes, not the writer.`;
@@ -599,40 +599,59 @@ export function normalizeGmEffects(
   if (Array.isArray(result.memoryChanges))
     result.memoryChanges = result.memoryChanges.map((value) => {
       let row = asRecord(value);
-      if (compact && Array.isArray(row.learners)) {
+      if (
+        compact &&
+        Array.isArray(row.learners) &&
+        row.learners.length &&
+        row.learners.every((id) => typeof id === "string") &&
+        new Set(row.learners).size === row.learners.length
+      ) {
         const { basis, disclosure, ...rest } = row;
         const ids = row.learners;
-        if (!ids.length || ids.some((id) => typeof id !== "string") || new Set(ids).size !== ids.length)
-          throw badGateway("The Memory learners must be distinct supplied people. Your draft is preserved.");
         const first = asRecord(Array.isArray(row.support) ? row.support[0] : undefined);
         const segment =
           typeof first.lineId === "number" && Array.isArray(result.segments)
             ? asRecord(result.segments[first.lineId])
-            : undefined;
+            : typeof first.lineId === "string" && /^utterance:\d+$/u.test(first.lineId)
+              ? { kind: "dialogue", speakerId: "player" }
+              : undefined;
         const learning = basis === undefined ? (segment?.kind === "narration" ? "observation" : "report") : basis;
         const learners = Object.fromEntries(ids.map((id: string) => [id, { basis: learning }]));
-        row = { ...rest, learners };
+        row = { ...rest, ...(disclosure === undefined ? {} : { disclosure }), learners };
         if (disclosure !== undefined) {
           const fields = asRecord(disclosure);
+          const toId = fields.about === "self" ? segment?.speakerId : fields.about;
+          const known = [
+            "player",
+            ...context.actors.map((actor) => actor.id),
+            ...context.referenceActors.map((actor) => actor.id),
+          ];
           if (
-            !segment ||
-            segment.kind !== "dialogue" ||
-            !learners.player ||
-            row.domainRef !== undefined ||
-            Object.keys(fields).some((key) => !["kind", "about"].includes(key)) ||
-            typeof fields.about !== "string" ||
-            typeof fields.kind !== "string"
-          )
-            throw badGateway(
-              "The Memory disclosure needs its actual speech and an explicit subject. Your draft is preserved.",
-            );
-          const toId = fields.about === "self" ? segment.speakerId : fields.about;
-          row = {
-            ...row,
-            subjects: row.subjects === undefined ? [toId] : row.subjects,
-            domainRef: { kind: "relationship", characterId: segment.speakerId },
-            learners: { ...learners, player: { ...learners.player, disclosed: { kind: fields.kind, toId } } },
-          };
+            segment &&
+            ["dialogue", "side", "whisper"].includes(String(segment.kind)) &&
+            learning === "report" &&
+            row.domainRef === undefined &&
+            Object.keys(fields).every((key) => ["kind", "about"].includes(key)) &&
+            ["explanation", "preference", "boundary", "routine", "history", "connection", "home", "work"].includes(
+              String(fields.kind),
+            ) &&
+            typeof toId === "string" &&
+            (fields.about === "self" || known.includes(toId)) &&
+            (!["home", "work"].includes(String(fields.kind)) || toId === segment.speakerId)
+          ) {
+            const { disclosure: _disclosure, ...bound } = row;
+            row = {
+              ...bound,
+              subjects: row.subjects === undefined ? [toId] : row.subjects,
+              domainRef: { kind: "relationship", characterId: segment.speakerId },
+              learners: Object.fromEntries(
+                Object.entries(learners).map(([id, learner]) => [
+                  id,
+                  { ...learner, disclosed: { kind: fields.kind, toId } },
+                ]),
+              ),
+            };
+          }
         }
       }
       const target = asRecord(row.target);

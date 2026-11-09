@@ -39,7 +39,7 @@ try {
 } finally {
   await host.stop();
 }
-for (const learner of ["player", "ordinary", "unheard-person"]) {
+for (const learner of ["player", "ordinary", "unheard-person", "duplicate"]) {
   const host = await packagedSceneServer();
   let calls = 0;
   host.model.chatComplete = async () => {
@@ -49,7 +49,7 @@ for (const learner of ["player", "ordinary", "unheard-person"]) {
         'INPUT [{"kind":"speech","text":"Hello."},{"kind":"action","text":"*I listen.*"},{"kind":"speech","text":"Tell me about yourself."}]\n[mara whisper:player] [remember]I prefer tart apples.[/remember] They wake me up.\nMEMORY ' +
         JSON.stringify({
           text: "Mara prefers tart apples.",
-          learners: [learner === "ordinary" ? "player" : learner],
+          learners: learner === "duplicate" ? ["player", "player"] : [learner === "ordinary" ? "player" : learner],
           disclosure: learner === "player" ? { kind: "preference", about: "self" } : undefined,
         }),
       finishReason: "stop",
@@ -85,6 +85,60 @@ for (const learner of ["player", "ordinary", "unheard-person"]) {
     assert(!JSON.stringify(host.scene().lines).includes("[remember]"));
     assert.equal((await host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload })).statusCode, 200);
     assert.equal(calls, 1, "Replay never purchases a replacement");
+  } finally {
+    await host.stop();
+  }
+}
+for (const disclosure of [
+  { kind: "history", about: "self" },
+  { kind: "nonsense", about: "self" },
+  { kind: "home", about: "mara" },
+]) {
+  const host = await packagedSceneServer();
+  host.model.chatComplete = async () => ({
+    content:
+      "INPUT speech\n[mara] Understood.\nCHANGES " +
+      JSON.stringify({
+        memoryChanges: [
+          {
+            text: "The player calls their imaginary boat Marigold; it is a story, not owned.",
+            learners: ["mara"],
+            support: [{ lineId: "utterance:0" }],
+            disclosure,
+          },
+        ],
+      }),
+    finishReason: "stop",
+    usage: { inputTokens: 10, outputTokens: 10 },
+  });
+  try {
+    await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+    const response = await host.app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/turn",
+      payload: {
+        sessionId: "browser",
+        submissionId: "input-learning",
+        message: "My imaginary boat is called Marigold. It is a story, not a boat we own.",
+        mode: "chat",
+        expectedSceneRevision: host.scene().sceneRevision,
+      },
+    });
+    assert.equal(
+      response.statusCode,
+      200,
+      "An optional Memory error never discards independent dialogue: " + response.body,
+    );
+    const world = fixtureVillageState(host.records.get("villages-village").data, host.records);
+    const memory = world.memories.records.find((row) => row.text.includes("Marigold"));
+    if (disclosure.kind === "history") {
+      assert(memory, "Code binds the player's actual self-disclosure to selected listeners");
+      assert.equal(memory.knowers.mara.attributedTo, "player");
+      assert.equal(memory.knowers.mara.disclosed!.toId, "player");
+      assert.equal(memory.domainRef!.characterId, "player");
+      assert.equal(memory.knowers.player, undefined, "A subject does not automatically become a learner");
+    } else assert.equal(memory, undefined, "Invalid nonempty metadata is rejected, never dropped to save a proposal");
+    assert(host.scene().lines.some((line) => line.content === "Understood."));
   } finally {
     await host.stop();
   }

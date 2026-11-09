@@ -30,6 +30,8 @@ Code strips the one or two source markers, derives exact contiguous excerpts and
 
 Missing screening is supplied only for learners proven from the full captured Memory collection to have no forgotten or repaired canonical roots. Empty retrieved roots are insufficient proof. Supplied invalid, conflicting or uncertain screening remains rejected; live protection and revision checks remain authoritative.
 
+Self-disclosure shorthand binds current generated speech or canonical player utterances; historical learning keeps its explicit native domain/disclosure fields. Only explicitly selected, eligible learners receive the record; its subject does not automatically learn. Invalid compact learner/disclosure metadata stays invalid and is rejected as an individual optional Memory, retaining independent dialogue and effects.
+
 Append `CHANGES` and a JSON object only when needed. The payload may start on that same line or the next. A blank-separated final object is also reserved for effects without that label. The parser rejects ambiguous continuations after a colon or code example; literal JSON examples belong quoted inline in prose. This is a defined footer grammar, not extraction of a JSON subsection from dialogue. An explicit `CHANGES` label takes precedence over literal objects earlier in prose. Spaces after paragraph headers are optional:
 
 ```text
