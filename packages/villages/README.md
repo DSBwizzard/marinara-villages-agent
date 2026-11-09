@@ -209,7 +209,7 @@ Imports make independent copies and reuse existing copies by their original Engi
 
 Side-facing artwork must look right; Villages mirrors it to look left. Front-facing artwork addresses you. The GM selects expressions and attention while writing new Scenes. Code handles placement, variants, mirroring and animation without another request.
 
-**Generate signature** makes one image request for the habitual identifying mark a character would choose for a signed note, autograph or other personal communication. Their adopted narrative card supplies identities, personality, history and other authored context; neither the display name nor an alias is prescribed. It needs only an image connection. Retries reuse a saved image where available. The original is retained alongside a transparent version; light and white areas are treated as paper. Failed regeneration keeps the previous signature.
+**Generate signature** makes one image request for the habitual identifying mark a character would leave on a brief note in their usual social or public life. Their adopted narrative card guides the identity they present and the pace, control and legibility of their strokes; neither the display name nor an alias is prescribed. It needs only an image connection. Retries reuse a saved image where available. The original is retained alongside a transparent version; light and white areas are treated as paper. Failed regeneration keeps the previous signature.
 
 ## Background activity and costs
 
