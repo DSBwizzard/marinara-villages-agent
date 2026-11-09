@@ -121,7 +121,7 @@ If you see **HALT**, the proposed turn has not entered the story. Read the notic
 
 You can leave the page or refresh and return to your unfinished Scene, draft, and reading position. Scenes have no inactivity deadline.
 
-Once a Scene and its saved effects are settled, its transcript is removed. Relevant Project evidence and saved recovery work remain available where needed.
+Once a Scene and its saved effects are settled, its working record retires. Witnessed conversation remains available for bounded encounter recall, alongside relevant Project evidence and saved recovery work. A conversation Memory provides the existing Forget/Correct controls for that encounter.
 
 New Scenes follow the Village's current time. Residents can leave for commitments and others can arrive while you stay in the Venue. Each exchange keeps the time, participants and witnesses admitted for that request; a scheduled departure waits for that exchange to settle. Accepted changes count as you play, before **Conclude**.
 

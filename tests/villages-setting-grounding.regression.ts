@@ -4,6 +4,7 @@ import { readVillagerCard } from "../packages/villages/src/server/adapters/engin
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { buildLocationPrompt } from "../packages/villages/src/server/domain/rules/location-image-rules.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "../packages/villages/src/server/domain/rules/narrative-grounding.js";
+import { SCENE_GM_WORLD } from "../packages/villages/src/server/domain/rules/scene-gm.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { applyVenueSceneChange } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
 import { venueInZone, venueZones } from "../packages/villages/src/server/domain/rules/venue-zones.js";
@@ -136,7 +137,7 @@ async function main() {
       assert.equal(current.includes(circumstances), false, "starting circumstances are not a recurring script");
       const dialogue = await currentScenePrompt(state, card, "chat", "Why are we here?");
       assert.ok(dialogue.includes(setting));
-      assert.ok(dialogue.includes(VILLAGE_SHARED_SETTING_RULE));
+      assert.ok(dialogue.includes(SCENE_GM_WORLD));
       const events = buildResidentPlanningMessages({
         descriptionVersion: 1,
         village: name,

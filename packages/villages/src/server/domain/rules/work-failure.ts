@@ -39,7 +39,8 @@ export function workFailureSummary(failure: WorkFailure): string {
     const detail = failure.detail ?? "";
     if (/^segments must be an array/u.test(detail)) return "The AI left out the Scene’s lines.";
     if (/^segments must contain at least/u.test(detail)) return "The AI returned no Scene text.";
-    if (/^segments must contain at most/u.test(detail)) return "The AI wrote more than 24 Scene lines.";
+    const lines = /^segments must contain at most (\d+)/u.exec(detail);
+    if (lines) return `The AI wrote more than ${lines[1]} Scene lines.`;
     if (/^heardPlayerBy must be an array/u.test(detail)) return "The AI didn’t identify who heard your character.";
     if (/\.kind must be/u.test(detail)) return "The AI used an unknown kind of Scene text.";
     if (/\.speakerId does not identify/u.test(detail)) return "The AI gave a line to someone outside this Scene.";

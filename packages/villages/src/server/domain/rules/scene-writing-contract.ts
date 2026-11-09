@@ -13,6 +13,7 @@ export function assertCurrentSceneGeneration(scene: VenueScene) {
 
 const EFFECT_FIELDS = ["memoryChanges", "relationshipChanges", "wishChanges", "projectSpeech", "interpretationRouting"];
 
+/** Strict JSON for explicit effect reinterpretation; ordinary Scene turns use the text grammar. */
 export function completeSceneObject(content: string, finishReason?: string): Record<string, unknown> | null {
   if (!modelJsonWithinBounds(content)) return null;
   if (finishReason !== "stop" && finishReason !== "end_turn") return null;

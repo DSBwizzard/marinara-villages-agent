@@ -11,6 +11,7 @@ export interface SemanticInterpreter {
       raw: Record<string, unknown>;
       context: ReturnType<typeof import("../rules/semantic-contract.js").semanticContext>;
       presentation: import("../rules/sprite-expressions.js").SpriteSelectionContext;
+      earlierEvidence?: import("./scene-model.js").VenueLine[];
     },
     narrativeGrant?: import("./narrative-model.js").NarrativeAdmission | null,
     zoneEventSource?: Record<string, unknown>,

@@ -15,6 +15,9 @@ import { memoryObject, memoryRequire } from "../../domain/rules/memory-integrity
 import { conflict } from "../../domain/rules/errors.js";
 import type { RepairDocument, RepairWrite } from "../../adapters/storage/repair-gate.js";
 import { createRepairSnapshots } from "../../adapters/storage/repair-snapshot-store.js";
+import { readSceneEncounter, sceneEncounterId } from "../../adapters/storage/scene-encounters.js";
+import { createSceneTranscriptTracer } from "../../adapters/storage/scene-transcript-pages.js";
+import type { MemoryPageData } from "../../adapters/storage/memory-pages.js";
 import { readRelationshipRoot, relationshipDocumentId } from "../../adapters/storage/relationship-payload-store.js";
 import {
   sceneHistoryOwners,
@@ -37,6 +40,7 @@ export const REPAIR_GAME_KINDS = [
   "repair-annotation",
   "scene-terminal",
   "project-scene-evidence",
+  "scene-encounter",
 ];
 const RETENTION_ID = "villages-repair-retention";
 type Doc = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
@@ -151,6 +155,12 @@ function validateSources(rows: RepairDocument[], owner: { seed: string; setupAt:
           context.scope.seed === owner.seed && context.scope.setupAt === owner.setupAt,
           "snapshot Scene belongs to another world",
         );
+    } else if (row.kind === "scene-encounter") {
+      const encounter = readSceneEncounter(row.data);
+      memoryRequire(
+        row.id === sceneEncounterId(encounter.id) && encounter.villageSeed === owner.seed,
+        "snapshot encounter ownership changed",
+      );
     } else
       for (const key of ["seed", "villageSeed"])
         if (Object.hasOwn(row.data, key))
@@ -197,6 +207,25 @@ export function createRepairStorage(documents: CapabilityDocumentStore, artifact
   }
   async function validateSceneView(writes: readonly { id: string; after: RepairDocument | null }[]) {
     await readActiveSceneOwner(proposedSources(writes));
+    await validateEncounters(
+      proposedSources(writes),
+      writes.flatMap((write) => (write.after?.kind === "scene-encounter" ? [write.after] : [])),
+    );
+  }
+  async function validateEncounters(view: Pick<CapabilityDocumentStore, "getById">, rows: RepairDocument[]) {
+    const tracer = createSceneTranscriptTracer(async (id) => {
+      const row = await view.getById("villages", id);
+      memoryRequire(
+        row?.id === id && row.packageId === "villages" && row.kind === "memory-page" && row.revision === 1,
+        "owned encounter transcript page is missing or changed",
+      );
+      return row.data as MemoryPageData;
+    });
+    for (const row of rows) {
+      const encounter = readSceneEncounter(row.data);
+      memoryRequire(row.id === sceneEncounterId(encounter.id), "encounter owner changed");
+      await tracer.trace(encounter.transcript, encounter.participants);
+    }
   }
   async function validateResponseWrites(writes: RepairWrite[], proposed: RepairWrite[] = []) {
     const view = proposedSources(
@@ -232,6 +261,14 @@ export function createRepairStorage(documents: CapabilityDocumentStore, artifact
     await validateSceneHistory(
       view,
       writes.filter((write) => write.after?.kind === "venue-visit").map((write) => write.after!.data),
+    );
+    await validateEncounters(
+      documents,
+      writes.flatMap((write) => (write.before?.kind === "scene-encounter" ? [write.before] : [])),
+    );
+    await validateEncounters(
+      view,
+      writes.flatMap((write) => (write.after?.kind === "scene-encounter" ? [write.after] : [])),
     );
     for (const row of writes.flatMap((write) => [write.before, write.after]))
       if (row && ["background-work", "background-history"].includes(row.kind)) {

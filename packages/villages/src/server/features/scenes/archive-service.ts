@@ -58,6 +58,7 @@ export function createSceneArchive({ villagesDocuments, readActive }: SceneArchi
       ...(await documents.list(VILLAGES_PACKAGE_ID, SESSION_KIND)),
       ...(await documents.list(VILLAGES_PACKAGE_ID, "scene-terminal")),
       ...(await documents.list(VILLAGES_PACKAGE_ID, "project-scene-evidence")),
+      ...(await documents.list(VILLAGES_PACKAGE_ID, "scene-encounter")),
     ];
     for (const visit of visits)
       if (!(await documents.remove(VILLAGES_PACKAGE_ID, visit.id, visit.revision)))

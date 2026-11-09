@@ -8,6 +8,7 @@ import {
   normalizeSparseSceneReply,
 } from "../packages/villages/src/server/domain/rules/scene-writing-contract.js";
 import { sceneWritingHistory } from "../packages/villages/src/server/domain/rules/scene-writing-history.js";
+import { fitVenueWritingMessages } from "../packages/villages/src/server/domain/rules/venue-writing.js";
 import { workFailureSummary } from "../packages/villages/src/server/domain/rules/work-failure.js";
 import { zoneEventReply } from "../packages/villages/src/server/domain/rules/zone-events.js";
 
@@ -390,6 +391,116 @@ for (const supplied of [
   assert.deepEqual(sceneWritingHistory({ lines: [], submissions: [] } as any, [], "tea", ["rosa"]).evidence, []);
 }
 
+// Whole exchanges share a stable prefix; old callback evidence survives trimming.
+{
+  const actors = [1, 2, 3, 4].map((n) => `aaaaaaaa-aaaa-4aaa-8aaa-${String(n).padStart(12, "0")}`);
+  const scene = { lines: [] as any[], submissions: [] as any[] };
+  let previous = "";
+  for (let turn = 0; turn < 100; turn++) {
+    const rows = actors.map((speakerId, i) => ({
+      id: `${turn}:${i}`,
+      speakerId,
+      name: `Resident ${i}`,
+      role: "assistant",
+      kind: "dialogue",
+      content:
+        turn === 0 && i === 0
+          ? "The scarlet compass is our keepsake."
+          : `We share an ordinary thought on afternoon ${turn}.`,
+      heardBy: actors,
+      at: new Date(1700000000000 + turn * 60000).toISOString(),
+      zoneId: "common",
+    }));
+    scene.lines.push(...rows);
+    scene.submissions.push({ message: "PRIVATE THOUGHT NEVER SHARED", replyLineIds: rows.map((row) => row.id) });
+    const history = sceneWritingHistory(scene as any, scene.lines, "scarlet compass", actors);
+    const text = history.blocks.map((block) => block.text).join("\n\n");
+    assert(text.startsWith(previous), "Appending an exchange must preserve the exact historical prefix");
+    assert(!text.includes("PRIVATE THOUGHT NEVER SHARED"));
+    assert.equal(history.blocks.flatMap((block) => block.evidence ?? []).length, (turn + 1) * 4);
+    previous = text;
+  }
+  const history = sceneWritingHistory(scene as any, scene.lines, "scarlet compass", actors);
+  const blocks = [...history.blocks, ...history.recall].map((block) => ({ ...block, dynamic: true }));
+  const model = {
+    maxOutputTokens: 16384,
+    fitContext(messages: any[], options: any) {
+      assert.equal(options.maxTokens, 16384, "Reserve the actual configured output allowance");
+      return {
+        messages: messages.reduce((n, row) => n + row.content.length, 0) <= 12000 ? messages : [],
+        maxTokens: options.maxTokens,
+        trimmed: false,
+        estimatedTokensBefore: 1,
+        estimatedTokensAfter: 1,
+      };
+    },
+  };
+  const fitted = fitVenueWritingMessages(model, blocks, "What about our keepsake?", 4096);
+  const ids = new Set(fitted.evidence.map((line) => line.id));
+  for (const turn of scene.submissions.slice(-2))
+    assert(
+      turn.replyLineIds.every((id: string) => ids.has(id)),
+      "Keep both newest exchanges whole",
+    );
+  assert(ids.has("0:0"), "A relevant old callback survives separately after its exchange is trimmed");
+  assert.deepEqual(new Set(Object.values(fitted.references)), ids, "Only the retained evidence receives aliases");
+  assert(!fitted.messages.some((row) => row.content.includes("PRIVATE THOUGHT NEVER SHARED")));
+  const unbounded = fitVenueWritingMessages(
+    {
+      fitContext: (messages: any[], options: any) => ({
+        messages,
+        maxTokens: options.maxTokens,
+        trimmed: false,
+        estimatedTokensBefore: 1,
+        estimatedTokensAfter: 1,
+      }),
+    },
+    blocks,
+    "?",
+    4096,
+  );
+  assert.equal(unbounded.evidence.length, 400, "All hundred exchanges survive when they fit");
+  assert.equal(
+    unbounded.messages
+      .map((row) => row.content)
+      .join("\n")
+      .split("scarlet compass").length - 1,
+    1,
+    "A retained parent suppresses its duplicate callback",
+  );
+  const single = sceneWritingHistory(
+    {
+      lines: [scene.lines[0], ...scene.lines.slice(-8)],
+      submissions: [{ replyLineIds: [scene.lines[0].id] }, ...scene.submissions.slice(-2)],
+    } as any,
+    scene.lines,
+    "scarlet compass",
+    actors,
+  );
+  const callback = single.recall.find((block) => block.evidence?.some((line) => line.id === "0:0"))!;
+  assert(callback);
+  const callbackOnly = fitVenueWritingMessages(
+    {
+      fitContext: (messages: any[], options: any) => ({
+        messages,
+        maxTokens: options.maxTokens,
+        trimmed: false,
+        estimatedTokensBefore: 1,
+        estimatedTokensAfter: 1,
+      }),
+    },
+    [{ ...callback, dynamic: true }],
+    "?",
+    4096,
+  );
+  assert.equal(
+    callbackOnly.evidence[0].id,
+    "0:0",
+    "A one-row callback cannot suppress itself after its parent is removed",
+  );
+  assert(callbackOnly.messages.some((row) => row.content.includes("scarlet compass")));
+}
+
 // Bad bookkeeping cannot discard complete prose or critical metadata.
 {
   const { normalizeRecoverableSceneReply } =
@@ -640,7 +751,7 @@ for (const supplied of [
     () =>
       materializePlayerSpeech(
         {
-          segments: Array.from({ length: 24 }, () => ({ kind: "narration", text: "A nod." })),
+          segments: Array.from({ length: 64 }, () => ({ kind: "narration", text: "A nod." })),
           playerSpeechCapture: { status: "captured", utterances: [{ text: "mint", occurrence: 1 }] },
         },
         "mint",

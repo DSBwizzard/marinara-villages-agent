@@ -1,8 +1,14 @@
-// Test cases: retained-storage/checkpoint-owners, retained-storage/virtual-review, retained-storage/partial-preparation, retained-storage/shared-pages, retained-storage/foreign-owner, retained-storage/allocation-budget, retained-storage/frozen-scene, retained-storage/repeated-head, retained-storage/checkpoint-integrity, retained-storage/growth, retained-storage/payload-identity, retained-storage/relationship-owners, retained-storage/relationship-publication, retained-storage/sprite-owners, retained-storage/sprite-upload-holds, retained-storage/sprite-startup-retry, retained-storage/background-sprite-retirement
+// Test cases: retained-storage/encounter-owners, retained-storage/checkpoint-owners, retained-storage/virtual-review, retained-storage/partial-preparation, retained-storage/shared-pages, retained-storage/foreign-owner, retained-storage/allocation-budget, retained-storage/frozen-scene, retained-storage/repeated-head, retained-storage/checkpoint-integrity, retained-storage/growth, retained-storage/payload-identity, retained-storage/relationship-owners, retained-storage/relationship-publication, retained-storage/sprite-owners, retained-storage/sprite-upload-holds, retained-storage/sprite-startup-retry, retained-storage/background-sprite-retirement
 import assert from "node:assert/strict";
 import { VillagesRequestError } from "../packages/villages/src/server/domain/rules/errors.js";
 import { authorSceneFixture } from "./helpers/village-storage.fixture.js";
 import { randomUUID } from "node:crypto";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import {
+  createSceneEncounters,
+  sceneEncounterId,
+} from "../packages/villages/src/server/adapters/storage/scene-encounters.js";
+import { createSceneRetirement } from "../packages/villages/src/server/features/scenes/scene-retirement-service.js";
 import { runCase } from "../scripts/test-cases.mjs";
 import { createRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
@@ -118,6 +124,94 @@ async function fixture() {
     });
   return { rows, lists, gate, repo, api, store, insert, head: () => rows.get("villages-village").data.memoryHead };
 }
+await runCase("retained-storage/encounter-owners", async () => {
+  const f = await fixture();
+  const scene = coerceSession({
+    version: 4,
+    id: "encounter-owner",
+    villageSeed: "retained-storage",
+    status: "closed",
+    startedAt: memoryTime(),
+    endedAt: memoryTime(1),
+    placeId: "cafe",
+    placeName: "Cafe",
+    participants: [{ characterId: "aqua", name: "Aqua", doing: "" }],
+    lines: Array.from({ length: 70 }, (_, index) => ({
+      id: "said-" + index,
+      role: "assistant",
+      kind: "dialogue",
+      speakerId: "aqua",
+      content: "Exact cafe conversation " + index,
+      at: memoryTime(),
+      heardBy: ["aqua"],
+    })),
+  });
+  await f.insert("villages-venue-visit-" + scene.id, "venue-visit", scene);
+  const retirement = createSceneRetirement({
+    villagesDocuments: () => f.gate.documents,
+    readActive: async () => ({ sessionId: "", placeId: "" }),
+    readVillageState: () => f.repo.readAuthority(),
+    readVillageMemoryState: () => f.repo.readAuthority({ memories: true }),
+    mutateVillageMemoryState: async (update) => {
+      await f.repo.mutateAuthority(update, { memories: true });
+      return f.repo.readAuthority({ memories: true });
+    },
+    hasVenueOperation: () => false,
+    saveProjectEvidence: async () => {},
+    saveTerminal: async () => {},
+    readTerminal: async () => null,
+    withRepairWork: (work) => f.gate.work(work),
+    withSceneWork: async (_id, work) => work(),
+    withLateResponseWork: async (_id, work) => work(),
+  });
+  assert.equal(await retirement.retire(scene.id), true);
+  assert(!f.rows.has("villages-venue-visit-" + scene.id));
+  await collectRetainedStorage(f.gate);
+  const recall = async () =>
+    createSceneEncounters(createRepairGate(f.store).documents).recall(
+      "retained-storage",
+      "return",
+      ["aqua"],
+      (await f.repo.readAuthority({ memories: true })).memories,
+    );
+  assert(
+    (await recall()).some((row) => row.text === "Exact cafe conversation 69"),
+    "Retirement, cleanup and restart preserve original transcript pages",
+  );
+  const cp = await f.api.createCheckpoint("Encounter owner", "encounter-cp");
+  const header = f.rows.get(sceneEncounterId(scene.id));
+  await f.gate.work(() => f.gate.documents.remove("villages", header.id, header.revision));
+  await collectRetainedStorage(f.gate);
+  const restore = await f.api.restore(cp.id, "restore-encounter");
+  await f.api.apply(restore.id, restore.token);
+  await collectRetainedStorage(f.gate);
+  assert((await recall()).length, "Checkpoint owns pages after the live header is removed");
+  const anchor = (await f.repo.readAuthority({ memories: true })).memories.records.find(
+    (row) => row.origin.id === "encounter:" + scene.id,
+  )!;
+  const record = await f.api.inspect(repairId("memory", anchor.id));
+  const forgotten = await f.api.prepare({
+    operationId: "forget-encounter",
+    recordId: record.id,
+    expectedRecord: record.token!,
+    action: "forget",
+    knowers: ["aqua"],
+    values: {},
+  });
+  await f.api.apply(forgotten.id, forgotten.token);
+  await collectRetainedStorage(f.gate);
+  assert(
+    !(await recall()).some((row) => row.heardBy.includes("aqua")),
+    "Existing Forget controls suppress raw encounter replay",
+  );
+  const undo = await f.api.undo(forgotten.id, "undo-forget-encounter");
+  await f.api.apply(undo.id, undo.token);
+  await collectRetainedStorage(f.gate);
+  assert(
+    (await recall()).some((row) => row.heardBy.includes("aqua")),
+    "Undo restores knowledge without losing owned quotation pages",
+  );
+});
 await runCase("retained-storage/sprite-owners", async () => {
   const f = await fixture(),
     files = new Map<string, string>(),

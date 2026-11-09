@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { sceneTextCompletion } from "./fixtures/scene-text-reply.fixture.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { activityDate, reserveEventAttempt } from "../packages/villages/src/server/domain/rules/event-attempts.js";
@@ -325,7 +326,7 @@ for (const variant of ["normal", "gap", "race-boundary", "quiet"] as const) {
           : raceBoundary
             ? "Everyone dies."
             : "A gust loosens the hall sign.";
-      return {
+      return sceneTextCompletion(messages, {
         finishReason: "stop",
         content: JSON.stringify({
           input: [],
@@ -344,14 +345,16 @@ for (const variant of ["normal", "gap", "race-boundary", "quiet"] as const) {
             ? { halt: { reason: "condition", source: "draft", quote: text, appointments: [] } }
             : {}),
         }),
-      };
+      });
     },
     venueCheckpoint: checkpoint,
     venueSavedCheckpoint: <T>(key: string) => checkpoints.get(key) as T | undefined,
     venueOperationSignal: () => undefined,
     readVillageLore: async () => [],
     runtimeDebug() {},
-    rejectVenueCompletion: async () => {},
+    rejectVenueCompletion: async (_details: unknown, options: { stages?: string[] }) => {
+      for (const key of options.stages ?? []) checkpoints.delete(key);
+    },
   };
   const writer = createSceneWriting({
     ...common,
@@ -368,6 +371,14 @@ for (const variant of ["normal", "gap", "race-boundary", "quiet"] as const) {
     await assert.rejects(writer.generate(scene, "", "greet", "", null), /checkpoint write failed/);
     assert.equal(requests, 0);
     assert.equal(state.eventAttempts!.attempts.length, 1);
+  }
+  if (raceBoundary) {
+    await assert.rejects(writer.generate(scene, "", "greet", "", null), /generated reply exceeded/);
+    assert.equal(requests, 1, "New contracts hold rather than automatically buy a repair");
+    assert(
+      ![...checkpoints.keys()].some((key) => key.startsWith("writing-completion:")),
+      "Rejected purchased completion cannot trap explicit Retry",
+    );
   }
   const reply = await writer.generate(scene, "", "greet", "", null);
   assert.equal(requests, raceBoundary ? 2 : 1);

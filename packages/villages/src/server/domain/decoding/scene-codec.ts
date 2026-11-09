@@ -348,6 +348,12 @@ export function coerceSession(value: unknown): VenueScene {
               throw conflict("Unsupported saved Scene action.");
             return {
               id: asTrimmedString(row.id),
+              ...(row.sceneContractVersion === 10 ||
+              row.sceneContractVersion === 11 ||
+              row.sceneContractVersion === 12 ||
+              row.sceneContractVersion === 13
+                ? { sceneContractVersion: row.sceneContractVersion }
+                : {}),
               ...(row.lore !== undefined ? { lore: readLoreUse(row.lore) } : {}),
               ...(row.zoneEventsVersion === 1 ? { zoneEventsVersion: 1 as const } : {}),
               ...(Array.isArray(row.wishProposals) ? { wishProposals: row.wishProposals as WishProposal[] } : {}),
@@ -358,6 +364,7 @@ export function coerceSession(value: unknown): VenueScene {
                 : {}),
               message: asString(row.message),
               ...(row.physicalOutcomeVersion === 1 ? { physicalOutcomeVersion: 1 as const } : {}),
+              ...(row.sceneHearingVersion === 2 ? { sceneHearingVersion: 2 as const } : {}),
               ...(row.narrativeSource
                 ? { narrativeSource: structuredClone(row.narrativeSource) as VenueSubmission["narrativeSource"] }
                 : {}),

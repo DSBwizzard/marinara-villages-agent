@@ -1,4 +1,5 @@
 import { zonePictureBaseline } from "../../domain/rules/zone-picture.js";
+import { rememberDomainFact } from "../../domain/rules/domain-memories.js";
 import { captureZoneObservation } from "../../domain/rules/zone-observation.js";
 import { findLocation, sceneActorIds } from "../../domain/rules/places.js";
 import { admitNpcParticipants, type NpcAdmission } from "../../domain/rules/npc-participation.js";
@@ -48,9 +49,7 @@ import { parseVenueReply, savedAccessEvents } from "../../domain/rules/scene-rep
 import { applyInterpretedRoomEvents } from "../../domain/rules/scene-room-application.js";
 import { assertCurrentSceneGeneration, completeSceneObject } from "../../domain/rules/scene-writing-contract.js";
 import {
-  projectInterpretationNeedsRecovery,
   projectMetadataRejected,
-  rejectProjectMetadata,
   semanticAuthorityDomain,
   semanticBlocker,
 } from "../../domain/rules/semantic-continuity.js";
@@ -64,7 +63,6 @@ import {
   applyAccessCommand,
   claimVisitPermission,
   evaluateZoneAccess,
-  managesAccess,
   readAccessCommand,
   settleStandingAccess,
 } from "../../domain/rules/venue-access.js";
@@ -95,6 +93,8 @@ import {
 } from "../../domain/rules/venue-zones.js";
 import { metadataFailure, completionFailure as typedCompletionFailure } from "../../domain/rules/work-failure.js";
 import { zoneEventScene } from "../../domain/rules/zone-events.js";
+import { accessIssuerWitnessed, accessOutcomeActions } from "../../domain/rules/access-speech.js";
+import { capturedPlayerSpeechMatches } from "../../domain/rules/player-speech-capture.js";
 import { type SceneReply } from "./writing.js";
 export interface SceneCommandPorts {
   readCapturedWishContexts: ReturnType<
@@ -255,17 +255,10 @@ export function createSceneCommands({
     );
   }
 
-  class InvalidProjectRecoveryResponse extends VillagesRequestError {
-    constructor(message: string) {
-      super(502, message);
-    }
-  }
-
   async function retrySceneChangeInterpretationOnce(
     id: string,
     submissionId: string,
     domain: "memories" | "relationships" | "wishes" | "projects",
-    automatic = false,
   ) {
     // A failed Project proposal must be reassessed before its newly repaired application can run.
     if (domain !== "projects") await processSavedExchange(id, submissionId);
@@ -410,12 +403,7 @@ export function createSceneCommands({
           (!raw
             ? { cause: "invalid_json" as const, stage: "change-interpretation", message }
             : metadataFailure(message, diagnostics));
-        throw Object.assign(
-          domain === "projects" && automatic
-            ? new InvalidProjectRecoveryResponse(failure.message)
-            : badGateway(failure.message),
-          { failure: { ...failure, responseDiagnostics: diagnostics } },
-        );
+        throw Object.assign(badGateway(failure.message), { failure: { ...failure, responseDiagnostics: diagnostics } });
       }
       let recoveredProjects: NonNullable<VenueSubmission["projectSpeech"]> | undefined;
       if (domain === "projects") {
@@ -442,11 +430,7 @@ export function createSceneCommands({
           recoveredProjects.some((proposal) => !!validateProjectSpeech(proposal, lines))
         ) {
           await rejectVenueCompletion();
-          throw automatic
-            ? new InvalidProjectRecoveryResponse(
-                "Project recovery did not cite valid saved speech and context. Retry interpretation.",
-              )
-            : badGateway("Project recovery did not cite valid saved speech and context. Retry interpretation.");
+          throw badGateway("Project recovery did not cite valid saved speech and context. Retry interpretation.");
         }
       }
       return {
@@ -511,7 +495,7 @@ export function createSceneCommands({
       entry.processing.domains[domain].status = "pending";
     });
     await processSavedExchange(id, submissionId);
-    if (!automatic) await finishSemanticScene(id);
+    await finishSemanticScene(id);
     return readSceneChanges(id);
   }
 
@@ -1029,6 +1013,7 @@ export function createSceneCommands({
         assertCurrentSceneGeneration(admission);
         signal.throwIfAborted();
         const writingInput = {
+          ...sceneHearingContract(admission, "greeting"),
           semanticBudget:
             admission.operation?.id === "greeting"
               ? admission.operation.input.semanticBudget
@@ -1117,6 +1102,7 @@ export function createSceneCommands({
         );
         state.submissions.push({
           id: "greeting",
+          ...(session.operation?.input.sceneHearingVersion === 2 ? { sceneHearingVersion: 2 as const } : {}),
           zoneIdAtTurn: state.zoneId,
           mode: "chat",
           message: "",
@@ -1152,6 +1138,7 @@ export function createSceneCommands({
           effectFailures: reply.effectFailures,
 
           speechCapture: reply.speechCapture,
+          sceneContractVersion: reply.sceneContractVersion,
           accessEvents: savedAccessEvents(reply.roomInterpretation),
           ...(state.semanticVersion === 2
             ? {
@@ -1272,8 +1259,13 @@ export function createSceneCommands({
       throw conflict("Unsupported Scene action. Its saved request is preserved.");
   }
 
+  function sceneHearingContract(scene: VenueScene, id: string) {
+    const prior = scene.operation?.id === id ? scene.operation.input : scene.submissions.find((turn) => turn.id === id);
+    return !prior || prior.sceneHearingVersion === 2 ? { sceneHearingVersion: 2 } : {};
+  }
   function venueTurnPayload(scene: VenueScene, input: VenueTurnInput) {
     return {
+      ...sceneHearingContract(scene, input.submissionId),
       message: input.message,
       mode: input.mode,
       targetId: input.targetId,
@@ -1464,6 +1456,7 @@ export function createSceneCommands({
     const eventVenue = movementVenue ?? findLocation(village, session.placeId);
     if (!eventVenue) throw conflict("This Venue is no longer available. End the Scene.");
     const eventScene = zoneEventScene(session, eventVenue!, {
+      contact: input.mode === "contact",
       targetId: input.targetId || session.semanticIntent?.timeline.find((step) => step.targetId)?.targetId,
       message: input.message,
       zoneId: input.contact?.boundaryZoneId,
@@ -1590,6 +1583,25 @@ export function createSceneCommands({
           );
         }
         {
+          if (session.operation?.input.sceneHearingVersion === 2) {
+            const ended = new Set(reply.contactEndIds ?? []);
+            const contacts = reply.lines
+              .filter((line) => line.viaDoorway && !line.contactHidden && line.speakerId)
+              .filter((line) => !ended.has(line.speakerId))
+              .map((line) => ({
+                characterId: line.speakerId,
+                playerZoneId: state.zoneId,
+                characterZoneId: line.zoneId,
+                delivery: "voice" as const,
+              }));
+            state.doorwayContacts = [
+              ...new Map(
+                [...(state.doorwayContacts ?? []).filter((row) => !ended.has(row.characterId)), ...contacts].map(
+                  (row) => [row.characterId, row],
+                ),
+              ).values(),
+            ];
+          }
           const identities = new Set([
             ...reply.lines
               .filter((line) => line.kind !== "narration" && !line.contactHidden)
@@ -1629,7 +1641,9 @@ export function createSceneCommands({
         if (reply.recap) state.recap = reply.recap;
         state.submissions.push({
           id: input.submissionId,
+          ...(session.operation?.input.sceneHearingVersion === 2 ? { sceneHearingVersion: 2 as const } : {}),
           speechCapture: reply.speechCapture,
+          sceneContractVersion: reply.sceneContractVersion,
           effectFailures: { ...reply.effectFailures, ...(projectFailure ? { projects: projectFailure } : {}) },
           ...{ zoneEventsVersion: 1 as const },
           message: input.message,
@@ -1811,7 +1825,14 @@ export function createSceneCommands({
 
   async function applySavedAccessEvents(scene: VenueScene, turn: VenueSubmission) {
     const events = turn.accessEvents ?? [];
-    if (events.some((event) => event.interpretationVersion !== 1 || asRecord(event.facts).semanticVersion !== 2))
+    if (
+      events.some(
+        (event) =>
+          event.interpretationVersion !== 1 ||
+          asRecord(event.facts).semanticVersion !== 2 ||
+          !event.facts.accessCommand,
+      )
+    )
       throw conflict("This saved access effect needs current evidence.");
     if (!events.length) return;
     const batch = {
@@ -1838,21 +1859,11 @@ export function createSceneCommands({
           facts = asRecord(check.facts),
           actor = String(facts.actorId);
         const management = asRecord(facts.accessCommand);
-        if (
-          !management.action &&
-          !["refuse", "dismiss", "ban-zone", "ban-venue", "invite-outside-hours"].includes(result.outcome)
-        )
-          continue;
-        const venue = findLocation(state, facts.venueId),
-          zone = venue && resolveVenueZone(venue, String(facts.zoneId));
-        if (!venue?.access || (!management.action && !zone && result.outcome !== "ban-venue")) continue;
+        if (!management.action) continue;
+        const venue = findLocation(state, facts.venueId);
+        if (!venue?.access) continue;
         if (!initialRevisions.has(venue.id)) initialRevisions.set(venue.id, venue.access.revision);
-        const operationId = management.action
-          ? String(management.operationId)
-          : "access-speech:" +
-            createHash("sha256")
-              .update(check.id + ":" + result.outcome)
-              .digest("hex");
+        const operationId = String(management.operationId);
         if (venue.access.receipts[operationId]) {
           continue;
         }
@@ -1876,14 +1887,28 @@ export function createSceneCommands({
           reject();
           continue;
         }
-        if (
-          management.action &&
-          result.outcome !== "access-management" &&
-          !(management.action === "invite" && ["invite-now", "invite-later"].includes(result.outcome))
-        ) {
+        if (result.outcome !== "access-management" && management.action !== accessOutcomeActions.get(result.outcome)) {
           reject();
           continue;
         }
+        const binding = asRecord(facts.playerInputSource);
+        const boundPlayerInput =
+          actor === "player" &&
+          (binding.kind === "action" || binding.kind === "speech") &&
+          Number.isInteger(binding.inputSpan) &&
+          Number(binding.inputSpan) >= 0 &&
+          Number(binding.inputSpan) < 24 &&
+          Number.isInteger(binding.start) &&
+          Number.isInteger(binding.end) &&
+          Number(binding.start) >= 0 &&
+          Number(binding.end) > Number(binding.start) &&
+          Number(binding.end) <= turn.message.length &&
+          typeof binding.text === "string" &&
+          turn.message.slice(Number(binding.start), Number(binding.end)) === binding.text &&
+          (binding.kind === "action" ||
+            scene.lines.some(
+              (line) => turn.replyLineIds.includes(line.id) && capturedPlayerSpeechMatches(line, binding),
+            ));
         const sources = result.evidenceIds
           .map((ref) => {
             const draft = /^draft:(\d+)$/u.exec(ref);
@@ -1892,69 +1917,27 @@ export function createSceneCommands({
           .filter(
             (line): line is VenueLine =>
               !!line &&
-              ((line.speakerId === actor && line.kind !== "narration") ||
-                (line.kind === "narration" && line.heardBy.includes(actor) && !line.contactHidden)) &&
+              accessIssuerWitnessed(line, actor) &&
+              (actor === "player"
+                ? boundPlayerInput && (line.kind === "narration" || capturedPlayerSpeechMatches(line, binding))
+                : (line.speakerId === actor && line.kind !== "narration") ||
+                  (line.kind === "narration" && !line.contactHidden)) &&
               turn.replyLineIds.includes(line.id),
           );
         if (!sources.length) {
           reject();
           continue;
         }
-        const scope = result.outcome === "ban-venue" ? null : (zone?.id ?? null);
-        if (result.outcome.startsWith("ban-") && !managesAccess(venue, scope, actor)) {
-          reject();
-          continue;
-        }
-        const base = { operationId, expectedRevision: venue.access.revision, zoneId: scope, visitorId: "player" };
         try {
-          if (management.action)
-            applyAccessCommand(
-              venue,
-              readAccessCommand({ ...management, expectedRevision: venue.access.revision }),
-              actor,
-              turn.at,
-              ["player", ...sceneActorIds(state)],
-              sources.map((line) => line.id),
-              state.communityVenueId,
-            );
-          else if (result.outcome.startsWith("ban-"))
-            applyAccessCommand(
-              venue,
-              { ...base, action: "ban" },
-              actor,
-              turn.at,
-              ["player", ...sceneActorIds(state)],
-              sources.map((line) => line.id),
-              state.communityVenueId,
-            );
-          else if (result.outcome === "invite-outside-hours")
-            applyAccessCommand(
-              venue,
-              {
-                ...base,
-                action: "invite",
-                duration: "visit",
-                sceneId: venue.id === scene.placeId ? scene.id : undefined,
-                accompanied: facts.accompanies === true,
-                outsideHours: true,
-              },
-              actor,
-              turn.at,
-              ["player", ...sceneActorIds(state)],
-              sources.map((line) => line.id),
-              state.communityVenueId,
-            );
-          else if (venue.id === scene.placeId)
-            applyAccessCommand(
-              venue,
-              { ...base, action: result.outcome === "dismiss" ? "leave-now" : "refuse-entry", sceneId: scene.id },
-              actor,
-              turn.at,
-              ["player", ...sceneActorIds(state)],
-              sources.map((line) => line.id),
-              state.communityVenueId,
-            );
-          else continue;
+          applyAccessCommand(
+            venue,
+            readAccessCommand({ ...management, expectedRevision: venue.access.revision }),
+            actor,
+            turn.at,
+            ["player", ...sceneActorIds(state)],
+            sources.map((line) => line.id),
+            state.communityVenueId,
+          );
         } catch {
           reject();
         }
@@ -2095,115 +2078,7 @@ export function createSceneCommands({
     }
   }
 
-  async function recoverProjectMetadata(scene: VenueScene, turn: VenueSubmission): Promise<void> {
-    if (!projectInterpretationNeedsRecovery(turn)) return;
-    const village = await readVillageState();
-    const citedIds = new Set(
-      (turn.projectSpeech ?? []).flatMap((row) => row.citations.map((citation) => citation.lineId)),
-    );
-    // A partial applied outcome requires its existing receipt recovery, never a negative reinterpretation.
-    if (
-      village.projects.some((project) => project.lifecycle?.spokenProofs.some((proof) => citedIds.has(proof.lineId))) ||
-      village.progressTasks.some((task) => task.receipts.some((receipt) => citedIds.has(receipt.evidence.lineId ?? "")))
-    )
-      return;
-    const signature = JSON.stringify(turn.projectSpeech ?? []);
-    const sourceHash = turn.semanticProvenance?.sourceHash;
-    const terminalInvalid = (entry: VenueSubmission) =>
-      entry.interpretationHistory?.some((row) => {
-        const audit = asRecord(row.proposals);
-        return (
-          row.domain === "projects" &&
-          row.source === "Automatic Project retry invalid" &&
-          audit.sourceHash === sourceHash &&
-          audit.submissionId === turn.id &&
-          JSON.stringify(audit.originalProposals) === signature
-        );
-      });
-    const started = turn.interpretationHistory?.some(
-      (row) => row.domain === "projects" && row.source === "Automatic Project retry started",
-    );
-    if (!started) {
-      await changeSession(scene.id, (saved) => {
-        const entry = mutableSceneSubmission(saved, turn.id);
-        if (
-          !entry ||
-          saved.villageSeed !== village.seed ||
-          JSON.stringify(entry.projectSpeech ?? []) !== signature ||
-          entry.semanticProvenance?.sourceHash !== turn.semanticProvenance?.sourceHash
-        )
-          throw conflict("The saved Project proposal changed during recovery.");
-        entry.interpretationHistory ||= [];
-        entry.interpretationHistory.push({
-          at: villageNow().toISOString(),
-          domain: "projects",
-          source: "Automatic Project retry started",
-          proposals: {
-            sourceHash: entry.semanticProvenance?.sourceHash,
-            originalProposals: structuredClone(entry.projectSpeech ?? []),
-          },
-        });
-      });
-      try {
-        await retrySceneChangeInterpretationOnce(scene.id, turn.id, "projects", true);
-      } catch (error) {
-        // Only a returned, specifically invalid response permits a negative disposition.
-        // Dispatch refusal, cancellation, provider and persistence errors remain blocking.
-        if (!(error instanceof InvalidProjectRecoveryResponse)) throw error;
-        await changeSession(scene.id, (saved) => {
-          const entry = mutableSceneSubmission(saved, turn.id);
-          if (
-            !entry ||
-            saved.villageSeed !== village.seed ||
-            entry.semanticProvenance?.sourceHash !== sourceHash ||
-            JSON.stringify(entry.projectSpeech ?? []) !== signature
-          )
-            throw conflict("The saved Project proposal changed during recovery.");
-          entry.interpretationHistory ||= [];
-          entry.interpretationHistory.push({
-            at: villageNow().toISOString(),
-            domain: "projects",
-            source: "Automatic Project retry invalid",
-            proposals: {
-              submissionId: turn.id,
-              sourceHash,
-              originalProposals: structuredClone(entry.projectSpeech ?? []),
-            },
-          });
-        });
-      }
-    }
-    const latestScene = await readSession(scene.id),
-      latestTurn = latestScene.submissions.find((row) => row.id === turn.id);
-    if (!latestTurn || !terminalInvalid(latestTurn)) return;
-    const latestVillage = await readVillageState();
-    const latestCitedIds = new Set(
-      (latestTurn?.projectSpeech ?? []).flatMap((row) => row.citations.map((citation) => citation.lineId)),
-    );
-    if (
-      latestVillage.projects.some((project) =>
-        project.lifecycle?.spokenProofs.some((proof) => latestCitedIds.has(proof.lineId)),
-      ) ||
-      latestVillage.progressTasks.some((task) =>
-        task.receipts.some((receipt) => latestCitedIds.has(receipt.evidence.lineId ?? "")),
-      )
-    )
-      return;
-    await changeSession(scene.id, (saved) => {
-      if (saved.villageSeed !== village.seed) throw conflict("Village identity changed during Project recovery.");
-      const entry = mutableSceneSubmission(saved, turn.id);
-      if (entry?.semanticProvenance?.sourceHash !== turn.semanticProvenance?.sourceHash)
-        throw conflict("The saved Project proposal changed during recovery.");
-      if (entry && terminalInvalid(entry) && projectInterpretationNeedsRecovery(entry))
-        rejectProjectMetadata(
-          entry,
-          "Project interpretation unresolved; no additional Project effect applied",
-          villageNow().toISOString(),
-        );
-    });
-  }
-
-  async function settleSemanticAuthority(scene: VenueScene, turn: VenueSubmission, allowProjectRecovery = true) {
+  async function settleSemanticAuthority(scene: VenueScene, turn: VenueSubmission) {
     if (turn.semanticProvenance?.version !== 2) return;
     if (turn.npcAdmissions?.length || turn.placeDiscoveries?.length || turn.establishmentProgress?.length)
       await mutateVillageState((state) => applyPlaceExchange(state, scene, turn), { memories: true });
@@ -2309,7 +2184,6 @@ export function createSceneCommands({
       await publish();
       return;
     }
-    if (allowProjectRecovery) await recoverProjectMetadata(scene, turn);
     const currentScene = await readSession(scene.id);
     const currentTurn = currentScene.submissions.find((row) => row.id === turn.id);
     const physicalReceipt = (await readVillageState()).exchangeReceipts["venue-chat:" + scene.id + ":" + turn.id];
@@ -2511,6 +2385,29 @@ export function createSceneCommands({
         reason: "Confirmed physical outcome",
         physicalOutcome: state.venueEvents[0]!,
       };
+      if (submission.sceneHearingVersion === 2) {
+        const details = [
+          ...(change.edits ?? []).map((edit) => edit.after || `Removed: ${edit.before}`),
+          change.append,
+          change.recent?.text,
+        ]
+          .filter(Boolean)
+          .join(" ");
+        if (details)
+          rememberDomainFact(state, {
+            id,
+            effectId: id,
+            event: true,
+            at,
+            recordedAt: villageNow().toISOString(),
+            committedAt: state.exchangeReceipts[id]!.committedAt,
+            sceneId: session.id,
+            text: `${venue.name}: ${details}`,
+            knowers: ["player", ...witnesses],
+            subjects: [],
+            domainRef: { kind: "physical", id: venue.id },
+          });
+      }
     });
   }
 
@@ -2674,7 +2571,7 @@ export function createSceneCommands({
       (row) => !row.semanticReady || !authority?.socialPublications?.[scene.id + ":" + row.id],
     )) {
       try {
-        await settleSemanticAuthority(scene, turn, false);
+        await settleSemanticAuthority(scene, turn);
       } catch (error) {
         if (asRecord(error).statusCode === 409) return;
         throw error;

@@ -35,6 +35,21 @@ import {
 } from "./helpers/memories-fixture.js";
 
 await runCase("memories/context", () => {
+  const contractions = addMemory(emptyMemories(), { text: "Aqua's home is the same old chair. Don't rush." });
+  assert.equal(
+    recallMemories(contractions, {
+      purpose: "system",
+      audience: ["aqua"],
+      query: "What now?",
+      context: "It's the same. Don't.",
+    }).candidates.length,
+    0,
+    "Contraction fragments and generic fillers cannot sustain recall",
+  );
+  assert.equal(
+    recallMemories(contractions, { purpose: "system", audience: ["aqua"], query: "Aqua's home?" }).candidates.length,
+    1,
+  );
   let collection = addMemory(emptyMemories(), { text: "Aqua promised greenhouse repairs." });
   collection = addMemory(collection, { text: "Aqua promised bakery lessons." });
   collection = addMemory(collection, { text: "Ella concealed the sapphire.", audience: ["ella"] });

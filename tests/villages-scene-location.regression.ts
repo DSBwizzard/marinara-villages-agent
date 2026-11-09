@@ -7,7 +7,11 @@ import {
 import { sceneLocationContext } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
-import { currentScenePrompt, scenePromptPacket } from "./fixtures/villages-scene-writing.fixture.js";
+import {
+  currentScenePrompt,
+  scenePromptPacket,
+  scenePromptPositions,
+} from "./fixtures/villages-scene-writing.fixture.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 
 const at = "2026-10-23T12:00:00.000Z";
@@ -153,7 +157,7 @@ for (const mode of ["greet", "chat", "leave"] as const) {
     writingContractVersion: 3,
     semanticPipelineVersion: 3,
   });
-  assert.deepEqual(scenePromptPacket(prompt).positions, remote);
+  assert.deepEqual(scenePromptPositions(prompt), remote);
   assert.ok(
     prompt.indexOf(marker) > prompt.indexOf(card.scenario),
     "current physical authority follows card scenarios",
@@ -164,7 +168,7 @@ for (const mode of ["greet", "chat", "leave"] as const) {
       "current physical authority follows misleading earlier narration",
     );
   assert.doesNotMatch(prompt, /HIDDEN OCCUPANT|HIDDEN ACTIVITY/);
-  assert.doesNotMatch(JSON.stringify(scenePromptPacket(prompt).positions), /HIDDEN ROOM NAME/);
+  assert.doesNotMatch(JSON.stringify(scenePromptPositions(prompt)), /HIDDEN ROOM NAME/);
 }
 for (const context of [
   { ...scene, zoneId: "exterior", area: "outside" as const, activeIds: ["mari"] },
@@ -176,7 +180,7 @@ for (const context of [
     contactGeneration: scene.contactGeneration,
   });
   assert.deepEqual(
-    scenePromptPacket(prompt).positions,
+    scenePromptPositions(prompt),
     sceneLocationContext(context, venue, ["mari"]),
     "the actual writer refreshes positions on arrival and movement, in the current GM context",
   );
@@ -197,7 +201,7 @@ for (const mode of ["greet", "chat", "leave"] as const) {
     writingContractVersion: 3,
     semanticPipelineVersion: 3,
   });
-  assert.deepEqual(scenePromptPacket(prompt).positions.residents, []);
+  assert.deepEqual(scenePromptPositions(prompt).residents, []);
   assert(!prompt.includes(card.description), "an absent resident's profile cannot supply an invented response");
   assert.deepEqual(scenePromptPacket(prompt).context.actors, [], "Earlier prose cannot supply an absent actor");
   assert.doesNotMatch(prompt, /HIDDEN ROOM NAME|HIDDEN OCCUPANT|HIDDEN ACTIVITY/);

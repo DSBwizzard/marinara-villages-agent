@@ -21,11 +21,15 @@ import {
 } from "../packages/villages/src/server/features/scenes/writing.js";
 import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
+import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
+import { addMemory, emptyMemories, memoryRepair, memoryTime } from "./helpers/memories-fixture.js";
+import { applyMemoryRepair } from "../packages/villages/src/server/domain/rules/memory-application.js";
+import { createHash } from "node:crypto";
 const stamp = "2026-10-07T12:00:00.000Z";
 function deferred() {
   return Promise.withResolvers<void>();
 }
-function fixture(label: string, checkpointed = false) {
+function fixture(label: string, checkpointed = false, sceneNarrative?: SceneWritingPorts["sceneNarrative"]) {
   const world = defaultVillageState();
   world.seed = "same-seed";
   world.name = label;
@@ -58,6 +62,8 @@ function fixture(label: string, checkpointed = false) {
     brokenReply: string | null = null;
   const owner = createActivationScope();
   const checkpoints = new Map<string, unknown>();
+  const requests: unknown[] = [];
+  const optionsSeen: any[] = [];
   let roomInterpretation:
     import("../packages/villages/src/server/domain/models/interpretation-model.js").InterpretationBatch | null = null;
   async function touch(stage: string) {
@@ -93,6 +99,7 @@ function fixture(label: string, checkpointed = false) {
     },
   };
   const ports: SceneWritingPorts = {
+    sceneNarrative,
     readVillageState: async () => {
       await touch("world");
       return world;
@@ -144,20 +151,11 @@ function fixture(label: string, checkpointed = false) {
       assert.equal(selected, model);
       assert.equal(options.usagePurpose, "conversation");
       assert.equal(options.temperature, 0.85);
+      requests.push(structuredClone(_messages));
+      optionsSeen.push(structuredClone(options));
       await touch("completion");
       return {
-        content:
-          brokenReply ??
-          JSON.stringify({
-            input: _messages.findLast((message) => message.role === "user")?.content
-              ? [{ kind: "action", text: String(_messages.findLast((message) => message.role === "user")!.content) }]
-              : [],
-            segments: [{ kind: "narration", text: label + " room remains quiet." }],
-            heardPlayerBy: [],
-            wishChanges: [],
-            memoryChanges: [],
-            relationshipChanges: { changes: [], permissions: [], disclosures: [] },
-          }),
+        content: brokenReply ?? "INPUT action\n[narration] " + label + " room remains quiet.",
         finishReason: "stop",
       };
     },
@@ -194,12 +192,16 @@ function fixture(label: string, checkpointed = false) {
     owners,
     owner,
     service,
+    model,
+    checkpoints,
     interpretation(value: typeof roomInterpretation) {
       roomInterpretation = value;
     },
     entered,
     gate,
     exact,
+    requests,
+    optionsSeen,
     pause(stage: string) {
       paused = stage;
     },
@@ -217,6 +219,53 @@ function fixture(label: string, checkpointed = false) {
     },
   };
 }
+for (const version of [undefined, 4, 7, 8, 9, 10, 11, 12]) {
+  let narrativeCalls = 0;
+  const retired = fixture("retired-" + version, true, {
+    offer: async () => {
+      narrativeCalls++;
+      return null;
+    },
+    reserve: async () => {
+      narrativeCalls++;
+      return null;
+    },
+  } as unknown as SceneWritingPorts["sceneNarrative"]);
+  const prepared = await retired.service.prepareVenueTurnMessages(retired.scene, "I wait.", "chat", "", null);
+  const key =
+    "writing-request:" +
+    createHash("sha256")
+      .update(JSON.stringify([retired.scene.id, "chat", "I wait."]))
+      .digest("hex");
+  retired.checkpoints.set(key, {
+    fitted: prepared.fitted,
+    wishContexts: prepared.wishContexts,
+    writingVersion: version,
+  });
+  const before = structuredClone([...retired.checkpoints]);
+  await assert.rejects(retired.run(), /retired AI contract/);
+  await assert.rejects(
+    retired.service.prepareVenueTurnMessages(retired.scene, "I wait.", "chat", "", null),
+    /retired AI contract/,
+  );
+  assert.equal(retired.requests.length, 0, "An obsolete request cannot spend");
+  assert.equal(narrativeCalls, 0, "An obsolete request cannot offer or reserve narrative work");
+  assert.deepEqual(
+    [...retired.checkpoints],
+    before,
+    "An obsolete request cannot create narrative reservations or rewrite captured data",
+  );
+}
+{
+  const receipt = fixture("server-only-receipt");
+  receipt.scene.operation = { input: { submissionId: "private-physical-receipt" } } as any;
+  const prepared = await receipt.service.prepareVenueTurnMessages(receipt.scene, "I wait.", "chat", "", null);
+  assert.equal(prepared.gmContext.possibleMemoryEffects!.physical.id, "venue-chat:same-scene:private-physical-receipt");
+  assert(
+    !prepared.fitted.messages.some((row) => row.content.includes("private-physical-receipt")),
+    "Pending receipts stay in server authority, outside the writing prompt",
+  );
+}
 const direct = fixture("A");
 assert.deepEqual(direct.calls, [], "constructing the service starts no work");
 const prompt = await direct.service.prepareVenueTurnMessages(direct.scene, "I wait.", "chat", "", null);
@@ -229,7 +278,278 @@ assert.ok(
 );
 assert.equal(direct.calls.includes("completion"), false, "prompt fitting requests no completion");
 assert.equal(direct.calls.includes("interpretation"), false);
+{
+  const protectedWorld = fixture("protected-policy");
+  const before = await protectedWorld.service.prepareVenueTurnMessages(
+    protectedWorld.scene,
+    "Greenhouse promises?",
+    "chat",
+    "",
+    null,
+  );
+  let collection = emptyMemories();
+  for (let i = 0; i < 40; i++)
+    collection = addMemory(collection, {
+      text: `Greenhouse promise ${i}: ` + "Specific remembered detail. ".repeat(6),
+      audience: ["player"],
+    });
+  for (const record of [...collection.records])
+    collection = applyMemoryRepair(
+      collection,
+      memoryRepair(collection, "forget", ["player"], undefined, record.id),
+      memoryTime(200),
+    ).collection;
+  protectedWorld.world.memories = collection;
+  const after = await protectedWorld.service.prepareVenueTurnMessages(
+    protectedWorld.scene,
+    "Greenhouse promises?",
+    "chat",
+    "",
+    null,
+  );
+  assert.equal(after.gmContext._memoryWrite.protection.complete, false);
+  assert.equal(
+    before.fitted.messages[0]!.content,
+    after.fitted.messages[0]!.content,
+    "Incomplete protection envelopes cannot rewrite the standing policy",
+  );
+  assert.equal(protectedWorld.calls.includes("completion"), false);
+}
+{
+  const remote = fixture("remote-card");
+  remote.world.villagers = ["local", "remote"].map((characterId) => {
+    const row = structuredClone(wishWorld().villagers[0]!);
+    row.characterId = characterId;
+    row.cardSnapshot.id = characterId;
+    row.cardSnapshot.name = characterId;
+    row.cardSnapshot.description = characterId + " DISTINCTIVE COMPLETE CARD";
+    row.cardSnapshot.postHistoryInstructions = characterId + " AUTHORED POST HISTORY";
+    return row;
+  });
+  remote.world.venues = [
+    venueFixture({
+      id: "same-place",
+      zones: [
+        { ...defaultVenueSpace("other"), id: "exterior", kind: "exterior", connectedTo: ["hall"] },
+        { ...defaultVenueSpace("other"), id: "hall", kind: "public", connectedTo: ["exterior"] },
+      ],
+    }),
+  ];
+  remote.scene.activeIds = ["local"];
+  remote.scene.participants = remote.world.villagers.map((row) => ({
+    characterId: row.characterId,
+    name: row.characterId,
+    doing: "Waiting",
+  }));
+  remote.scene.operation = { input: { sceneHearingVersion: 2 } } as any;
+  remote.scene.sceneAttendance = {
+    capturedAt: stamp,
+    occupants: remote.scene.participants.map((row) => ({
+      ...row,
+      zoneId: row.characterId === "local" ? "exterior" : "hall",
+    })),
+  };
+  const selected = zoneEventScene(remote.scene, remote.world.venues[0]!, { targetId: "remote", contact: true });
+  const prepared = await remote.service.prepareVenueTurnMessages(selected, "Remote, hello!", "chat", "remote", null);
+  assert.ok(prepared.fitted.messages[0]!.content.includes("local DISTINCTIVE COMPLETE CARD"));
+  assert.ok(!prepared.fitted.messages[0]!.content.includes("remote DISTINCTIVE COMPLETE CARD"));
+  assert.ok(
+    prepared.fitted.messages.slice(1).some((row) => row.content.includes("remote DISTINCTIVE COMPLETE CARD")),
+    "Selected remote people retain full authored identity after cached history",
+  );
+  assert.ok(prepared.fitted.messages.slice(1).some((row) => row.content.includes("remote AUTHORED POST HISTORY")));
+}
 const complete = fixture("A");
+{
+  const arrival = fixture("fifth-arrival");
+  arrival.world.villagers = ["a", "b", "c", "d"].map((characterId) => {
+    const row = structuredClone(wishWorld().villagers[0]!);
+    row.characterId = characterId;
+    row.cardSnapshot.name = characterId;
+    return row;
+  });
+  arrival.world.venues = [venueFixture({ id: "same-place" })];
+  arrival.scene.activeIds = ["a", "b", "c", "d"];
+  arrival.scene.participants = arrival.scene.activeIds.map((characterId) => ({
+    characterId,
+    name: characterId,
+    doing: "Talking",
+  }));
+  arrival.scene.sceneAttendance = {
+    capturedAt: stamp,
+    occupants: arrival.scene.participants.map((row) => ({ ...row, zoneId: "exterior" })),
+  };
+  arrival.scene.operation = { input: { sceneHearingVersion: 2 } } as any;
+  arrival.scene.lines = [
+    {
+      id: "prior",
+      role: "assistant",
+      speakerId: "a",
+      name: "a",
+      kind: "dialogue",
+      content: "A public remark.",
+      at: stamp,
+      heardBy: ["a", "b", "c", "d"],
+      zoneId: "exterior",
+      delivery: "ordinary",
+      presentation: "main",
+    },
+    {
+      id: "private",
+      role: "assistant",
+      speakerId: "d",
+      name: "d",
+      kind: "whisper",
+      content: "An exact private remark.",
+      at: stamp,
+      heardBy: ["d"],
+      zoneId: "exterior",
+      delivery: "whisper",
+      targetId: "player",
+      presentation: "aside",
+    },
+  ] as any;
+  arrival.scene.submissions = [{ replyLineIds: ["prior", "private"] }] as any;
+  const beforeScene = zoneEventScene(arrival.scene, arrival.world.venues[0]!);
+  const before = await arrival.service.prepareVenueTurnMessages(beforeScene, "Continue.", "chat", "", null);
+  arrival.world.worldPlaces.npcs["npc:fifth"] = {
+    id: "npc:fifth",
+    name: "Fifth",
+    characterization: "A fifth known person.",
+    facts: [],
+    associations: [],
+    availability: "",
+  } as any;
+  arrival.scene.activeIds.push("npc:fifth");
+  arrival.scene.participants.push({ characterId: "npc:fifth", name: "Fifth", doing: "Arriving" });
+  arrival.scene.sceneAttendance.occupants.push({
+    characterId: "npc:fifth",
+    name: "Fifth",
+    doing: "Arriving",
+    zoneId: "exterior",
+  });
+  const selected = zoneEventScene(arrival.scene, arrival.world.venues[0]!, {
+    targetId: "npc:fifth",
+    message: "Fifth, hello.",
+  });
+  const after = await arrival.service.prepareVenueTurnMessages(selected, "Fifth, hello.", "chat", "npc:fifth", null);
+  assert.equal(selected.contactGeneration?.actorIds?.length, 5);
+  assert.equal(
+    after.fitted.messages[0]!.content,
+    before.fitted.messages[0]!.content,
+    "Fifth local NPC cannot replace a resident in the cached identity prefix",
+  );
+  const exchanges = (prepared: typeof before) =>
+    prepared.fitted.messages.flatMap((row) =>
+      row.content.split("\n").filter((line) => line.startsWith("Scene exchange: ")),
+    );
+  assert.deepEqual(
+    exchanges(after),
+    exchanges(before),
+    "Passive local witnesses preserve historical cache bytes when writer slots change",
+  );
+  assert.deepEqual(
+    after.fitted.evidence.find((row) => row.id === "private")!.heardBy,
+    ["d"],
+    "New arrivals never inherit earlier whispers",
+  );
+  const long = fixture("hundred-turn-context");
+  Object.assign(long.world, structuredClone(arrival.world));
+  Object.assign(long.scene, structuredClone(beforeScene));
+  const originalLines = structuredClone(long.scene.lines);
+  long.model.fitContext = (messages, options) => ({
+    messages: messages.reduce((size, row) => size + row.content.length, 0) > 36000 ? [] : messages,
+    maxTokens: options?.maxTokens,
+    estimatedTokensBefore: 10,
+    estimatedTokensAfter: 10,
+    trimmed: false,
+  });
+  let previousFacts = "";
+  let lastPrepared = before;
+  for (let turn = 0; turn < 100; turn++) {
+    long.scene.sceneAttendance!.capturedAt = new Date(Date.parse(stamp) + turn * 1000).toISOString();
+    if (turn === 50) {
+      long.scene.activeIds.push("npc:fifth");
+      long.scene.participants.push({ characterId: "npc:fifth", name: "Fifth", doing: "Arriving" });
+      long.scene.sceneAttendance!.occupants.push({
+        characterId: "npc:fifth",
+        name: "Fifth",
+        doing: "Arriving",
+        zoneId: "exterior",
+      });
+    }
+    if (turn === 75) long.world.venues[0]!.zones[0]!.description = "A lasting blue cupboard stands here.";
+    const selected = zoneEventScene(long.scene, long.world.venues[0]!, {
+      message: turn >= 50 ? "Fifth, continue." : "Continue.",
+      ...(turn >= 50 ? { targetId: "npc:fifth" } : {}),
+    });
+    const prepared = await long.service.prepareVenueTurnMessages(
+      selected,
+      turn % 2 ? "Tea?" : "Continue.",
+      "chat",
+      "",
+      null,
+    );
+    const context = prepared.fitted.messages[1]!.content;
+    const factsAt = context.indexOf("## Current Scene facts\n");
+    assert(factsAt >= 0, "Required current Scene facts survive fitting");
+    const facts = context.slice(factsAt).split("\n\n## ")[0]!;
+    if (turn && turn !== 75)
+      assert.equal(
+        facts,
+        previousFacts,
+        "Clock, query, fitting and fifth arrival preserve unchanged current physical facts",
+      );
+    if (turn === 75) {
+      assert.notEqual(facts, previousFacts);
+      assert(
+        facts.includes("A lasting blue cupboard stands here."),
+        "Current persistent changes survive optional history fitting",
+      );
+    }
+    if (turn >= 50)
+      assert.equal(
+        selected.contactGeneration!.actorIds!.length,
+        5,
+        "All five present people remain eligible throughout the long Scene",
+      );
+    assert.deepEqual(
+      long.scene.lines.slice(0, originalLines.length),
+      originalLines,
+      "Later attendance never rewrites prior witnesses",
+    );
+    assert.equal(Object.keys(prepared.fitted.references).length, prepared.fitted.evidence.length);
+    previousFacts = facts;
+    lastPrepared = prepared;
+    const replyLineIds = ["a", "b", "c", "d"].map((speakerId, index) => {
+      const id = `long-${turn}-${index}`;
+      long.scene.lines.push({
+        id,
+        speakerId,
+        name: speakerId,
+        role: "assistant",
+        kind: "dialogue",
+        delivery: "ordinary",
+        presentation: "main",
+        content: `Exchange ${turn}, speaker ${index}: ` + "A concrete accepted observation. ".repeat(6),
+        at: long.scene.sceneAttendance!.capturedAt,
+        heardBy: long.scene.sceneAttendance!.occupants.map((person) => person.characterId),
+        zoneId: "exterior",
+      });
+      return id;
+    });
+    long.scene.submissions.push({ id: `long-${turn}`, replyLineIds, message: "Continue.", mode: "chat" } as any);
+  }
+  assert(
+    lastPrepared.fitted.evidence.length < long.scene.lines.length - 4,
+    "A long Scene actually exercises history trimming",
+  );
+  assert(
+    lastPrepared.fitted.evidence.some((line) => line.id === "long-98-3"),
+    "Latest speech stays available",
+  );
+  assert(!long.calls.includes("completion"), "The hundred-turn packaging check makes no provider requests");
+}
 const reply = await complete.run();
 assert.equal(reply.lines[0]?.content, "A room remains quiet.");
 assert.equal(reply.roomInterpretation, null);
@@ -269,6 +589,8 @@ assert.equal(complete.calls.filter((x) => x === "interpretation").length, 1);
     sceneFacts: { wish: { actorId: "a", wishId: initial.id, value: updated } },
   } as never;
   replay.fail("");
+  const recovered = await replay.service.prepareVenueTurnMessages(replay.scene, "I wait.", "chat", "", null);
+  assert.deepEqual(recovered.fitted.messages, replay.requests[0], "Recovery keeps the exact purchased prompt");
   const reply = await replay.run();
   assert.equal(
     reply.wishContexts[0].wishes[0].wish,
@@ -277,6 +599,52 @@ assert.equal(complete.calls.filter((x) => x === "interpretation").length, 1);
   );
   assert.equal(reply.wishContexts[0].wishes[0].revision, 1);
   assert.equal(replay.calls.filter((stage) => stage === "completion").length, 1, "Retry reuses the purchased response");
+}
+{
+  const replay = fixture("legacy-unbounded-default", true);
+  replay.model.maxOutputTokens = null;
+  replay.world.villagers = [wishWorld().villagers[0]];
+  replay.scene.participants = [{ characterId: "a", name: "Ada", doing: "Waiting" }];
+  replay.scene.activeIds = ["a"];
+  replay.fail("interpretation");
+  await assert.rejects(replay.run(), (error) => error === replay.exact);
+  for (const [key, value] of replay.checkpoints)
+    if (key.startsWith("writing-request:")) delete (value as any).historyContract;
+  replay.scene.lines = Array.from({ length: 20 }, (_, index) => ({
+    id: `oversized-${index}`,
+    speakerId: "a",
+    name: "Ada",
+    role: "assistant",
+    kind: "dialogue",
+    content: "A complete prior exchange. ".repeat(40),
+    heardBy: ["a"],
+    at: stamp,
+  }));
+  replay.scene.submissions = [0, 1].map((turn) => ({
+    id: `old-${turn}`,
+    message: "Private source",
+    replyLineIds: replay.scene.lines.slice(turn * 10, turn * 10 + 10).map((line) => line.id),
+  })) as any;
+  const fits = replay.calls.filter((stage) => stage === "fit").length;
+  const captured = await replay.service.prepareVenueTurnMessages(replay.scene, "I wait.", "chat", "", null);
+  assert.deepEqual(
+    captured.fitted.messages,
+    replay.requests[0],
+    "Legacy paid prompts replay even when complete newer history exceeds the unknown-cap allowance",
+  );
+  assert.equal(captured.historyContract, undefined);
+  assert.equal(
+    replay.calls.filter((stage) => stage === "fit").length,
+    fits,
+    "Recovery never refits a purchased request",
+  );
+  assert.equal(replay.calls.filter((stage) => stage === "completion").length, 1);
+  replay.checkpoints.clear();
+  await assert.rejects(
+    () => replay.service.prepareVenueTurnMessages(replay.scene, "I wait.", "chat", "", null),
+    /safe history allowance/,
+    "A fresh request with the same unverified cap must fail before spending",
+  );
 }
 for (const source of ["decisions", "system"] as const) {
   const invitation = fixture(source);
@@ -335,23 +703,13 @@ const invalid = fixture("invalid");
 invalid.invalidReply();
 await assert.rejects(invalid.run(), (error: any) => {
   assert.equal(error.statusCode, 502);
-  assert.match(error.message, /GM response was not valid JSON/);
+  assert.match(error.message, /invalid input classification/);
   return true;
 });
 const invalidLine = fixture("invalid-line");
-invalidLine.invalidReply(
-  JSON.stringify({
-    input: [{ kind: "action", text: "I wait." }],
-    segments: [{ kind: "robot", text: "A quiet room." }],
-    heardPlayerBy: [],
-    wishChanges: [],
-    memoryChanges: [],
-    relationshipChanges: { changes: [], permissions: [], disclosures: [] },
-  }),
-);
+invalidLine.invalidReply("INPUT action\n[robot] A quiet room.");
 await assert.rejects(invalidLine.run(), (error: any) => {
-  assert.match(error.failure.detail, /segments\[0\]\.kind/);
-  assert.equal(error.message, "The AI used an unknown kind of Scene text.");
+  assert.match(error.failure.detail, /speakerId/);
   return true;
 });
 assert.equal(

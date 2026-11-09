@@ -33,6 +33,7 @@ import {
   readActiveSceneOwner,
 } from "../../adapters/storage/scene-history.js";
 import { createSceneTranscriptTracer } from "../../adapters/storage/scene-transcript-pages.js";
+import { readSceneEncounter, sceneEncounterId } from "../../adapters/storage/scene-encounters.js";
 import { createSceneSubmissionTracer } from "../../adapters/storage/scene-submission-pages.js";
 import { createScenePublicHistoryTracer } from "../../adapters/storage/scene-public-history.js";
 import { departureHistoryOwner } from "../../adapters/storage/departure-history.js";
@@ -431,6 +432,10 @@ export async function collectRetainedStorage(gate: RepairGate, removeSpriteFile?
         const root = readRelationshipRoot(row.data);
         memoryRequire(row.id === relationshipDocumentId(root.seed), "unknown relationship root identity");
         await relationshipHistory(root.head, root, view);
+      } else if (row.kind === "scene-encounter") {
+        const encounter = readSceneEncounter(row.data);
+        memoryRequire(row.id === sceneEncounterId(encounter.id), "invalid encounter owner identity");
+        await view.transcripts.trace(encounter.transcript, encounter.participants);
       } else if (row.kind === "venue-visit") {
         memoryObject(row.data);
         memoryRequire(
@@ -585,6 +590,7 @@ export async function collectRetainedStorage(gate: RepairGate, removeSpriteFile?
       await sourceOwners(row, physical);
     }
     for (const row of await listed("venue-visit")) await sourceOwners(row, physical);
+    for (const row of await listed("scene-encounter")) await sourceOwners(row, physical);
     for (const kind of ["background-work", "background-history"])
       for (const row of await listed(kind)) {
         validateBackgroundJobRecord(row);

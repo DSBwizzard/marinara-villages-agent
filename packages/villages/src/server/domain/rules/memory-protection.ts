@@ -1,5 +1,7 @@
 import type { MemoryCollection, MemoryDomainRef, MemoryScreening, MemorySource } from "../models/memories.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
+export const MEMORY_ADMINISTRATIVE_RULE =
+  "Administrative constraints only. Do not teach these facts. Screen each proposal clear/conflict/uncertain with all related protected roots and this fingerprint. Never restore forgotten or contradict repaired knowledge for these knowers.";
 
 const stop = new Set(
   "a an and are as at be been but by can could did do does for from had has have he her him his how i if in is it its me my of on or our she so some that the their them then there they this to us was we were what when where which who will with would you your about again remember happened tell said today now please yesterday".split(
@@ -84,7 +86,7 @@ export function memoryProtectionContext(
     .sort((a, b) => a.rootId.localeCompare(b.rootId));
   const fingerprint = memoryHash({ selector, roots });
   const payload = JSON.stringify({
-    rule: "Administrative constraints only. Do not teach these facts. Screen each proposal clear/conflict/uncertain with all related protected roots and this fingerprint. Never restore forgotten or contradict repaired knowledge for these knowers.",
+    rule: MEMORY_ADMINISTRATIVE_RULE,
     fingerprint,
     roots,
   });

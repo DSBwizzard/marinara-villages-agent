@@ -206,8 +206,8 @@ export function placeSummary(place: WorldPlace): PlaceSummary {
   };
 }
 
-export function npcProfile(npc: NpcIdentity): string {
-  return `${npc.name} (${npc.id}): ${npc.characterization}\nEstablished facts: ${npc.facts.join("; ")}.\nCurrent associations: ${npc.associations.map((row) => `${row.placeId}: ${row.role}`).join("; ")}.\nAvailability: ${npc.availability || "No established restriction"}. This is a supporting character, not a simulated Villager. Association is not attendance or mechanical authority.`;
+export function npcProfile(npc: NpcIdentity, personReference = npc.id): string {
+  return `${npc.name} (${personReference}): ${npc.characterization}\nEstablished facts: ${npc.facts.join("; ")}.\nCurrent associations: ${npc.associations.map((row) => `${row.placeId}: ${row.role}`).join("; ")}.\nAvailability: ${npc.availability || "No established restriction"}. This is a supporting character, not a simulated Villager. Association is not attendance or mechanical authority.`;
 }
 
 export function capturePlaceContext(state: VillageState, placeId: string, actors: readonly string[]): PlaceRegistry {

@@ -13,9 +13,11 @@ import { asRecord } from "./coerce.js";
 import { memoryHash, memoryObject, memoryRequire, memoryString, validateMemoryLearning } from "./memory-integrity.js";
 import { estimatedMemoryTokens, memoryProtectionContext, type MemoryProtectionContext } from "./memory-protection.js";
 import { recallMemories } from "./memory-recall.js";
+import { fitEncounterQuotations, type EncounterQuotation } from "./scene-encounters.js";
 
 /** Saved server context for the existing System call; never Narration knowledge. */
 export type SceneMemoryContext = {
+  learningVersion?: 1;
   protection: MemoryProtectionContext;
   recall: { candidates: MemoryCandidate[]; targetIds: string[] };
 };
@@ -29,6 +31,7 @@ export function sceneMemoryContext(
   input: string,
   narration = "",
   context = "",
+  encounters: EncounterQuotation[] = [],
 ) {
   const budget = 1796;
   const envelopeTokens = estimatedMemoryTokens(JSON.stringify({ administrative: {}, memories: [] }));
@@ -37,6 +40,11 @@ export function sceneMemoryContext(
     { knowers: audience, query: input + " " + narration + " " + context.slice(-4000) },
     budget - envelopeTokens,
   );
+  const continuity = fitEncounterQuotations(
+    encounters,
+    Math.max(0, Math.min(600, budget - protection.tokens - envelopeTokens - 8)),
+  );
+  const continuityTokens = continuity.length ? estimatedMemoryTokens(JSON.stringify({ encounters: continuity })) : 0;
   const recall = recallMemories(state.memories, {
     purpose: "system",
     audience,
@@ -45,10 +53,16 @@ export function sceneMemoryContext(
     context,
     names: Object.fromEntries(state.villagers.map((row) => [row.characterId, row.cardSnapshot.name])),
     protection,
-    budget,
+    budget: budget - continuityTokens,
   });
   // The shown envelope is the complete budgeted memory portion. Server guards stay private.
-  const envelope = JSON.parse(recall.serialized) as { memories: MemoryCandidate[]; administrative: unknown };
+  const envelope = JSON.parse(recall.serialized) as {
+    memories: MemoryCandidate[];
+    administrative: unknown;
+    encounters?: EncounterQuotation[];
+  };
+  if (continuity.length) envelope.encounters = continuity;
+  memoryRequire(estimatedMemoryTokens(JSON.stringify(envelope)) <= budget, "encounter recall exceeds Memory budget");
   const saved: SceneMemoryContext = {
     protection: { ...protection, roots: protection.complete ? protection.roots : [] },
     recall: { candidates: recall.candidates, targetIds: recall.targetIds },
@@ -68,6 +82,7 @@ export function bindSceneMemorySuggestion(
     playerLineId: string;
     replyLineIds: string[];
     residentIds: string[];
+    learningVersion?: number;
   },
 ): { proposal: MemoryProposal; evidence: MemoryEvidence[] } {
   memoryObject(value, [
@@ -89,9 +104,9 @@ export function bindSceneMemorySuggestion(
       memoryObject(raw, ["basis", "attributedTo", "support", "disclosed"]);
       memoryRequire(Array.isArray(raw.support) && raw.support.length > 0 && raw.support.length <= 2, "invalid support");
       const noise: boolean[] = [];
+      let reportSpeaker = raw.attributedTo;
       const support = raw.support.map((citation) => {
         memoryObject(citation, ["lineId", "excerpt"]);
-        memoryString(citation.excerpt, 320);
         const lineId =
           citation.lineId === "player"
             ? input.playerLineId
@@ -105,16 +120,23 @@ export function bindSceneMemorySuggestion(
           line.soundOnly && (id === "player" ? line.soundOnly.player : line.soundOnly.characterIds.includes(id));
         noise.push((!full && !!acoustic) || (line.kind === "narration" && !!(line as VenueLine).attentionEvidence));
         const witnessed = full ? line.content : acoustic ? line.soundOnly!.text : "";
-        memoryRequire(witnessed.includes(citation.excerpt), "unwitnessed source quotation");
-        if (raw.basis === "report")
+        const excerpt = citation.excerpt === undefined && input.learningVersion === 1 ? witnessed : citation.excerpt;
+        memoryString(excerpt, 320);
+        memoryRequire(witnessed.includes(excerpt), "unwitnessed source quotation");
+        if (raw.basis === "report") {
+          if (input.learningVersion === 1)
+            memoryRequire(full && line.kind !== "narration", "A report requires fully heard speech");
+          if (reportSpeaker === undefined && input.learningVersion === 1)
+            reportSpeaker = line.role === "user" ? "player" : line.speakerId;
           memoryRequire(
-            raw.attributedTo === (line.role === "user" ? "player" : line.speakerId),
+            reportSpeaker === (line.role === "user" ? "player" : line.speakerId),
             "report attribution changed",
           );
+        }
         const item: MemoryEvidence = {
           source: structuredClone(input.source),
           lineId,
-          excerpt: citation.excerpt,
+          excerpt,
           audience: [id],
         };
         evidence.push(item);
@@ -124,7 +146,7 @@ export function bindSceneMemorySuggestion(
         memoryRequire(
           value.text === support.map((row) => row.excerpt).join(" ") &&
             raw.basis !== "validated-event" &&
-            raw.attributedTo === undefined &&
+            reportSpeaker === undefined &&
             raw.disclosed === undefined &&
             value.domainRef === undefined &&
             (!Array.isArray(value.subjects) || value.subjects.length === 0),
@@ -132,7 +154,7 @@ export function bindSceneMemorySuggestion(
         );
       const learning: MemoryLearning = {
         basis: raw.basis,
-        ...(raw.attributedTo ? { attributedTo: raw.attributedTo } : {}),
+        ...(reportSpeaker ? { attributedTo: reportSpeaker } : {}),
         support,
         ...(raw.disclosed ? { disclosed: structuredClone(raw.disclosed) } : {}),
       };
@@ -140,6 +162,30 @@ export function bindSceneMemorySuggestion(
       return [id, learning];
     }),
   );
+  const domain = asRecord(value.domainRef),
+    disclosure = learners.player?.disclosed;
+  if (domain.kind === "relationship" && learners.player && input.learningVersion === 1) {
+    memoryRequire(disclosure, "Relationship player learning requires disclosed fields");
+    const speaker = learners.player!.attributedTo;
+    memoryRequire(
+      learners.player!.basis === "report" &&
+        speaker !== "player" &&
+        input.residentIds.includes(String(speaker)) &&
+        domain.characterId === speaker,
+      "Relationship disclosure requires its actual speaker",
+    );
+    memoryRequire(
+      ["explanation", "preference", "boundary", "routine", "history", "connection", "home", "work"].includes(
+        String(disclosure.kind),
+      ) &&
+        (disclosure.toId === "player" || input.residentIds.includes(String(disclosure.toId))),
+      "Invalid relationship disclosure fields",
+    );
+    memoryRequire(
+      !["home", "work"].includes(String(disclosure.kind)) || disclosure.toId === speaker,
+      "Home and work disclosures must describe the speaker",
+    );
+  }
   const proposal: MemoryProposal = {
     operationId: input.operationId,
     source: structuredClone(input.source),

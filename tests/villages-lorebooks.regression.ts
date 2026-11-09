@@ -677,10 +677,7 @@ async function main() {
         sent.push(structuredClone(messages));
         assert.doesNotMatch(JSON.stringify(messages), /Low: expendable background/);
         return {
-          content: JSON.stringify({
-            input: [{ kind: "action", text: "I watch the waves." }],
-            segments: [{ kind: "narration", text: "The harbor is quiet." }],
-          }),
+          content: "INPUT action\n[narration] The harbor is quiet.",
           finishReason: "stop",
         };
       },

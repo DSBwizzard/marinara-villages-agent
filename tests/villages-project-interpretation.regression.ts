@@ -3,7 +3,12 @@ import { mock } from "node:test";
 import { fixture, renovation, venue } from "./fixtures/villages-projects.fixture.js";
 import { createProjectEvidence } from "../packages/villages/src/server/features/projects/project-evidence-service.js";
 import { readRenovationChange } from "../packages/villages/src/server/domain/rules/project-design.js";
-import { projectSpeechPrompt } from "../packages/villages/src/server/domain/rules/project-interpretation.js";
+import {
+  projectSpeechPrompt,
+  projectSpeechData,
+  projectSpeechContexts,
+  relevantProjectSpeechContexts,
+} from "../packages/villages/src/server/domain/rules/project-interpretation.js";
 import { projectDesignKey } from "../packages/villages/src/server/domain/rules/project-terms.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -144,6 +149,52 @@ assert.doesNotMatch(
   /Hidden private/,
 );
 console.log("Independent agreements, shared citations, stale revisions and Project privacy passed.");
+{
+  const world = structuredClone(f.state());
+  const project = {
+    ...structuredClone(f.get(id)),
+    id: "unassigned",
+    venueId: "elsewhere",
+    title: "Quiet reading nook",
+    participantIds: [],
+    lifecycle: { ...structuredClone(f.get(id).lifecycle!), affectedIds: [], builderId: "" },
+    plan: {
+      capacity: 1,
+      form: "A quiet nook",
+      venueType: "other",
+      exteriorDescription: "A doorway",
+      layoutVersion: 1,
+      layout: "common",
+      spaces: [
+        {
+          ...defaultVenueSpace("other"),
+          id: "nook",
+          ownerId: "owner",
+          connectedTo: ["exterior"],
+          image: { ref: "PRIVATE_IMAGE_JOB" },
+        },
+      ],
+      privateSpaces: [],
+      exteriorImage: { ref: "PRIVATE_IMAGE_JOB" },
+    },
+  };
+  world.projects = [project] as any;
+  const eligible = projectSpeechContexts(world, [], "", "", "here");
+  assert.equal(eligible.length, 1, "Legacy server eligibility does not narrow during replay");
+  assert.equal(relevantProjectSpeechContexts(world, [], "", "What projects are there?", "here").length, 0);
+  const followup = relevantProjectSpeechContexts(
+    world,
+    [],
+    "Let us discuss Quiet reading nook.",
+    "Yes, that design.",
+    "here",
+  );
+  assert.equal(followup.length, 1, "A follow-up retains the discussed design's current terms");
+  const data = projectSpeechData(world, followup);
+  assert.doesNotMatch(JSON.stringify(data), /PRIVATE_IMAGE_JOB/);
+  assert.match(JSON.stringify(data), /owner/);
+  assert.match(JSON.stringify(data), /exterior/);
+}
 
 const retiredWorld = fixture(),
   retiredId = await renovation(retiredWorld);

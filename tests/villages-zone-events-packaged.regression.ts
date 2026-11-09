@@ -1,6 +1,7 @@
 import AdmZip from "adm-zip";
 import Fastify from "fastify";
 import assert from "node:assert/strict";
+import { sceneTextCompletion } from "./fixtures/scene-text-reply.fixture.js";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { mock } from "node:test";
@@ -247,11 +248,11 @@ const model = {
     );
     prompts.push(messages.map((row) => row.content).join("\n"));
     assert(answer, "Every GM response must be explicitly supplied");
-    return {
+    return sceneTextCompletion(messages, {
       content: answerContent ?? JSON.stringify(answer),
       finishReason: answerFinishReason,
       usage: { inputTokens: 10, outputTokens: 10 },
-    };
+    });
   },
 };
 const runtime = {
@@ -455,22 +456,32 @@ try {
   assert.equal(modelCalls, readsBefore);
   restore();
 
-  const distant = await turn("distant-call", [
-    { kind: "dialogue", speakerId: "distant", text: "PRIVATE WORDS NEVER DELIVERED", delivery: "shout" },
-    { kind: "narration", text: "You pause by the railing." },
-  ]);
-  const distantHistory = await publicHistory(distant.session.playback.scope);
-  assert.match(distantHistory, /indistinct/);
+  answer = {
+    input: [{ kind: "action", text: "*waits*" }],
+    segments: [
+      { kind: "dialogue", speakerId: "distant", text: "PRIVATE WORDS NEVER DELIVERED", delivery: "shout" },
+      { kind: "narration", text: "You pause by the railing." },
+    ],
+  };
+  const distantCalls = modelCalls;
+  const distant = await app.inject({
+    method: "POST",
+    url: "/api/villages/rooms/turn",
+    payload: payload("distant-call"),
+  });
+  assert.equal(distant.statusCode, 502, "New local turns do not simulate unsolicited two-hop replies");
+  assert.equal(modelCalls, distantCalls + 1, "Rejected remote output never triggers a repair call");
   assert.doesNotMatch(
-    JSON.stringify(distant) + distantHistory,
+    distant.body + (await app.inject({ method: "GET", url: "/api/villages/rooms/active" })).body,
     /PRIVATE WORDS NEVER DELIVERED|Distant Resident|"distant"|soundOnly|heardHistory/,
   );
+  restore();
   const local = await turn("local-speech", [
     { kind: "dialogue", speakerId: "aqua", text: "Only the terrace hears these words." },
   ]);
   const localLine = state().lines.findLast((line: any) => line.content === "Only the terrace hears these words.");
   assert.deepEqual(localLine.heardBy, ["aqua", "feddy"]);
-  assert.deepEqual(localLine.soundOnly.characterIds, ["neighbor"]);
+  assert.equal(localLine.soundOnly, undefined, "Ordinary local chat generates no adjacent murmurs");
   const beforeRestart = modelCalls;
   await restart();
   assert.doesNotMatch(
@@ -486,12 +497,11 @@ try {
     toId: "neighbor",
     kind: "work",
     text: "Neighbor says they work in the harbour workshop.",
-    lineIds: [2],
+    lineIds: [1],
   };
   const arrived = await turn(
     "doorway-crossing",
     [
-      { kind: "dialogue", speakerId: "neighbor", text: "PRIVATE WORDS BEFORE ARRIVAL" },
       { kind: "narration", text: "Neighbor steps out of the Kitchen onto the Terrace beside you." },
       {
         kind: "dialogue",
@@ -502,9 +512,15 @@ try {
       },
     ],
     {
-      events: { moves: [{ characterId: "neighbor", zoneId: "terrace", segment: 1 }] },
+      input: [
+        { kind: "thought", text: "I privately recall PRIVATE WORDS BEFORE ARRIVAL." },
+        { kind: "speech", text: "Neighbor, please come to the terrace.", delivery: "shout" },
+      ],
+      immediateResidentMoves: [{ characterIds: ["neighbor"], zoneId: "terrace", source: 1 }],
+      events: { moves: [{ characterId: "neighbor", zoneId: "terrace", segment: 0 }] },
       relationshipChanges: { disclosures: [disclosure] },
     },
+    'I privately recall PRIVATE WORDS BEFORE ARRIVAL. "Neighbor, please come to the terrace."',
   );
   const heard = state().lines.findLast((line: any) => line.content === "I'm Neighbor. I work in the harbour workshop.");
   assert.notEqual(heard.contactHidden, true);
@@ -512,7 +528,21 @@ try {
   assert.equal(state().submissions.at(-1).processing.domains.relationships.status, "applied");
   const arrivedHistory = await publicHistory(arrived.session.playback.scope);
   assert.match(arrivedHistory, /harbour workshop/);
-  assert.doesNotMatch(arrivedHistory, /PRIVATE WORDS BEFORE ARRIVAL/, "Arrival cannot backdate hearing");
+  assert.doesNotMatch(
+    JSON.stringify(JSON.parse(arrivedHistory).filter((row: any) => row.role === "assistant")),
+    /PRIVATE WORDS BEFORE ARRIVAL/,
+  );
+  const arrivalQueries = createSceneQueryService({
+    readSession: async () => state(),
+    readVillageState: async () => village,
+    villagesDocuments: () => documents,
+  } as any);
+  const arrivalEvidence = await arrivalQueries.readProjectTurnEvidence(scene.id, "doorway-crossing");
+  assert.equal(
+    arrivalEvidence.playerMessagesByActor.neighbor,
+    "Neighbor, please come to the terrace.",
+    "Arrival hears only actual transmitted words, never preceding thoughts",
+  );
   assert(
     fixtureVillageState(records.get("villages-village").data, records).memories.records.some(
       (row: any) => row.text === disclosure.text,
@@ -669,7 +699,9 @@ try {
     assert(!Object.keys(state().operation.checkpoints).some((key) => key.startsWith("writing-completion:")));
     assert(
       readPrivateDiagnostics(records.get("villages-private-diagnostics").data).entries.some(
-        (entry: any) => entry.operationId === request.submissionId && entry.content.includes('"input"'),
+        (entry: any) =>
+          entry.operationId === request.submissionId &&
+          (entry.content.includes("INPUT") || entry.content.includes('"input"')),
       ),
     );
     await restart();

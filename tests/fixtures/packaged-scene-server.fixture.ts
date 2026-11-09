@@ -1,5 +1,6 @@
 import { venueFixture } from "../helpers/venues.fixture.js";
 import assert from "node:assert/strict";
+import { sceneTextCompletion } from "./scene-text-reply.fixture.js";
 import Fastify from "fastify";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
@@ -180,7 +181,18 @@ export async function packagedSceneServer(
       listLorebooks: async () => [],
       listEligibleLorebookEntries: async () => [],
     },
-    languageModels: { resolve: async () => model, resolveForRequest: async () => model },
+    languageModels: {
+      resolve: async () => ({
+        ...model,
+        chatComplete: async (messages: any[], options: any) =>
+          sceneTextCompletion(messages, await model.chatComplete(messages, options)),
+      }),
+      resolveForRequest: async () => ({
+        ...model,
+        chatComplete: async (messages: any[], options: any) =>
+          sceneTextCompletion(messages, await model.chatComplete(messages, options)),
+      }),
+    },
     json: { parseJsonish: JSON.parse },
     logger: { info() {}, warn() {}, error() {}, debug() {}, debugOverride() {} },
     getAgentConfig: async () => ({ settings: {} }),
