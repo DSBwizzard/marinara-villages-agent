@@ -2,15 +2,12 @@ import { ELEMENT_TAG as P } from "../../shared/constants.js";
 
 export const projectStyles = `
 .${P}-root.${P}-project-root{display:block;height:100%;padding:0;overflow:auto;gap:0;background:transparent}
-${P} .${P}-project-desk{--bp-ink:#f0eddb;--bp-muted:#c3d5d5;--bp-line:#9bb7c1;--bp-panel:#385e72;--primary:#d9edf2;position:relative;isolation:isolate;min-height:100%;padding:0 8px;color:var(--bp-ink);background:transparent;font-family:system-ui,sans-serif;box-sizing:border-box}
-.${P}-project-desk::before,.${P}-project-desk::after{content:"";position:absolute;z-index:2;top:0;bottom:0;pointer-events:none;width:12px;background:linear-gradient(90deg,#244454,#73909b,#34576b);box-shadow:2px 3px 4px #172f3b40;border-radius:50%}
-.${P}-project-desk::before{left:2px}
-.${P}-project-desk::after{right:2px}
-${P} .${P}-project-board{position:relative;box-sizing:border-box;max-width:90rem;min-height:100%;margin:auto;padding:clamp(16px,2vw,28px);border:1px solid #a4bdc7;box-shadow:0 6px 15px #24180d60;background-color:#31566c;background-image:linear-gradient(#cfdfd212 1px,transparent 1px),linear-gradient(90deg,#cfdfd212 1px,transparent 1px);background-size:26px 26px;color:var(--bp-ink);font-size:1rem;line-height:1.45}
+${P} .${P}-project-desk{--bp-ink:#fff6dd;--bp-muted:#d3e0db;--bp-line:#a4bdc1;--bp-panel:#103e5740;--primary:#d9edf2;position:relative;min-height:100%;padding:0 8px;color:var(--bp-ink);background:transparent;font-family:"village-letter-assistant",system-ui,sans-serif;box-sizing:border-box}
+${P} .${P}-project-board{position:relative;box-sizing:border-box;max-width:90rem;min-height:100%;margin:auto;padding:clamp(16px,2vw,28px) calc(4.5% + 18px);border:0;box-shadow:none;background:transparent;color:var(--bp-ink);font-size:1rem;line-height:1.45}
 .${P}-project-board *{box-sizing:border-box}
 .${P}-project-board h1,.${P}-project-board h2,.${P}-project-board h3,.${P}-project-board p,.${P}-project-board figure{margin:0}
-.${P}-project-board h1{font-size:clamp(1.65rem,3.3vw,2.8rem);line-height:1.15;font-weight:400;font-family:Georgia,serif}
-.${P}-project-board h2{font-size:1.65rem;line-height:1.25}
+.${P}-project-board h1{font-size:clamp(1.65rem,3.3vw,2.8rem);line-height:1.15;font-weight:700;font-family:Georgia,serif}
+.${P}-project-board h2{font:700 1.65rem/1.25 Georgia,serif}
 .${P}-project-board h3{font-size:1.2rem;font-weight:600;margin-bottom:1rem}
 .${P}-project-board p{margin:.6rem 0;white-space:pre-wrap;overflow-wrap:anywhere}
 .${P}-project-board .vp-header{display:flex;align-items:center;justify-content:space-between;gap:1rem;border-bottom:1px solid var(--bp-ink);padding-bottom:.45rem;margin-bottom:.55rem}
@@ -60,11 +57,11 @@ ${P} .${P}-project-board{position:relative;box-sizing:border-box;max-width:90rem
 .${P}-project-board .vp-project-list{display:grid;gap:.7rem}
 .${P}-project-root:has(.vp-workspace){overflow:hidden}
 .${P}-project-root:has(.vp-workspace) .${P}-project-desk{height:100%;min-height:0;padding:0 8px}
-.${P}-project-root:has(.vp-workspace) .${P}-project-board{box-sizing:border-box;height:100%;min-height:0;display:flex;flex-direction:column;padding:clamp(.65rem,2vh,1.5rem)}
+.${P}-project-root:has(.vp-workspace) .${P}-project-board{box-sizing:border-box;height:100%;min-height:0;display:flex;flex-direction:column;padding:clamp(.65rem,2vh,1.5rem) calc(4.5% + 18px)}
 .${P}-project-board .vp-index-tools{display:flex;justify-content:space-between;align-items:center;min-height:2.8rem;gap:.5rem}
 .${P}-project-board .vp-index-tools .vp-note{margin-left:auto}
 .${P}-project-board .vp-workspace{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.7rem;flex:1;min-height:0}
-.${P}-project-board .vp-drafts,.${P}-project-board .vp-active-slot{min-width:0;min-height:0;border:1px solid var(--bp-line);background:#385e72;padding:clamp(.6rem,1.4vw,1.2rem)}
+.${P}-project-board .vp-drafts,.${P}-project-board .vp-active-slot{min-width:0;min-height:0;border:1px solid var(--bp-line);background:transparent;padding:clamp(.6rem,1.4vw,1.2rem)}
 .${P}-project-board .vp-drafts{display:flex;flex-direction:column;gap:.6rem}
 .${P}-project-board .vp-drafts h2{font-size:clamp(1.15rem,2vw,1.6rem);border-bottom:1px solid var(--bp-line);padding-bottom:.45rem}
 .${P}-project-board .vp-drafts .vp-project-list{gap:.25rem}
@@ -119,7 +116,8 @@ ${P} .${P}-project-board{position:relative;box-sizing:border-box;max-width:90rem
 }
 @media(max-width:700px){
  ${P} .${P}-project-desk{padding:0 4px}
- ${P} .${P}-project-board{padding:.8rem;min-height:100%}
+ ${P} .${P}-project-board{padding:.8rem 18px;min-height:100%}
+ .${P}-project-root:has(.vp-workspace) .${P}-project-board{padding:.8rem 18px}
  .${P}-project-board .vp-header{gap:.4rem;align-items:center;padding-bottom:.45rem;margin-bottom:.55rem}
  .${P}-project-board .vp-header h1{font-size:1.2rem}
  .${P}-project-board .vp-header>.vp-actions{margin-left:auto}
@@ -177,7 +175,7 @@ ${P} .${P}-project-board{position:relative;box-sizing:border-box;max-width:90rem
 }
 @media(max-width:700px) and (max-height:650px){
  ${P} .${P}-project-desk{padding:0 4px}
- ${P} .${P}-project-board{padding:.4rem}
+ ${P} .${P}-project-board{padding:.4rem 16px}
  .${P}-project-board{font-size:.9rem;line-height:1.2}
  .${P}-project-board .vp-header{padding-bottom:.2rem;margin-bottom:.25rem}
  .${P}-project-board .vp-project-heading{margin:.25rem 0}

@@ -10,6 +10,14 @@ const deskAssets = {
   "paper-ivory.webp": "image/webp",
   "people-desk.webp": "image/webp",
   "people-phone.webp": "image/webp",
+  "desk-art/projects-desktop.webp": "image/webp",
+  "desk-art/projects-phone.webp": "image/webp",
+  "desk-art/places-desktop.webp": "image/webp",
+  "desk-art/places-phone.webp": "image/webp",
+  "desk-art/mailbox-desktop.webp": "image/webp",
+  "desk-art/mailbox-phone.webp": "image/webp",
+  "desk-art/settings-desktop.webp": "image/webp",
+  "desk-art/settings-phone.webp": "image/webp",
   "letter-fonts/assistant.json": "application/json",
 };
 const mockDeskAsset = async (context) => {

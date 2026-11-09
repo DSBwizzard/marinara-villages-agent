@@ -1,5 +1,6 @@
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
+import { PNG } from "pngjs";
 import { join, resolve } from "node:path";
 import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
@@ -340,27 +341,42 @@ await withBrowser(browser, async () => {
       assert.ok((await main.innerText()).trim().length > 10, `${key} has visible content`);
       if (mobile) await expect(picker).toHaveValue(key);
       else await expect(nav.getByRole("button", { name, exact: true })).toHaveAttribute("aria-current", "page");
-      const { contrast, area } = await main.evaluate((element) => {
+      const { ink, area } = await main.evaluate((element) => {
         const style = getComputedStyle(element);
         const rect = element.getBoundingClientRect();
-        const surface = getComputedStyle(element.closest(".marinara-capability-villages-sectioned-menu"));
-        const luminance = (value) =>
-          value
+        return {
+          ink: style.color
             .match(/[\d.]+/g)
             .slice(0, 3)
-            .map(Number)
-            .map((channel) => {
-              const v = channel / 255;
-              return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
-            })
-            .reduce((total, channel, i) => total + channel * [0.2126, 0.7152, 0.0722][i], 0);
-        const a = luminance(style.color),
-          b = luminance(surface.backgroundColor);
-        return {
-          contrast: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05),
+            .map(Number),
           area: rect.width * rect.height,
         };
       });
+      // Sample the real paper artwork behind the UI, including transparent surfaces.
+      const opacity = await main.evaluate((node) => {
+        const previous = node.style.opacity;
+        node.style.opacity = "0";
+        return previous;
+      });
+      let paper;
+      try {
+        paper = PNG.sync.read(await main.screenshot({ animations: "disabled" }));
+      } finally {
+        await main.evaluate((node, value) => {
+          node.style.opacity = value;
+        }, opacity);
+      }
+      const luminance = (rgb) =>
+        rgb
+          .map((channel) => {
+            const value = channel / 255;
+            return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+          })
+          .reduce((total, channel, i) => total + channel * [0.2126, 0.7152, 0.0722][i], 0);
+      const pixel = (Math.floor(paper.height / 2) * paper.width + Math.floor(paper.width / 2)) * 4;
+      const a = luminance(ink),
+        b = luminance([...paper.data.slice(pixel, pixel + 3)]);
+      const contrast = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
       assert.ok(contrast >= 4.5, `${key} has readable menu text`);
       assert.ok(area > 1000, `${key} occupies a visible area`);
     }
