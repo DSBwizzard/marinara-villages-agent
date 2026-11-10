@@ -3,6 +3,8 @@ import { MAX_IDENTITY_DESCRIPTION_LENGTH } from "../../../shared/contracts/resid
 import type { VillageSnapshot, VillageVillagerView } from "../../../shared/contracts/village.js";
 import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
+import { useConfirmation } from "../../shared/confirmation.js";
+import { useDeskLeaveGuard } from "../../shared/DeskWorkspace.js";
 
 export function IdentityDescriptionEditor({
   villager,
@@ -14,6 +16,15 @@ export function IdentityDescriptionEditor({
   const [draft, setDraft] = useState<{ text: string; revision: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const confirm = useConfirmation(villager.characterId);
+  useDeskLeaveGuard(async () => {
+    if (busy) return false;
+    if (!draft || draft.text === (villager.identityDescription?.text ?? "")) return true;
+    if (!(await confirm("Discard unsaved description?"))) return false;
+    setDraft(null);
+    setError("");
+    return true;
+  }, busy);
   async function save() {
     if (!draft || busy) return;
     setBusy(true);

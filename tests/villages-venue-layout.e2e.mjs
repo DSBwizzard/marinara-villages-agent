@@ -88,7 +88,10 @@ await withBrowser(browser, async () => {
       await page.goto("http://layout.test/");
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
       await page.getByRole("button", { name: /^(Open settings menu|More)$/ }).click();
-      await page.getByRole("button", { name: "Projects", exact: true }).click();
+      await page
+        .getByRole("navigation", { name: "Village navigation", exact: true })
+        .getByRole("button", { name: "Projects", exact: true })
+        .click();
       await page.getByRole("button", { name: /Canvas Tent/ }).click();
       const editor = page.locator("main article");
       await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();

@@ -140,28 +140,33 @@ await withBrowser(browser, async () => {
     await expect(composer).toBeVisible();
     await composer.fill("Keep this unsent Scene draft.");
     await expect(backdrop).toHaveAttribute("src", old);
-    const openSettings = async () => {
-      await page.getByRole("button", { name: "Venue actions", exact: true }).click();
-      await page.getByRole("menuitem", { name: "View Venue", exact: true }).click();
+    const openZonePicture = async () => {
       await page.getByRole("button", { name: "Zones", exact: true }).click();
       await page.locator(`[data-layout-zone="${targetId}"]`).click();
       await page.getByRole("button", { name: "Picture", exact: true }).click();
     };
+    const openSettings = async () => {
+      await page.getByRole("button", { name: "Venue actions", exact: true }).click();
+      await page.getByRole("menuitem", { name: "View Venue", exact: true }).click();
+      await openZonePicture();
+    };
     const returnToScene = () => page.getByRole("button", { name: "Back to Scene", exact: true }).click();
     await openSettings();
     await expect(page.getByRole("button", { name: "Generate new picture", exact: true })).toBeEnabled();
-    const header = page.locator(".marinara-capability-villages-workspace-venue-header > img");
-    await expect(header).toHaveAttribute("src", night);
+    await page.getByRole("button", { name: "About", exact: true }).click();
+    const photo = page.locator(".marinara-capability-villages-venue-photo img");
+    await expect(photo).toHaveAttribute("src", night);
     if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS && area === "outside") {
       await mkdir(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, { recursive: true });
       await page.screenshot({ path: join(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `play-night-${width}.png`) });
     }
     await page.evaluate(() => window.setBackdropFounded(false));
-    await expect(header).toHaveAttribute("src", old);
+    await expect(photo).toHaveAttribute("src", old);
     if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS && area === "outside")
       await page.screenshot({ path: join(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `founding-day-${width}.png`) });
     await page.evaluate(() => window.setBackdropFounded(true));
-    await expect(header).toHaveAttribute("src", night);
+    await expect(photo).toHaveAttribute("src", night);
+    await openZonePicture();
     await page.getByRole("button", { name: "Generate new picture", exact: true }).click();
     await expect.poll(() => mutations.length).toBe(1);
     await expect(page.getByRole("button", { name: "Picture", exact: true })).toBeVisible();

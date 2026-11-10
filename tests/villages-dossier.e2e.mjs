@@ -560,16 +560,19 @@ await withBrowser(browser, async () => {
       .getByRole("button", { name: "People", exact: true });
     await people.click();
     const selector = page.getByRole("main", { name: "Villagers directory" });
-    await expect(page.locator(`.${P}-notebook-session`)).toHaveAttribute("data-phase", "open");
+    await expect(page.locator(`.${P}-desk-workspace`)).toHaveAttribute("data-phase", "open");
     await expect(selector.locator(`.${P}-directory-page`)).toHaveCount(2);
-    const bookBox = await page.locator(`.${P}-dossier-book:visible`).boundingBox();
+    const bookBox = await page.locator(`.${P}-people-layout`).boundingBox();
     await page.screenshot({ path: resolve(output, `directory-${width}-${height}.png`) });
-    await expect(selector.getByRole("searchbox")).toHaveCount(0);
+    const search = selector.getByRole("searchbox", { name: "Find a person" });
+    await search.fill("Mara");
+    await expect(selector.getByRole("button", { name: /^Open .* profile$/ })).toHaveCount(1);
+    await search.fill("");
     await selector.getByRole("button", { name: "Open Mara profile" }).click();
     assert.deepEqual(
-      await page.locator(`.${P}-dossier-book:visible`).boundingBox(),
+      await page.locator(`.${P}-people-layout`).boundingBox(),
       bookBox,
-      "Directory and profile share the same book dimensions",
+      "Opening a profile keeps the People workspace in place",
     );
     await page.getByRole("button", { name: "← Back to Villagers" }).click();
     await selector.getByRole("button", { name: `Open ${secondName} profile` }).click();
@@ -616,12 +619,12 @@ await withBrowser(browser, async () => {
       await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     }
     await page.getByRole("button", { name: "More", exact: true }).click();
-    const menu = page.getByRole("navigation", { name: "More sections" });
+    const menu = page.getByRole("navigation", { name: "Settings sections" });
     for (const name of ["Relationships", "Memories", "Villager Agendas", "DEBUG: Villager Wishes"])
       await expect(menu.getByRole("button", { name, exact: true })).toHaveCount(0);
     await page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "People" }).click();
     const directory = page.getByRole("main", { name: "Villagers directory" });
-    await expect(page.locator(`.${P}-notebook-session`)).toHaveAttribute("data-phase", "open");
+    await expect(page.locator(`.${P}-desk-workspace`)).toHaveAttribute("data-phase", "open");
     await expect(menu).toHaveCount(0);
     await expect(directory.getByRole("searchbox", { name: "Search villagers" })).toHaveCount(0);
     await expect(directory.getByRole("button", { name: "Add a villager" })).toHaveCount(0);
@@ -629,15 +632,12 @@ await withBrowser(browser, async () => {
     await expect(directory.getByRole("button", { name: /^Open .* profile$/ })).toHaveCount(2);
     await directory.getByRole("button", { name: "Open Mara profile" }).click();
     const profile = page.getByRole("region", { name: "Mara profile", exact: true });
+    await expect(profile.getByRole("button", { name: "Message", exact: true })).toHaveCount(0);
     const tabs = page.getByRole("navigation", { name: "Villager profile sections" });
-    const settleTurn = () =>
-      profile
-        .locator(`.${P}-dossier-turn`)
-        .evaluateAll((nodes) =>
-          Promise.all(
-            nodes.flatMap((node) => node.getAnimations().map((animation) => animation.finished.catch(() => {}))),
-          ),
-        );
+    const chooseSection = (label) =>
+      width <= 700
+        ? page.getByRole("combobox", { name: "Section" }).selectOption({ label })
+        : tabs.getByRole("button", { name: label, exact: true }).click();
     await expect(profile).toBeVisible();
     await expect(profile.getByRole("heading", { name: "Mara", exact: true })).toHaveCount(1);
     await expect(profile.getByRole("heading", { name: "Mara", exact: true })).toBeInViewport({ ratio: 1 });
@@ -679,14 +679,17 @@ await withBrowser(browser, async () => {
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(overview.getByText("Mara and Eli are friends")).toBeVisible();
     assert.equal(reads.filter((path) => path.endsWith("/memories/inspect") || path.endsWith("/agendas")).length, 0);
-    await tabs.getByRole("button", { name: "Venues", exact: true }).click();
+    await chooseSection("Venues");
     await expect(profile.getByRole("heading", { name: "The Mill", exact: true })).toBeVisible();
     await expect(profile.getByRole("heading", { name: "The Harbour", exact: true })).toBeVisible();
     await expect(profile.getByText("Mara's workshop", { exact: true })).toHaveCount(0);
     await expect(profile.getByText("Unseen private place", { exact: true })).toHaveCount(0);
     await expect(profile.getByRole("button", { name: /Projects Open Projects/ })).toBeVisible();
     await expect(profile.getByRole("button", { name: /Venue Requests Open Venue Requests/ })).toBeVisible();
-    await tabs.getByRole("button", { name: "Inspect", exact: true }).click();
+    await page
+      .getByRole("group", { name: "Profile actions", exact: true })
+      .getByRole("button", { name: "Inspect", exact: true })
+      .click();
     await expect(profile.getByText("Mara's workshop", { exact: true })).toBeVisible();
     await expect(profile.getByRole("heading", { name: "Unseen private place", exact: true })).toBeVisible();
     await expect(profile.getByText("Other person's request", { exact: true })).toHaveCount(0);
@@ -695,7 +698,7 @@ await withBrowser(browser, async () => {
     await page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "People" }).click();
     await directory.getByRole("button", { name: "Open Mara profile" }).click();
     assert.equal(writes.length, 0, JSON.stringify(writes));
-    await tabs.getByRole("button", { name: "Overview", exact: true }).click();
+    await chooseSection("Overview");
     const signature = profile.getByRole("img", { name: "Mara's signature", exact: true });
     await expect(signature).toBeVisible();
     await expect(signature.locator('[data-hand="lively"]')).toHaveText("Mara");
@@ -727,7 +730,10 @@ await withBrowser(browser, async () => {
     await oldArt.evaluate((element) => {
       element.style.opacity = "";
     });
-    const sample = (png, x, y) => Array.from(png.data.slice((y * png.width + x) * 4, (y * png.width + x) * 4 + 3));
+    const sample = (png, x, y) => {
+      const offset = (Math.floor((y / 120) * png.height) * png.width + Math.floor((x / 180) * png.width)) * 4;
+      return Array.from(png.data.slice(offset, offset + 3));
+    };
     // Separate browser composites can differ by a few 8-bit levels at subpixel
     // positions. Opaque white paper differs by dozens of levels on this notebook.
     const pixelTolerance = 4;
@@ -797,33 +803,52 @@ await withBrowser(browser, async () => {
       false,
       "Profile fits viewport",
     );
-    if (width === 390)
-      assert.ok(
-        await profile.locator(`.${P}-dossier-biography`).evaluate((node) => {
-          node.scrollTop = node.scrollHeight;
-          return node.scrollTop > 0;
-        }),
-        "Long summaries remain readable in their own scroll area",
+    if (width <= 700) {
+      const paper = profile.locator(`.${P}-dossier-book`);
+      const position = await paper.evaluate((node) => {
+        node.scrollTop = 200;
+        return node.scrollTop;
+      });
+      assert(position > 0, "Long mobile profiles scroll as one paper sheet");
+      await chooseSection("Agenda");
+      assert.equal(await paper.evaluate((node) => node.scrollTop), 0, "A new section starts at the top");
+      await chooseSection("Overview");
+      assert.equal(
+        await paper.evaluate((node) => node.scrollTop),
+        position,
+        "Returning restores the section reading position",
       );
-    await tabs.getByRole("button", { name: "Overview", exact: true }).focus();
-    await page.keyboard.press("Tab");
-    const relationshipTab = tabs.getByRole("button", { name: "Relationships", exact: true });
-    await expect(relationshipTab).toBeFocused();
-    assert.ok(
-      await relationshipTab.evaluate((node) => parseFloat(getComputedStyle(node).outlineWidth) >= 3),
-      "Keyboard focus is visible",
-    );
+      await paper.evaluate((node) => {
+        node.scrollTop = 0;
+      });
+    }
+    if (width > 700) {
+      await tabs.getByRole("button", { name: "Overview", exact: true }).focus();
+      await page.keyboard.press("Tab");
+      const relationshipTab = tabs.getByRole("button", { name: "Relationships", exact: true });
+      await expect(relationshipTab).toBeFocused();
+      assert.ok(
+        await relationshipTab.evaluate((node) => parseFloat(getComputedStyle(node).outlineWidth) >= 3),
+        "Keyboard focus is visible",
+      );
+    } else {
+      await profile.getByRole("combobox", { name: "Section" }).focus();
+      await expect(profile.getByRole("combobox", { name: "Section" })).toBeFocused();
+    }
     for (const label of ["Relationships", "Wishes", "Memories", "Agenda", "Venues"]) {
-      await tabs.getByRole("button", { name: label, exact: true }).click();
+      await chooseSection(label);
       await expect(profile.getByRole("heading", { name: "Mara", exact: true, level: 1 })).toBeVisible();
       await expect(profile.getByText(/PRIVATE/)).toHaveCount(0);
       await expect(profile.getByRole("checkbox")).toHaveCount(0);
     }
     await expect(profile.getByText(/Harbour · Standing access/)).toBeVisible();
     await expect(profile.getByText("Agenda destination", { exact: true })).toHaveCount(0);
-    await tabs.getByRole("button", { name: "Wishes", exact: true }).click();
+    await chooseSection("Wishes");
     await expect(profile.getByText("Learn to swim", { exact: true }).filter({ visible: true }).first()).toBeVisible();
-    const tabBefore = await tabs.boundingBox();
+    const sectionControl = width > 700 ? tabs : profile.getByRole("combobox", { name: "Section" });
+    if (width <= 700)
+      await profile.getByRole("button", { name: "Next Wishes page", exact: true }).scrollIntoViewIfNeeded();
+    const tabBefore = await sectionControl.boundingBox();
     const reading = profile.locator(`.${P}-dossier-content`);
     let wishPages = 0;
     while (
@@ -836,16 +861,19 @@ await withBrowser(browser, async () => {
       await reading.evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
       "Wishes use bounded pages instead of scrolling",
     );
-    const tabAfter = await tabs.boundingBox();
+    const tabAfter = await sectionControl.boundingBox();
     assert.equal(tabAfter.y, tabBefore.y, "Sticky notes stay fixed while changing Wish pages");
     assert.equal(tabAfter.x, tabBefore.x);
     await expect(profile.getByText("Shared wish 12", { exact: true }).filter({ visible: true }).first()).toBeVisible();
-    await settleTurn();
+    await expect(profile.locator(`.${P}-dossier-turn`)).toHaveCount(0);
     await page.screenshot({ path: resolve(output, `wishes-${width}-${height}.png`) });
-    await tabs.getByRole("button", { name: "Inspect", exact: true }).click();
+    await page
+      .getByRole("group", { name: "Profile actions", exact: true })
+      .getByRole("button", { name: "Inspect", exact: true })
+      .click();
     await expect(profile.getByText("PRIVATE MARA WISH", { exact: true })).toBeVisible();
     await expect(profile.getByText("PRIVATE ELI WISH", { exact: true })).toHaveCount(0);
-    await tabs.getByRole("button", { name: "Agenda", exact: true }).click();
+    await chooseSection("Agenda");
     await expect(profile.getByText("PRIVATE ROUTINE", { exact: true })).toBeVisible();
     await profile.getByRole("checkbox", { name: "Schedule influence" }).click();
     await expect(profile.getByRole("checkbox", { name: "Schedule influence" })).toBeChecked();
@@ -865,9 +893,9 @@ await withBrowser(browser, async () => {
       );
       throw cause;
     }
-    await tabs.getByRole("button", { name: "Venues", exact: true }).click();
+    await chooseSection("Venues");
     await expect(profile.getByText(/Agenda destination/)).toBeVisible();
-    await tabs.getByRole("button", { name: "Relationships", exact: true }).click();
+    await chooseSection("Relationships");
     await expect(profile.getByText("PRIVATE MARA STANCE", { exact: true })).toBeVisible();
     await expect(profile.getByText("Starting history returned an invalid connection.", { exact: false })).toBeVisible();
     await profile.getByRole("button", { name: "Retry unfinished work", exact: true }).click();
@@ -878,18 +906,22 @@ await withBrowser(browser, async () => {
     await expect(profile.getByRole("spinbutton")).toHaveCount(0);
     await page.screenshot({ path: resolve(output, `relationships-${width}-${height}.png`) });
     if (exerciseActions) {
-      await tabs.getByRole("button", { name: "Agenda", exact: true }).click();
+      await chooseSection("Agenda");
       const pendingAgenda = hold(() => true);
       heldAgenda = pendingAgenda;
       await profile.getByRole("checkbox", { name: "Schedule influence" }).click();
       await expect.poll(() => pendingAgenda.started).toBe(1);
-      await tabs.getByRole("button", { name: "Overview", exact: true }).click();
+      await chooseSection("Overview");
       await profile.getByText("Character tools", { exact: true }).click();
       const compare = profile.getByRole("button", { name: "Compare card", exact: true });
       await expect(compare).toBeDisabled();
       denyRelationshipRead = true;
       await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-      await expect(tabs.getByRole("button", { name: "Inspect", exact: true })).toBeVisible();
+      await expect(
+        page
+          .getByRole("group", { name: "Profile actions", exact: true })
+          .getByRole("button", { name: "Inspect", exact: true }),
+      ).toBeVisible();
       await expect(compare).toBeEnabled();
       const finishedAgenda = page.waitForResponse((response) => response.url().endsWith("/agendas/mara/influence"));
       pendingAgenda.release();
@@ -899,9 +931,12 @@ await withBrowser(browser, async () => {
       await profile.getByText("Character tools", { exact: true }).click();
       await page.evaluate(() => window.dispatchEvent(new Event("focus")));
       await expect(profile.getByRole("alert")).toHaveCount(0);
-      await tabs.getByRole("button", { name: "Inspect", exact: true }).click();
+      await page
+        .getByRole("group", { name: "Profile actions", exact: true })
+        .getByRole("button", { name: "Inspect", exact: true })
+        .click();
     }
-    await tabs.getByRole("button", { name: "Overview", exact: true }).click();
+    await chooseSection("Overview");
     await page.evaluate((tag) => {
       const game = document.querySelector(tag);
       game.style.height = "calc(100vh - 80px)";
@@ -915,11 +950,17 @@ await withBrowser(browser, async () => {
       });
       document.body.append(control);
     }, P);
-    await profile.getByText("Message", { exact: true }).click();
+    const mailboxTab = page
+      .getByRole("navigation", { name: "Village navigation" })
+      .getByRole("button", { name: "Mailbox", exact: true });
+    await mailboxTab.click();
     const mail = page.getByRole("dialog", { name: "Mailbox", exact: true });
+    await expect(mail).toBeVisible();
+    await expect(page.locator(`.${P}-desk-workspace`)).toHaveAttribute("data-phase", "open");
     const reopenLetter = async (folder) => {
       await mail.getByRole("button", { name: "Close Mailbox", exact: true }).click();
-      await profile.getByText("Message", { exact: true }).click();
+      await mailboxTab.click();
+      await expect(mail).toBeVisible();
       const back = mail.getByRole("button", { name: "Back to letters" });
       if (await back.isVisible()) await back.click();
       await mail.getByRole("button", { name: folder, exact: true }).click();
@@ -962,13 +1003,14 @@ await withBrowser(browser, async () => {
     );
     await page.locator("#engine-control").click();
     await expect(page.locator("#engine-control")).toHaveAttribute("data-clicked", "true");
-    await expect(mail.getByLabel("Recipient")).toHaveValue("mara");
+    await mail.getByRole("button", { name: "Write a letter", exact: true }).click();
+    await mail.getByLabel("Recipient").selectOption("mara");
     const draft = mail.getByRole("textbox", { name: "Personal message" });
     const exactMessage = "Let's talk later.\n  Exact text";
     await draft.fill(exactMessage);
     await mail.getByRole("button", { name: "Close Mailbox" }).click();
-    await expect(profile.getByRole("button", { name: "Message", exact: true })).toBeFocused();
-    await profile.getByText("Message", { exact: true }).click();
+    await expect(page.locator(`.${P}-desk-workspace :focus`)).toBeVisible();
+    await mailboxTab.click();
     await expect(draft).toHaveValue(exactMessage);
     await mail.getByRole("button", { name: "Send letter", exact: true }).click();
     await expect(mail.getByLabel("Personal mail").getByText(exactMessage, { exact: true })).toBeVisible();
@@ -1328,11 +1370,11 @@ await withBrowser(browser, async () => {
       await mail.getByRole("button", { name: "Close Mailbox", exact: true }).click();
       await page.getByRole("button", { name: "Close ×", exact: true }).click();
       await expect(profile).not.toBeVisible();
-      const mapButton = page
-        .getByRole("navigation", { name: "Village navigation" })
-        .getByRole("button", { name: "Map", exact: true });
+      await expect(page.locator(`[data-desk]`)).toHaveAttribute("data-phase", "open");
+      const mapButton = page.getByRole("button", { name: /Return to village|← Village/, exact: true });
       if (await mapButton.isVisible()) await mapButton.click();
-      await page.getByRole("button", { name: "Mailbox", exact: true }).click();
+      await expect(page.locator(`[data-desk]`)).toHaveAttribute("data-desk", "none");
+      await page.getByRole("button", { name: /^Mailbox(?: · Unread mail)?$/, exact: true }).click();
       await expect(paperPages.locator("span")).toHaveText(position);
       reopenProfileAfterMail = true;
 
@@ -1364,9 +1406,22 @@ await withBrowser(browser, async () => {
     if (reopenProfileAfterMail) {
       await people.click();
       await directory.getByRole("button", { name: "Open Mara profile", exact: true }).click();
-      await tabs.getByRole("button", { name: "Inspect", exact: true }).click();
+      await page
+        .getByRole("group", { name: "Profile actions", exact: true })
+        .getByRole("button", { name: "Inspect", exact: true })
+        .click();
     }
-    await tabs.getByRole("button", { name: "Memories", exact: true }).click();
+    if (
+      (await page
+        .getByRole("group", { name: "Profile actions", exact: true })
+        .getByRole("button", { name: /^(?:Leave )?Inspect$/, exact: true })
+        .getAttribute("aria-pressed")) === "false"
+    )
+      await page
+        .getByRole("group", { name: "Profile actions", exact: true })
+        .getByRole("button", { name: "Inspect", exact: true })
+        .click();
+    await chooseSection("Memories");
     await expect(profile.getByText("PRIVATE MARA MEMORY", { exact: true })).toBeVisible();
     await expect(profile.getByText("PRIVATE ELI MEMORY", { exact: true })).toHaveCount(0);
     if (width === 390) {
@@ -1381,7 +1436,6 @@ await withBrowser(browser, async () => {
     }
     await profile.getByRole("button", { name: "Inspect", exact: true }).last().click();
     await expect(profile.getByText("SOURCE EVIDENCE", { exact: false })).toBeVisible();
-    await settleTurn();
     await page.screenshot({ path: resolve(output, `inspect-${width}-${height}.png`) });
     if (exerciseActions) {
       await profile.getByRole("button", { name: "Correct", exact: true }).click();
@@ -1400,7 +1454,6 @@ await withBrowser(browser, async () => {
       assert.equal(corrections.length, 0, "Cancel makes no write.");
       await profile.getByRole("button", { name: "Correct", exact: true }).click();
       await correction.getByRole("textbox").fill("PRIVATE corrected wording");
-      await settleTurn();
       await page.screenshot({ path: resolve(output, `correct-${width}-${height}.png`) });
       await correction.getByRole("button", { name: "Save correction" }).click();
       await expect(correction.getByRole("alert")).toContainText("Saved response unavailable");
@@ -1425,13 +1478,19 @@ await withBrowser(browser, async () => {
       await correction.getByRole("button", { name: "Save correction" }).click();
       await expect.poll(() => !!releaseCorrection).toBe(true);
       await expect(correction.getByRole("textbox")).toBeDisabled();
-      await tabs.getByRole("button", { name: "Overview", exact: true }).click();
-      await tabs.getByRole("button", { name: "Memories", exact: true }).click();
+      await chooseSection("Overview");
+      await chooseSection("Memories");
       await expect(profile.getByText("PRIVATE corrected wording", { exact: true })).toBeVisible();
       await expect(correction.getByRole("textbox")).toHaveValue("Deferred correction");
       await expect(correction.getByRole("textbox")).toBeDisabled();
-      await tabs.getByRole("button", { name: "Leave Inspect", exact: true }).click();
-      await tabs.getByRole("button", { name: "Inspect", exact: true }).click();
+      await page
+        .getByRole("group", { name: "Profile actions", exact: true })
+        .getByRole("button", { name: "Leave Inspect", exact: true })
+        .click();
+      await page
+        .getByRole("group", { name: "Profile actions", exact: true })
+        .getByRole("button", { name: "Inspect", exact: true })
+        .click();
       await profile.getByRole("combobox", { name: "Memory knower" }).selectOption("eli");
       await expect(profile.getByText("PRIVATE ELI MEMORY", { exact: true })).toBeVisible();
       const readsBeforeRelease = reads.filter((path) => path.endsWith("/memories/inspect")).length;
@@ -1450,9 +1509,9 @@ await withBrowser(browser, async () => {
       await profile.getByRole("button", { name: "Forget", exact: true }).click();
       await expect(profile.getByRole("button", { name: "Forget", exact: true })).toBeDisabled();
       await expect(profile.getByText("Forgotten", { exact: true }).first()).toBeVisible();
-      await tabs.getByRole("button", { name: "Overview", exact: true }).click();
+      await chooseSection("Overview");
       await expect(profile.getByText("Home · The Mill", { exact: true })).toBeVisible();
-      await tabs.getByRole("button", { name: "Memories", exact: true }).click();
+      await chooseSection("Memories");
       failMemories = true;
       await profile.getByRole("button", { name: "Refresh", exact: true }).click();
       await expect(profile.getByRole("alert")).toContainText("Memory service unavailable");
@@ -1463,10 +1522,14 @@ await withBrowser(browser, async () => {
     await profile.getByRole("button", { name: "← Back to Villagers", exact: true }).click();
     await expect(directory.getByRole("searchbox", { name: "Search villagers" })).toHaveCount(0);
     await expect(directory.getByRole("button", { name: "Open Mara profile" })).toBeFocused();
-    await expect(page.locator(`.${P}-notebook-session`)).toHaveAttribute("data-phase", "open");
+    await expect(page.locator(`.${P}-desk-workspace`)).toHaveAttribute("data-phase", "open");
     await directory.getByRole("button", { name: `Open ${secondName} profile` }).click();
     await expect(page.getByText("No home or workplace assigned.", { exact: true })).toBeVisible();
-    await expect(tabs.getByRole("button", { name: "Inspect", exact: true })).toHaveAttribute("aria-pressed", "false");
+    await expect(
+      page
+        .getByRole("group", { name: "Profile actions", exact: true })
+        .getByRole("button", { name: "Inspect", exact: true }),
+    ).toHaveAttribute("aria-pressed", "false");
     await expect(page.getByText(/PRIVATE/)).toHaveCount(0);
     await expect(page.getByText("No character summary recorded.", { exact: true })).toHaveCount(0);
     await expect(page.getByText(/Card missing · saved character remains available/)).toBeVisible();
@@ -1492,12 +1555,26 @@ await withBrowser(browser, async () => {
     const description = profile.getByRole("textbox", { name: "Description", exact: true });
     const initialDescription = village.villagers[0].summary;
     await description.fill("A reserved explorer with an interest in old machinery.");
+    await profile.getByRole("button", { name: /^Manage sprites/ }).click();
+    const spriteDiscard = page.getByRole("dialog", { name: "Confirm", exact: true });
+    await expect(spriteDiscard).toContainText("Discard unsaved description?");
+    await spriteDiscard.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(description).toHaveValue("A reserved explorer with an interest in old machinery.");
+
+    if (width > 700) {
+      await directory.getByRole("button", { name: `Open ${secondName} profile`, exact: true }).click();
+      const discard = page.getByRole("dialog", { name: "Confirm", exact: true });
+      await expect(discard).toContainText("Discard unsaved description?");
+      await discard.getByRole("button", { name: "Cancel", exact: true }).click();
+      await expect(description).toHaveValue("A reserved explorer with an interest in old machinery.");
+    }
+
     await profile.getByText("Character tools", { exact: true }).click();
-    await tabs.getByRole("button", { name: "Agenda", exact: true }).click();
+    await chooseSection("Agenda");
     await profile.getByText("Character tools", { exact: true }).click();
     await expect(description).toHaveValue("A reserved explorer with an interest in old machinery.");
     await profile.getByText("Character tools", { exact: true }).click();
-    await tabs.getByRole("button", { name: "Overview", exact: true }).click();
+    await chooseSection("Overview");
     await profile.getByText("Character tools", { exact: true }).click();
     await profile.getByRole("button", { name: "Cancel", exact: true }).click();
     assert.equal(village.villagers[0].summary, initialDescription);
@@ -1530,17 +1607,15 @@ await withBrowser(browser, async () => {
     await page.getByRole("button", { name: "← Back to Villagers", exact: true }).click();
     await expect(directory.getByRole("button", { name: "Open Mara profile" })).toBeVisible();
     await page.getByRole("button", { name: "Close ×", exact: true }).click();
+    await expect(page.locator(`[data-desk]`)).not.toHaveAttribute("data-desk", "people");
+    await expect(page.locator(`[data-desk]`)).toHaveAttribute("data-phase", "open");
     await page.getByRole("button", { name: "People", exact: true }).click();
-    await expect(page.locator(`.${P}-notebook-session`)).toHaveAttribute("data-phase", "open");
+    await expect(page.locator(`.${P}-desk-workspace`)).toHaveAttribute("data-phase", "open");
     await page.emulateMedia({ reducedMotion: "reduce" });
-    assert.equal(
-      await page.locator(`.${P}-notebook-motion`).evaluate((node) => getComputedStyle(node).animationName),
-      "none",
-      "Reduced motion disables the notebook transition",
-    );
+
     await directory.getByRole("button", { name: `Open ${secondName} profile` }).click();
-    await tabs.getByRole("button", { name: "Wishes", exact: true }).click();
-    await expect(page.locator(`.${P}-dossier-turn`)).toBeHidden();
+    await chooseSection("Wishes");
+    await expect(page.locator(`.${P}-dossier-turn`)).toHaveCount(0);
     assert.equal(
       await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1),
       false,

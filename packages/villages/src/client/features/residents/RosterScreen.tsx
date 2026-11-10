@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { PeopleBook } from "./PeopleBook.js";
 import { AvatarFace } from "./ResidentPanels.js";
@@ -8,36 +8,51 @@ export function RosterScreen({
   controller,
   onClose,
   readingPosition,
+  selectedId,
 }: {
   controller: RosterScreenController;
   onClose?: () => void;
   readingPosition?: { current: number };
+  selectedId?: string;
 }) {
+  const [search, setSearch] = useState("");
   const content = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (content.current) content.current.scrollTop = readingPosition?.current ?? 0;
   }, [readingPosition]);
   const { error, menuPage, openPerson, portraits, screen, setMenuPage, snapshot } = controller;
   if (screen !== "menu" || menuPage !== "villagers") return null;
-  const villagers = snapshot?.villagers ?? [];
+  const villagers = (snapshot?.villagers ?? []).filter((person) =>
+    person.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
+  );
   return (
     <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-directory-root`} data-page="villagers">
-      <PeopleBook
-        label="People notebook"
-        toolbar={
-          <button
-            type="button"
-            className={`${ELEMENT_TAG}-notebook-close`}
-            onClick={onClose ?? (() => setMenuPage("index"))}
-          >
-            Close ×
-          </button>
-        }
-      >
+      <PeopleBook label="People notebook" toolbar={null}>
         <main className={`${ELEMENT_TAG}-directory-paper`} aria-label="Villagers directory">
           <header className={`${ELEMENT_TAG}-directory-head`}>
-            <h1>Villagers</h1>
+            <h1>People</h1>
+            <span className={`${ELEMENT_TAG}-directory-meta`}>
+              <span>{villagers.length} villagers</span>
+              {!selectedId ? (
+                <button
+                  type="button"
+                  className={`${ELEMENT_TAG}-notebook-close`}
+                  onClick={onClose ?? (() => setMenuPage("index"))}
+                >
+                  Close ×
+                </button>
+              ) : null}
+            </span>
           </header>
+          <label className={`${ELEMENT_TAG}-directory-search`}>
+            <span className={`${ELEMENT_TAG}-sr-only`}>Find a person</span>
+            <input
+              type="search"
+              placeholder="Find a person"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </label>
           {error ? (
             <p role="alert" className={`${ELEMENT_TAG}-dossier-warning`}>
               {error}
@@ -62,6 +77,7 @@ export function RosterScreen({
                       key={person.characterId}
                       className={`${ELEMENT_TAG}-directory-card`}
                       aria-label={`Open ${person.name} profile`}
+                      aria-pressed={selectedId === person.characterId}
                       onClick={() => openPerson({ actorId: person.characterId, returnTo: "menu" })}
                     >
                       <AvatarFace

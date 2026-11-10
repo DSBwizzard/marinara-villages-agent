@@ -1,6 +1,6 @@
 export const WISH_JOURNAL_STYLES = `
 .marinara-capability-villages-dossier-root:has(.marinara-capability-villages-dossier-desk[data-section="wishes"]){overflow:clip}
-.marinara-capability-villages-dossier-desk[data-section="wishes"] .marinara-capability-villages-dossier-content{display:block;overflow:clip;height:100%;padding:16px 24px}
+.marinara-capability-villages-dossier-desk[data-section="wishes"] .marinara-capability-villages-dossier-content{display:block;overflow:clip;height:100%;padding:8px 4px}
 .villages-wish-browser{grid-column:1/-1;min-width:0;min-height:0;height:100%;container-type:inline-size;display:flex;flex-direction:column}
 .villages-wish-layout{min-width:0;min-height:0;flex:1;display:grid;grid-template-rows:minmax(0,1fr);gap:24px;align-items:stretch}
 .villages-wish-list{min-width:0;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr) 44px;gap:10px}
@@ -22,7 +22,7 @@ export const WISH_JOURNAL_STYLES = `
 .villages-wish-actions button{min-height:44px;height:44px;padding:5px 10px}
 .villages-wish-tabs{display:flex;flex-wrap:wrap;align-content:start;gap:4px;border-bottom:1px solid var(--border);padding-bottom:4px}
 .villages-wish-tabs button{flex:1 0 auto;min-height:44px;padding:4px 8px;font-size:14px;line-height:1.2;border-radius:6px 6px 0 0;box-shadow:none;white-space:nowrap}
-.villages-wish-tabs button[aria-selected=true]{background:#f7df9a;border-color:#8c7145;box-shadow:inset 0 -3px #8c7145;font-weight:700}
+.villages-wish-tabs button[aria-selected=true]{background:#995963;color:#fff0d5;border-color:#b97980;box-shadow:inset 0 -3px #d29399;font-weight:700}
 .villages-wish-panel{min-width:0;min-height:0;display:grid;grid-template-rows:minmax(0,1fr)}
 .villages-wish-section{min-width:0;display:block}
 .villages-wish-section h4{font-size:19px;margin:0 0 8px;line-height:1.3;break-after:avoid}

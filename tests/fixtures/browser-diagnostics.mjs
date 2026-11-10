@@ -5,11 +5,17 @@ import { fileURLToPath } from "node:url";
 
 export { expect };
 const expectations = new WeakMap();
-const deskAsset = fileURLToPath(new URL("../../packages/villages/menu-desk.jpg", import.meta.url));
-const mockDeskAsset = (context) =>
-  context.route("**/api/capability-packages/villages/assets/menu-desk.jpg", (route) =>
-    route.fulfill({ path: deskAsset, contentType: "image/jpeg" }),
-  );
+const deskAssets = {
+  "storybook-background.webp": "image/webp",
+  "letter-fonts/assistant.json": "application/json",
+  "letter-fonts/crimson-pro.json": "application/json",
+};
+const mockDeskAsset = async (context) => {
+  for (const [asset, contentType] of Object.entries(deskAssets))
+    await context.route("**/api/capability-packages/villages/assets/" + asset, (route) =>
+      route.fulfill({ path: fileURLToPath(new URL("../../packages/villages/" + asset, import.meta.url)), contentType }),
+    );
+};
 
 /** Register a bounded diagnostic for a deliberate negative fixture response. */
 export function allowConsole(page, { type, text, url, count = 1 }) {

@@ -27,7 +27,10 @@ export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
 
           {snapshot ? (
             <div className={`${ELEMENT_TAG}-field`}>
-              <label className={`${ELEMENT_TAG}-row`} htmlFor={`${ELEMENT_TAG}-send-on-enter`}>
+              <label
+                className={`${ELEMENT_TAG}-row ${ELEMENT_TAG}-send-toggle`}
+                htmlFor={`${ELEMENT_TAG}-send-on-enter`}
+              >
                 <input
                   autoComplete="off"
                   id={`${ELEMENT_TAG}-send-on-enter`}

@@ -603,7 +603,7 @@ async function checkPackage(width) {
   await page.getByRole("button", { name: "Erase Village", exact: true }).click();
   await page.getByRole("button", { name: "People", exact: true }).click();
   await page.getByRole("button", { name: "Close ×", exact: true }).click();
-  await page.getByRole("button", { name: "More", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await section("advanced", "Advanced");
   await expect(page.getByRole("button", { name: "Erase Village permanently", exact: true })).toHaveCount(0);
   await expect(page.getByLabel("System", { exact: true })).toBeEnabled();

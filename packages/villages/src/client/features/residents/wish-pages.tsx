@@ -11,7 +11,7 @@ export function WishPages({ children }: { children: ReactNode }) {
       content = track.current;
     if (!host || !content) return;
     const measure = () => {
-      const width = host.clientWidth;
+      const width = host.getBoundingClientRect().width;
       if (!width || !host.clientHeight) return;
       content.style.setProperty("--wish-page-width", `${width}px`);
       const pages = Math.max(1, Math.ceil((content.scrollWidth + 24 - 1) / (width + 24)));

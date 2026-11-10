@@ -139,7 +139,7 @@ export async function openProjectPage(browser, width, snapshot = projectSnapshot
     fulfill(route, {
       status: 200,
       contentType: "text/html",
-      body: '<style>:root{font-size:18px;--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}html,body{height:100%;margin:0;background:#101a30;color:#f4f0e8;font-family:Arial}marinara-capability-villages{display:block;height:100%}#root{height:100%}</style><marinara-capability-villages><div id="root"></div></marinara-capability-villages>',
+      body: '<style>:root{font-size:18px;--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}html,body{height:100%;margin:0;background:#101a30;color:#f4f0e8;font-family:Arial}marinara-capability-villages{display:block;height:100%}#root{height:100%;container:village-desk/inline-size}</style><marinara-capability-villages><div id="root"></div></marinara-capability-villages>',
     }),
   );
   await page.route("**/api/villages/**", async (route) => {
