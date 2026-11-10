@@ -1,4 +1,4 @@
-// Test cases: resident-narration/ordinary, resident-narration/reflection, resident-narration/private-source, resident-narration/attendance, resident-narration/replay, resident-narration/large-room, resident-narration/protection, resident-narration/agreements, resident-narration/due-identities, resident-narration/mail-room, resident-narration/room-units, resident-narration/room-history-hop
+// Test cases: resident-narration/ordinary, resident-narration/reflection, resident-narration/private-source, resident-narration/attendance, resident-narration/replay, resident-narration/large-room, resident-narration/protection, resident-narration/agreements, resident-narration/due-identities, resident-narration/mail-room, resident-narration/room-units, resident-narration/room-history-hop, resident-narration/native-access, resident-narration/native-authority, resident-narration/native-independent, resident-narration/native-calendar, resident-narration/native-residence
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -14,19 +14,28 @@ import { continuityActor } from "../packages/villages/src/server/domain/rules/co
 import {
   continuityHolderKey,
   continuityViews,
+  continuitySourceUnit,
   continuityProtectionUnits,
   protectContinuity,
 } from "../packages/villages/src/server/domain/rules/continuity.js";
-import { episodeSourceGraph } from "../packages/villages/src/server/domain/decoding/episode-codec.js";
+import {
+  episodeSourceGraph,
+  readAcceptedEpisode,
+} from "../packages/villages/src/server/domain/decoding/episode-codec.js";
 import { retainNativeFact } from "../packages/villages/src/server/domain/rules/native-continuity.js";
 import { actorEpisodeView, gmEpisodeView } from "../packages/villages/src/server/domain/rules/episodes.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import {
+  bindNarrationSegment,
+  bindNarrationReceipt,
+} from "../packages/villages/src/server/domain/rules/narration-sources.js";
 import { memoryPayload } from "../packages/villages/src/server/adapters/storage/memory-payload-store.js";
 import {
   encodeContinuityPages,
   decodeContinuityPagesSync,
 } from "../packages/villages/src/server/adapters/storage/continuity-pages.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
+import { venue as homeFixture } from "./fixtures/villages-projects.fixture.js";
 import { agendaFixture } from "./helpers/agenda.fixture.js";
 import { captureContinuityContext } from "../packages/villages/src/server/domain/rules/continuity-context.js";
 import { socialPlanCandidates, acceptSocialPlan } from "../packages/villages/src/server/domain/rules/social-rules.js";
@@ -38,7 +47,8 @@ import {
 
 const at = "2026-11-10T12:00:00.000Z",
   later = "2026-11-10T12:10:00.000Z";
-function fixture() {
+function fixture(stamp = at) {
+  const at = stamp;
   const state = defaultVillageState();
   Object.assign(state, {
     seed: "resident-narration",
@@ -56,7 +66,6 @@ function fixture() {
     letterFontId: "caveat",
     addedAt: at,
     cardSnapshot: { id, name: id, capturedAt: at, revision: 1, sourceStatus: "available", tags: [] },
-    wishes: [],
     agenda: agendaFixture({
       day: [
         { startMinute: 0, endMinute: 1440, venueId: "square", zoneId: zone, activity: "Free time", flexible: true },
@@ -127,6 +136,303 @@ function fixture() {
     };
   return { state, zone, room, seedRoom, opportunity, capture, ordinary, views, cold };
 }
+function accessFixture(stamp = at) {
+  const f = fixture(stamp),
+    venue = f.state.venues[0],
+    zone = venue.zones!.find((zone) => zone.id === f.zone)!;
+  venue.access!.managerIds = ["mara"];
+  zone.access!.managerIds = ["mara"];
+  const capture = f.capture(),
+    reply: any = {
+      ...f.ordinary,
+      encounter: {
+        opportunityId: f.opportunity.id,
+        lines: [
+          { id: "grant", speakerId: "mara", text: "Leo, you have standing permission to use this room." },
+          { id: "answer", speakerId: "leo", text: "Thank you, I understand." },
+        ],
+      },
+      commands: [
+        {
+          id: "permission",
+          type: "permission.grant",
+          by: "mara",
+          visitor: "leo",
+          venue: venue.id,
+          zone: zone.id,
+          at: "grant",
+          source: ["grant"],
+        },
+      ],
+      requires: ["permission"],
+    };
+  return { ...f, venue, reply, admitted: capture };
+}
+await runCase("resident-narration/native-access", () => {
+  const f = accessFixture(),
+    { admitted: capture, reply } = f;
+  const result = acceptResidentNarration(f.state, capture, reply, memoryHash(reply), later);
+  assert(!result.held && result.episode);
+  const permission = f.state.venues[0].access!.permissions.find((row) => row.visitorId === "leo")!;
+  assert.equal(permission.duration, "standing");
+  assert.equal(permission.sceneId, null, "a private encounter is never a synthetic Scene visit");
+  assert.equal(result.episode.sceneId, undefined);
+  assert.deepEqual([...result.episode.commandReceipts[0].witnesses].sort(), ["leo", "mara"]);
+  assert(!result.episode.actors.some((actor) => actor.id === "player"));
+  for (const missing of ["proof", "dependency", "receipt-source"]) {
+    const corrupt = structuredClone(result.episode);
+    if (missing === "proof") corrupt.grounding = corrupt.grounding.filter((source) => source.kind !== "speech");
+    if (missing === "dependency") corrupt.dependencies = {};
+    if (missing === "receipt-source")
+      corrupt.grounding = corrupt.grounding.filter((source) => source.kind !== "native");
+    assert.throws(() => readAcceptedEpisode(corrupt, f.state.seed), /complete current communication proof/);
+  }
+  for (const invalid of ["mixed-speakers", "missing-author"]) {
+    const corrupt = structuredClone(result.episode),
+      context = {
+        seed: f.state.seed,
+        episodeId: corrupt.id,
+        actors: capture.actors.map(({ id, incarnation }) => ({ kind: "actor" as const, id, incarnation })),
+        lines: corrupt.segments,
+        labels: { answer: corrupt.segments[1].id },
+        privateActorIds: ["mara", "leo"],
+        positions: () => Object.fromEntries(capture.actors.map((actor) => [actor.id, actor.zoneId])),
+      };
+    if (invalid === "mixed-speakers") {
+      const proof = bindNarrationSegment({ segment: "answer" }, context);
+      corrupt.grounding.push(proof);
+      corrupt.dependencies["native:" + corrupt.commandReceipts[0].id].push(continuitySourceUnit(proof));
+    } else {
+      corrupt.commandReceipts[0].witnesses = ["leo"];
+      corrupt.grounding = corrupt.grounding.map((source) =>
+        source.kind === "native" ? bindNarrationReceipt(corrupt.commandReceipts[0], context) : source,
+      );
+    }
+    assert.throws(() => readAcceptedEpisode(corrupt, f.state.seed), /complete current communication proof/);
+  }
+  assert(!f.views("player").some((row) => row.version.text.includes("standing permission")));
+  assert(
+    f.views("leo").some((row) => row.version.text.includes("standing permission")),
+    "the actual witness learns the native outcome without a second model",
+  );
+  f.cold();
+  const accepted = memoryHash(f.state);
+  assert(acceptResidentNarration(f.state, capture, reply, memoryHash(reply), later).replayed);
+  assert.equal(memoryHash(f.state), accepted);
+  const withdrawal = structuredClone(reply);
+  withdrawal.encounter.opportunityId = "withdraw";
+  withdrawal.encounter.lines[0].text = "Leo, I withdraw your standing permission to this room.";
+  withdrawal.commands[0].type = "permission.revoke";
+  assert(!acceptResidentNarration(f.state, f.capture("withdraw"), withdrawal, memoryHash(withdrawal), later).held);
+  assert(f.state.venues[0].access!.permissions.every((permission) => permission.revoked));
+});
+
+await runCase("resident-narration/native-authority", () => {
+  for (const invalid of [
+    "self",
+    "history",
+    "other-speaker",
+    "future-proof",
+    "visit",
+    "player",
+    "fields",
+    "project",
+    "reflection",
+    "stale",
+    "historical",
+  ]) {
+    const f = accessFixture(),
+      command = f.reply.commands[0];
+    if (invalid === "self") command.source = ["self"];
+    if (invalid === "history") command.source = ["h:1"];
+    if (invalid === "other-speaker") command.by = "leo";
+    if (invalid === "future-proof") {
+      command.by = "leo";
+      command.source = ["answer"];
+    }
+    if (invalid === "visit") {
+      f.reply.commands = [{ ...command, type: "access.decide", decision: { outcome: "invite-now", visitor: "leo" } }];
+      delete f.reply.commands[0].visitor;
+    }
+    if (invalid === "player") command.by = "player";
+    if (invalid === "fields") command.operationId = "model-owned-operation";
+    if (invalid === "project")
+      f.reply.commands = [
+        { id: "permission", type: "project.start", project: "new-project", at: "grant", source: ["grant"] },
+      ];
+    if (invalid === "reflection") {
+      delete f.reply.encounter;
+      f.reply.reflection = { actorId: "mara", text: "I privately imagine giving permission." };
+    }
+    if (invalid === "stale") {
+      f.state.venues[0].access!.managerIds = ["player"];
+      f.state.venues[0].zones!.find((zone) => zone.id === f.zone)!.access!.managerIds = ["player"];
+    }
+    if (invalid === "historical") f.admitted.historical = true;
+    const before = memoryHash(f.state);
+    if (invalid === "stale")
+      assert.throws(
+        () => acceptResidentNarration(f.state, f.admitted, f.reply, memoryHash(f.reply), later),
+        /native authority changed/,
+      );
+    else assert(acceptResidentNarration(f.state, f.admitted, f.reply, memoryHash(f.reply), later).held, invalid);
+    assert.equal(
+      memoryHash(f.state),
+      before,
+      "a rejected native decision cannot mutate authority, knowledge or episode history",
+    );
+  }
+});
+
+await runCase("resident-narration/native-independent", () => {
+  for (const sameMoment of [false, true]) {
+    const f = accessFixture(),
+      zone = f.state.venues[0].zones!.find((zone) => zone.id === f.zone)!;
+    f.reply.encounter.lines.splice(1, 0, {
+      id: "again",
+      speakerId: "mara",
+      text: "Leo, you retain standing permission to use this room.",
+    });
+    const grant = {
+      ...f.reply.commands[0],
+      at: sameMoment ? "grant" : "again",
+      source: [sameMoment ? "grant" : "again"],
+    };
+    const optional = {
+      id: "optional",
+      type: "access.decide",
+      by: "mara",
+      venue: f.venue.id,
+      zone: f.zone,
+      at: "grant",
+      source: ["grant"],
+      independent: true,
+      requires: ["missing"],
+      decision: {
+        outcome: "access-management",
+        management: { action: "zone-policy", policy: { ...zone.access, managerIds: ["player"], inviterIds: [] } },
+      },
+    };
+    f.reply.commands = [optional, grant];
+    const result = acceptResidentNarration(f.state, f.admitted, f.reply, memoryHash(f.reply), later);
+    assert(!result.held && result.episode, "discarded policy authority must be rebuilt before the essential grant");
+    assert.deepEqual(result.acceptedIds, ["permission"]);
+    assert.equal(f.state.venues[0].access!.revision, 1);
+    assert(!f.state.venues[0].access!.changes.some((change) => change.action === "zone-policy"));
+    assert.equal(f.state.venues[0].access!.permissions.length, 1);
+    assert.equal(result.episode.commandReceipts.length, 1);
+    assert.equal(result.episode.commandReceipts[0].revision, 1);
+  }
+});
+
+await runCase("resident-narration/native-calendar", () => {
+  for (const nonexistent of [false, true]) {
+    const sourceAt = "2026-11-01T07:00:00.000Z",
+      f = accessFixture(sourceAt);
+    f.state.timeZone = "America/Los_Angeles";
+    for (const resident of f.state.villagers) resident.agenda!.activeDay!.dateKey = "2026-11-01";
+    const capture = captureResidentNarration(f.state, { ...f.opportunity, startsAt: sourceAt, endsAt: sourceAt }, true);
+    f.reply.encounter.lines[0].text = nonexistent
+      ? "Let us meet on March 14 at half past two."
+      : "Let us meet at half past one today.";
+    f.reply.commands = [
+      {
+        id: "permission",
+        type: "appointment",
+        by: "mara",
+        at: "grant",
+        source: ["grant"],
+        when: nonexistent ? { date: "2027-03-14" } : { dayOffset: 0 },
+        minute: nonexistent ? 150 : 90,
+      },
+    ];
+    if (!nonexistent) {
+      f.state.timeZone = "UTC";
+      f.reply.keep = [
+        {
+          id: "date",
+          for: ["mara"],
+          owner: "mara",
+          class: "commitment",
+          text: "Mara intends to meet Leo at half past one on November 1.",
+          source: ["native:permission", "grant"],
+        },
+      ];
+    }
+    const before = memoryHash(f.state),
+      result = acceptResidentNarration(f.state, capture, f.reply, memoryHash(f.reply), later);
+    assert.equal(result.held, nonexistent);
+    if (nonexistent)
+      assert.equal(memoryHash(f.state), before, "a nonexistent wall time cannot become a promised instant");
+    else {
+      assert.match(result.episode!.commandReceipts[0].text, /America\/Los_Angeles; 2026-11-01T08:30:00.000Z/);
+      assert(!result.episode!.sceneId);
+      assert(result.episode!.grounding.some((source) => source.kind === "native"));
+      assert(f.views("mara").some((view) => view.version.text.includes("half past one")));
+      f.cold();
+      const accepted = memoryHash(f.state);
+      assert(acceptResidentNarration(f.state, capture, f.reply, memoryHash(f.reply), later).replayed);
+      assert.equal(memoryHash(f.state), accepted);
+    }
+  }
+});
+
+await runCase("resident-narration/native-residence", () => {
+  for (const playerApproval of [false, true]) {
+    const f = fixture(),
+      home = homeFixture("home", "residence");
+    home.residentIds = ["mara"];
+    home.occupancy.residentCharacterId = "mara";
+    home.occupancy.playerHome = playerApproval;
+    home.residenceCapacity = 3;
+    home.access!.managerIds = ["mara", ...(playerApproval ? ["player"] : [])];
+    for (const zone of home.zones!)
+      if (zone.kind !== "exterior") zone.access!.managerIds = ["mara", ...(playerApproval ? ["player"] : [])];
+    f.state.venues.push(home);
+    const reply = {
+      ...f.ordinary,
+      encounter: {
+        opportunityId: f.opportunity.id,
+        lines: [
+          { id: "request", speakerId: "leo", text: "Mara, I would like to live in your shared sleeping room at Home." },
+          { id: "approve", speakerId: "mara", text: "Leo, I approve your exact move request to share Home." },
+        ],
+      },
+      commands: [
+        { id: "request", type: "residence.request", by: "leo", venue: "home", at: "request", source: ["request"] },
+        {
+          id: "approval",
+          type: "residence.decide",
+          by: "mara",
+          person: "leo",
+          venue: "home",
+          approved: true,
+          at: "approve",
+          source: ["approve"],
+          requires: ["request"],
+        },
+      ],
+      requires: ["approval"],
+    };
+    const result = acceptResidentNarration(f.state, f.capture(), reply, memoryHash(reply), later);
+    assert(!result.held && result.episode);
+    const move = f.state.residences.find((row) => row.characterId === "leo")!;
+    assert.equal(move.status, playerApproval ? "pending" : "moving");
+    assert.equal(move.agreement!.approvals.mara, true);
+    assert(
+      !move.agreement!.approvals.player,
+      "a private encounter cannot supply the absent Player's required approval",
+    );
+    assert(
+      !f.state.venues.find((row) => row.id === "home")!.residentIds!.includes("leo"),
+      "approval does not complete a native move",
+    );
+    assert.equal(result.episode.commandReceipts.length, 2);
+    assert(!result.episode.actors.some((row) => row.id === "player"));
+    f.cold();
+  }
+});
+
 await runCase("resident-narration/ordinary", () => {
   const f = fixture(),
     result = acceptResidentNarration(f.state, f.capture(), f.ordinary, memoryHash("one GM"), later);

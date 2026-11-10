@@ -11,7 +11,7 @@ import { memoryRequire } from "./memory-integrity.js";
 export function narrationAppointment(
   state: VillageState,
   command: { by: string; when: object; minute?: number },
-  readset: NarrationReadset,
+  readset: Pick<NarrationReadset, "calendar" | "capturedAt">,
   sources: ContinuityEvidence[],
   receiptId: string,
 ): AcceptedEpisode["commandReceipts"][number] {

@@ -12,7 +12,10 @@ import {
 } from "../packages/villages/src/server/domain/rules/narration-context.js";
 import { readNarrationReply } from "../packages/villages/src/server/domain/rules/narration-contract.js";
 import { narrationLines } from "../packages/villages/src/server/domain/rules/narration-lines.js";
-import { bindNarrationSource } from "../packages/villages/src/server/domain/rules/narration-sources.js";
+import {
+  bindNarrationSource,
+  narrationCommunication,
+} from "../packages/villages/src/server/domain/rules/narration-sources.js";
 import { evaluateZoneAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
@@ -145,7 +148,7 @@ function fixture(resident = false) {
   };
   const before = scopes.find((scope) => scope.venueId === home.id)!;
   const apply = (value = decision, receipt = "receipt", proof = sources) =>
-    applyNarrationAccess(state, value, readset, context, proof, before, receipt, at);
+    applyNarrationAccess(state, value, readset, narrationCommunication(context), proof, before, receipt, at);
   const publication = (commands: unknown[], keep: unknown[] = [], requires: string[] = []) => {
     const raw = {
       segments: [
@@ -183,7 +186,17 @@ await runCase("narration-access/stale-authority", () => {
   f.home.location.access!.revision++;
   const before = narrationAccessScopes(f.state, [f.actorId]).find((scope) => scope.venueId === f.home.id)!;
   assert.throws(
-    () => applyNarrationAccess(f.state, f.decision, f.readset, f.context, f.sources, before, "receipt", at),
+    () =>
+      applyNarrationAccess(
+        f.state,
+        f.decision,
+        f.readset,
+        narrationCommunication(f.context),
+        f.sources,
+        before,
+        "receipt",
+        at,
+      ),
     /authority changed/,
   );
   assert.deepEqual(f.home.location.access!.permissions, []);
@@ -240,7 +253,17 @@ await runCase("narration-access/empty-withdrawal", () => {
   assert(f.home.location.access!.receipts.withdrawal);
   const before = narrationAccessScopes(f.state, [f.actorId]).find((scope) => scope.venueId === f.home.id)!;
   assert.throws(
-    () => applyNarrationAccess(f.state, f.decision, f.readset, f.context, f.sources, before, "late-grant", at),
+    () =>
+      applyNarrationAccess(
+        f.state,
+        f.decision,
+        f.readset,
+        narrationCommunication(f.context),
+        f.sources,
+        before,
+        "late-grant",
+        at,
+      ),
     /authority changed/,
   );
   assert.deepEqual(f.home.location.access!.permissions, []);
@@ -273,7 +296,7 @@ await runCase("narration-access/current-outside-hours", () => {
       outcome: "invite-outside-hours",
     },
     readset,
-    f.context,
+    narrationCommunication(f.context),
     f.sources,
     before,
     "late-stay",

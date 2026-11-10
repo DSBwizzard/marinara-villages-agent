@@ -18,7 +18,7 @@ import { projectSpeechPrompt } from "../../domain/rules/project-interpretation.j
 import { narrationAccessPrompt } from "../../domain/rules/narration-access.js";
 import { narrationResidencePrompt } from "../../domain/rules/narration-residence.js";
 import { narrationPlacePrompt } from "../../domain/rules/narration-place.js";
-import { NARRATION_NATIVE } from "../../domain/rules/narration-native.js";
+import { NARRATION_NATIVE } from "../../domain/rules/narration-command-contract.js";
 import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
 import { residentMovementOptions } from "../../domain/rules/resident-movement.js";
 import { responseDiagnostics } from "../../domain/rules/response-diagnostics.js";

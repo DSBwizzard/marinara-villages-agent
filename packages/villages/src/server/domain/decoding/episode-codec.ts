@@ -157,7 +157,8 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
     memoryRequire(
       !value.sceneId &&
         !value.privateInput &&
-        !value.commandReceipts.length &&
+        (source.kind === "encounter" || !value.commandReceipts.length) &&
+        value.commandReceipts.every((receipt) => ["access", "residence", "appointment"].includes(receipt.kind)) &&
         value.actors.length > 0 &&
         value.actors.length <= 4 &&
         !cast.has("player") &&
@@ -573,6 +574,36 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
     new Set(value.commandReceipts.map((row) => row.id)).size === value.commandReceipts.length,
     "duplicate native receipt",
   );
+  if (value.opportunity)
+    for (const receipt of value.commandReceipts) {
+      const units = new Set(value.dependencies["native:" + receipt.id] ?? []),
+        proofs = value.grounding.filter((source) => units.has(continuitySourceUnit(source)));
+      memoryRequire(
+        value.grounding.some((source) => source.kind === "native" && source.committedReceiptId === receipt.id) &&
+          proofs.length > 0 &&
+          units.size === proofs.length &&
+          new Set(proofs.map((source) => source.actorId)).size === 1 &&
+          receipt.witnesses.includes(proofs[0].actorId ?? "") &&
+          proofs.every(
+            (source) =>
+              source.episodeId === value.id &&
+              source.kind === "speech" &&
+              source.actorId &&
+              cast.has(source.actorId) &&
+              source.moment &&
+              !source.range &&
+              source.excerpt === value.segments.find((line) => line.id === source.unitId)?.content,
+          ) &&
+          receipt.witnesses.every((id) =>
+            proofs.every(
+              (source) =>
+                source.actorId === id ||
+                source.perceptions.some((row) => row.actorId === id && row.channel === "words"),
+            ),
+          ),
+        "resident native outcome lost its complete current communication proof",
+      );
+    }
   const nativeRoomContext =
     !value.sceneId &&
     !value.privateInput &&

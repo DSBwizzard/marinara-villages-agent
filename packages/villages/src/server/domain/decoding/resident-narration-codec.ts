@@ -2,6 +2,10 @@ import { z } from "zod";
 import type { ResidentNarrationCapture } from "../models/resident-narration.js";
 import { continuityCaptureSchema, continuityTargetSchema } from "./continuity-context-codec.js";
 import { continuityHolderKey } from "../rules/continuity.js";
+import { readSceneCalendar } from "../rules/scene-calendar.js";
+import { narrationAccessScopeSchema } from "../rules/narration-access.js";
+import { narrationResidenceContextSchema } from "../rules/narration-residence.js";
+import { memoryHash, memoryRequire } from "../rules/memory-integrity.js";
 
 const id = z.string().min(1).max(160),
   at = z.string().refine((value) => Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value),
@@ -28,6 +32,17 @@ const capture = z
       .max(4),
     nativeFingerprint: digest,
     protectionFingerprint: digest,
+    historical: z.literal(true).optional(),
+    calendar: z.custom<ResidentNarrationCapture["calendar"]>((value) => {
+      try {
+        readSceneCalendar(value);
+        return true;
+      } catch {
+        return false;
+      }
+    }),
+    access: z.array(narrationAccessScopeSchema).max(256),
+    residence: narrationResidenceContextSchema,
     room: z
       .object({
         holder: z.object({ kind: z.literal("room"), placeId: id, zoneId: id }).strict(),
@@ -67,6 +82,13 @@ const capture = z
       room = value.room;
     return (
       source.endsAt >= source.startsAt &&
+      value.calendar.instant === source.endsAt &&
+      value.access.every((scope) =>
+        scope.authorities.every((authority) => value.actors.some((actor) => actor.id === authority.actorId)),
+      ) &&
+      value.residence.requests.every((request) =>
+        value.actors.some((actor) => request.person === actor.id || request.requiredIds.includes(actor.id)),
+      ) &&
       source.endsAt === value.context.at &&
       JSON.stringify(value.actors.map((actor) => actor.id)) === JSON.stringify(source.actorIds) &&
       JSON.stringify(value.context.actors.map((actor) => actor.id)) ===
@@ -96,5 +118,7 @@ const capture = z
     );
   });
 export function readResidentNarrationCapture(raw: unknown): ResidentNarrationCapture {
-  return capture.parse(raw) as ResidentNarrationCapture;
+  const value = capture.parse(raw);
+  memoryRequire(memoryHash(value) === memoryHash(raw), "resident capture cannot be normalized or repaired");
+  return value as ResidentNarrationCapture;
 }

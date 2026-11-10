@@ -1,4 +1,5 @@
 import { narrationWitnesses } from "./narration-sources.js";
+import { z } from "zod";
 import type { VillageState } from "../models/world.js";
 import type { NarrationReadset } from "../models/narration-model.js";
 import type { ContinuityEvidence } from "../models/continuity-model.js";
@@ -53,6 +54,48 @@ export function narrationResidenceContext(state: VillageState, actors: string[])
       })),
   };
 }
+const id = z.string().min(1).max(200),
+  ids = z.array(id).max(100),
+  digest = z.string().regex(/^[a-f0-9]{64}$/);
+const sleepZoneSchema = z
+  .object({ id, name: z.string().max(200), kind: z.enum(["shared-residence", "private-residence"]) })
+  .strict();
+export const narrationResidenceContextSchema = z
+  .object({
+    homes: z
+      .array(
+        z
+          .object({
+            id,
+            name: z.string().max(200),
+            householdIds: ids,
+            managerIds: ids,
+            fingerprint: digest,
+            sleepZones: z.array(sleepZoneSchema.extend({ managerIds: ids.nullable().optional() }).strict()).max(256),
+          })
+          .strict(),
+      )
+      .max(256),
+    requests: z
+      .array(
+        z
+          .object({
+            person: id,
+            venue: id,
+            status: z.enum(["pending", "moving"]),
+            requestId: id,
+            scope: id,
+            requiredIds: ids,
+            approvals: z.record(id, z.boolean()),
+            householdIds: ids,
+            sleepZone: sleepZoneSchema.nullable(),
+            fingerprint: digest,
+          })
+          .strict(),
+      )
+      .max(256),
+  })
+  .strict();
 export function narrationResidencePrompt(context: ReturnType<typeof narrationResidenceContext>) {
   return (
     "Native housing requests (not room descriptions or character knowledge): " +
@@ -60,7 +103,7 @@ export function narrationResidencePrompt(context: ReturnType<typeof narrationRes
       homes: context.homes.map(({ id, name, sleepZones, householdIds, managerIds }) => ({
         id,
         name,
-        sleepZones,
+        sleepZones: sleepZones.map(({ id, name, kind, managerIds }) => ({ id, name, kind, managerIds })),
         householdIds,
         managerIds,
       })),
@@ -70,7 +113,7 @@ export function narrationResidencePrompt(context: ReturnType<typeof narrationRes
         requiredIds,
         approvals,
         status,
-        sleepZone,
+        sleepZone: sleepZone ? { id: sleepZone.id, name: sleepZone.name, kind: sleepZone.kind } : null,
         householdIds,
       })),
     }) +
@@ -85,7 +128,7 @@ export function applyNarrationResidence(
   state: VillageState,
   before: VillageState,
   command: Request,
-  readset: NarrationReadset,
+  readset: Pick<NarrationReadset, "calendar" | "residence"> & { source: Pick<NarrationReadset["source"], "actors"> },
   sources: ContinuityEvidence[],
   receiptId: string,
   at: string,

@@ -1,40 +1,14 @@
-import { z } from "zod";
+import type { z } from "zod";
 import type { VillageState } from "../models/world.js";
 import type { NarrationReadset } from "../models/narration-model.js";
 import type { ContinuityEvidence } from "../models/continuity-model.js";
 import type { AcceptedEpisode } from "../models/episode-model.js";
-import { readNarrativeDevelopment, applyNarrativeDevelopment, CONSEQUENCES } from "./narrative-development.js";
+import { readNarrativeDevelopment, applyNarrativeDevelopment } from "./narrative-development.js";
+import { narrationCircumstanceFields } from "./narration-command-contract.js";
 import { reserveSceneNarrative } from "./scene-narrative.js";
 import { memoryRequire } from "./memory-integrity.js";
 import { narrationWitnesses, type NarrationSourceContext } from "./narration-sources.js";
 
-export const narrationCircumstanceFields = {
-  severity: z.enum(CONSEQUENCES).optional(),
-  occurrence: z.string().min(1).max(1200).optional(),
-  situation: z
-    .object({
-      id: z.string().min(1).max(160).optional(),
-      title: z.string().min(1).max(160),
-      summary: z.string().min(1).max(1200),
-      status: z.enum(["active", "resolved"]).optional(),
-    })
-    .strict(),
-  conditions: z
-    .array(
-      z
-        .object({
-          id: z.string().min(1).max(160).optional(),
-          observation: z.string().min(1).max(600).optional(),
-          restriction: z.enum(["none", "ordinary-use"]).optional(),
-          remedy: z.string().max(600).optional(),
-          durationMinutes: z.number().int().min(1).max(10080).optional(),
-          clear: z.boolean().optional(),
-        })
-        .strict(),
-    )
-    .max(4)
-    .optional(),
-};
 type Command = z.infer<z.ZodObject<typeof narrationCircumstanceFields>>;
 
 /** Only finite native circumstance metadata: appearance remains common room continuity. */

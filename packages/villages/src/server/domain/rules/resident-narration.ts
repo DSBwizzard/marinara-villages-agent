@@ -35,15 +35,20 @@ import {
   narrationSourceSchema,
 } from "./narration-contract.js";
 import { prepareContinuityKeep } from "./narration-keep.js";
-import { bindNarrationSegment } from "./narration-sources.js";
+import { bindNarrationSegment, bindNarrationReceipt, type NarrationCommunication } from "./narration-sources.js";
 import { findLocation } from "./places.js";
 import { structuralShape } from "./project-structure.js";
-import { selectSceneEffects, type SceneEffectResult } from "./scene-acceptance.js";
+import { selectSceneEffects, resolveNarrationEffects, type SceneEffectResult } from "./scene-acceptance.js";
 import { villagePresence } from "./village-projections.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { VenueLine } from "../models/scene-model.js";
 import { agendaBlocksFor } from "./agenda-week.js";
 import { readResidentNarrationCapture } from "../decoding/resident-narration-codec.js";
+import { narrationAccessScopes, applyNarrationAccess, assertNarrationDecision } from "./narration-access.js";
+import { narrationResidenceContext, applyNarrationResidence } from "./narration-residence.js";
+import { narrationAppointment } from "./narration-appointment.js";
+import { capturedSceneCalendar } from "./scene-calendar.js";
+import { readNarrationNativeCommand } from "./narration-command-contract.js";
 
 const id = z.string().min(1).max(160),
   label = z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,47}$/);
@@ -72,6 +77,7 @@ const output = z
     reflection: reflection.optional(),
     keep: z.array(z.unknown()).max(32),
     requires: z.array(label).max(48),
+    commands: z.array(z.unknown()).max(16).default([]),
   })
   .strict();
 const localDate = (state: VillageState, at: string) =>
@@ -126,6 +132,7 @@ const contextHolders = (capture: ResidentNarrationCapture): ContinuityHolder[] =
 export function captureResidentNarration(
   state: VillageState,
   opportunity: ResidentPlanningOpportunity,
+  historical = false,
 ): ResidentNarrationCapture {
   memoryRequire(
     opportunity.kind === "encounter" || opportunity.kind === "routine",
@@ -201,6 +208,10 @@ export function captureResidentNarration(
     actors,
     nativeFingerprint: nativeFingerprint(state, opportunity),
     protectionFingerprint: "",
+    ...(historical ? { historical: true as const } : {}),
+    calendar: capturedSceneCalendar({ startedAt: at }, state.timeZone),
+    access: narrationAccessScopes(state, opportunity.actorIds),
+    residence: narrationResidenceContext(state, opportunity.actorIds),
     ...(room ? { room } : {}),
   };
   capture.protectionFingerprint = continuityProtectionFingerprint(state.continuity, contextHolders(capture));
@@ -275,6 +286,27 @@ export function acceptResidentNarration(
     };
   }
   assertResidentNarrationCurrent(state, capture);
+  const selected = resolveNarrationEffects((excluded) => {
+    const candidate = raw.commands?.length ? structuredClone(state) : { ...state };
+    return {
+      ...prepareResidentNarration(candidate, state, capture, raw, episodeId, digest, acceptedAt, excluded),
+      candidate,
+    };
+  });
+  if (!selected.result.held) Object.assign(state, selected.candidate);
+  return selected.result;
+}
+
+function prepareResidentNarration(
+  state: VillageState,
+  before: VillageState,
+  capture: ResidentNarrationCapture,
+  raw: ResidentNarration,
+  episodeId: string,
+  digest: string,
+  acceptedAt: string,
+  excluded: Map<string, string>,
+) {
   const value = output.parse(raw);
   memoryRequire(!(value.encounter && value.reflection), "choose an encounter or private reflection");
   const actorIds = capture.actors.map((actor) => actor.id),
@@ -286,7 +318,7 @@ export function acceptResidentNarration(
     );
   if (reflector) memoryRequire(actorIds.includes(reflector), "private reflection actor was not offered");
   memoryRequire(
-    value.encounter || value.reflection || (!value.keep.length && !value.requires.length),
+    value.encounter || value.reflection || (!value.keep.length && !value.requires.length && !value.commands.length),
     "lasting resident meaning needs its actual encounter or reflection",
   );
   const segments =
@@ -380,7 +412,137 @@ export function acceptResidentNarration(
       admission.sourceActors,
     );
   const effects: SceneEffectResult[] = [],
-    prepared = new Map<string, ReturnType<typeof prepareContinuityKeep>>();
+    prepared = new Map<string, ReturnType<typeof prepareContinuityKeep>>(),
+    receipts: Record<string, AcceptedEpisode["commandReceipts"][number]> = {},
+    proofs: Record<string, ContinuityEvidence[]> = {},
+    positions = () => Object.fromEntries(capture.actors.map((actor) => [actor.id, actor.zoneId])),
+    communication: NarrationCommunication = { seed: state.seed, episodeId, input: "", actors, lines, positions },
+    commandRows: {
+      ordinal: number;
+      segment: number;
+      effect: SceneEffectResult;
+      command: ReturnType<typeof readNarrationNativeCommand>;
+    }[] = [];
+  for (const [ordinal, raw] of value.commands.entries()) {
+    let effect: SceneEffectResult;
+    try {
+      effect = readNarrationEffectHeader(raw, "command-" + ordinal);
+    } catch (error) {
+      effects.push({ id: "command-" + ordinal, requires: [], failure: String(error).slice(0, 2000) });
+      continue;
+    }
+    effects.push(effect);
+    try {
+      memoryRequire(value.encounter, "native commands require an actual resident encounter");
+      const command = readNarrationNativeCommand(raw),
+        segment = lines.findIndex((line) => line.id === labels[command.at]);
+      memoryRequire(segment >= 0, "resident native command needs its actual utterance label");
+      memoryRequire(
+        !capture.historical || command.type === "appointment",
+        "past resident encounters cannot change current native mechanics",
+      );
+      if (excluded.has(effect.id)) {
+        effect.failure = excluded.get(effect.id);
+        continue;
+      }
+      commandRows.push({ ordinal, segment, effect, command });
+    } catch (error) {
+      effect.failure = String(error).slice(0, 2000);
+    }
+  }
+  const accessBefore = narrationAccessScopes(before, actorIds);
+  for (const { command, segment, effect } of commandRows.toSorted(
+    (a, b) => a.segment - b.segment || a.ordinal - b.ordinal,
+  )) {
+    try {
+      if (
+        command.type !== "permission.grant" &&
+        command.type !== "permission.revoke" &&
+        command.type !== "access.decide" &&
+        command.type !== "appointment" &&
+        command.type !== "residence.request" &&
+        command.type !== "residence.decide"
+      )
+        throw Error("That native operation requires a real Player Scene or its admitted authority.");
+      const sources = command.source.map((raw) => {
+        let ref = narrationSourceSchema.parse(raw);
+        if (typeof ref === "string") {
+          memoryRequire(
+            ref !== "self" && !ref.startsWith("h:") && !ref.startsWith("native:"),
+            "native resident decisions need complete current spoken segments",
+          );
+          ref = { segment: ref };
+        }
+        memoryRequire("segment" in ref, "native resident decisions need complete current spoken segments");
+        return bindNarrationSegment(ref, {
+          seed: state.seed,
+          episodeId,
+          actors,
+          lines,
+          labels,
+          privateActorIds: actorIds,
+          positions,
+        });
+      });
+      memoryRequire(
+        sources.every((source) => source.moment && source.moment.index <= segment) &&
+          Math.max(...sources.map((source) => source.moment!.index)) === segment,
+        "native decision must match its actual current utterance",
+      );
+      assertNarrationDecision(state, command.by, communication, sources);
+      const receiptId = "native-" + memoryHash([episodeId, effect.id]).slice(0, 40),
+        readset = {
+          source: { seed: state.seed, episodeId, actors },
+          setupAt: capture.context.setupAt,
+          capturedAt: capture.context.at,
+          calendar: capture.calendar,
+          access: capture.access,
+          residence: capture.residence,
+        },
+        candidate = structuredClone(state);
+      let receipt: AcceptedEpisode["commandReceipts"][number];
+      if (command.type === "appointment") {
+        memoryRequire(command.when, "appointment needs its stated day");
+        receipt = narrationAppointment(candidate, { ...command, when: command.when }, readset, sources, receiptId);
+      } else if (command.type === "residence.request" || command.type === "residence.decide")
+        receipt = applyNarrationResidence(
+          candidate,
+          before,
+          command,
+          readset,
+          sources,
+          receiptId,
+          acceptedAt,
+          effect.requires.flatMap((id) => (receipts[id] ? [receipts[id]] : [])),
+        );
+      else {
+        const baseline = accessBefore.find((scope) => scope.venueId === command.venue);
+        memoryRequire(baseline, "native access scope is missing");
+        const decision =
+          command.type === "access.decide"
+            ? { type: command.type, by: command.by, venue: command.venue, zone: command.zone, ...command.decision }
+            : command;
+        receipt = applyNarrationAccess(
+          candidate,
+          decision,
+          readset,
+          communication,
+          sources,
+          baseline,
+          receiptId,
+          acceptedAt,
+        );
+      }
+      Object.assign(state, candidate);
+      receipts[effect.id] = receipt;
+      proofs[effect.id] = sources;
+    } catch (error) {
+      effect.failure = String(error).slice(0, 2000);
+    }
+  }
+  const provisional = effects
+    .filter((effect) => receipts[effect.id])
+    .map((effect) => ({ effect, sources: proofs[effect.id] }));
   for (const [ordinal, row] of value.keep.entries()) {
     let header: ReturnType<typeof readNarrationEffectHeader>;
     try {
@@ -396,62 +558,77 @@ export function acceptResidentNarration(
         !reflector || (Array.isArray(proposal.for) && proposal.for.every((id) => id === reflector)),
         "private reflection may retain only its actual owner",
       );
-      prepared.set(
-        header.id,
-        prepareContinuityKeep(row, ordinal, state.continuity, admission, {
-          seed: state.seed,
-          episodeId,
-          operationId: episodeId,
-          actors,
-          subjects: admission.subjects,
-          bindSource(raw, owner) {
-            const ref = narrationSourceSchema.parse(raw);
-            if (ref === "self") {
-              memoryRequire(
-                owner.holder.kind === "actor" &&
-                  actorIds.includes(owner.holder.id) &&
-                  (!reflector || owner.holder.id === reflector),
-                "resident self belongs only to its portrayed actor",
-              );
-              return continuitySelfSource({ seed: state.seed, episodeId, operationId: episodeId }, owner);
-            }
-            if (typeof ref === "string" && ref.startsWith("h:")) {
-              memoryRequire(Object.hasOwn(historical, ref), "resident historical source was not fitted");
-              return structuredClone(historical[ref]);
-            }
+      const keep = prepareContinuityKeep(row, ordinal, state.continuity, admission, {
+        seed: state.seed,
+        episodeId,
+        operationId: episodeId,
+        actors,
+        subjects: admission.subjects,
+        bindSource(raw, owner) {
+          const ref = narrationSourceSchema.parse(raw);
+          if (typeof ref === "string" && ref.startsWith("native:")) {
+            const receipt = receipts[ref.slice(7)];
+            memoryRequire(receipt, "native resident source was not validated");
+            return bindNarrationReceipt(receipt, communication, owner);
+          }
+          if (ref === "self") {
             memoryRequire(
-              typeof ref === "string" || "segment" in ref,
-              "resident narration cannot invent player input evidence",
+              owner.holder.kind === "actor" &&
+                actorIds.includes(owner.holder.id) &&
+                (!reflector || owner.holder.id === reflector),
+              "resident self belongs only to its portrayed actor",
             );
-            let segmentRef = typeof ref === "string" ? { segment: ref } : ref;
-            if (reflector) {
-              memoryRequire(
-                !segmentRef.act &&
-                  (!segmentRef.perceive ||
-                    (segmentRef.perceive.kind === "private" &&
-                      segmentRef.perceive.by.length === 1 &&
-                      segmentRef.perceive.by[0] === reflector)),
-                "reflection cannot establish an external observation or decision",
-              );
-              segmentRef = { ...segmentRef, perceive: { kind: "private", by: [reflector] } };
-            }
-            return bindNarrationSegment(
-              segmentRef,
-              {
-                seed: state.seed,
-                episodeId,
-                actors,
-                room: capture.room?.holder,
-                privateActorIds: reflector ? [reflector] : actorIds,
-                lines,
-                labels,
-                positions: () => Object.fromEntries(capture.actors.map((actor) => [actor.id, actor.zoneId])),
-              },
-              owner,
+            return continuitySelfSource({ seed: state.seed, episodeId, operationId: episodeId }, owner);
+          }
+          if (typeof ref === "string" && ref.startsWith("h:")) {
+            memoryRequire(Object.hasOwn(historical, ref), "resident historical source was not fitted");
+            return structuredClone(historical[ref]);
+          }
+          memoryRequire(
+            typeof ref === "string" || "segment" in ref,
+            "resident narration cannot invent player input evidence",
+          );
+          let segmentRef = typeof ref === "string" ? { segment: ref } : ref;
+          if (reflector) {
+            memoryRequire(
+              !segmentRef.act &&
+                (!segmentRef.perceive ||
+                  (segmentRef.perceive.kind === "private" &&
+                    segmentRef.perceive.by.length === 1 &&
+                    segmentRef.perceive.by[0] === reflector)),
+              "reflection cannot establish an external observation or decision",
             );
-          },
-        }),
-      );
+            segmentRef = { ...segmentRef, perceive: { kind: "private", by: [reflector] } };
+          }
+          return bindNarrationSegment(
+            segmentRef,
+            {
+              seed: state.seed,
+              episodeId,
+              actors,
+              room: capture.room?.holder,
+              privateActorIds: reflector ? [reflector] : actorIds,
+              lines,
+              labels,
+              positions: () => Object.fromEntries(capture.actors.map((actor) => [actor.id, actor.zoneId])),
+            },
+            owner,
+          );
+        },
+      });
+      effect.requires = [
+        ...new Set([
+          ...effect.requires,
+          ...keep.sources
+            .filter((source) => source.kind === "native" && source.episodeId === episodeId)
+            .map((source) => {
+              const id = Object.keys(receipts).find((id) => receipts[id].id === source.committedReceiptId);
+              memoryRequire(id, "continuity cited an unvalidated resident native effect");
+              return id;
+            }),
+        ]),
+      ];
+      prepared.set(header.id, keep);
     } catch (error) {
       effect.failure = error instanceof Error ? error.message.slice(0, 2000) : String(error).slice(0, 2000);
     }
@@ -461,13 +638,29 @@ export function acceptResidentNarration(
     selection: ReturnType<typeof selectSceneEffects>;
   for (;;) {
     selection = selectSceneEffects(effects, value.requires);
-    if (selection.held) return { ...selection, episode: undefined, replayed: false };
+    if (selection.held) return { result: { ...selection, episode: undefined, replayed: false }, provisional };
     continuity = state.continuity;
     let failed = false;
     for (const id of selection.acceptedIds) {
-      const keep = prepared.get(id)!;
+      const keep = prepared.get(id);
       try {
-        continuity = applyContinuityWrite(continuity, keep.write, keep.admission);
+        if (keep) continuity = applyContinuityWrite(continuity, keep.write, keep.admission);
+        const receipt = receipts[id];
+        if (receipt?.kind === "access" && receipt.witnesses.length) {
+          const evidence = bindNarrationReceipt(receipt, communication);
+          continuity = applyContinuityWrite(
+            continuity,
+            {
+              id: "native-" + memoryHash(id).slice(0, 32),
+              holders: actors.filter((actor) => receipt.witnesses.includes(actor.id)),
+              class: "experience",
+              current: false,
+              text: receipt.text,
+              sourceIds: [evidence.id],
+            },
+            { ...admission, protectedRoots: [], sources: [evidence], supplied: [] },
+          );
+        }
       } catch (error) {
         effects.find((row) => row.id === id)!.failure = String(error).slice(0, 2000);
         failed = true;
@@ -494,9 +687,14 @@ export function acceptResidentNarration(
     );
     grounding.set(source.id, source);
   }
-  for (const source of [...fitted, ...selection.acceptedIds.flatMap((id) => prepared.get(id)!.sources)].filter(
-    (source) => source.episodeId === episodeId,
-  )) {
+  for (const source of [
+    ...fitted,
+    ...selection.acceptedIds.flatMap((id) => [
+      ...(prepared.get(id)?.sources ?? []),
+      ...(proofs[id] ?? []),
+      ...(receipts[id] ? [bindNarrationReceipt(receipts[id], communication)] : []),
+    ]),
+  ].filter((source) => source.episodeId === episodeId)) {
     const before = grounding.get(source.id);
     memoryRequire(!before || memoryHash(before) === memoryHash(source), "conflicting resident source identity");
     grounding.set(source.id, source);
@@ -543,8 +741,12 @@ export function acceptResidentNarration(
     grounding: [...grounding.values()],
     continuityVersionIds: versions.map((version) => version.id),
     offered: capture.context.offered.filter((row) => actorIds.includes(row.holder.id)),
-    commandReceipts: [],
-    dependencies: {},
+    commandReceipts: selection.acceptedIds.flatMap((id) => (receipts[id] ? [receipts[id]] : [])),
+    dependencies: Object.fromEntries(
+      selection.acceptedIds
+        .filter((id) => receipts[id])
+        .map((id) => ["native:" + receipts[id].id, [...new Set(proofs[id].map(continuitySourceUnit))]]),
+    ),
     holderDependencies,
     ...(capture.room ? { room: capture.room.holder } : {}),
     opportunity: {
@@ -558,5 +760,5 @@ export function acceptResidentNarration(
   assertContinuityRetention(continuity, episodes);
   state.continuity = continuity;
   state.episodes = episodes;
-  return { ...selection, episode: episodes.records.at(-1)!, replayed: false };
+  return { result: { ...selection, episode: episodes.records.at(-1)!, replayed: false }, provisional };
 }

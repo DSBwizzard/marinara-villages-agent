@@ -8,6 +8,10 @@ export type ResidentNarrationCapture = {
   actors: { id: string; incarnation: string; zoneId: string }[];
   nativeFingerprint: string;
   protectionFingerprint: string;
+  historical?: true;
+  calendar: ReturnType<typeof import("../rules/scene-calendar.js").capturedSceneCalendar>;
+  access: ReturnType<typeof import("../rules/narration-access.js").narrationAccessScopes>;
+  residence: ReturnType<typeof import("../rules/narration-residence.js").narrationResidenceContext>;
   room?: {
     holder: Extract<ContinuityHolder, { kind: "room" }>;
     supplied: ContinuityTarget[];
@@ -22,4 +26,5 @@ export type ResidentNarration = {
   reflection?: unknown;
   keep: unknown[];
   requires: string[];
+  commands?: unknown[];
 };

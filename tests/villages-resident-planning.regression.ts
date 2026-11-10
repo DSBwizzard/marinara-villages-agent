@@ -39,6 +39,11 @@ import { createVillageRepository } from "../packages/villages/src/server/adapter
 import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
 import { captureContinuityContext } from "../packages/villages/src/server/domain/rules/continuity-context.js";
 import { collectRetainedStorage } from "../packages/villages/src/server/features/repair/retained-storage-cleanup.js";
+import { configureVillageClock } from "../packages/villages/src/server/adapters/time/clock-gate.js";
+import { venue as homeFixture } from "./fixtures/villages-projects.fixture.js";
+import { narrationAccessPrompt } from "../packages/villages/src/server/domain/rules/narration-access.js";
+import { narrationResidencePrompt } from "../packages/villages/src/server/domain/rules/narration-residence.js";
+import { requestResidenceMove } from "../packages/villages/src/server/domain/rules/residence-move.js";
 
 function fixture(now = new Date()) {
   const at = now.toISOString(),
@@ -556,7 +561,15 @@ await runCase("resident-planning/delayed-meeting", async () => {
   const input = f.queued[0].input;
   f.payload(f.encounter(input));
   const result = await f.service.handler.generate(input);
-  f.service.handler.apply(f.state, input, result, { retrying: false });
+  const releaseClock = configureVillageClock({
+    now: () => new Date(Date.parse(input.context.narration.context.at) + 3600000),
+    observe: async () => null,
+  });
+  try {
+    f.service.handler.apply(f.state, input, result, { retrying: false });
+  } finally {
+    releaseClock();
+  }
   assert.equal(
     f.state.residentPlans.plans.find((row) => row.id === plan.id)!.status,
     "completed",
@@ -566,7 +579,17 @@ await runCase("resident-planning/delayed-meeting", async () => {
 });
 
 await runCase("resident-planning/strict-input", async () => {
-  const f = fixture();
+  const f = fixture(),
+    home = homeFixture("home", "residence"),
+    secret = "REMOTE_ROOM_SENTINEL_774";
+  home.zones!.find((zone) => zone.kind === "shared-residence")!.description = secret;
+  home.residentIds = ["mara"];
+  home.occupancy.residentCharacterId = "mara";
+  home.access!.managerIds = ["mara"];
+  f.state.venues.push(home);
+  f.state.venues[0].access!.managerIds = ["mara"];
+  f.state.venues[0].zones!.find((zone) => zone.id === f.zone)!.access!.managerIds = ["mara"];
+  requestResidenceMove(f.state, "leo", "home", "villager", "", "private-home-request", f.now);
   await f.service.reconcile(f.now);
   const input = f.queued[0].input;
   assert.throws(() => readResidentPlanningInput({ ...input, admitted: { wishes: [] } }));
@@ -574,6 +597,32 @@ await runCase("resident-planning/strict-input", async () => {
   await assert.rejects(f.service.handler.generate(input));
   assert.equal(f.calls.length, 1);
   assert.equal(f.state.planningUsage.count, 0);
+  assert(!JSON.stringify(f.calls[0]).includes(secret), "valid native scopes do not reveal remote room contents");
+  for (const field of [
+    "access-zone",
+    "access-policy",
+    "residence-zone",
+    "duplicate-manager",
+    "offstage-manager",
+    "unrelated-request",
+  ]) {
+    const corrupt = structuredClone(input),
+      capture = corrupt.context.narration;
+    if (field === "access-zone") capture.access[0].authorities[0].zones[0].description = secret;
+    if (field === "access-policy") capture.access[0].authorities[0].zones[0].policy.description = secret;
+    if (field === "residence-zone") capture.residence.homes[0].sleepZones[0].description = secret;
+    if (field === "duplicate-manager") capture.access[0].authorities[0].zones[0].policy.managerIds = ["mara", "mara"];
+    if (field === "offstage-manager") capture.access[0].authorities[0].actorId = "unrelated";
+    if (field === "unrelated-request") {
+      capture.residence.requests[0].person = "unrelated";
+      capture.residence.requests[0].requiredIds = ["unrelated"];
+    }
+    assert.throws(() => readResidentPlanningInput(corrupt), undefined, field);
+    await assert.rejects(f.service.handler.generate(corrupt));
+    assert.equal(f.calls.length, 1, "invalid stored scope is rejected before another provider admission");
+    assert(!narrationAccessPrompt(capture.access).includes(secret));
+    assert(!narrationResidencePrompt(capture.residence).includes(secret));
+  }
 });
 
 await runCase("resident-planning/background-recovery", async () => {
@@ -581,6 +630,8 @@ await runCase("resident-planning/background-recovery", async () => {
     storage = sceneHistoryFixture(),
     repository = createVillageRepository(() => storage.gate.documents);
   let failPages = false;
+  f.state.venues[0].access!.managerIds = ["mara"];
+  f.state.venues[0].zones!.find((zone) => zone.id === f.zone)!.access!.managerIds = ["mara"];
   const create = storage.documents.create;
   storage.documents.create = async (input: any) => {
     if (failPages && input.kind === "memory-page") throw Error("injected native page failure");
@@ -591,7 +642,24 @@ await runCase("resident-planning/background-recovery", async () => {
     Object.assign(f.state, await repository.readAuthority({ memories: true }));
     await f.service.reconcile(f.now);
     const work = f.queued[0];
-    f.payload(f.encounter(work.input));
+    const response = f.encounter(work.input);
+    response.encounter.lines[0].text = "Leo, you have standing permission to use this room.";
+    f.payload({
+      ...response,
+      commands: [
+        {
+          id: "grant",
+          type: "permission.grant",
+          by: "mara",
+          visitor: "leo",
+          venue: "square",
+          zone: f.zone,
+          at: "hello",
+          source: ["hello"],
+        },
+      ],
+      requires: ["grant"],
+    });
     const worker = createBackgroundWork({
       villagesDocuments: () => storage.gate.documents,
       villagesLogger: () => ({ warn() {}, info() {}, error() {} }),
@@ -626,6 +694,11 @@ await runCase("resident-planning/background-recovery", async () => {
       "the actual worker retains its purchased native result before page failure",
     );
     assert.equal((await repository.readAuthority({ memories: true })).planningUsage.count, 0);
+    assert.equal(
+      (await repository.readAuthority({ memories: true })).venues[0].access!.permissions.length,
+      0,
+      "a failed history write cannot publish an unaccepted native grant",
+    );
     failPages = false;
     await worker.retryBackgroundJob(failed.id, failed.attempt, "retry-native", failed.instanceId);
     await worker.settleBackgroundWork();
@@ -633,6 +706,12 @@ await runCase("resident-planning/background-recovery", async () => {
       accepted = await repository.readAuthority({ memories: true });
     assert.equal(completed.status, "completed");
     assert.equal(accepted.planningUsage.count, 1);
+    assert.equal(accepted.venues[0].access!.permissions.length, 1);
+    assert.equal(accepted.venues[0].access!.permissions[0].sceneId, null);
+    assert(
+      ![...storage.rows.values()].some((row) => row.kind === "venue-visit"),
+      "actual background native acceptance never creates a fake Scene",
+    );
     assert(
       accepted.episodes.records.some((row) => row.opportunity?.id === work.input.context.narration.opportunity.id),
     );

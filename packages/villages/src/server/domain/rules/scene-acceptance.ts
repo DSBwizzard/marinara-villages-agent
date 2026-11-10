@@ -1,4 +1,5 @@
 import { memoryRequire, memoryString } from "./memory-integrity.js";
+import type { ContinuityEvidence } from "../models/continuity-model.js";
 
 export type SceneEffectResult = {
   id: string;
@@ -6,6 +7,53 @@ export type SceneEffectResult = {
   requires: string[];
   failure?: string;
 };
+
+/** A dropped provisional command must not lend authority to the surviving fiction. */
+export function resolveNarrationEffects<
+  T extends {
+    result: { held: boolean; rejected: { id: string; reason: string }[]; usableIds?: string[] };
+    provisional: { effect: SceneEffectResult; sources: ContinuityEvidence[] }[];
+  },
+>(prepare: (excluded: Map<string, string>) => T): T {
+  const excluded = new Map<string, string>(),
+    visited = new Set<string>();
+  for (;;) {
+    const key = JSON.stringify([...excluded.keys()].toSorted());
+    memoryRequire(!visited.has(key), "native proposals have incompatible authority dependencies");
+    visited.add(key);
+    const prepared = prepare(excluded),
+      result = prepared.result;
+    let restored = false;
+    for (const id of excluded.keys()) {
+      const retryExclusions = new Map(excluded);
+      retryExclusions.delete(id);
+      if (prepare(retryExclusions).result.usableIds?.includes(id)) {
+        excluded.delete(id);
+        restored = true;
+        break;
+      }
+    }
+    if (restored) continue;
+    const dropped = prepared.provisional
+      .filter(
+        ({ effect }) =>
+          effect.independent && result.rejected.some((row) => row.id === effect.id) && !excluded.has(effect.id),
+      )
+      .toSorted(
+        (a, b) =>
+          Math.max(-1, ...a.sources.map((source) => source.moment?.index ?? -1)) -
+          Math.max(-1, ...b.sources.map((source) => source.moment?.index ?? -1)),
+      )[0];
+    if (dropped) {
+      excluded.set(
+        dropped.effect.id,
+        result.rejected.find((row) => row.id === dropped.effect.id)?.reason ?? "Native effect was not selected.",
+      );
+      continue;
+    }
+    return prepared;
+  }
+}
 
 /** Select a coherent subset before the existing Village CAS; no domain is inherently optional. */
 export function selectSceneEffects(effects: SceneEffectResult[], assertedDependencies: string[]) {

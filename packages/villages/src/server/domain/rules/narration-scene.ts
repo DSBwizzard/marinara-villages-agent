@@ -3,7 +3,7 @@ import type { NarrationReadset } from "../models/narration-model.js";
 import type { ContinuityEvidence } from "../models/continuity-model.js";
 import type { AcceptedEpisode } from "../models/episode-model.js";
 import type { NarrationSourceContext } from "./narration-sources.js";
-import { narrationPositions, narrationWitnesses } from "./narration-sources.js";
+import { narrationPositions, narrationWitnesses, narrationCommunication } from "./narration-sources.js";
 import { assertNarrationDecision } from "./narration-access.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 
@@ -38,7 +38,7 @@ export function applyNarrationScene(
 ) {
   const by = command.type === "scene.end" ? "player" : command.who;
   if (by === "player") assertNarrationPlayerIntent(context, sources);
-  else assertNarrationDecision(state, by, context, sources);
+  else assertNarrationDecision(state, by, narrationCommunication(context), sources);
   let contactEndedIds: string[] = [],
     closed: true | undefined;
   if (command.type === "contact.end") {

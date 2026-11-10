@@ -1,12 +1,22 @@
 import type { ContinuityEvidence } from "../models/continuity-model.js";
+import { z } from "zod";
 import type { AcceptedEpisode } from "../models/episode-model.js";
 import type { NarrationReadset } from "../models/narration-model.js";
 import type { VillageState } from "../models/world.js";
 import { continuityActor } from "./continuity-actors.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
-import { narrationPositions, narrationWitnesses, type NarrationSourceContext } from "./narration-sources.js";
+import { narrationWitnesses, type NarrationCommunication } from "./narration-sources.js";
 import { findLocation, findNpc, sceneActorIds } from "./places.js";
-import { applyAccessCommand, managesAccess, mayInvite, readAccessCommand } from "./venue-access.js";
+import {
+  applyAccessCommand,
+  managesAccess,
+  mayInvite,
+  readAccessCommand,
+  hoursSchema,
+  zonePolicySchema,
+  permissionSchema,
+  banSchema,
+} from "./venue-access.js";
 
 /** Native authority only; remote descriptions, people and positions never enter this packet. */
 export function narrationAccessScopes(state: VillageState, actors: string[]) {
@@ -83,6 +93,41 @@ export function narrationAccessScopes(state: VillageState, actors: string[]) {
     });
 }
 export type NarrationAccessScope = ReturnType<typeof narrationAccessScopes>[number];
+const id = z.string().min(1).max(200),
+  ids = z.array(id).max(100);
+export const narrationAccessScopeSchema = z
+  .object({
+    venueId: id,
+    name: z.string().max(200),
+    revision: z.number().int().nonnegative().safe(),
+    fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+    authorities: z
+      .array(
+        z
+          .object({
+            actorId: id,
+            venuePolicy: z.object({ managerIds: ids, visitorHours: hoursSchema.nullable() }).strict().optional(),
+            zones: z
+              .array(
+                z
+                  .object({
+                    id,
+                    name: z.string().max(200),
+                    policy: zonePolicySchema.optional(),
+                    manages: z.boolean(),
+                    invites: z.boolean(),
+                  })
+                  .strict(),
+              )
+              .max(256),
+            permissions: z.array(permissionSchema.strict()).max(10000),
+            bans: z.array(banSchema.strict()).max(10000),
+          })
+          .strict(),
+      )
+      .max(5),
+  })
+  .strict();
 export function narrationAccessPrompt(scopes: NarrationAccessScope[]) {
   return scopes.length
     ? "Scoped native access authority; never private room contents or character knowledge: " +
@@ -92,8 +137,32 @@ export function narrationAccessPrompt(scopes: NarrationAccessScope[]) {
             name,
             authorities: authorities.map((row) => ({
               actorId: row.actorId,
-              venuePolicy: row.venuePolicy,
-              zones: row.zones,
+              venuePolicy: row.venuePolicy
+                ? {
+                    managerIds: row.venuePolicy.managerIds,
+                    visitorHours:
+                      row.venuePolicy.visitorHours === null ? null : hoursSchema.parse(row.venuePolicy.visitorHours),
+                  }
+                : undefined,
+              zones: row.zones.map(({ id, name, policy, manages, invites }) => ({
+                id,
+                name,
+                manages,
+                invites,
+                policy: policy
+                  ? {
+                      mode: policy.mode,
+                      managerIds: policy.managerIds,
+                      memberIds: policy.memberIds,
+                      memberRoles: policy.memberRoles,
+                      inviterIds: policy.inviterIds,
+                      visitorHours: Array.isArray(policy.visitorHours)
+                        ? hoursSchema.parse(policy.visitorHours)
+                        : policy.visitorHours,
+                      accompanied: policy.accompanied,
+                    }
+                  : undefined,
+              })),
               permissions: row.permissions.map(
                 ({ id, zoneId, visitorId, issuerId, duration, accompaniedBy, outsideHours }) => ({
                   id,
@@ -131,7 +200,7 @@ export type NarrationAccessDecision = {
 export function assertNarrationDecision(
   state: VillageState,
   by: string,
-  context: NarrationSourceContext,
+  context: NarrationCommunication,
   sources: ContinuityEvidence[],
 ) {
   const actor = context.actors.find((actor) => actor.id === by);
@@ -151,7 +220,7 @@ export function assertNarrationDecision(
           !source.moment
         )
           return false;
-        if (memoryHash(source.positions) !== memoryHash(narrationPositions(context, source.moment))) return false;
+        if (memoryHash(source.positions) !== memoryHash(context.positions(source.moment))) return false;
         if (by === "player")
           return (
             source.unitId === "input" &&
@@ -179,8 +248,10 @@ export function assertNarrationDecision(
 export function applyNarrationAccess(
   state: VillageState,
   decision: NarrationAccessDecision,
-  readset: NarrationReadset,
-  context: NarrationSourceContext,
+  readset: Pick<NarrationReadset, "setupAt" | "access"> & {
+    source: Pick<NarrationReadset["source"], "seed" | "episodeId">;
+  },
+  context: NarrationCommunication,
   sources: ContinuityEvidence[],
   before: NarrationAccessScope,
   receiptId: string,
@@ -197,6 +268,7 @@ export function applyNarrationAccess(
       before.venueId === decision.venue &&
       before.revision === captured.revision &&
       before.fingerprint === captured.fingerprint &&
+      memoryHash(before) === memoryHash(captured) &&
       captured.authorities.some((authority) => authority.actorId === decision.by),
     "the captured access authority changed or was not supplied",
   );
@@ -259,7 +331,7 @@ export function applyNarrationAccess(
         ? {
             action: outcome === "refuse" ? "refuse-entry" : "leave-now",
             visitorId: decision.visitor,
-            sceneId: context.scene.id,
+            sceneId: context.visit?.id,
           }
         : outcome === "ban-zone" || outcome === "ban-venue"
           ? { action: "ban", visitorId: decision.visitor }
@@ -270,12 +342,12 @@ export function applyNarrationAccess(
               accompanied: decision.type === "access.decide" && decision.accompanies === true,
               outsideHours: outcome === "invite-outside-hours",
               ...(outcome === "invite-now" ||
-              (outcome === "invite-outside-hours" && decision.venue === context.scene.placeId)
-                ? { sceneId: context.scene.id }
+              (outcome === "invite-outside-hours" && decision.venue === context.visit?.placeId)
+                ? { sceneId: context.visit?.id }
                 : {}),
             };
     memoryRequire(
-      !["refuse", "dismiss", "invite-now"].includes(outcome) || decision.venue === context.scene.placeId,
+      !["refuse", "dismiss", "invite-now"].includes(outcome) || decision.venue === context.visit?.placeId,
       "a current-visit decision cannot target a different Place",
     );
     apply({ ...meaning, zoneId: outcome === "ban-venue" ? null : decision.zone });

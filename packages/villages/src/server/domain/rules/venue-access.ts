@@ -32,7 +32,7 @@ export const zonePolicySchema = z
     accompanied: z.boolean(),
   })
   .strict();
-const permissionSchema = z.object({
+export const permissionSchema = z.object({
   id,
   zoneId: id,
   visitorId: id,
@@ -45,7 +45,7 @@ const permissionSchema = z.object({
   issuedAt: id,
   sourceLineIds: ids,
 });
-const banSchema = z.object({
+export const banSchema = z.object({
   id,
   zoneId: id.nullable(),
   visitorId: id,

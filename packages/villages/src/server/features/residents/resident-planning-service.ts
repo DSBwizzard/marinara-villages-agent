@@ -92,7 +92,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         timeZone: state.timeZone || undefined,
         now,
       }),
-      narration = captureResidentNarration(state, opportunity);
+      narration = captureResidentNarration(state, opportunity, catchup);
     return {
       format: 1,
       ...(catchup ? { catchup: true as const } : {}),
@@ -464,6 +464,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
             ...(proposal.reflection ? { reflection: proposal.reflection } : {}),
             keep: proposal.keep,
             requires: proposal.requires,
+            commands: proposal.commands,
           },
           accepted = acceptResidentNarration(target, capture, fiction, saved.responseDigest, at);
         memoryRequire(

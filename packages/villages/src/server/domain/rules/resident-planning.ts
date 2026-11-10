@@ -6,6 +6,9 @@ import { socialPlanSchema } from "../decoding/resident-plans-codec.js";
 import type { ResidentNarrationCapture } from "../models/resident-narration.js";
 import { NARRATION_KEEP } from "./narration-contract.js";
 import { memoryRequire } from "./memory-integrity.js";
+import { readNarrationNativeCommand } from "./narration-command-contract.js";
+import { narrationAccessPrompt } from "./narration-access.js";
+import { narrationResidencePrompt } from "./narration-residence.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { SocialPlan } from "../models/resident-plans.js";
 import type {
@@ -142,6 +145,7 @@ const proposal = z
       .optional(),
     keep: z.array(z.unknown()).max(32).default([]),
     requires: z.array(effectId).max(48).default([]),
+    commands: z.array(z.unknown()).max(16).default([]),
     planId: id.optional(),
     routineIdea: z
       .object({
@@ -174,9 +178,10 @@ export function buildResidentPlanningMessages(context: ResidentPlanningContext):
     "mail:{senderId,text} is an exact personal letter to the player from one offered resident instead of an encounter/reflection. Source letter refers to its exact writing; keep may retain only its actual writer or future reader. Player learning happens only when they read it. A letter grants no access and performs no native action.",
     PERSONAL_LETTER_INSTRUCTION,
     NARRATION_KEEP,
+    "Only an actual encounter may use commands:[{id?:label,at:line label,source:[current spoken line labels],requires?:[effect IDs],independent?:true,...}]. Each deciding actor must speak its complete decision now, to an actual participant. Supported: permission.grant or permission.revoke with by,visitor,venue,zone; access.decide with by,venue,zone,decision (invite-later,invite-outside-hours,ban-zone,ban-venue with visitor and optional accompanies; or access-management with the existing supplied management action); residence.request with by,venue; residence.decide with by,person,venue,approved; appointment with by,when:{dayOffset}|{weekday,afterToday?}|{date},minute?. No current-visit action or Scene ID. Use native:effect ID as a keep source for its actual result. Native authority and required household approvals remain mandatory; no immediate relocation. Reflections and letters perform no native commands.",
     "Use keep and requires in this same object for consequential lasting meaning; no meaning object, separate Wish/relationship review or full input classification. requires lists effects necessary to the source's successful fiction. Only independent:true permits an unrelated optional effect to drop. Historical aliases remain scoped; self is only the portrayed non-player's own internal state. Native mechanics cannot be obtained through keep.",
     context.catchup
-      ? "This is a bounded past opportunity. Only encounter or private reflection is available; no mail, plan, housing or routine changes."
+      ? "This is a bounded past opportunity. Only encounter or private reflection is available; native commands may bind an actually spoken appointment date only. No current access, mail, plan, housing or routine changes."
       : "Optional future native choices: planId selects one exact offered plan ID. Availability is not preference or consent. routineIdea:{characterId,activity,venueId,zoneId?,flexible:true} proposes an ordinary future routine for one offered resident at an accessible existing place. housingRequests:[{characterId,venueId}] proposes one offered move, never a completed relocation. These are proposals, not asserted native successes. No employment, asset creation or unseen physical work.",
     "Village: " + context.village + ". Setting: " + context.setting,
     renderPlayerBackgroundContext(context),
@@ -192,6 +197,9 @@ export function buildResidentPlanningMessages(context: ResidentPlanningContext):
         residents: context.residents,
         continuity: capture.context.prompt,
         room: capture.room ? { ...capture.room.packet, protections: capture.room.protections } : undefined,
+        nativeCalendar: capture.calendar,
+        access: narrationAccessPrompt(capture.access),
+        residences: narrationResidencePrompt(capture.residence),
         plans: context.plans,
         housing: context.housing,
       }),
@@ -210,6 +218,7 @@ export function readResidentPlanningProposal(
     "choose one resident fictional source",
   );
   memoryRequire(!value.mail || actors.includes(value.mail.senderId), "automatic correspondent was not offered");
+  memoryRequire(!value.commands.length || !!value.encounter, "native commands require an actual resident encounter");
   memoryRequire(!value.planId || context.plans.some((plan) => plan.id === value.planId), "future plan was not offered");
   memoryRequire(!value.routineIdea || actors.includes(value.routineIdea.characterId), "routine owner was not offered");
   memoryRequire(
@@ -227,7 +236,11 @@ export function readResidentPlanningProposal(
 /** Fresh and recovered results obey the same historical authority. */
 export function assertCatchupChoices(payload: ResidentPlanningProposal) {
   memoryRequire(
-    !payload.mail && !payload.planId && !payload.routineIdea && !payload.housingRequests.length,
+    !payload.mail &&
+      !payload.planId &&
+      !payload.routineIdea &&
+      !payload.housingRequests.length &&
+      payload.commands.every((row) => readNarrationNativeCommand(row).type === "appointment"),
     "catch-up permits only encounters and private reflections",
   );
 }
@@ -297,6 +310,7 @@ export function readResidentPlanningInput(raw: unknown): ResidentPlanningInput {
   );
   memoryRequire(
     !!context.catchup === !!value.catchup &&
+      !!capture.historical === !!value.catchup &&
       (!value.catchup ||
         (value.catchup.world.seed === capture.context.seed && value.catchup.world.setupAt === capture.context.setupAt)),
     "resident planning changed historical world",

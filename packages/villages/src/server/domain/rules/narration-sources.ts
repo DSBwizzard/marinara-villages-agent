@@ -44,6 +44,47 @@ export type NarrationSourceContext = {
   moves: Pick<ContactMove, "characterId" | "zoneId" | "segment">[];
 };
 export type NarrationSourceOwner = { holder: ContinuityHolder; writeId: string; text: string; class: ContinuityClass };
+export type NarrationCommunication = Pick<
+  NarrationSourceContext,
+  "seed" | "episodeId" | "input" | "actors" | "lines"
+> & {
+  positions(moment: { index: number; side: "before" | "after" }): Record<string, string>;
+  visit?: Pick<VenueScene, "id" | "placeId">;
+};
+export function narrationCommunication(context: NarrationSourceContext): NarrationCommunication {
+  return { ...context, positions: (moment) => narrationPositions(context, moment), visit: context.scene };
+}
+
+export function bindNarrationReceipt(
+  receipt: AcceptedEpisode["commandReceipts"][number],
+  context: Pick<NarrationSourceContext, "seed" | "episodeId" | "actors">,
+  owner?: NarrationSourceOwner,
+): ContinuityEvidence {
+  if (owner?.holder.kind === "room")
+    memoryRequire(
+      nativeReceiptSupportsRoom(receipt, owner.holder),
+      "native receipt does not establish this room outcome",
+    );
+  memoryRequire(
+    receipt.witnesses.every((id) => context.actors.some((actor) => actor.id === id)),
+    "native source witnesses were not admitted",
+  );
+  return {
+    id: "source-" + memoryHash([context.episodeId, receipt.id]).slice(0, 32),
+    seed: context.seed,
+    episodeId: context.episodeId,
+    unitId: "native:" + receipt.id,
+    fingerprint: memoryHash(receipt),
+    excerpt: receipt.text,
+    kind: "native",
+    committedReceiptId: receipt.id,
+    perceptions: receipt.witnesses.map((actorId) => ({
+      actorId,
+      channel: receipt.observedBy?.includes(actorId) ? "sight" : "private",
+      text: receipt.text,
+    })),
+  };
+}
 
 function position(
   context: NarrationSourceContext,
@@ -112,30 +153,8 @@ export function bindNarrationSource(
     }
     if (Object.hasOwn(context.native, ref)) {
       const receipt = context.native[ref];
-      if (owner?.holder.kind === "room")
-        memoryRequire(
-          nativeReceiptSupportsRoom(receipt, owner.holder),
-          "native receipt does not establish this room outcome",
-        );
-      memoryRequire(
-        ref.startsWith("native:") && receipt.witnesses.every((id) => context.actors.some((actor) => actor.id === id)),
-        "native source witnesses were not admitted",
-      );
-      return {
-        id: "source-" + memoryHash([context.episodeId, receipt.id]).slice(0, 32),
-        seed: context.seed,
-        episodeId: context.episodeId,
-        unitId: "native:" + receipt.id,
-        fingerprint: memoryHash(receipt),
-        excerpt: receipt.text,
-        kind: "native",
-        committedReceiptId: receipt.id,
-        perceptions: receipt.witnesses.map((actorId) => ({
-          actorId,
-          channel: receipt.observedBy?.includes(actorId) ? "sight" : "private",
-          text: receipt.text,
-        })),
-      };
+      memoryRequire(ref.startsWith("native:"), "native source alias changed");
+      return bindNarrationReceipt(receipt, context, owner);
     }
     memoryRequire(!ref.startsWith("h:") && !ref.startsWith("native:"), "source alias was not supplied");
     return bindNarrationSource({ segment: ref }, context, owner);
