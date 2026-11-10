@@ -68,6 +68,10 @@ export function currentRoomViews(
   return continuityViews(collection, holder, at, blocked).sort((a, b) => a.version.room!.order - b.version.room!.order);
 }
 
+export function roomParagraphs(text: string): string[] {
+  return text.split(/\r?\n(?:[^\S\r\n]*\r?\n)+/u).filter((paragraph) => paragraph.trim());
+}
+
 /** Every current entry stays stored; only complete selected entries become legal mutation targets. */
 export function selectRoomContinuity(
   collection: ContinuityCollection,

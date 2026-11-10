@@ -323,6 +323,7 @@ export function applyContinuityWrite(
   collection: ContinuityCollection,
   write: ContinuityWrite,
   context: ContinuityAdmission,
+  authoredRoomParagraph = false,
 ): ContinuityCollection {
   memoryString(context.seed, 160);
   memoryString(context.operationId, 160);
@@ -338,6 +339,11 @@ export function applyContinuityWrite(
     "invalid continuity holders",
   );
   const room = write.holders.find((holder) => holder.kind === "room");
+  memoryRequire(
+    !authoredRoomParagraph ||
+      (room && !write.target && !write.retire && !write.room?.expiresInMinutes && !write.room?.knownBy?.length),
+    "authored Room paragraphs require a fresh Room entry",
+  );
   memoryRequire(
     !room ||
       (write.class === undefined &&
@@ -364,6 +370,16 @@ export function applyContinuityWrite(
     return collection;
   }
   const sources = resolveSources(write, context);
+  if (authoredRoomParagraph)
+    memoryRequire(
+      sources.length === 1 &&
+        sources[0].kind === "native" &&
+        sources[0].episodeId === context.episodeId &&
+        sources[0].excerpt === write.text &&
+        !sources[0].perceptions.length &&
+        write.room?.visibility !== "concealed",
+      "authored Room paragraph lost its native source",
+    );
   for (const source of sources)
     if (source.kind === "knowledge") {
       memoryRequire(context.continuityRevision !== undefined, "knowledge anchor needs its admitted revision");
@@ -652,7 +668,7 @@ export function applyContinuityWrite(
             ? { expiresAt: prior.room.expiresAt }
             : {}),
       };
-      if (!write.retire)
+      if (!write.retire && !authoredRoomParagraph && text !== prior?.text)
         memoryRequire(
           !continuityViews(
             collection,

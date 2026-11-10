@@ -1,4 +1,4 @@
-import { zonePictureBaseline } from "./zone-picture.js";
+import { zoneAppearanceContext, zonePictureBaseline } from "./zone-picture.js";
 import {
   applyConnectionEdits,
   connectionProblem,
@@ -123,11 +123,7 @@ export function readBaseVenueLayout(
           dirty:
             (!!reference && area.referenceAppliedId !== reference.id) ||
             (!!context &&
-              context !==
-                JSON.stringify({
-                  description: asTrimmedString(area.description),
-                  ...(asTrimmedString(row.form) ? { form: asTrimmedString(row.form) } : {}),
-                })),
+              context !== zoneAppearanceContext(asTrimmedString(area.description), asTrimmedString(row.form))),
         }
       : undefined;
   };

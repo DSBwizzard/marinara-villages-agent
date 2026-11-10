@@ -14,11 +14,13 @@ import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-
 import { establishPlace, projectPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
 import { draftEstablishmentProject } from "../packages/villages/src/server/features/projects/project-drafts.js";
 import { continuityViews } from "../packages/villages/src/server/domain/rules/continuity.js";
+import { currentRoomViews } from "../packages/villages/src/server/domain/rules/continuity-retrieval.js";
 import { readContinuity } from "../packages/villages/src/server/domain/decoding/continuity-codec.js";
 import { readEpisodes } from "../packages/villages/src/server/domain/decoding/episode-codec.js";
 import { assertContinuityRetention } from "../packages/villages/src/server/domain/rules/continuity-retention.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
 const at = "2026-11-09T20:00:00.000Z";
+const gardenParagraphs = ["Rows of old apple trees.", "Hidden paths lead to a private shed."];
 const draft = {
   name: "Orchard",
   description: "An old orchard beside the river.",
@@ -27,7 +29,7 @@ const draft = {
       id: "garden",
       name: "Garden",
       kind: "public",
-      description: "Rows of old apple trees. Hidden paths lead to a private shed.",
+      description: gardenParagraphs.join("\n\n"),
     },
   ],
 };
@@ -111,14 +113,16 @@ await runCase("narration-place/discovery", () => {
   assert.equal(f.state.venues.length, 1);
   assert.equal(memoryHash(f.state.venues[0]), before, "discovery never constructs or edits the current Venue");
   for (const zone of place.location.zones!) {
-    const views = continuityViews(
+    const views = currentRoomViews(
       f.state.continuity,
+      f.state.episodes,
       { kind: "room", placeId: place.id, zoneId: zone.id },
       at,
-      new Set(),
     );
-    assert.equal(views.length, 1);
-    assert.equal(views[0].version.text, zone.description);
+    assert.deepEqual(
+      views.map((row) => row.version.text),
+      zone.id === "garden" ? gardenParagraphs : [zone.description],
+    );
   }
   assert.equal(
     projectPlace(f.state, place).zones!.find((zone) => zone.id === "garden")!.description,

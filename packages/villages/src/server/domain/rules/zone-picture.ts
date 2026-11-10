@@ -1,6 +1,6 @@
 import { zoneDayNightDefault } from "../../../shared/helpers/zone-day-night.js";
 import type { VillageState, VillageVenue, VillageVenueZone } from "../models/world.js";
-import { currentRoomViews } from "./continuity-retrieval.js";
+import { currentRoomViews, roomParagraphs } from "./continuity-retrieval.js";
 
 export function applyZoneDayNightDefault(zone: VillageVenueZone, inferred: boolean | undefined): void {
   const before = zone.dayNight === true;
@@ -23,7 +23,7 @@ export function observableRoomDescription(
     .join("\n\n");
 }
 export function zoneAppearanceContext(description: string, form?: string): string {
-  return JSON.stringify({ description, ...(form ? { form } : {}) });
+  return JSON.stringify({ description: roomParagraphs(description).join("\n\n"), ...(form ? { form } : {}) });
 }
 export function zonePictureContext(
   state: Pick<VillageState, "continuity" | "episodes">,

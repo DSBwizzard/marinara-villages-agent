@@ -17,13 +17,15 @@ import {
   continuityVersionUnit,
   continuityProtectionFingerprint,
   continuityProtectionUnits,
+  ROOM_CONTINUITY_TEXT_BYTES,
 } from "./continuity.js";
 import { appendEpisode } from "./episodes.js";
 import { assertContinuityRetention } from "./continuity-retention.js";
 import { nativeReceiptSupportsRoom } from "./episode-sources.js";
-import { memoryHash, memoryRequire, memoryObject } from "./memory-integrity.js";
+import { memoryHash, memoryRequire, memoryObject, memoryString } from "./memory-integrity.js";
 import { findLocation } from "./places.js";
 import { episodeSourceGraph } from "../decoding/episode-codec.js";
+import { roomParagraphs } from "./continuity-retrieval.js";
 export const nativeEpisodeId = (seed: string, receiptId: string) =>
   "native-" + memoryHash([seed, receiptId]).slice(0, 32);
 
@@ -131,6 +133,7 @@ export function retainNativeFact(
     current?: boolean;
     owner?: Extract<ContinuityHolder, { kind: "actor" }>;
     room?: Extract<ContinuityHolder, { kind: "room" }>;
+    authoredRoomParagraph?: true;
     roomChange?: { target?: ContinuityTarget; retire?: true; expiresInMinutes?: number };
     context?: ContinuityEvidence[];
     provenance?: string[];
@@ -144,6 +147,7 @@ export function retainNativeFact(
     "current",
     "owner",
     "room",
+    "authoredRoomParagraph",
     "roomChange",
     "context",
     "provenance",
@@ -151,6 +155,16 @@ export function retainNativeFact(
     "screening",
   ]);
   const { room, roomChange } = meaning;
+  memoryRequire(
+    !meaning.authoredRoomParagraph ||
+      (room &&
+        receipt.kind === "structure" &&
+        !roomChange &&
+        !receipt.witnesses.length &&
+        !receipt.observedBy?.length &&
+        !meaning.provenance?.length),
+    "authored Room paragraph needs native creation authority",
+  );
   const roomContext = room && receipt.kind === "circumstance" && receipt.witnesses.length === 0;
   memoryRequire(
     !roomChange ||
@@ -327,6 +341,7 @@ export function retainNativeFact(
                 }
               : {}),
           },
+          meaning.authoredRoomParagraph,
         )
       : state.continuity;
   const episode: AcceptedEpisode = {
@@ -374,23 +389,31 @@ export function initializeRoomContinuity(
   at: string,
 ) {
   const room = { kind: "room" as const, placeId, zoneId };
-  memoryRequire(
-    findLocation(state, placeId)?.zones?.some((zone) => zone.id === zoneId && zone.description === text),
-    "new room does not match its native creation",
-  );
-  const receipt = {
-    id: "room-initial:" + memoryHash([state.seed, operationId, placeId, zoneId]).slice(0, 32),
+  memoryString(text, ROOM_CONTINUITY_TEXT_BYTES);
+  const creation = "room-initial:" + memoryHash([state.seed, operationId, placeId, zoneId, text]).slice(0, 32);
+  const receipts = roomParagraphs(text).map((paragraph, index) => ({
+    id: creation + ":" + index,
     kind: "structure" as const,
     targetId: JSON.stringify([placeId, zoneId]),
     revision: 1,
-    text,
+    text: paragraph,
     witnesses: [],
-  };
-  const id = nativeEpisodeId(state.seed, receipt.id);
+  }));
+  memoryRequire(receipts.length, "new Room needs an authored description");
+  const ids = new Set(receipts.map((receipt) => nativeEpisodeId(state.seed, receipt.id)));
+  const retained = state.episodes.records.filter((row) => ids.has(row.id)).length;
+  if (!retained)
+    memoryRequire(
+      findLocation(state, placeId)?.zones?.some((zone) => zone.id === zoneId && zone.description === text),
+      "new room does not match its native creation",
+    );
   memoryRequire(
-    state.episodes.records.some((row) => row.id === id) ||
-      !state.continuity.records.some((record) => record.heads[continuityHolderKey(room)]),
+    retained === receipts.length ||
+      (!retained && !state.continuity.records.some((record) => record.heads[continuityHolderKey(room)])),
     "room continuity is already initialized",
   );
-  retainNativeFact(state, receipt, at, { room });
+  const candidate = { ...state };
+  for (const receipt of receipts) retainNativeFact(candidate, receipt, at, { room, authoredRoomParagraph: true });
+  state.continuity = candidate.continuity;
+  state.episodes = candidate.episodes;
 }

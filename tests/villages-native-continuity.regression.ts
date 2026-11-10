@@ -1,4 +1,4 @@
-// Test cases: native-continuity/unobserved, native-continuity/fresh-room, native-continuity/room-replay, native-continuity/cold-room, native-continuity/founding-circumstance
+// Test cases: native-continuity/unobserved, native-continuity/fresh-room, native-continuity/room-replay, native-continuity/cold-room, native-continuity/authored-paragraphs, native-continuity/founding-circumstance
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -9,6 +9,13 @@ import {
   retainNativeFact,
 } from "../packages/villages/src/server/domain/rules/native-continuity.js";
 import { establishPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
+import { findLocation } from "../packages/villages/src/server/domain/rules/places.js";
+import { readBaseVenueLayout } from "../packages/villages/src/server/domain/rules/venue-layout.js";
+import { currentRoomViews } from "../packages/villages/src/server/domain/rules/continuity-retrieval.js";
+import {
+  observableRoomDescription,
+  zoneAppearanceContext,
+} from "../packages/villages/src/server/domain/rules/zone-picture.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
 import {
   continuityViews,
@@ -124,6 +131,96 @@ await runCase("native-continuity/cold-room", async () => {
     assert.deepEqual(cold.episodes.records[0].actors, []);
   } finally {
     storage.release();
+  }
+});
+await runCase("native-continuity/authored-paragraphs", async () => {
+  const { state, room } = fixture(),
+    storage = sceneHistoryFixture();
+  const zone = findLocation(state, room.placeId)!.zones!.find((row) => row.id === room.zoneId)!;
+  const paragraphs = ["An old table.\r\nTwo chairs.", "A blue mural. 絵", "An old table.\r\nTwo chairs."];
+  zone.description = paragraphs.join("\r\n \r\n");
+  try {
+    initializeRoomContinuity(state, room.placeId, room.zoneId, zone.description, "paragraph-creation", at);
+    const entries = currentRoomViews(state.continuity, state.episodes, room, at);
+    assert.deepEqual(
+      entries.map((row) => row.version.text),
+      paragraphs,
+    );
+    assert.equal(new Set(entries.map((row) => row.id)).size, 3);
+    assert.equal(new Set(entries.map((row) => row.version.sources[0].episodeId)).size, 3);
+    assert.ok(state.episodes.records.every((episode) => !episode.actors.length));
+    assert.equal(
+      zoneAppearanceContext(observableRoomDescription(state, room.placeId, room.zoneId, at)),
+      zoneAppearanceContext(zone.description),
+    );
+    const art = { id: "art", ref: "global-gallery:art", url: "/gallery/art" };
+    const design = {
+      layout: "exterior",
+      description: zone.description,
+      form: "Brick studio",
+      presentation: { image: art },
+      daylightReady: true,
+      pictureContext: JSON.stringify({ description: zone.description, form: "Brick studio" }),
+    };
+    assert.equal(
+      readBaseVenueLayout(design, ["other"], "", (value) => (value === art ? art : null))[0].picture?.dirty,
+      false,
+    );
+    assert.throws(
+      () =>
+        retainNativeFact(
+          state,
+          {
+            id: "duplicate-after-creation",
+            kind: "structure",
+            targetId: JSON.stringify([room.placeId, room.zoneId]),
+            revision: 1,
+            text: paragraphs[0],
+            witnesses: [],
+          },
+          at,
+          { room },
+        ),
+      /duplicate current room description/,
+    );
+    const repository = createVillageRepository(() => storage.gate.documents);
+    await repository.mutateAuthority((saved) => Object.assign(saved, state), { memories: true });
+    const cold = await createVillageRepository(() => storage.gate.documents).readAuthority({ memories: true });
+    const before = memoryHash([cold.continuity, cold.episodes]);
+    initializeRoomContinuity(cold, room.placeId, room.zoneId, zone.description, "paragraph-creation", at);
+    assert.equal(memoryHash([cold.continuity, cold.episodes]), before);
+    assert.deepEqual(
+      currentRoomViews(cold.continuity, cold.episodes, room, at).map((row) => row.id),
+      entries.map((row) => row.id),
+    );
+    const coldZone = findLocation(cold, room.placeId)!.zones!.find((row) => row.id === room.zoneId)!;
+    coldZone.description += "\n\nAn extra paragraph.";
+    initializeRoomContinuity(cold, room.placeId, room.zoneId, zone.description, "paragraph-creation", at);
+    assert.equal(memoryHash([cold.continuity, cold.episodes]), before);
+    assert.throws(
+      () => initializeRoomContinuity(cold, room.placeId, room.zoneId, coldZone.description, "paragraph-creation", at),
+      /already initialized/,
+    );
+    const first = entries[0];
+    cold.continuity = protectContinuity(
+      cold.continuity,
+      {
+        id: first.id,
+        recordRevision: first.recordRevision,
+        heads: { [continuityHolderKey(room)]: first.headRevision },
+      },
+      [room],
+      "forget-first-paragraph",
+      at,
+      { forget: true },
+    );
+    assert.deepEqual(
+      currentRoomViews(cold.continuity, cold.episodes, room, at).map((row) => row.id),
+      entries.slice(1).map((row) => row.id),
+    );
+  } finally {
+    storage.release();
+    storage.gate.dispose();
   }
 });
 await runCase("native-continuity/founding-circumstance", async () => {
