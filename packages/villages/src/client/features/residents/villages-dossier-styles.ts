@@ -135,6 +135,7 @@ export const DOSSIER_STYLES = `
  .${P}-people-layout[data-profile="true"]{display:block}.${P}-people-layout[data-profile="true"] .${P}-people-index{display:none}
  .${P}-dossier-root,.${P}-directory-root{font-size:17px}
  .${P}-dossier-root{display:block;overflow:auto;container-type:inline-size}
+ .${P}-dossier-root>.${P}-dossier-desk:not([data-section="wishes"]){height:auto;min-height:100%}
  .${P}-dossier-book{overflow:visible;container-type:normal}
  .${P}-dossier-character{position:absolute;right:0;top:58px;width:150px;height:230px;padding:0}
  .${P}-dossier-toolbar{position:sticky;top:0;right:auto;flex:none;justify-content:end;margin-bottom:12px;background:#302d47f5}

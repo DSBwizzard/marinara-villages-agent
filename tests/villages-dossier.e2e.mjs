@@ -882,6 +882,7 @@ await withBrowser(browser, async () => {
         return node.scrollTop;
       });
       assert(position > 0, "Long mobile profiles scroll as one paper sheet");
+      await expect(profile.getByText("Character tools", { exact: true })).toBeInViewport({ ratio: 0.99 });
       await chooseSection("Agenda");
       assert.equal(await paper.evaluate((node) => node.scrollTop), 0, "A new section starts at the top");
       await chooseSection("Overview");
