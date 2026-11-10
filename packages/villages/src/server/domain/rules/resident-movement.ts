@@ -140,7 +140,10 @@ export function residentMovementOptions(state: VillageState, venue: VillageVenue
 }
 
 /** Validate all captured occupants, including passive witnesses and offscreen destinations. */
-export function assertSceneMovementCapacity(scene: VenueScene, moves: readonly ContactMove[]): void {
+export function assertSceneMovementCapacity(
+  scene: VenueScene,
+  moves: readonly Pick<ContactMove, "characterId" | "zoneId" | "segment">[],
+): void {
   const positions = new Map(sceneResidentIds(scene).map((id) => [id, contactPosition(scene, id)]));
   const segments = [...new Set(moves.map((move) => move.segment))].sort((a, b) => a - b);
   for (const segment of segments) {

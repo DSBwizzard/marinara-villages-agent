@@ -3,7 +3,7 @@ import type { VillageState } from "../models/world.js";
 import type { NarrationReadset } from "../models/narration-model.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { narrationSourceSchema, readNarrationEffectHeader, readNarrationReply } from "./narration-contract.js";
-import { bindNarrationSource, assertNarrationSourceOrder } from "./narration-sources.js";
+import { bindNarrationSource, assertNarrationSourceOrder, type NarrationSourceContext } from "./narration-sources.js";
 import { narrationLines } from "./narration-lines.js";
 import {
   acceptedNarrationEpisode,
@@ -17,6 +17,9 @@ import { narrationAppointment } from "./narration-appointment.js";
 import { applyNarrationResidence } from "./narration-residence.js";
 import { applyNarrationPlace } from "./narration-place.js";
 import { placeDraftSchema } from "./place-discovery.js";
+import { applyNarrationMove } from "./narration-movement.js";
+import { assertSceneMovementCapacity } from "./resident-movement.js";
+import { selectSceneEffects } from "./scene-acceptance.js";
 import { MAX_VENUE_NAME_LENGTH } from "./prompt-preset.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 import { projectSpeechContext } from "./project-interpretation.js";
@@ -34,6 +37,7 @@ const base = {
 const nativeCommand = z.discriminatedUnion("type", [
   z.object({ ...base, type: z.literal("contact.end"), who: id }).strict(),
   z.object({ ...base, type: z.literal("scene.end") }).strict(),
+  z.object({ ...base, type: z.literal("move"), who: id, to: id }).strict(),
   z.object({ ...base, type: z.literal("project.start"), project: id }).strict(),
   z
     .object({
@@ -126,7 +130,7 @@ export function readNarrationNativeCommand(raw: unknown) {
   return nativeCommand.parse(raw);
 }
 export const NARRATION_NATIVE =
-  'Native commands share {id?:label,at:segment label,source:[exact consequential sources],requires?:[effect IDs],independent?:true}. Current communication is required; recalled/private consent is never authority. Supported commands: {type:"place.discover",existingId: supplied Place id} OR {type:"place.discover",place:{name,description,form?,report?,controllers?,zones?:[{id,name,kind:"public|staff|restricted",description,purpose?,controllers?,connectedTo?}],people?:[{ref,name,label?,characterization,existingId?,facts?,role?,availability?}]}} discovers existing infrastructure, never builds, grants ownership or establishes a service (maximum two); {type:"place.establish",project,objective,quote,met:true} records a current Player-witnessed objective, not a promise or Project completion (maximum eight); {type:"residence.request",by,venue}; {type:"residence.decide",by,person,venue,approved:boolean}; {type:"venue.request",by,name,classes:[native Venue classes]} submits a Villager request without establishing any service; {type:"project.start",project} invokes the same native Start/Resume only for explicit actual Player intent and current ready authority; {type:"appointment",by,when:{dayOffset:integer}|{weekday:weekday name,afterToday?:boolean}|{date:"YYYY-MM-DD"},minute?:0-1439} binds an actual current spoken appointment using the supplied calendar, never a past instant or clock mutation; {type:"scene.end"} only from the actual Player spoken/visible departure intent at the final segment; {type:"contact.end",who} ends only an admitted doorway contact, with deciding words (or the actual Player intent); {type:"project.decide",by,project,decision:"approval|builder|refuse|withdrawal|conditional|uncertain"}; {type:"permission.grant|permission.revoke",by,visitor,venue,zone}; {type:"access.decide",by,venue,zone,decision:{outcome:"invite-now|invite-later|invite-outside-hours|refuse|dismiss|ban-zone|ban-venue",visitor,accompanies?}|{outcome:"access-management",management:exact native AccessCommand action fields without operationId,expectedRevision,zoneId,sceneId}}. Use only supplied native scopes. A conditional or uncertain Project answer grants no approval or lead. An access condition beyond accompaniment cannot grant access. Native success assertions must require their command ID.';
+  'Native commands share {id?:label,at:segment label,source:[exact consequential sources],requires?:[effect IDs],independent?:true}. Current communication is required; recalled/private consent is never authority. Supported commands: {type:"move",who,to} validates a current connected Zone crossing at its narration label, with actual Player spoken/visible intent for Player movement or observed resident departure/arrival. Every consequential input source in a moving turn needs its explicit moment. A crossing applies before routing its labelled segment; native success assertions must require it. {type:"place.discover",existingId: supplied Place id} OR {type:"place.discover",place:{name,description,form?,report?,controllers?,zones?:[{id,name,kind:"public|staff|restricted",description,purpose?,controllers?,connectedTo?}],people?:[{ref,name,label?,characterization,existingId?,facts?,role?,availability?}]}} discovers existing infrastructure, never builds, grants ownership or establishes a service (maximum two); {type:"place.establish",project,objective,quote,met:true} records a current Player-witnessed objective, not a promise or Project completion (maximum eight); {type:"residence.request",by,venue}; {type:"residence.decide",by,person,venue,approved:boolean}; {type:"venue.request",by,name,classes:[native Venue classes]} submits a Villager request without establishing any service; {type:"project.start",project} invokes the same native Start/Resume only for explicit actual Player intent and current ready authority; {type:"appointment",by,when:{dayOffset:integer}|{weekday:weekday name,afterToday?:boolean}|{date:"YYYY-MM-DD"},minute?:0-1439} binds an actual current spoken appointment using the supplied calendar, never a past instant or clock mutation; {type:"scene.end"} only from the actual Player spoken/visible departure intent at the final segment; {type:"contact.end",who} ends only an admitted doorway contact, with deciding words (or the actual Player intent); {type:"project.decide",by,project,decision:"approval|builder|refuse|withdrawal|conditional|uncertain"}; {type:"permission.grant|permission.revoke",by,visitor,venue,zone}; {type:"access.decide",by,venue,zone,decision:{outcome:"invite-now|invite-later|invite-outside-hours|refuse|dismiss|ban-zone|ban-venue",visitor,accompanies?}|{outcome:"access-management",management:exact native AccessCommand action fields without operationId,expectedRevision,zoneId,sceneId}}. Use only supplied native scopes. A conditional or uncertain Project answer grants no approval or lead. An access condition beyond accompaniment cannot grant access. Native success assertions must require their command ID.';
 
 /** Fixed native validators prepare a detached candidate inside the existing Village CAS. */
 export function prepareNarrationNative(
@@ -141,12 +145,6 @@ export function prepareNarrationNative(
     raw,
     readset.source.scene.contactGeneration?.actorIds ?? readset.source.scene.activeIds,
   );
-  const context = {
-    ...readset.source,
-    ...narrationLines(reply, readset.source.scene, readset.source.episodeId, readset.capturedAt, []),
-    native: {},
-    moves: [],
-  };
   const projectBefore = new Map<string, ReturnType<typeof projectSpeechContext>>();
   const accessBefore = new Map(
     narrationAccessScopes(
@@ -169,9 +167,8 @@ export function prepareNarrationNative(
       const effect = { ...header, failure: excluded.get(header.id) };
       native.effects.push(effect);
       try {
-        const command = readNarrationNativeCommand(raw),
-          lineId = context.labels[command.at];
-        const segment = context.lines.findIndex((line) => line.id === lineId);
+        const command = readNarrationNativeCommand(raw);
+        const segment = reply.segments.findIndex((line) => line.id === command.at);
         memoryRequire(segment >= 0, "native command needs its actual supplied segment");
         return { command, effect, segment, index };
       } catch (error) {
@@ -181,6 +178,40 @@ export function prepareNarrationNative(
     })
     .filter((row) => row !== undefined)
     .toSorted((a, b) => a.segment - b.segment || a.index - b.index);
+  // Tentative positions grant nothing: every crossing is an essential validated dependency before publication.
+  const planned = commands.flatMap(({ command, effect, segment }) =>
+    !effect.failure &&
+    command.type === "move" &&
+    readset.source.actors.some((actor) => actor.id === command.who) &&
+    readset.source.scene.sceneAttendance?.layout?.some((zone) => zone.id === command.to) &&
+    reply.segments[segment].kind === "narration"
+      ? [{ characterId: command.who, zoneId: command.to, segment, effectId: effect.id }]
+      : [],
+  );
+  native.movementDependencies = planned.map((move) => move.effectId);
+  let context: NarrationSourceContext;
+  try {
+    context = {
+      ...readset.source,
+      ...narrationLines(
+        reply,
+        readset.source.scene,
+        readset.source.episodeId,
+        readset.capturedAt,
+        planned.filter((move) => move.characterId !== "player"),
+        planned.filter((move) => move.characterId === "player"),
+      ),
+      native: {},
+      moves: planned,
+    };
+  } catch (error) {
+    const crossing =
+      planned.find((move) => native.effects.find((effect) => effect.id === move.effectId)?.independent) ?? planned[0];
+    if (!crossing) throw error;
+    native.effects.find((effect) => effect.id === crossing.effectId)!.failure =
+      "Tentative movement routing failed: " + String(error).slice(0, 1900);
+    return { native, candidate: structuredClone(state), routingFailure: true as const };
+  }
   function apply(candidate: VillageState, row: (typeof commands)[number]) {
     const { command, effect } = row;
     const sources = command.source.map((ref) => bindNarrationSource(ref, context));
@@ -191,12 +222,24 @@ export function prepareNarrationNative(
       ) &&
         (command.type === "scene.end" ||
           command.type === "project.start" ||
+          (command.type === "move" && command.who === "player") ||
           (command.type === "contact.end" && command.who === "player") ||
           Math.max(...sources.map((source) => source.moment!.index)) === row.segment),
       "native decision must match its actual current utterance",
     );
     assertNarrationSourceOrder(sources);
     const receiptId = "native-" + memoryHash([readset.source.episodeId, effect.id]).slice(0, 40);
+    if (command.type === "move") {
+      memoryRequire(
+        planned.some((move) => move.effectId === effect.id),
+        "movement needs its admitted actor, known destination and crossing narration",
+      );
+      memoryRequire(
+        planned.filter((move) => move.characterId === command.who && move.segment === row.segment).length === 1,
+        "an actor has conflicting movements at one moment",
+      );
+      return applyNarrationMove(candidate, command, readset, context, sources, receiptId, row.segment);
+    }
     if (command.type === "scene.end" || command.type === "contact.end")
       return applyNarrationScene(candidate, command, readset, context, sources, receiptId, row.segment);
     if (command.type === "place.discover" || command.type === "place.establish") {
@@ -294,11 +337,31 @@ export function prepareNarrationNative(
       native.receipts[row.effect.id] = result.receipt;
       native.sources[row.effect.id] = result.sources;
       if ("sceneEffect" in result) native.sceneEffects!.push({ effectId: row.effect.id, ...result.sceneEffect });
+      if ("move" in result) {
+        if (result.move.characterId === "player")
+          native.playerMoves.push({
+            effectId: row.effect.id,
+            zoneId: result.move.zoneId,
+            segment: result.move.segment,
+          });
+        else native.moves.push({ ...result.move, effectId: row.effect.id });
+        native.sceneEffects!.push({ effectId: row.effect.id, contactEndedIds: [] });
+      }
     } catch (error) {
       row.effect.failure = String(error).slice(0, 2000);
     }
   }
-  return { native, candidate };
+  try {
+    assertSceneMovementCapacity(context.scene, native.moves);
+  } catch (error) {
+    for (const move of planned)
+      native.effects.find((effect) => effect.id === move.effectId)!.failure = String(error).slice(0, 2000);
+  }
+  return {
+    native,
+    candidate,
+    routingFailure: planned.some((move) => native.effects.find((effect) => effect.id === move.effectId)?.failure),
+  };
 }
 
 /** Exact committed replay precedes every fresh native authority check. */
@@ -321,17 +384,21 @@ export function acceptNarration(
   memoryRequire(!narrationIsAbandoned(state, publication, submissionId), "this narration was explicitly abandoned");
   const excluded = new Map<string, string>();
   const visited = new Set<string>();
+  const evaluate = (prepared: ReturnType<typeof prepareNarrationNative>) =>
+    prepared.routingFailure
+      ? {
+          ...selectSceneEffects(prepared.native.effects, prepared.native.movementDependencies ?? []),
+          held: true as const,
+          usableIds: [],
+          episode: undefined,
+        }
+      : acceptNarrationContinuity(prepared.candidate, { ...publication, native: prepared.native }, submissionId, at);
   for (;;) {
     const key = JSON.stringify([...excluded.keys()].toSorted());
     memoryRequire(!visited.has(key), "native proposals have incompatible authority dependencies");
     visited.add(key);
     const prepared = prepareNarrationNative(state, publication.readset, publication.raw, submissionId, at, excluded);
-    const result = acceptNarrationContinuity(
-      prepared.candidate,
-      { ...publication, native: prepared.native },
-      submissionId,
-      at,
-    );
+    const result = evaluate(prepared);
     let restored = false;
     for (const id of excluded.keys()) {
       const retryExclusions = new Map(excluded);
@@ -344,12 +411,7 @@ export function acceptNarration(
         at,
         retryExclusions,
       );
-      const retried = acceptNarrationContinuity(
-        retry.candidate,
-        { ...publication, native: retry.native },
-        submissionId,
-        at,
-      );
+      const retried = evaluate(retry);
       if ("usableIds" in retried && retried.usableIds.includes(id)) {
         excluded.delete(id);
         restored = true;
@@ -361,14 +423,14 @@ export function acceptNarration(
       .filter(
         (effect) =>
           effect.independent &&
-          prepared.native.receipts[effect.id] &&
+          (prepared.native.receipts[effect.id] || prepared.native.movementDependencies?.includes(effect.id)) &&
           result.rejected.some((row) => row.id === effect.id) &&
           !excluded.has(effect.id),
       )
       .toSorted(
         (a, b) =>
-          Math.max(...prepared.native.sources[a.id].map((source) => source.moment!.index)) -
-          Math.max(...prepared.native.sources[b.id].map((source) => source.moment!.index)),
+          Math.max(-1, ...(prepared.native.sources[a.id] ?? []).map((source) => source.moment!.index)) -
+          Math.max(-1, ...(prepared.native.sources[b.id] ?? []).map((source) => source.moment!.index)),
       )
       .slice(0, 1);
     if (dropped.length) {

@@ -1,4 +1,4 @@
-// Test cases: scene-narration/outbox, scene-narration/held, scene-narration/lost-ack, scene-narration/write-failure, scene-narration/startup-hold, scene-narration/activation-owner, scene-narration/private-projection, scene-narration/validation-hold, scene-narration/cancellation, scene-narration/connected-turn, scene-narration/saved-changes, scene-narration/coordinator-startup-hold, scene-narration/abandon, scene-narration/abandon-lost-ack, scene-narration/abandon-committed, scene-narration/abandon-fence, scene-narration/startup-no-write, scene-narration/replace-committed, scene-narration/retirement, scene-narration/skip-ownership, scene-narration/input-playback, scene-narration/native-close, scene-narration/native-close-recovery, scene-narration/native-contact-end, scene-narration/native-close-authority, scene-narration/native-delta-fence, scene-narration/native-delta-integrity
+// Test cases: scene-narration/outbox, scene-narration/held, scene-narration/lost-ack, scene-narration/write-failure, scene-narration/startup-hold, scene-narration/activation-owner, scene-narration/private-projection, scene-narration/validation-hold, scene-narration/cancellation, scene-narration/connected-turn, scene-narration/saved-changes, scene-narration/coordinator-startup-hold, scene-narration/abandon, scene-narration/abandon-lost-ack, scene-narration/abandon-committed, scene-narration/abandon-fence, scene-narration/startup-no-write, scene-narration/replace-committed, scene-narration/retirement, scene-narration/skip-ownership, scene-narration/input-playback, scene-narration/native-close, scene-narration/native-close-recovery, scene-narration/native-contact-end, scene-narration/native-close-authority, scene-narration/native-delta-fence, scene-narration/native-delta-integrity, scene-narration/native-movement, scene-narration/native-movement-recovery
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -277,6 +277,75 @@ function nativeCloseFixture() {
   turn.narration!.responseDigest = memoryHash(raw);
   return f;
 }
+function nativeMovementFixture() {
+  const f = fixture(),
+    scene = f.scenes.get("scene")!,
+    turn = scene.submissions[0],
+    message = "I step outside.";
+  const raw = {
+    segments: [
+      { id: "before", kind: "dialogue", speakerId: f.actorId, text: "Our indoor conversation ends here." },
+      { id: "cross", kind: "narration", text: "You step through the entrance.", requires: ["move"] },
+    ],
+    commands: [
+      {
+        id: "move",
+        type: "move",
+        who: "player",
+        to: "exterior",
+        at: "cross",
+        source: [
+          { input: message, ground: { kind: "visible-action", to: [f.actorId], at: "start" } },
+          { segment: "cross", perceive: { kind: "seen", by: ["player"] } },
+        ],
+      },
+    ],
+  };
+  turn.message = message;
+  turn.requestFingerprint = memoryHash(["chat", "", null, message]);
+  turn.narration!.readset.source.input = message;
+  turn.narration!.raw = raw;
+  turn.narration!.responseDigest = memoryHash(raw);
+  return f;
+}
+await runCase("scene-narration/native-movement", async () => {
+  const f = nativeMovementFixture();
+  await f.service.processSavedExchange("scene", "turn");
+  const scene = f.scenes.get("scene")!;
+  assert.equal(f.turn().acceptance.status, "applied", f.turn().progressError);
+  assert.equal(scene.zoneId, "exterior");
+  assert.equal(scene.id, "scene");
+  assert.equal(scene.status, "active");
+  assert.equal(scene.navigationReceipts!.length, 1);
+  const before = memoryHash(scene);
+  await f.service.processSavedExchange("scene", "turn");
+  assert.equal(memoryHash(f.scenes.get("scene")), before);
+  assert.equal(f.world.episodes.records.length, 1);
+});
+await runCase("scene-narration/native-movement-recovery", async () => {
+  const f = nativeMovementFixture();
+  f.failScene();
+  await assert.rejects(f.service.processSavedExchange("scene", "turn"), (error) => error === f.exact);
+  assert.equal(f.scenes.get("scene")!.zoneId, "parlor");
+  const storage = sceneHistoryFixture();
+  try {
+    const repository = createVillageRepository(() => storage.gate.documents);
+    await repository.mutateAuthority((state) => Object.assign(state, f.world), { memories: true });
+    Object.assign(
+      f.world,
+      await createVillageRepository(() => storage.gate.documents).readAuthority({ memories: true }),
+    );
+    f.world.worldPlaces.npcs[f.actorId].disabled = true;
+    f.interrupt();
+    await f.service.processSavedExchange("scene", "turn");
+    assert.equal(f.turn().acceptance.status, "applied");
+    assert.equal(f.scenes.get("scene")!.zoneId, "exterior");
+    assert.equal(f.scenes.get("scene")!.navigationReceipts!.length, 1);
+    assert.equal(f.world.episodes.records.length, 1);
+  } finally {
+    storage.release();
+  }
+});
 await runCase("scene-narration/native-close", async () => {
   const f = nativeCloseFixture();
   await f.service.processSavedExchange("scene", "turn");

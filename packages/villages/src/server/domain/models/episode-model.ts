@@ -43,6 +43,16 @@ export type AcceptedEpisode = {
     witnesses: string[];
     observedBy?: string[];
     endedContacts?: string[];
+    movement?: {
+      actorId: string;
+      from: string;
+      zoneId: string;
+      segment: number;
+      path: string[];
+      spaceClass: import("./world.js").VillageVenueClass;
+      area: "outside" | "public" | "shared" | "private";
+      privateOwnerId: string;
+    };
   }[];
   /** Code-bound source ancestry for each input/segment unit. */
   dependencies: Record<string, string[]>;

@@ -176,7 +176,7 @@ export function routeZoneEvents(
   raw: Record<string, unknown>,
   scene: VenueScene,
   parsed: { lines: VenueReplyLine[]; heardPlayerBy: string[] },
-  moves: ContactMove[],
+  moves: Pick<ContactMove, "characterId" | "zoneId" | "segment">[],
   playerMoves: readonly { zoneId: string; segment: number }[] = [],
 ) {
   const venue = scene.contactGeneration?.venue;

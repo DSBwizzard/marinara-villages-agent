@@ -22,6 +22,7 @@ import { selectSceneEffects, type SceneEffectResult } from "./scene-acceptance.j
 import { narrationLines } from "./narration-lines.js";
 import { admitNpcParticipants, type NpcAdmission } from "./npc-participation.js";
 import type { ContactMove } from "./venue-contact.js";
+import { contactPosition } from "./venue-contact.js";
 
 export type NarrationPublication = {
   readset: NarrationReadset;
@@ -36,6 +37,7 @@ export type NarrationPublication = {
     playerMoves: { effectId: string; zoneId: string; segment: number }[];
     admissions: NpcAdmission[];
     sceneEffects?: { effectId: string; contactEndedIds: string[]; closed?: true }[];
+    movementDependencies?: string[];
   };
 };
 
@@ -146,7 +148,12 @@ export function acceptNarrationContinuity(
       ]),
     ];
   const reply = readNarrationReply(publication.raw, scene.contactGeneration?.actorIds ?? scene.activeIds);
-  const movementDependencies = [...new Set([...native.moves, ...native.playerMoves].map((move) => move.effectId))];
+  const movementDependencies = [
+    ...new Set([
+      ...(native.movementDependencies ?? []),
+      ...[...native.moves, ...native.playerMoves].map((move) => move.effectId),
+    ]),
+  ];
   memoryRequire(
     movementDependencies.every((id) => native.effects.some((effect) => effect.id === id)),
     "movement has no owning native effect",
@@ -303,7 +310,8 @@ export function acceptNarrationContinuity(
   memoryRequire(
     sceneEffects.every(
       (effect) =>
-        native.receipts[effect.effectId] && ["contact", "scene"].includes(native.receipts[effect.effectId].kind),
+        native.receipts[effect.effectId] &&
+        ["contact", "scene", "movement"].includes(native.receipts[effect.effectId].kind),
     ),
     "Scene effect lost its native command",
   );
@@ -362,10 +370,7 @@ export function acceptNarrationContinuity(
       id: actor.id,
       incarnation: actor.incarnation,
       zoneId:
-        actor.id === "player"
-          ? source.scene.zoneId!
-          : (source.scene.sceneAttendance?.occupants.find((row) => row.characterId === actor.id)?.zoneId ??
-            source.scene.zoneId!),
+        actor.id === "player" ? source.scene.zoneId! : contactPosition(source.scene, actor.id) || source.scene.zoneId!,
     })),
     segments: source.lines,
     grounding: [...grounding.values()],

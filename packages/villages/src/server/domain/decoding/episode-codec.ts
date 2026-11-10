@@ -56,6 +56,19 @@ const episode = z
             witnesses: ids.max(32),
             observedBy: ids.max(32).optional(),
             endedContacts: ids.min(1).max(32).optional(),
+            movement: z
+              .object({
+                actorId: id,
+                from: id,
+                zoneId: id,
+                segment: z.number().int().min(0).max(23),
+                path: ids.min(2).max(64),
+                spaceClass: z.enum(["residence", "workplace", "community", "other"]),
+                area: z.enum(["outside", "public", "shared", "private"]),
+                privateOwnerId: z.string().max(160),
+              })
+              .strict()
+              .optional(),
           })
           .strict(),
       )
@@ -114,7 +127,9 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
       value.sceneId &&
         delta.contactEndedIds.every((id) => cast.has(id)) &&
         delta.receiptIds.every((id) =>
-          value.commandReceipts.some((receipt) => receipt.id === id && ["contact", "scene"].includes(receipt.kind)),
+          value.commandReceipts.some(
+            (receipt) => receipt.id === id && ["contact", "scene", "movement"].includes(receipt.kind),
+          ),
         ),
       "Scene transition lost its native receipt or actor",
     );
@@ -131,7 +146,7 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
         ),
       "Scene closure lost Player authority",
     );
-    const controls = value.commandReceipts.filter((receipt) => ["contact", "scene"].includes(receipt.kind));
+    const controls = value.commandReceipts.filter((receipt) => ["contact", "scene", "movement"].includes(receipt.kind));
     memoryRequire(
       memoryHash(delta.receiptIds.toSorted()) === memoryHash(controls.map((receipt) => receipt.id).toSorted()) &&
         controls.every((receipt) => receipt.revision === delta.expectedRevision),
@@ -145,7 +160,8 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
     );
   }
   memoryRequire(
-    !value.commandReceipts.some((receipt) => ["contact", "scene"].includes(receipt.kind)) || value.sceneDelta,
+    !value.commandReceipts.some((receipt) => ["contact", "scene", "movement"].includes(receipt.kind)) ||
+      value.sceneDelta,
     "Scene control receipt lost its retained transition",
   );
   for (const receipt of value.commandReceipts)
@@ -158,6 +174,35 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
         : !receipt.endedContacts,
       "contact result changed its owning native command",
     );
+  for (const receipt of value.commandReceipts) {
+    const move = receipt.movement;
+    memoryRequire(
+      receipt.kind === "movement"
+        ? move &&
+            cast.has(move.actorId) &&
+            receipt.witnesses.includes(move.actorId) &&
+            receipt.targetId === move.zoneId &&
+            move.from !== move.zoneId &&
+            move.path[0] === move.from &&
+            move.path.at(-1) === move.zoneId &&
+            value.segments[move.segment]?.kind === "narration"
+        : !move,
+      "movement result changed its owning native command",
+    );
+  }
+  const moves = value.commandReceipts
+    .flatMap((receipt) => (receipt.movement ? [receipt.movement] : []))
+    .toSorted((a, b) => a.segment - b.segment);
+  const positions = new Map(value.actors.map((actor) => [actor.id, actor.zoneId]));
+  for (const segment of [...new Set(moves.map((move) => move.segment))]) {
+    const crossing = moves.filter((move) => move.segment === segment);
+    memoryRequire(
+      new Set(crossing.map((move) => move.actorId)).size === crossing.length &&
+        crossing.every((move) => positions.get(move.actorId) === move.from),
+      "movement changed its admitted prior position",
+    );
+    for (const move of crossing) positions.set(move.actorId, move.zoneId);
+  }
   memoryRequire(
     new Set(value.offered.map((row) => row.holder.id)).size === value.offered.length &&
       value.offered.every(

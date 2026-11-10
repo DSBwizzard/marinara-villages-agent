@@ -11,7 +11,7 @@ export function narrationLines(
   scene: VenueScene,
   episodeId: string,
   at: string,
-  moves: ContactMove[],
+  moves: Pick<ContactMove, "characterId" | "zoneId" | "segment">[],
   playerMoves: { zoneId: string; segment: number }[] = [],
 ) {
   memoryRequire(scene.contactGeneration?.venue, "narration needs its captured routing scope");

@@ -180,8 +180,15 @@ await runCase("narration-acceptance/lost-ack", () => {
     { text: "An administrative correction." },
   );
   f.state.worldPlaces.npcs[f.id].disabled = true;
-  assert.deepEqual(acceptedNarrationEpisode(f.state, { raw: publication.raw, readset: publication.readset, responseDigest: publication.responseDigest }, "submission"), first,
-    "recovery can resolve the committed episode before any native preparation");
+  assert.deepEqual(
+    acceptedNarrationEpisode(
+      f.state,
+      { raw: publication.raw, readset: publication.readset, responseDigest: publication.responseDigest },
+      "submission",
+    ),
+    first,
+    "recovery can resolve the committed episode before any native preparation",
+  );
   const replay = acceptNarrationContinuity(f.state, publication, "submission", later);
   assert.deepEqual(replay.episode, first);
   assert.equal(f.state.episodes.records.length, 1);
@@ -454,9 +461,20 @@ await runCase("narration-acceptance/player-movement", () => {
         revision: 1,
         text: "The player moves outside.",
         witnesses: ["player"],
+        movement: {
+          actorId: "player",
+          from: publication.readset.source.scene.zoneId!,
+          zoneId: "exterior",
+          segment: 0,
+          path: [publication.readset.source.scene.zoneId!, "exterior"],
+          spaceClass: "other",
+          area: "outside",
+          privateOwnerId: "",
+        },
       },
     };
     publication.native.playerMoves = [{ effectId: "walk", zoneId: "exterior", segment: 0 }];
+    publication.native.sceneEffects = [{ effectId: "walk", contactEndedIds: [] }];
     const before = structuredClone(f.state),
       result = acceptNarrationContinuity(f.state, publication, "submission", later);
     assert.equal(result.held, !afterMove);
