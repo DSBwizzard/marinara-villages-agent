@@ -19,7 +19,6 @@ const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(valu
 const scopeKey = (scope: OperationEvidenceScope) => JSON.stringify([scope.id, scope.villageSeed ?? ""]);
 const key = (ref: OperationEvidenceReference) => ref.id + ":" + ref.digest;
 const associations = new WeakMap<object, { scope: string; ref: OperationEvidenceReference; claim: string | null }>();
-const abandoned = "abandoned-request";
 const TEXT_PREFIX = "operation:";
 const decodedValues = new WeakMap<object, unknown>();
 const operationIdentity = (raw: VenueOperation, scope: OperationEvidenceScope) => [
@@ -157,18 +156,13 @@ export function validateOperationEvidence(
   return { ref: { id: row.id, digest }, data: frozen };
 }
 
-/** Only the explicitly retained abandoned operation can contain further operation references. */
-export function operationEvidenceReferences(
-  raw: unknown,
-  scope: OperationEvidenceScope,
-  nested = false,
-): OperationEvidenceReference[] {
+/** Every operation head owns its bound immutable checkpoint and response bodies. */
+export function operationEvidenceReferences(raw: unknown, scope: OperationEvidenceScope): OperationEvidenceReference[] {
   if (raw === undefined || raw === null) return [];
   memoryObject(raw);
   memoryRequire(raw.evidenceFormat === 1, "unsupported Scene operation evidence; start a fresh Village");
   memoryObject(raw.checkpoints);
   memoryObject(raw.attempts);
-  memoryRequire(!nested || !Object.hasOwn(raw.checkpoints, abandoned), "nested abandoned operation evidence");
   const refs = Object.entries(raw.checkpoints).map(([stage, value]) =>
     bound(value, raw as VenueOperation, scope, ["checkpoint", stage]),
   );
@@ -199,19 +193,9 @@ export async function traceOperationEvidence(
   scope: OperationEvidenceScope,
   read: (ref: OperationEvidenceReference, resolveValue: boolean) => Promise<unknown>,
   pending?: (operation: unknown) => Promise<void>,
-  nested = false,
 ) {
-  for (const ref of operationEvidenceReferences(raw, scope, nested)) await read(ref, false);
+  for (const ref of operationEvidenceReferences(raw, scope)) await read(ref, false);
   await pending?.(raw);
-  const ref = (raw as Record<string, any> | undefined)?.checkpoints?.[abandoned];
-  if (ref)
-    await traceOperationEvidence(
-      await read(bound(ref, raw as VenueOperation, scope, ["checkpoint", abandoned]), true),
-      scope,
-      read,
-      pending,
-      true,
-    );
 }
 
 /** Pure native encoding also lets fixtures author the actual supported contract. */
@@ -236,20 +220,14 @@ export function encodeOperationEvidence(
       associations.set(frozen, { scope: scopeKey(scope), ref: prepared.ref, claim: prepared.data.claim });
     return prepared.ref;
   }
-  function encode(value: VenueOperation | undefined, nested = false): Record<string, any> | undefined {
+  function encode(value: VenueOperation | undefined): Record<string, any> | undefined {
     if (!value) return undefined;
-    memoryRequire(!nested || !Object.hasOwn(value.checkpoints, abandoned), "nested abandoned operation");
     const { checkpoints, attempts, ...header } = value;
     const saved = {
       ...header,
       evidenceFormat: 1,
       checkpoints: Object.fromEntries(
         Object.entries(checkpoints).map(([stage, body]) => {
-          if (stage === abandoned) {
-            memoryObject(body);
-            memoryRequire(body.snapshot === null, "abandoned operation retained a Scene snapshot");
-            return [stage, bind(capture(encode(body as VenueOperation, true)), value, scope, ["checkpoint", stage])];
-          }
           value.checkpoints[stage] = immutableMemoryValue(body);
           return [stage, bind(capture(value.checkpoints[stage]), value, scope, ["checkpoint", stage])];
         }),
@@ -296,10 +274,9 @@ export function encodeOperationEvidence(
 function* decoder(
   raw: unknown,
   scope: OperationEvidenceScope,
-  nested = false,
 ): Generator<OperationEvidenceReference, VenueOperation | undefined, unknown> {
   if (raw === undefined || raw === null) return undefined;
-  operationEvidenceReferences(raw, scope, nested);
+  operationEvidenceReferences(raw, scope);
   operationCheckpointClaims(raw, scope);
   const { evidenceFormat: _format, checkpoints, attempts, ...header } = raw as Record<string, any>;
   const result = {
@@ -309,7 +286,7 @@ function* decoder(
   } as VenueOperation;
   for (const [stage, ref] of Object.entries(checkpoints)) {
     const body = yield bound(ref, raw as VenueOperation, scope, ["checkpoint", stage]);
-    result.checkpoints[stage] = stage === abandoned ? yield* decoder(body, scope, true) : body;
+    result.checkpoints[stage] = body;
   }
   for (const [stage, attempt] of Object.entries(attempts) as [string, Record<string, any>][]) {
     const { result: ref, ...metadata } = attempt;

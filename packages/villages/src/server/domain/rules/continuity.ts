@@ -196,6 +196,7 @@ export function applyContinuityWrite(
 ): ContinuityCollection {
   memoryString(context.seed, 160);
   memoryString(context.operationId, 160);
+  memoryRequire(!context.operationId.startsWith("narration-abandoned:"), "reserved narration receipt namespace");
   memoryString(context.episodeId, 160);
   memoryTimestamp(context.at);
   memoryString(write.id, 48);
@@ -224,6 +225,7 @@ export function applyContinuityWrite(
     "conflicting continuity operations",
   );
   const operationId = context.operationId + ":" + write.id;
+  memoryRequire(!operationId.startsWith("narration-abandoned:"), "reserved narration receipt namespace");
   const fingerprint = memoryHash([write, context.seed, context.sources]);
   const receipt = collection.receipts[operationId];
   if (receipt) {
@@ -605,6 +607,7 @@ export function protectContinuity(
   action: { forget: true } | { text: string },
 ): ContinuityCollection {
   memoryString(operationId, 160);
+  memoryRequire(!operationId.startsWith("narration-abandoned:"), "reserved narration receipt namespace");
   memoryTimestamp(at);
   if ("text" in action) memoryString(action.text, CONTINUITY_TEXT_BYTES);
   const fingerprint = memoryHash([target, holders, action]);

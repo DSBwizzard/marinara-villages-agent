@@ -56,7 +56,7 @@ export function createSceneChanges({
       notices,
       dismissedNoticeIds: village.dismissedNoticeIds,
       unresolved: scene.submissions
-        .filter((turn) => turn.acceptance.status !== "applied")
+        .filter((turn) => turn.acceptance.status === "pending" || turn.acceptance.status === "held")
         .map((turn) => ({
           submissionId: turn.id,
           diagnosticId: sceneChangeDiagnosticId(turn),
@@ -96,7 +96,9 @@ export function createSceneChanges({
   async function replaySceneChanges(id: string) {
     const replay = async () => {
       const { scene } = await current(id);
-      for (const turn of scene.submissions.filter((turn) => turn.acceptance.status !== "applied"))
+      for (const turn of scene.submissions.filter(
+        (turn) => turn.acceptance.status === "pending" || turn.acceptance.status === "held",
+      ))
         await processSavedExchange(id, turn.id);
       return readSceneChanges(id);
     };

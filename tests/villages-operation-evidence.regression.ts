@@ -336,10 +336,14 @@ for (const fault of ["before", "after"] as const) {
       continueSaved: async () => {},
     });
     const parsedId = native.operation.checkpoints.parsed.id;
+    const abandonedHead = structuredClone(native.operation);
     await f.repository.changeSession(scope.id, (scene) => {
       scene.status = "closed";
+      scene.abandonedOperations = [
+        { ...abandonedHead, status: "complete", snapshot: null } as unknown as VenueOperation,
+      ];
       scene.operation = {
-        ...operation({ "abandoned-request": { ...scene.operation!, snapshot: null } }),
+        ...operation(),
         id: "close",
         kind: "close",
         status: "complete",
@@ -348,14 +352,15 @@ for (const fault of ["before", "after"] as const) {
     const checkpoint = await repair.createCheckpoint("Exact operation evidence", "evidence-checkpoint");
     await f.repository.changeSession(scope.id, (scene) => {
       scene.operation = undefined;
+      scene.abandonedOperations = [];
     });
     await collectRetainedStorage(f.gate);
     assert(f.rows.has(parsedId), "A checkpoint owns its exact parsed value after the current operation releases it");
     const restoration = await repair.restore(checkpoint.id, "restore-operation-evidence");
     await repair.apply(restoration.id, restoration.token);
     assert.deepEqual(
-      ((await f.repository.readSession(scope.id)).operation!.checkpoints["abandoned-request"] as VenueOperation)
-        .checkpoints.parsed,
+      (await store.decode((await f.repository.readSession(scope.id)).abandonedOperations![0], scope))!.checkpoints
+        .parsed,
       {
         facts: ["Exact accepted evidence"],
         version: 1,
@@ -485,6 +490,69 @@ for (const fault of ["before", "after"] as const) {
   }
 }
 console.log("Operation evidence publication, deduplication, restoration, rejection fencing and cleanup passed.");
+{
+  const f = sceneHistoryFixture();
+  try {
+    await world(f);
+    await f.mutateDocument("villages-venue-visit-" + scope.id, sessionSlot(f.gate.documents), (scene) =>
+      Object.assign(scene, coerceSession({ version: 5, ...scope, status: "active", startedAt: at })),
+    );
+    const coordinator = coordinatorFor(f);
+    const retained = new Map<string, unknown>();
+    let prior: VenueOperation | undefined;
+    for (let index = 0; index < 4; index++) {
+      const id = "edited-" + index,
+        exact = { original: "Exact private draft " + index + " 🌼", fit: "x".repeat(20_000) };
+      await assert.rejects(
+        coordinator.coordinateVenue(
+          scope.id,
+          id,
+          "turn",
+          { message: exact.original },
+          0,
+          prior?.attemptId,
+          async () => {
+            const captured = await coordinator.venueCheckpoint("writing-request", async () => exact);
+            assert.deepEqual(captured, exact);
+            throw Error("Purchased response cannot publish");
+          },
+          prior ? { replaceOfOperationId: prior.id } : {},
+        ),
+        /cannot publish/,
+      );
+      const raw = f.rows.get("villages-venue-visit-" + scope.id).data;
+      assert.equal(raw.operation.status, "interrupted");
+      retained.set(raw.operation.checkpoints["writing-request"].id, exact);
+      prior = (await f.repository.readSession(scope.id)).operation;
+      assert.equal(raw.abandonedOperations?.length ?? 0, index);
+      assert(!raw.operation.snapshot.abandonedOperations, "admitted snapshots do not copy archival heads");
+    }
+    await coordinator.cancelVenueOperation(scope.id);
+    const cancelled = await f.repository.readSession(scope.id);
+    assert.equal(
+      cancelled.abandonedOperations?.length,
+      4,
+      "repeated replacements and final cancellation retain every exact purchase",
+    );
+    await collectRetainedStorage(f.gate);
+    const store = createOperationEvidence(f.documents);
+    for (const head of cancelled.abandonedOperations!) {
+      const ref = head.checkpoints["writing-request"] as { id: string };
+      assert(f.rows.has(ref.id));
+      assert.deepEqual((await store.decode(head, scope))!.checkpoints["writing-request"], retained.get(ref.id));
+    }
+    await f.repository.changeSession(scope.id, (scene) => {
+      scene.status = "closed";
+    });
+    await collectRetainedStorage(f.gate);
+    assert(
+      [...retained.keys()].every((id) => f.rows.has(id)),
+      "closing preserves archived purchase ownership",
+    );
+  } finally {
+    f.release();
+  }
+}
 for (const durable of [false, true]) {
   const f = sceneHistoryFixture();
   try {

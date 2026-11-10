@@ -1,7 +1,6 @@
 import { isSceneTurnOutcome } from "../../shared/contracts/scene-turn-outcome.js";
 import { retainLateProviderResponse } from "../adapters/models/provider-deadline.js";
 import { villageNow } from "../adapters/time/clock-gate.js";
-import { semanticBlocker } from "../domain/rules/semantic-continuity.js";
 import type { VenueScene } from "../domain/models/scene-model.js";
 import { withVillageClockWork } from "../adapters/time/clock-gate.js";
 import { asRecord } from "../domain/rules/coerce.js";
@@ -15,7 +14,7 @@ import {
 import { readSceneSubmissionHead, sceneSubmissionStore } from "../adapters/storage/scene-submission-pages.js";
 import { coerceSession } from "../domain/decoding/scene-codec.js";
 import { sameSceneHistoryTurnPolicy, sceneTurnPublished } from "../domain/rules/scene-public.js";
-import { mutableSceneSubmission } from "../domain/rules/scene-submissions.js";
+import { mutableSceneSubmission, narrationBlocker } from "../domain/rules/scene-submissions.js";
 import { memoryRequire } from "../domain/rules/memory-integrity.js";
 import { immutableMemoryValue } from "../domain/rules/memory-integrity.js";
 import {
@@ -69,6 +68,17 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
   >();
   const prefix = "villages-venue-visit-";
   let accepting = true;
+
+  function retainAbandonedOperation(data: Record<string, unknown>) {
+    const operation = data.operation as VenueOperation | undefined;
+    if (!operation) return;
+    const retained = (data.abandonedOperations ?? []) as VenueOperation[];
+    memoryRequire(
+      !retained.some((row) => row.id === operation.id && row.attemptId === operation.attemptId),
+      "operation was already abandoned",
+    );
+    data.abandonedOperations = [...retained, { ...structuredClone(operation), snapshot: null, status: "complete" }];
+  }
 
   function hasVenueOperation(id: string): boolean {
     return live.has(id);
@@ -595,6 +605,12 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
           if (data.spinoff !== undefined)
             throw venueRefusal("SCENE_BUSY", "This Scene uses a retired feature. Its saved data is preserved.");
           const prior = await operationEvidenceStore(documents).decode(data.operation, data as unknown as VenueScene);
+          if (
+            ["turn", "greet"].includes(kind) &&
+            ((data.abandonedOperations ?? []) as VenueOperation[]).some((row) => row.id === id) &&
+            !submissions.some((turn) => turn.id === id && turn.acceptance.status === "applied")
+          )
+            throw venueRefusal("OPERATION_INTERRUPTED", "That request was abandoned. Send a new message.");
           // A durable business result survives a crash before coordinator cleanup.
           // It cannot keep a later edited submission behind an interrupted request.
           if (
@@ -610,7 +626,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
           }
           if (prior?.id === id && JSON.stringify(prior.input) !== fingerprint)
             throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID belongs to a different line.");
-          let abandoned: VenueOperation | undefined;
+          let abandoned = false;
           if (options.abandonOfOperationId) {
             if (
               kind !== "close" ||
@@ -621,18 +637,21 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
               prior.status !== "interrupted" ||
               prior.id !== options.abandonOfOperationId ||
               prior.attemptId !== retryOfAttemptId ||
-              semanticBlocker({ submissions }) ||
-              submissions.some((turn) => turn.id === prior.id)
+              narrationBlocker({ submissions }) ||
+              submissions.some((turn) => turn.id === prior.id && turn.acceptance.status === "applied")
             )
               throw venueRefusal(
                 "OPERATION_INTERRUPTED",
                 "The failed request changed. Review the Scene before ending it.",
               );
-            abandoned = { ...structuredClone(prior), snapshot: null };
+            retainAbandonedOperation(data);
+            abandoned = true;
             acknowledgeUnknownAttempts(data, prior);
           }
           if (options.replaceOfOperationId) {
-            const committed = submissions.some((entry) => entry.id === prior?.id);
+            const committed = submissions.some(
+              (entry) => entry.id === prior?.id && entry.acceptance.status === "applied",
+            );
             if (
               !prior ||
               prior.id !== options.replaceOfOperationId ||
@@ -650,7 +669,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
               (!prior.error && prior.status === "complete") ||
               committed ||
               (data.navigationReceipts as { id: string }[] | undefined)?.some((entry) => entry.id === prior.id) ||
-              semanticBlocker({ submissions }) ||
+              narrationBlocker({ submissions }) ||
               sceneRevision(data) !== prior.sceneRevision
             )
               throw venueRefusal(
@@ -659,6 +678,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
               );
             // Generated/checkpointed content is not a committed turn. An explicit edited Send
             // abandons it; the new token fences late results without replaying rejected output.
+            retainAbandonedOperation(data);
             acknowledgeUnknownAttempts(data, prior);
           }
           if (prior && prior.status !== "complete" && prior.id !== id && !options.replaceOfOperationId && !abandoned)
@@ -703,7 +723,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
               error: "",
             };
           } else {
-            const { operation: _old, ...snapshot } = data;
+            const { operation: _old, abandonedOperations: _abandoned, ...snapshot } = data;
             const reuseAttention =
               prior?.id === id &&
               prior.status === "complete" &&
@@ -722,11 +742,9 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
               startedAt: new Date().toISOString(),
               sceneRevision: sceneRevision(data),
               snapshot,
-              checkpoints: abandoned
-                ? { "abandoned-request": abandoned }
-                : reuseAttention
-                  ? Object.fromEntries(Object.entries(prior.checkpoints).filter(([stage]) => stage === "scene-layout"))
-                  : {},
+              checkpoints: reuseAttention
+                ? Object.fromEntries(Object.entries(prior.checkpoints).filter(([stage]) => stage === "scene-layout"))
+                : {},
               attempts: {},
               error: "",
             };
@@ -746,8 +764,8 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
           operation,
           controller,
           allowPaid:
-            !operation.checkpoints["abandoned-request"] &&
             !options.abandonOfOperationId &&
+            !(kind === "close" && typeof input.abandonOperationId === "string") &&
             !options.recovery &&
             (!options.replay || authorizedRetry),
           scope: kind,
@@ -796,9 +814,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
               );
               if (operation.status === "complete") {
                 operation.snapshot = null;
-                operation.checkpoints = operation.checkpoints["abandoned-request"]
-                  ? { "abandoned-request": operation.checkpoints["abandoned-request"] }
-                  : {};
+                operation.checkpoints = {};
                 operation.attempts = {};
                 operation.checkpointClaims = {};
               } else operation.error = "The previous request may have been billed. No automatic retry was made.";
@@ -830,14 +846,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
                   Object.values(operation.attempts).some((attempt) => attempt.status === "dispatching") ||
                   Object.keys(operation.checkpointClaims ?? {}).length > 0 ||
                   Object.values(operation.attempts).some((attempt) => attempt.status === "complete") ||
-                  operation.checkpoints["turn-reply"] ||
-                  (Object.hasOwn(operation.checkpoints, "scene-layout") &&
-                    !Object.entries(operation.attempts).some(
-                      ([stage, attempt]) => stage.startsWith("turn-reply:") && attempt.status === "rejected",
-                    )) ||
-                  operation.checkpoints["greeting-reply"] ||
-                  (operation.kind === "close" &&
-                    (Object.keys(operation.attempts).length > 0 || !!operation.checkpoints["abandoned-request"])) ||
+                  Object.keys(operation.checkpoints).length > 0 ||
                   submissions.some((entry) => entry.id === operation.id) ||
                   (data.navigationReceipts as { id: string }[] | undefined)?.some((entry) => entry.id === operation.id)
                     ? "interrupted"
@@ -888,19 +897,30 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
     }
   }
 
-  async function cancelVenueOperation(id: string) {
+  async function cancelVenueOperation(id: string, expected?: VenueOperation) {
     const running = live.get(id);
     const token = running?.token();
+    if (expected && running && (running.id !== expected.id || token !== expected.token))
+      throw venueRefusal("OPERATION_INTERRUPTED", "The request changed before cancellation.");
     running?.controller.abort(venueRefusal("OPERATION_INTERRUPTED", "The scene operation was cancelled."));
     live.delete(id);
     if (running && !token) return;
     await update(id, (data) => {
       const operation = data.operation as VenueOperation | undefined;
       if (
+        expected &&
+        (!operation ||
+          operation.id !== expected.id ||
+          operation.attemptId !== expected.attemptId ||
+          operation.token !== expected.token)
+      )
+        throw venueRefusal("OPERATION_INTERRUPTED", "The request changed before cancellation.");
+      if (
         operation &&
         operation.status !== "complete" &&
         (running ? !!token && operation.token === token : operation.status === "interrupted")
       ) {
+        retainAbandonedOperation(data);
         const uncertain = Object.entries(operation.attempts).filter(([, attempt]) => attempt.status === "dispatching");
         const receipts = (data.generationReceipts ?? []) as { attemptId: string }[];
         if (uncertain.length && !receipts.some((receipt) => receipt.attemptId === operation.attemptId))
@@ -1001,7 +1021,11 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
         : undefined;
     const publication =
       latest && latest.id === requested
-        ? { committed: true as const, replyReady: sceneTurnPublished(latest) }
+        ? {
+            committed: sceneTurnPublished(latest),
+            replyReady: sceneTurnPublished(latest),
+            acceptance: latest.acceptance.status,
+          }
         : undefined;
     if (operationId && operation?.id !== operationId) {
       if (publication) return { id: operationId, status: "complete", input: null, ...publication };
@@ -1013,7 +1037,8 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
             id: operationId,
             status: "complete",
             input: null,
-            committed: true,
+            committed: !!navigation || (!!saved && sceneTurnPublished(saved)),
+            ...(saved ? { acceptance: saved.acceptance.status } : {}),
             replyReady: !saved || sceneTurnPublished(saved),
           }
         : null;
@@ -1049,7 +1074,9 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       // Expired, uncommitted generation is archived evidence, not work to resume at startup.
       if (
         submissions.some(
-          (turn) => turn.acceptance.status === "held" && turn.narration?.readset.source.operationId === operation.id,
+          (turn) =>
+            (turn.acceptance.status === "held" || turn.acceptance.status === "abandoned") &&
+            turn.narration?.readset.source.operationId === operation.id,
         )
       )
         continue;
@@ -1070,7 +1097,9 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
         const currentScene = await readSceneWorkIndex(documents, latest!.data);
         if (
           currentScene.submissions.some(
-            (turn) => turn.acceptance.status === "held" && turn.narration?.readset.source.operationId === current.id,
+            (turn) =>
+              (turn.acceptance.status === "held" || turn.acceptance.status === "abandoned") &&
+              turn.narration?.readset.source.operationId === current.id,
           )
         )
           return;

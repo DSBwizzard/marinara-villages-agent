@@ -47,7 +47,7 @@ export type VenueSubmission = {
   requestFingerprint: string;
   /** The existing Scene outbox owns the purchased fit until its episode is published. */
   narration?: Omit<import("../rules/narration-acceptance.js").NarrationPublication, "native">;
-  acceptance: { status: "pending" | "held" | "applied"; rejected: { id: string; reason: string }[] };
+  acceptance: { status: "pending" | "held" | "applied" | "abandoned"; rejected: { id: string; reason: string }[] };
   episodeId?: string;
   lore?: import("../../../shared/contracts/lore.js").LoreUse[];
   replyLineIds?: string[];
@@ -85,6 +85,8 @@ export type VenueScene = {
   /** Interactive Scenes follow the Village clock; noninteractive memory inputs omit this marker. */
   liveSceneVersion?: 1;
   operation?: VenueOperation;
+  /** Opaque stored operation heads retain purchases from explicitly abandoned requests. */
+  abandonedOperations?: VenueOperation[];
   /** Idempotent free navigation, separate from conversational turns. */
   navigationReceipts?: { id: string; originZoneId: string; destinationZoneId: string; at: string }[];
   /** Operational receipts only: rejected inputs never become fictional submissions. */

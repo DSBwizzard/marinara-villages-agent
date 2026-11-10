@@ -1,4 +1,4 @@
-// Test cases: scene-narration/outbox, scene-narration/held, scene-narration/lost-ack, scene-narration/write-failure, scene-narration/startup-hold, scene-narration/activation-owner, scene-narration/private-projection, scene-narration/validation-hold, scene-narration/cancellation, scene-narration/connected-turn, scene-narration/saved-changes, scene-narration/coordinator-startup-hold
+// Test cases: scene-narration/outbox, scene-narration/held, scene-narration/lost-ack, scene-narration/write-failure, scene-narration/startup-hold, scene-narration/activation-owner, scene-narration/private-projection, scene-narration/validation-hold, scene-narration/cancellation, scene-narration/connected-turn, scene-narration/saved-changes, scene-narration/coordinator-startup-hold, scene-narration/abandon, scene-narration/abandon-lost-ack, scene-narration/abandon-committed, scene-narration/abandon-fence, scene-narration/startup-no-write, scene-narration/replace-committed, scene-narration/retirement, scene-narration/skip-ownership
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -16,6 +16,17 @@ import {
 } from "../packages/villages/src/server/domain/rules/narration-context.js";
 import { applySceneMutation } from "../packages/villages/src/server/domain/rules/scene-mutation.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
+import { narrationBlocker } from "../packages/villages/src/server/domain/rules/scene-submissions.js";
+import { narrationIsAbandoned } from "../packages/villages/src/server/domain/rules/narration-acceptance.js";
+import { sceneReadyForRetirement } from "../packages/villages/src/server/domain/rules/scene-retirement.js";
+import { terminalForScene } from "../packages/villages/src/server/features/scenes/scene-terminal.js";
+import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
+import { createVillageStateService } from "../packages/villages/src/server/features/world/village-state-service.js";
+import { createSceneRetirement } from "../packages/villages/src/server/features/scenes/scene-retirement-service.js";
+import { createSceneTerminalStore } from "../packages/villages/src/server/features/scenes/scene-terminal.js";
+import { createSceneWorkFence } from "../packages/villages/src/server/jobs/scene-work-fence.js";
+import { collectRetainedStorage } from "../packages/villages/src/server/features/repair/retained-storage-cleanup.js";
 import {
   publicSceneResponse,
   publicSceneAuthority,
@@ -127,6 +138,21 @@ function fixture(seed = "world") {
       acceptance: { status: "pending", rejected: [] },
       narration: { raw, readset, responseDigest: memoryHash(raw) },
     });
+    scene.operation = {
+      id: readset.source.operationId,
+      kind: "turn",
+      input: { message },
+      token: "owner",
+      attemptId: "attempt",
+      status: "interrupted",
+      stage: "publication",
+      startedAt: at,
+      sceneRevision: scene.sceneRevision,
+      snapshot: null,
+      checkpoints: {},
+      attempts: {},
+      error: "Saved reply needs recovery",
+    };
     scenes.set(id, scene);
     return scene;
   }
@@ -151,6 +177,7 @@ function fixture(seed = "world") {
       await note("read:" + id);
       return structuredClone(scenes.get(id)!);
     },
+    readVillageAuthority: async () => structuredClone(world),
     async mutateVillageState(change) {
       await note("world");
       if (failWorld) {
@@ -244,6 +271,292 @@ await runCase("scene-narration/held", async () => {
   assert.equal(f.world.episodes.records.length, 0);
   assert.deepEqual(f.scenes.get("scene")!.lines, []);
   assert(f.turn().acceptance.rejected.some((row) => row.id === "remember"));
+});
+await runCase("scene-narration/abandon", async () => {
+  const f = fixture(),
+    publication = structuredClone(f.turn().narration!);
+  f.turn().acceptance.status = "held";
+  assert.equal(
+    await f.service.abandonSavedExchange(
+      structuredClone(f.scenes.get("scene")!),
+      publication.readset.source.operationId,
+    ),
+    "abandoned",
+  );
+  assert.equal(f.turn().acceptance.status, "abandoned");
+  assert.deepEqual(f.turn().narration, publication);
+  assert.equal(f.turn().progressProcessedAt, undefined);
+  assert.equal(f.world.episodes.records.length, 0);
+  assert.equal(f.world.continuity.versions.length, 0);
+  assert.equal(narrationBlocker(f.scenes.get("scene")!), null);
+  assert(narrationIsAbandoned(f.world, publication, "turn"));
+  const fenced = memoryHash(f.world);
+  assert.throws(() => acceptNarration(f.world, publication, "turn", at), /explicitly abandoned/);
+  assert.equal(memoryHash(f.world), fenced, "a late acceptance cannot resurrect abandoned fiction");
+  const altered = structuredClone(publication);
+  altered.raw.segments = [];
+  assert.throws(() => narrationIsAbandoned(f.world, altered, "turn"), /identity reused/);
+  await f.service.processSavedExchange("scene", "turn");
+  assert.equal(memoryHash(f.world), fenced);
+  assert.deepEqual(f.scenes.get("scene")!.lines, []);
+  const scene = f.scenes.get("scene")!;
+  scene.status = "closed";
+  assert.equal(sceneReadyForRetirement(scene, f.world, ""), false);
+  assert.throws(() => terminalForScene(scene, 1), /retained evidence/);
+});
+await runCase("scene-narration/abandon-lost-ack", async () => {
+  for (const status of ["pending", "held"] as const) {
+    const f = fixture();
+    f.turn().acceptance.status = status;
+    const publication = structuredClone(f.turn().narration!);
+    f.failScene();
+    await assert.rejects(
+      f.service.abandonSavedExchange(structuredClone(f.scenes.get("scene")!), f.scenes.get("scene")!.operation!.id),
+      (error) => error === f.exact,
+    );
+    assert(narrationIsAbandoned(f.world, publication, "turn"));
+    assert.equal(f.turn().acceptance.status, status);
+    f.interrupt();
+    f.queue.push({ sessionId: "scene", submissionId: "turn" });
+    const stop = f.service.startProgressRecovery();
+    await f.recovered.promise;
+    stop();
+    assert.equal(
+      f.turn().acceptance.status,
+      "abandoned",
+      "startup finishes a durable abandonment without native validation or ownership",
+    );
+    assert.deepEqual(f.turn().narration, publication);
+    assert.equal(f.world.episodes.records.length, 0);
+    assert.equal(
+      await f.service.abandonSavedExchange(
+        structuredClone(f.scenes.get("scene")!),
+        f.scenes.get("scene")!.operation!.id,
+      ),
+      "abandoned",
+    );
+  }
+});
+await runCase("scene-narration/abandon-committed", async () => {
+  const f = fixture();
+  f.failScene();
+  await assert.rejects(f.service.processSavedExchange("scene", "turn"), (error) => error === f.exact);
+  f.world.worldPlaces.npcs[f.actorId].disabled = true;
+  f.interrupt();
+  assert.equal(
+    await f.service.abandonSavedExchange(structuredClone(f.scenes.get("scene")!), f.scenes.get("scene")!.operation!.id),
+    "applied",
+  );
+  assert.equal(f.turn().acceptance.status, "applied");
+  assert.equal(f.world.episodes.records.length, 1);
+  assert.equal(f.scenes.get("scene")!.lines.length, 1);
+  const closed = structuredClone(f.scenes.get("scene")!);
+  closed.status = "closed";
+  closed.endedAt = at;
+  assert.equal(sceneReadyForRetirement(closed, f.world, ""), true);
+  const terminal = terminalForScene(closed, 1);
+  assert.equal(terminal.version, 2);
+  assert.equal(terminal.submissions[0].inputHash, f.turn().requestFingerprint);
+});
+await runCase("scene-narration/abandon-fence", async () => {
+  for (const change of ["attempt", "revision", "purchase"]) {
+    const f = fixture(),
+      expected = structuredClone(f.scenes.get("scene")!);
+    const entered = Promise.withResolvers<void>(),
+      gate = Promise.withResolvers<void>();
+    const service = createSceneProgress({
+      ...f.ports,
+      withSceneWork: async (_id, work) => {
+        entered.resolve();
+        await gate.promise;
+        return work();
+      },
+    });
+    const pending = service.abandonSavedExchange(expected, expected.operation!.id);
+    await entered.promise;
+    const current = f.scenes.get("scene")!;
+    if (change === "attempt") {
+      current.operation!.attemptId = "new-attempt";
+      current.operation!.token = "new-owner";
+    }
+    if (change === "revision") current.sceneRevision++;
+    if (change === "purchase") current.submissions[0].narration!.raw.changed = true;
+    const before = memoryHash([f.world, [...f.scenes]]);
+    gate.resolve();
+    await assert.rejects(pending, /changed before abandonment/);
+    assert.equal(memoryHash([f.world, [...f.scenes]]), before, "a stale abandonment has no root or Scene side effects");
+  }
+});
+await runCase("scene-narration/startup-no-write", async () => {
+  const f = fixture(),
+    storage = sceneHistoryFixture();
+  try {
+    const repository = createVillageRepository(() => storage.gate.documents);
+    await repository.mutateAuthority(
+      (state) => {
+        Object.assign(state, structuredClone(f.world));
+      },
+      { memories: true },
+    );
+    const stateService = createVillageStateService(repository);
+    f.turn().acceptance.status = "held";
+    const service = createSceneProgress({
+      ...f.ports,
+      readVillageAuthority: () => repository.readAuthority({ memories: true }),
+      mutateVillageState: stateService.mutateVillageState,
+    });
+    const before = memoryHash([...storage.rows]);
+    await service.processSavedExchange("scene", "turn", true);
+    assert.equal(
+      memoryHash([...storage.rows]),
+      before,
+      "actual state-service/repository startup leaves authority revision and payloads unchanged for an unmarked hold",
+    );
+    assert.equal(f.turn().acceptance.status, "held");
+  } finally {
+    storage.release();
+  }
+});
+await runCase("scene-narration/replace-committed", async () => {
+  const f = fixture();
+  f.failScene();
+  await assert.rejects(f.service.processSavedExchange("scene", "turn"));
+  const scene = structuredClone(f.scenes.get("scene")!);
+  const commands = createSceneCommands({
+    readSession: f.ports.readSession,
+    requireLiveVenueSession: f.ports.readSession,
+    abandonSavedExchange: f.service.abandonSavedExchange,
+    runtimeDebug() {},
+    venueRefusal: (_code, message) => Error(message),
+    generate: async () => {
+      throw Error("Must not purchase");
+    },
+    coordinateVenue: async () => {
+      throw Error("Must recover committed truth before replacement admission");
+    },
+  } as never);
+  await assert.rejects(
+    commands.sendVenueTurn({
+      sessionId: "scene",
+      submissionId: "edited",
+      message: "Edited draft",
+      mode: "chat",
+      targetId: "",
+      expectedSceneRevision: scene.sceneRevision,
+      retryOfAttemptId: scene.operation!.attemptId,
+      replaceOfOperationId: scene.operation!.id,
+    }),
+    /already committed/,
+  );
+  assert.equal(f.turn().acceptance.status, "applied");
+  assert.equal(f.world.episodes.records.length, 1);
+  assert.equal(f.scenes.get("scene")!.submissions.length, 1);
+});
+await runCase("scene-narration/retirement", async () => {
+  for (const mode of ["applied", "abandoned", "missing"]) {
+    const abandoned = mode === "abandoned",
+      missing = mode === "missing";
+    const f = fixture(),
+      storage = sceneHistoryFixture();
+    try {
+      if (abandoned)
+        await f.service.abandonSavedExchange(
+          structuredClone(f.scenes.get("scene")!),
+          f.scenes.get("scene")!.operation!.id,
+        );
+      else await f.service.processSavedExchange("scene", "turn");
+      const scene = structuredClone(f.scenes.get("scene")!);
+      scene.status = "closed";
+      scene.endedAt = at;
+      scene.operation!.status = "complete";
+      scene.operation!.error = "";
+      const repository = createVillageRepository(() => storage.gate.documents);
+      await repository.mutateAuthority(
+        (state) => {
+          Object.assign(state, structuredClone(f.world));
+          if (missing) {
+            state.continuity = defaultVillageState().continuity;
+            state.episodes = defaultVillageState().episodes;
+          }
+        },
+        { memories: true },
+      );
+      await storage.mutateDocument("villages-venue-visit-scene", sessionSlot(storage.gate.documents), (saved) => {
+        Object.assign(saved, scene);
+      });
+      const terminals = createSceneTerminalStore({
+        villagesDocuments: () => storage.gate.documents,
+        mutateDocument: storage.mutateDocument,
+      });
+      const sceneFence = createSceneWorkFence(),
+        lateFence = createSceneWorkFence();
+      const retirement = createSceneRetirement({
+        villagesDocuments: () => storage.gate.documents,
+        readVillageState: () => repository.readAuthority({ memories: true }),
+        readActive: async () => ({ sessionId: "", placeId: "" }),
+        hasVenueOperation: () => false,
+        saveTerminal: terminals.save,
+        withRepairWork: (work) => storage.gate.work(work),
+        withSceneWork: (id, work) => sceneFence.run(id, work),
+        withLateResponseWork: (id, work) => lateFence.run(id, work),
+      });
+      assert.equal(await retirement.retire("scene"), !abandoned && !missing);
+      await collectRetainedStorage(storage.gate);
+      const cold = await createVillageRepository(() => storage.gate.documents).readAuthority({ memories: true });
+      assert.equal(
+        cold.episodes.records.length,
+        abandoned || missing ? 0 : 1,
+        "retiring Scene prose never releases accepted common history",
+      );
+      assert.equal(cold.continuity.versions.length, abandoned || missing ? 0 : 1);
+      if (abandoned || missing) {
+        assert.equal(await terminals.read("scene"), null);
+        assert.deepEqual(
+          (await storage.repository.readSession("scene")).submissions[0].narration,
+          scene.submissions[0].narration,
+        );
+      } else {
+        assert.equal(
+          (await terminals.read("scene"))!.submissions[0].inputHash,
+          scene.submissions[0].requestFingerprint,
+        );
+        assert.equal(cold.episodes.records[0].privateInput, scene.submissions[0].message);
+        await assert.rejects(storage.repository.readSession("scene"), /no longer available/);
+      }
+    } finally {
+      storage.release();
+    }
+  }
+});
+await runCase("scene-narration/skip-ownership", async () => {
+  const f = fixture(),
+    scene = f.scenes.get("scene")!;
+  const nextOperation = structuredClone(scene.operation!);
+  nextOperation.token = "new-turn-owner";
+  nextOperation.status = "running";
+  delete scene.operation;
+  scene.status = "opening";
+  scene.submissions = [];
+  const commands = createSceneCommands({
+    activationScope: () => undefined,
+    readSession: f.ports.readSession,
+    changeSession: f.ports.changeSession,
+    requireLiveVenueSession: async () => {
+      scene.operation = nextOperation;
+      return structuredClone(scene);
+    },
+    sceneWork: () => ({
+      abortGreeting: () => {
+        throw Error("Must not abort a newly started request");
+      },
+    }),
+    cancelVenueOperation: async () => {
+      throw Error("An absent observed greeting cannot authorize cancelling a later turn");
+    },
+  } as never);
+  await assert.rejects(commands.continueVenueWithoutGreeting("scene"), /request changed/);
+  assert.equal(scene.operation?.token, "new-turn-owner");
+  assert.equal(scene.status, "opening");
 });
 await runCase("scene-narration/lost-ack", async () => {
   const f = fixture();
@@ -341,15 +654,15 @@ await runCase("scene-narration/validation-hold", async () => {
   assert.equal(f.turn().acceptance.status, "held");
   assert(f.turn().narration);
   assert.equal(f.world.episodes.records.length, 0);
-  const writes = f.calls.filter((call) => call === "world").length;
+  const saved = memoryHash([f.world, [...f.scenes]]);
   f.queue.push({ sessionId: "scene", submissionId: "turn" });
   const stop = f.service.startProgressRecovery();
   await f.recovered.promise;
   stop();
   assert.equal(
-    f.calls.filter((call) => call === "world").length,
-    writes,
-    "startup preserves an actual deterministic validation hold without rerunning the unusable purchase",
+    memoryHash([f.world, [...f.scenes]]),
+    saved,
+    "startup checks durable disposition without rerunning or modifying a held purchase",
   );
 });
 
@@ -497,7 +810,11 @@ await runCase("scene-narration/connected-turn", async () => {
     !JSON.stringify(f.world.episodes.records[0].grounding).includes("nervous"),
     "private thought was never taught to the resident",
   );
-  await commands.sendVenueTurn(input);
+  await commands.sendVenueTurn({
+    ...input,
+    replaceOfOperationId: "original-failed-request",
+    retryOfAttemptId: "original-attempt",
+  });
   assert.equal(purchases, 1);
   assert.equal(resolutions, 1);
   assert.equal(f.world.episodes.records.length, 1);

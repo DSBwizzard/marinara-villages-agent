@@ -37,6 +37,7 @@ export interface SceneCommandPorts {
   applySavedStartingTies?: () => Promise<void>;
   generate: typeof import("./writing.js").generate;
   processSavedExchange: typeof import("./progress.js").processSavedExchange;
+  abandonSavedExchange: typeof import("./progress.js").abandonSavedExchange;
   activeVenueSession: typeof import("./live-session.js").activeVenueSession;
   requireLiveVenueSession: typeof import("./live-session.js").requireLiveVenueSession;
   refreshZoneParticipants: typeof import("./live-session.js").refreshZoneParticipants;
@@ -91,6 +92,7 @@ export function createSceneCommands({
   applySavedStartingTies,
   generate,
   processSavedExchange,
+  abandonSavedExchange,
   activeVenueSession,
   requireLiveVenueSession,
   refreshZoneParticipants,
@@ -137,6 +139,8 @@ export function createSceneCommands({
   ) {
     const prior = scene.submissions.find((turn) => turn.id === input.submissionId);
     if (prior) {
+      if (prior.acceptance.status === "abandoned")
+        throw conflict("That saved request was abandoned. Send a new message.");
       if (prior.requestFingerprint !== requestFingerprint(input))
         throw conflict("This submission ID belongs to different input.");
     } else {
@@ -658,7 +662,9 @@ export function createSceneCommands({
     let session = await requireLiveVenueSession(id);
     if (
       session.status !== "opening" &&
-      !session.submissions.some((turn) => turn.id === "greeting" && turn.acceptance.status !== "applied")
+      !session.submissions.some(
+        (turn) => turn.id === "greeting" && (turn.acceptance.status === "pending" || turn.acceptance.status === "held"),
+      )
     )
       return session;
     session = await publishNarration(
@@ -676,11 +682,27 @@ export function createSceneCommands({
     return withSceneActivation(() => continueVenueWithoutGreetingInActivation(id));
   }
   async function continueVenueWithoutGreetingInActivation(id: string): Promise<VenueScene> {
-    await readSession(id);
+    const before = await readSession(id);
+    if (before.operation && before.operation.kind !== "greet" && before.operation.status !== "complete")
+      throw conflict("Recover the current request before skipping the greeting.");
     const work = sceneWork();
-    await cancelVenueOperation(id);
+    let expected = before.operation;
+    if (expected?.kind === "greet") {
+      await cancelVenueOperation(id, expected);
+      const cancelled = await readSession(id);
+      if (
+        cancelled.operation?.id !== expected.id ||
+        cancelled.operation.attemptId !== expected.attemptId ||
+        cancelled.operation.status !== "complete"
+      )
+        throw conflict("The greeting changed before it could be skipped.");
+      await abandonSavedExchange(cancelled, expected.id);
+      expected = cancelled.operation;
+    }
     await requireLiveVenueSession(id);
     const session = await changeSession(id, (state) => {
+      if (state.operation?.token !== expected?.token || state.operation?.attemptId !== expected?.attemptId)
+        throw conflict("The Scene request changed before the greeting could be skipped.");
       if (state.status === "opening") state.status = "active";
       else if (state.status !== "active") throw conflict("That Scene has already ended.");
       if (state.operation?.kind === "greet" && state.operation.status === "complete") {
@@ -713,6 +735,31 @@ export function createSceneCommands({
       targetId: input.targetId,
       ...(input.contact ? { contact: input.contact } : {}),
     };
+  }
+  async function abandonFailedRequest(
+    scene: VenueScene,
+    operationId: string,
+    attemptId: string | undefined,
+    expected: number | undefined,
+    kind: "turn" | "close",
+  ) {
+    const operation = scene.operation;
+    if (
+      !operation ||
+      operation.id !== operationId ||
+      operation.attemptId !== attemptId ||
+      operation.status === "running" ||
+      (kind === "close" && operation.status !== "interrupted") ||
+      (kind === "turn" && operation.kind !== "turn") ||
+      (kind === "turn" && operation.status === "complete" && !operation.error) ||
+      (kind === "turn" && operation.sceneRevision !== scene.sceneRevision) ||
+      scene.navigationReceipts?.some((row) => row.id === operationId) ||
+      expected === undefined ||
+      expected !== scene.sceneRevision
+    )
+      throw venueRefusal("OPERATION_INTERRUPTED", "The failed request changed. Review the Scene before continuing.");
+    if ((await abandonSavedExchange(scene, operationId)) === "applied")
+      throw conflict("The saved reply already committed and has been recovered. Review the Scene before continuing.");
   }
   function unavailableTurnResult(session: VenueScene, submissionId: string) {
     return {
@@ -751,6 +798,16 @@ export function createSceneCommands({
       throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID belongs to a different contact attempt.");
     if (prior && (prior.message !== input.message || prior.mode !== input.mode || prior.targetId !== input.targetId))
       throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID belongs to a different line.");
+    if (!prior && input.replaceOfOperationId === input.submissionId)
+      throw conflict("A replacement needs a new submission ID.");
+    if (!prior && input.replaceOfOperationId)
+      await abandonFailedRequest(
+        scene,
+        input.replaceOfOperationId,
+        input.retryOfAttemptId,
+        input.expectedSceneRevision,
+        "turn",
+      );
     return coordinateVenue(
       input.sessionId,
       input.submissionId,
@@ -759,7 +816,7 @@ export function createSceneCommands({
       input.expectedSceneRevision,
       input.retryOfAttemptId,
       () => sendVenueTurnOnce(input),
-      { replay: !!prior, replaceOfOperationId: input.replaceOfOperationId },
+      { replay: !!prior, replaceOfOperationId: prior ? undefined : input.replaceOfOperationId },
     );
   }
   /** Generate a final beat once, then use the ordinary visit filing path. */
@@ -774,6 +831,9 @@ export function createSceneCommands({
     const scene = await readSession(sessionId);
     assertCurrentSceneGeneration(scene);
     const prior = scene.submissions.find((entry) => entry.id === submissionId);
+    if (!prior && replaceOfOperationId === submissionId) throw conflict("A replacement needs a new submission ID.");
+    if (!prior && replaceOfOperationId)
+      await abandonFailedRequest(scene, replaceOfOperationId, retryOfAttemptId, expectedSceneRevision, "turn");
     if (!prior) await requireLiveVenueSession(sessionId);
     if (!prior && !findLocation(await readVillageState(), scene.placeId))
       throw conflict("This Venue is no longer available. End the Scene.");
@@ -786,7 +846,7 @@ export function createSceneCommands({
       expectedSceneRevision,
       retryOfAttemptId,
       () => leaveVenueSessionOnce(sessionId, submissionId, message),
-      { replay: !!prior, replaceOfOperationId },
+      { replay: !!prior, replaceOfOperationId: prior ? undefined : replaceOfOperationId },
     );
   }
   async function leaveVenueSessionOnce(sessionId: string, submissionId: string, message: string) {
@@ -891,7 +951,10 @@ export function createSceneCommands({
   ): Promise<VenueScene> {
     const scene = await readSession(id);
     if (scene.status === "closed") return scene;
-    const resumingAbandon = scene.operation?.id === "close" && !!scene.operation.checkpoints?.["abandoned-request"];
+    const resumingAbandon =
+      scene.operation?.id === "close" && typeof scene.operation.input.abandonOperationId === "string";
+    if (abandonOperationId && !resumingAbandon)
+      await abandonFailedRequest(scene, abandonOperationId, retryOfAttemptId, expectedSceneRevision, "close");
     const closeInput = resumingAbandon ? scene.operation!.input : abandonOperationId ? { abandonOperationId } : {};
     return coordinateVenue(
       id,

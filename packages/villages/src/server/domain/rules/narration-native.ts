@@ -7,6 +7,7 @@ import { bindNarrationSource, assertNarrationSourceOrder } from "./narration-sou
 import { narrationLines } from "./narration-lines.js";
 import {
   acceptedNarrationEpisode,
+  narrationIsAbandoned,
   acceptNarrationContinuity,
   type NarrationPublication,
 } from "./narration-acceptance.js";
@@ -202,6 +203,7 @@ export function acceptNarration(
       submissionId,
       at,
     );
+  memoryRequire(!narrationIsAbandoned(state, publication, submissionId), "this narration was explicitly abandoned");
   const excluded = new Map<string, string>();
   const visited = new Set<string>();
   for (;;) {

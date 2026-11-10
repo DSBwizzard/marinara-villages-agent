@@ -5,7 +5,6 @@ import {
   operationEvidenceReferences,
   operationEvidenceStore,
   operationCheckpointClaims,
-  readOperationEvidenceReference,
 } from "./operation-evidence.js";
 import { coerceSession } from "../../domain/decoding/scene-codec.js";
 import { memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
@@ -32,7 +31,7 @@ import {
   createSceneSubmissionTracer,
   type SceneSubmissionHead,
 } from "./scene-submission-pages.js";
-export const SCENE_STORAGE_FORMAT = 14;
+export const SCENE_STORAGE_FORMAT = 15;
 function publicHistoryHead(raw: Record<string, any>) {
   return readScenePublicHistoryHead(
     raw.publicHistory,
@@ -121,6 +120,27 @@ export function readSceneHistoryRoot(value: unknown): void {
     readSceneSubmissionHead(raw.submissionHistory, raw as VenueScene);
     publicHistoryHead(raw);
     const context = storedContinuity(raw.continuity, raw);
+    if (raw.abandonedOperations !== undefined) {
+      memoryRequire(!admitted && Array.isArray(raw.abandonedOperations), "invalid abandoned Scene operations");
+      const identities = new Set<string>();
+      for (const operation of raw.abandonedOperations) {
+        memoryObject(operation);
+        const identity = JSON.stringify([operation.id, operation.attemptId]);
+        memoryRequire(
+          operation.snapshot === null &&
+            operation.status === "complete" &&
+            typeof operation.id === "string" &&
+            !!operation.id &&
+            typeof operation.attemptId === "string" &&
+            !!operation.attemptId &&
+            !identities.has(identity),
+          "invalid abandoned operation owner",
+        );
+        identities.add(identity);
+        operationEvidenceReferences(operation, raw as VenueScene);
+        operationCheckpointClaims(operation, raw as VenueScene);
+      }
+    }
     if (raw.operation !== undefined && raw.operation !== null) {
       memoryRequire(!admitted, "admitted Scene snapshots cannot contain an operation");
       memoryObject(raw.operation);
@@ -335,7 +355,8 @@ export async function validateSceneHistory(documents: Pick<CapabilityDocumentSto
   await validatePublicHistory(documents, scenes);
   for (const value of scenes) {
     const raw = value as Record<string, any>;
-    await validateOperationEvidenceOwners(documents, raw.operation, raw as VenueScene, undefined, false);
+    for (const operation of [raw.operation, ...(raw.abandonedOperations ?? [])])
+      await validateOperationEvidenceOwners(documents, operation, raw as VenueScene);
   }
 }
 export async function validateOperationEvidenceOwners(
@@ -343,7 +364,6 @@ export async function validateOperationEvidenceOwners(
   operation: unknown,
   scope: Pick<VenueScene, "id" | "villageSeed" | "continuity">,
   mark: (id: string) => void = () => {},
-  nested = false,
 ) {
   const store = operationEvidenceStore(documents as CapabilityDocumentStore);
   for (const claim of operationCheckpointClaims(operation, scope)) {
@@ -352,19 +372,10 @@ export async function validateOperationEvidenceOwners(
       mark(saved.ref.id);
     }
   }
-  for (const ref of operationEvidenceReferences(operation, scope, nested)) {
+  for (const ref of operationEvidenceReferences(operation, scope)) {
     await store.inspect(ref, scope);
     mark(ref.id);
   }
-  const ref = (operation as Record<string, any> | undefined)?.checkpoints?.["abandoned-request"];
-  if (ref)
-    await validateOperationEvidenceOwners(
-      documents,
-      await store.read(readOperationEvidenceReference({ id: ref.id, digest: ref.digest }), scope, true),
-      scope,
-      mark,
-      true,
-    );
 }
 /** Native request snapshots are inline; prose and submission history share immutable pages. */
 export function createSceneHistory(documents: CapabilityDocumentStore) {

@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 import type { DocumentSlot } from "../../adapters/storage/document-store.js";
@@ -20,7 +19,7 @@ function slot(id: string): DocumentSlot<SceneTerminal> {
       const raw = asRecord(value);
       if (!value)
         return {
-          version: 1,
+          version: 2,
           sceneId: id,
           villageSeed: "",
           sourceRevision: 0,
@@ -34,7 +33,7 @@ function slot(id: string): DocumentSlot<SceneTerminal> {
           recordEvents: [],
         };
       if (
-        raw.version !== 1 ||
+        raw.version !== 2 ||
         raw.sceneId !== id ||
         typeof raw.villageSeed !== "string" ||
         !raw.villageSeed ||
@@ -122,11 +121,6 @@ function slot(id: string): DocumentSlot<SceneTerminal> {
         )
           throw new Error("Saved Scene receipt is invalid; Scene cleanup is deferred.");
       }
-      if (raw.abandonedRequest !== undefined) {
-        const abandoned = asRecord(raw.abandonedRequest);
-        if (["id", "kind", "attemptId"].some((key) => typeof abandoned[key] !== "string" || !abandoned[key]))
-          throw new Error("Saved Scene receipt is invalid; Scene cleanup is deferred.");
-      }
       return structuredClone(raw) as SceneTerminal;
     },
   };
@@ -139,14 +133,13 @@ export function readSceneTerminal(value: unknown, id: string): SceneTerminal {
 export function terminalForScene(scene: VenueScene, sourceRevision: number): SceneTerminal {
   if (!scene.villageSeed || scene.status !== "closed" || !Number.isSafeInteger(sourceRevision) || sourceRevision < 1)
     throw new Error("Scene is not ready for a terminal receipt.");
-  const abandoned = asRecord(scene.operation?.checkpoints?.["abandoned-request"]);
   if (
-    scene.operation?.checkpoints?.["abandoned-request"] &&
-    ["id", "kind", "attemptId"].some((key) => typeof abandoned[key] !== "string" || !abandoned[key])
+    scene.abandonedOperations?.length ||
+    scene.submissions.some((turn) => turn.acceptance.status !== "applied" || turn.narration)
   )
-    throw new Error("Abandoned Scene request identity is invalid; Scene cleanup is deferred.");
+    throw new Error("Scene purchases still own retained evidence.");
   return {
-    version: 1,
+    version: 2,
     sceneId: scene.id,
     villageSeed: scene.villageSeed,
     sourceRevision,
@@ -155,23 +148,12 @@ export function terminalForScene(scene: VenueScene, sourceRevision: number): Sce
     endReason: scene.endReason,
     submissions: scene.submissions.map((turn) => ({
       id: turn.id,
-      inputHash: createHash("sha256")
-        .update(JSON.stringify([turn.mode, turn.message, turn.targetId, turn.contact ?? null]))
-        .digest("hex"),
+      inputHash: turn.requestFingerprint,
     })),
     navigationReceipts: structuredClone(scene.navigationReceipts ?? []),
     rejectedSubmissions: structuredClone(scene.rejectedSubmissions ?? []),
     generationReceipts: structuredClone(scene.generationReceipts ?? []),
     recordEvents: [...scenePresenceNotices(scene), ...scene.submissions.flatMap((turn) => turn.recordEvents ?? [])],
-    ...(scene.operation?.checkpoints?.["abandoned-request"]
-      ? {
-          abandonedRequest: {
-            id: abandoned.id as string,
-            kind: abandoned.kind as string,
-            attemptId: abandoned.attemptId as string,
-          },
-        }
-      : {}),
     ...(scene.operation?.status === "complete"
       ? {
           operation: {
@@ -201,7 +183,6 @@ export function createSceneTerminalStore(ports: {
         throw new Error("Village changed while saving the Scene receipt.");
       if (current.sourceRevision > sourceRevision) throw new Error("Scene receipt source changed.");
       delete current.operation;
-      delete current.abandonedRequest;
       Object.assign(current, receipt);
     });
   }

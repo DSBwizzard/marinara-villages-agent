@@ -373,27 +373,33 @@ export async function collectRetainedStorage(gate: RepairGate, removeSpriteFile?
         for (const owner of sceneSubmissionOwners(row.data))
           await view.submissions.trace(owner.head, owner.participants, owner.scene);
         for (const { head, scene } of scenePublicHistoryOwners(row.data)) await view.publicHistory.trace(head, scene);
-        const scene = row.data as { id: string; villageSeed?: string; operation?: unknown };
-        await traceOperationEvidence(
-          scene.operation,
-          scene,
-          async (ref, resolveValue) => {
-            const body = await view.lookup(ref.id);
-            memoryRequire(body, "owned operation evidence is missing");
-            const { data } = evidenceBody(body, scene, ref);
-            marked.add(ref.id);
-            return resolveValue ? operationEvidenceValue(data) : undefined;
-          },
-          async (operation) => {
-            for (const claim of operationCheckpointClaims(operation, scene)) {
-              const body = await view.lookup(claim.bodyId);
-              if (!body) continue;
-              const { data } = evidenceBody(body, scene);
-              memoryRequire(data.claim === claim.token, "pending checkpoint publication identity changed");
-              marked.add(body.id);
-            }
-          },
-        );
+        const scene = row.data as {
+          id: string;
+          villageSeed?: string;
+          operation?: unknown;
+          abandonedOperations?: unknown[];
+        };
+        for (const operation of [scene.operation, ...(scene.abandonedOperations ?? [])])
+          await traceOperationEvidence(
+            operation,
+            scene,
+            async (ref, resolveValue) => {
+              const body = await view.lookup(ref.id);
+              memoryRequire(body, "owned operation evidence is missing");
+              const { data } = evidenceBody(body, scene, ref);
+              marked.add(ref.id);
+              return resolveValue ? operationEvidenceValue(data) : undefined;
+            },
+            async (operation) => {
+              for (const claim of operationCheckpointClaims(operation, scene)) {
+                const body = await view.lookup(claim.bodyId);
+                if (!body) continue;
+                const { data } = evidenceBody(body, scene);
+                memoryRequire(data.claim === claim.token, "pending checkpoint publication identity changed");
+                marked.add(body.id);
+              }
+            },
+          );
       } else if (row.kind === "repair-checkpoint") {
         const value = storage.checkpointData(row.data);
         memoryRequire(row.id === repairStorageId("repair-checkpoint", value.id), "checkpoint owner identity changed");

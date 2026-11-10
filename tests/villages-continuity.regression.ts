@@ -26,6 +26,24 @@ const player = actor("player"),
   mara = actor("mara"),
   leo = actor("leo");
 const room: ContinuityHolder & { kind: "room" } = { kind: "room", placeId: "home", zoneId: "parlor" };
+assert.throws(
+  () =>
+    applyContinuityWrite(
+      emptyContinuity(),
+      { id: "episode-123", holders: [mara], sourceIds: [], text: "A fact." },
+      {
+        seed: "world",
+        operationId: "narration-abandoned",
+        episodeId: "episode-123",
+        at,
+        actors: [{ id: "mara", incarnation: "one" }],
+        sources: [],
+        supplied: [],
+        protectedRoots: [],
+      },
+    ),
+  /reserved narration receipt namespace/,
+);
 function source(
   id: string,
   actorId: string,

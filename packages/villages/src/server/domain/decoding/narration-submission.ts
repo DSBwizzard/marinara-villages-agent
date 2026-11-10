@@ -14,7 +14,7 @@ const saved = z
     at,
     acceptance: z
       .object({
-        status: z.enum(["pending", "held", "applied"]),
+        status: z.enum(["pending", "held", "applied", "abandoned"]),
         rejected: z.array(z.object({ id, reason: z.string().max(2000) }).strict()).max(64),
       })
       .strict(),

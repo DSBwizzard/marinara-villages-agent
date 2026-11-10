@@ -172,6 +172,9 @@ export function coerceSession(value: unknown): VenueScene {
     ...(raw.villageSeed ? { villageSeed: asString(raw.villageSeed) } : {}),
     sceneRevision: sceneRevision(raw),
     operation: raw.operation as VenueOperation | undefined,
+    ...(raw.abandonedOperations
+      ? { abandonedOperations: structuredClone(raw.abandonedOperations) as VenueOperation[] }
+      : {}),
     rejectedSubmissions: Array.isArray(raw.rejectedSubmissions)
       ? raw.rejectedSubmissions
           .map(asRecord)

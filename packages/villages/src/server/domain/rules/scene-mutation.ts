@@ -29,10 +29,7 @@ function mutationSnapshot(session: VenueScene) {
       ...value,
       snapshot: snapshot ? { ...snapshot, continuity: evidence(snapshot.continuity) } : snapshot,
       checkpoints: Object.fromEntries(
-        Object.entries(value.checkpoints).map(([stage, body]) => [
-          stage,
-          stage === "abandoned-request" ? operation(body as VenueOperation) : evidence(body),
-        ]),
+        Object.entries(value.checkpoints).map(([stage, body]) => [stage, evidence(body)]),
       ),
       attempts: attempts(value.attempts),
     };

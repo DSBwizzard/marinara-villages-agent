@@ -8,7 +8,6 @@ import { publicSceneAuthority } from "../../domain/rules/scene-public.js";
 import { operationSummary } from "../../adapters/operations/operation-context.js";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 import { SESSION_KIND } from "../../adapters/storage/scene-slots.js";
-import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
 import { readSceneIndex, readSceneWorkIndex } from "../../adapters/storage/scene-history.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
@@ -23,7 +22,6 @@ import {
   projectSceneHistoryPage,
 } from "../../adapters/storage/scene-public-history.js";
 import { asRecord } from "../../domain/rules/coerce.js";
-import { requireSceneExchange } from "../../domain/rules/scene-submissions.js";
 import { projectMetadataRejected } from "../../domain/rules/semantic-continuity.js";
 
 import { withRepairWork } from "../../adapters/storage/repair-gate.js";
@@ -409,7 +407,7 @@ export function createSceneQueryService({
       );
       backlog.push(
         ...eligible
-          .filter((turn) => turn.acceptance.status === "pending")
+          .filter((turn) => turn.acceptance.status === "pending" || turn.acceptance.status === "held")
           .map((turn) => ({
             sessionId: session.id,
             submissionId: turn.id,

@@ -33,7 +33,7 @@ export function mutableSceneSubmission(scene: Pick<VenueScene, "submissions">, i
 }
 
 export function narrationBlocker(scene: Pick<VenueScene, "submissions">): string | null {
-  return scene.submissions.some((turn) => turn.acceptance.status !== "applied")
+  return scene.submissions.some((turn) => turn.acceptance.status === "pending" || turn.acceptance.status === "held")
     ? "Recover the saved reply before continuing this Scene."
     : null;
 }

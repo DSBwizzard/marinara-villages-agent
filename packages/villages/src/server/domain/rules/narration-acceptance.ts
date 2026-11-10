@@ -38,12 +38,13 @@ export type NarrationPublication = {
   };
 };
 
+type SavedNarration = Pick<NarrationPublication, "readset" | "raw" | "responseDigest">;
+const abandonmentKey = (publication: SavedNarration) => "narration-abandoned:" + publication.readset.source.episodeId;
+const abandonmentFingerprint = (publication: SavedNarration, submissionId: string) =>
+  memoryHash([submissionId, publication.responseDigest, publication.raw, publication.readset]);
+
 /** The caller checks this before preparing native effects on a recovered request. */
-export function acceptedNarrationEpisode(
-  state: VillageState,
-  publication: Pick<NarrationPublication, "readset" | "raw" | "responseDigest">,
-  submissionId: string,
-) {
+export function acceptedNarrationEpisode(state: VillageState, publication: SavedNarration, submissionId: string) {
   const prior = state.episodes.records.find(
     (row) =>
       row.id === publication.readset.source.episodeId || row.operationId === publication.readset.source.operationId,
@@ -56,6 +57,37 @@ export function acceptedNarrationEpisode(
       "accepted narration identity reused",
     );
   return prior;
+}
+
+export function narrationIsAbandoned(state: VillageState, publication: SavedNarration, submissionId: string) {
+  const receipt = state.continuity.receipts[abandonmentKey(publication)];
+  if (!receipt) return false;
+  memoryRequire(
+    receipt.fingerprint === abandonmentFingerprint(publication, submissionId) &&
+      !receipt.roots.length &&
+      !receipt.versions.length,
+    "abandoned narration identity reused",
+  );
+  return true;
+}
+
+/** The existing root CAS orders acceptance against abandonment across activations. */
+export function abandonNarration(state: VillageState, publication: SavedNarration, submissionId: string) {
+  const accepted = acceptedNarrationEpisode(state, publication, submissionId);
+  if (accepted) return accepted;
+  const key = abandonmentKey(publication),
+    fingerprint = abandonmentFingerprint(publication, submissionId);
+  if (narrationIsAbandoned(state, publication, submissionId)) return undefined;
+  memoryRequire(
+    state.seed === publication.readset.source.seed && state.setupAt === publication.readset.setupAt,
+    "narration world changed",
+  );
+  state.continuity = {
+    ...state.continuity,
+    revision: state.continuity.revision + 1,
+    receipts: { ...state.continuity.receipts, [key]: { fingerprint, roots: [], versions: [] } },
+  };
+  return undefined;
 }
 
 /** One pure candidate for the existing Village CAS; the Scene remains the replay outbox. */
@@ -78,6 +110,7 @@ export function acceptNarrationContinuity(
       replayed: true,
     };
   }
+  memoryRequire(!narrationIsAbandoned(state, publication, submissionId), "this narration was explicitly abandoned");
   memoryRequire(
     state.seed === readset.source.seed && state.setupAt === readset.setupAt,
     "narration world or request identity changed",

@@ -8,6 +8,9 @@ export function configureSceneProgress(service: SceneProgress): () => void {
 export async function processSavedExchange(...args: Parameters<SceneProgress["processSavedExchange"]>) {
   return binding.get().processSavedExchange(...args);
 }
+export async function abandonSavedExchange(...args: Parameters<SceneProgress["abandonSavedExchange"]>) {
+  return binding.get().abandonSavedExchange(...args);
+}
 export function startProgressRecovery(...args: Parameters<SceneProgress["startProgressRecovery"]>) {
   return binding.get().startProgressRecovery(...args);
 }

@@ -31,7 +31,9 @@ export function sceneFingerprint(session: VenueScene) {
 }
 export function pendingProgressTurns(session: VenueScene, foundedAt: string) {
   return session.submissions.filter(
-    (turn) => turn.at && !turn.progressProcessedAt && (!foundedAt || Date.parse(turn.at) >= Date.parse(foundedAt)),
+    (turn) =>
+      (turn.acceptance.status === "pending" || turn.acceptance.status === "held") &&
+      (!foundedAt || Date.parse(turn.at) >= Date.parse(foundedAt)),
   );
 }
 export function appendLine(session: VenueScene, line: VenueLine): void {

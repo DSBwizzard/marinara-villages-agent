@@ -52,8 +52,8 @@ export async function coordinateVenue<T>(
     .get()
     .coordinateVenue<T>(sessionId, id, kind, input, expected, retryOfAttemptId, work, options);
 }
-export async function cancelVenueOperation(id: string) {
-  return coordinatorBinding.get().cancelVenueOperation(id);
+export async function cancelVenueOperation(...args: Parameters<VenueCoordinatorService["cancelVenueOperation"]>) {
+  return coordinatorBinding.get().cancelVenueOperation(...args);
 }
 export async function readVenueOperation(id: string, operationId?: string) {
   return coordinatorBinding.get().readVenueOperation(id, operationId);
