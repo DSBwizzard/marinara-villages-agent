@@ -1,6 +1,7 @@
-import type { ContinuityAdmission, ContinuityEvidence } from "../models/continuity-model.js";
+import type { ContinuityEvidence } from "../models/continuity-model.js";
 import type { AcceptedEpisode } from "../models/episode-model.js";
 import type { VillageState } from "../models/world.js";
+import type { MailContinuityPlan } from "../models/social-mail.js";
 import { episodeSourceGraph } from "../decoding/episode-codec.js";
 import { readMailboxState, assertMailboxRetention } from "../decoding/mailbox-codec.js";
 import { continuityActor } from "./continuity-actors.js";
@@ -21,25 +22,29 @@ import { prepareContinuityKeep } from "./narration-keep.js";
 import { readContinuityProposal, readNarrationEffectHeader } from "./narration-contract.js";
 import { selectSceneEffects, type SceneEffectResult } from "./scene-acceptance.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
+import { episodeContextActors } from "./episode-sources.js";
 
-export type MailPublication = {
-  setupAt: string;
+export type MailPublication = MailContinuityPlan & {
   mail: MailIdentity;
   text: string;
   requestId: string;
   replyTo?: string;
   phase: "written" | "read";
-  admission: ContinuityAdmission;
-  historical: Record<string, ContinuityEvidence>;
-  keep: unknown[];
-  requires: string[];
-  responseDigest: string;
+  reading?: MailContinuityPlan;
 };
 
 /** One letter stage, shared meanings and its native envelope publish in the existing Village CAS. */
 export function acceptMailContinuity(state: VillageState, publication: MailPublication, acceptedAt: string) {
   const { text, phase } = publication,
-    receipt = mailReceipt(publication.admission.seed, publication.mail, text, phase),
+    original = state.mailbox.messages[publication.mail.id],
+    reading = phase === "written" ? publication.reading : original?.reading,
+    receipt = mailReceipt(
+      publication.admission.seed,
+      publication.mail,
+      text,
+      phase,
+      reading ? memoryHash(reading) : undefined,
+    ),
     mail: MailIdentity = { id: receipt.mail!.id, at: receipt.mail!.at, from: receipt.mail!.from, to: receipt.mail!.to },
     digest = memoryHash({ ...publication, mail }),
     prior = state.episodes.records.find((row) => row.id === receipt.id);
@@ -61,7 +66,7 @@ export function acceptMailContinuity(state: VillageState, publication: MailPubli
   memoryRequire(
     publication.admission.episodeId === receipt.id &&
       publication.admission.operationId === receipt.id &&
-      !publication.admission.room,
+      !Object.hasOwn(publication.admission, "room"),
     "mail admission changed its native stage identity",
   );
   const parties = phase === "written" ? [mail.from] : [mail.from, mail.to],
@@ -73,7 +78,18 @@ export function acceptMailContinuity(state: VillageState, publication: MailPubli
       present.every((party) => continuityActor(state, party.id)?.incarnation === party.incarnation),
     "mail correspondent incarnation changed",
   );
-  const original = state.mailbox.messages[mail.id];
+  if (phase === "read" && reading) {
+    const {
+      mail: _mail,
+      text: _text,
+      requestId: _request,
+      replyTo: _reply,
+      phase: _phase,
+      reading: _reading,
+      ...plan
+    } = publication;
+    memoryRequire(memoryHash(plan) === memoryHash(reading), "letter reading changed its saved meaning or capture");
+  }
   memoryRequire(
     !original ||
       (original.text === text &&
@@ -88,17 +104,34 @@ export function acceptMailContinuity(state: VillageState, publication: MailPubli
       : original?.status === "delivered" && !original.readAt,
     "mail stage is no longer eligible",
   );
+  const generated = phase === "written" && mail.from.id !== "player",
+    references = episodeContextActors({ actors: parties }, Object.keys(publication.admission.provenance ?? {}));
   memoryRequire(
-    publication.admission.protectionFingerprint === continuityProtectionFingerprint(state.continuity, actors),
+    publication.admission.protectionFingerprint ===
+      continuityProtectionFingerprint(state.continuity, [
+        ...[mail.from, mail.to].map((party) => ({ kind: "actor" as const, ...party })),
+        ...references.filter((holder) => holder.id !== mail.from.id && holder.id !== mail.to.id),
+      ]),
     "mail continuity protection changed",
   );
+  memoryRequire(
+    references.every(
+      (holder) =>
+        generated &&
+        publication.admission.subjects?.some(
+          (subject) => subject.id === holder.id && subject.incarnation === holder.incarnation,
+        ),
+    ),
+    "mail private context changed its captured reference holder",
+  );
+  const contexts = [...actors, ...references];
   const blocked = Object.fromEntries(
-    actors.map((actor) => [
+    contexts.map((actor) => [
       continuityHolderKey(actor),
       [...continuityProtectionUnits(state.continuity, actor, episodeSourceGraph(state.episodes.records, actor))],
     ]),
   );
-  for (const actor of actors)
+  for (const actor of contexts)
     assertContinuityProvenance(
       publication.admission.provenance?.[continuityHolderKey(actor)] ?? [],
       new Set(blocked[continuityHolderKey(actor)]),
@@ -114,13 +147,15 @@ export function acceptMailContinuity(state: VillageState, publication: MailPubli
     fittedKnowledge = Object.values(publication.historical).filter((source) => source.kind === "knowledge");
   for (const source of fittedKnowledge) {
     memoryRequire(
-      source.seed === state.seed && source.episodeId === receipt.id && source.actorId === portrayedId,
+      source.seed === state.seed &&
+        source.episodeId === receipt.id &&
+        (source.actorId === portrayedId || references.some((holder) => holder.id === source.actorId)),
       "mail fitted knowledge changed its holder or stage",
     );
     assertContinuityKnowledge(
       state.continuity,
       source,
-      admission.actors,
+      contexts,
       admission.continuityRevision!,
       admission.sourceActors,
     );
@@ -217,6 +252,10 @@ export function acceptMailContinuity(state: VillageState, publication: MailPubli
         ? (admission.provenance?.[continuityHolderKey(witness)] ?? [])
         : [],
   };
+  for (const holder of references)
+    holderDependencies[continuityHolderKey(holder)] = {
+      ["mail:" + receipt.mail!.sourceHash]: admission.provenance?.[continuityHolderKey(holder)] ?? [],
+    };
   for (const version of versions) {
     const record = continuity.records.find((row) => row.id === version.rootId)!;
     for (const head of Object.values(record.heads).filter((head) => head.versionId === version.id)) {
@@ -265,6 +304,7 @@ export function acceptMailContinuity(state: VillageState, publication: MailPubli
                   status: "delivered",
                   deliveredAt: acceptedAt,
                   ...(publication.replyTo ? { replyTo: publication.replyTo } : {}),
+                  ...(reading ? { reading } : {}),
                 }
               : { ...original, readAt: acceptedAt },
         },

@@ -84,7 +84,8 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
             "private context lost its own canonical knowledge anchor",
           );
         else {
-          const prior = typeof unit[0] === "string" ? byEpisode.get(unit[0]) : undefined;
+          const prior = typeof unit[0] === "string" ? byEpisode.get(unit[0]) : undefined,
+            letter = prior && typeof unit[1] === "string" ? episodeMailEvidence(prior, unit[1]) : undefined;
           memoryRequire(
             prior &&
               (sequenceById.get(prior.id) ?? Infinity) < sequence &&
@@ -92,6 +93,7 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
                 (actor) => actor.id === holder.id && actor.incarnation === holder.incarnation,
               ) &&
               (prior.grounding.some((source) => continuitySourceUnit(source) === dependency) ||
+                (letter && continuitySourceUnit(letter) === dependency) ||
                 prior.segments.some((line) => JSON.stringify([prior.id, line.id, memoryHash(line)]) === dependency) ||
                 (unit[1] === "input" &&
                   JSON.stringify([prior.id, "input", memoryHash(prior.privateInput)]) === dependency)),

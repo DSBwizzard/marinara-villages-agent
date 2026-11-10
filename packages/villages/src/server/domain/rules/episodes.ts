@@ -257,6 +257,7 @@ function projectGmEpisode(
   const letters = episode.commandReceipts.flatMap((receipt) => {
     if (!receipt.mail) return [];
     const id = "mail:" + receipt.mail.sourceHash;
+    if (referenceProtection.some((units) => protectedUnit(episode, id, units))) return [];
     const knownBy = views
       .filter((row) => row.view.letters.some((letter) => letter.id === id))
       .map((row) => row.holder.id);

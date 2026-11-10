@@ -1,3 +1,4 @@
+import { projectEpisodeRecall } from "./episode-recall.js";
 import type { ContinuityEvidence, ContinuityHolder, ContinuityTarget } from "../models/continuity-model.js";
 import type { NarrationReadset } from "../models/narration-model.js";
 import { narrationResidenceContext } from "./narration-residence.js";
@@ -5,10 +6,9 @@ import { narrationPlaceContext } from "./narration-place.js";
 import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
 import { coerceSession } from "../decoding/scene-codec.js";
-import { episodeSourceGraph, episodeUnit } from "../decoding/episode-codec.js";
+import { episodeSourceGraph } from "../decoding/episode-codec.js";
 import { continuityActor } from "./continuity-actors.js";
 import {
-  actorContinuityEvidence,
   continuityHolderKey,
   continuityKnowledge,
   continuityProtectionUnits,
@@ -20,13 +20,7 @@ import {
   continuityProtectionFingerprint,
 } from "./continuity.js";
 import { selectActorContinuity, selectRoomContinuity } from "./continuity-retrieval.js";
-import {
-  actorEpisodeView,
-  recentSharedEpisodes,
-  recallEpisodeSpeech,
-  recallEpisodeMail,
-  selectEpisodeHistory,
-} from "./episodes.js";
+import { recentSharedEpisodes, selectEpisodeHistory } from "./episodes.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { estimatedTextTokens } from "./text-recall.js";
 import type { VenueWritingBlock } from "./venue-writing.js";
@@ -395,136 +389,16 @@ export function narrationContinuityContext(
   );
   for (const view of history.episodes) {
     const episode = state.episodes.records.find((row) => row.id === view.id)!,
-      part = emptyPart();
-    part.episodeIds.push(episode.id);
-    const aliases: { ref: string; holder: string; evidence: ContinuityEvidence }[] = [];
-    for (const holder of holders) {
-      const own = actorEpisodeView(episode, state.continuity, holder, state.episodes);
-      if (!own) continue;
-      const eligible = episode.grounding.flatMap((source) => {
-        try {
-          const projected = actorContinuityEvidence(source, holder.id);
-          return own.input.some((row) => row.id === source.id) ||
-            (source.kind === "written" &&
-              own.letters.some((row) => row.id === source.unitId && row.text === projected.excerpt)) ||
-            own.segments.some(
-              (row) =>
-                row.id === source.unitId &&
-                row.text === projected.excerpt &&
-                row.channel === projected.perceptions[0]?.channel,
-            )
-            ? [projected]
-            : [];
-        } catch {
-          return [];
-        }
-      });
-      for (const segment of own.segments)
-        if (!eligible.some((source) => source.unitId === segment.id)) {
-          const source = recallEpisodeSpeech(episode, segment.id, state.continuity, holder, state.episodes);
-          if (source) eligible.push(source);
-        }
-      for (const letter of own.letters)
-        if (!eligible.some((source) => source.unitId === letter.id)) {
-          const source = recallEpisodeMail(episode, letter.id, state.continuity, holder, state.episodes);
-          if (source) eligible.push(source);
-        }
-      const key = continuityHolderKey(holder);
-      part.provenance[key] = [
-        ...new Set([
-          ...eligible.map(continuitySourceUnit),
-          ...own.segments
-            .filter(
-              (row) =>
-                row.channel !== "sound-only" &&
-                episode.segments.some((line) => line.id === row.id && line.content === row.text),
-            )
-            .map((row) => episodeUnit(episode, row.id)),
-        ]),
-      ];
-      for (const source of eligible) {
-        const ref = sourceAlias();
-        part.sources[ref] = source;
-        aliases.push({ ref, holder: holder.id, evidence: source });
-      }
-    }
-    const segments = view.segments.flatMap((line) => {
-      if (!("gmOnlyText" in line)) return [line];
-      const scopes = [...episode.actors, ...episodeContextActors(episode)].filter(
-        (holder) => episode.holderDependencies?.[continuityHolderKey({ kind: "actor", ...holder })]?.[line.id]?.length,
-      );
-      if (
-        scopes.some((holder) => {
-          const incarnation = contextScopes.get(holder.id) ?? continuityActor(state, holder.id)?.incarnation;
-          return incarnation && incarnation !== holder.incarnation;
-        })
-      ) {
-        const perceived = { ...line };
-        delete perceived.gmOnlyText;
-        return line.projections.length ? [perceived] : [];
-      }
-      for (const holder of scopes) {
-        contextScopes.set(holder.id, holder.incarnation);
-        const key = continuityHolderKey({ kind: "actor", ...holder });
-        (part.provenance[key] ??= []).push(episodeUnit(episode, line.id));
-      }
-      return [line];
-    });
-    const gmUnits = [
-      ...("text" in view.gmPrivateInput ? [episodeUnit(episode, "input")] : []),
-      ...segments.filter((row) => "gmOnlyText" in row).map((row) => episodeUnit(episode, row.id)),
-    ];
-    for (const holder of holders.filter((holder) =>
-      actors.some((actor) => continuityHolderKey(actor) === continuityHolderKey(holder)),
-    )) {
-      const key = continuityHolderKey(holder);
-      part.provenance[key] = [...new Set([...(part.provenance[key] ?? []), ...gmUnits])];
-    }
-    const sourceRefs = (holder: string, unit: string, text: string) =>
-      aliases
-        .filter((row) => row.holder === holder && row.evidence.unitId === unit && row.evidence.excerpt === text)
-        .map(({ ref, evidence }) => ({ ref, ...(evidence.act ? { act: evidence.act } : {}) }));
-    const named = new Set([
-      ...segments.map((line) => line.speakerId),
-      ...(view.letters ?? []).flatMap((letter) => [letter.fromId, letter.toId]),
-      ...aliases.flatMap((alias) => (alias.evidence.actorId ? [alias.evidence.actorId] : [])),
-    ]);
-    const formerActors = episode.actors
-      .filter((actor) => named.has(actor.id) && continuityActor(state, actor.id)?.incarnation !== actor.incarnation)
-      .map((actor) => actor.id);
-    const interaction = {
-      ...view,
-      ...(formerActors.length ? { formerActors } : {}),
-      ...(view.letters
-        ? {
-            letters: view.letters.map((letter) => ({
-              ...letter,
-              knownBy: Object.fromEntries(
-                letter.knownBy.map((id) => [id, { source: sourceRefs(id, letter.id, letter.text) }]),
-              ),
-            })),
-          }
-        : {}),
-      groundedInput: view.groundedInput.map((row) => ({
-        ...row,
-        source: aliases
-          .filter((alias) => alias.holder === row.for && alias.evidence.id === row.id)
-          .map((alias) => alias.ref),
-      })),
-      segments: segments.map((row) => ({
-        ...row,
-        perceivedBy: Object.fromEntries(
-          Object.entries(row.perceivedBy).map(([id, channel]) => [
-            id,
-            { channel, source: sourceRefs(id, row.id, "text" in row ? row.text : "") },
-          ]),
-        ),
-        projections: row.projections.map((projection) => ({
-          ...projection,
-          source: sourceRefs(projection.for, row.id, projection.text),
-        })),
-      })),
-    };
+      { interaction, ...recall } = projectEpisodeRecall(
+        state,
+        episode,
+        view,
+        holders,
+        actors,
+        contextScopes,
+        sourceAlias,
+      ),
+      part = { ...emptyPart(), ...recall };
     parts.push({
       ...part,
       block: {

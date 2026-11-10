@@ -66,6 +66,7 @@ export type AcceptedEpisode = {
       to: { id: string; incarnation: string };
       phase: "written" | "read";
       sourceHash: string;
+      readingHash?: string;
     };
   }[];
   /** Code-bound source ancestry for each input/segment unit. */

@@ -3,12 +3,18 @@ import type { ContinuityEvidence } from "../models/continuity-model.js";
 import { memoryHash, memoryRequire, memoryString, memoryTimestamp } from "./memory-integrity.js";
 
 type Receipt = AcceptedEpisode["commandReceipts"][number];
-export type MailIdentity = Omit<NonNullable<Receipt["mail"]>, "phase" | "sourceHash">;
+export type MailIdentity = Omit<NonNullable<Receipt["mail"]>, "phase" | "sourceHash" | "readingHash">;
 export const mailSourceHash = (seed: string, mail: MailIdentity, text: string) =>
   memoryHash([seed, mail.id, mail.at, [mail.from.id, mail.from.incarnation], [mail.to.id, mail.to.incarnation], text]);
 
 /** Writing and reading are native delivery facts; the contents remain attributed written claims. */
-export function mailReceipt(seed: string, mail: MailIdentity, text: string, phase: "written" | "read"): Receipt {
+export function mailReceipt(
+  seed: string,
+  mail: MailIdentity,
+  text: string,
+  phase: "written" | "read",
+  readingHash?: string,
+): Receipt {
   memoryString(seed, 160);
   memoryString(mail.id, 512);
   memoryTimestamp(mail.at);
@@ -22,6 +28,10 @@ export function mailReceipt(seed: string, mail: MailIdentity, text: string, phas
     "personal letter needs its two distinct correspondents",
   );
   const sourceHash = mailSourceHash(seed, mail, text);
+  memoryRequire(
+    readingHash === undefined || /^[a-f0-9]{64}$/.test(readingHash),
+    "invalid saved letter reading identity",
+  );
   return {
     id: "mail-" + phase + "-" + sourceHash,
     kind: "mail",
@@ -36,13 +46,14 @@ export function mailReceipt(seed: string, mail: MailIdentity, text: string, phas
       to: { id: mail.to.id, incarnation: mail.to.incarnation },
       phase,
       sourceHash,
+      ...(readingHash ? { readingHash } : {}),
     },
   };
 }
 
 export function assertMailReceipt(episode: AcceptedEpisode, receipt: Receipt) {
   memoryRequire(receipt.mail, "missing letter identity");
-  const expected = mailReceipt(episode.seed, receipt.mail, receipt.text, receipt.mail.phase);
+  const expected = mailReceipt(episode.seed, receipt.mail, receipt.text, receipt.mail.phase, receipt.mail.readingHash);
   const participants = receipt.mail.phase === "written" ? [receipt.mail.from] : [receipt.mail.from, receipt.mail.to];
   memoryRequire(
     !episode.sceneId &&

@@ -1,5 +1,37 @@
 import type { RelationshipDisclosure, RelationshipHead, RelationshipReview } from "./relationship-types.js";
 import type { CapturedAdmission } from "./captured-admission-model.js";
+import type { ContinuityAdmission, ContinuityEvidence, ContinuityTarget } from "./continuity-model.js";
+export type MailCapture = {
+  seed: string;
+  setupAt: string;
+  at: string;
+  actors: { id: string; incarnation: string }[];
+  references: { id: string; incarnation: string }[];
+  subjects: { id: string; incarnation: string }[];
+  continuityRevision: number;
+  supplied: ContinuityTarget[];
+  protection: Record<string, string>;
+  protectedRoots: string[];
+  historical: Record<string, ContinuityEvidence>;
+  provenance: Record<string, string[]>;
+  sourceActors: Record<string, { id: string; incarnation: string }[]>;
+  prompt: {
+    entries: Record<string, unknown>[];
+    history: unknown;
+    protections: ReturnType<typeof import("../rules/continuity.js").continuityConstraints>;
+  };
+};
+export type MailContinuityPlan = {
+  setupAt: string;
+  admission: Omit<ContinuityAdmission, "continuityRevision" | "protectionFingerprint" | "room" | "blockedSources"> & {
+    continuityRevision: number;
+    protectionFingerprint: string;
+  };
+  historical: Record<string, ContinuityEvidence>;
+  keep: unknown[];
+  requires: string[];
+  responseDigest: string;
+};
 export type MailboxMessage = {
   id: string;
   requestId: string;
@@ -13,6 +45,7 @@ export type MailboxMessage = {
   replyTo?: string;
   error?: string;
   admissionFailed?: true;
+  reading?: MailContinuityPlan;
 };
 export type MailboxState = {
   format: 1;

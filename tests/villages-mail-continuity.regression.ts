@@ -110,7 +110,10 @@ function fixture() {
       sources: [],
       supplied,
       protectedRoots: [],
-      protectionFingerprint: continuityProtectionFingerprint(state.continuity, actors),
+      protectionFingerprint: continuityProtectionFingerprint(
+        state.continuity,
+        [mail.from, mail.to].map((party) => ({ kind: "actor", ...party })),
+      ),
       provenance,
     };
     const publication = {

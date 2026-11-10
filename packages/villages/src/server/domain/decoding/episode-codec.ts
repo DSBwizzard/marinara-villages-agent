@@ -105,6 +105,10 @@ const episode = z
                 to: z.object({ id, incarnation: id }).strict(),
                 phase: z.enum(["written", "read"]),
                 sourceHash: z.string().regex(/^[a-f0-9]{64}$/),
+                readingHash: z
+                  .string()
+                  .regex(/^[a-f0-9]{64}$/)
+                  .optional(),
               })
               .strict()
               .optional(),
@@ -565,13 +569,20 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
   for (const [key, dependencies] of Object.entries(value.holderDependencies ?? {})) {
     memoryRequire(holderKeys.has(key), "unknown episode provenance holder");
     memoryRequire(!Object.hasOwn(dependencies, "input"), "authored input cannot depend on generated context");
-    if (contextActors.some((actor) => continuityHolderKey(actor) === key))
+    if (contextActors.some((actor) => continuityHolderKey(actor) === key)) {
+      const generatedUnits = [
+        ...value.segments.map((line) => line.id),
+        ...value.commandReceipts
+          .filter((receipt) => receipt.mail?.phase === "written" && receipt.mail.from.id !== "player")
+          .map((receipt) => "mail:" + receipt.mail!.sourceHash),
+      ];
       memoryRequire(
-        value.segments.length > 0 &&
-          Object.keys(dependencies).every((unit) => units.has(unit)) &&
-          value.segments.every((line) => dependencies[line.id]?.length),
+        generatedUnits.length > 0 &&
+          Object.keys(dependencies).every((unit) => generatedUnits.includes(unit)) &&
+          generatedUnits.every((unit) => dependencies[unit]?.length),
         "private reference provenance must cover generated segments only",
       );
+    }
   }
   for (const key of [
     Object.keys(value.dependencies),
