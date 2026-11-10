@@ -48,6 +48,7 @@ export function RosterScreen({
             <span className={`${ELEMENT_TAG}-sr-only`}>Find a person</span>
             <input
               type="search"
+              autoComplete="off"
               placeholder="Find a person"
               value={search}
               onChange={(event) => setSearch(event.target.value)}

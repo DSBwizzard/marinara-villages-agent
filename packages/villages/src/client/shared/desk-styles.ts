@@ -50,6 +50,7 @@ export const DESK_STYLES = `
 .${P}-workspace-content :is(.${P}-panel-title,.${P}-label,.${P}-hint,.${P}-empty){color:inherit;font-family:var(--menu-font);letter-spacing:0;text-transform:none}
 .${P}-workspace-content .${P}-panel-title{font-size:24px}
 .${P}-workspace-content .${P}-label{font-size:18px}
+.${P}-workspace-content .${P}-menu-content :is(input:not([type="checkbox"]),select,textarea){background:#54415a70;color:#f0dfbc;border:1px solid #a39b84;font:400 18px/1.4 var(--menu-font)}
 .${P}-workspace-content .${P}-menu-content>.${P}-field:first-child>.${P}-label{font-size:24px}
 .${P}-workspace-content :is(.${P}-hint,.${P}-empty){color:#d0c1b3}
 .${P}-workspace-content :is(.${P}-row,.${P}-field){min-width:0}
@@ -92,7 +93,7 @@ export const DESK_STYLES = `
 .${P}-desk-workspace[data-desk="places"] .${P}-discover-places{order:2;margin:16px 0 4px;background:transparent;color:inherit;font-size:16px}
 .${P}-desk-workspace[data-desk="places"] .${P}-navigator-place{flex:none;border-left:0;border-bottom:1px solid var(--border);border-radius:4px}
 .${P}-desk-workspace[data-desk="places"] .${P}-navigator-place[data-selected="true"]{background:#b979809e;color:#fff0d5}
-.${P}-desk-workspace[data-desk="places"] .${P}-explore-row{padding:12px 8px;gap:8px;font:inherit;color:inherit}
+.${P}-desk-workspace[data-desk="places"] .${P}-explore-row{padding:12px 8px;gap:8px;font:inherit;color:inherit;background:transparent;border:0;border-radius:0}
 .${P}-desk-workspace[data-desk="places"] .${P}-explore-row strong{font:600 20px/1.25 var(--menu-font)}
 .${P}-desk-workspace[data-desk="places"] .${P}-explore-row small{color:#d0c1b3}
 .${P}-desk-workspace[data-desk="places"] .${P}-explore-row>svg{width:22px;height:22px}
@@ -138,10 +139,10 @@ export const DESK_STYLES = `
  .${P}-desk-header .${P}-desk-return{grid-column:2;grid-row:1;font-size:18px;margin:0;padding:4px 8px;align-self:center;justify-self:end}
  .${P}-desk-return-desktop{display:none}.${P}-desk-return-mobile{display:inline}
  .${P}-desk-header .${P}-desk-scene{grid-column:1;grid-row:3;font-size:17px;justify-self:start;min-height:36px}
- .${P}-desk-workspace:not([data-desk="none"])>.${P}-desk-stage{padding:16px 12px 60px;overflow-x:clip;overflow-y:auto;overscroll-behavior:contain}
+ .${P}-desk-workspace:not([data-desk="none"])>.${P}-desk-stage{margin-bottom:60px;padding:16px 12px 0;overflow-x:clip;overflow-y:auto;overscroll-behavior:contain}
  .${P}-desk-workspace:is([data-desk="people"],[data-desk="mailbox"],[data-desk="projects"])>.${P}-desk-stage{overflow:hidden}
  .${P}-desk-workspace:is([data-desk="places"],[data-desk="settings"]) .${P}-desk-document{height:auto;min-height:100%}
- .${P}-desk-workspace[data-desk="places"]>.${P}-desk-stage{margin-bottom:var(--villages-exploration-inset,0px)}
+ .${P}-desk-workspace[data-desk="places"]>.${P}-desk-stage{margin-bottom:calc(60px + var(--villages-exploration-inset,0px))}
  .${P}-workspace-body{display:flex;flex-direction:column;height:auto;gap:20px}
  .${P}-workspace-sidebar{flex:none;padding:0;border:0;overflow:visible}
  .${P}-workspace-sidebar h2{font-size:34px;margin:0 0 16px}
@@ -155,6 +156,7 @@ export const DESK_STYLES = `
  .${P}-workspace-content .${P}-sectioned-menu[data-page="general"]>.${P}-header>:is(div,button){display:none}
  .${P}-workspace-content .${P}-menu-content{overflow:visible;flex:none;padding:0;font-size:18px}
  .${P}-workspace-content .${P}-menu-content .${P}-row{flex-direction:column;align-items:stretch;gap:12px}
+ .${P}-workspace-content .${P}-menu-content .${P}-row.${P}-send-toggle{flex-direction:row;align-items:center;justify-content:start}
  .${P}-workspace-content .${P}-menu-content .${P}-field{gap:6px;margin-bottom:18px}
  .${P}-workspace-content .${P}-menu-content .${P}-row>.${P}-field{margin:0;flex:none}
  .${P}-workspace-content .${P}-menu-content .${P}-label{font-size:19px}
@@ -190,7 +192,7 @@ export const DESK_STYLES = `
  .${P}-desk-header{gap:3px;padding-block:4px}
  .${P}-desk-nav button{min-height:44px;gap:2px;padding-block:2px}
  .${P}-desk-nav svg{width:20px;height:20px}
- .${P}-desk-workspace:not([data-desk="none"])>.${P}-desk-stage{padding-top:10px;padding-bottom:38px}
+ .${P}-desk-workspace:not([data-desk="none"])>.${P}-desk-stage{padding-top:10px;padding-bottom:0;margin-bottom:calc(38px + var(--villages-exploration-inset,0px))}
  .${P}-desk-workspace[data-desk="mailbox"] .villages-mailbox-dialog>header h3{font-size:28px}
 }}
 `;
