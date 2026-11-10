@@ -29,6 +29,7 @@ await withBrowser(browser, async () => {
         ...village.villagers[0],
         characterId: "feddy",
         name: "Feddy",
+        summary: "Feddy tends the orchard.",
         place: { id: "mill", name: "The Mill" },
         agenda: null,
       },
@@ -210,69 +211,36 @@ await withBrowser(browser, async () => {
     await nav.getByRole("button", { name: "People", exact: true }).click();
     await page.getByRole("button", { name: "Open Feddy profile" }).click();
     const profile = page.getByRole("region", { name: "Feddy profile" });
+    await expect(profile.getByText("Feddy tends the orchard.")).toBeVisible();
+    await page.evaluate(() => document.fonts.ready);
+    const nameBox = await profile.getByRole("heading", { name: "Feddy", level: 1 }).boundingBox();
+    const art = page.getByRole("complementary", { name: "Feddy artwork" });
+    const artBox = await art.boundingBox();
     await chooseSection("Wishes");
     await expect(profile.getByRole("region", { name: "Known wishes" })).toBeVisible();
+    await expect(profile.getByText("Feddy tends the orchard.")).toBeVisible();
+    assert.deepEqual(await profile.getByRole("heading", { name: "Feddy", level: 1 }).boundingBox(), nameBox);
+    assert.deepEqual(await art.boundingBox(), artBox, "Wishes retains the profile artwork and its position");
     assert.equal(privateReads, 0);
     await expect(profile.getByText("PRIVATE SOCIAL DESIRE")).toHaveCount(0);
     await expect(profile.getByText("Deep water makes me nervous.", { exact: true })).toHaveCount(0);
     await expect(profile.getByRole("region", { name: "Wish details", exact: true })).toHaveCount(0);
     const openWish = profile.getByRole("button", { name: "Open Wish: Go swimming with Roxie.", exact: true });
     await expect(openWish).toBeVisible();
-    const camera = () =>
-      page.evaluate(() => [
-        window.scrollX,
-        window.scrollY,
-        ...[".marinara-capability-villages-dossier-root", ".marinara-capability-villages-dossier-content"].map(
-          (selector) => document.querySelector(selector).scrollTop,
-        ),
-      ]);
-    const beforeCamera = await camera();
-    assert.deepEqual(
-      await page.evaluate(() =>
-        [".marinara-capability-villages-dossier-root", ".marinara-capability-villages-dossier-content"].map(
-          (selector) => {
-            const node = document.querySelector(selector);
-            node.scrollTop = 100;
-            node.scrollLeft = 100;
-            return [node.scrollTop, node.scrollLeft];
-          },
-        ),
-      ),
-      [
-        [0, 0],
-        [0, 0],
-      ],
-      "Wish notebook cannot retain hidden scroll offsets that move its controls",
-    );
+    const hostScroll = () => page.evaluate(() => [window.scrollX, window.scrollY]);
+    const before = await hostScroll();
+    const readTo = async (target) => {
+      await target.scrollIntoViewIfNeeded();
+      await expect(target).toBeInViewport({ ratio: 0.99 });
+      assert.deepEqual(await hostScroll(), before, "Wishes scroll within the profile");
+    };
     await openWish.press("Enter");
     const details = profile.getByRole("region", { name: "Wish details", exact: true });
     await expect(details).toBeFocused();
-    assert.deepEqual(await camera(), beforeCamera, "Opening a Wish preserves the camera and notebook scroll positions");
     const section = details.getByRole("tablist", { name: "Wish sections" });
     await expect(details.getByRole("combobox")).toHaveCount(0);
     await expect(section.getByRole("tab")).toHaveCount(2);
-    const noScroll = async () => {
-      await expect(
-        page
-          .getByRole("navigation", { name: "Village navigation" })
-          .getByRole("button", { name: "People", exact: true }),
-      ).toBeInViewport({ ratio: 0.99 });
-      await expect(profile.locator("summary").filter({ hasText: "Character tools" })).toBeInViewport({ ratio: 0.99 });
-      if (width <= 700) await details.getByRole("button", { name: "← Wishes", exact: true }).scrollIntoViewIfNeeded();
-      await expect(details.getByRole("button", { name: "← Wishes", exact: true })).toBeInViewport({ ratio: 0.99 });
-      if (width <= 700) await section.scrollIntoViewIfNeeded();
-      await expect(section).toBeInViewport({ ratio: 0.99 });
-      for (const tab of await section.getByRole("tab").all()) await expect(tab).toBeInViewport({ ratio: 0.99 });
-      if (width <= 700) await details.getByRole("button", { name: "Next detail page" }).scrollIntoViewIfNeeded();
-      await expect(details.getByRole("button", { name: "Next detail page" })).toBeInViewport({ ratio: 0.98 });
-      assert(
-        await profile
-          .locator(".marinara-capability-villages-dossier-content")
-          .evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
-      );
-      assert.deepEqual(await camera(), beforeCamera);
-    };
-    await noScroll();
+    await readTo(section);
     const wishTab = section.getByRole("tab", { name: "Wish", exact: true });
     const historyTab = section.getByRole("tab", { name: "History", exact: true });
     await wishTab.press("End");
@@ -291,18 +259,7 @@ await withBrowser(browser, async () => {
     await expect(profile.getByRole("progressbar")).toHaveCount(0);
     assert.equal(writes, 0, "Browsing People and wishes makes no mutation or generation request");
     await expect(profile.getByText("I would prefer the lake.", { exact: true })).toBeVisible();
-    const nextPage = details.getByRole("button", { name: "Next detail page" });
-    let pages = 0;
-    while (await nextPage.isEnabled()) {
-      await nextPage.click();
-      await noScroll();
-      assert(++pages < 30);
-    }
-    if (width <= 700)
-      await details.getByText("Actually, the shallow beach sounds better.", { exact: true }).scrollIntoViewIfNeeded();
-    await expect(details.getByText("Actually, the shallow beach sounds better.", { exact: true })).toBeInViewport({
-      ratio: 0.99,
-    });
+    await readTo(details.getByText("Actually, the shallow beach sounds better.", { exact: true }));
     await page.screenshot({ path: resolve(`.build-tmp/wish-journal/profile-${width}.png`), fullPage: true });
     assert.ok(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
@@ -319,61 +276,52 @@ await withBrowser(browser, async () => {
     await profile.getByRole("button", { name: "Open Wish: PRIVATE SOCIAL DESIRE", exact: true }).click();
     await expect(section.getByRole("tab")).toHaveCount(5);
     await expect(details.getByRole("region", { name: "Wish summary" })).toHaveText(/PRIVATE REASON/);
-    await noScroll();
-    let summaryPages = 0;
-    while (await nextPage.isEnabled()) {
-      await nextPage.click();
-      await noScroll();
-      assert(++summaryPages < 30);
-    }
     assert(
       await details
         .getByRole("region", { name: "Wish summary" })
         .locator("p")
         .last()
-        .evaluate((node) => {
+        .evaluate((node, mobile) => {
+          const frame = node.closest(
+            mobile ? ".marinara-capability-villages-dossier-root" : ".marinara-capability-villages-dossier-book",
+          );
+          frame.scrollTop = frame.scrollHeight;
           const range = document.createRange();
           range.selectNodeContents(node);
           const last = [...range.getClientRects()].at(-1),
-            frame = node.closest(".villages-wish-page-window").getBoundingClientRect();
+            bounds = frame.getBoundingClientRect();
           return (
-            last.left >= frame.left - 1 &&
-            last.right <= frame.right + 1 &&
-            last.top >= frame.top - 1 &&
-            last.bottom <= frame.bottom + 1
+            last.left >= bounds.left - 1 &&
+            last.right <= bounds.right + 1 &&
+            last.top >= bounds.top - 1 &&
+            last.bottom <= bounds.bottom + 1
           );
-        }),
-      "The final line of a long reason is reachable without scrolling",
+        }, width <= 700),
+      "The final line of a long reason is reachable in the profile reading area",
     );
     await wishTab.press("ArrowRight");
     await expect(section.getByRole("tab", { name: "Attention", exact: true })).toBeFocused();
     await expect(details.getByRole("region", { name: "Attention", exact: true })).toHaveText(
       /In the background.*Available when relevant\./s,
     );
-    await noScroll();
+    await readTo(section);
     await section.getByRole("tab", { name: "Approach", exact: true }).click();
     await expect(details.getByRole("region", { name: "Approach", exact: true })).toHaveText(
       /Ask Roxie about a quiet afternoon together\./,
     );
-    await noScroll();
+    await readTo(section);
     await section.getByRole("tab", { name: "Conditions", exact: true }).click();
     await expect(details.getByRole("region", { name: "Conditions", exact: true })).toHaveText(
       /Somewhere quiet, please\./,
     );
-    await noScroll();
+    await readTo(section);
     await section.getByRole("tab", { name: "History", exact: true }).click();
     await expect(details.getByRole("region", { name: "Wish history" }).getByRole("listitem")).toHaveCount(3);
     await expect(details.getByRole("region", { name: "Wish history" }).getByRole("listitem").last()).toContainText(
       "Chose to ask Roxie directly.",
     );
     await expect(details.getByText("Other things need attention today.", { exact: true })).toBeVisible();
-    while (await nextPage.isEnabled()) {
-      await nextPage.click();
-      await noScroll();
-      assert(++pages < 30);
-    }
-    if (width <= 700) await details.getByText("Chose to ask Roxie directly.", { exact: true }).scrollIntoViewIfNeeded();
-    await expect(details.getByText("Chose to ask Roxie directly.", { exact: true })).toBeInViewport({ ratio: 0.99 });
+    await readTo(details.getByText("Chose to ask Roxie directly.", { exact: true }));
     await page.screenshot({ path: resolve(`.build-tmp/wish-journal/inspect-${width}.png`), fullPage: true });
     await details.getByRole("button", { name: "← Wishes", exact: true }).click();
     await expect(details).toHaveCount(0);
@@ -389,7 +337,7 @@ await withBrowser(browser, async () => {
     await expect(details.getByRole("region", { name: "Attention", exact: true })).toHaveText(
       /On their mind.*A recent conversation brought this to mind\./s,
     );
-    await noScroll();
+    await readTo(section);
     await details.getByRole("button", { name: "← Wishes", exact: true }).click();
     await clickCharacterTool(page, "Leave Inspect");
     await expect(profile.getByText("PRIVATE SOCIAL DESIRE")).toHaveCount(0);

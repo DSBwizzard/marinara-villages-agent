@@ -48,7 +48,7 @@ await withBrowser(browser, async () => {
       .getByRole("button", { name: "People", exact: true })
       .click();
     await page.getByRole("button", { name: "Open Mara profile" }).click();
-    await page.getByText("Character tools", { exact: true }).click();
+    await page.getByRole("button", { name: "Character Tools", exact: true }).click();
     await page
       .getByRole("button", { name: /Manage sprites ·/ })
       .first()

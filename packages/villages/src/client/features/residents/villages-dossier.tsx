@@ -13,6 +13,7 @@ import type { ResidentSprite } from "../../../shared/contracts/village.js";
 import { ResidentArtwork } from "./ResidentArtwork.js";
 
 export type DossierSection = "overview" | "relationships" | "wishes" | "memories" | "agenda" | "venues";
+type ProfileSection = DossierSection | "tools";
 export type DossierNavigation = {
   actorId: string;
   wishId?: string;
@@ -31,13 +32,14 @@ function readingArea(content: HTMLElement | null) {
       : content;
 }
 const sections: DossierSection[] = ["overview", "relationships", "wishes", "memories"];
-const titles: Record<DossierSection, string> = {
+const titles: Record<ProfileSection, string> = {
   overview: "Overview",
   relationships: "Relationships",
   wishes: "Wishes",
   memories: "Memories",
   agenda: "Agenda",
   venues: "Venues",
+  tools: "Character Tools",
 };
 export type DossierVenue = {
   id: string;
@@ -153,12 +155,12 @@ export function VillagerDossier({
   const { visible, backgroundRevision, viewing } = useVillageActivity();
   const focusRevision = useFocusRevision(visible);
   const showingSprites = !!spriteManager;
-  const [section, setSection] = useState<DossierSection>(
+  const [section, setSection] = useState<ProfileSection>(
     navigation.section ?? (navigation.wishId ? "wishes" : "overview"),
   );
   const [inspect, setInspect] = useState(false);
-  const [visited, setVisited] = useState<DossierSection[]>([section]);
-  const [manageOpen, setManageOpen] = useState(false);
+  const [visited, setVisited] = useState<ProfileSection[]>([section]);
+  const toolsOrigin = useRef<DossierSection>("overview");
   const [signatureTools, setSignatureTools] = useState<HTMLDivElement | null>(null);
   const [signatureSurface, setSignatureSurface] = useState<HTMLDivElement | null>(null);
   const [inspected, setInspected] = useState<DossierSection[]>([]);
@@ -167,7 +169,7 @@ export function VillagerDossier({
   const [readError, setReadError] = useState("");
   const [revision, setRevision] = useState(0);
   const content = useRef<HTMLDivElement>(null);
-  const positions = useRef<Partial<Record<DossierSection, number>>>({});
+  const positions = useRef<Partial<Record<ProfileSection, number>>>({});
   const profile = relationships?.profiles?.find((person) => person.characterId === navigation.actorId);
   const name = villager?.name ?? "Former villager";
   const images = villager?.sprite?.images ?? [];
@@ -215,7 +217,7 @@ export function VillagerDossier({
     return () => window.removeEventListener(VILLAGE_ACCESS_DENIED, denied);
   }, []);
   useEffect(() => {
-    onInspectSection(inspect && viewing !== false ? section : null);
+    onInspectSection(inspect && viewing !== false && section !== "tools" ? section : null);
     return () => onInspectSection(null);
   }, [inspect, section, onInspectSection, viewing]);
   useEffect(() => {
@@ -223,14 +225,16 @@ export function VillagerDossier({
   }, [viewing]);
   useEffect(() => {
     if (!inspect) setInspected([]);
-    else setInspected((current) => (current.includes(section) ? current : [...current, section]));
+    else if (section !== "tools")
+      setInspected((current) => (current.includes(section) ? current : [...current, section]));
   }, [inspect, section]);
   useLayoutEffect(() => {
     const reading = readingArea(content.current);
     if (reading) reading.scrollTop = positions.current[section] ?? 0;
   }, [section]);
   const inspectedSection = (tab: DossierSection) => inspect && (section === tab || inspected.includes(tab));
-  const choose = (next: DossierSection, inspection = inspect) => {
+  const choose = (next: ProfileSection, inspection = inspect) => {
+    if (next === "tools" && section !== "tools") toolsOrigin.current = section;
     setVisited((current) => (current.includes(next) ? current : [...current, next]));
     const reading = readingArea(content.current);
     if (reading) positions.current[section] = reading.scrollTop;
@@ -296,66 +300,7 @@ export function VillagerDossier({
       {spriteManager ? <div className={`${P}-root ${P}-sprite-manager-root`}>{spriteManager}</div> : null}
       <RetainedView active={!showingSprites}>
         <div className={`${P}-root ${P}-dossier-root`}>
-          <PeopleBook
-            label={`${name} profile`}
-            overview={section === "overview" && !!villager}
-            section={section}
-            inspect={inspect}
-            toolbar={
-              <>
-                <div className={`${P}-dossier-actions`}>
-                  {villager ? (
-                    <details className={`${P}-dossier-management`} open={manageOpen}>
-                      <summary
-                        onClick={(event) => {
-                          event.preventDefault();
-                          setManageOpen((open) => !open);
-                        }}
-                      >
-                        <VillageIcon name="settings" /> Character tools
-                      </summary>
-                      <div className={`${P}-dossier-controls`} role="group" aria-label="Character tools">
-                        <div role="group" aria-label="Profile actions">
-                          <button
-                            type="button"
-                            className={`${P}-dossier-inspect`}
-                            aria-pressed={inspect}
-                            onClick={() => {
-                              setInspect(!inspect);
-                              setManageOpen(false);
-                            }}
-                          >
-                            <DossierIcon name="inspect" />
-                            {inspect ? "Leave Inspect" : "Inspect"}
-                          </button>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            choose("agenda");
-                            setManageOpen(false);
-                          }}
-                        >
-                          Agenda records
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            choose("venues");
-                            setManageOpen(false);
-                          }}
-                        >
-                          Venue connections
-                        </button>
-                        {controls}
-                        <div ref={setSignatureTools} />
-                      </div>
-                    </details>
-                  ) : null}
-                </div>
-              </>
-            }
-          >
+          <PeopleBook label={`${name} profile`}>
             <div className={`${P}-dossier-identity`}>
               <article className={`${P}-dossier-journal`} aria-label={`${name} journal`}>
                 <div className={`${P}-dossier-journal-content`}>
@@ -370,18 +315,6 @@ export function VillagerDossier({
               </article>
             </div>
             <main className={`${P}-dossier-workspace`}>
-              <h2 className={`${P}-dossier-section-title`}>{titles[section]}</h2>
-              <label className={`${P}-dossier-section-picker`}>
-                <span className={`${P}-sr-only`}>Section</span>
-                <select value={section} onChange={(event) => choose(event.target.value as DossierSection)}>
-                  {!sections.includes(section) ? <option value={section}>{titles[section]}</option> : null}
-                  {sections.map((tab) => (
-                    <option key={tab} value={tab}>
-                      {titles[tab]}
-                    </option>
-                  ))}
-                </select>
-              </label>
               <nav className={`${P}-dossier-tabs`} aria-label="Villager profile sections">
                 <div>
                   {sections.map((tab) => (
@@ -390,6 +323,31 @@ export function VillagerDossier({
                     </button>
                   ))}
                 </div>
+                <label className={`${P}-dossier-section-picker`}>
+                  <span className={`${P}-sr-only`}>Section</span>
+                  <select value={section} onChange={(event) => choose(event.target.value as ProfileSection)}>
+                    {section === "tools" || !sections.includes(section) ? (
+                      <option value={section}>{titles[section]}</option>
+                    ) : null}
+                    {sections.map((tab) => (
+                      <option key={tab} value={tab}>
+                        {titles[tab]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {villager ? (
+                  <button
+                    type="button"
+                    className={`${P}-dossier-tools-toggle`}
+                    aria-label={titles.tools}
+                    title={titles.tools}
+                    aria-pressed={section === "tools"}
+                    onClick={() => choose("tools")}
+                  >
+                    <VillageIcon name="settings" />
+                  </button>
+                ) : null}
               </nav>
               <div
                 ref={content}
@@ -416,6 +374,30 @@ export function VillagerDossier({
                   </Sheet>
                 ) : (
                   <>
+                    <section className={`${P}-dossier-sheet`} aria-label={titles.tools} hidden={section !== "tools"}>
+                      <h2>{titles.tools}</h2>
+                      <div className={`${P}-dossier-controls`}>
+                        <div role="group" aria-label="Profile actions">
+                          <button
+                            type="button"
+                            className={`${P}-dossier-inspect`}
+                            aria-pressed={inspect}
+                            onClick={() => choose(toolsOrigin.current, !inspect)}
+                          >
+                            <DossierIcon name="inspect" />
+                            {inspect ? "Leave Inspect" : "Inspect"}
+                          </button>
+                        </div>
+                        <button type="button" onClick={() => choose("agenda")}>
+                          Agenda records
+                        </button>
+                        <button type="button" onClick={() => choose("venues")}>
+                          Venue connections
+                        </button>
+                        {controls}
+                        <div className={`${P}-dossier-signature-tools`} ref={setSignatureTools} />
+                      </div>
+                    </section>
                     {visited.includes("overview") ? (
                       <RetainedView active={section === "overview"} label="Overview content">
                         <div className={`${P}-dossier-overview`}>

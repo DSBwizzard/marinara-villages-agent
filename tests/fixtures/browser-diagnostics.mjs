@@ -6,9 +6,9 @@ import { fileURLToPath } from "node:url";
 export { expect };
 
 export async function openCharacterTools(page) {
-  const tools = page.locator(".marinara-capability-villages-dossier-management:visible");
-  if ((await tools.getAttribute("open")) === null) await tools.locator("summary").click();
-  return tools.getByRole("group", { name: "Character tools", exact: true });
+  const tools = page.getByRole("region", { name: "Character Tools", exact: true });
+  if (!(await tools.isVisible())) await page.getByRole("button", { name: "Character Tools", exact: true }).click();
+  return tools;
 }
 
 export async function clickCharacterTool(page, name) {

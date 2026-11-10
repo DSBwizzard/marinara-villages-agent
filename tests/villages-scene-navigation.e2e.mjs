@@ -195,13 +195,8 @@ import {ConfirmationProvider} from './packages/villages/src/client/shared/confir
   await expect(page.locator("#screen")).toHaveText("person");
   await openCharacterTools(page);
   await expect(page.getByRole("button", { name: "Inspect", exact: true })).toBeEnabled();
-  await page.getByText("Character tools", { exact: true }).click();
-  await page.getByText("Character tools", { exact: true }).click();
   await expect(page.getByRole("button", { name: "Generate signature", exact: true })).toBeEnabled();
-  await page.getByText("Character tools", { exact: true }).click();
-  await page.getByText("Character tools", { exact: true }).click();
   await expect(page.getByRole("button", { name: "Character card", exact: true })).toBeEnabled();
-  await page.getByText("Character tools", { exact: true }).click();
   await clickCharacterTool(page, "Venue connections");
   await expect(page.getByRole("heading", { name: "The Mill", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "View Venue", exact: true })).toBeEnabled();

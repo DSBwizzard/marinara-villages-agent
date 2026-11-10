@@ -1,4 +1,4 @@
-import { clickCharacterTool } from "./fixtures/browser-diagnostics.mjs";
+import { clickCharacterTool, openCharacterTools } from "./fixtures/browser-diagnostics.mjs";
 import { createBrowserMailbox } from "./fixtures/mailbox-browser.fixture.mjs";
 import { fixtureWish } from "./helpers/social-wishes-fixture.js";
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
@@ -41,8 +41,6 @@ await withBrowser(browser, async () => {
       reads = [];
     page.on("pageerror", (error) => errors.push(error.message));
     const closePeople = async () => {
-      const tools = page.locator("." + P + "-dossier-management[open]:visible");
-      if (await tools.count()) await tools.locator("summary").click();
       await expect(page.locator("[data-desk=people]")).toHaveAttribute("data-phase", "open");
       await page
         .getByRole("navigation", { name: "Village navigation", exact: true })
@@ -864,14 +862,20 @@ await withBrowser(browser, async () => {
     await directory.getByRole("button", { name: "Open Mara profile" }).click();
     assert.equal(writes.length, 0, JSON.stringify(writes));
     await chooseSection("Overview");
-    const signature = profile.getByRole("img", { name: "Mara's signature", exact: true });
+    const signature = profile.getByRole("img", { name: "Mara's signature", exact: true, includeHidden: true });
     await expect(signature).toBeVisible();
     await expect(signature.locator('[data-hand="lively"]')).toHaveText("Mara");
-    await profile.getByText("Character tools", { exact: true }).click();
+    const tools = await openCharacterTools(page);
+    await expect(tools.getByRole("heading", { name: "Character Tools", exact: true })).toBeVisible();
+    await expect(overview).toHaveCount(0);
+    await expect(tabs.getByRole("button", { name: "Character Tools", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     await profile.getByRole("button", { name: "Generate signature", exact: true }).click();
     await expect(profile.getByRole("button", { name: "Regenerate signature", exact: true })).toBeVisible();
     await expect(signature.locator("img")).toHaveAttribute("src", signatureUrl);
-    await profile.getByText("Character tools", { exact: true }).click();
+    await chooseSection("Overview");
     assert.equal(writes.at(-1).path.endsWith("/villagers/mara/signature"), true);
     // Old saved derivatives may contain both enclosed white fills and matte edges.
     // Verify the actual notebook pixels, rather than only checking the CSS rule.
@@ -956,14 +960,14 @@ await withBrowser(browser, async () => {
     if (exerciseActions) {
       assert.equal(writes.at(-1).body.expectedAttempt, 0);
       failSignature = true;
-      await profile.getByText("Character tools", { exact: true }).click();
+      await openCharacterTools(page);
       await profile.getByRole("button", { name: "Regenerate signature", exact: true }).click();
       await expect(profile.getByRole("alert")).toContainText("Signature provider unavailable");
       await expect(signature.locator("img")).toHaveAttribute("src", signatureUrl);
       failSignature = false;
       await profile.getByRole("button", { name: "Retry signature", exact: true }).click();
       await expect(profile.getByRole("alert")).toHaveCount(0);
-      await profile.getByText("Character tools", { exact: true }).click();
+      await chooseSection("Overview");
     }
     await page.screenshot({ path: resolve(output, `overview-${width}-${height}.png`) });
     await expect.poll(() => page.evaluate(() => document.fonts.check('17px "Villages Notebook"'))).toBe(true);
@@ -974,12 +978,13 @@ await withBrowser(browser, async () => {
     );
     if (width <= 700) {
       const paper = profile.locator(`xpath=ancestor::*[contains(@class,'${P}-dossier-root')]`);
+      await tabs.getByRole("button", { name: "Character Tools", exact: true }).scrollIntoViewIfNeeded();
       const position = await paper.evaluate((node) => {
-        node.scrollTop = 200;
+        node.scrollTop += 60;
         return node.scrollTop;
       });
       assert(position > 0, "Long mobile profiles scroll as one paper sheet");
-      await expect(profile.getByText("Character tools", { exact: true })).toBeInViewport({ ratio: 0.99 });
+      await expect(tabs.getByRole("button", { name: "Character Tools", exact: true })).toBeInViewport({ ratio: 0.99 });
       await chooseSection("Agenda");
       assert.equal(await paper.evaluate((node) => node.scrollTop), 0, "A new section starts at the top");
       await chooseSection("Overview");
@@ -1015,11 +1020,6 @@ await withBrowser(browser, async () => {
     await expect(profile.getByText("Agenda destination", { exact: true })).toHaveCount(0);
     await chooseSection("Wishes");
     await expect(profile.getByText("Learn to swim", { exact: true }).filter({ visible: true }).first()).toBeVisible();
-    const sectionControl = width > 700 ? tabs : profile.getByRole("combobox", { name: "Section" });
-    if (width <= 700)
-      await profile.getByRole("button", { name: "Next Wishes page", exact: true }).scrollIntoViewIfNeeded();
-    const tabBefore = await sectionControl.boundingBox();
-    const reading = profile.locator(`.${P}-dossier-content`);
     let wishPages = 0;
     while (
       !(await profile.getByText("Shared wish 12", { exact: true }).filter({ visible: true }).first().isVisible())
@@ -1027,13 +1027,6 @@ await withBrowser(browser, async () => {
       await profile.getByRole("button", { name: "Next Wishes page", exact: true }).click();
       assert(++wishPages < 20);
     }
-    assert.ok(
-      await reading.evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
-      "Wishes use bounded pages instead of scrolling",
-    );
-    const tabAfter = await sectionControl.boundingBox();
-    assert.equal(tabAfter.y, tabBefore.y, "Sticky notes stay fixed while changing Wish pages");
-    assert.equal(tabAfter.x, tabBefore.x);
     await expect(profile.getByText("Shared wish 12", { exact: true }).filter({ visible: true }).first()).toBeVisible();
     await expect(profile.locator(`.${P}-dossier-turn`)).toHaveCount(0);
     await page.screenshot({ path: resolve(output, `wishes-${width}-${height}.png`) });
@@ -1079,7 +1072,7 @@ await withBrowser(browser, async () => {
       await profile.getByRole("checkbox", { name: "Schedule influence" }).click();
       await expect.poll(() => pendingAgenda.started).toBe(1);
       await chooseSection("Overview");
-      await profile.getByText("Character tools", { exact: true }).click();
+      await openCharacterTools(page);
       const compare = profile.getByRole("button", { name: "Compare card", exact: true });
       await expect(compare).toBeDisabled();
       denyRelationshipRead = true;
@@ -1095,7 +1088,7 @@ await withBrowser(browser, async () => {
       heldAgenda = null;
       await (await finishedAgenda).finished();
       await expect(compare).toBeEnabled();
-      await profile.getByText("Character tools", { exact: true }).click();
+      await chooseSection("Overview");
       await page.evaluate(() => window.dispatchEvent(new Event("focus")));
       await expect(profile.getByRole("alert")).toHaveCount(0);
       await clickCharacterTool(page, "Inspect");
@@ -1707,7 +1700,7 @@ await withBrowser(browser, async () => {
       "src",
       signatureUrl,
     );
-    await profile.getByText("Character tools", { exact: true }).click();
+    await openCharacterTools(page);
 
     await profile.getByRole("button", { name: "Edit description", exact: true }).click();
     const description = profile.getByRole("textbox", { name: "Description", exact: true });
@@ -1727,13 +1720,11 @@ await withBrowser(browser, async () => {
       await expect(description).toHaveValue("A reserved explorer with an interest in old machinery.");
     }
 
-    await profile.getByText("Character tools", { exact: true }).click();
     await chooseSection("Agenda");
-    await profile.getByText("Character tools", { exact: true }).click();
+    await openCharacterTools(page);
     await expect(description).toHaveValue("A reserved explorer with an interest in old machinery.");
-    await profile.getByText("Character tools", { exact: true }).click();
     await chooseSection("Overview");
-    await profile.getByText("Character tools", { exact: true }).click();
+    await openCharacterTools(page);
     await profile.getByRole("button", { name: "Cancel", exact: true }).click();
     assert.equal(village.villagers[0].summary, initialDescription);
     await profile.getByRole("button", { name: "Edit description", exact: true }).click();

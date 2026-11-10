@@ -202,7 +202,7 @@ await withBrowser(browser, async () => {
     await chooseSection("Agenda");
     await chooseSection("Overview");
     await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBe(position);
-    await page.getByText("Character tools", { exact: true }).click();
+    await openCharacterTools(page);
     const draft = page.getByRole("textbox", { name: "Identity draft" });
     await draft.fill("Unfinished identity");
     const draftNode = await draft.elementHandle();
@@ -215,7 +215,7 @@ await withBrowser(browser, async () => {
     await page.evaluate(() => window.h.active(true));
     await expect(draft).toHaveValue("Unfinished identity");
     await expect(draft).toBeFocused();
-    await page.getByText("Character tools", { exact: true }).click();
+    await chooseSection("Overview");
     await scroller.evaluate((element) => {
       element.style.height = "620px";
       element.style.maxHeight = "620px";

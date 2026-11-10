@@ -17,7 +17,7 @@ export function RosterScreen({ controller, selectedId }: { controller: RosterScr
   if (page !== currentPage) setPage(currentPage);
   return (
     <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-directory-root`} data-page="villagers">
-      <PeopleBook label="People notebook" toolbar={null}>
+      <PeopleBook label="People notebook">
         <main className={`${ELEMENT_TAG}-directory-paper`} aria-label="Villagers directory">
           <header className={`${ELEMENT_TAG}-directory-head`}>
             <h1>
@@ -69,12 +69,8 @@ export function RosterScreen({ controller, selectedId }: { controller: RosterScr
                     />
                     <span className={`${ELEMENT_TAG}-directory-text`}>
                       <strong>{person.name}</strong>
-                      {person.summary ? (
-                        <small className={`${ELEMENT_TAG}-directory-summary`}>{person.summary}</small>
-                      ) : null}
                       {person.missing ? <small>Card missing</small> : null}
                     </span>
-                    <span aria-hidden="true">›</span>
                   </button>
                 ))}
               </div>
