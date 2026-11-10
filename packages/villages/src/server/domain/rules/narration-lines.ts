@@ -31,7 +31,7 @@ export function narrationLines(
           ...(row.targetId ? { targetId: row.targetId } : {}),
         },
   );
-  routeZoneEvents({ segments: reply.segments }, scene, { lines, heardPlayerBy: [] }, moves, playerMoves);
+  routeZoneEvents(reply.segments, scene, lines, moves, playerMoves);
   if (scene.pendingNpcAdmissions?.length)
     fenceIntroductionWitnesses(lines, [], scene.pendingNpcAdmissions, scene.activeIds, false);
   const cast = [

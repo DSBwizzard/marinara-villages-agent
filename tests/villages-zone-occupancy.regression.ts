@@ -182,12 +182,9 @@ assert.deepEqual(
   selected.contactGeneration!.actorIds,
   "selection is stable for the same admitted Scene",
 );
-const parsed = {
-  lines: [{ kind: "dialogue" as const, speakerId: ids[0], content: "Hello", heardBy: [] as string[] }],
-  heardPlayerBy: [] as string[],
-};
-routeZoneEvents({ segments: [{ kind: "dialogue", speakerId: ids[0], text: "Hello" }] }, selected, parsed, []);
-assert(parsed.lines[0].heardBy.includes(ids[3]), "the unselected fourth local still witnesses speech");
+const routed = [{ kind: "dialogue" as const, speakerId: ids[0], content: "Hello", heardBy: [] as string[] }];
+routeZoneEvents([{ kind: "dialogue", speakerId: ids[0], text: "Hello" }], selected, routed, []);
+assert(routed[0].heardBy.includes(ids[3]), "the unselected fourth local still witnesses speech");
 const overflowMoves = ids
   .slice(0, 4)
   .map((characterId) => ({ characterId, zoneId: "b", segment: 0, quote: "They cross", path: ["a", "b"] }));

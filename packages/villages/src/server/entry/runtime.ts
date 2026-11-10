@@ -120,7 +120,7 @@ import {
 } from "../features/media/image-generation.js";
 import { decodeImageDataUrl } from "../features/media/location-image-codec.js";
 import { createLocationImages } from "../features/media/location-image-service.js";
-import { configureLocationImages, requestZonePicture } from "../features/media/location-image.js";
+import { configureLocationImages } from "../features/media/location-image.js";
 import { createSpriteImageDecoder } from "../features/media/sprite-image-codec.js";
 import { createSpriteManager } from "../features/media/sprite-manager-service.js";
 import { configureSpriteManager } from "../features/media/sprite-manager.js";
@@ -325,15 +325,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       if (retirementOwner?.active === false) return;
       void retirement.retire(id).catch((error) => logRetirementFailure(`Scene cleanup deferred ${id}`, error));
     });
-  const onSceneSettled = (id: string) => {
-    scheduleRetirement(id);
-    void readSession(id)
-      .then((scene) => {
-        if (scene.status === "active" && scene.operation?.status === "complete" && !scene.operation.error)
-          return requestZonePicture(scene.placeId, scene.zoneId ?? "exterior");
-      })
-      .catch(() => {});
-  };
   const scheduleRetirementScan = () =>
     backendWork.sceneFence.defer(() => {
       if (retirementOwner?.active === false) return;
@@ -576,7 +567,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseSceneProgress = configureSceneProgress(
     createSceneProgress({
       withSceneWork: backendWork.sceneFence.run,
-      onSettled: onSceneSettled,
+      onSettled: scheduleRetirement,
       onRecoveryFinished: scheduleRetirementScan,
       assertVenueOwnership: operations.assertVenueOwnership,
       readSession,
@@ -806,7 +797,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       sceneWorkBusy: backendWork.sceneFence.isBusy,
       withLateResponseWork: backendWork.lateResponseFence.run,
       withRepairWork,
-      onSettled: onSceneSettled,
+      onSettled: scheduleRetirement,
       operations,
       villagesDocuments,
       villagesLogger,

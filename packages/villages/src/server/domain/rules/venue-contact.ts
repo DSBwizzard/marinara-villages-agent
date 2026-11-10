@@ -1,8 +1,6 @@
 import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
-import type { VenueLine, VenueScene } from "../models/scene-model.js";
+import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue, VillageVenueZone } from "../models/world.js";
-import { asRecord, asTrimmedString } from "./coerce.js";
-
 import { sceneAccessState, sceneLayoutVenue } from "./scene-layout.js";
 import { type AccessContext, evaluateZoneAccess } from "./venue-access.js";
 import { venueZones, zoneClosed } from "./venue-zones.js";
@@ -31,9 +29,6 @@ export type ContactMove = {
   /** Movement completes in this narration segment. */
   segment: number;
 };
-export type ContactRelay = { speakerId: string; targetId: string; quote: string; path: string[]; targetZoneId: string };
-const normalize = (value: string) =>
-  value.normalize("NFKC").replace(/[’‘]/gu, "'").replace(/\s+/gu, " ").trim().toLowerCase();
 
 /** Hearing connections only; entry remains governed by existing Zone permissions. */
 export function contactNeighbors(venue: VillageVenue, zoneId: string, scene?: VenueScene): string[] {
@@ -152,91 +147,4 @@ export function contactPath(
     }
   }
   return null;
-}
-export function contactSpeech(
-  lines: Pick<VenueLine, "speakerId" | "content" | "kind">[],
-  actor: string,
-  quote: string,
-): boolean {
-  return (
-    normalize(quote).length >= 2 &&
-    lines.some(
-      (line) =>
-        line.kind !== "narration" && line.speakerId === actor && normalize(line.content).includes(normalize(quote)),
-    )
-  );
-}
-export function readContactMoves(
-  value: unknown,
-  lines: Pick<VenueLine, "speakerId" | "content" | "kind">[],
-  state: VillageState,
-  venue: VillageVenue,
-  scene: VenueScene,
-  allowed: string[],
-  allowLocalNoop: boolean | "redundant" = false,
-  semantic = false,
-): ContactMove[] {
-  if (!Array.isArray(value)) return [];
-  const seen = new Set<string>();
-  return value.flatMap((value) => {
-    const row = asRecord(value),
-      actor = asTrimmedString(row.characterId),
-      destination = asTrimmedString(row.zoneId),
-      quote = asTrimmedString(row.quote);
-    const segment = row.segment;
-    const narration = Number.isSafeInteger(segment) ? lines[Number(segment)] : undefined;
-    const name =
-      scene.participants.find((person) => person.characterId === actor)?.name ??
-      scene.sceneAttendance?.occupants.find((person) => person.characterId === actor)?.name ??
-      "";
-    const path = contactPath(state, venue, contactPosition(scene, actor), destination, actor, scene);
-    const zones = venueZones(sceneLayoutVenue(venue, scene));
-    const words = (value: string) =>
-      normalize(value)
-        .replace(/[^\p{L}\p{N}]+/gu, " ")
-        .trim();
-    const narratedWords = " " + words(narration?.content ?? "") + " ";
-    const localNoop =
-      allowLocalNoop &&
-      path?.length === 1 &&
-      destination === (scene.zoneId ?? "exterior") &&
-      zones.some((zone) => zone.id === destination) &&
-      (semantic ||
-        !zones.some(
-          (zone) =>
-            zone.id !== destination &&
-            [zone.name].some((label) => !!words(label) && narratedWords.includes(" " + words(label) + " ")),
-        ));
-    const citedMove =
-      Number(segment) >= 0 &&
-      narration?.kind === "narration" &&
-      normalize(quote).length >= 8 &&
-      normalize(narration.content).includes(normalize(quote)) &&
-      (semantic || localNoop || (!!name && normalize(quote).includes(normalize(name))));
-    const movementText = normalize(localNoop ? (narration?.content ?? "") : quote);
-    // A validated current-Zone annotation is discarded by v3, never applied as movement.
-    // Speech/thought intent elsewhere in its narration cannot make that no-op consequential.
-    const qualifyMovement = !localNoop || allowLocalNoop !== "redundant";
-    if (
-      !allowed.includes(actor) ||
-      seen.has(actor) ||
-      !citedMove ||
-      (!semantic && qualifyMovement && /\b(?:would|could|will|plans?|intends?)\b/iu.test(movementText)) ||
-      (!semantic && qualifyMovement && /\b(?:maybe|perhaps|might|unless|if|won't|can't|not)\b/iu.test(movementText)) ||
-      !path ||
-      (path.length < 2 && !localNoop) ||
-      !lines.some((line) => line.kind === "narration")
-    )
-      return [];
-    seen.add(actor);
-    return [
-      {
-        characterId: actor,
-        zoneId: destination,
-        quote,
-        path,
-        segment: Number(segment),
-      },
-    ];
-  });
 }

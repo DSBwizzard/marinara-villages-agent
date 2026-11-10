@@ -18,7 +18,7 @@ Current writing requests capture their contract, exact source and eligibility at
 
 Consequential proposals cite generated segment labels or fitted evidence. Grounded input references bind exact submitted text and occurrences. Code checks the eligible witnesses, scope and settlement requirements for the proposed effect.
 
-Validated movement that merely restates a local resident's current Zone is discarded only after actor, citation, conditional, destination and duplicate validation. Real crossings retain path and authority requirements. No-ops cannot change movement, witnesses or settlement.
+A movement command needs a different destination, current admission and an observed crossing. Code validates the route, access and capacity at the captured exchange time. Physical positions at that segment determine subsequent witnesses and staging.
 
 Authored cards, instructions and prose preferences remain required. Local selection gives recent shared Episodes priority and ranks older history by textual relevance. All Episode recall is optional during fitting. Only fitted evidence can support effects, and explicit character perceptions define who can know each excerpt. See [Memories](memories-core.md).
 

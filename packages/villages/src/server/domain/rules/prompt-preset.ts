@@ -242,7 +242,7 @@ export function villageCurrentSetting(village: {
       : "",
     village.worldRules?.trim() ? `Standing world rules: ${village.worldRules.trim()}` : "",
     VILLAGE_SHARED_SETTING_RULE,
-    "Current Venue and Zone records govern physical truth. Lore books are reference material; outdated descriptions cannot undo physical progress. Narrator context does not grant anyone knowledge, witnesses or consent.",
+    "Current Room entries govern the physical account. Native Venue and Zone records govern layout, purpose and access. Lore books supply background. Narrator context does not grant anyone knowledge, witnesses or consent.",
     RESIDENT_CONTINUITY_RULE,
     village.worldName ? `Village world: ${JSON.stringify(village.worldName)}` : "",
   ]

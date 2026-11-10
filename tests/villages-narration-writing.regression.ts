@@ -665,7 +665,7 @@ function routed(f: ReturnType<typeof fixture>, scene: typeof f.scene, rows: any[
     ...(row.targetId ? { targetId: row.targetId } : {}),
     ...(row.staging ? { staging: row.staging } : {}),
   }));
-  routeZoneEvents({ segments: rows }, scene, { lines, heardPlayerBy: [] }, moves);
+  routeZoneEvents(rows, scene, lines, moves);
   return lines.map(({ anchorIndex: _anchor, ...line }, index) => ({
     ...line,
     id: "line-" + index,
@@ -718,13 +718,9 @@ await runCase("narration-writing/arrival-routing", () => {
   assert.throws(
     () =>
       routeZoneEvents(
-        {
-          segments: [
-            { kind: "narration", text: "An early voice.", sound: { sourceId: npc.id, text: "An early voice." } },
-          ],
-        },
+        [{ kind: "narration", text: "An early voice.", sound: { sourceId: npc.id, text: "An early voice." } }],
         projected,
-        { lines: acoustic, heardPlayerBy: [] },
+        acoustic,
         [],
       ),
     /unknown sound source/,

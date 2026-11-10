@@ -1,8 +1,8 @@
-import type { VenueReplyLine, VenueScene } from "../models/scene-model.js";
+import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
 import { NPC_PREFIX } from "./places.js";
 import { badGateway } from "./errors.js";
-import { contactNeighbors, contactPath, contactPosition, type ContactMove } from "./venue-contact.js";
+import { contactPath, contactPosition, type ContactMove } from "./venue-contact.js";
 import { venueZones } from "./venue-zones.js";
 import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
@@ -98,71 +98,5 @@ export function assertSceneMovementCapacity(
       if (counts.get(position)! > MAX_ZONE_VILLAGERS)
         throw badGateway("The reply would overcrowd a Zone. Your draft is preserved.");
     }
-  }
-}
-
-export function residentPositionsAt(
-  scene: VenueScene,
-  moves: readonly ContactMove[],
-  segment: number,
-): Record<string, string> {
-  return Object.fromEntries(
-    sceneResidentIds(scene).map((id) => {
-      const move = moves
-        .toSorted((a, b) => a.segment - b.segment)
-        .findLast((entry) => entry.characterId === id && entry.segment <= segment);
-      return [id, move?.zoneId ?? contactPosition(scene, id)];
-    }),
-  );
-}
-export function residentLocalIdsAt(scene: VenueScene, moves: ContactMove[], segment: number): string[] {
-  return Object.entries(residentPositionsAt(scene, moves, segment))
-    .filter(([, zoneId]) => zoneId === (scene.zoneId ?? "exterior"))
-    .map(([id]) => id);
-}
-
-/** Project a validated reply in order; never infer positions from decorative staging or prose alone. */
-export function applyResidentMovementTimeline(
-  scene: VenueScene,
-  venue: VillageVenue,
-  lines: VenueReplyLine[],
-  moves: ContactMove[],
-) {
-  assertSceneMovementCapacity(scene, moves);
-  if (!moves.length) return;
-  const origin = scene.zoneId ?? "exterior";
-  const ids = sceneResidentIds(scene);
-  const positions = new Map(ids.map((id) => [id, contactPosition(scene, id)]));
-  const localIds = () => ids.filter((id) => positions.get(id) === origin);
-  for (const [index, line] of lines.entries()) {
-    // Hidden input evidence precedes reply movement.
-    if (line.contactHidden) continue;
-    const before = localIds();
-    const crossing = moves.filter((move) => move.segment === index);
-    for (const move of crossing) positions.set(move.characterId, move.zoneId);
-    const local = localIds();
-    if (crossing.length) line.physicalIdsAfter = local;
-    if (local.filter((id) => !id.startsWith(NPC_PREFIX)).length > 4)
-      throw badGateway("The reply would overcrowd this Zone. Your draft is preserved.");
-    const remote = positions.get(line.speakerId) !== origin;
-    if (line.kind === "narration") {
-      if (!scene.contactGeneration?.zoneEvents)
-        line.heardBy = [...new Set([...before, ...local, ...crossing.map((move) => move.characterId)])];
-    } else {
-      const speakerZone = positions.get(line.speakerId) ?? "";
-      if (
-        !scene.contactGeneration?.zoneEvents &&
-        remote &&
-        !contactNeighbors(venue, origin, scene).includes(speakerZone)
-      )
-        throw badGateway("The reply speaks from beyond the established contact. Your draft is preserved.");
-      if (!scene.contactGeneration?.zoneEvents)
-        line.heardBy = line.heardBy.filter((id) => id === line.speakerId || local.includes(id));
-      if (remote) line.viaDoorway = true;
-      else delete line.viaDoorway;
-      if (!scene.contactGeneration?.zoneEvents && remote && (line.kind === "whisper" || line.kind === "side"))
-        throw badGateway("An inaudible remote whisper cannot be delivered. Your draft is preserved.");
-    }
-    line.staging = line.staging?.filter((cue) => local.includes(cue.characterId));
   }
 }
