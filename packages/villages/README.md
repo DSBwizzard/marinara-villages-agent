@@ -115,13 +115,13 @@ People hear what reaches them through the connected spaces. Addressing one perso
 
 Each Zone has room for four villagers; your Persona does not use a villager slot. If a requested change in occupancy cannot be completed, Villages keeps your input as an editable draft and shows a notice. The whole turn stays outside the Scene, including any other dialogue in that input. It will not reveal a private reason such as unseen occupants.
 
-If you see **HALT**, the proposed turn has not entered the story. Read the notice and rewrite your draft. Ordinary refusals can still happen within the story; HALT holds the entire turn for a boundary the game cannot safely resolve. If the generated reply introduces an unsupported outcome, Villages tries one replacement and checks it again. If that fails, your input stays saved for Retry. Character abilities remain part of their identity; their enacted consequences must fit what Villages can support.
+If you see **HALT**, the proposed turn has not entered the story. Read the notice and revise your draft. Ordinary refusals can still happen within the story. Villages holds unsupported required outcomes with your original input and the generated reply. Recovery offers local replay or an explicit Retry when applicable. Character abilities remain part of their identity, and enacted consequences must fit what Villages can support.
 
 ### Take breaks without losing your progress
 
 You can leave the page or refresh and return to your unfinished Scene, draft, and reading position. Scenes have no inactivity deadline.
 
-Once a Scene and its saved effects are settled, its transcript is removed. Relevant Project evidence and saved recovery work remain available where needed.
+Once a Scene and its saved effects are settled, its playback can retire. Accepted exchanges and relevant Project evidence remain available to continuity and recovery. Scene playback includes your original submissions, including private thoughts, for anyone with access to this Engine instance. Characters learn only what they actually heard or witnessed.
 
 New Scenes follow the Village's current time. Residents can leave for commitments and others can arrive while you stay in the Venue. Each exchange keeps the time, participants and witnesses admitted for that request; a scheduled departure waits for that exchange to settle. Accepted changes count as you play, before **Conclude**.
 
@@ -170,8 +170,6 @@ Opening REPAIR and applying ordinary corrections preserve your unfinished Scene,
 **Wishes** are concrete personal social desires. They can arise through conversation, correspondence, resident encounters and occasional private reflection. Residents can act on them, reconsider an approach, keep them quietly in the background, fulfill them or withdraw them. Invitations and plans establish arrangements; the desired interaction must actually happen. NPCs can satisfy Wishes without player involvement.
 
 The Wishes notebook retains only what your Persona learned, with timestamps for its recorded entries. **Follow** controls Wish notices without changing what the resident wants. Inspect exposes private retained state separately. There are no hidden progress percentages, expiry rolls or active-Wish slot caps. Housing and other larger ambitions are deferred. See [Social Wishes](../../docs/wishes.md).
-
-This build requires a fresh format-17 Village. Older worlds and setup records remain stored and are rejected without conversion.
 
 **Projects** create new Venues or renovate existing ones. Use the Project board to review the design, Zones, people, site, and progress. You can keep up to six drafts while deciding which Projects to start. Saving a draft and starting work are separate steps:
 
@@ -256,6 +254,6 @@ In **General Settings**, choose your connections. **Writing Settings** control p
 
 **Send on Enter** defaults Off. Normally, Enter adds a newline. When enabled, Enter sends and Shift+Enter adds a newline.
 
-Progress saves as you play, and refresh restores it. The current test build uses **Village format 17** and **Scene format 4**. Older worlds, setup records, Scenes and checkpoints require their matching runtime. Arrange independent fresh test storage before trying an incompatible build. Installation does not reset existing storage or delete an incompatible world.
+Progress saves as you play, and refresh restores it. The current test build requires fresh storage and uses **Village format 18** and **Scene format 5**. The new reader rejects older worlds, setup records, Scenes and checkpoints and preserves their stored bytes. Those saves require their matching runtime in separate storage.
 
 Installed package files remain on the Marinara server, but model-driven play still needs a working connection to your configured provider. Before changing or removing a test installation, arrange a backup and confirm how to keep its world with the server operator. **Reset the village and start over** is a separate destructive action.

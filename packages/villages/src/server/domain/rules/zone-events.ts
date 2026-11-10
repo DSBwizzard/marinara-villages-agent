@@ -1,4 +1,4 @@
-import type { VenueLine, VenueReplyLine, VenueScene } from "../models/scene-model.js";
+import type { VenueReplyLine, VenueScene } from "../models/scene-model.js";
 import type { VillageVenue } from "../models/world.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { badGateway, VillagesRequestError } from "./errors.js";
@@ -314,19 +314,4 @@ export function routeZoneEvents(
     delete line.anchorIndex;
     if (isSceneAside(line)) line.anchorIndex = (main.findLast((entry) => entry.index < index) ?? main[0])?.index;
   }
-}
-
-/** A distant listener's history contains the cue, never the original words. */
-export function perceivedZoneLine(line: VenueLine, characterId: string): VenueLine {
-  return !line.heardBy.includes(characterId) && line.soundOnly?.characterIds.includes(characterId)
-    ? {
-        ...line,
-        speakerId: "__venue_scene__",
-        name: "Narration",
-        kind: "narration",
-        content: line.soundOnly.text,
-        heardBy: [...line.soundOnly.characterIds],
-        soundOnly: undefined,
-      }
-    : line;
 }

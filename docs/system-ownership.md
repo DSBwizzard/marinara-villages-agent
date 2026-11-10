@@ -1,39 +1,37 @@
 # GM ownership contracts
 
-Current Villages use format 17, logical relationship contract 4 and native relationship root format 4. Current Scenes use format 4 with native admission, source and effect contracts. Unsupported saved formats fail before normalization, recovery or provider dispatch; there is no conversion path.
+Current Villages use format 18 and Scenes use logical format 5. Common continuity and accepted Episodes own retained meaning and interaction evidence. Unsupported saved formats fail before normalization, recovery or provider dispatch, preserving their stored bytes.
 
 ## Calls and authority
 
-An ordinary Scene exchange, greeting or generated Conclude response uses one GM request. It uses the saved Narration connection and model, labelled GM in the UI. The same response supplies prose, exact ordered input references and proposed effects. Local validation and application do not purchase a second interpretation. The bounded outcome-replacement rule and explicit recovery operations are described in the [generation lifecycle](generation-pipeline.md).
+An ordinary Scene exchange, greeting or generated Conclude response uses one GM request on the saved Narration connection, labelled GM in the UI. It supplies prose, any consequential grounding, and proposed common continuity or native commands. Local validation and application reuse the response. See the [generation lifecycle](generation-pipeline.md).
 
 The GM interprets meaning; code owns source identity, legal routes, attendance, witnesses, access, consent bindings, capacity, revisions and durable receipts. Generated claims of permission, verification or completion grant no authority. A valid model response is distinct from a committed effect and a published Scene.
 
 Opening Project proposals bind the current prepared idea through a server-created fingerprint, exact witnessed speech, Scene eligibility and once-only reveal guards. The fingerprint remains private. Move follows native access commands and saved receipts; it does not infer invitations from dialogue keywords.
 
-| Family                         | Model responsibility                                                    | Code authority                                                                                         |
-| ------------------------------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Input and prose                | Actual audible speech, necessary actions, addressees and proposed outcomes | Exact submitted bytes, offsets, non-audible gaps, positions, routes and hearing                         |
-| Physical actions               | Feasibility, capability, completed deeds and consent in context         | Cited narration, supported patch, current authority, CAS and physical receipts                         |
-| Access                         | Visit/standing scope, conditions, timing, refusals and accompaniment    | Native commands, issuer authority, witnesses, hours, revisions and replay receipts                     |
-| Memories                       | Experiences, information, correction and actual knowers                 | Exact sources, protection screening, publication, owner revisions and unit receipts                    |
-| Relationships                  | Meaningful directional perspectives, boundaries and agreements          | Unchanged fields, captured revisions, consent, scope and publication receipts                           |
-| Social Wishes                  | Concrete desires, attention, approaches and witnessed outcomes          | Owner incarnation, current owner evidence, Wish revisions and independent player disclosure            |
-| Projects and resident requests | Consent, willingness, withdrawal and requests                           | Current design, required actors, explicit Start, elapsed time, capacity and atomic completion          |
-| Presentation                   | Optional expression IDs and attention                                   | Frozen catalog, ownership, local visibility, concrete variant persistence and captured playback frames |
+| Family                         | Model responsibility                                                 | Code authority                                                                                         |
+| ------------------------------ | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Input and prose                | Natural exchange and consequential communication or perception       | Exact submitted bytes, cited spans, positions, routes and hearing                                      |
+| Physical actions               | Feasibility, capability and completed deeds                          | Witnessed narration, affected room entries, revisions and native structural authority                  |
+| Access                         | Visit/standing scope, conditions, timing, refusals and accompaniment | Native commands, issuer authority, witnesses, hours, revisions and replay receipts                     |
+| Common continuity              | Experiences, perspectives, desires, boundaries, agreements and terms | Exact evidence, individual knowledge, holder revisions, consent, correction and Forget protections     |
+| Projects and resident requests | Consent, willingness, withdrawal and requests                        | Current design, required actors, explicit Start, elapsed time, capacity and atomic completion          |
+| Presentation                   | Optional expression IDs and attention                                | Frozen catalog, ownership, local visibility, concrete variant persistence and captured playback frames |
 
-Starting ties, Routine interpretation, Initial Wishes, planning and explicit saved-domain interpretation remain separate bounded tasks. Resident encounters, correspondence replies and world developments return their own content and effects together. They retain their existing source, spending and recovery boundaries; see [model responsibilities](model-responsibilities.md).
+Starting ties, Routine interpretation, Initial Wishes and planning remain separate bounded tasks. Resident encounters, correspondence replies and world developments return their own content and effects together. Each keeps its own source, spending and recovery boundaries. See [model responsibilities](model-responsibilities.md).
 
 ## Failure, retry and recovery
 
 Before provider dispatch, the operation captures its exact input, context, model selection, allowance and request identity. Completed responses and domain receipts replay locally. A late callback retains evidence but cannot replace selected output or apply effects under a newer owner. Unknown outcomes remain uncertain; cancellation and a diagnostic retention limit cannot establish that a request was unbilled.
 
-A rejected GM response requires explicit replacement, apart from the one bounded outcome correction. Accepted prose is immutable during selected-domain recovery. Storage failures reuse the saved result, and explicit interpretation retries retain the original sources and their own accounting. Reads, reloads, status checks and startup never authorize paid replacements.
+A rejected GM response remains held for explicit recovery. Storage replay reuses the saved result. Replacement is a deliberate action with its own request accounting. Reads, reloads, status checks and startup never authorize paid replacements.
 
-Noncritical optional effects retain independent failures rather than becoming empty successes. Malformed consequential standing-permission or Project proposals reject the combined response before publication. Required physical, access, Project and Wish authority continues to govern dependent actions. Private diagnostics, captured context and provider evidence stay outside ordinary public Scene responses.
+Invalid required effects and a valid halt hold the whole turn. Explicitly independent optional effects can retain failures alongside accepted prose. The Village commits the accepted Episode, common meaning and native effects together before Scene acknowledgement. Private diagnostics, captured context and provider evidence stay outside ordinary public Scene responses.
 
 ## Context and validation
 
-Required authored identities, instructions and source evidence must fit unchanged before spending. Optional history and recollections have bounded retrieval and fitting rules. Native Memory screening, exact citations and retained revisions remain authoritative even when relevant context is incomplete. There is no separate coverage critic that discovers omitted GM proposals.
+Required authored identities, instructions and source evidence must fit unchanged before spending. Optional history and recollections have bounded retrieval and fitting rules. Exact citations, retained revisions and per-holder protections govern accepted effects. Only sources that survive fitting can support a proposal.
 
 Provider-free suites exercise current GM routing, source capture, witness privacy, native access, independent effects, ownership, cancellation, purchased-response replay and request accounting. Full Linux/Windows CI and package parity qualify source delivery. Isolated packaged checks establish the exercised Engine boundary; mocked tests do not establish real-provider semantic quality, latency or savings.
 

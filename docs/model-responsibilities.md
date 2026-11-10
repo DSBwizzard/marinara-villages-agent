@@ -2,7 +2,7 @@
 
 The Scene GM writes and interprets one exchange in one response using the saved Narration connection and model. Code validates exact sources, witnesses, access, revisions and receipts before effects commit. See [GM ownership](system-ownership.md) and the [generation lifecycle](generation-pipeline.md).
 
-Relationships remain qualitative resident-owned perspectives. Interpretation cannot invent player feelings or consent. Captured-Scene and current-live after-values have separate predecessor guards, so delayed evidence cannot erase a later ending or revive incompatible terms. Scores, keyword rules and automatic decay do not replace meaning.
+Relationships remain qualitative resident-owned perspectives in common continuity. The player authors their own feelings and consent. Captured holder revisions and current protection checks prevent stale effects from restoring superseded terms.
 
 Starting social history is finite System preparation from exact authored cards, player backstory and selected lore. Complete required identity must fit unchanged. Contradictions ask for targeted creator clarification; later admissions and card refreshes preserve played developments.
 
@@ -16,10 +16,10 @@ Automatic resident/world activity shares the configured daily allowance and live
 
 Current writing requests capture their contract, exact source and eligibility at admission. Unsupported contracts fail before provider work. Only complete normally stopped JSON can receive current sparse defaults; malformed supplied effects, duplicate keys and truncation remain errors.
 
-Numeric source references expand into complete original segments, preserving attribution, conditions, negation and order. Exact player speech references bind submitted text and occurrences. Neither form grants authority; all proposals still pass witness, scope and settlement checks.
+Consequential proposals cite generated segment labels or fitted evidence. Grounded input references bind exact submitted text and occurrences. Code checks the eligible witnesses, scope and settlement requirements for the proposed effect.
 
 Validated movement that merely restates a local resident's current Zone is discarded only after actor, citation, conditional, destination and duplicate validation. Real crossings retain path and authority requirements. No-ops cannot change movement, witnesses or settlement.
 
-Authored cards, instructions and prose preferences remain required. One bounded history selection deduplicates eligible exact source lines and visible narration. Required recent exchanges survive fitting; optional older evidence is retained only when its matching prompt row survives. Retrieval is partial: omitted context never proves historical absence. Narrator continuity does not grant residents knowledge.
+Authored cards, instructions and prose preferences remain required. Local selection gives recent shared Episodes priority and ranks older history by textual relevance. All Episode recall is optional during fitting. Only fitted evidence can support effects, and explicit character perceptions define who can know each excerpt. See [Memories](memories-core.md).
 
 Reservations, failures, explicit retries and background tasks all contribute to play cost. Prompt organization does not establish provider-cache hits or savings. Provider-free tests establish routing, limits and accounting; real-provider characterization, latency, protocol quality and cost require separately authorized observation.

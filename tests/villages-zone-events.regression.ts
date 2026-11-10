@@ -1,24 +1,16 @@
-import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
+import { venueFixture } from "./helpers/venues.fixture.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { bindLiveProposals, liveEvidence } from "../packages/villages/src/server/domain/rules/live-exchange.js";
-import { applyResidentMovementTimeline } from "../packages/villages/src/server/domain/rules/resident-movement.js";
-import { sceneEvidencePerception } from "../packages/villages/src/server/domain/rules/scene-evidence-perception.js";
+import { readNarrationReply } from "../packages/villages/src/server/domain/rules/narration-contract.js";
+import { narrationLines } from "../packages/villages/src/server/domain/rules/narration-lines.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
-import { appendLine, heardLines } from "../packages/villages/src/server/domain/rules/scene-record.js";
-import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
-import {
-  routeZoneEvents,
-  zoneEventHearingContext,
-  zoneEventReply,
-  zoneEventScene,
-} from "../packages/villages/src/server/domain/rules/zone-events.js";
+import { zoneEventHearingContext, zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
 
 const at = "2026-10-15T12:00:00Z";
 const world = defaultVillageState();
@@ -26,7 +18,6 @@ world.seed = "zone-events";
 world.foundedAt = world.setupAt = at;
 world.venues = [
   venueFixture({
-    residentIds: [null].filter((id) => typeof id === "string" && !!id),
     id: "house",
     name: "House",
     classes: ["other"],
@@ -37,24 +28,10 @@ world.venues = [
     ],
   }),
 ] as typeof world.venues;
-world.villagers = ["local", "near", "far"].map((id) => ({
-  letterFontId: "caveat",
-  characterId: id,
-  cardSnapshot: {
-    id,
-    name: id,
-    description: "An individual resident.",
-    capturedAt: at,
-    revision: 1,
-    sourceStatus: "available",
-  },
-  addedAt: at,
-  wishes: [],
-})) as typeof world.villagers;
 const village = coerceVillageState(world);
 const venue = village.venues[0];
 const base = coerceSession({
-  version: 4,
+  version: 5,
   id: "events",
   villageSeed: world.seed,
   placeId: "house",
@@ -80,573 +57,142 @@ const base = coerceSession({
 });
 const scene = zoneEventScene(base, venue);
 
-// New connection sound rules apply only to new admissions. Retained work keeps its purchased contract.
-{
-  const chain = structuredClone(venue);
-  chain.zones!.find((zone) => zone.id === "bedroom")!.connectedTo!.push("attic");
-  chain.zones!.push({
-    ...defaultVenueSpace("other"),
-    id: "attic",
-    kind: "public",
-    name: "Attic",
-    connectedTo: ["bedroom"],
-  });
-  const marked = structuredClone(scene);
-  marked.operation = { kind: "turn", input: { interactionScopeVersion: 6, soundHopVersion: 1 } } as any;
-  marked.sceneAttendance!.layout = captureSceneLayout(chain);
-  marked.sceneAttendance!.occupants.push({
-    characterId: "veryFar",
-    name: "Distant resident",
-    doing: "Reading",
-    zoneId: "attic",
-  } as any);
-  marked.contactGeneration!.venue = chain;
-  marked.contactGeneration!.actorIds = ["local", "near", "far", "veryFar"];
-  const route = (raw: Record<string, unknown>, context = marked) => {
-    const normalized = zoneEventReply(raw, "");
-    const parsed = parseVenueReply(normalized, ["local", "near", "far", "veryFar", "player"]);
-    routeZoneEvents(raw, context, parsed, []);
-    return parsed.lines[0];
-  };
-  const event = (segment: unknown) => ({
-    segments: [segment],
-    wishChanges: [],
-    memoryChanges: [],
-    relationshipChanges: { changes: [], permissions: [], disclosures: [] },
-  });
-  const ordinary = route(event({ kind: "dialogue", speakerId: "local", text: "PRIVATE ORDINARY WORDS" }));
-  assert.deepEqual(ordinary.heardBy, ["local"]);
-  assert.deepEqual(ordinary.soundOnly?.characterIds, ["near"]);
-  assert.ok(!ordinary.soundOnly?.text.includes("PRIVATE"));
-  const loud = route(
-    event({
-      kind: "narration",
-      text: "A crash rings out.",
-      sound: { sourceId: "local", text: "A crash.", loud: true },
-    }),
-  );
-  assert.deepEqual(loud.heardBy, ["local"]);
-  assert.deepEqual(loud.soundOnly?.characterIds, ["near", "far"]);
-  const shout = route(event({ kind: "dialogue", speakerId: "local", text: "A shouted warning!", delivery: "shout" }));
-  assert.deepEqual(shout.heardBy, ["local", "near"]);
-  assert.deepEqual(shout.soundOnly?.characterIds, ["far"]);
-  assert.throws(
-    () =>
-      route(
-        event({
-          kind: "narration",
-          text: "Distant crash",
-          sound: { sourceId: "veryFar", text: "A crash.", loud: true },
-        }),
-      ),
-    /outside hearing range/,
-  );
-  const voice = route(event({ kind: "dialogue", speakerId: "near", text: "PRIVATE NEARBY WORDS" }));
-  assert.equal(voice.contactHidden, true);
-  assert.equal(voice.soundOnly?.player, true);
-  assert.throws(
-    () =>
-      route(
-        event({
-          kind: "narration",
-          text: "A crash is heard.",
-          sound: { sourceId: "veryFar", text: "A crash.", loud: true },
-        }),
-      ),
-    /outside hearing range/,
-  );
-  const relationships = JSON.parse(zoneEventHearingContext(marked, chain).split(": ").slice(1).join(": "));
-  assert.deepEqual(relationships.find((row: any) => row.source === "player").alertOnly, ["far"]);
+function routed(segments: unknown[], context = scene) {
+  const reply = readNarrationReply({ segments }, context.contactGeneration!.actorIds!);
+  return narrationLines(reply, context, "episode-zone-events", at, []);
 }
-const message = 'I privately think SECRET. "Aqua, help!" I turn around.';
-const response = (segments: unknown[]) => ({
-  segments,
-  wishChanges: [],
-  memoryChanges: [],
-  relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+
+const chain = structuredClone(venue);
+chain.zones!.find((zone) => zone.id === "bedroom")!.connectedTo!.push("attic");
+chain.zones!.push({
+  ...defaultVenueSpace("other"),
+  id: "attic",
+  kind: "public",
+  name: "Attic",
+  connectedTo: ["bedroom"],
 });
-function routed(raw: ReturnType<typeof response>, text = message, moves: any[] = [], context = scene) {
-  const normalized = zoneEventReply(raw, text);
-  const parsed = parseVenueReply(normalized, ["local", "near", "far", "player"]);
-  routeZoneEvents(raw, context, parsed, moves);
-  applyResidentMovementTimeline(context, venue, parsed.lines, moves);
-  return parsed;
-}
-
-assert.throws(
-  () => parseVenueReply(zoneEventReply({ lines: [{ kind: "narration", text: "Retired wrapper." }] }, ""), ["local"]),
-  /segments must be an array/,
+const extended = structuredClone(base);
+extended.sceneAttendance!.layout = captureSceneLayout(chain);
+extended.sceneAttendance!.occupants.push({
+  characterId: "veryFar",
+  name: "Distant resident",
+  doing: "Reading",
+  zoneId: "attic",
+});
+const distant = zoneEventScene(extended, chain, { targetId: "veryFar" });
+const ordinary = routed([{ kind: "dialogue", speakerId: "local", text: "PRIVATE ORDINARY WORDS" }], distant).lines[0];
+assert.deepEqual(ordinary.heardBy, ["local", "player"]);
+assert.deepEqual(ordinary.soundOnly?.characterIds, ["near"]);
+assert(!ordinary.soundOnly?.text.includes("PRIVATE"));
+const shout = routed([{ kind: "dialogue", speakerId: "local", text: "Watch out!", delivery: "shout" }], distant)
+  .lines[0];
+assert.deepEqual(shout.heardBy, ["local", "near", "player"]);
+assert.deepEqual(shout.soundOnly?.characterIds, ["far"]);
+const crash = (sourceId: string) => ({
+  kind: "narration",
+  text: "A crash rings out.",
+  sound: { sourceId, text: "A crash.", loud: true },
+});
+assert.deepEqual(routed([crash("local")], distant).lines[0].soundOnly?.characterIds, ["near", "far"]);
+assert.throws(() => routed([crash("veryFar")], distant), /outside hearing range/);
+assert.equal(
+  publicSceneResponse(
+    routed([{ kind: "dialogue", speakerId: "veryFar", text: "Too far to hear.", delivery: "shout" }], distant).lines,
+  ).length,
+  0,
 );
-assert.throws(() => routed(response([{ kind: "sound", speakerId: "local", text: "Retired sound." }])), /kind must be/);
-assert.throws(() => routed(response([{ speakerId: "local", text: "Missing required kind." }])), /kind must be/);
-const ignoredSoundFlag = routed(
-  response([{ kind: "narration", text: "An ordinary observation.", soundEvent: true, speakerId: "far", loud: true }]),
-);
-assert.deepEqual(ignoredSoundFlag.lines[0].heardBy, ["local"]);
-assert.equal(ignoredSoundFlag.lines[0].soundOnly, undefined);
-const ignoredLoudAlias = routed(
-  response([{ kind: "dialogue", speakerId: "local", text: "PRIVATE WORDS", loud: true }]),
-);
-assert.deepEqual(ignoredLoudAlias.lines[0].heardBy, ["local"]);
-assert.deepEqual(ignoredLoudAlias.lines[0].soundOnly?.characterIds, ["near"]);
+const reach = zoneEventHearingContext(distant, chain);
+assert.match(reach, /"alertOnly":\["far"\]/);
+assert.doesNotMatch(reach, /bedroom|exterior|hall|attic/, "hearing context omits hidden room identities");
 
-// No hearing metadata is required for an ordinary local answer.
-let result = routed(response([{ kind: "dialogue", speakerId: "local", text: "Hello there." }]));
-assert.deepEqual(result.lines[0].heardBy, ["local"]);
-assert.deepEqual(result.heardPlayerBy, []);
-assert.equal(result.lines.length, 1);
-
-// Delivery and placement are independent, including a real main-panel whisper.
-for (const delivery of ["ordinary", "whisper", "shout"] as const) {
-  for (const presentation of ["main", "aside"] as const) {
-    const reply = routed(
-      response([
-        { kind: "dialogue", speakerId: "player", text: "Hello." },
-        {
-          kind: "dialogue",
-          speakerId: "local",
-          text: "A reply.",
-          delivery,
-          presentation,
-          ...(delivery === "whisper" ? { targetId: "player" } : {}),
-        },
-        { kind: "narration", text: "The water moves below." },
-      ]),
-      "Hello.",
-    );
-    const line = reply.lines[1]!;
-    assert.equal(line.delivery, delivery);
-    assert.equal(line.presentation, presentation);
-    assert.deepEqual(line.heardBy, delivery === "shout" ? ["local", "near"] : ["local"]);
-    assert.equal(line.soundOnly?.characterIds.includes("far") ?? false, delivery === "shout");
-    assert.equal(
-      line.anchorIndex,
-      presentation === "aside" ? 2 : undefined,
-      "visible bubbles anchor to visible moments, never hidden player speech",
-    );
-    const restored = coerceSession({
-      version: 2,
-      ...base,
-      lines: reply.lines.map((item, index) => ({ ...item, id: String(index), at, name: "" })),
-    });
-    assert.equal(restored.lines[1].delivery, delivery);
-    assert.equal(restored.lines[1].presentation, presentation);
+for (const delivery of [undefined, "whisper", "shout"] as const) {
+  for (const presentation of [undefined, "aside"] as const) {
+    const { lines, labels } = routed([
+      {
+        kind: "dialogue",
+        speakerId: "local",
+        id: "reply",
+        text: "A reply.",
+        delivery,
+        presentation,
+        ...(delivery === "whisper" ? { targetId: "player" } : {}),
+      },
+      { kind: "narration", id: "main", text: "Water moves below." },
+    ]);
+    assert.equal(lines[0].id, labels.reply);
+    assert.equal(lines[0].delivery, delivery);
+    assert.equal(lines[0].presentation, presentation);
+    assert.equal(lines[0].asideFor, presentation === "aside" || delivery === "whisper" ? labels.main : undefined);
+    assert.deepEqual(lines[0].heardBy, delivery === "shout" ? ["local", "near", "player"] : ["local", "player"]);
+    assert.equal(lines[0].soundOnly?.characterIds.includes("far") ?? false, delivery === "shout");
+    const restored = coerceSession({ ...base, lines });
+    assert.deepEqual(restored.lines, lines);
   }
 }
-for (const input of [
-  '"Hello." I turn around. "How are you?"',
-  "“Hello.” I turn around. “How are you?”",
-  "'Hello.' I turn around. 'How are you?'",
-  "Hello. *I turn around.* How are you?",
-]) {
-  const reply = routed(
-    response([
-      { kind: "dialogue", speakerId: "player", text: "Hello." },
-      { kind: "dialogue", speakerId: "player", text: "How are you?" },
-      { kind: "dialogue", speakerId: "local", text: "Fine." },
-    ]),
-    input,
-  );
-  assert.deepEqual(
-    reply.lines.slice(0, 2).map((line) => line.content),
-    ["Hello.", "How are you?"],
-  );
-  assert.equal(reply.lines.length, 3, "Interrupted speech retains separate exact sources");
-  assert.throws(
-    () => routed(response([{ kind: "dialogue", speakerId: "player", text: "Hello. How are you?" }]), input),
-    /invented player speech/,
-  );
-}
-assert.throws(
-  () =>
-    routed(
-      response([{ kind: "dialogue", speakerId: "player", fragments: ["Hello.", "How are you?"] }]),
-      "Hello. I turn around. How are you?",
-    ),
-  /invented player speech/,
-);
-assert.throws(
-  () =>
-    routed(
-      response([{ kind: "dialogue", speakerId: "player", fragments: ["How are you?", "Hello."] }]),
-      "Hello. How are you?",
-    ),
-  /invented player speech/,
-);
-assert.throws(
-  () =>
-    routed(
-      response([{ kind: "dialogue", speakerId: "player", text: "Hello. Who are you?" }]),
-      '"Hello." I turn. "How are you?"',
-    ),
-  /invented player speech/,
-);
-const allAside = routed(
-  response([
-    {
-      kind: "dialogue",
-      speakerId: "local",
-      text: "Quietly.",
-      delivery: "whisper",
-      presentation: "aside",
-      targetId: "player",
-    },
-  ]),
-);
-assert.equal(
-  allAside.lines[0].presentation,
-  "main",
-  "an isolated audible aside is readable without invented narration",
-);
-const reach = zoneEventHearingContext(scene, venue);
-assert.match(reach, /wordsReach|alertOnly/);
-assert.doesNotMatch(reach, /bedroom|exterior|hall/, "hearing context omits hidden room identities");
-const decoratedSound = routed(
-  response([
-    {
-      kind: "narration",
-      text: "A crash rings out.",
-      sound: { sourceId: "local", text: "A crash.", loud: true },
-      delivery: "whisper",
-      presentation: "aside",
-    },
-  ]),
-);
-assert.deepEqual(decoratedSound.lines[0].heardBy, ["local"]);
-assert.deepEqual(decoratedSound.lines[0].soundOnly?.characterIds, ["near", "far"]);
-assert.equal(decoratedSound.lines[0].delivery, undefined);
-
-result = routed(
-  response([
-    { kind: "dialogue", speakerId: "player", text: "Aqua, help!", delivery: "shout" },
-    { kind: "dialogue", speakerId: "near", text: "I'm here.", delivery: "shout" },
-    { kind: "dialogue", speakerId: "far", text: "PRIVATE DISTANT WORDS", delivery: "shout" },
-  ]),
-);
-assert.deepEqual(result.lines[0].heardBy, ["local", "near"]);
-assert.deepEqual(result.lines[0].soundOnly?.characterIds, ["far"]);
-assert.equal(result.lines[0].role, "user");
-assert(!result.lines.some((line) => line.content.includes("SECRET")));
-assert.equal(result.lines[1].viaDoorway, true);
-assert.equal(result.lines[1].contactHidden, false);
-assert.equal(result.lines[2].contactHidden, true);
-assert.deepEqual(result.lines[2].heardBy, ["near", "far"]);
-assert.equal(result.lines[2].soundOnly?.player, true);
-assert.equal(result.lines.length, 3, "routing never inserts evidence or renumbers segments");
-assert.throws(
-  () => routed(response([{ kind: "dialogue", speakerId: "player", text: "invented words" }])),
-  /invented player speech/,
-);
-assert.throws(() => routed(response([{ kind: "whisper", speakerId: "local", text: "secret" }])), /whisper needs/i);
-assert.throws(
-  () =>
-    routed(
-      response([
-        { kind: "narration", text: "You wait." },
-        { kind: "whisper", speakerId: "far", targetId: "local", text: "secret" },
-      ]),
-    ),
-  /same Zone/,
-);
-
-const saved = structuredClone(base);
-for (const [index, line] of result.lines.entries())
-  appendLine(saved, { ...line, id: "line" + index, name: line.speakerId, role: line.role ?? "assistant", at });
-saved.submissions.push({ id: "turn", message, zoneEventsVersion: 1, mode: "chat", recollections: [], at } as any);
-const restored = coerceSession(saved);
-assert.equal(restored.submissions[0].zoneEventsVersion, 1);
-assert.equal(restored.lines[2].soundOnly?.player, true);
-assert.doesNotMatch(heardLines(restored, "far")[0].content, /Aqua, help/);
-assert.match(heardLines(restored, "far")[0].content, /indistinct/);
-const publicView = publicSceneResponse(restored);
-assert.doesNotMatch(JSON.stringify(publicView), /PRIVATE DISTANT WORDS|soundOnly|heardHistory|heardBy|"far"/);
-assert.match(JSON.stringify(publicView), /indistinct/);
-const evidence = liveEvidence(
-  restored,
-  bindLiveProposals(
-    {
-      playerLineId: "none",
-      replyLineIds: restored.lines.map((line) => line.id),
-      earlierLineIds: [],
-    } as any,
-    "none",
-    restored.lines.map((line) => line.id),
-    restored.lines,
-  ),
-);
-assert.equal(evidence[2].playerHeard, false, "a distant voice cannot establish player-heard words or permission");
-assert(!evidence[0].heardBy.includes("far"), "a loud player call gives far listeners no word evidence");
-
-// Distant audible cues reveal only their sound, while narration stays local.
-const npcCrash = {
-  kind: "narration",
-  text: "A heavy crash rings out beyond the wall.",
-  sound: { sourceId: "far", text: "A heavy crash rings out.", loud: true },
+const whisper = {
+  kind: "dialogue",
+  speakerId: "local",
+  text: "Quietly.",
+  delivery: "whisper",
+  presentation: "aside",
+  targetId: "player",
 };
-const sounds = routed(response([npcCrash]), "I wait quietly.");
-assert.deepEqual(sounds.lines[0].heardBy, ["local"]);
-assert.deepEqual(sounds.lines[0].soundOnly?.characterIds, ["near", "far"]);
-assert.equal(sounds.lines[0].soundOnly?.text, npcCrash.sound.text);
-assert.equal(sounds.lines[0].speakerId, "__venue_scene__");
-assert.throws(
-  () => routed(response([{ ...npcCrash, sound: { ...npcCrash.sound, loud: false } }])),
-  /outside hearing range/,
-);
-const failed = routed(
-  response([{ kind: "narration", text: "The stone lands softly." }]),
-  "I try to hit the railing with a stone.",
-);
-assert.deepEqual(failed.lines[0].heardBy, ["local"]);
-assert.equal(failed.lines.length, 1, "attempts and narration produce no implicit remote sound");
+assert.equal(routed([whisper]).lines[0].presentation, "main", "an isolated audible aside remains readable");
+assert.throws(() => routed([{ ...whisper, targetId: undefined }]), /whisper needs its actual target/);
+assert.throws(() => routed([{ ...whisper, targetId: "near" }]), /same Zone/);
+assert.throws(() => routed([{ ...whisper, speakerId: "player" }]), /cannot invent/);
+assert.throws(() => readNarrationReply({ lines: [] }, ["local"]));
+for (const invalid of [
+  { kind: "sound", speakerId: "local", text: "Retired sound." },
+  { speakerId: "local", text: "Missing required kind." },
+  { kind: "dialogue", speakerId: "local", text: "Legacy loud alias.", loud: true },
+  { kind: "narration", text: "Legacy flag.", soundEvent: true },
+  { ...crash("local"), text: "" },
+  { ...crash("local"), sound: null },
+  { ...crash("local"), sound: { sourceId: "local", text: "A click.", loud: "true" } },
+  { ...whisper, sound: { sourceId: "local", text: "A click." } },
+])
+  assert.throws(() => routed([invalid]));
 
-// Sound metadata carries hearing without turning a physical action into a caption
-// or granting remote listeners the accompanying visuals and physical evidence.
+const overheard = routed([
+  { kind: "dialogue", speakerId: "near", text: "PRIVATE NEARBY WORDS" },
+  {
+    kind: "dialogue",
+    speakerId: "far",
+    text: "PRIVATE DISTANT WORDS",
+    delivery: "shout",
+    staging: [{ characterId: "far", position: "center" }],
+  },
+  { kind: "dialogue", speakerId: "near", text: "I'm here.", delivery: "shout" },
+]);
+assert.equal(overheard.lines[0].contactHidden, true);
+assert.equal(overheard.lines[1].contactHidden, true);
+assert.equal(overheard.lines[2].viaDoorway, true);
+assert(!overheard.lines[2].contactHidden);
+assert.deepEqual(overheard.lines[1].staging, []);
+const restored = coerceSession({ ...base, lines: overheard.lines });
+const publicView = publicSceneResponse(restored.lines);
+assert.doesNotMatch(JSON.stringify(publicView), /PRIVATE|soundOnly|heardBy|"far"/);
+assert.match(publicView[0].content, /indistinct/i);
+assert.equal(publicView[1].id, restored.lines[1].id);
+
 const prose = "Local sets the cup on the railing with a clink and nudges it toward you.";
 const cue = "A cup clinks against a hard surface.";
-const embedded = routed(
-  response([
-    { kind: "narration", text: prose, sound: { sourceId: "local", text: cue } },
-    { kind: "dialogue", speakerId: "near", text: "Did something clink?" },
-  ]),
-);
-assert.equal(embedded.lines.length, 2, "routing adds no sound message or evidence index");
-assert.equal(embedded.lines[0].content, prose);
-assert.deepEqual(embedded.lines[0].heardBy, ["local"]);
-assert.deepEqual(embedded.lines[0].soundOnly, { characterIds: ["near"], player: false, text: cue });
-const embeddedSaved = structuredClone(base);
-embedded.lines.forEach((line, index) =>
-  appendLine(embeddedSaved, {
-    ...line,
-    id: `embedded-${index}`,
-    name: "Narration",
-    role: "assistant",
-    at,
-  }),
-);
-embeddedSaved.submissions.push({
-  id: "embedded",
-  message: "I wait.",
-  zoneEventsVersion: 1,
-  mode: "chat",
-  recollections: [],
-  at,
-} as any);
-const embeddedRestored = coerceSession(embeddedSaved);
-assert.equal(heardLines(embeddedRestored, "local")[0].content, prose);
-assert.equal(heardLines(embeddedRestored, "near")[0].content, cue);
-assert.equal(heardLines(embeddedRestored, "near")[0].id, "embedded-0");
-assert(!heardLines(embeddedRestored, "far").some((line) => line.id === "embedded-0"));
-const embeddedPublic = JSON.stringify(publicSceneResponse(embeddedRestored));
-assert(embeddedPublic.includes(prose));
-assert(!embeddedPublic.includes(cue), "routing text is not a duplicate public paragraph");
-assert.doesNotMatch(embeddedPublic, /sourceId|soundOnly/);
-const embeddedEvidence = liveEvidence(
-  embeddedRestored,
-  bindLiveProposals(
-    {
-      playerLineId: "none",
-      replyLineIds: ["embedded-0", "embedded-1"],
-      earlierLineIds: [],
-    } as any,
-    "none",
-    ["embedded-0", "embedded-1"],
-    embeddedRestored.lines,
-  ),
-);
-assert.deepEqual(embeddedEvidence[0].heardBy, ["local"], "remote sound is not evidence of a handoff");
+const embedded = routed([
+  { kind: "narration", id: "clink", text: prose, sound: { sourceId: "local", text: cue } },
+  { kind: "dialogue", speakerId: "local", text: "Did you hear that?" },
+]);
+const persisted = coerceSession({ ...base, lines: embedded.lines }).lines;
+assert.equal(persisted.length, 2);
+assert.equal(persisted[0].id, embedded.labels.clink);
+assert.equal(persisted[0].content, prose);
+assert.deepEqual(persisted[0].heardBy, ["local", "player"]);
+assert.deepEqual(persisted[0].soundOnly, { characterIds: ["near"], player: false, text: cue });
+const visible = JSON.stringify(publicSceneResponse(persisted));
+assert(visible.includes(prose));
+assert(!visible.includes(cue), "routing text is not a duplicate public paragraph");
+assert.doesNotMatch(visible, /sourceId|soundOnly/);
 
-// Ambient narration has no actor position; even a narrator-tagged loud cue stays local.
-const ambientProse = "A pipe ticks beside the open doorway.";
-for (const loud of [false, true]) {
-  const ambient = routed(
-    response([
-      {
-        kind: "narration",
-        text: ambientProse,
-        sound: { sourceId: "__venue_scene__", text: "A metallic tick.", loud },
-        staging: [{ characterId: "far", position: "center" }],
-      },
-    ]),
-  );
-  assert.equal(ambient.lines[0].content, ambientProse);
-  assert.equal(ambient.lines[0].zoneId, "exterior");
-  assert.deepEqual(ambient.lines[0].heardBy, ["local"]);
-  assert.equal(ambient.lines[0].soundOnly, undefined);
-  assert.deepEqual(ambient.lines[0].staging, []);
-}
-const emptyScene = zoneEventScene(
-  coerceSession({
-    version: 2,
-    ...base,
-    activeIds: [],
-    participants: [],
-    sceneAttendance: { ...base.sceneAttendance, occupants: [] },
-  }),
-  venue,
-);
-const alone = routed(
-  response([
-    {
-      kind: "narration",
-      text: ambientProse,
-      sound: { sourceId: "__venue_scene__", text: "A metallic tick." },
-    },
-  ]),
-  "I walk over to investigate without leaving this space.",
-  [],
-  emptyScene,
-);
-assert.equal(alone.lines[0].content, ambientProse);
-assert.deepEqual(alone.lines[0].heardBy, []);
-assert.equal(alone.lines[0].soundOnly, undefined);
-
-const offscreenProse = "A clatter carries from nearby, briefly interrupting the conversation.";
-const offscreen = routed(
-  response([
-    {
-      kind: "narration",
-      text: offscreenProse,
-      sound: { sourceId: "near", text: "A brief clatter." },
-    },
-  ]),
-);
-assert.equal(offscreen.lines[0].content, offscreenProse);
-assert.deepEqual(offscreen.lines[0].heardBy, ["local"]);
-assert.deepEqual(offscreen.lines[0].soundOnly?.characterIds, ["near", "far"]);
-for (const sourceId of ["player", "local", "near", "far"]) {
-  const loud = routed(
-    response([
-      {
-        kind: "narration",
-        text: "A crash interrupts the conversation.",
-        sound: { sourceId, text: "A loud crash.", loud: true },
-      },
-    ]),
-  );
-  assert.deepEqual(loud.lines[0].heardBy, ["local"]);
-  assert.deepEqual(loud.lines[0].soundOnly?.characterIds, ["near", "far"]);
-}
-assert.throws(
-  () =>
-    routed(
-      response([
-        {
-          kind: "narration",
-          text: "A faint click.",
-          sound: { sourceId: "far", text: "A faint click." },
-        },
-      ]),
-    ),
-  /outside hearing range/,
-);
-for (const sound of [
-  null,
-  {},
-  { sourceId: "unknown", text: "A click." },
-  { sourceId: "__venue_scene__", text: "x".repeat(301) },
-  { sourceId: "__venue_scene__", text: "A click.", loud: "true" },
-  { sourceId: "local", text: "" },
-  { sourceId: "local", text: "x".repeat(301) },
-  { sourceId: "local", text: "A click.", loud: "true" },
-])
-  assert.throws(() => routed(response([{ kind: "narration", text: "An action.", sound }])), /invalid narrated sound/);
-assert.throws(
-  () =>
-    routed(
-      response([
-        {
-          kind: "dialogue",
-          speakerId: "local",
-          text: "I'm stuck. There's a wheel on my arm.",
-          sound: { sourceId: "local", text: "A metallic grinding, a squeaking wheel, then feedback." },
-        },
-      ]),
-    ),
-  /invalid narrated sound/,
-);
-const separateSound = routed(
-  response([
-    { kind: "dialogue", speakerId: "local", text: "I'm stuck. There's a wheel on my arm." },
-    {
-      kind: "narration",
-      text: "The motor grinds, then a wheel squeaks.",
-      sound: { sourceId: "local", text: "A metallic grinding, a squeaking wheel, then feedback." },
-    },
-  ]),
-);
-assert.equal(separateSound.lines.length, 2, "actual narration owns its own sound without synthesizing a segment");
-assert.deepEqual(separateSound.lines[0].heardBy, ["local"]);
-assert.deepEqual(separateSound.lines[1].heardBy, ["local"]);
-assert.deepEqual(separateSound.lines[1].soundOnly?.characterIds, ["near"]);
-assert.throws(
-  () => routed(response([{ kind: "narration", text: "", sound: { sourceId: "local", text: "A motor rattles." } }])),
-  /segments\[0\]\.text must be a nonempty string/,
-  "a routing cue cannot silently replace missing narration text",
-);
-assert.throws(
-  () =>
-    routed(
-      response([
-        {
-          kind: "dialogue",
-          speakerId: "local",
-          text: "Hello.",
-          sound: { sourceId: "__venue_scene__", text: "A click." },
-        },
-      ]),
-    ),
-  /invalid narrated sound/,
-);
-assert.throws(
-  () => routed(response([{ kind: "sound", speakerId: "__venue_scene__", text: "A click." }])),
-  /kind must be/,
-);
-const movingSound = routed(
-  response([
-    {
-      kind: "narration",
-      text: "Near steps onto the terrace, shoes clacking on the stone.",
-      sound: { sourceId: "near", text: "Shoes clack against stone." },
-    },
-  ]),
-  message,
-  [{ characterId: "near", zoneId: "exterior", segment: 0 }],
-);
-assert.deepEqual(movingSound.lines[0].heardBy, ["local", "near"]);
-assert.deepEqual(movingSound.lines[0].soundOnly?.characterIds, [], "movement changes the sound origin at its segment");
-const moved = routed(
-  response([
-    { kind: "dialogue", speakerId: "far", text: "Before the move." },
-    { kind: "narration", text: "Far steps from the Hall into Exterior." },
-    { kind: "dialogue", speakerId: "far", text: "After the move." },
-  ]),
-  message,
-  [
-    {
-      characterId: "far",
-      zoneId: "exterior",
-      segment: 1,
-      quote: "Far steps from the Hall into Exterior.",
-      path: ["bedroom", "hall", "exterior"],
-    },
-  ],
-);
-assert.equal(moved.lines[0].contactHidden, true);
-assert.equal(moved.lines[2].contactHidden, false);
-assert.deepEqual(moved.lines[2].heardBy, ["local", "far"]);
-assert.deepEqual(moved.lines[2].soundOnly?.characterIds, ["near"]);
-assert.deepEqual(moved.lines[1].physicalIdsAfter, ["local", "far"]);
-const changedVenue = { ...venue, zones: venue.zones!.map((zone) => ({ ...zone, connectedTo: [] })) };
-const frozen = routed(
-  response([{ kind: "dialogue", speakerId: "local", text: "Still connected." }]),
-  message,
-  [],
-  zoneEventScene(base, changedVenue),
-);
-assert(
-  frozen.lines[0].soundOnly?.characterIds.includes("near"),
-  "active Scenes retain their captured connection graph",
-);
 const crowded = structuredClone(base);
 for (let index = 0; index < 12; index++)
   crowded.sceneAttendance!.occupants.push({
@@ -656,69 +202,11 @@ for (let index = 0; index < 12; index++)
     zoneId: "bedroom",
   });
 const bounded = zoneEventScene(crowded, venue);
-assert(bounded.contactGeneration!.remoteIds.length <= 4, "reaction opportunities use a bounded offstage cast");
+assert(bounded.contactGeneration!.actorIds!.length <= 4);
 assert(
   zoneEventScene(crowded, venue, { message: "Offstage 11, help!" }).contactGeneration!.remoteIds.includes("offstage11"),
-  "explicitly named recipients take priority over cast rotation",
 );
-assert.equal(
-  zoneEventScene(crowded, venue, { targetId: "offstage7" }).contactGeneration!.remoteIds[0],
-  "offstage7",
-  "the selected recipient takes first priority",
-);
-const broadcast = routed(
-  response([{ kind: "dialogue", speakerId: "local", text: "Everyone, watch out!", delivery: "shout" }]),
-  message,
-  [],
-  bounded,
-);
-assert.equal(broadcast.lines[0].soundOnly!.characterIds.length, 13, "a cast limit never limits sound delivery");
-
-// Perception records only the saved player projection; model fields never grant access.
-{
-  const speech: any = { role: "assistant", speakerId: "local", kind: "dialogue", heardBy: ["local"] };
-  assert.deepEqual(sceneEvidencePerception(speech), { playerPerception: "full" });
-  assert.deepEqual(sceneEvidencePerception({ ...speech, kind: "whisper", targetId: "player" }), {
-    playerPerception: "full",
-  });
-  assert.deepEqual(sceneEvidencePerception({ ...speech, kind: "whisper", targetId: "other", contactHidden: true }), {
-    playerPerception: "none",
-  });
-  assert.deepEqual(sceneEvidencePerception({ ...speech, kind: "whisper", targetId: "other" }), {
-    playerPerception: "none",
-  });
-  assert.deepEqual(
-    sceneEvidencePerception({
-      ...speech,
-      delivery: "shout",
-      contactHidden: true,
-      soundOnly: { player: true, characterIds: [], text: "An indistinct voice." },
-    }),
-    { playerPerception: "sound-only", playerSound: "An indistinct voice." },
-  );
-  assert.deepEqual(sceneEvidencePerception({ ...speech, kind: "narration" }), { playerPerception: "full" });
-  assert.deepEqual(sceneEvidencePerception({ ...speech, kind: "narration", contactHidden: true }), {
-    playerPerception: "none",
-  });
-  assert.deepEqual(
-    sceneEvidencePerception({ ...speech, role: "user", speakerId: "", attentionEvidence: true, contactHidden: true }),
-    { playerPerception: "full" },
-  );
-  assert.deepEqual(sceneEvidencePerception({ ...speech, role: "user", speakerId: "", contactHidden: true }), {
-    playerPerception: "none",
-  });
-  assert.deepEqual(sceneEvidencePerception({ ...speech, attentionEvidence: true, contactHidden: true }), {
-    playerPerception: "none",
-  });
-  assert.deepEqual(sceneEvidencePerception({ ...speech, contactHidden: true, playerPerception: "full" } as any), {
-    playerPerception: "none",
-  });
-  assert.deepEqual(sceneEvidencePerception({ ...speech, contactReport: true }), { playerPerception: "none" });
-  const earlier = { ...speech, zoneId: "old-zone" };
-  assert.deepEqual(
-    sceneEvidencePerception(earlier),
-    { playerPerception: "full" },
-    "saved perception does not depend on the player's new Zone",
-  );
-}
+assert.equal(zoneEventScene(crowded, venue, { targetId: "offstage7" }).contactGeneration!.remoteIds[0], "offstage7");
+const broadcast = routed([{ kind: "dialogue", speakerId: "local", text: "Watch out!", delivery: "shout" }], bounded);
+assert.equal(broadcast.lines[0].soundOnly!.characterIds.length, 13, "cast limits never limit delivery");
 console.log("Zone event routing, private witnesses and captured movement passed.");

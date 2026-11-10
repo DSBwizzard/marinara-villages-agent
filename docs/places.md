@@ -6,7 +6,7 @@ Players can learn about Places through ordinary Scene exchanges, selected lore a
 
 Places reuse Scene entry, Zone navigation, connections, access, acoustic witnesses and playback. NPC associations do not imply presence. An observed arrival must be proposed in the current GM exchange and validated against admitted positions; it cannot hear earlier conversation. Supporting characters retain compact identities, scoped associations, availability and native Memories. They have no Villager relationship scores, Agendas, autonomous activity, employment, Wishes or construction leadership. A reply has at most four responding people. NPCs and the player consume no Villager occupancy slots.
 
-A Place can host ordinary activity and temporary details. Enduring alterations and normal village management require establishment. Explicitly established controllers can issue entry permission or consent only within their recorded scope; a job title grants no authority.
+A Place can host ordinary activity and retain supported nonstructural changes to its rooms. Official Venue functions and structural changes require Projects. Controllers can issue entry permission or consent within their recorded scope. Authority comes from the saved controller record.
 
 **Establish as Venue** creates a Project for an ongoing village use, selected spaces, agreements and up to eight open-ended objectives. The current GM Scene exchange can cite witnessed outcomes for those exact objectives; promises do not manufacture completed physical results. There is no separate quest interpreter or model polling. Social establishment has no compulsory lead, work focus or construction timer: Start reserves capacity and Complete establishes it once the recorded requirements are met. A physical establishment plan reuses Renovation design, a willing Villager lead, six hours of lead focus and the existing 24 elapsed-hour construction lifecycle. Prerequisites and consent must be resolved before physical Start. Only affected Zones close; cancellation leaves the Place available.
 
@@ -16,4 +16,4 @@ The existing limits remain: 16 Venues across the whole Village, two active Proje
 
 Private Place/NPC records and source receipts use the existing immutable history pages and Village CAS. Supporting identity/availability, Place records and Memories are inspectable through REPAIR; corrections use its review, Undo and checkpoint flow. Disabling a record stops its future use. Existing Scenes retain their admitted sources and witnesses.
 
-Version 0.8.0 requires a fresh format-17 Village. Old-save conversion is intentionally omitted by the owner's explicit decision for this unreleased single-tester build. Installing the package does not erase other environments or reset their storage.
+The current build requires a fresh format-18 Village. Older saves are rejected and their storage remains intact.

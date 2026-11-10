@@ -40,7 +40,6 @@ import { createSceneCommands } from "../packages/villages/src/server/features/sc
 import { createSceneChanges } from "../packages/villages/src/server/features/scenes/changes-service.js";
 import { createSceneQueryService } from "../packages/villages/src/server/features/scenes/scene-query-service.js";
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
-import { heardLines } from "../packages/villages/src/server/domain/rules/scene-record.js";
 import { actorEpisodeView } from "../packages/villages/src/server/domain/rules/episodes.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
 import { readAcceptedEpisode } from "../packages/villages/src/server/domain/decoding/episode-codec.js";
@@ -1050,7 +1049,6 @@ await runCase("scene-narration/input-playback", async () => {
       "canonical input uses the player's existing name, portrait and styling path",
     );
     assert.deepEqual(input.heardBy, []);
-    assert(!heardLines(reloaded, f.actorId).some((line) => line.id === input.id));
     const episode = f.world.episodes.records[0];
     assert(!episode.segments.some((line) => line.id === input.id));
     assert.throws(

@@ -10,7 +10,6 @@ import {
   SCENE_STORAGE_FORMAT,
 } from "../packages/villages/src/server/adapters/storage/scene-history.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { heardLines } from "../packages/villages/src/server/domain/rules/scene-record.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import { collectRetainedStorage } from "../packages/villages/src/server/features/repair/retained-storage-cleanup.js";
 import {
@@ -124,7 +123,7 @@ for (const count of [1000, 10_000, 25_000]) {
       assert.equal(read.lines.length, count + 20);
       assert.equal(read.lines[0].content, line("line-0").content);
       assert.equal(
-        heardLines(read, "remote").length,
+        read.lines.filter((entry) => entry.heardBy.includes("remote")).length,
         count + 20,
         "historical hearers need not be current participants",
       );
@@ -184,9 +183,10 @@ try {
   });
   await f.mutateDocument("villages-venue-visit-faults", sessionSlot, (saved) => Object.assign(saved, scene));
   const logical = await f.repository.readSession("faults");
-  assert.equal(heardLines(logical, "near")[0].content, "A distant clatter.");
-  assert(!JSON.stringify(heardLines(logical, "near")).includes("Private original words"));
-  assert(!JSON.stringify(publicSceneResponse(logical)).includes("Private original words"));
+  assert.deepEqual(logical.lines[1].soundOnly, { characterIds: ["near"], player: true, text: "A distant clatter." });
+  const visible = publicSceneResponse(logical).lines;
+  assert.equal(visible[1].content, "A distant clatter.");
+  assert(!JSON.stringify(visible).includes("Private original words"));
   for (const failure of ["before", "after"] as const) {
     f.fail(failure);
     await assert.rejects(

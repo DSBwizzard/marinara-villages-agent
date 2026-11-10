@@ -1,35 +1,21 @@
 # Scene continuity and effect recovery
 
-Current format-4 Scenes require the current native admission, writing and source contracts. Interactive Scenes require semantic contract 2 and their Village identity. Every timed interactive exchange requires current processing metadata bound to that Village, Scene and submission; mutation and turn/greeting recovery refuse missing or mismatched metadata before admission or effects. New exchanges receive metadata when authored; existing exchanges are never backfilled. Unsupported formats are rejected before generation. Each admitted request retains its exact source, positions and witnesses through recovery; later arrivals never hear earlier dialogue.
+Current format-5 Scenes bind each admitted exchange to its Village, Scene, submission and captured source. Idle Scenes refresh time, circumstances and attendance between exchanges. Running or interrupted requests keep their original positions, witnesses, evidence and authority. A late arrival learns only from what they actually perceive after arriving.
 
-An empty local cast permits surroundings and player actions, without inventing unseen responders. Invalid hearing, movement or physical metadata keeps the uncommitted response held. Reads and reloads never request replacements.
+## Exact sources and local recall
 
-## Speech capture
+The complete submitted input stays in private GM chronology. The GM only grounds consequential excerpts that support a proposed lasting change. Code binds the exact span and occurrence, then checks perception against the captured timeline. Exact text by itself does not establish spoken words, a completed action or a witness.
 
-The GM's ordered input entries cite exact submitted text. Code binds canonical source offsets and one-based occurrences, preserves delivery and targets, materializes exact player speech and remaps affected segment references. Source references do not establish audibility: code supplies the actual position and witness timeline. Thoughts, actions, remembered quotations and hypothetical or negated speech cannot become spoken evidence.
+The new request includes current context and a bounded selection of common continuity and past Episodes, including exchanges whose Scene playback retired. Recent shared history and word matches inform selection. Room details retain their order, and characters receive only eligible projections. The fitted readset freezes the surviving source references. Partial context leaves omitted records intact. See [Memories](memories-core.md).
 
-Missing, ambiguous or invalid source references reject the combined response with the input preserved. There is no quote-ID alias, inferred capture or separate capture-recovery model call. Explicit GM Retry replaces the rejected response under the ordinary ownership and accounting guards.
+## Acceptance and replay
 
-## Bounded Scene retrieval
+The provider reply is saved before validation. Villages checks the complete narration, sources, hearing, movement and required outcomes against detached state. Explicitly independent optional failures can accompany accepted prose. Invalid required outcomes and a valid halt preserve the original input and response for recovery.
 
-Local retrieval ranks eligible ongoing Scene evidence using current input and recent visible exchanges. It uses no ended-Scene summary, embedding service or retrieval-provider request. Long-term Memories retain their own retrieval contract.
+One Village compare-and-swap publishes the accepted Episode, retained meaning and native effects. Scene acknowledgement follows that commit. Recovery first checks whether the Episode already committed, then attaches it or continues with the saved response as appropriate. Local Replay makes no provider request. Uncommitted work can be abandoned under its original request and accounting guards. See [response recovery](scene-response-recovery.md).
 
-The serialized history stays within its 12,000-character budget, deduplicates whole source lines and returns them chronologically. Oversized candidates may be skipped. Witness and visibility filtering precedes ranking; acoustic-only listeners receive only the permitted projection. Narrator visibility never establishes resident knowledge.
-
-Requests freeze selected evidence and its fingerprints. Retrieved IDs remain available to validators. History is explicitly partial: omitted context cannot establish that something never happened. Residents may forget, bluff or disagree; validation constrains authoritative effects rather than forcing every line of dialogue to be true.
-
-## Independent effects
-
-Complete syntax, source attribution, hearing/privacy, movement and physical outcomes remain core requirements. Truncated JSON is rejected. Noncritical optional metadata retains independent failure records instead of becoming empty success. Malformed consequential standing-permission or Project proposals reject the combined response before publication.
-
-Accepted prose, stable line IDs, proposals and failures commit together before acknowledgement. Provider responses checkpoint before validation. Domain receipts prevent effects from applying twice, and storage replay makes no provider call. Explicit selected-domain interpretation uses saved evidence and current settlement context without rewriting accepted prose.
-
-Scene physical settlement precedes dependent agreement and Wish bookkeeping. Ordinary conversation can continue while noncritical updates remain pending; standing access, physical, Project and Wish authority still governs dependent actions.
-
-Captured attendance and explicit connection maps remain authoritative for the admitted exchange. Idle live Scenes refresh current time, circumstances and scheduled attendance between exchanges, while running/interrupted requests retain their admitted snapshots. Canonical presentation cues and immutable playback checkpoints preserve reading and visual state independently of current authority.
-
-Raw completions, diagnostics, provenance, checkpoints and private interpretation history stay server-only. The ordinary public response contains only its explicit authority and bounded visible playback projection. Owner diagnostics require their dedicated endpoint.
+Playback preserves accepted prose, stable line IDs and captured presentation. Ordinary responses show bounded visible playback and the original input rows. Raw provider evidence, private readsets and request checkpoints stay behind their server authority boundary. See [Scene privacy](scene-response-privacy.md).
 
 ## Validation
 
-Provider-free tests cover exact occurrences, repeated and interrupted speech, missing/forged source references, visibility and acoustic projections, native movement, independent domain failures, selected-domain recovery, purchased-response reuse and lost acknowledgements. Packaged and desktop/phone tests retain current playback and recovery coverage. They do not establish real-provider semantic quality or cost.
+Provider-free suites exercise exact input, forged references, witnessed and acoustic projections, native movement, independent optional failures, saved-response replay and lost acknowledgements. Packaged Engine behavior, desktop and phone playback, and real-provider quality require their own evidence.

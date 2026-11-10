@@ -65,7 +65,7 @@ The [Scene cost characterization](docs/scene-cost.md) records the actual staging
 
 Villages is an unreleased prototype without a public installer or official catalog entry. Test installation is arranged separately; historical tagged downloads are not the current prototype distribution.
 
-The [social Wishes](docs/wishes.md) guide documents their behavior and extension boundaries. Social Wishes replace the prior Wish/Pursuit implementations. The current build requires a fresh format-17 Village with immutable Memory pages; no conversion is provided.
+The current build requires a fresh format-18 Village. The [saved-state contract](docs/architecture-migration.md#saved-work-and-compatibility) describes strict format checks and preservation of existing storage. See [social Wishes](docs/wishes.md) for the current continuity behavior.
 
 During development, **DEBUG Settings → Advance Village time** advances the current instance by a chosen elapsed duration. The saved offset survives restart; days are 24 hours. It runs ordinary absence catch-up across Village mechanics, including any normally enabled model work, and preserves active Scene snapshots and held failures. Operational clocks and model settings remain unchanged. It is available in every development instance. Before admitting active playtesters, remove the `TimeControl.tsx` UI and `/clock/advance` route. Retain saved-offset compatibility so existing development worlds do not jump backwards; resetting the offset is not an undo operation. Checkpoint retained worlds before consequential time tests.
 
