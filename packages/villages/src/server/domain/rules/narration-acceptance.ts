@@ -35,6 +35,7 @@ export type NarrationPublication = {
     moves: (ContactMove & { effectId: string })[];
     playerMoves: { effectId: string; zoneId: string; segment: number }[];
     admissions: NpcAdmission[];
+    sceneEffects?: { effectId: string; contactEndedIds: string[]; closed?: true }[];
   };
 };
 
@@ -298,6 +299,14 @@ export function acceptNarrationContinuity(
     );
   }
   const commandReceipts = selection.acceptedIds.flatMap((id) => (native.receipts[id] ? [native.receipts[id]] : []));
+  const sceneEffects = (native.sceneEffects ?? []).filter((effect) => selection.acceptedIds.includes(effect.effectId));
+  memoryRequire(
+    sceneEffects.every(
+      (effect) =>
+        native.receipts[effect.effectId] && ["contact", "scene"].includes(native.receipts[effect.effectId].kind),
+    ),
+    "Scene effect lost its native command",
+  );
   const currentSources = [
     ...Object.values(source.historical).filter((row) => row.kind === "knowledge"),
     ...acceptedKeeps.flatMap((keep) => keep.sources),
@@ -363,6 +372,16 @@ export function acceptNarrationContinuity(
     continuityVersionIds: versions.map((row) => row.id),
     offered: readset.offered,
     commandReceipts,
+    ...(sceneEffects.length
+      ? {
+          sceneDelta: {
+            expectedRevision: readset.sceneRevision,
+            contactEndedIds: [...new Set(sceneEffects.flatMap((effect) => effect.contactEndedIds))],
+            ...(sceneEffects.some((effect) => effect.closed) ? { closed: true as const } : {}),
+            receiptIds: sceneEffects.map((effect) => native.receipts[effect.effectId].id),
+          },
+        }
+      : {}),
     dependencies,
     holderDependencies,
     ...(readset.admission.room ? { room: readset.admission.room } : {}),

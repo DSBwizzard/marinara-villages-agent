@@ -1,4 +1,4 @@
-// Test cases: scene-narration/outbox, scene-narration/held, scene-narration/lost-ack, scene-narration/write-failure, scene-narration/startup-hold, scene-narration/activation-owner, scene-narration/private-projection, scene-narration/validation-hold, scene-narration/cancellation, scene-narration/connected-turn, scene-narration/saved-changes, scene-narration/coordinator-startup-hold, scene-narration/abandon, scene-narration/abandon-lost-ack, scene-narration/abandon-committed, scene-narration/abandon-fence, scene-narration/startup-no-write, scene-narration/replace-committed, scene-narration/retirement, scene-narration/skip-ownership, scene-narration/input-playback
+// Test cases: scene-narration/outbox, scene-narration/held, scene-narration/lost-ack, scene-narration/write-failure, scene-narration/startup-hold, scene-narration/activation-owner, scene-narration/private-projection, scene-narration/validation-hold, scene-narration/cancellation, scene-narration/connected-turn, scene-narration/saved-changes, scene-narration/coordinator-startup-hold, scene-narration/abandon, scene-narration/abandon-lost-ack, scene-narration/abandon-committed, scene-narration/abandon-fence, scene-narration/startup-no-write, scene-narration/replace-committed, scene-narration/retirement, scene-narration/skip-ownership, scene-narration/input-playback, scene-narration/native-close, scene-narration/native-close-recovery, scene-narration/native-contact-end, scene-narration/native-close-authority, scene-narration/native-delta-fence, scene-narration/native-delta-integrity
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -47,6 +47,10 @@ import { readAcceptedEpisode } from "../packages/villages/src/server/domain/deco
 import { scenePlaybackSteps } from "../packages/villages/src/client/features/scenes/scene-playback.js";
 import { readNpc } from "../packages/villages/src/server/domain/rules/places.js";
 import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
+import {
+  encodeContinuityPages,
+  decodeContinuityPagesSync,
+} from "../packages/villages/src/server/adapters/storage/continuity-pages.js";
 import { sessionSlot } from "../packages/villages/src/server/adapters/storage/scene-slots.js";
 import { createVenueOperationContext } from "../packages/villages/src/server/adapters/operations/operation-context-service.js";
 import { createVenueCoordinator } from "../packages/villages/src/server/jobs/venue-coordinator-service.js";
@@ -247,6 +251,168 @@ function fixture(seed = "world") {
     },
   };
 }
+function nativeCloseFixture() {
+  const f = fixture(),
+    scene = f.scenes.get("scene")!,
+    turn = scene.submissions[0];
+  const message = "I leave now.",
+    raw = {
+      segments: [
+        { id: "goodbye", kind: "dialogue", speakerId: f.actorId, text: "Farewell." },
+        { id: "exit", kind: "narration", text: "You head out.", requires: ["close"] },
+      ],
+      commands: [
+        {
+          id: "close",
+          type: "scene.end",
+          at: "exit",
+          source: [{ input: message, ground: { kind: "visible-action", to: [f.actorId] } }],
+        },
+      ],
+    };
+  turn.message = message;
+  turn.requestFingerprint = memoryHash(["chat", "", null, message]);
+  turn.narration!.readset.source.input = message;
+  turn.narration!.raw = raw;
+  turn.narration!.responseDigest = memoryHash(raw);
+  return f;
+}
+await runCase("scene-narration/native-close", async () => {
+  const f = nativeCloseFixture();
+  await f.service.processSavedExchange("scene", "turn");
+  const saved = f.scenes.get("scene")!,
+    episode = f.world.episodes.records[0];
+  assert.equal(saved.status, "closed");
+  assert.equal(saved.endedAt, episode.acceptedAt);
+  assert.equal(saved.endReason, "scene");
+  assert.equal(f.turn().acceptance.status, "applied");
+  assert(episode.sceneDelta?.closed);
+  assert.equal(episode.commandReceipts[0].kind, "scene");
+  const before = memoryHash(saved);
+  await f.service.processSavedExchange("scene", "turn");
+  assert.equal(memoryHash(f.scenes.get("scene")), before);
+  assert.equal(f.world.episodes.records.length, 1);
+});
+await runCase("scene-narration/native-close-recovery", async () => {
+  const f = nativeCloseFixture();
+  f.failScene();
+  await assert.rejects(f.service.processSavedExchange("scene", "turn"), (error) => error === f.exact);
+  assert.equal(f.scenes.get("scene")!.status, "active");
+  assert(f.world.episodes.records[0].sceneDelta?.closed);
+  const storage = sceneHistoryFixture();
+  try {
+    const repository = createVillageRepository(() => storage.gate.documents);
+    await repository.mutateAuthority(
+      (state) => {
+        Object.assign(state, f.world);
+      },
+      { memories: true },
+    );
+    Object.assign(
+      f.world,
+      await createVillageRepository(() => storage.gate.documents).readAuthority({ memories: true }),
+    );
+    f.world.worldPlaces.npcs[f.actorId].disabled = true;
+    f.interrupt();
+    await f.service.processSavedExchange("scene", "turn");
+    assert.equal(f.scenes.get("scene")!.status, "closed");
+    assert.equal(f.world.episodes.records.length, 1);
+    assert.equal(f.turn().acceptance.status, "applied");
+  } finally {
+    storage.release();
+  }
+});
+function nativeContactFixture() {
+  const f = fixture(),
+    scene = f.scenes.get("scene")!,
+    turn = scene.submissions[0];
+  const contacts = [{ characterId: f.actorId, playerZoneId: "parlor", characterZoneId: "parlor" }];
+  scene.doorwayContacts = contacts;
+  turn.narration!.readset.source.scene.doorwayContacts = contacts;
+  const raw = {
+    segments: [
+      { id: "end", kind: "dialogue", speakerId: f.actorId, text: "I will stop here. Goodbye.", requires: ["contact"] },
+    ],
+    commands: [{ id: "contact", type: "contact.end", who: f.actorId, at: "end", source: [{ segment: "end" }] }],
+  };
+  turn.narration!.raw = raw;
+  turn.narration!.responseDigest = memoryHash(raw);
+  return f;
+}
+await runCase("scene-narration/native-contact-end", async () => {
+  const f = nativeContactFixture();
+  await f.service.processSavedExchange("scene", "turn");
+  assert.deepEqual(f.scenes.get("scene")!.doorwayContacts, []);
+  assert.equal(f.scenes.get("scene")!.status, "active");
+  assert.deepEqual(
+    f.scenes.get("scene")!.activeIds,
+    [f.actorId],
+    "ending conversation cannot invent travel or erase local attendance",
+  );
+  assert.equal(f.world.episodes.records[0].commandReceipts[0].kind, "contact");
+});
+await runCase("scene-narration/native-delta-integrity", async () => {
+  for (const altered of ["revision", "contact", "receipt", "missing"] as const) {
+    const f = nativeContactFixture();
+    await f.service.processSavedExchange("scene", "turn");
+    const world = structuredClone(f.world),
+      episode = world.episodes.records[0];
+    if (altered === "revision") episode.sceneDelta!.expectedRevision++;
+    if (altered === "contact") episode.sceneDelta!.contactEndedIds = ["player"];
+    if (altered === "receipt") {
+      episode.commandReceipts[0].endedContacts = ["player"];
+      episode.sceneDelta!.contactEndedIds = ["player"];
+    }
+    if (altered === "missing") delete episode.sceneDelta;
+    const namespace = memoryHash(world.seed).slice(0, 32);
+    assert.throws(() => {
+      const pages = encodeContinuityPages(
+        { continuity: world.continuity, episodes: world.episodes, worldPlaces: world.worldPlaces },
+        namespace,
+      );
+      decodeContinuityPagesSync(pages.manifest, namespace, world.seed, (id) => pages.pages.get(id) ?? null);
+    }, /Scene transition|Scene control|contact result|native source/);
+  }
+});
+await runCase("scene-narration/native-close-authority", async () => {
+  for (const invalid of ["thought", "npc", "later-fiction"] as const) {
+    const f = nativeCloseFixture(),
+      raw = f.turn().narration!.raw as any;
+    if (invalid === "thought") raw.commands[0].source = [{ input: f.turn().message, ground: { kind: "private" } }];
+    if (invalid === "npc") raw.commands[0].source = [{ segment: "goodbye" }];
+    if (invalid === "later-fiction")
+      raw.segments.push({ id: "later", kind: "narration", text: "The discussion continues." });
+    f.turn().narration!.responseDigest = memoryHash(raw);
+    await f.service.processSavedExchange("scene", "turn");
+    assert.equal(f.turn().acceptance.status, "held");
+    assert.equal(f.scenes.get("scene")!.status, "active");
+    assert.equal(f.world.episodes.records.length, 0);
+  }
+  const f = nativeCloseFixture(),
+    raw = f.turn().narration!.raw as any;
+  raw.segments = [{ id: "goodbye", kind: "dialogue", speakerId: f.actorId, text: "Goodnight." }];
+  raw.commands[0] = { ...raw.commands[0], at: "goodbye", source: [{ segment: "goodbye" }], independent: true };
+  f.turn().narration!.responseDigest = memoryHash(raw);
+  await f.service.processSavedExchange("scene", "turn");
+  assert.equal(f.turn().acceptance.status, "applied");
+  assert.equal(f.scenes.get("scene")!.status, "active");
+  assert.equal(f.world.episodes.records[0].sceneDelta, undefined);
+});
+await runCase("scene-narration/native-delta-fence", async () => {
+  const f = nativeCloseFixture();
+  f.failScene();
+  await assert.rejects(f.service.processSavedExchange("scene", "turn"));
+  const scene = f.scenes.get("scene")!,
+    admitted = scene.sceneRevision;
+  scene.sceneRevision++;
+  await assert.rejects(f.service.processSavedExchange("scene", "turn"), /admitted revision/);
+  assert.equal(scene.status, "active");
+  assert(f.turn().narration);
+  assert.equal(f.world.episodes.records.length, 1);
+  f.scenes.get("scene")!.sceneRevision = admitted;
+  await f.service.processSavedExchange("scene", "turn");
+  assert.equal(f.scenes.get("scene")!.status, "closed");
+});
 await runCase("scene-narration/outbox", async () => {
   const f = fixture();
   f.scenes.set("scene", coerceSession(JSON.parse(JSON.stringify(f.scenes.get("scene")))));

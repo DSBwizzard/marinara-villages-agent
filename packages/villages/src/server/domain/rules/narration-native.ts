@@ -12,6 +12,7 @@ import {
   type NarrationPublication,
 } from "./narration-acceptance.js";
 import { applyNarrationProject } from "./narration-project.js";
+import { applyNarrationScene } from "./narration-scene.js";
 import { projectSpeechContext } from "./project-interpretation.js";
 import { applyNarrationAccess, assertNarrationDecision, narrationAccessScopes } from "./narration-access.js";
 
@@ -25,6 +26,8 @@ const base = {
   requires: z.array(label).max(8).optional(),
 };
 const nativeCommand = z.discriminatedUnion("type", [
+  z.object({ ...base, type: z.literal("contact.end"), who: id }).strict(),
+  z.object({ ...base, type: z.literal("scene.end") }).strict(),
   z
     .object({
       ...base,
@@ -68,7 +71,7 @@ export function readNarrationNativeCommand(raw: unknown) {
   return nativeCommand.parse(raw);
 }
 export const NARRATION_NATIVE =
-  'Native commands share {id?:label,at:segment label,source:[exact consequential sources],requires?:[effect IDs],independent?:true}. Current communication is required; recalled/private consent is never authority. Supported commands: {type:"project.decide",by,project,decision:"approval|builder|refuse|withdrawal|conditional|uncertain"}; {type:"permission.grant|permission.revoke",by,visitor,venue,zone}; {type:"access.decide",by,venue,zone,decision:{outcome:"invite-now|invite-later|invite-outside-hours|refuse|dismiss|ban-zone|ban-venue",visitor,accompanies?}|{outcome:"access-management",management:exact native AccessCommand action fields without operationId,expectedRevision,zoneId,sceneId}}. Use only supplied native scopes. A conditional or uncertain Project answer grants no approval or lead. An access condition beyond accompaniment cannot grant access. Native success assertions must require their command ID.';
+  'Native commands share {id?:label,at:segment label,source:[exact consequential sources],requires?:[effect IDs],independent?:true}. Current communication is required; recalled/private consent is never authority. Supported commands: {type:"scene.end"} only from the actual Player spoken/visible departure intent at the final segment; {type:"contact.end",who} ends only an admitted doorway contact, with deciding words (or the actual Player intent); {type:"project.decide",by,project,decision:"approval|builder|refuse|withdrawal|conditional|uncertain"}; {type:"permission.grant|permission.revoke",by,visitor,venue,zone}; {type:"access.decide",by,venue,zone,decision:{outcome:"invite-now|invite-later|invite-outside-hours|refuse|dismiss|ban-zone|ban-venue",visitor,accompanies?}|{outcome:"access-management",management:exact native AccessCommand action fields without operationId,expectedRevision,zoneId,sceneId}}. Use only supplied native scopes. A conditional or uncertain Project answer grants no approval or lead. An access condition beyond accompaniment cannot grant access. Native success assertions must require their command ID.';
 
 /** Fixed native validators prepare a detached candidate inside the existing Village CAS. */
 export function prepareNarrationNative(
@@ -103,6 +106,7 @@ export function prepareNarrationNative(
     moves: [],
     playerMoves: [],
     admissions: [],
+    sceneEffects: [],
   };
   const commands = reply.commands
     .map((raw, index) => {
@@ -129,12 +133,17 @@ export function prepareNarrationNative(
       sources.every(
         (source) =>
           source.moment && source.episodeId === readset.source.episodeId && source.moment.index <= row.segment,
-      ) && Math.max(...sources.map((source) => source.moment!.index)) === row.segment,
+      ) &&
+        (command.type === "scene.end" ||
+          (command.type === "contact.end" && command.who === "player") ||
+          Math.max(...sources.map((source) => source.moment!.index)) === row.segment),
       "native decision must match its actual current utterance",
     );
     assertNarrationSourceOrder(sources);
-    assertNarrationDecision(candidate, command.by, context, sources);
     const receiptId = "native-" + memoryHash([readset.source.episodeId, effect.id]).slice(0, 40);
+    if (command.type === "scene.end" || command.type === "contact.end")
+      return applyNarrationScene(candidate, command, readset, context, sources, receiptId, row.segment);
+    assertNarrationDecision(candidate, command.by, context, sources);
     let receipt;
     if (command.type === "project.decide") {
       let before = projectBefore.get(command.project);
@@ -179,6 +188,7 @@ export function prepareNarrationNative(
       candidate = next;
       native.receipts[row.effect.id] = result.receipt;
       native.sources[row.effect.id] = result.sources;
+      if ("sceneEffect" in result) native.sceneEffects!.push({ effectId: row.effect.id, ...result.sceneEffect });
     } catch (error) {
       row.effect.failure = String(error).slice(0, 2000);
     }

@@ -45,12 +45,15 @@ const episode = z
               "establishment",
               "circumstance",
               "initialization",
+              "contact",
+              "scene",
             ]),
             targetId: id,
             revision: z.number().int().nonnegative().safe(),
             text: z.string().min(1).max(8000),
             witnesses: ids.max(32),
             observedBy: ids.max(32).optional(),
+            endedContacts: ids.min(1).max(32).optional(),
           })
           .strict(),
       )
@@ -58,6 +61,15 @@ const episode = z
     dependencies: z.record(z.string(), z.array(z.string().min(1).max(700))),
     room: continuityHolderSchema.optional(),
     holderDependencies: z.record(z.string(), z.record(z.string(), z.array(z.string().min(1).max(700)))).optional(),
+    sceneDelta: z
+      .object({
+        expectedRevision: z.number().int().nonnegative().safe(),
+        contactEndedIds: ids.max(32),
+        closed: z.literal(true).optional(),
+        receiptIds: ids.min(1).max(16),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 const validated = new WeakMap<object, string>();
@@ -94,6 +106,56 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
       "native observer was not an admitted witness",
     );
   memoryRequire(cast.size === value.actors.length, "duplicate episode actor");
+  if (value.sceneDelta) {
+    const delta = value.sceneDelta;
+    memoryRequire(
+      value.sceneId &&
+        delta.contactEndedIds.every((id) => cast.has(id)) &&
+        delta.receiptIds.every((id) =>
+          value.commandReceipts.some((receipt) => receipt.id === id && ["contact", "scene"].includes(receipt.kind)),
+        ),
+      "Scene transition lost its native receipt or actor",
+    );
+    memoryRequire(
+      !delta.closed ||
+        delta.receiptIds.some((id) =>
+          value.commandReceipts.some(
+            (receipt) =>
+              receipt.id === id &&
+              receipt.kind === "scene" &&
+              receipt.targetId === value.sceneId &&
+              receipt.witnesses.includes("player"),
+          ),
+        ),
+      "Scene closure lost Player authority",
+    );
+    const controls = value.commandReceipts.filter((receipt) => ["contact", "scene"].includes(receipt.kind));
+    memoryRequire(
+      memoryHash(delta.receiptIds.toSorted()) === memoryHash(controls.map((receipt) => receipt.id).toSorted()) &&
+        controls.every((receipt) => receipt.revision === delta.expectedRevision),
+      "Scene transition changed its native revision or receipt set",
+    );
+    const ended = [...new Set(controls.flatMap((receipt) => receipt.endedContacts ?? []))];
+    memoryRequire(
+      memoryHash(delta.contactEndedIds.toSorted()) === memoryHash(ended.toSorted()) &&
+        Boolean(delta.closed) === controls.some((receipt) => receipt.kind === "scene"),
+      "Scene transition changed its native result",
+    );
+  }
+  memoryRequire(
+    !value.commandReceipts.some((receipt) => ["contact", "scene"].includes(receipt.kind)) || value.sceneDelta,
+    "Scene control receipt lost its retained transition",
+  );
+  for (const receipt of value.commandReceipts)
+    memoryRequire(
+      receipt.kind === "contact"
+        ? receipt.endedContacts?.length &&
+            receipt.endedContacts.every((id) => id !== "player" && cast.has(id)) &&
+            (receipt.targetId === "player" ||
+              (receipt.endedContacts.length === 1 && receipt.endedContacts[0] === receipt.targetId))
+        : !receipt.endedContacts,
+      "contact result changed its owning native command",
+    );
   memoryRequire(
     new Set(value.offered.map((row) => row.holder.id)).size === value.offered.length &&
       value.offered.every(

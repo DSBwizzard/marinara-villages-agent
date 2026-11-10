@@ -32,17 +32,21 @@ export type AcceptedEpisode = {
       | "npc"
       | "establishment"
       | "circumstance"
-      | "initialization";
+      | "initialization"
+      | "contact"
+      | "scene";
     targetId: string;
     revision: number;
     text: string;
     witnesses: string[];
     observedBy?: string[];
+    endedContacts?: string[];
   }[];
   /** Code-bound source ancestry for each input/segment unit. */
   dependencies: Record<string, string[]>;
   room?: Extract<import("./continuity-model.js").ContinuityHolder, { kind: "room" }>;
   /** Generated provenance is private to the holder who received that context. */
   holderDependencies?: Record<string, Record<string, string[]>>;
+  sceneDelta?: { expectedRevision: number; contactEndedIds: string[]; closed?: true; receiptIds: string[] };
 };
 export type EpisodeCollection = { format: 1; revision: number; records: AcceptedEpisode[] };

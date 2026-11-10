@@ -1,5 +1,6 @@
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { appendSceneInput } from "../../domain/rules/scene-input.js";
+import { applyAcceptedSceneDelta } from "../../domain/rules/scene-delta.js";
 import {
   acceptedNarrationEpisode,
   abandonNarration,
@@ -117,6 +118,7 @@ export function createSceneProgress({
           return;
         }
         const episode = accepted.episode!;
+        applyAcceptedSceneDelta(saved, episode);
         for (const line of episode.segments) {
           const prior = saved.lines.find((row) => row.id === line.id);
           memoryRequire(!prior || memoryHash(prior) === memoryHash(line), "published Scene line identity changed");

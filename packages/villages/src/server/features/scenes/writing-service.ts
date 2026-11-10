@@ -191,6 +191,7 @@ export function createSceneWriting({
         JSON.stringify({
           location: sceneLocationContext(scene, venue, selectedIds),
           movements: residentMovementOptions(village, venue, scene, selectedIds),
+          doorwayContacts: scene.doorwayContacts?.map((contact) => contact.characterId) ?? [],
         }),
         zoneEventHearingContext(scene, venue),
       ]),

@@ -64,6 +64,7 @@ function sourceScene(scene: VenueScene) {
     privateOwnerId: scene.privateOwnerId,
     privateAccessOwnerId: scene.privateAccessOwnerId,
     startedAt: scene.startedAt,
+    openingGatheringId: scene.openingGatheringId,
     lastActivityAt: scene.lastActivityAt,
     status: scene.status,
     participants: scene.participants,
