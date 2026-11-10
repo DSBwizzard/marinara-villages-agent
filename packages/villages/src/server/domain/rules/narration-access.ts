@@ -5,7 +5,7 @@ import type { VillageState } from "../models/world.js";
 import { continuityActor } from "./continuity-actors.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { narrationPositions, narrationWitnesses, type NarrationSourceContext } from "./narration-sources.js";
-import { findLocation, sceneActorIds } from "./places.js";
+import { findLocation, findNpc, sceneActorIds } from "./places.js";
 import { applyAccessCommand, managesAccess, mayInvite, readAccessCommand } from "./venue-access.js";
 
 /** Native authority only; remote descriptions, people and positions never enter this packet. */
@@ -292,12 +292,33 @@ export function applyNarrationAccess(
     );
     apply({ ...raw, zoneId: decision.zone });
   }
+  const person = (id: string) =>
+    id === "player"
+      ? state.playerPersonaName || state.playerName || "Player"
+      : state.villagers.find((actor) => actor.characterId === id)?.cardSnapshot.name ||
+        findNpc(state, id)?.name ||
+        "Former resident";
+  const grant = venue.access.permissions.find((grant) => grant.id === receiptId);
+  const destination =
+    (venue.zones?.find((zone) => zone.id === decision.zone)?.name ?? "the Venue") + " at " + venue.name;
+  let text: string;
+  if (grant)
+    text = `${person(decision.by)} ${grant.duration === "standing" ? "gave standing permission to" : "invited"} ${person(grant.visitorId)} to ${destination}${grant.duration === "visit" ? (grant.sceneId ? " for this visit" : " for one visit") : ""}${grant.accompaniedBy ? ", accompanied by " + person(grant.accompaniedBy) : ""}${grant.outsideHours ? ", including outside visitor hours" : ", during visitor hours"}.`;
+  else if (decision.type === "permission.revoke")
+    text = `${person(decision.by)} withdrew their standing permission for ${person(decision.visitor)} to ${destination}.`;
+  else {
+    memoryRequire(decision.type === "access.decide", "native invitation lost its permission");
+    text =
+      decision.outcome === "access-management"
+        ? `${person(decision.by)} updated the access rules for ${destination}.`
+        : `${person(decision.by)} ${decision.outcome === "refuse" ? "refused entry for" : decision.outcome === "dismiss" ? "required the departure of" : "prohibited entry for"} ${person(decision.visitor)} ${decision.outcome === "ban-venue" ? "at " + venue.name : "at " + destination}${["refuse", "dismiss"].includes(decision.outcome) ? " for this visit" : " until the ban is lifted"}.`;
+  }
   return {
     id: receiptId,
     kind: "access",
     targetId: venue.id,
     revision: venue.access.revision,
-    text: "Access decision recorded for " + venue.name + ".",
+    text,
     witnesses: narrationWitnesses(sources),
   };
 }

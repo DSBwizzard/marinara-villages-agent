@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { AcceptedEpisode, EpisodeCollection } from "../models/episode-model.js";
 import { continuityEvidenceSchema, continuityHolderSchema } from "./continuity-codec.js";
-import { coerceSession } from "./scene-codec.js";
+import { readSceneLines } from "../rules/scene-transcript.js";
 import { continuityHolderKey, continuitySourceUnit, continuityVersionUnit } from "../rules/continuity.js";
 import type { ContinuityHolder } from "../models/continuity-model.js";
 import { nativeReceiptSupportsRoom, episodeContextActors } from "../rules/episode-sources.js";
@@ -302,12 +302,8 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
       ),
     "initiative offer lacks its admitted actor",
   );
-  const decoded = coerceSession({
-    version: 5,
-    lines: value.segments,
-    participants: value.actors.map((actor) => ({ characterId: actor.id, name: actor.id, doing: "" })),
-  });
-  memoryRequire(memoryHash(decoded.lines) === memoryHash(value.segments), "invalid canonical episode segments");
+  const lines = readSceneLines(value.segments, new Set(value.actors.map((actor) => actor.id)));
+  memoryRequire(memoryHash(lines) === memoryHash(value.segments), "invalid canonical episode segments");
   const units = new Map(value.segments.map((line) => [line.id, line]));
   memoryRequire(units.size === value.segments.length && !units.has("input"), "duplicate episode segment identity");
   for (const line of value.segments) {

@@ -533,10 +533,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releasePersonalMail = configureSocialMail(personalMail);
   const releaseRelationshipViews = configureRelationships(
     createRelationships({
-      readVillageLore,
       readVillageState: readVillageMemoryState,
-      mutateRelationships,
-      prepareStartingTies: startingTies.prepare,
+      now: villageNow,
       clarifyStartingTies: startingTies.clarify,
       backgroundWorkSummaries,
     }),

@@ -1,22 +1,21 @@
 import { readNarrationSubmission } from "./narration-submission.js";
 import { isSceneTurnOutcome, type SceneTurnOutcome } from "../../../shared/contracts/scene-turn-outcome.js";
-import { readStagingCues } from "../../../shared/helpers/scene-staging.js";
 import type { VenueOperation } from "../models/operation-model.js";
-import type { ActiveVenue, VenueLine, VenueScene } from "../models/scene-model.js";
+import type { ActiveVenue, VenueScene } from "../models/scene-model.js";
 import { asRecord, asString, asTrimmedString } from "../rules/coerce.js";
 import { conflict } from "../rules/errors.js";
 
 import { sceneContinuityFields, type SceneContinuity } from "../rules/scene-continuity.js";
 import { readSceneLayout } from "../rules/scene-layout.js";
 import { sceneRevision } from "../rules/scene-revision.js";
-import { reuseSceneLine } from "../rules/scene-transcript.js";
+import { readSceneLines } from "../rules/scene-transcript.js";
 import { reuseSceneSubmission } from "../rules/scene-submissions.js";
 import type { DoorwayContact } from "../rules/venue-contact.js";
 import { coerceVillageState } from "./village-codec.js";
 import { emptyContinuity } from "../rules/continuity.js";
 import { emptyEpisodes } from "../rules/episodes.js";
 import { emptyStartingHistory } from "../rules/starting-history.js";
-import { immutableMemoryValue, memoryRequire } from "../rules/memory-integrity.js";
+import { immutableMemoryValue } from "../rules/memory-integrity.js";
 
 export function coerceActive(value: unknown): ActiveVenue {
   const raw = asRecord(value);
@@ -106,93 +105,7 @@ export function coerceSession(value: unknown): VenueScene {
         .filter((person) => person.characterId && person.name)
     : [];
   const participantIds = new Set(participants.map((person) => person.characterId));
-  const lines: VenueLine[] = Array.isArray(raw.lines)
-    ? raw.lines
-        .map((value) => {
-          const canonical = reuseSceneLine(value, participantIds);
-          if (canonical) return canonical;
-          const row = asRecord(value);
-          if (row.kind === "input") {
-            memoryRequire(
-              row.role === "user" &&
-                row.speakerId === "player" &&
-                typeof row.inputOf === "string" &&
-                row.inputOf.length > 0 &&
-                Array.isArray(row.heardBy) &&
-                !row.heardBy.length &&
-                !row.speechSource &&
-                !row.soundOnly &&
-                !row.staging &&
-                !row.physicalIdsAfter,
-              "original input playback cannot grant speech or perception",
-            );
-            return {
-              id: asTrimmedString(row.id),
-              inputOf: row.inputOf,
-              speakerId: "player",
-              name: asString(row.name),
-              role: "user" as const,
-              kind: "input" as const,
-              content: asString(row.content),
-              at: asString(row.at),
-              heardBy: [],
-            };
-          }
-          return {
-            id: asTrimmedString(row.id),
-            speakerId: asString(row.speakerId),
-            name: asString(row.name),
-            role: row.role === "user" ? ("user" as const) : ("assistant" as const),
-            content: asString(row.content),
-            at: asString(row.at),
-            zoneId: asTrimmedString(row.zoneId) || undefined,
-            ...(row.viaDoorway === true ? { viaDoorway: true } : {}),
-            ...(Array.isArray(row.physicalIdsAfter)
-              ? {
-                  physicalIdsAfter: [
-                    ...new Set(
-                      row.physicalIdsAfter.filter(
-                        (id): id is string => typeof id === "string" && participantIds.has(id),
-                      ),
-                    ),
-                  ],
-                }
-              : {}),
-            ...(row.contactHidden === true ? { contactHidden: true } : {}),
-            ...(row.presenceChange === true ? { presenceChange: true as const } : {}),
-            ...(row.attentionEvidence === true ? { attentionEvidence: true } : {}),
-            ...(asRecord(row.speechSource).version === 3 && Array.isArray(asRecord(row.speechSource).spans)
-              ? { speechSource: structuredClone(row.speechSource) as VenueLine["speechSource"] }
-              : {}),
-            ...(typeof asRecord(row.soundOnly).text === "string" && Array.isArray(asRecord(row.soundOnly).characterIds)
-              ? {
-                  soundOnly: {
-                    text: asTrimmedString(asRecord(row.soundOnly).text).slice(0, 300),
-                    characterIds: (asRecord(row.soundOnly).characterIds as unknown[]).filter(
-                      (id): id is string => typeof id === "string",
-                    ),
-                    player: asRecord(row.soundOnly).player === true,
-                  },
-                }
-              : {}),
-            ...(row.contactReport === true ? { contactReport: true } : {}),
-            heardBy: Array.isArray(row.heardBy) ? row.heardBy.filter((id): id is string => typeof id === "string") : [],
-            ...(row.kind === "narration" || row.kind === "dialogue" || row.kind === "side" || row.kind === "whisper"
-              ? { kind: row.kind as VenueLine["kind"] }
-              : {}),
-            ...(Array.isArray(row.staging) ? { staging: readStagingCues(row.staging, [...participantIds]) } : {}),
-            ...(typeof row.targetId === "string" ? { targetId: row.targetId } : {}),
-            ...(row.delivery === "ordinary" || row.delivery === "whisper" || row.delivery === "shout"
-              ? { delivery: row.delivery as VenueLine["delivery"] }
-              : {}),
-            ...(row.presentation === "main" || row.presentation === "aside"
-              ? { presentation: row.presentation as VenueLine["presentation"] }
-              : {}),
-            ...(typeof row.asideFor === "string" ? { asideFor: row.asideFor } : {}),
-          };
-        })
-        .filter((line) => line.id && line.content)
-    : [];
+  const lines = readSceneLines(raw.lines, participantIds);
   return {
     version: 5,
     changeSequence: Math.max(0, Math.floor(Number(raw.changeSequence) || 0)),

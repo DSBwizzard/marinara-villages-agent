@@ -1,5 +1,4 @@
 import { createBrowserMailbox } from "./fixtures/mailbox-browser.fixture.mjs";
-import { fixtureWish } from "./helpers/social-wishes-fixture.js";
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { PNG } from "pngjs";
@@ -128,9 +127,7 @@ await withBrowser(browser, async () => {
     let releaseCorrection;
     const memory = (id, actor, text) => ({
       id,
-      rootId: id,
       revision: 1,
-      rootRevision: 1,
       kind: "experience",
       text,
       occurredAt: now,
@@ -153,20 +150,24 @@ await withBrowser(browser, async () => {
       profiles: ["mara", "eli"].map((characterId) => ({
         characterId,
         name: person(characterId).name,
-        summary: "Mara has expressed an interest in talking again.",
-        knownAt: now,
-        closeKnownAt: "",
-        routine: ["Often reads at the Mill"],
-        interests: "Stories",
-        wishes: characterId === "mara" ? ["Learn to swim"] : [],
+        entries: [
+          {
+            ...memory(characterId + "-perspective", "player", "Mara has expressed an interest in talking again."),
+            kind: "perspective",
+            current: true,
+          },
+          {
+            ...memory(characterId + "-routine", "player", "Often reads at the Mill"),
+            kind: "information",
+            current: false,
+          },
+          ...(characterId === "mara"
+            ? [{ ...memory("friendship", "player", "Mara and Eli are friends"), kind: "perspective", current: true }]
+            : []),
+        ],
         knownWishes:
           characterId === "mara"
             ? [{ wishId: "swim", text: "Learn to swim", at: now, status: "open", followed: true, facts: [] }]
-            : [],
-        ties: [],
-        learned:
-          characterId === "mara"
-            ? [{ text: "Mara and Eli are friends", kind: "connection", at: now, aboutName: "Eli" }]
             : [],
         access: [{ venueId: "harbour", zoneId: "public", active: true, name: "Harbour" }],
       })),
@@ -228,14 +229,14 @@ await withBrowser(browser, async () => {
         scheduleInfluence: { version: 1, enabled: false, categories: {} },
         nativeSchedule: null,
         wishes: [
-          fixtureWish(
-            {
-              wish: characterId === "mara" ? "PRIVATE MARA WISH" : "PRIVATE ELI WISH",
-              reason: "Grounded social fixture desire",
-            },
-            characterId + "-private",
-            now,
-          ),
+          {
+            wishId: characterId + "-private",
+            text: characterId === "mara" ? "PRIVATE MARA WISH" : "PRIVATE ELI WISH",
+            at: now,
+            status: "open",
+            facts: [],
+            details: [{ id: characterId + "-reason", kind: "reason", text: "Grounded social fixture desire" }],
+          },
         ],
         agenda: {
           routineSummary: "PRIVATE ROUTINE",
@@ -396,6 +397,7 @@ await withBrowser(browser, async () => {
           processing: [
             {
               id: "history-job",
+              kind: "starting-ties",
               instanceId: "30000000-0000-4000-8000-000000000000",
               attempt: historyRetried ? 2 : 1,
               label: "Interpret starting relationships",
@@ -411,33 +413,12 @@ await withBrowser(browser, async () => {
               characterId: "mara",
               name: "Mara",
               initialized: true,
-              intentions: [
+              entries: [
                 {
-                  text: "Seek another conversation",
-                  reason: "Enjoyed the last one",
-                  targets: ["Player"],
-                  status: "active",
-                },
-              ],
-              perspectives: [
-                {
-                  aboutName: "Player",
-                  connection: "Acquaintances",
-                  stance: "PRIVATE MARA STANCE",
-                  expectations: [],
-                  concerns: [],
-                  updatedAt: now,
-                  revision: 1,
-                  records: [],
-                  experiences: [
-                    {
-                      reason: "A welcome conversation",
-                      at: now,
-                      sourceId: "source",
-                      evidence: [{ speaker: "Mara", text: "I enjoyed talking." }],
-                    },
-                  ],
-                  technical: { fromId: "mara", toId: "player", receiptIds: ["saved"] },
+                  ...memory("private-stance", "mara", "PRIVATE MARA STANCE"),
+                  kind: "perspective",
+                  current: true,
+                  support: [{ id: "source", speaker: person("mara"), text: "I enjoyed talking." }],
                 },
               ],
             },
@@ -470,7 +451,6 @@ await withBrowser(browser, async () => {
         assert.deepEqual(body.knowers, ["mara"]);
         assert.equal(body.target.id, "m1");
         assert.equal(body.seed, library.seed);
-        assert.equal(body.expectedCollectionRevision, library.revision);
         library.entries[0].forgotten = true;
         library.revision++;
         value = { forgotten: true };
@@ -489,11 +469,9 @@ await withBrowser(browser, async () => {
         assert.equal(body.seed, library.seed);
         assert.equal(body.target.id, "m1");
         if (corrections.length === 1) {
-          assert.equal(body.expectedCollectionRevision, library.revision);
           library.entries[0].text = body.text;
           library.entries[0].playerCorrection = true;
           library.entries[0].revision++;
-          library.entries[0].rootRevision++;
           library.revision++;
           return fulfill(route, { status: 503, json: { error: "Saved response unavailable. Try again." } });
         }
@@ -504,12 +482,14 @@ await withBrowser(browser, async () => {
           seed: library.seed,
           revision: library.revision,
           entry: library.entries[0],
+          target: {
+            id: "m1",
+            recordRevision: library.entries[0].revision,
+            heads: { '["actor","mara","one"]': library.entries[0].revision },
+          },
           knowers: [
             {
               person: person("mara"),
-              basis: "observation",
-              learnedAt: now,
-              reinforcedAt: now,
               forgotten: library.entries[0].forgotten,
               playerCorrection: library.entries[0].playerCorrection,
               text: library.entries[0].text,
@@ -519,7 +499,17 @@ await withBrowser(browser, async () => {
         };
       else if (path.endsWith("/wishes/inspect"))
         value = { wishes: agendas.villagers.find((v) => path.includes("/" + v.characterId + "/"))?.wishes ?? [] };
-      else if (path.endsWith("/agendas/mara/influence")) {
+      else if (path.endsWith("/wishes"))
+        value = {
+          wishes:
+            relationships.profiles.find((person) => path.includes("/" + person.characterId + "/"))?.knownWishes ?? [],
+        };
+      else if (/\/wishes\/[^/]+\/follow$/.test(path)) {
+        const profile = relationships.profiles.find((person) => path.includes("/" + person.characterId + "/"));
+        profile.knownWishes.find((wish) => path.includes("/" + wish.wishId + "/")).followed =
+          request.postDataJSON().followed;
+        value = { wishes: profile.knownWishes };
+      } else if (path.endsWith("/agendas/mara/influence")) {
         if (heldAgenda) {
           const pending = heldAgenda;
           pending.started++;
@@ -873,7 +863,7 @@ await withBrowser(browser, async () => {
     await profile.getByRole("button", { name: "Retry unfinished work", exact: true }).click();
     await expect(profile.getByRole("button", { name: "Retry unfinished work", exact: true })).toHaveCount(0);
     assert.equal(writes.findLast((row) => row.path.endsWith("/background/retry")).body.expectedAttempt, 1);
-    await profile.getByText(/^A welcome conversation/).click();
+    await profile.getByText("Sources", { exact: true }).click();
     await expect(profile.locator("blockquote")).toContainText("I enjoyed talking.");
     await expect(profile.getByRole("spinbutton")).toHaveCount(0);
     await page.screenshot({ path: resolve(output, `relationships-${width}-${height}.png`) });

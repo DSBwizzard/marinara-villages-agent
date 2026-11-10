@@ -98,7 +98,7 @@ On a phone, use portrait orientation. Places opens as a drawer, and Venue editin
 
 ## Have a Scene
 
-Scenes use one GM response for dialogue and gameplay updates. This build requires fresh Scene format 4; retired formats are rejected without conversion. The GM still needs to follow the game rules, and code validates proposed changes before applying them; it no longer receives a mandatory second model review. Wishes, relationships and Memories still update during play, without a separate Scene-end request.
+Scenes use one GM response for dialogue and gameplay updates. This build requires fresh Scene format 5; retired formats are rejected without conversion or changes to their saved bytes. Ordinary conversation needs only narration and dialogue. Meaningful lasting developments use shared continuity; code validates native actions and retains witnessed access and circumstance outcomes. Wishes, relationships and Memories update during play without separate fictional lifecycle processors or a Scene-end model request.
 
 A Scene is an ongoing interaction within one Venue. It can continue as you move between that Venue's Zones.
 
@@ -131,7 +131,7 @@ Saved and interrupted supported requests keep their admitted time, evidence, all
 
 ## Get to know the residents
 
-Profiles show what you have learned about a resident: relationships, shared Wishes, known routines, and discovered history. **Back to Villagers** keeps your directory reading position. **Inspect** reveals spoilers only when you deliberately open it; inspecting does not teach your Persona or the residents anything.
+Profiles show the retained statements your Persona learned about a resident: relationships, shared Wishes, routines, history, motivations and commitments. Complete qualifications and agreement terms stay in those statements. Private changes do not rewrite your notebook; an unheard acceptance remains unknown. **Back to Villagers** keeps your directory reading position. **Inspect** reveals private directional perspectives and their sources only when you deliberately open it; reading a book teaches nobody. Standing-invitation buttons use actual native permissions, not relationship labels.
 
 Each resident has their own perspective: their connection with you, expectations, concerns, and particular shared history. A boundary, a mutual agreement, and a concrete commitment mean different things. You author your Persona’s feelings. Serious choices can end a friendship or partnership; reconciliation is possible and never guaranteed. Time away creates no automatic penalty, and friendship grants neither access nor secrets.
 
@@ -149,7 +149,7 @@ Memories keep meaningful experiences, information, and open matters. Each belong
 
 The People overview and Venues page show each person's currently assigned home and workplaces. These public assignments update when they change; Memory corrections and Forget do not change them. Private Zones, current presence and schedules remain separate.
 
-The Memories page starts with your Persona and loads entries in batches. **Inspect** can show retained evidence and another person's memories. **Forget** suppresses a selected person's existing memory; **Correct** changes its wording for selected people who already know it. These actions do not change physical gameplay facts, teach new people, or rewrite admitted requests or earlier dialogue.
+The Memories page starts with your Persona and loads entries in batches. **Inspect** can show retained evidence and another person's continuity, including perspectives, Wishes, motivations and commitments. **Forget** suppresses a selected person's existing account; **Correct** changes its wording for selected people who already know it. These actions do not change physical gameplay facts or native permissions, teach new people, or rewrite admitted requests or earlier dialogue.
 
 ## Repair your world
 

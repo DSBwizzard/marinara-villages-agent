@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { mkdirSync } from "node:fs";
+import { resolve } from "node:path";
 import { build } from "../scripts/esbuild.mjs";
 import { chromium, expect, fulfill, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 
@@ -16,6 +18,8 @@ import {VillagerMemoriesPanel} from './packages/villages/src/client/features/res
 import {useLoadMemoryLibrary,useLoadAgendas,useSetScheduleInfluence} from './packages/villages/src/client/features/residents/actions.js';
 import {useSceneSelectionReset} from './packages/villages/src/client/features/scenes/controller-hooks.js';
 import {useResidentInspection} from './packages/villages/src/client/features/residents/controller-hooks.js';
+import {DOSSIER_STYLES} from './packages/villages/src/client/features/residents/villages-dossier-styles.js';
+window.bookStyles=DOSSIER_STYLES;
 function Harness(){
  const [scope,setScope]=useState('world-a'),[actor,setActor]=useState('mara'),[revision,setRevision]=useState('0');
  const [navigation,setNavigation]=useState({actorId:'mara',returnTo:'home'});
@@ -37,7 +41,7 @@ function Harness(){
  return <VillageActivity value={{visible,backgroundRevision:revision,worldScope:scope}}>
  <RetainedView active={active}><VillagerDossier key={scope+actor} navigation={personProfile} villager={{characterId:actor,name:actor,summary:'A villager',missing:false}}
  portrait={null} request={request} venues={[]} links={[]} controls={<input aria-label='Identity draft'/>} spriteManager={sprites?<button onClick={()=>setSprites(false)}>Back to profile</button>:undefined}
- onInspectSection={setInspection} onBack={()=>setActive(false)} onVenue={()=>{}} inspectors={{
+ onInspectSection={setInspection} onBack={()=>setActive(false)} onVenue={id=>window.h.openedVenue=id} inspectors={{
  wishes:<VillagerWishJournal request={request} characterId={actor} prefix='v' inspect/>,
  memories:<VillagerMemoriesPanel characterId={actor} library={library} busy={false} onQuery={(query,signal)=>loadMemory(signal,query)} onForget={()=>{}}/>,
  agenda:<pre>{JSON.stringify(agendas)}</pre>
@@ -54,6 +58,8 @@ function Harness(){
 });
 
 const browser = await chromium.launch({ headless: process.env.VILLAGES_HEADED !== "1" });
+const output = resolve(".build-tmp/ui-continuity");
+mkdirSync(output, { recursive: true });
 await withBrowser(browser, async () => {
   for (const width of [1280, 390]) {
     const context = await browser.newContext({ viewport: { width, height: 844 } });
@@ -68,17 +74,50 @@ await withBrowser(browser, async () => {
     let summary = "Known relationship";
     let followed = false;
     let agendaName = "Current agenda";
+    const agreement =
+      "Visit the fair together only if Delia comes and the north path is open. " +
+      "Long retained condition 🌿 👩🏽‍🚀 ".repeat(35) +
+      "Nobody must cancel work.";
     const profiles = () =>
       ["mara", "eli"].map((characterId) => ({
         characterId,
         name: characterId,
-        summary,
-        knownAt: "2026-11-05T00:00:00Z",
-        routine: [],
-        interests: "",
-        ties: [],
-        learned: [],
-        access: [],
+        entries: [
+          {
+            id: characterId + "-perspective",
+            revision: 1,
+            kind: "perspective",
+            text: summary,
+            occurredAt: "2026-11-05T00:00:00Z",
+            recordedAt: "2026-11-05T00:00:00Z",
+            subjects: [],
+            knownBy: [{ id: "player", name: "You" }],
+            forgotten: false,
+            playerCorrection: false,
+            current: true,
+          },
+          {
+            id: characterId + "-offer",
+            revision: 1,
+            kind: "commitment",
+            text: agreement,
+            occurredAt: "2026-11-05T00:00:00Z",
+            recordedAt: "2026-11-05T00:00:00Z",
+            subjects: [],
+            knownBy: [{ id: "player", name: "You" }],
+            forgotten: false,
+            playerCorrection: false,
+            current: true,
+            offer: {
+              state: "offered",
+              participants: [
+                { id: "player", name: "You" },
+                { id: characterId, name: characterId },
+              ],
+            },
+          },
+        ],
+        access: [{ venueId: "known-home", zoneId: "library", active: true, name: "Library" }],
         knownWishes: [
           {
             wishId: characterId + "-wish",
@@ -92,7 +131,7 @@ await withBrowser(browser, async () => {
     await page.route("http://continuity.test/", (route) =>
       fulfill(route, {
         contentType: "text/html",
-        body: '<style>[hidden]{display:none!important}.marinara-capability-villages-dossier-content{height:180px;overflow:auto}input{max-width:90%}</style><div id="root"></div>',
+        body: '<style id="fixture-layout">[hidden]{display:none!important}.marinara-capability-villages-dossier-content{height:180px;overflow:auto}input{max-width:90%}</style><div id="root"></div>',
       }),
     );
     await page.route("**/api/villages**", async (route) => {
@@ -101,19 +140,51 @@ await withBrowser(browser, async () => {
       let json;
       if (url.pathname.endsWith("/follow")) {
         followed = route.request().postDataJSON().followed;
-        json = { profiles: profiles() };
-      } else if (url.pathname.endsWith("/relationships")) json = { profiles: profiles(), starting: { pending: false } };
+        json = {
+          wishes: profiles().find(
+            (profile) => profile.characterId === url.pathname.split("/villagers/")[1].split("/")[0],
+          ).knownWishes,
+        };
+      } else if (url.pathname.endsWith("/relationships/inspect"))
+        json = {
+          processing: [],
+          conflicts: [],
+          residents: profiles().map((profile) => ({
+            characterId: profile.characterId,
+            name: profile.name,
+            initialized: true,
+            entries: [
+              {
+                ...profile.entries[0],
+                text: "PRIVATE " + profile.characterId + " perspective",
+                support: [
+                  {
+                    id: "private-source",
+                    text: "Private directional source.",
+                    speaker: { id: profile.characterId, name: profile.name },
+                  },
+                ],
+              },
+            ],
+          })),
+        };
+      else if (url.pathname.endsWith("/relationships")) json = { profiles: profiles(), starting: { pending: false } };
+      else if (url.pathname.endsWith("/wishes"))
+        json = {
+          wishes: profiles().find(
+            (profile) => profile.characterId === url.pathname.split("/villagers/")[1].split("/")[0],
+          ).knownWishes,
+        };
       else if (url.pathname.endsWith("/wishes/inspect"))
         json = {
           wishes: [
             {
-              id: "private",
-              wish: "Private Wish",
-              reason: "Private reason",
+              wishId: "private",
+              text: "Private Wish",
               status: "open",
-              addedAt: "2026-11-05T00:00:00Z",
-              history: [],
-              conditions: [],
+              at: "2026-11-05T00:00:00Z",
+              facts: [],
+              details: [{ id: "private-reason", kind: "reason", text: "Private reason" }],
             },
           ],
         };
@@ -244,6 +315,7 @@ await withBrowser(browser, async () => {
     }
     await tabs.getByRole("button", { name: "Inspect", exact: true }).click();
     await page.getByRole("button", { name: "Open Wish: Private Wish" }).click();
+    await page.getByRole("tab", { name: "Why it matters", exact: true }).click();
     const privateNode = await page.getByText("Private reason", { exact: true }).elementHandle();
     const privateRead = pause(
       process.env.VILLAGES_HEADED === "1"
@@ -373,6 +445,38 @@ await withBrowser(browser, async () => {
     });
     await expect.poll(() => validation.started).toBe(2);
     hold = null;
+    await page.evaluate(() => document.getElementById("fixture-layout").remove());
+    await page.addStyleTag({
+      content: await page.evaluate(
+        () => window.bookStyles + "html,body,#root{height:100%;margin:0}[hidden]{display:none!important}",
+      ),
+    });
+    await tabs.getByRole("button", { name: "Relationships", exact: true }).click();
+    const relationships = page.getByRole("region", { name: "Relationships content" });
+    await expect(relationships.getByText(agreement, { exact: true })).toBeVisible();
+    await expect(relationships.getByText(/PRIVATE/)).toHaveCount(0);
+    const nativeAccess = relationships.getByRole("button", { name: "Library · Standing invitation", exact: true });
+    await nativeAccess.click();
+    assert.equal(await page.evaluate(() => window.h.openedVenue), "known-home");
+    for (const card of await relationships.locator("article").all()) {
+      assert(
+        await card.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+        "Long Unicode terms wrap inside the book",
+      );
+    }
+    await relationships.locator("article").first().scrollIntoViewIfNeeded();
+    await page.evaluate(() => document.fonts.ready);
+    await page.screenshot({ path: resolve(output, `relationships-${width}.png`) });
+    await tabs.getByRole("button", { name: "Inspect", exact: true }).click();
+    await expect(relationships.getByText("PRIVATE eli perspective", { exact: true })).toBeVisible();
+    await expect(relationships.getByText("PRIVATE mara perspective", { exact: true })).toHaveCount(0);
+    const sources = relationships.getByText("Sources", { exact: true });
+    await sources.focus();
+    await page.keyboard.press("Enter");
+    await expect(relationships.getByText("Private directional source.", { exact: false })).toBeVisible();
+    await page.screenshot({ path: resolve(output, `relationships-inspect-${width}.png`) });
+    await tabs.getByRole("button", { name: "Leave Inspect", exact: true }).click();
+    await expect(relationships.getByText(/PRIVATE/)).toHaveCount(0);
     await context.close();
   }
 });

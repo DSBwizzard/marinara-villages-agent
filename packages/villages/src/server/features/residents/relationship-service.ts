@@ -1,51 +1,32 @@
-import type { readVillageLore } from "../../adapters/engine/lorebooks.js";
 import { startingHistoryReady } from "../../domain/rules/starting-history.js";
-import { encounterPhysicalId } from "../../domain/rules/social-encounter.js";
-import { projectRelationshipProfiles } from "../../domain/rules/relationship-knowledge.js";
+import { continuityRelationships, inspectContinuityRelationships } from "../../domain/rules/continuity-library.js";
 import type { RelationshipInspectView, RelationshipView } from "../../../shared/contracts/relationships.js";
 import type { readVillageState } from "../world/village-store.js";
-import type { mutateRelationships } from "./relationship-store.js";
 export type RelationshipPorts = {
   backgroundWorkSummaries?: typeof import("../../jobs/background-work.js").backgroundWorkSummaries;
   clarifyStartingTies?: (value: unknown) => Promise<void>;
-  prepareStartingTies?: () => Promise<void>;
-  readVillageLore: typeof readVillageLore;
   readVillageState: typeof readVillageState;
-  mutateRelationships: typeof mutateRelationships;
+  now(): Date;
 };
 /** Both reads are pure projections. Inspect is an explicit, separate privacy boundary. */
 export function createRelationships(ports: RelationshipPorts) {
   async function readRelationshipsView(): Promise<RelationshipView> {
-    const village = await ports.readVillageState(),
-      current = village.relationshipContext;
+    const village = await ports.readVillageState();
     return {
-      profiles: current ? projectRelationshipProfiles(current, village) : [],
-      starting: {
-        pending: !startingHistoryReady(village),
-      },
+      profiles: continuityRelationships(village, ports.now().toISOString()),
+      starting: { pending: !startingHistoryReady(village) },
     };
   }
   async function readRelationshipsInspect(): Promise<RelationshipInspectView> {
     const village = await ports.readVillageState(),
-      state = village.relationshipContext;
+      at = ports.now().toISOString();
     const name = (id: string) =>
       id === "player"
         ? village.playerPersonaName || village.playerName || "Player"
         : (village.villagers.find((person) => person.characterId === id)?.cardSnapshot.name ?? "Former resident");
     return {
-      recovery: (village.socialOutbox ?? [])
-        .filter((row) => !!row.error)
-        .map((row) => ({
-          id: row.id,
-          message: row.error!,
-          reinterpretRequired: !!row.reinterpretRequired,
-          canSkip:
-            !row.catchupBatchId &&
-            !state?.applied[row.id] &&
-            village.exchangeReceipts[encounterPhysicalId(row.id)]?.status !== "applied",
-        })),
       processing: ((await ports.backgroundWorkSummaries?.()) ?? [])
-        .filter((row) => ["starting-ties", "resident-planning", "personal-mail", "social-recovery"].includes(row.kind))
+        .filter((row) => ["starting-ties", "resident-planning", "personal-mail"].includes(row.kind))
         .map((row) => ({
           id: row.id,
           kind: row.kind,
@@ -61,36 +42,7 @@ export function createRelationships(ports: RelationshipPorts) {
         characterId: person.characterId,
         name: name(person.characterId),
         initialized: village.startingHistory.reviewed[person.characterId] === person.incarnation,
-        perspectives: Object.values(state?.edges ?? {})
-          .filter((edge) => edge.fromId === person.characterId)
-          .map((edge) => ({
-            aboutName: name(edge.toId),
-            connection: edge.connection,
-            stance: edge.stance,
-            expectations: edge.expectations,
-            concerns: edge.concerns,
-            updatedAt: edge.updatedAt,
-            revision: edge.revision,
-            records: Object.values(edge.records).map((record) => ({
-              ...record,
-              currentStatus: state?.sharedRecords[record.id]?.status,
-              participants: record.participants.map(name),
-            })),
-            experiences: edge.experiences.flatMap((id) => {
-              const receipt = state?.receipts[id];
-              return receipt
-                ? [
-                    {
-                      reason: receipt.reason,
-                      at: receipt.at,
-                      sourceId: receipt.sourceId,
-                      evidence: receipt.evidence.map((row) => ({ speaker: name(row.speakerId), text: row.content })),
-                    },
-                  ]
-                : [];
-            }),
-            technical: { fromId: edge.fromId, toId: edge.toId, receiptIds: edge.experiences },
-          })),
+        entries: inspectContinuityRelationships(village, person.characterId, at),
       })),
       conflicts: village.startingHistory.conflicts.map((row) => ({
         question: row.question,

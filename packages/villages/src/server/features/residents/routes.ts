@@ -9,7 +9,6 @@ import {
 } from "../residents/resident-agendas.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
 import { readVillageState } from "../world/village-store.js";
-import { recoverSocialOutbox } from "./relationship-social.js";
 import { clarifyRelationships, readRelationshipsInspect, readRelationshipsView } from "./relationships.js";
 import { applyVillagerRefresh, previewVillagerRefresh } from "./resident-cards.js";
 import { addVillager, editIdentityDescription, removeVillager } from "./resident-roster.js";
@@ -122,14 +121,6 @@ export function registerRelationshipRoutes(engine: FastifyInstance) {
       }
     },
   );
-  engine.post<{ Params: { id: string } }>("/relationships/outbox/:id/recovery", async (request, reply) => {
-    try {
-      await recoverSocialOutbox(request.params.id, request.body);
-      return readRelationshipsInspect();
-    } catch (error) {
-      return fail(reply, error, "recover encounter");
-    }
-  });
   engine.post("/relationships/clarifications", async (request, reply) => {
     try {
       return await clarifyRelationships(request.body);

@@ -458,7 +458,7 @@ export function applyContinuityWrite(
       createdRevision: collection.revision + 1,
       text,
       class: room ? "information" : (write.class ?? prior?.class ?? "experience"),
-      about: (write.about ?? prior?.about ?? []).map((subject) => ({ ...subject })),
+      about: (write.about ?? prior?.about ?? []).map(({ id, incarnation }) => ({ id, incarnation })),
       ...(write.parentId || prior?.parentId ? { parentId: write.parentId ?? prior!.parentId } : {}),
       ...(write.facet || prior?.facet ? { facet: write.facet ?? prior!.facet } : {}),
       sources: sources.map((source) =>

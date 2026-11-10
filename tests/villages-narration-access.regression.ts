@@ -1,4 +1,4 @@
-// Test cases: narration-access/away-home, narration-access/stale-authority, narration-access/communication, narration-access/standing-withdrawal, narration-access/native-management, narration-access/empty-withdrawal, narration-access/current-outside-hours, narration-native/atomic, narration-native/held-rollback, narration-native/independent-subset, narration-native/replay, narration-native/disjoint-scopes, narration-native/decision-order, narration-native/closed-project, narration-native/provisional-authority
+// Test cases: narration-access/away-home, narration-access/stale-authority, narration-access/communication, narration-access/standing-withdrawal, narration-access/native-management, narration-access/empty-withdrawal, narration-access/current-outside-hours, narration-native/atomic, narration-native/held-rollback, narration-native/independent-subset, narration-native/replay, narration-native/disjoint-scopes, narration-native/decision-order, narration-native/closed-project, narration-native/provisional-authority, narration-access/book-without-keep
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -16,6 +16,16 @@ import { bindNarrationSource } from "../packages/villages/src/server/domain/rule
 import { evaluateZoneAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
+import {
+  continuityRelationships,
+  inspectContinuityMemory,
+  changeContinuityMemory,
+} from "../packages/villages/src/server/domain/rules/continuity-library.js";
+import {
+  encodeContinuityPages,
+  decodeContinuityPagesSync,
+} from "../packages/villages/src/server/adapters/storage/continuity-pages.js";
 import { draftEstablishmentProject } from "../packages/villages/src/server/features/projects/project-drafts.js";
 import {
   applyNarrationAccess,
@@ -23,7 +33,7 @@ import {
   type NarrationAccessDecision,
 } from "../packages/villages/src/server/domain/rules/narration-access.js";
 const at = "2026-11-09T12:00:00.000Z";
-function fixture() {
+function fixture(resident = false) {
   const state = { ...defaultVillageState(), seed: "world", setupAt: at, foundedAt: at };
   const cafe = establishPlace(
     state,
@@ -41,6 +51,14 @@ function fixture() {
     true,
   );
   const actorId = Object.keys(state.worldPlaces.npcs)[0];
+  if (resident)
+    state.villagers = [
+      {
+        characterId: actorId,
+        incarnation: continuityActor(state, actorId)!.incarnation,
+        cardSnapshot: { name: "Mara" },
+      },
+    ] as typeof state.villagers;
   const home = establishPlace(
     state,
     {
@@ -229,6 +247,11 @@ await runCase("narration-access/empty-withdrawal", () => {
 });
 
 await runCase("narration-access/current-outside-hours", () => {
+  const later = fixture();
+  const invitation = later.apply({ ...later.decision, type: "access.decide", outcome: "invite-later" });
+  assert.match(invitation.text, /for one visit/);
+  assert.doesNotMatch(invitation.text, /for this visit/);
+  assert.equal(later.home.location.access!.permissions[0].sceneId, null);
   const f = fixture(),
     venue = f.cafe.location,
     zone = venue.zones!.find((zone) => zone.id === "parlor")!;
@@ -260,6 +283,55 @@ await runCase("narration-access/current-outside-hours", () => {
   assert.equal(check("another-scene").allowed, false);
 });
 
+await runCase("narration-access/book-without-keep", () => {
+  const f = fixture(true),
+    publication = f.publication([f.command], [], ["grant-access"]);
+  f.home.location.zones!.find((zone) => zone.id === "library")!.seen = true;
+  const result = acceptNarration(f.state, publication, "submission", at);
+  assert.equal(result.held, false);
+  const scope = "a".repeat(32),
+    encoded = encodeContinuityPages(
+      { continuity: f.state.continuity, episodes: f.state.episodes, worldPlaces: f.state.worldPlaces },
+      scope,
+    );
+  Object.assign(
+    f.state,
+    decodeContinuityPagesSync(encoded.manifest, scope, f.state.seed, (id) => encoded.pages.get(id) ?? null).value,
+  );
+  assert.equal(
+    continuityRelationships(f.state, at)[0].access[0]?.zoneId,
+    "library",
+    "actual accepted native permission needs no model keep to appear",
+  );
+  const record = f.state.continuity.records.find((record) =>
+    f.state.continuity.versions.some(
+      (version) => version.rootId === record.id && version.sources.some((source) => source.kind === "native"),
+    ),
+  )!;
+  const inspected = inspectContinuityMemory(f.state, record.id, "player", true, at);
+  assert.match(inspected.entry.text, /standing permission/);
+  assert.match(inspected.entry.text, /during visitor hours/);
+  f.state.continuity = changeContinuityMemory(
+    f.state,
+    record.id,
+    { seed: f.state.seed, operationId: "forget-access", target: inspected.target!, knowers: ["player"] },
+    "forget",
+    at,
+  );
+  assert.deepEqual(continuityRelationships(f.state, at)[0].access, []);
+  assert.equal(
+    f.state.worldPlaces.places.home.location.access!.permissions.length,
+    1,
+    "Forget does not revoke native authority",
+  );
+  assert.equal(acceptNarration(f.state, publication, "submission", at).held, false);
+  assert.deepEqual(
+    continuityRelationships(f.state, at)[0].access,
+    [],
+    "saved response replay cannot restore forgotten learning",
+  );
+});
+
 await runCase("narration-native/atomic", () => {
   const f = fixture();
   const keep = {
@@ -276,7 +348,11 @@ await runCase("narration-native/atomic", () => {
   );
   assert.equal(result.held, false);
   assert.equal(f.state.worldPlaces.places.home.location.access!.permissions.length, 1);
-  assert.equal(f.state.continuity.versions.length, 1);
+  assert.equal(
+    f.state.continuity.versions.length,
+    3,
+    "explicit personal meaning and both witnessed native accounts publish together",
+  );
   assert.equal(f.state.episodes.records.length, 1);
   assert.equal(result.episode!.commandReceipts.length, 1);
 });

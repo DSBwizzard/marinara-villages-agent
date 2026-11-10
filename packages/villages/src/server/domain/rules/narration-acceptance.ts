@@ -296,7 +296,7 @@ export function acceptNarrationContinuity(
       try {
         if (keep) continuity = applyContinuityWrite(continuity, keep.write, keep.admission);
         const receipt = native.receipts[id];
-        if (receipt?.kind === "circumstance" && receipt.witnesses.length) {
+        if (receipt && ["circumstance", "access"].includes(receipt.kind) && receipt.witnesses.length) {
           const evidence = bindNarrationSource("native:" + id, source);
           continuity = applyContinuityWrite(
             continuity,

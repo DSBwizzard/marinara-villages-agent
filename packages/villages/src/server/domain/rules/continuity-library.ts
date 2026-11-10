@@ -6,7 +6,7 @@ import type {
   MemoryCorrectRequest,
 } from "../../../shared/contracts/village.js";
 import type { VillageState } from "../models/world.js";
-import type { ContinuityHolder } from "../models/continuity-model.js";
+import type { ContinuityHolder, ContinuityEvidence } from "../models/continuity-model.js";
 import { episodeSourceGraph } from "../decoding/episode-codec.js";
 import { continuityActor } from "./continuity-actors.js";
 import {
@@ -27,6 +27,13 @@ import { findNpc } from "./places.js";
 import { recallTerms } from "./text-recall.js";
 import type { KnownWish } from "../../../shared/contracts/wishes.js";
 import { nativeCircumstanceRoots } from "./native-continuity.js";
+import type {
+  RelationshipEntry,
+  RelationshipProfile,
+  RelationshipInspectView,
+} from "../../../shared/contracts/relationships.js";
+import { evaluateZoneAccess, mayInvite } from "./venue-access.js";
+import { zoneClosed } from "./venue-zones.js";
 
 export function continuityContextRevision(state: VillageState, actorId: string) {
   const holder = continuityActor(state, actorId),
@@ -182,8 +189,131 @@ function projections(
       forgotten: !!protection?.forgotten,
       playerCorrection: !!protection?.repair,
     };
-    return [{ entry, record, head, version }];
+    return [{ entry, record, head, version, view }];
   });
+}
+
+function sourceSpeaker(state: VillageState, source: ContinuityEvidence) {
+  const actor = state.episodes.records
+    .find((episode) => episode.id === source.episodeId)
+    ?.actors.find((actor) => actor.id === source.actorId);
+  return actor && continuityActor(state, actor.id)?.incarnation === actor.incarnation
+    ? person(state, actor.id)
+    : { id: source.actorId!, name: "Former resident" };
+}
+
+export function continuityRelationships(state: VillageState, at: string): RelationshipProfile[] {
+  const holder = continuityActor(state, "player"),
+    rows = holder ? projections(state, holder, false, at) : [];
+  const visibleRoots = new Set(rows.map((row) => row.record.id));
+  const learnedReceipts = new Set(
+    state.continuity.versions
+      .filter(
+        (version) =>
+          visibleRoots.has(version.rootId) &&
+          holder &&
+          version.id === continuityVersionId(state.seed, version.operationId, holder),
+      )
+      .flatMap((version) =>
+        version.sources.flatMap((source) =>
+          source.kind === "native" && source.committedReceiptId ? [source.committedReceiptId] : [],
+        ),
+      ),
+  );
+  const receiptActors = new Map(
+    state.episodes.records.flatMap((episode) =>
+      episode.commandReceipts.map((receipt) => [receipt.id, episode.actors] as const),
+    ),
+  );
+  const places = [
+    ...state.venues,
+    ...Object.values(state.worldPlaces.places)
+      .filter((place) => !place.disabled)
+      .map((place) => place.location),
+  ].filter((place, index, all) => all.findIndex((other) => other.id === place.id) === index);
+  return state.villagers.map((resident) => {
+    const actor = continuityActor(state, resident.characterId)!;
+    return {
+      characterId: actor.id,
+      name: resident.cardSnapshot.name,
+      entries: rows
+        .filter(
+          ({ record, version }) =>
+            version.class !== "desire" &&
+            ((record.owner && continuityHolderKey(record.owner) === continuityHolderKey(actor)) ||
+              version.about.some((subject) => subject.id === actor.id && subject.incarnation === actor.incarnation) ||
+              record.offer?.participants.some(
+                (party) => party.id === actor.id && party.incarnation === actor.incarnation,
+              )),
+        )
+        .map((row) => relationshipEntry(state, row)),
+      knownWishes: continuityWishes(state, actor.id, false, at),
+      access: places.flatMap((venue) =>
+        (venue.access?.permissions ?? []).flatMap((grant) => {
+          const zone = venue.zones?.find((zone) => zone.id === grant.zoneId);
+          const issuer = receiptActors.get(grant.id)?.find((party) => party.id === grant.issuerId);
+          if (
+            !zone?.seen ||
+            grant.revoked ||
+            grant.duration !== "standing" ||
+            grant.visitorId !== "player" ||
+            grant.issuerId !== actor.id ||
+            issuer?.incarnation !== actor.incarnation ||
+            !learnedReceipts.has(grant.id) ||
+            !mayInvite(venue, zone, grant.issuerId)
+          )
+            return [];
+          return [
+            {
+              venueId: venue.id,
+              zoneId: zone.id,
+              name: zone.name,
+              active: evaluateZoneAccess(venue, zone, "player", {
+                at: new Date(at),
+                environment: state.narrative,
+                unavailable: zoneClosed(state, venue, zone),
+              }).allowed,
+            },
+          ];
+        }),
+      ),
+    };
+  });
+}
+
+function relationshipEntry(state: VillageState, row: ReturnType<typeof projections>[number]): RelationshipEntry {
+  const { entry, record, head, version, view } = row;
+  const named = (actor: { id: string; incarnation: string }) =>
+    continuityActor(state, actor.id)?.incarnation === actor.incarnation
+      ? person(state, actor.id)
+      : { id: actor.id, name: "Former resident" };
+  return {
+    ...entry,
+    current: head.current,
+    ...(record.owner ? { owner: named(record.owner) } : {}),
+    ...(version.parentId ? { parentId: version.parentId, facet: version.facet } : {}),
+    ...(version.closed ? { closed: version.closed.reason } : {}),
+    ...(view?.offer ? { offer: { state: view.offer.state, participants: view.offer.participants.map(named) } } : {}),
+  };
+}
+
+export function inspectContinuityRelationships(
+  state: VillageState,
+  actorId: string,
+  at: string,
+): RelationshipInspectView["residents"][number]["entries"] {
+  const holder = continuityActor(state, actorId);
+  if (!holder) return [];
+  return projections(state, holder, true, at)
+    .filter(({ version }) => ["perspective", "motivation", "commitment"].includes(version.class) || version.facet)
+    .map((row) => ({
+      ...relationshipEntry(state, row),
+      support: row.version.sources.map((source) => ({
+        id: source.id,
+        text: source.excerpt,
+        ...(source.kind === "speech" && source.actorId ? { speaker: sourceSpeaker(state, source) } : {}),
+      })),
+    }));
 }
 
 /** Every public count, cursor and revision depends only on this holder's visible projection. */
@@ -198,7 +328,7 @@ export function continuityMemoryLibrary(state: VillageState, input: MemoryQuery,
   const terms = recallTerms(query);
   const rows = projections(state, holder, input.inspection === true, at)
     .map((row) => row.entry)
-    .filter((row) => ["experience", "information", "open-matter"].includes(row.kind))
+    .filter((row) => input.inspection || ["experience", "information", "open-matter"].includes(row.kind))
     .filter((row) =>
       terms.every((term) =>
         (row.text + " " + row.subjects.map((subject) => subject.name).join(" "))
@@ -275,7 +405,7 @@ export function inspectContinuityMemory(
           lineId: source.unitId,
           excerpt: source.excerpt,
           kind: source.kind,
-          ...(source.actorId && source.kind === "speech" ? { speaker: person(state, source.actorId) } : {}),
+          ...(source.actorId && source.kind === "speech" ? { speaker: sourceSpeaker(state, source) } : {}),
           ...(episodes.get(source.episodeId)?.sceneId ? { sceneId: episodes.get(source.episodeId)!.sceneId } : {}),
         })),
       };

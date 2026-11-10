@@ -5,7 +5,7 @@ import { invalidatesRead, VILLAGE_ACCESS_DENIED } from "../../shared/api.js";
 import { RetainedView } from "../../shared/RetainedView.js";
 import { VenuePolaroid } from "../exploration/villages-venue-polaroid.js";
 import { PeopleBook } from "./PeopleBook.js";
-import { type RelationshipView, VillagesRelationships } from "./villages-relationships.js";
+import { type RelationshipView, VillagesRelationships, RelationshipEntries } from "./villages-relationships.js";
 import { VillagerSignature } from "./villages-signature.js";
 import { VillagerWishJournal } from "./villages-wish-journal.js";
 
@@ -415,19 +415,9 @@ export function VillagerDossier({
                           ) : (
                             <>
                               <Sheet title="Relationships" icon="relationships">
-                                <p>{profile?.summary || "No relationship shared yet."}</p>
-                                {profile?.learned
-                                  ?.filter(
-                                    (entry) =>
-                                      entry.kind !== "routine" &&
-                                      entry.kind !== "preference" &&
-                                      entry.kind !== "home" &&
-                                      entry.kind !== "work" &&
-                                      entry.text !== profile.summary,
-                                  )
-                                  .map((entry, index) => (
-                                    <p key={index}>{entry.text}</p>
-                                  ))}
+                                <RelationshipEntries
+                                  entries={profile.entries.filter((entry) => entry.kind === "perspective")}
+                                />
                               </Sheet>
                               <Sheet title="Wishes" icon="wishes">
                                 {profile?.knownWishes?.length ? (
@@ -443,16 +433,10 @@ export function VillagerDossier({
                                   <p>None shared yet.</p>
                                 )}
                               </Sheet>
-                              <Sheet title="Routine" icon="agenda">
-                                {profile?.routine?.length ? (
-                                  <ul>
-                                    {profile.routine.map((line, index) => (
-                                      <li key={index}>{line}</li>
-                                    ))}
-                                  </ul>
-                                ) : (
-                                  <p>No routine shared yet.</p>
-                                )}
+                              <Sheet title="Known information" icon="agenda">
+                                <RelationshipEntries
+                                  entries={profile.entries.filter((entry) => entry.kind !== "perspective")}
+                                />
                               </Sheet>
                             </>
                           )}
@@ -485,7 +469,6 @@ export function VillagerDossier({
                           characterId={navigation.actorId}
                           inspect={inspectedSection("relationships")}
                           view={relationships}
-                          onView={setRelationships}
                         />
                       </RetainedView>
                     ) : null}
@@ -537,20 +520,12 @@ export function VillagerDossier({
                       <RetainedView active={section === "agenda"} label="Agenda content">
                         {inspectedSection("agenda") ? inspectors.agenda : null}
                         {!inspect ? (
-                          <Sheet title="Known routine" icon="agenda">
-                            {profile?.routine?.length ? (
-                              <>
-                                <p>Last shared information · {new Date(profile.knownAt).toLocaleString()}</p>
-                                <ul>
-                                  {profile.routine?.map((line, index) => (
-                                    <li key={index}>{line}</li>
-                                  ))}
-                                </ul>
-                                <p>{profile.interests || "No interests shared yet."}</p>
-                              </>
-                            ) : (
-                              <p>Their routine has not been shared yet.</p>
-                            )}
+                          <Sheet title="Known information" icon="agenda">
+                            <RelationshipEntries
+                              entries={(profile?.entries ?? []).filter((entry) =>
+                                ["information", "motivation", "commitment"].includes(entry.kind),
+                              )}
+                            />
                           </Sheet>
                         ) : null}
                       </RetainedView>
