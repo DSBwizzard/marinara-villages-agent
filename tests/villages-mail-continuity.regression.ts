@@ -137,6 +137,17 @@ function fixture() {
     }
     episode.continuityVersionIds = state.continuity.versions.slice(before.versions.length).map((version) => version.id);
     state.episodes = appendEpisode(state.episodes, episode, state.seed);
+    state.mailbox = {
+      ...state.mailbox,
+      revision: state.mailbox.revision + 1,
+      messages: {
+        ...state.mailbox.messages,
+        [mail.id]:
+          phase === "written"
+            ? { ...mail, requestId: mail.id, text, status: "delivered", deliveredAt: at }
+            : { ...state.mailbox.messages[mail.id], readAt: at },
+      },
+    };
     assertContinuityRetention(state.continuity, state.episodes);
     return { episode, receipt };
   }
@@ -150,7 +161,12 @@ function fixture() {
   function cold() {
     const scope = "a".repeat(32),
       packet = encodeContinuityPages(
-        { continuity: state.continuity, episodes: state.episodes, worldPlaces: state.worldPlaces },
+        {
+          continuity: state.continuity,
+          episodes: state.episodes,
+          worldPlaces: state.worldPlaces,
+          mailbox: state.mailbox,
+        },
         scope,
       );
     Object.assign(

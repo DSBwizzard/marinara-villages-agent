@@ -194,7 +194,7 @@ await runCase("narration-acceptance/inherited-private-context", () => {
     );
     assertContinuityRetention(changed, f.state.episodes);
     const encoded = encodeContinuityPages(
-        { continuity: changed, episodes: f.state.episodes, worldPlaces: f.state.worldPlaces },
+        { continuity: changed, episodes: f.state.episodes, worldPlaces: f.state.worldPlaces, mailbox: f.state.mailbox },
         "a".repeat(32),
       ),
       cold = decodeContinuityPagesSync(
@@ -271,7 +271,12 @@ await runCase("narration-acceptance/atomic-episode", () => {
     ["My mother taught me weaving."],
   );
   const encoded = encodeContinuityPages(
-    { continuity: f.state.continuity, episodes: f.state.episodes, worldPlaces: f.state.worldPlaces },
+    {
+      continuity: f.state.continuity,
+      episodes: f.state.episodes,
+      worldPlaces: f.state.worldPlaces,
+      mailbox: f.state.mailbox,
+    },
     "a".repeat(32),
   );
   const cold = decodeContinuityPagesSync(
@@ -556,7 +561,12 @@ await runCase("narration-acceptance/shared-room-provenance", () => {
     { forget: true },
   );
   const encoded = encodeContinuityPages(
-    { continuity: f.state.continuity, episodes: f.state.episodes, worldPlaces: f.state.worldPlaces },
+    {
+      continuity: f.state.continuity,
+      episodes: f.state.episodes,
+      worldPlaces: f.state.worldPlaces,
+      mailbox: f.state.mailbox,
+    },
     "a".repeat(32),
   );
   const cold = decodeContinuityPagesSync(

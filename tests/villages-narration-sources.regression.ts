@@ -1,4 +1,5 @@
 // Test cases: narration-sources/exact-private-input, narration-sources/spatial-audience, narration-sources/movement-order, narration-sources/routed-segments, narration-sources/own-perspective, narration-sources/fitted-aliases, narration-sources/room-without-knowers, narration-sources/sound-alias-retention, narration-sources/cold-input-widening, narration-sources/keep-binding, narration-sources/first-disclosure, narration-sources/native-combination, narration-sources/absent-owner-disclosure, narration-sources/subject-identity
+import { emptyMailbox } from "../packages/villages/src/server/domain/decoding/mailbox-codec.js";
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { venueFixture } from "./helpers/venues.fixture.js";
@@ -531,7 +532,10 @@ await runCase("narration-sources/room-without-knowers", async () => {
     captured.seed,
   );
   const world = memoryHash(captured.seed).slice(0, 32),
-    packet = encodeContinuityPages({ continuity: state, episodes, worldPlaces: emptyPlaceRegistry() }, world);
+    packet = encodeContinuityPages(
+      { continuity: state, episodes, worldPlaces: emptyPlaceRegistry(), mailbox: emptyMailbox() },
+      world,
+    );
   const cold = await decodeContinuityPages(
     packet.manifest,
     world,
@@ -593,7 +597,10 @@ await runCase("narration-sources/sound-alias-retention", async () => {
   next.dependencies["later-reply"] = [continuitySourceUnit(reused)];
   episodes = appendEpisode(episodes, next, captured.seed);
   const world = memoryHash(captured.seed).slice(0, 32),
-    packet = encodeContinuityPages({ continuity: state, episodes, worldPlaces: emptyPlaceRegistry() }, world);
+    packet = encodeContinuityPages(
+      { continuity: state, episodes, worldPlaces: emptyPlaceRegistry(), mailbox: emptyMailbox() },
+      world,
+    );
   const cold = await decodeContinuityPages(
     packet.manifest,
     world,
@@ -620,6 +627,7 @@ await runCase("narration-sources/cold-input-widening", async () => {
         continuity: emptyContinuity(),
         episodes: { format: 1, revision: 1, records: [episode] },
         worldPlaces: emptyPlaceRegistry(),
+        mailbox: emptyMailbox(),
       },
       world,
     );
@@ -675,7 +683,10 @@ await runCase("narration-sources/keep-binding", async () => {
       ),
       captured.seed,
     );
-  const packet = encodeContinuityPages({ continuity: state, episodes, worldPlaces: emptyPlaceRegistry() }, world);
+  const packet = encodeContinuityPages(
+    { continuity: state, episodes, worldPlaces: emptyPlaceRegistry(), mailbox: emptyMailbox() },
+    world,
+  );
   const cold = await decodeContinuityPages(
     packet.manifest,
     world,
@@ -741,7 +752,10 @@ await runCase("narration-sources/subject-identity", async () => {
       captured.seed,
     ),
     scope = memoryHash(captured.seed).slice(0, 32),
-    packet = encodeContinuityPages({ continuity: common, episodes, worldPlaces: emptyPlaceRegistry() }, scope),
+    packet = encodeContinuityPages(
+      { continuity: common, episodes, worldPlaces: emptyPlaceRegistry(), mailbox: emptyMailbox() },
+      scope,
+    ),
     cold = await decodeContinuityPages(
       packet.manifest,
       scope,
@@ -800,7 +814,7 @@ await runCase("narration-sources/subject-identity", async () => {
     laterEpisode.admittedContinuityRevision = common.revision;
     const history = appendEpisode(episodes, laterEpisode, captured.seed),
       encoded = encodeContinuityPages(
-        { continuity: changed, episodes: history, worldPlaces: emptyPlaceRegistry() },
+        { continuity: changed, episodes: history, worldPlaces: emptyPlaceRegistry(), mailbox: emptyMailbox() },
         scope,
       );
     await decodeContinuityPages(encoded.manifest, scope, captured.seed, async (id) => encoded.pages.get(id) ?? null);
@@ -1008,7 +1022,10 @@ await runCase("narration-sources/absent-owner-disclosure", async () => {
   );
   episodes = appendEpisode(episodes, episodeFrom(later, next.sources, [disclosed.versions.at(-1)!.id]), original.seed);
   const world = memoryHash(original.seed).slice(0, 32),
-    packet = encodeContinuityPages({ continuity: disclosed, episodes, worldPlaces: emptyPlaceRegistry() }, world);
+    packet = encodeContinuityPages(
+      { continuity: disclosed, episodes, worldPlaces: emptyPlaceRegistry(), mailbox: emptyMailbox() },
+      world,
+    );
   const cold = await decodeContinuityPages(
     packet.manifest,
     world,
@@ -1145,7 +1162,10 @@ await runCase("narration-sources/first-disclosure", async () => {
     original.seed,
   );
   const world = memoryHash(original.seed).slice(0, 32),
-    packet = encodeContinuityPages({ continuity: disclosed, episodes, worldPlaces: emptyPlaceRegistry() }, world);
+    packet = encodeContinuityPages(
+      { continuity: disclosed, episodes, worldPlaces: emptyPlaceRegistry(), mailbox: emptyMailbox() },
+      world,
+    );
   const cold = await decodeContinuityPages(
     packet.manifest,
     world,

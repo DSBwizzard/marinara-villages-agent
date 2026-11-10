@@ -17,6 +17,7 @@ import {
 } from "./continuity-pages.js";
 import { isRepairSimulation } from "./repair-gate.js";
 import { emptyPlaceRegistry, readPlaceRegistry } from "../../domain/rules/places.js";
+import { emptyMailbox, readMailboxState, assertMailboxRetention } from "../../domain/decoding/mailbox-codec.js";
 import { VILLAGES_PACKAGE_ID } from "../engine/runtime-host.js";
 
 export const MEMORY_PAYLOAD_KIND = "memory-payload";
@@ -25,7 +26,7 @@ const PAYLOAD_ID = /^villages-memory-([a-f0-9]{32})-[a-f0-9-]{36}$/;
 export type MemoryHead = { id: string; digest: string; revision: number };
 export type MemoryPayload = ContinuityPayload;
 const payloadRevision = (value: MemoryPayload) =>
-  value.continuity.revision + value.episodes.revision + value.worldPlaces.revision;
+  value.continuity.revision + value.episodes.revision + value.worldPlaces.revision + value.mailbox.revision;
 export const memoryDigest = (text: string) => createHash("sha256").update(text).digest("hex");
 const worldKey = (state: Pick<VillageState, "seed" | "setupAt">) =>
   memoryDigest(JSON.stringify([state.seed, state.setupAt])).slice(0, 32);
@@ -51,6 +52,7 @@ export function memoryPayload(state: VillageState): MemoryPayload {
     continuity: state.continuity,
     episodes: state.episodes,
     worldPlaces: state.worldPlaces,
+    mailbox: state.mailbox,
   };
 }
 export function emptyMemoryPayload(): MemoryPayload {
@@ -58,6 +60,7 @@ export function emptyMemoryPayload(): MemoryPayload {
     continuity: emptyContinuity(),
     episodes: emptyEpisodes(),
     worldPlaces: emptyPlaceRegistry(),
+    mailbox: emptyMailbox(),
   };
 }
 function isEmpty(payload: MemoryPayload) {
@@ -70,7 +73,9 @@ function isEmpty(payload: MemoryPayload) {
     !Object.keys(payload.worldPlaces.places).length &&
     !Object.keys(payload.worldPlaces.npcs).length &&
     !Object.keys(payload.worldPlaces.operations).length &&
-    !Object.keys(payload.worldPlaces.receipts).length
+    !Object.keys(payload.worldPlaces.receipts).length &&
+    !payload.mailbox.revision &&
+    !Object.keys(payload.mailbox.messages).length
   );
 }
 /** Inspect the transitive immutable footprint without copying it into an owner document. */
@@ -101,8 +106,10 @@ export function createMemoryPayloadStore(documents: CapabilityDocumentStore) {
       continuity: readContinuity(raw.continuity, seed),
       episodes: readEpisodes(raw.episodes, seed),
       worldPlaces: readPlaceRegistry(raw.worldPlaces),
+      mailbox: readMailboxState(raw.mailbox, seed),
     });
     assertContinuityRetention(value.continuity, value.episodes);
+    assertMailboxRetention(value.mailbox, value.episodes, seed);
     return value;
   };
   function validateRecord(record: CapabilityDocumentRecord, head: MemoryHead) {

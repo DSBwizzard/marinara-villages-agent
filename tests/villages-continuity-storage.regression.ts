@@ -1,4 +1,9 @@
-// Test cases: continuity-storage/cold-history, continuity-storage/current-only, continuity-storage/publication-failure, continuity-storage/page-integrity, continuity-storage/offer-evidence, continuity-storage/native-replay
+// Test cases: continuity-storage/cold-history, continuity-storage/current-only, continuity-storage/publication-failure, continuity-storage/page-integrity, continuity-storage/offer-evidence, continuity-storage/native-replay, continuity-storage/mail-envelope, continuity-storage/mail-publication, continuity-storage/mail-pages, continuity-storage/mail-reply-order
+import { emptyMailbox } from "../packages/villages/src/server/domain/decoding/mailbox-codec.js";
+import { readMailboxState } from "../packages/villages/src/server/domain/decoding/mailbox-codec.js";
+import { queueMailboxLetter } from "../packages/villages/src/server/domain/rules/social-mail.js";
+import { mailReceipt, type MailIdentity } from "../packages/villages/src/server/domain/rules/mail-evidence.js";
+import type { MailboxMessage } from "../packages/villages/src/server/domain/models/social-mail.js";
 import assert from "node:assert/strict";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { runCase } from "../scripts/test-cases.mjs";
@@ -116,19 +121,41 @@ function fixture() {
   };
 }
 
+function letterEpisode(mail: MailIdentity, text: string, phase: "written" | "read", acceptedAt = at): AcceptedEpisode {
+  const receipt = mailReceipt("world", mail, text, phase);
+  return {
+    ...episode(receipt.id),
+    id: receipt.id,
+    operationId: receipt.id,
+    submissionId: receipt.id,
+    sceneId: undefined,
+    privateInput: "",
+    responseDigest: memoryHash(receipt),
+    capturedAt: acceptedAt,
+    acceptedAt,
+    actors: (phase === "written" ? [mail.from] : [mail.from, mail.to]).map((actor) => ({
+      id: actor.id,
+      incarnation: actor.incarnation,
+      zoneId: "native",
+    })),
+    commandReceipts: [receipt],
+  };
+}
+
 await runCase("continuity-storage/cold-history", async () => {
   const f = fixture();
   await f.seed();
   const root = f.rows.get("villages-village"),
     head = structuredClone(root.data.memoryHead);
   assert.equal(root.data.version, 18);
-  for (const key of ["continuity", "episodes", "worldPlaces", "memories", "memoryScenes", "memoryReceipts"])
+  for (const key of ["continuity", "episodes", "worldPlaces", "mailbox", "memories", "memoryScenes", "memoryReceipts"])
     assert.equal(Object.hasOwn(root.data, key), false, "history stays outside the authority root");
   const cold = await f.repository().readAuthority({ memories: true });
   assert.equal(cold.episodes.records[0].privateInput, episode().privateInput);
   assert.equal(cold.episodes.records[0].sceneId, "retired-scene");
   const unloaded = await f.repository().readAuthority();
   assert.throws(() => unloaded.episodes, /not loaded/);
+  assert.throws(() => unloaded.mailbox, /not loaded/);
   await f.repository().mutateAuthority((state) => {
     state.name = "New title";
   });
@@ -283,6 +310,234 @@ await runCase("continuity-storage/page-integrity", async () => {
   assert.deepEqual([...f.rows], before, "corruption fails closed without repair or reset");
 });
 
+await runCase("continuity-storage/mail-envelope", async () => {
+  const f = fixture();
+  await f.seed();
+  const mail = { id: "letter", at, from: { id: "player", incarnation: "one" }, to: { id: "mara", incarnation: "one" } },
+    text = " \nPlease consider this, Mara. 🌿  ";
+  await f.repository().mutateAuthority(
+    (state) => {
+      state.mailbox = queueMailboxLetter(state.mailbox, state.seed, mail, "request-one", text);
+    },
+    { memories: true },
+  );
+  const cold = await f.repository().readAuthority({ memories: true }),
+    before = structuredClone(f.rows.get("villages-village"));
+  assert.equal(cold.mailbox.messages.letter.text, text);
+  assert.equal(cold.mailbox.messages.letter.status, "pending");
+  assert.equal(cold.episodes.records.length, 1, "queuing words does not fabricate accepted interpretation");
+  assert.equal(
+    queueMailboxLetter(cold.mailbox, cold.seed, { ...mail, at: "2026-11-09T13:00:00.000Z" }, "request-one", text),
+    cold.mailbox,
+  );
+  assert.throws(
+    () =>
+      queueMailboxLetter(
+        cold.mailbox,
+        cold.seed,
+        { ...mail, to: { ...mail.to, incarnation: "replacement" } },
+        "request-one",
+        text,
+      ),
+    /different letter or correspondent/,
+  );
+  assert.throws(
+    () => queueMailboxLetter(cold.mailbox, cold.seed, mail, "request-one", text + "changed"),
+    /different letter/,
+  );
+  assert.throws(
+    () => queueMailboxLetter(cold.mailbox, cold.seed, { ...mail, id: "second" }, "request-two", text),
+    /pending letter/,
+  );
+  await assert.rejects(
+    f.repository().mutateAuthority(
+      (state) => {
+        const old = state.mailbox.messages.letter;
+        state.mailbox = {
+          ...state.mailbox,
+          revision: state.mailbox.revision + 1,
+          messages: { letter: { ...old, status: "delivered", deliveredAt: at } },
+        };
+      },
+      { memories: true },
+    ),
+    /accepted delivery/,
+  );
+  assert.deepEqual(f.rows.get("villages-village"), before, "delivery cannot publish separately from its evidence");
+});
+
+await runCase("continuity-storage/mail-publication", async () => {
+  const f = fixture();
+  await f.seed();
+  const mail = { id: "reply", at, from: { id: "mara", incarnation: "one" }, to: { id: "player", incarnation: "one" } },
+    text = "I will consider those conditions. 🌿";
+  await f.repository().mutateAuthority(
+    (state) => {
+      state.mailbox = queueMailboxLetter(state.mailbox, state.seed, mail, "request-reply", text);
+    },
+    { memories: true },
+  );
+  const before = structuredClone(f.rows.get("villages-village"));
+  const deliver = () =>
+    f.repository().mutateAuthority(
+      (state) => {
+        state.episodes = appendEpisode(state.episodes, letterEpisode(mail, text, "written"), state.seed);
+        state.mailbox = {
+          ...state.mailbox,
+          revision: state.mailbox.revision + 1,
+          messages: {
+            ...state.mailbox.messages,
+            reply: { ...state.mailbox.messages.reply, status: "delivered", deliveredAt: at },
+          },
+        };
+      },
+      { memories: true },
+    );
+  f.fail("memory-page");
+  await assert.rejects(deliver(), /injected create failure/);
+  assert.deepEqual(f.rows.get("villages-village"), before, "a failed page cannot expose a delivered letter");
+  f.fail("");
+  f.conflict();
+  await deliver();
+  const unread = await f.repository().readAuthority({ memories: true });
+  assert.equal(unread.name, "Concurrent title");
+  assert.equal(unread.mailbox.messages.reply.status, "delivered");
+  assert.equal(unread.mailbox.messages.reply.readAt, undefined);
+  const later = "2026-11-09T13:00:00.000Z";
+  await f.repository().mutateAuthority(
+    (state) => {
+      state.episodes = appendEpisode(state.episodes, letterEpisode(mail, text, "read", later), state.seed);
+      state.mailbox = {
+        ...state.mailbox,
+        revision: state.mailbox.revision + 1,
+        messages: {
+          ...state.mailbox.messages,
+          reply: { ...state.mailbox.messages.reply, readAt: later },
+        },
+      };
+    },
+    { memories: true },
+  );
+  const read = await f.repository().readAuthority({ memories: true });
+  assert.equal(read.mailbox.messages.reply.readAt, later);
+  assert.equal(read.episodes.records.length, 3);
+  await assert.rejects(
+    f.repository().mutateAuthority(
+      (state) => {
+        state.mailbox = { ...state.mailbox, revision: state.mailbox.revision + 1, messages: {} };
+      },
+      { memories: true },
+    ),
+    /lost its native envelope/,
+  );
+});
+
+await runCase("continuity-storage/mail-pages", () => {
+  const letters: Record<string, MailboxMessage> = {},
+    records: AcceptedEpisode[] = [];
+  for (let i = 0; i < 300; i++) {
+    const letter: MailboxMessage = {
+      id: "letter-" + i,
+      requestId: "request-" + i,
+      at,
+      from: { id: "mara", incarnation: "one" },
+      to: { id: "player", incarnation: "one" },
+      text: "🌿".repeat(1998) + " " + String(i).padStart(3, "0"),
+      status: "delivered",
+      deliveredAt: at,
+    };
+    letters[letter.id] = letter;
+    records.push(letterEpisode(letter, letter.text, "written"));
+  }
+  const payload = {
+      continuity: emptyContinuity(),
+      episodes: { format: 1 as const, revision: records.length, records },
+      worldPlaces: emptyPlaceRegistry(),
+      mailbox: readMailboxState({ format: 1, revision: 300, messages: letters }, "world"),
+    },
+    world = "a".repeat(32),
+    first = encodeContinuityPages(payload, world),
+    cold = decodeContinuityPagesSync(first.manifest, world, "world", (id) => first.pages.get(id) ?? null);
+  const changed = {
+    ...cold.value.mailbox,
+    revision: 301,
+    messages: {
+      ...cold.value.mailbox.messages,
+      "letter-299": { ...cold.value.mailbox.messages["letter-299"], error: "Retained local recovery detail" },
+    },
+  };
+  const next = encodeContinuityPages(
+    { ...cold.value, mailbox: readMailboxState(changed, "world") },
+    world,
+    cold.layout,
+  );
+  assert(first.serializedBytes > 1024 * 1024);
+  assert(next.serializedBytes < 64 * 1024, "changing one envelope reuses all other immutable mail pages");
+  const pages = new Map([...first.pages, ...next.pages]),
+    reopened = decodeContinuityPagesSync(next.manifest, world, "world", (id) => pages.get(id) ?? null);
+  assert.equal(Object.keys(reopened.value.mailbox.messages).length, 300);
+  assert.equal(reopened.value.mailbox.messages["letter-0"].text, letters["letter-0"].text);
+  assert.equal(reopened.value.mailbox.messages["letter-299"].error, "Retained local recovery detail");
+  const missing = structuredClone(next.manifest) as Record<string, unknown>;
+  delete missing.mailRevision;
+  assert.throws(() => readContinuityPageManifest(missing), /unsupported/);
+});
+
+await runCase("continuity-storage/mail-reply-order", () => {
+  const first: MailboxMessage = {
+      id: "incoming",
+      requestId: "request-incoming",
+      at,
+      from: { id: "player", incarnation: "one" },
+      to: { id: "mara", incarnation: "one" },
+      text: "Will you consider visiting the fair?",
+      status: "delivered",
+      deliveredAt: at,
+      readAt: at,
+    },
+    reply: MailboxMessage = {
+      id: "reply",
+      requestId: "request-reply",
+      at,
+      from: first.to,
+      to: first.from,
+      text: "I will consider it.",
+      status: "delivered",
+      deliveredAt: at,
+      readAt: at,
+      replyTo: first.id,
+    },
+    records = [
+      letterEpisode(first, first.text, "written"),
+      letterEpisode(first, first.text, "read"),
+      letterEpisode(reply, reply.text, "written"),
+      letterEpisode(reply, reply.text, "read"),
+    ],
+    mailbox = { format: 1 as const, revision: 4, messages: { incoming: first, reply } },
+    payload = {
+      continuity: emptyContinuity(),
+      episodes: { format: 1 as const, revision: 4, records },
+      worldPlaces: emptyPlaceRegistry(),
+      mailbox,
+    },
+    world = "a".repeat(32);
+  const cold = (value: typeof payload) => {
+    const packet = encodeContinuityPages(value, world);
+    return decodeContinuityPagesSync(packet.manifest, world, "world", (id) => packet.pages.get(id) ?? null);
+  };
+  cold(payload);
+  const cyclic = structuredClone(payload);
+  cyclic.mailbox.messages.incoming.replyTo = reply.id;
+  assert.throws(() => cold(cyclic), /cyclic letter reply/);
+  const beforeRead = structuredClone(payload);
+  beforeRead.episodes.records = [records[0], records[2], records[1], records[3]];
+  assert.throws(() => cold(beforeRead), /predates the original accepted reading/);
+  const beforeDelivery = structuredClone(payload);
+  beforeDelivery.mailbox.messages.incoming.deliveredAt = "2026-11-09T13:00:00.000Z";
+  beforeDelivery.mailbox.messages.incoming.readAt = "2026-11-09T13:00:00.000Z";
+  assert.throws(() => cold(beforeDelivery), /original writing/);
+});
+
 await runCase("continuity-storage/offer-evidence", () => {
   const accepted = episode("offer");
   accepted.privateInput = "I will visit on Saturday if Mara brings the lantern.";
@@ -328,6 +583,7 @@ await runCase("continuity-storage/offer-evidence", () => {
     continuity,
     episodes: { format: 1 as const, revision: 1, records: [accepted] },
     worldPlaces: emptyPlaceRegistry(),
+    mailbox: emptyMailbox(),
   };
   const world = "a".repeat(32);
   function cold(value: typeof payload) {

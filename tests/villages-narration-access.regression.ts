@@ -291,7 +291,12 @@ await runCase("narration-access/book-without-keep", () => {
   assert.equal(result.held, false);
   const scope = "a".repeat(32),
     encoded = encodeContinuityPages(
-      { continuity: f.state.continuity, episodes: f.state.episodes, worldPlaces: f.state.worldPlaces },
+      {
+        continuity: f.state.continuity,
+        episodes: f.state.episodes,
+        worldPlaces: f.state.worldPlaces,
+        mailbox: f.state.mailbox,
+      },
       scope,
     );
   Object.assign(

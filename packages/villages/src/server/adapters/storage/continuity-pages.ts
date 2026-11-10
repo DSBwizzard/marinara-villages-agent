@@ -6,6 +6,8 @@ import { readEpisodes } from "../../domain/decoding/episode-codec.js";
 import { memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import { readPlaceRegistry } from "../../domain/rules/places.js";
 import { assertContinuityRetention } from "../../domain/rules/continuity-retention.js";
+import type { MailboxState } from "../../domain/models/social-mail.js";
+import { readMailboxState, assertMailboxRetention } from "../../domain/decoding/mailbox-codec.js";
 import {
   createHistoryPageWriter,
   createHistoryPageReader,
@@ -19,6 +21,7 @@ export type ContinuityPayload = {
   continuity: ContinuityCollection;
   episodes: EpisodeCollection;
   worldPlaces: PlaceRegistry;
+  mailbox: MailboxState;
 };
 const trees = [
   "records",
@@ -29,6 +32,7 @@ const trees = [
   "npcs",
   "placeReceipts",
   "placeOperations",
+  "mail",
 ] as const;
 type TreeName = (typeof trees)[number];
 export type ContinuityPageLayout = Record<TreeName, HistoryPageTree>;
@@ -37,6 +41,7 @@ export type ContinuityPageManifest = Record<TreeName, HistoryPageRef | null> & {
   revision: number;
   episodeRevision: number;
   placeRevision: number;
+  mailRevision: number;
 };
 
 /** The existing immutable history pages own bulk continuity; the Village root owns their one manifest. */
@@ -52,25 +57,27 @@ export function encodeContinuityPages(value: ContinuityPayload, world: string, p
     npcs: Object.entries(places.npcs),
     placeReceipts: Object.entries(places.receipts),
     placeOperations: Object.entries(places.operations),
+    mail: Object.entries(value.mailbox.messages),
   };
   const layout = Object.fromEntries(
-    trees.map((key) => [key, writer.tree(rows[key], previous?.[key], key === "episodes" ? 1 : 64)]),
+    trees.map((key) => [key, writer.tree(rows[key], previous?.[key], key === "episodes" || key === "mail" ? 1 : 64)]),
   ) as ContinuityPageLayout;
   const manifest = {
     format: 1,
     revision: value.continuity.revision,
     episodeRevision: value.episodes.revision,
     placeRevision: places.revision,
+    mailRevision: value.mailbox.revision,
     ...Object.fromEntries(trees.map((key) => [key, layout[key].root])),
   } as ContinuityPageManifest;
   return { manifest, layout, pages: writer.pages, serializedBytes: writer.serializedBytes };
 }
 
 export function readContinuityPageManifest(raw: unknown): ContinuityPageManifest {
-  memoryObject(raw, ["format", "revision", "episodeRevision", "placeRevision", ...trees]);
+  memoryObject(raw, ["format", "revision", "episodeRevision", "placeRevision", "mailRevision", ...trees]);
   memoryRequire(
     raw.format === 1 &&
-      [raw.revision, raw.episodeRevision, raw.placeRevision].every(
+      [raw.revision, raw.episodeRevision, raw.placeRevision, raw.mailRevision].every(
         (value) => Number.isSafeInteger(value) && value >= 0,
       ),
     "unsupported continuity history directory",
@@ -126,8 +133,13 @@ function* decoder(manifest: unknown, world: string, seed: string) {
       receipts: Object.fromEntries(reader.rows(layout.placeReceipts)),
       operations: Object.fromEntries(reader.rows(layout.placeOperations)),
     }),
+    mailbox: readMailboxState(
+      { format: 1, revision: raw.mailRevision, messages: Object.fromEntries(reader.rows(layout.mail)) },
+      seed,
+    ),
   };
   assertContinuityRetention(value.continuity, value.episodes);
+  assertMailboxRetention(value.mailbox, value.episodes, seed);
   return { value, layout, pageIds: reader.pageIds };
 }
 

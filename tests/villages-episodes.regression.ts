@@ -1,4 +1,5 @@
 // Test cases: episodes/natural-private-chronology, episodes/perception-arrivals, episodes/protection, episodes/identity, episodes/cold-pages-scale, episodes/shared-followup, episodes/ancestry, episodes/private-narration, episodes/self-native-retention, episodes/independent-spans, episodes/repeated-correction, episodes/shared-pair-budget, episodes/offstage-context
+import { emptyMailbox } from "../packages/villages/src/server/domain/decoding/mailbox-codec.js";
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import type { AcceptedEpisode } from "../packages/villages/src/server/domain/models/episode-model.js";
@@ -241,7 +242,7 @@ await runCase("episodes/offstage-context", async () => {
         const selected = selectEpisodeHistory(state.episodes, changed, [player, leo], "SECRET GARDEN", 100000);
         assert(!JSON.stringify(selected).includes("SECRET GARDEN"));
         const encoded = encodeContinuityPages(
-          { continuity: changed, episodes: state.episodes, worldPlaces: emptyPlaceRegistry() },
+          { continuity: changed, episodes: state.episodes, worldPlaces: emptyPlaceRegistry(), mailbox: emptyMailbox() },
           memoryHash("world").slice(0, 32),
         );
         const cold = await decodeContinuityPages(
@@ -406,7 +407,7 @@ await runCase("episodes/shared-followup", async () => {
     history = appendEpisode(history, other, "world");
   }
   const packet = encodeContinuityPages(
-    { continuity: emptyContinuity(), episodes: history, worldPlaces: emptyPlaceRegistry() },
+    { continuity: emptyContinuity(), episodes: history, worldPlaces: emptyPlaceRegistry(), mailbox: emptyMailbox() },
     memoryHash("world").slice(0, 32),
   );
   const cold = await decodeContinuityPages(
@@ -523,7 +524,7 @@ await runCase("episodes/self-native-retention", async () => {
   const history = appendEpisode(emptyEpisodes(), own, "world");
   assertContinuityRetention(continuity, history);
   const packet = encodeContinuityPages(
-    { continuity, episodes: history, worldPlaces: emptyPlaceRegistry() },
+    { continuity, episodes: history, worldPlaces: emptyPlaceRegistry(), mailbox: emptyMailbox() },
     memoryHash("world").slice(0, 32),
   );
   const cold = await decodeContinuityPages(
@@ -627,7 +628,7 @@ await runCase("episodes/independent-spans", async () => {
       forget: true,
     });
     const packet = encodeContinuityPages(
-      { continuity: protectedState, episodes: history, worldPlaces: emptyPlaceRegistry() },
+      { continuity: protectedState, episodes: history, worldPlaces: emptyPlaceRegistry(), mailbox: emptyMailbox() },
       memoryHash("world").slice(0, 32),
     );
     const cold = await decodeContinuityPages(
@@ -671,7 +672,12 @@ await runCase("episodes/cold-pages-scale", async () => {
     },
     "world",
   );
-  const payload = { continuity: emptyContinuity(), episodes: history, worldPlaces: emptyPlaceRegistry() };
+  const payload = {
+    continuity: emptyContinuity(),
+    episodes: history,
+    worldPlaces: emptyPlaceRegistry(),
+    mailbox: emptyMailbox(),
+  };
   const first = encodeContinuityPages(payload, world),
     pages = new Map(first.pages);
   const cold = await decodeContinuityPages(first.manifest, world, "world", async (id) => pages.get(id) ?? null);
@@ -822,7 +828,7 @@ await runCase("episodes/repeated-correction", async () => {
   const foreignRoot = foreign.records.find((record) => record.id === rootId)!;
   foreignRoot.heads[continuityHolderKey(player)].versionId = foreignRoot.heads[key].versionId;
   const foreignPages = encodeContinuityPages(
-    { continuity: foreign, episodes: state.episodes, worldPlaces: state.worldPlaces },
+    { continuity: foreign, episodes: state.episodes, worldPlaces: state.worldPlaces, mailbox: state.mailbox },
     "a".repeat(32),
   );
   await assert.rejects(
@@ -841,7 +847,7 @@ await runCase("episodes/repeated-correction", async () => {
     "canonical knowledge anchors cannot collide with episode source units",
   );
   const packet = encodeContinuityPages(
-    { continuity: state.continuity, episodes: state.episodes, worldPlaces: state.worldPlaces },
+    { continuity: state.continuity, episodes: state.episodes, worldPlaces: state.worldPlaces, mailbox: state.mailbox },
     "a".repeat(32),
   );
   const cold = (

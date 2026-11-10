@@ -173,7 +173,12 @@ await runCase("narration-circumstance/recovery", () => {
     result = f.accept("2026-11-10T12:09:00.000Z");
   assert.equal(result.held, false, JSON.stringify(result.rejected));
   const encoded = encodeContinuityPages(
-      { continuity: f.state.continuity, episodes: f.state.episodes, worldPlaces: f.state.worldPlaces },
+      {
+        continuity: f.state.continuity,
+        episodes: f.state.episodes,
+        worldPlaces: f.state.worldPlaces,
+        mailbox: f.state.mailbox,
+      },
       "a".repeat(32),
     ),
     cold = decodeContinuityPagesSync(
@@ -350,7 +355,12 @@ await runCase("narration-circumstance/protected-update", () => {
     assert(!result.episode!.commandReceipts[0].text.includes("SECRET"));
     assert.equal(f.state.continuity.records.length, 2);
     const encoded = encodeContinuityPages(
-        { continuity: f.state.continuity, episodes: f.state.episodes, worldPlaces: f.state.worldPlaces },
+        {
+          continuity: f.state.continuity,
+          episodes: f.state.episodes,
+          worldPlaces: f.state.worldPlaces,
+          mailbox: f.state.mailbox,
+        },
         "a".repeat(32),
       ),
       cold = decodeContinuityPagesSync(
@@ -495,7 +505,12 @@ await runCase("narration-circumstance/inherited-knowers", () => {
     );
     assert(!final.result.episode!.commandReceipts[0].text.includes("SECRET"));
     const encoded = encodeContinuityPages(
-        { continuity: f.state.continuity, episodes: f.state.episodes, worldPlaces: f.state.worldPlaces },
+        {
+          continuity: f.state.continuity,
+          episodes: f.state.episodes,
+          worldPlaces: f.state.worldPlaces,
+          mailbox: f.state.mailbox,
+        },
         "a".repeat(32),
       ),
       cold = decodeContinuityPagesSync(

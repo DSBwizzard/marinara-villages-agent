@@ -125,7 +125,12 @@ function fixture() {
   function cold() {
     const scope = "a".repeat(32),
       encoded = encodeContinuityPages(
-        { continuity: state.continuity, episodes: state.episodes, worldPlaces: state.worldPlaces },
+        {
+          continuity: state.continuity,
+          episodes: state.episodes,
+          worldPlaces: state.worldPlaces,
+          mailbox: state.mailbox,
+        },
         scope,
       );
     Object.assign(

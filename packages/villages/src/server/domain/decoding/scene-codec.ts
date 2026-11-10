@@ -15,6 +15,7 @@ import { coerceVillageState } from "./village-codec.js";
 import { emptyContinuity } from "../rules/continuity.js";
 import { emptyEpisodes } from "../rules/episodes.js";
 import { emptyStartingHistory } from "../rules/starting-history.js";
+import { emptyMailbox } from "./mailbox-codec.js";
 import { immutableMemoryValue } from "../rules/memory-integrity.js";
 
 export function coerceActive(value: unknown): ActiveVenue {
@@ -44,6 +45,7 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
     setupAt: raw.setupAt,
     continuity: emptyContinuity(),
     episodes: emptyEpisodes(),
+    mailbox: emptyMailbox(),
     startingHistory: emptyStartingHistory(),
   });
   const keepCapturedLighting = (venue: import("../models/world.js").VillageVenue, value: unknown) => {

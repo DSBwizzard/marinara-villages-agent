@@ -1,4 +1,5 @@
 // Test cases: episode-sources/routine-cold, episode-sources/sound-privacy, episode-sources/incarnations, episode-sources/room-incarnation
+import { emptyMailbox } from "../packages/villages/src/server/domain/decoding/mailbox-codec.js";
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import type {
@@ -76,7 +77,10 @@ function episode(id: string, actors = [player, mara]): AcceptedEpisode {
 }
 function cold(continuity: ContinuityCollection, episodes: EpisodeCollection) {
   const world = "a".repeat(32),
-    packet = encodeContinuityPages({ continuity, episodes, worldPlaces: emptyPlaceRegistry() }, world);
+    packet = encodeContinuityPages(
+      { continuity, episodes, worldPlaces: emptyPlaceRegistry(), mailbox: emptyMailbox() },
+      world,
+    );
   return decodeContinuityPagesSync(packet.manifest, world, "world", (id) => packet.pages.get(id) ?? null).value;
 }
 function remember(

@@ -17,7 +17,7 @@ import {
 import { withRepairWork } from "./repair-gate.js";
 type CapabilityDocumentRecord = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
 const VILLAGE_DOC_ID = "villages-village";
-const historyFields = ["continuity", "episodes", "worldPlaces"] as const;
+const historyFields = ["continuity", "episodes", "worldPlaces", "mailbox"] as const;
 export function readVillageRoot(record: CapabilityDocumentRecord | null) {
   if (!record) return null;
   memoryRequire(

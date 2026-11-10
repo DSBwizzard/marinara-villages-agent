@@ -585,6 +585,7 @@ export type VillageState = {
   narrativeConsequence?: import("../../../shared/contracts/village.js").VillageNarrativeConsequence;
   continuity: import("./continuity-model.js").ContinuityCollection;
   episodes: import("./episode-model.js").EpisodeCollection;
+  mailbox: import("./social-mail.js").MailboxState;
   startingHistory: import("./starting-history-model.js").StartingHistoryState;
   socialContractVersion: 2;
   socialMailOutbox?: import("./social-mail.js").WorldSocialMailOutbox[];

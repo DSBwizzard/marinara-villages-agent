@@ -629,7 +629,12 @@ await runCase("scene-narration/native-delta-integrity", async () => {
     const namespace = memoryHash(world.seed).slice(0, 32);
     assert.throws(() => {
       const pages = encodeContinuityPages(
-        { continuity: world.continuity, episodes: world.episodes, worldPlaces: world.worldPlaces },
+        {
+          continuity: world.continuity,
+          episodes: world.episodes,
+          worldPlaces: world.worldPlaces,
+          mailbox: world.mailbox,
+        },
         namespace,
       );
       decodeContinuityPagesSync(pages.manifest, namespace, world.seed, (id) => pages.pages.get(id) ?? null);

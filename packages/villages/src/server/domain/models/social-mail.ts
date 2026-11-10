@@ -1,5 +1,24 @@
 import type { RelationshipDisclosure, RelationshipHead, RelationshipReview } from "./relationship-types.js";
 import type { CapturedAdmission } from "./captured-admission-model.js";
+export type MailboxMessage = {
+  id: string;
+  requestId: string;
+  at: string;
+  from: { id: string; incarnation: string };
+  to: { id: string; incarnation: string };
+  text: string;
+  status: "pending" | "delivered" | "cancelled" | "undeliverable";
+  deliveredAt?: string;
+  readAt?: string;
+  replyTo?: string;
+  error?: string;
+  admissionFailed?: true;
+};
+export type MailboxState = {
+  format: 1;
+  revision: number;
+  messages: Record<string, MailboxMessage>;
+};
 export type SocialMailMessage = {
   id: string;
   requestId: string;

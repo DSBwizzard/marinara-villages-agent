@@ -141,7 +141,12 @@ await runCase("npc-admission/native", () => {
     "I hope to visit the garden.",
   );
   const encoded = encodeContinuityPages(
-      { continuity: f.state.continuity, episodes: f.state.episodes, worldPlaces: f.state.worldPlaces },
+      {
+        continuity: f.state.continuity,
+        episodes: f.state.episodes,
+        worldPlaces: f.state.worldPlaces,
+        mailbox: f.state.mailbox,
+      },
       "a".repeat(32),
     ),
     cold = decodeContinuityPagesSync(
@@ -333,7 +338,12 @@ await runCase("npc-admission/unused-context", () => {
   assert.throws(() => acceptNarration(f.state, pending, "race", at), /protection changed/);
   assert.equal(memoryHash(f.state), before);
   const encoded = encodeContinuityPages(
-      { continuity: f.state.continuity, episodes: f.state.episodes, worldPlaces: f.state.worldPlaces },
+      {
+        continuity: f.state.continuity,
+        episodes: f.state.episodes,
+        worldPlaces: f.state.worldPlaces,
+        mailbox: f.state.mailbox,
+      },
       "a".repeat(32),
     ),
     cold = decodeContinuityPagesSync(

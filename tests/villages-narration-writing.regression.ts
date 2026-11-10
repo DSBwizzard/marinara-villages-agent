@@ -524,7 +524,12 @@ await runCase("narration-writing/scoped-cold-provenance", () => {
     { forget: true },
   );
   const packet = encodeContinuityPages(
-    { continuity: f.state.continuity, episodes: f.state.episodes, worldPlaces: f.state.worldPlaces },
+    {
+      continuity: f.state.continuity,
+      episodes: f.state.episodes,
+      worldPlaces: f.state.worldPlaces,
+      mailbox: f.state.mailbox,
+    },
     "a".repeat(32),
   );
   const cold = decodeContinuityPagesSync(
