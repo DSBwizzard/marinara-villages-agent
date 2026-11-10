@@ -16,7 +16,7 @@ import { agendaFixture } from "../helpers/agenda.fixture.js";
 export async function packagedSceneServer(
   options: {
     configure?: (world: ReturnType<typeof defaultVillageState>, now: string) => void;
-    configureScene?: (scene: VenueScene) => void;
+    configureScene?: (scene: VenueScene, world: ReturnType<typeof defaultVillageState>) => void;
     bundle?: string;
   } = {},
 ) {
@@ -118,7 +118,7 @@ export async function packagedSceneServer(
     lines: [],
     submissions: [],
   });
-  options.configureScene?.(scene);
+  options.configureScene?.(scene, world);
   scene.continuity = captureSceneContinuity(world, scene, Date.parse(now));
   const records = new Map<string, any>([
     ["villages-village", { id: "villages-village", packageId: "villages", kind: "village", revision: 1, data: world }],

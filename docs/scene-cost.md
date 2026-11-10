@@ -1,19 +1,35 @@
 # Scene cost characterization
 
-The current architecture uses one GM response, `{input, segments, events?}`, followed by provider-free validation and application. The model supplies fiction, audible input selections and meaningful proposals. Code derives exact offsets, source identities, witnesses, revisions, defaults and native operations. Full authored identities remain intact. There are no automatic Memory, Wish, Project or access critics.
+The narration-first architecture uses one GM response, `{segments, keep?, commands?, halt?}`, followed by provider-free validation and application. The exact original player submission stays in private GM chronology and Engine playback, with no automatic resident audience or whole-input speech classification. The model supplies narration, sparse lasting meaning and narrow native commands; code binds their actual sources, perceptions, identities, revisions and authority. Full authored identities remain intact. There are no separate fictional Memory, Wish, relationship or commitment processors.
 
-The cost target remains unmet. The latest three warm ordinary conversations averaged **1.65× Game Mode**; the engineering aim is 1.0–1.25×. Earlier small samples averaged 1.36×, 1.74× and 1.75×. The changing histories and small samples do not establish a causal improvement between these iterations. An earlier explicit learning request was acknowledged without a persisted Memory and remains a semantic failure; the latest new learning did persist correctly. These are observations, not a general parity claim or a measured reduction from the previously established 3× baseline.
+No paid provider comparison has measured this refactor. The engineering aim remains ordinary Scene costs close to Game Mode. The older implementation's latest three warm ordinary conversations averaged **1.65× Game Mode**, against an aim of 1.0–1.25×. Those small historical samples do not measure the narration-first implementation or establish parity.
 
-## Revisions and integration
+## Provider-free narration-first checks
+
+On 2026-11-10, `npm run bench:scene` passed all 17 archive-identical package HTTP scenarios with one mocked GM completion each, zero provider purchases, zero replacement completions and zero replay purchases. Each scenario checks accepted native state and saved-response replay. The package source is `3bd20165e92da58f2e0fe63697eaae87d6fe9ce3`; the 0.8.1 archive SHA-256 is `bdfee2d1d65d63b4aba3ccdfa0a7f328daa2370658177b0e2bd601db2d5d7c32`. The command writes its source digest, archive identity and complete measurements to the selected local JSON report.
+
+| Synthetic scenario | Request bytes | Estimated input tokens |
+| --- | ---: | ---: |
+| Ordinary conversation | 18,361 | 4,591 |
+| Greeting | 18,438 | 4,610 |
+| Combined lasting consequences | 18,361 | 4,591 |
+| 201 earlier accepted turns | 52,602 | 13,151 |
+| Rich resident | 36,253 | 9,064 |
+
+These are UTF-8 request bytes divided by four, rounded up. They are not provider token usage, cache hits, latency or rated cost. They establish the one-completion path and bounded selection for these inputs, not a Game Mode cost ratio or semantic reliability with a real model.
+
+The long conversation retains exact original submissions and utterances in canonical Episodes and Scene history; the request receives the useful tea preference without requiring every earlier utterance. The rich resident retains 1,000 earlier experiences, 40 current desires and 1,200 earlier craft experiences. A bounded keyword-independent initiative lane supplies current desire context while preserving the complete stored history. Relationships and Wish changes use common continuity; physical room changes use ordered Room entries; Project and access commands still require native authority. The packaged prefix check keeps complete authored identity stable across clock, circumstance, native Forget and Project changes, while actual movement changes the Scene reference frame.
+
+## Historical provider-run revisions
 
 - Villages staging base: `9251988b00ec3ebaf743d4337d30cb4e71d1f0f1`.
-- Current integration target: Engine staging `73441f9a620dfdd94a28b94b68aa8f8b8ef1321c`, version 2.5.2, Capability API 1.818. Exact unmodified source was built and activated in the same isolated Linux world. Installed package bytes, saved records/assets, model settings and credentials passed guarded checks; startup purchased no model requests. The default runtime pin and personal installations were unchanged.
+- Engine integration for these historical samples: Engine staging `73441f9a620dfdd94a28b94b68aa8f8b8ef1321c`, version 2.5.2, Capability API 1.818. Exact unmodified source was built and activated in the same isolated Linux world. Installed package bytes, saved records/assets, model settings and credentials passed guarded checks; startup purchased no model requests. The default runtime pin and personal installations were unchanged.
 - The first 49 provider requests used Engine staging `27805040eed0d91d4ea7b49f478b0b197b13676d`; the next 40 used `73441f9a620dfdd94a28b94b68aa8f8b8ef1321c`. Each measurement stage identifies its actual Engine revision. The newer revision reproduces the identical public declaration closure. Its Advanced Memory changes do not participate in this baseline: the native Game chat has no saved Advanced Memory setting and the default is disabled.
 - Earlier successful sample product source: `485e7214b810ba28d74af06904be796cda9c3b02`; archive SHA-256 `fe904498414b77d30a7d62a7b841748ea66571f38c7ba51d05c4d7ab696f0d96`. Subsequent source and archive identities are retained per sample in the measurements.
 
 The API requirement and generated public declaration closure are in [#458](https://github.com/DSBwizzard/marinara-villages-agent/pull/458). Stable authored prompt prefixes and request/cache accounting are in [#459](https://github.com/DSBwizzard/marinara-villages-agent/pull/459). The coupled Scene contract, native consequences, context selection, retirement and measurement harnesses are in [#460](https://github.com/DSBwizzard/marinara-villages-agent/pull/460). Source merging and runtime deployment remain separate outcomes.
 
-## Actual provider usage
+## Historical provider usage
 
 All pairs used the saved `deepseek-flash` connection through the native Engine Game and Villages HTTP paths. The stored synthetic Mara card and player inputs matched; each mode generated its own continuing history. Background work and images were disabled in the isolated world. Saved model and reasoning settings were preserved. The five earlier pairs below had no contract failures, consequential application failures, replacement requests or replay purchases.
 
@@ -90,25 +106,15 @@ The follow-up used product source `b2ebc0098541e6dfb78ceadc0252ca2ecab3c9ec`, ar
 
 Native inspection before and after the warmup showed no accepted agreement. After explicit assent, the new agreement cited both the player's full statement and Mara's agreeing speech via `input:0` and generated segment 1. The earlier invalid proposal remains rejected. The Wish belongs to Mara, remains open, preserves the stated boat/ownership desire and starts no Project work. However, its response again returned `input:[]` for a direct spoken question. That turn is a semantic failure despite its valid Wish write. Totals therefore include four runtime failures, two separately identified semantic failures and the earlier excerpt quality gap. The expensive successful agreement and incomplete Wish case do not meet the consequential-cost aim. Further input-capture and cost work remains; no new shortcut or inference has been implemented.
 
-## What improved and what remains
+## Limits of the historical comparison
 
-Stable rules, complete authored cards/world/player context and a captured Scene reference precede appendable chronological witnessed history. Current time, Memory, social and Project context and presentation follow it. Three public cache breakpoints are retained through fitting and replay. The growing history message has no explicit breakpoint: block-oriented providers cannot reuse part of a changing block as though it were immutable. DeepSeek cache reads above establish actual automatic-prefix reuse for this sample; no live explicit-cache provider was tested. Cache TTL was not overridden.
+The paid sample used one synthetic resident, a continuously growing world and a small set of matched inputs. Generated histories diverged naturally. Native Game represented the stored card differently: exact scenario/example strings were absent from its inspected prompt, while Villages preserved all authored fields. No shortened Villages identity or inflated Game prompt was used to improve the comparison. The measured cache reads show automatic prefix reuse for that sample; an explicit-cache provider was not tested, and cache TTL was not overridden.
 
-History has one model representation and no independent fixed rolling window. Only actual model context pressure prunes optional complete rows in bounded batches; latest exchanges, identities and exact input remain whole. Compact rows retain canonical IDs, speakers, kinds and full text; explicit overrides preserve subset/empty hearing, acoustic-only evidence and nondefault visibility. Cast changes rebuild privacy projections. Full server evidence is frozen with the fitted messages; retries cannot acquire new sources or buy a replacement merely to apply an existing response.
-
-Native Memories retain individual knowers, reports versus observations, exact accepted support and Forget/Correct protection. The live test created a private report, corrected its subject from grandmother to great-aunt without losing its root lineage, recalled the correction after a package restart, and recorded a second report about a blue kettle. Mixed private thought and speech retained the exact original submission while only “The bench looks well cared for.” acquired Mara as a witness. These checks establish those particular outcomes, not general semantic reliability.
-
-Current Wishes remain compact characterization context, with complete relevant conditions and history before fulfillment judgments. Project terms are narrowed conservatively; approval, builder willingness, conditions, refusal, withdrawal and Start remain distinct. Relationships retain directional qualitative perspectives and authoritative agreements. Standalone social intentions and duplicate Scene disclosure proposals are retired. The old all-input classification and domain transaction model contract are replaced by sparse source selections/events. Existing native domain validators remain authoritative. Village format 17 and relationship contract 4 reject older saves without migration.
-
-Remaining cost comes from complete source metadata on newly appended history, current authoritative context, JSON/output structure, natural differences in prose and provider reasoning. In the latest three warm ordinary pairs, visible output was 1,035 tokens versus 981. Reported reasoning was 916 versus 137, accounting for about 64% of the $0.000730794 excess cost; uncached input accounted for about 24%. Reasoning is already part of total completion tokens. Both modes retained their saved settings and the provider's default thinking effort; an omitted effort option does not mean thinking was disabled. More prompt text does not necessarily imply greater cost when cached, and this small sample does not establish a universal consequence-cost ceiling.
-
-The sample is one synthetic resident, one continuously growing world and a small set of matched inputs. Generated histories diverged naturally. The native Game prompt represents the stored card differently: exact scenario/example strings were absent from the inspected prompt, while Villages preserves all authored fields. No shortened Villages identity or inflated Game prompt was used to improve the comparison. Broader multi-resident/provider quality and repeated cost samples remain necessary before promising general parity.
-
-Residual cleanup remains for unreachable self-report flag guards and their two obsolete error classes. The strict current Scene root rejects those old flags before those guards can run; they do not provide an accepted legacy response format.
+Those calls preserved saved model and reasoning settings. Output and reasoning varied, so a larger prompt did not always produce a larger rated cost. A new authorized matched run, including consequential learning, restart/recovery, realistic history and all retries, is required before making cost or quality claims for narration-first Villages.
 
 ## Repeat the checks
 
-`npm run build && npm run bench:scene -- report.json` runs 17 archive-identical package HTTP fixtures: ordinary conversation, greeting, multiple residents, mixed input, disclosure, relationships, Wish progress/fulfillment, Project discussion/commitment, invitation/refusal, physical change, movement/privacy, combined effects, long history and rich Memory/Wish context. It checks native accepted consequences and provider-free replay. The report contains package/source identities, request counts, contract failures and UTF-8-bytes/4 input estimates. These mocked estimates are explicitly not provider usage or cost evidence.
+`npm run build && npm run bench:scene -- report.json` runs the 17 archive-identical native package HTTP fixtures described above. It checks accepted consequences and provider-free replay, and records package/source identities, request counts, contract failures, retained record counts and UTF-8-bytes/4 input estimates. These mocked estimates are explicitly not provider usage or cost evidence.
 
 For explicitly authorized paid testing, prepare an independent quiet native Engine world and Game chat with the same saved connection and authored characters, then run:
 
