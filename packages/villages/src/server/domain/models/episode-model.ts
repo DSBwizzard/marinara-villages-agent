@@ -38,7 +38,8 @@ export type AcceptedEpisode = {
       | "contact"
       | "scene"
       | "appointment"
-      | "venue-request";
+      | "venue-request"
+      | "mail";
     targetId: string;
     revision: number;
     text: string;
@@ -58,6 +59,14 @@ export type AcceptedEpisode = {
     departure?: { actorId: string; from: string; segment: number; path: string[] };
     admission?: { npc: import("./places.js").NpcIdentity; zoneId: string; segment: number };
     circumstance?: { summary: string; status: "active" | "resolved" };
+    mail?: {
+      id: string;
+      at: string;
+      from: { id: string; incarnation: string };
+      to: { id: string; incarnation: string };
+      phase: "written" | "read";
+      sourceHash: string;
+    };
   }[];
   /** Code-bound source ancestry for each input/segment unit. */
   dependencies: Record<string, string[]>;

@@ -20,7 +20,13 @@ import {
   continuityProtectionFingerprint,
 } from "./continuity.js";
 import { selectActorContinuity, selectRoomContinuity } from "./continuity-retrieval.js";
-import { actorEpisodeView, recentSharedEpisodes, recallEpisodeSpeech, selectEpisodeHistory } from "./episodes.js";
+import {
+  actorEpisodeView,
+  recentSharedEpisodes,
+  recallEpisodeSpeech,
+  recallEpisodeMail,
+  selectEpisodeHistory,
+} from "./episodes.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { estimatedTextTokens } from "./text-recall.js";
 import type { VenueWritingBlock } from "./venue-writing.js";
@@ -399,6 +405,8 @@ export function narrationContinuityContext(
         try {
           const projected = actorContinuityEvidence(source, holder.id);
           return own.input.some((row) => row.id === source.id) ||
+            (source.kind === "written" &&
+              own.letters.some((row) => row.id === source.unitId && row.text === projected.excerpt)) ||
             own.segments.some(
               (row) =>
                 row.id === source.unitId &&
@@ -414,6 +422,11 @@ export function narrationContinuityContext(
       for (const segment of own.segments)
         if (!eligible.some((source) => source.unitId === segment.id)) {
           const source = recallEpisodeSpeech(episode, segment.id, state.continuity, holder, state.episodes);
+          if (source) eligible.push(source);
+        }
+      for (const letter of own.letters)
+        if (!eligible.some((source) => source.unitId === letter.id)) {
+          const source = recallEpisodeMail(episode, letter.id, state.continuity, holder, state.episodes);
           if (source) eligible.push(source);
         }
       const key = continuityHolderKey(holder);
@@ -471,8 +484,27 @@ export function narrationContinuityContext(
       aliases
         .filter((row) => row.holder === holder && row.evidence.unitId === unit && row.evidence.excerpt === text)
         .map(({ ref, evidence }) => ({ ref, ...(evidence.act ? { act: evidence.act } : {}) }));
+    const named = new Set([
+      ...segments.map((line) => line.speakerId),
+      ...(view.letters ?? []).flatMap((letter) => [letter.fromId, letter.toId]),
+      ...aliases.flatMap((alias) => (alias.evidence.actorId ? [alias.evidence.actorId] : [])),
+    ]);
+    const formerActors = episode.actors
+      .filter((actor) => named.has(actor.id) && continuityActor(state, actor.id)?.incarnation !== actor.incarnation)
+      .map((actor) => actor.id);
     const interaction = {
       ...view,
+      ...(formerActors.length ? { formerActors } : {}),
+      ...(view.letters
+        ? {
+            letters: view.letters.map((letter) => ({
+              ...letter,
+              knownBy: Object.fromEntries(
+                letter.knownBy.map((id) => [id, { source: sourceRefs(id, letter.id, letter.text) }]),
+              ),
+            })),
+          }
+        : {}),
       groundedInput: view.groundedInput.map((row) => ({
         ...row,
         source: aliases

@@ -8,6 +8,7 @@ import { nativeReceiptSupportsRoom, episodeContextActors } from "../rules/episod
 import { immutableMemoryValue, isImmutableMemoryValue, memoryHash, memoryRequire } from "../rules/memory-integrity.js";
 import { readNpc } from "../rules/places.js";
 import type { NpcIdentity } from "../models/places.js";
+import { assertMailReceipt, assertMailHistory, mailEvidence, episodeMailEvidence } from "../rules/mail-evidence.js";
 
 const id = z.string().min(1).max(160),
   ids = z.array(id).refine((rows) => new Set(rows).size === rows.length);
@@ -53,6 +54,7 @@ const episode = z
               "scene",
               "appointment",
               "venue-request",
+              "mail",
             ]),
             targetId: id,
             revision: z.number().int().nonnegative().safe(),
@@ -93,6 +95,17 @@ const episode = z
               .optional(),
             circumstance: z
               .object({ summary: z.string().min(1).max(1200), status: z.enum(["active", "resolved"]) })
+              .strict()
+              .optional(),
+            mail: z
+              .object({
+                id: z.string().min(1).max(512),
+                at,
+                from: z.object({ id, incarnation: id }).strict(),
+                to: z.object({ id, incarnation: id }).strict(),
+                phase: z.enum(["written", "read"]),
+                sourceHash: z.string().regex(/^[a-f0-9]{64}$/),
+              })
               .strict()
               .optional(),
           })
@@ -207,6 +220,11 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
       "contact result changed its owning native command",
     );
   for (const receipt of value.commandReceipts) {
+    memoryRequire(
+      receipt.kind === "mail" ? receipt.mail : !receipt.mail,
+      "mail proof changed its owning native outcome",
+    );
+    if (receipt.mail) assertMailReceipt(value, receipt);
     if (receipt.circumstance) {
       const meaning = JSON.parse(receipt.text);
       memoryRequire(
@@ -375,6 +393,7 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
       const receipt = value.commandReceipts.find((row) => row.id === source.committedReceiptId);
       memoryRequire(
         receipt &&
+          receipt.kind !== "mail" &&
           source.unitId === "native:" + receipt.id &&
           source.fingerprint === memoryHash(receipt) &&
           source.excerpt === receipt.text,
@@ -393,6 +412,26 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
       memoryRequire(
         !source.actorId || receipt.witnesses.includes(source.actorId),
         "native source has a non-witness author",
+      );
+      continue;
+    }
+    if (source.kind === "written") {
+      const receipt = value.commandReceipts.find((receipt) => receipt.id === source.committedReceiptId);
+      memoryRequire(receipt?.mail, "written source lost its native letter");
+      const canonical = mailEvidence(value.id, value.seed, receipt, source.act);
+      memoryRequire(
+        source.id === canonical.id &&
+          source.unitId === canonical.unitId &&
+          source.fingerprint === canonical.fingerprint &&
+          source.actorId === canonical.actorId &&
+          source.excerpt === canonical.excerpt &&
+          !source.range &&
+          !source.moment &&
+          !source.positions &&
+          source.perceptions.every((row) =>
+            canonical.perceptions.some((prior) => memoryHash(prior) === memoryHash(row)),
+          ),
+        "written source changed its exact letter or readers",
       );
       continue;
     }
@@ -563,6 +602,7 @@ export function readEpisodes(raw: unknown, seed: string): EpisodeCollection {
   );
   memoryRequire(value.revision === records.length, "episode append revision changed");
   episodeSourceGraph(records);
+  assertMailHistory(records);
   return immutableMemoryValue({ format: 1, revision: value.revision, records });
 }
 
@@ -570,7 +610,7 @@ export function episodeUnit(episode: AcceptedEpisode, unitId: string) {
   if (unitId.startsWith("version:") && episode.continuityVersionIds.includes(unitId.slice(8)))
     return continuityVersionUnit(unitId.slice(8));
   const original = unitId === "input" ? episode.privateInput : episode.segments.find((line) => line.id === unitId);
-  const source = episode.grounding.find((source) => source.unitId === unitId);
+  const source = episode.grounding.find((source) => source.unitId === unitId) ?? episodeMailEvidence(episode, unitId);
   if (original === undefined && source) return continuitySourceUnit(source);
   memoryRequire(original !== undefined, "missing episode evidence unit");
   return JSON.stringify([episode.id, unitId, memoryHash(original)]);
@@ -595,6 +635,7 @@ function buildEpisodeGraph(records: AcceptedEpisode[], scope: string) {
       "input",
       ...episode.segments.map((line) => line.id),
       ...episode.continuityVersionIds.map((id) => "version:" + id),
+      ...episode.commandReceipts.flatMap((receipt) => (receipt.mail ? ["mail:" + receipt.mail.sourceHash] : [])),
       ...episode.grounding.filter((source) => source.kind !== "knowledge").map((source) => source.unitId),
     ]);
     for (const unitId of unitIds) {

@@ -15,7 +15,7 @@ export type ContinuityEvidence = {
   moment?: { index: number; side: "before" | "after" };
   positions?: Record<string, string>;
   excerpt: string;
-  kind: "speech" | "observation" | "self" | "private" | "native" | "context" | "knowledge";
+  kind: "speech" | "written" | "observation" | "self" | "private" | "native" | "context" | "knowledge";
   actorId?: string;
   perceptions: { actorId: string; channel: "words" | "sight" | "sound-only" | "private"; text: string }[];
   act?: "offer" | "accept" | "refuse" | "withdraw";

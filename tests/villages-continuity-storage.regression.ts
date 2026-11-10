@@ -358,7 +358,7 @@ await runCase("continuity-storage/offer-evidence", () => {
     change(forged.continuity.records[0].offer!.events[0].sources[0] as typeof source);
     assert.throws(
       () => cold(forged),
-      /canonical|projection|excerpt/,
+      /canonical|projection|excerpt|communicated terms/,
       "digest-valid current pages cannot forge only the retained offer contribution",
     );
   }

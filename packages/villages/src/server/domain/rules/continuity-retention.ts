@@ -5,9 +5,11 @@ import {
   continuityVersionId,
   assertContinuityKnowledge,
   continuitySourceUnit,
+  continuityOfferSource,
 } from "./continuity.js";
 import { episodeSpeechEvidence, nativeReceiptSupportsRoom, episodeContextActors } from "./episode-sources.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
+import { episodeMailEvidence } from "./mail-evidence.js";
 
 /** Retirement cannot sever the accepted episode, canonical meaning or committed native evidence. */
 export function assertContinuityRetention(continuity: ContinuityCollection, episodes: EpisodeCollection) {
@@ -107,7 +109,8 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
         );
   function assertSource(source: ContinuityEvidence) {
     const episode = byEpisode.get(source.episodeId);
-    const speech = episode && episodeSpeechEvidence(episode, source.unitId);
+    const speech =
+      episode && (episodeSpeechEvidence(episode, source.unitId) ?? episodeMailEvidence(episode, source.unitId));
     const original =
       episode?.grounding.find((row) => row.id === source.id) ?? (speech?.id === source.id ? speech : undefined);
     const soundOnly = source.perceptions.length > 0 && source.perceptions.every((row) => row.channel === "sound-only");
@@ -166,6 +169,23 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
           continuityVersionId(creator.seed, version.operationId, head.holder) === version.id,
       );
       memoryRequire(actor || (version.room && room), "continuity version lost its creating holder");
+      if (actor)
+        for (const id of version.offerEvents ?? [])
+          memoryRequire(
+            roots
+              .get(version.rootId)
+              ?.offer?.events.find((event) => event.id === id)
+              ?.sources.every((source) =>
+                continuityOfferSource(
+                  source,
+                  { kind: "actor", id: actor.id, incarnation: actor.incarnation },
+                  version,
+                  continuity,
+                  id,
+                ),
+              ),
+            "historical offer knowledge lacks communicated terms",
+          );
       if (actor)
         for (const source of version.sources)
           memoryRequire(

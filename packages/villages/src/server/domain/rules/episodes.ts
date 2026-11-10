@@ -9,6 +9,7 @@ import {
 } from "./continuity.js";
 import { episodeSpeechEvidence, episodeContextActors } from "./episode-sources.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
+import { assertMailHistory, episodeMailEvidence } from "./mail-evidence.js";
 
 export const emptyEpisodes = (): EpisodeCollection => ({ format: 1, revision: 0, records: [] });
 
@@ -21,6 +22,7 @@ export function appendEpisode(collection: EpisodeCollection, raw: AcceptedEpisod
     return collection;
   }
   episodeSourceGraph([...collection.records, episode]);
+  assertMailHistory([...collection.records, episode]);
   return { format: 1, revision: collection.revision + 1, records: [...collection.records, episode] };
 }
 
@@ -145,7 +147,14 @@ function projectActorEpisode(
       ];
     return [];
   });
-  return { id: episode.id, sceneId: episode.sceneId, at: episode.capturedAt, input, segments };
+  const letters = episode.commandReceipts.flatMap((receipt) => {
+    const mail = receipt.mail;
+    if (!mail || !receipt.witnesses.includes(holder.id)) return [];
+    const id = "mail:" + mail.sourceHash;
+    if (protectedUnit(episode, id, blocked)) return [];
+    return [{ id, fromId: mail.from.id, toId: mail.to.id, at: mail.at, text: receipt.text, channel: "words" as const }];
+  });
+  return { id: episode.id, sceneId: episode.sceneId, at: episode.capturedAt, input, segments, letters };
 }
 
 /** Private GM chronology is distinct from every resident's eligible evidence. */
@@ -212,6 +221,20 @@ export function recallEpisodeSpeech(
     ? projected
     : undefined;
 }
+
+export function recallEpisodeMail(
+  episode: AcceptedEpisode,
+  unitId: string,
+  continuity: ContinuityCollection,
+  holder: Extract<ContinuityHolder, { kind: "actor" }>,
+  history: EpisodeCollection,
+) {
+  const view = actorEpisodeView(episode, continuity, holder, history),
+    source = episodeMailEvidence(episode, unitId);
+  return source && view?.letters.some((letter) => letter.id === unitId)
+    ? actorContinuityEvidence(source, holder.id)
+    : undefined;
+}
 function projectGmEpisode(
   episode: AcceptedEpisode,
   holders: Extract<ContinuityHolder, { kind: "actor" }>[],
@@ -231,12 +254,33 @@ function projectGmEpisode(
     holder,
     view: projectActorEpisode(episode, holder, blocked[index])!,
   }));
+  const letters = episode.commandReceipts.flatMap((receipt) => {
+    if (!receipt.mail) return [];
+    const id = "mail:" + receipt.mail.sourceHash;
+    const knownBy = views
+      .filter((row) => row.view.letters.some((letter) => letter.id === id))
+      .map((row) => row.holder.id);
+    return knownBy.length
+      ? [
+          {
+            id,
+            fromId: receipt.mail.from.id,
+            toId: receipt.mail.to.id,
+            at: receipt.mail.at,
+            text: receipt.text,
+            knownBy,
+          },
+        ]
+      : [];
+  });
+  if (episode.commandReceipts.some((receipt) => receipt.mail) && !letters.length) return null;
   return {
     id: episode.id,
     sceneId: episode.sceneId,
     at: episode.capturedAt,
     gmPrivateInput: inputProtected ? { withheld: true } : { text: episode.privateInput },
     groundedInput: views.flatMap(({ holder, view }) => view.input.map((row) => ({ ...row, for: holder.id }))),
+    ...(letters.length ? { letters } : {}),
     segments: episode.segments.flatMap((line) => {
       const perceived = views.flatMap((row) =>
         row.view.segments
@@ -318,7 +362,8 @@ export function selectEpisodeHistory(
     ];
   });
   const shared = recentSharedEpisodes(collection, holders)
-    .map((episode) => candidates.find((row) => row.episode.id === episode.id)!)
+    .map((episode) => candidates.find((row) => row.episode.id === episode.id))
+    .filter((row) => row !== undefined)
     .sort((a, b) => b.index - a.index);
   const recent = candidates.slice(-2),
     rest = candidates

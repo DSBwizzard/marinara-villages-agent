@@ -120,9 +120,40 @@ function perceived(source: ContinuityEvidence, actorId: string) {
 }
 function heardWords(source: ContinuityEvidence, actorId: string) {
   return (
-    source.kind === "speech" &&
+    (source.kind === "speech" || source.kind === "written") &&
     (source.actorId === actorId || source.perceptions.some((row) => row.actorId === actorId && row.channel === "words"))
   );
+}
+/** A later reader may learn the same signed letter, never a previously unheard spoken contribution. */
+export function continuityOfferSource(
+  source: ContinuityEvidence,
+  holder: Extract<ContinuityHolder, { kind: "actor" }>,
+  version: ContinuityVersion,
+  collection: ContinuityCollection,
+  eventId: string,
+) {
+  const known = [version, ...collection.versions]
+    .filter(
+      (row) =>
+        row.rootId === version.rootId &&
+        row.createdRevision <= version.createdRevision &&
+        (row === version || row.offerEvents?.includes(eventId)) &&
+        row.id === continuityVersionId(source.seed, row.operationId, holder),
+    )
+    .flatMap((row) => row.sources);
+  if (heardWords(source, holder.id) && known.some((row) => memoryHash(row) === memoryHash(source))) return source;
+  const read =
+    source.kind === "written" &&
+    known.find(
+      (row) =>
+        row.kind === "written" &&
+        row.unitId === source.unitId &&
+        row.fingerprint === source.fingerprint &&
+        row.actorId === source.actorId &&
+        row.excerpt === source.excerpt &&
+        heardWords(row, holder.id),
+    );
+  return read || undefined;
 }
 export function actorContinuityEvidence(source: ContinuityEvidence, actorId: string): ContinuityEvidence {
   memoryRequire(perceived(source, actorId), "unwitnessed saved continuity source");
@@ -221,7 +252,11 @@ function contribution(
 ) {
   const result = sources.filter(
     (source) =>
-      source.kind === "speech" && source.actorId === actorId && source.act === act && source.episodeId === episodeId,
+      (source.kind === "speech" ||
+        (source.kind === "written" && source.committedReceiptId?.startsWith("mail-written-"))) &&
+      source.actorId === actorId &&
+      source.act === act &&
+      source.episodeId === episodeId,
   );
   memoryRequire(result.length > 0, "offer decision needs actual deciding speech");
   return result;
@@ -470,23 +505,21 @@ export function applyContinuityWrite(
       ),
       at: context.at,
       operationId,
-      ...(record.offer
-        ? {
-            offerEvents: [
-              ...new Set([
-                ...(prior?.offerEvents ?? []),
-                ...record.offer.events
-                  .filter(
-                    (event) =>
-                      holder.kind === "actor" && event.sources.every((source) => heardWords(source, holder.id)),
-                  )
-                  .map((event) => event.id),
-              ]),
-            ],
-          }
-        : {}),
       ...(write.retire ? { closed: { reason: write.retire } } : prior?.closed ? { closed: { ...prior.closed } } : {}),
     };
+    if (record.offer)
+      version.offerEvents = [
+        ...new Set([
+          ...(prior?.offerEvents ?? []),
+          ...record.offer.events
+            .filter(
+              (event) =>
+                holder.kind === "actor" &&
+                event.sources.every((source) => continuityOfferSource(source, holder, version, collection, event.id)),
+            )
+            .map((event) => event.id),
+        ]),
+      ];
     memoryRequire(
       version.about.length <= 32 && new Set(version.about.map((subject) => subject.id)).size === version.about.length,
       "invalid continuity subject bindings",
@@ -605,7 +638,8 @@ export function applyContinuityWrite(
       for (const act of ["accept", "refuse", "withdraw"] as const) {
         const deciding = sources.filter(
           (source) =>
-            source.kind === "speech" &&
+            (source.kind === "speech" ||
+              (source.kind === "written" && source.committedReceiptId?.startsWith("mail-written-"))) &&
             source.actorId === party.id &&
             source.act === act &&
             source.episodeId === context.episodeId,
@@ -685,7 +719,9 @@ export function continuityViews(
           act: event.act,
           sources: event.sources.map((source) => {
             memoryRequire(holder.kind === "actor", "room cannot hold an offer");
-            return actorContinuityEvidence(source, holder.id);
+            const known = continuityOfferSource(source, holder, version, collection, event.id);
+            memoryRequire(known, "offer contribution was not communicated to this holder");
+            return actorContinuityEvidence(known, holder.id);
           }),
         })),
         state: closing

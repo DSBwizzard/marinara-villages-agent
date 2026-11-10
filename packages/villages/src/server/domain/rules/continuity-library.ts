@@ -311,7 +311,9 @@ export function inspectContinuityRelationships(
       support: row.version.sources.map((source) => ({
         id: source.id,
         text: source.excerpt,
-        ...(source.kind === "speech" && source.actorId ? { speaker: sourceSpeaker(state, source) } : {}),
+        ...((source.kind === "speech" || source.kind === "written") && source.actorId
+          ? { speaker: sourceSpeaker(state, source) }
+          : {}),
       })),
     }));
 }
@@ -405,7 +407,9 @@ export function inspectContinuityMemory(
           lineId: source.unitId,
           excerpt: source.excerpt,
           kind: source.kind,
-          ...(source.actorId && source.kind === "speech" ? { speaker: sourceSpeaker(state, source) } : {}),
+          ...(source.actorId && (source.kind === "speech" || source.kind === "written")
+            ? { speaker: sourceSpeaker(state, source) }
+            : {}),
           ...(episodes.get(source.episodeId)?.sceneId ? { sceneId: episodes.get(source.episodeId)!.sceneId } : {}),
         })),
       };

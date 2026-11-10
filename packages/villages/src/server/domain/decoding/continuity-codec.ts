@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { ContinuityCollection, ContinuityVersion } from "../models/continuity-model.js";
 import {
   continuityHolderKey,
+  continuityOfferSource,
   ownedContinuityClass,
   CONTINUITY_TEXT_BYTES,
   ROOM_CONTINUITY_TEXT_BYTES,
@@ -48,7 +49,7 @@ export const continuityEvidenceSchema = z
       .optional(),
     positions: z.record(z.string(), z.string()).optional(),
     excerpt: text(ROOM_CONTINUITY_TEXT_BYTES),
-    kind: z.enum(["speech", "observation", "self", "private", "native", "context", "knowledge"]),
+    kind: z.enum(["speech", "written", "observation", "self", "private", "native", "context", "knowledge"]),
     actorId: id.optional(),
     perceptions: z
       .array(
@@ -68,9 +69,9 @@ export const continuityEvidenceSchema = z
   .strict()
   .refine(
     (value) =>
-      (value.kind !== "native" || Boolean(value.committedReceiptId)) &&
+      (!["native", "written"].includes(value.kind) || Boolean(value.committedReceiptId)) &&
       (value.kind !== "context" || !value.perceptions.length) &&
-      (!value.act || value.kind === "speech"),
+      (!value.act || value.kind === "speech" || value.kind === "written"),
   );
 const closed = z.object({ reason: z.enum(["fulfilled", "withdrawn", "ended"]) }).strict();
 const completeNativeMeaning = (value: Pick<ContinuityVersion, "text" | "sources">) =>
@@ -258,7 +259,16 @@ export function readContinuity(raw: unknown, seed?: string): ContinuityCollectio
       );
       memoryRequire(!current.closed || !head.current, "closed continuity remains current");
       if (head.holder.kind === "actor") {
-        const actorId = head.holder.id;
+        const holder = head.holder,
+          actorId = holder.id;
+        memoryRequire(
+          (current.offerEvents ?? []).every((id) =>
+            entry.offer?.events
+              .find((event) => event.id === id)
+              ?.sources.every((source) => continuityOfferSource(source, holder, current, value, id)),
+          ),
+          "saved offer knowledge lacks communicated terms",
+        );
         memoryRequire(
           current.sources.every((source) =>
             source.kind === "private" || source.kind === "self" || source.kind === "knowledge"
@@ -323,7 +333,7 @@ export function readContinuity(raw: unknown, seed?: string): ContinuityCollectio
           offer.participants.some((party) => party.id === event.by) &&
             event.sources.every(
               (source) =>
-                source.kind === "speech" &&
+                (source.kind === "speech" || source.kind === "written") &&
                 source.actorId === event.by &&
                 source.act === event.act &&
                 (!seed || source.seed === seed),

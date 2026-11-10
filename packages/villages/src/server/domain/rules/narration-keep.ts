@@ -8,7 +8,12 @@ import type {
 import { continuityHolderKey } from "./continuity.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { readContinuityProposal, readNarrationEffectHeader } from "./narration-contract.js";
-import { assertNarrationSourceOrder, bindNarrationSource, type NarrationSourceContext } from "./narration-sources.js";
+import {
+  assertNarrationSourceOrder,
+  bindNarrationSource,
+  type NarrationSourceContext,
+  type NarrationSourceOwner,
+} from "./narration-sources.js";
 
 /** Combine only explicitly cited projections of the same canonical source, never an unprovided audience. */
 function citedSources(values: ContinuityEvidence[]) {
@@ -43,12 +48,14 @@ function citedSources(values: ContinuityEvidence[]) {
 }
 
 /** Bind model meaning to the actual fitted read set; revisions, incarnations and fingerprints are code-owned. */
-export function prepareNarrationKeep(
+export function prepareContinuityKeep(
   raw: unknown,
   ordinal: number,
   collection: ContinuityCollection,
   admission: ContinuityAdmission,
-  sourceContext: NarrationSourceContext,
+  sourceContext: Pick<NarrationSourceContext, "seed" | "episodeId" | "operationId" | "actors" | "subjects"> & {
+    bindSource(ref: unknown, owner: NarrationSourceOwner): ContinuityEvidence;
+  },
 ) {
   const proposal = readContinuityProposal(raw),
     header = readNarrationEffectHeader(raw, "keep-" + ordinal);
@@ -178,7 +185,7 @@ export function prepareNarrationKeep(
     text,
     class: proposal.class ?? prior?.class ?? (learning ? description?.class : undefined) ?? ("experience" as const),
   };
-  const sources = citedSources(proposal.source.map((ref) => bindNarrationSource(ref, sourceContext, sourceOwner)));
+  const sources = citedSources(proposal.source.map((ref) => sourceContext.bindSource(ref, sourceOwner)));
   assertNarrationSourceOrder(sources);
   if (proposal.parent)
     memoryRequire(
@@ -245,4 +252,17 @@ export function prepareNarrationKeep(
     },
     sources,
   };
+}
+
+export function prepareNarrationKeep(
+  raw: unknown,
+  ordinal: number,
+  collection: ContinuityCollection,
+  admission: ContinuityAdmission,
+  sourceContext: NarrationSourceContext,
+) {
+  return prepareContinuityKeep(raw, ordinal, collection, admission, {
+    ...sourceContext,
+    bindSource: (ref, owner) => bindNarrationSource(ref, sourceContext, owner),
+  });
 }
