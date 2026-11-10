@@ -8,8 +8,10 @@ import { coerceSession } from "../../packages/villages/src/server/domain/decodin
 import { defaultVenueSpace } from "../../packages/villages/src/server/domain/rules/venue-model.js";
 import { captureSceneLayout } from "../../packages/villages/src/server/domain/rules/scene-layout.js";
 import type { VenueScene } from "../../packages/villages/src/server/domain/models/scene-model.js";
-import { relationshipDocumentId } from "../../packages/villages/src/server/adapters/storage/relationship-payload-store.js";
 import { seedVillageFixtureDocuments, fixtureSceneState } from "../helpers/village-storage.fixture.js";
+import { initializeRoomContinuity } from "../../packages/villages/src/server/domain/rules/native-continuity.js";
+import { captureSceneContinuity } from "../../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { agendaFixture } from "../helpers/agenda.fixture.js";
 
 export async function packagedSceneServer(
   options: {
@@ -33,6 +35,7 @@ export async function packagedSceneServer(
     {
       letterFontId: "caveat",
       characterId: "mara",
+      incarnation: "mara:packaged",
       addedAt: now,
       cardSnapshot: {
         id: "mara",
@@ -58,6 +61,7 @@ export async function packagedSceneServer(
           name: "Exterior",
           venueClass: "other",
           kind: "exterior",
+          description: "A stone threshold outside the mill.",
           connectedTo: ["common"],
           seen: true,
         },
@@ -67,6 +71,7 @@ export async function packagedSceneServer(
           name: "Common",
           venueClass: "other",
           kind: "public",
+          description: "A wooden bench stands against a plaster wall.",
           connectedTo: ["exterior"],
           seen: true,
         },
@@ -74,8 +79,24 @@ export async function packagedSceneServer(
     },
   ].map(venueFixture) as typeof world.venues;
   options.configure?.(world, now);
+  world.startingHistory.reviewed = Object.fromEntries(world.villagers.map((row) => [row.characterId, row.incarnation]));
+  for (const actor of world.villagers)
+    actor.agenda ??= agendaFixture({
+      generatedAt: now,
+      activeDay: {
+        dateKey: now.slice(0, 10),
+        weekday: new Intl.DateTimeFormat("en", { weekday: "long", timeZone: "UTC" }).format(new Date(now)),
+        scheduleInformed: false,
+        blocks: [
+          { startMinute: 0, endMinute: 1440, venueId: "mill", zoneId: "common", activity: "Free time", flexible: true },
+        ],
+      },
+    });
+  for (const venue of world.venues)
+    for (const zone of venue.zones ?? [])
+      initializeRoomContinuity(world, venue.id, zone.id, zone.description, "packaged-founding", now);
   const scene = coerceSession({
-    version: 4,
+    version: 5,
     liveSceneVersion: 1,
     accompanying: [{ characterId: "mara", zoneId: "common" }],
     id: "browser",
@@ -84,7 +105,6 @@ export async function packagedSceneServer(
     area: "public",
     zoneId: "common",
     villageSeed: world.seed,
-    semanticVersion: 2,
     status: "active",
     startedAt: now,
     lastActivityAt: now,
@@ -99,6 +119,7 @@ export async function packagedSceneServer(
     submissions: [],
   });
   options.configureScene?.(scene);
+  scene.continuity = captureSceneContinuity(world, scene, Date.parse(now));
   const records = new Map<string, any>([
     ["villages-village", { id: "villages-village", packageId: "villages", kind: "village", revision: 1, data: world }],
     [
@@ -136,10 +157,6 @@ export async function packagedSceneServer(
     remove: async (_pkg: string, id: string, revision: number) =>
       records.get(id)?.revision === revision && records.delete(id),
   };
-  if (world.relationshipContext) {
-    const id = relationshipDocumentId(world.seed);
-    records.set(id, { id, packageId: "villages", kind: "relationships", revision: 1, data: world.relationshipContext });
-  }
   await seedVillageFixtureDocuments(documents as any);
   assert(Object.hasOwn(records.get("villages-village").data, "memoryHead"));
   assert(!Object.hasOwn(records.get("villages-village").data, "memories"));
@@ -159,11 +176,9 @@ export async function packagedSceneServer(
     chatComplete: async (messages: any[]) => {
       calls++;
       assert.match(messages[0].content, /GM of Villages/, "Only the current GM writer may dispatch");
-      const text = messages.at(-1)?.content ?? "";
       return {
         content: JSON.stringify({
-          input: text ? [{ kind: "speech", text }] : [],
-          segments: [{ kind: "dialogue", speakerId: "mara", text: "I heard your browser message." }],
+          segments: [{ kind: "dialogue", speakerId: "mara", text: "Hello there." }],
         }),
         finishReason: "stop",
         usage: { inputTokens: 10, outputTokens: 10 },
@@ -212,6 +227,7 @@ export async function packagedSceneServer(
     model,
     calls: () => calls,
     records,
+    documents,
     scene: () => fixtureSceneState(records.get("villages-venue-visit-browser").data, records),
   };
 }

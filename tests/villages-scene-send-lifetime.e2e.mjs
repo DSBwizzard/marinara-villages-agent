@@ -221,6 +221,27 @@ await withBrowser(browser, async () => {
   // Hook state is viewport-independent; packaged layout suites retain desktop/phone coverage.
   for (const width of [1366])
     for (const strict of [false, true]) {
+      const exact = await mount({ width, strict, hold: "none" });
+      try {
+        const draft = "  *A private thought.* I ask, ‘Why?’\n  🪑  ";
+        await exact.page.evaluate((value) => window.h.setDraft(value), draft);
+        await expect.poll(async () => (await exact.state()).draft).toBe(draft);
+        await exact.settle(await exact.send());
+        assert.equal(
+          exact.requests.find((row) => row.path.endsWith("/turn")).body.message,
+          draft,
+          "the mounted composer sends the exact original submission",
+        );
+        assert.equal((await exact.state()).draft, "");
+        const count = exact.requests.length;
+        await exact.page.evaluate(() => window.h.setDraft(" \n\t "));
+        await expect.poll(async () => (await exact.state()).draft).toBe(" \n\t ");
+        await exact.settle(await exact.send());
+        assert.equal(exact.requests.length, count, "a blank draft cannot start preflight or a provider request");
+        assert.deepEqual(exact.errors, []);
+      } finally {
+        await exact.page.close();
+      }
       for (const stage of ["operation", "turn", "recovery-operation", "active", "archive"]) {
         const f = await mount({
           width,

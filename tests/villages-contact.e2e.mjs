@@ -99,7 +99,6 @@ await withBrowser(browser, async () => {
           sceneRevision: submissions.length,
           participants: [{ characterId: "mara", name: "Mara", doing: "Answering a contact request" }],
           doorwayContacts: [{ characterId: "mara", playerZoneId: "exterior" }],
-          entryOffers: [{ zoneId: "common", label: "Common Space", controllerId: "mara", accompanies: false }],
           lines: [
             ...session.lines,
             {
@@ -136,7 +135,6 @@ await withBrowser(browser, async () => {
         };
         if (submitted.message === "I look around.") {
           session.doorwayContacts = [];
-          session.entryOffers = [];
           session.lines[session.lines.length - 1] = {
             id: "answer:" + submitted.submissionId,
             role: "assistant",
@@ -157,7 +155,6 @@ await withBrowser(browser, async () => {
           sceneRevision: session.sceneRevision + 1,
           activeIds: ["mara"],
           doorwayContacts: [],
-          entryOffers: [],
         };
         value = { session };
       }

@@ -5,7 +5,7 @@ import { asRecord, asTrimmedString } from "./coerce.js";
 
 import { sceneAccessState, sceneLayoutVenue } from "./scene-layout.js";
 import { type AccessContext, evaluateZoneAccess } from "./venue-access.js";
-import { canOccupyZone, venueZones, zoneClosed } from "./venue-zones.js";
+import { venueZones, zoneClosed } from "./venue-zones.js";
 
 export type ContactDelivery = "voice" | "loud";
 export type ContactIntent = {
@@ -50,35 +50,39 @@ export function contactPosition(
   );
 }
 
-/** Project the existing invitation's escort only for deliberate entry checks. */
+/** Project a native permission's present escort only for deliberate entry checks. */
 export function sceneMoveAccompanying(
-  scene: Pick<VenueScene, "entryOffers" | "accompanying" | "sceneAttendance" | "departedIds" | "zoneId">,
+  scene: VenueScene,
   venue: VillageVenue,
   zone: VillageVenueZone,
+  state: VillageState,
 ) {
-  const offered = scene.entryOffers?.find((entry) => entry.zoneId === zone.id);
-  return offered?.accompanies &&
-    canOccupyZone(venue, zone, offered.controllerId) &&
-    contactPosition(scene, offered.controllerId) === scene.zoneId
-    ? [
-        ...(scene.accompanying ?? []).filter((entry) => entry.characterId !== offered.controllerId),
-        { characterId: offered.controllerId, zoneId: zone.id },
-      ]
-    : scene.accompanying;
+  const context = sceneAccessContext(scene);
+  for (const grant of venue.access?.permissions ?? []) {
+    const escort = grant.accompaniedBy ?? (zone.access?.accompanied ? grant.issuerId : null);
+    if (
+      !escort ||
+      contactPosition(scene, escort) !== scene.zoneId ||
+      !contactPath(state, venue, scene.zoneId ?? "", zone.id, escort, scene)
+    )
+      continue;
+    const decision = evaluateZoneAccess(venue, zone, "player", {
+      ...context,
+      positions: { ...context.positions, [escort]: zone.id },
+      accepting: true,
+      unavailable: zoneClosed(state, venue, zone),
+      environment: state.narrative,
+    });
+    if (decision.allowed && decision.permissionId === grant.id && decision.accompaniedBy === escort)
+      return [
+        ...(scene.accompanying ?? []).filter((entry) => entry.characterId !== escort),
+        { characterId: escort, zoneId: zone.id },
+      ];
+  }
+  return scene.accompanying;
 }
 export function sceneAccessContext(
-  scene: Pick<
-    VenueScene,
-    | "id"
-    | "startedAt"
-    | "sceneAttendance"
-    | "accompanying"
-    | "departedIds"
-    | "zoneId"
-    | "continuity"
-    | "villageSeed"
-    | "submissions"
-  >,
+  scene: Pick<VenueScene, "id" | "startedAt" | "sceneAttendance" | "accompanying" | "departedIds" | "zoneId">,
 ): AccessContext {
   return {
     sceneId: scene.id,

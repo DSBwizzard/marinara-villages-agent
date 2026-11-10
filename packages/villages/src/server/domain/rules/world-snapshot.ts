@@ -149,17 +149,7 @@ export function exactSnapshotTransition(village: VillageState, now: Date): strin
 export function villageSettings(
   village: VillageState,
   player: VillagePlayerIdentity,
-  residenceAccess: Pick<
-    VenueScene,
-    | "placeId"
-    | "area"
-    | "privateOwnerId"
-    | "zoneId"
-    | "entryOffers"
-    | "accompanying"
-    | "sceneAttendance"
-    | "departedIds"
-  > | null,
+  residenceAccess: VenueScene | null,
   accessContext?: import("../../domain/rules/venue-access.js").AccessContext,
   now = new Date(),
 ): VillageSettingsView {
@@ -280,7 +270,7 @@ export function villageSettings(
                   positions: {
                     ...context?.positions,
                     ...Object.fromEntries(
-                      (sceneMoveAccompanying(residenceAccess, venue, originalZone) ?? [])
+                      (sceneMoveAccompanying(residenceAccess, venue, originalZone, village) ?? [])
                         .filter((entry) => !residenceAccess.departedIds?.includes(entry.characterId))
                         .map((entry) => [entry.characterId, entry.zoneId]),
                     ),

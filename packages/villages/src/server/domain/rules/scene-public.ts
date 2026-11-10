@@ -180,12 +180,6 @@ function authority(scene: VenueScene) {
       playerZoneId,
       delivery,
     })),
-    entryOffers: (scene.entryOffers ?? []).map(({ zoneId, label, controllerId, accompanies }) => ({
-      zoneId,
-      label,
-      controllerId,
-      accompanies,
-    })),
     ...(facts
       ? {
           capturedContext: true,

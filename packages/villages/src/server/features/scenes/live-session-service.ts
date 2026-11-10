@@ -404,7 +404,6 @@ export function createLiveScenes({
         Object.entries(state.departureDestinations ?? {}).filter(([id]) => departedIds.includes(id)),
       );
       state.doorwayContacts = (state.doorwayContacts ?? []).filter((row) => sameRoutine(row.characterId));
-      state.entryOffers = (state.entryOffers ?? []).filter((row) => sameRoutine(row.controllerId));
       const people = sceneZoneOccupants(state, venue, requireSceneZoneId(state));
       if (
         people.filter((person) => village.villagers.some((resident) => resident.characterId === person.characterId))

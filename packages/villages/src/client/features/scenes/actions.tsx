@@ -795,8 +795,8 @@ export function useSendRoom(ports: {
     async (replacement?: ContactRecovery) => {
       if (recoveryPending || (contactRecovery?.sceneId === room?.id && !replacement)) return;
       const editVersion = composerEditVersionRef?.current ?? 0;
-      const text = roomDraft.trim();
-      if (room === null || !room.id || roomEnded || roomBusy || roomSendInFlightRef.current || text.length === 0)
+      const text = roomDraft;
+      if (room === null || !room.id || roomEnded || roomBusy || roomSendInFlightRef.current || text.trim().length === 0)
         return;
       const claim = lifetime.begin(room.id);
       if (!claim) return;
@@ -1253,7 +1253,7 @@ export function useRetrySavedScene(ports: {
                 : (operation.input?.message ?? roomDraft),
             );
             setRoomRuling(sceneTurnOutcomeMessage(answer.turnOutcome));
-          } else if (roomDraft.trim() === operation.input?.message) setRoomDraft("");
+          } else if (roomDraft === operation.input?.message) setRoomDraft("");
         }
         roomSubmissionIdRef.current = null;
         roomLeaveSubmissionIdRef.current = null;

@@ -210,8 +210,13 @@ export function createSceneCommands({
     if (receipt) {
       if (receipt.destinationZoneId !== zoneId) throw conflict("That navigation ID belongs to a different Zone.");
       // A delayed retry must never move the player back after newer navigation.
-      if (saved.operation?.id !== operationId || saved.operation.status === "complete")
-        return requireLiveVenueSession(sessionId);
+      if (saved.operation?.id !== operationId || saved.operation.status === "complete") {
+        if (saved.status === "closed" || (await readActive()).sessionId !== sessionId)
+          throw conflict("That Scene is not active.");
+        if ((await readVillageState()).seed !== saved.villageSeed)
+          throw conflict("That Village changed. Its saved Scene is preserved.");
+        return saved;
+      }
     }
     return coordinateVenue(
       sessionId,
@@ -264,7 +269,7 @@ export function createSceneCommands({
         });
       });
     if (zoneClosed(village, venue, zone)) throw conflict("This zone is closed for Renovation.");
-    const accompanying = sceneMoveAccompanying(session, venue, zone);
+    const accompanying = sceneMoveAccompanying(session, venue, zone, village);
     if (
       !contactPath(village, venue, requireSceneZoneId(session), zone.id, "player", {
         ...session,
@@ -284,25 +289,40 @@ export function createSceneCommands({
       environment: village.narrative,
     });
     if (!decision.allowed) throw conflict(decision.explanation);
-    await changeSceneVenues(session, (state) => {
-      const captured = findLocation(state, venue.id)!;
-      claimVisitPermission(captured, decision.permissionId, session.id);
-    });
     await mutateVillageState((state) => {
       const current = findLocation(state, venue.id);
       const target = current && resolveVenueZone(current, zone.id);
-      if (!current || !target) return;
-      const decision = evaluateZoneAccess(current, target, "player", {
+      if (!current || !target) throw conflict("That Zone is no longer available.");
+      const liveScene = {
+        ...session,
+        continuity: undefined,
+        sceneAttendance: session.sceneAttendance ? { ...session.sceneAttendance, layout: undefined } : undefined,
+        accompanying,
+      };
+      if (!contactPath(state, current, requireSceneZoneId(session), target.id, "player", liveScene))
+        throw conflict("That route is no longer permitted.");
+      for (const companion of accompanying ?? []) {
+        const origin = contactPosition(session, companion.characterId);
+        if (
+          origin !== companion.zoneId &&
+          !contactPath(state, current, origin, companion.zoneId, companion.characterId, liveScene)
+        )
+          throw conflict("Your escort can no longer take that route.");
+      }
+      const currentDecision = evaluateZoneAccess(current, target, "player", {
         ...sceneAccessContext({ ...session, accompanying }),
         accepting: true,
         unavailable: zoneClosed(state, current, target),
         environment: state.narrative,
       });
-      if (!decision.allowed) {
-        if (session.continuity) return;
-        throw conflict(decision.explanation);
-      }
-      claimVisitPermission(current, decision.permissionId, session.id);
+      if (!currentDecision.allowed) throw conflict(currentDecision.explanation);
+      if (decision.permissionId && currentDecision.permissionId !== decision.permissionId)
+        throw conflict("That invitation changed. Refresh the Scene before moving.");
+      claimVisitPermission(current, currentDecision.permissionId, session.id);
+    });
+    await changeSceneVenues(session, (state) => {
+      const captured = findLocation(state, venue.id)!;
+      claimVisitPermission(captured, decision.permissionId, session.id);
     });
     const moved = await changeSession(sessionId, (state) => {
       if (state.navigationReceipts?.some((entry) => entry.id === operationId)) return;
@@ -319,7 +339,6 @@ export function createSceneCommands({
       }
       state.accompanying = accompanying ?? [];
       state.doorwayContacts = movedAttentionContacts(venue, session, state);
-      state.entryOffers = state.entryOffers?.filter((entry) => entry.zoneId !== zone.id);
       for (const person of people) {
         if (!state.participants.some((entry) => entry.characterId === person.characterId))
           state.participants.push({ characterId: person.characterId, name: person.name, doing: person.doing });

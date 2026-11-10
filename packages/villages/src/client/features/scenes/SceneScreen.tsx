@@ -300,7 +300,11 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
                 if (zone.closed) return false;
                 return zone.accessView?.decision.allowed ?? false;
               })
-              .map((zone) => ({ id: zone.id, label: sceneZoneLabel(zone), closed: zone.closed }));
+              .map((zone) => ({
+                id: zone.id,
+                label: sceneZoneLabel(zone) + (zone.accessView?.decision.reason === "invitation" ? " (invited)" : ""),
+                closed: zone.closed,
+              }));
           })()}
           onMovementTarget={(zoneId) => void moveRoom(zoneId)}
           currentZoneLabel={sceneZoneLabel(

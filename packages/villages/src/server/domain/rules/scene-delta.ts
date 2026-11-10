@@ -42,7 +42,6 @@ export function applyAcceptedSceneDelta(scene: VenueScene, episode: AcceptedEpis
         destinationZoneId: move.zoneId,
         at: episode.acceptedAt,
       });
-      scene.entryOffers = scene.entryOffers?.filter((offer) => offer.zoneId !== move.zoneId);
       const zone = findLocation(scene.continuity?.facts, scene.placeId)?.zones?.find((zone) => zone.id === move.zoneId);
       if (zone) zone.seen = true;
     } else {

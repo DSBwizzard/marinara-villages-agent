@@ -176,7 +176,6 @@ export function coerceSession(value: unknown): VenueScene {
       ),
     ),
     doorwayContacts: Array.isArray(raw.doorwayContacts) ? (raw.doorwayContacts as DoorwayContact[]) : [],
-    entryOffers: Array.isArray(raw.entryOffers) ? (raw.entryOffers as VenueScene["entryOffers"]) : [],
     accompanying: Array.isArray(raw.accompanying)
       ? raw.accompanying.flatMap((value) => {
           const row = asRecord(value);

@@ -1526,7 +1526,6 @@ export function RoomPanel({
                       .map((zone) => (
                         <option key={zone.id} value={zone.id}>
                           {zone.label}
-                          {room.entryOffers?.some((offer) => offer.zoneId === zone.id) ? " (invited)" : ""}
                         </option>
                       ))}
                   </select>

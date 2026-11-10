@@ -587,8 +587,13 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       ["turn", "leave", "leave"],
       ["close", "chat", "end"],
     ]) {
-      const operation = savedOperation(kind, mode),
-        f = await mount(strict, width, { operation, initiallyClosed: kind === "close" });
+      const operation = savedOperation(kind, mode);
+      if (kind === "turn") operation.input.message = "  *A private thought.* Why?\n  🪑  ";
+      const f = await mount(strict, width, {
+        operation,
+        initiallyClosed: kind === "close",
+        ...(kind === "turn" ? { draft: operation.input.message } : {}),
+      });
       try {
         const index = await f.launch("retry");
         await f.settle(index);

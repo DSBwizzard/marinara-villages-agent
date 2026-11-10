@@ -36,7 +36,7 @@ export const isolatedTests = new Set([
   // Reviewed: fixed domain inputs and process-local fake runtime/document stores;
   // these suites open no provider, port, shared output or real saved world.
   "tests/villages-attention.regression.ts",
-  "tests/villages-scene-room-application.regression.ts",
+  "tests/villages-scene-entry.regression.ts",
   "tests/villages-writing-settings-ownership.regression.ts",
   "tests/villages-clock.regression.ts",
   "tests/villages-time-advance.regression.ts",

@@ -23,8 +23,8 @@ export function readChatId(value: unknown): string {
   return chatId;
 }
 export function readMessage(value: unknown): string {
-  const message = typeof value === "string" ? value.trim() : "";
-  if (message.length === 0) throw badRequest("Write something before sending it.");
+  const message = typeof value === "string" ? value : "";
+  if (message.trim().length === 0) throw badRequest("Write something before sending it.");
   if (message.length > 4000) {
     throw badRequest("A line can be at most 4000 characters.");
   }
