@@ -8,6 +8,7 @@ import type { VillageVenueClass } from "./world.js";
 export type VenueLine = {
   speechSource?: { version: 3; spans: import("../rules/source-span.js").InputSourceSpan[] };
   id: string;
+  inputOf?: string;
   speakerId: string;
   name: string;
   role: "user" | "assistant";
@@ -25,7 +26,7 @@ export type VenueLine = {
   contactHidden?: boolean;
   attentionEvidence?: boolean;
   contactReport?: boolean;
-  kind?: "narration" | "dialogue" | "side" | "whisper";
+  kind?: "narration" | "dialogue" | "side" | "whisper" | "input";
   delivery?: SpeechDelivery;
   presentation?: SpeechPresentation;
   staging?: StagingCue[];

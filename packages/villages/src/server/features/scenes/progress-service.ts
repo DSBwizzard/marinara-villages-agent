@@ -1,4 +1,5 @@
 import { villageNow } from "../../adapters/time/clock-gate.js";
+import { appendSceneInput } from "../../domain/rules/scene-input.js";
 import {
   acceptedNarrationEpisode,
   abandonNarration,
@@ -101,6 +102,7 @@ export function createSceneProgress({
           "saved narration changed during publication",
         );
         if (entry.acceptance.status === "applied") return;
+        appendSceneInput(saved, entry);
         if (abandoned) {
           entry.acceptance = { ...entry.acceptance, status: "abandoned" };
           return;
@@ -148,6 +150,7 @@ export function createSceneProgress({
         await changeSession(scene.id, (saved) => {
           const entry = mutableSceneSubmission(saved, turn.id);
           if (entry && (entry.acceptance.status === "pending" || entry.acceptance.status === "held")) {
+            appendSceneInput(saved, entry);
             entry.progressError = String(error).slice(0, 300);
             if (validationFailure === error)
               entry.acceptance = {
@@ -226,6 +229,7 @@ export function createSceneProgress({
           "saved narration changed during abandonment",
         );
         entry.acceptance = { ...entry.acceptance, status: "abandoned" };
+        appendSceneInput(saved, entry);
       });
       onSettled?.(sessionId);
       return "abandoned" as const;

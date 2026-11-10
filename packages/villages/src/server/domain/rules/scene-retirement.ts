@@ -32,7 +32,7 @@ export function sceneRetirementSourceIsValid(value: unknown): boolean {
     )
       return false;
     if (line.role !== "user" && line.role !== "assistant") return false;
-    if (line.kind !== undefined && !["narration", "dialogue", "side", "whisper"].includes(String(line.kind)))
+    if (line.kind !== undefined && !["narration", "dialogue", "side", "whisper", "input"].includes(String(line.kind)))
       return false;
     if (line.delivery !== undefined && !["ordinary", "whisper", "shout"].includes(String(line.delivery))) return false;
     if (

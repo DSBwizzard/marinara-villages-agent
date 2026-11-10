@@ -1,4 +1,5 @@
 import { memoryHash } from "../../domain/rules/memory-integrity.js";
+import { appendSceneInput } from "../../domain/rules/scene-input.js";
 import { WorkFailureError } from "../../domain/rules/work-failure.js";
 import { zonePictureBaseline } from "../../domain/rules/zone-picture.js";
 import { captureZoneObservation } from "../../domain/rules/zone-observation.js";
@@ -174,6 +175,7 @@ export function createSceneCommands({
           zoneIdAtTurn: generated.readset.source.scene.zoneId,
           activeIdsAtTurn: [...generated.readset.source.scene.activeIds],
         });
+        appendSceneInput(saved, saved.submissions.at(-1)!);
       });
     }
     await processSavedExchange(scene.id, input.submissionId);

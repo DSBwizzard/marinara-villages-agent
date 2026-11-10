@@ -1371,10 +1371,6 @@ export function coerceVillageState(value: unknown): VillageState {
   const raw = asRecord(value);
   if (value != null && raw.version !== 18) throw new Error("Unsupported Village format. Start a fresh Village.");
   if (value != null) memoryRequire(raw.continuity && raw.episodes, "current Village continuity data is missing");
-  if (raw.foundedAt && raw.socialContractVersion !== 2)
-    throw new Error(
-      "This Village uses an unsupported relationship contract. Create an independent new Village; its saved data has not been changed.",
-    );
   const fallback = defaultVillageState();
   const venues = coerceVenues(raw.venues);
   const villagers = Array.isArray(raw.villagers)

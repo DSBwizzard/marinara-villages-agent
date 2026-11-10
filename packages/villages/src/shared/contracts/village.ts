@@ -702,6 +702,7 @@ type VillagePlaceView = {
  * villager is gone from the village.
  */
 export type RoomLine = {
+  inputOf?: string;
   /** A character id, or `""` for the player's own line — the same rule `asTranscriptMessage` writes by. */
   speakerId: string;
   /** What to print over the paragraph. Empty on the player's own lines. */
@@ -715,7 +716,7 @@ export type RoomLine = {
   physicalIdsAfter?: string[];
   presenceChange?: true;
   /** The registers of this line's own paragraphs, on the same terms as a message's. */
-  kind?: "narration" | "dialogue" | "side" | "whisper";
+  kind?: "narration" | "dialogue" | "side" | "whisper" | "input";
   delivery?: SpeechDelivery;
   presentation?: SpeechPresentation;
   staging?: StagingCue[];

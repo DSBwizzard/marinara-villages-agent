@@ -1,4 +1,4 @@
-// Test cases: scene-narration/outbox, scene-narration/held, scene-narration/lost-ack, scene-narration/write-failure, scene-narration/startup-hold, scene-narration/activation-owner, scene-narration/private-projection, scene-narration/validation-hold, scene-narration/cancellation, scene-narration/connected-turn, scene-narration/saved-changes, scene-narration/coordinator-startup-hold, scene-narration/abandon, scene-narration/abandon-lost-ack, scene-narration/abandon-committed, scene-narration/abandon-fence, scene-narration/startup-no-write, scene-narration/replace-committed, scene-narration/retirement, scene-narration/skip-ownership
+// Test cases: scene-narration/outbox, scene-narration/held, scene-narration/lost-ack, scene-narration/write-failure, scene-narration/startup-hold, scene-narration/activation-owner, scene-narration/private-projection, scene-narration/validation-hold, scene-narration/cancellation, scene-narration/connected-turn, scene-narration/saved-changes, scene-narration/coordinator-startup-hold, scene-narration/abandon, scene-narration/abandon-lost-ack, scene-narration/abandon-committed, scene-narration/abandon-fence, scene-narration/startup-no-write, scene-narration/replace-committed, scene-narration/retirement, scene-narration/skip-ownership, scene-narration/input-playback
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -38,6 +38,13 @@ import {
 import { createSceneWriting } from "../packages/villages/src/server/features/scenes/writing-service.js";
 import { createSceneCommands } from "../packages/villages/src/server/features/scenes/command-service.js";
 import { createSceneChanges } from "../packages/villages/src/server/features/scenes/changes-service.js";
+import { createSceneQueryService } from "../packages/villages/src/server/features/scenes/scene-query-service.js";
+import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { heardLines } from "../packages/villages/src/server/domain/rules/scene-record.js";
+import { actorEpisodeView } from "../packages/villages/src/server/domain/rules/episodes.js";
+import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
+import { readAcceptedEpisode } from "../packages/villages/src/server/domain/decoding/episode-codec.js";
+import { scenePlaybackSteps } from "../packages/villages/src/client/features/scenes/scene-playback.js";
 import { readNpc } from "../packages/villages/src/server/domain/rules/places.js";
 import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
 import { sessionSlot } from "../packages/villages/src/server/adapters/storage/scene-slots.js";
@@ -249,8 +256,9 @@ await runCase("scene-narration/outbox", async () => {
   assert.equal(f.world.continuity.versions.length, 1);
   assert.equal(f.turn().acceptance.status, "applied");
   assert.equal(f.turn().narration, undefined);
-  assert.equal(f.scenes.get("scene")!.lines.length, 1);
-  assert(f.scenes.get("scene")!.lines.every((line) => line.role === "assistant"));
+  assert.equal(f.scenes.get("scene")!.lines.length, 2);
+  assert(f.world.episodes.records[0].segments.every((line) => line.role === "assistant"));
+  assert.equal(f.scenes.get("scene")!.lines.find((line) => line.kind === "input")!.content, f.turn().message);
   const cold = coerceSession(JSON.parse(JSON.stringify(f.scenes.get("scene"))));
   assert.equal(cold.submissions[0].episodeId, f.world.episodes.records[0].id);
   await f.service.processSavedExchange("scene", "turn");
@@ -269,7 +277,10 @@ await runCase("scene-narration/held", async () => {
   assert.equal(f.turn().acceptance.status, "held");
   assert(f.turn().narration);
   assert.equal(f.world.episodes.records.length, 0);
-  assert.deepEqual(f.scenes.get("scene")!.lines, []);
+  assert.deepEqual(
+    f.scenes.get("scene")!.lines.filter((line) => line.role === "assistant"),
+    [],
+  );
   assert(f.turn().acceptance.rejected.some((row) => row.id === "remember"));
 });
 await runCase("scene-narration/abandon", async () => {
@@ -298,7 +309,10 @@ await runCase("scene-narration/abandon", async () => {
   assert.throws(() => narrationIsAbandoned(f.world, altered, "turn"), /identity reused/);
   await f.service.processSavedExchange("scene", "turn");
   assert.equal(memoryHash(f.world), fenced);
-  assert.deepEqual(f.scenes.get("scene")!.lines, []);
+  assert.deepEqual(
+    f.scenes.get("scene")!.lines.filter((line) => line.role === "assistant"),
+    [],
+  );
   const scene = f.scenes.get("scene")!;
   scene.status = "closed";
   assert.equal(sceneReadyForRetirement(scene, f.world, ""), false);
@@ -349,7 +363,7 @@ await runCase("scene-narration/abandon-committed", async () => {
   );
   assert.equal(f.turn().acceptance.status, "applied");
   assert.equal(f.world.episodes.records.length, 1);
-  assert.equal(f.scenes.get("scene")!.lines.length, 1);
+  assert.equal(f.scenes.get("scene")!.lines.length, 2);
   const closed = structuredClone(f.scenes.get("scene")!);
   closed.status = "closed";
   closed.endedAt = at;
@@ -558,20 +572,90 @@ await runCase("scene-narration/skip-ownership", async () => {
   assert.equal(scene.operation?.token, "new-turn-owner");
   assert.equal(scene.status, "opening");
 });
+await runCase("scene-narration/input-playback", async () => {
+  const f = fixture(),
+    storage = sceneHistoryFixture();
+  try {
+    const message = "  (I privately feel nervous 🌼.)\nI am learning weaving.  ";
+    f.turn().message = message;
+    f.turn().requestFingerprint = memoryHash(["chat", "", null, message]);
+    f.turn().narration!.readset.source.input = message;
+    await f.service.processSavedExchange("scene", "turn");
+    const scene = structuredClone(f.scenes.get("scene")!);
+    scene.continuity = captureSceneContinuity(f.world, scene, Date.parse(at));
+    const repository = createVillageRepository(() => storage.gate.documents);
+    await repository.mutateAuthority(
+      (state) => {
+        Object.assign(state, f.world);
+      },
+      { memories: true },
+    );
+    await storage.mutateDocument("villages-venue-visit-scene", sessionSlot(storage.gate.documents), (saved) => {
+      Object.assign(saved, scene);
+    });
+    const query = createSceneQueryService({
+      readSession: storage.repository.readSession,
+      readVillageState: () => repository.readAuthority({ memories: true }),
+      villagesDocuments: () => storage.gate.documents,
+    });
+    const reloaded = await storage.repository.readSession("scene");
+    const projected = await query.projectSceneResponse(reloaded as unknown as Record<string, unknown>);
+    const scope = projected.playback.scope;
+    const playback = await query.readPlaybackPage("scene", { scope, first: "1" });
+    for (const lines of [projected.lines, (await query.readHistoryPage("scene", { scope })).lines, playback.lines]) {
+      const own = lines.filter((line) => line.kind === "input");
+      assert.equal(own.length, 1);
+      assert.equal(own[0].content, message);
+      assert.equal(own[0].inputOf, "turn");
+    }
+    const input = reloaded.lines.find((line) => line.kind === "input")!;
+    const ownSteps = scenePlaybackSteps(playback, "Iris", reloaded.activeIds).filter(
+      (step) => step.lineId === input.id,
+    );
+    assert(
+      ownSteps.length > 0 && ownSteps.every((step) => step.player && step.name === "Iris" && step.speakerId === ""),
+      "canonical input uses the player's existing name, portrait and styling path",
+    );
+    assert.deepEqual(input.heardBy, []);
+    assert(!heardLines(reloaded, f.actorId).some((line) => line.id === input.id));
+    const episode = f.world.episodes.records[0];
+    assert(!episode.segments.some((line) => line.id === input.id));
+    assert.throws(
+      () => readAcceptedEpisode({ ...episode, segments: [input, ...episode.segments] }, f.world.seed),
+      /invalid accepted episode segment/,
+    );
+    const resident = actorEpisodeView(
+      episode,
+      f.world.continuity,
+      continuityActor(f.world, f.actorId)!,
+      f.world.episodes,
+    );
+    assert(!JSON.stringify(resident).includes("nervous"));
+    assert.throws(
+      () => coerceSession({ ...reloaded, lines: [{ ...input, heardBy: [f.actorId] }] }),
+      /cannot grant speech or perception/,
+    );
+  } finally {
+    storage.release();
+  }
+});
 await runCase("scene-narration/lost-ack", async () => {
   const f = fixture();
   f.failScene();
   await assert.rejects(f.service.processSavedExchange("scene", "turn"), (error) => error === f.exact);
   assert.equal(f.world.episodes.records.length, 1);
   assert(f.turn().narration);
-  assert.deepEqual(f.scenes.get("scene")!.lines, []);
+  assert.deepEqual(
+    f.scenes.get("scene")!.lines.filter((line) => line.role === "assistant"),
+    [],
+  );
   f.world.worldPlaces.npcs[f.actorId].disabled = true;
   f.interrupt();
   await f.service.processSavedExchange("scene", "turn");
   assert.equal(f.turn().acceptance.status, "applied");
   assert.equal(f.world.episodes.records.length, 1);
   assert.equal(f.world.continuity.versions.length, 1);
-  assert.equal(f.scenes.get("scene")!.lines.length, 1);
+  assert.equal(f.scenes.get("scene")!.lines.length, 2);
 });
 await runCase("scene-narration/write-failure", async () => {
   const f = fixture();

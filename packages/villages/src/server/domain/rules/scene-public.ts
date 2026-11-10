@@ -61,6 +61,24 @@ function unpublishedLines(submissions: unknown[]) {
 function publicLine(value: unknown, visible?: Set<string>) {
   const line = asRecord(value),
     sound = asRecord(line.soundOnly);
+  if (
+    line.role === "user" &&
+    line.kind === "input" &&
+    typeof line.inputOf === "string" &&
+    line.speakerId === "player" &&
+    Array.isArray(line.heardBy) &&
+    line.heardBy.length === 0
+  )
+    return {
+      id: line.id,
+      inputOf: line.inputOf,
+      at: line.at,
+      kind: "input",
+      role: "user",
+      speakerId: "player",
+      name: line.name,
+      content: line.content,
+    };
   if (line.role !== "assistant") return undefined;
   if (line.contactHidden === true || !Array.isArray(line.heardBy) || !line.heardBy.includes("player")) {
     return sound.player === true && typeof sound.text === "string"

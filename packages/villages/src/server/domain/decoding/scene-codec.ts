@@ -15,7 +15,7 @@ import type { DoorwayContact } from "../rules/venue-contact.js";
 import { coerceVillageState } from "./village-codec.js";
 import { emptyContinuity } from "../rules/continuity.js";
 import { emptyEpisodes } from "../rules/episodes.js";
-import { immutableMemoryValue } from "../rules/memory-integrity.js";
+import { immutableMemoryValue, memoryRequire } from "../rules/memory-integrity.js";
 
 export function coerceActive(value: unknown): ActiveVenue {
   const raw = asRecord(value);
@@ -110,6 +110,32 @@ export function coerceSession(value: unknown): VenueScene {
           const canonical = reuseSceneLine(value, participantIds);
           if (canonical) return canonical;
           const row = asRecord(value);
+          if (row.kind === "input") {
+            memoryRequire(
+              row.role === "user" &&
+                row.speakerId === "player" &&
+                typeof row.inputOf === "string" &&
+                row.inputOf.length > 0 &&
+                Array.isArray(row.heardBy) &&
+                !row.heardBy.length &&
+                !row.speechSource &&
+                !row.soundOnly &&
+                !row.staging &&
+                !row.physicalIdsAfter,
+              "original input playback cannot grant speech or perception",
+            );
+            return {
+              id: asTrimmedString(row.id),
+              inputOf: row.inputOf,
+              speakerId: "player",
+              name: asString(row.name),
+              role: "user" as const,
+              kind: "input" as const,
+              content: asString(row.content),
+              at: asString(row.at),
+              heardBy: [],
+            };
+          }
           return {
             id: asTrimmedString(row.id),
             speakerId: asString(row.speakerId),

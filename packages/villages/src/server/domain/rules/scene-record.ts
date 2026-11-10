@@ -26,7 +26,7 @@ export function sceneFingerprint(session: VenueScene) {
           ]
         : []),
     ]),
-    session.lines.map((line) => line.id),
+    session.lines.filter((line) => line.kind !== "input").map((line) => line.id),
   ] as const;
 }
 export function pendingProgressTurns(session: VenueScene, foundedAt: string) {
