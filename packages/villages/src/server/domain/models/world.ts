@@ -12,7 +12,6 @@ export type VillageAgenda = {
   plannedDays?: Record<string, VillageAgendaBlock[]>;
   routineProfile?: import("../rules/owned-routine.js").RoutineProfile;
   scheduleInfluenceSnapshot?: import("../rules/owned-routine.js").InfluenceSnapshot;
-  socialActivities?: import("./social-activity.js").SocialActivity[];
   /** Derived from feature authority on hydration; never an independently editable booking. */
   reservations?: import("./agenda-reservation.js").AgendaReservation[];
   /** One line about an ordinary day for them, here. */
@@ -574,6 +573,7 @@ export type ReturnCatchupCapture = {
     | "venues"
     | "residences"
     | "projects"
+    | "residentPlans"
     | "relationshipContext"
     | "opening"
   >;
@@ -586,6 +586,7 @@ export type VillageState = {
   continuity: import("./continuity-model.js").ContinuityCollection;
   episodes: import("./episode-model.js").EpisodeCollection;
   mailbox: import("./social-mail.js").MailboxState;
+  residentPlans: import("./resident-plans.js").ResidentPlans;
   startingHistory: import("./starting-history-model.js").StartingHistoryState;
   socialContractVersion: 2;
   socialMailOutbox?: import("./social-mail.js").WorldSocialMailOutbox[];

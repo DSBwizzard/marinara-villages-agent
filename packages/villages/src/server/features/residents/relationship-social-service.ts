@@ -25,7 +25,7 @@ import { departureMemoriesAvailable } from "../../domain/rules/return-catchup-ca
 import { sameRelationshipContext } from "../../domain/rules/world-context-copy.js";
 import { socialContextState } from "../../domain/rules/social-context.js";
 import { encounterPhysicalId, readEncounter } from "../../domain/rules/social-encounter.js";
-import { projectSocialActivities, reconcileSocialPlans, socialPlanValid } from "../../domain/rules/social-rules.js";
+import { completeSocialPlan } from "../../domain/rules/social-rules.js";
 import { applyWishSource, captureWishAuthority, readSocialWishChanges } from "../../domain/rules/social-wishes.js";
 import { settleStandingAccess } from "../../domain/rules/venue-access.js";
 import { WorkFailureError } from "../../domain/rules/work-failure.js";
@@ -194,8 +194,6 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
         const settled = await mutateRelationships(village.seed, (state) => {
           const current = { ...village, relationshipContext: state };
           reconcileRelationships(state, current);
-          reconcileSocialPlans(current);
-          projectSocialActivities(current);
           if (state.applied[entry.id]) {
             if (entry.reinterpreted) {
               const acceptedIndex = state.socialEncounters.findIndex((row) => row.id === entry.id),
@@ -226,16 +224,6 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
             })
           )
             throw new Error("An encounter participant changed. The original source is retained.");
-          const plan = entry.candidates.find((candidate) => candidate.id === entry.proposal.planId);
-          if (
-            plan &&
-            !state.applied[`social-plan-date:${plan.dateKey}`] &&
-            current.backgroundPace !== "off" &&
-            socialPlanValid(current, plan)
-          ) {
-            state.socialPlans.push(plan);
-            state.applied[`social-plan-date:${plan.dateKey}`] = true;
-          }
           let encounter: SocialEncounter | null = null;
           if (entry.proposal.encounter) {
             try {
@@ -258,27 +246,6 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
               villageNow().getTime(),
             );
             state.socialEncounters.push(encounter);
-            const minute =
-              new ZonedDate(
-                encounter.at,
-                entry.admitted?.timeZone || village.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
-              ).getHours() *
-                60 +
-              new ZonedDate(
-                encounter.at,
-                entry.admitted?.timeZone || village.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
-              ).getMinutes();
-            for (const [index, plan] of state.socialPlans.entries())
-              if (
-                plan.status === "planned" &&
-                plan.kind === "meeting" &&
-                plan.venueId === encounter.venueId &&
-                plan.zoneId === encounter.zoneId &&
-                plan.startMinute <= minute &&
-                plan.endMinute > minute &&
-                plan.actorIds.every((id) => encounter!.actorIds.includes(id))
-              )
-                state.socialPlans[index] = { ...plan, status: "completed" };
           }
           state.applied[entry.id] = true;
         });
@@ -376,6 +343,18 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
                     throw new Error("Encounter standing permission needs recovery.");
                 }
               }
+            }
+            if (accepted && entry.requiredPlanId) {
+              if (entry.requiredPlan?.id !== entry.requiredPlanId)
+                throw new Error("The encounter lost its captured free-time plan.");
+              completeSocialPlan(
+                state,
+                entry.requiredPlan,
+                accepted.actorIds,
+                accepted.venueId,
+                accepted.zoneId,
+                new ZonedDate(accepted.at, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
+              );
             }
             const saved = state.socialOutbox?.find((row) => row.id === entry.id);
             if (saved) {

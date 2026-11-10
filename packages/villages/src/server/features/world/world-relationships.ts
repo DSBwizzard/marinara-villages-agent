@@ -6,8 +6,6 @@ export interface WorldRelationships {
   reconcileRelationships: typeof import("../../domain/rules/relationship-rules.js").reconcileRelationships;
   persistRelationshipAuthority: typeof import("../residents/relationship-store.js").persistRelationshipAuthority;
   processSocialOutbox: typeof import("../residents/relationship-social.js").processSocialOutbox;
-  projectSocialActivities: typeof import("../../domain/rules/social-rules.js").projectSocialActivities;
-  reconcileSocialPlans: typeof import("../../domain/rules/social-rules.js").reconcileSocialPlans;
 }
 
 const relationships = createActivationBinding<WorldRelationships>(

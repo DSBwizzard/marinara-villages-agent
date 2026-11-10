@@ -22,7 +22,6 @@ const LISTS = [
   "startingTies",
   "startingActorIds",
   "initializationConflicts",
-  "socialPlans",
   "socialEncounters",
 ] as const;
 type Field = (typeof MAPS)[number] | (typeof LISTS)[number];

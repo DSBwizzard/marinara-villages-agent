@@ -7,6 +7,7 @@ import { conflict } from "./errors.js";
 import { ROUTINE_CONTRACT } from "./routine-contract.js";
 import { canOccupyZone, venueZones, zoneClosed } from "./venue-zones.js";
 import { zoneActivityFits } from "./venue-presence.js";
+import { routineRevisionMatches } from "./wish-policy.js";
 
 export const PROJECT_FOCUS_MS = 6 * 60 * 60_000;
 const minuteMs = 60_000;
@@ -49,7 +50,7 @@ export function readProjectFocus(value: unknown): ProjectFocus {
   return structuredClone(focus);
 }
 
-/** All Agenda consumers receive the same projection from canonical Project records. */
+/** All Agenda consumers receive the same claims from native Projects and resident plans. */
 export function projectAgendaReservations(state: VillageState): void {
   for (const resident of state.villagers) if (resident.agenda) resident.agenda.reservations = [];
   for (const project of state.projects) {
@@ -83,6 +84,36 @@ export function projectAgendaReservations(state: VillageState): void {
       }
     }
   }
+  for (const plan of state.residentPlans.plans) {
+    if (
+      !["planned", "completed"].includes(plan.status) ||
+      (plan.status === "planned" && state.backgroundPace === "off") ||
+      !plan.actors.every((actor) => {
+        const resident = state.villagers.find(
+          (row) => row.characterId === actor.id && row.incarnation === actor.incarnation,
+        );
+        return (
+          resident?.agenda &&
+          (plan.status === "completed" || routineRevisionMatches(resident.agenda, plan.revisions[actor.id]!))
+        );
+      })
+    )
+      continue;
+    for (const actor of plan.actors)
+      state.villagers
+        .find((resident) => resident.characterId === actor.id)!
+        .agenda!.reservations!.push({
+          id: plan.id,
+          source: "social",
+          dateKey: plan.dateKey,
+          startMinute: plan.startMinute,
+          endMinute: plan.endMinute,
+          venueId: plan.venueId,
+          zoneId: plan.zoneId,
+          activity: plan.kind === "meeting" ? "Shared time" : "Quiet time",
+          replaces: "flexible",
+        });
+  }
 }
 
 /** Consume completed planned minutes, then release the allocation. No historical periods are retained. */
@@ -106,15 +137,9 @@ export function trimProjectFocus(project: VillageProject, at: string): void {
 function planningAgenda(state: VillageState, residentId: string, projectId: string): VillageAgenda {
   const agenda = state.villagers.find((resident) => resident.characterId === residentId)?.agenda;
   if (!agenda) throw conflict("This lead needs a Routine before starting work.");
-  const social = state.relationshipContext?.socialPlans;
   return {
     ...agenda,
     reservations: agenda.reservations?.filter((reservation) => reservation.id !== projectId),
-    socialActivities: social
-      ? social
-          .filter((plan) => ["planned", "completed"].includes(plan.status) && plan.actorIds.includes(residentId))
-          .map((plan) => ({ ...plan, wishId: plan.id, baseRevision: plan.revisions[residentId] ?? "" }))
-      : agenda.socialActivities,
   };
 }
 

@@ -1,4 +1,4 @@
-import type { SocialPlan } from "./relationship-types.js";
+import type { SocialPlan } from "./resident-plans.js";
 import type { ResidentPlanningOpportunity } from "./world.js";
 import type { CapturedAdmission } from "./captured-admission-model.js";
 import type { RelationshipHead } from "./relationship-types.js";

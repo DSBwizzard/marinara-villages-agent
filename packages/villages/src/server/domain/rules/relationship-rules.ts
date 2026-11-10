@@ -51,7 +51,6 @@ export function defaultRelationshipState(seed: string): RelationshipState {
     initializationConflicts: [],
     mailThreads: {},
     mailDeliveries: {},
-    socialPlans: [],
     socialEncounters: [],
   };
 }
@@ -165,7 +164,6 @@ export function coerceRelationshipState(seed: string, value: unknown): Relations
         },
       ]),
     ),
-    socialPlans: [...source.socialPlans],
     socialEncounters: [...source.socialEncounters],
   };
 }

@@ -1,15 +1,18 @@
 import { ordinaryUseRestricted } from "./narrative-environment.js";
 import { zoneActivityFits } from "./venue-presence.js";
 import { hashString } from "./village-clock.js";
-import { calendarAt } from "../../../shared/helpers/zoned-date.js";
+import { calendarAt, ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { flexibleAgendaBlock } from "./agenda-flexibility.js";
-import type { SocialPlan } from "../models/relationship-types.js";
+import type { SocialPlan } from "../models/resident-plans.js";
 import type { VillageState } from "../models/world.js";
 import { agendaBlocksFor, agendaDateKey } from "./agenda-week.js";
-import { relationshipZoneController } from "./relationship-rules.js";
 import { evaluateZoneAccess } from "./venue-access.js";
-import { canOccupyZone, resolveVenueZone, venueZones, zoneClosed } from "./venue-zones.js";
+import { resolveVenueZone, venueZones, zoneClosed } from "./venue-zones.js";
 import { routineRevision, routineRevisionMatches } from "./wish-policy.js";
+import { projectAgendaReservations } from "./project-focus.js";
+import { memoryHash, memoryRequire } from "./memory-integrity.js";
+const localDate = (state: VillageState, at: Date) =>
+  new ZonedDate(at, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
 
 export function canEnter(
   village: VillageState,
@@ -21,22 +24,14 @@ export function canEnter(
   const venue = village.venues.find((place) => place.id === venueId),
     zone = venue && resolveVenueZone(venue, zoneId);
   if (ordinaryUseRestricted(village.narrative, at.toISOString(), venueId, zoneId)) return false;
-  if (venue?.access)
-    return (
-      !!zone &&
-      evaluateZoneAccess(venue, zone, actorId, {
-        at,
-        relationships: village.relationshipContext,
-        unavailable: !!zone && zoneClosed(village, venue, zone),
-        environment: village.narrative,
-      }).allowed
-    );
   return (
     !!venue &&
     !!zone &&
-    !zoneClosed(village, venue, zone) &&
-    (canOccupyZone(venue, zone, actorId) ||
-      !!relationshipZoneController(village.relationshipContext, village, venue, zone, actorId))
+    evaluateZoneAccess(venue, zone, actorId, {
+      at,
+      unavailable: zoneClosed(village, venue, zone),
+      environment: village.narrative,
+    }).allowed
   );
 }
 export function socialPlanValid(
@@ -45,45 +40,76 @@ export function socialPlanValid(
   now = new Date(),
   requireFuture = true,
 ): boolean {
+  now = localDate(village, now);
   if (
     plan.status !== "planned" ||
     plan.dateKey !== agendaDateKey(now) ||
-    !plan.actorIds.length ||
-    plan.actorIds.includes("player") ||
-    plan.actorIds.length !== (plan.kind === "meeting" ? 2 : 1)
+    plan.actors.length !== (plan.kind === "meeting" ? 2 : 1) ||
+    new Set(plan.actors.map((actor) => actor.id)).size !== plan.actors.length ||
+    plan.actors.some(
+      (actor) =>
+        actor.id === "player" ||
+        !village.villagers.some(
+          (resident) => resident.characterId === actor.id && resident.incarnation === actor.incarnation,
+        ),
+    )
   )
     return false;
   const minute = now.getHours() * 60 + now.getMinutes();
   if (
     plan.startMinute < 0 ||
     plan.endMinute > 1440 ||
-    plan.startMinute >= plan.endMinute ||
+    plan.endMinute - plan.startMinute < 30 ||
+    plan.endMinute - plan.startMinute > 60 ||
     (requireFuture && plan.startMinute <= minute)
   )
     return false;
   if (
-    (village.relationshipContext?.socialPlans ?? []).some(
+    village.residentPlans.plans.some(
       (other) =>
         other.id !== plan.id &&
         other.status === "planned" &&
         other.dateKey === plan.dateKey &&
         other.startMinute < plan.endMinute &&
         other.endMinute > plan.startMinute &&
-        other.actorIds.some((id) => plan.actorIds.includes(id)),
+        other.actors.some((actor) => plan.actors.some((party) => party.id === actor.id)),
     )
   )
     return false;
+  const projected = {
+    ...village,
+    villagers: village.villagers.map((resident) => ({
+      ...resident,
+      agenda: resident.agenda ? { ...resident.agenda } : null,
+    })),
+  };
+  projectAgendaReservations(projected);
   return (
-    zoneActivityFits(village, plan.actorIds, plan.venueId, plan.zoneId, plan.startMinute, plan.endMinute, now) &&
-    plan.actorIds.every((actorId) => {
+    zoneActivityFits(
+      projected,
+      plan.actors.map((actor) => actor.id),
+      plan.venueId,
+      plan.zoneId,
+      plan.startMinute,
+      plan.endMinute,
+      now,
+    ) &&
+    plan.actors.every(({ id: actorId }) => {
       const actor = village.villagers.find((person) => person.characterId === actorId),
         agenda = actor?.agenda;
-      if (
-        !agenda ||
-        !canEnter(village, plan.venueId, plan.zoneId, actorId, calendarAt(now, plan.dateKey, plan.startMinute))
-      )
-        return false;
-      const blocks = agendaBlocksFor({ ...agenda, socialActivities: [] }, now);
+      if (!agenda || !routineRevisionMatches(agenda, plan.revisions[actorId]!)) return false;
+      for (let atMinute = plan.startMinute; atMinute < plan.endMinute; atMinute++)
+        if (!canEnter(village, plan.venueId, plan.zoneId, actorId, calendarAt(now, plan.dateKey, atMinute)))
+          return false;
+      const blocks = agendaBlocksFor(
+        {
+          ...agenda,
+          reservations: projected.villagers
+            .find((resident) => resident.characterId === actorId)
+            ?.agenda?.reservations?.filter((reservation) => reservation.id !== plan.id),
+        },
+        now,
+      );
       let covered = plan.startMinute;
       for (const block of blocks.filter(
         (entry) => entry.endMinute > plan.startMinute && entry.startMinute < plan.endMinute,
@@ -97,21 +123,27 @@ export function socialPlanValid(
 }
 /** Feasibility candidates are not character preferences. System chooses a plan or no change. */
 export function socialPlanCandidates(village: VillageState, now = new Date()): SocialPlan[] {
-  const state = village.relationshipContext,
-    dateKey = agendaDateKey(now);
-  if (!state || village.backgroundPace === "off" || state.applied["social-plan-date:" + dateKey]) return [];
+  now = localDate(village, now);
+  const dateKey = agendaDateKey(now);
+  if (village.backgroundPace === "off" || village.residentPlans.selectedDate >= dateKey) return [];
+  const projected = {
+    ...village,
+    villagers: village.villagers.map((resident) => ({
+      ...resident,
+      agenda: resident.agenda ? { ...resident.agenda } : null,
+    })),
+  };
+  projectAgendaReservations(projected);
   const minute = now.getHours() * 60 + now.getMinutes(),
     result: SocialPlan[] = [];
-  const residents = village.villagers.filter((resident) => resident.agenda);
+  const residents = projected.villagers.filter((resident) => resident.agenda);
   const groups = residents.flatMap((resident, index) => [
     { kind: "avoidance" as const, actors: [resident] },
     ...residents.slice(index + 1).map((other) => ({ kind: "meeting" as const, actors: [resident, other] })),
   ]);
   for (const group of groups) {
     const actorIds = group.actors.map((actor) => actor.characterId);
-    const blocks = group.actors.map((actor) =>
-      agendaBlocksFor({ ...actor.agenda!, socialActivities: [] }, now).filter(flexibleAgendaBlock),
-    );
+    const blocks = group.actors.map((actor) => agendaBlocksFor(actor.agenda!, now).filter(flexibleAgendaBlock));
     for (const first of blocks[0] ?? [])
       for (const second of blocks[1] ?? [first]) {
         const startMinute = Math.max(first.startMinute, second.startMinute, minute + 15);
@@ -132,15 +164,13 @@ export function socialPlanCandidates(village: VillageState, now = new Date()): S
                 ":",
               ),
               dateKey,
-              actorIds,
+              actors: group.actors.map((actor) => ({ id: actor.characterId, incarnation: actor.incarnation })),
               venueId: venue.id,
               zoneId: zone.id,
               startMinute,
               endMinute,
               kind: group.kind,
               status: "planned",
-              activity: group.kind === "meeting" ? "Optional shared time" : "Optional quiet time",
-              reason: "Available opportunity; character choice requires System",
               revisions: Object.fromEntries(
                 group.actors.map((actor) => [actor.characterId, routineRevision(actor.agenda!)]),
               ),
@@ -154,28 +184,11 @@ export function socialPlanCandidates(village: VillageState, now = new Date()): S
     .sort((a, b) => hashString(a.id) - hashString(b.id))
     .slice(0, 6);
 }
-export function projectSocialActivities(village: VillageState, now = new Date()): void {
-  for (const resident of village.villagers) if (resident.agenda) resident.agenda.socialActivities = [];
-  for (const plan of village.relationshipContext?.socialPlans ?? []) {
-    if (
-      !socialPlanValid(village, plan.status === "completed" ? { ...plan, status: "planned" } : plan, now, false) ||
-      village.backgroundPace === "off"
-    )
-      continue;
-    for (const actorId of plan.actorIds) {
-      const resident = village.villagers.find((person) => person.characterId === actorId)!;
-      resident.agenda!.socialActivities!.push({
-        ...plan,
-        wishId: plan.id,
-        baseRevision: plan.revisions[actorId]!,
-      });
-    }
-  }
-}
 export function reconcileSocialPlans(village: VillageState, now = new Date()): boolean {
+  now = localDate(village, now);
   const minute = now.getHours() * 60 + now.getMinutes();
   let changed = false;
-  const plans = village.relationshipContext?.socialPlans ?? [];
+  const plans = village.residentPlans.plans;
   for (const [index, plan] of plans.entries()) {
     if (plan.status !== "planned") continue;
     if (
@@ -188,6 +201,11 @@ export function reconcileSocialPlans(village: VillageState, now = new Date()): b
       changed = true;
     }
   }
+  const retained = plans.filter((plan) => plan.dateKey >= agendaDateKey(now));
+  if (retained.length !== plans.length) {
+    village.residentPlans.plans = retained;
+    changed = true;
+  }
   return changed;
 }
 export function socialContinuationValid(
@@ -196,12 +214,13 @@ export function socialContinuationValid(
   saved: SocialPlan | undefined,
   now = new Date(),
 ): boolean {
-  const plan = village.relationshipContext
-    ? village.relationshipContext.socialPlans.find((row) => row.id === id)
-    : saved;
+  now = localDate(village, now);
+  const plan = village.residentPlans.plans.find((row) => row.id === id);
   const minute = now.getHours() * 60 + now.getMinutes();
   if (
     !plan ||
+    !saved ||
+    memoryHash(plan) !== memoryHash(saved) ||
     plan.id !== id ||
     plan.status !== "planned" ||
     plan.dateKey !== agendaDateKey(now) ||
@@ -209,16 +228,53 @@ export function socialContinuationValid(
     plan.endMinute <= minute
   )
     return false;
-  if (village.relationshipContext) return socialPlanValid(village, plan, now, false);
-  const venue = village.venues.find((place) => place.id === plan.venueId),
-    zone = venue && resolveVenueZone(venue, plan.zoneId);
-  return (
-    !!venue &&
-    !!zone &&
-    !zoneClosed(village, venue, zone) &&
-    plan.actorIds.every((id) => {
-      const person = village.villagers.find((actor) => actor.characterId === id);
-      return !!person?.agenda && routineRevisionMatches(person.agenda, plan.revisions[id]!);
-    })
+  return socialPlanValid(village, plan, now, false);
+}
+
+/** The chosen captured candidate and its daily admission publish with the resident result. */
+export function acceptSocialPlan(village: VillageState, candidates: SocialPlan[], id: unknown, now: Date) {
+  if (id === undefined) return;
+  const plan = candidates.find((candidate) => candidate.id === id);
+  memoryRequire(plan, "free-time plan was not offered");
+  const prior = village.residentPlans.plans.find((row) => row.id === id);
+  if (prior) {
+    memoryRequire(memoryHash({ ...prior, status: "planned" }) === memoryHash(plan), "free-time plan identity reused");
+    return;
+  }
+  memoryRequire(
+    village.residentPlans.selectedDate < plan.dateKey &&
+      village.backgroundPace !== "off" &&
+      socialPlanValid(village, plan, now),
+    "free-time plan authority changed",
   );
+  village.residentPlans.plans = [
+    ...village.residentPlans.plans.filter((row) => row.dateKey >= plan.dateKey),
+    structuredClone(plan),
+  ];
+  village.residentPlans.selectedDate = plan.dateKey;
+  projectAgendaReservations(village);
+}
+
+/** Completing an accepted encounter never releases its remaining reserved interval. */
+export function completeSocialPlan(
+  village: VillageState,
+  required: SocialPlan | undefined,
+  actorIds: string[],
+  venueId: string,
+  zoneId: string,
+  now: Date,
+) {
+  if (!required) return;
+  const plan = village.residentPlans.plans.find((row) => row.id === required.id);
+  memoryRequire(
+    plan &&
+      socialContinuationValid(village, required.id, required, now) &&
+      plan.kind === "meeting" &&
+      plan.venueId === venueId &&
+      plan.zoneId === zoneId &&
+      plan.actors.every((actor) => actorIds.includes(actor.id)),
+    "accepted encounter changed its required free-time plan",
+  );
+  plan.status = "completed";
+  projectAgendaReservations(village);
 }

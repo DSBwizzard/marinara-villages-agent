@@ -64,6 +64,7 @@ export function captureResidentActivity(world: VillageState, catchup = false) {
     venues: world.venues,
     residences: world.residences,
     projects: world.projects,
+    residentPlans: world.residentPlans,
     timeZone: world.timeZone,
     narrative: world.narrative,
     ...(catchup ? { opening: world.opening } : {}),

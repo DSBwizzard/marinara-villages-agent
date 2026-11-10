@@ -11,8 +11,16 @@ export function preferredActivityLane(state: VillageState): ActivityLane {
 export function arrangementActivityAt(state: VillageState, now: Date): number | null {
   const local = new ZonedDate(now, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
   const until = now.getTime() + VILLAGE_ACTIVITY_POLICY[state.backgroundPace].intervalMs;
-  const times = (state.relationshipContext?.socialPlans ?? []).flatMap((plan) => {
+  const times = state.residentPlans.plans.flatMap((plan) => {
     if (plan.kind !== "meeting" || plan.status !== "planned" || !/^\d{4}-\d{2}-\d{2}$/.test(plan.dateKey)) return [];
+    if (
+      !plan.actors.every((actor) =>
+        state.villagers.some(
+          (resident) => resident.characterId === actor.id && resident.incarnation === actor.incarnation,
+        ),
+      )
+    )
+      return [];
     const at = new ZonedDate(local, local.zone);
     const [year, month, day] = plan.dateKey.split("-").map(Number);
     at.setFullYear(year!, month! - 1, day!);

@@ -99,15 +99,11 @@ export function createRelationshipStore(ports: RelationshipStorePorts) {
   async function persistRelationshipAuthority(village: VillageState): Promise<void> {
     if (!village.seed) return;
     const current = await readRelationshipState(village.seed);
-    if (!Object.keys(current.edges).length && !Object.keys(current.grants).length && !current.socialPlans.length)
-      return;
-    const { reconcileSocialPlans } = await import("../../domain/rules/social-rules.js");
+    if (!Object.keys(current.edges).length && !Object.keys(current.grants).length) return;
     const grantsChanged = reconcileRelationships(current, village, villageNow().getTime());
-    const plansChanged = reconcileSocialPlans({ ...village, relationshipContext: current }, villageNow());
-    if (!grantsChanged && !plansChanged) return;
+    if (!grantsChanged) return;
     await mutateRelationships(village.seed, (state) => {
       reconcileRelationships(state, village, villageNow().getTime());
-      reconcileSocialPlans({ ...village, relationshipContext: state }, villageNow());
     });
   }
 

@@ -1124,6 +1124,8 @@ export function createRepairService(ports: RepairPorts) {
         : emptyMemoryPayload();
       if (!payload) throw conflict("The checkpoint’s Memories payload is unavailable.");
       const restored = coerceVillageState({ ...data, ...payload });
+      if (restored.residentPlans.selectedDate < state.residentPlans.selectedDate)
+        restored.residentPlans.selectedDate = state.residentPlans.selectedDate;
       advanceRestoredRevisions(restored, state);
       if (restored.narrative) restored.narrative.claims = [];
       for (const venue of restored.venues) {

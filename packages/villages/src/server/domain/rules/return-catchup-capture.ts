@@ -27,6 +27,7 @@ export function captureReturnContext(state: VillageState, at: Date): ReturnCatch
       venues: state.venues,
       residences: state.residences,
       projects: state.projects,
+      residentPlans: state.residentPlans,
       relationshipContext: state.relationshipContext,
       opening: state.opening,
     }),

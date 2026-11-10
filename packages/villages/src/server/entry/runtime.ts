@@ -90,7 +90,6 @@ import { parseCompactFoundingCompletion } from "../domain/rules/compact-founding
 import { reconcileProjectLifecycles } from "../domain/rules/project-lifecycle-rules.js";
 import { filterRelationshipNotices } from "../domain/rules/relationship-presentation.js";
 import { reconcileRelationships } from "../domain/rules/relationship-rules.js";
-import { projectSocialActivities, reconcileSocialPlans } from "../domain/rules/social-rules.js";
 import { createReturnCatchup } from "../features/background/return-catchup-service.js";
 import { createReturnCatchupSettlement } from "../features/background/return-catchup-settlement.js";
 import { advanceReturnCatchup, configureReturnCatchup } from "../features/background/return-catchup.js";
@@ -548,8 +547,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     reconcileRelationships,
     persistRelationshipAuthority,
     processSocialOutbox,
-    projectSocialActivities,
-    reconcileSocialPlans,
   });
   const villageRepository = createVillageRepository(villagesDocuments, (message) => villagesLogger().warn(message));
   const releaseClock = configureVillageClock(createVillageClock(villageRepository));

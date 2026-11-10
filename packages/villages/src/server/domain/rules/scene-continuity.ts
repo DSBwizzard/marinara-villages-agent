@@ -58,6 +58,7 @@ export const sceneContinuityFields = [
   "venues",
   "residences",
   "projects",
+  "residentPlans",
   "opening",
 ] as const satisfies readonly (keyof VillageState)[];
 

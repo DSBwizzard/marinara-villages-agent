@@ -1,6 +1,8 @@
 import type { VillageState, VillageVenue } from "../models/world.js";
 import { placeRegistry, sceneActorIds } from "./places.js";
 import { projectAgendaReservations } from "./project-focus.js";
+import { reconcileSocialPlans } from "./social-rules.js";
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 
 import { refreshProjectAgreements } from "./project-lifecycle-rules.js";
 import { initializeVenueAccess, reconcileVenueAccess } from "./venue-access.js";
@@ -110,6 +112,10 @@ export function normalizeVillageMutation(
   for (const place of Object.values(placeRegistry(state)?.places ?? {}))
     reconcileVenueAccess(place.location, ["player", ...sceneActorIds(state)]);
   refreshProjectAgreements(state);
+  reconcileSocialPlans(
+    state,
+    new ZonedDate(sources.now(), state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
+  );
   projectAgendaReservations(state);
   if (state.foundedAt.length === 0) state.foundedAt = sources.now().toISOString();
   if (state.seed.length === 0) state.seed = sources.seed();

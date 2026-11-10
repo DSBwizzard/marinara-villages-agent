@@ -31,6 +31,7 @@ import {
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import { savedAccessEvents } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 import { socialPlanValid } from "../packages/villages/src/server/domain/rules/social-rules.js";
+import { routineRevision } from "../packages/villages/src/server/domain/rules/wish-policy.js";
 import {
   applyAccessCommand,
   claimVisitPermission,
@@ -758,7 +759,10 @@ const socialPlan = {
   id: "planned-hours",
   kind: "meeting",
   status: "planned",
-  actorIds: ["visitor", "trina"],
+  actors: planningWorld.villagers.map((resident) => ({ id: resident.characterId, incarnation: resident.incarnation })),
+  revisions: Object.fromEntries(
+    planningWorld.villagers.map((resident) => [resident.characterId, routineRevision(resident.agenda!)]),
+  ),
   venueId: "home",
   zoneId: "living",
   dateKey: agendaDateKey(new Date(2026, 9, 5)),
@@ -1413,17 +1417,17 @@ async function main() {
     ] as any;
     visitor.agenda.plannedDays = { [futureKey]: flexibleBlocks };
     visitor.wishes = [fixtureWish({ wish: "Share tea" }, "friend-wish", new Date(stamp).toISOString())];
-    visitor.agenda.socialActivities = [
+    visitor.agenda.reservations = [
       {
-        wishId: "friend-wish",
+        id: "friend-plan",
+        source: "social",
+        replaces: "flexible",
         dateKey: futureKey,
         startMinute: 600,
         endMinute: 660,
         activity: "Share tea",
         venueId: "home",
         zoneId: "living",
-        reason: "Friend visit",
-        baseRevision: "fixture",
       },
     ];
     applyAccessCommand(

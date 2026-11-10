@@ -294,13 +294,11 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     villager.agenda = {
       ...agenda,
       plannedDays: Object.fromEntries(
-        Object.entries(previous?.plannedDays ?? {}).filter(
-          ([key]) =>
-            (previous?.socialActivities ?? []).some((entry) => entry.dateKey === key) ||
-            (previous?.reservations ?? []).some((entry) => entry.dateKey === key),
+        Object.entries(previous?.plannedDays ?? {}).filter(([key]) =>
+          (previous?.reservations ?? []).some((entry) => entry.dateKey === key),
         ),
       ),
-      socialActivities: previous?.socialActivities ?? [],
+      reservations: previous?.reservations ?? [],
       scheduleInfluenceSnapshot: previous?.scheduleInfluenceSnapshot,
       activeDay:
         previous?.activeDay?.dateKey === agendaDateKey(now)
@@ -345,8 +343,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
           for (const key of Object.keys(resident.agenda.plannedDays ?? {})) {
             if (
               key === resident.agenda.activeDay?.dateKey ||
-              (resident.agenda.reservations ?? []).some((activity) => activity.dateKey === key) ||
-              (resident.agenda.socialActivities ?? []).some((activity) => activity.dateKey === key)
+              (resident.agenda.reservations ?? []).some((activity) => activity.dateKey === key)
             )
               continue;
             delete resident.agenda.plannedDays![key];

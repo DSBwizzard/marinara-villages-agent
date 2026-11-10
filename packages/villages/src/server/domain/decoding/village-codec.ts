@@ -80,7 +80,6 @@ import {
   TOWN_MAP_ZOOM_MIN,
 } from "../rules/prompt-preset.js";
 
-import { coerceSocialActivities } from "../rules/social-activity.js";
 import { copySocialWishes } from "../rules/social-wishes.js";
 import { coerceSpriteManager, managerResidentSprite } from "../rules/sprite-manager-model.js";
 import { readVenueAccess, readZonePolicy } from "../rules/venue-access.js";
@@ -92,6 +91,7 @@ import { zonePictureBaseline, zonePicturePhysicalRecord } from "../rules/zone-pi
 import { emptyStartingHistory } from "../rules/starting-history.js";
 import { readStartingHistory } from "./starting-history-codec.js";
 import { emptyMailbox, readMailboxState } from "./mailbox-codec.js";
+import { emptyResidentPlans, readResidentPlans } from "./resident-plans-codec.js";
 
 export function defaultVillageState(): VillageState {
   return {
@@ -100,6 +100,7 @@ export function defaultVillageState(): VillageState {
     continuity: emptyContinuity(),
     episodes: emptyEpisodes(),
     mailbox: emptyMailbox(),
+    residentPlans: emptyResidentPlans(),
     startingHistory: emptyStartingHistory(),
     backgroundReceipts: {},
     exchangeReceipts: {},
@@ -261,7 +262,6 @@ function coerceAgenda(value: unknown): VillageAgenda | null {
   const raw = asRecord(value);
   if (Object.keys(raw).length === 0) return null;
   const agenda: VillageAgenda = {
-    socialActivities: coerceSocialActivities(raw.socialActivities),
     routineSummary: boundText(raw.routineSummary, MAX_ROUTINE_SUMMARY_LENGTH),
     day: Array.isArray(raw.day)
       ? raw.day.flatMap((entry) => {
@@ -1377,7 +1377,7 @@ export function coerceVillageState(value: unknown): VillageState {
   if (value != null && raw.version !== 18) throw new Error("Unsupported Village format. Start a fresh Village.");
   if (value != null)
     memoryRequire(
-      raw.continuity && raw.episodes && raw.startingHistory && raw.mailbox,
+      raw.continuity && raw.episodes && raw.startingHistory && raw.mailbox && raw.residentPlans,
       "current Village continuity data is missing",
     );
   const fallback = defaultVillageState();
@@ -1417,6 +1417,7 @@ export function coerceVillageState(value: unknown): VillageState {
     continuity,
     episodes,
     mailbox: value == null ? fallback.mailbox : readMailboxState(raw.mailbox, asString(raw.seed)),
+    residentPlans: value == null ? fallback.residentPlans : readResidentPlans(raw.residentPlans),
     startingHistory: value == null ? fallback.startingHistory : readStartingHistory(raw.startingHistory),
     backgroundReceipts: Object.fromEntries(
       Object.entries(asRecord(raw.backgroundReceipts)).filter(

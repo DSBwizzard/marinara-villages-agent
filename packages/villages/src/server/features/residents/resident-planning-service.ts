@@ -50,7 +50,7 @@ import {
 import { responseDiagnostics } from "../../domain/rules/response-diagnostics.js";
 import { SCENE_MEMORY_INSTRUCTION, sceneMemoryContext } from "../../domain/rules/scene-memories.js";
 import { socialContextState } from "../../domain/rules/social-context.js";
-import { socialContinuationValid, socialPlanCandidates } from "../../domain/rules/social-rules.js";
+import { acceptSocialPlan, socialContinuationValid, socialPlanCandidates } from "../../domain/rules/social-rules.js";
 import {
   applyWishReflection,
   readSocialWishChanges,
@@ -113,11 +113,12 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
     const encounterConflicts = liveSceneEncounterConflicts(village, await ports.activeVenueSession(), now);
     const activePlan =
       used < allowance
-        ? village.relationshipContext?.socialPlans.find(
+        ? village.residentPlans.plans.find(
             (plan) =>
               plan.status === "planned" &&
               plan.kind === "meeting" &&
-              !plan.actorIds.some((id) => encounterConflicts.has(id)) &&
+              !plan.actors.some((actor) => encounterConflicts.has(actor.id)) &&
+              socialContinuationValid(village, plan.id, plan, now) &&
               plan.dateKey === dateKey &&
               plan.startMinute <= moment.minuteOfDay &&
               plan.endMinute > moment.minuteOfDay,
@@ -134,10 +135,10 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           kind: "encounter" as const,
           startsAt: now.toISOString(),
           endsAt: now.toISOString(),
-          actorIds: activePlan.actorIds,
+          actorIds: activePlan.actors.map((actor) => actor.id),
           venueId: activePlan.venueId,
           zoneId: activePlan.zoneId,
-          facts: [activePlan.activity, "An accepted free-time plan is happening now."],
+          facts: ["An accepted free-time plan is happening now."],
         }
       : residentPlanningOpportunity(village, moment, village.simulatedThrough, encounterConflicts);
     if (!opportunity || village.processedActionIds.includes(opportunity.id)) return;
@@ -638,6 +639,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         applyWishReflection(state, proposal.wishReflection, opportunity.id, input.now, input.admitted.villagers);
       }
       const used = state.planningUsage.dateKey === dateKey ? state.planningUsage.count : 0;
+      acceptSocialPlan(state, input.context.social.candidates, proposal.social?.planId, villageNow());
       const savedMail = proposal.social?.mail as { senderId?: string; text?: string } | undefined;
       // A result saved by an older writer may contain a stage direction. Omit only
       // that unseen letter; other already-generated choices still apply normally.
@@ -662,7 +664,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         state.socialMailOutbox ??= [];
         if (!state.socialMailOutbox.some((r) => r.id === entry.id)) state.socialMailOutbox.push(entry);
       }
-      if (proposal.social && !proposal.social.mail) {
+      if (proposal.social?.encounter) {
         const id = opportunity.id + ":social";
         state.socialOutbox ??= [];
         if (!state.socialOutbox.some((entry) => entry.id === id))

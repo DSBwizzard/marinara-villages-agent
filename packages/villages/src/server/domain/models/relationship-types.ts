@@ -118,20 +118,6 @@ export type StartingTie = {
   concerns: string[];
   history: { text: string; sourceIds: string[]; knownBy: string[] }[];
 };
-export type SocialPlan = {
-  id: string;
-  dateKey: string;
-  actorIds: string[];
-  venueId: string;
-  zoneId: string;
-  startMinute: number;
-  endMinute: number;
-  activity: string;
-  reason: string;
-  revisions: Record<string, string>;
-  kind: "meeting" | "avoidance";
-  status: "planned" | "completed" | "cancelled";
-};
 export type SocialEncounter = {
   placeUpdate?: import("../../../shared/contracts/place-continuity.js").PlaceUpdate | null;
   physicalContext?: import("../../../shared/contracts/place-continuity.js").PlaceEvidence & {
@@ -168,6 +154,5 @@ export type RelationshipState = {
   initializationConflicts: { actorIds: string[]; question: string; sourceIds: string[] }[];
   mailThreads: Record<string, import("./social-mail.js").SocialMailThread>;
   mailDeliveries: Record<string, { messageId: string; at: string; sourceHash: string }>;
-  socialPlans: SocialPlan[];
   socialEncounters: SocialEncounter[];
 };

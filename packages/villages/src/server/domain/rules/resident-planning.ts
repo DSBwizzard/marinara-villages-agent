@@ -2,7 +2,7 @@ import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { VILLAGE_ACTIVITY_POLICY } from "../../../shared/helpers/activity-policy.js";
 import { recentPlaceText } from "../../../shared/helpers/place-continuity.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
-import type { SocialPlan } from "../models/relationship-types.js";
+import type { SocialPlan } from "../models/resident-plans.js";
 import type {
   ResidentPlanningOpportunity,
   VillageAgenda,
@@ -227,7 +227,18 @@ export function buildResidentPlanningMessages(context: ResidentPlanningContext):
     "Participants' own relationship context: " + context.social.relationships.join("\n"),
     !context.catchup &&
       "Optional future plans offered by code: " +
-        JSON.stringify(context.social.candidates) +
+        JSON.stringify(
+          context.social.candidates.map(({ id, kind, actors, venueId, zoneId, dateKey, startMinute, endMinute }) => ({
+            id,
+            kind,
+            actorIds: actors.map((actor) => actor.id),
+            venueId,
+            zoneId,
+            dateKey,
+            startMinute,
+            endMinute,
+          })),
+        ) +
         ". Select one exact offered ID with social.planId, or none. Availability is not preference or consent.",
     'A CURRENT encounter opportunity with at least two actors in one Zone may have social.encounter:{opportunityId,lines:[{speakerId,text},{kind:"narration",text}]}. Write two to eight short source lines, with at least two actual speakers among the offered actors. Optional narration establishes only small local actions actually performed now, grounded in the supplied current Zone, known supplies and resident authority. Every actor hears the ordinary dialogue and witnesses local narration. No whispers, travel, player participation, hidden contents, invented possessions, injury, construction or time skips. Intentions and speech are no completed deeds. ' +
       "Put supported consequences in meaning, never in the source record. " +

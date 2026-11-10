@@ -1,4 +1,4 @@
-// Test cases: native-repair/common-books, native-repair/undo, native-repair/repeated-undo, native-repair/offer-undo, native-repair/room, native-repair/circumstance, native-repair/founding-circumstance, native-repair/protected-circumstance, native-repair/stale, native-repair/checkpoint, native-repair/pending-target, native-repair/unread-targets, native-repair/recovery
+// Test cases: native-repair/common-books, native-repair/undo, native-repair/repeated-undo, native-repair/offer-undo, native-repair/room, native-repair/circumstance, native-repair/founding-circumstance, native-repair/protected-circumstance, native-repair/stale, native-repair/checkpoint, native-repair/pending-target, native-repair/unread-targets, native-repair/recovery, native-repair/plan-allowance
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { createRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
@@ -36,6 +36,9 @@ import { queueMailboxLetter } from "../packages/villages/src/server/domain/rules
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import type { RepairRequest } from "../packages/villages/src/shared/contracts/repair.js";
 import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
+import { venueFixture } from "./helpers/venues.fixture.js";
+import { agendaFixture } from "./helpers/agenda.fixture.js";
+import { socialPlanCandidates, acceptSocialPlan } from "../packages/villages/src/server/domain/rules/social-rules.js";
 
 const at = "2026-11-09T12:00:00.000Z",
   later = "2026-11-09T13:00:00.000Z";
@@ -732,6 +735,54 @@ await runCase("native-repair/checkpoint", async () => {
   assert(restored.continuity.records[0].revision > changed.continuity.records[0].revision);
   f.reopen();
   assert.equal(remembered(await f.read(), "mara").text, remembered(original, "mara").text);
+});
+
+await runCase("native-repair/plan-allowance", async () => {
+  const f = await fixture();
+  await f.repository.mutateAuthority(
+    (state) => {
+      state.timeZone = "UTC";
+      state.backgroundPace = "lively";
+      state.venues = [venueFixture({ id: "square", name: "Square", category: "public" })];
+      for (const resident of state.villagers)
+        resident.agenda = agendaFixture({
+          day: [
+            {
+              startMinute: 0,
+              endMinute: 1440,
+              venueId: "square",
+              zoneId: "exterior",
+              activity: "Free time",
+              flexible: true,
+            },
+          ],
+          generatedAt: at,
+        });
+    },
+    { memories: true },
+  );
+  const checkpoint = await f.api.createCheckpoint("Before free-time selection", "plan-before");
+  await f.repository.mutateAuthority(
+    (state) => {
+      const candidates = socialPlanCandidates(state, new Date(at)),
+        plan = candidates.find((row) => row.kind === "meeting");
+      assert(plan);
+      acceptSocialPlan(state, candidates, plan.id, new Date(at));
+    },
+    { memories: true },
+  );
+  assert.equal((await f.read()).residentPlans.selectedDate, "2026-11-09");
+  const review = await f.api.restore(checkpoint.id, "restore-plan");
+  await f.api.apply(review.id, review.token);
+  f.reopen();
+  const restored = await f.read();
+  assert.equal(restored.residentPlans.plans.length, 0, "explicit checkpoint restores its native plan rows");
+  assert.equal(
+    restored.residentPlans.selectedDate,
+    "2026-11-09",
+    "restoring older progress cannot refund consumed automatic admission",
+  );
+  assert.equal(socialPlanCandidates(restored, new Date(at)).length, 0);
 });
 
 await runCase("native-repair/pending-target", async () => {
