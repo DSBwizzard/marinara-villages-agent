@@ -370,7 +370,12 @@ export function applyContinuityWrite(
         "room condition needs an actual outcome",
       );
   const original = write.target ? targetRecord(collection, write.target, context) : undefined;
-  memoryRequire(!write.retire || original, "retirement needs a supplied target");
+  memoryRequire(
+    !write.retire ||
+      (write.current !== true &&
+        (original || (!room && typeof write.text === "string" && !write.offer && !write.accept && !write.closeOffer))),
+    "initial closure needs complete actor meaning and cannot remain current",
+  );
   memoryRequire(!(write.accept || write.closeOffer) || original?.offer, "decision needs a supplied offer");
   const rootId = original?.id ?? "continuity-" + memoryHash([context.seed, operationId]).slice(0, 32);
   const record: ContinuityRecord = original

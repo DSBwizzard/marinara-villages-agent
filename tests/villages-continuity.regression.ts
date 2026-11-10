@@ -1,4 +1,4 @@
-// Test cases: continuity/individual-replacement, continuity/perception, continuity/cross-scene-offer, continuity/withdrawal, continuity/qualified-offer, continuity/room-sequence, continuity/room-expiry, continuity/protection, continuity/desire-closure, continuity/offer-privacy, continuity/concealed-observations, continuity/room-current-evidence, continuity/holder-admission, continuity/parent-protection, continuity/owned-knowledge, continuity/offer-identity
+// Test cases: continuity/individual-replacement, continuity/perception, continuity/cross-scene-offer, continuity/withdrawal, continuity/qualified-offer, continuity/room-sequence, continuity/room-expiry, continuity/protection, continuity/desire-closure, continuity/offer-privacy, continuity/concealed-observations, continuity/room-current-evidence, continuity/holder-admission, continuity/parent-protection, continuity/owned-knowledge, continuity/offer-identity, continuity/initial-closure
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import type {
@@ -713,6 +713,55 @@ await runCase("continuity/protection", () => {
   assert.throws(
     () => protectContinuity(state, target(state, id, [mara]), [player], "teach", at, { text: "Secret" }),
     /cannot teach/,
+  );
+});
+
+await runCase("continuity/initial-closure", () => {
+  const spoken = source("recipe", "mara", "I wanted to share my recipe. Here is the complete recipe."),
+    write: ContinuityWrite = {
+      id: "fulfilled",
+      holders: [mara, player],
+      owner: mara,
+      class: "desire",
+      text: spoken.excerpt,
+      retire: "fulfilled",
+      current: false,
+      sourceIds: [spoken.id],
+    },
+    state = apply(emptyContinuity(), write, [spoken], "fulfilled");
+  assert.equal(state.records.length, 1);
+  assert.equal(state.versions.length, 2, "one final version per receiving holder");
+  for (const holder of [mara, player]) {
+    assert.equal(rows(state, holder)[0].version.closed?.reason, "fulfilled");
+    assert.equal(rows(state, holder)[0].current, false);
+  }
+  assert.deepEqual(apply(state, write, [spoken], "fulfilled"), state);
+  for (const invalid of [
+    { ...write, text: undefined },
+    { ...write, current: true },
+    { ...write, target: { id: "invented", recordRevision: 0, heads: {} } },
+    { ...write, offer: { proposer: "mara", participants: ["mara", "player"] } },
+  ])
+    assert.throws(() => apply(emptyContinuity(), invalid, [spoken], "invalid"));
+  const observation = source("repair", "mara", "A completed repair.", "scene-1", {
+    kind: "observation",
+    perceptions: [{ actorId: "player", channel: "sight", text: "A completed repair." }],
+  });
+  assert.throws(
+    () =>
+      apply(
+        emptyContinuity(),
+        {
+          id: "room",
+          holders: [room],
+          text: observation.excerpt,
+          retire: "ended",
+          sourceIds: [observation.id],
+        },
+        [observation],
+        "room",
+      ),
+    /initial closure needs complete actor meaning/,
   );
 });
 

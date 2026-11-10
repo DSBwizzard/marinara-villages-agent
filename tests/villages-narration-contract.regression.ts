@@ -1,4 +1,4 @@
-// Test cases: narration-contract/ordinary, narration-contract/exact-prose, narration-contract/private-keep, narration-contract/independent-failure, narration-contract/authority-shape
+// Test cases: narration-contract/ordinary, narration-contract/exact-prose, narration-contract/private-keep, narration-contract/independent-failure, narration-contract/authority-shape, narration-contract/initial-closure
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -137,6 +137,29 @@ await runCase("narration-contract/independent-failure", () => {
     assert.equal(selected.rejected[0].id, "note");
   }
   assert.throws(() => readNarrationEffectHeader({ independent: true, requires: 42 }, "keep-0"), /requires/);
+});
+
+await runCase("narration-contract/initial-closure", () => {
+  const note = {
+    for: ["mara"],
+    owner: "mara",
+    class: "desire",
+    text: "I wanted to share my recipe and have now shared it.",
+    retire: "fulfilled",
+    current: false,
+    source: ["recipe"],
+  };
+  assert.equal(readContinuityProposal(note).retire, "fulfilled");
+  for (const invalid of [
+    { ...note, text: undefined },
+    { ...note, text: null },
+    { ...note, current: true },
+    { ...note, offer: { proposer: "mara", participants: ["mara", "player"] } },
+    { for: "room", text: "A completed repair.", retire: "ended", source: ["repair"] },
+    { ...note, accept: "mara" },
+    { ...note, closeOffer: { by: "mara", reason: "withdrawn" } },
+  ])
+    assert.throws(() => readContinuityProposal(invalid));
 });
 
 await runCase("narration-contract/authority-shape", () => {
