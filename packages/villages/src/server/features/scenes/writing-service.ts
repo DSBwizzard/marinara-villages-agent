@@ -215,6 +215,7 @@ export function createSceneWriting({
         JSON.stringify({
           calendar,
           protections: context.protections,
+          roomReferences: context.roomReferences,
           circumstance: narrationCircumstancePrompt(context.circumstance),
           presentation: {
             state: presentation.state,

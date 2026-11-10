@@ -3,9 +3,9 @@ import { continuityHolderKey } from "./continuity.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { mailReceipt, type MailIdentity } from "./mail-evidence.js";
 import type { MailPublication } from "./mail-continuity.js";
-
-const scopeKey = (actors: { id: string; incarnation: string }[]) =>
-  memoryHash(actors.map(({ id, incarnation }) => ({ id, incarnation })));
+import type { MailRoomContext } from "../models/social-mail.js";
+import { continuityContextScopeKey } from "./continuity-context.js";
+import { episodeContextRooms } from "./episode-sources.js";
 
 /** Bind captured aliases to the final exact written artifact without purchasing another interpretation. */
 export function mailStagePublication(
@@ -18,12 +18,17 @@ export function mailStagePublication(
   responseDigest: string,
   requestId: string,
   replyTo?: string,
+  roomContext?: MailRoomContext,
 ): MailPublication {
   const receipt = mailReceipt(capture.seed, mail, text, phase),
     parties = phase === "written" ? [mail.from] : [mail.from, mail.to],
     portrayed = phase === "written" ? mail.from : mail.to,
     holder = { kind: "actor" as const, ...portrayed },
     generated = phase === "written" && mail.from.id !== "player",
+    rooms =
+      generated || keep.length || (phase === "read" && mail.from.id !== "player")
+        ? episodeContextRooms({ actors: capture.actors }, Object.keys(capture.provenance))
+        : [],
     references = generated
       ? [...capture.actors, ...capture.references]
           .filter(
@@ -67,6 +72,7 @@ export function mailStagePublication(
     keep,
     requires,
     responseDigest,
+    ...(roomContext ? { roomContext } : {}),
     admission: {
       seed: capture.seed,
       operationId: receipt.id,
@@ -77,15 +83,36 @@ export function mailStagePublication(
       continuityRevision: capture.continuityRevision,
       sources: [],
       supplied: capture.supplied,
-      protectedRoots: capture.protectedRoots,
+      protectedRoots: [...new Set([...capture.protectedRoots, ...(roomContext?.protectedRoots ?? [])])],
       protectionFingerprint:
-        capture.protection[scopeKey([mail.from, mail.to, ...references.filter((actor) => actor.id !== mail.to.id)])],
+        capture.protection[
+          continuityContextScopeKey([
+            mail.from,
+            mail.to,
+            ...references.filter((actor) => actor.id !== mail.to.id),
+            ...(phase === "read" && !keep.length ? [] : rooms),
+          ])
+        ],
       sourceActors: capture.sourceActors,
       provenance: Object.fromEntries(
-        [holder, ...references].map((holder) => [
-          continuityHolderKey(holder),
-          capture.provenance[continuityHolderKey(holder)] ?? [],
-        ]),
+        [holder, ...references]
+          .map((holder) => [continuityHolderKey(holder), capture.provenance[continuityHolderKey(holder)] ?? []])
+          .concat(rooms.map((holder) => [continuityHolderKey(holder), capture.provenance[continuityHolderKey(holder)]]))
+          .concat(
+            roomContext
+              ? [
+                  [
+                    continuityHolderKey(roomContext.holder),
+                    [
+                      ...new Set([
+                        ...(capture.provenance[continuityHolderKey(roomContext.holder)] ?? []),
+                        ...roomContext.provenance,
+                      ]),
+                    ],
+                  ],
+                ]
+              : [],
+          ),
       ),
     },
   };

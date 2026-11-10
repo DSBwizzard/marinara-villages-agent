@@ -24,7 +24,7 @@ import { admitNpcParticipants, bindNpcReferences, type NpcAdmission } from "./np
 import { findNpc } from "./places.js";
 import type { ContactMove } from "./venue-contact.js";
 import { contactPosition } from "./venue-contact.js";
-import { episodeContextActors } from "./episode-sources.js";
+import { episodeContextActors, episodeContextRooms } from "./episode-sources.js";
 
 export type NarrationPublication = {
   readset: NarrationReadset;
@@ -209,6 +209,7 @@ export function acceptNarrationContinuity(
     ...(readset.admission.room ? [readset.admission.room] : []),
     ...candidates,
     ...episodeContextActors({ actors: readset.source.actors, room: readset.admission.room }, Object.keys(provenance)),
+    ...episodeContextRooms({ actors: readset.source.actors, room: readset.admission.room }, Object.keys(provenance)),
   ];
   memoryRequire(
     readset.admission.protectionFingerprint === narrationProtectionFingerprint(state, holders),
@@ -371,6 +372,11 @@ export function acceptNarrationContinuity(
     holderDependencies[key] = Object.fromEntries(source.lines.map((line) => [line.id, [...units]]));
   }
   for (const version of versions) {
+    for (const holder of holders.filter(
+      (holder) => holder.kind === "room" && provenance[continuityHolderKey(holder)]?.length,
+    ))
+      (holderDependencies[continuityHolderKey(holder)] ??= {})["version:" + version.id] =
+        provenance[continuityHolderKey(holder)];
     const record = continuity.records.find((record) => record.id === version.rootId)!;
     for (const head of Object.values(record.heads).filter((head) => head.versionId === version.id)) {
       const key = continuityHolderKey(head.holder),

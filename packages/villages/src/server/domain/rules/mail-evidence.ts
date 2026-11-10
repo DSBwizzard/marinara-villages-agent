@@ -1,6 +1,7 @@
 import type { AcceptedEpisode } from "../models/episode-model.js";
 import type { ContinuityEvidence } from "../models/continuity-model.js";
 import { memoryHash, memoryRequire, memoryString, memoryTimestamp } from "./memory-integrity.js";
+import { continuityHolderKey } from "./continuity.js";
 
 type Receipt = AcceptedEpisode["commandReceipts"][number];
 export type MailIdentity = Omit<NonNullable<Receipt["mail"]>, "phase" | "sourceHash" | "readingHash">;
@@ -57,7 +58,8 @@ export function assertMailReceipt(episode: AcceptedEpisode, receipt: Receipt) {
   const participants = receipt.mail.phase === "written" ? [receipt.mail.from] : [receipt.mail.from, receipt.mail.to];
   memoryRequire(
     !episode.sceneId &&
-      !episode.room &&
+      (!episode.room ||
+        (receipt.mail.from.id !== "player" && !!episode.holderDependencies?.[continuityHolderKey(episode.room)])) &&
       !episode.sceneDelta &&
       !episode.privateInput &&
       !episode.segments.length &&

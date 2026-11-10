@@ -1,9 +1,11 @@
 import type { VillageState } from "../models/world.js";
-import type { MailContinuityPlan } from "../models/social-mail.js";
+import type { MailContinuityPlan, MailRoomContext } from "../models/social-mail.js";
 import type { ContinuityCapture } from "../models/continuity-model.js";
 import { continuityActor } from "./continuity-actors.js";
 import { acceptMailContinuity, type MailPublication } from "./mail-continuity.js";
 import { mailStagePublication } from "./mail-context.js";
+import { continuityContextScopeKey } from "./continuity-context.js";
+import { episodeContextRooms } from "./episode-sources.js";
 import { continuityHolderKey, continuityProtectionFingerprint } from "./continuity.js";
 import { readNarrationEffectHeader } from "./narration-contract.js";
 import { mailSourceHash, type MailIdentity } from "./mail-evidence.js";
@@ -100,10 +102,10 @@ function deliverLetter(
   meaning: MailMeaning,
   digest: string,
   at: string,
-  readNow: boolean,
-  replyTo?: string,
-  baseline = { ...state },
+  options: { readNow: boolean; replyTo?: string; baseline?: VillageState; roomContext?: MailRoomContext },
 ) {
+  const { readNow, replyTo, roomContext } = options,
+    baseline = options.baseline ?? { ...state };
   const before = { ...state },
     { writer, reader } = mailRows(meaning, mail);
   const writing = mailStagePublication(
@@ -116,6 +118,7 @@ function deliverLetter(
       digest,
       requestId,
       replyTo,
+      roomContext,
     ),
     candidate = { ...state },
     written = requireAccepted(acceptMailContinuity(candidate, writing, at)),
@@ -153,6 +156,7 @@ function deliverLetter(
       digest,
       requestId,
       replyTo,
+      roomContext,
     ),
     checkedRead = { ...candidate },
     read = requireAccepted(acceptMailContinuity(checkedRead, reading, at));
@@ -218,7 +222,7 @@ export function acceptMailExchange(state: VillageState, exchange: MailExchange, 
     exchange.incomingMeaning,
     digest,
     at,
-    true,
+    { readNow: true },
   );
   if (exchange.replyText) {
     const reply: MailIdentity = { id: incoming.id + ":reply", at: capture.at, from: incoming.to, to: incoming.from },
@@ -240,9 +244,7 @@ export function acceptMailExchange(state: VillageState, exchange: MailExchange, 
       { ...exchange.replyMeaning, keep },
       digest,
       at,
-      false,
-      incoming.id,
-      before,
+      { readNow: false, replyTo: incoming.id, baseline: before },
     );
   } else
     memoryRequire(
@@ -286,8 +288,16 @@ export function acceptResidentLetter(
   meaning: MailMeaning,
   responseDigest: string,
   at: string,
+  roomContext?: MailRoomContext,
 ) {
-  const digest = memoryHash([capture, mailSourceHash(capture.seed, mail, text), requestId, meaning, responseDigest]),
+  const digest = memoryHash([
+      capture,
+      mailSourceHash(capture.seed, mail, text),
+      requestId,
+      meaning,
+      responseDigest,
+      ...(roomContext ? [roomContext] : []),
+    ]),
     writer = mailRows(meaning, mail).writer,
     writing = mailStagePublication(
       capture,
@@ -298,6 +308,8 @@ export function acceptResidentLetter(
       meaning.requires.filter((id) => writer.some((row) => row.id === id)),
       digest,
       requestId,
+      undefined,
+      roomContext,
     ),
     prior = state.episodes.records.find((episode) => episode.id === writing.admission.episodeId);
   if (prior) {
@@ -312,17 +324,19 @@ export function acceptResidentLetter(
     capture.actors.every((actor) => continuityActor(state, actor.id)?.incarnation === actor.incarnation),
     "autonomous mail context actor incarnation changed",
   );
-  const scope = [...capture.actors, ...capture.references];
+  const scope = [
+    ...[...capture.actors, ...capture.references].map((actor) => ({ kind: "actor" as const, ...actor })),
+    ...episodeContextRooms({ actors: capture.actors }, Object.keys(capture.provenance)),
+  ];
   memoryRequire(
-    capture.protection[memoryHash(scope)] ===
-      continuityProtectionFingerprint(
-        state.continuity,
-        scope.map((actor) => ({ kind: "actor", ...actor })),
-      ),
+    capture.protection[continuityContextScopeKey(scope)] === continuityProtectionFingerprint(state.continuity, scope),
     "autonomous mail context protection changed",
   );
   const candidate = { ...state },
-    result = deliverLetter(candidate, capture, mail, text, requestId, meaning, digest, at, false);
+    result = deliverLetter(candidate, capture, mail, text, requestId, meaning, digest, at, {
+      readNow: false,
+      roomContext,
+    });
   state.continuity = candidate.continuity;
   state.episodes = candidate.episodes;
   state.mailbox = candidate.mailbox;

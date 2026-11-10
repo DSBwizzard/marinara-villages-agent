@@ -1,6 +1,17 @@
 import type { RelationshipDisclosure, RelationshipHead, RelationshipReview } from "./relationship-types.js";
 import type { CapturedAdmission } from "./captured-admission-model.js";
-import type { ContinuityAdmission, ContinuityCapture, ContinuityEvidence } from "./continuity-model.js";
+import type {
+  ContinuityAdmission,
+  ContinuityCapture,
+  ContinuityEvidence,
+  ContinuityHolder,
+} from "./continuity-model.js";
+export type MailRoomContext = {
+  holder: Extract<ContinuityHolder, { kind: "room" }>;
+  provenance: string[];
+  fingerprint: string;
+  protectedRoots: string[];
+};
 export type MailContinuityPlan = {
   setupAt: string;
   admission: Omit<ContinuityAdmission, "continuityRevision" | "protectionFingerprint" | "room" | "blockedSources"> & {
@@ -11,6 +22,7 @@ export type MailContinuityPlan = {
   keep: unknown[];
   requires: string[];
   responseDigest: string;
+  roomContext?: MailRoomContext;
 };
 export type MailboxMessage = {
   id: string;

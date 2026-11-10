@@ -6,6 +6,7 @@ export type AcceptedEpisode = {
   id: string;
   seed: string;
   sceneId?: string;
+  opportunity?: { id: string; kind: "encounter" | "routine"; venueId: string; zoneId: string };
   submissionId: string;
   operationId: string;
   capturedAt: string;

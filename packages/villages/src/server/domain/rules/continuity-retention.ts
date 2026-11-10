@@ -7,7 +7,13 @@ import {
   continuitySourceUnit,
   continuityOfferSource,
 } from "./continuity.js";
-import { episodeSpeechEvidence, nativeReceiptSupportsRoom, episodeContextActors } from "./episode-sources.js";
+import {
+  episodeSpeechEvidence,
+  nativeReceiptSupportsRoom,
+  episodeContextActors,
+  episodeContextRooms,
+} from "./episode-sources.js";
+import { episodeUnit } from "../decoding/episode-codec.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { episodeMailEvidence } from "./mail-evidence.js";
 
@@ -102,13 +108,57 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
         }
       }
   }
-  for (const [sequence, episode] of episodes.records.entries())
+  for (const [sequence, episode] of episodes.records.entries()) {
+    for (const holder of [
+      ...episodeContextRooms(episode),
+      ...(!episode.sceneId && episode.room && episode.commandReceipts.some((receipt) => receipt.mail)
+        ? [episode.room]
+        : []),
+    ]) {
+      const key = continuityHolderKey(holder);
+      for (const dependency of new Set(Object.values(episode.holderDependencies![key]).flat())) {
+        const unit: unknown = JSON.parse(dependency);
+        memoryRequire(Array.isArray(unit), "invalid private room ancestry");
+        if (unit[0] === "version") {
+          const version = versions.get(unit[1]),
+            root = version && roots.get(version.rootId),
+            prior = version && episodes.records.find((row) => row.continuityVersionIds.includes(version.id));
+          memoryRequire(
+            unit.length === 2 &&
+              version &&
+              version.createdRevision <= episode.admittedContinuityRevision &&
+              ((version.room &&
+                root?.heads[key] &&
+                (version.administrative
+                  ? continuityHolderKey(version.administrative.holder) === key
+                  : version.id === continuityVersionId(episode.seed, version.operationId, holder) &&
+                    !!prior &&
+                    (sequenceById.get(prior.id) ?? Infinity) < sequence)) ||
+                (prior &&
+                  (sequenceById.get(prior.id) ?? Infinity) < sequence &&
+                  prior.holderDependencies?.[key]?.["version:" + version.id]?.length)),
+            "private room context lost its admitted canonical version",
+          );
+        } else {
+          const prior = typeof unit[0] === "string" ? byEpisode.get(unit[0]) : undefined;
+          memoryRequire(
+            prior &&
+              (sequenceById.get(prior.id) ?? Infinity) < sequence &&
+              typeof unit[1] === "string" &&
+              prior.holderDependencies?.[key]?.[unit[1]]?.length &&
+              episodeUnit(prior, unit[1]) === dependency,
+            "private room context lost its prior scoped source",
+          );
+        }
+      }
+    }
     for (const offer of episode.offered)
       for (const id of offer.ids)
         memoryRequire(
           roots.get(id)?.heads[continuityHolderKey(offer.holder)] && (births.get(id) ?? Infinity) < sequence,
           "initiative offer lost its admitted prior root",
         );
+  }
   function assertSource(source: ContinuityEvidence) {
     const episode = byEpisode.get(source.episodeId);
     const speech =

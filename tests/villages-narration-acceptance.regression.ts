@@ -1,4 +1,4 @@
-// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context
+// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context, narration-acceptance/inherited-room-context
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -13,6 +13,7 @@ import {
   continuityProtectionUnits,
   continuityKnowledge,
   continuitySourceUnit,
+  continuityProtectionFingerprint,
 } from "../packages/villages/src/server/domain/rules/continuity.js";
 import {
   episodeSourceGraph,
@@ -38,6 +39,8 @@ import {
 } from "../packages/villages/src/server/adapters/storage/continuity-pages.js";
 import { gmEpisodeView, actorEpisodeView } from "../packages/villages/src/server/domain/rules/episodes.js";
 import { assertContinuityRetention } from "../packages/villages/src/server/domain/rules/continuity-retention.js";
+import { captureContinuityContext } from "../packages/villages/src/server/domain/rules/continuity-context.js";
+import { acceptResidentLetter } from "../packages/villages/src/server/domain/rules/mail-delivery.js";
 
 const at = "2026-11-09T12:00:00.000Z",
   later = "2026-11-09T12:01:00.000Z";
@@ -666,6 +669,117 @@ await runCase("narration-acceptance/player-movement", () => {
       );
     } else assert.deepEqual(f.state, before, "a former room's listener cannot hear post-movement input");
   }
+});
+
+await runCase("narration-acceptance/inherited-room-context", () => {
+  const f = fixture("Hello."),
+    room = { kind: "room" as const, placeId: "former-place", zoneId: "parlor" },
+    key = continuityHolderKey(room);
+  for (const [id, text] of [
+    ["cup", "A blue cup stands on the shelf."],
+    ["other", "SECRET RED BENCH"],
+  ])
+    retainNativeFact(
+      f.state,
+      {
+        id,
+        kind: "structure",
+        targetId: JSON.stringify([room.placeId, room.zoneId]),
+        revision: 1,
+        text,
+        witnesses: [],
+      },
+      at,
+      { room },
+    );
+  const other = f.state.continuity.records.at(-1)!;
+  f.state.continuity = protectContinuity(
+    f.state.continuity,
+    { id: other.id, recordRevision: other.revision, heads: { [key]: other.heads[key].revision } },
+    [room],
+    "correct-unrelated",
+    at,
+    { text: "PRIVATE GREEN CABINET" },
+  );
+  const cup = f.state.continuity.records[0],
+    capture = captureContinuityContext(f.state, ["player", f.id], "blue cup", at);
+  acceptResidentLetter(
+    f.state,
+    capture,
+    { id: "room-note", at, from: continuityActor(f.state, f.id)!, to: continuityActor(f.state, "player")! },
+    "The blue cup is on the shelf.",
+    "room-note",
+    { keep: [], requires: [] },
+    memoryHash("existing letter"),
+    later,
+    {
+      holder: room,
+      provenance: [JSON.stringify(["version", cup.heads[key].versionId])],
+      fingerprint: continuityProtectionFingerprint(f.state.continuity, [room]),
+      protectedRoots: [other.id],
+    },
+  );
+  const pub = f.publication({
+    segments: [{ id: "echo", kind: "narration", text: "A sketch of the blue cup on its shelf catches your eye." }],
+    keep: [
+      {
+        for: ["player"],
+        text: "The player saw a sketch of the blue cup.",
+        source: [{ segment: "echo", perceive: { kind: "seen", by: ["player"] } }],
+        protection: { roots: [other.id], disposition: "clear" },
+      },
+    ],
+  });
+  assert(pub.readset.admission.provenance![key]?.length, "the Scene really fits remote-room-derived history");
+  assert.notEqual(pub.readset.admission.room!.placeId, room.placeId);
+  const context = narrationContinuityContext(f.state, f.scene, pub.readset.source.venue, "next", "Hello.", at),
+    markers = JSON.stringify(context.roomReferences);
+  assert(markers.includes(other.id));
+  assert(
+    !markers.includes("SECRET RED BENCH") && !markers.includes("PRIVATE GREEN CABINET"),
+    "opaque Room scopes never fetch remote descriptions or correction text",
+  );
+  const result = acceptNarrationContinuity(f.state, pub, "room-descendant", later);
+  assert(!result.held, JSON.stringify(result));
+  const second = result.episode!;
+  const current = f.state.continuity.records.find((row) => row.id === cup.id)!;
+  f.state.continuity = protectContinuity(
+    f.state.continuity,
+    { id: current.id, recordRevision: current.revision, heads: { [key]: current.heads[key].revision } },
+    [room],
+    "correct-cup",
+    later,
+    { text: "An empty shelf." },
+  );
+  const encoded = encodeContinuityPages(
+      {
+        continuity: f.state.continuity,
+        episodes: f.state.episodes,
+        worldPlaces: f.state.worldPlaces,
+        mailbox: f.state.mailbox,
+      },
+      "a".repeat(32),
+    ),
+    cold = decodeContinuityPagesSync(
+      encoded.manifest,
+      "a".repeat(32),
+      f.state.seed,
+      (id) => encoded.pages.get(id) ?? null,
+    ).value;
+  assert(
+    !JSON.stringify(gmEpisodeView(second, cold.continuity, pub.readset.source.actors, cold.episodes)).includes(
+      "blue cup",
+    ),
+    "Room protection also filters player-perceived Scene text after reload",
+  );
+  assert(
+    actorEpisodeView(
+      second,
+      cold.continuity,
+      continuityActor(f.state, "player")!,
+      cold.episodes,
+    )?.segments[0].text.includes("blue cup"),
+  );
 });
 
 await runCase("narration-acceptance/dropped-movement", () => {

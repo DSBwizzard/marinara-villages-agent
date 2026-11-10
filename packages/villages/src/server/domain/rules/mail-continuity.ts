@@ -1,4 +1,4 @@
-import type { ContinuityEvidence } from "../models/continuity-model.js";
+import type { ContinuityEvidence, ContinuityHolder } from "../models/continuity-model.js";
 import type { AcceptedEpisode } from "../models/episode-model.js";
 import type { VillageState } from "../models/world.js";
 import type { MailContinuityPlan } from "../models/social-mail.js";
@@ -14,6 +14,7 @@ import {
   continuityProtectionUnits,
   continuitySelfSource,
   continuitySourceUnit,
+  continuityVersionId,
 } from "./continuity.js";
 import { assertContinuityRetention } from "./continuity-retention.js";
 import { appendEpisode } from "./episodes.js";
@@ -22,7 +23,7 @@ import { prepareContinuityKeep } from "./narration-keep.js";
 import { readContinuityProposal, readNarrationEffectHeader } from "./narration-contract.js";
 import { selectSceneEffects, type SceneEffectResult } from "./scene-acceptance.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
-import { episodeContextActors } from "./episode-sources.js";
+import { episodeContextActors, episodeContextRooms } from "./episode-sources.js";
 
 export type MailPublication = MailContinuityPlan & {
   mail: MailIdentity;
@@ -105,12 +106,25 @@ export function acceptMailContinuity(state: VillageState, publication: MailPubli
     "mail stage is no longer eligible",
   );
   const generated = phase === "written" && mail.from.id !== "player",
-    references = episodeContextActors({ actors: parties }, Object.keys(publication.admission.provenance ?? {}));
+    roomContext = publication.roomContext,
+    references = episodeContextActors(
+      { actors: parties, room: roomContext?.holder },
+      Object.keys(publication.admission.provenance ?? {}),
+    ),
+    rooms = episodeContextRooms({ actors: parties }, Object.keys(publication.admission.provenance ?? {})).filter(
+      (room) =>
+        !roomContext ||
+        continuityHolderKey(room) !== continuityHolderKey(roomContext.holder) ||
+        publication.admission.provenance?.[continuityHolderKey(room)]?.some(
+          (unit) => !roomContext.provenance.includes(unit),
+        ),
+    );
   memoryRequire(
     publication.admission.protectionFingerprint ===
       continuityProtectionFingerprint(state.continuity, [
         ...[mail.from, mail.to].map((party) => ({ kind: "actor" as const, ...party })),
         ...references.filter((holder) => holder.id !== mail.from.id && holder.id !== mail.to.id),
+        ...(phase === "read" && !publication.keep.length ? [] : rooms),
       ]),
     "mail continuity protection changed",
   );
@@ -124,14 +138,51 @@ export function acceptMailContinuity(state: VillageState, publication: MailPubli
     ),
     "mail private context changed its captured reference holder",
   );
-  const contexts = [...actors, ...references];
+  if (roomContext) {
+    const key = continuityHolderKey(roomContext.holder);
+    memoryRequire(
+      roomContext.holder.kind === "room" &&
+        ((phase === "read" && !publication.keep.length) ||
+          roomContext.fingerprint === continuityProtectionFingerprint(state.continuity, [roomContext.holder])) &&
+        roomContext.provenance.every((unit) => publication.admission.provenance?.[key]?.includes(unit)),
+      "mail room context protection changed",
+    );
+    for (const unit of roomContext.provenance) {
+      const parsed: unknown = JSON.parse(unit);
+      memoryRequire(
+        Array.isArray(parsed) && parsed.length === 2 && parsed[0] === "version" && typeof parsed[1] === "string",
+        "invalid mail room context source",
+      );
+      const version = state.continuity.versions.find((version) => version.id === parsed[1]),
+        root = version && state.continuity.records.find((record) => record.id === version.rootId);
+      memoryRequire(
+        version?.room &&
+          root?.heads[key] &&
+          version.createdRevision <= publication.admission.continuityRevision &&
+          (version.administrative
+            ? continuityHolderKey(version.administrative.holder) === key
+            : version.id === continuityVersionId(state.seed, version.operationId, roomContext.holder)),
+        "mail room context lost its admitted canonical source",
+      );
+    }
+  }
+  const contexts: ContinuityHolder[] = [
+    ...new Map(
+      [...actors, ...references, ...rooms, ...(roomContext ? [roomContext.holder] : [])].map((holder) => [
+        continuityHolderKey(holder),
+        holder,
+      ]),
+    ).values(),
+  ];
   const blocked = Object.fromEntries(
     contexts.map((actor) => [
       continuityHolderKey(actor),
       [...continuityProtectionUnits(state.continuity, actor, episodeSourceGraph(state.episodes.records, actor))],
     ]),
   );
-  for (const actor of contexts)
+  for (const actor of contexts.filter(
+    (holder) => !(holder.kind === "room" && phase === "read" && !publication.keep.length),
+  ))
     assertContinuityProvenance(
       publication.admission.provenance?.[continuityHolderKey(actor)] ?? [],
       new Set(blocked[continuityHolderKey(actor)]),
@@ -156,7 +207,7 @@ export function acceptMailContinuity(state: VillageState, publication: MailPubli
     assertContinuityKnowledge(
       state.continuity,
       source,
-      contexts,
+      [...actors, ...references],
       admission.continuityRevision!,
       admission.sourceActors,
     );
@@ -257,7 +308,16 @@ export function acceptMailContinuity(state: VillageState, publication: MailPubli
     holderDependencies[continuityHolderKey(holder)] = {
       ["mail:" + receipt.mail!.sourceHash]: admission.provenance?.[continuityHolderKey(holder)] ?? [],
     };
+  for (const room of contexts.filter((holder) => holder.kind === "room"))
+    holderDependencies[continuityHolderKey(room)] = {
+      ...(mail.from.id !== "player"
+        ? { ["mail:" + receipt.mail!.sourceHash]: admission.provenance?.[continuityHolderKey(room)] ?? [] }
+        : {}),
+    };
   for (const version of versions) {
+    for (const room of contexts.filter((holder) => holder.kind === "room"))
+      (holderDependencies[continuityHolderKey(room)] ??= {})["version:" + version.id] =
+        admission.provenance?.[continuityHolderKey(room)] ?? [];
     const record = continuity.records.find((row) => row.id === version.rootId)!;
     for (const head of Object.values(record.heads).filter((head) => head.versionId === version.id)) {
       const key = continuityHolderKey(head.holder);
@@ -269,6 +329,8 @@ export function acceptMailContinuity(state: VillageState, publication: MailPubli
       ];
     }
   }
+  for (const [key, units] of Object.entries(holderDependencies))
+    if (!Object.keys(units).length) delete holderDependencies[key];
   const episode: AcceptedEpisode = {
     format: 1,
     id: receipt.id,
@@ -288,6 +350,7 @@ export function acceptMailContinuity(state: VillageState, publication: MailPubli
     commandReceipts: [receipt],
     dependencies: {},
     holderDependencies,
+    ...(roomContext ? { room: roomContext.holder } : {}),
   };
   const episodes = appendEpisode(state.episodes, episode, state.seed),
     mailbox = readMailboxState(

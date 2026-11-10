@@ -4,7 +4,7 @@ import { continuityEvidenceSchema, continuityHolderSchema } from "./continuity-c
 import { readSceneLines } from "../rules/scene-transcript.js";
 import { continuityHolderKey, continuitySourceUnit, continuityVersionUnit } from "../rules/continuity.js";
 import type { ContinuityHolder } from "../models/continuity-model.js";
-import { nativeReceiptSupportsRoom, episodeContextActors } from "../rules/episode-sources.js";
+import { nativeReceiptSupportsRoom, episodeContextActors, episodeContextRooms } from "../rules/episode-sources.js";
 import { immutableMemoryValue, isImmutableMemoryValue, memoryHash, memoryRequire } from "../rules/memory-integrity.js";
 import { readNpc } from "../rules/places.js";
 import type { NpcIdentity } from "../models/places.js";
@@ -19,6 +19,10 @@ const episode = z
     id,
     seed: id,
     sceneId: id.optional(),
+    opportunity: z
+      .object({ id, kind: z.enum(["encounter", "routine"]), venueId: z.string().max(160), zoneId: id })
+      .strict()
+      .optional(),
     submissionId: id,
     operationId: id,
     capturedAt: at,
@@ -148,6 +152,26 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
   const value = episode.parse(raw) as AcceptedEpisode;
   memoryRequire(value.seed === seed && value.acceptedAt >= value.capturedAt, "invalid accepted episode world or time");
   const cast = new Map(value.actors.map((actor) => [actor.id, actor]));
+  if (value.opportunity) {
+    const source = value.opportunity;
+    memoryRequire(
+      !value.sceneId &&
+        !value.privateInput &&
+        !value.commandReceipts.length &&
+        value.actors.length > 0 &&
+        value.actors.length <= 4 &&
+        !cast.has("player") &&
+        value.submissionId === source.id &&
+        value.id === "resident-" + memoryHash([seed, source.id]).slice(0, 32) &&
+        value.operationId === value.id &&
+        value.actors.every((actor) => actor.zoneId === source.zoneId) &&
+        value.segments.every((line) => line.zoneId === source.zoneId) &&
+        (source.kind !== "encounter" || (value.actors.length >= 2 && !!source.venueId)) &&
+        !!value.room === !!source.venueId &&
+        (!value.room || (value.room.placeId === source.venueId && value.room.zoneId === source.zoneId)),
+      "invalid native resident opportunity",
+    );
+  }
   const contextActors = episodeContextActors(value),
     referenceIds = new Set([...cast.keys(), ...contextActors.map((actor) => actor.id)]);
   memoryRequire(
@@ -549,22 +573,30 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
     new Set(value.commandReceipts.map((row) => row.id)).size === value.commandReceipts.length,
     "duplicate native receipt",
   );
+  const nativeRoomContext =
+    !value.sceneId &&
+    !value.privateInput &&
+    !value.segments.length &&
+    ((value.room && value.commandReceipts.some((receipt) => nativeReceiptSupportsRoom(receipt, value.room!))) ||
+      (value.commandReceipts.length > 0 && value.commandReceipts.every((receipt) => receipt.kind === "mail")));
   memoryRequire(
     !value.room ||
       (value.room.kind === "room" &&
         (cast.get("player")?.zoneId === value.room.zoneId ||
-          (!value.sceneId &&
-            !value.privateInput &&
-            !value.segments.length &&
-            value.commandReceipts.some((receipt) => nativeReceiptSupportsRoom(receipt, value.room!))))),
+          (!!value.opportunity &&
+            value.opportunity.venueId === value.room.placeId &&
+            value.opportunity.zoneId === value.room.zoneId) ||
+          nativeRoomContext)),
     "invalid episode room scope",
   );
+  const contextRooms = episodeContextRooms(value);
   const holderKeys = new Set([
     ...value.actors.map((actor) =>
       continuityHolderKey({ kind: "actor", id: actor.id, incarnation: actor.incarnation }),
     ),
     ...(value.room ? [continuityHolderKey(value.room)] : []),
     ...contextActors.map(continuityHolderKey),
+    ...contextRooms.map(continuityHolderKey),
   ]);
   for (const [key, dependencies] of Object.entries(value.holderDependencies ?? {})) {
     memoryRequire(holderKeys.has(key), "unknown episode provenance holder");
@@ -581,6 +613,23 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
           Object.keys(dependencies).every((unit) => generatedUnits.includes(unit)) &&
           generatedUnits.every((unit) => dependencies[unit]?.length),
         "private reference provenance must cover generated segments only",
+      );
+    }
+    if (contextRooms.some((room) => continuityHolderKey(room) === key)) {
+      const generatedUnits = [
+          ...value.segments.map((line) => line.id),
+          ...value.commandReceipts
+            .filter((receipt) => receipt.mail && receipt.mail.from.id !== "player")
+            .map((receipt) => "mail:" + receipt.mail!.sourceHash),
+        ],
+        contextualUnits = [...generatedUnits, ...value.continuityVersionIds.map((id) => "version:" + id)];
+      memoryRequire(
+        Object.keys(dependencies).length > 0 &&
+          Object.entries(dependencies).every(
+            ([unit, sources]) => contextualUnits.includes(unit) && sources.length > 0,
+          ) &&
+          generatedUnits.every((unit) => dependencies[unit]?.length),
+        "private room provenance must cover contextual generated units only",
       );
     }
   }

@@ -3,10 +3,10 @@ import type { ContinuityEvidence, ContinuityHolder } from "../models/continuity-
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 
 /** Private GM reference holders are provenance, never Scene attendance or character perception. */
-export function episodeContextActors(
+function episodeContextHolders(
   episode: Pick<AcceptedEpisode, "room" | "holderDependencies"> & { actors: { id: string; incarnation: string }[] },
   keys = Object.keys(episode.holderDependencies ?? {}),
-): Extract<ContinuityHolder, { kind: "actor" }>[] {
+): ContinuityHolder[] {
   const physical = new Set(episode.actors.map((actor) => JSON.stringify(["actor", actor.id, actor.incarnation])));
   if (episode.room) physical.add(JSON.stringify(["room", episode.room.placeId, episode.room.zoneId]));
   const ids = new Set(episode.actors.map((actor) => actor.id));
@@ -17,7 +17,7 @@ export function episodeContextActors(
       memoryRequire(
         Array.isArray(row) &&
           row.length === 3 &&
-          row[0] === "actor" &&
+          (row[0] === "actor" || row[0] === "room") &&
           typeof row[1] === "string" &&
           row[1].length > 0 &&
           row[1].length <= 160 &&
@@ -25,12 +25,20 @@ export function episodeContextActors(
           row[2].length > 0 &&
           row[2].length <= 160 &&
           JSON.stringify(row) === key &&
-          !ids.has(row[1]),
+          (row[0] !== "actor" || !ids.has(row[1])),
         "invalid private episode context holder",
       );
+      if (row[0] === "room") return { kind: "room" as const, placeId: row[1], zoneId: row[2] };
       ids.add(row[1]);
       return { kind: "actor" as const, id: row[1], incarnation: row[2] };
     });
+}
+export function episodeContextActors(episode: Parameters<typeof episodeContextHolders>[0], keys?: string[]) {
+  return episodeContextHolders(episode, keys).filter((holder) => holder.kind === "actor");
+}
+/** Read-only Room ancestry never establishes attendance or writable Room authority. */
+export function episodeContextRooms(episode: Parameters<typeof episodeContextHolders>[0], keys?: string[]) {
+  return episodeContextHolders(episode, keys).filter((holder) => holder.kind === "room");
 }
 
 export function nativeReceiptSupportsRoom(

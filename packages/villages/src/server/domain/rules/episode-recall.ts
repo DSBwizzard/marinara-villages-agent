@@ -4,7 +4,7 @@ import type { VillageState } from "../models/world.js";
 import { actorContinuityEvidence, continuityHolderKey, continuitySourceUnit } from "./continuity.js";
 import { continuityActor } from "./continuity-actors.js";
 import { episodeUnit } from "../decoding/episode-codec.js";
-import { episodeContextActors } from "./episode-sources.js";
+import { episodeContextActors, episodeContextRooms } from "./episode-sources.js";
 import { actorEpisodeView, recallEpisodeSpeech, recallEpisodeMail, type selectEpisodeHistory } from "./episodes.js";
 type Actor = Extract<ContinuityHolder, { kind: "actor" }>;
 
@@ -100,6 +100,16 @@ export function projectEpisodeRecall(
     ...("text" in view.gmPrivateInput && view.gmPrivateInput.text.length > 0 ? [episodeUnit(episode, "input")] : []),
     ...segments.filter((row) => "gmOnlyText" in row).map((row) => episodeUnit(episode, row.id)),
   ];
+  for (const holder of [...(episode.room ? [episode.room] : []), ...episodeContextRooms(episode)]) {
+    const key = continuityHolderKey(holder),
+      units = [...segments.map((line) => line.id), ...(view.letters ?? []).map((letter) => letter.id)].filter(
+        (unit) => episode.holderDependencies?.[key]?.[unit]?.length,
+      );
+    if (units.length)
+      part.provenance[key] = [
+        ...new Set([...(part.provenance[key] ?? []), ...units.map((unit) => episodeUnit(episode, unit))]),
+      ];
+  }
   for (const holder of holders.filter((holder) =>
     actors.some((actor) => continuityHolderKey(actor) === continuityHolderKey(holder)),
   )) {

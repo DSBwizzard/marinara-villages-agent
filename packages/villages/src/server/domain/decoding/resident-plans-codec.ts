@@ -13,7 +13,7 @@ const id = z.string().min(1).max(160),
   minute = z.number().int().min(0).max(1440);
 const socialPlanSchema = z
   .object({
-    id: z.string().min(1).max(1024),
+    id,
     dateKey: date,
     actors: z
       .array(z.object({ id, incarnation: id }).strict())

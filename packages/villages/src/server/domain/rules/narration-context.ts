@@ -1,4 +1,5 @@
 import { projectEpisodeRecall } from "./episode-recall.js";
+import { readOnlyRoomContext } from "./continuity-context.js";
 import type { ContinuityEvidence, ContinuityHolder, ContinuityTarget } from "../models/continuity-model.js";
 import type { NarrationReadset } from "../models/narration-model.js";
 import { narrationResidenceContext } from "./narration-residence.js";
@@ -28,7 +29,7 @@ import { projectSpeechContexts } from "./project-interpretation.js";
 import { sceneContinuityView } from "./scene-continuity.js";
 import { narrationAccessScopes } from "./narration-access.js";
 import { capturedSceneCalendar } from "./scene-calendar.js";
-import { episodeContextActors } from "./episode-sources.js";
+import { episodeContextActors, episodeContextRooms } from "./episode-sources.js";
 import { capturePlaceContext, npcProfile } from "./places.js";
 import { offerSceneNarrative } from "./scene-narrative.js";
 import { nativeCircumstanceRoots } from "./native-continuity.js";
@@ -478,6 +479,10 @@ export function narrationContinuityContext(
     residence: narrationResidenceContext(sceneContinuityView(state, scene), ["player", ...writerIds]),
     places: narrationPlaceContext(sceneContinuityView(state, scene), ["player", ...writerIds]),
     protections,
+    roomReferences: readOnlyRoomContext(
+      state,
+      episodeContextRooms({ actors, room }, [...new Set(bounded.flatMap((part) => Object.keys(part.provenance)))]),
+    ),
     source: {
       seed: state.seed,
       episodeId,
@@ -515,7 +520,10 @@ export function fittedNarrationReadset(
         prior = offered.get(key);
       offered.set(key, { holder: row.holder, ids: [...new Set([...(prior?.ids ?? []), ...row.ids])] });
     }
-  const protectedRoots = [...new Set(context.protections.map((row) => row.id))];
+  const rooms = episodeContextRooms({ actors: context.actors, room: context.room }, Object.keys(provenance));
+  const protectedRoots = [
+    ...new Set([...context.protections, ...continuityConstraints(state.continuity, rooms)].map((row) => row.id)),
+  ];
   const subjectIds = new Set([
     ...state.villagers.map((row) => row.characterId),
     ...context.actors.map((row) => row.id),
@@ -572,6 +580,7 @@ export function fittedNarrationReadset(
         context.room,
         ...candidates.map((row) => row.holder),
         ...references,
+        ...rooms,
       ]),
       provenance,
     },

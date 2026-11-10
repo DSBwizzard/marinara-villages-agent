@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { continuityCaptureSchema } from "./continuity-context-codec.js";
 import type { MailboxState, PersonalMailInput } from "../models/social-mail.js";
 import type { EpisodeCollection } from "../models/episode-model.js";
 import { continuityEvidenceSchema } from "./continuity-codec.js";
@@ -37,30 +38,15 @@ export const mailPlanSchema = z
     keep: z.array(z.unknown()).max(32),
     requires: z.array(z.string().min(1).max(48)).max(48),
     responseDigest: digest,
-  })
-  .strict();
-const mailCaptureSchema = z
-  .object({
-    seed: id,
-    setupAt: at,
-    at,
-    actors: z.array(party).length(2),
-    references: z.array(party).max(256),
-    subjects: z.array(party).max(256),
-    continuityRevision: revision,
-    supplied: mailPlanSchema.shape.admission.shape.supplied,
-    protection: z.record(digest, digest),
-    protectedRoots: z.array(id),
-    historical: z.record(z.string().regex(/^h:/), continuityEvidenceSchema),
-    provenance: z.record(z.string(), units),
-    sourceActors: z.record(z.string(), z.array(party).max(32)),
-    prompt: z
+    roomContext: z
       .object({
-        entries: z.array(z.record(z.string(), z.unknown())),
-        history: z.unknown(),
-        protections: z.array(z.unknown()),
+        holder: z.object({ kind: z.literal("room"), placeId: id, zoneId: id }).strict(),
+        provenance: units.max(256),
+        fingerprint: digest,
+        protectedRoots: z.array(id).max(1024),
       })
-      .strict(),
+      .strict()
+      .optional(),
   })
   .strict();
 const personalInput = z
@@ -81,7 +67,10 @@ const personalInput = z
         requestId: z.string().regex(/^[a-zA-Z0-9_-]{1,200}$/),
       })
       .strict(),
-    capture: mailCaptureSchema,
+    capture: continuityCaptureSchema.refine(
+      (value) => value.actors.length === 2,
+      "Captured personal mail source needs exactly two correspondents.",
+    ),
   })
   .strict();
 export function readPersonalMailInput(raw: unknown): PersonalMailInput {

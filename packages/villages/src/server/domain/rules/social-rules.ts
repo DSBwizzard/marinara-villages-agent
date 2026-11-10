@@ -160,9 +160,7 @@ export function socialPlanCandidates(village: VillageState, now = new Date()): S
               continue;
             if (group.kind === "avoidance" && venue.id === first.venueId && zone.id === first.zoneId) continue;
             const plan: SocialPlan = {
-              id: [village.seed, "social-plan", dateKey, group.kind, ...actorIds, venue.id, zone.id, startMinute].join(
-                ":",
-              ),
+              id: "",
               dateKey,
               actors: group.actors.map((actor) => ({ id: actor.characterId, incarnation: actor.incarnation })),
               venueId: venue.id,
@@ -175,6 +173,7 @@ export function socialPlanCandidates(village: VillageState, now = new Date()): S
                 group.actors.map((actor) => [actor.characterId, routineRevision(actor.agenda!)]),
               ),
             };
+            plan.id = "social-plan-" + memoryHash([village.seed, plan]).slice(0, 32);
             if (socialPlanValid(village, plan, now)) result.push(plan);
           }
       }

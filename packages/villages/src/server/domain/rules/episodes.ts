@@ -7,7 +7,7 @@ import {
   continuitySourceUnit,
   actorContinuityEvidence,
 } from "./continuity.js";
-import { episodeSpeechEvidence, episodeContextActors } from "./episode-sources.js";
+import { episodeSpeechEvidence, episodeContextActors, episodeContextRooms } from "./episode-sources.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { assertMailHistory, episodeMailEvidence } from "./mail-evidence.js";
 
@@ -172,9 +172,11 @@ export function gmEpisodeView(
       ...episode.actors.map((actor) => ({ kind: "actor" as const, ...actor })),
       ...episodeContextActors(episode),
     ]),
-    episode.room
-      ? blockedUnits(continuity, episode.room, episodeSourceGraph(history.records, episode.room))
-      : new Set(),
+    new Set(
+      [...(episode.room ? [episode.room] : []), ...episodeContextRooms(episode)].flatMap((room) => [
+        ...blockedUnits(continuity, room, episodeSourceGraph(history.records, room)),
+      ]),
+    ),
   );
 }
 function gmProtections(
@@ -257,7 +259,11 @@ function projectGmEpisode(
   const letters = episode.commandReceipts.flatMap((receipt) => {
     if (!receipt.mail) return [];
     const id = "mail:" + receipt.mail.sourceHash;
-    if (referenceProtection.some((units) => protectedUnit(episode, id, units))) return [];
+    if (
+      protectedUnit(episode, id, roomProtection) ||
+      referenceProtection.some((units) => protectedUnit(episode, id, units))
+    )
+      return [];
     const knownBy = views
       .filter((row) => row.view.letters.some((letter) => letter.id === id))
       .map((row) => row.holder.id);
@@ -275,7 +281,7 @@ function projectGmEpisode(
       : [];
   });
   if (episode.commandReceipts.some((receipt) => receipt.mail) && !letters.length) return null;
-  return {
+  const view = {
     id: episode.id,
     sceneId: episode.sceneId,
     at: episode.capturedAt,
@@ -283,6 +289,7 @@ function projectGmEpisode(
     groundedInput: views.flatMap(({ holder, view }) => view.input.map((row) => ({ ...row, for: holder.id }))),
     ...(letters.length ? { letters } : {}),
     segments: episode.segments.flatMap((line) => {
+      if (protectedUnit(episode, line.id, roomProtection)) return [];
       const perceived = views.flatMap((row) =>
         row.view.segments
           .filter((segment) => segment.id === line.id)
@@ -309,6 +316,12 @@ function projectGmEpisode(
       ];
     }),
   };
+  return (!inputProtected && episode.privateInput.length > 0) ||
+    view.groundedInput.length ||
+    view.segments.length ||
+    letters.length
+    ? view
+    : null;
 }
 
 /** Select complete exchanges locally; omission never means that an earlier event did not happen. */
@@ -340,9 +353,11 @@ export function selectEpisodeHistory(
       episode,
       holders,
       protections,
-      episode.room
-        ? blockedUnits(continuity, episode.room, episodeSourceGraph(collection.records, episode.room))
-        : new Set(),
+      new Set(
+        [...(episode.room ? [episode.room] : []), ...episodeContextRooms(episode)].flatMap((room) => [
+          ...blockedUnits(continuity, room, episodeSourceGraph(collection.records, room)),
+        ]),
+      ),
     );
     if (!view) return [];
     const text = JSON.stringify(view),

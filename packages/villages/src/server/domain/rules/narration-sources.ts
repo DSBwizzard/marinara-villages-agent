@@ -197,80 +197,126 @@ export function bindNarrationSource(
       source.perceptions = [{ actorId: "player", channel: "private", text: span.text }];
     } else source.kind = "context";
   } else {
-    const id = Object.hasOwn(context.labels, ref.segment) && context.labels[ref.segment];
-    const index = context.lines.findIndex((line) => line.id === id),
-      line = context.lines[index];
-    memoryRequire(line && line.role === "assistant" && line.speakerId !== "player", "segment source was not supplied");
-    if (owner?.holder.kind === "room")
-      memoryRequire(
-        owner.holder.placeId === context.scene.placeId && owner.holder.zoneId === line.zoneId,
-        "room outcome is outside its captured scope",
-      );
-    source.unitId = line.id;
-    source.fingerprint = memoryHash(line);
-    source.excerpt = line.content;
-    source.moment = { index, side: "after" };
-    const full = [...new Set([...line.heardBy, ...(line.kind !== "narration" ? [line.speakerId] : [])])];
-    const sound = [...(line.soundOnly?.characterIds ?? []), ...(line.soundOnly?.player ? ["player"] : [])];
-    const perceive = ref.perceive;
-    if (line.kind !== "narration") {
-      memoryRequire(
-        !perceive || ["heard", "sound-only"].includes(perceive.kind),
-        "dialogue sources retain their actual communication channel",
-      );
-      source.kind = "speech";
-      source.actorId = line.speakerId;
-      for (const actorId of perceive?.by ?? [...new Set([...full, ...sound])]) {
-        memoryRequire(
-          context.actors.some((actor) => actor.id === actorId) && position(context, actorId, { index, side: "after" }),
-          "unknown segment recipient",
-        );
-        const words = full.includes(actorId) && perceive?.kind !== "sound-only";
-        memoryRequire(
-          words || (line.soundOnly && (full.includes(actorId) || sound.includes(actorId))),
-          "segment recipient was not routed that source",
-        );
-        source.perceptions.push({
-          actorId,
-          channel: words ? "words" : "sound-only",
-          text: words ? line.content : line.soundOnly!.text,
-        });
-      }
-    } else if (!perceive && owner?.holder.kind === "room") {
-      source.kind = "observation";
-    } else if (perceive) {
-      source.kind = perceive.kind === "private" ? "private" : "observation";
-      memoryRequire(
-        perceive.kind !== "private" ||
-          (perceive.by.length === 1 &&
-            perceive.by[0] !== "player" &&
-            (context.scene.contactGeneration?.actorIds ?? context.scene.activeIds).includes(perceive.by[0])),
-        "private narration is only its actor's own perspective",
-      );
-      if (perceive.kind === "private") source.actorId = perceive.by[0];
-      for (const actorId of perceive.by) {
-        memoryRequire(
-          context.actors.some((actor) => actor.id === actorId) &&
-            position(context, actorId, { index, side: "after" }) &&
-            (full.includes(actorId) || sound.includes(actorId)),
-          "narrated perception was not eligible",
-        );
-        const acoustic = perceive.kind === "heard" || perceive.kind === "sound-only";
-        memoryRequire(
-          acoustic ? line.soundOnly && (full.includes(actorId) || sound.includes(actorId)) : full.includes(actorId),
-          "narration cannot grant an unseen or unheard observation",
-        );
-        source.perceptions.push({
-          actorId,
-          channel: acoustic ? "sound-only" : perceive.kind === "private" ? "private" : "sight",
-          text: acoustic ? line.soundOnly!.text : line.content,
-        });
-      }
-    }
+    return bindNarrationSegment(
+      ref,
+      {
+        seed: context.seed,
+        episodeId: context.episodeId,
+        actors: context.actors,
+        room: { kind: "room", placeId: context.scene.placeId, zoneId: context.scene.zoneId ?? "" },
+        privateActorIds: context.scene.contactGeneration?.actorIds ?? context.scene.activeIds,
+        lines: context.lines,
+        labels: context.labels,
+        positions: (moment) => narrationPositions(context, moment),
+      },
+      owner,
+    );
   }
   memoryRequire(!ref.act || source.kind === "speech", "only actual communication supports an offer decision");
   if (ref.act) source.act = ref.act;
   if (source.moment) source.positions = narrationPositions(context, source.moment);
+  source.id = "source-" + memoryHash([context.episodeId, ref, source]).slice(0, 32);
+  return source;
+}
+
+export type NarrationSegmentContext = {
+  seed: string;
+  episodeId: string;
+  actors: Actor[];
+  room?: Extract<ContinuityHolder, { kind: "room" }>;
+  privateActorIds: string[];
+  lines: VenueLine[];
+  labels: Record<string, string>;
+  positions(moment: { index: number; side: "before" | "after" }): Record<string, string>;
+};
+
+/** Scene and native resident Episodes bind the same exact routed segment evidence. */
+export function bindNarrationSegment(
+  ref: Extract<NarrationSource, { segment: string }>,
+  context: NarrationSegmentContext,
+  owner?: NarrationSourceOwner,
+): ContinuityEvidence {
+  const source: ContinuityEvidence = {
+    id: "",
+    seed: context.seed,
+    episodeId: context.episodeId,
+    unitId: "",
+    fingerprint: "",
+    excerpt: "",
+    kind: "context",
+    perceptions: [],
+  };
+  const id = Object.hasOwn(context.labels, ref.segment) && context.labels[ref.segment];
+  const index = context.lines.findIndex((line) => line.id === id),
+    line = context.lines[index];
+  memoryRequire(line && line.role === "assistant" && line.speakerId !== "player", "segment source was not supplied");
+  if (owner?.holder.kind === "room")
+    memoryRequire(
+      owner.holder.placeId === context.room?.placeId && owner.holder.zoneId === line.zoneId,
+      "room outcome is outside its captured scope",
+    );
+  source.unitId = line.id;
+  source.fingerprint = memoryHash(line);
+  source.excerpt = line.content;
+  source.moment = { index, side: "after" };
+  const full = [...new Set([...line.heardBy, ...(line.kind !== "narration" ? [line.speakerId] : [])])];
+  const sound = [...(line.soundOnly?.characterIds ?? []), ...(line.soundOnly?.player ? ["player"] : [])];
+  const perceive = ref.perceive;
+  if (line.kind !== "narration") {
+    memoryRequire(
+      !perceive || ["heard", "sound-only"].includes(perceive.kind),
+      "dialogue sources retain their actual communication channel",
+    );
+    source.kind = "speech";
+    source.actorId = line.speakerId;
+    for (const actorId of perceive?.by ?? [...new Set([...full, ...sound])]) {
+      memoryRequire(
+        context.actors.some((actor) => actor.id === actorId) && context.positions({ index, side: "after" })[actorId],
+        "unknown segment recipient",
+      );
+      const words = full.includes(actorId) && perceive?.kind !== "sound-only";
+      memoryRequire(
+        words || (line.soundOnly && (full.includes(actorId) || sound.includes(actorId))),
+        "segment recipient was not routed that source",
+      );
+      source.perceptions.push({
+        actorId,
+        channel: words ? "words" : "sound-only",
+        text: words ? line.content : line.soundOnly!.text,
+      });
+    }
+  } else if (!perceive && owner?.holder.kind === "room") {
+    source.kind = "observation";
+  } else if (perceive) {
+    source.kind = perceive.kind === "private" ? "private" : "observation";
+    memoryRequire(
+      perceive.kind !== "private" ||
+        (perceive.by.length === 1 && perceive.by[0] !== "player" && context.privateActorIds.includes(perceive.by[0])),
+      "private narration is only its actor's own perspective",
+    );
+    if (perceive.kind === "private") source.actorId = perceive.by[0];
+    for (const actorId of perceive.by) {
+      memoryRequire(
+        context.actors.some((actor) => actor.id === actorId) &&
+          context.positions({ index, side: "after" })[actorId] &&
+          (full.includes(actorId) || sound.includes(actorId)),
+        "narrated perception was not eligible",
+      );
+      const acoustic = perceive.kind === "heard" || perceive.kind === "sound-only";
+      memoryRequire(
+        acoustic ? line.soundOnly && (full.includes(actorId) || sound.includes(actorId)) : full.includes(actorId),
+        "narration cannot grant an unseen or unheard observation",
+      );
+      source.perceptions.push({
+        actorId,
+        channel: acoustic ? "sound-only" : perceive.kind === "private" ? "private" : "sight",
+        text: acoustic ? line.soundOnly!.text : line.content,
+      });
+    }
+  }
+  memoryRequire(!ref.act || source.kind === "speech", "only actual communication supports an offer decision");
+  if (ref.act) source.act = ref.act;
+  if (source.moment) source.positions = context.positions(source.moment);
   source.id = "source-" + memoryHash([context.episodeId, ref, source]).slice(0, 32);
   return source;
 }

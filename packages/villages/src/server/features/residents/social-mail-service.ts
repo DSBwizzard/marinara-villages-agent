@@ -8,7 +8,8 @@ import { readEffectiveVillagerCard } from "../../adapters/engine/catalog.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { continuityActor } from "../../domain/rules/continuity-actors.js";
 import { continuityProtectionFingerprint } from "../../domain/rules/continuity.js";
-import { captureContinuityContext } from "../../domain/rules/continuity-context.js";
+import { captureContinuityContext, continuityContextScopeKey } from "../../domain/rules/continuity-context.js";
+import { episodeContextRooms } from "../../domain/rules/episode-sources.js";
 import { acceptMailExchange, acceptResidentLetter, readDeliveredLetter } from "../../domain/rules/mail-delivery.js";
 import { mailSourceHash } from "../../domain/rules/mail-evidence.js";
 import { queueMailboxLetter } from "../../domain/rules/social-mail.js";
@@ -317,15 +318,15 @@ export function createSocialMail(ports: SocialMailPorts) {
       if (source.status === "delivered") return true;
       if (source.status !== "pending" || continuityActor(state, input.residentId)?.incarnation !== input.incarnation)
         throw conflict("The original correspondent changed. The saved source and response are retained.");
-      const scope = [input.incoming.from, input.incoming.to, ...input.capture.references],
-        expected = input.capture.protection[memoryHash(scope)];
-      if (
-        expected !==
-        continuityProtectionFingerprint(
-          state.continuity,
-          scope.map((party) => ({ kind: "actor", ...party })),
-        )
-      )
+      const scope = [
+          ...[input.incoming.from, input.incoming.to, ...input.capture.references].map((party) => ({
+            kind: "actor" as const,
+            ...party,
+          })),
+          ...episodeContextRooms({ actors: input.capture.actors }, Object.keys(input.capture.provenance)),
+        ],
+        expected = input.capture.protection[continuityContextScopeKey(scope)];
+      if (expected !== continuityProtectionFingerprint(state.continuity, scope))
         throw conflict("Mail continuity protection changed. The saved work is retained.");
       return true;
     },

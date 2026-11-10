@@ -91,6 +91,7 @@ export type ContinuityCapture = {
   historical: Record<string, ContinuityEvidence>;
   provenance: Record<string, string[]>;
   sourceActors: Record<string, { id: string; incarnation: string }[]>;
+  offered: { holder: Extract<ContinuityHolder, { kind: "actor" }>; ids: string[] }[];
   prompt: {
     entries: Record<string, unknown>[];
     history: unknown;

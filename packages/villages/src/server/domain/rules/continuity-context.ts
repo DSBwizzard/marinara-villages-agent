@@ -1,5 +1,6 @@
 import type { VillageState } from "../models/world.js";
-import type { ContinuityCapture, ContinuityEvidence } from "../models/continuity-model.js";
+import type { ContinuityCapture, ContinuityEvidence, ContinuityHolder } from "../models/continuity-model.js";
+import { episodeContextRooms } from "./episode-sources.js";
 import { continuityActor } from "./continuity-actors.js";
 import {
   continuityConstraints,
@@ -16,8 +17,26 @@ import { projectEpisodeRecall } from "./episode-recall.js";
 import { selectActorContinuity } from "./continuity-retrieval.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 
-const scopeKey = (actors: { id: string; incarnation: string }[]) =>
-  memoryHash(actors.map(({ id, incarnation }) => ({ id, incarnation })));
+export const continuityContextScopeKey = (holders: (ContinuityHolder | { id: string; incarnation: string })[]) =>
+  memoryHash(
+    holders.map((holder) =>
+      "kind" in holder && holder.kind === "room" ? holder : { id: holder.id, incarnation: holder.incarnation },
+    ),
+  );
+
+/** Opaque historical scopes never reveal remote Room prose or establish current Room authority. */
+export function readOnlyRoomContext(state: VillageState, rooms: Extract<ContinuityHolder, { kind: "room" }>[]) {
+  return rooms.length
+    ? {
+        scopes: rooms.map((room) => ({
+          placeId: room.placeId,
+          zoneId: room.zoneId,
+          protectedRoots: continuityConstraints(state.continuity, [room]).map((row) => row.id),
+        })),
+        rule: "Read-only historical ancestry; no current Room truth, attendance or mechanical authority. Do not reintroduce protected roots.",
+      }
+    : undefined;
+}
 
 /** Capture common recall once for the offered actors; context holders are not an encounter witness roster. */
 export function captureContinuityContext(
@@ -91,26 +110,37 @@ export function captureContinuityContext(
     ]
       .filter((actor, index, all) => all.findIndex((other) => other.id === actor.id) === index)
       .map(({ id, incarnation }) => ({ id, incarnation })),
+    rooms = episodeContextRooms({ actors: holders }, Object.keys(provenance)),
     protection = Object.fromEntries(
-      holders.map((holder) => [scopeKey([holder]), continuityProtectionFingerprint(state.continuity, [holder])]),
+      holders.map((holder) => [
+        continuityContextScopeKey([holder]),
+        continuityProtectionFingerprint(state.continuity, [holder]),
+      ]),
     );
-  const scopes = [holders, [...holders, ...references]];
+  const scopes: ContinuityHolder[][] = [holders, [...holders, ...references], [...holders, ...references, ...rooms]];
   for (const from of holders)
     for (const to of holders) {
       if (from.id === to.id) continue;
       const pair = [from, to];
       scopes.push(
         pair,
-        [...pair, ...[...holders, ...references].filter((actor) => actor.id !== from.id && actor.id !== to.id)],
+        [...pair, ...rooms],
+        [
+          ...pair,
+          ...[...holders, ...references].filter((actor) => actor.id !== from.id && actor.id !== to.id),
+          ...rooms,
+        ],
         [
           ...pair,
           ...[...holders, ...references].filter(
             (actor) => actor.id !== from.id && actor.id !== to.id && provenance[continuityHolderKey(actor)]?.length,
           ),
+          ...rooms,
         ],
       );
     }
-  for (const scope of scopes) protection[scopeKey(scope)] = continuityProtectionFingerprint(state.continuity, scope);
+  for (const scope of scopes)
+    protection[continuityContextScopeKey(scope)] = continuityProtectionFingerprint(state.continuity, scope);
   memoryRequire(
     subjects.length <= 256 && Object.keys(historical).length <= 1024,
     "continuity identity or evidence context exceeds its bound before generation",
@@ -126,7 +156,9 @@ export function captureContinuityContext(
     continuityRevision: state.continuity.revision,
     supplied: selected.supplied,
     protection,
-    protectedRoots: [...new Set(protections.map((row) => row.id))],
+    protectedRoots: [
+      ...new Set([...protections, ...continuityConstraints(state.continuity, rooms)].map((row) => row.id)),
+    ],
     historical,
     provenance,
     sourceActors: Object.fromEntries(
@@ -137,7 +169,12 @@ export function captureContinuityContext(
           .actors.map(({ id, incarnation }) => ({ id, incarnation })),
       ]),
     ),
-    prompt: { entries, history: renderedHistory, protections },
+    offered: selected.offered,
+    prompt: {
+      entries,
+      history: { ...renderedHistory, roomReferences: readOnlyRoomContext(state, rooms) },
+      protections,
+    },
   };
   memoryRequire(
     Buffer.byteLength(JSON.stringify(value)) <= 160000,
