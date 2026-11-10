@@ -6,8 +6,8 @@ export const DOSSIER_STYLES = `
 @font-face{font-family:Villages Notebook;src:url("${handwriting}") format("truetype");font-weight:400;font-style:normal;font-display:swap}
 .${P}-people-session{height:100%;min-height:0}.${P}-people-session[hidden]{display:none}
 .${P}-desk-container .${P}-desk-workspace[data-desk="people"]:not([data-desk="none"]){--menu-font:"village-letter-lora",Georgia,serif}
-.${P}-people-layout{height:100%;min-height:0;min-width:0;width:100%;margin:0;display:grid;grid-template-columns:clamp(340px,30%,500px) minmax(0,1fr);gap:40px}
-.${P}-people-index{min-height:0;min-width:0}
+.${P}-people-layout{height:100%;min-height:0;min-width:0;width:100%;margin:0;display:grid;grid-template-columns:clamp(280px,27%,420px) minmax(0,1fr);gap:36px}
+.${P}-people-index{height:100%;min-height:0;min-width:0}
 .${P}-dossier-root,.${P}-directory-root{--dossier-ink:#f0dfbc;--dossier-line:#a39b8460;--notebook-hand:var(--menu-font,Georgia,serif);color:var(--dossier-ink);background:transparent;box-sizing:border-box;height:100%;min-height:0;min-width:0;overflow:visible;position:relative;font:400 20px/1.6 var(--notebook-hand);padding:0;container-type:size}
 .${P}-dossier-root{display:grid;grid-template-columns:minmax(0,1fr) clamp(200px,38%,520px);gap:24px}
 .${P}-dossier-root>.${P}-dossier-desk{height:100%;grid-column:1;grid-row:1;position:static}
@@ -101,23 +101,25 @@ export const DOSSIER_STYLES = `
 .${P}-dossier-root :is(.${P}-memory-card-top,.${P}-memory-section-head,.${P}-memory-pill){font-size:14px}
 .${P}-dossier-root .${P}-memory-section-head h3{font-size:23px}
 .${P}-directory-paper{height:100%;min-height:0;min-width:0;display:flex;flex-direction:column}
+.${P}-directory-root .${P}-dossier-book{overflow:hidden}
 .${P}-directory-head{display:flex;align-items:center;gap:20px;flex:none;margin:0 0 26px}
 .${P}-directory-head h1{display:flex;align-items:center;gap:12px;font:600 clamp(50px,3.2vw,76px)/1.1 var(--notebook-hand);letter-spacing:-.025em;margin:0;flex:1;min-width:0}
 .${P}-directory-flourish{width:64px;height:40px;flex:none;fill:#969b7e;color:#a8aa80}
 .${P}-directory-search{position:relative;display:block;flex:none;width:100%;max-width:620px;margin:0 0 28px}
 .${P}-directory-search svg{position:absolute;left:18px;top:50%;transform:translateY(-50%);width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;pointer-events:none}
 .${P}-directory-root .${P}-directory-search input{width:100%;min-height:56px;padding:10px 16px 10px 56px;border:1px solid #b47f92aa;border-radius:13px;background:#74536755;font:400 22px/1.4 var(--notebook-hand)}
-.${P}-directory-reading{min-height:0;overflow:auto;flex:1;scrollbar-width:thin}
-.${P}-directory-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-content:start;padding:3px}
-.${P}-directory-page{display:contents}
-.${P}-directory-root .${P}-directory-card{position:relative;display:flex;flex-direction:column;align-items:stretch;gap:12px;min-width:0;width:100%;padding:14px 14px 18px;border:1px solid #a39b8470;border-radius:14px;background:#969b7eb0;box-shadow:none;text-align:left;color:#f0dfbc}
+.${P}-directory-reading{min-height:0;overflow:hidden;flex:1;container-type:size}
+.${P}-directory-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:16px;height:100%;max-height:calc(135cqw + 8px);padding:3px}
+.${P}-directory-root .${P}-directory-card{position:relative;display:grid;grid-template-rows:minmax(0,1fr) 52px;align-items:center;gap:8px;min-width:0;min-height:0;width:100%;padding:10px;border:1px solid #a39b8470;border-radius:12px;background:#969b7eb0;box-shadow:none;text-align:left;color:#f0dfbc;container-type:size}
 .${P}-directory-root .${P}-directory-card[aria-pressed="true"]{background:#b97980bf;border-color:#e5a49e}
-.${P}-directory-card .${P}-avatar{width:100%;height:auto;aspect-ratio:1;max-width:none;border:0;border-radius:5px;background:#514157;font-size:44px;overflow:hidden}
+.${P}-directory-card .${P}-avatar{width:min(100cqw,calc(100cqh - 60px));height:min(100cqw,calc(100cqh - 60px));justify-self:center;max-width:none;border:0;border-radius:5px;background:#514157;font-size:44px;overflow:hidden}
 .${P}-directory-card .${P}-avatar img{width:100%;height:100%;object-fit:cover}
-.${P}-directory-text{min-width:0;text-align:center}.${P}-directory-card strong{display:block;font:400 25px/1.3 var(--notebook-hand);overflow-wrap:anywhere}
+.${P}-directory-text{min-width:0;text-align:center}.${P}-directory-card strong{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font:400 20px/1.3 var(--notebook-hand);overflow-wrap:anywhere}
 .${P}-directory-card small{display:block;font-size:14px;margin-top:6px}
 .${P}-directory-card .${P}-directory-summary{display:none}
 .${P}-directory-card>span:last-child{display:none}
+.${P}-directory-pagination{display:flex;align-items:center;justify-content:center;gap:16px;flex:none;margin-top:12px;font-size:17px}
+.${P}-directory-root .${P}-directory-pagination button{min-width:44px;min-height:44px;padding:4px 10px;background:transparent;border-color:var(--dossier-line)}
 
 @container village-desk (min-width:701px) and (max-width:1100px){
  .${P}-people-layout{grid-template-columns:220px minmax(0,1fr);gap:24px}
@@ -165,6 +167,8 @@ export const DOSSIER_STYLES = `
  .${P}-directory-card strong{font-size:19px}
 }
 @media(max-height:700px){
+ .${P}-directory-head{margin-bottom:10px}.${P}-directory-head h1{font-size:32px}
+ .${P}-directory-search{margin-bottom:12px}.${P}-directory-root .${P}-directory-search input{min-height:44px;padding-block:6px;font-size:18px}
  .${P}-dossier-journal h1{font-size:32px}
  .${P}-dossier-biography p{font-size:16px}
  .${P}-dossier-identity{padding-top:44px;padding-bottom:8px}

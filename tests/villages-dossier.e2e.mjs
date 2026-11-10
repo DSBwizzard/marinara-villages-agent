@@ -589,7 +589,6 @@ await withBrowser(browser, async () => {
     await people.click();
     const selector = page.getByRole("main", { name: "Villagers directory" });
     await expect(page.locator(`.${P}-desk-workspace`)).toHaveAttribute("data-phase", "open");
-    await expect(selector.locator(`.${P}-directory-page`)).toHaveCount(2);
     const bookBox = await page.locator(`.${P}-people-layout`).boundingBox();
     await page.screenshot({ path: resolve(output, `directory-${width}-${height}.png`) });
     const search = selector.getByRole("searchbox", { name: "Find a person" });
@@ -616,6 +615,87 @@ await withBrowser(browser, async () => {
       true,
       "Map stays mounted throughout notebook browsing",
     );
+    const originalRoster = village.villagers;
+    village.villagers = [
+      ...originalRoster,
+      ...Array.from({ length: 2 }, (_, index) => ({
+        ...originalRoster[1],
+        characterId: `four-${index}`,
+        name: index === 0 ? "Feddy Fastbayer" : "Ella",
+      })),
+    ];
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await people.click();
+    const tiles = selector.getByRole("button", { name: /^Open .* profile$/ });
+    await expect(tiles).toHaveCount(4);
+    await expect(selector.getByRole("navigation", { name: "People pages" })).toHaveCount(0);
+    const checkFourTiles = async () => {
+      for (const tile of await tiles.all()) await expect(tile).toBeInViewport({ ratio: 0.99 });
+      assert.ok(
+        await selector.locator(`.${P}-directory-reading`).evaluate((node) => {
+          const bounds = node.getBoundingClientRect();
+          return (
+            node.scrollHeight <= node.clientHeight + 1 &&
+            [...node.querySelectorAll("button")].every((tile) => {
+              const rect = tile.getBoundingClientRect();
+              const portrait = tile.querySelector(".marinara-capability-villages-avatar").getBoundingClientRect();
+              return (
+                rect.top >= bounds.top &&
+                rect.bottom <= bounds.bottom + 1 &&
+                Math.abs(portrait.width - portrait.height) < 1 &&
+                portrait.width >= 32
+              );
+            })
+          );
+        }),
+        "Four complete tiles and square portraits fit without scrolling",
+      );
+    };
+    await checkFourTiles();
+    await page.screenshot({ path: resolve(output, `four-tiles-${width}-${height}.png`) });
+    const tileSizes = await tiles.evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const rect = node.querySelector(".marinara-capability-villages-avatar").getBoundingClientRect();
+        return [rect.width, rect.height];
+      }),
+    );
+    await selector.getByRole("button", { name: "Open Mara profile" }).click();
+    if (width > 700)
+      assert.deepEqual(
+        await tiles.evaluateAll((nodes) =>
+          nodes.map((node) => {
+            const rect = node.querySelector(".marinara-capability-villages-avatar").getBoundingClientRect();
+            return [rect.width, rect.height];
+          }),
+        ),
+        tileSizes,
+        "Four-tile portraits retain their size beside a profile",
+      );
+    await page
+      .getByRole("navigation", { name: "Village navigation", exact: true })
+      .getByRole("button", { name: "People", exact: true })
+      .click();
+    await checkFourTiles();
+    village.villagers.push({ ...originalRoster[1], characterId: "fifth", name: "Fifth neighbor" });
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    const fivePages = selector.getByRole("navigation", { name: "People pages" });
+    await expect(fivePages.getByRole("status")).toHaveText("1 / 2");
+    await expect(tiles).toHaveCount(4);
+    for (const tile of await tiles.all()) await expect(tile).toBeInViewport({ ratio: 0.99 });
+    await fivePages.getByRole("button", { name: "Next people page" }).click();
+    await expect(tiles).toHaveCount(1);
+    await expect(tiles).toHaveAccessibleName("Open Fifth neighbor profile");
+    await expect(fivePages.getByRole("button", { name: "Next people page" })).toBeDisabled();
+    await fivePages.getByRole("button", { name: "Previous people page" }).click();
+    await expect(tiles).toHaveCount(4);
+    await search.fill("No resident has this name");
+    await expect(selector.getByText("No matching villagers.", { exact: true })).toBeVisible();
+    await expect(fivePages).toHaveCount(0);
+    await search.fill("");
+    await expect(fivePages.getByRole("status")).toHaveText("1 / 2");
+    await closePeople();
+    village.villagers = originalRoster;
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     if (width === 1440 || (width === 390 && height === 844)) {
       const savedVillagers = village.villagers;
       village.villagers = [
@@ -630,27 +710,40 @@ await withBrowser(browser, async () => {
       ];
       await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
       await people.click();
-      await expect(selector.getByRole("button", { name: /^Open .* profile$/ })).toHaveCount(42);
+      await expect(selector.getByRole("button", { name: /^Open .* profile$/ })).toHaveCount(4);
       const list = selector.locator(`.${P}-directory-reading`);
-      const position = await list.evaluate((node) => {
-        node.scrollTop = node.scrollHeight;
-        return node.scrollTop;
-      });
-      assert.ok(position > 0, "Large rosters scroll inside the book");
+      const pages = selector.getByRole("navigation", { name: "People pages" });
+      await expect(pages.getByRole("status")).toHaveText("1 / 11");
+      await expect(pages.getByRole("button", { name: "Previous people page" })).toBeDisabled();
+      for (let index = 0; index < 10; index++) await pages.getByRole("button", { name: "Next people page" }).click();
+      await expect(pages.getByRole("status")).toHaveText("11 / 11");
+      await expect(pages.getByRole("button", { name: "Next people page" })).toBeDisabled();
+      await expect(selector.getByRole("button", { name: /^Open .* profile$/ })).toHaveCount(2);
+      assert.ok(
+        await list.evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
+        "Pagination replaces roster scrolling",
+      );
       await selector.getByRole("button", { name: `Open ${secondName} profile` }).click();
       await page
         .getByRole("navigation", { name: "Village navigation", exact: true })
         .getByRole("button", { name: "People", exact: true })
         .click();
-      assert.equal(
-        await list.evaluate((node) => node.scrollTop),
-        position,
-        "Directory reading position survives profile browsing",
-      );
+      await expect(pages.getByRole("status")).toHaveText("11 / 11");
+      await search.fill("Mara");
+      await expect(selector.getByRole("button", { name: "Open Mara profile" })).toBeVisible();
+      await expect(pages).toHaveCount(0);
+      await search.fill("");
+      await expect(pages.getByRole("status")).toHaveText("1 / 11");
+      await pages.getByRole("button", { name: "Next people page" }).click();
       await closePeople();
       await expect(people).toBeFocused();
+      await people.click();
+      await expect(pages.getByRole("status")).toHaveText("2 / 11");
       village.villagers = savedVillagers;
       await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+      await expect(pages).toHaveCount(0);
+      await expect(selector.getByRole("button", { name: /^Open .* profile$/ })).toHaveCount(2);
+      await closePeople();
     }
     await page.getByRole("button", { name: "More", exact: true }).click();
     const menu = page.getByRole("navigation", { name: "Settings sections" });

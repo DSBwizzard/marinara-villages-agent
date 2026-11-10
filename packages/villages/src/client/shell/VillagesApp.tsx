@@ -39,7 +39,6 @@ function VillagesContent({ element }: { element: HTMLElement }) {
   const lifetime = useRef({ epoch: 0 });
   const outgoing = useRef<Animation | null>(null);
   const incoming = useRef<Animation | null>(null);
-  const readingPosition = useRef(0);
   const returnFocus = useRef<HTMLElement | null>(null);
   const placesView = useRef<"atlas" | "venue">("atlas");
   const peopleOrigin = useRef<{ screen: Controller["screen"]; menuPage: MenuPage; focus: HTMLElement | null } | null>(
@@ -65,7 +64,6 @@ function VillagesContent({ element }: { element: HTMLElement }) {
     moving.current = false;
     peopleOrigin.current = null;
     returnFocus.current = null;
-    readingPosition.current = 0;
     placesView.current = "atlas";
     setMailRecipient("");
     setArtworkError("");
@@ -410,11 +408,7 @@ function VillagesContent({ element }: { element: HTMLElement }) {
               controller={navigation}
               people={
                 <div hidden={!bookVisible} inert={!bookVisible} className={`${ELEMENT_TAG}-people-session`}>
-                  <PeoplePages
-                    controller={navigation}
-                    readingPosition={readingPosition}
-                    active={bookVisible && !controller.mailboxOpen}
-                  />
+                  <PeoplePages controller={navigation} active={bookVisible && !controller.mailboxOpen} />
                 </div>
               }
             />
@@ -452,15 +446,7 @@ function VillageScreen({ controller, people }: { controller: Controller; people:
   return <VillageDestinations controller={controller} people={people} />;
 }
 
-function PeoplePages({
-  controller,
-  readingPosition,
-  active,
-}: {
-  controller: Controller;
-  readingPosition: { current: number };
-  active: boolean;
-}) {
+function PeoplePages({ controller, active }: { controller: Controller; active: boolean }) {
   const [person, setPerson] = useState<DossierNavigation | null>(null);
   if (active && controller.personProfile && controller.personProfile !== person) setPerson(controller.personProfile);
   return (
@@ -468,8 +454,8 @@ function PeoplePages({
       <div className={`${ELEMENT_TAG}-people-index`}>
         <RetainedView active={active}>
           <RosterScreen
+            key={controller.snapshot?.worldScope}
             controller={{ ...controller, screen: "menu", menuPage: "villagers" }}
-            readingPosition={readingPosition}
             selectedId={controller.screen === "person" ? person?.actorId : undefined}
           />
         </RetainedView>
