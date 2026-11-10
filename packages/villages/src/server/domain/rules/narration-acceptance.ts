@@ -301,7 +301,10 @@ export function acceptNarrationContinuity(
     const receipt = native.receipts[move.effectId];
     const actorId = "characterId" in move && typeof move.characterId === "string" ? move.characterId : "player";
     memoryRequire(
-      receipt?.kind === "movement" && receipt.targetId === move.zoneId && receipt.witnesses.includes(actorId),
+      receipt &&
+        receipt.witnesses.includes(actorId) &&
+        ((receipt.kind === "movement" && receipt.targetId === move.zoneId) ||
+          (receipt.kind === "departure" && receipt.targetId === actorId && move.zoneId === "")),
       "movement changed its native receipt scope",
     );
   }
@@ -311,7 +314,7 @@ export function acceptNarrationContinuity(
     sceneEffects.every(
       (effect) =>
         native.receipts[effect.effectId] &&
-        ["contact", "scene", "movement"].includes(native.receipts[effect.effectId].kind),
+        ["contact", "scene", "movement", "departure"].includes(native.receipts[effect.effectId].kind),
     ),
     "Scene effect lost its native command",
   );

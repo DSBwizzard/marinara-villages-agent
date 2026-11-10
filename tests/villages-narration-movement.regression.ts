@@ -1,4 +1,4 @@
-// Test cases: narration-movement/player, narration-movement/resident, narration-movement/authority, narration-movement/capacity, narration-movement/independent, narration-movement/recovery, narration-movement/private-destination, narration-movement/two-turns, narration-movement/group-request
+// Test cases: narration-movement/player, narration-movement/resident, narration-movement/authority, narration-movement/capacity, narration-movement/independent, narration-movement/recovery, narration-movement/private-destination, narration-movement/two-turns, narration-movement/group-request, narration-movement/departure
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { fixture as projectFixture } from "./fixtures/villages-projects.fixture.js";
@@ -483,4 +483,67 @@ await runCase("narration-movement/recovery", () => {
     "garden",
     "lost Scene acknowledgement uses the original retained result after world authority changes",
   );
+});
+await runCase("narration-movement/departure", () => {
+  function departure() {
+    const f = fixture();
+    f.raw.segments = [
+      {
+        id: "cross",
+        kind: "narration",
+        text: "Mara leaves the conversation to handle her own affairs.",
+        requires: ["leave"],
+      },
+      { id: "after", kind: "dialogue", speakerId: "b", text: "Now that Mara has gone, I want to speak privately." },
+    ];
+    f.raw.commands = [{ id: "leave", type: "depart", who: "a", at: "cross", source: [f.cross] }];
+    return f;
+  }
+  const f = departure(),
+    agendas = memoryHash(f.state.villagers.map((actor) => actor.agenda)),
+    result = f.accept();
+  assert.equal(result.held, false, JSON.stringify(result.rejected));
+  assert(!result.episode!.segments[1].heardBy.includes("a"));
+  assert(!result.episode!.segments[1].soundOnly?.characterIds.includes("a"));
+  assert.equal(
+    memoryHash(f.state.villagers.map((actor) => actor.agenda)),
+    agendas,
+    "Scene departure never changes a native Agenda or invents travel",
+  );
+  const cold = readAcceptedEpisode(JSON.parse(JSON.stringify(result.episode)), f.state.seed),
+    scene = structuredClone(f.scene);
+  applyAcceptedSceneDelta(scene, cold);
+  assert.deepEqual(scene.departedIds, ["a"]);
+  assert.equal(scene.status, "active");
+  assert.equal(scene.zoneId, "common");
+  assert(!scene.activeIds.includes("a"));
+  assert(!scene.accompanying?.some((row) => row.characterId === "a"));
+  assert(!cold.commandReceipts[0].text.includes("garden"));
+  for (const reason of ["player", "offstage", "promise", "route", "duplicate"]) {
+    const g = departure();
+    if (reason === "player") g.raw.commands[0].who = "player";
+    if (reason === "offstage") g.raw.commands[0].who = "c";
+    if (reason === "promise") {
+      g.raw.segments[0] = {
+        id: "cross",
+        kind: "dialogue",
+        speakerId: "a",
+        text: "I will leave later.",
+        requires: ["leave"],
+      };
+      g.raw.commands[0].source = [{ segment: "cross" }];
+    }
+    if (reason === "route") g.venue.zones!.find((zone) => zone.id === "common")!.connectedTo = [];
+    if (reason === "duplicate") g.raw.commands.push({ ...g.raw.commands[0], id: "second" });
+    const before = memoryHash(g.state);
+    assert.equal(g.accept().held, true, reason);
+    assert.equal(memoryHash(g.state), before);
+  }
+  const bad = JSON.parse(JSON.stringify(cold));
+  bad.commandReceipts[0].departure.path = ["common", "garden"];
+  assert.throws(() => readAcceptedEpisode(bad, f.state.seed), /departure/);
+  f.state.villagers = [];
+  const before = memoryHash(f.state);
+  assert.equal(f.accept().held, false);
+  assert.equal(memoryHash(f.state), before);
 });

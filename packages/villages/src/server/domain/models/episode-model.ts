@@ -28,6 +28,7 @@ export type AcceptedEpisode = {
       | "standing"
       | "movement"
       | "movement-request"
+      | "departure"
       | "structure"
       | "discovery"
       | "npc"
@@ -54,6 +55,7 @@ export type AcceptedEpisode = {
       area: "outside" | "public" | "shared" | "private";
       privateOwnerId: string;
     };
+    departure?: { actorId: string; from: string; segment: number; path: string[] };
   }[];
   /** Code-bound source ancestry for each input/segment unit. */
   dependencies: Record<string, string[]>;

@@ -61,6 +61,18 @@ export function applyAcceptedSceneDelta(scene: VenueScene, episode: AcceptedEpis
         contactPosition(scene, id) === scene.zoneId || scene.doorwayContacts!.some((row) => row.characterId === id),
     );
   }
+  for (const receipt of episode.commandReceipts) {
+    const departure = receipt.departure;
+    if (!departure) continue;
+    memoryRequire(
+      contactPosition(scene, departure.actorId) === departure.from,
+      "accepted departure needs its admitted prior position",
+    );
+    scene.departedIds = [...new Set([...(scene.departedIds ?? []), departure.actorId])];
+    scene.activeIds = scene.activeIds.filter((id) => id !== departure.actorId);
+    scene.accompanying = scene.accompanying?.filter((row) => row.characterId !== departure.actorId);
+    scene.doorwayContacts = scene.doorwayContacts?.filter((row) => row.characterId !== departure.actorId);
+  }
   const ended = new Set(delta.contactEndedIds);
   scene.doorwayContacts = scene.doorwayContacts?.filter((row) => !ended.has(row.characterId));
   scene.activeIds = scene.activeIds.filter((id) => !ended.has(id) || contactPosition(scene, id) === scene.zoneId);

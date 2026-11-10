@@ -1,4 +1,4 @@
-// Test cases: scene-narration/outbox, scene-narration/held, scene-narration/lost-ack, scene-narration/write-failure, scene-narration/startup-hold, scene-narration/activation-owner, scene-narration/private-projection, scene-narration/validation-hold, scene-narration/cancellation, scene-narration/connected-turn, scene-narration/saved-changes, scene-narration/coordinator-startup-hold, scene-narration/abandon, scene-narration/abandon-lost-ack, scene-narration/abandon-committed, scene-narration/abandon-fence, scene-narration/startup-no-write, scene-narration/replace-committed, scene-narration/retirement, scene-narration/skip-ownership, scene-narration/input-playback, scene-narration/native-close, scene-narration/native-close-recovery, scene-narration/native-contact-end, scene-narration/native-close-authority, scene-narration/native-delta-fence, scene-narration/native-delta-integrity, scene-narration/native-movement, scene-narration/native-movement-recovery
+// Test cases: scene-narration/outbox, scene-narration/held, scene-narration/lost-ack, scene-narration/write-failure, scene-narration/startup-hold, scene-narration/activation-owner, scene-narration/private-projection, scene-narration/validation-hold, scene-narration/cancellation, scene-narration/connected-turn, scene-narration/saved-changes, scene-narration/coordinator-startup-hold, scene-narration/abandon, scene-narration/abandon-lost-ack, scene-narration/abandon-committed, scene-narration/abandon-fence, scene-narration/startup-no-write, scene-narration/replace-committed, scene-narration/retirement, scene-narration/skip-ownership, scene-narration/input-playback, scene-narration/native-close, scene-narration/native-close-recovery, scene-narration/native-contact-end, scene-narration/native-close-authority, scene-narration/native-delta-fence, scene-narration/native-delta-integrity, scene-narration/native-movement, scene-narration/native-movement-recovery, scene-narration/native-departure
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -361,6 +361,55 @@ await runCase("scene-narration/native-close", async () => {
   await f.service.processSavedExchange("scene", "turn");
   assert.equal(memoryHash(f.scenes.get("scene")), before);
   assert.equal(f.world.episodes.records.length, 1);
+});
+await runCase("scene-narration/native-departure", async () => {
+  for (const lost of [false, true]) {
+    const f = fixture(),
+      scene = f.scenes.get("scene")!,
+      turn = f.turn();
+    const raw = {
+      segments: [{ id: "leave", kind: "narration", text: "Mara leaves the conversation.", requires: ["leave"] }],
+      commands: [
+        {
+          id: "leave",
+          type: "depart",
+          who: f.actorId,
+          at: "leave",
+          source: [{ segment: "leave", perceive: { kind: "seen", by: ["player"] } }],
+        },
+      ],
+    };
+    turn.narration!.raw = raw;
+    turn.narration!.responseDigest = memoryHash(raw);
+    if (lost) {
+      f.failScene();
+      await assert.rejects(f.service.processSavedExchange("scene", "turn"), (error) => error === f.exact);
+      assert(!scene.departedIds?.includes(f.actorId));
+      const storage = sceneHistoryFixture();
+      try {
+        const repository = createVillageRepository(() => storage.gate.documents);
+        await repository.mutateAuthority((state) => Object.assign(state, f.world), { memories: true });
+        Object.assign(
+          f.world,
+          await createVillageRepository(() => storage.gate.documents).readAuthority({ memories: true }),
+        );
+      } finally {
+        storage.release();
+      }
+      f.world.worldPlaces.npcs[f.actorId].disabled = true;
+      f.interrupt();
+    }
+    await f.service.processSavedExchange("scene", "turn");
+    assert.equal(f.turn().acceptance.status, "applied", f.turn().progressError);
+    const saved = f.scenes.get("scene")!;
+    assert(saved.departedIds!.includes(f.actorId));
+    assert(!saved.activeIds.includes(f.actorId));
+    assert.equal(saved.status, "active");
+    assert.equal(f.world.episodes.records.length, 1);
+    const before = memoryHash(saved);
+    await f.service.processSavedExchange("scene", "turn");
+    assert.equal(memoryHash(f.scenes.get("scene")), before);
+  }
 });
 await runCase("scene-narration/native-close-recovery", async () => {
   const f = nativeCloseFixture();

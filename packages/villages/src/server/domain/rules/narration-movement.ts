@@ -29,7 +29,7 @@ export function applyNarrationMoveRequest(
   assertNarrationPlayerIntent(context, intent);
   const moment = intent
     .map((source) => source.moment!)
-    .toSorted((a, b) => a.index - b.index + ((a.side === "after" ? 1 : 0) - (b.side === "after" ? 1 : 0)) / 2)
+    .toSorted((a, b) => a.index - b.index || Number(a.side === "after") - Number(b.side === "after"))
     .at(-1)!;
   const positions = narrationPositions(context, moment),
     venue = findLocation(state, context.scene.placeId);
@@ -180,4 +180,61 @@ export function applyNarrationMove(
     },
   };
   return { receipt, sources, move: { characterId: actor.id, zoneId: zone.id, segment, path, quote: line.content } };
+}
+
+export function applyNarrationDeparture(
+  state: VillageState,
+  who: string,
+  readset: NarrationReadset,
+  context: NarrationSourceContext,
+  sources: ContinuityEvidence[],
+  receiptId: string,
+  segment: number,
+) {
+  const actor = context.actors.find((actor) => actor.id === who),
+    line = context.lines[segment],
+    venue = findLocation(state, context.scene.placeId);
+  const positions = narrationPositions(context, { index: segment, side: "before" });
+  memoryRequire(
+    who !== "player" &&
+      actor &&
+      continuityActor(state, who)?.incarnation === actor.incarnation &&
+      venue &&
+      positions[who] &&
+      positions[who] === positions.player &&
+      line?.kind === "narration",
+    "departure needs this current locally present resident and crossing narration",
+  );
+  memoryRequire(
+    memoryHash(captureSceneLayout(venue)) === memoryHash(context.scene.sceneAttendance?.layout),
+    "the admitted departure route changed",
+  );
+  memoryRequire(
+    sources.some(
+      (source) =>
+        source.unitId === line.id &&
+        source.kind === "observation" &&
+        source.perceptions.some((row) => row.actorId === "player" && row.channel === "sight"),
+    ),
+    "departure needs an actual observed exit, not a promise or remote voice",
+  );
+  const scene = {
+      ...context.scene,
+      zoneId: positions.player,
+      accompanying: Object.entries(positions)
+        .filter(([id]) => id !== "player")
+        .map(([characterId, zoneId]) => ({ characterId, zoneId })),
+    },
+    path = contactPath(state, venue, positions[who], "exterior", who, scene);
+  memoryRequire(path, "departure has no valid native exit route");
+  const receipt: AcceptedEpisode["commandReceipts"][number] = {
+    id: receiptId,
+    kind: "departure",
+    targetId: who,
+    revision: readset.sceneRevision,
+    text: who + " left the current conversation.",
+    witnesses: [...new Set([who, ...narrationWitnesses(sources)])],
+    departure: { actorId: who, from: positions[who], segment, path },
+  };
+  return { receipt, sources, move: { characterId: who, zoneId: "", segment, path, quote: line.content } };
 }
