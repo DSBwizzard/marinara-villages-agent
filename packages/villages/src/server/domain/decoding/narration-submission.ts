@@ -43,6 +43,8 @@ const saved = z
             Array.isArray(row.residence?.homes) &&
             Array.isArray(row.residence?.requests) &&
             Array.isArray(row.offered) &&
+            Array.isArray(row.npcCandidates) &&
+            row.npcCandidates.length <= 4 &&
             row.source?.scene?.version === 5 &&
             typeof row.source.seed === "string" &&
             typeof row.source.input === "string" &&

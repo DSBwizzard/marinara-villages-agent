@@ -1,4 +1,4 @@
-// Test cases: scene-narration/outbox, scene-narration/held, scene-narration/lost-ack, scene-narration/write-failure, scene-narration/startup-hold, scene-narration/activation-owner, scene-narration/private-projection, scene-narration/validation-hold, scene-narration/cancellation, scene-narration/connected-turn, scene-narration/saved-changes, scene-narration/coordinator-startup-hold, scene-narration/abandon, scene-narration/abandon-lost-ack, scene-narration/abandon-committed, scene-narration/abandon-fence, scene-narration/startup-no-write, scene-narration/replace-committed, scene-narration/retirement, scene-narration/skip-ownership, scene-narration/input-playback, scene-narration/native-close, scene-narration/native-close-recovery, scene-narration/native-contact-end, scene-narration/native-close-authority, scene-narration/native-delta-fence, scene-narration/native-delta-integrity, scene-narration/native-movement, scene-narration/native-movement-recovery, scene-narration/native-departure
+// Test cases: scene-narration/outbox, scene-narration/held, scene-narration/lost-ack, scene-narration/write-failure, scene-narration/startup-hold, scene-narration/activation-owner, scene-narration/private-projection, scene-narration/validation-hold, scene-narration/cancellation, scene-narration/connected-turn, scene-narration/saved-changes, scene-narration/coordinator-startup-hold, scene-narration/abandon, scene-narration/abandon-lost-ack, scene-narration/abandon-committed, scene-narration/abandon-fence, scene-narration/startup-no-write, scene-narration/replace-committed, scene-narration/retirement, scene-narration/skip-ownership, scene-narration/input-playback, scene-narration/native-close, scene-narration/native-close-recovery, scene-narration/native-contact-end, scene-narration/native-close-authority, scene-narration/native-delta-fence, scene-narration/native-delta-integrity, scene-narration/native-movement, scene-narration/native-movement-recovery, scene-narration/native-departure, scene-narration/native-npc
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -317,10 +317,75 @@ await runCase("scene-narration/native-movement", async () => {
   assert.equal(scene.id, "scene");
   assert.equal(scene.status, "active");
   assert.equal(scene.navigationReceipts!.length, 1);
+  assert.deepEqual(
+    f.world.episodes.records[0].segments.at(-1)!.physicalIdsAfter,
+    [],
+    "playback cast follows the Player's actual crossing",
+  );
   const before = memoryHash(scene);
   await f.service.processSavedExchange("scene", "turn");
   assert.equal(memoryHash(f.scenes.get("scene")), before);
   assert.equal(f.world.episodes.records.length, 1);
+});
+await runCase("scene-narration/native-npc", async () => {
+  for (const lost of [false, true]) {
+    const f = fixture(),
+      turn = f.turn(),
+      raw = {
+        segments: [
+          { id: "earlier", kind: "dialogue", speakerId: f.actorId, text: "Our earlier words." },
+          { id: "arrival", kind: "narration", text: "A traveler joins the conversation.", requires: ["admit"] },
+          { id: "reply", kind: "dialogue", speakerId: "new:traveler", text: "Hello." },
+        ],
+        commands: [
+          {
+            id: "admit",
+            type: "npc.admit",
+            localKey: "new:traveler",
+            name: "Traveler",
+            characterization: "PRIVATE_TRAVELER_PROFILE",
+            at: "arrival",
+            source: [{ segment: "arrival", perceive: { kind: "seen", by: ["player"] } }],
+          },
+        ],
+      };
+    turn.narration!.raw = raw;
+    turn.narration!.responseDigest = memoryHash(raw);
+    if (lost) {
+      f.failScene();
+      await assert.rejects(f.service.processSavedExchange("scene", "turn"), (error) => error === f.exact);
+      assert.equal(f.scenes.get("scene")!.participants.length, 1);
+      const storage = sceneHistoryFixture();
+      try {
+        const repository = createVillageRepository(() => storage.gate.documents);
+        await repository.mutateAuthority((state) => Object.assign(state, f.world), { memories: true });
+        Object.assign(
+          f.world,
+          await createVillageRepository(() => storage.gate.documents).readAuthority({ memories: true }),
+        );
+      } finally {
+        storage.release();
+      }
+      const id = f.world.episodes.records[0].commandReceipts[0].targetId;
+      f.world.worldPlaces.npcs[id].disabled = true;
+      f.interrupt();
+    }
+    await f.service.processSavedExchange("scene", "turn");
+    assert.equal(f.turn().acceptance.status, "applied", f.turn().progressError);
+    const saved = f.scenes.get("scene")!,
+      ep = f.world.episodes.records[0],
+      id = ep.commandReceipts[0].targetId;
+    assert(saved.activeIds.includes(id));
+    assert(saved.participants.some((row) => row.characterId === id));
+    assert(!saved.pendingNpcAdmissions?.length);
+    assert(!ep.segments[0].heardBy.includes(id));
+    assert(ep.segments[1].physicalIdsAfter?.includes(id));
+    assert(!JSON.stringify(publicSceneAuthority(saved)).includes("PRIVATE_TRAVELER_PROFILE"));
+    const before = memoryHash(saved);
+    await f.service.processSavedExchange("scene", "turn");
+    assert.equal(memoryHash(f.scenes.get("scene")), before);
+    assert.equal(f.world.episodes.records.length, 1);
+  }
 });
 await runCase("scene-narration/native-movement-recovery", async () => {
   const f = nativeMovementFixture();

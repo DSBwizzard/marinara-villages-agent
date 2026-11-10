@@ -1,7 +1,12 @@
 import type { ContinuityCollection, ContinuityEvidence } from "../models/continuity-model.js";
 import type { EpisodeCollection } from "../models/episode-model.js";
-import { continuityHolderKey, continuityVersionId, assertContinuityKnowledge } from "./continuity.js";
-import { episodeSpeechEvidence, nativeReceiptSupportsRoom } from "./episode-sources.js";
+import {
+  continuityHolderKey,
+  continuityVersionId,
+  assertContinuityKnowledge,
+  continuitySourceUnit,
+} from "./continuity.js";
+import { episodeSpeechEvidence, nativeReceiptSupportsRoom, episodeContextActors } from "./episode-sources.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 
 /** Retirement cannot sever the accepted episode, canonical meaning or committed native evidence. */
@@ -9,10 +14,12 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
   const owners = new Map<string, string>(),
     versions = new Map(continuity.versions.map((row) => [row.id, row]));
   const byEpisode = new Map(episodes.records.map((row) => [row.id, row]));
+  const sequenceById = new Map(episodes.records.map((row, index) => [row.id, index]));
   const sourceActors = Object.fromEntries(episodes.records.map((episode) => [episode.id, episode.actors]));
   const births = new Map<string, number>(),
     roots = new Map(continuity.records.map((row) => [row.id, row]));
   for (const [sequence, episode] of episodes.records.entries()) {
+    const references = episodeContextActors(episode);
     memoryRequire(
       episode.admittedContinuityRevision <= continuity.revision,
       "episode admitted a future continuity revision",
@@ -31,7 +38,13 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
     }
     for (const source of episode.grounding)
       if (source.kind === "knowledge") {
-        assertContinuityKnowledge(continuity, source, episode.actors, episode.admittedContinuityRevision, sourceActors);
+        assertContinuityKnowledge(
+          continuity,
+          source,
+          [...episode.actors, ...references],
+          episode.admittedContinuityRevision,
+          sourceActors,
+        );
         memoryRequire(
           !episode.continuityVersionIds.includes(source.unitId),
           "knowledge anchor cannot cite its own exchange",
@@ -51,6 +64,38 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
             continuity.records.find((row) => row.id === version.rootId)?.heads[continuityHolderKey(holder)],
           "self source lost its private retained meaning",
         );
+      }
+    for (const holder of references)
+      for (const dependency of new Set(
+        Object.values(episode.holderDependencies![continuityHolderKey(holder)]).flat(),
+      )) {
+        const unit: unknown = JSON.parse(dependency);
+        memoryRequire(Array.isArray(unit) && unit.length >= 3, "invalid private context ancestry");
+        if (unit[0] === "knowledge")
+          memoryRequire(
+            episode.grounding.some(
+              (source) =>
+                source.kind === "knowledge" &&
+                source.actorId === holder.id &&
+                continuitySourceUnit(source) === dependency,
+            ),
+            "private context lost its own canonical knowledge anchor",
+          );
+        else {
+          const prior = typeof unit[0] === "string" ? byEpisode.get(unit[0]) : undefined;
+          memoryRequire(
+            prior &&
+              (sequenceById.get(prior.id) ?? Infinity) < sequence &&
+              [...prior.actors, ...episodeContextActors(prior)].some(
+                (actor) => actor.id === holder.id && actor.incarnation === holder.incarnation,
+              ) &&
+              (prior.grounding.some((source) => continuitySourceUnit(source) === dependency) ||
+                prior.segments.some((line) => JSON.stringify([prior.id, line.id, memoryHash(line)]) === dependency) ||
+                (unit[1] === "input" &&
+                  JSON.stringify([prior.id, "input", memoryHash(prior.privateInput)]) === dependency)),
+            "private context lost its prior actor incarnation or source",
+          );
+        }
       }
   }
   for (const [sequence, episode] of episodes.records.entries())

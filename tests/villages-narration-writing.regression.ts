@@ -402,7 +402,7 @@ await runCase("narration-writing/fitted-evidence", () => {
       f.state,
       {
         id: "receipt-" + i,
-        kind: "npc",
+        kind: "initialization",
         targetId: f.id,
         revision: i + 1,
         text: "Mara explained detail " + i,
@@ -437,7 +437,7 @@ await runCase("narration-writing/scoped-cold-provenance", () => {
     f.state,
     {
       id: "original",
-      kind: "npc",
+      kind: "initialization",
       targetId: f.id,
       revision: 1,
       text: "Mara described a private family story.",
@@ -515,7 +515,7 @@ await runCase("narration-writing/scoped-cold-provenance", () => {
   assert.equal(versions.length, 2);
   const unknown = structuredClone(answer);
   unknown.holderDependencies![JSON.stringify(["actor", f.id, "other-incarnation"])] = { reply: [] };
-  assert.throws(() => readAcceptedEpisode(unknown, f.state.seed), /unknown episode provenance holder/);
+  assert.throws(() => readAcceptedEpisode(unknown, f.state.seed), /invalid private episode context holder/);
   const invalidUnit = structuredClone(answer);
   invalidUnit.holderDependencies![key].invented = [];
   assert.throws(() => readAcceptedEpisode(invalidUnit, f.state.seed), /unknown episode dependency unit/);
@@ -776,7 +776,7 @@ await runCase("narration-writing/optional-facets", () => {
     f.state,
     {
       id: "learning",
-      kind: "npc",
+      kind: "initialization",
       targetId: f.id,
       revision: 1,
       text: "Mara discussed craft learning.",
@@ -872,7 +872,7 @@ await runCase("narration-writing/long-followup", async () => {
       f.state,
       {
         id: "weaving-memory-" + index,
-        kind: "npc",
+        kind: "initialization",
         targetId: f.id,
         revision: 1,
         text:
@@ -944,7 +944,7 @@ await runCase("narration-writing/required-evidence-bound", async () => {
     f.state,
     {
       id: "prior",
-      kind: "npc",
+      kind: "initialization",
       targetId: f.id,
       revision: 1,
       text: "Mara described her craft boundaries.",

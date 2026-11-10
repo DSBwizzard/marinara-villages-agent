@@ -1,6 +1,37 @@
 import type { AcceptedEpisode } from "../models/episode-model.js";
 import type { ContinuityEvidence, ContinuityHolder } from "../models/continuity-model.js";
-import { memoryHash } from "./memory-integrity.js";
+import { memoryHash, memoryRequire } from "./memory-integrity.js";
+
+/** Private GM reference holders are provenance, never Scene attendance or character perception. */
+export function episodeContextActors(
+  episode: Pick<AcceptedEpisode, "room" | "holderDependencies"> & { actors: { id: string; incarnation: string }[] },
+  keys = Object.keys(episode.holderDependencies ?? {}),
+): Extract<ContinuityHolder, { kind: "actor" }>[] {
+  const physical = new Set(episode.actors.map((actor) => JSON.stringify(["actor", actor.id, actor.incarnation])));
+  if (episode.room) physical.add(JSON.stringify(["room", episode.room.placeId, episode.room.zoneId]));
+  const ids = new Set(episode.actors.map((actor) => actor.id));
+  return keys
+    .filter((key) => !physical.has(key))
+    .map((key) => {
+      const row: unknown = JSON.parse(key);
+      memoryRequire(
+        Array.isArray(row) &&
+          row.length === 3 &&
+          row[0] === "actor" &&
+          typeof row[1] === "string" &&
+          row[1].length > 0 &&
+          row[1].length <= 160 &&
+          typeof row[2] === "string" &&
+          row[2].length > 0 &&
+          row[2].length <= 160 &&
+          JSON.stringify(row) === key &&
+          !ids.has(row[1]),
+        "invalid private episode context holder",
+      );
+      ids.add(row[1]);
+      return { kind: "actor" as const, id: row[1], incarnation: row[2] };
+    });
+}
 
 export function nativeReceiptSupportsRoom(
   receipt: AcceptedEpisode["commandReceipts"][number],

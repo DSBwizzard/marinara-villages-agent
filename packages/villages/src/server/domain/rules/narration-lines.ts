@@ -4,6 +4,7 @@ import type { readNarrationReply } from "./narration-contract.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import type { ContactMove } from "./venue-contact.js";
 import { routeZoneEvents } from "./zone-events.js";
+import { fenceIntroductionWitnesses } from "./npc-participation.js";
 
 /** Bind labels, routing and presentation once, before any source fingerprint or saved episode is authored. */
 export function narrationLines(
@@ -31,6 +32,8 @@ export function narrationLines(
         },
   );
   routeZoneEvents({ segments: reply.segments }, scene, { lines, heardPlayerBy: [] }, moves, playerMoves);
+  if (scene.pendingNpcAdmissions?.length)
+    fenceIntroductionWitnesses(lines, [], scene.pendingNpcAdmissions, scene.activeIds, false);
   const cast = [
     ...new Map(
       [...scene.participants, ...(scene.sceneAttendance?.occupants ?? [])].map((person) => [

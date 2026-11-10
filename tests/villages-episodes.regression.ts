@@ -1,4 +1,4 @@
-// Test cases: episodes/natural-private-chronology, episodes/perception-arrivals, episodes/protection, episodes/identity, episodes/cold-pages-scale, episodes/shared-followup, episodes/ancestry, episodes/private-narration, episodes/self-native-retention, episodes/independent-spans, episodes/repeated-correction, episodes/shared-pair-budget
+// Test cases: episodes/natural-private-chronology, episodes/perception-arrivals, episodes/protection, episodes/identity, episodes/cold-pages-scale, episodes/shared-followup, episodes/ancestry, episodes/private-narration, episodes/self-native-retention, episodes/independent-spans, episodes/repeated-correction, episodes/shared-pair-budget, episodes/offstage-context
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import type { AcceptedEpisode } from "../packages/villages/src/server/domain/models/episode-model.js";
@@ -151,6 +151,141 @@ await runCase("episodes/natural-private-chronology", () => {
     "ordinary private GM input is not an invented resident transcript",
   );
   assert.equal(first.grounding.length, 0, "routine questions need no classification or grounding records");
+});
+await runCase("episodes/offstage-context", async () => {
+  for (const historyOnly of [false, true])
+    for (const present of [false, true]) {
+      const state = { ...defaultVillageState(), seed: "world", setupAt: at };
+      state.villagers = [
+        { characterId: "mara", incarnation: "one", cardSnapshot: { name: "Mara" } },
+      ] as VillageState["villagers"];
+      retainNativeFact(
+        state,
+        {
+          id: "private-garden",
+          kind: "initialization",
+          targetId: "mara",
+          revision: 1,
+          text: "Mara privately hopes to restore a SECRET GARDEN.",
+          witnesses: ["mara"],
+        },
+        at,
+      );
+      const key = continuityHolderKey(mara),
+        known = continuityViews(state.continuity, mara, at, new Set())[0],
+        reference = episode("reference", "Hello.", "A SECRET GARDEN may matter to the next visitor.");
+      reference.actors = [player, leo, ...(present ? [mara] : [])].map((holder) => ({
+        id: holder.id,
+        incarnation: holder.incarnation,
+        zoneId: "parlor",
+      }));
+      reference.segments[0] = {
+        ...reference.segments[0],
+        speakerId: "__venue_scene__",
+        name: "Narration",
+        kind: "narration",
+        heardBy: ["player", "leo"],
+      };
+      reference.segments.push({
+        ...reference.segments[0],
+        id: "local-words",
+        speakerId: "leo",
+        name: "Leo",
+        kind: "dialogue",
+        content: "This is ordinary local conversation.",
+      });
+      const snapshot = continuityKnowledge(known, "world", reference.id),
+        origin = state.episodes.records[0].grounding[0];
+      reference.grounding = historyOnly ? [] : [snapshot];
+      reference.admittedContinuityRevision = state.continuity.revision;
+      reference.holderDependencies = {
+        [key]: Object.fromEntries(
+          reference.segments.map((line) => [line.id, [continuitySourceUnit(historyOnly ? origin : snapshot)]]),
+        ),
+      };
+      state.episodes = appendEpisode(state.episodes, reference, "world");
+      assertContinuityRetention(state.continuity, state.episodes);
+      const saved = state.episodes.records.at(-1)!;
+      if (!present)
+        assert.equal(
+          projectActorEpisode(saved, state.continuity, mara, state.episodes),
+          null,
+          "an offstage reference never admits that NPC to the Scene or its dialogue",
+        );
+      assert(
+        projectGmEpisode(saved, state.continuity, [player, leo], state.episodes)!.segments.some((line) =>
+          line.gmOnlyText?.includes("SECRET GARDEN"),
+        ),
+      );
+      const root = state.continuity.records[0],
+        target = { id: root.id, recordRevision: root.revision, heads: { [key]: root.heads[key].revision } };
+      for (const correction of [{ forget: true as const }, { text: "Mara now wants to tend a small pond." }]) {
+        const changed = protectContinuity(
+          state.continuity,
+          target,
+          [mara],
+          "protect-" + historyOnly + "-" + Boolean("forget" in correction),
+          at,
+          correction,
+        );
+        assertContinuityRetention(changed, state.episodes);
+        const view = projectGmEpisode(saved, changed, [player, leo], state.episodes)!;
+        assert(
+          !JSON.stringify(view).includes("SECRET GARDEN"),
+          "unused offstage context is still governed by Correct and Forget",
+        );
+        assert(
+          view.segments.some((line) => line.text === "This is ordinary local conversation."),
+          "unaffected residents retain what they actually heard",
+        );
+        const selected = selectEpisodeHistory(state.episodes, changed, [player, leo], "SECRET GARDEN", 100000);
+        assert(!JSON.stringify(selected).includes("SECRET GARDEN"));
+        const encoded = encodeContinuityPages(
+          { continuity: changed, episodes: state.episodes, worldPlaces: emptyPlaceRegistry() },
+          memoryHash("world").slice(0, 32),
+        );
+        const cold = await decodeContinuityPages(
+          encoded.manifest,
+          memoryHash("world").slice(0, 32),
+          "world",
+          async (id) => encoded.pages.get(id) ?? null,
+        );
+        assert(
+          !JSON.stringify(
+            projectGmEpisode(
+              cold.value.episodes.records.at(-1)!,
+              cold.value.continuity,
+              [player, leo],
+              cold.value.episodes,
+            ),
+          ).includes("SECRET GARDEN"),
+        );
+      }
+      const wrong = JSON.parse(JSON.stringify(saved));
+      delete wrong.holderDependencies[key];
+      wrong.holderDependencies[JSON.stringify(["actor", "mara", "another-incarnation"])] =
+        saved.holderDependencies![key];
+      assert.throws(
+        () =>
+          assertContinuityRetention(state.continuity, {
+            ...state.episodes,
+            records: [state.episodes.records[0], readAcceptedEpisode(wrong, "world")],
+          }),
+        present
+          ? /invalid private episode context holder/
+          : historyOnly
+            ? /incarnation or source/
+            : /canonical meaning or holder/,
+      );
+      if (!historyOnly && !present) {
+        const forged = JSON.parse(JSON.stringify(saved));
+        forged.grounding[0].kind = "speech";
+        assert.throws(() => readAcceptedEpisode(forged, "world"), /unknown episode source actor/);
+      }
+      const input = JSON.parse(JSON.stringify(saved));
+      input.holderDependencies[key].input = [continuitySourceUnit(origin)];
+      assert.throws(() => readAcceptedEpisode(input, "world"), /authored input/);
+    }
 });
 
 await runCase("episodes/perception-arrivals", () => {

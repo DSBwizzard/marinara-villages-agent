@@ -1,4 +1,4 @@
-// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement
+// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -11,14 +11,18 @@ import {
   protectContinuity,
   continuityViews,
   continuityProtectionUnits,
+  continuityKnowledge,
+  continuitySourceUnit,
 } from "../packages/villages/src/server/domain/rules/continuity.js";
 import {
   episodeSourceGraph,
   readAcceptedEpisode,
+  episodeUnit,
 } from "../packages/villages/src/server/domain/decoding/episode-codec.js";
 import {
   narrationContinuityContext,
   fittedNarrationReadset,
+  narrationProtectionFingerprint,
 } from "../packages/villages/src/server/domain/rules/narration-context.js";
 import {
   acceptNarrationContinuity,
@@ -32,6 +36,8 @@ import {
   encodeContinuityPages,
   decodeContinuityPagesSync,
 } from "../packages/villages/src/server/adapters/storage/continuity-pages.js";
+import { gmEpisodeView, actorEpisodeView } from "../packages/villages/src/server/domain/rules/episodes.js";
+import { assertContinuityRetention } from "../packages/villages/src/server/domain/rules/continuity-retention.js";
 
 const at = "2026-11-09T12:00:00.000Z",
   later = "2026-11-09T12:01:00.000Z";
@@ -108,6 +114,147 @@ function fixture(input = "I think privately that I am nervous. I say, “My moth
     ],
   };
 }
+
+await runCase("narration-acceptance/inherited-private-context", () => {
+  const f = fixture("Hello."),
+    offId = "npc:offstage";
+  f.state.worldPlaces.npcs[offId] = { ...structuredClone(f.state.worldPlaces.npcs[f.id]), id: offId, name: "Lena" };
+  const off = continuityActor(f.state, offId)!,
+    key = continuityHolderKey(off);
+  retainNativeFact(
+    f.state,
+    {
+      id: "private-garden",
+      kind: "initialization",
+      targetId: offId,
+      revision: 1,
+      text: "Lena privately wants a SECRET GARDEN.",
+      witnesses: [offId],
+    },
+    at,
+  );
+  const first = f.publication({
+      segments: [
+        { id: "hint", kind: "narration", text: "A SECRET GARDEN could matter to a future visitor." },
+        { id: "words", kind: "dialogue", speakerId: f.id, text: "Welcome." },
+      ],
+    }),
+    own = continuityViews(f.state.continuity, off, at, new Set())[0],
+    anchor = continuityKnowledge(own, f.state.seed, first.readset.source.episodeId);
+  first.readset.source.historical["h:private"] = anchor;
+  first.readset.admission.provenance![key] = [continuitySourceUnit(anchor)];
+  first.readset.admission.protectionFingerprint = narrationProtectionFingerprint(f.state, [
+    ...first.readset.source.actors,
+    first.readset.admission.room!,
+    off,
+  ]);
+  const accepted = acceptNarrationContinuity(f.state, first, "first", later).episode!;
+  const context = narrationContinuityContext(
+      f.state,
+      f.scene,
+      first.readset.source.venue,
+      "next-operation",
+      "Why?",
+      later,
+    ),
+    readset = fittedNarrationReadset(
+      f.state,
+      context,
+      context.parts.flatMap((part) => (part.block.evidenceId ? [part.block.evidenceId] : [])),
+    );
+  assert.deepEqual(readset.admission.provenance![key], [episodeUnit(accepted, accepted.segments[0].id)]);
+  assert(
+    !fittedNarrationReadset(f.state, context, []).admission.provenance![key],
+    "pruned context has no inherited scope",
+  );
+  assert(!readset.source.actors.some((actor) => actor.id === offId));
+  const next: NarrationPublication = {
+    ...first,
+    readset,
+    raw: {
+      segments: [
+        { id: "echo", kind: "narration", text: "The SECRET GARDEN remains a distant possibility." },
+        { id: "local", kind: "dialogue", speakerId: f.id, text: "Would you like tea?" },
+      ],
+    },
+  };
+  const second = acceptNarrationContinuity(f.state, next, "next", later).episode!;
+  assert.equal(actorEpisodeView(second, f.state.continuity, off, f.state.episodes), null);
+  const root = f.state.continuity.records[0],
+    target = { id: root.id, recordRevision: root.revision, heads: { [key]: root.heads[key].revision } },
+    holders = readset.source.actors;
+  for (const change of [{ forget: true as const }, { text: "Lena prefers a small pond." }]) {
+    const changed = protectContinuity(
+      f.state.continuity,
+      target,
+      [off],
+      "protect-" + Boolean("forget" in change),
+      later,
+      change,
+    );
+    assertContinuityRetention(changed, f.state.episodes);
+    const encoded = encodeContinuityPages(
+        { continuity: changed, episodes: f.state.episodes, worldPlaces: f.state.worldPlaces },
+        "a".repeat(32),
+      ),
+      cold = decodeContinuityPagesSync(
+        encoded.manifest,
+        "a".repeat(32),
+        f.state.seed,
+        (id) => encoded.pages.get(id) ?? null,
+      ).value;
+    for (const ep of cold.episodes.records.slice(1)) {
+      const view = gmEpisodeView(ep, cold.continuity, holders, cold.episodes);
+      assert(
+        !JSON.stringify(view).includes("SECRET GARDEN"),
+        "private protection follows two generated exchanges after cold reload",
+      );
+      assert(
+        view!.segments.some((line) => "text" in line),
+        "actual local words retain their audience",
+      );
+    }
+    const race = {
+      ...f.state,
+      continuity: changed,
+      episodes: { ...f.state.episodes, records: f.state.episodes.records.slice(0, -1) },
+    };
+    assert.throws(() => acceptNarrationContinuity(race, next, "next", later), /protection changed/);
+  }
+  retainNativeFact(
+    f.state,
+    {
+      id: "private-other",
+      kind: "initialization",
+      targetId: offId,
+      revision: 1,
+      text: "A separate private concern.",
+      witnesses: [offId],
+    },
+    later,
+  );
+  const other = f.state.continuity.records.at(-1)!;
+  f.state.continuity = protectContinuity(
+    f.state.continuity,
+    { id: other.id, recordRevision: other.revision, heads: { [key]: other.heads[key].revision } },
+    [off],
+    "protect-other",
+    later,
+    { forget: true },
+  );
+  const constrained = narrationContinuityContext(
+    f.state,
+    f.scene,
+    readset.source.venue,
+    "third-operation",
+    "Why?",
+    later,
+  );
+  assert(
+    constrained.protections.some((row) => row.id === other.id && row.for === offId && row.forgotten),
+    "retained offstage scopes receive their other protection constraints before purchase",
+  );
+});
 
 await runCase("narration-acceptance/atomic-episode", () => {
   const f = fixture(),
@@ -210,7 +357,14 @@ await runCase("narration-acceptance/protection-race", () => {
     const f = fixture();
     retainNativeFact(
       f.state,
-      { id: "prior", kind: "npc", targetId: f.id, revision: 1, text: "A remembered old detail.", witnesses: [f.id] },
+      {
+        id: "prior",
+        kind: "initialization",
+        targetId: f.id,
+        revision: 1,
+        text: "A remembered old detail.",
+        witnesses: [f.id],
+      },
       at,
     );
     const publication = f.publication({
@@ -237,7 +391,14 @@ await runCase("narration-acceptance/conflicting-head", () => {
   const f = fixture();
   retainNativeFact(
     f.state,
-    { id: "prior", kind: "npc", targetId: f.id, revision: 1, text: "An earlier weaving story.", witnesses: [f.id] },
+    {
+      id: "prior",
+      kind: "initialization",
+      targetId: f.id,
+      revision: 1,
+      text: "An earlier weaving story.",
+      witnesses: [f.id],
+    },
     at,
   );
   const root = f.state.continuity.records[0];
@@ -302,7 +463,14 @@ await runCase("narration-acceptance/frozen-source-scope", () => {
   const f = fixture();
   retainNativeFact(
     f.state,
-    { id: "prior", kind: "npc", targetId: f.id, revision: 1, text: "An earlier weaving story.", witnesses: [f.id] },
+    {
+      id: "prior",
+      kind: "initialization",
+      targetId: f.id,
+      revision: 1,
+      text: "An earlier weaving story.",
+      witnesses: [f.id],
+    },
     at,
   );
   const publication = f.publication({ segments: f.response(["remember"]), keep: [{ ...f.keep, source: ["h:extra"] }] });
@@ -328,7 +496,7 @@ await runCase("narration-acceptance/shared-room-provenance", () => {
     f.state,
     {
       id: "prior",
-      kind: "npc",
+      kind: "initialization",
       targetId: f.id,
       revision: 1,
       text: "Mara described a weaving preference.",

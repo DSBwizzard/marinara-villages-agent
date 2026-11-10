@@ -20,9 +20,11 @@ import { prepareNarrationKeep } from "./narration-keep.js";
 import { assertNarrationSourceOrder, bindNarrationSource, type NarrationSourceContext } from "./narration-sources.js";
 import { selectSceneEffects, type SceneEffectResult } from "./scene-acceptance.js";
 import { narrationLines } from "./narration-lines.js";
-import { admitNpcParticipants, type NpcAdmission } from "./npc-participation.js";
+import { admitNpcParticipants, bindNpcReferences, type NpcAdmission } from "./npc-participation.js";
+import { findNpc } from "./places.js";
 import type { ContactMove } from "./venue-contact.js";
 import { contactPosition } from "./venue-contact.js";
+import { episodeContextActors } from "./episode-sources.js";
 
 export type NarrationPublication = {
   readset: NarrationReadset;
@@ -131,10 +133,7 @@ export function acceptNarrationContinuity(
     );
     memoryRequire(id && !actors.some((actor) => actor.id === arrival.npc.id), "arrival has no new native admission");
     const actor = continuityActor(state, arrival.npc.id);
-    memoryRequire(
-      actor && !state.continuity.records.some((record) => record.protection[continuityHolderKey(actor)]),
-      "arrival continuity constraints were not supplied",
-    );
+    memoryRequire(actor, "arrival identity changed");
     actors.push(actor);
     arrivalDependencies.push(id);
   }
@@ -147,7 +146,10 @@ export function acceptNarrationContinuity(
         ...native.admissions.map((row) => row.npc.id),
       ]),
     ];
-  const reply = readNarrationReply(publication.raw, scene.contactGeneration?.actorIds ?? scene.activeIds);
+  const reply = readNarrationReply(
+    bindNpcReferences(publication.raw, native.admissions),
+    scene.contactGeneration?.actorIds ?? scene.activeIds,
+  );
   const movementDependencies = [
     ...new Set([
       ...(native.movementDependencies ?? []),
@@ -191,9 +193,22 @@ export function acceptNarrationContinuity(
     ),
     "an admitted narration actor was removed",
   );
+  const provenance = readset.admission.provenance ?? {};
+  const candidates = readset.npcCandidates.map((row) => {
+    const arrival = native.admissions.find((arrival) => arrival.npc.id === row.npc.id),
+      current = findNpc(state, row.npc.id),
+      actor = continuityActor(state, row.npc.id);
+    memoryRequire(
+      current && actor?.incarnation === row.incarnation && memoryHash(current) === memoryHash(arrival?.npc ?? row.npc),
+      "fitted NPC identity changed while narration was being prepared",
+    );
+    return actor;
+  });
   const holders: ContinuityHolder[] = [
     ...readset.source.actors,
     ...(readset.admission.room ? [readset.admission.room] : []),
+    ...candidates,
+    ...episodeContextActors({ actors: readset.source.actors, room: readset.admission.room }, Object.keys(provenance)),
   ];
   memoryRequire(
     readset.admission.protectionFingerprint === narrationProtectionFingerprint(state, holders),
@@ -205,7 +220,6 @@ export function acceptNarrationContinuity(
       [...continuityProtectionUnits(state.continuity, holder, episodeSourceGraph(state.episodes.records, holder))],
     ]),
   );
-  const provenance = readset.admission.provenance ?? {};
   // Even no-keep prose must not publish from a fitted meaning corrected while the model was answering.
   for (const holder of holders)
     assertContinuityProvenance(
@@ -314,7 +328,7 @@ export function acceptNarrationContinuity(
     sceneEffects.every(
       (effect) =>
         native.receipts[effect.effectId] &&
-        ["contact", "scene", "movement", "departure"].includes(native.receipts[effect.effectId].kind),
+        ["contact", "scene", "movement", "departure", "npc"].includes(native.receipts[effect.effectId].kind),
     ),
     "Scene effect lost its native command",
   );
@@ -337,6 +351,8 @@ export function acceptNarrationContinuity(
   for (const holder of holders) {
     const key = continuityHolderKey(holder),
       units = provenance[key] ?? [];
+    if (!units.length && !source.actors.some((actor) => continuityHolderKey(actor) === key) && holder.kind !== "room")
+      continue;
     holderDependencies[key] = Object.fromEntries(source.lines.map((line) => [line.id, [...units]]));
   }
   for (const version of versions) {
@@ -378,7 +394,12 @@ export function acceptNarrationContinuity(
     segments: source.lines,
     grounding: [...grounding.values()],
     continuityVersionIds: versions.map((row) => row.id),
-    offered: readset.offered,
+    offered: [
+      ...readset.offered,
+      ...readset.npcCandidates
+        .filter((row) => native.admissions.some((arrival) => arrival.npc.id === row.npc.id))
+        .map((row) => ({ holder: source.actors.find((actor) => actor.id === row.npc.id)!, ids: row.offered })),
+    ],
     commandReceipts,
     ...(sceneEffects.length
       ? {

@@ -198,6 +198,12 @@ export function routeZoneEvents(
   parsed.heardPlayerBy = [];
   parsed.lines.forEach((line, index) => {
     const playerZone = playerZoneAt(index);
+    if (
+      moves.some((move) => move.segment === index) ||
+      playerMoves.some((move) => move.segment === index) ||
+      scene.pendingNpcAdmissions?.some((arrival) => arrival.segment === index)
+    )
+      line.physicalIdsAfter = inZones([playerZone], index);
     const row = asRecord((raw.segments as unknown[])[index]);
     if (row.kind === "whisper" && line.kind !== "whisper")
       throw badGateway("A whisper needs a recipient. Your draft is preserved.");

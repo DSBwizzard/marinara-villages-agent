@@ -22,6 +22,16 @@ import { assertSceneMovementCapacity } from "./resident-movement.js";
 import { selectSceneEffects } from "./scene-acceptance.js";
 import { MAX_VENUE_NAME_LENGTH } from "./prompt-preset.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
+import {
+  npcAdmissionFields,
+  prepareNpcAdmission,
+  bindNpcReferences,
+  admitNpcParticipants,
+  type NpcAdmission,
+} from "./npc-participation.js";
+import { narrationWitnesses, narrationPositions } from "./narration-sources.js";
+import { captureSceneLayout } from "./scene-layout.js";
+import { findLocation } from "./places.js";
 import { projectSpeechContext } from "./project-interpretation.js";
 import { applyNarrationAccess, assertNarrationDecision, narrationAccessScopes } from "./narration-access.js";
 
@@ -35,6 +45,7 @@ const base = {
   requires: z.array(label).max(8).optional(),
 };
 const nativeCommand = z.discriminatedUnion("type", [
+  z.object({ ...base, type: z.literal("npc.admit"), ...npcAdmissionFields }).strict(),
   z.object({ ...base, type: z.literal("contact.end"), who: id }).strict(),
   z.object({ ...base, type: z.literal("scene.end") }).strict(),
   z.object({ ...base, type: z.literal("move"), who: id, to: id }).strict(),
@@ -143,6 +154,7 @@ export function readNarrationNativeCommand(raw: unknown) {
   return nativeCommand.parse(raw);
 }
 export const NARRATION_NATIVE =
+  'An actual observed supporting-person arrival uses {type:"npc.admit",localKey:"new:unique-name",existingId:supplied candidate ID} or, for a new identity, {type:"npc.admit",localKey:"new:unique-name",name,label?,characterization}. Supply the current introduction narration label in at and that Player-seen narration as source. Use localKey for this reply\'s structured actor references; never substitute it inside prose or exact citations. Existing candidates retain their fitted identity, private continuity and protections. Association is not attendance; they cannot hear earlier input/dialogue. Maximum four admissions and four responding people, with no automatic Villager/builder/access role. ' +
   'Native commands share {id?:label,at:segment label,source:[exact consequential sources],requires?:[effect IDs],independent?:true}. Current communication is required; recalled/private consent is never authority. Supported commands: {type:"depart",who} records an actual observed local resident exit through the native route; it ends their Scene presence without inventing an offstage destination or changing their Agenda. Player departure uses scene.end. {type:"move.request",to,actors:[every requested local actor]} grounds only the complete actual Player request and validates the whole native group at that input moment; resident responses stay ordinary ordered Scene prose and need their own evidence for consequences. It grants no movement or consent. For actual following use individually grounded move commands. {type:"move",who,to} validates a current connected Zone crossing at its narration label, with actual Player spoken/visible intent for Player movement or observed resident departure/arrival. Every consequential input source in a moving turn needs its explicit moment. A crossing applies before routing its labelled segment; native success assertions must require it. {type:"place.discover",existingId: supplied Place id} OR {type:"place.discover",place:{name,description,form?,report?,controllers?,zones?:[{id,name,kind:"public|staff|restricted",description,purpose?,controllers?,connectedTo?}],people?:[{ref,name,label?,characterization,existingId?,facts?,role?,availability?}]}} discovers existing infrastructure, never builds, grants ownership or establishes a service (maximum two); {type:"place.establish",project,objective,quote,met:true} records a current Player-witnessed objective, not a promise or Project completion (maximum eight); {type:"residence.request",by,venue}; {type:"residence.decide",by,person,venue,approved:boolean}; {type:"venue.request",by,name,classes:[native Venue classes]} submits a Villager request without establishing any service; {type:"project.start",project} invokes the same native Start/Resume only for explicit actual Player intent and current ready authority; {type:"appointment",by,when:{dayOffset:integer}|{weekday:weekday name,afterToday?:boolean}|{date:"YYYY-MM-DD"},minute?:0-1439} binds an actual current spoken appointment using the supplied calendar, never a past instant or clock mutation; {type:"scene.end"} only from the actual Player spoken/visible departure intent at the final segment; {type:"contact.end",who} ends only an admitted doorway contact, with deciding words (or the actual Player intent); {type:"project.decide",by,project,decision:"approval|builder|refuse|withdrawal|conditional|uncertain"}; {type:"permission.grant|permission.revoke",by,visitor,venue,zone}; {type:"access.decide",by,venue,zone,decision:{outcome:"invite-now|invite-later|invite-outside-hours|refuse|dismiss|ban-zone|ban-venue",visitor,accompanies?}|{outcome:"access-management",management:exact native AccessCommand action fields without operationId,expectedRevision,zoneId,sceneId}}. Use only supplied native scopes. A conditional or uncertain Project answer grants no approval or lead. An access condition beyond accompaniment cannot grant access. Native success assertions must require their command ID.';
 
 /** Fixed native validators prepare a detached candidate inside the existing Village CAS. */
@@ -154,9 +166,75 @@ export function prepareNarrationNative(
   at: string,
   excluded = new Map<string, string>(),
 ) {
+  const scene = structuredClone(readset.source.scene),
+    actors = [...readset.source.actors],
+    admissions: NpcAdmission[] = [];
+  const rawSegments = Array.isArray(raw.segments) ? raw.segments : [];
+  for (const value of Array.isArray(raw.commands) ? raw.commands : []) {
+    if (!value || typeof value !== "object" || (value as Record<string, unknown>).type !== "npc.admit") continue;
+    const command = readNarrationNativeCommand(value);
+    memoryRequire(command.type === "npc.admit", "invalid NPC command");
+    const segment = rawSegments.findIndex(
+        (value, index) =>
+          value &&
+          typeof value === "object" &&
+          ((value as Record<string, unknown>).id ?? "segment-" + index) === command.at,
+      ),
+      intro = rawSegments[segment] as Record<string, unknown> | undefined;
+    memoryRequire(
+      intro?.kind === "narration" &&
+        typeof intro.text === "string" &&
+        admissions.length < 4 &&
+        !admissions.some((row) => row.localKey === command.localKey),
+      "NPC admission needs one unique current introduction",
+    );
+    const crossings = (Array.isArray(raw.commands) ? raw.commands : [])
+      .flatMap((value, commandIndex) => {
+        const parsed = nativeCommand.safeParse(value);
+        if (!parsed.success || parsed.data.type !== "move" || parsed.data.who !== "player") return [];
+        if (
+          excluded.has(readNarrationEffectHeader(value, "command-" + commandIndex).id) ||
+          !scene.sceneAttendance?.layout?.some((zone) => zone.id === parsed.data.to)
+        )
+          return [];
+        const command = parsed.data,
+          index = rawSegments.findIndex(
+            (value, index) =>
+              value &&
+              typeof value === "object" &&
+              ((value as Record<string, unknown>).id ?? "segment-" + index) === command.at,
+          );
+        return index >= 0 && index <= segment ? [{ segment: index, zoneId: command.to }] : [];
+      })
+      .sort((a, b) => a.segment - b.segment);
+    const arrival = prepareNpcAdmission(
+      state,
+      scene,
+      command,
+      readset.source.operationId,
+      segment,
+      crossings.at(-1)?.zoneId ?? scene.zoneId!,
+      intro.text,
+      readset.npcCandidates.find((row) => row.npc.id === command.existingId)?.npc,
+    );
+    memoryRequire(!actors.some((actor) => actor.id === arrival.npc.id), "NPC identity is already in this reply");
+    admissions.push(arrival);
+    actors.push({
+      kind: "actor",
+      id: arrival.npc.id,
+      incarnation: memoryHash([state.seed, state.setupAt, arrival.npc.id]),
+    });
+    admitNpcParticipants(scene, [arrival]);
+  }
+  scene.pendingNpcAdmissions = admissions;
+  if (scene.contactGeneration)
+    scene.contactGeneration.actorIds = [
+      ...new Set([...(scene.contactGeneration.actorIds ?? scene.activeIds), ...admissions.map((row) => row.npc.id)]),
+    ];
+  const source = { ...readset.source, scene, actors };
   const reply = readNarrationReply(
-    raw,
-    readset.source.scene.contactGeneration?.actorIds ?? readset.source.scene.activeIds,
+    bindNpcReferences(raw, admissions),
+    scene.contactGeneration?.actorIds ?? scene.activeIds,
   );
   const projectBefore = new Map<string, ReturnType<typeof projectSpeechContext>>();
   const accessBefore = new Map(
@@ -196,7 +274,7 @@ export function prepareNarrationNative(
     if (
       effect.failure ||
       (command.type !== "move" && command.type !== "depart") ||
-      !readset.source.actors.some((actor) => actor.id === command.who) ||
+      !actors.some((actor) => actor.id === command.who) ||
       reply.segments[segment].kind !== "narration"
     )
       return [];
@@ -205,14 +283,17 @@ export function prepareNarrationNative(
       return [];
     return [{ characterId: command.who, zoneId, segment, effectId: effect.id }];
   });
-  native.movementDependencies = planned.map((move) => move.effectId);
+  native.movementDependencies = [
+    ...planned.map((move) => move.effectId),
+    ...commands.filter((row) => row.command.type === "npc.admit").map((row) => row.effect.id),
+  ];
   let context: NarrationSourceContext;
   try {
     context = {
-      ...readset.source,
+      ...source,
       ...narrationLines(
         reply,
-        readset.source.scene,
+        scene,
         readset.source.episodeId,
         readset.capturedAt,
         planned.filter((move) => move.characterId !== "player"),
@@ -247,6 +328,45 @@ export function prepareNarrationNative(
     );
     assertNarrationSourceOrder(sources);
     const receiptId = "native-" + memoryHash([readset.source.episodeId, effect.id]).slice(0, 40);
+    if (command.type === "npc.admit") {
+      const arrival = admissions.find(
+          (arrival) => arrival.localKey === command.localKey && arrival.segment === row.segment,
+        ),
+        line = context.lines[row.segment];
+      const venue = findLocation(candidate, context.scene.placeId);
+      memoryRequire(
+        venue &&
+          memoryHash(captureSceneLayout(venue)) === memoryHash(context.scene.sceneAttendance?.layout) &&
+          arrival?.zoneId === narrationPositions(context, { index: row.segment, side: "after" }).player,
+        "NPC admission needs its current local introduction Zone",
+      );
+      memoryRequire(
+        arrival &&
+          sources.every(
+            (proof) =>
+              proof.unitId === line.id &&
+              proof.kind === "observation" &&
+              proof.perceptions.some((perception) => perception.actorId === "player" && perception.channel === "sight"),
+          ),
+        "NPC admission needs the actual Player-seen introduction",
+      );
+      candidate.worldPlaces.npcs[arrival.npc.id] = structuredClone(arrival.npc);
+      candidate.worldPlaces.revision++;
+      return {
+        receipt: {
+          id: receiptId,
+          kind: "npc" as const,
+          targetId: arrival.npc.id,
+          revision: readset.sceneRevision,
+          text: arrival.source,
+          witnesses: narrationWitnesses(sources),
+          observedBy: narrationWitnesses(sources, ["sight"]),
+          admission: { npc: arrival.npc, zoneId: arrival.zoneId, segment: arrival.segment },
+        },
+        sources,
+        admission: arrival,
+      };
+    }
     if (command.type === "move.request")
       return {
         receipt: applyNarrationMoveRequest(candidate, command, readset, context, sources, receiptId),
@@ -361,6 +481,10 @@ export function prepareNarrationNative(
       candidate = next;
       native.receipts[row.effect.id] = result.receipt;
       native.sources[row.effect.id] = result.sources;
+      if ("admission" in result) {
+        native.admissions.push(result.admission);
+        native.sceneEffects!.push({ effectId: row.effect.id, contactEndedIds: [] });
+      }
       if ("sceneEffect" in result) native.sceneEffects!.push({ effectId: row.effect.id, ...result.sceneEffect });
       if ("move" in result) {
         if (result.move.characterId === "player")
@@ -385,7 +509,9 @@ export function prepareNarrationNative(
   return {
     native,
     candidate,
-    routingFailure: planned.some((move) => native.effects.find((effect) => effect.id === move.effectId)?.failure),
+    routingFailure:
+      planned.some((move) => native.effects.find((effect) => effect.id === move.effectId)?.failure) ||
+      admissions.some((arrival) => !native.admissions.includes(arrival)),
   };
 }
 

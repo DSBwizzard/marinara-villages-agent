@@ -4,8 +4,10 @@ import { continuityEvidenceSchema, continuityHolderSchema } from "./continuity-c
 import { coerceSession } from "./scene-codec.js";
 import { continuityHolderKey, continuitySourceUnit, continuityVersionUnit } from "../rules/continuity.js";
 import type { ContinuityHolder } from "../models/continuity-model.js";
-import { nativeReceiptSupportsRoom } from "../rules/episode-sources.js";
+import { nativeReceiptSupportsRoom, episodeContextActors } from "../rules/episode-sources.js";
 import { immutableMemoryValue, isImmutableMemoryValue, memoryHash, memoryRequire } from "../rules/memory-integrity.js";
+import { readNpc } from "../rules/places.js";
+import type { NpcIdentity } from "../models/places.js";
 
 const id = z.string().min(1).max(160),
   ids = z.array(id).refine((rows) => new Set(rows).size === rows.length);
@@ -75,6 +77,20 @@ const episode = z
               .object({ actorId: id, from: id, segment: z.number().int().min(0).max(23), path: ids.min(1).max(64) })
               .strict()
               .optional(),
+            admission: z
+              .object({
+                npc: z.custom<NpcIdentity>((value) => {
+                  try {
+                    return memoryHash(readNpc(value)) === memoryHash(value);
+                  } catch {
+                    return false;
+                  }
+                }),
+                zoneId: id,
+                segment: z.number().int().min(0).max(23),
+              })
+              .strict()
+              .optional(),
           })
           .strict(),
       )
@@ -111,6 +127,8 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
   const value = episode.parse(raw) as AcceptedEpisode;
   memoryRequire(value.seed === seed && value.acceptedAt >= value.capturedAt, "invalid accepted episode world or time");
   const cast = new Map(value.actors.map((actor) => [actor.id, actor]));
+  const contextActors = episodeContextActors(value),
+    referenceIds = new Set([...cast.keys(), ...contextActors.map((actor) => actor.id)]);
   memoryRequire(
     value.actors.length > 0 ||
       (!value.sceneId &&
@@ -134,7 +152,8 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
         delta.contactEndedIds.every((id) => cast.has(id)) &&
         delta.receiptIds.every((id) =>
           value.commandReceipts.some(
-            (receipt) => receipt.id === id && ["contact", "scene", "movement", "departure"].includes(receipt.kind),
+            (receipt) =>
+              receipt.id === id && ["contact", "scene", "movement", "departure", "npc"].includes(receipt.kind),
           ),
         ),
       "Scene transition lost its native receipt or actor",
@@ -153,7 +172,7 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
       "Scene closure lost Player authority",
     );
     const controls = value.commandReceipts.filter((receipt) =>
-      ["contact", "scene", "movement", "departure"].includes(receipt.kind),
+      ["contact", "scene", "movement", "departure", "npc"].includes(receipt.kind),
     );
     memoryRequire(
       memoryHash(delta.receiptIds.toSorted()) === memoryHash(controls.map((receipt) => receipt.id).toSorted()) &&
@@ -168,8 +187,9 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
     );
   }
   memoryRequire(
-    !value.commandReceipts.some((receipt) => ["contact", "scene", "movement", "departure"].includes(receipt.kind)) ||
-      value.sceneDelta,
+    !value.commandReceipts.some((receipt) =>
+      ["contact", "scene", "movement", "departure", "npc"].includes(receipt.kind),
+    ) || value.sceneDelta,
     "Scene control receipt lost its retained transition",
   );
   for (const receipt of value.commandReceipts)
@@ -183,6 +203,22 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
       "contact result changed its owning native command",
     );
   for (const receipt of value.commandReceipts) {
+    const arrival = receipt.admission;
+    memoryRequire(
+      receipt.kind === "npc"
+        ? arrival &&
+            arrival.npc.id === receipt.targetId &&
+            cast.has(arrival.npc.id) &&
+            !arrival.npc.disabled &&
+            cast.get(arrival.npc.id)?.zoneId === arrival.zoneId &&
+            receipt.observedBy?.includes("player") &&
+            receipt.witnesses.includes("player") &&
+            value.segments[arrival.segment]?.kind === "narration" &&
+            value.segments[arrival.segment]?.zoneId === arrival.zoneId &&
+            value.segments[arrival.segment]?.content === receipt.text
+        : !arrival,
+      "NPC admission changed its owning native command",
+    );
     const move = receipt.movement;
     memoryRequire(
       receipt.kind === "movement"
@@ -282,13 +318,18 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
   }
   for (const source of value.grounding) {
     memoryRequire(source.seed === seed && source.episodeId === value.id, "episode source identity changed");
-    memoryRequire(!source.actorId || cast.has(source.actorId), "unknown episode source actor");
+    memoryRequire(
+      !source.actorId || (source.kind === "knowledge" ? referenceIds.has(source.actorId) : cast.has(source.actorId)),
+      "unknown episode source actor",
+    );
     memoryRequire(
       !source.positions || Object.keys(source.positions).every((id) => cast.has(id)),
       "unknown source position actor",
     );
     memoryRequire(
-      source.perceptions.every((row) => cast.has(row.actorId)),
+      source.perceptions.every((row) =>
+        source.kind === "knowledge" ? referenceIds.has(row.actorId) : cast.has(row.actorId),
+      ),
       "unknown episode source witness",
     );
     memoryRequire(source.kind !== "context" || !source.perceptions.length, "context cannot grant character perception");
@@ -298,6 +339,8 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
           !source.range &&
           !source.act &&
           !source.committedReceiptId &&
+          !source.positions &&
+          !source.moment &&
           source.perceptions.every(
             (row) => row.actorId === source.actorId && row.channel === "private" && row.text === source.excerpt,
           ),
@@ -412,6 +455,43 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
       }
     }
   }
+  for (const admission of value.commandReceipts.flatMap((receipt) => (receipt.admission ? [receipt.admission] : []))) {
+    const id = admission.npc.id,
+      after = (moment: import("../models/continuity-model.js").ContinuityEvidence["moment"]) =>
+        moment && (moment.index > admission.segment || (moment.index === admission.segment && moment.side === "after"));
+    memoryRequire(
+      value.segments
+        .slice(0, admission.segment)
+        .every(
+          (line) =>
+            line.speakerId !== id &&
+            !line.heardBy.includes(id) &&
+            !line.soundOnly?.characterIds.includes(id) &&
+            !line.physicalIdsAfter?.includes(id) &&
+            !line.staging?.some(
+              (cue) => cue.characterId === id || (cue.look?.target === "villager" && cue.look.characterId === id),
+            ),
+        ),
+      "NPC appeared before its admitted introduction",
+    );
+    for (const source of value.grounding) {
+      if (source.kind === "knowledge" || source.kind === "self" || source.kind === "native") continue;
+      memoryRequire(
+        (!source.positions?.[id] || after(source.moment)) &&
+          ((source.actorId !== id && !source.perceptions.some((row) => row.actorId === id)) || after(source.moment)),
+        "NPC source precedes its admitted introduction",
+      );
+    }
+    for (const receipt of value.commandReceipts) {
+      if (receipt.admission === admission || !receipt.witnesses.includes(id)) continue;
+      const dependencies = value.dependencies["native:" + receipt.id] ?? [],
+        proofs = value.grounding.filter((source) => dependencies.includes(continuitySourceUnit(source)));
+      memoryRequire(
+        proofs.length > 0 && proofs.every((source) => after(source.moment)),
+        "NPC witnessed a native outcome before its introduction",
+      );
+    }
+  }
   memoryRequire(
     new Set(value.commandReceipts.map((row) => row.id)).size === value.commandReceipts.length,
     "duplicate native receipt",
@@ -431,10 +511,18 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
       continuityHolderKey({ kind: "actor", id: actor.id, incarnation: actor.incarnation }),
     ),
     ...(value.room ? [continuityHolderKey(value.room)] : []),
+    ...contextActors.map(continuityHolderKey),
   ]);
   for (const [key, dependencies] of Object.entries(value.holderDependencies ?? {})) {
     memoryRequire(holderKeys.has(key), "unknown episode provenance holder");
     memoryRequire(!Object.hasOwn(dependencies, "input"), "authored input cannot depend on generated context");
+    if (contextActors.some((actor) => continuityHolderKey(actor) === key))
+      memoryRequire(
+        value.segments.length > 0 &&
+          Object.keys(dependencies).every((unit) => units.has(unit)) &&
+          value.segments.every((line) => dependencies[line.id]?.length),
+        "private reference provenance must cover generated segments only",
+      );
   }
   for (const key of [
     Object.keys(value.dependencies),

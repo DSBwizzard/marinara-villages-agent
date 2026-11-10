@@ -56,6 +56,7 @@ export type AcceptedEpisode = {
       privateOwnerId: string;
     };
     departure?: { actorId: string; from: string; segment: number; path: string[] };
+    admission?: { npc: import("./places.js").NpcIdentity; zoneId: string; segment: number };
   }[];
   /** Code-bound source ancestry for each input/segment unit. */
   dependencies: Record<string, string[]>;

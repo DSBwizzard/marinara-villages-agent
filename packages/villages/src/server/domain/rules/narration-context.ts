@@ -28,6 +28,8 @@ import { projectSpeechContexts } from "./project-interpretation.js";
 import { sceneContinuityView } from "./scene-continuity.js";
 import { narrationAccessScopes } from "./narration-access.js";
 import { capturedSceneCalendar } from "./scene-calendar.js";
+import { episodeContextActors } from "./episode-sources.js";
+import { capturePlaceContext, npcProfile } from "./places.js";
 
 type Part = {
   block: VenueWritingBlock;
@@ -39,7 +41,12 @@ type Part = {
 };
 
 export function narrationProtectionFingerprint(state: VillageState, holders: ContinuityHolder[]) {
-  return continuityProtectionFingerprint(state.continuity, holders);
+  return continuityProtectionFingerprint(
+    state.continuity,
+    [...new Map(holders.map((holder) => [continuityHolderKey(holder), holder])).entries()]
+      .sort(([a], [b]) => a.localeCompare(b, "en"))
+      .map(([, holder]) => holder),
+  );
 }
 
 function mergeTargets(targets: ContinuityTarget[]) {
@@ -111,7 +118,25 @@ export function narrationContinuityContext(
     });
   memoryRequire(actors.length <= 32, "the complete Scene witness roster exceeds the retained episode bound");
   const writerIds = scene.contactGeneration?.actorIds ?? scene.activeIds;
-  const holders = actors.filter((holder) => holder.id === "player" || writerIds.includes(holder.id));
+  const npcCandidates = Object.values(
+    capturePlaceContext(
+      state,
+      scene.placeId,
+      actors.map((actor) => actor.id),
+    ).npcs,
+  )
+    .filter((npc) => !actors.some((actor) => actor.id === npc.id))
+    .sort(
+      (a, b) =>
+        Number(input.toLocaleLowerCase("en-US").includes(b.name.toLocaleLowerCase("en-US"))) -
+        Number(input.toLocaleLowerCase("en-US").includes(a.name.toLocaleLowerCase("en-US"))),
+    )
+    .slice(0, 4)
+    .map((npc) => ({ npc, holder: continuityActor(state, npc.id)! }));
+  const holders = [
+    ...actors.filter((holder) => holder.id === "player" || writerIds.includes(holder.id)),
+    ...npcCandidates.map((row) => row.holder),
+  ];
   const room: Extract<ContinuityHolder, { kind: "room" }> = {
     kind: "room",
     placeId: scene.placeId,
@@ -186,6 +211,21 @@ export function narrationContinuityContext(
   });
   const requiredKey = (target: ContinuityTarget, holderKey: string) =>
     actorSelection.required.some((row) => row.id === target.id && Object.hasOwn(row.heads, holderKey));
+  for (const { npc } of npcCandidates)
+    parts.push({
+      ...emptyPart(),
+      block: {
+        text: JSON.stringify({
+          npcArrivalCandidate: {
+            id: npc.id,
+            profile: npcProfile(npc),
+            presence:
+              "Not present. Private continuity/history is for this person only; an observed npc.admit is required before speech, hearing or Scene participation.",
+          },
+        }),
+        evidenceId: "npc-candidate:" + npc.id,
+      },
+    });
   const emitted = new Set<string>();
   for (const { situation, episode, receipt, roots: rootIds } of circumstances) {
     const roots = new Set(rootIds);
@@ -340,6 +380,9 @@ export function narrationContinuityContext(
   });
   const shared = new Set(recentSharedEpisodes(state.episodes, holders).map((row) => row.id));
   const history = selectEpisodeHistory(state.episodes, state.continuity, holders, input, 32000);
+  const contextScopes = new Map(
+    [...actors, ...npcCandidates.map((row) => row.holder)].map((holder) => [holder.id, holder.incarnation]),
+  );
   for (const view of history.episodes) {
     const episode = state.episodes.records.find((row) => row.id === view.id)!,
       part = emptyPart();
@@ -388,11 +431,35 @@ export function narrationContinuityContext(
         aliases.push({ ref, holder: holder.id, evidence: source });
       }
     }
+    const segments = view.segments.flatMap((line) => {
+      if (!("gmOnlyText" in line)) return [line];
+      const scopes = [...episode.actors, ...episodeContextActors(episode)].filter(
+        (holder) => episode.holderDependencies?.[continuityHolderKey({ kind: "actor", ...holder })]?.[line.id]?.length,
+      );
+      if (
+        scopes.some((holder) => {
+          const incarnation = contextScopes.get(holder.id) ?? continuityActor(state, holder.id)?.incarnation;
+          return incarnation && incarnation !== holder.incarnation;
+        })
+      ) {
+        const perceived = { ...line };
+        delete perceived.gmOnlyText;
+        return line.projections.length ? [perceived] : [];
+      }
+      for (const holder of scopes) {
+        contextScopes.set(holder.id, holder.incarnation);
+        const key = continuityHolderKey({ kind: "actor", ...holder });
+        (part.provenance[key] ??= []).push(episodeUnit(episode, line.id));
+      }
+      return [line];
+    });
     const gmUnits = [
       ...("text" in view.gmPrivateInput ? [episodeUnit(episode, "input")] : []),
-      ...view.segments.filter((row) => "gmOnlyText" in row).map((row) => episodeUnit(episode, row.id)),
+      ...segments.filter((row) => "gmOnlyText" in row).map((row) => episodeUnit(episode, row.id)),
     ];
-    for (const holder of holders) {
+    for (const holder of holders.filter((holder) =>
+      actors.some((actor) => continuityHolderKey(actor) === continuityHolderKey(holder)),
+    )) {
       const key = continuityHolderKey(holder);
       part.provenance[key] = [...new Set([...(part.provenance[key] ?? []), ...gmUnits])];
     }
@@ -408,7 +475,7 @@ export function narrationContinuityContext(
           .filter((alias) => alias.holder === row.for && alias.evidence.id === row.id)
           .map((alias) => alias.ref),
       })),
-      segments: view.segments.map((row) => ({
+      segments: segments.map((row) => ({
         ...row,
         perceivedBy: Object.fromEntries(
           Object.entries(row.perceivedBy).map(([id, channel]) => [
@@ -470,10 +537,21 @@ export function narrationContinuityContext(
     }),
   );
   const bounded = parts.filter((part) => retained.has(part));
-  const protections = continuityConstraints(state.continuity, [...actors, room]);
+  const references = episodeContextActors({ actors, room }, [
+    ...new Set(bounded.flatMap((part) => Object.keys(part.provenance))),
+  ]);
+  const protections = continuityConstraints(state.continuity, [
+    ...new Map(
+      [...actors, room, ...npcCandidates.map((row) => row.holder), ...references].map((holder) => [
+        continuityHolderKey(holder),
+        holder,
+      ]),
+    ).values(),
+  ]);
   return {
     episodeId,
     actors,
+    npcCandidates,
     calendar: capturedSceneCalendar({ startedAt: at }, state.timeZone),
     holders,
     room,
@@ -522,6 +600,8 @@ export function fittedNarrationReadset(
       offered.set(key, { holder: row.holder, ids: [...new Set([...(prior?.ids ?? []), ...row.ids])] });
     }
   const protectedRoots = [...new Set(context.protections.map((row) => row.id))];
+  const references = episodeContextActors({ actors: context.actors, room: context.room }, Object.keys(provenance));
+  const candidates = context.npcCandidates.filter((row) => evidenceIds.includes("npc-candidate:" + row.npc.id));
   return {
     format: 1,
     setupAt: state.setupAt,
@@ -548,10 +628,20 @@ export function fittedNarrationReadset(
       ),
       supplied: mergeTargets(parts.flatMap((part) => part.targets)),
       protectedRoots,
-      protectionFingerprint: narrationProtectionFingerprint(state, [...context.actors, context.room]),
+      protectionFingerprint: narrationProtectionFingerprint(state, [
+        ...context.actors,
+        context.room,
+        ...candidates.map((row) => row.holder),
+        ...references,
+      ]),
       provenance,
     },
-    offered: [...offered.values()],
+    offered: [...offered.values()].filter((row) => context.actors.some((actor) => actor.id === row.holder.id)),
+    npcCandidates: candidates.map(({ npc, holder }) => ({
+      npc,
+      incarnation: holder.incarnation,
+      offered: offered.get(continuityHolderKey(holder))?.ids ?? [],
+    })),
     projects: context.projects,
     access: context.access,
     residence: context.residence,

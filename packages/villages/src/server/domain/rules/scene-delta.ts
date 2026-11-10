@@ -4,6 +4,7 @@ import { memoryRequire } from "./memory-integrity.js";
 import { contactPosition } from "./venue-contact.js";
 import { movedAttentionContacts } from "./scene-attention.js";
 import { findLocation } from "./places.js";
+import { admitNpcParticipants } from "./npc-participation.js";
 
 /** Applied with the saved turn's receipt; a lost acknowledgement reuses this canonical result. */
 export function applyAcceptedSceneDelta(scene: VenueScene, episode: AcceptedEpisode) {
@@ -19,6 +20,10 @@ export function applyAcceptedSceneDelta(scene: VenueScene, episode: AcceptedEpis
     moves = episode.commandReceipts
       .flatMap((receipt) => (receipt.movement ? [{ ...receipt.movement, id: receipt.id }] : []))
       .toSorted((a, b) => a.segment - b.segment);
+  admitNpcParticipants(
+    scene,
+    episode.commandReceipts.flatMap((receipt) => (receipt.admission ? [receipt.admission] : [])),
+  );
   for (const move of moves) {
     const from = move.actorId === "player" ? scene.zoneId : contactPosition(scene, move.actorId);
     memoryRequire(from === move.from, "accepted movement needs its admitted prior position");
