@@ -512,7 +512,12 @@ await withBrowser(browser, async () => {
       "contain",
     );
     await expect(people.getByRole("button", { name: "Open Noor profile" }).locator("img")).toHaveCount(0);
-    await page.getByRole("button", { name: "Close ×", exact: true }).click();
+    await expect(page.locator("[data-desk=people]")).toHaveAttribute("data-phase", "open");
+    await page
+      .getByRole("navigation", { name: "Village navigation", exact: true })
+      .getByRole("button", { name: "People", exact: true })
+      .focus();
+    await page.keyboard.press("Escape");
     await showPlaces();
     await select("Village Market");
     await marker.locator("." + P + "-map-point").click();

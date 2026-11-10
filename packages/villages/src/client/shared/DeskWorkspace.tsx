@@ -5,7 +5,9 @@ import { DESK_STYLES } from "./desk-styles.js";
 import { useLetterFont } from "./letter-font-css.js";
 import { deskArtworkStyle } from "./desk-art.js";
 
-export type DeskDestination = "people" | "projects" | "places" | "mailbox" | "settings";
+import { VillageIcon, VILLAGE_DESTINATIONS, type VillageDestination } from "./VillageIcon.js";
+
+export type DeskDestination = VillageDestination;
 export type DeskLeaveCheck = () => Promise<boolean>;
 export const DeskLeaveGuard = createContext<{
   guard: RefObject<DeskLeaveCheck | null>;
@@ -29,38 +31,6 @@ export function useDeskLeaveGuard(check: DeskLeaveCheck, disabled: boolean) {
     };
   }, [registration, viewing, check, disabled]);
 }
-
-const icons: Record<DeskDestination, ReactNode> = {
-  people: (
-    <>
-      <circle cx="12" cy="6" r="3.5" />
-      <path d="M6 21v-3a6 6 0 0 1 12 0v3M4 4a3 3 0 0 0 0 6M20 4a3 3 0 0 1 0 6M1 19v-3a5 5 0 0 1 4-5M23 19v-3a5 5 0 0 0-4-5" />
-    </>
-  ),
-  projects: (
-    <>
-      <path d="M8 4H5a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1h-3M9 2h6v4H9zM7 10l1 1 2-2M13 10h4M7 15l1 1 2-2M13 15h4M7 19h3M13 19h4" />
-    </>
-  ),
-  places: (
-    <>
-      <path d="M20 9c0 6-8 13-8 13S4 15 4 9a8 8 0 1 1 16 0Z" />
-      <circle cx="12" cy="9" r="3" />
-    </>
-  ),
-  mailbox: (
-    <>
-      <rect x="3" y="5" width="18" height="14" rx="1" />
-      <path d="m3 6 9 7 9-7" />
-    </>
-  ),
-  settings: (
-    <>
-      <path d="m9 3 1-2h4l1 2 3 1 2 3-1 2v4l1 2-2 3-3 1-1 2h-4l-1-2-3-1-2-3 1-2V9L4 7l2-3Z" />
-      <circle cx="12" cy="11" r="3" />
-    </>
-  ),
-};
 
 export function DeskWorkspace({
   active,
@@ -116,10 +86,12 @@ export function DeskWorkspace({
         <header className={`${P}-desk-header`} hidden={!active}>
           <div className={`${P}-menu-brand`} aria-hidden="true">
             VILLAGES
-            <span />
+            <svg viewBox="0 0 260 40" aria-hidden="true" style={{ fill: "#b97980", stroke: "none" }}>
+              <path d="M0 33 14 30V24l5-5 5 5v6l9-2V17l7-6 7 6v10h8V20l6-5 6 5v7h8V16l5-7 5 7v10h12V18l6-5 6 5v8h8V9l6-6 6 6v17h9V13l5-6 5 6v14h8V6l5-6 5 6v22h10V18l6-5 6 5v11h8V22l7-6 7 6v9h10V21l5-5 5 5v11l14 2v4Q130 27 0 38Z" />
+            </svg>
           </div>
           <nav className={`${P}-desk-nav`} aria-label="Village navigation">
-            {(Object.keys(icons) as DeskDestination[]).map((destination) => (
+            {VILLAGE_DESTINATIONS.map((destination) => (
               <button
                 type="button"
                 key={destination}
@@ -130,9 +102,7 @@ export function DeskWorkspace({
                   if (phase === "open") onNavigate(destination);
                 }}
               >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  {icons[destination]}
-                </svg>
+                <VillageIcon name={destination} />
                 <span>{destination[0].toUpperCase() + destination.slice(1)}</span>
               </button>
             ))}

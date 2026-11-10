@@ -602,7 +602,12 @@ async function checkPackage(width) {
   await expect(page.getByRole("button", { name: "Erase Village permanently", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Erase Village", exact: true }).click();
   await page.getByRole("button", { name: "People", exact: true }).click();
-  await page.getByRole("button", { name: "Close ×", exact: true }).click();
+  await expect(page.locator("[data-desk=people]")).toHaveAttribute("data-phase", "open");
+  await page
+    .getByRole("navigation", { name: "Village navigation", exact: true })
+    .getByRole("button", { name: "People", exact: true })
+    .focus();
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await section("advanced", "Advanced");
   await expect(page.getByRole("button", { name: "Erase Village permanently", exact: true })).toHaveCount(0);

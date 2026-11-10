@@ -126,7 +126,7 @@ import {ConfirmationProvider} from './packages/villages/src/client/shared/confir
         villager={{characterId:'mara',name:'Mara',summary:'A resident',tags:[]}} portrait={null} request={request}
         venues={[{id:'mill',name:'The Mill',connections:['Home'],publicConnections:['Home']}]} links={[{id:'project',title:'A project',onOpen:noop}]}
         controls={<button>Character card</button>} inspectors={{overview:<button>Manage village</button>}}
-        onInspectSection={noop} onBack={()=>c.setScreen('room')} onVenue={noop}/>}</>;
+        onInspectSection={noop} onVenue={noop}/>}</>;
     } createRoot(document.getElementById('root')).render(<ConfirmationProvider><Harness/></ConfirmationProvider>);
   `,
     },
@@ -193,7 +193,9 @@ import {ConfirmationProvider} from './packages/villages/src/client/shared/confir
   });
   await expect(page.locator("#screen")).toHaveText("person");
   await expect(page.getByRole("button", { name: "Inspect", exact: true })).toBeEnabled();
+  await page.getByText("Character tools", { exact: true }).click();
   await expect(page.getByRole("button", { name: "Generate signature", exact: true })).toBeEnabled();
+  await page.getByText("Character tools", { exact: true }).click();
   await page.getByText("Character tools", { exact: true }).click();
   await expect(page.getByRole("button", { name: "Character card", exact: true })).toBeEnabled();
   await page.getByText("Character tools", { exact: true }).click();
@@ -211,7 +213,7 @@ import {ConfirmationProvider} from './packages/villages/src/client/shared/confir
   await page.getByRole("button", { name: "Wishes", exact: true }).click();
   await page.getByRole("button", { name: "Open Wish: Share gardening stories", exact: true }).click();
   await expect(page.getByRole("button", { name: "Following", exact: true })).toBeEnabled();
-  await page.getByRole("button", { name: "← Back to Villagers" }).click();
+  await page.evaluate(() => window.navigation.returnToScene());
   await expect(page.locator("#screen")).toHaveText("room");
   await page.evaluate(() => {
     window.navigation.setRoom((current) => ({ ...current, status: "closed" }));

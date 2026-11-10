@@ -39,6 +39,16 @@ await withBrowser(browser, async () => {
       writes = [],
       reads = [];
     page.on("pageerror", (error) => errors.push(error.message));
+    const closePeople = async () => {
+      const tools = page.locator("." + P + "-dossier-management[open]:visible");
+      if (await tools.count()) await tools.locator("summary").click();
+      await expect(page.locator("[data-desk=people]")).toHaveAttribute("data-phase", "open");
+      await page
+        .getByRole("navigation", { name: "Village navigation", exact: true })
+        .getByRole("button", { name: "People", exact: true })
+        .focus();
+      await page.keyboard.press("Escape");
+    };
     const village = structuredClone(base);
     village.villagers = village.villagers.slice(0, 2);
     village.villagers[0].letterFontId = "caveat";
@@ -575,10 +585,13 @@ await withBrowser(browser, async () => {
       bookBox,
       "Opening a profile keeps the People workspace in place",
     );
-    await page.getByRole("button", { name: "← Back to Villagers" }).click();
+    await page
+      .getByRole("navigation", { name: "Village navigation", exact: true })
+      .getByRole("button", { name: "People", exact: true })
+      .click();
     await selector.getByRole("button", { name: `Open ${secondName} profile` }).click();
     if (width === 390 && height === 844) await page.setViewportSize({ width: 1440, height: 900 });
-    await page.getByRole("button", { name: "Close ×" }).click();
+    await closePeople();
     await expect(people).toBeFocused();
     if (width === 390 && height === 844) await page.setViewportSize({ width, height });
     assert.equal(
@@ -608,13 +621,16 @@ await withBrowser(browser, async () => {
       });
       assert.ok(position > 0, "Large rosters scroll inside the book");
       await selector.getByRole("button", { name: `Open ${secondName} profile` }).click();
-      await page.getByRole("button", { name: "← Back to Villagers" }).click();
+      await page
+        .getByRole("navigation", { name: "Village navigation", exact: true })
+        .getByRole("button", { name: "People", exact: true })
+        .click();
       assert.equal(
         await list.evaluate((node) => node.scrollTop),
         position,
         "Directory reading position survives profile browsing",
       );
-      await page.getByRole("button", { name: "Close ×" }).click();
+      await closePeople();
       await expect(people).toBeFocused();
       village.villagers = savedVillagers;
       await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
@@ -643,9 +659,14 @@ await withBrowser(browser, async () => {
     await expect(profile.getByRole("heading", { name: "Mara", exact: true })).toHaveCount(1);
     await expect(profile.getByRole("heading", { name: "Mara", exact: true })).toBeInViewport({ ratio: 1 });
     const overview = profile.getByRole("region", { name: "Overview content" });
-    await expect(overview.getByText("Mara has expressed an interest in talking again.")).toBeVisible();
-    await expect(overview.getByText("Mara and Eli are friends")).toBeVisible();
-    await expect(overview.getByText("Learn to swim")).toBeVisible();
+    await expect(profile.getByRole("button", { name: "← Back to Villagers", exact: true })).toHaveCount(0);
+    await expect(profile.getByRole("button", { name: "Close ×", exact: true })).toHaveCount(0);
+    await expect(selector.getByText(/^[0-9]+ villagers$/)).toHaveCount(0);
+    await expect(overview.getByRole("heading", { name: "Relationships", exact: true })).toHaveCount(0);
+    await expect(overview.getByRole("heading", { name: "Wishes", exact: true })).toHaveCount(0);
+    await expect(overview.getByText("Mara has expressed an interest in talking again.")).toHaveCount(0);
+    await expect(overview.getByText("Mara and Eli are friends")).toHaveCount(0);
+    await expect(overview.getByText("Learn to swim")).toHaveCount(0);
     await expect(overview.getByText("Often reads at the Mill")).toBeVisible();
     await expect(overview.getByText("Home · The Mill", { exact: true })).toBeVisible();
     await expect(overview.getByText("Work · The Harbour", { exact: true })).toBeVisible();
@@ -678,7 +699,7 @@ await withBrowser(browser, async () => {
     relationships.profiles = savedProfiles;
     relationships.starting.pending = false;
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-    await expect(overview.getByText("Mara and Eli are friends")).toBeVisible();
+    await expect(overview.getByText("Mara and Eli are friends")).toHaveCount(0);
     assert.equal(reads.filter((path) => path.endsWith("/memories/inspect") || path.endsWith("/agendas")).length, 0);
     await chooseSection("Venues");
     await expect(profile.getByRole("heading", { name: "The Mill", exact: true })).toBeVisible();
@@ -703,9 +724,11 @@ await withBrowser(browser, async () => {
     const signature = profile.getByRole("img", { name: "Mara's signature", exact: true });
     await expect(signature).toBeVisible();
     await expect(signature.locator('[data-hand="lively"]')).toHaveText("Mara");
+    await profile.getByText("Character tools", { exact: true }).click();
     await profile.getByRole("button", { name: "Generate signature", exact: true }).click();
     await expect(profile.getByRole("button", { name: "Regenerate signature", exact: true })).toBeVisible();
     await expect(signature.locator("img")).toHaveAttribute("src", signatureUrl);
+    await profile.getByText("Character tools", { exact: true }).click();
     assert.equal(writes.at(-1).path.endsWith("/villagers/mara/signature"), true);
     // Old saved derivatives may contain both enclosed white fills and matte edges.
     // Verify the actual notebook pixels, rather than only checking the CSS rule.
@@ -790,12 +813,14 @@ await withBrowser(browser, async () => {
     if (exerciseActions) {
       assert.equal(writes.at(-1).body.expectedAttempt, 0);
       failSignature = true;
+      await profile.getByText("Character tools", { exact: true }).click();
       await profile.getByRole("button", { name: "Regenerate signature", exact: true }).click();
       await expect(profile.getByRole("alert")).toContainText("Signature provider unavailable");
       await expect(signature.locator("img")).toHaveAttribute("src", signatureUrl);
       failSignature = false;
       await profile.getByRole("button", { name: "Retry signature", exact: true }).click();
       await expect(profile.getByRole("alert")).toHaveCount(0);
+      await profile.getByText("Character tools", { exact: true }).click();
     }
     await page.screenshot({ path: resolve(output, `overview-${width}-${height}.png`) });
     await expect.poll(() => page.evaluate(() => document.fonts.check('17px "Villages Notebook"'))).toBe(true);
@@ -1369,7 +1394,7 @@ await withBrowser(browser, async () => {
       await expect(mail.locator(".villages-letter-text").first()).toContainText("A page of words from Mara");
 
       await mail.getByRole("button", { name: "Close Mailbox", exact: true }).click();
-      await page.getByRole("button", { name: "Close ×", exact: true }).click();
+      await closePeople();
       await expect(profile).not.toBeVisible();
       await expect(page.locator(`[data-desk]`)).toHaveAttribute("data-phase", "open");
       const mapButton = page.getByRole("button", { name: /Return to village|← Village/, exact: true });
@@ -1520,7 +1545,10 @@ await withBrowser(browser, async () => {
       await profile.getByRole("button", { name: "Refresh", exact: true }).click();
       await expect(profile.getByRole("alert")).toHaveCount(0);
     }
-    await profile.getByRole("button", { name: "← Back to Villagers", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Village navigation", exact: true })
+      .getByRole("button", { name: "People", exact: true })
+      .click();
     await expect(directory.getByRole("searchbox", { name: "Search villagers" })).toHaveCount(0);
     await expect(directory.getByRole("button", { name: "Open Mara profile" })).toBeFocused();
     await expect(page.locator(`.${P}-desk-workspace`)).toHaveAttribute("data-phase", "open");
@@ -1544,7 +1572,10 @@ await withBrowser(browser, async () => {
       "Long-name profile fits viewport",
     );
     if (width <= 390) await page.screenshot({ path: resolve(output, `long-name-${width}.png`) });
-    await page.getByRole("button", { name: "← Back to Villagers", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Village navigation", exact: true })
+      .getByRole("button", { name: "People", exact: true })
+      .click();
     await directory.getByRole("button", { name: "Open Mara profile" }).click();
     await expect(profile.getByRole("img", { name: "Mara's signature", exact: true }).locator("img")).toHaveAttribute(
       "src",
@@ -1605,9 +1636,12 @@ await withBrowser(browser, async () => {
     await expect(profile.getByRole("button", { name: "Apply refresh", exact: true })).toBeVisible();
     await profile.getByRole("button", { name: "Apply refresh", exact: true }).click();
     await expect(profile.getByRole("button", { name: "Move out", exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: "← Back to Villagers", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Village navigation", exact: true })
+      .getByRole("button", { name: "People", exact: true })
+      .click();
     await expect(directory.getByRole("button", { name: "Open Mara profile" })).toBeVisible();
-    await page.getByRole("button", { name: "Close ×", exact: true }).click();
+    await closePeople();
     await expect(page.locator(`[data-desk]`)).not.toHaveAttribute("data-desk", "people");
     await expect(page.locator(`[data-desk]`)).toHaveAttribute("data-phase", "open");
     await page.getByRole("button", { name: "People", exact: true }).click();

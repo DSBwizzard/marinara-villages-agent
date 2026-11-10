@@ -345,8 +345,16 @@ await withBrowser(browser, async () => {
     await expect(page.getByRole("button", { name: "Upload images", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "← Back to profile" }).click();
     await expect(managerButton).toBeFocused();
-    await page.getByRole("button", { name: "← Back to Villagers" }).click();
-    await page.getByRole("button", { name: "Close ×" }).click();
+    await page
+      .getByRole("navigation", { name: "Village navigation", exact: true })
+      .getByRole("button", { name: "People", exact: true })
+      .click();
+    await expect(page.locator("[data-desk=people]")).toHaveAttribute("data-phase", "open");
+    await page
+      .getByRole("navigation", { name: "Village navigation", exact: true })
+      .getByRole("button", { name: "People", exact: true })
+      .focus();
+    await page.keyboard.press("Escape");
     const section = async (key, label) => {
       if (mobile) await page.getByRole("combobox", { name: "Section" }).selectOption(key);
       else await page.getByRole("button", { name: label, exact: true }).click();

@@ -1,3 +1,4 @@
+import { VillageIcon } from "../../shared/VillageIcon.js";
 import { type ReactNode, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import type { ResidentSignature, ResidentSignatureImage } from "../../../shared/helpers/resident-signature.js";
 import { useFocusRevision, useVillageActivity } from "../../shared/activity.js";
@@ -37,12 +38,8 @@ export type DossierVenue = {
 export type DossierLink = { id: string; title: string; detail: string; onOpen: () => void; playerVisible?: boolean };
 
 export function DossierIcon({ name }: { name: DossierSection | "inspect" }) {
+  if (name === "venues" || name === "overview") return <VillageIcon name="places" />;
   const paths = {
-    overview: (
-      <>
-        <path d="m3 11 9-8 9 8M5 10v11h14V10M9 21v-8h6v8" />
-      </>
-    ),
     relationships: (
       <>
         <path d="M20 5c-3-3-6-1-8 1-2-2-5-4-8-1-4 4 1 9 8 15 7-6 12-11 8-15Z" />
@@ -60,12 +57,6 @@ export function DossierIcon({ name }: { name: DossierSection | "inspect" }) {
       <>
         <rect x="3" y="5" width="18" height="16" rx="1" />
         <path d="M7 2v6M17 2v6M3 10h18M7 14h2M15 14h2M7 18h2M15 18h2" />
-      </>
-    ),
-    venues: (
-      <>
-        <path d="M19 9c0 5-7 13-7 13S5 14 5 9a7 7 0 1 1 14 0Z" />
-        <circle cx="12" cy="9" r="2" />
       </>
     ),
     inspect: (
@@ -124,8 +115,6 @@ export function VillagerDossier({
   spriteManager,
   inspectors,
   onInspectSection,
-  onBack,
-  onClose,
   onVenue,
   error,
 }: {
@@ -146,8 +135,6 @@ export function VillagerDossier({
   spriteManager?: ReactNode;
   inspectors: Partial<Record<DossierSection, ReactNode>>;
   onInspectSection: (section: DossierSection | null) => void;
-  onBack: () => void;
-  onClose?: () => void;
   onVenue: (id: string) => void;
   error?: string;
 }) {
@@ -160,6 +147,8 @@ export function VillagerDossier({
   const [inspect, setInspect] = useState(false);
   const [visited, setVisited] = useState<DossierSection[]>([section]);
   const [manageOpen, setManageOpen] = useState(false);
+  const [signatureTools, setSignatureTools] = useState<HTMLDivElement | null>(null);
+  const [signatureSurface, setSignatureSurface] = useState<HTMLDivElement | null>(null);
   const [inspected, setInspected] = useState<DossierSection[]>([]);
   const [relationships, setRelationships] = useState<RelationshipView | null>(null);
   const relationshipEpoch = useRef(0);
@@ -294,21 +283,22 @@ export function VillagerDossier({
             overview={section === "overview" && !!villager}
             section={section}
             inspect={inspect}
+            footer={
+              <footer className={`${P}-dossier-footer`} role="group" aria-label="Profile actions">
+                <button
+                  type="button"
+                  className={`${P}-dossier-inspect`}
+                  aria-pressed={inspect}
+                  onClick={() => setInspect(!inspect)}
+                >
+                  <DossierIcon name="inspect" />
+                  {inspect ? "Leave Inspect" : "Inspect"}
+                </button>
+              </footer>
+            }
             toolbar={
               <>
-                <button type="button" className={`${P}-dossier-back`} aria-label="← Back to Villagers" onClick={onBack}>
-                  ← People
-                </button>
-                <div className={`${P}-dossier-actions`} role="group" aria-label="Profile actions">
-                  <button
-                    type="button"
-                    className={`${P}-dossier-inspect`}
-                    aria-pressed={inspect}
-                    onClick={() => setInspect(!inspect)}
-                  >
-                    <DossierIcon name="inspect" />
-                    {inspect ? "Leave Inspect" : "Inspect"}
-                  </button>
+                <div className={`${P}-dossier-actions`}>
                   {villager ? (
                     <details className={`${P}-dossier-management`} open={manageOpen}>
                       <summary
@@ -317,17 +307,13 @@ export function VillagerDossier({
                           setManageOpen((open) => !open);
                         }}
                       >
-                        Character tools
+                        <VillageIcon name="settings" /> Character tools
                       </summary>
                       <div className={`${P}-dossier-controls`} role="group" aria-label="Character tools">
                         {controls}
+                        <div ref={setSignatureTools} />
                       </div>
                     </details>
-                  ) : null}
-                  {onClose ? (
-                    <button type="button" className={`${P}-notebook-close`} onClick={onClose}>
-                      Close ×
-                    </button>
                   ) : null}
                 </div>
               </>
@@ -345,22 +331,12 @@ export function VillagerDossier({
                     ) : null}
                   </div>
                 </div>
-                {villager ? (
-                  <VillagerSignature
-                    key={navigation.actorId}
-                    actorId={navigation.actorId}
-                    name={name}
-                    signature={villager.signatureFallback}
-                    saved={villager.signature}
-                    request={request}
-                  />
-                ) : null}
               </article>
             </div>
             <main className={`${P}-dossier-workspace`}>
               <h2 className={`${P}-dossier-section-title`}>{titles[section]}</h2>
               <label className={`${P}-dossier-section-picker`}>
-                Section
+                <span className={`${P}-sr-only`}>Section</span>
                 <select value={section} onChange={(event) => choose(event.target.value as DossierSection)}>
                   {sections.map((tab) => (
                     <option key={tab} value={tab}>
@@ -416,35 +392,6 @@ export function VillagerDossier({
                             </p>
                           ) : (
                             <>
-                              <Sheet title="Relationships" icon="relationships">
-                                <p>{profile?.summary || "No relationship shared yet."}</p>
-                                {profile?.learned
-                                  ?.filter(
-                                    (entry) =>
-                                      entry.kind !== "routine" &&
-                                      entry.kind !== "preference" &&
-                                      entry.kind !== "home" &&
-                                      entry.kind !== "work" &&
-                                      entry.text !== profile.summary,
-                                  )
-                                  .map((entry, index) => (
-                                    <p key={index}>{entry.text}</p>
-                                  ))}
-                              </Sheet>
-                              <Sheet title="Wishes" icon="wishes">
-                                {profile?.knownWishes?.length ? (
-                                  <ul>
-                                    {profile?.knownWishes?.map((wish) => (
-                                      <li key={wish.wishId}>
-                                        {wish.text}
-                                        {wish.status ? ` · ${wish.status}` : ""}
-                                      </li>
-                                    ))}
-                                  </ul>
-                                ) : (
-                                  <p>None shared yet.</p>
-                                )}
-                              </Sheet>
                               <Sheet title="Routine" icon="agenda">
                                 {profile?.routine?.length ? (
                                   <ul>
@@ -458,6 +405,7 @@ export function VillagerDossier({
                               </Sheet>
                             </>
                           )}
+                          <div ref={setSignatureSurface} />
                           <Sheet title="Home and work" icon="venues">
                             {venues.some((venue) => venue.publicConnections.length) ? (
                               <ul>
@@ -573,6 +521,19 @@ export function VillagerDossier({
               </div>
             </main>
           </PeopleBook>
+
+          {villager ? (
+            <VillagerSignature
+              key={navigation.actorId}
+              actorId={navigation.actorId}
+              name={name}
+              signature={villager.signatureFallback}
+              saved={villager.signature}
+              request={request}
+              toolsContainer={signatureTools}
+              artContainer={signatureSurface}
+            />
+          ) : null}
         </div>
       </RetainedView>
     </>

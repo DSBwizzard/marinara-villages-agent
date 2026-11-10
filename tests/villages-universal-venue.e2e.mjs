@@ -311,7 +311,12 @@ await withBrowser(browser, async () => {
       .click();
     const peopleBook = page.getByRole("dialog", { name: "People", exact: true });
     await expect(peopleBook).toBeVisible();
-    await peopleBook.getByRole("button", { name: "Close ×", exact: true }).click();
+    await expect(page.locator("[data-desk=people]")).toHaveAttribute("data-phase", "open");
+    await page
+      .getByRole("navigation", { name: "Village navigation", exact: true })
+      .getByRole("button", { name: "People", exact: true })
+      .focus();
+    await page.keyboard.press("Escape");
     await expect(profile.getByRole("heading", { name: "Warehouse home", exact: true })).toBeVisible();
     await expect(profile.getByRole("button", { name: "Rename Workshop", exact: true })).toBeVisible();
     await layout.locator('[data-layout-zone="exterior"]').click();

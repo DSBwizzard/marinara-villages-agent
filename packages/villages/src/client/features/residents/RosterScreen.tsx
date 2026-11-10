@@ -6,12 +6,10 @@ import type { RosterScreenController } from "./screen-contracts.js";
 
 export function RosterScreen({
   controller,
-  onClose,
   readingPosition,
   selectedId,
 }: {
   controller: RosterScreenController;
-  onClose?: () => void;
   readingPosition?: { current: number };
   selectedId?: string;
 }) {
@@ -20,7 +18,7 @@ export function RosterScreen({
   useLayoutEffect(() => {
     if (content.current) content.current.scrollTop = readingPosition?.current ?? 0;
   }, [readingPosition]);
-  const { error, menuPage, openPerson, portraits, screen, setMenuPage, snapshot } = controller;
+  const { error, menuPage, openPerson, portraits, screen, snapshot } = controller;
   if (screen !== "menu" || menuPage !== "villagers") return null;
   const villagers = (snapshot?.villagers ?? []).filter((person) =>
     person.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
@@ -30,19 +28,13 @@ export function RosterScreen({
       <PeopleBook label="People notebook" toolbar={null}>
         <main className={`${ELEMENT_TAG}-directory-paper`} aria-label="Villagers directory">
           <header className={`${ELEMENT_TAG}-directory-head`}>
-            <h1>People</h1>
-            <span className={`${ELEMENT_TAG}-directory-meta`}>
-              <span>{villagers.length} villagers</span>
-              {!selectedId ? (
-                <button
-                  type="button"
-                  className={`${ELEMENT_TAG}-notebook-close`}
-                  onClick={onClose ?? (() => setMenuPage("index"))}
-                >
-                  Close ×
-                </button>
-              ) : null}
-            </span>
+            <h1>
+              People
+              <svg className={`${ELEMENT_TAG}-directory-flourish`} viewBox="0 0 64 36" aria-hidden="true">
+                <path d="M4 32C20 30 36 16 60 4" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M16 27C10 20 18 8 29 4c0 12-4 20-13 23ZM32 20C33 10 46 5 62 2c-5 12-15 18-30 18Z" />
+              </svg>
+            </h1>
           </header>
           <label className={`${ELEMENT_TAG}-directory-search`}>
             <span className={`${ELEMENT_TAG}-sr-only`}>Find a person</span>

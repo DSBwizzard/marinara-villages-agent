@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { useCallback, useEffect, useState } from "react";
 import type {
   ResidentSignature,
@@ -21,12 +22,16 @@ export function VillagerSignature({
   signature,
   saved,
   request,
+  toolsContainer,
+  artContainer,
 }: {
   actorId: string;
   name: string;
   signature?: ResidentSignature;
   saved?: ResidentSignatureImage;
   request: Request;
+  toolsContainer: HTMLElement | null;
+  artContainer: HTMLElement | null;
 }) {
   const [view, setView] = useState<ResidentSignatureView | null>(null);
   const [busy, setBusy] = useState(false);
@@ -84,9 +89,8 @@ export function VillagerSignature({
       setBusy(false);
     }
   };
-  return (
-    <div className={`${P}-signature`}>
-      <SignatureArt name={name} signature={local} saved={image} />
+  const controls = (
+    <div>
       <div className={`${P}-signature-controls`}>
         {view?.available || view?.recoverable ? (
           <button type="button" disabled={busy || running} onClick={() => void draw()}>
@@ -120,6 +124,19 @@ export function VillagerSignature({
       ) : null}
       {error || view?.error ? <p role="alert">{error || view?.error}</p> : null}
     </div>
+  );
+  return (
+    <>
+      {artContainer
+        ? createPortal(
+            <div className={`${P}-signature`}>
+              <SignatureArt name={name} signature={local} saved={image} />
+            </div>,
+            artContainer,
+          )
+        : null}
+      {toolsContainer ? createPortal(controls, toolsContainer) : null}
+    </>
   );
 }
 

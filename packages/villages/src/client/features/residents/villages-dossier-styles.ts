@@ -11,6 +11,8 @@ export const DOSSIER_STYLES = `
 .${P}-people-index{min-height:0;min-width:0}
 .${P}-people-layout[data-profile="false"] .${P}-directory-paper{max-width:1060px}
 .${P}-dossier-root,.${P}-directory-root{--dossier-ink:#f0dfbc;--dossier-line:#a39b8460;--notebook-hand:var(--menu-font,Georgia,serif);color:var(--dossier-ink);background:transparent;box-sizing:border-box;height:100%;min-height:0;min-width:0;overflow:visible;position:relative;font:400 20px/1.6 var(--notebook-hand);padding:0;container-type:size}
+.${P}-dossier-root{display:flex;flex-direction:column}
+.${P}-dossier-root>.${P}-dossier-desk{flex:1;height:auto}
 .${P}-dossier-root *,.${P}-directory-root *{box-sizing:border-box}
 .${P}-dossier-root button,.${P}-directory-root button,.${P}-dossier-root summary{font:inherit;min-height:44px;max-width:100%;color:#f0dfbc;border:1px solid #a39b84;border-radius:4px;background:#514157;padding:8px 12px;cursor:pointer;white-space:normal;overflow-wrap:anywhere;box-shadow:none}
 .${P}-dossier-root button:disabled,.${P}-directory-root button:disabled{opacity:.55;cursor:default}
@@ -19,33 +21,28 @@ export const DOSSIER_STYLES = `
 .${P}-dossier-root :is(h1,h2,h3,h4),.${P}-directory-root :is(h1,h2,h3){color:inherit;font-family:var(--notebook-hand);overflow-wrap:anywhere}
 .${P}-dossier-root :is(input,select,textarea),.${P}-directory-root input{color:#f0dfbc;background:#54415a70;border:1px solid #a39b84;border-radius:4px;padding:9px;min-height:44px;max-width:100%;font:inherit}
 .${P}-dossier-desk{height:100%;min-height:0;min-width:0;display:flex;flex-direction:column;position:relative;background:transparent;padding:0}
-.${P}-dossier-book{height:100%;min-height:0;min-width:0;display:flex;flex-direction:column;position:relative}
-.${P}-dossier-toolbar{display:flex;align-items:center;gap:12px;flex:none;min-height:44px;padding-bottom:12px;margin:0 0 14px;border-bottom:1px solid var(--dossier-line);position:relative;z-index:8}
-.${P}-dossier-toolbar h1{font-size:25px;line-height:1.2;margin:0;min-width:0}
-.${P}-dossier-toolbar button,.${P}-dossier-toolbar summary{padding:4px 0;background:transparent;border:0;font-size:16px}
-.${P}-dossier-back{white-space:nowrap!important}
+.${P}-dossier-book{flex:1;height:auto;min-height:0;min-width:0;display:flex;flex-direction:column;position:relative}
+.${P}-dossier-toolbar{position:absolute;right:0;top:0;z-index:8;display:flex;align-items:center;justify-content:end;min-height:44px}
 .${P}-dossier-actions{display:flex;align-items:center;gap:12px;margin-left:auto;min-width:0}
 .${P}-dossier-management{position:relative}
 .${P}-dossier-management>summary{list-style:none;white-space:nowrap}
-.${P}-dossier-management>summary::before{content:"⚙";margin-right:6px}
+.${P}-dossier-management>summary{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:16px;background:transparent;border:0}
 .${P}-dossier-controls{position:absolute;right:0;top:100%;margin-top:6px;width:min(500px,60cqw);max-height:65vh;overflow:auto;display:flex;flex-wrap:wrap;gap:10px;padding:16px;border:1px solid #a39b84;background:#3d3049;border-radius:5px;box-shadow:0 5px 18px #19152470;z-index:12}
 .${P}-description-editor{width:100%;min-width:0}.${P}-description-editor label,.${P}-description-editor textarea{display:block;width:100%}
 .${P}-description-editor textarea{resize:vertical;margin:6px 0}
 .${P}-dossier-controls>.${P}-row{flex-wrap:wrap}.${P}-dossier-controls details>button{display:block;margin-top:6px}
 .${P}-dossier-refresh{width:100%;border-top:1px solid var(--dossier-line);padding-top:10px}
-.${P}-dossier-identity{flex:none;min-width:0;padding:0 0 16px}
+.${P}-dossier-identity{flex:none;min-width:0;padding:72px 0 24px}
 .${P}-dossier-journal{display:flex;align-items:start;gap:20px;min-width:0}
-.${P}-dossier-journal-content{flex:1;min-width:0;display:grid;grid-template-columns:clamp(140px,22cqw,180px) minmax(0,1fr);gap:6px 20px;align-content:start}
+.${P}-dossier-journal-content{flex:1;min-width:0;display:grid;grid-template-columns:clamp(180px,36%,280px) minmax(0,1fr);gap:6px 20px;align-content:start}
 .${P}-dossier-portrait{grid-column:1;grid-row:1/3;width:100%;aspect-ratio:1;margin:0;overflow:hidden;background:#969b7e70;border-radius:7px}
 .${P}-dossier-portrait .${P}-avatar{width:100%;height:100%;max-width:none;max-height:none;border:0;border-radius:0;font-size:48px;background:transparent}
 .${P}-dossier-portrait .${P}-avatar img{width:100%;height:100%;object-fit:cover}
-.${P}-dossier-journal h1{grid-column:2;grid-row:1;min-width:0;font:600 56px/1.12 var(--notebook-hand);letter-spacing:-.025em;margin:0}
+.${P}-dossier-journal h1{grid-column:2;grid-row:1;min-width:0;font:600 64px/1.12 var(--notebook-hand);letter-spacing:-.025em;margin:0;align-self:end}
 .${P}-dossier-biography{grid-column:2;grid-row:2;min-width:0;max-height:5.5em;overflow:auto;scrollbar-width:thin}
-.${P}-dossier-biography p{margin:4px 0 0;font-size:22px;line-height:1.55;font-style:italic;font-weight:400}
-.${P}-dossier-journal>.${P}-signature{max-width:110px}
-.${P}-dossier-journal .${P}-signature-art{width:110px}
-.${P}-signature{flex:none;max-width:150px;margin:0;color:#e5c4d0}
-.${P}-signature-art{max-width:100%;width:150px;padding:6px;background:#b6ac9a;border-radius:4px}
+.${P}-dossier-biography p{margin:4px 0 0;font-size:24px;line-height:1.55;font-style:italic;font-weight:400}
+.${P}-signature{flex:none;max-width:240px;margin:18px 0 28px;color:#e5c4d0}
+.${P}-signature-art{max-width:100%;width:220px;padding:6px;background:#b6ac9a;border-radius:4px}
 .${P}-signature-image{display:block;width:auto;height:auto;max-width:100%;max-height:78px;object-fit:contain;object-position:left center;mix-blend-mode:multiply}
 .${P}-signature-name{display:block;font:400 28px/1.4 "Villages Notebook","Segoe Print",cursive;overflow-wrap:anywhere;padding:4px 0}
 .${P}-signature-name[data-hand="bold"]{font-weight:700}
@@ -60,7 +57,10 @@ export const DOSSIER_STYLES = `
 .${P}-dossier-tabs>div{display:flex;flex-wrap:wrap;gap:6px 16px}
 .${P}-dossier-tabs>div button{background:transparent;color:inherit;border:0;border-bottom:3px solid transparent;border-radius:0;font:400 20px/1.35 var(--notebook-hand);padding:8px 4px;min-height:44px}
 .${P}-dossier-tabs>div button[aria-pressed="true"]{border-bottom-color:#d29399;color:#fff0d5;background:transparent}
-.${P}-dossier-toolbar .${P}-dossier-inspect{display:flex;gap:6px;align-items:center}
+.${P}-dossier-footer{display:flex;justify-content:end;flex:none;padding:12px 0 0}
+.${P}-dossier-root .${P}-dossier-inspect{display:flex;gap:10px;align-items:center;min-height:54px;padding:8px 22px;border:1px solid #a5ac8b;background:#969b7e70;border-radius:12px;font:400 22px/1.3 var(--notebook-hand)}
+.${P}-dossier-controls .${P}-signature-controls button{font-size:16px}
+.${P}-dossier-root .${P}-dossier-inspect svg{width:26px;height:26px}
 .${P}-dossier-inspect[aria-pressed="true"]{color:#f5c4c7}
 .${P}-dossier-content{min-width:0;min-height:0;flex:1;overflow:auto;padding:0 5px 16px 0;scrollbar-width:thin;display:block}
 .${P}-dossier-content>*{min-width:0}
@@ -101,9 +101,8 @@ export const DOSSIER_STYLES = `
 .${P}-dossier-root .${P}-memory-section-head h3{font-size:23px}
 .${P}-directory-paper{height:100%;min-height:0;min-width:0;display:flex;flex-direction:column}
 .${P}-directory-head{display:flex;align-items:center;gap:20px;flex:none;margin:0 0 26px}
-.${P}-directory-head h1{font:600 60px/1.1 var(--notebook-hand);letter-spacing:-.025em;margin:0;flex:1;min-width:0}
-.${P}-directory-meta{display:flex;align-items:center;gap:10px;font-size:15px;white-space:nowrap}
-.${P}-directory-root .${P}-directory-meta button{border:0;background:transparent;padding:4px;font-size:14px}
+.${P}-directory-head h1{display:flex;align-items:center;gap:12px;font:600 60px/1.1 var(--notebook-hand);letter-spacing:-.025em;margin:0;flex:1;min-width:0}
+.${P}-directory-flourish{width:64px;height:40px;flex:none;fill:#969b7e;color:#a8aa80}
 .${P}-directory-search{position:relative;display:block;flex:none;width:100%;max-width:620px;margin:0 0 28px}
 .${P}-directory-search svg{position:absolute;left:18px;top:50%;transform:translateY(-50%);width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;pointer-events:none}
 .${P}-directory-root .${P}-directory-search input{width:100%;min-height:56px;padding:10px 16px 10px 56px;border:1px solid #b47f92aa;border-radius:13px;background:#74536755;font:400 22px/1.4 var(--notebook-hand)}
@@ -114,7 +113,8 @@ export const DOSSIER_STYLES = `
 .${P}-directory-root .${P}-directory-card[aria-pressed="true"]{background:#b97980bf;border-color:#e5a49e}
 .${P}-directory-card .${P}-avatar{width:100%;height:auto;aspect-ratio:1;max-width:none;border:0;border-radius:5px;background:#514157;font-size:44px;overflow:hidden}
 .${P}-directory-card .${P}-avatar img{width:100%;height:100%;object-fit:cover}
-.${P}-directory-text{min-width:0}.${P}-directory-card strong{display:block;font:400 25px/1.3 var(--notebook-hand);overflow-wrap:anywhere}
+.${P}-directory-text{min-width:0;text-align:center}.${P}-directory-card strong{display:block;font:400 25px/1.3 var(--notebook-hand);overflow-wrap:anywhere}
+.${P}-directory-card[aria-pressed="true"] strong{font-weight:600}
 .${P}-directory-card small{display:block;font-size:14px;margin-top:6px}
 .${P}-directory-card .${P}-directory-summary{display:none}
 .${P}-directory-card>span:last-child{display:none}
@@ -138,8 +138,8 @@ export const DOSSIER_STYLES = `
  .${P}-people-layout[data-profile="true"]{display:block}.${P}-people-layout[data-profile="true"] .${P}-people-index{display:none}
  .${P}-dossier-root,.${P}-directory-root{font-size:17px}
  .${P}-dossier-book{overflow:auto;container-type:normal}
- .${P}-dossier-toolbar{position:sticky;top:0;flex-wrap:wrap;gap:4px 10px;background:#302d47f5;margin:0 0 12px;padding:0 0 8px}
- .${P}-dossier-toolbar h1{font-size:22px;flex-basis:100%;order:3}
+ .${P}-dossier-toolbar{position:relative;top:auto;right:auto;flex:none;justify-content:end;margin-bottom:12px}
+ .${P}-dossier-identity{padding-top:0}
  .${P}-dossier-toolbar button,.${P}-dossier-toolbar summary{font-size:15px}
  .${P}-dossier-actions{gap:10px;flex-wrap:wrap}
  .${P}-dossier-management{position:static}.${P}-dossier-controls{left:0;right:0;width:auto;max-height:55vh}
@@ -161,7 +161,6 @@ export const DOSSIER_STYLES = `
  .${P}-directory-search{margin-bottom:22px}
  .${P}-directory-root .${P}-directory-search input{font-size:18px;min-height:50px;padding-left:46px}
  .${P}-directory-search svg{left:14px;width:22px;height:22px}
- .${P}-directory-meta{gap:6px;font-size:14px}
  .${P}-directory-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
  .${P}-directory-root .${P}-directory-card{padding:8px;gap:8px}
  .${P}-directory-card strong{font-size:19px}
@@ -171,15 +170,15 @@ export const DOSSIER_STYLES = `
  .${P}-dossier-journal h1{font-size:28px}
  .${P}-dossier-biography{max-height:2.8em}
  .${P}-dossier-biography p{font-size:16px}
- .${P}-dossier-identity{padding-bottom:8px}
+ .${P}-dossier-identity{padding-top:44px;padding-bottom:8px}
  .${P}-signature-art{width:90px}.${P}-signature-image{max-height:45px}
  .${P}-dossier-toolbar{padding-bottom:6px;margin-bottom:8px}
  .${P}-dossier-tabs{margin-bottom:6px}
  .${P}-dossier-tabs>div{gap:4px 8px}
  .${P}-dossier-tabs>div button{font-size:17px;padding-inline:2px}
- .${P}-dossier-desk:not([data-section="overview"]) .${P}-dossier-journal-content{grid-template-columns:50px minmax(0,1fr)}
- .${P}-dossier-desk:not([data-section="overview"]) .${P}-dossier-portrait{height:50px;grid-row:1}
- .${P}-dossier-desk:not([data-section="overview"]) .${P}-dossier-journal h1{align-self:center}
+ .${P}-dossier-desk:not([data-section="overview"]) .${P}-dossier-journal-content{grid-template-columns:minmax(0,1fr)}
+ .${P}-dossier-desk:not([data-section="overview"]) .${P}-dossier-portrait{display:none}
+ .${P}-dossier-desk:not([data-section="overview"]) .${P}-dossier-journal h1{grid-column:1;align-self:center}
  .${P}-dossier-desk:not([data-section="overview"]) :is(.${P}-signature,.${P}-dossier-biography){display:none}
 }
 @media(prefers-reduced-motion:reduce){.${P}-dossier-root *,.${P}-directory-root *{transition:none!important;animation:none!important}}

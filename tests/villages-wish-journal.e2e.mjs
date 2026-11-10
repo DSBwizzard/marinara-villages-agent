@@ -248,7 +248,11 @@ await withBrowser(browser, async () => {
     await expect(details.getByRole("combobox")).toHaveCount(0);
     await expect(section.getByRole("tab")).toHaveCount(2);
     const noScroll = async () => {
-      await expect(profile.getByRole("button", { name: "Close ×", exact: true })).toBeInViewport({ ratio: 0.99 });
+      await expect(
+        page
+          .getByRole("navigation", { name: "Village navigation" })
+          .getByRole("button", { name: "People", exact: true }),
+      ).toBeInViewport({ ratio: 0.99 });
       await expect(profile.getByRole("button", { name: /^(Inspect|Leave Inspect)$/ })).toBeInViewport({ ratio: 0.99 });
       if (width <= 700) await details.getByRole("button", { name: "← Wishes", exact: true }).scrollIntoViewIfNeeded();
       await expect(details.getByRole("button", { name: "← Wishes", exact: true })).toBeInViewport({ ratio: 0.99 });
@@ -385,15 +389,26 @@ await withBrowser(browser, async () => {
     await details.getByRole("button", { name: "← Wishes", exact: true }).click();
     await profile.getByRole("button", { name: "Leave Inspect", exact: true }).click();
     await expect(profile.getByText("PRIVATE SOCIAL DESIRE")).toHaveCount(0);
-    await profile.getByRole("button", { name: "← Back to Villagers" }).click();
+    await page
+      .getByRole("navigation", { name: "Village navigation", exact: true })
+      .getByRole("button", { name: "People", exact: true })
+      .click();
     await page.getByRole("button", { name: "Open Roxie profile" }).click();
     await chooseSection("Wishes");
     await expect(page.getByText("No Wishes known yet.", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "← Back to Villagers" }).click();
+    await page
+      .getByRole("navigation", { name: "Village navigation", exact: true })
+      .getByRole("button", { name: "People", exact: true })
+      .click();
     await page.getByRole("button", { name: "Open Feddy profile" }).click();
     await chooseSection("Venues");
     await expect(page.getByRole("button", { name: "View Venue", exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: "Close ×", exact: true }).click();
+    await expect(page.locator("[data-desk=people]")).toHaveAttribute("data-phase", "open");
+    await page
+      .getByRole("navigation", { name: "Village navigation", exact: true })
+      .getByRole("button", { name: "People", exact: true })
+      .focus();
+    await page.keyboard.press("Escape");
     await page
       .getByRole("navigation", { name: "Village exploration" })
       .getByRole("button", { name: "Places", exact: true })
@@ -420,9 +435,17 @@ await withBrowser(browser, async () => {
     await expect(profile).toBeVisible();
     assert.equal(await retainedReader.evaluate((node) => node.isConnected), true, "Scene reader stays mounted");
     await expect(profile.locator('[data-wish-id="swim"]')).toBeFocused();
-    await profile.getByRole("button", { name: "← Back to Villagers" }).click();
+    await page
+      .getByRole("navigation", { name: "Village navigation", exact: true })
+      .getByRole("button", { name: "People", exact: true })
+      .click();
     await page.getByRole("button", { name: "Open Roxie profile" }).click();
-    await page.getByRole("button", { name: "Close ×" }).click();
+    await expect(page.locator("[data-desk=people]")).toHaveAttribute("data-phase", "open");
+    await page
+      .getByRole("navigation", { name: "Village navigation", exact: true })
+      .getByRole("button", { name: "People", exact: true })
+      .focus();
+    await page.keyboard.press("Escape");
     await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toHaveCount(0);
     await expect(reader).toHaveText(readingText);
     assert.equal(await retainedReader.evaluate((node) => node.isConnected), true);

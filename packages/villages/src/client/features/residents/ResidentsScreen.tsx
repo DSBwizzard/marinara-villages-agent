@@ -13,15 +13,7 @@ import { useContext } from "react";
 import { DeskLeaveGuard } from "../../shared/DeskWorkspace.js";
 import { VillagerWishJournal } from "./villages-wish-journal.js";
 
-export function ResidentsScreen({
-  controller,
-  onDirectory,
-  onClose,
-}: {
-  controller: ResidentsScreenController;
-  onDirectory?: () => void;
-  onClose?: () => void;
-}) {
+export function ResidentsScreen({ controller }: { controller: ResidentsScreenController }) {
   const navigationLifetime = useVillageMutationLifetime(controller.snapshot?.isFounded);
   const documentGuard = useContext(DeskLeaveGuard);
   const canLeaveDocument = async () => !documentGuard?.guard.current || (await documentGuard.guard.current());
@@ -40,20 +32,15 @@ export function ResidentsScreen({
     personProfile,
     portraits,
     previewVillagerRefresh,
-    profileOrigin,
     refreshBusyId,
     refreshPreviews,
     rewriteAgenda,
     screen,
     setScheduleInfluence,
-    setExploreSheet,
     setFocusedProjectId,
     setFocusedRequestId,
     setHousingVenueId,
-    setMenuPage,
-    setPersonProfile,
     setProfileInspection,
-    setScreen,
     setSiteProjectId,
     setSnapshot,
     setSpriteManagerId,
@@ -345,27 +332,6 @@ export function ResidentsScreen({
         )}
       </div>
     );
-    const back = async () => {
-      if (spriteLeaveGuard.current && !(await spriteLeaveGuard.current())) return;
-      setSpriteManagerId(null);
-      setProfileInspection(null);
-      setPersonProfile(null);
-      setScreen(personProfile.returnTo);
-      if (personProfile.returnTo === "home") setExploreSheet({ tab: "people" });
-      if (personProfile.returnTo === "menu") {
-        setMenuPage("villagers");
-      }
-      requestAnimationFrame(() => {
-        for (const { selector, top } of profileOrigin.current.scroll) {
-          const target = element.querySelector<HTMLElement>(selector);
-          if (target) target.scrollTop = top;
-        }
-        const target = profileOrigin.current.selector
-          ? element.querySelector<HTMLElement>(profileOrigin.current.selector)
-          : element.querySelector<HTMLElement>(`textarea[aria-label]`);
-        target?.focus({ preventScroll: true });
-      });
-    };
     return (
       <>
         <VillagerDossier
@@ -384,8 +350,6 @@ export function ResidentsScreen({
           links={relatedLinks}
           error={error}
           onInspectSection={setProfileInspection}
-          onBack={onDirectory ?? back}
-          onClose={onClose}
           onVenue={async (id) => {
             if (!(await canLeaveDocument())) return;
             const venue = snapshot?.settings.venues.find((entry) => entry.id === id);

@@ -38,7 +38,7 @@ function Harness(){
  return <VillageActivity value={{visible,backgroundRevision:revision,worldScope:scope}}><style>{DOSSIER_STYLES}</style>
  <RetainedView active={active}><VillagerDossier key={scope+actor} navigation={personProfile} villager={{characterId:actor,name:actor,summary:'A villager',missing:false}}
  portrait={null} request={request} venues={[]} links={[]} controls={<input aria-label='Identity draft'/>} spriteManager={sprites?<button onClick={()=>setSprites(false)}>Back to profile</button>:undefined}
- onInspectSection={setInspection} onBack={()=>setActive(false)} onVenue={()=>{}} inspectors={{
+ onInspectSection={setInspection} onVenue={()=>{}} inspectors={{
  wishes:<VillagerWishJournal request={request} characterId={actor} prefix='v' inspect/>,
  memories:<VillagerMemoriesPanel characterId={actor} library={library} busy={false} onQuery={(query,signal)=>loadMemory(signal,query)} onForget={()=>{}}/>,
  agenda:<pre>{JSON.stringify(agendas)}</pre>
@@ -79,7 +79,7 @@ await withBrowser(browser, async () => {
         name: characterId,
         summary,
         knownAt: "2026-11-05T00:00:00Z",
-        routine: [],
+        routine: [summary],
         interests: "",
         ties: [],
         learned: [],

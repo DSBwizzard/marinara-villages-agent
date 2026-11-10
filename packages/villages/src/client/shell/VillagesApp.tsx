@@ -274,7 +274,11 @@ function VillagesContent({ element }: { element: HTMLElement }) {
     controller.setScreen("home");
   };
   const goTo = async (target: DeskDestination) => {
-    if (target === active || !(await canLeave())) return;
+    if (target === active) {
+      if (target === "people" && controller.screen === "person") await directory();
+      return;
+    }
+    if (!(await canLeave())) return;
     if (target === "people") navigation.openMenu("villagers");
     else if (target === "projects") navigation.openMenu("projects");
     else if (target === "settings") navigation.openMenu("index");
@@ -374,9 +378,13 @@ function VillagesContent({ element }: { element: HTMLElement }) {
               }
             }
             if (!active || event.key !== "Escape" || event.defaultPrevented) return;
-            const dialogs = documentRef.current?.querySelectorAll('[role="dialog"],dialog[open]');
-            if (dialogs?.length) return;
-            const details = documentRef.current?.querySelector<HTMLDetailsElement>("details[open]");
+            const dialog = [
+              ...(documentRef.current?.querySelectorAll<HTMLElement>('[role="dialog"],dialog[open]') ?? []),
+            ].find((node) => node.checkVisibility() && !node.closest("[hidden],[inert]"));
+            if (dialog) return;
+            const details = [
+              ...(documentRef.current?.querySelectorAll<HTMLDetailsElement>("details[open]") ?? []),
+            ].find((node) => node.checkVisibility() && !node.closest("[hidden],[inert]"));
             if (details) {
               details.querySelector<HTMLElement>("summary")?.click();
               event.stopPropagation();
@@ -404,8 +412,6 @@ function VillagesContent({ element }: { element: HTMLElement }) {
                 <div hidden={!bookVisible} inert={!bookVisible} className={`${ELEMENT_TAG}-people-session`}>
                   <PeoplePages
                     controller={navigation}
-                    onDirectory={directory}
-                    onClose={closePeople}
                     readingPosition={readingPosition}
                     active={bookVisible && !controller.mailboxOpen}
                   />
@@ -448,14 +454,10 @@ function VillageScreen({ controller, people }: { controller: Controller; people:
 
 function PeoplePages({
   controller,
-  onDirectory,
-  onClose,
   readingPosition,
   active,
 }: {
   controller: Controller;
-  onDirectory: () => void;
-  onClose: () => void;
   readingPosition: { current: number };
   active: boolean;
 }) {
@@ -467,7 +469,6 @@ function PeoplePages({
         <RetainedView active={active}>
           <RosterScreen
             controller={{ ...controller, screen: "menu", menuPage: "villagers" }}
-            onClose={onClose}
             readingPosition={readingPosition}
             selectedId={controller.screen === "person" ? person?.actorId : undefined}
           />
@@ -475,11 +476,7 @@ function PeoplePages({
       </div>
       {person ? (
         <RetainedView key={person.actorId} active={active && controller.screen === "person"}>
-          <ResidentsScreen
-            controller={{ ...controller, screen: "person", personProfile: person }}
-            onDirectory={onDirectory}
-            onClose={onClose}
-          />
+          <ResidentsScreen controller={{ ...controller, screen: "person", personProfile: person }} />
         </RetainedView>
       ) : null}
     </div>
