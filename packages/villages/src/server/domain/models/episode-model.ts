@@ -35,7 +35,8 @@ export type AcceptedEpisode = {
       | "initialization"
       | "contact"
       | "scene"
-      | "appointment";
+      | "appointment"
+      | "venue-request";
     targetId: string;
     revision: number;
     text: string;

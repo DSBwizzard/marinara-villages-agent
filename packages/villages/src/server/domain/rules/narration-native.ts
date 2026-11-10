@@ -11,9 +11,11 @@ import {
   acceptNarrationContinuity,
   type NarrationPublication,
 } from "./narration-acceptance.js";
-import { applyNarrationProject } from "./narration-project.js";
+import { applyNarrationProject, applyNarrationProjectStart } from "./narration-project.js";
 import { applyNarrationScene } from "./narration-scene.js";
 import { narrationAppointment } from "./narration-appointment.js";
+import { applyNarrationResidence } from "./narration-residence.js";
+import { MAX_VENUE_NAME_LENGTH } from "./prompt-preset.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 import { projectSpeechContext } from "./project-interpretation.js";
 import { applyNarrationAccess, assertNarrationDecision, narrationAccessScopes } from "./narration-access.js";
@@ -30,6 +32,20 @@ const base = {
 const nativeCommand = z.discriminatedUnion("type", [
   z.object({ ...base, type: z.literal("contact.end"), who: id }).strict(),
   z.object({ ...base, type: z.literal("scene.end") }).strict(),
+  z.object({ ...base, type: z.literal("project.start"), project: id }).strict(),
+  z.object({ ...base, type: z.literal("residence.request"), by: id, venue: id }).strict(),
+  z
+    .object({ ...base, type: z.literal("residence.decide"), by: id, person: id, venue: id, approved: z.boolean() })
+    .strict(),
+  z
+    .object({
+      ...base,
+      type: z.literal("venue.request"),
+      by: id,
+      name: z.string().min(1).max(MAX_VENUE_NAME_LENGTH),
+      classes: z.array(z.string()).min(1).max(2),
+    })
+    .strict(),
   z
     .object({
       ...base,
@@ -86,7 +102,7 @@ export function readNarrationNativeCommand(raw: unknown) {
   return nativeCommand.parse(raw);
 }
 export const NARRATION_NATIVE =
-  'Native commands share {id?:label,at:segment label,source:[exact consequential sources],requires?:[effect IDs],independent?:true}. Current communication is required; recalled/private consent is never authority. Supported commands: {type:"appointment",by,when:{dayOffset:integer}|{weekday:weekday name,afterToday?:boolean}|{date:"YYYY-MM-DD"},minute?:0-1439} binds an actual current spoken appointment using the supplied calendar, never a past instant or clock mutation; {type:"scene.end"} only from the actual Player spoken/visible departure intent at the final segment; {type:"contact.end",who} ends only an admitted doorway contact, with deciding words (or the actual Player intent); {type:"project.decide",by,project,decision:"approval|builder|refuse|withdrawal|conditional|uncertain"}; {type:"permission.grant|permission.revoke",by,visitor,venue,zone}; {type:"access.decide",by,venue,zone,decision:{outcome:"invite-now|invite-later|invite-outside-hours|refuse|dismiss|ban-zone|ban-venue",visitor,accompanies?}|{outcome:"access-management",management:exact native AccessCommand action fields without operationId,expectedRevision,zoneId,sceneId}}. Use only supplied native scopes. A conditional or uncertain Project answer grants no approval or lead. An access condition beyond accompaniment cannot grant access. Native success assertions must require their command ID.';
+  'Native commands share {id?:label,at:segment label,source:[exact consequential sources],requires?:[effect IDs],independent?:true}. Current communication is required; recalled/private consent is never authority. Supported commands: {type:"residence.request",by,venue}; {type:"residence.decide",by,person,venue,approved:boolean}; {type:"venue.request",by,name,classes:[native Venue classes]} submits a Villager request without establishing any service; {type:"project.start",project} invokes the same native Start/Resume only for explicit actual Player intent and current ready authority; {type:"appointment",by,when:{dayOffset:integer}|{weekday:weekday name,afterToday?:boolean}|{date:"YYYY-MM-DD"},minute?:0-1439} binds an actual current spoken appointment using the supplied calendar, never a past instant or clock mutation; {type:"scene.end"} only from the actual Player spoken/visible departure intent at the final segment; {type:"contact.end",who} ends only an admitted doorway contact, with deciding words (or the actual Player intent); {type:"project.decide",by,project,decision:"approval|builder|refuse|withdrawal|conditional|uncertain"}; {type:"permission.grant|permission.revoke",by,visitor,venue,zone}; {type:"access.decide",by,venue,zone,decision:{outcome:"invite-now|invite-later|invite-outside-hours|refuse|dismiss|ban-zone|ban-venue",visitor,accompanies?}|{outcome:"access-management",management:exact native AccessCommand action fields without operationId,expectedRevision,zoneId,sceneId}}. Use only supplied native scopes. A conditional or uncertain Project answer grants no approval or lead. An access condition beyond accompaniment cannot grant access. Native success assertions must require their command ID.';
 
 /** Fixed native validators prepare a detached candidate inside the existing Village CAS. */
 export function prepareNarrationNative(
@@ -150,6 +166,7 @@ export function prepareNarrationNative(
           source.moment && source.episodeId === readset.source.episodeId && source.moment.index <= row.segment,
       ) &&
         (command.type === "scene.end" ||
+          command.type === "project.start" ||
           (command.type === "contact.end" && command.who === "player") ||
           Math.max(...sources.map((source) => source.moment!.index)) === row.segment),
       "native decision must match its actual current utterance",
@@ -158,7 +175,40 @@ export function prepareNarrationNative(
     const receiptId = "native-" + memoryHash([readset.source.episodeId, effect.id]).slice(0, 40);
     if (command.type === "scene.end" || command.type === "contact.end")
       return applyNarrationScene(candidate, command, readset, context, sources, receiptId, row.segment);
+    if (command.type === "project.start") {
+      const project = state.projects.find((project) => project.id === command.project);
+      memoryRequire(project?.lifecycle, "the Project is unavailable");
+      const captured = readset.projects.find((row) => row.projectId === project.id);
+      memoryRequire(captured, "the Project was not supplied");
+      return {
+        receipt: applyNarrationProjectStart(
+          candidate,
+          command.project,
+          readset,
+          context,
+          sources,
+          projectSpeechContext(state, project, Object.keys(captured.agreements)),
+          receiptId,
+          at,
+        ),
+        sources,
+      };
+    }
     assertNarrationDecision(candidate, command.by, context, sources);
+    if (command.type === "residence.request" || command.type === "residence.decide" || command.type === "venue.request")
+      return {
+        receipt: applyNarrationResidence(
+          candidate,
+          state,
+          command,
+          readset,
+          sources,
+          receiptId,
+          at,
+          (command.requires ?? []).flatMap((id) => (native.receipts[id] ? [native.receipts[id]] : [])),
+        ),
+        sources,
+      };
     if (command.type === "appointment") {
       memoryRequire(command.when, "appointment needs its stated day");
       return {

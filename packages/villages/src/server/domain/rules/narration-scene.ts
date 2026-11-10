@@ -7,20 +7,12 @@ import { narrationPositions } from "./narration-sources.js";
 import { assertNarrationDecision } from "./narration-access.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 
-export function applyNarrationScene(
-  state: VillageState,
-  command: { type: "contact.end"; who: string } | { type: "scene.end" },
-  readset: NarrationReadset,
-  context: NarrationSourceContext,
-  sources: ContinuityEvidence[],
-  receiptId: string,
-  segment: number,
-) {
-  const by = command.type === "scene.end" ? "player" : command.who;
-  if (by === "player")
-    memoryRequire(
+export function assertNarrationPlayerIntent(context: NarrationSourceContext, sources: ContinuityEvidence[]) {
+  memoryRequire(
+    sources.length > 0 &&
       sources.every(
         (source) =>
+          source.seed === context.seed &&
           source.episodeId === context.episodeId &&
           source.unitId === "input" &&
           source.actorId === "player" &&
@@ -31,8 +23,21 @@ export function applyNarrationScene(
           source.moment &&
           memoryHash(source.positions) === memoryHash(narrationPositions(context, source.moment)),
       ),
-      "Scene control needs the Player's actual spoken or visible intent",
-    );
+    "native action needs the Player's actual spoken or visible intent",
+  );
+}
+
+export function applyNarrationScene(
+  state: VillageState,
+  command: { type: "contact.end"; who: string } | { type: "scene.end" },
+  readset: NarrationReadset,
+  context: NarrationSourceContext,
+  sources: ContinuityEvidence[],
+  receiptId: string,
+  segment: number,
+) {
+  const by = command.type === "scene.end" ? "player" : command.who;
+  if (by === "player") assertNarrationPlayerIntent(context, sources);
   else assertNarrationDecision(state, by, context, sources);
   let contactEndedIds: string[] = [],
     closed: true | undefined;

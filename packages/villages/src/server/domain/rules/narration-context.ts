@@ -1,5 +1,6 @@
 import type { ContinuityEvidence, ContinuityHolder, ContinuityTarget } from "../models/continuity-model.js";
 import type { NarrationReadset } from "../models/narration-model.js";
+import { narrationResidenceContext } from "./narration-residence.js";
 import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
 import { coerceSession } from "../decoding/scene-codec.js";
@@ -479,6 +480,7 @@ export function narrationContinuityContext(
     parts: bounded,
     projects: projectSpeechContexts(sceneContinuityView(state, scene), writerIds, "", input, scene.placeId),
     access: narrationAccessScopes(sceneContinuityView(state, scene), ["player", ...writerIds]),
+    residence: narrationResidenceContext(sceneContinuityView(state, scene), ["player", ...writerIds]),
     protections,
     source: {
       seed: state.seed,
@@ -550,5 +552,6 @@ export function fittedNarrationReadset(
     offered: [...offered.values()],
     projects: context.projects,
     access: context.access,
+    residence: context.residence,
   };
 }

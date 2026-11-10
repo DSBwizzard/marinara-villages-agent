@@ -48,6 +48,7 @@ const episode = z
               "contact",
               "scene",
               "appointment",
+              "venue-request",
             ]),
             targetId: id,
             revision: z.number().int().nonnegative().safe(),

@@ -1,4 +1,4 @@
-// Test cases: narration-project/approval-and-lead, narration-project/controller, narration-project/captured-terms, narration-project/current-witness, narration-project/withdrawal, narration-project/pending-withdrawal, narration-project/selected-lead, narration-project/new-venue-terms
+// Test cases: narration-project/approval-and-lead, narration-project/controller, narration-project/captured-terms, narration-project/current-witness, narration-project/withdrawal, narration-project/pending-withdrawal, narration-project/selected-lead, narration-project/new-venue-terms, narration-project/explicit-start
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -21,6 +21,9 @@ import { narrationLines } from "../packages/villages/src/server/domain/rules/nar
 import { readNarrationReply } from "../packages/villages/src/server/domain/rules/narration-contract.js";
 import { bindNarrationSource } from "../packages/villages/src/server/domain/rules/narration-sources.js";
 import { applyNarrationProject } from "../packages/villages/src/server/domain/rules/narration-project.js";
+import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
+import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
 import {
   projectSpeechContext,
   projectSpeechPrompt,
@@ -38,7 +41,7 @@ function fixture(speakerId = "a", whisper = false) {
     letterFontId: "caveat",
     wishes: [],
     addedAt: at,
-    agenda: null,
+    agenda: unwrittenVillageAgenda(),
     cardSnapshot: {
       id,
       name: id,
@@ -157,7 +160,7 @@ function fixture(speakerId = "a", whisper = false) {
     submissionId: "submission",
     at,
   });
-  return { state, project, evidence, request, speech };
+  return { state, project, evidence, request, speech, scene, venue, at };
 }
 
 await runCase("narration-project/approval-and-lead", () => {
@@ -351,4 +354,60 @@ await runCase("narration-project/new-venue-terms", () => {
     context.terms,
     "a saved plan cannot hide a later change in official classes or site terms",
   );
+});
+
+await runCase("narration-project/explicit-start", () => {
+  function ready(agreed = true) {
+    const f = fixture();
+    if (agreed) {
+      const e = f.evidence;
+      for (const decision of ["approval", "builder"] as const)
+        applyNarrationProject(f.state, f.request(decision), e.readset, e.context, e.sources, e.baseline);
+      f.project.lifecycle!.builderId = "a";
+    }
+    const input = "Start this approved Project now.";
+    const context = narrationContinuityContext(f.state, f.scene, f.venue, "start-operation", input, f.at);
+    const readset = fittedNarrationReadset(
+      f.state,
+      context,
+      context.parts.map((part) => part.block.evidenceId!),
+    );
+    const raw: any = {
+      segments: [
+        { id: "started", kind: "narration", text: "Work starts on the approved entrance.", requires: ["start"] },
+      ],
+      commands: [
+        {
+          id: "start",
+          type: "project.start",
+          project: f.project.id,
+          at: "started",
+          source: [{ input, ground: { kind: "spoken", to: ["a", "b"] } }],
+        },
+      ],
+    };
+    const publication = () => ({ raw, readset, responseDigest: memoryHash(raw) });
+    return { ...f, raw, readset, accept: () => acceptNarration(f.state, publication(), "start-turn", f.at) };
+  }
+  const f = ready();
+  const result = f.accept();
+  assert.equal(result.held, false);
+  assert.equal(f.state.projects[0].status, "working");
+  assert.equal(Date.parse(f.state.projects[0].lifecycle!.workOrder!.completesAt) - Date.parse(f.at), 86_400_000);
+  f.state.villagers = [];
+  assert.equal(
+    f.accept().held,
+    false,
+    "committed replay does not purchase or restart native work after authority changes",
+  );
+  assert.equal(f.state.episodes.records.length, 1);
+  for (const kind of ["private", "npc", "not-ready", "stale"]) {
+    const g = ready(kind !== "not-ready");
+    if (kind === "private") g.raw.commands[0].source[0].ground = { kind: "private" };
+    if (kind === "npc") g.raw.commands[0].source = [{ segment: "started", perceive: { kind: "seen", by: ["a"] } }];
+    if (kind === "stale") g.state.projects[0].lifecycle!.approvals = [];
+    const before = memoryHash(g.state);
+    assert.equal(g.accept().held, true, kind);
+    assert.equal(memoryHash(g.state), before);
+  }
 });

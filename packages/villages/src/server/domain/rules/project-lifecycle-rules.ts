@@ -1,15 +1,20 @@
+import { asTrimmedString } from "./coerce.js";
+import { effectiveRenovationChange, plannedVenue, validateRenovationDesign } from "./project-design.js";
+import { venueDesignHash } from "./project-structure.js";
+import { assertCanAddVillageVenue } from "./venue-capacity.js";
+import { villageMap } from "./village-maps.js";
 import type { VillageProject, VillageProjectLifecycle, VillageState } from "../models/world.js";
 import { conflict, notFound } from "./errors.js";
 import { establishmentControllers, establishmentScope } from "./establishment.js";
 import { findLocation, placeRegistry } from "./places.js";
-import { completeProject } from "./project-completion.js";
+import { completeProject, readProjectPlan } from "./project-completion.js";
 import {
   allocateProjectFocus,
   projectAgendaReservations,
   projectFocusValid,
   trimProjectFocus,
 } from "./project-focus.js";
-import { approvalScope, matchesProjectDesign, renovationAffectedIds } from "./project-terms.js";
+import { approvalScope, matchesProjectDesign, renovationAffectedIds, projectDesignKey } from "./project-terms.js";
 import { cloneVillageContext } from "./world-context-copy.js";
 export { renovationAffectedIds, validImage } from "./project-terms.js";
 
@@ -153,5 +158,113 @@ export function reconcileProjectLifecycles(state: VillageState, now: Date): void
       }
     }
   }
+  projectAgendaReservations(state);
+}
+
+export function beginProject(
+  state: VillageState,
+  project: ReturnType<typeof projectFor>,
+  row: Record<string, unknown>,
+  resume: boolean,
+  now: Date,
+) {
+  const flow = project.lifecycle;
+  if (project.status !== (resume ? "paused" : "planning"))
+    throw conflict(resume ? "This Project is not paused." : "This Project has already started.");
+  const lead = asTrimmedString(row.residentId) || flow.builderId;
+  const social = project.kind === "establishment" && !project.establishment?.physical;
+  if (
+    !social &&
+    (!state.villagers.some((resident) => resident.characterId === lead) ||
+      !flow.candidates.some(
+        (candidate) => candidate.residentId === lead && matchesProjectDesign(candidate.scope, project),
+      ))
+  )
+    throw conflict("Choose a willing resident lead for this design.");
+  const others = state.projects.filter(
+    (other) => other.id !== project.id && ["working", "paused"].includes(other.status),
+  );
+  if (!resume && others.length >= 2) throw conflict("Two Projects are already active.");
+  if (!social && others.some((other) => other.lifecycle?.builderId === lead))
+    throw conflict("This resident already leads an active Project.");
+  if (others.some((other) => other.venueId && other.venueId === project.venueId))
+    throw conflict("This Venue already has an active Project.");
+  if (missingProjectAgreements(state, project).length) throw conflict("Obtain the necessary agreements first.");
+  if (project.kind === "establishment") {
+    const place = state.worldPlaces.places[project.venueId];
+    if (!place || place.disabled || !place.prepared || place.report)
+      throw conflict("Visit and verify this Place first.");
+    if (place.location.presentation.x === null || place.location.presentation.y === null)
+      throw conflict("Choose a map position first.");
+    if (!resume) assertCanAddVillageVenue(state, flow.change?.classes, project.id);
+    if (social) {
+      project.status = flow.phase = "working";
+      project.updatedAt = now.toISOString();
+      return;
+    }
+    if (project.establishment!.objectives.some((row) => !row.met))
+      throw conflict("Resolve the establishment objectives before physical work.");
+  }
+  if (project.kind !== "new-venue") {
+    const venue = findLocation(state, project.venueId)!;
+    if (flow.baseDesignHash !== venueDesignHash(venue, flow.changedZoneIds, flow.change))
+      throw conflict(
+        resume
+          ? "The Venue design changed. Cancel this Project and plan the current layout."
+          : "The Venue design changed. Revise the draft.",
+      );
+    if (
+      !flow.changedZoneIds.length &&
+      JSON.stringify([...(flow.change!.classes ?? [])].sort()) === JSON.stringify([...(venue.classes ?? [])].sort()) &&
+      flow.change!.capacity === (venue.residenceCapacity ?? 1)
+    )
+      throw conflict("Choose a physical change before Start.");
+    validateRenovationDesign(state, venue, effectiveRenovationChange(venue, flow.change!, flow.changedZoneIds), now);
+  } else {
+    if (!project.plan) throw conflict("Save the physical design first.");
+    const position = project.venueDraft!.position;
+    if (position.x === null || position.y === null) throw conflict("Choose a map position first.");
+    villageMap(state, position.mapId);
+    const shell = plannedVenue(project);
+    readProjectPlan(project.plan, shell);
+    if (!resume) {
+      assertCanAddVillageVenue(state, project.venueDraft!.classes, project.id);
+      if (state.venues.some((venue) => venue.name.toLocaleLowerCase() === project.title.toLocaleLowerCase()))
+        throw conflict("That Venue name is already in use.");
+      if (
+        state.venues.some(
+          (venue) =>
+            venue.presentation.mapId === position.mapId &&
+            venue.presentation.x !== null &&
+            venue.presentation.y !== null &&
+            Math.abs(venue.presentation.x - position.x!) < 0.055 &&
+            Math.abs(venue.presentation.y - position.y!) < 0.055,
+        )
+      )
+        throw conflict("That spot overlaps a Venue.");
+      const agreed = flow.candidates.filter((candidate) => matchesProjectDesign(candidate.scope, project));
+      state.venues.push(shell);
+      project.venueId = shell.id;
+      flow.targetVenueId = shell.id;
+      // Assigning the live site is an implementation detail, not changed agreement terms.
+      for (const candidate of agreed) candidate.scope = projectDesignKey(project);
+    }
+  }
+  const at = now.toISOString(),
+    remaining = resume ? flow.workOrder!.remainingMs : PROJECT_DURATION_MS;
+  const previousFocus = flow.workOrder?.focus;
+  flow.builderId = lead;
+  flow.workOrder = {
+    startsAt: at,
+    completesAt: new Date(now.getTime() + remaining).toISOString(),
+    pausedAt: "",
+    remainingMs: remaining,
+    ...(previousFocus ? { focus: previousFocus } : {}),
+  };
+  project.status = flow.phase = "working";
+  flow.blockedReason = "";
+  project.updatedAt = at;
+  project.participantIds = [lead];
+  flow.workOrder.focus = allocateProjectFocus(state, project, now);
   projectAgendaReservations(state);
 }

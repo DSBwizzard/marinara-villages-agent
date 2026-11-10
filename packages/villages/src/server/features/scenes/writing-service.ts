@@ -15,6 +15,7 @@ import { findLocation, findNpc, npcProfile } from "../../domain/rules/places.js"
 import { renderPlayerBackgroundContext } from "../../domain/rules/player-background.js";
 import { projectSpeechPrompt } from "../../domain/rules/project-interpretation.js";
 import { narrationAccessPrompt } from "../../domain/rules/narration-access.js";
+import { narrationResidencePrompt } from "../../domain/rules/narration-residence.js";
 import { NARRATION_NATIVE } from "../../domain/rules/narration-native.js";
 import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
 import { residentMovementOptions } from "../../domain/rules/resident-movement.js";
@@ -207,6 +208,7 @@ export function createSceneWriting({
             : "",
         projectSpeechPrompt(village, projectContexts),
         narrationAccessPrompt(context.access),
+        narrationResidencePrompt(context.residence),
         JSON.stringify({
           calendar,
           protections: context.protections,

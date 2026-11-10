@@ -15,4 +15,5 @@ export type NarrationReadset = {
   offered: AcceptedEpisode["offered"];
   projects: import("../rules/project-interpretation.js").ProjectSpeechContext[];
   access: import("../rules/narration-access.js").NarrationAccessScope[];
+  residence: ReturnType<typeof import("../rules/narration-residence.js").narrationResidenceContext>;
 };

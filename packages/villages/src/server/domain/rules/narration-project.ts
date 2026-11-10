@@ -6,10 +6,52 @@ import { continuityActor } from "./continuity-actors.js";
 import { establishmentControllers, establishmentScope } from "./establishment.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { findLocation, findNpc } from "./places.js";
-import { pauseProject, projectFor } from "./project-lifecycle-rules.js";
+import { beginProject, pauseProject, projectFor } from "./project-lifecycle-rules.js";
+import { assertNarrationPlayerIntent } from "./narration-scene.js";
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { approvalScope, projectDesignKey, renovationAffectedIds } from "./project-terms.js";
 import { narrationPositions, type NarrationSourceContext } from "./narration-sources.js";
 import { projectSpeechTerms, type ProjectSpeechContext } from "./project-interpretation.js";
+
+export function applyNarrationProjectStart(
+  state: VillageState,
+  projectId: string,
+  readset: NarrationReadset,
+  context: NarrationSourceContext,
+  sources: ContinuityEvidence[],
+  before: ProjectSpeechContext,
+  receiptId: string,
+  at: string,
+): AcceptedEpisode["commandReceipts"][number] {
+  assertNarrationPlayerIntent(context, sources);
+  const project = projectFor(state, projectId),
+    captured = readset.projects.find((row) => row.projectId === projectId);
+  memoryRequire(
+    captured &&
+      captured.revision === project.lifecycle.revision &&
+      memoryHash(before) === memoryHash(captured) &&
+      memoryHash(projectSpeechTerms(state, project)) === memoryHash(captured.terms),
+    "the complete current Project authority was not supplied",
+  );
+  const resume = project.status === "paused";
+  memoryRequire(!resume || project.lifecycle.workOrder, "the paused Project has no saved work to resume");
+  beginProject(state, project, {}, resume, new ZonedDate(at, readset.calendar.timeZone));
+  return {
+    id: receiptId,
+    kind: "project",
+    targetId: project.id,
+    revision: project.lifecycle.revision,
+    text: "The Player " + (resume ? "resumed " : "started ") + project.title + ".",
+    witnesses: [
+      ...new Set([
+        "player",
+        ...sources.flatMap((source) =>
+          source.perceptions.filter((row) => row.channel !== "sound-only").map((row) => row.actorId),
+        ),
+      ]),
+    ],
+  };
+}
 
 /** Native agreement authority stays with the Project; common promises cannot approve, start or finish it. */
 export function applyNarrationProject(
