@@ -1,46 +1,24 @@
+import assert from "node:assert/strict";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
-import { createCapturedAdmissions } from "../../packages/villages/src/server/adapters/storage/captured-admission-store.js";
 import type { Job } from "../../packages/villages/src/server/domain/models/background-model.js";
-import {
-  backgroundResponseClaim,
-  nativeBackgroundJob,
-  prepareBackgroundResponse,
-} from "../../packages/villages/src/server/adapters/storage/background-responses.js";
-import { createHash, randomUUID } from "node:crypto";
-import { emptyMemoryPayload } from "../../packages/villages/src/server/adapters/storage/memory-payload-store.js";
 import { coerceVillageState } from "../../packages/villages/src/server/domain/decoding/village-codec.js";
-import {
-  encodeWishHistory,
-  decodeWishHistorySync,
-  wishHistoryStore,
-} from "../../packages/villages/src/server/adapters/storage/wish-history.js";
-import {
-  encodeRelationshipPages,
-  decodeRelationshipPagesSync,
-} from "../../packages/villages/src/server/adapters/storage/relationship-pages.js";
-import {
-  createRelationshipPayloadStore,
-  relationshipWorldKey,
-} from "../../packages/villages/src/server/adapters/storage/relationship-payload-store.js";
-import type {
-  RelationshipIdentity,
-  WishIdentity,
-} from "../../packages/villages/src/server/domain/rules/return-capture-revision.js";
 import { coerceSession } from "../../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { SCENE_STORAGE_FORMAT } from "../../packages/villages/src/server/adapters/storage/scene-history.js";
-import { encodeScenePublicHistory } from "../../packages/villages/src/server/adapters/storage/scene-public-history.js";
 import {
-  encodeOperationEvidence,
-  decodeOperationEvidenceSync,
-  validateOperationEvidence,
-  OPERATION_EVIDENCE_KIND,
-  operationEvidenceReferences,
-  operationResponseBodyId,
-  prepareOperationValue,
-  operationEvidenceValue,
-  operationCheckpointPrefix,
-  operationResponsePrefix,
-} from "../../packages/villages/src/server/adapters/storage/operation-evidence.js";
+  memoryDigest,
+  readMemoryHead,
+  assertMemoryWorld,
+  emptyMemoryPayload,
+} from "../../packages/villages/src/server/adapters/storage/memory-payload-store.js";
+import {
+  encodeContinuityPages,
+  decodeContinuityPagesSync,
+} from "../../packages/villages/src/server/adapters/storage/continuity-pages.js";
+import { MEMORY_PAGE_KIND } from "../../packages/villages/src/server/adapters/storage/memory-pages.js";
+import {
+  SCENE_STORAGE_FORMAT,
+  readSceneHistoryRoot,
+} from "../../packages/villages/src/server/adapters/storage/scene-history.js";
+import { encodeScenePublicHistory } from "../../packages/villages/src/server/adapters/storage/scene-public-history.js";
 import {
   encodeSceneSubmissions,
   decodeSceneSubmissionsSync,
@@ -52,262 +30,173 @@ import {
   readSceneTranscriptHead,
 } from "../../packages/villages/src/server/adapters/storage/scene-transcript-pages.js";
 import {
-  encodeMemoryPages,
-  decodeMemoryPagesSync,
-  MEMORY_PAGE_KIND,
-} from "../../packages/villages/src/server/adapters/storage/memory-pages.js";
-const wrappers = new WeakMap<CapabilityDocumentStore, CapabilityDocumentStore>();
-const wrapped = new WeakSet<CapabilityDocumentStore>();
-const identities = createRelationshipPayloadStore({} as CapabilityDocumentStore);
-export const fixtureCapturedAdmissions = createCapturedAdmissions({
-  getById: async () => {
-    throw new Error("This fixture authors logical captures, not native history references.");
-  },
-} as unknown as CapabilityDocumentStore);
-function authorAdmissionFixture(rows: Map<string, any>, raw: any, mail = false): any {
-  if (!raw || raw.admissionFormat !== undefined || !Array.isArray(raw.villagers)) return raw;
-  const { relationshipContext, ...facts } = raw;
+  encodeOperationEvidence,
+  decodeOperationEvidenceSync,
+  validateOperationEvidence,
+  OPERATION_EVIDENCE_KIND,
+  prepareOperationValue,
+  operationEvidenceValue,
+  operationResponsePrefix,
+} from "../../packages/villages/src/server/adapters/storage/operation-evidence.js";
+import {
+  backgroundResponseClaim,
+  nativeBackgroundJob,
+  prepareBackgroundResponse,
+} from "../../packages/villages/src/server/adapters/storage/background-responses.js";
+
+type Rows = Map<string, any>;
+const histories = ["continuity", "episodes", "worldPlaces", "mailbox"] as const;
+const worldKey = (state: { seed: string; setupAt: string }) =>
+  memoryDigest(JSON.stringify([state.seed, state.setupAt])).slice(0, 32);
+function save(rows: Rows, id: string, kind: string, data: unknown, at = "") {
+  const row = {
+    id,
+    packageId: "villages",
+    kind,
+    revision: 1,
+    data: structuredClone(data),
+    name: "Fixture evidence",
+    description: "",
+    createdAt: at,
+    updatedAt: at,
+  };
+  if (rows.has(id)) assert.deepEqual(rows.get(id).data, data, "fixture evidence identity was reused");
+  else rows.set(id, row);
+}
+function page(rows: Rows | undefined, id: string) {
+  const row = rows?.get(id);
+  assert(
+    row && row.id === id && row.packageId === "villages" && row.kind === MEMORY_PAGE_KIND && row.revision === 1,
+    "missing or changed fixture history page",
+  );
+  return row.data;
+}
+
+/** Fresh logical authority is authored with the production encoders, never converted from an old format. */
+export function authorVillageFixture(rows: Rows, raw: any) {
+  assert.equal(raw?.version, 18, "fixture must author a fresh Village");
+  if (Object.hasOwn(raw, "memoryHead")) return raw;
+  const state = coerceVillageState(raw),
+    value = Object.fromEntries(histories.map((key) => [key, state[key]])) as ReturnType<typeof emptyMemoryPayload>;
+  const revision =
+    value.continuity.revision + value.episodes.revision + value.worldPlaces.revision + value.mailbox.revision;
+  let memoryHead = null;
+  if (revision) {
+    const world = worldKey(state),
+      encoded = encodeContinuityPages(value, world),
+      payload = JSON.stringify(encoded.manifest),
+      digest = memoryDigest(payload);
+    for (const [id, data] of encoded.pages) save(rows, id, MEMORY_PAGE_KIND, data, state.setupAt);
+    const h = digest.slice(0, 32),
+      uuid = [h.slice(0, 8), h.slice(8, 12), h.slice(12, 16), h.slice(16, 20), h.slice(20)].join("-");
+    memoryHead = { id: "villages-memory-" + world + "-" + uuid, digest, revision };
+    save(rows, memoryHead.id, "memory-payload", { format: 3, world, payload }, state.setupAt);
+  } else assert.deepEqual(value, emptyMemoryPayload(), "zero-revision fixture cannot conceal retained history");
   return {
-    ...facts,
-    admissionFormat: 1,
-    villagers: authorWorldWishFixture(rows, { ...facts, version: 17 }).villagers,
-    ...(mail || Object.hasOwn(raw, "relationshipContext")
-      ? {
-          relationshipHead: relationshipContext ? authorRelationshipFixture(rows, relationshipContext, raw).head : null,
-        }
-      : {}),
+    ...Object.fromEntries(Object.entries(state).filter(([key]) => !histories.includes(key as never))),
+    memoryHead,
   };
 }
-function authorSocialCaptureFixture(rows: Map<string, any>, raw: any): any {
-  if (!raw || Object.hasOwn(raw, "relationshipHead")) return raw;
-  const { relationshipSnapshot, ...facts } = raw;
-  return {
-    ...facts,
-    admitted: authorAdmissionFixture(rows, raw.admitted),
-    relationshipHead: relationshipSnapshot
-      ? authorRelationshipFixture(rows, relationshipSnapshot, raw.admitted).head
-      : null,
-  };
-}
-function authorCapturedInputFixture(rows: Map<string, any>, kind: string, raw: any): any {
-  if (!raw) return raw;
-  if (kind === "personal-mail") return { ...raw, admitted: authorAdmissionFixture(rows, raw.admitted, true) };
-  if (kind === "social-recovery") {
-    if (Object.hasOwn(raw, "socialHead")) return raw;
-    const { social, ...facts } = raw;
-    return {
-      ...facts,
-      entry: authorSocialCaptureFixture(rows, raw.entry),
-      socialHead: social ? authorRelationshipFixture(rows, social, raw.entry.admitted).head : null,
-    };
-  }
-  if (kind !== "resident-planning" || raw.admitted?.admissionFormat === 1) return raw;
-  const { state, ...social } = raw.context.social;
-  return {
-    ...raw,
-    admitted: authorAdmissionFixture(rows, raw.admitted),
-    context: {
-      ...raw.context,
-      residents: raw.context.residents.map(({ wishes: _wishes, ...row }: any) => row),
-      social: { ...social, head: state ? authorRelationshipFixture(rows, state, raw.admitted).head : null },
-    },
-  };
-}
-export function authorBackgroundFixture(rows: Map<string, any>, raw: unknown) {
+
+export function authorBackgroundFixture(rows: Rows, raw: unknown) {
   const job = structuredClone(raw) as Job & { responseStorage?: number };
-  if (
-    !job ||
-    job.responseStorage !== undefined ||
-    !Array.isArray(job.steps) ||
-    typeof job.id !== "string" ||
-    typeof job.seed !== "string"
-  )
-    return raw;
-  job.attempt ??= 1;
-  job.instanceId ??= randomUUID();
+  if (job && Object.hasOwn(job, "responseStorage")) return raw;
+  assert(job && Array.isArray(job.steps), "fixture must author a logical background job");
   for (const [index, step] of job.steps.entries()) {
-    if (!step || typeof step.fingerprint !== "string" || (step.status === "completed" && !step.response)) return raw;
-    step.responseClaim = backgroundResponseClaim(job, index);
-    if (step.response) {
-      const saved = prepareBackgroundResponse(job, index, step.response);
-      rows.set(saved.ref.id, {
-        id: saved.ref.id,
-        kind: "generation-response",
-        packageId: "villages",
-        revision: 1,
-        data: saved.data,
-      });
-      step.responseRef = saved.ref;
-    }
+    if (!Object.hasOwn(step, "responseClaim")) step.responseClaim = backgroundResponseClaim(job, index);
+    if (!step.response) continue;
+    const saved = prepareBackgroundResponse(job, index, step.response);
+    if (Object.hasOwn(step, "responseRef"))
+      assert.deepEqual(step.responseRef, saved.ref, "fixture response ownership changed");
+    step.responseRef = saved.ref;
+    save(rows, saved.ref.id, "generation-response", saved.data);
   }
-  job.input = authorCapturedInputFixture(rows, job.kind, job.input);
-  if (job.replacement)
-    job.replacement.input = authorCapturedInputFixture(rows, job.replacement.kind, job.replacement.input);
   return nativeBackgroundJob(job);
 }
-export const fixtureRelationshipIdentity: RelationshipIdentity = (world) =>
-  identities.fingerprint(world.relationshipContext, world);
-const wishIdentities = wishHistoryStore({} as CapabilityDocumentStore);
-export const fixtureWishIdentity: WishIdentity = (rows, scope) => wishIdentities.fingerprint(rows, scope);
-/** Native fixture authorship is projected into the current saved layout without
- * introducing writes into read-only/ownership tests. Production has no inline reader. */
-export function villageFixtureDocuments(store: CapabilityDocumentStore): CapabilityDocumentStore {
-  if (wrapped.has(store)) return store;
-  const existing = wrappers.get(store);
-  if (existing) return existing;
-  const result = createFixtureDocuments(store, new Map());
-  wrappers.set(store, result);
-  wrapped.add(result);
+
+export function authorSceneFixture(rows: Rows, raw: any, world?: { seed?: string; setupAt?: string }): any {
+  assert.equal(raw?.version, 5, "fixture must author a fresh Scene");
+  if (Object.hasOwn(raw, "storageFormat")) return raw;
+  if (world) assert.equal(raw.villageSeed, world.seed, "fixture Scene belongs to another Village");
+  assert(
+    !raw.operation || !Object.hasOwn(raw.operation, "evidenceFormat"),
+    "fixture cannot re-author stored operation evidence",
+  );
+  const scene = coerceSession(structuredClone(raw));
+  const transcript = encodeSceneTranscript(scene.lines, scene),
+    submissions = encodeSceneSubmissions(scene.submissions, scene);
+  const publicHistory = encodeScenePublicHistory(scene, transcript.head, submissions.head);
+  for (const [id, data] of [...transcript.pages, ...submissions.pages, ...publicHistory.pages])
+    save(rows, id, MEMORY_PAGE_KIND, data, scene.startedAt);
+  const { lines: _lines, submissions: _submissions, heardHistory: _heard, ...facts } = scene;
+  if (facts.operation?.snapshot) facts.operation.snapshot = authorSceneFixture(rows, facts.operation.snapshot, world);
+  for (const operation of [facts.operation]) {
+    if (!operation) continue;
+    for (const [stage, attempt] of Object.entries(operation.attempts)) {
+      if (!Object.hasOwn(attempt, "result") || Object.hasOwn(attempt, "response")) continue;
+      const claim =
+        operationResponsePrefix(operation, scene, stage) + memoryDigest(JSON.stringify(attempt.result)).slice(0, 32);
+      const saved = prepareOperationValue(attempt.result, scene, claim);
+      attempt.response = { ...saved.ref, claim };
+      save(rows, saved.ref.id, OPERATION_EVIDENCE_KIND, saved.data);
+    }
+  }
+  const evidence = encodeOperationEvidence(facts.operation, scene);
+  for (const [id, data] of evidence.values) save(rows, id, OPERATION_EVIDENCE_KIND, data);
+  const result = {
+    ...facts,
+    operation: evidence.operation,
+    storageFormat: SCENE_STORAGE_FORMAT,
+    transcript: transcript.head,
+    submissionHistory: submissions.head,
+    publicHistory: publicHistory.head,
+  };
+  readSceneHistoryRoot(result);
   return result;
 }
-function createFixtureDocuments(store: CapabilityDocumentStore, virtual: Map<string, any>): CapabilityDocumentStore {
-  const digest = (v: string) => createHash("sha256").update(v).digest("hex");
-  const strip = (raw: Record<string, any>) =>
-    Object.fromEntries(
-      Object.entries(raw).filter(([k]) => !["memories", "memoryScenes", "memoryReceipts", "worldPlaces"].includes(k)),
-    );
-  async function ensure(data: unknown) {
-    const heads = [
-      (data as any)?.memoryHead,
-      ...((data as any)?.villagers?.map((row: any) => row.wishHead?.root) ?? []),
-      ...((data as any)?.returnCatchup?.capture?.world?.villagers?.map((row: any) => row.wishHead?.root) ?? []),
-      (data as any)?.wishArchiveHead?.root,
-      (data as any)?.head,
-      (data as any)?.returnCatchup?.capture?.world?.relationshipHead,
-      (data as any)?.transcript?.lines,
-      (data as any)?.operation?.snapshot?.transcript?.lines,
-      (data as any)?.submissionHistory?.submissions,
-      (data as any)?.operation?.snapshot?.submissionHistory?.submissions,
-      (data as any)?.publicHistory?.positions,
-      (data as any)?.operation?.snapshot?.publicHistory?.positions,
-      (data as any)?.continuity?.relationshipHead,
-      (data as any)?.operation?.snapshot?.continuity?.relationshipHead,
-      ...((data as any)?.continuity?.facts?.villagers?.map((row: any) => row.wishHead?.root) ?? []),
-      ...((data as any)?.operation?.snapshot?.continuity?.facts?.villagers?.map((row: any) => row.wishHead?.root) ??
-        []),
-      ...operationEvidenceReferences((data as any)?.operation, data as any),
-      ...((data as any)?.responseStorage === 4 ? (data as any).steps.map((step: any) => step.responseRef) : []),
-    ];
-    if (!heads.some((head) => head && virtual.has(head.id))) return;
-    // All virtual page documents are committed before a real root may reference them.
+
+const wrappers = new WeakMap<CapabilityDocumentStore, CapabilityDocumentStore>(),
+  wrapped = new WeakSet<CapabilityDocumentStore>();
+function createFixtureDocuments(store: CapabilityDocumentStore, virtual: Rows) {
+  function author(row: any) {
+    if (!row) return row;
+    const raw = row.data;
+    let data = raw;
+    if (row.kind === "village" && raw?.version === 18 && !Object.hasOwn(raw, "memoryHead"))
+      data = authorVillageFixture(virtual, raw);
+    if (row.kind === "venue-visit" && raw?.version === 5 && !Object.hasOwn(raw, "storageFormat"))
+      data = authorSceneFixture(virtual, raw);
+    if (["background-work", "background-history"].includes(row.kind) && raw?.responseStorage === undefined)
+      data = authorBackgroundFixture(virtual, raw);
+    return { ...row, data };
+  }
+  async function flush() {
     for (const [id, row] of virtual) {
       const existing = await store.getById("villages", id);
-      if (existing?.id !== id) {
-        try {
-          await store.create(row);
-        } catch (error) {
-          if ((await store.getById("villages", id))?.id !== id) throw error;
-        }
-      }
+      if (existing) {
+        assert.equal(existing.packageId, row.packageId);
+        assert.equal(existing.kind, row.kind);
+        assert.equal(existing.revision, 1);
+        assert.deepEqual(existing.data, row.data, "fixture cannot repair changed persisted evidence");
+      } else await store.create(row);
       virtual.delete(id);
     }
   }
-  const result: CapabilityDocumentStore = {
+  const documents: CapabilityDocumentStore = {
     ...store,
     async getById(pkg, id) {
-      if (virtual.has(id)) return structuredClone(virtual.get(id));
-      const row = await store.getById(pkg, id);
-      if (row && ["background-work", "background-history"].includes(row.kind))
-        return { ...row, packageId: row.packageId ?? pkg, data: authorBackgroundFixture(virtual, row.data) };
-      if (row?.kind === "venue-visit" && (row.data as any)?.version === 4) {
-        const world = (await store.getById(pkg, "villages-village"))?.data as any;
-        return { ...row, id, packageId: pkg, data: authorSceneFixture(virtual, row.data, world) };
-      }
-      if (row?.kind === "relationships" && (row.data as any)?.version === 4) {
-        const world = (await store.getById(pkg, "villages-village"))!.data as any;
-        const data = authorRelationshipFixture(virtual, row.data, world);
-        return { ...row, id, packageId: pkg, data };
-      }
-      if (!row || id !== "villages-village") return row;
-      const metadata = { ...row, id: row.id ?? id, packageId: row.packageId ?? pkg, kind: row.kind ?? "village" };
-      const raw = row.data as Record<string, any>;
-      if (raw?.version !== 17) return metadata;
-      if (Object.hasOwn(raw, "memoryHead"))
-        return { ...metadata, data: authorDepartureFixture(virtual, { ...strip(raw), memoryHead: raw.memoryHead }) };
-      if (!raw.memories) return metadata;
-      const state = coerceVillageState(raw),
-        value = {
-          memories: state.memories,
-          memoryScenes: state.memoryScenes,
-          memoryReceipts: state.memoryReceipts,
-          worldPlaces: state.worldPlaces,
-        };
-      const empty =
-        !value.memories.records.length &&
-        !value.memories.revision &&
-        !Object.keys(value.memoryScenes).length &&
-        !Object.keys(value.memoryReceipts).length &&
-        !value.worldPlaces.revision;
-      let head = null;
-      if (!empty) {
-        const world = digest(JSON.stringify([state.seed, state.setupAt])).slice(0, 32),
-          encoded = encodeMemoryPages(value, world),
-          payload = JSON.stringify(encoded.manifest),
-          hash = digest(payload);
-        for (const [id, data] of encoded.pages)
-          virtual.set(id, {
-            id,
-            packageId: "villages",
-            kind: MEMORY_PAGE_KIND,
-            name: "Fixture history page",
-            description: "Fixture page",
-            data,
-            revision: 1,
-            createdAt: state.setupAt,
-            updatedAt: state.setupAt,
-          });
-        const h = hash.slice(0, 32),
-          uuid = [h.slice(0, 8), h.slice(8, 12), h.slice(12, 16), h.slice(16, 20), h.slice(20)].join("-");
-        const key = "villages-memory-" + world + "-" + uuid;
-        head = { id: key, digest: hash, revision: state.memories.revision };
-        virtual.set(key, {
-          id: key,
-          packageId: "villages",
-          kind: "memory-payload",
-          name: "Fixture history",
-          description: "Already committed fixture state",
-          data: { format: 2, world, payload },
-          revision: 1,
-          createdAt: state.setupAt,
-          updatedAt: state.setupAt,
-        });
-      }
-      return { ...metadata, data: authorDepartureFixture(virtual, { ...strip(state), memoryHead: head }) };
-    },
-    async create(input) {
-      if (input.id === "villages-village" || input.kind === "relationships" || input.kind === "venue-visit")
-        await ensure(input.data);
-      return store.create(input);
+      const physical = await store.getById(pkg, id);
+      return physical ? author(physical) : structuredClone(virtual.get(id) ?? null);
     },
     async list(pkg, kind) {
-      const records = await store.list(pkg, kind);
-      if (["background-work", "background-history"].includes(kind))
-        return records.map((row) => ({
-          ...row,
-          packageId: row.packageId ?? pkg,
-          data: authorBackgroundFixture(virtual, row.data),
-        }));
-      if (kind !== "venue-visit" && kind !== "relationships") return records;
-      const world = (await store.getById(pkg, "villages-village"))?.data as any;
-      return records.map((row) => ({
-        ...row,
-        packageId: row.packageId ?? pkg,
-        data:
-          kind === "venue-visit"
-            ? authorSceneFixture(virtual, row.data, world)
-            : (row.data as any)?.version === 4
-              ? authorRelationshipFixture(virtual, row.data, world)
-              : row.data,
-      }));
+      return (await store.list(pkg, kind)).map(author);
+    },
+    async create(input) {
+      await flush();
+      return store.create(input);
     },
     async update(input) {
-      if (
-        input.id === "villages-village" ||
-        (input.data as any)?.format === 4 ||
-        (input.data as any)?.responseStorage === 4 ||
-        (input.data as any)?.storageFormat === SCENE_STORAGE_FORMAT
-      )
-        await ensure(input.data);
+      await flush();
       return store.update(input);
     },
     async remove(pkg, id, revision) {
@@ -315,459 +204,85 @@ function createFixtureDocuments(store: CapabilityDocumentStore, virtual: Map<str
       return store.remove(pkg, id, revision);
     },
   };
-  return result;
+  return { documents, flush, author };
 }
-/** Commit authored fixtures before protocol tests run against the raw store. */
+/** Only fresh logical fixtures are authored; invalid stored bytes reach the production validators unchanged. */
+export function villageFixtureDocuments(store: CapabilityDocumentStore): CapabilityDocumentStore {
+  if (wrapped.has(store)) return store;
+  const existing = wrappers.get(store);
+  if (existing) return existing;
+  const { documents } = createFixtureDocuments(store, new Map());
+  wrappers.set(store, documents);
+  wrapped.add(documents);
+  return documents;
+}
 export async function seedVillageFixtureDocuments(store: CapabilityDocumentStore): Promise<void> {
-  const pages = new Map<string, any>();
-  const authored = createFixtureDocuments(store, pages);
-  const root = await authored.getById("villages", "villages-village");
-  const rows = [
-    ...(root ? [root] : []),
-    ...(await authored.list("villages", "relationships")),
-    ...(await authored.list("villages", "venue-visit")),
-    ...(await authored.list("villages", "background-work")),
-    ...(await authored.list("villages", "background-history")),
-  ];
-  for (const row of pages.values()) await store.create(row);
-  for (const row of rows) {
-    const saved = await store.update({
-      id: row.id,
-      packageId: "villages",
-      expectedRevision: row.revision,
-      data: row.data,
-    });
-    if (!saved) throw new Error(`Fixture seed revision conflict: ${row.id}`);
-  }
-}
-function authorCapturedWishes(rows: Map<string, any>, value: any, scene: any) {
-  if (!value || !Array.isArray(value.wishContexts) || !value.wishContexts.length) return value;
-  const scope = { seed: scene.continuity?.seed ?? scene.villageSeed ?? "", setupAt: scene.continuity?.setupAt ?? "" };
-  return {
-    ...value,
-    wishContexts: {
-      format: 1,
-      sceneId: scene.id,
-      ...scope,
-      owners: value.wishContexts.map(({ wishes, ...owner }: any) => {
-        const encoded = encodeWishHistory(wishes, { ...scope, actorId: owner.actorId });
-        for (const [id, data] of encoded.pages)
-          rows.set(id, { id, packageId: "villages", kind: MEMORY_PAGE_KIND, revision: 1, data });
-        return { wishId: "", fingerprint: "", ...owner, head: encoded.head };
-      }),
-    },
-  };
-}
-export function authorSceneFixture(rows: Map<string, any>, raw: any, world?: { seed?: string; setupAt?: string }): any {
-  if (!raw || Object.hasOwn(raw, "storageFormat") || raw.version !== 4) return raw;
-  const scene = {
-    ...raw,
-    villageSeed: Object.hasOwn(raw, "villageSeed") ? raw.villageSeed : world?.seed || undefined,
-    storageFormat: SCENE_STORAGE_FORMAT,
-  };
-  const normalized = coerceSession({
-    ...raw,
-    villageSeed: scene.villageSeed,
-    continuity: undefined,
-    operation: undefined,
+  const fixture = createFixtureDocuments(store, new Map());
+  const root = await store.getById("villages", "villages-village");
+  const rows = [...(root ? [root] : [])];
+  for (const kind of ["venue-visit", "background-work", "background-history"])
+    rows.push(...(await store.list("villages", kind)));
+  const authored = rows.flatMap((row) => {
+    const next = fixture.author(row);
+    return next.data === row.data ? [] : [next];
   });
-  if (!Object.hasOwn(scene, "participants")) scene.participants = normalized.participants;
-  const encoded = encodeSceneTranscript(normalized.lines, scene);
-  normalized.submissions = normalized.submissions.map((row) => authorCapturedWishes(rows, row, scene));
-  const submissions = encodeSceneSubmissions(normalized.submissions, scene);
-  const publicHistory = encodeScenePublicHistory(normalized, encoded.head, submissions.head);
-  for (const [id, data] of [...encoded.pages, ...submissions.pages, ...publicHistory.pages])
-    rows.set(id, {
-      id,
-      packageId: "villages",
-      kind: MEMORY_PAGE_KIND,
-      data,
-      revision: 1,
-      name: "Fixture Scene history",
-      description: "",
-      createdAt: raw.startedAt ?? "",
-      updatedAt: raw.startedAt ?? "",
-    });
-  scene.transcript = encoded.head;
-  scene.submissionHistory = submissions.head;
-  scene.publicHistory = publicHistory.head;
-  delete scene.submissions;
-  delete scene.lines;
-  delete scene.heardHistory;
-  if (scene.continuity) {
-    const context = scene.continuity,
-      scope = { seed: context.seed, setupAt: context.setupAt ?? world?.setupAt ?? "" },
-      { relationshipContext, ...facts } = context.facts,
-      head = relationshipContext ? authorRelationshipFixture(rows, relationshipContext, scope).head : null;
-    const villagers = authorWorldWishFixture(rows, { version: 17, ...facts, ...scope }).villagers;
-    scene.continuity = { ...context, ...scope, facts: { ...facts, villagers }, relationshipHead: head };
+  await fixture.flush();
+  for (const row of authored)
+    assert(
+      await store.update({ id: row.id, packageId: "villages", expectedRevision: row.revision, data: row.data }),
+      "fixture seed revision conflict",
+    );
+}
+
+export function fixtureVillageState(raw: any, rows?: Rows) {
+  if (!raw || !Object.hasOwn(raw, "memoryHead")) return coerceVillageState(raw);
+  const head = readMemoryHead(raw.memoryHead);
+  let value = emptyMemoryPayload();
+  if (head) {
+    assertMemoryWorld(head, raw);
+    const row = rows?.get(head.id);
+    assert(
+      row && row.id === head.id && row.kind === "memory-payload" && row.packageId === "villages" && row.revision === 1,
+      "missing fixture continuity owner",
+    );
+    assert.equal(row.data.format, 3);
+    assert.equal(row.data.world, worldKey(raw));
+    assert.equal(memoryDigest(row.data.payload), head.digest);
+    value = decodeContinuityPagesSync(JSON.parse(row.data.payload), row.data.world, raw.seed, (id) =>
+      page(rows, id),
+    ).value;
+    assert.equal(
+      value.continuity.revision + value.episodes.revision + value.worldPlaces.revision + value.mailbox.revision,
+      head.revision,
+    );
   }
-  if (scene.operation?.snapshot)
-    scene.operation = { ...scene.operation, snapshot: authorSceneFixture(rows, scene.operation.snapshot, world) };
-  if (scene.operation) {
-    scene.operation = {
-      ...scene.operation,
-      checkpoints: Object.fromEntries(
-        Object.entries(scene.operation.checkpoints ?? {}).map(([stage, value]) => [
-          stage,
-          stage === "abandoned-request" ? value : authorCapturedWishes(rows, value, scene),
-        ]),
-      ),
-    };
-    for (const [stage, attempt] of Object.entries(scene.operation.attempts ?? {}) as [string, any][]) {
-      if (
-        attempt.response &&
-        !attempt.response.claim.startsWith(operationResponsePrefix(scene.operation, scene, stage))
-      )
-        delete attempt.response;
-      if (Object.hasOwn(attempt, "result") && !attempt.response) {
-        const prefix = operationResponsePrefix(scene.operation, scene, stage),
-          token =
-            prefix +
-            createHash("sha256")
-              .update(JSON.stringify([scene.id, stage, attempt.result]))
-              .digest("hex")
-              .slice(0, 32),
-          saved = prepareOperationValue(attempt.result, scene, token);
-        attempt.response = { ...saved.ref, claim: token };
-        rows.set(saved.ref.id, {
-          id: saved.ref.id,
-          packageId: "villages",
-          kind: OPERATION_EVIDENCE_KIND,
-          data: saved.data,
-          revision: 1,
-          name: "Fixture purchased response",
-          description: "",
-          createdAt: "",
-          updatedAt: "",
-        });
-      }
-    }
-    for (const [stage, claim] of Object.entries(scene.operation.checkpointClaims ?? {}) as [
-      string,
-      { token: string; bodyId: string },
-    ][]) {
-      claim.token = operationCheckpointPrefix(scene.operation, scene, stage) + claim.token.slice(-36);
-      const id = operationResponseBodyId(scene, claim.token);
-      if (id !== claim.bodyId) {
-        const old = rows.get(claim.bodyId);
-        if (old) {
-          const copied = prepareOperationValue(operationEvidenceValue(old.data), scene, claim.token);
-          rows.set(id, { ...old, id, data: copied.data });
-        }
-        claim.bodyId = id;
-      }
-    }
-    const evidence = encodeOperationEvidence(scene.operation, scene);
-    scene.operation = evidence.operation;
-    for (const [id, data] of evidence.values)
-      rows.set(id, {
-        id,
-        packageId: "villages",
-        kind: OPERATION_EVIDENCE_KIND,
-        data,
-        revision: 1,
-        name: "Fixture operation evidence",
-        description: "",
-        createdAt: "",
-        updatedAt: "",
-      });
-  }
-  return scene;
+  const { memoryHead: _head, ...facts } = raw;
+  return coerceVillageState({ ...facts, ...value });
 }
-export function authorDepartureFixture(rows: Map<string, any>, raw: any): any {
-  raw = authorWorldWishFixture(rows, raw);
-  if (raw?.version === 17)
-    raw = {
-      ...raw,
-      ...(raw.socialOutbox
-        ? { socialOutbox: raw.socialOutbox.map((entry: any) => authorSocialCaptureFixture(rows, entry)) }
-        : {}),
-      ...(raw.socialMailOutbox
-        ? {
-            socialMailOutbox: raw.socialMailOutbox.map((entry: any) => ({
-              ...entry,
-              input: authorCapturedInputFixture(rows, "personal-mail", entry.input),
-            })),
-          }
-        : {}),
-    };
-  const capture = raw?.returnCatchup?.capture;
-  if (raw?.version !== 17 || !capture || Object.hasOwn(capture.world, "relationshipHead")) return raw;
-  const { relationshipContext, ...world } = capture.world;
-  const relationshipHead = relationshipContext
-    ? authorRelationshipFixture(rows, relationshipContext, world).head
-    : null;
-  return {
-    ...raw,
-    returnCatchup: { ...raw.returnCatchup, capture: { ...capture, world: { ...world, relationshipHead } } },
-  };
+export function storedVillage(rows: Rows) {
+  return fixtureVillageState(rows.get("villages-village")?.data, rows);
 }
-export function authorWorldWishFixture(rows: Map<string, any>, raw: any): any {
-  if (raw?.version !== 17) return raw;
-  const residents = (world: any) =>
-    (world.villagers ?? []).map((row: any) => {
-      if (Object.hasOwn(row, "wishHead")) return row;
-      const { wishes = [], ...facts } = row;
-      const saved = encodeWishHistory(wishes, { seed: raw.seed, setupAt: raw.setupAt, actorId: row.characterId });
-      for (const [id, data] of saved.pages)
-        rows.set(id, {
-          id,
-          packageId: "villages",
-          kind: MEMORY_PAGE_KIND,
-          revision: 1,
-          data,
-          name: "Fixture Wish history",
-          description: "",
-          createdAt: raw.setupAt,
-          updatedAt: raw.setupAt,
-        });
-      return Object.fromEntries(
-        Object.entries(Object.hasOwn(row, "wishes") ? row : { ...facts, wishes }).map(([key, value]) =>
-          key === "wishes" ? ["wishHead", saved.head] : [key, value],
-        ),
-      );
-    });
-  const result = {
-    ...raw,
-    villagers: residents(raw),
-    wishArchiveHead: raw.wishArchiveHead ?? { count: 0, root: null },
-    exchangeReceipts: Object.fromEntries(
-      Object.entries(raw.exchangeReceipts ?? {}).map(([id, value]) => {
-        const receipt = value as any,
-          wish = receipt.sceneFacts?.wish;
-        if (!wish || Object.hasOwn(wish, "head")) return [id, receipt];
-        const saved = encodeWishHistory(wish.value ? [wish.value] : [], {
-          seed: raw.seed,
-          setupAt: raw.setupAt,
-          actorId: wish.actorId,
-        });
-        for (const [id, data] of saved.pages)
-          rows.set(id, {
-            id,
-            packageId: "villages",
-            kind: MEMORY_PAGE_KIND,
-            revision: 1,
-            data,
-            name: "Fixture Wish after-image",
-            description: "",
-            createdAt: raw.setupAt,
-            updatedAt: raw.setupAt,
-          });
-        return [
-          id,
-          {
-            ...receipt,
-            sceneFacts: {
-              ...receipt.sceneFacts,
-              wish: { actorId: wish.actorId, wishId: wish.wishId, head: saved.head },
-            },
-          },
-        ];
-      }),
-    ),
-  };
-  if (raw.returnCatchup?.capture)
-    result.returnCatchup = {
-      ...raw.returnCatchup,
-      capture: {
-        ...raw.returnCatchup.capture,
-        world: { ...raw.returnCatchup.capture.world, villagers: residents(raw.returnCatchup.capture.world) },
-      },
-    };
-  return result;
-}
-export function fixtureSceneState(raw: any, rows: Map<string, any>) {
-  if (!raw?.storageFormat) return coerceSession(raw);
+export function fixtureSceneState(raw: any, rows: Rows) {
+  if (!raw || !Object.hasOwn(raw, "storageFormat")) return coerceSession(raw);
+  readSceneHistoryRoot(raw);
   const { storageFormat: _format, transcript, submissionHistory, publicHistory: _publicHistory, ...scene } = raw;
-  scene.submissions = decodeSceneSubmissionsSync(
-    readSceneSubmissionHead(submissionHistory, raw),
-    (id) => rows.get(id)?.data ?? null,
+  scene.lines = decodeSceneTranscriptSync(readSceneTranscriptHead(transcript, raw), (id) => page(rows, id)).lines;
+  scene.submissions = decodeSceneSubmissionsSync(readSceneSubmissionHead(submissionHistory, raw), (id) =>
+    page(rows, id),
   ).submissions;
-  scene.lines = decodeSceneTranscriptSync(
-    readSceneTranscriptHead(transcript, raw),
-    (id) => rows.get(id)?.data ?? null,
-  ).lines;
   scene.operation = decodeOperationEvidenceSync(raw.operation, raw, (ref) => {
     const row = rows.get(ref.id);
-    if (!row) throw new Error("Missing fixture operation evidence");
+    assert(row, "missing fixture operation evidence");
     return operationEvidenceValue(validateOperationEvidence(row, raw, ref).data);
   });
-  if (raw.continuity) {
-    const { relationshipHead, ...context } = raw.continuity;
-    const root = relationshipHead ? rows.get(relationshipHead.id)!.data : null;
-    const relationships = root
-      ? decodeRelationshipPagesSync(JSON.parse(root.payload), root.world, (id) => rows.get(id)?.data ?? null).value
-      : undefined;
-    const villagers = context.facts.villagers.map((row: any) => {
-      const wishes = decodeWishHistorySync(
-        row.wishHead,
-        { ...context, actorId: row.characterId },
-        (id) => rows.get(id)?.data ?? null,
-      ).rows;
-      return Object.fromEntries(
-        Object.entries(row).map(([key, value]) => (key === "wishHead" ? ["wishes", wishes] : [key, value])),
-      );
-    });
-    scene.continuity = { ...context, facts: { ...context.facts, villagers, relationshipContext: relationships } };
-  }
   return coerceSession(scene);
 }
 export function editFixtureScene(
   record: { data: any },
-  rows: Map<string, any>,
+  rows: Rows,
   mutate: (scene: ReturnType<typeof coerceSession>) => void,
 ) {
   const scene = fixtureSceneState(record.data, rows);
   mutate(scene);
   record.data = authorSceneFixture(rows, scene);
-}
-/** Author logical current-contract fixtures directly in the current physical layout. */
-export function authorRelationshipFixture(
-  rows: Map<string, any>,
-  value: any,
-  scope: { seed: string; setupAt: string },
-) {
-  const world = relationshipWorldKey(scope),
-    encoded = encodeRelationshipPages(value, world),
-    payload = JSON.stringify(encoded.manifest),
-    digest = createHash("sha256").update(payload).digest("hex"),
-    head = { id: "villages-relationship-history-" + world + "-" + digest, digest };
-  const put = (id: string, kind: string, data: unknown) =>
-    rows.set(id, {
-      id,
-      packageId: "villages",
-      kind,
-      data,
-      revision: 1,
-      name: "Fixture history",
-      description: "",
-      createdAt: scope.setupAt,
-      updatedAt: scope.setupAt,
-    });
-  for (const [id, data] of encoded.pages) put(id, MEMORY_PAGE_KIND, data);
-  put(head.id, "relationship-payload", { format: 1, world, payload });
-  return { format: 4, seed: scope.seed, setupAt: scope.setupAt, head };
-}
-export function fixtureRelationshipState(row: any, rows: Map<string, any>) {
-  const body = rows.get(row.data.head.id).data;
-  return decodeRelationshipPagesSync(JSON.parse(body.payload), body.world, (id) => rows.get(id)?.data ?? null).value;
-}
-/** Synchronous fixture inspection; protocol regressions use the real repository. */
-export function storedVillage(rows: Map<string, any>) {
-  return fixtureVillageState(rows.get("villages-village")?.data, rows);
-}
-export function fixtureVillageState(raw: any, rows?: Map<string, any>) {
-  if (raw?.version === 17) {
-    const admission = (value: any): any => {
-      if (value?.admissionFormat !== 1) return value;
-      const { admissionFormat: _format, relationshipHead, ...facts } = value;
-      return {
-        ...facts,
-        villagers: value.villagers.map((row: any) => {
-          const { wishHead, ...facts } = row;
-          return {
-            ...facts,
-            wishes: decodeWishHistorySync(
-              wishHead,
-              { ...value, actorId: row.characterId },
-              (id) => rows?.get(id)?.data ?? null,
-            ).rows,
-          };
-        }),
-        ...(Object.hasOwn(value, "relationshipHead")
-          ? {
-              relationshipContext: relationshipHead
-                ? fixtureRelationshipState({ data: { head: relationshipHead } }, rows!)
-                : undefined,
-            }
-          : {}),
-      };
-    };
-    if (raw.socialOutbox)
-      raw = {
-        ...raw,
-        socialOutbox: raw.socialOutbox.map((entry: any) => {
-          if (!Object.hasOwn(entry, "relationshipHead")) return entry;
-          const { relationshipHead, ...facts } = entry;
-          return {
-            ...facts,
-            admitted: admission(entry.admitted),
-            relationshipSnapshot: relationshipHead
-              ? fixtureRelationshipState({ data: { head: relationshipHead } }, rows!)
-              : undefined,
-          };
-        }),
-      };
-    if (raw.socialMailOutbox)
-      raw = {
-        ...raw,
-        socialMailOutbox: raw.socialMailOutbox.map((entry: any) => ({
-          ...entry,
-          input: { ...entry.input, admitted: admission(entry.input.admitted) },
-        })),
-      };
-    const residents = (world: any) =>
-      (world.villagers ?? []).map((row: any) => {
-        if (!Object.hasOwn(row, "wishHead")) return row;
-        const { wishHead } = row;
-        const wishes = decodeWishHistorySync(
-          wishHead,
-          { seed: raw.seed, setupAt: raw.setupAt, actorId: row.characterId },
-          (id) => rows?.get(id)?.data ?? null,
-        ).rows;
-        return Object.fromEntries(
-          Object.entries(row).map(([key, value]) => (key === "wishHead" ? ["wishes", wishes] : [key, value])),
-        );
-      });
-    raw = { ...raw, villagers: residents(raw) };
-    raw.exchangeReceipts = Object.fromEntries(
-      Object.entries(raw.exchangeReceipts ?? {}).map(([id, value]) => {
-        const receipt = value as any,
-          wish = receipt.sceneFacts?.wish;
-        if (!wish || !Object.hasOwn(wish, "head")) return [id, receipt];
-        const values = decodeWishHistorySync(
-          wish.head,
-          { seed: raw.seed, setupAt: raw.setupAt, actorId: wish.actorId },
-          (id) => rows?.get(id)?.data ?? null,
-        ).rows;
-        return [
-          id,
-          {
-            ...receipt,
-            sceneFacts: {
-              ...receipt.sceneFacts,
-              wish: { actorId: wish.actorId, wishId: wish.wishId, value: values[0] ?? null },
-            },
-          },
-        ];
-      }),
-    );
-    if (raw.returnCatchup?.capture)
-      raw.returnCatchup = {
-        ...raw.returnCatchup,
-        capture: {
-          ...raw.returnCatchup.capture,
-          world: { ...raw.returnCatchup.capture.world, villagers: residents(raw.returnCatchup.capture.world) },
-        },
-      };
-  }
-  const capture = raw?.returnCatchup?.capture;
-  if (capture && Object.hasOwn(capture.world, "relationshipHead")) {
-    const { relationshipHead, ...world } = capture.world;
-    const body = relationshipHead ? rows!.get(relationshipHead.id)!.data : null;
-    const relationshipContext = body
-      ? decodeRelationshipPagesSync(JSON.parse(body.payload), body.world, (id) => rows!.get(id)?.data ?? null).value
-      : undefined;
-    raw = {
-      ...raw,
-      returnCatchup: { ...raw.returnCatchup, capture: { ...capture, world: { ...world, relationshipContext } } },
-    };
-  }
-  if (!raw || !Object.hasOwn(raw, "memoryHead")) return coerceVillageState(raw);
-  const root = raw.memoryHead ? rows!.get(raw.memoryHead.id).data : null;
-  const payload = root
-    ? decodeMemoryPagesSync(JSON.parse(root.payload), root.world, (id) => rows!.get(id)?.data ?? null).value
-    : emptyMemoryPayload();
-  return coerceVillageState({ ...raw, ...payload });
 }

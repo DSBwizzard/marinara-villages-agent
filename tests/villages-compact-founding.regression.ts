@@ -9,6 +9,8 @@ import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 import { VILLAGE_WEEKDAYS } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { continuityPreparationContext } from "../packages/villages/src/server/domain/rules/continuity-library.js";
 
 const card = {
   id: "a",
@@ -49,6 +51,7 @@ const schedule = (count: number, unique: boolean) => ({
   ),
 });
 const context = (native: ReturnType<typeof schedule> | null) => ({
+  continuity: continuityPreparationContext(defaultVillageState(), card.id, "2026-11-10T12:00:00.000Z"),
   village: "Willow",
   setting: "A quiet valley",
   home: "Cottage",

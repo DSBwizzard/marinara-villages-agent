@@ -1,5 +1,6 @@
 import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
+import { continuityPreparationContext } from "../packages/villages/src/server/domain/rules/continuity-library.js";
 import {
   coerceVillageState,
   defaultVillageState,
@@ -36,6 +37,7 @@ const card = {
   },
 } as const;
 const context = {
+  continuity: continuityPreparationContext(defaultVillageState(), card.id, "2026-11-10T12:00:00.000Z"),
   village: "The place",
   setting: "A converted complex shared by residents.",
   home: "A small assigned room",
@@ -105,6 +107,7 @@ const state = coerceVillageState({
     {
       letterFontId: "caveat",
       characterId: "a",
+      incarnation: "a:original",
       cardSnapshot: {
         id: "a",
         name: "A",

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mock } from "node:test";
 import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { sessionSlot } from "../packages/villages/src/server/adapters/storage/scene-slots.js";
 import { collectRetainedStorage } from "../packages/villages/src/server/features/repair/retained-storage-cleanup.js";
 import {
@@ -32,13 +33,13 @@ const line = (id: string, speakerId = "a") => ({
   name: speakerId.toUpperCase(),
   content: "Exact café 東京 paragraph " + id + "\n\nSecond paragraph.",
   at,
-  heardBy: ["a", "b"],
+  heardBy: ["player", "a", "b"],
 });
 
 const f = sceneHistoryFixture();
 try {
   const logical = coerceSession({
-    version: 4,
+    version: 5,
     id: "playback",
     villageSeed: "seed",
     startedAt: at,
@@ -70,9 +71,11 @@ try {
       activeIdsAtTurn: ["a", "b"],
       activeIdsAfterTurn: ["a", "b"],
       replyLineIds: ["main", "aside"],
-      verdict: null,
-      wishId: "",
-      wishMemory: "",
+      targetId: "",
+      requestFingerprint: memoryHash("Exact player input"),
+      acceptance: { status: "applied", rejected: [] },
+      episodeId: "episode:first",
+      progressProcessedAt: at,
     });
     saved.activeIds = ["b"];
   });
@@ -264,14 +267,14 @@ try {
   await collectRetainedStorage(f.gate);
 
   const unusual = coerceSession({
-    version: 4,
+    version: 5,
     id: "unusual",
     villageSeed: "seed",
     status: "active",
     startedAt: at,
     activeIds: ["__proto__", "constructor"],
     participants: [resident("__proto__"), resident("constructor")],
-    lines: [{ ...line("unusual-line", "__proto__"), heardBy: ["__proto__", "constructor"] }],
+    lines: [{ ...line("unusual-line", "__proto__"), heardBy: ["player", "__proto__", "constructor"] }],
     submissions: [],
   });
   await f.mutateDocument("villages-venue-visit-unusual", sessionSlot, (saved) => Object.assign(saved, unusual));
@@ -292,7 +295,7 @@ try {
   await collectRetainedStorage(f.gate);
 
   const pending = coerceSession({
-    version: 4,
+    version: 5,
     id: "pending",
     villageSeed: "seed",
     status: "active",
@@ -344,7 +347,7 @@ for (const count of [1000, 10_000, 25_000]) {
     actors = Array.from({ length: count }, (_, index) => "actor:" + index);
   try {
     const scene = coerceSession({
-      version: 4,
+      version: 5,
       id: "growing",
       villageSeed: "seed",
       status: "active",
@@ -359,7 +362,7 @@ for (const count of [1000, 10_000, 25_000]) {
       saved.lines = actors.map((id, index) => ({
         ...line("visit:" + index, "__venue_scene__"),
         kind: "narration",
-        heardBy: [id],
+        heardBy: ["player", id],
         physicalIdsAfter: [id],
       }));
       saved.activeIds = [actors.at(-1)!];

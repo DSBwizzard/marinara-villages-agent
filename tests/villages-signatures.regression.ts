@@ -27,7 +27,6 @@ const now = "2026-10-04T12:00:00.000Z";
 const village = coerceVillageState({
   ...defaultVillageState(),
 
-  wishSystemVersion: 3,
   seed: "signature-fixture",
   name: "Signature Village",
   foundedAt: now,
@@ -35,6 +34,7 @@ const village = coerceVillageState({
     {
       letterFontId: "caveat",
       characterId: "mara",
+      incarnation: "mara:original",
       addedAt: now,
       cardSnapshot: {
         id: "mara",
@@ -295,7 +295,13 @@ for (const source of [performer.cardSnapshot.description, performer.cardSnapshot
 const generatedImage = `data:image/png;base64,${PNG.sync.write(pixels).toString("base64")}`;
 
 const records = new Map<string, any>();
-records.set("villages-village", { id: "villages-village", data: village, revision: 1 });
+records.set("villages-village", {
+  id: "villages-village",
+  packageId: "villages",
+  kind: "village",
+  data: village,
+  revision: 1,
+});
 records.set("villages-connections", {
   id: "villages-connections",
   data: { imageConnectionId: "fixture-image", systemConnectionId: "__villages_system_disabled__" },

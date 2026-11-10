@@ -26,6 +26,7 @@ import { readSceneSubmissionHead } from "../packages/villages/src/server/adapter
 import { createRepairService } from "../packages/villages/src/server/features/repair/repair-service.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { authorVillageFixture } from "./helpers/village-storage.fixture.js";
 
 const at = "2026-10-30T12:00:00.000Z";
 const line = (id: string) => ({
@@ -36,14 +37,14 @@ const line = (id: string) => ({
   content: "Exact witnessed café 🌼 — " + id + ". ".repeat(40),
   at,
   staging: [{ characterId: "ada", look: { target: "player" as const } }],
-  heardBy: ["ada", "remote"],
+  heardBy: ["player", "ada", "remote"],
 });
 const measurements: unknown[] = [];
 for (const count of [1000, 10_000, 25_000]) {
   const f = fixture();
   try {
     const scene = coerceSession({
-      version: 4,
+      version: 5,
       id: "long",
       villageSeed: "seed",
       startedAt: at,
@@ -164,7 +165,7 @@ console.log("Scene transcript document-store growth:", JSON.stringify(measuremen
 const f = fixture();
 try {
   const scene = coerceSession({
-    version: 4,
+    version: 5,
     id: "faults",
     villageSeed: "seed",
     startedAt: at,
@@ -280,20 +281,13 @@ try {
     /participant identity/,
   );
   const world = { ...defaultVillageState(), seed: "seed", setupAt: at };
-  const {
-    memories: _memories,
-    memoryScenes: _scenes,
-    memoryReceipts: _receipts,
-    worldPlaces: _places,
-    ...facts
-  } = world;
   await f.documents.create({
     id: "villages-village",
     packageId: "villages",
     kind: "village",
     name: "World",
     description: "",
-    data: { ...facts, memoryHead: null, wishArchiveHead: { count: 0, root: null } },
+    data: authorVillageFixture(f.rows, world),
   });
   const repair = createRepairService({
     gate: f.gate,

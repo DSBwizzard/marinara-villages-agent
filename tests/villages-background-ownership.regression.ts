@@ -24,7 +24,7 @@ import {
   settleBackgroundWork,
   startBackgroundWork,
 } from "../packages/villages/src/server/jobs/background-work.js";
-import { authorWorldWishFixture, villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { authorVillageFixture, villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 function deferred() {
   return Promise.withResolvers<void>();
@@ -54,6 +54,7 @@ function fixture(label: string) {
       ({
         letterFontId: "caveat",
         characterId,
+        incarnation: characterId + ":original",
         cardSnapshot: {
           id: characterId,
           name: characterId,
@@ -65,7 +66,6 @@ function fixture(label: string) {
           backstory: "",
           tags: [],
         },
-        wishes: [],
         agenda: null,
       }) as any,
   );
@@ -150,11 +150,6 @@ function fixture(label: string) {
   const suppliedHandlers = new Map<"agenda", Handler>([["agenda", handler()]]);
   let beforeCurrentWrite: (() => Promise<void>) | undefined;
   function seedRuntimeWorld() {
-    const native = structuredClone(world) as any;
-    delete native.memories;
-    delete native.memoryScenes;
-    delete native.memoryReceipts;
-    delete native.worldPlaces;
     records.set("villages-village", {
       id: "villages-village",
       packageId: "villages",
@@ -162,7 +157,7 @@ function fixture(label: string) {
       name: label,
       description: "",
       revision: (records.get("villages-village")?.revision ?? 0) + 1,
-      data: authorWorldWishFixture(records, { ...native, memoryHead: null }),
+      data: authorVillageFixture(records, world),
     });
   }
   seedRuntimeWorld();

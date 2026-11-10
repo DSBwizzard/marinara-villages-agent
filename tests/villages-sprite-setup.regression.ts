@@ -143,6 +143,7 @@ village = coerceVillageState({
     {
       letterFontId: "caveat",
       characterId: "bupkis",
+      incarnation: "bupkis:original",
       addedAt: new Date().toISOString(),
       cardSnapshot: {
         id: "bupkis",
@@ -359,6 +360,7 @@ village = coerceVillageState({
     {
       letterFontId: "caveat",
       characterId: "resident",
+      incarnation: "resident:original",
       addedAt: new Date().toISOString(),
       cardSnapshot: {
         id: "resident",
@@ -425,7 +427,12 @@ assert.deepEqual(
 );
 for (const alreadyAssigned of [false, true]) {
   const id = `adoption-race-${alreadyAssigned}`;
-  village.villagers.push({ ...village.villagers[0], characterId: id, spriteManager: undefined });
+  village.villagers.push({
+    ...village.villagers[0],
+    characterId: id,
+    incarnation: id + ":original",
+    spriteManager: undefined,
+  });
   let racing = await service.prepare(id, undefined, {
     revision: 0,
     folderId: "side-folder",
