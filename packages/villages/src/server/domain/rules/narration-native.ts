@@ -17,7 +17,7 @@ import { narrationAppointment } from "./narration-appointment.js";
 import { applyNarrationResidence } from "./narration-residence.js";
 import { applyNarrationPlace } from "./narration-place.js";
 import { placeDraftSchema } from "./place-discovery.js";
-import { applyNarrationMove } from "./narration-movement.js";
+import { applyNarrationMove, applyNarrationMoveRequest } from "./narration-movement.js";
 import { assertSceneMovementCapacity } from "./resident-movement.js";
 import { selectSceneEffects } from "./scene-acceptance.js";
 import { MAX_VENUE_NAME_LENGTH } from "./prompt-preset.js";
@@ -38,6 +38,18 @@ const nativeCommand = z.discriminatedUnion("type", [
   z.object({ ...base, type: z.literal("contact.end"), who: id }).strict(),
   z.object({ ...base, type: z.literal("scene.end") }).strict(),
   z.object({ ...base, type: z.literal("move"), who: id, to: id }).strict(),
+  z
+    .object({
+      ...base,
+      type: z.literal("move.request"),
+      to: id,
+      actors: z
+        .array(id)
+        .min(1)
+        .max(4)
+        .refine((ids) => new Set(ids).size === ids.length),
+    })
+    .strict(),
   z.object({ ...base, type: z.literal("project.start"), project: id }).strict(),
   z
     .object({
@@ -130,7 +142,7 @@ export function readNarrationNativeCommand(raw: unknown) {
   return nativeCommand.parse(raw);
 }
 export const NARRATION_NATIVE =
-  'Native commands share {id?:label,at:segment label,source:[exact consequential sources],requires?:[effect IDs],independent?:true}. Current communication is required; recalled/private consent is never authority. Supported commands: {type:"move",who,to} validates a current connected Zone crossing at its narration label, with actual Player spoken/visible intent for Player movement or observed resident departure/arrival. Every consequential input source in a moving turn needs its explicit moment. A crossing applies before routing its labelled segment; native success assertions must require it. {type:"place.discover",existingId: supplied Place id} OR {type:"place.discover",place:{name,description,form?,report?,controllers?,zones?:[{id,name,kind:"public|staff|restricted",description,purpose?,controllers?,connectedTo?}],people?:[{ref,name,label?,characterization,existingId?,facts?,role?,availability?}]}} discovers existing infrastructure, never builds, grants ownership or establishes a service (maximum two); {type:"place.establish",project,objective,quote,met:true} records a current Player-witnessed objective, not a promise or Project completion (maximum eight); {type:"residence.request",by,venue}; {type:"residence.decide",by,person,venue,approved:boolean}; {type:"venue.request",by,name,classes:[native Venue classes]} submits a Villager request without establishing any service; {type:"project.start",project} invokes the same native Start/Resume only for explicit actual Player intent and current ready authority; {type:"appointment",by,when:{dayOffset:integer}|{weekday:weekday name,afterToday?:boolean}|{date:"YYYY-MM-DD"},minute?:0-1439} binds an actual current spoken appointment using the supplied calendar, never a past instant or clock mutation; {type:"scene.end"} only from the actual Player spoken/visible departure intent at the final segment; {type:"contact.end",who} ends only an admitted doorway contact, with deciding words (or the actual Player intent); {type:"project.decide",by,project,decision:"approval|builder|refuse|withdrawal|conditional|uncertain"}; {type:"permission.grant|permission.revoke",by,visitor,venue,zone}; {type:"access.decide",by,venue,zone,decision:{outcome:"invite-now|invite-later|invite-outside-hours|refuse|dismiss|ban-zone|ban-venue",visitor,accompanies?}|{outcome:"access-management",management:exact native AccessCommand action fields without operationId,expectedRevision,zoneId,sceneId}}. Use only supplied native scopes. A conditional or uncertain Project answer grants no approval or lead. An access condition beyond accompaniment cannot grant access. Native success assertions must require their command ID.';
+  'Native commands share {id?:label,at:segment label,source:[exact consequential sources],requires?:[effect IDs],independent?:true}. Current communication is required; recalled/private consent is never authority. Supported commands: {type:"move.request",to,actors:[every requested local actor]} grounds only the complete actual Player request and validates the whole native group at that input moment; resident responses stay ordinary ordered Scene prose and need their own evidence for consequences. It grants no movement or consent. For actual following use individually grounded move commands. {type:"move",who,to} validates a current connected Zone crossing at its narration label, with actual Player spoken/visible intent for Player movement or observed resident departure/arrival. Every consequential input source in a moving turn needs its explicit moment. A crossing applies before routing its labelled segment; native success assertions must require it. {type:"place.discover",existingId: supplied Place id} OR {type:"place.discover",place:{name,description,form?,report?,controllers?,zones?:[{id,name,kind:"public|staff|restricted",description,purpose?,controllers?,connectedTo?}],people?:[{ref,name,label?,characterization,existingId?,facts?,role?,availability?}]}} discovers existing infrastructure, never builds, grants ownership or establishes a service (maximum two); {type:"place.establish",project,objective,quote,met:true} records a current Player-witnessed objective, not a promise or Project completion (maximum eight); {type:"residence.request",by,venue}; {type:"residence.decide",by,person,venue,approved:boolean}; {type:"venue.request",by,name,classes:[native Venue classes]} submits a Villager request without establishing any service; {type:"project.start",project} invokes the same native Start/Resume only for explicit actual Player intent and current ready authority; {type:"appointment",by,when:{dayOffset:integer}|{weekday:weekday name,afterToday?:boolean}|{date:"YYYY-MM-DD"},minute?:0-1439} binds an actual current spoken appointment using the supplied calendar, never a past instant or clock mutation; {type:"scene.end"} only from the actual Player spoken/visible departure intent at the final segment; {type:"contact.end",who} ends only an admitted doorway contact, with deciding words (or the actual Player intent); {type:"project.decide",by,project,decision:"approval|builder|refuse|withdrawal|conditional|uncertain"}; {type:"permission.grant|permission.revoke",by,visitor,venue,zone}; {type:"access.decide",by,venue,zone,decision:{outcome:"invite-now|invite-later|invite-outside-hours|refuse|dismiss|ban-zone|ban-venue",visitor,accompanies?}|{outcome:"access-management",management:exact native AccessCommand action fields without operationId,expectedRevision,zoneId,sceneId}}. Use only supplied native scopes. A conditional or uncertain Project answer grants no approval or lead. An access condition beyond accompaniment cannot grant access. Native success assertions must require their command ID.';
 
 /** Fixed native validators prepare a detached candidate inside the existing Village CAS. */
 export function prepareNarrationNative(
@@ -222,6 +234,7 @@ export function prepareNarrationNative(
       ) &&
         (command.type === "scene.end" ||
           command.type === "project.start" ||
+          command.type === "move.request" ||
           (command.type === "move" && command.who === "player") ||
           (command.type === "contact.end" && command.who === "player") ||
           Math.max(...sources.map((source) => source.moment!.index)) === row.segment),
@@ -229,6 +242,11 @@ export function prepareNarrationNative(
     );
     assertNarrationSourceOrder(sources);
     const receiptId = "native-" + memoryHash([readset.source.episodeId, effect.id]).slice(0, 40);
+    if (command.type === "move.request")
+      return {
+        receipt: applyNarrationMoveRequest(candidate, command, readset, context, sources, receiptId),
+        sources,
+      };
     if (command.type === "move") {
       memoryRequire(
         planned.some((move) => move.effectId === effect.id),

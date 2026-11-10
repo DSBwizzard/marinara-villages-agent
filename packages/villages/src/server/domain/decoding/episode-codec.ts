@@ -39,6 +39,7 @@ const episode = z
               "residence",
               "standing",
               "movement",
+              "movement-request",
               "structure",
               "discovery",
               "npc",

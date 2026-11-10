@@ -11,6 +11,85 @@ import { contactPath, sceneAccessContext } from "./venue-contact.js";
 import { claimVisitPermission, evaluateZoneAccess } from "./venue-access.js";
 import { zoneArea, zoneClosed } from "./venue-zones.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
+import { residentMovementOptions } from "./resident-movement.js";
+
+export function applyNarrationMoveRequest(
+  state: VillageState,
+  command: { actors: string[]; to: string },
+  readset: NarrationReadset,
+  context: NarrationSourceContext,
+  sources: ContinuityEvidence[],
+  receiptId: string,
+): AcceptedEpisode["commandReceipts"][number] {
+  const intent = sources.filter((source) => source.unitId === "input");
+  memoryRequire(
+    intent.length === sources.length,
+    "a group request uses only the actual Player request; replies need their own consequential evidence",
+  );
+  assertNarrationPlayerIntent(context, intent);
+  const moment = intent
+    .map((source) => source.moment!)
+    .toSorted((a, b) => a.index - b.index + ((a.side === "after" ? 1 : 0) - (b.side === "after" ? 1 : 0)) / 2)
+    .at(-1)!;
+  const positions = narrationPositions(context, moment),
+    venue = findLocation(state, context.scene.placeId);
+  memoryRequire(
+    venue &&
+      memoryHash(captureSceneLayout(venue)) === memoryHash(context.scene.sceneAttendance?.layout) &&
+      command.actors.every(
+        (id) =>
+          id !== "player" &&
+          context.actors.some(
+            (actor) => actor.id === id && continuityActor(state, id)?.incarnation === actor.incarnation,
+          ) &&
+          positions[id] === positions.player,
+      ),
+    "a group movement request needs the entire current local group",
+  );
+  memoryRequire(
+    intent.every((source) =>
+      command.actors.every((id) =>
+        source.perceptions.some((row) => row.actorId === id && (row.channel === "words" || row.channel === "sight")),
+      ),
+    ),
+    "every requested person must perceive the complete request",
+  );
+  const scene = {
+    ...context.scene,
+    zoneId: positions.player,
+    accompanying: Object.entries(positions)
+      .filter(([id]) => id !== "player")
+      .map(([characterId, zoneId]) => ({ characterId, zoneId })),
+  };
+  const options = residentMovementOptions(state, venue, scene, command.actors),
+    cohort = command.actors.filter((id) => positions[id] !== command.to);
+  memoryRequire(
+    options.zones.some((zone) => zone.id === command.to) &&
+      (cohort.length === 0 ||
+        (cohort.length === 1
+          ? options.destinations.find((row) => row.characterId === cohort[0])?.zoneIds.includes(command.to)
+          : options.groups.some(
+              (group) =>
+                group.characterIds.length === cohort.length &&
+                cohort.every((id) => group.characterIds.includes(id)) &&
+                group.zoneIds.includes(command.to),
+            ))),
+    "the complete requested group cannot cross to that native destination",
+  );
+  return {
+    id: receiptId,
+    kind: "movement-request",
+    targetId: command.to,
+    revision: readset.sceneRevision,
+    text:
+      "The Player asked " +
+      command.actors.join(", ") +
+      " to go to " +
+      options.zones.find((zone) => zone.id === command.to)!.name +
+      ". The request grants no movement or consent.",
+    witnesses: narrationWitnesses(sources),
+  };
+}
 
 export function applyNarrationMove(
   state: VillageState,

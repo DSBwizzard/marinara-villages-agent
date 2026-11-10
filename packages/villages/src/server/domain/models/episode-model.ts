@@ -27,6 +27,7 @@ export type AcceptedEpisode = {
       | "residence"
       | "standing"
       | "movement"
+      | "movement-request"
       | "structure"
       | "discovery"
       | "npc"

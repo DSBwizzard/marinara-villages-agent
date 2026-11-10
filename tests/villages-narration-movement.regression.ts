@@ -1,4 +1,4 @@
-// Test cases: narration-movement/player, narration-movement/resident, narration-movement/authority, narration-movement/capacity, narration-movement/independent, narration-movement/recovery, narration-movement/private-destination, narration-movement/two-turns
+// Test cases: narration-movement/player, narration-movement/resident, narration-movement/authority, narration-movement/capacity, narration-movement/independent, narration-movement/recovery, narration-movement/private-destination, narration-movement/two-turns, narration-movement/group-request
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { fixture as projectFixture } from "./fixtures/villages-projects.fixture.js";
@@ -21,7 +21,7 @@ import { createVillageRepository } from "../packages/villages/src/server/adapter
 import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
 const at = "2026-11-09T21:00:00.000Z",
   input = "I walk to the garden.";
-function fixture(full = false) {
+function fixture(full = false, message = input) {
   const state = projectFixture().state(),
     venue = state.venues[0];
   if (full)
@@ -75,7 +75,7 @@ function fixture(full = false) {
     venue,
   );
   scene.contactGeneration!.actorIds = participants.map((row) => row.characterId);
-  const context = narrationContinuityContext(state, scene, venue, "movement-operation", input, at),
+  const context = narrationContinuityContext(state, scene, venue, "movement-operation", message, at),
     readset = fittedNarrationReadset(
       state,
       context,
@@ -95,7 +95,7 @@ function fixture(full = false) {
         who: "player",
         to: "garden",
         at: "cross",
-        source: [{ input, ground: { kind: "visible-action", to: ["a", "b"], at: "start" } }, cross],
+        source: [{ input: message, ground: { kind: "visible-action", to: ["a", "b"], at: "start" } }, cross],
       },
     ],
   };
@@ -367,6 +367,99 @@ await runCase("narration-movement/two-turns", async () => {
   } finally {
     storage.release();
   }
+});
+await runCase("narration-movement/group-request", () => {
+  function request(full = false) {
+    const message = "Would you both come to the garden?",
+      f = fixture(full, message);
+    f.raw.segments = [
+      { id: "a-answer", kind: "dialogue", speakerId: "a", text: "I can come with you." },
+      { id: "b-answer", kind: "dialogue", speakerId: "b", text: "I would rather stay here.", requires: ["request"] },
+    ];
+    f.raw.commands = [
+      {
+        id: "request",
+        type: "move.request",
+        to: "garden",
+        actors: ["a", "b"],
+        at: "b-answer",
+        source: [{ input: message, ground: { kind: "spoken", to: ["a", "b"] } }],
+      },
+    ];
+    return f;
+  }
+  const f = request(),
+    result = f.accept();
+  assert.equal(result.held, false, JSON.stringify(result.rejected));
+  assert.equal(result.episode!.commandReceipts[0].kind, "movement-request");
+  assert(!result.episode!.sceneDelta);
+  assert.equal(f.scene.zoneId, "common");
+  assert.equal(f.state.episodes.records.length, 1);
+  assert(!f.scene.accompanying?.length, "the ask and individual answers never move or consent for the group");
+  for (const reason of ["unrelated-proof", "unheard", "offstage", "capacity"]) {
+    const g = request(reason === "capacity");
+    if (reason === "unrelated-proof") g.raw.commands[0].source.push({ segment: "a-answer" });
+    if (reason === "unheard")
+      g.raw.commands[0].source[0].ground = { kind: "spoken", to: ["a"], delivery: "whisper", targetId: "a" };
+    if (reason === "offstage") g.raw.commands[0].actors = ["a", "c"];
+    const before = memoryHash(g.state);
+    assert.equal(g.accept().held, true, reason);
+    assert.equal(memoryHash(g.state), before);
+  }
+  const silent = request();
+  silent.raw.segments = [
+    { id: "a-answer", kind: "narration", text: "Mara nods. Bob stays quiet.", requires: ["request"] },
+  ];
+  silent.raw.commands[0].at = "a-answer";
+  const silence = silent.accept();
+  assert.equal(silence.held, false);
+  assert(!silence.episode!.sceneDelta);
+  assert(!silence.episode!.commandReceipts[0].text.includes("responded"));
+  assert(silence.episode!.commandReceipts[0].text.includes("no movement or consent"));
+  const later = request();
+  later.raw.commands[0].source[0].ground.at = { after: "a-answer" };
+  const laterResult = later.accept();
+  assert.equal(
+    laterResult.held,
+    false,
+    "earlier resident speech is retained as prose, never bound as an answer to a later Player request",
+  );
+  assert(!laterResult.episode!.sceneDelta);
+  const arrived = request();
+  arrived.raw.segments = [
+    { id: "arrival", kind: "narration", text: "Chris joins the common room.", requires: ["arrival", "request"] },
+  ];
+  arrived.raw.commands = [
+    {
+      id: "arrival",
+      type: "move",
+      who: "c",
+      to: "common",
+      at: "arrival",
+      source: [{ segment: "arrival", perceive: { kind: "seen", by: ["player"] } }],
+    },
+    {
+      id: "request",
+      type: "move.request",
+      to: "garden",
+      actors: ["a", "c"],
+      at: "arrival",
+      source: [
+        {
+          input: "Would you both come to the garden?",
+          ground: { kind: "spoken", to: ["a", "c"], at: { after: "arrival" } },
+        },
+      ],
+      requires: ["arrival"],
+    },
+  ];
+  const afterArrival = arrived.accept();
+  assert.equal(afterArrival.held, false, JSON.stringify(afterArrival.rejected));
+  assert.equal(
+    afterArrival.episode!.commandReceipts.length,
+    2,
+    "the group's locality follows the actual request moment after arrival",
+  );
 });
 await runCase("narration-movement/recovery", () => {
   const f = fixture(),
