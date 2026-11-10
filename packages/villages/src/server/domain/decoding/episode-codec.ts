@@ -47,6 +47,7 @@ const episode = z
               "initialization",
               "contact",
               "scene",
+              "appointment",
             ]),
             targetId: id,
             revision: z.number().int().nonnegative().safe(),

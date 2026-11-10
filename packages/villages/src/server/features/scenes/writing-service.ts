@@ -28,7 +28,6 @@ import {
   venueCardProfile,
   type VenueWritingBlock,
 } from "../../domain/rules/venue-writing.js";
-import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
 import { zoneEventHearingContext, zoneEventScene } from "../../domain/rules/zone-events.js";
 
@@ -154,13 +153,7 @@ export function createSceneWriting({
     ]);
     signal?.throwIfAborted();
     const projectContexts = context.projects;
-    const calendar = deriveVillageMoment({
-      foundedAt: village.foundedAt,
-      environment: village.narrative,
-      seed: village.seed,
-      timeZone: village.timeZone || undefined,
-      now: new Date(scene.sceneAttendance?.capturedAt ?? scene.startedAt),
-    });
+    const calendar = context.calendar;
     const presentation = sceneSpriteSelection(scene, village),
       loreUses = inspectedLoreUse(loreInspection, "GM");
     const blocksFor = (texts: string[]): VenueWritingBlock[] => texts.filter(Boolean).map((text) => ({ text }));

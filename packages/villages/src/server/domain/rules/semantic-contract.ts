@@ -12,7 +12,7 @@ import { findLocation, findNpc, npcProfile } from "./places.js";
 import { currentVillageCircumstances } from "./prompt-preset.js";
 
 import { projectSpeechContexts, projectSpeechPrompt } from "./project-interpretation.js";
-import { capturedSceneCalendar } from "./scene-halt.js";
+import { capturedSceneCalendar } from "./scene-calendar.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
 import { sceneMemoryContext } from "./scene-memories.js";
 import { sharedLoreHistory } from "./scene-writing-history.js";

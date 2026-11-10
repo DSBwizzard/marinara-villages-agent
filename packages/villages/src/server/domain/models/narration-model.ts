@@ -7,6 +7,7 @@ export type NarrationReadset = {
   format: 1;
   setupAt: string;
   capturedAt: string;
+  calendar: ReturnType<typeof import("../rules/scene-calendar.js").capturedSceneCalendar>;
   sceneRevision: number;
   continuityRevision: number;
   source: Omit<NarrationSourceContext, "lines" | "labels" | "native" | "moves">;

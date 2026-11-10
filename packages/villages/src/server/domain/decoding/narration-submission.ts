@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { VenueSubmission } from "../models/scene-model.js";
 import { memoryRequire } from "../rules/memory-integrity.js";
+import { readSceneCalendar } from "../rules/scene-calendar.js";
 
 const id = z.string().min(1).max(200),
   at = z.string().refine((value) => Number.isFinite(Date.parse(value)));
@@ -25,6 +26,11 @@ const saved = z
         readset: z.custom<NonNullable<VenueSubmission["narration"]>["readset"]>((value) => {
           if (!value || typeof value !== "object") return false;
           const row = value as NonNullable<VenueSubmission["narration"]>["readset"];
+          try {
+            if (readSceneCalendar(row.calendar).instant !== row.capturedAt) return false;
+          } catch {
+            return false;
+          }
           return (
             row.format === 1 &&
             typeof row.setupAt === "string" &&

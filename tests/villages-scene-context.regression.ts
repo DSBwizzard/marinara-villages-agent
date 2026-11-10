@@ -6,7 +6,8 @@ import { applyMemoryRepair } from "../packages/villages/src/server/domain/rules/
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { sceneGmContext } from "../packages/villages/src/server/domain/rules/scene-gm.js";
-import { sceneAppointment, readSceneBoundary } from "../packages/villages/src/server/domain/rules/scene-halt.js";
+import { readSceneBoundary } from "../packages/villages/src/server/domain/rules/scene-halt.js";
+import { sceneAppointment } from "../packages/villages/src/server/domain/rules/scene-calendar.js";
 import { semanticContext } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
 import { expandSceneEvents } from "../packages/villages/src/server/domain/rules/scene-event-proposals.js";
 import {

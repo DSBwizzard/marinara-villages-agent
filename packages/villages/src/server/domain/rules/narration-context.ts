@@ -25,6 +25,7 @@ import type { VenueWritingBlock } from "./venue-writing.js";
 import { projectSpeechContexts } from "./project-interpretation.js";
 import { sceneContinuityView } from "./scene-continuity.js";
 import { narrationAccessScopes } from "./narration-access.js";
+import { capturedSceneCalendar } from "./scene-calendar.js";
 
 type Part = {
   block: VenueWritingBlock;
@@ -471,6 +472,7 @@ export function narrationContinuityContext(
   return {
     episodeId,
     actors,
+    calendar: capturedSceneCalendar({ startedAt: at }, state.timeZone),
     holders,
     room,
     at,
@@ -520,6 +522,7 @@ export function fittedNarrationReadset(
     format: 1,
     setupAt: state.setupAt,
     capturedAt: context.at,
+    calendar: context.calendar,
     sceneRevision: context.source.scene.sceneRevision,
     continuityRevision: state.continuity.revision,
     source: { ...context.source, historical },

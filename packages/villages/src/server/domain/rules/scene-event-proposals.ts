@@ -4,7 +4,7 @@ import { MEMORY_EXCERPT_LIMIT } from "./memory-integrity.js";
 import { neutralRelationship, relationshipKey } from "./relationship-rules.js";
 import type { semanticContext } from "./semantic-contract.js";
 import { sceneHistoryRow } from "./scene-writing-history.js";
-import { sceneAppointment } from "./scene-halt.js";
+import { sceneAppointment } from "./scene-calendar.js";
 import type { NarrativeAdmission } from "../models/narrative-model.js";
 
 type Context = ReturnType<typeof semanticContext>;
