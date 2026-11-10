@@ -1,28 +1,32 @@
 import assert from "node:assert/strict";
+import { readNarrationSubmission } from "../packages/villages/src/server/domain/decoding/narration-submission.js";
+import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
+import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
+import {
+  narrationContinuityContext,
+  fittedNarrationReadset,
+} from "../packages/villages/src/server/domain/rules/narration-context.js";
 import { mock } from "node:test";
 import { withProviderDeadline } from "../packages/villages/src/server/adapters/models/provider-deadline.js";
 import { readPrivateDiagnostics } from "../packages/villages/src/server/adapters/observability/private-diagnostics.js";
 import {
   venueOperationSignal,
   venueRequestMetrics,
-  venueSavedCheckpoint,
 } from "../packages/villages/src/server/adapters/operations/operation-context.js";
 import { validateSceneHistory } from "../packages/villages/src/server/adapters/storage/scene-history.js";
+import { createOperationEvidence } from "../packages/villages/src/server/adapters/storage/operation-evidence.js";
 import { readScenePublicHistoryHead } from "../packages/villages/src/server/adapters/storage/scene-public-history.js";
 import { changeSession, readSession } from "../packages/villages/src/server/adapters/storage/scene-store.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { safeFailureMessage } from "../packages/villages/src/server/domain/rules/errors.js";
-import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
-import { bindWishProposals } from "../packages/villages/src/server/domain/rules/wish-progress-rules.js";
-import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
 import { createModelCompletions } from "../packages/villages/src/server/features/generation/completion-service.js";
-import { createSemanticService } from "../packages/villages/src/server/features/generation/semantic-service.js";
 import type { LocationImageService } from "../packages/villages/src/server/features/media/location-image-service.js";
 import { configureLocationImages } from "../packages/villages/src/server/features/media/location-image.js";
 import { createSceneCommands } from "../packages/villages/src/server/features/scenes/command-service.js";
+import { createSceneProgress } from "../packages/villages/src/server/features/scenes/progress-service.js";
 import { createSceneWork } from "../packages/villages/src/server/features/scenes/scene-work-service.js";
-import { createSceneWriting } from "../packages/villages/src/server/features/scenes/writing-service.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import {
   authorSceneFixture,
@@ -80,7 +84,7 @@ function seed(id: string) {
     description: "",
     revision: 1,
     data: {
-      version: 4,
+      version: 5,
       villageSeed: "coordinator-world",
       id,
       status: "active",
@@ -89,6 +93,53 @@ function seed(id: string) {
       lines: [],
       submissions: [],
     },
+  });
+}
+function appliedTurn(id: string, message = "") {
+  const at = new Date().toISOString();
+  return readNarrationSubmission({
+    id,
+    message,
+    mode: "chat",
+    targetId: "",
+    requestFingerprint: memoryHash(["chat", "", null, message]),
+    at,
+    acceptance: { status: "applied", rejected: [] },
+    episodeId: "fixture-episode-" + id,
+    progressProcessedAt: at,
+  });
+}
+function heldTurn(id: string, scene: ReturnType<typeof coerceSession>) {
+  const at = scene.startedAt || new Date().toISOString(),
+    message = "Captured input",
+    world = Object.assign(defaultVillageState(), { seed: scene.villageSeed, setupAt: at, foundedAt: at }),
+    venue = venueFixture({ id: scene.placeId || "fixture-place", name: "Hall", description: "A quiet hall." });
+  world.venues = [venue];
+  const framed = zoneEventScene(
+      {
+        ...scene,
+        placeId: venue.id,
+        zoneId: "exterior",
+        sceneAttendance: { capturedAt: at, layout: captureSceneLayout(venue), occupants: [] },
+      },
+      venue,
+    ),
+    context = narrationContinuityContext(world, framed, venue, id, message, at),
+    readset = fittedNarrationReadset(
+      world,
+      context,
+      context.parts.map((part) => part.block.evidenceId!),
+    ),
+    raw = { segments: [{ id: "reply", kind: "narration", text: "The hall is quiet." }] };
+  return readNarrationSubmission({
+    id,
+    message,
+    mode: "chat",
+    targetId: "",
+    requestFingerprint: memoryHash(["chat", "", null, message]),
+    at,
+    acceptance: { status: "held", rejected: [{ id: "review", reason: "Preserved hold" }] },
+    narration: { raw, readset, responseDigest: memoryHash(raw) },
   });
 }
 function deferred<T>() {
@@ -139,7 +190,7 @@ async function main() {
       "history-policy",
       "private-policy",
       "turn",
-      { interactionScopeVersion: 6 },
+      { message: "Exact input", mode: "chat", targetId: "" },
       0,
       undefined,
       async () => {
@@ -173,13 +224,7 @@ async function main() {
           "Ordinary status/checkpoint writes never load transcript bodies",
         );
         await changeSession("history-policy", (scene) => {
-          scene.submissions.push({
-            id: "private-policy",
-            mode: "chat",
-            targetId: "",
-            message: "Exact input",
-            at: new Date().toISOString(),
-          });
+          scene.submissions.push(appliedTurn("private-policy", "Exact input"));
         });
         beforeTiming = structuredClone(row("history-policy").data);
       },
@@ -194,7 +239,7 @@ async function main() {
       "history-policy",
       "public-policy",
       "turn",
-      { interactionScopeVersion: 5 },
+      {},
       afterTiming.sceneRevision,
       undefined,
       async () => {
@@ -203,27 +248,20 @@ async function main() {
       },
     );
     await changeSession("history-policy", (scene) => {
-      scene.submissions.push({
-        id: "published-zone",
-        mode: "chat",
-        targetId: "",
-        message: "Zone evidence",
-        at: new Date().toISOString(),
-        zoneEventsVersion: 1,
-      });
+      scene.submissions.push(appliedTurn("published-zone", "Zone evidence"));
     });
     await coordinateVenue(
       "history-policy",
       "still-private",
       "turn",
-      { interactionScopeVersion: 5 },
+      {},
       row("history-policy").data.sceneRevision,
       undefined,
       async () => {
         assert.equal(
           row("history-policy").data.publicHistory.privateHearing,
           true,
-          "Published Zone policy outlives the current operation",
+          "Private hearing survives later operations",
         );
       },
     );
@@ -250,7 +288,7 @@ async function main() {
       villagesLogger: () => ({ debug() {}, warn() {} }),
       bindCallback: (callback: any) => callback,
     } as any);
-    const policyInput = { semanticPipelineVersion: 3, message: "Hello" };
+    const policyInput = { message: "Hello", mode: "chat", targetId: "" };
     const policyWork =
       (effort: "low" | "none", crash = false) =>
       () =>
@@ -317,13 +355,20 @@ async function main() {
     for (const evidence of ["submission", "navigation", "turn-reply", "greeting-reply"]) {
       const id = "expired-" + evidence;
       seed(id);
-      const cloned = fixtureSceneState(structuredClone(expired.data), records);
-      cloned.id = id;
-      cloned.operation!.snapshot = { ...fixtureSceneState(cloned.operation!.snapshot, records), id };
-      row(id).data = authorSceneFixture(records, cloned);
+      await assert.rejects(
+        coordinateVenue(id, "turn", "turn", policyInput, 0, undefined, () =>
+          venueCheckpoint("system", async () => {
+            await coordinatedCompletion("archived-raw", async () => ({ content: "Saved response" }));
+            throw Error("Validation interrupted");
+          }),
+        ),
+        /Validation interrupted/,
+      );
+      row(id).data.status = "closed";
+      row(id).data.endReason = "inactivity";
       if (evidence === "submission")
         editFixtureScene(row(id), records, (scene) => {
-          scene.submissions = [{ mode: "chat", id: "turn" } as any];
+          scene.submissions = [appliedTurn("turn")];
         });
       else if (evidence === "navigation") row(id).data.navigationReceipts = [{ id: "turn" }];
       else
@@ -429,28 +474,45 @@ async function main() {
 
     seed("slow-greeting");
     row("slow-greeting").data = coerceSession({
-      version: 4,
+      version: 5,
       ...row("slow-greeting").data,
-      semanticVersion: 2,
       status: "opening",
     });
     const world = defaultVillageState();
     world.seed = "coordinator-world";
     const greetingVenue = venueFixture({ id: "greeting-place", name: "Hall", description: "A hall" });
-    delete greetingVenue.access;
     world.venues = [greetingVenue];
     Object.assign(row("slow-greeting").data, {
       placeId: greetingVenue.id,
       zoneId: "exterior",
       startedAt: new Date().toISOString(),
+      sceneAttendance: {
+        capturedAt: new Date().toISOString(),
+        layout: captureSceneLayout(greetingVenue),
+        occupants: [],
+      },
     });
+    const progress = createSceneProgress({
+      readSession,
+      changeSession,
+      readVillageAuthority: async () => world,
+      mutateVillageState: async (change) => {
+        const next = structuredClone(world);
+        change(next);
+        Object.assign(world, next);
+        return world;
+      },
+      assertVenueOwnership,
+      measurePipeline: async (_label, _identity, work) => work(),
+      sceneQueries: () => ({ progressBacklog: async () => [] }),
+      villagesLogger: () => ({ warn() {} }),
+    } as any);
     let earlyPictures = 0;
     const delayedPresence = deferred<void>();
     const greetingWork = createSceneWork();
-    let stage = deferred<void>();
+    const stage = deferred<void>();
     let dispatches = 0;
     const commands = createSceneCommands({
-      bindWishProposals,
       activationScope: () => undefined,
       sceneWork: () => greetingWork,
       readSession,
@@ -478,47 +540,45 @@ async function main() {
           await delayedPresence.promise;
         },
       }),
-      processSavedExchange: async () => {},
-      generate: async (_scene, _message, _mode, _target, _settled, signal) => {
-        for (const duration of [7942, 24163]) {
-          await coordinatedCompletion(
-            "stage-" + duration,
-            () =>
-              withProviderDeadline(async () => {
-                dispatches++;
-                stage.resolve();
-                await new Promise((resolve) => setTimeout(resolve, duration));
-                return "saved stage";
-              }, signal),
-            { inputTokens: 1, outputTokens: 1 },
+      processSavedExchange: progress.processSavedExchange,
+      assertVenueOwnership,
+      generate: async (scene, message, _mode, signal) => {
+        const at = new Date().toISOString(),
+          framed = zoneEventScene(scene, greetingVenue),
+          context = narrationContinuityContext(world, framed, greetingVenue, "greeting", message, at),
+          readset = fittedNarrationReadset(
+            world,
+            context,
+            context.parts.flatMap((part) => (part.block.evidenceId ? [part.block.evidenceId] : [])),
+          ),
+          raw = await coordinatedCompletion("greeting-narration", () =>
+            withProviderDeadline(async () => {
+              dispatches++;
+              stage.resolve();
+              await new Promise((resolve) => setTimeout(resolve, 32105));
+              return { segments: [{ id: "greeting", kind: "narration", text: "Saved slow greeting." }] };
+            }, signal),
           );
-        }
-        return {
-          lines: [{ kind: "narration", speakerId: "__venue_scene__", content: "Saved slow greeting.", heardBy: [] }],
-          heardPlayerBy: [],
-          departures: [],
-          contactMoves: [],
-          contactEndIds: [],
-          roomInterpretation: null,
-          projectContexts: [],
-          projectSpeech: [],
-        };
+        return { raw, readset, responseDigest: memoryHash(raw) };
       },
     } as any);
     mock.timers.enable({ apis: ["setTimeout"] });
     try {
       const greeting = commands.greetVenue("slow-greeting");
       await stage.promise;
-      stage = deferred<void>();
-      mock.timers.tick(7942);
-      await stage.promise;
-      mock.timers.tick(24163);
+      mock.timers.tick(32105);
       const completed = await greeting;
       assert.equal(completed.status, "active");
-      assert.equal(completed.lines.length, 1);
-      assert.equal(dispatches, 2);
-      assert.equal((await commands.greetVenue("slow-greeting", undefined, true)).lines.length, 1);
-      assert.equal(dispatches, 2, "Saved-only duplicate recovery does not dispatch or append twice");
+      assert.equal(completed.lines.filter((line) => line.kind !== "input").length, 1);
+      assert.equal(world.episodes.records.length, 1);
+      assert.equal(dispatches, 1);
+      assert.equal(
+        (await commands.greetVenue("slow-greeting", undefined, true)).lines.filter((line) => line.kind !== "input")
+          .length,
+        1,
+      );
+      assert.equal(world.episodes.records.length, 1);
+      assert.equal(dispatches, 1, "Saved-only duplicate recovery does not dispatch or append twice");
       assert.equal(
         earlyPictures,
         0,
@@ -529,19 +589,14 @@ async function main() {
       mock.timers.reset();
     }
     seed("opening-retry");
-    row("opening-retry").data.semanticVersion = 2;
-    const frozenOpening = {
-      semanticBudget: { version: 1, requests: 2, inputTokens: 100000, outputTokens: 20000 },
-    };
-    row("opening-retry").data.operation = {
-      evidenceFormat: 1,
-      checkpoints: {},
-      attempts: {},
-      id: "greeting",
-      input: frozenOpening,
-      status: "interrupted",
-      attemptId: "saved-opening-attempt",
-    };
+    const frozenOpening = {};
+    await assert.rejects(
+      coordinateVenue("opening-retry", "greeting", "greet", frozenOpening, 0, undefined, async () => {
+        throw Error("Opening interrupted");
+      }),
+      /Opening interrupted/,
+    );
+    const savedOpening = (await readVenueOperation("opening-retry"))!;
     const retryCommands = createSceneCommands({
       activationScope: () => undefined,
       sceneWork: () => createSceneWork(),
@@ -560,13 +615,13 @@ async function main() {
           JSON.stringify(frozenOpening),
           "Opening retry preserves frozen admission bytes",
         );
-        assert.equal(attempt, "saved-opening-attempt");
+        assert.equal(attempt, savedOpening.attemptId);
         return readSession("opening-retry");
       },
     } as any);
-    await retryCommands.greetVenue("opening-retry", "saved-opening-attempt");
-    seed("v3-replay");
-    row("v3-replay").data = coerceSession({ version: 4, ...row("v3-replay").data, semanticVersion: 2 });
+    await retryCommands.greetVenue("opening-retry", savedOpening.attemptId);
+    seed("native-replay");
+    row("native-replay").data = coerceSession({ version: 5, ...row("native-replay").data });
     const replayCommands = createSceneCommands({
       runtimeDebug() {},
       readSession,
@@ -576,28 +631,22 @@ async function main() {
         coordinateVenue(args[0], args[1], args[2], args[3], args[4], args[5], () => readSession(args[0]), args[7]),
     } as any);
     const turn = {
-      sessionId: "v3-replay",
+      sessionId: "native-replay",
       submissionId: "new-turn",
       message: "Hello",
       mode: "chat" as const,
       targetId: "",
     };
     await replayCommands.sendVenueTurn(turn);
-    const originalInput = structuredClone(row("v3-replay").data.operation.input);
-    editFixtureScene(row("v3-replay"), records, (scene) =>
-      scene.submissions.push({
-        id: "new-turn",
-        message: "Hello",
-        mode: "chat",
-        targetId: "",
-        semanticProvenance: { version: 2, pipelineVersion: 3 },
-      } as any),
+    const originalInput = structuredClone(row("native-replay").data.operation.input);
+    editFixtureScene(row("native-replay"), records, (scene) =>
+      scene.submissions.push(appliedTurn("new-turn", "Hello")),
     );
     await replayCommands.sendVenueTurn(turn);
     assert.deepEqual(
-      row("v3-replay").data.operation.input,
+      row("native-replay").data.operation.input,
       originalInput,
-      "Committed v3 duplicate keeps its original admission fingerprint",
+      "Committed native duplicate keeps its original admission fingerprint",
     );
     seed("provider-timeout");
     let providerCalls = 0;
@@ -1006,22 +1055,17 @@ async function main() {
     );
     assert.equal(row("editable").data.operation.input.message, "Edited draft");
 
-    for (const blockedCase of ["committed", "navigation", "semantic"]) {
+    for (const blockedCase of ["committed", "navigation", "held"]) {
       const blocked = await failChat("edit-" + blockedCase);
       const data = row("edit-" + blockedCase).data;
       if (blockedCase === "committed")
         editFixtureScene(row("edit-" + blockedCase), records, (scene) =>
-          scene.submissions.push({ mode: "chat", id: "original" } as any),
+          scene.submissions.push(appliedTurn("original")),
         );
       if (blockedCase === "navigation") data.navigationReceipts = [{ id: "original" }];
-      if (blockedCase === "semantic")
+      if (blockedCase === "held")
         editFixtureScene(row("edit-" + blockedCase), records, (scene) =>
-          scene.submissions.push({
-            mode: "chat",
-            id: "other",
-            semanticProvenance: { version: 2 },
-            semanticReady: false,
-          } as any),
+          scene.submissions.push(heldTurn("other", scene)),
         );
       const beforeBlockedEdit = calls;
       await assert.rejects(
@@ -1246,22 +1290,11 @@ async function main() {
     row("validation").data.lastActivityAt = new Date(Date.now() - 31 * 60_000).toISOString();
     await coordinateVenue("validation", "after-absence", "turn", {}, 0, undefined, () => paid());
     assert.equal(row("validation").data.operation.id, "after-absence", "age does not refuse a valid new turn");
-    seed("retired-feature");
-    row("retired-feature").data.spinoff = { status: "running" };
-    await assert.rejects(
-      () =>
-        coordinateVenue("retired-feature", "blocked", "turn", {}, 0, undefined, async () =>
-          assert.fail("a retired Scene must reject before running a Village turn"),
-        ),
-      /retired feature/,
-    );
     seed("timed");
     await coordinateVenue("timed", "timed-turn", "turn", {}, 0, undefined, async () => {
       await venueCheckpoint("reply", async () => "saved");
       await venueCheckpoint("reply", async () => assert.fail("completed checkpoint must be reused"));
-      editFixtureScene(row("timed"), records, (scene) =>
-        scene.submissions.push({ mode: "chat", id: "timed-turn" } as any),
-      );
+      editFixtureScene(row("timed"), records, (scene) => scene.submissions.push(appliedTurn("timed-turn")));
     });
     const timing = fixtureSceneState(row("timed").data, records).submissions[0].timing;
     assert(timing.elapsedMs >= 0);
@@ -1271,76 +1304,6 @@ async function main() {
       [false, true],
     );
     assert(timing.stages.every((stage: any) => stage.elapsedMs >= 0));
-    seed("semantic-budget");
-    const budgetInput = { semanticBudget: { version: 1, requests: 1, inputTokens: 20, outputTokens: 10 } };
-    let budgetDispatches = 0;
-    const budgetWork = async () => {
-      await coordinatedCompletion(
-        "first-budgeted",
-        async () => {
-          budgetDispatches++;
-          return "saved";
-        },
-        { inputTokens: 10, outputTokens: 5 },
-      );
-      return coordinatedCompletion(
-        "second-budgeted",
-        async () => {
-          budgetDispatches++;
-          return "second";
-        },
-        { inputTokens: 10, outputTokens: 5 },
-      );
-    };
-    await assert.rejects(
-      coordinateVenue("semantic-budget", "budgeted", "turn", budgetInput, 0, undefined, budgetWork),
-      refused("SEMANTIC_BUDGET"),
-    );
-    assert.equal(budgetDispatches, 1, "The whole-attempt reservation stops additional dispatch before spending");
-    const budgetOperation = await readVenueOperation("semantic-budget");
-    await coordinateVenue(
-      "semantic-budget",
-      "budgeted",
-      "turn",
-      budgetInput,
-      0,
-      budgetOperation!.attemptId,
-      budgetWork,
-    );
-    assert.equal(
-      budgetDispatches,
-      2,
-      "An explicit attempt reuses the first saved result and reserves only its new request",
-    );
-    for (const [index, budget] of [
-      null,
-      { version: 2, requests: 1, inputTokens: 20, outputTokens: 10 },
-      { version: 1, requests: 1, inputTokens: "unknown", outputTokens: 10 },
-      { version: 1, requests: 1, outputTokens: 10 },
-    ].entries()) {
-      const id = "invalid-semantic-budget-" + index;
-      seed(id);
-      await assert.rejects(
-        coordinateVenue(id, "invalid", "turn", { semanticBudget: budget }, 0, undefined, () =>
-          coordinatedCompletion("invalid-budget", async () => assert.fail("Invalid budget must not dispatch"), {
-            inputTokens: 1,
-            outputTokens: 1,
-          }),
-        ),
-        refused("SEMANTIC_BUDGET"),
-      );
-    }
-    seed("missing-v2-budget");
-    row("missing-v2-budget").data.semanticVersion = 2;
-    await assert.rejects(
-      coordinateVenue("missing-v2-budget", "invalid", "turn", {}, 0, undefined, () =>
-        coordinatedCompletion("missing-budget", async () => assert.fail("New semantic Scenes require an allowance"), {
-          inputTokens: 1,
-          outputTokens: 1,
-        }),
-      ),
-      refused("SEMANTIC_BUDGET"),
-    );
     seed("abandon");
     await assert.rejects(
       coordinateVenue("abandon", "failed", "turn", {}, 0, undefined, async () => {
@@ -1349,7 +1312,7 @@ async function main() {
       }),
       /truncated/,
     );
-    const failed = JSON.parse(JSON.stringify(fixtureSceneState(row("abandon").data, records).operation!));
+    const failed = structuredClone(fixtureSceneState(row("abandon").data, records).operation!);
     const closeInput = { abandonOperationId: "failed" };
     const closeOptions = { abandonOfOperationId: "failed" };
     for (const [revision, attempt] of [
@@ -1369,14 +1332,7 @@ async function main() {
         ),
       );
     }
-    editFixtureScene(row("abandon"), records, (scene) =>
-      scene.submissions.push({
-        mode: "chat",
-        id: "earlier",
-        semanticProvenance: { version: 2 },
-        semanticReady: false,
-      } as any),
-    );
+    editFixtureScene(row("abandon"), records, (scene) => scene.submissions.push(heldTurn("earlier", scene)));
     await assert.rejects(
       coordinateVenue(
         "abandon",
@@ -1410,9 +1366,13 @@ async function main() {
       /close storage failure/,
     );
     const interruptedClose = structuredClone(fixtureSceneState(row("abandon").data, records).operation!);
+    const abandonedHead = structuredClone((await readSession("abandon")).abandonedOperations![0]);
     assert.deepEqual(
-      interruptedClose.checkpoints["abandoned-request"],
-      { ...failed, snapshot: null },
+      await createOperationEvidence(villageFixtureDocuments(documents)).decode(abandonedHead, {
+        id: "abandon",
+        villageSeed: "coordinator-world",
+      }),
+      { ...failed, snapshot: null, status: "complete" },
       "Abandoned request retains exact input/response/accounting evidence without an inactive Scene snapshot",
     );
     let closeWrites = 0;
@@ -1431,150 +1391,13 @@ async function main() {
     );
     assert.equal(closeWrites, 1, "Admitted close can recover after a storage failure without paid work");
     assert.equal(row("abandon").data.status, "closed");
-    assert.deepEqual(fixtureSceneState(row("abandon").data, records).operation!.checkpoints["abandoned-request"], {
-      ...failed,
-      snapshot: null,
-    });
-    seed("typed-review");
-    const typedVenue = venueFixture({ id: "typed-place", name: "Quiet room", description: "A quiet room." });
-    const typedAt = new Date().toISOString();
-    world.venues.push(typedVenue);
-    row("typed-review").data = coerceSession({
-      version: 4,
-      ...row("typed-review").data,
-      semanticVersion: 2,
-      villageSeed: world.seed,
-      placeId: typedVenue.id,
-      zoneId: "exterior",
-      startedAt: typedAt,
-      sceneAttendance: { capturedAt: typedAt, layout: captureSceneLayout(typedVenue), occupants: [] },
-    });
-    const typedInput = {
-      writingContractVersion: 4,
-      semanticPipelineVersion: 3,
-      residentActionsVersion: 2,
-      interactionScopeVersion: 6,
-      message: "I wait.",
-      semanticBudget: { version: 1, requests: 2, inputTokens: 100000, outputTokens: 20000 },
-    };
-    let gmDispatches = 0,
-      acceptInput = false;
-    const typedModel = {
-      ...policyModel,
-      name: "GM",
-      fitContext: (messages: unknown, options: any) => ({
-        messages,
-        ...options,
-        estimatedTokensBefore: 1000,
-        trimmed: false,
-      }),
-      chatComplete: async () => {
-        gmDispatches++;
-        return {
-          finishReason: "stop",
-          content: JSON.stringify({
-            input: [{ kind: "action", text: acceptInput ? "I wait." : "Invented source" }],
-            segments: [{ kind: "narration", text: "The room is quiet." }],
-          }),
-        };
-      },
-    };
-    const typedWork = async () => {
-      if (fixtureSceneState(row("typed-review").data, records).submissions.some((entry: any) => entry.id === "typed"))
-        return readSession("typed-review");
-      const ports: any = {
-        readVillageState: async () => world,
-        villagesConnectionIdFor: async (purpose: string) => {
-          assert.equal(purpose, "narration");
-          return "gm";
-        },
-        villagesLanguageModels: () => ({ resolveForRequest: async () => typedModel }),
-        completeWithRoom: modelCalls.completeWithRoom,
-        venueCheckpoint,
-        venueSavedCheckpoint,
-        venueOperationSignal,
-        rejectVenueCompletion,
-        venueOperationId: () => "typed",
-        readVillageLore: async () => [],
-        readEffectiveVillagerCard: () => assert.fail("No actors"),
-        villagesLogger: () => ({ warn() {} }),
-        runtimeDebug() {},
-        measurePipeline: async (_label: string, _metadata: unknown, work: any) => work(),
-        refreshZoneParticipants: async (current: unknown) => current,
-      };
-      const writer = createSceneWriting({ ...ports, semantic: createSemanticService(ports) });
-      const source = zoneEventScene(
-        { ...fixtureSceneState(row("typed-review").data, records), operation: { input: typedInput } } as any,
-        typedVenue,
-      );
-      const result = await writer.generate(source, "I wait.", "chat", "", null);
-      await changeSession("typed-review", (current) => {
-        current.lines.push({
-          id: "typed-line",
-          role: "assistant",
-          kind: "narration",
-          speakerId: "__venue_scene__",
-          name: "GM",
-          content: result.lines[0].content,
-          at: current.startedAt,
-          heardBy: [],
-        });
-        current.submissions.push({
-          id: "typed",
-          message: "I wait.",
-          mode: "chat",
-          targetId: "",
-          semanticProvenance: result.semanticProvenance,
-        } as any);
-      });
-      return readSession("typed-review");
-    };
-    await assert.rejects(
-      coordinateVenue("typed-review", "typed", "turn", typedInput, 0, undefined, typedWork),
-      /invalid player source/,
-    );
-    assert.equal(
-      fixtureSceneState(row("typed-review").data, records).lines.length,
-      0,
-      "Invalid source coverage cannot publish a partial turn",
-    );
-    assert.equal(gmDispatches, 1);
-    assert(
-      readPrivateDiagnostics(records.get("villages-private-diagnostics").data).entries.some(
-        (entry: any) => entry.sceneId === "typed-review" && entry.content.includes('"input"'),
-      ),
-      "Rejected GM output stays in the private journal",
-    );
-    await assert.rejects(
-      coordinateVenue("typed-review", "typed", "turn", typedInput, undefined, undefined, typedWork, { recovery: true }),
-      refused("OPERATION_INTERRUPTED"),
-    );
-    assert.equal(gmDispatches, 1, "Local recovery cannot purchase replacement work");
-    acceptInput = true;
-    const typedAttempt = (await readVenueOperation("typed-review"))!.attemptId;
-    const typedCommitted = await coordinateVenue(
-      "typed-review",
-      "typed",
-      "turn",
-      typedInput,
-      undefined,
-      typedAttempt,
-      typedWork,
-    );
-    assert.equal(gmDispatches, 2, "Explicit retry replaces only the rejected combined response");
-    assert.equal(typedCommitted.submissions[0].semanticProvenance?.producer, "gm");
-    await coordinateVenue("typed-review", "typed", "turn", typedInput, undefined, undefined, typedWork, {
-      recovery: true,
-    });
-    assert.equal(fixtureSceneState(row("typed-review").data, records).lines.length, 1);
-    assert.equal(fixtureSceneState(row("typed-review").data, records).submissions.length, 1);
-    assert.equal(gmDispatches, 2);
+    assert.deepEqual((await readSession("abandon")).abandonedOperations, [abandonedHead]);
     seed("typed-invalid-narration");
     const invalidNarration = () =>
       venueCheckpoint("turn-reply", async () => {
         await venueCheckpoint("writing-completion:invalid", () =>
           coordinatedCompletion("invalid-proposal", async () => ({
-            content: '{"input":[],"segments":"invalid"}',
+            content: '{"segments":"invalid"}',
             finishReason: "stop",
           })),
         );
@@ -1636,12 +1459,6 @@ async function main() {
         });
         await new Promise<void>((resolve) => setImmediate(resolve));
         assert.equal(pictures, 1, "closed Scenes cannot initiate artwork");
-        seed("artwork-rejected");
-        await coordinateVenue("artwork-rejected", "visit", "turn", {}, 0, undefined, async () => ({
-          turnOutcome: "occupancy-unavailable",
-        }));
-        await new Promise<void>((resolve) => setImmediate(resolve));
-        assert.equal(pictures, 1, "an expected rejected turn cannot initiate artwork or mutate observed state");
       } finally {
         clearTimeout(timer);
         releasePictures();
@@ -1649,6 +1466,8 @@ async function main() {
     }
     console.log("villages-venue-coordinator: ok");
   } finally {
+    await stopVenueCoordinator();
+    await new Promise<void>((resolve) => setImmediate(resolve));
     release();
   }
 }

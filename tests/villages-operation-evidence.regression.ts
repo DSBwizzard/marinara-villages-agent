@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import type { VenueOperation } from "../packages/villages/src/server/domain/models/operation-model.js";
 import { applySceneMutation } from "../packages/villages/src/server/domain/rules/scene-mutation.js";
@@ -48,21 +47,16 @@ function operation(checkpoints: Record<string, unknown> = {}): VenueOperation {
   };
 }
 async function world(f: ReturnType<typeof sceneHistoryFixture>) {
-  const { continuity: _continuity, episodes: _episodes, worldPlaces: _places, ...fields } = defaultVillageState();
-  await f.documents.create({
-    id: "villages-village",
-    packageId: "villages",
-    kind: "village",
-    name: "World",
-    description: "",
-    data: {
-      ...fields,
-      seed: scope.villageSeed,
-      setupAt: at,
-      foundedAt: at,
-      memoryHead: null,
+  await createVillageRepository(() => f.gate.documents).mutateAuthority(
+    (state) => {
+      Object.assign(state, {
+        seed: scope.villageSeed,
+        setupAt: at,
+        foundedAt: at,
+      });
     },
-  });
+    { memories: true },
+  );
 }
 function coordinatorFor(f: ReturnType<typeof sceneHistoryFixture>) {
   const logger = { debug() {}, info() {}, warn() {}, error() {} };
@@ -333,7 +327,6 @@ for (const fault of ["before", "after"] as const) {
       resumeProject: async () => {},
       cancelProject: async () => {},
       replaySaved: async () => {},
-      continueSaved: async () => {},
     });
     const parsedId = native.operation.checkpoints.parsed.id;
     const abandonedHead = structuredClone(native.operation);
@@ -489,7 +482,6 @@ for (const fault of ["before", "after"] as const) {
     f.release();
   }
 }
-console.log("Operation evidence publication, deduplication, restoration, rejection fencing and cleanup passed.");
 {
   const f = sceneHistoryFixture();
   try {
@@ -553,7 +545,7 @@ console.log("Operation evidence publication, deduplication, restoration, rejecti
     f.release();
   }
 }
-for (const durable of [false, true]) {
+{
   const f = sceneHistoryFixture();
   try {
     await world(f);
@@ -561,33 +553,55 @@ for (const durable of [false, true]) {
       Object.assign(scene, coerceSession({ version: 5, ...scope, status: "active", startedAt: at })),
     );
     const coordinator = coordinatorFor(f);
+    let localRuns = 0;
     await coordinator.coordinateVenue(scope.id, "refused", "turn", {}, 0, undefined, async () => {
       await assert.rejects(
         coordinator.venueCheckpoint("local-refusal", async () => {
+          localRuns++;
           throw Error("Known admission refusal");
         }),
         /Known admission refusal/,
       );
-      if (durable)
-        await f.repository.changeSession(scope.id, (scene) => {
-          scene.rejectedSubmissions = [
-            {
-              id: "refused",
-              inputHash: "exact-input",
-              sceneRevision: scene.sceneRevision,
-              turnOutcome: "occupancy-unavailable",
-            },
-          ];
-        });
-      return { turnOutcome: "occupancy-unavailable" as const };
+      return { finished: true };
     });
-    const saved = f.rows.get("villages-venue-visit-" + scope.id).data.operation;
+    const interrupted = (await f.repository.readSession(scope.id)).operation!;
     assert.equal(
-      saved.status,
-      durable ? "complete" : "interrupted",
-      "Only an exact durable terminal receipt resolves unfinished local checkpoint work",
+      interrupted.status,
+      "interrupted",
+      "returning from the caller cannot erase unfinished checkpoint work",
     );
-    assert.equal(Object.keys(saved.checkpointClaims ?? {}).length, durable ? 0 : 1);
+    assert.equal(Object.keys(interrupted.checkpointClaims ?? {}).length, 1);
+    await collectRetainedStorage(f.gate);
+    const retained = (await f.repository.readSession(scope.id)).operation!;
+    assert.deepEqual(retained.checkpointClaims, interrupted.checkpointClaims, "cleanup preserves the unresolved claim");
+
+    const recovered = await coordinator.coordinateVenue(
+      scope.id,
+      "refused",
+      "turn",
+      {},
+      0,
+      interrupted.attemptId,
+      async () => {
+        const result = await coordinator.venueCheckpoint("local-refusal", async () => {
+          localRuns++;
+          return { applied: "Exact recovered local result" };
+        });
+        const saved = (await f.repository.readSession(scope.id)).operation!;
+        assert.deepEqual(
+          saved.checkpoints["local-refusal"],
+          result,
+          "the local result is durable before the caller resumes",
+        );
+        assert.equal(Object.keys(saved.checkpointClaims ?? {}).length, 0);
+        return result;
+      },
+    );
+    assert.deepEqual(recovered, { applied: "Exact recovered local result" });
+    assert.equal(localRuns, 2, "only explicit saved-request retry reruns the unfinished local work");
+    const completed = (await f.repository.readSession(scope.id)).operation!;
+    assert.equal(completed.status, "complete");
+    assert.equal(Object.keys(completed.checkpointClaims ?? {}).length, 0);
   } finally {
     f.release();
   }
@@ -609,3 +623,7 @@ for (const durable of [false, true]) {
     f.release();
   }
 }
+
+console.log(
+  "Native operation evidence publication, recovery, ownership fencing, checkpoint claims and cleanup passed.",
+);

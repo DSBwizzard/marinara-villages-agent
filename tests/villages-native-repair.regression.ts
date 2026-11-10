@@ -1,9 +1,10 @@
-// Test cases: native-repair/common-books, native-repair/undo, native-repair/repeated-undo, native-repair/offer-undo, native-repair/room, native-repair/circumstance, native-repair/founding-circumstance, native-repair/protected-circumstance, native-repair/stale, native-repair/checkpoint, native-repair/pending-target, native-repair/unread-targets, native-repair/recovery, native-repair/plan-allowance
+// Test cases: native-repair/common-books, native-repair/undo, native-repair/repeated-undo, native-repair/offer-undo, native-repair/room, native-repair/circumstance, native-repair/founding-circumstance, native-repair/protected-circumstance, native-repair/stale, native-repair/checkpoint, native-repair/missing-page, native-repair/pending-target, native-repair/unread-targets, native-repair/recovery, native-repair/plan-allowance
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { createRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
 import { createRepairService } from "../packages/villages/src/server/features/repair/repair-service.js";
+import { collectRetainedStorage } from "../packages/villages/src/server/features/repair/retained-storage-cleanup.js";
 import {
   repairId,
   retainAdministrativeCircumstance,
@@ -735,6 +736,23 @@ await runCase("native-repair/checkpoint", async () => {
   assert(restored.continuity.records[0].revision > changed.continuity.records[0].revision);
   f.reopen();
   assert.equal(remembered(await f.read(), "mara").text, remembered(original, "mara").text);
+});
+
+await runCase("native-repair/missing-page", async () => {
+  const f = await fixture();
+  try {
+    const head = f.rows.get("villages-village").data.memoryHead,
+      manifest = JSON.parse(f.rows.get(head.id).data.payload),
+      pageId = manifest.versions.id;
+    assert(f.rows.delete(pageId), "The committed common history page exists before the fault");
+    const before = structuredClone(f.rows);
+    await assert.rejects(collectRetainedStorage(f.gate), /missing/);
+    assert.deepEqual(f.rows, before, "Missing common history prevents every cleanup deletion");
+    await assert.rejects(f.api.createCheckpoint("Missing common page", "missing-page"), /missing/);
+    assert.deepEqual(f.rows, before, "Missing common history prevents checkpoint publication");
+  } finally {
+    f.gate.dispose();
+  }
 });
 
 await runCase("native-repair/plan-allowance", async () => {

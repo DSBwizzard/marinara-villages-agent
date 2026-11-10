@@ -1424,15 +1424,10 @@ await runCase("scene-narration/coordinator-startup-hold", async () => {
   const f = fixture(),
     storage = sceneHistoryFixture();
   try {
-    const { continuity: _continuity, episodes: _episodes, worldPlaces: _places, ...fields } = f.world;
-    await storage.documents.create({
-      id: "villages-village",
-      packageId: "villages",
-      kind: "village",
-      name: "World",
-      description: "",
-      data: { ...fields, memoryHead: null },
-    });
+    await createVillageRepository(() => storage.gate.documents).mutateAuthority(
+      (state) => Object.assign(state, f.world),
+      { memories: true },
+    );
     const scene = f.scenes.get("scene")!;
     f.turn().acceptance = { status: "held", rejected: [{ id: "remember", reason: "Preserved hold" }] };
     scene.operation = {

@@ -47,14 +47,7 @@ export function useScenesState(isFounded?: boolean) {
 
   const [lastSceneEnding, setLastSceneEnding] = useState("");
 
-  /**
-   * The room's own busy flag, and not the tab's.
-   *
-   * For the reason `placeBusyId` and `spinOffBusyId` have their own: a turn in a
-   * room can be four model calls long, and the tab's shared `busy` greys out the
-   * settings panel, the map and every button in it while it is up. What has to be
-   * shut is the box the answer is coming to, and that is all that is shut.
-   */
+  // A pending Scene response leaves settings and exploration usable.
   const [roomBusy, setRoomBusy] = useState(false);
 
   const leavingRoomPendingRef = useRef(false);

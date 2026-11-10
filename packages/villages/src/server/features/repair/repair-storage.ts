@@ -332,6 +332,7 @@ export function createRepairStorage(documents: CapabilityDocumentStore, artifact
     mode: CheckpointData["mode"],
   ): Promise<RepairCheckpoint> {
     rows = worldSources(rows, world, true);
+    await validateResponseWrites(rows.map((row) => ({ before: row, after: null })));
     const value: CheckpointData = {
       version: 2,
       seed: world.seed,

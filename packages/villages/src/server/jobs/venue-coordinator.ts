@@ -29,9 +29,8 @@ export async function venueCheckpoint<T>(stage: string, work: () => Promise<T>):
 export async function coordinatedCompletion<T>(
   fingerprint: string,
   work: (signal?: AbortSignal) => Promise<T>,
-  reservation?: { inputTokens: number; outputTokens: number },
 ): Promise<T> {
-  return coordinatorBinding.get().coordinatedCompletion<T>(fingerprint, work, reservation);
+  return coordinatorBinding.get().coordinatedCompletion<T>(fingerprint, work);
 }
 export async function rejectVenueCompletion(
   ...args: Parameters<VenueCoordinatorService["rejectVenueCompletion"]>

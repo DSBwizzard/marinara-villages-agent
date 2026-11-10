@@ -506,10 +506,6 @@ export function createRepairService(ports: RepairPorts) {
           repairDocumentDigest(rows.find((row) => row.id === scene.id) ?? null) !== repairDocumentDigest(copy(scene)))
       )
         throw conflict("The active Scene source ownership is missing from this checkpoint.");
-    await validateSceneHistory(
-      documents,
-      rows.filter((row) => row.kind === "venue-visit").map((row) => row.data),
-    );
     return storage.checkpoint(state, rows, id, title, randomUUID(), mode);
   }
   async function retireWorldJob(row: Doc, at: string) {

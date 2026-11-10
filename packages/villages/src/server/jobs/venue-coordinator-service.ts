@@ -269,11 +269,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
   }
 
   /** Journal each provider attempt before dispatch. */
-  async function coordinatedCompletion<T>(
-    fingerprint: string,
-    work: (signal?: AbortSignal) => Promise<T>,
-    reservation?: { inputTokens: number; outputTokens: number },
-  ): Promise<T> {
+  async function coordinatedCompletion<T>(fingerprint: string, work: (signal?: AbortSignal) => Promise<T>): Promise<T> {
     const current = context.getStore();
     if (!current) return work();
     assertVenueOwnership();
@@ -313,52 +309,6 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
         "The previous request may have been billed. Review your draft and explicitly retry to authorize another request.",
       );
     }
-    const budget = asRecord(current.operation.input.semanticBudget);
-    let reservationBefore: { key: string; present: boolean; value: unknown } | undefined;
-    if (current.operation.input.semanticBudget !== undefined || current.operation.snapshot?.semanticVersion === 2) {
-      const keys = ["requests", "inputTokens", "outputTokens"] as const;
-      if (
-        budget.version !== 1 ||
-        !keys.every(
-          (key) => typeof budget[key] === "number" && Number.isSafeInteger(budget[key]) && Number(budget[key]) > 0,
-        )
-      )
-        throw venueRefusal("SEMANTIC_BUDGET", "The saved model allowance is missing or invalid.");
-      const budgetKey = "semantic-budget:" + current.operation.attemptId;
-      const saved = asRecord(current.operation.checkpoints[budgetKey]);
-      if (
-        current.operation.checkpoints[budgetKey] !== undefined &&
-        !keys.every(
-          (key) => typeof saved[key] === "number" && Number.isSafeInteger(saved[key]) && Number(saved[key]) >= 0,
-        )
-      )
-        throw venueRefusal("SEMANTIC_BUDGET", "The saved model reservation is invalid.");
-      if (
-        !reservation ||
-        ![reservation.inputTokens, reservation.outputTokens].every((value) => Number.isFinite(value) && value >= 0)
-      )
-        throw venueRefusal("SEMANTIC_BUDGET", "This request lacks its reserved token allowance.");
-      const next = {
-        requests: Number(saved.requests ?? 0) + 1,
-        inputTokens: Number(saved.inputTokens ?? 0) + Math.ceil(reservation.inputTokens),
-        outputTokens: Number(saved.outputTokens ?? 0) + Math.ceil(reservation.outputTokens),
-      };
-      if (
-        next.requests > Number(budget.requests) ||
-        next.inputTokens > Number(budget.inputTokens) ||
-        next.outputTokens > Number(budget.outputTokens)
-      )
-        throw venueRefusal(
-          "SEMANTIC_BUDGET",
-          "This attempt reached its model allowance. Saved results remain recoverable.",
-        );
-      reservationBefore = {
-        key: budgetKey,
-        present: Object.hasOwn(current.operation.checkpoints, budgetKey),
-        value: current.operation.checkpoints[budgetKey],
-      };
-      current.operation.checkpoints[budgetKey] = next;
-    }
     current.operation.attempts[key] = { status: "dispatching" };
     await persist(current);
     const reservationClaim = await receipts.begin(
@@ -368,10 +318,6 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       current.explicitRetry === true,
     );
     if (reservationClaim.cached) {
-      if (reservationBefore) {
-        if (reservationBefore.present) current.operation.checkpoints[reservationBefore.key] = reservationBefore.value;
-        else delete current.operation.checkpoints[reservationBefore.key];
-      }
       current.operation.attempts[key] = {
         status: "complete",
         result: reservationClaim.cached.value,
@@ -601,8 +547,6 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
         await updateWithSubmissions(sessionId, async (data, submissions, documents) => {
           villageSeed = typeof data.villageSeed === "string" ? data.villageSeed : undefined;
           controller.signal.throwIfAborted();
-          if (data.spinoff !== undefined)
-            throw venueRefusal("SCENE_BUSY", "This Scene uses a retired feature. Its saved data is preserved.");
           const prior = await operationEvidenceStore(documents).decode(data.operation, data as unknown as VenueScene);
           if (
             ["turn", "greet"].includes(kind) &&
@@ -610,8 +554,6 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
             !submissions.some((turn) => turn.id === id && turn.acceptance.status === "applied")
           )
             throw venueRefusal("OPERATION_INTERRUPTED", "That request was abandoned. Send a new message.");
-          // A durable business result survives a crash before coordinator cleanup.
-          // It cannot keep a later edited submission behind an interrupted request.
           if (prior?.id === id && JSON.stringify(prior.input) !== fingerprint)
             throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID belongs to a different line.");
           let abandoned = false;
