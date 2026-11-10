@@ -56,7 +56,7 @@ const episode = z
             ]),
             targetId: id,
             revision: z.number().int().nonnegative().safe(),
-            text: z.string().min(1).max(8000),
+            text: z.string().min(1).max(16000),
             witnesses: ids.max(32),
             observedBy: ids.max(32).optional(),
             endedContacts: ids.min(1).max(32).optional(),
@@ -89,6 +89,10 @@ const episode = z
                 zoneId: id,
                 segment: z.number().int().min(0).max(23),
               })
+              .strict()
+              .optional(),
+            circumstance: z
+              .object({ summary: z.string().min(1).max(1200), status: z.enum(["active", "resolved"]) })
               .strict()
               .optional(),
           })
@@ -203,6 +207,16 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
       "contact result changed its owning native command",
     );
   for (const receipt of value.commandReceipts) {
+    if (receipt.circumstance) {
+      const meaning = JSON.parse(receipt.text);
+      memoryRequire(
+        receipt.kind === "circumstance" &&
+          meaning?.situation?.summary === receipt.circumstance.summary &&
+          meaning?.situation?.status === receipt.circumstance.status,
+        "circumstance result changed its native meaning",
+      );
+    } else
+      memoryRequire(!(value.sceneId && receipt.kind === "circumstance"), "Scene circumstance lost its native meaning");
     const arrival = receipt.admission;
     memoryRequire(
       receipt.kind === "npc"

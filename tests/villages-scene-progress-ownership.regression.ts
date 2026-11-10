@@ -1,4 +1,4 @@
-// Test cases: scene-narration/outbox, scene-narration/held, scene-narration/lost-ack, scene-narration/write-failure, scene-narration/startup-hold, scene-narration/activation-owner, scene-narration/private-projection, scene-narration/validation-hold, scene-narration/cancellation, scene-narration/connected-turn, scene-narration/saved-changes, scene-narration/coordinator-startup-hold, scene-narration/abandon, scene-narration/abandon-lost-ack, scene-narration/abandon-committed, scene-narration/abandon-fence, scene-narration/startup-no-write, scene-narration/replace-committed, scene-narration/retirement, scene-narration/skip-ownership, scene-narration/input-playback, scene-narration/native-close, scene-narration/native-close-recovery, scene-narration/native-contact-end, scene-narration/native-close-authority, scene-narration/native-delta-fence, scene-narration/native-delta-integrity, scene-narration/native-movement, scene-narration/native-movement-recovery, scene-narration/native-departure, scene-narration/native-npc
+// Test cases: scene-narration/outbox, scene-narration/held, scene-narration/lost-ack, scene-narration/write-failure, scene-narration/startup-hold, scene-narration/activation-owner, scene-narration/private-projection, scene-narration/validation-hold, scene-narration/cancellation, scene-narration/connected-turn, scene-narration/saved-changes, scene-narration/coordinator-startup-hold, scene-narration/abandon, scene-narration/abandon-lost-ack, scene-narration/abandon-committed, scene-narration/abandon-fence, scene-narration/startup-no-write, scene-narration/replace-committed, scene-narration/retirement, scene-narration/skip-ownership, scene-narration/input-playback, scene-narration/native-close, scene-narration/native-close-recovery, scene-narration/native-contact-end, scene-narration/native-close-authority, scene-narration/native-delta-fence, scene-narration/native-delta-integrity, scene-narration/native-movement, scene-narration/native-movement-recovery, scene-narration/native-departure, scene-narration/native-npc, scene-narration/native-circumstance
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -46,6 +46,7 @@ import { continuityActor } from "../packages/villages/src/server/domain/rules/co
 import { readAcceptedEpisode } from "../packages/villages/src/server/domain/decoding/episode-codec.js";
 import { scenePlaybackSteps } from "../packages/villages/src/client/features/scenes/scene-playback.js";
 import { readNpc } from "../packages/villages/src/server/domain/rules/places.js";
+import { ensureNarrative } from "../packages/villages/src/server/domain/rules/narrative-development.js";
 import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
 import {
   encodeContinuityPages,
@@ -385,6 +386,84 @@ await runCase("scene-narration/native-npc", async () => {
     await f.service.processSavedExchange("scene", "turn");
     assert.equal(memoryHash(f.scenes.get("scene")), before);
     assert.equal(f.world.episodes.records.length, 1);
+  }
+});
+await runCase("scene-narration/native-circumstance", async () => {
+  for (const lost of [false, true]) {
+    const f = fixture(),
+      scene = f.scenes.get("scene")!,
+      turn = f.turn(),
+      venue = structuredClone(turn.narration!.readset.source.venue);
+    for (const zone of venue.zones ?? []) if (zone.id !== scene.zoneId) zone.description = "";
+    f.world.venues = [venue];
+    ensureNarrative(f.world, at);
+    scene.continuity = captureSceneContinuity(f.world, scene, Date.parse(at));
+    const context = narrationContinuityContext(
+        f.world,
+        scene,
+        venue,
+        turn.narration!.readset.source.operationId,
+        turn.message,
+        at,
+      ),
+      readset = fittedNarrationReadset(
+        f.world,
+        context,
+        context.parts.map((part) => part.block.evidenceId!),
+      );
+    assert(readset.circumstance);
+    const raw = {
+      segments: [{ id: "event", kind: "narration", text: "A gust rattles the sign.", requires: ["event"] }],
+      commands: [
+        {
+          id: "event",
+          type: "circumstance",
+          at: "event",
+          situation: { title: "Loose sign", summary: "The sign rattles." },
+          conditions: [
+            {
+              observation: "The sign's bracket has loosened.",
+              restriction: "none",
+              remedy: "NATIVE_REMEDY_DETAIL",
+              durationMinutes: 60,
+            },
+          ],
+          source: [{ segment: "event", perceive: { kind: "seen", by: ["player"] } }],
+        },
+      ],
+    };
+    turn.narration = { raw, readset, responseDigest: memoryHash(raw) };
+    if (lost) {
+      f.failScene();
+      await assert.rejects(f.service.processSavedExchange("scene", "turn"), (error) => error === f.exact);
+      assert.equal(f.turn().acceptance.status, "pending");
+      const storage = sceneHistoryFixture();
+      try {
+        const repository = createVillageRepository(() => storage.gate.documents);
+        await repository.mutateAuthority((state) => Object.assign(state, f.world), { memories: true });
+        Object.assign(
+          f.world,
+          await createVillageRepository(() => storage.gate.documents).readAuthority({ memories: true }),
+        );
+      } finally {
+        storage.release();
+      }
+      f.world.setting = "Later unrelated setting.";
+      f.interrupt();
+    }
+    await f.service.processSavedExchange("scene", "turn");
+    assert.equal(f.turn().acceptance.status, "applied", f.turn().progressError);
+    assert.equal(f.world.narrative!.conditions.length, 1);
+    assert.equal(f.world.eventAttempts!.attempts.length, 1);
+    assert.equal(f.world.continuity.records.length, 1);
+    assert.equal(f.world.episodes.records.length, 1);
+    const saved = f.scenes.get("scene")!;
+    assert(saved.lines.some((line) => line.content === "A gust rattles the sign."));
+    assert(!JSON.stringify(publicSceneAuthority(saved)).includes("NATIVE_REMEDY_DETAIL"));
+    const before = memoryHash(saved);
+    await f.service.processSavedExchange("scene", "turn");
+    assert.equal(memoryHash(f.scenes.get("scene")), before);
+    assert.equal(f.world.eventAttempts!.attempts.length, 1);
   }
 });
 await runCase("scene-narration/native-movement-recovery", async () => {

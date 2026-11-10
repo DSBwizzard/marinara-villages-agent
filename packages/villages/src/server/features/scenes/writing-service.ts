@@ -10,6 +10,7 @@ import { inspectedLoreUse, villageLoreContext } from "../../domain/rules/lore-co
 import { memoryHash, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import { NARRATION_DIRECTION, NARRATION_KEEP, NARRATION_RESPONSE } from "../../domain/rules/narration-contract.js";
 import { fittedNarrationReadset, narrationContinuityContext } from "../../domain/rules/narration-context.js";
+import { narrationCircumstancePrompt } from "../../domain/rules/narration-circumstance.js";
 import { venueAdditionalWritingGuidance, venueWritingDirection } from "../../domain/rules/narration-style.js";
 import { findLocation, findNpc, npcProfile } from "../../domain/rules/places.js";
 import { renderPlayerBackgroundContext } from "../../domain/rules/player-background.js";
@@ -214,6 +215,7 @@ export function createSceneWriting({
         JSON.stringify({
           calendar,
           protections: context.protections,
+          circumstance: narrationCircumstancePrompt(context.circumstance),
           presentation: {
             state: presentation.state,
             sprites: Object.entries(presentation.sprites).map(([actorId, sprite]) => ({

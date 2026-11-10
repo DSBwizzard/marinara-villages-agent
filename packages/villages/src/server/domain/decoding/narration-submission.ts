@@ -45,6 +45,7 @@ const saved = z
             Array.isArray(row.offered) &&
             Array.isArray(row.npcCandidates) &&
             row.npcCandidates.length <= 4 &&
+            (row.circumstance === null || row.circumstance?.source === "scene") &&
             row.source?.scene?.version === 5 &&
             typeof row.source.seed === "string" &&
             typeof row.source.input === "string" &&

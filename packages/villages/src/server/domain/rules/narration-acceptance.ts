@@ -293,9 +293,24 @@ export function acceptNarrationContinuity(
     if (failed) continue;
     for (const id of selection.acceptedIds) {
       const keep = prepared.get(id);
-      if (!keep) continue;
       try {
-        continuity = applyContinuityWrite(continuity, keep.write, keep.admission);
+        if (keep) continuity = applyContinuityWrite(continuity, keep.write, keep.admission);
+        const receipt = native.receipts[id];
+        if (receipt?.kind === "circumstance" && receipt.witnesses.length) {
+          const evidence = bindNarrationSource("native:" + id, source);
+          continuity = applyContinuityWrite(
+            continuity,
+            {
+              id: "native-" + memoryHash(id).slice(0, 32),
+              holders: source.actors.filter((actor) => receipt.witnesses.includes(actor.id)),
+              class: "experience",
+              current: false,
+              text: receipt.text,
+              sourceIds: [evidence.id],
+            },
+            { ...admission, protectedRoots: [], sources: [evidence], supplied: [] },
+          );
+        }
       } catch (error) {
         effects.find((effect) => effect.id === id)!.failure =
           error instanceof Error ? error.message.slice(0, 2000) : String(error).slice(0, 2000);

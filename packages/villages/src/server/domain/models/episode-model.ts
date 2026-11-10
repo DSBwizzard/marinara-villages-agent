@@ -57,6 +57,7 @@ export type AcceptedEpisode = {
     };
     departure?: { actorId: string; from: string; segment: number; path: string[] };
     admission?: { npc: import("./places.js").NpcIdentity; zoneId: string; segment: number };
+    circumstance?: { summary: string; status: "active" | "resolved" };
   }[];
   /** Code-bound source ancestry for each input/segment unit. */
   dependencies: Record<string, string[]>;

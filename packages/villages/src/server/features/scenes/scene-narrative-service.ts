@@ -57,7 +57,7 @@ export function createSceneNarrative(ports: {
       let proof: NonNullable<NonNullable<VillageState["narrative"]>["claims"]>[number] | null = null;
       await ports.mutate(async (state) => {
         if (state.narrative?.claims?.some((row) => row.id === grant.id)) {
-          admitted = reserveSceneNarrative(state, scene, grant, ports.now());
+          admitted = reserveSceneNarrative(state, scene, grant, ports.now(), scene.operation!.id);
           if (admitted) proof = structuredClone(state.narrative!.claims!.find((row) => row.id === grant.id)!);
           return;
         }
@@ -69,7 +69,7 @@ export function createSceneNarrative(ports: {
           return;
         }
         const candidate = { ...state, relationshipContext: relationships };
-        admitted = reserveSceneNarrative(candidate, scene, grant, ports.now());
+        admitted = reserveSceneNarrative(candidate, scene, grant, ports.now(), scene.operation!.id);
         if (admitted) {
           state.eventAttempts = candidate.eventAttempts;
           state.narrative = candidate.narrative;

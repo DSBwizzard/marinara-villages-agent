@@ -30,6 +30,7 @@ import { narrationAccessScopes } from "./narration-access.js";
 import { capturedSceneCalendar } from "./scene-calendar.js";
 import { episodeContextActors } from "./episode-sources.js";
 import { capturePlaceContext, npcProfile } from "./places.js";
+import { offerSceneNarrative } from "./scene-narrative.js";
 
 type Part = {
   block: VenueWritingBlock;
@@ -166,7 +167,7 @@ export function narrationContinuityContext(
             receipt.kind === "circumstance" &&
             receipt.targetId === situation.id &&
             receipt.revision === situation.revision &&
-            receipt.text === situation.summary,
+            (receipt.circumstance?.summary ?? receipt.text) === situation.summary,
         ),
       );
       memoryRequire(episode, "current circumstance has no canonical continuity source");
@@ -175,7 +176,7 @@ export function narrationContinuityContext(
           receipt.kind === "circumstance" &&
           receipt.targetId === situation.id &&
           receipt.revision === situation.revision &&
-          receipt.text === situation.summary,
+          (receipt.circumstance?.summary ?? receipt.text) === situation.summary,
       )!;
       const roots = episode.continuityVersionIds
         .map((id) => state.continuity.versions.find((version) => version.id === id)!)
@@ -186,10 +187,64 @@ export function narrationContinuityContext(
       return { situation, episode, receipt, roots };
     });
   const circumstanceRoots = new Set(circumstances.flatMap(({ roots }) => roots));
+  const conditionIds = new Set(
+    (state.narrative?.conditions ?? [])
+      .filter(
+        (row) =>
+          row.venueId === scene.placeId &&
+          row.zoneId === scene.zoneId &&
+          !row.clearedAt &&
+          (!row.endsAt || row.endsAt > at),
+      )
+      .map((row) => row.id),
+  );
+  const conditionRoots = new Set<string>();
+  if (conditionIds.size) {
+    const receipts = new Map(
+      state.episodes.records.flatMap((episode) =>
+        episode.commandReceipts.flatMap((receipt) => {
+          if (!receipt.circumstance) return [];
+          const meaning = JSON.parse(receipt.text);
+          return [
+            [
+              receipt.id,
+              new Map<string, Set<string>>(
+                (Array.isArray(meaning.conditions) ? meaning.conditions : []).map((row: { id: string }) => [
+                  row.id,
+                  new Set(Object.keys(row)),
+                ]),
+              ),
+            ],
+          ] as const;
+        }),
+      ),
+    );
+    const byRoot = new Map<string, Map<string, Set<string>>>();
+    for (const version of state.continuity.versions)
+      for (const source of version.sources) {
+        const fields = source.committedReceiptId && receipts.get(source.committedReceiptId);
+        if (!fields) continue;
+        const known = byRoot.get(version.rootId) ?? new Map<string, Set<string>>();
+        for (const [id, keys] of fields) known.set(id, new Set([...(known.get(id) ?? []), ...keys]));
+        byRoot.set(version.rootId, known);
+      }
+    for (const holder of holders) {
+      const own = views
+        .filter((view) => continuityHolderKey(view.holder) === continuityHolderKey(holder))
+        .sort((a, b) => b.version.createdRevision - a.version.createdRevision);
+      for (const id of conditionIds)
+        for (const field of ["observation", "remedy"]) {
+          const known = own.find((view) => byRoot.get(view.id)?.get(id)?.has(field));
+          if (known) conditionRoots.add(known.id);
+        }
+    }
+  }
   const actorSelection = selectActorContinuity(state.continuity, state.episodes, holders, at, {
     query: input,
     bytes: capacity,
-    requiredIds: [...circumstanceRoots].filter((id) => views.some((view) => view.id === id)),
+    requiredIds: [...new Set([...circumstanceRoots, ...conditionRoots])].filter((id) =>
+      views.some((view) => view.id === id),
+    ),
   });
   const roomSelection = selectRoomContinuity(state.continuity, state.episodes, room, at, {
     query: input,
@@ -552,6 +607,12 @@ export function narrationContinuityContext(
     episodeId,
     actors,
     npcCandidates,
+    circumstance: offerSceneNarrative(
+      state,
+      scene,
+      "circumstance-" + memoryHash([state.seed, scene.id, operationId]).slice(0, 32),
+      new Date(at),
+    ),
     calendar: capturedSceneCalendar({ startedAt: at }, state.timeZone),
     holders,
     room,
@@ -637,6 +698,7 @@ export function fittedNarrationReadset(
       provenance,
     },
     offered: [...offered.values()].filter((row) => context.actors.some((actor) => actor.id === row.holder.id)),
+    circumstance: context.circumstance,
     npcCandidates: candidates.map(({ npc, holder }) => ({
       npc,
       incarnation: holder.incarnation,

@@ -14,6 +14,7 @@ export type NarrationReadset = {
   admission: Omit<ContinuityAdmission, "sources" | "blockedSources">;
   offered: AcceptedEpisode["offered"];
   npcCandidates: { npc: import("./places.js").NpcIdentity; incarnation: string; offered: string[] }[];
+  circumstance: import("./narrative-model.js").NarrativeAdmission | null;
   projects: import("../rules/project-interpretation.js").ProjectSpeechContext[];
   access: import("../rules/narration-access.js").NarrationAccessScope[];
   residence: ReturnType<typeof import("../rules/narration-residence.js").narrationResidenceContext>;
