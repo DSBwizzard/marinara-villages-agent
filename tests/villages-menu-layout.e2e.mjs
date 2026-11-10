@@ -353,7 +353,19 @@ await withBrowser(browser, async () => {
           area: rect.width * rect.height,
         };
       });
-      // Sample the real paper artwork behind the UI, including transparent surfaces.
+      // Long phone pages extend beyond the clipped reading area; sample only its visible background.
+      const readingArea = await main.evaluate((node) => {
+        const bounds = node.getBoundingClientRect();
+        const stage = node.closest(".marinara-capability-villages-desk-stage").getBoundingClientRect();
+        const x = Math.max(0, bounds.left, stage.left);
+        const y = Math.max(0, bounds.top, stage.top);
+        return {
+          x,
+          y,
+          width: Math.min(innerWidth, bounds.right, stage.right) - x,
+          height: Math.min(innerHeight, bounds.bottom, stage.bottom) - y,
+        };
+      });
       const opacity = await main.evaluate((node) => {
         const previous = node.style.opacity;
         node.style.opacity = "0";
@@ -361,7 +373,7 @@ await withBrowser(browser, async () => {
       });
       let paper;
       try {
-        paper = PNG.sync.read(await main.screenshot({ animations: "disabled" }));
+        paper = PNG.sync.read(await page.screenshot({ clip: readingArea, animations: "disabled" }));
       } finally {
         await main.evaluate((node, value) => {
           node.style.opacity = value;
