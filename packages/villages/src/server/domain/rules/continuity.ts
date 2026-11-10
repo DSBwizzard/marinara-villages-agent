@@ -76,7 +76,9 @@ export function continuityConstraints(collection: ContinuityCollection, holders:
                 .map((version) => version.text),
             ),
           ],
-          ...(protection.repair
+          ...(protection.repair &&
+          (holder.kind !== "room" ||
+            record.heads[continuityHolderKey(holder)]?.versionId === protection.repair.versionId)
             ? { corrected: collection.versions.find((version) => version.id === protection.repair!.versionId)!.text }
             : {}),
         },
@@ -271,11 +273,27 @@ function checkProtection(
         ) && !provenance.some((unit) => protection.sourceUnits.includes(unit)),
         "protected continuity source replay",
       );
+      const corrected = collection.versions.find((version) => version.id === protection.repair?.versionId)?.text;
+      if (holder.kind === "room" && write.text !== undefined && write.text !== corrected)
+        memoryRequire(
+          !collection.versions.some(
+            (version) =>
+              protection.sourceUnits.includes(continuityVersionUnit(version.id)) &&
+              version.text.trim() === write.text!.trim(),
+          ),
+          "protected Room text cannot be restored",
+        );
       if (record.id === write.target?.id) {
         memoryRequire(!protection.forgotten, "forgotten continuity target");
+        const freshRoom =
+          holder.kind === "room" &&
+          write.screening?.roots.includes(record.id) &&
+          sources.every(
+            (source) =>
+              source.episodeId === context.episodeId && (source.kind === "observation" || source.kind === "native"),
+          );
         memoryRequire(
-          write.text === undefined ||
-            write.text === collection.versions.find((version) => version.id === protection.repair?.versionId)?.text,
+          write.text === undefined || write.text === corrected || freshRoom,
           "corrected continuity target conflict",
         );
       }
@@ -742,9 +760,12 @@ export function continuityViews(
     if (!head || protection?.forgotten) return [];
     const original = versions.get(head.versionId);
     memoryRequire(original, "current continuity version is missing");
+    const repaired = Boolean(
+      protection?.repair && (holder.kind !== "room" || protection.repair.versionId === original.id),
+    );
     if (
       blocked.has(continuityVersionUnit(original.id)) ||
-      (!protection?.repair &&
+      (!repaired &&
         (original.sources.some((source) => blocked.has(unit(source))) ||
           record.offer?.events.some(
             (event) =>
@@ -756,7 +777,7 @@ export function continuityViews(
     if (holder.kind === "room" && (!head.current || (original.room?.expiresAt && original.room.expiresAt <= at)))
       return [];
     const version = structuredClone(original);
-    if (protection?.repair) {
+    if (repaired) {
       version.sources = [];
     } else if (holder.kind === "actor")
       version.sources = version.sources.map((source) => actorContinuityEvidence(source, holder.id));
@@ -796,7 +817,7 @@ export function continuityViews(
         holder: structuredClone(holder),
         current: head.current,
         version,
-        repaired: Boolean(protection?.repair),
+        repaired,
         ...(record.offer ? { parties: record.offer.participants.map((party) => ({ ...party })) } : {}),
         ...(holder.kind === "room"
           ? {

@@ -33,6 +33,7 @@ import { circumstanceRoomOrigins, episodeContextActors, episodeContextRooms } fr
 import { capturePlaceContext, npcProfile } from "./places.js";
 import { offerSceneNarrative } from "./scene-narrative.js";
 import { nativeCircumstanceRoots } from "./native-continuity.js";
+import { sceneRepairOffers } from "./narration-circumstance.js";
 
 type Part = {
   block: VenueWritingBlock;
@@ -196,10 +197,12 @@ export function narrationContinuityContext(
     identity: (id) => continuityActor(state, id),
     requiredIds: [...requiredRoots].filter((id) => views.some((view) => view.id === id)),
   });
+  const repairs = sceneRepairOffers(state, scene, room, at);
   const roomSelection = selectRoomContinuity(state.continuity, state.episodes, room, at, {
     query: input,
     bytes: capacity,
     requiredIds: [],
+    preferredIds: repairs.flatMap((repair) => repair.entries),
     wholeRoom:
       /\b(all|every|entire|whole|everything)\b/iu.test(input) &&
       /\b(room|furniture|decor|walls|inside|interior)\b/iu.test(input),
@@ -374,6 +377,16 @@ export function narrationContinuityContext(
       },
     });
   }
+  for (const repair of repairs)
+    parts.push({
+      ...emptyPart(),
+      block: {
+        text: JSON.stringify({ repair }),
+        evidenceId: "repair-context:" + repair.id,
+        optional: "memory",
+        requiresEvidenceIds: repair.entries.map((id) => "room-context:" + id),
+      },
+    });
   parts.push({
     ...emptyPart(),
     block: {
@@ -455,7 +468,10 @@ export function narrationContinuityContext(
       return true;
     }),
   );
-  const bounded = parts.filter((part) => retained.has(part));
+  const evidenceIds = new Set([...retained].map((part) => part.block.evidenceId));
+  const bounded = parts.filter(
+    (part) => retained.has(part) && (part.block.requiresEvidenceIds?.every((id) => evidenceIds.has(id)) ?? true),
+  );
   const references = episodeContextActors({ actors, room }, [
     ...new Set(bounded.flatMap((part) => Object.keys(part.provenance))),
   ]);
@@ -480,6 +496,7 @@ export function narrationContinuityContext(
     calendar: capturedSceneCalendar({ startedAt: at }, state.timeZone),
     holders,
     room,
+    repairs,
     at,
     parts: bounded,
     projects: projectSpeechContexts(sceneContinuityView(state, scene), writerIds, "", input, scene.placeId),
@@ -594,6 +611,11 @@ export function fittedNarrationReadset(
     },
     offered: [...offered.values()].filter((row) => context.actors.some((actor) => actor.id === row.holder.id)),
     circumstance: context.circumstance,
+    repairs: context.repairs.filter(
+      (repair) =>
+        evidenceIds.includes("repair-context:" + repair.id) &&
+        repair.entries.every((id) => evidenceIds.includes("room-context:" + id)),
+    ),
     npcCandidates: candidates.map(({ npc, holder }) => ({
       npc,
       incarnation: holder.incarnation,

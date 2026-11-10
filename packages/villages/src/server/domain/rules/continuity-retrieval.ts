@@ -74,7 +74,7 @@ export function selectRoomContinuity(
   episodes: EpisodeCollection,
   holder: Extract<ContinuityHolder, { kind: "room" }>,
   at: string,
-  request: { query: string; bytes: number; requiredIds: string[]; wholeRoom: boolean },
+  request: { query: string; bytes: number; requiredIds: string[]; preferredIds?: string[]; wholeRoom: boolean },
 ) {
   memoryRequire(Number.isSafeInteger(request.bytes) && request.bytes > 0, "invalid room context budget");
   const all = currentRoomViews(collection, episodes, holder, at);
@@ -94,8 +94,10 @@ export function selectRoomContinuity(
   const size = () => Buffer.byteLength(JSON.stringify(packet()));
   memoryRequire(size() <= request.bytes, "required room context does not fit before generation");
   const ranked = rank(all, request.query, (row) => row.version.text);
+  const preferred = new Set(request.preferredIds);
   for (const { row } of [
     ...ranked.filter((row) => row.score > 0),
+    ...all.filter((row) => preferred.has(row.id)).map((row) => ({ row })),
     ...all
       .slice(-4)
       .toReversed()

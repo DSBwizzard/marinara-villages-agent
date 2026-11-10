@@ -1,15 +1,124 @@
 import type { z } from "zod";
 import type { VillageState } from "../models/world.js";
 import type { NarrationReadset } from "../models/narration-model.js";
-import type { ContinuityEvidence } from "../models/continuity-model.js";
+import type { ContinuityEvidence, ContinuityHolder } from "../models/continuity-model.js";
 import type { AcceptedEpisode } from "../models/episode-model.js";
+import type { VenueScene } from "../models/scene-model.js";
 import { readNarrativeDevelopment, applyNarrativeDevelopment } from "./narrative-development.js";
-import { narrationCircumstanceFields } from "./narration-command-contract.js";
+import type { narrationCircumstanceFields } from "./narration-command-contract.js";
 import { reserveSceneNarrative } from "./scene-narrative.js";
-import { memoryRequire } from "./memory-integrity.js";
-import { narrationWitnesses, type NarrationSourceContext } from "./narration-sources.js";
+import { memoryHash, memoryRequire } from "./memory-integrity.js";
+import { narrationPositions, narrationWitnesses, type NarrationSourceContext } from "./narration-sources.js";
+import { activeNarrativeConditions } from "./narrative-environment.js";
+import { sceneContinuityView } from "./scene-continuity.js";
+import { currentRoomViews } from "./continuity-retrieval.js";
+import { findLocation } from "./places.js";
+import { venueZones, zoneClosed } from "./venue-zones.js";
+import { evaluateZoneAccess } from "./venue-access.js";
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 
 type Command = z.infer<z.ZodObject<typeof narrationCircumstanceFields>>;
+
+export function sceneRepairOffers(
+  state: VillageState,
+  scene: VenueScene,
+  room: Extract<ContinuityHolder, { kind: "room" }>,
+  at: string,
+): NarrationReadset["repairs"] {
+  const local = activeNarrativeConditions(sceneContinuityView(state, scene).narrative, at).filter(
+    (row) =>
+      row.venueId === room.placeId &&
+      row.zoneId === room.zoneId &&
+      row.restriction === "ordinary-use" &&
+      row.repairEntries?.length,
+  );
+  if (!local.length) return [];
+  const observable = new Set(
+    currentRoomViews(state.continuity, state.episodes, room, at)
+      .filter((row) => row.version.room?.visibility === "observable" && !row.version.room.expiresAt)
+      .map((row) => row.id),
+  );
+  return local.flatMap((row) =>
+    row.repairEntries!.every((id) => observable.has(id))
+      ? [{ id: row.id, revision: row.revision, entries: [...row.repairEntries!] }]
+      : [],
+  );
+}
+
+/** Tentative until Scene acceptance validates every required Room keep and its actual source. */
+export function applyNarrationRepair(
+  state: VillageState,
+  command: Command,
+  readset: NarrationReadset,
+  context: NarrationSourceContext,
+  sources: ContinuityEvidence[],
+  receiptId: string,
+  segment: number,
+): AcceptedEpisode["commandReceipts"][number] {
+  const proposed = command.conditions?.[0],
+    room = readset.admission.room,
+    line = context.lines[segment];
+  const offer = proposed && readset.repairs.find((row) => row.id === proposed.id);
+  memoryRequire(
+    command.severity === undefined &&
+      command.occurrence === undefined &&
+      command.conditions?.length === 1 &&
+      proposed?.clear === true &&
+      Object.keys(proposed).length === 2 &&
+      offer &&
+      room &&
+      context.scene.placeId === room.placeId &&
+      line.kind === "narration" &&
+      line.zoneId === room.zoneId &&
+      sources.length === 1 &&
+      sources.every(
+        (source) =>
+          source.unitId === line.id &&
+          source.kind === "observation" &&
+          source.perceptions.some((row) => row.actorId === "player" && row.channel === "sight"),
+      ),
+    "repair needs one supplied local condition and actual Player-seen completed work",
+  );
+  const condition = activeNarrativeConditions(state.narrative, readset.capturedAt).find((row) => row.id === offer.id);
+  memoryRequire(
+    condition?.revision === offer.revision &&
+      !condition.clearedAt &&
+      condition.restriction === "ordinary-use" &&
+      condition.venueId === room.placeId &&
+      condition.zoneId === room.zoneId &&
+      memoryHash(condition.repairEntries) === memoryHash(offer.entries),
+    "the admitted repair condition changed",
+  );
+  const venue = findLocation(state, room.placeId),
+    zone = venue && venueZones(venue).find((row) => row.id === room.zoneId);
+  const positions = narrationPositions(context, { index: segment, side: "after" });
+  memoryRequire(
+    venue &&
+      zone &&
+      positions.player === room.zoneId &&
+      evaluateZoneAccess(venue, zone, "player", {
+        sceneId: context.scene.id,
+        positions,
+        at: new ZonedDate(readset.calendar.instant, readset.calendar.timeZone),
+        unavailable: zoneClosed(state, venue, zone),
+        environment: state.narrative,
+      }).allowed,
+    "the repair needs live local corrective access",
+  );
+  condition.clearedAt = readset.capturedAt;
+  condition.revision++;
+  state.narrative!.revision++;
+  return {
+    id: receiptId,
+    kind: "condition-repair",
+    targetId: condition.id,
+    revision: condition.revision,
+    text: line.content,
+    witnesses: narrationWitnesses(sources),
+    observedBy: narrationWitnesses(sources, ["sight"]),
+    repairEntries: [...offer.entries],
+  };
+}
 
 /** Only finite native circumstance metadata: appearance remains common room continuity. */
 export function narrationCircumstancePrompt(grant: NarrationReadset["circumstance"]) {
@@ -40,9 +149,11 @@ export function applyNarrationCircumstance(
   at: string,
 ) {
   const grant = readset.circumstance,
+    situationRequest = command.situation,
     line = context.lines[segment];
   memoryRequire(
     grant &&
+      situationRequest &&
       grant.at === readset.capturedAt &&
       line.kind === "narration" &&
       line.zoneId === grant.targets[0]!.zoneId &&
@@ -58,18 +169,18 @@ export function applyNarrationCircumstance(
     reserveSceneNarrative(state, readset.source.scene, grant, new Date(at), readset.source.operationId),
     "the shared world opportunity changed or is unavailable",
   );
-  const previous = grant.situations.find((row) => row.id === command.situation.id);
+  const previous = grant.situations.find((row) => row.id === situationRequest.id);
   const development = readNarrativeDevelopment(
     {
       severity: command.severity ?? grant.consequence,
       occurrence: command.occurrence ?? line.content,
       situation: {
         scope: previous?.scope ?? "zone",
-        id: command.situation.id ?? null,
+        id: situationRequest.id ?? null,
         expectedRevision: previous?.revision ?? 0,
-        title: command.situation.title,
-        summary: command.situation.summary,
-        status: command.situation.status ?? "active",
+        title: situationRequest.title,
+        summary: situationRequest.summary,
+        status: situationRequest.status ?? "active",
       },
       room: [],
       weather: null,

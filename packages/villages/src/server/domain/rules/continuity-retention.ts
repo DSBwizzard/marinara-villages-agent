@@ -42,6 +42,7 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
   const sourceActors = Object.fromEntries(episodes.records.map((episode) => [episode.id, episode.actors]));
   const births = new Map<string, number>(),
     roots = new Map(continuity.records.map((row) => [row.id, row]));
+  const repairs = new Map<string, { room: string; admitted: number; proofs: string[] }>();
   for (const [sequence, episode] of episodes.records.entries()) {
     const references = episodeContextActors(episode);
     memoryRequire(
@@ -73,6 +74,24 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
       );
       owners.set(id, episode.id);
       if (!births.has(version.rootId)) births.set(version.rootId, sequence);
+    }
+    for (const receipt of episode.commandReceipts.filter((row) => row.kind === "condition-repair")) {
+      const room = episode.room,
+        proof = episode.dependencies["native:" + receipt.id]?.[0];
+      memoryRequire(room && proof && receipt.repairEntries?.length, "condition repair lost its native Room proof");
+      for (const root of receipt.repairEntries!) {
+        const changed = episode.continuityVersionIds
+          .map((id) => versions.get(id)!)
+          .find((row) => row.rootId === root && row.id === continuityVersionId(episode.seed, row.operationId, room));
+        memoryRequire(changed, "condition repair lost an exact enduring Room correction");
+        const repair = repairs.get(changed.id) ?? {
+          room: continuityHolderKey(room),
+          admitted: episode.admittedContinuityRevision,
+          proofs: [],
+        };
+        repair.proofs.push(proof);
+        repairs.set(changed.id, repair);
+      }
     }
     for (const source of episode.grounding)
       if (source.kind === "knowledge") {
@@ -296,6 +315,7 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
       );
       memoryRequire(actor || (version.room && room), "continuity version lost its creating holder");
       if (actor) holder = { kind: "actor", id: actor.id, incarnation: actor.incarnation };
+      else if (room) holder = room.holder;
       if (actor)
         for (const id of version.offerEvents ?? [])
           memoryRequire(
@@ -322,10 +342,27 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
             "historical source belongs to another incarnation",
           );
     }
-    if (holder?.kind === "actor") {
+    if (holder) {
       const key = JSON.stringify([version.rootId, continuityHolderKey(holder)]);
-      if (!version.administrative)
+      if (holder.kind === "actor" && !version.administrative)
         assertContinuitySoundIdentity(version, holder, roots.get(version.rootId)!.owner, previous.get(key));
+      const repair = repairs.get(version.id),
+        before = previous.get(key);
+      if (repair)
+        memoryRequire(
+          holder.kind === "room" &&
+            repair.room === continuityHolderKey(holder) &&
+            before &&
+            before.createdRevision <= repair.admitted &&
+            before.room?.visibility === "observable" &&
+            !before.room.expiresAt &&
+            !before.closed &&
+            version.room?.visibility === "observable" &&
+            !version.room.expiresAt &&
+            (version.closed?.reason === "ended" || (!version.closed && version.text.trim() !== before.text.trim())) &&
+            repair.proofs.every((proof) => version.sources.some((source) => continuitySourceUnit(source) === proof)),
+          "condition repair lost an exact enduring Room correction",
+        );
       previous.set(key, version);
     }
     for (const source of version.sources) {

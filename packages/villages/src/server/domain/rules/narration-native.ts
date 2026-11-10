@@ -27,7 +27,7 @@ import {
 import { narrationWitnesses, narrationPositions, narrationCommunication } from "./narration-sources.js";
 import { captureSceneLayout } from "./scene-layout.js";
 import { findLocation } from "./places.js";
-import { applyNarrationCircumstance } from "./narration-circumstance.js";
+import { applyNarrationCircumstance, applyNarrationRepair } from "./narration-circumstance.js";
 import { nativeCommand, readNarrationNativeCommand } from "./narration-command-contract.js";
 import { projectSpeechContext } from "./project-interpretation.js";
 import { applyNarrationAccess, assertNarrationDecision, narrationAccessScopes } from "./narration-access.js";
@@ -131,6 +131,11 @@ export function prepareNarrationNative(
     .map((raw, index) => {
       const header = readNarrationEffectHeader(raw, "command-" + index);
       const effect = { ...header, failure: excluded.get(header.id) };
+      const proposed = raw as { type?: unknown; situation?: unknown };
+      if (proposed.type === "circumstance" && !proposed.situation && effect.independent) {
+        delete effect.independent;
+        effect.failure = "The completed repair and its native condition are one outcome.";
+      }
       native.effects.push(effect);
       try {
         const command = readNarrationNativeCommand(raw);
@@ -204,6 +209,12 @@ export function prepareNarrationNative(
     assertNarrationSourceOrder(sources);
     const receiptId = "native-" + memoryHash([readset.source.episodeId, effect.id]).slice(0, 40);
     if (command.type === "circumstance") {
+      if (!command.situation) {
+        return {
+          receipt: applyNarrationRepair(candidate, command, readset, context, sources, receiptId, row.segment),
+          sources,
+        };
+      }
       memoryRequire(
         !Object.values(native.receipts).some((receipt) => receipt.kind === "circumstance"),
         "one Scene reply has at most one finite circumstance",

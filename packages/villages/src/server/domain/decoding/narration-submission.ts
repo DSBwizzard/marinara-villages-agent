@@ -9,6 +9,21 @@ const subjects = z
   .array(z.object({ id: z.string().min(1).max(160), incarnation: z.string().min(1).max(160) }).strict())
   .max(256)
   .refine((rows) => new Set(rows.map((row) => row.id)).size === rows.length);
+const repairs = z
+  .array(
+    z
+      .object({
+        id,
+        revision: z.number().int().positive().safe(),
+        entries: z
+          .array(z.string().regex(/^continuity-[a-f0-9]{32}$/u))
+          .min(1)
+          .max(4)
+          .refine((entries) => new Set(entries).size === entries.length),
+      })
+      .strict(),
+  )
+  .refine((rows) => new Set(rows.map((row) => row.id)).size === rows.length);
 const saved = z
   .object({
     id,
@@ -49,6 +64,7 @@ const saved = z
             Array.isArray(row.offered) &&
             Array.isArray(row.npcCandidates) &&
             row.npcCandidates.length <= 4 &&
+            repairs.safeParse(row.repairs).success &&
             (row.circumstance === null || row.circumstance?.source === "scene") &&
             row.source?.scene?.version === 5 &&
             typeof row.source.seed === "string" &&

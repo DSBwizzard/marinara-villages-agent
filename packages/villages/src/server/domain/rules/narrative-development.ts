@@ -444,6 +444,7 @@ export function applyNarrativeDevelopment(
   const holderKey = continuityHolderKey(holder);
   const candidate = { ...state };
   const affected = new Set<string>();
+  const retired = new Set<string>();
   const currentEffects: string[] = [];
   let enduring = false;
   for (const [index, change] of development.room.entries()) {
@@ -485,6 +486,7 @@ export function applyNarrativeDevelopment(
       enduring = true;
       const root = candidate.continuity.receipts[nativeEpisodeId(state.seed, receiptId) + ":fact"].roots[0]!;
       if (before) affected.add(root);
+      if (before && change.text === null) retired.add(root);
       if (change.text !== null) currentEffects.push(root);
     }
   }
@@ -526,6 +528,19 @@ export function applyNarrativeDevelopment(
   });
   if (new Set(conditions.map((row) => row.id)).size !== conditions.length)
     throw badGateway("Duplicate condition effects.");
+  if (
+    retired.size &&
+    [...activeNarrativeConditions(narrative, grant.at), ...conditions].some((previous) => {
+      const row = conditions.find((condition) => condition.id === previous.id) ?? previous;
+      return (
+        (!row.clearedAt || row.clearedAt > grant.at) &&
+        (!row.endsAt || row.endsAt > grant.at) &&
+        row.restriction === "ordinary-use" &&
+        row.repairEntries?.some((id) => retired.has(id))
+      );
+    })
+  )
+    throw badGateway("A Room edit cannot remove an active restriction's repair target.");
   if (grant.source === "world") {
     retainNativeFact(
       candidate,

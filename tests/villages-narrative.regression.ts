@@ -41,6 +41,7 @@ import { coerceSession } from "../packages/villages/src/server/domain/decoding/s
 import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import {
+  continuityConstraints,
   continuityHolderKey,
   continuityVersionUnit,
   protectContinuity,
@@ -50,6 +51,7 @@ import { assertContinuityRetention } from "../packages/villages/src/server/domai
 import { retainAdministrativeCircumstance } from "../packages/villages/src/server/domain/rules/repair-records.js";
 import { villageSettings } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
 import { worldNarrativeContext } from "../packages/villages/src/server/domain/rules/narrative-prompts.js";
+import { fitVenueWritingMessages } from "../packages/villages/src/server/domain/rules/venue-writing.js";
 import {
   encodeContinuityPages,
   decodeContinuityPagesSync,
@@ -144,6 +146,315 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
     ],
     weather: null,
   };
+}
+{
+  const fixture = world(),
+    { state, venue, zone } = fixture;
+  const grant = admitted(fixture, "world:scene-repair");
+  const damageProposal = proposal(grant);
+  damageProposal.room.push({ text: "A snapped rope lies beside the sign." });
+  const damage = applyNarrativeDevelopment(state, grant, damageProposal);
+  state.narrative!.claims = [];
+  state.backgroundPace = "off";
+  const condition = damage.after.conditions[0];
+  const scene = zoneEventScene(
+    coerceSession({
+      version: 5,
+      id: "ordinary-repair",
+      villageSeed: state.seed,
+      sceneRevision: 1,
+      placeId: venue.id,
+      placeName: venue.name,
+      zoneId: zone.id,
+      startedAt: at,
+      lastActivityAt: at,
+      status: "active",
+      activeIds: [],
+      participants: [],
+      sceneAttendance: { capturedAt: at, layout: captureSceneLayout(venue), occupants: [] },
+    }),
+    venue,
+  );
+  scene.continuity = captureSceneContinuity(state, scene, Date.parse(at));
+  const beforeObserver = structuredClone(state);
+  const repaired = "The wooden sign sits firmly on its bracket.";
+  const observedSign = narrationContinuityContext(state, scene, venue, "notice-damage", "I look at the sign.", at);
+  const observeReadset = fittedNarrationReadset(
+    state,
+    observedSign,
+    observedSign.parts.map((part) => part.block.evidenceId!),
+  );
+  const observation = {
+    segments: [{ id: "see", kind: "narration", text: "You see the loose sign." }],
+    keep: [
+      {
+        id: "learn",
+        for: "room",
+        replace: condition.repairEntries![0],
+        knownBy: ["player"],
+        source: [{ segment: "see", perceive: { kind: "seen", by: ["player"] } }],
+      },
+    ],
+  };
+  const learned = acceptNarration(
+    state,
+    { raw: observation, readset: observeReadset, responseDigest: memoryHash(observation) },
+    "see-damage",
+    at,
+  );
+  assert.equal(learned.held, false, JSON.stringify(learned.rejected));
+  const player = observeReadset.source.actors.find((actor) => actor.id === "player")!;
+  const record = state.continuity.records.find((row) => row.id === condition.repairEntries![0])!;
+  const playerKey = continuityHolderKey(player);
+  state.continuity = protectContinuity(
+    state.continuity,
+    { id: record.id, recordRevision: record.revision, heads: { [playerKey]: record.heads[playerKey].revision } },
+    [player],
+    "correct-observer",
+    at,
+    { text: repaired },
+  );
+  const context = narrationContinuityContext(
+    state,
+    scene,
+    venue,
+    "corrective-work",
+    "I secure the sign to its bracket.",
+    at,
+  );
+  assert.equal(context.circumstance, null);
+  assert.deepEqual(context.repairs, [
+    { id: condition.id, revision: condition.revision, entries: condition.repairEntries },
+  ]);
+  const readset = fittedNarrationReadset(
+    state,
+    context,
+    context.parts.map((part) => part.block.evidenceId!),
+  );
+  const droppedEntry = "room-context:" + condition.repairEntries![1];
+  const blocks = context.parts.map((part) => part.block);
+  const droppedText = blocks.find((block) => block.evidenceId === droppedEntry)!.text;
+  const fit = fitVenueWritingMessages(
+    {
+      fitContext(messages: any[]) {
+        return { messages: messages.some((message) => message.content.includes(droppedText)) ? [] : messages } as any;
+      },
+    },
+    blocks,
+    readset.source.input,
+    1000,
+  );
+  assert.ok(!fit.evidenceIds.includes("repair-context:" + condition.id));
+  assert.ok(fit.evidenceIds.includes("room-context:" + condition.repairEntries![0]));
+  assert.deepEqual(fittedNarrationReadset(state, context, fit.evidenceIds).repairs, []);
+  const observed = { segment: "work", perceive: { kind: "seen", by: ["player"] } };
+  const protection = { roots: [] as string[], disposition: "clear" };
+  const raw = {
+    segments: [
+      {
+        id: "work",
+        kind: "narration",
+        text: "You secure the sign with its original bracket and remove the snapped rope.",
+        requires: ["reopen"],
+      },
+      { id: "glance", kind: "narration", text: "Rain dots the floor." },
+    ],
+    keep: [
+      {
+        id: "repair-sign",
+        for: "room",
+        replace: condition.repairEntries![0],
+        text: repaired,
+        source: [observed],
+        protection,
+      },
+      {
+        id: "clear-rope",
+        for: "room",
+        replace: condition.repairEntries![1],
+        text: null,
+        source: [observed],
+        protection,
+      },
+    ],
+    commands: [
+      {
+        id: "reopen",
+        type: "circumstance",
+        at: "work",
+        source: [observed],
+        requires: ["repair-sign", "clear-rope"],
+        conditions: [{ id: condition.id, clear: true }],
+      },
+    ],
+  };
+  for (const variant of [
+    "stale",
+    "no-link",
+    "missing-entry",
+    "addition",
+    "same-text",
+    "concealed",
+    "separate-observation",
+    "unfitted",
+    "optional-bad-source",
+    "room-only",
+    "future-invitation",
+  ]) {
+    const live = structuredClone(state),
+      reply: any = structuredClone(raw),
+      fitted = structuredClone(readset);
+    if (variant === "stale") live.narrative!.conditions[0].revision++;
+    if (variant === "no-link") reply.commands[0].requires = [];
+    if (variant === "missing-entry") reply.keep.pop();
+    if (variant === "addition") delete reply.keep[0].replace;
+    if (variant === "same-text") reply.keep[0].text = "The sign hangs from one loose bracket.";
+    if (variant === "concealed") reply.keep[0].visibility = "concealed";
+    if (variant === "separate-observation") reply.keep[0].source[0].segment = "glance";
+    if (variant === "unfitted") fitted.repairs = [];
+    if (variant === "optional-bad-source") {
+      reply.commands[0].independent = true;
+      reply.commands[0].source[0].segment = "missing";
+      reply.segments[0].requires = [];
+      reply.keep.pop();
+    }
+    if (variant === "room-only") {
+      reply.commands = [];
+      reply.segments[0].requires = [];
+    }
+    if (variant === "future-invitation") {
+      const current = live.venues[0].zones!.find((row) => row.id === zone.id)!;
+      current.access!.managerIds = ["keeper"];
+      live.venues[0].access!.permissions.push({
+        id: "future-visit",
+        zoneId: zone.id,
+        visitorId: "player",
+        issuerId: "keeper",
+        duration: "visit",
+        sceneId: null,
+        accompaniedBy: null,
+        outsideHours: false,
+        revoked: false,
+        issuedAt: at,
+        sourceLineIds: [],
+      });
+    }
+    const before = memoryHash(live);
+    const result = acceptNarration(
+      live,
+      { raw: reply, readset: fitted, responseDigest: memoryHash(reply) },
+      "repair-turn",
+      at,
+    );
+    assert.equal(result.held, true, variant);
+    assert.equal(memoryHash(live), before, variant + " publishes neither Room nor condition");
+  }
+  const publication = { raw, readset, responseDigest: memoryHash(raw) };
+  const corrected = beforeObserver;
+  const roomKey = continuityHolderKey(context.room);
+  const linked = corrected.continuity.records.find((row) => row.id === condition.repairEntries![1])!;
+  corrected.continuity = protectContinuity(
+    corrected.continuity,
+    { id: linked.id, recordRevision: linked.revision, heads: { [roomKey]: linked.heads[roomKey].revision } },
+    [context.room],
+    "correct-room-record",
+    at,
+    { text: "A frayed rope lies next to the sign." },
+  );
+  const correctedContext = narrationContinuityContext(
+    corrected,
+    scene,
+    venue,
+    "corrective-work",
+    readset.source.input,
+    at,
+  );
+  const correctedReadset = fittedNarrationReadset(
+    corrected,
+    correctedContext,
+    correctedContext.parts.map((part) => part.block.evidenceId!),
+  );
+  const correctedRaw = structuredClone(raw);
+  correctedRaw.keep[1].protection = { ...protection, roots: [linked.id] };
+  correctedRaw.keep[1].text = "The floor beside the sign is clear.";
+  for (const scope of ["same-root", "different-root", "new-root"]) {
+    const resurrected: any = structuredClone(correctedRaw);
+    const text = "A snapped rope lies beside the sign.";
+    if (scope === "same-root") resurrected.keep[1].text = text;
+    if (scope === "different-root") resurrected.keep[0].text = text;
+    if (scope === "new-root") resurrected.keep.push({ id: "extra", for: "room", text, source: [observed], protection });
+    const refused = acceptNarration(
+      corrected,
+      { raw: resurrected, readset: correctedReadset, responseDigest: memoryHash(resurrected) },
+      "repair-turn",
+      at,
+    );
+    assert.equal(refused.held, true, scope + " cannot restore the exact protected text");
+    assert.ok(
+      refused.rejected.some((row) => row.reason.includes("protected Room text")),
+      JSON.stringify(refused.rejected),
+    );
+  }
+  const correctedResult = acceptNarration(
+    corrected,
+    { raw: correctedRaw, readset: correctedReadset, responseDigest: memoryHash(correctedRaw) },
+    "repair-turn",
+    at,
+  );
+  assert.equal(correctedResult.held, false, JSON.stringify(correctedResult.rejected));
+  const fresh = currentRoomViews(corrected.continuity, corrected.episodes, context.room, at).find(
+    (row) => row.id === linked.id,
+  )!;
+  assert.equal(fresh.repaired, false);
+  assert.equal(fresh.version.sources[0].episodeId, correctedResult.episode!.id);
+  const constraint = continuityConstraints(corrected.continuity, [context.room]).find((row) => row.id === linked.id)!;
+  assert.equal(constraint.corrected, undefined);
+  assert.ok(constraint.forbidden.includes("A snapped rope lies beside the sign."));
+  const bound = structuredClone(state);
+  const boundZone = bound.venues[0].zones!.find((row) => row.id === zone.id)!;
+  boundZone.access!.managerIds = ["keeper"];
+  boundZone.access!.visitorHours = [{ days: ["Thursday"], start: "08:00", end: "10:00" }];
+  bound.venues[0].access!.permissions.push({
+    id: "bound-visit",
+    zoneId: zone.id,
+    visitorId: "player",
+    issuerId: "keeper",
+    duration: "visit",
+    sceneId: scene.id,
+    accompaniedBy: null,
+    outsideHours: false,
+    revoked: false,
+    issuedAt: at,
+    sourceLineIds: [],
+  });
+  bound.timeZone = "America/Los_Angeles";
+  const boundResult = acceptNarration(bound, publication, "repair-turn", at);
+  assert.equal(boundResult.held, false, JSON.stringify(boundResult.rejected));
+  const result = acceptNarration(state, publication, "repair-turn", at);
+  assert.equal(result.held, false, JSON.stringify(result.rejected));
+  assert.equal(state.narrative!.conditions[0].clearedAt, at);
+  assert.equal(ordinaryUseRestricted(state.narrative, at, venue.id, zone.id), false);
+  assert.equal(state.eventAttempts?.attempts.length ?? 0, 0);
+  const holder = { kind: "room" as const, placeId: venue.id, zoneId: zone.id };
+  assert.equal(currentRoomViews(state.continuity, state.episodes, holder, at)[0].version.text, repaired);
+  assert.deepEqual(result.episode!.commandReceipts[0].repairEntries, condition.repairEntries);
+  const key = "a".repeat(32),
+    encoded = encodeContinuityPages(
+      {
+        continuity: state.continuity,
+        episodes: state.episodes,
+        worldPlaces: state.worldPlaces,
+        mailbox: state.mailbox,
+      },
+      key,
+    );
+  Object.assign(
+    state,
+    decodeContinuityPagesSync(encoded.manifest, key, state.seed, (id) => encoded.pages.get(id) ?? null).value,
+  );
+  const before = memoryHash(state);
+  assert.ok(acceptNarration(state, publication, "repair-turn", at).replayed);
+  assert.equal(memoryHash(state), before);
 }
 {
   const fixture = world(),
@@ -432,6 +743,15 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
   fixture.state.narrative!.claims = [];
   const repairGrant = admitted(fixture, "world:repair");
   const repairProposal = proposal(repairGrant);
+  assert.throws(
+    () =>
+      applyNarrativeDevelopment(fixture.state, repairGrant, {
+        ...repairProposal,
+        room: [{ replace: condition.repairEntries![0], text: null }],
+        conditions: [],
+      }),
+    /remove an active restriction's repair target/,
+  );
   repairProposal.room = [{ text: "The sign was inspected.", expiresInMinutes: 15 }];
   Object.assign(repairProposal.situation, {
     id: receipt.after.situations[0].id,

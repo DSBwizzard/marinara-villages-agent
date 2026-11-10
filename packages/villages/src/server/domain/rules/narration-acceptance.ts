@@ -27,6 +27,7 @@ import { venueDesignHash } from "./project-structure.js";
 import type { ContactMove } from "./venue-contact.js";
 import { contactPosition } from "./venue-contact.js";
 import { episodeContextActors, episodeContextRooms } from "./episode-sources.js";
+import { activeNarrativeConditions } from "./narrative-environment.js";
 
 export type NarrationPublication = {
   readset: NarrationReadset;
@@ -270,6 +271,18 @@ export function acceptNarrationContinuity(
           current && scope(current) && scope(current) === scope(source.venue),
           "the Room's native structure or construction site changed",
         );
+        const target = keep.write.target;
+        if (target && (keep.write.retire || keep.write.room?.visibility === "concealed"))
+          memoryRequire(
+            !activeNarrativeConditions(state.narrative, readset.capturedAt).some(
+              (condition) =>
+                condition.venueId === holder.placeId &&
+                condition.zoneId === holder.zoneId &&
+                condition.restriction === "ordinary-use" &&
+                condition.repairEntries?.includes(target.id),
+            ),
+            "a Room edit cannot remove an active restriction's repair target",
+          );
       }
       const nativeDependencies = keep.sources
         .filter((row) => row.kind === "native" && row.episodeId === source.episodeId)
@@ -284,6 +297,42 @@ export function acceptNarrationContinuity(
       effect.failure = error instanceof Error ? error.message.slice(0, 2000) : String(error).slice(0, 2000);
     }
     effects.push(effect);
+  }
+  for (const effect of effects) {
+    const repair = native.receipts[effect.id];
+    if (repair?.kind !== "condition-repair") continue;
+    const room = admission.room!,
+      roomKey = continuityHolderKey(room),
+      unit = native.sources[effect.id][0].unitId;
+    const repaired = new Set(
+      effect.requires.flatMap((id) => {
+        const keep = prepared.get(id),
+          write = keep?.write,
+          target = write?.target;
+        if (!write || !target || !write.holders.some((holder) => continuityHolderKey(holder) === roomKey)) return [];
+        const head = state.continuity.records.find((row) => row.id === target.id)?.heads[roomKey];
+        const before = state.continuity.versions.find((row) => row.id === head?.versionId);
+        if (
+          !before?.room ||
+          before.room.visibility !== "observable" ||
+          before.room.expiresAt ||
+          before.closed ||
+          write.room?.visibility === "concealed" ||
+          !(write.retire === "ended" || (!write.retire && write.text && write.text.trim() !== before.text.trim())) ||
+          !keep.sources.some(
+            (proof) =>
+              proof.kind === "observation" &&
+              proof.episodeId === source.episodeId &&
+              proof.unitId === unit &&
+              proof.perceptions.some((row) => row.actorId === "player" && row.channel === "sight"),
+          )
+        )
+          return [];
+        return [target.id];
+      }),
+    );
+    if (!repair.repairEntries!.every((id) => repaired.has(id)))
+      effect.failure = "The completed repair needs every linked Room entry changed by the same observed work.";
   }
   let continuity: ContinuityCollection = state.continuity;
   let selection: ReturnType<typeof selectSceneEffects>;

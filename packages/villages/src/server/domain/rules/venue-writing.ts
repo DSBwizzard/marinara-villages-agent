@@ -38,6 +38,7 @@ export type VenueWritingBlock = {
   text: string;
   cacheBreakpoint?: true;
   evidenceId?: string;
+  requiresEvidenceIds?: string[];
   pruningPriority?: number;
   optional?: "history" | "memory" | "lore";
   lore?: LoreUse;
@@ -118,6 +119,8 @@ export function fitVenueWritingMessages(
   // Low-priority history first, then optional memories/lore. Essential blocks and the
   // latest player input must survive fitting byte-for-byte before any paid call.
   for (;;) {
+    const evidence = new Set(kept.map((block) => block.evidenceId));
+    kept = kept.filter((block) => block.requiresEvidenceIds?.every((id) => evidence.has(id)) ?? true);
     const messages = assembleVenueWritingMessages(kept, input);
     const fitted = model.fitContext(messages, { maxTokens });
     if (JSON.stringify(fitted.messages) === JSON.stringify(messages))

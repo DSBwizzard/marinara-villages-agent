@@ -54,6 +54,7 @@ const episode = z
               "npc",
               "establishment",
               "circumstance",
+              "condition-repair",
               "initialization",
               "contact",
               "scene",
@@ -101,6 +102,15 @@ const episode = z
             circumstance: z
               .object({ summary: z.string().min(1).max(1200), status: z.enum(["active", "resolved"]) })
               .strict()
+              .optional(),
+            repairEntries: ids
+              .min(1)
+              .max(4)
+              .refine(
+                (entries) =>
+                  entries.every((entry) => /^continuity-[a-f0-9]{32}$/u.test(entry)) &&
+                  new Set(entries).size === entries.length,
+              )
               .optional(),
             mail: z
               .object({
@@ -265,6 +275,30 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
       );
     } else
       memoryRequire(!(value.sceneId && receipt.kind === "circumstance"), "Scene circumstance lost its native meaning");
+    if (receipt.kind === "condition-repair") {
+      const proof = value.dependencies["native:" + receipt.id];
+      const observed = value.grounding.find(
+        (source) =>
+          source.kind === "observation" &&
+          continuitySourceUnit(source) === proof?.[0] &&
+          source.excerpt === receipt.text &&
+          source.perceptions.some((row) => row.actorId === "player" && row.channel === "sight"),
+      );
+      memoryRequire(
+        value.sceneId &&
+          value.room &&
+          receipt.repairEntries?.length &&
+          receipt.revision > 1 &&
+          receipt.observedBy?.includes("player") &&
+          receipt.witnesses.includes("player") &&
+          proof?.length === 1 &&
+          observed &&
+          value.segments.some(
+            (line) => line.id === observed.unitId && line.kind === "narration" && line.zoneId === value.room!.zoneId,
+          ),
+        "condition repair lost its local Player-seen evidence",
+      );
+    } else memoryRequire(!receipt.repairEntries, "Room repair targets belong only to the native repair receipt");
     const arrival = receipt.admission;
     memoryRequire(
       receipt.kind === "npc"
