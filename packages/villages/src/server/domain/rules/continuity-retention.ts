@@ -1,4 +1,4 @@
-import type { ContinuityCollection, ContinuityEvidence } from "../models/continuity-model.js";
+import type { ContinuityCollection, ContinuityEvidence, ContinuityVersion } from "../models/continuity-model.js";
 import type { EpisodeCollection } from "../models/episode-model.js";
 import {
   continuityHolderKey,
@@ -6,6 +6,7 @@ import {
   assertContinuityKnowledge,
   continuitySourceUnit,
   continuityOfferSource,
+  assertContinuitySoundIdentity,
 } from "./continuity.js";
 import {
   episodeSpeechEvidence,
@@ -194,7 +195,8 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
     );
     return original;
   }
-  for (const version of continuity.versions) {
+  const previous = new Map<string, ContinuityVersion>();
+  for (const version of continuity.versions.toSorted((a, b) => a.createdRevision - b.createdRevision)) {
     const receipt = version.administrative && continuity.receipts[version.operationId];
     memoryRequire(
       version.administrative
@@ -205,8 +207,13 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
         : owners.has(version.id),
       "continuity version lost its episode or administrative owner",
     );
+    let holder = version.administrative?.holder;
     if (!version.administrative) {
       const creator = byEpisode.get(owners.get(version.id)!)!;
+      memoryRequire(
+        version.createdRevision > creator.admittedContinuityRevision,
+        "continuity version was created before its admitted revision",
+      );
       const actor = creator.actors.find(
         (actor) =>
           continuityVersionId(creator.seed, version.operationId, {
@@ -221,6 +228,7 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
           continuityVersionId(creator.seed, version.operationId, head.holder) === version.id,
       );
       memoryRequire(actor || (version.room && room), "continuity version lost its creating holder");
+      if (actor) holder = { kind: "actor", id: actor.id, incarnation: actor.incarnation };
       if (actor)
         for (const id of version.offerEvents ?? [])
           memoryRequire(
@@ -246,6 +254,12 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
             ),
             "historical source belongs to another incarnation",
           );
+    }
+    if (holder?.kind === "actor") {
+      const key = JSON.stringify([version.rootId, continuityHolderKey(holder)]);
+      if (!version.administrative)
+        assertContinuitySoundIdentity(version, holder, roots.get(version.rootId)!.owner, previous.get(key));
+      previous.set(key, version);
     }
     for (const source of version.sources) {
       assertSource(source);

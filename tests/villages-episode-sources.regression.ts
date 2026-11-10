@@ -1,4 +1,4 @@
-// Test cases: episode-sources/routine-cold, episode-sources/sound-privacy, episode-sources/incarnations, episode-sources/room-incarnation
+// Test cases: episode-sources/routine-cold, episode-sources/sound-privacy, episode-sources/incarnations, episode-sources/room-incarnation, episode-sources/sound-metadata-order
 import { emptyMailbox } from "../packages/villages/src/server/domain/decoding/mailbox-codec.js";
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
@@ -90,11 +90,12 @@ function remember(
   holder: typeof player,
   source: ContinuityEvidence,
   text: string,
+  about: { id: string; incarnation: string }[] = [],
 ) {
   const before = continuity.versions.length;
   const changed = applyContinuityWrite(
     continuity,
-    { id: "learn", holders: [holder], class: "information", text, sourceIds: [source.id] },
+    { id: "learn", holders: [holder], class: "information", text, about, sourceIds: [source.id] },
     {
       seed: "world",
       operationId: current.operationId,
@@ -172,6 +173,76 @@ await runCase("episode-sources/routine-cold", () => {
   );
 });
 
+await runCase("episode-sources/sound-metadata-order", () => {
+  const first = episode("known-subject"),
+    history = appendEpisode(emptyEpisodes(), first, "world"),
+    words = recallEpisodeSpeech(first, first.segments[0].id, emptyContinuity(), player, history)!,
+    kept = remember(emptyContinuity(), history, episode("remember-subject"), player, words, "Mara told me her story.", [
+      { id: "mara", incarnation: "one" },
+    ]),
+    root = kept.continuity.records[0],
+    key = continuityHolderKey(player);
+  const corrected = protectContinuity(
+    kept.continuity,
+    {
+      id: root.id,
+      recordRevision: root.revision,
+      heads: { [key]: root.heads[key].revision },
+    },
+    [player],
+    "correct-subject",
+    at,
+    { text: "I heard an indistinct voice." },
+  );
+  const anonymous = episode("anonymous-after-correct");
+  anonymous.admittedContinuityRevision = corrected.revision;
+  anonymous.segments[0].heardBy = ["mara"];
+  anonymous.segments[0].contactHidden = true;
+  anonymous.segments[0].soundOnly = { characterIds: [], player: true, text: "Indistinct voices outside." };
+  const withSound = appendEpisode(kept.episodes, anonymous, "world"),
+    sound = recallEpisodeSpeech(anonymous, anonymous.segments[0].id, corrected, player, withSound)!,
+    current = episode("remember-sound"),
+    correctedRoot = corrected.records[0],
+    target = {
+      id: root.id,
+      recordRevision: correctedRoot.revision,
+      heads: { [key]: correctedRoot.heads[key].revision },
+    };
+  const replaced = applyContinuityWrite(
+    corrected,
+    {
+      id: "update",
+      holders: [player],
+      target,
+      text: "I heard an indistinct voice.",
+      sourceIds: [sound.id],
+    },
+    {
+      seed: "world",
+      operationId: current.operationId,
+      episodeId: current.id,
+      at,
+      actors: current.actors,
+      sources: [sound],
+      sourceActors: Object.fromEntries(withSound.records.map((row) => [row.id, row.actors])),
+      supplied: [target],
+      protectedRoots: [],
+    },
+  );
+  current.admittedContinuityRevision = corrected.revision;
+  current.continuityVersionIds = [replaced.versions.at(-1)!.id];
+  const finalHistory = appendEpisode(withSound, current, "world");
+  assert.deepEqual(cold(replaced, finalHistory).continuity.versions.at(-1)!.about, []);
+  const forged = structuredClone(replaced);
+  forged.versions.at(-1)!.about = [{ id: "mara", incarnation: "one" }];
+  forged.versions.at(-1)!.createdRevision = kept.continuity.versions[0].createdRevision;
+  assert.throws(
+    () => cold(forged, finalHistory),
+    /created|anonymous/,
+    "rewinding creation order cannot restore Correct-cleared identity metadata",
+  );
+});
+
 await runCase("episode-sources/sound-privacy", () => {
   const first = episode("distant");
   first.segments[0].heardBy = ["mara"];
@@ -191,6 +262,13 @@ await runCase("episode-sources/sound-privacy", () => {
   );
   const restored = cold(kept.continuity, kept.episodes);
   assert.ok(!JSON.stringify(restored.continuity).includes("Rowan"));
+  const identifying = structuredClone(kept.continuity);
+  identifying.versions[0].about = [{ id: "mara", incarnation: "one" }];
+  assert.throws(
+    () => cold(identifying, kept.episodes),
+    /anonymous sound/,
+    "digest-valid pages cannot identify anonymous sound through metadata",
+  );
   for (const forged of [
     {
       ...source,

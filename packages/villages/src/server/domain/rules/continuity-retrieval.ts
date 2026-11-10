@@ -258,7 +258,11 @@ export function selectActorContinuity(
   }
   for (const row of surplus) take(row);
   for (const { row, score } of rank(all, request.query, (row) =>
-    [row.version.text, ...row.version.about.map((subject) => subject.id)].join(" "),
+    [
+      row.version.text,
+      ...row.version.about.map((subject) => subject.id),
+      ...row.version.sources.map((source) => source.excerpt),
+    ].join(" "),
   ))
     if (score > 0) take(row);
   return {

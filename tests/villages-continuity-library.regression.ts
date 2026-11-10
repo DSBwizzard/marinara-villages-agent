@@ -1,4 +1,4 @@
-// Test cases: continuity-library/private-revisions, continuity-library/correction, continuity-library/incarnation, continuity-library/current-contract
+// Test cases: continuity-library/private-revisions, continuity-library/correction, continuity-library/incarnation, continuity-library/current-contract, continuity-library/large-book
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -9,6 +9,7 @@ import {
   changeContinuityMemory,
 } from "../packages/villages/src/server/domain/rules/continuity-library.js";
 import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
+import { createWorldCoordination } from "../packages/villages/src/server/features/world/village-service.js";
 
 const at = "2026-11-09T12:00:00.000Z";
 function fixture() {
@@ -23,6 +24,76 @@ function fixture() {
   fact("public-two");
   return { state, fact };
 }
+
+await runCase("continuity-library/large-book", async () => {
+  const { state, fact } = fixture();
+  for (let i = 0; i < 1000; i++)
+    fact(
+      "history-" + i,
+      i === 0 ? ["player", "mara"] : ["player"],
+      i === 0 ? "An old brass telescope was repaired." : "Public memory " + i,
+    );
+  let writes = 0;
+  const api = createWorldCoordination({
+    readVillageAuthority: async () => state,
+    readVillageState: async () => {
+      throw new Error("A book read must not process background work.");
+    },
+    readScene: async () => {
+      throw new Error("The source Scene was deleted.");
+    },
+    mutateMemoryAuthority: async (mutate: (draft: VillageState) => void) => {
+      const draft = structuredClone(state);
+      mutate(draft);
+      Object.assign(state, draft);
+      writes++;
+    },
+  } as any);
+  const first = await api.buildVillageMemories({ limit: 50 });
+  assert.equal(first.total, 1002);
+  assert.equal(first.entries.length, 50);
+  assert(first.next);
+  assert(
+    first.entries.every((row) => !("support" in row)),
+    "book rows do not inline source histories",
+  );
+  fact("private-only", ["mara"], "Mara found a stolen telescope.");
+  assert.deepEqual(await api.buildVillageMemories({ limit: 50 }), first);
+  const second = await api.buildVillageMemories({ limit: 50, cursor: first.next });
+  assert.equal(second.entries.length, 50);
+  assert(
+    !second.entries.some((row) => first.entries.some((prior) => prior.id === row.id)),
+    "adjacent pages are disjoint",
+  );
+  assert.equal((await api.buildVillageMemories({ characterId: "mara", query: "stolen telescope" })).total, 0);
+  const privateEntry = (
+    await api.buildVillageMemories({ inspection: true, characterId: "mara", query: "stolen telescope" })
+  ).entries[0];
+  await assert.rejects(() => api.readVillageMemoryEvidence(privateEntry.id), /unavailable/);
+  const privateSource = await api.readVillageMemoryEvidence(privateEntry.id, true, "mara");
+  assert.match(privateSource.knowers[0].support[0].excerpt, /stolen telescope/);
+  const oldest = (await api.buildVillageMemories({ query: "brass telescope" })).entries[0];
+  assert(oldest, "the oldest useful entry remains searchable");
+  const source = await api.readVillageMemoryEvidence(oldest.id);
+  assert.match(source.knowers[0].support[0].excerpt, /brass telescope/);
+  assert.equal(source.target, undefined);
+  assert.equal(writes, 0, "paging and source inspection never learn or mutate history");
+  const inspected = await api.readVillageMemoryEvidence(oldest.id, true, "player");
+  await api.correctMemory(oldest.id, {
+    seed: state.seed,
+    operationId: "correct-oldest",
+    target: inspected.target!,
+    knowers: ["player"],
+    text: "Only the telescope mount was repaired.",
+  });
+  assert.equal((await api.buildVillageMemories({ query: "brass telescope" })).total, 0);
+  assert.equal(
+    (await api.buildVillageMemories({ inspection: true, characterId: "mara", query: "brass telescope" })).total,
+    1,
+  );
+  await assert.rejects(() => api.buildVillageMemories({ limit: 50, cursor: first.next! }), /changed/);
+  assert.equal(writes, 1);
+});
 
 await runCase("continuity-library/private-revisions", () => {
   const { state, fact } = fixture();

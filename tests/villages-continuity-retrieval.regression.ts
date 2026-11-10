@@ -1,4 +1,4 @@
-// Test cases: continuity-retrieval/large-room, continuity-retrieval/required-overflow, continuity-retrieval/fair-private-initiative, continuity-retrieval/minimum-initiative, continuity-retrieval/recent-offer, continuity-retrieval/new-arrival-fairness
+// Test cases: continuity-retrieval/large-room, continuity-retrieval/required-overflow, continuity-retrieval/fair-private-initiative, continuity-retrieval/minimum-initiative, continuity-retrieval/recent-offer, continuity-retrieval/new-arrival-fairness, continuity-retrieval/source-terms
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import type {
@@ -13,6 +13,7 @@ import {
   continuityProtectionUnits,
   continuityViews,
   emptyContinuity,
+  protectContinuity,
 } from "../packages/villages/src/server/domain/rules/continuity.js";
 import {
   selectActorContinuity,
@@ -159,6 +160,59 @@ await runCase("continuity-retrieval/large-room", () => {
       ),
     /duplicate current room/,
   );
+});
+
+await runCase("continuity-retrieval/source-terms", () => {
+  const player = { ...mara, id: "player" };
+  const source: ContinuityEvidence = {
+    ...observed,
+    kind: "speech",
+    excerpt: "Please bring star chart on Saturday.",
+    perceptions: [
+      { actorId: "mara", channel: "words", text: "Please bring star chart on Saturday." },
+      { actorId: "player", channel: "words", text: "Please bring star chart on Saturday." },
+      { actorId: "leo", channel: "sound-only", text: "Indistinct voices outside." },
+    ],
+  };
+  const state = applyContinuityWrite(
+    emptyContinuity(),
+    {
+      id: "conversation",
+      holders: [mara, player, leo],
+      class: "experience",
+      current: false,
+      text: "We discussed our weekend plans.",
+      sourceIds: [source.id],
+    },
+    { ...context("conversation"), sources: [source] },
+  );
+  const select = (collection: typeof state, holder: typeof mara, query = "bring star chart") =>
+    selectActorContinuity(collection, emptyEpisodes(), [holder], at, { query, bytes: 2000, requiredIds: [], identity });
+  assert.deepEqual(select(state, mara, "").packet.entries, [], "ordinary old experiences are not automatic initiative");
+  assert.equal(
+    select(state, mara).packet.entries[0]?.id,
+    state.records[0].id,
+    "a retained supporting quote can recall an ordinary entry",
+  );
+  assert.equal(select(state, player).packet.entries.length, 1);
+  assert.deepEqual(select(state, leo).packet.entries, [], "sound-only recall cannot search the hidden full words");
+  assert.equal(select(state, leo, "indistinct voices").packet.entries.length, 1);
+  const root = state.records[0],
+    key = continuityHolderKey(mara),
+    target = { id: root.id, recordRevision: root.revision, heads: { [key]: root.heads[key].revision } };
+  for (const action of [{ text: "We discussed an ordinary visit." }, { forget: true }] as const) {
+    const protectedState = protectContinuity(state, target, [mara], "protect-" + Object.keys(action)[0], at, action);
+    assert.deepEqual(
+      select(protectedState, mara).packet.entries,
+      [],
+      "Correct and Forget mask the original source search too",
+    );
+    assert.equal(
+      select(protectedState, player).packet.entries.length,
+      1,
+      "another holder retains their own unchanged support",
+    );
+  }
 });
 
 await runCase("continuity-retrieval/required-overflow", () => {

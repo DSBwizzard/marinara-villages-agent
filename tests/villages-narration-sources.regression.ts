@@ -1,4 +1,4 @@
-// Test cases: narration-sources/exact-private-input, narration-sources/spatial-audience, narration-sources/movement-order, narration-sources/routed-segments, narration-sources/own-perspective, narration-sources/fitted-aliases, narration-sources/room-without-knowers, narration-sources/sound-alias-retention, narration-sources/cold-input-widening, narration-sources/keep-binding, narration-sources/first-disclosure, narration-sources/native-combination, narration-sources/absent-owner-disclosure, narration-sources/subject-identity
+// Test cases: narration-sources/exact-private-input, narration-sources/spatial-audience, narration-sources/movement-order, narration-sources/routed-segments, narration-sources/own-perspective, narration-sources/fitted-aliases, narration-sources/room-without-knowers, narration-sources/sound-alias-retention, narration-sources/cold-input-widening, narration-sources/keep-binding, narration-sources/first-disclosure, narration-sources/native-combination, narration-sources/absent-owner-disclosure, narration-sources/subject-identity, narration-sources/sound-metadata
 import { emptyMailbox } from "../packages/villages/src/server/domain/decoding/mailbox-codec.js";
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
@@ -21,6 +21,7 @@ import {
   protectContinuity,
 } from "../packages/villages/src/server/domain/rules/continuity.js";
 import type {
+  ContinuityAdmission,
   ContinuityEvidence,
   ContinuityHolder,
 } from "../packages/villages/src/server/domain/models/continuity-model.js";
@@ -546,6 +547,87 @@ await runCase("narration-sources/room-without-knowers", async () => {
   assert.deepEqual(continuityViews(cold.value.continuity, mara, at, new Set()), []);
 });
 
+await runCase("narration-sources/sound-metadata", () => {
+  const captured = context("Mara is visiting Delia.");
+  captured.lines[0].content = captured.input;
+  captured.lines[0].soundOnly = { characterIds: ["leo"], player: false, text: "Indistinct voices outside." };
+  const spoken = { input: captured.input, ground: { kind: "spoken", to: ["leo"], delivery: "shout" } };
+  function write(
+    raw: Record<string, unknown>,
+    collection = emptyContinuity(),
+    supplied: ContinuityAdmission["supplied"] = [],
+  ) {
+    const prepared = prepareNarrationKeep(
+      raw,
+      0,
+      collection,
+      {
+        seed: captured.seed,
+        operationId: captured.operationId,
+        episodeId: captured.episodeId,
+        at,
+        actors: captured.actors,
+        sources: [],
+        supplied,
+        protectedRoots: [],
+      },
+      captured,
+    );
+    return applyContinuityWrite(collection, prepared.write, prepared.admission);
+  }
+  const note = { for: ["leo"], text: "Indistinct voices outside.", source: ["reply"] };
+  for (const metadata of [
+    { about: ["mara"] },
+    { for: ["mara", "leo"], about: ["mara"] },
+    { for: ["mara", "leo"], owner: "mara", class: "desire" },
+  ])
+    assert.throws(() => write({ ...note, ...metadata }), /anonymous sound/);
+  assert.equal(write(note).versions[0].about.length, 0);
+  assert.equal(write({ ...note, for: ["mara"], about: ["delia"] }).versions[0].about[0].id, "delia");
+  assert.equal(write({ ...note, about: ["mara"], source: ["reply", spoken] }).versions[0].about[0].id, "mara");
+  captured.scene = { ...captured.scene, activeIds: ["mara", "leo"] };
+  assert.equal(
+    write({ ...note, owner: "leo", class: "perspective", about: ["mara"], source: ["reply", "self"] }).records[0].owner!
+      .id,
+    "leo",
+  );
+  const known = write({ ...note, about: ["mara"], source: [spoken] }),
+    root = known.records[0],
+    key = continuityHolderKey(leo),
+    target = { id: root.id, recordRevision: root.revision, heads: { [key]: root.heads[key].revision } };
+  captured.operationId = "later-operation";
+  assert.equal(
+    write({ ...note, replace: root.id, about: ["mara"] }, known, [target]).versions.at(-1)!.about[0].id,
+    "mara",
+  );
+  assert.throws(() => write({ ...note, replace: root.id, about: ["delia"] }, known, [target]), /anonymous sound/);
+  const corrected = protectContinuity(known, target, [leo], "correct", at, { text: note.text }),
+    correctedRoot = corrected.records[0],
+    correctedTarget = {
+      id: root.id,
+      recordRevision: correctedRoot.revision,
+      heads: { [key]: correctedRoot.heads[key].revision },
+    };
+  assert.deepEqual(corrected.versions.at(-1)!.about, []);
+  assert.throws(
+    () => write({ ...note, replace: root.id, about: ["mara"] }, corrected, [correctedTarget]),
+    /anonymous sound/,
+  );
+  const otherKnower = write({ ...note, for: ["mara"], about: ["delia"] }),
+    otherRoot = otherKnower.records[0],
+    maraKey = continuityHolderKey(mara),
+    otherTarget = {
+      id: otherRoot.id,
+      recordRevision: otherRoot.revision,
+      heads: { [maraKey]: otherRoot.heads[maraKey].revision },
+    };
+  captured.operationId = "new-learner";
+  assert.throws(() => write({ ...note, replace: otherRoot.id }, otherKnower, [otherTarget]), /anonymous sound/);
+  const historical = bindNarrationSource({ segment: "reply", perceive: { kind: "sound-only", by: ["leo"] } }, captured);
+  captured.historical = { "h:sound": historical };
+  assert.throws(() => write({ ...note, about: ["mara"], source: ["h:sound"] }), /anonymous sound/);
+});
+
 await runCase("narration-sources/sound-alias-retention", async () => {
   const captured = context();
   captured.lines[0].soundOnly = {
@@ -611,6 +693,33 @@ await runCase("narration-sources/sound-alias-retention", async () => {
   assert.equal(source.excerpt, captured.lines[0].soundOnly.text);
   assert.equal(source.act, undefined);
   assert.equal(source.actorId, undefined);
+  const replay = { ...later, operationId: "after-cold", historical: { "h:voice": source } };
+  const identifying = prepareNarrationKeep(
+    {
+      for: ["leo"],
+      text: "Indistinct voices outside.",
+      about: ["mara"],
+      source: ["h:voice"],
+    },
+    0,
+    cold.value.continuity,
+    {
+      seed: replay.seed,
+      operationId: replay.operationId,
+      episodeId: replay.episodeId,
+      at,
+      actors: replay.actors,
+      sourceActors: { [captured.episodeId]: captured.actors },
+      sources: [],
+      supplied: [],
+      protectedRoots: [],
+    },
+    replay,
+  );
+  assert.throws(
+    () => applyContinuityWrite(cold.value.continuity, identifying.write, identifying.admission),
+    /anonymous sound/,
+  );
 });
 
 await runCase("narration-sources/cold-input-widening", async () => {

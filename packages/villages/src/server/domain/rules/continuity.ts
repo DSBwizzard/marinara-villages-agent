@@ -196,6 +196,23 @@ export function actorContinuityEvidence(source: ContinuityEvidence, actorId: str
     ...(source.committedReceiptId ? { committedReceiptId: source.committedReceiptId } : {}),
   };
 }
+export function assertContinuitySoundIdentity(
+  version: ContinuityVersion,
+  holder: Extract<ContinuityHolder, { kind: "actor" }>,
+  owner?: ContinuityRecord["owner"],
+  prior?: ContinuityVersion,
+) {
+  if (
+    version.sources.every(
+      (source) => source.perceptions.find((row) => row.actorId === holder.id)?.channel === "sound-only",
+    )
+  )
+    memoryRequire(
+      version.about.every((subject) => prior?.about.some((known) => same(known, subject))) &&
+        (!owner || same(owner, holder) || prior),
+      "anonymous sound cannot establish subject identities",
+    );
+}
 function resolveSources(write: ContinuityWrite, context: ContinuityAdmission) {
   memoryRequire(write.sourceIds.length > 0 && write.sourceIds.length <= 8, "missing continuity support");
   return write.sourceIds.map((id) => {
@@ -581,6 +598,7 @@ export function applyContinuityWrite(
         );
       memoryRequire(supplied || inherited, "continuity subject identity was not supplied");
     }
+    if (holder.kind === "actor") assertContinuitySoundIdentity(version, holder, record.owner, prior);
     memoryRequire(
       !ownedContinuityClass(version.class) || record.owner || record.offer || write.offer,
       "private state has no owner",

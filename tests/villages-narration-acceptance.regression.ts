@@ -1,4 +1,4 @@
-// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context, narration-acceptance/inherited-room-context
+// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context, narration-acceptance/inherited-room-context, narration-acceptance/anonymous-metadata
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -257,6 +257,35 @@ await runCase("narration-acceptance/inherited-private-context", () => {
     constrained.protections.some((row) => row.id === other.id && row.for === offId && row.forgotten),
     "retained offstage scopes receive their other protection constraints before purchase",
   );
+});
+
+await runCase("narration-acceptance/anonymous-metadata", () => {
+  for (const identify of [false, true]) {
+    const f = fixture("What was that? Кафе 🪑");
+    f.scene.sceneAttendance!.occupants[0].zoneId = "exterior";
+    const publication = f.publication({
+      segments: [{ kind: "dialogue", id: "remote", speakerId: f.id, text: "My secret words.", requires: ["listen"] }],
+      keep: [
+        {
+          id: "listen",
+          for: ["player"],
+          text: "I heard indistinct voices outside.",
+          ...(identify ? { about: [f.id] } : {}),
+          source: ["remote"],
+        },
+      ],
+    });
+    const before = structuredClone(f.state);
+    const result = acceptNarrationContinuity(f.state, publication, "submission", later);
+    assert.equal(result.held, identify, "anonymous sound cannot identify its hidden speaker through about metadata");
+    if (identify) {
+      assert.deepEqual(f.state, before, "a required privacy failure holds the whole purchased response");
+    } else {
+      const source = f.state.continuity.versions[0].sources[0];
+      assert.equal(source.perceptions.find((row) => row.actorId === "player")?.channel, "sound-only");
+      assert.equal(result.episode!.privateInput, f.input);
+    }
+  }
 });
 
 await runCase("narration-acceptance/atomic-episode", () => {
