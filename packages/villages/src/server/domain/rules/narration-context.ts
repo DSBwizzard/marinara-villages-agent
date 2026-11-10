@@ -128,10 +128,44 @@ export function narrationContinuityContext(
   );
   // Required entries have no heuristic token ceiling; the Engine must fit them intact before purchase.
   const capacity = Buffer.byteLength(JSON.stringify(state.continuity)) * 2 + 1024;
+  const circumstances = (state.narrative?.situations ?? [])
+    .filter(
+      (row) =>
+        row.status === "active" &&
+        (row.scope === "village" ||
+          row.targets.some((target) => target.venueId === scene.placeId && target.zoneId === scene.zoneId)),
+    )
+    .map((situation) => {
+      const episode = state.episodes.records.findLast((episode) =>
+        episode.commandReceipts.some(
+          (receipt) =>
+            receipt.kind === "circumstance" &&
+            receipt.targetId === situation.id &&
+            receipt.revision === situation.revision &&
+            receipt.text === situation.summary,
+        ),
+      );
+      memoryRequire(episode, "current circumstance has no canonical continuity source");
+      const receipt = episode.commandReceipts.find(
+        (receipt) =>
+          receipt.kind === "circumstance" &&
+          receipt.targetId === situation.id &&
+          receipt.revision === situation.revision &&
+          receipt.text === situation.summary,
+      )!;
+      const roots = episode.continuityVersionIds
+        .map((id) => state.continuity.versions.find((version) => version.id === id)!)
+        .filter((version) =>
+          version.sources.some((source) => source.episodeId === episode.id && source.committedReceiptId === receipt.id),
+        )
+        .map((version) => version.rootId);
+      return { situation, episode, receipt, roots };
+    });
+  const circumstanceRoots = new Set(circumstances.flatMap(({ roots }) => roots));
   const actorSelection = selectActorContinuity(state.continuity, state.episodes, holders, at, {
     query: input,
     bytes: capacity,
-    requiredIds: [],
+    requiredIds: [...circumstanceRoots].filter((id) => views.some((view) => view.id === id)),
   });
   const roomSelection = selectRoomContinuity(state.continuity, state.episodes, room, at, {
     query: input,
@@ -154,7 +188,81 @@ export function narrationContinuityContext(
   const requiredKey = (target: ContinuityTarget, holderKey: string) =>
     actorSelection.required.some((row) => row.id === target.id && Object.hasOwn(row.heads, holderKey));
   const emitted = new Set<string>();
+  for (const { situation, episode, receipt, roots: rootIds } of circumstances) {
+    const roots = new Set(rootIds);
+    const groups = new Map<
+      string,
+      { text: string; knownFor: { actorId: string; source: string }[]; part: Omit<Part, "block"> }
+    >();
+    for (const view of views.filter((view) => roots.has(view.id))) {
+      const key = continuityHolderKey(view.holder),
+        source = continuityKnowledge(view, state.seed, episodeId),
+        ref = sourceAlias();
+      const groupId = JSON.stringify([view.id, view.version.text]);
+      const group = groups.get(groupId) ?? { text: view.version.text, knownFor: [], part: emptyPart() };
+      group.knownFor.push({ actorId: view.holder.kind === "actor" ? view.holder.id : "", source: ref });
+      group.part.sources[ref] = source;
+      if (view.current && view.holder.kind === "actor" && view.holder.id !== "player")
+        group.part.offered.push({ holder: view.holder, ids: [view.id] });
+      (group.part.provenance[key] ??= []).push(continuitySourceUnit(source));
+      group.part.targets.push({
+        id: view.id,
+        recordRevision: view.recordRevision,
+        heads: { [key]: view.headRevision },
+      });
+      group.part.episodeIds.push(episode.id, ...view.version.sources.map((source) => source.episodeId));
+      groups.set(groupId, group);
+    }
+    for (const [key, group] of groups)
+      parts.push({
+        ...group.part,
+        block: {
+          text: JSON.stringify({
+            currentCircumstance: {
+              id: situation.id,
+              scope: situation.scope,
+              targets: situation.targets,
+              text: group.text,
+              knownFor: group.knownFor,
+            },
+          }),
+          evidenceId: "circumstance-context:" + memoryHash([episode.id, receipt.id, key]),
+        },
+      });
+    if (!groups.size) {
+      const source = episode.grounding.find((source) => source.committedReceiptId === receipt.id)!;
+      memoryRequire(source, "current circumstance has no native evidence");
+      const unit = continuitySourceUnit(source),
+        owners = [...actors, room];
+      if (
+        owners.some((holder) =>
+          continuityProtectionUnits(state.continuity, holder, episodeSourceGraph(state.episodes.records, holder)).has(
+            unit,
+          ),
+        )
+      )
+        continue;
+      parts.push({
+        ...emptyPart(),
+        episodeIds: [episode.id],
+        provenance: Object.fromEntries(owners.map((holder) => [continuityHolderKey(holder), [unit]])),
+        block: {
+          text: JSON.stringify({
+            privateWorldCircumstance: {
+              id: situation.id,
+              scope: situation.scope,
+              targets: situation.targets,
+              text: receipt.text,
+              knowledge: "GM context only; no character audience",
+            },
+          }),
+          evidenceId: "circumstance-context:" + memoryHash([episode.id, receipt.id]),
+        },
+      });
+    }
+  }
   for (const entry of actorSelection.packet.entries) {
+    if (circumstanceRoots.has(entry.id)) continue;
     const holder = holders.find((row) => row.id === entry.for)!,
       key = continuityHolderKey(holder);
     if (emitted.has(JSON.stringify([key, entry.id]))) continue;

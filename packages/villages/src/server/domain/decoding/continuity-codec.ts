@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ContinuityCollection } from "../models/continuity-model.js";
+import type { ContinuityCollection, ContinuityVersion } from "../models/continuity-model.js";
 import { continuityHolderKey, CONTINUITY_TEXT_BYTES, ROOM_CONTINUITY_TEXT_BYTES } from "../rules/continuity.js";
 import {
   immutableMemoryValue,
@@ -66,6 +66,8 @@ export const continuityEvidenceSchema = z
       (!value.act || value.kind === "speech"),
   );
 const closed = z.object({ reason: z.enum(["fulfilled", "withdrawn", "ended"]) }).strict();
+const completeNativeMeaning = (value: Pick<ContinuityVersion, "text" | "sources">) =>
+  value.sources.length === 1 && value.sources[0].kind === "native" && value.sources[0].excerpt === value.text;
 const version = z
   .object({
     id,
@@ -90,11 +92,13 @@ const version = z
       .optional(),
   })
   .strict()
-  .refine((value) => value.room || Buffer.byteLength(value.text) <= CONTINUITY_TEXT_BYTES)
+  .refine(
+    (value) => value.room || completeNativeMeaning(value) || Buffer.byteLength(value.text) <= CONTINUITY_TEXT_BYTES,
+  )
   .refine((value) =>
     value.administrative ? value.sources.length === 0 && value.administrative.at >= value.at : value.sources.length > 0,
   )
-  .refine((value) => Buffer.byteLength(JSON.stringify(value)) <= 32768);
+  .refine((value) => Buffer.byteLength(JSON.stringify(value)) <= (completeNativeMeaning(value) ? 65536 : 32768));
 const record = z
   .object({
     id,

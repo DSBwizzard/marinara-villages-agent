@@ -43,6 +43,7 @@ const episode = z
               "discovery",
               "npc",
               "establishment",
+              "circumstance",
             ]),
             targetId: id,
             revision: z.number().int().nonnegative().safe(),

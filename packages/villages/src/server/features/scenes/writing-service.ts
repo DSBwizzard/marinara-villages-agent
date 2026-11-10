@@ -16,7 +16,7 @@ import { renderPlayerBackgroundContext } from "../../domain/rules/player-backgro
 import { projectSpeechPrompt } from "../../domain/rules/project-interpretation.js";
 import { narrationAccessPrompt } from "../../domain/rules/narration-access.js";
 import { NARRATION_NATIVE } from "../../domain/rules/narration-native.js";
-import { currentVillageCircumstances, villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
+import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
 import { residentMovementOptions } from "../../domain/rules/resident-movement.js";
 import { responseDiagnostics } from "../../domain/rules/response-diagnostics.js";
 import { sceneContinuityView, sceneLocationContext } from "../../domain/rules/scene-continuity.js";
@@ -215,7 +215,6 @@ export function createSceneWriting({
         narrationAccessPrompt(context.access),
         JSON.stringify({
           calendar,
-          circumstances: currentVillageCircumstances(village),
           protections: context.protections,
           presentation: {
             state: presentation.state,

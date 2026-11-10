@@ -1,4 +1,4 @@
-// Test cases: native-continuity/unobserved, native-continuity/fresh-room, native-continuity/room-replay, native-continuity/cold-room
+// Test cases: native-continuity/unobserved, native-continuity/fresh-room, native-continuity/room-replay, native-continuity/cold-room, native-continuity/founding-circumstance
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -10,7 +10,15 @@ import {
 } from "../packages/villages/src/server/domain/rules/native-continuity.js";
 import { establishPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
-import { continuityViews, continuityHolderKey } from "../packages/villages/src/server/domain/rules/continuity.js";
+import {
+  continuityViews,
+  continuityHolderKey,
+  protectContinuity,
+} from "../packages/villages/src/server/domain/rules/continuity.js";
+import {
+  seedFoundingCircumstances,
+  readFoundingCircumstances,
+} from "../packages/villages/src/server/domain/rules/founding-circumstances.js";
 import { gmEpisodeView } from "../packages/villages/src/server/domain/rules/episodes.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { readContinuityProposal } from "../packages/villages/src/server/domain/rules/narration-contract.js";
@@ -26,7 +34,7 @@ function fixture() {
       name: "Studio",
       description: "An entrance.",
       zones: [{ id: "studio", name: "Studio", kind: "public", description: "A studio." }],
-      people: [],
+      people: ["mara", "leo", "rue"].map((ref) => ({ ref, name: ref, characterization: "An established artisan." })),
     },
     "studio",
     "map",
@@ -114,6 +122,64 @@ await runCase("native-continuity/cold-room", async () => {
     const cold = await createVillageRepository(() => storage.gate.documents).readAuthority({ memories: true });
     assert.equal(continuityViews(cold.continuity, room, at, new Set())[0].version.text, text);
     assert.deepEqual(cold.episodes.records[0].actors, []);
+  } finally {
+    storage.release();
+  }
+});
+await runCase("native-continuity/founding-circumstance", async () => {
+  const { state } = fixture(),
+    storage = sceneHistoryFixture();
+  try {
+    const knowers = ["player", ...Object.keys(state.worldPlaces.npcs)];
+    const situations = readFoundingCircumstances([{ scope: "village", summary: text }], [], at);
+    seedFoundingCircumstances(state, situations, knowers, at);
+    assert.equal(state.narrative!.situations[0].summary, text);
+    assert.equal(state.episodes.records.length, 1);
+    assert.deepEqual(state.episodes.records[0].segments, []);
+    assert.equal(
+      state.continuity.records.length,
+      1,
+      "the complete native meaning is one common record, never arbitrary text chunks",
+    );
+    for (const id of knowers) {
+      const holder = continuityActor(state, id)!;
+      const view = continuityViews(state.continuity, holder, at, new Set())[0];
+      assert.equal(view.version.text, text);
+      assert.deepEqual(
+        view.version.sources[0].perceptions.map((row) => row.actorId),
+        [id],
+        "each holder retains only their native notification projection",
+      );
+    }
+    const repository = createVillageRepository(() => storage.gate.documents);
+    await repository.mutateAuthority(
+      (saved) => {
+        Object.assign(saved, state);
+      },
+      { memories: true },
+    );
+    const cold = await createVillageRepository(() => storage.gate.documents).readAuthority({ memories: true });
+    assert.equal(cold.continuity.versions.length, knowers.length);
+    assert(cold.continuity.versions.every((row) => row.text === text));
+    const holder = continuityActor(cold, "player")!,
+      key = continuityHolderKey(holder),
+      record = cold.continuity.records[0];
+    cold.continuity = protectContinuity(
+      cold.continuity,
+      { id: record.id, recordRevision: record.revision, heads: { [key]: record.heads[key].revision } },
+      [holder],
+      "forget-circumstance",
+      at,
+      { forget: true },
+    );
+    const protectedBefore = memoryHash(cold.continuity);
+    seedFoundingCircumstances(cold, situations, knowers, at);
+    assert.equal(
+      memoryHash(cold.continuity),
+      protectedBefore,
+      "native replay never re-teaches a forgotten founding fact",
+    );
+    assert.equal(continuityViews(cold.continuity, holder, at, new Set()).length, 0);
   } finally {
     storage.release();
   }

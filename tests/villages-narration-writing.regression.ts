@@ -1,4 +1,4 @@
-// Test cases: narration-writing/single-request, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/required-evidence-bound
+// Test cases: narration-writing/single-request, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/required-evidence-bound, narration-writing/circumstance-provenance
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -28,6 +28,11 @@ import {
 import { actorEpisodeView, appendEpisode } from "../packages/villages/src/server/domain/rules/episodes.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { retainNativeFact } from "../packages/villages/src/server/domain/rules/native-continuity.js";
+import {
+  seedFoundingCircumstances,
+  readFoundingCircumstances,
+} from "../packages/villages/src/server/domain/rules/founding-circumstances.js";
+import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
 import {
   createSceneWriting,
   type SceneWritingPorts,
@@ -84,6 +89,7 @@ function fixture() {
   });
   const checkpoints = new Map<string, unknown>(),
     calls = { purchases: 0, resolutions: 0, reads: 0 };
+  let operationId = "operation";
   let messages: any[] = [],
     unavailable = false,
     overflow = false,
@@ -99,7 +105,7 @@ function fixture() {
     },
   };
   const writing = createSceneWriting({
-    venueOperationId: () => "operation",
+    venueOperationId: () => operationId,
     venueCheckpoint: async (stage: string, work: () => Promise<unknown>) => {
       if (!checkpoints.has(stage)) checkpoints.set(stage, structuredClone(await work()));
       return structuredClone(checkpoints.get(stage));
@@ -131,7 +137,9 @@ function fixture() {
       usedModel = selected.model;
       messages = structuredClone(input);
       return {
-        content: JSON.stringify({ segments: [{ kind: "dialogue", speakerId: id, text: "Because it matters to me." }] }),
+        content: JSON.stringify({
+          segments: [{ kind: "dialogue", speakerId: scene.activeIds[0] ?? id, text: "Because it matters to me." }],
+        }),
         finishReason: "stop",
       };
     },
@@ -161,6 +169,10 @@ function fixture() {
       configuredConnection = "changed";
     },
     usedModel: () => usedModel,
+    nextOperation: (id: string) => {
+      operationId = id;
+      checkpoints.clear();
+    },
   };
 }
 
@@ -184,6 +196,162 @@ await runCase("narration-writing/single-request", async () => {
   assert.equal(reply.readset.source.scene.submissions.length, 0);
 });
 
+await runCase("narration-writing/circumstance-provenance", async () => {
+  const f = fixture(),
+    text = "The annual lantern procession has been delayed by a washed-out bridge.";
+  seedFoundingCircumstances(
+    f.state,
+    readFoundingCircumstances([{ scope: "village", summary: text }], [], at),
+    ["player", f.id],
+    at,
+  );
+  const first = await f.writing.generate(f.scene, "Why?", "chat");
+  assert.equal(
+    f
+      .messages()
+      .map((row) => row.content)
+      .join("\n")
+      .split(text).length - 1,
+    1,
+    "the required native meaning is fitted once for its known audience",
+  );
+  const result = acceptNarration(
+    f.state,
+    { raw: first.raw, readset: first.readset, responseDigest: first.responseDigest },
+    "turn",
+    first.readset.capturedAt,
+  );
+  assert.equal(result.held, false);
+  const accepted = f.state.episodes.records.find((episode) => episode.id === first.readset.source.episodeId)!;
+  assert.equal(accepted.continuityVersionIds.length, 0, "this reply has no keeps");
+  const native = f.state.continuity.records[0];
+  const owner = continuityActor(f.state, f.id)!,
+    player = continuityActor(f.state, "player")!;
+  const key = continuityHolderKey(owner),
+    playerKey = continuityHolderKey(player);
+  const target = () => ({
+    id: native.id,
+    recordRevision: f.state.continuity.records[0].revision,
+    heads: { [key]: f.state.continuity.records[0].heads[key].revision },
+  });
+  f.state.continuity = protectContinuity(f.state.continuity, target(), [owner], "forget-native", at, { forget: true });
+  assert.equal(
+    actorEpisodeView(accepted, f.state.continuity, owner, f.state.episodes)!.segments.length,
+    0,
+    "Forget blocks no-keep prose derived from the actual fitted native meaning",
+  );
+  assert.equal(
+    actorEpisodeView(accepted, f.state.continuity, player, f.state.episodes)!.segments.length,
+    1,
+    "another holder keeps their own derived history",
+  );
+  f.nextOperation("after-forget");
+  await f.writing.generate(f.scene, "And now?", "chat");
+  const active = f
+    .messages()
+    .flatMap((row) => String(row.content).split("\n\n"))
+    .filter((text) => text.startsWith('{"currentCircumstance":'))
+    .map((text) => JSON.parse(text).currentCircumstance);
+  assert(
+    active.length > 0 && active.every((row) => row.knownFor.every((entry) => entry.actorId !== f.id)),
+    "protected native meaning is not supplied as that actor's current context",
+  );
+  const current = f.state.continuity.records[0];
+  f.state.continuity = protectContinuity(
+    f.state.continuity,
+    { id: current.id, recordRevision: current.revision, heads: { [playerKey]: current.heads[playerKey].revision } },
+    [player],
+    "forget-player-native",
+    at,
+    { forget: true },
+  );
+  f.nextOperation("after-all-forget");
+  await f.writing.generate(f.scene, "What next?", "chat");
+  const prompt = f
+    .messages()
+    .map((row) => row.content)
+    .join("\n");
+  assert(
+    !prompt.includes('"currentCircumstance"') && !prompt.includes('"privateWorldCircumstance"'),
+    "a duplicate raw native summary cannot bypass every holder's protection",
+  );
+  const corrected = fixture();
+  seedFoundingCircumstances(
+    corrected.state,
+    readFoundingCircumstances([{ scope: "village", summary: text }], [], at),
+    [corrected.id],
+    at,
+  );
+  const holder = continuityActor(corrected.state, corrected.id)!,
+    holderKey = continuityHolderKey(holder),
+    record = corrected.state.continuity.records[0];
+  const replacement = "Mara remembers a damaged footpath, with the main bridge still open.";
+  corrected.state.continuity = protectContinuity(
+    corrected.state.continuity,
+    { id: record.id, recordRevision: record.revision, heads: { [holderKey]: record.heads[holderKey].revision } },
+    [holder],
+    "correct-native",
+    at,
+    { text: replacement },
+  );
+  await corrected.writing.generate(corrected.scene, "Why?", "chat");
+  const correctedBlocks = corrected
+    .messages()
+    .flatMap((row) => String(row.content).split("\n\n"))
+    .filter((text) => text.startsWith('{"currentCircumstance":'))
+    .map((text) => JSON.parse(text).currentCircumstance);
+  assert.equal(correctedBlocks.length, 1);
+  assert.equal(
+    correctedBlocks[0].text,
+    replacement,
+    "the current native context uses that holder's protected corrected meaning",
+  );
+  const passive = fixture(),
+    leo = "npc:lantern:leo";
+  passive.state.worldPlaces.npcs[leo] = {
+    ...structuredClone(passive.state.worldPlaces.npcs[passive.id]),
+    id: leo,
+    name: "Leo",
+    label: "Leo",
+    source: "fixture:leo",
+  };
+  passive.scene.participants.push({ characterId: leo, name: "Leo", doing: "Talking" });
+  passive.scene.sceneAttendance!.occupants.push({ characterId: leo, name: "Leo", doing: "Talking", zoneId: "parlor" });
+  passive.scene.activeIds = [leo];
+  seedFoundingCircumstances(
+    passive.state,
+    readFoundingCircumstances([{ scope: "village", summary: text }], [], at),
+    [passive.id],
+    at,
+  );
+  const beforeForget = await passive.writing.generate(passive.scene, "Why?", "chat");
+  const quietHolder = continuityActor(passive.state, passive.id)!,
+    quietKey = continuityHolderKey(quietHolder);
+  assert(beforeForget.readset.source.actors.some((row) => row.id === passive.id));
+  assert(
+    beforeForget.readset.admission.provenance?.[quietKey]?.length,
+    "private native context retains passive admitted witness provenance",
+  );
+  const quietRecord = passive.state.continuity.records[0];
+  passive.state.continuity = protectContinuity(
+    passive.state.continuity,
+    {
+      id: quietRecord.id,
+      recordRevision: quietRecord.revision,
+      heads: { [quietKey]: quietRecord.heads[quietKey].revision },
+    },
+    [quietHolder],
+    "forget-passive-native",
+    at,
+    { forget: true },
+  );
+  passive.nextOperation("passive-forget");
+  await passive.writing.generate(passive.scene, "And now?", "chat");
+  assert(
+    !passive.messages().some((row) => String(row.content).includes('"privateWorldCircumstance"')),
+    "a passive admitted holder's Forget prevents raw native fallback",
+  );
+});
 await runCase("narration-writing/saved-replay", async () => {
   const f = fixture(),
     first = await f.writing.generate(f.scene, "Why?", "chat");

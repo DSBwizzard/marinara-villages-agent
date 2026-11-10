@@ -367,7 +367,11 @@ export function applyContinuityWrite(
   const created: ContinuityVersion[] = [];
   for (const { key, holder, head, version: prior } of before) {
     const text = write.text ?? prior?.text;
-    memoryString(text, holder.kind === "room" ? ROOM_CONTINUITY_TEXT_BYTES : CONTINUITY_TEXT_BYTES);
+    const completeNativeMeaning = sources.length === 1 && sources[0].kind === "native" && sources[0].excerpt === text;
+    memoryString(
+      text,
+      holder.kind === "room" || completeNativeMeaning ? ROOM_CONTINUITY_TEXT_BYTES : CONTINUITY_TEXT_BYTES,
+    );
     memoryRequire(!prior?.closed || write.current !== true, "closed continuity cannot be reopened");
     const version: ContinuityVersion = {
       id: continuityVersionId(context.seed, operationId, holder),
@@ -378,7 +382,13 @@ export function applyContinuityWrite(
       about: [...(write.about ?? prior?.about ?? [])],
       ...(write.parentId || prior?.parentId ? { parentId: write.parentId ?? prior!.parentId } : {}),
       ...(write.facet || prior?.facet ? { facet: write.facet ?? prior!.facet } : {}),
-      sources: structuredClone(sources),
+      sources: sources.map((source) =>
+        structuredClone(
+          holder.kind === "actor" && source.kind === "native"
+            ? { ...source, perceptions: source.perceptions.filter((row) => row.actorId === holder.id) }
+            : source,
+        ),
+      ),
       at: context.at,
       operationId,
       ...(record.offer

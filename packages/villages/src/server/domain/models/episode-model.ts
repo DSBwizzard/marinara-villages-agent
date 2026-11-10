@@ -30,7 +30,8 @@ export type AcceptedEpisode = {
       | "structure"
       | "discovery"
       | "npc"
-      | "establishment";
+      | "establishment"
+      | "circumstance";
     targetId: string;
     revision: number;
     text: string;
