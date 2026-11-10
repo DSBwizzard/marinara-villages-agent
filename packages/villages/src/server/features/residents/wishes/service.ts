@@ -102,7 +102,14 @@ export function createWishes(ports: Ports) {
   function parsed(response: Awaited<ReturnType<Ports["completeWithRoom"]>>, maxTokens?: number) {
     const failure = completionFailure(response, "initial-wish", maxTokens);
     if (failure) throw new WorkFailureError(failure);
-    return result.parse(extractModelJsonObject(response));
+    const parsed = result.safeParse(extractModelJsonObject(response));
+    if (!parsed.success)
+      throw new WorkFailureError({
+        cause: "missing_result",
+        stage: "initial-wish",
+        message: "The initial Wish response is missing or invalid.",
+      });
+    return parsed.data;
   }
   const handler: Handler = {
     recoverSavedResult: (input, steps) => {

@@ -28,7 +28,6 @@ const world = coerceVillageState({
   name: "Synthetic place",
   setting: "Shared converted rooms",
   backgroundPace: "off",
-  wishSystemVersion: 3,
   setupAt: now,
   foundedAt: now,
   foundingPreparation: {
@@ -41,6 +40,7 @@ const world = coerceVillageState({
   villagers: ["a", "b"].map((id) => ({
     letterFontId: "caveat",
     characterId: id,
+    incarnation: "one",
     identityDescription: { text: "", revision: "initial-description-" + id, initialGenerationComplete: false },
     addedAt: now,
     cardSnapshot: {
@@ -171,15 +171,23 @@ try {
   let response = await app.inject({ method: "POST", url: "/api/villages/setup/preparation/retry", payload: batch });
   assert.equal(response.statusCode, 200, response.body);
   await settled();
-  assert.equal(calls, 5, "The failed Wish receives exactly one automatic replacement.");
   let marker = records.get("villages-village").data.foundingPreparation;
+  assert.equal(marker.tasks.b.wish.status, "completed");
+  const failedWish = [...records.values()].find(
+    (row) => row.kind === "background-work" && row.data.kind === "wish" && row.data.subjectId === "a",
+  )!.data;
+  assert.equal(
+    failedWish.failure?.cause,
+    "missing_result",
+    "a complete saved malformed reply has a known parser failure, not an unknown provider outcome",
+  );
+  assert.equal(calls, 5, "The failed Wish receives exactly one automatic replacement.");
   assert.equal(marker.status, "failed");
   assert.equal(marker.tasks.a.routine.status, "completed");
   assert.equal(
     records.get("villages-village").data.villagers[0].identityDescription.text,
     "A patient resident with a lasting interest in local history.",
   );
-  assert.equal(marker.tasks.b.wish.status, "completed");
   assert.equal(marker.tasks.a.wish.attempt, 2);
   assert.equal(
     [...records.values()].find(

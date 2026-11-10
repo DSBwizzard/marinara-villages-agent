@@ -65,9 +65,7 @@ const palette = ["Tending herbs", "Reading", "Walking", "Painting", "Playing mus
 }));
 const payload = {
   routine: "Ada enjoys herbs, reading and music.",
-  wishes: [],
   palette,
-  days: Array.from({ length: 7 }, () => [0, 1, 2, 3, 4, 5, 0, 2]),
   rhythm: [],
 };
 const context = {
@@ -78,7 +76,6 @@ const context = {
   venues: [],
   lore: [],
   wishes: [],
-  activeWishes: [],
   schedule: null,
 };
 const block = {
@@ -92,8 +89,6 @@ const block = {
 const ownedWeek = Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, [block]]));
 const raw = {
   ...defaultVillageState(),
-  memories: { format: 1, revision: 0, records: [] },
-  memoryScenes: {},
 
   seed: "owned-test",
   setting: "Quiet valley",
@@ -104,10 +99,10 @@ const raw = {
     {
       letterFontId: "caveat",
       characterId: "a",
+      incarnation: "one",
       addedAt: "2026-09-01",
       scheduleInfluence: influenceSettings({ enabled: true }),
       cardSnapshot: { ...card, revision: 1, sourceStatus: "available", capturedAt: "2026-09-01T00:00:00.000Z" },
-      wishes: [],
       agenda: {
         generatedAt: "2026-09-01T00:00:00.000Z",
         routineSummary: "Existing life",
@@ -412,6 +407,7 @@ async function main() {
 
   records.set("villages-village", {
     id: "villages-village",
+    packageId: "villages",
     kind: "village",
     data: coerceVillageState(raw),
     revision: 1,
@@ -497,7 +493,6 @@ async function main() {
     const access = coerceVillageState({
       ...defaultVillageState(),
 
-      wishSystemVersion: 3,
       ...raw,
       venues: [safeVenue],
     });
@@ -519,7 +514,6 @@ async function main() {
     const crowd = coerceVillageState({
       ...defaultVillageState(),
 
-      wishSystemVersion: 3,
       ...raw,
       venues: [safeVenue],
       villagers: Array.from({ length: 6 }, (_, i) => ({

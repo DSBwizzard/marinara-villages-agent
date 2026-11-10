@@ -33,9 +33,14 @@ import {
 } from "../packages/villages/src/server/domain/rules/narrative-development.js";
 import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
 import { villageCurrentSetting } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
+import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
+import { continuityViews } from "../packages/villages/src/server/domain/rules/continuity.js";
 import { createResidences } from "../packages/villages/src/server/features/venues/residence-service.js";
 import { residenceProposal } from "../packages/villages/src/server/domain/rules/residence-agreement.js";
-import { completeResidenceMove } from "../packages/villages/src/server/domain/rules/residence-move.js";
+import {
+  completeResidenceMove,
+  decideResidenceMove,
+} from "../packages/villages/src/server/domain/rules/residence-move.js";
 import { accessibleVenueRoute } from "../packages/villages/src/server/domain/rules/venue-path.js";
 import { ZonedDate } from "../packages/villages/src/shared/helpers/zoned-date.js";
 import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
@@ -85,10 +90,10 @@ function world(groups: Record<string, string> = {}) {
   state.villagers = actors.slice(1).map((actor) => ({
     letterFontId: "caveat",
     characterId: actor.id,
+    incarnation: "one",
     cardSnapshot: { id: actor.id, name: actor.name, capturedAt: at },
     addedAt: at,
     agenda: null,
-    wishes: [],
   })) as VillageState["villagers"];
   return state;
 }
@@ -443,10 +448,18 @@ assert.throws(
     actors.map((actor) => actor.id),
     at,
   );
-  const learned = state.memories.records.filter((record) => record.origin.id.startsWith("founding:0:"));
-  assert.equal(learned.map((record) => record.text).join(""), summary, "all multibyte starting knowledge is retained");
-  for (const record of learned)
-    assert.deepEqual(Object.keys(record.knowers).sort(), actors.map((actor) => actor.id).sort());
+  const episode = state.episodes.records.find((episode) =>
+    episode.commandReceipts.some((receipt) => receipt.targetId === situations[0].id),
+  )!;
+  const learned = state.continuity.versions.filter((version) => episode.continuityVersionIds.includes(version.id));
+  assert.equal(learned.length, actors.length);
+  for (const actor of actors) {
+    const view = continuityViews(state.continuity, continuityActor(state, actor.id)!, at, new Set()).find(
+      (view) => view.id === learned[0].rootId,
+    )!;
+    assert.equal(view.version.text, summary, "each admitted holder retains the complete multibyte meaning");
+    assert.equal(view.version.sources[0].excerpt, summary);
+  }
   const restarted = coerceVillageState(state);
   assert.equal(restarted.narrative!.situations[1].scope, "zone");
   assert.ok(summary.length > 1200);
@@ -509,22 +522,18 @@ async function housing() {
   await service.proposeVillageResidence("c", target.id);
   let move = state.residences.find((row) => row.characterId === "c")!;
   const oldScope = move.agreement!.scope;
-  await service.decideVillageResidence("c", false, "player", undefined, undefined, oldScope);
+  await service.decideVillageResidence("c", false, oldScope);
   await service.proposeVillageResidence("c", target.id);
   move = state.residences.find((row) => row.characterId === "c")!;
   const scope = move.agreement!.scope;
   assert.notEqual(scope, oldScope, "replacement requests have independent consent identities");
-  await assert.rejects(
-    service.decideVillageResidence("c", true, "villager", "late-old", "c", oldScope),
-    /reviewed move/,
-  );
-  for (const id of ["c", "a", "b"])
-    await service.decideVillageResidence("c", true, "villager", `approve:${id}`, id, scope);
+  assert.throws(() => decideResidenceMove(state, "c", true, "villager", "c", oldScope, new Date()), /reviewed move/);
+  for (const id of ["c", "a", "b"]) decideResidenceMove(state, "c", true, "villager", id, scope, new Date());
   move = state.residences.find((row) => row.characterId === "c")!;
   assert.equal(move.status, "moving");
   assert.equal(Date.parse(move.completesAt!) - Date.parse(move.approvedAt!), 86400_000);
   const completesAt = move.completesAt;
-  await service.decideVillageResidence("c", true, "villager", "repeat", "a", scope);
+  decideResidenceMove(state, "c", true, "villager", "a", scope, new Date());
   assert.equal(state.residences[0].completesAt, completesAt, "duplicate consent does not postpone a move");
   state = coerceVillageState(state);
   assert.equal(state.residences[0].agreement!.scope, scope);
@@ -534,7 +543,7 @@ async function housing() {
   await service.movePlayerToResidence(target.id);
   move = state.residences.find((row) => row.characterId === "player")!;
   for (const id of ["a", "b", "c"])
-    await service.decideVillageResidence("player", true, "villager", `player:${id}`, id, move.agreement!.scope);
+    decideResidenceMove(state, "player", true, "villager", id, move.agreement!.scope, new Date());
   assert.equal(
     state.venues.find((venue) => venue.id === target.id)!.occupancy.playerHome,
     true,
@@ -963,14 +972,13 @@ console.log(
   let move = state.residences.find((row) => row.characterId === "player")!;
   const scope = move.agreement!.scope;
   await assert.rejects(service.proposeVillageResidence("c", target.id, "player", "", "guest-room"), /reserved/);
-  for (const id of ["a", "b"])
-    await service.decideVillageResidence("player", true, "villager", "housemate:" + id, id, scope);
+  for (const id of ["a", "b"]) decideResidenceMove(state, "player", true, "villager", id, scope, new Date());
   assert.equal(
     state.venues.find((v) => v.id === target.id)!.occupancy.playerHome,
     false,
     "Housemates cannot approve on behalf of a private room controller",
   );
-  await service.decideVillageResidence("player", false, "villager", "withdraw-room", "b", scope);
+  decideResidenceMove(state, "player", false, "villager", "b", scope, new Date());
   assert.equal(
     state.residences.some((row) => row.characterId === "player"),
     false,
@@ -989,9 +997,9 @@ console.log(
   );
   move = state.residences.find((row) => row.characterId === "c")!;
   for (const id of ["a", "b", "c"])
-    await service.decideVillageResidence("c", true, "villager", "reserve-approved:" + id, id, move.agreement!.scope);
+    decideResidenceMove(state, "c", true, "villager", id, move.agreement!.scope, new Date());
   assert.equal(state.residences.find((row) => row.characterId === "c")!.status, "moving");
-  await service.decideVillageResidence("c", false, "villager", "scheduled-withdrawal", "a", move.agreement!.scope);
+  decideResidenceMove(state, "c", false, "villager", "a", move.agreement!.scope, new Date());
   assert.equal(
     state.residences.some((row) => row.characterId === "c"),
     false,
@@ -1040,12 +1048,11 @@ console.log(
     await import("../packages/villages/src/server/domain/rules/return-catchup-capture.js");
   const { returnCaptureRevision } =
     await import("../packages/villages/src/server/domain/rules/return-capture-revision.js");
-  const { fixtureRelationshipIdentity, fixtureWishIdentity } = await import("./helpers/village-storage.fixture.js");
   const { foundingTaskRevision, ownsFoundingTask } =
     await import("../packages/villages/src/server/domain/rules/founding-tasks.js");
   const state = coerceVillageState(JSON.parse(JSON.stringify(world())));
   const scene = coerceSession({
-    version: 4,
+    version: 5,
     id: "frozen-history",
     placeId: "community",
     zoneId: "common:base",
@@ -1074,12 +1081,9 @@ console.log(
   const departure = captureReturnContext(state, new Date(at));
   departure.world.worldRules = "EXACT DEPARTURE WORLD RULES";
   state.returnCatchup = { capture: departure };
-  const identity = returnCaptureRevision(departure, fixtureRelationshipIdentity, fixtureWishIdentity);
+  const identity = returnCaptureRevision(departure);
   const loaded = coerceVillageState(JSON.parse(JSON.stringify(state)));
-  assert.equal(
-    returnCaptureRevision(loaded.returnCatchup!.capture, fixtureRelationshipIdentity, fixtureWishIdentity),
-    identity,
-  );
+  assert.equal(returnCaptureRevision(loaded.returnCatchup!.capture), identity);
   assert.equal(Object.hasOwn(loaded, "foundingHistory"), false);
   const context = { circumstances: { details: "Admitted source history" } };
   const revision = foundingTaskRevision(state, "a", "routine", context);

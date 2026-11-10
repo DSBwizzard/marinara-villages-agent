@@ -39,7 +39,7 @@ export type VenueWritingBlock = {
   cacheBreakpoint?: true;
   evidenceId?: string;
   pruningPriority?: number;
-  optional?: "wish" | "history" | "memory" | "lore";
+  optional?: "history" | "memory" | "lore";
   lore?: LoreUse;
 };
 
@@ -129,7 +129,7 @@ export function fitVenueWritingMessages(
         lore: mergeLoreUse(kept.flatMap((block) => (block.lore ? [block.lore] : []))),
       };
     const optional =
-      ["wish", "history", "memory", "lore"]
+      ["history", "memory", "lore"]
         .map((kind) =>
           kind === "lore"
             ? kept

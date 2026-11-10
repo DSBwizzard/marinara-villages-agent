@@ -12,6 +12,7 @@ import {
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
+import { continuityWishes } from "../packages/villages/src/server/domain/rules/continuity-library.js";
 import { agendaRevision } from "../packages/villages/src/server/domain/rules/agenda-revision.js";
 import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
@@ -39,9 +40,9 @@ function fixture(name: string) {
   const resident = {
     letterFontId: "caveat",
     characterId: "same",
+    incarnation: "one",
     cardSnapshot: snapshotFromCard(card, 2),
     addedAt: "2026-10-06T12:00:00Z",
-    wishes: [],
     agenda: unwrittenVillageAgenda(),
   };
   state.villagers = [resident];
@@ -327,10 +328,15 @@ const now = new Date(),
 const current = { dateKey: today, weekday, blocks: [], scheduleInformed: false };
 a.resident.agenda.activeDay = structuredClone(current);
 const result = structuredClone(a.resident.agenda);
-result.wishes = [{ id: "unadmitted", description: "A generated wish" }] as any;
+const wishesBefore = continuityWishes(a.state, "same", true, now.toISOString());
+(result as any).keep = [{ for: ["same"], class: "desire", text: "An unadmitted desire.", source: ["self"] }];
 handler.apply(a.state, input, result, { retrying: false });
 assert.deepEqual(a.state.villagers[0]!.agenda!.activeDay, current, "A profile result preserves today's captured plan.");
-assert.deepEqual(a.state.villagers[0]!.wishes, [], "Ordinary regeneration cannot introduce an initial wish.");
+assert.deepEqual(
+  continuityWishes(a.state, "same", true, now.toISOString()),
+  wishesBefore,
+  "Ordinary routine regeneration cannot introduce narrative continuity.",
+);
 
 const one = createActivationScope(),
   two = createActivationScope();

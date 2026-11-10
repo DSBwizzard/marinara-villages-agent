@@ -89,11 +89,11 @@ assert.deepEqual(agendaBlocksFor(activeAgenda, new Date()), week.Monday, "turnin
 const recovered = coerceVillageState({
   ...defaultVillageState(),
 
-  wishSystemVersion: 3,
   villagers: [
     {
       letterFontId: "caveat",
       characterId: "r1",
+      incarnation: "one",
       cardSnapshot: {
         id: "r1",
         revision: 1,
@@ -120,13 +120,12 @@ assert.equal(agendaAt({ day } as VillageAgenda, 719)?.activity, "watering flower
 assert.equal(agendaAt({ day } as VillageAgenda, 720)?.activity, "reading in the square");
 
 const agenda = {
-  wishes: [],
   routineSummary: "An ordinary day.",
   day,
   source: "village",
   generatedAt: "now",
 } as VillageAgenda;
-const villager = { characterId: "r1", agenda } as VillageVillager;
+const villager = { characterId: "r1", incarnation: "one", agenda } as VillageVillager;
 const village = {
   foundedAt: "2026-09-01T00:00:00.000Z",
   seed: "testseed",
@@ -158,9 +157,11 @@ agenda.activeDay = {
 };
 const captured = captureSceneAttendance(village, "square", beforeSeven);
 const scene = coerceSession({
-  version: 4,
+  version: 5,
   id: "clock-scene",
+  villageSeed: village.seed,
   placeId: "square",
+  zoneId: "community",
   status: "active",
   startedAt: beforeSeven.toISOString(),
   sceneAttendance: { ...captured, occupants: captured.occupants.map((row) => ({ ...row, availability: "offline" })) },

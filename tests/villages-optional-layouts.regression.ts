@@ -34,7 +34,6 @@ import {
 import { removeVillager } from "../packages/villages/src/server/features/residents/resident-roster.js";
 import {
   completeVillageResidence,
-  decideVillageResidence,
   movePlayerToResidence,
   proposeVillageResidence,
 } from "../packages/villages/src/server/features/venues/residences.js";
@@ -44,6 +43,8 @@ import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 import type { VillageVenue } from "../packages/villages/src/server/domain/models/world.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { decideResidenceMove } from "../packages/villages/src/server/domain/rules/residence-move.js";
+import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
 
 function draft(layout: string, role = "residence", owner = "a") {
   return {
@@ -95,7 +96,7 @@ function place(layout: string, role = "residence", owner = "a"): VillageVenue {
   const zones = readBaseVenueLayout(source, [role as "residence"], owner, () => null);
   const parsed = { ...parsePlace(source, false), zones };
   initializeVenueAccess(parsed);
-  return coerceVillageState({ ...defaultVillageState(), wishSystemVersion: 3, venues: [parsed] }).venues[0]!;
+  return coerceVillageState({ ...defaultVillageState(), venues: [parsed] }).venues[0]!;
 }
 for (const layout of ["exterior", "common", "private", "both"]) {
   for (const role of ["residence", "workplace", "community", "other"]) {
@@ -103,7 +104,7 @@ for (const layout of ["exterior", "common", "private", "both"]) {
     const expected =
       1 + Number(layout === "common" || layout === "both") + Number(layout === "private" || layout === "both");
     assert.equal(venue.zones!.length, expected, `${role} ${layout} creates only selected Zones`);
-    let saved = coerceVillageState({ ...defaultVillageState(), wishSystemVersion: 3, venues: [venue] });
+    let saved = coerceVillageState({ ...defaultVillageState(), venues: [venue] });
     for (let pass = 0; pass < 3; pass++) {
       const before = structuredClone(saved);
       saved = coerceVillageState(saved);
@@ -195,11 +196,11 @@ initial.venues[0]!.zones![1]!.description =
 initial.villagers = coerceVillageState({
   ...defaultVillageState(),
 
-  wishSystemVersion: 3,
   villagers: [
     {
       letterFontId: "caveat",
       characterId: "a",
+      incarnation: "one",
       agenda: unwrittenVillageAgenda(),
       cardSnapshot: {
         id: "a",
@@ -212,6 +213,7 @@ initial.villagers = coerceVillageState({
     {
       letterFontId: "caveat",
       characterId: "b",
+      incarnation: "one",
       agenda: unwrittenVillageAgenda(),
       cardSnapshot: {
         id: "b",
@@ -237,7 +239,13 @@ assert.throws(
   "Incomplete old layouts are rejected without repair",
 );
 const records = new Map<string, any>();
-records.set("villages-village", { id: "villages-village", kind: "village", data: state, revision: 1 });
+records.set("villages-village", {
+  id: "villages-village",
+  packageId: "villages",
+  kind: "village",
+  data: state,
+  revision: 1,
+});
 const release = configureVillagesRuntime({
   projectId: "layout-fixture",
   logger: { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} },
@@ -299,6 +307,7 @@ async function finish(id: string, body: any = {}) {
       flow = project.lifecycle!;
     flow.candidates.push({
       residentId: "a",
+      incarnation: continuityActor(state, "a")!.incarnation,
       evidenceId: "fixture-lead",
       scope: projectDesignKey(project),
       at: new Date().toISOString(),
@@ -308,6 +317,7 @@ async function finish(id: string, body: any = {}) {
       const venue = state.venues.find((venue) => venue.id === project.venueId)!;
       flow.approvals = flow.affectedIds.map((residentId) => ({
         residentId,
+        incarnation: continuityActor(state, residentId)!.incarnation,
         source: "conversation",
         evidenceId: "fixture-consent",
         scope: approvalScope(venue, flow.change!, residentId, flow.changedZoneIds),
@@ -325,17 +335,19 @@ async function finish(id: string, body: any = {}) {
     "complete",
   );
 }
+async function residentAcceptsMove(characterId: string) {
+  await mutateVillageState(
+    (state) => {
+      const move = state.residences.find((move) => move.characterId === characterId)!;
+      decideResidenceMove(state, characterId, true, "villager", undefined, move.agreement!.scope, new Date());
+    },
+    { memories: true },
+  );
+}
 async function main() {
   try {
     await proposeVillageResidence("b", vacant.id, "player", "", "personal");
-    await decideVillageResidence(
-      "b",
-      true,
-      "villager",
-      undefined,
-      undefined,
-      (await readVillageState()).residences.find((move) => move.characterId === "b")!.agreement!.scope,
-    );
+    await residentAcceptsMove("b");
     await completeVillageResidence("b", true, new Date(), false);
     let current = await readVillageState({ memories: true });
     let destination = current.venues.find((venue) => venue.id === vacant.id)!;
@@ -348,14 +360,7 @@ async function main() {
     nextHome.id = "new-home";
     await mutateVillageState((state) => state.venues.push(nextHome));
     await proposeVillageResidence("a", nextHome.id, "player", "", "");
-    await decideVillageResidence(
-      "a",
-      true,
-      "villager",
-      undefined,
-      undefined,
-      (await readVillageState()).residences.find((move) => move.characterId === "a")!.agreement!.scope,
-    );
+    await residentAcceptsMove("a");
     await completeVillageResidence("a", true, new Date(), false);
     current = await readVillageState({ memories: true });
     const old = current.venues.find((venue) => venue.id === privateOnly.id)!;
@@ -465,14 +470,7 @@ async function main() {
       room.description = "A prepared sleeping nook";
     });
     await proposeVillageResidence("a", outside.id, "player", "", "private:nook");
-    await decideVillageResidence(
-      "a",
-      true,
-      "villager",
-      undefined,
-      undefined,
-      (await readVillageState()).residences.find((move) => move.characterId === "a")!.agreement!.scope,
-    );
+    await residentAcceptsMove("a");
     await completeVillageResidence("a", true, new Date(), false);
 
     current = await readVillageState({ memories: true });
