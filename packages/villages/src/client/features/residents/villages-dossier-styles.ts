@@ -99,17 +99,18 @@ export const DOSSIER_STYLES = `
 .${P}-directory-root .${P}-dossier-book{overflow:hidden}
 .${P}-directory-head{display:flex;align-items:center;gap:20px;flex:none;margin:0 0 26px}
 .${P}-directory-head h1{display:flex;align-items:center;gap:12px;font:600 clamp(50px,3.2vw,76px)/1.1 var(--notebook-hand);letter-spacing:-.025em;margin:0;flex:1;min-width:0}
-.${P}-directory-flourish{width:64px;height:40px;flex:none;fill:#969b7e;color:#a8aa80}
+.${P}-directory-flourish{width:64px;height:40px;flex:none;fill:#969b7e}
 .${P}-directory-search{position:relative;display:block;flex:none;width:100%;max-width:620px;margin:0 0 28px}
 .${P}-directory-search svg{position:absolute;left:18px;top:50%;transform:translateY(-50%);width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;pointer-events:none}
 .${P}-directory-root .${P}-directory-search input{width:100%;min-height:56px;padding:10px 16px 10px 56px;border:1px solid #b47f92aa;border-radius:13px;background:#74536755;font:400 22px/1.4 var(--notebook-hand)}
+.${P}-directory-root .${P}-directory-search input[type="search"]:focus-visible{outline-offset:-3px}
 .${P}-directory-reading{min-height:0;overflow:hidden;flex:1;container-type:size}
-.${P}-directory-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:16px;height:100%;max-height:calc(100cqw + 86px);padding:3px}
-.${P}-directory-root .${P}-directory-card{--name-height:44px;--name-gap:4px;position:relative;display:grid;grid-template-rows:minmax(0,1fr) var(--name-height);align-items:center;gap:var(--name-gap);min-width:0;min-height:0;width:100%;padding:10px 10px 5px;border:1px solid #a39b8470;border-radius:12px;background:#969b7eb0;box-shadow:none;text-align:left;color:#f0dfbc;container-type:size}
+.${P}-directory-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:16px;height:100%;max-height:calc(100cqw + 98px);padding:3px}
+.${P}-directory-root .${P}-directory-card{--name-height:50px;--name-gap:4px;position:relative;display:grid;grid-template-rows:minmax(0,1fr) var(--name-height);align-items:center;gap:var(--name-gap);min-width:0;min-height:0;width:100%;padding:10px 10px 5px;border:1px solid #a39b8470;border-radius:12px;background:#969b7eb0;box-shadow:none;text-align:left;color:#f0dfbc;container-type:size}
 .${P}-directory-root .${P}-directory-card[aria-pressed="true"]{background:#b97980bf;border-color:#e5a49e}
 .${P}-directory-card .${P}-avatar{--portrait-size:min(100cqw,calc(100cqh - var(--name-height) - var(--name-gap)));width:var(--portrait-size);height:var(--portrait-size);justify-self:center;max-width:none;border:0;border-radius:5px;background:#514157;font-size:44px;overflow:hidden}
 .${P}-directory-card .${P}-avatar img{width:100%;height:100%;object-fit:cover}
-.${P}-directory-text{min-width:0;text-align:center}.${P}-directory-card strong{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font:400 20px/1.1 var(--notebook-hand);overflow-wrap:anywhere}
+.${P}-directory-text{min-width:0;text-align:center}.${P}-directory-card strong{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font:400 20px/1.25 var(--notebook-hand);overflow-wrap:anywhere}
 .${P}-directory-card small{display:block;font-size:12px}
 .${P}-directory-text:has(small) strong{-webkit-line-clamp:1}
 .${P}-directory-pagination{display:flex;align-items:center;justify-content:center;gap:16px;flex:none;margin-top:12px;font-size:17px}
