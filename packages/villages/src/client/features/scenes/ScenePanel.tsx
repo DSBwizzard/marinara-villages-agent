@@ -20,7 +20,7 @@ import { createStagingCursor, stagingPresentation } from "../../../shared/helper
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { drawVillagesNodes, renderVillagesMarkdown, villagesSpeechPaintStyle } from "../../shared/presentation.js";
-import type { Portrait, PortraitMap, SceneComposerMode, VillageBeatRegister } from "../../shared/types.js";
+import type { Portrait, PortraitMap, VillageBeatRegister } from "../../shared/types.js";
 import { AvatarFace } from "../residents/ResidentPanels.js";
 import type { SceneReadingSession } from "./reading-session.js";
 import { SceneErrorChip, type SceneErrorItem } from "./scene-errors.js";
@@ -157,7 +157,7 @@ export function openingFailureMessage(cause: unknown): string {
 }
 
 /** Same Send geometry and stroke as Engine's lucide-react composer icon (ISC). */
-function SceneControlIcon({ name }: { name: "send" | "sending" | "chat" | "conclude" | "up" | "down" | "narrator" }) {
+function SceneControlIcon({ name }: { name: "send" | "sending" | "up" | "down" | "narrator" }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -176,16 +176,10 @@ function SceneControlIcon({ name }: { name: "send" | "sending" | "chat" | "concl
         </>
       ) : name === "sending" ? (
         <path d="M12 3a9 9 0 1 1-9 9" />
-      ) : name === "chat" ? (
-        <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
       ) : name === "up" ? (
         <path d="m6 15 6-6 6 6" />
       ) : name === "down" ? (
         <path d="m6 9 6 6 6-6" />
-      ) : name === "conclude" ? (
-        <>
-          <path d="M9 21H5V3h4 M12 12h10 m-4-4 4 4-4 4" />
-        </>
       ) : (
         <>
           <rect x="4" y="8" width="16" height="13" rx="3" />
@@ -206,7 +200,6 @@ export function RoomPanel({
   speechColors,
   picture,
   draft,
-  mode,
   recoveryDestination,
   contactRecovery,
   onRetryContact,
@@ -226,8 +219,8 @@ export function RoomPanel({
   portraits,
   sprites,
   onDraft,
-  onMode,
   onSend,
+  onConclude,
   sendOnEnter,
   spriteCardFlipEnabled,
   onViewVenue,
@@ -260,7 +253,6 @@ export function RoomPanel({
   /** The picture of the place, or `""` for one that has never been drawn. */
   picture: string;
   draft: string;
-  mode: SceneComposerMode;
   recoveryDestination: string;
   contactRecovery: import("./useScenesState.js").ContactRecovery | null;
   onRetryContact: () => void;
@@ -280,8 +272,8 @@ export function RoomPanel({
   portraits: PortraitMap;
   sprites: Record<string, ResidentSprite | null>;
   onDraft: (value: string) => void;
-  onMode: (value: SceneComposerMode) => void;
   onSend: () => void;
+  onConclude: () => void;
   sendOnEnter: boolean;
   spriteCardFlipEnabled: boolean;
   onViewVenue: () => void;
@@ -310,17 +302,16 @@ export function RoomPanel({
   const [readStep, setReadStep] = useState(() => checkpoint.current.readStep);
   const playback = useScenePlayback(room, worldScope, sceneReading);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [actionsOpen, setActionsOpen] = useState(false);
+  const [actionsView, setActionsView] = useState<"menu" | "move" | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement | null>(null);
   const [noticesOpen, setNoticesOpen] = useState(false);
   const [errorsOpen, setErrorsOpen] = useState(false);
-  const [modeMenuOpen, setModeMenuOpen] = useState(false);
   const [openMemory, setOpenMemory] = useState<RoomRecordEvent | null>(null);
   const memoryTriggerRef = useRef<HTMLButtonElement | null>(null);
   const memoryCloseRef = useRef<HTMLButtonElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
-  const modeAnchorRef = useRef<HTMLSpanElement | null>(null);
+  const movePickerRef = useRef<HTMLSelectElement | null>(null);
   const historyTriggerRef = useRef<HTMLButtonElement | null>(null);
   const historyRef = useRef<HTMLDivElement | null>(null);
   const readingRef = useRef<HTMLDivElement | null>(null);
@@ -353,28 +344,15 @@ export function RoomPanel({
   }, [historyOpen]);
 
   useEffect(() => {
-    if (!actionsOpen) return;
-    const closeOnOutside = (event: PointerEvent) => {
-      if (!actionsRef.current?.contains(event.target as Node)) setActionsOpen(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setActionsOpen(false);
-    };
-    document.addEventListener("pointerdown", closeOnOutside);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutside);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [actionsOpen]);
-
-  useEffect(() => {
-    if (!modeMenuOpen) return;
+    if (!actionsView) return;
     const closeOnOutside = (event: Event) => {
-      if (!modeAnchorRef.current?.contains(event.target as Node)) setModeMenuOpen(false);
+      if (!actionsRef.current?.contains(event.target as Node)) setActionsView(null);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setModeMenuOpen(false);
+      if (event.key === "Escape") {
+        setActionsView(null);
+        actionsRef.current?.querySelector("button")?.focus();
+      }
     };
     document.addEventListener("pointerdown", closeOnOutside);
     document.addEventListener("focusin", closeOnOutside);
@@ -384,7 +362,15 @@ export function RoomPanel({
       document.removeEventListener("focusin", closeOnOutside);
       document.removeEventListener("keydown", closeOnEscape);
     };
-  }, [modeMenuOpen]);
+  }, [actionsView]);
+
+  useEffect(() => {
+    if (actionsView === "move") movePickerRef.current?.focus();
+  }, [actionsView]);
+
+  useEffect(() => {
+    setActionsView(null);
+  }, [room.id, room.zoneId]);
 
   const closeMemory = useCallback(() => {
     setOpenMemory(null);
@@ -638,6 +624,8 @@ export function RoomPanel({
   }, [checkpoint, worldScope, room.id, step, canReadNext, isFounded, playback.window, playback.restoring]);
   const canDraft = !ended && room.status === "active";
   const canCompose = canDraft && !busy && !canReadNext && !historyOpen && !playback.busy && !playback.restoring;
+  const canSend = canCompose && !contactRecovery && !(changeStatus && changeStatus.pending + changeStatus.failed > 0);
+  const moveDestinations = movementZones.filter((zone) => zone.id !== room.zoneId && !zone.closed);
   const resizeComposer = useCallback(() => {
     const field = composerRef.current;
     if (!field) return;
@@ -653,7 +641,7 @@ export function RoomPanel({
 
   useLayoutEffect(() => {
     resizeComposer();
-  }, [canCompose, draft, mode, resizeComposer]);
+  }, [canCompose, draft, resizeComposer]);
 
   useEffect(() => {
     const frame = composerRef.current?.parentElement;
@@ -666,19 +654,11 @@ export function RoomPanel({
     });
     observer.observe(frame);
     return () => observer.disconnect();
-  }, [canCompose, mode, resizeComposer]);
+  }, [canCompose, resizeComposer]);
 
   const submitComposer = () => {
-    if (
-      !canCompose ||
-      !!contactRecovery ||
-      (!!changeStatus && changeStatus.pending + changeStatus.failed > 0) ||
-      mode === "move" ||
-      busy ||
-      (mode !== "conclude" && !draft.trim())
-    )
-      return;
-    setModeMenuOpen(false);
+    if (!canSend || !draft.trim()) return;
+    setActionsView(null);
     onSend();
   };
 
@@ -710,16 +690,6 @@ export function RoomPanel({
   const stageLayout = stagingFrame.desktop;
   const asideSide = (stageLayout[speaker?.characterId ?? ""]?.x ?? 0) > 0.5 ? "left" : "right";
 
-  /**
-   * The wait, in the room's own words.
-   *
-   * The private drawer's spinner names the villager, because one villager is who
-   * was asked. This one cannot: in the mode where the room answers together the
-   * wait is one call for all of them, and in the mode where each answers in turn
-   * it is one call each — the player was told which of the two this village is set
-   * to in the settings, so the sentence that carries the information here is that
-   * the room is answering at all, and that it may take one call or several.
-   */
   const waiting = (
     <p className={`${ELEMENT_TAG}-chat-pending`} role="status">
       <span className={`${ELEMENT_TAG}-chat-spinner ${ELEMENT_TAG}-spin`} aria-hidden="true" />
@@ -728,7 +698,7 @@ export function RoomPanel({
           ? "Opening the Scene…"
           : room.status === "closing"
             ? "Saving this Scene…"
-            : mode === "move"
+            : actionsView === "move" || room.operation?.kind === "move"
               ? "Moving…"
               : "This Scene is responding. Your draft stays here."}
       </span>
@@ -783,20 +753,44 @@ export function RoomPanel({
           <button
             type="button"
             className={`${ELEMENT_TAG}-room-actions-trigger`}
-            onClick={() => setActionsOpen((value) => !value)}
+            onClick={() => setActionsView((value) => (value ? null : "menu"))}
             aria-label="Venue actions"
             aria-haspopup="menu"
-            aria-expanded={actionsOpen}
+            aria-expanded={actionsView === "menu" || (actionsView === "move" && !contactRecovery)}
           >
             ···
           </button>
-          {actionsOpen ? (
+          {actionsView === "menu" ? (
             <span className={`${ELEMENT_TAG}-room-actions-menu`} role="menu" aria-label="Venue actions">
+              {canCompose ? (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!!contactRecovery || !moveDestinations.length}
+                    onClick={() => setActionsView("move")}
+                  >
+                    Move
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={!canSend}
+                    onClick={() => {
+                      setActionsView(null);
+                      actionsRef.current?.querySelector("button")?.focus();
+                      onConclude();
+                    }}
+                  >
+                    Conclude
+                  </button>
+                </>
+              ) : null}
               <LoreActivityButton
                 query={`Scene · ${room.placeName}`}
                 role="menuitem"
                 onOpen={() => {
-                  setActionsOpen(false);
+                  setActionsView(null);
                   actionsRef.current?.querySelector("button")?.focus();
                 }}
               />
@@ -804,7 +798,7 @@ export function RoomPanel({
                 type="button"
                 role="menuitem"
                 onClick={() => {
-                  setActionsOpen(false);
+                  setActionsView(null);
                   onViewVenue();
                 }}
                 disabled={busy}
@@ -816,7 +810,7 @@ export function RoomPanel({
                   type="button"
                   role="menuitem"
                   onClick={() => {
-                    setActionsOpen(false);
+                    setActionsView(null);
                     onUseMailbox();
                   }}
                 >
@@ -828,7 +822,7 @@ export function RoomPanel({
                   type="button"
                   role="menuitem"
                   onClick={() => {
-                    setActionsOpen(false);
+                    setActionsView(null);
                     onMap();
                   }}
                 >
@@ -840,7 +834,7 @@ export function RoomPanel({
                   type="button"
                   role="menuitem"
                   onClick={() => {
-                    setActionsOpen(false);
+                    setActionsView(null);
                     onProjects();
                   }}
                 >
@@ -852,7 +846,7 @@ export function RoomPanel({
                   type="button"
                   role="menuitem"
                   onClick={() => {
-                    setActionsOpen(false);
+                    setActionsView(null);
                     onProposals();
                   }}
                 >
@@ -863,7 +857,7 @@ export function RoomPanel({
                 type="button"
                 role="menuitem"
                 onClick={() => {
-                  setActionsOpen(false);
+                  setActionsView(null);
                   setSettingsOpen(true);
                 }}
               >
@@ -873,7 +867,7 @@ export function RoomPanel({
                 type="button"
                 role="menuitem"
                 onClick={() => {
-                  setActionsOpen(false);
+                  setActionsView(null);
                   onEnd();
                 }}
                 disabled={busy}
@@ -886,7 +880,7 @@ export function RoomPanel({
                   type="button"
                   role="menuitem"
                   onClick={() => {
-                    setActionsOpen(false);
+                    setActionsView(null);
                     onDebugDiscard();
                   }}
                   disabled={busy}
@@ -894,6 +888,29 @@ export function RoomPanel({
                   DEBUG: Discard Scene
                 </button>
               ) : null}
+            </span>
+          ) : actionsView === "move" && !contactRecovery ? (
+            <span className={`${ELEMENT_TAG}-room-actions-menu`}>
+              <select
+                ref={movePickerRef}
+                className={`${ELEMENT_TAG}-select`}
+                aria-label="Move to Zone"
+                disabled={!canCompose || !!contactRecovery}
+                value=""
+                onChange={(event) => {
+                  const destination = event.currentTarget.value;
+                  if (!destination) return;
+                  actionsRef.current?.querySelector("button")?.focus();
+                  onMovementTarget(destination);
+                }}
+              >
+                <option value="">Choose a Zone · in {currentZoneLabel}</option>
+                {moveDestinations.map((zone) => (
+                  <option key={zone.id} value={zone.id}>
+                    {zone.label}
+                  </option>
+                ))}
+              </select>
             </span>
           ) : null}
         </span>
@@ -1209,7 +1226,7 @@ export function RoomPanel({
           onClick={() => {
             composerRef.current?.blur();
             setDialogueHidden(true);
-            setModeMenuOpen(false);
+            setActionsView(null);
             window.requestAnimationFrame(() =>
               document.querySelector<HTMLButtonElement>(`.${ELEMENT_TAG}-dialogue-restore`)?.focus(),
             );
@@ -1447,7 +1464,7 @@ export function RoomPanel({
                   Retry original action
                 </button>
                 <button type="button" disabled={busy || !draft.trim()} onClick={onReplaceContact}>
-                  Replace with Say / Do
+                  Replace with draft
                 </button>
                 <button type="button" disabled={busy} onClick={onReviewContact}>
                   Review latest saved action
@@ -1456,103 +1473,34 @@ export function RoomPanel({
             ) : null}
             <div className={`${ELEMENT_TAG}-composer-row`}>
               <span className={`${ELEMENT_TAG}-chat-input`}>
-                <span ref={modeAnchorRef} className={`${ELEMENT_TAG}-room-mode-anchor`}>
-                  <button
-                    type="button"
-                    className={`${ELEMENT_TAG}-room-mode-toggle`}
-                    onClick={() => setModeMenuOpen((value) => !value)}
-                    disabled={!!contactRecovery}
-                    aria-label={`Mode: ${mode === "conclude" ? "Conclude" : mode === "move" ? "Move" : "Say / Do"}. Choose mode`}
-                    aria-haspopup="menu"
-                    aria-expanded={modeMenuOpen}
-                    title={mode === "conclude" ? "Conclude" : mode === "move" ? "Move" : "Say / Do"}
-                  >
-                    <SceneControlIcon name={mode === "conclude" ? "conclude" : "chat"} />
-                  </button>
-                  {modeMenuOpen ? (
-                    <span className={`${ELEMENT_TAG}-room-mode-menu`} role="menu" aria-label="Scene mode">
-                      {(["chat", "move", "conclude"] as const).map((option) => (
-                        <button
-                          key={option}
-                          type="button"
-                          role="menuitemradio"
-                          aria-checked={mode === option}
-                          disabled={
-                            busy ||
-                            !!contactRecovery ||
-                            (option === "move" &&
-                              !movementZones.some((zone) => zone.id !== room.zoneId && !zone.closed))
-                          }
-                          onClick={() => {
-                            onMode(option);
-                            setModeMenuOpen(false);
-                          }}
-                        >
-                          {option === "chat" ? "Say / Do" : option === "move" ? "Move" : "Conclude"}
-                        </button>
-                      ))}
-                    </span>
-                  ) : null}
-                </span>
-                {mode === "move" && !contactRecovery ? (
-                  <select
-                    className={`${ELEMENT_TAG}-select ${ELEMENT_TAG}-zone-navigation`}
-                    aria-label="Move to Zone"
-                    disabled={busy || !!contactRecovery}
-                    value=""
-                    onChange={(event) => onMovementTarget(event.target.value)}
-                  >
-                    <option value="">Choose a Zone · in {currentZoneLabel}</option>
-                    {movementZones
-                      .filter((zone) => zone.id !== room.zoneId && !zone.closed)
-                      .map((zone) => (
-                        <option key={zone.id} value={zone.id}>
-                          {zone.label}
-                        </option>
-                      ))}
-                  </select>
-                ) : (
-                  <>
-                    <textarea
-                      autoComplete="off"
-                      ref={composerRef}
-                      data-villages-scene-composer
-                      className={`${ELEMENT_TAG}-textarea`}
-                      rows={1}
-                      value={draft}
-                      onChange={(event) => onDraft(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (
-                          shouldSubmitVenueKey(event.key, event.shiftKey, event.nativeEvent.isComposing, sendOnEnter)
-                        ) {
-                          event.preventDefault();
-                          submitComposer();
-                        }
-                      }}
-                      placeholder={mode === "conclude" ? "Final line (optional)…" : "Say or do something…"}
-                      aria-label={`Message at ${room.placeName}`}
-                      disabled={(busy && !draftWhilePending) || ended || room.status !== "active"}
-                    />
-                    <button
-                      type="button"
-                      className={`${ELEMENT_TAG}-chat-send`}
-                      onClick={submitComposer}
-                      disabled={
-                        !canCompose ||
-                        !!contactRecovery ||
-                        (!!changeStatus && changeStatus.pending + changeStatus.failed > 0) ||
-                        busy ||
-                        ended ||
-                        room.status !== "active" ||
-                        (mode !== "conclude" && draft.trim().length === 0)
-                      }
-                      aria-label={busy ? "Sending" : "Send"}
-                      title={busy ? "Sending" : "Send"}
-                    >
-                      <SceneControlIcon name={busy ? "sending" : "send"} />
-                    </button>
-                  </>
-                )}
+                <textarea
+                  autoComplete="off"
+                  ref={composerRef}
+                  data-villages-scene-composer
+                  className={`${ELEMENT_TAG}-textarea`}
+                  rows={1}
+                  value={draft}
+                  onChange={(event) => onDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (shouldSubmitVenueKey(event.key, event.shiftKey, event.nativeEvent.isComposing, sendOnEnter)) {
+                      event.preventDefault();
+                      submitComposer();
+                    }
+                  }}
+                  placeholder="Message…"
+                  aria-label={`Message at ${room.placeName}`}
+                  disabled={(busy && !draftWhilePending) || ended || room.status !== "active"}
+                />
+                <button
+                  type="button"
+                  className={`${ELEMENT_TAG}-chat-send`}
+                  onClick={submitComposer}
+                  disabled={!canSend || !draft.trim()}
+                  aria-label={busy ? "Sending" : "Send"}
+                  title={busy ? "Sending" : "Send"}
+                >
+                  <SceneControlIcon name={busy ? "sending" : "send"} />
+                </button>
               </span>
             </div>
           </div>

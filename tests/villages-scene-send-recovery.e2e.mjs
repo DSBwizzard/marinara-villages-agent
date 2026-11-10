@@ -321,7 +321,7 @@ await withBrowser(browser, async () => {
           if (edit) await composer.fill(message + " changed");
           await expect(send).toBeDisabled();
           await page
-            .getByRole("button", { name: edit ? "Replace with Say / Do" : "Retry original action", exact: true })
+            .getByRole("button", { name: edit ? "Replace with draft" : "Retry original action", exact: true })
             .click();
           await expect.poll(() => turns.length).toBe(before + 1);
           const sent = turns.at(-1);
@@ -351,8 +351,8 @@ await withBrowser(browser, async () => {
     }
     session.operation = null;
     await load();
-    await page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true }).click();
-    await page.getByRole("menuitemradio", { name: "Move", exact: true }).click();
+    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Move", exact: true }).click();
     const zoneSelect = page.getByLabel("Move to Zone", { exact: true });
     session.operation = {
       id: "held-before-move",
@@ -368,16 +368,17 @@ await withBrowser(browser, async () => {
     };
     await zoneSelect.selectOption("hall");
     await expectSceneError(page, "Review the saved action before moving");
-    assert.equal(zonePosts, 0, "movement does not replace an unbound legacy hold");
+    assert.equal(zonePosts, 0, "movement does not replace an unresolved Contact action");
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(page.getByText(/Saved Contact action/)).toBeVisible();
     await expect(zoneSelect).toHaveCount(0);
     await expect(composer).toBeVisible();
     session.operation = null;
     await page.getByRole("button", { name: "Review latest saved action", exact: true }).click();
+    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Move", exact: true }).click();
     await expect(zoneSelect).toBeEnabled();
-    await page.getByRole("button", { name: "Mode: Move. Choose mode", exact: true }).click();
-    await page.getByRole("menuitemradio", { name: "Say / Do", exact: true }).click();
+    await page.keyboard.press("Escape");
     await composer.fill("My newer unsent draft");
     session.operation = {
       id: "held-old",
@@ -413,7 +414,7 @@ await withBrowser(browser, async () => {
     await page.getByRole("button", { name: "Review latest saved action", exact: true }).click();
     await expect(page.getByRole("button", { name: "Review latest saved action", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Retry original action", exact: true })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Replace with Say / Do", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Replace with draft", exact: true })).toHaveCount(0);
     const blockedErrors = await openSceneErrors(page);
     await expect(blockedErrors.getByRole("button", { name: "Retry original message", exact: true })).toBeDisabled();
     await closeSceneErrors(page);
@@ -421,7 +422,7 @@ await withBrowser(browser, async () => {
     await expect(page.getByText("A newer saved call", { exact: true })).toBeVisible();
     await expect(composer).toHaveValue("My newer unsent draft");
     session.operation = { ...session.operation, attemptId: "attempt-three" };
-    await page.getByRole("button", { name: "Replace with Say / Do", exact: true }).click();
+    await page.getByRole("button", { name: "Replace with draft", exact: true }).click();
     await expectSceneError(page, "The Scene changed during the request.");
     assert.equal(turns.length, beforeConflict, "replacement never adopts a newer attempt");
     session.operation = null;

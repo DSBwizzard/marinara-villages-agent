@@ -102,12 +102,7 @@ Scenes use one GM response for dialogue and gameplay updates. This build require
 
 A Scene is an ongoing interaction within one Venue. It can continue as you move between that Venue's Zones.
 
-| Control      | Use it to…                                                               |
-| ------------ | ------------------------------------------------------------------------ |
-| **Say / Do** | Speak or attempt an action in your current Zone.                         |
-| **Move**     | Travel to a permitted Zone without requesting a generated arrival reply. |
-| **Contact**  | Knock, call, or speak toward an adjacent Zone.                           |
-| **Conclude** | End the Scene.                                                           |
+Write dialogue, actions, thoughts, or a mixture in the message box and choose **Send**. Open **Venue actions** for **Move** or **Conclude**. Move goes to a permitted Zone without a generated arrival reply. Conclude ends the Scene using your draft as an optional final message. You can knock, call, or speak toward an adjacent Zone in your own words.
 
 For a first visit, try a greeting and a small action, then ask about the resident's day. Residents can agree, refuse, or suggest something else. A request or a future plan is not automatically a completed change.
 

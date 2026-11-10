@@ -47,7 +47,7 @@ function Harness(){
  refs:()=>({flight:state.roomSendInFlightRef.current,completion:state.roomCompletionRef.current})};
  return <>{ready&&<Restore {...common} setDebugDiscardEnabled={setDebugDiscardEnabled}/>}
  <pre id='state'>{JSON.stringify({id:room?.id??null,status:room?.status??null,revision:room?.sceneRevision??null,
-  busy:state.roomBusy,error:state.roomError,greetingError:state.roomGreetingError,screen,founded,debug,ended:state.roomEnded,mode:state.roomMode,open:state.roomOpen})}</pre></>;
+  busy:state.roomBusy,error:state.roomError,greetingError:state.roomGreetingError,screen,founded,debug,ended:state.roomEnded,open:state.roomOpen})}</pre></>;
 }
 window.pending=[];window.publications=[];window.loads=0;window.timeouts=[];
 const timeout=AbortSignal.timeout.bind(AbortSignal);AbortSignal.timeout=ms=>{window.timeouts.push(ms);return timeout(window.options.fastTimeout?Math.min(ms,25):ms)};
@@ -197,7 +197,6 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         if (!strict) assert.equal(f.requests.filter((r) => r.kind === "active").length, 1);
         if (restored !== null) {
           assert.equal((await f.state()).screen, "room");
-          assert.equal((await f.state()).mode, "chat");
           assert.equal((await f.state()).open, true);
         }
         await f.finish();

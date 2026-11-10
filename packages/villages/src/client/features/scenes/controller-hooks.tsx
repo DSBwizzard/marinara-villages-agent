@@ -301,7 +301,6 @@ export function useSceneInterruptedSubmission(ports: {
   setRoomContactBoundary: React.Dispatch<React.SetStateAction<string>>;
   setRoomContactKind: React.Dispatch<React.SetStateAction<"knock" | "call">>;
   setRoomDraft: React.Dispatch<React.SetStateAction<string>>;
-  setRoomMode: React.Dispatch<React.SetStateAction<import("../../shared/types.js").SceneComposerMode>>;
   setRoomMoveZoneId: React.Dispatch<React.SetStateAction<string>>;
   setRoomTargetId: React.Dispatch<React.SetStateAction<string>>;
 }) {
@@ -314,7 +313,6 @@ export function useSceneInterruptedSubmission(ports: {
     setRoomContactBoundary,
     setRoomContactKind,
     setRoomDraft,
-    setRoomMode,
     setRoomMoveZoneId,
     setRoomTargetId,
   } = ports;
@@ -337,7 +335,6 @@ export function useSceneInterruptedSubmission(ports: {
         if (operation.kind === "move" && operation.input.zoneId) {
           restoredSceneDraftRef.current = restoreKey;
           if (composerEditVersionRef.current === editVersion && editVersion === 0) {
-            setRoomMode("chat");
             setRoomMoveZoneId(operation.input.zoneId);
             roomMoveOperationIdRef.current = operation.id;
           }
@@ -350,9 +347,6 @@ export function useSceneInterruptedSubmission(ports: {
         restoredSceneDraftRef.current = restoreKey;
         if (composerEditVersionRef.current !== editVersion) return;
         setRoomDraft((current) => current || operation.input?.message || "");
-        if (editVersion !== 0) return;
-        if (operation.input.mode === "leave") setRoomMode("conclude");
-        else if (operation.input.mode === "chat") setRoomMode("chat");
       })
       .catch(() => {});
     return () => {
@@ -363,7 +357,6 @@ export function useSceneInterruptedSubmission(ports: {
     restoredSceneDraftRef,
     composerEditVersionRef,
     setRoomDraft,
-    setRoomMode,
     setRoomMoveZoneId,
     roomMoveOperationIdRef,
     setRoomTargetId,
@@ -383,7 +376,6 @@ export function useActiveSceneRestoration(ports: {
   setRoom: React.ActionDispatch<[next: React.SetStateAction<import("../../../shared/contracts/village.js").SceneView>]>;
   setRoomBusy: React.Dispatch<React.SetStateAction<boolean>>;
   setRoomGreetingError: React.Dispatch<React.SetStateAction<{ sessionId: string; message: string }>>;
-  setRoomMode: React.Dispatch<React.SetStateAction<import("../../shared/types.js").SceneComposerMode>>;
   setRoomOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setScreen: React.Dispatch<
     React.SetStateAction<"home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person">
@@ -399,7 +391,6 @@ export function useActiveSceneRestoration(ports: {
     setRoom,
     setRoomBusy,
     setRoomGreetingError,
-    setRoomMode,
     setRoomOpen,
     setScreen,
   } = ports;
@@ -441,7 +432,6 @@ export function useActiveSceneRestoration(ports: {
             const restored = currentRoom(session);
             if (!lifetime.handoff(owned, restored, roomEnded)) return;
             setRoom(restored);
-            setRoomMode("chat");
             setRoomOpen(true);
             setScreen("room");
             // A retry only checks saved state; opening generation remains an explicit action.

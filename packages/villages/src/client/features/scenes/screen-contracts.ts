@@ -60,11 +60,9 @@ export type SceneScreenController = {
   readonly roomGreetingError: ScenesState["roomGreetingError"];
   readonly roomGreetingNotice: ScenesState["roomGreetingNotice"];
   readonly roomLeaveSubmissionIdRef: ScenesState["roomLeaveSubmissionIdRef"];
-  readonly roomMode: ScenesState["roomMode"];
   readonly contactRecovery: ScenesState["contactRecovery"];
   readonly setContactRecovery: ScenesState["setContactRecovery"];
   readonly roomMoveOperationIdRef: ScenesState["roomMoveOperationIdRef"];
-  readonly roomMoveZoneId: ScenesState["roomMoveZoneId"];
   readonly roomNotices: ScenesState["roomNotices"];
   readonly roomOpen: ScenesState["roomOpen"];
   readonly roomSubmissionIdRef: ScenesState["roomSubmissionIdRef"];
@@ -83,8 +81,6 @@ export type SceneScreenController = {
   readonly setRoomContactKind: ScenesState["setRoomContactKind"];
   readonly setRoomDraft: ScenesState["setRoomDraft"];
   readonly setRoomError: ScenesState["setRoomError"];
-  readonly setRoomMode: ScenesState["setRoomMode"];
-  readonly setRoomMoveZoneId: ScenesState["setRoomMoveZoneId"];
   readonly setRoomTargetId: ScenesState["setRoomTargetId"];
   readonly setScreen: React.Dispatch<
     React.SetStateAction<"room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person">

@@ -240,7 +240,7 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
     try {
       await assertFoundedVillageReady();
       const mode = request.body?.mode;
-      if (mode !== "chat" && mode !== "contact") throw badRequest("Choose Say / Do or Knock / Call.");
+      if (mode !== "chat" && mode !== "contact") throw badRequest("Unsupported Scene action.");
       if (mode === "contact" && request.body?.contact?.delivery === "device")
         throw badRequest("Device links are not supported by Contact.");
       return await sendVenueTurn({

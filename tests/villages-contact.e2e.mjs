@@ -187,9 +187,9 @@ await withBrowser(browser, async () => {
     await expect(composer).toHaveValue("");
     await readUntil(/quiet exterior/);
     await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("quiet exterior");
-    await page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true }).click();
-    await expect(page.getByRole("menuitemradio", { name: "Contact", exact: true })).toHaveCount(0);
-    await page.getByRole("menuitemradio", { name: "Say / Do", exact: true }).click();
+    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
+    await expect(page.getByRole("menuitem", { name: "Contact", exact: true })).toHaveCount(0);
+    await page.keyboard.press("Escape");
     await composer.fill("I call through the entrance: Is anyone there?");
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect.poll(() => submissions.length).toBe(2);
@@ -206,7 +206,7 @@ await withBrowser(browser, async () => {
       /📣|through the doorway|calling from inside/i,
     );
     await expect(page.locator('[class$="-chat-cast-person"]')).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Venue actions", exact: true })).toBeVisible();
     await page.getByRole("textbox", { name: "Message at The Mill", exact: true }).fill("Thanks. How are you?");
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect.poll(() => submissions.length).toBe(3);
@@ -215,17 +215,17 @@ await withBrowser(browser, async () => {
     assert.equal(submitted.targetId, "");
     await expect(page.locator('[class$="-chat-cast-person"]')).toHaveCount(0);
     await readUntil(/still listening through the doorway/);
-    await page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true }).click();
-    await page.getByRole("menuitemradio", { name: "Move", exact: true }).click();
+    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Move", exact: true }).click();
     await expect(page.getByLabel("Move to Zone").getByRole("option", { name: /invited/ })).toHaveText(
       "Interior entrance (invited)",
     );
     await page.getByLabel("Move to Zone").selectOption("common");
     await expect.poll(() => entered?.zoneId).toBe("common");
     assert.equal(entered.expectedSceneRevision, 3);
-    await expect(page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Venue actions", exact: true })).toBeVisible();
     assert.deepEqual(errors, []);
     await page.close();
   }
-  console.log("Say / Do doorway speech, physical cast and explicit entry passed on desktop and phones.");
+  console.log("Freeform doorway speech, physical cast and explicit entry passed on desktop and phones.");
 });

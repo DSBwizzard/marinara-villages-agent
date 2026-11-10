@@ -177,14 +177,11 @@ await withBrowser(browser, async () => {
       await page.getByRole("button", { name: "Next paragraph" }).click();
       await expect(send).toBeEnabled();
       await expect(composer).toHaveValue("Tea sounds perfect.");
-      await page.getByRole("button", { name: "Mode: Say / Do. Choose mode" }).click();
-      for (const mode of ["Say / Do", "Move", "Conclude"])
-        await expect(page.getByRole("menuitemradio", { name: mode, exact: true })).toBeVisible();
-      for (const removed of ["Contact", "Fulfill"])
-        await expect(page.getByRole("menuitemradio", { name: removed, exact: true })).toHaveCount(0);
-      await expect(page.getByRole("menuitemradio", { name: "Knock / Call", exact: true })).toHaveCount(0);
-      await page.getByRole("menuitemradio", { name: "Say / Do", exact: true }).click();
       await page.getByRole("button", { name: "Venue actions" }).click();
+      for (const action of ["Move", "Conclude"])
+        await expect(page.getByRole("menuitem", { name: action, exact: true })).toBeVisible();
+      await expect(page.getByRole("menuitemradio")).toHaveCount(0);
+      await expect(page.getByRole("menuitem", { name: /^(Contact|Fulfill|Knock \/ Call)$/u })).toHaveCount(0);
       await expect(page.getByRole("menuitem", { name: "Projects", exact: true })).toBeVisible();
       await expect(page.getByRole("menuitem", { name: "Proposals", exact: true })).toBeVisible();
       await expect(page.getByRole("menuitem", { name: "View Mailbox" })).toHaveCount(1);

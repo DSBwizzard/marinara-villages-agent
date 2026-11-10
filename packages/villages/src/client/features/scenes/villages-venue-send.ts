@@ -39,7 +39,7 @@ export function sceneResend(
     prior.contact?.boundaryZoneId === input.contact?.boundaryZoneId;
   if (same) return { submissionId: saved.id, retryOfAttemptId: saved.attemptId };
   if (saved.kind !== "turn")
-    throw new Error("Recover the saved request before changing this message or mode. Your edits are preserved.");
+    throw new Error("Recover the saved request before changing this action. Your edits are preserved.");
   return {
     submissionId: submissionId === saved.id ? createVillagesClientId() : submissionId,
     retryOfAttemptId: saved.attemptId,

@@ -11,7 +11,6 @@ import type {
 import { messageFrom, request, VillageApiError } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { recordTurnTiming } from "../../shared/turn-timing.js";
-import type { SceneComposerMode } from "../../shared/types.js";
 import { useSceneEntryLifetime } from "./entry-lifetime.js";
 import { useSceneRequestLifetime } from "./request-lifetime.js";
 import {
@@ -104,7 +103,6 @@ export function useCloseRoom(ports: {
   roomEnded: boolean;
   roomSendInFlightRef: React.RefObject<boolean>;
   seenRoomEventIdsRef: React.RefObject<Set<string>>;
-  setEndFailed: React.Dispatch<SetStateAction<boolean>>;
   setLastSceneEnding: React.Dispatch<SetStateAction<string>>;
   setRoom: React.ActionDispatch<[next: SetStateAction<SceneView>]>;
   setRoomBusy: React.Dispatch<SetStateAction<boolean>>;
@@ -130,7 +128,6 @@ export function useCloseRoom(ports: {
     roomEnded,
     roomSendInFlightRef,
     seenRoomEventIdsRef,
-    setEndFailed,
     setLastSceneEnding,
     setRoom,
     setRoomBusy,
@@ -174,7 +171,6 @@ export function useCloseRoom(ports: {
     claim.busy = true;
     setRoomBusy(true);
     setRoomError("");
-    setEndFailed(false);
     setRoom({ ...room, status: "closing" });
     roomCompletionRef.current = { roomId: room.id, submissionId: "" };
     claim.completion = roomCompletionRef.current;
@@ -229,7 +225,6 @@ export function useCloseRoom(ports: {
           setRoomEnded(true);
           receiveRoomRecordEvents(response.operation.recordEvents ?? []);
           setRoomError("");
-          setEndFailed(false);
           setRoomDraft("");
           void loadSnapshot();
           return;
@@ -240,7 +235,6 @@ export function useCloseRoom(ports: {
         setRoomEnded(authoritative.status === "closed");
       }
       setRoomError(messageFrom(cause, "You could not leave the venue."));
-      setEndFailed(true);
     } finally {
       if (lifetime.finish(claim)) setRoomBusy(false);
     }
@@ -252,7 +246,6 @@ export function useCloseRoom(ports: {
     roomEnded,
     setRoomBusy,
     setRoomError,
-    setEndFailed,
     setRoom,
     roomCompletionRef,
     onUnknownSceneExit,
@@ -284,7 +277,6 @@ export function useLeaveRoom(ports: {
   roomLeaveSubmissionIdRef: React.RefObject<string>;
   roomSendInFlightRef: React.RefObject<boolean>;
   seenRoomEventIdsRef: React.RefObject<Set<string>>;
-  setEndFailed: React.Dispatch<SetStateAction<boolean>>;
   setLastSceneEnding: React.Dispatch<SetStateAction<string>>;
   setRoom: React.ActionDispatch<[next: SetStateAction<SceneView>]>;
   setRoomBusy: React.Dispatch<SetStateAction<boolean>>;
@@ -311,7 +303,6 @@ export function useLeaveRoom(ports: {
     roomLeaveSubmissionIdRef,
     roomSendInFlightRef,
     seenRoomEventIdsRef,
-    setEndFailed,
     setLastSceneEnding,
     setRoom,
     setRoomBusy,
@@ -350,7 +341,6 @@ export function useLeaveRoom(ports: {
     claim.busy = true;
     setRoomBusy(true);
     setRoomError("");
-    setEndFailed(false);
     const editVersion = composerEditVersionRef.current;
     try {
       const { operation } = await request<{ operation: RoomOperation | null }>(
@@ -399,7 +389,6 @@ export function useLeaveRoom(ports: {
         receiveRoomRecordEvents(operation.recordEvents ?? []);
         if (composerEditVersionRef.current === editVersion) setRoomDraft("");
         setRoomError("The Scene ended. Your turn completed, but the reply text is no longer available.");
-        setEndFailed(false);
         roomLeaveSubmissionIdRef.current = null;
         claim.submission = null;
         void loadSnapshot();
@@ -417,7 +406,6 @@ export function useLeaveRoom(ports: {
         setRoomEnded(recovered.status === "closed");
         setRoomDraft("");
         setRoomError("");
-        setEndFailed(false);
         roomLeaveSubmissionIdRef.current = null;
         claim.submission = null;
         void loadSnapshot();
@@ -439,7 +427,6 @@ export function useLeaveRoom(ports: {
         return;
       }
       setRoomError(messageFrom(cause, "The scene could not end yet."));
-      setEndFailed(true);
     } finally {
       if (lifetime.finish(claim)) setRoomBusy(false);
     }
@@ -456,7 +443,6 @@ export function useLeaveRoom(ports: {
     roomLeaveSubmissionIdRef,
     roomSendInFlightRef,
     seenRoomEventIdsRef,
-    setEndFailed,
     setLastSceneEnding,
     setRoom,
     setRoomBusy,
@@ -555,7 +541,6 @@ export function useMoveRoom(ports: {
   setRoomBusy: React.Dispatch<SetStateAction<boolean>>;
   setRoomContactBoundary: React.Dispatch<SetStateAction<string>>;
   setRoomError: React.Dispatch<SetStateAction<string>>;
-  setRoomMode: React.Dispatch<SetStateAction<SceneComposerMode>>;
   setRoomMoveZoneId: React.Dispatch<SetStateAction<string>>;
 }) {
   const {
@@ -573,7 +558,6 @@ export function useMoveRoom(ports: {
     setRoomBusy,
     setRoomContactBoundary,
     setRoomError,
-    setRoomMode,
     setRoomMoveZoneId,
   } = ports;
   const lifetime = useSceneRequestLifetime({
@@ -587,7 +571,7 @@ export function useMoveRoom(ports: {
     clearCompletionOnRetire: false,
   });
   return useCallback(
-    async (zoneId = roomMoveZoneId) => {
+    async (zoneId: string) => {
       if (
         !room?.id ||
         roomEnded ||
@@ -629,7 +613,6 @@ export function useMoveRoom(ports: {
         });
         if (!owns()) return;
         setRoom(currentRoom(session));
-        setRoomMode("chat");
         setRoomMoveZoneId("");
         setRoomContactBoundary("");
         roomMoveOperationIdRef.current = null;
@@ -645,7 +628,6 @@ export function useMoveRoom(ports: {
         if (!owns()) return;
         if (latest) setRoom(currentRoom(latest));
         if (latest && completed?.status === "complete" && !completed.error) {
-          setRoomMode("chat");
           setRoomMoveZoneId("");
           setRoomContactBoundary("");
           roomMoveOperationIdRef.current = null;
@@ -670,7 +652,6 @@ export function useMoveRoom(ports: {
       setRoomBusy,
       setRoomContactBoundary,
       setRoomError,
-      setRoomMode,
       setRoomMoveZoneId,
     ],
   );
@@ -688,7 +669,6 @@ export function useSendRoom(ports: {
   roomCompletionRef: React.RefObject<{ roomId: string; submissionId: string }>;
   roomDraft: string;
   roomEnded: boolean;
-  roomMode: SceneComposerMode;
   roomSendInFlightRef: React.RefObject<boolean>;
   roomSubmissionIdRef: React.RefObject<string>;
   seenRoomEventIdsRef: React.RefObject<Set<string>>;
@@ -699,7 +679,6 @@ export function useSendRoom(ports: {
   setRoomEnded: React.Dispatch<SetStateAction<boolean>>;
   setRoomError: React.Dispatch<SetStateAction<string>>;
   setRoomGreetingNotice: React.Dispatch<SetStateAction<string>>;
-  setRoomMode: React.Dispatch<SetStateAction<SceneComposerMode>>;
   setRoomNotices: React.Dispatch<SetStateAction<RoomRecordEvent[]>>;
   setRoomOpen: React.Dispatch<SetStateAction<boolean>>;
   setScreen: React.Dispatch<
@@ -729,7 +708,6 @@ export function useSendRoom(ports: {
     setRoomEnded,
     setRoomError,
     setRoomGreetingNotice,
-    setRoomMode,
     setRoomNotices,
     setRoomOpen,
     setScreen,
@@ -853,7 +831,6 @@ export function useSendRoom(ports: {
         }
         receiveRoomRecordEvents(answer.recordEvents ?? []);
         if (replacement) setContactRecovery(null);
-        setRoomMode("chat");
         roomSubmissionIdRef.current = null;
         claim.submission = null;
         setRoomGreetingNotice("");
@@ -953,7 +930,6 @@ export function useSendRoom(ports: {
       loadSnapshot,
       setRoomEnded,
       receiveRoomRecordEvents,
-      setRoomMode,
       setRoomGreetingNotice,
       beginRecovery,
     ],
@@ -1066,7 +1042,6 @@ export function useRetrySavedScene(ports: {
   setRoomEnded: React.Dispatch<SetStateAction<boolean>>;
   setRoomError: React.Dispatch<SetStateAction<string>>;
   setRoomGreetingError: React.Dispatch<SetStateAction<{ sessionId: string; message: string }>>;
-  setRoomMode: React.Dispatch<SetStateAction<SceneComposerMode>>;
   setRoomMoveZoneId: React.Dispatch<SetStateAction<string>>;
   setRoomTargetId: React.Dispatch<SetStateAction<string>>;
 }) {
@@ -1093,7 +1068,6 @@ export function useRetrySavedScene(ports: {
     setRoomEnded,
     setRoomError,
     setRoomGreetingError,
-    setRoomMode,
     setRoomMoveZoneId,
     setRoomTargetId,
   } = ports;
@@ -1187,13 +1161,11 @@ export function useRetrySavedScene(ports: {
         if (operation.kind === "greet")
           setRoomGreetingError((current) => (current?.sessionId === room.id ? null : current));
         if (operation.kind === "move") {
-          setRoomMode("chat");
           setRoomMoveZoneId("");
           setRoomContactBoundary("");
           roomMoveOperationIdRef.current = null;
         }
         if (operation.kind === "turn" && operation.input?.mode === "contact") {
-          setRoomMode("chat");
           setRoomTargetId("");
           setRoomContactKind("call");
         }
@@ -1229,7 +1201,6 @@ export function useRetrySavedScene(ports: {
       setRoomEnded,
       setRoomError,
       setRoomGreetingError,
-      setRoomMode,
       setRoomMoveZoneId,
       setRoomTargetId,
     ],
@@ -1319,7 +1290,6 @@ export function useOpenRoom(ports: {
   setRoomEnded: React.Dispatch<SetStateAction<boolean>>;
   setRoomError: React.Dispatch<SetStateAction<string>>;
   setRoomGreetingNotice: React.Dispatch<SetStateAction<string>>;
-  setRoomMode: React.Dispatch<SetStateAction<SceneComposerMode>>;
   setRoomNotices: React.Dispatch<SetStateAction<RoomRecordEvent[]>>;
   setRoomOpen: React.Dispatch<SetStateAction<boolean>>;
   setRoomTargetId: React.Dispatch<SetStateAction<string>>;
@@ -1347,7 +1317,6 @@ export function useOpenRoom(ports: {
     setRoomEnded,
     setRoomError,
     setRoomGreetingNotice,
-    setRoomMode,
     setRoomNotices,
     setRoomOpen,
     setRoomTargetId,
@@ -1438,7 +1407,6 @@ export function useOpenRoom(ports: {
         if (!owns()) return;
         lifetime.handoff(claim, currentRoom(session), false);
         setRoom(currentRoom(session));
-        setRoomMode("chat");
         setRoomTargetId("");
         setLastSceneEnding("");
         setRoomOpen(true);
@@ -1475,7 +1443,6 @@ export function useOpenRoom(ports: {
       setScreen,
       setRoomTargetId,
       loadSnapshot,
-      setRoomMode,
       setLastSceneEnding,
       greetRoom,
     ],

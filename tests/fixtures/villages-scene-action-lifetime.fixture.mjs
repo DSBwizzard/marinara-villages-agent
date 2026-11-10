@@ -31,21 +31,21 @@ function Harness(){
   loadSnapshot:async()=>{window.loads++},receiveRoomRecordEvents:events=>{window.received.push(...events)}};
  const move=useMoveRoom({...common,loadSnapshot:async()=>{window.loads++},
   roomMoveOperationIdRef:state.roomMoveOperationIdRef,roomMoveZoneId:state.roomMoveZoneId,
-  setRoomContactBoundary:state.setRoomContactBoundary,setRoomMode:state.setRoomMode,setRoomMoveZoneId:state.setRoomMoveZoneId});
+  setRoomContactBoundary:state.setRoomContactBoundary,setRoomMoveZoneId:state.setRoomMoveZoneId});
  const continueScene=useContinueRoomWithoutGreeting({...common,setRoomGreetingNotice:state.setRoomGreetingNotice});
  const closeRoom=useCloseRoom(common),leaveRoom=useLeaveRoom(common),retry=useRetrySavedScene(common);
  useEffect(()=>{setRoom(scene('A',0,window.initiallyClosed?'closed':window.opening?'opening':'active'));
   state.setRoomEnded(!!window.initiallyClosed);state.setRoomOpen(true);state.setRoomDraft(window.draft??'A message');
-  state.setRoomMoveZoneId('private-A');state.setRoomMode('move');state.setRoomContactBoundary('A-boundary');
+  state.setRoomMoveZoneId('private-A');state.setRoomContactBoundary('A-boundary');
   state.setRoomTargetId('A-target');state.setRoomContactKind('knock');
   if(window.operation){state.roomSubmissionIdRef.current='A-turn';state.roomLeaveSubmissionIdRef.current='A-leave';}
  },[]);
  const launch=work=>{window.pending.push(work());return window.pending.length-1;};
- const commands={move,continue:()=>continueScene(room.id),close:closeRoom,leave:leaveRoom,retry:()=>retry(room?.operation?.input?.mode==="contact"?{sceneId:room.id,operation:room.operation}:undefined)};
+ const commands={move:()=>move(state.roomMoveZoneId),continue:()=>continueScene(room.id),close:closeRoom,leave:leaveRoom,retry:()=>retry(room?.operation?.input?.mode==="contact"?{sceneId:room.id,operation:room.operation}:undefined)};
  window.h={launch:kind=>launch(commands[kind]),retain:kind=>{window.retained=commands[kind]},old:()=>launch(window.retained),
   select:(id='B',pending=false,revision=0,closed=false)=>{setRoom(scene(id,revision,closed?'closed':'active'));
    state.setRoomEnded(closed);state.setRoomMoveZoneId('private-'+id);
-   state.setRoomMode('move');state.setRoomContactBoundary(id+'-boundary');state.setRoomError(id+' error');
+   state.setRoomContactBoundary(id+'-boundary');state.setRoomError(id+' error');
    state.setRoomGreetingNotice(id+' notice');state.setRoomDraft(id+' draft');state.setRoomBusy(pending);
    state.roomSendInFlightRef.current=pending;state.roomMoveOperationIdRef.current=pending?id+'-move':null;
    state.roomSubmissionIdRef.current=pending?id+'-submission':null;
@@ -67,9 +67,9 @@ function Harness(){
    submission:state.roomSubmissionIdRef.current,completion:state.roomCompletionRef.current,
    leave:state.roomLeaveSubmissionIdRef.current,leaving:state.leavingRoomPendingRef.current,seen:[...state.seenRoomEventIdsRef.current]})};
  return <pre id='state'>{JSON.stringify({id:room?.id??null,revision:room?.sceneRevision??null,zone:room?.zoneId??null,
-  founded,busy:state.roomBusy,error:state.roomError,notice:state.roomGreetingNotice,mode:state.roomMode,
+  founded,busy:state.roomBusy,error:state.roomError,notice:state.roomGreetingNotice,
   target:state.roomMoveZoneId,boundary:state.roomContactBoundary,draft:state.roomDraft,status:room?.status??null,
-  ended:state.roomEnded,screen,open:state.roomOpen,endFailed:state._endFailed,notices:state.roomNotices,
+  ended:state.roomEnded,screen,open:state.roomOpen,notices:state.roomNotices,
   residentTarget:state.roomTargetId,contactKind:state.roomContactKind})}</pre>;
 }
 window.pending=[];window.loads=0;window.received=[];
@@ -335,7 +335,6 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
           });
           assert.equal(after.refs.completion, null);
           assert.equal(after.refs.move, null);
-          assert.equal(after.state.mode, "chat");
         }
       } finally {
         await f.close();
@@ -643,7 +642,6 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
           expectedSceneRevision: 0,
         });
         assert.equal(after.state.error, recovered ? "" : "Exact action failure");
-        assert.equal(after.state.endFailed, !recovered);
         assert.equal(after.refs.leave, recovered ? null : "saved-leave");
         assert.equal(after.state.draft, recovered ? "" : "A message");
         assert.equal(after.state.busy, false);
@@ -743,7 +741,6 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
                 expectedSceneRevision: 0,
               });
               assert.ok(control.requests[1].body.operationId);
-              assert.equal(state.mode, "chat");
               assert.equal(state.target, "");
               assert.equal(state.boundary, "");
               assert.equal((await control.refs()).move, null);
@@ -949,7 +946,6 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
             const state = await f.state();
             assert.equal(state.busy, false);
             assert.equal(state.error, recovered ? "" : "Exact action failure");
-            assert.equal(state.mode, recovered ? "chat" : "move");
             assert.equal((await f.refs()).move, recovered ? null : "saved-move");
             assert.deepEqual(f.requests.find((request) => request.kind === "zone").body, {
               sessionId: "A",

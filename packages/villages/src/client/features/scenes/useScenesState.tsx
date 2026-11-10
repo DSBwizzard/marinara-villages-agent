@@ -1,6 +1,5 @@
 import { useRef, useState } from "react";
 import type { RoomOperation, RoomRecordEvent, SceneChangeIssue } from "../../../shared/contracts/village.js";
-import type { SceneComposerMode } from "../../shared/types.js";
 import { useSceneReadingSession } from "./reading-session.js";
 
 export type ContactRecovery = { sceneId: string; operation: RoomOperation };
@@ -9,8 +8,6 @@ export type ContactRecovery = { sceneId: string; operation: RoomOperation };
 export function useScenesState(isFounded?: boolean) {
   const sceneReading = useSceneReadingSession(isFounded);
 
-  const [_endFailed, setEndFailed] = useState(false);
-
   const [mailboxOpen, setMailboxOpen] = useState(false);
 
   const [roomOpen, setRoomOpen] = useState(false);
@@ -18,7 +15,6 @@ export function useScenesState(isFounded?: boolean) {
   /** What has been typed into the room's box and not yet said. */
   const [roomDraft, setRoomDraft] = useState("");
 
-  const [roomMode, setRoomMode] = useState<SceneComposerMode>("chat");
   const [contactRecovery, setContactRecovery] = useState<ContactRecovery | null>(null);
 
   const [roomContactBoundary, setRoomContactBoundary] = useState("");
@@ -88,16 +84,12 @@ export function useScenesState(isFounded?: boolean) {
    */
   return {
     sceneReading,
-    _endFailed,
-    setEndFailed,
     mailboxOpen,
     setMailboxOpen,
     roomOpen,
     setRoomOpen,
     roomDraft,
     setRoomDraft,
-    roomMode,
-    setRoomMode,
     contactRecovery,
     setContactRecovery,
     roomContactBoundary,

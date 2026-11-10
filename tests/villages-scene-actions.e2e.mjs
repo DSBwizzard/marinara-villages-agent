@@ -152,12 +152,7 @@ await withBrowser(browser, async () => {
     );
     if (process.env.VILLAGES_VISUAL_OUTPUT)
       await page.screenshot({ path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "scene-actions-" + width + ".png") });
-    await page.getByRole("button", { name: "Mode: Say / Do. Choose mode" }).click();
-    assert.deepEqual(
-      await page.getByRole("menu", { name: "Scene mode" }).getByRole("menuitemradio").allTextContents(),
-      ["Say / Do", "Move", "Conclude"],
-    );
-    await page.getByRole("menuitemradio", { name: "Say / Do", exact: true }).click();
+    await expect(page.getByRole("menuitemradio")).toHaveCount(0);
     await expect(composer).toHaveValue("Keep this draft");
     let finishContact;
     heldContact = new Promise((done) => {
@@ -169,7 +164,6 @@ await withBrowser(browser, async () => {
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await contactStarted;
     await expect(composer).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /Mode:.*Choose mode/ })).toHaveCount(0);
     await expect(page.getByLabel("Move to Zone")).toHaveCount(0);
     assert.equal(lastContact.mode, "chat");
     assert.equal(lastContact.contact, undefined);
@@ -203,10 +197,11 @@ await withBrowser(browser, async () => {
     while (await next.isEnabled()) await next.click();
     await expect(composer).toHaveValue(preservedDraft);
     const selectMove = async () => {
-      await page.getByRole("button", { name: /Mode:.*Choose mode/ }).click();
-      await page.getByRole("menuitemradio", { name: "Move", exact: true }).click();
-      await expect(composer).toHaveCount(0);
-      await expect(page.getByRole("button", { name: "Send", exact: true })).toHaveCount(0);
+      await page.getByRole("button", { name: "Venue actions", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Move", exact: true }).click();
+      await expect(page.getByLabel("Move to Zone")).toBeFocused();
+      await expect(composer).toHaveValue(preservedDraft);
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
       await dockAtBottom('[class$="-chat-input"]');
     };
     scene.sceneRevision++;
@@ -219,9 +214,9 @@ await withBrowser(browser, async () => {
     await expect(page.getByText(/Scene changed/).last()).toBeVisible();
     await page.getByRole("button", { name: "Close Scene errors" }).click();
     assert.equal(moves, 0);
-    await expect(composer).toHaveCount(0);
+    await selectMove();
     await page.getByLabel("Move to Zone").selectOption("exterior");
-    await expect(page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true })).toBeVisible();
+    await expect(page.getByLabel("Move to Zone")).toHaveCount(0);
     await expect(composer).toHaveValue(preservedDraft);
     assert.equal(moves, 1);
     assert.equal(scene.lines.length, lineCount);
@@ -254,18 +249,16 @@ await withBrowser(browser, async () => {
       await page.screenshot({ path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "scene-actions-" + width + ".png") });
     const finalMessage = width === 1366 ? "Goodbye." : "";
     await composer.fill(finalMessage);
-    await page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true }).click();
-    await page.getByRole("menuitemradio", { name: "Conclude", exact: true }).click();
-    assert.equal(lastLeave, undefined, "selecting Conclude does not end the Scene");
+    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
+    assert.equal(lastLeave, undefined, "opening Venue actions does not end the Scene");
     await expect(composer).toHaveValue(finalMessage);
-    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
-    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Conclude", exact: true }).click();
     await expect(page.getByRole("button", { name: "Return to map", exact: true }).first()).toBeVisible();
     assert.equal(lastLeave.message, finalMessage, "Conclude keeps its optional final message");
     assert.deepEqual(errors, []);
     await context.close();
   }
   console.log(
-    "Scene actions browser: three modes, inline immediate movement, Say / Do, final-paragraph readiness, busy/stale/lost-response navigation, drafts, silent repeated moves and optional concluding messages passed",
+    "Scene actions browser: freeform input, immediate movement, final-paragraph readiness, busy and stale navigation, draft preservation and optional concluding messages passed",
   );
 });

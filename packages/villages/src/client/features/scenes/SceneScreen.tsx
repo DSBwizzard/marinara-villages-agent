@@ -89,7 +89,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     roomGreetingError,
     roomGreetingNotice,
     roomLeaveSubmissionIdRef,
-    roomMode,
     contactRecovery,
     setContactRecovery,
     roomNotices,
@@ -102,7 +101,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     setRoomBusy,
     setRoomDraft,
     setRoomError,
-    setRoomMode,
     openVenue,
     snapshot,
   } = controller;
@@ -184,7 +182,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           }
           picture={venuePictureOf(room.status === "closed" ? sceneVenues : (snapshot?.settings.venues ?? []), room)}
           draft={roomDraft}
-          mode={roomMode}
           contactRecovery={contactRecovery?.sceneId === room.id ? contactRecovery : null}
           recoveryDestination={(() => {
             const input = contactRecovery?.sceneId === room.id ? contactRecovery.operation.input : undefined;
@@ -312,13 +309,9 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
             roomLeaveSubmissionIdRef.current = null;
             setRoomDraft(value);
           }}
-          onMode={(value) => {
-            composerEditVersionRef.current++;
-            roomSubmissionIdRef.current = null;
-            setRoomMode(value);
-          }}
           sendOnEnter={snapshot?.settings.sendOnEnter === true}
-          onSend={() => void (roomMode === "conclude" ? leaveRoom() : sendRoom())}
+          onSend={() => void sendRoom()}
+          onConclude={() => void leaveRoom()}
           onViewVenue={() => {
             const place = snapshot?.settings.venues.find((place) => place.id === room.placeId);
             if (place) openVenue(place);

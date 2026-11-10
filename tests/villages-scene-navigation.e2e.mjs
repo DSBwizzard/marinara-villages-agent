@@ -100,9 +100,9 @@ await withBrowser(browser, async () => {
       if (restore) {
         await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toBeVisible();
         await expect(page.locator(".marinara-capability-villages-home")).toHaveCount(0);
-        await page.getByRole("button", { name: "Mode: Say / Do. Choose mode" }).click();
-        await expect(page.getByRole("menuitemradio", { name: "Move", exact: true })).toBeEnabled();
-        await page.getByRole("menuitemradio", { name: "Move", exact: true }).click();
+        await page.getByRole("button", { name: "Venue actions" }).click();
+        await expect(page.getByRole("menuitem", { name: "Move", exact: true })).toBeEnabled();
+        await page.getByRole("menuitem", { name: "Move", exact: true }).click();
         await expect(page.getByRole("combobox", { name: "Move to Zone" }).locator("option[value=workshop]")).toHaveText(
           "Captured workshop",
         );
@@ -120,7 +120,13 @@ await withBrowser(browser, async () => {
 import {ConfirmationProvider} from './packages/villages/src/client/shared/confirmation.js';
     import {useVillageController} from './packages/villages/src/client/shell/useVillageController.js';
     import {VillagerDossier} from './packages/villages/src/client/features/residents/villages-dossier.js';
-    const request=async(path,options)=>{if(options?.method==='POST')throw Error('Scene profile attempted a mutation');return path.endsWith('/signature')?{available:true,status:'ready'}:{profiles:[{characterId:'mara',knownWishes:[{wishId:'garden',text:'Share gardening stories',status:'open',at:'2026-10-26T00:00:00.000Z',followed:true,facts:[]}]}]}}; const noop=()=>{};
+    const wishes=[{wishId:'garden',text:'Share gardening stories',status:'open',at:'2026-10-26T00:00:00.000Z',followed:true,facts:[]}];
+    const request=async(path,options)=>{
+      if(options?.method==='POST')throw Error('Scene profile attempted a mutation');
+      if(path.endsWith('/signature'))return {available:true,status:'ready'};
+      if(path.endsWith('/wishes'))return {wishes};
+      return {starting:{pending:false},profiles:[{characterId:'mara',name:'Mara',entries:[],access:[],knownWishes:wishes}]};
+    }; const noop=()=>{};
     function Harness(){const c=useVillageController({element:document.getElementById('root')});window.navigation=c;
       return <><pre id="screen">{!c.room && c.sceneRestoration.status!=='ready'?c.sceneRestoration.status:c.screen}</pre>{c.screen==='person'&&<VillagerDossier navigation={c.personProfile}
         villager={{characterId:'mara',name:'Mara',summary:'A resident',tags:[]}} portrait={null} request={request}

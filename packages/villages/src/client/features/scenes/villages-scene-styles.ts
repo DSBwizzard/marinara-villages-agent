@@ -62,23 +62,19 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-scene-history-pages .${tag}-chat-vn-button { min-height: 44px; min-width: 44px; }
 .${tag}-room-screen .${tag}-composer { border: 0; padding: 0; gap: .375rem; }
 .${tag}-room-screen .${tag}-chat-input { padding: .375rem .5rem; gap: .25rem; }
-.${tag}-room-screen .${tag}-chat-input > .${tag}-zone-navigation { flex: 1 1 0; min-width: 0; width: 100%; border: 0; padding: 0; background: transparent; font: inherit; color: inherit; }
 .${tag}-room-screen .${tag}-chat-input > .${tag}-textarea {
   height: auto; min-height: 0; max-height: 12.5rem; padding: 0; font-size: .875rem; line-height: 1.5;
 }
 .${tag}-room-screen .${tag}-chat-input > .${tag}-textarea:focus,
 .${tag}-room-screen .${tag}-chat-input > .${tag}-textarea:focus-visible { outline: none; box-shadow: none; border: 0; }
-.${tag}-room-screen .${tag}-chat-send,
-.${tag}-room-screen .${tag}-room-mode-toggle {
+.${tag}-room-screen .${tag}-chat-send {
   width: 2rem; height: 2rem; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: .75rem;
   background: transparent; color: var(--foreground); font-weight: normal; touch-action: manipulation;
 }
 .${tag}-room-screen .${tag}-chat-send svg { width: .9375rem; height: .9375rem; }
-.${tag}-room-screen .${tag}-room-mode-toggle svg { width: 1rem; height: 1rem; }
-.${tag}-room-screen .${tag}-chat-send:hover:not(:disabled),
-.${tag}-room-screen .${tag}-room-mode-toggle:hover { background: color-mix(in srgb, var(--foreground) 10%, transparent); color: var(--foreground); }
-.${tag}-room-screen .${tag}-room-mode-menu { width: 10rem; max-height: max(3rem, calc(var(--villages-scene-visible-height, 100cqh) - 6rem)); overflow-y: auto; }
+.${tag}-room-screen .${tag}-chat-send:hover:not(:disabled) { background: color-mix(in srgb, var(--foreground) 10%, transparent); color: var(--foreground); }
 .${tag}-room-screen .${tag}-room-actions-menu { max-height: max(3rem, calc(var(--villages-scene-visible-height, 100cqh) - 4rem)); overflow-y: auto; }
+.${tag}-room-screen .${tag}-room-actions-menu > select { width: 100%; min-width: 0; }
 .${tag}-room-screen .${tag}-chat-head:has(.${tag}-room-actions-menu) { z-index: 25; }
 .${tag}-room-screen .${tag}-chat-vn-asides { z-index: 1; max-height: min(20cqh, max(2rem, calc(var(--villages-scene-visible-height, 100cqh) - 18rem))); }
 .${tag}-scene-settings-backdrop { position: absolute; z-index: 30; inset: 0; height: var(--villages-scene-visible-height, 100%); display: grid; place-items: center; padding: .75rem; box-sizing: border-box; background: #0008; }
@@ -112,8 +108,8 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
   .${tag}-room-screen .${tag}-chat-vn-row { padding: 1rem; gap: 1rem; }
   .${tag}-room-screen .${tag}-chat-input { padding: .625rem 1rem; gap: .5rem; }
 }
-.${tag}-room-screen[data-mobile="true"] .${tag}-chat-send,
-.${tag}-room-screen[data-mobile="true"] .${tag}-room-mode-toggle { width: 44px; height: 44px; }
+.${tag}-room-screen[data-mobile="true"] .${tag}-chat-send { width: 44px; height: 44px; }
+.${tag}-room-screen[data-mobile="true"] .${tag}-room-actions-menu > :is(button, select) { min-height: 44px; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-row { padding: .75rem; gap: .75rem; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-input { padding: 0 .5rem; gap: .25rem; min-height: 44px; }
 /* 16px prevents mobile Safari zooming on focus; desktop uses Engine's 14px text. */

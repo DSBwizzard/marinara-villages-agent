@@ -21,17 +21,18 @@ status:'active',startedAt:'2026-10-07T00:00:00Z',lastActivityAt:'2026-10-07T00:0
 function Harness(){
  const [room,setRoom]=useSceneRecord();
  const [draft,setDraft]=useState('A draft'),[busy,setBusy]=useState(false),[error,setError]=useState(''),[ended,setEnded]=useState(false);
- const [screen,setScreen]=useState('room'),[mode,setMode]=useState('chat'),[target,setTarget]=useState(''),[snapshot,setSnapshot]=useState(window.snapshot);
- const inFlight=useRef(false),submission=useRef(null),completion=useRef(null),events=useRef(new Set());
- const {sendRoom:send}=useSendRoom({room,roomBusy:busy,roomDraft:draft,roomEnded:ended,roomMode:mode,roomTargetId:target,roomContactBoundary:'',roomContactKind:'knock',
+ const [screen,setScreen]=useState('room'),[snapshot,setSnapshot]=useState(window.snapshot);
+ const [contactRecovery,setContactRecovery]=useState(null);
+ const inFlight=useRef(false),submission=useRef(null),completion=useRef(null),events=useRef(new Set()),editVersion=useRef(0);
+ const {sendRoom:send}=useSendRoom({room,roomBusy:busy,roomDraft:draft,roomEnded:ended,contactRecovery,setContactRecovery,composerEditVersionRef:editVersion,
  snapshot,roomCompletionRef:completion,roomSendInFlightRef:inFlight,roomSubmissionIdRef:submission,seenRoomEventIdsRef:events,
- loadSnapshot:async()=>{window.loads++},receiveRoomRecordEvents:noop,setLastSceneEnding:noop,setRoom,setRoomBusy:setBusy,setRoomContactKind:noop,
- setRoomDraft:setDraft,setRoomEnded:setEnded,setRoomError:setError,setRoomGreetingNotice:noop,setRoomMode:setMode,setRoomNotices:noop,
- setRoomOpen:noop,setRoomRuling:noop,setRoomTargetId:setTarget,setScreen});
+ loadSnapshot:async()=>{window.loads++},receiveRoomRecordEvents:noop,setLastSceneEnding:noop,setRoom,setRoomBusy:setBusy,
+ setRoomDraft:setDraft,setRoomEnded:setEnded,setRoomError:setError,setRoomGreetingNotice:noop,setRoomNotices:noop,
+ setRoomOpen:noop,setScreen});
  useEffect(()=>setRoom(scene('A')),[]);
- window.h={send:()=>{const promise=send();(window.promises??=[]).push(promise);return promise},setRoom,setDraft,setBusy,setSnapshot,scene,inFlight,submission,completion,
- select:(id='B',newOwner=false)=>{setRoom(scene(id));setDraft(id+' draft');if(newOwner){setBusy(true);inFlight.current=true;submission.current=id+' submission';completion.current={roomId:id,submissionId:id+' submission'}}},setMode};
- return <pre id='state'>{JSON.stringify({id:room?.id,revision:room?.sceneRevision,draft,busy,error,screen,mode,target,founded:snapshot?.isFounded,ended})}</pre>;
+ window.h={send:()=>{const promise=send();(window.promises??=[]).push(promise);return promise},setRoom,setDraft:value=>{editVersion.current++;submission.current=null;setDraft(value)},setBusy,setSnapshot,scene,inFlight,submission,completion,
+ select:(id='B',newOwner=false)=>{setRoom(scene(id));setDraft(id+' draft');if(newOwner){setBusy(true);inFlight.current=true;submission.current=id+' submission';completion.current={roomId:id,submissionId:id+' submission'}}}};
+ return <pre id='state'>{JSON.stringify({id:room?.id,revision:room?.sceneRevision,draft,busy,error,screen,founded:snapshot?.isFounded,ended})}</pre>;
 }
 const root=createRoot(document.getElementById('root'));window.loads=0;window.unmount=()=>root.render(null);root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
 `,

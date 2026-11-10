@@ -195,8 +195,8 @@ await withBrowser(browser, async () => {
     assert.deepEqual(snapshot.sceneVenue, captured, "artwork does not replace captured source facts");
     assert.deepEqual(scene, originalScene, "no Scene state/positions/attendance changes");
     await expect(composer).toHaveValue("Keep this unsent Scene draft.");
-    await page.getByRole("button", { name: "Mode: Say / Do. Choose mode" }).click();
-    await page.getByRole("menuitemradio", { name: "Move", exact: true }).click();
+    await page.getByRole("button", { name: "Venue actions" }).click();
+    await page.getByRole("menuitem", { name: "Move", exact: true }).click();
     await expect(
       page
         .getByRole("combobox", { name: "Move to Zone" })
