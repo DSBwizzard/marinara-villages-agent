@@ -1,7 +1,8 @@
-// Test cases: mail-delivery/shared-offer, mail-delivery/frozen-reading, mail-delivery/rollback, mail-delivery/private-context, mail-delivery/prior-routine, mail-delivery/unfitted-head, mail-delivery/history-provenance, mail-delivery/autonomous, mail-delivery/recovery-time
+// Test cases: mail-delivery/shared-offer, mail-delivery/frozen-reading, mail-delivery/rollback, mail-delivery/private-context, mail-delivery/prior-routine, mail-delivery/unfitted-head, mail-delivery/history-provenance, mail-delivery/autonomous, mail-delivery/recovery-time, mail-delivery/group-context, mail-delivery/group-context-fences
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { readPersonalMailInput } from "../packages/villages/src/server/domain/decoding/mailbox-codec.js";
 import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import type { AcceptedEpisode } from "../packages/villages/src/server/domain/models/episode-model.js";
 import type { ContinuityEvidence } from "../packages/villages/src/server/domain/models/continuity-model.js";
@@ -18,7 +19,8 @@ import {
 import { episodeSourceGraph } from "../packages/villages/src/server/domain/decoding/episode-codec.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { queueMailboxLetter } from "../packages/villages/src/server/domain/rules/social-mail.js";
-import { captureMailContext, mailStagePublication } from "../packages/villages/src/server/domain/rules/mail-context.js";
+import { mailStagePublication } from "../packages/villages/src/server/domain/rules/mail-context.js";
+import { captureContinuityContext } from "../packages/villages/src/server/domain/rules/continuity-context.js";
 import { acceptMailContinuity } from "../packages/villages/src/server/domain/rules/mail-continuity.js";
 import {
   acceptMailExchange,
@@ -58,7 +60,7 @@ function fixture() {
   };
   state.mailbox = queueMailboxLetter(state.mailbox, state.seed, incoming, incoming.requestId, incoming.text);
   const exchange: MailExchange = {
-    capture: captureMailContext(state, "mara", incoming.text, at),
+    capture: captureContinuityContext(state, ["player", "mara"], incoming.text, at),
     incoming,
     incomingMeaning: {
       keep: [
@@ -229,7 +231,7 @@ await runCase("mail-delivery/rollback", () => {
 
 await runCase("mail-delivery/private-context", () => {
   const f = fixture();
-  const capture = captureMailContext(f.state, "mara", "private", at),
+  const capture = captureContinuityContext(f.state, ["player", "mara"], "private", at),
     mail = { id: "private-note", at, from: f.exchange.incoming.from, to: f.exchange.incoming.to };
   const publication = mailStagePublication(
     capture,
@@ -250,7 +252,7 @@ await runCase("mail-delivery/private-context", () => {
     "private-note",
   );
   assert.equal(acceptMailContinuity(f.state, publication, at).held, false);
-  const next = captureMailContext(f.state, "mara", "private draft", at),
+  const next = captureContinuityContext(f.state, ["player", "mara"], "private draft", at),
     outgoing = { id: "generated", at, from: f.exchange.incoming.to, to: f.exchange.incoming.from },
     generated = mailStagePublication(
       next,
@@ -318,7 +320,7 @@ await runCase("mail-delivery/prior-routine", () => {
     false,
   );
   assert.equal(f.state.episodes.records[0].grounding.length, 0);
-  const capture = captureMailContext(f.state, "mara", "How are you?", at),
+  const capture = captureContinuityContext(f.state, ["player", "mara"], "How are you?", at),
     outgoing = { id: "routine-follow-up", at, from: mail.to, to: mail.from };
   assert.equal(
     acceptMailContinuity(
@@ -394,6 +396,139 @@ await runCase("mail-delivery/autonomous", () => {
   f.cold();
 });
 
+function groupContextFixture() {
+  const f = fixture();
+  f.state.villagers.push({
+    characterId: "leo",
+    incarnation: "one",
+    cardSnapshot: { name: "Leo" },
+  } as VillageState["villagers"][number]);
+  const leo = continuityActor(f.state, "leo")!;
+  assert.equal(
+    acceptMailContinuity(
+      f.state,
+      mailStagePublication(
+        captureContinuityContext(f.state, ["player", "leo"], "studio", at),
+        { id: "leo-source", at, from: leo, to: f.player },
+        "An ordinary note.",
+        "written",
+        [
+          {
+            id: "private",
+            for: ["leo"],
+            owner: "leo",
+            class: "desire",
+            text: "I want a quiet studio of my own.",
+            source: ["self"],
+          },
+        ],
+        [],
+        memoryHash("leo-source"),
+        "leo-source",
+      ),
+      at,
+    ).held,
+    false,
+  );
+  const capture = captureContinuityContext(f.state, ["mara", "leo", "player"], "quiet studio", at),
+    mail = { id: "group-letter", at, from: f.exchange.incoming.to, to: f.exchange.incoming.from },
+    publish = () =>
+      acceptResidentLetter(
+        f.state,
+        capture,
+        mail,
+        "Would you like to visit on Saturday?",
+        "group-letter",
+        { keep: [], requires: [] },
+        memoryHash("one planning response"),
+        at,
+      ),
+    forget = () => {
+      const record = f.state.continuity.records[0],
+        key = continuityHolderKey(leo);
+      f.state.continuity = protectContinuity(
+        f.state.continuity,
+        { id: record.id, recordRevision: record.revision, heads: { [key]: record.heads[key].revision } },
+        [leo],
+        "forget-leo",
+        later,
+        { forget: true },
+      );
+    };
+  return { ...f, leo, capture, mail, publish, forget };
+}
+
+await runCase("mail-delivery/group-context", () => {
+  const f = groupContextFixture(),
+    entry = f.capture.prompt.entries.find((row) => row.for === "leo");
+  assert(entry);
+  assert.equal(entry.text, "I want a quiet studio of my own.");
+  assert.equal(f.capture.historical[entry.source as string].actorId, "leo");
+  assert.equal(new Set(f.capture.prompt.entries.map((row) => row.source)).size, f.capture.prompt.entries.length);
+  assert(f.capture.provenance[continuityHolderKey(f.leo)].length);
+  f.publish();
+  const episode = f.state.episodes.records.at(-1)!;
+  assert.deepEqual(
+    episode.actors.map((actor) => actor.id),
+    ["mara"],
+  );
+  assert(episode.holderDependencies?.[continuityHolderKey(f.leo)]);
+  assert.equal(actorEpisodeView(episode, f.state.continuity, f.leo, f.state.episodes), null);
+  assert.equal(actorEpisodeView(episode, f.state.continuity, f.player, f.state.episodes), null);
+  assert(gmEpisodeView(episode, f.state.continuity, [f.mara], f.state.episodes));
+  assert.equal(f.rows(f.mara).length, 0, "considering another resident's private context does not teach the writer");
+  f.forget();
+  f.cold();
+  assert.equal(
+    gmEpisodeView(episode, f.state.continuity, [f.mara], f.state.episodes),
+    null,
+    "uncited fitted private context still protects generated prose after reload",
+  );
+  assert.equal(
+    actorEpisodeView(episode, f.state.continuity, f.mara, f.state.episodes)?.letters[0].text,
+    "Would you like to visit on Saturday?",
+  );
+  readDeliveredLetter(f.state, f.mail.id, later);
+  assert.equal(f.rows().length, 0, "reading a routine letter never teaches another resident's fitted private desire");
+  const before = structuredClone(f.state);
+  f.publish();
+  assert.deepEqual(f.state, before, "accepted exact replay precedes newly changed protection guards");
+});
+
+await runCase("mail-delivery/group-context-fences", () => {
+  for (const changed of ["protection", "incarnation"]) {
+    const f = groupContextFixture();
+    if (changed === "protection") f.forget();
+    else f.state.villagers.find((row) => row.characterId === "leo")!.incarnation = "replacement";
+    const before = structuredClone(f.state);
+    assert.throws(f.publish, changed === "protection" ? /protection changed/ : /incarnation changed/);
+    assert.deepEqual(
+      f.state,
+      before,
+      "a changed offered context must retain the whole saved response without partial mail",
+    );
+  }
+  const f = groupContextFixture(),
+    before = structuredClone(f.state);
+  for (const actors of [[], ["mara", "mara"], ["missing"], ["player", "mara", "leo", "a", "b", "c"]])
+    assert.throws(() => captureContinuityContext(f.state, actors, "quiet", at), /context actor/);
+  assert.throws(
+    () =>
+      readPersonalMailInput({
+        seed: f.state.seed,
+        setupAt: at,
+        residentId: "mara",
+        incarnation: "one",
+        residentName: "Mara",
+        identity: "Mara",
+        incoming: f.exchange.incoming,
+        capture: f.capture,
+      }),
+    /array|personal mail/,
+  );
+  assert.deepEqual(f.state, before);
+});
+
 await runCase("mail-delivery/unfitted-head", () => {
   for (const viaReply of [false, true]) {
     const f = fixture();
@@ -413,7 +548,7 @@ await runCase("mail-delivery/unfitted-head", () => {
       at,
     );
     const root = f.state.continuity.records[0].id,
-      capture = captureMailContext(f.state, "mara", "blue kettle shelf", at),
+      capture = captureContinuityContext(f.state, ["player", "mara"], "blue kettle shelf", at),
       privateMail = { id: "private-change", at, from: f.exchange.incoming.to, to: f.exchange.incoming.from };
     assert.equal(
       acceptMailContinuity(
@@ -442,7 +577,7 @@ await runCase("mail-delivery/unfitted-head", () => {
     );
     const current = f.state.continuity.records[0],
       key = continuityHolderKey(f.player),
-      next = captureMailContext(f.state, "mara", "blue kettle shelf", at);
+      next = captureContinuityContext(f.state, ["player", "mara"], "blue kettle shelf", at);
     next.supplied = [{ id: root, recordRevision: current.revision, heads: { [key]: current.heads[key].revision } }];
     const exchange = {
         ...f.exchange,
@@ -499,7 +634,7 @@ function forget(f: ReturnType<typeof fixture>, root: string, holder = f.mara) {
   );
 }
 function generated(f: ReturnType<typeof fixture>, id: string) {
-  const capture = captureMailContext(f.state, "mara", "weather", at),
+  const capture = captureContinuityContext(f.state, ["player", "mara"], "weather", at),
     mail = { id, at, from: f.exchange.incoming.to, to: f.exchange.incoming.from },
     result = acceptMailContinuity(
       f.state,
@@ -639,7 +774,7 @@ await runCase("mail-delivery/history-provenance", () => {
     acceptMailContinuity(
       h.state,
       mailStagePublication(
-        captureMailContext(h.state, "leo", "quiet", at),
+        captureContinuityContext(h.state, ["player", "leo"], "quiet", at),
         privateLetter,
         "A quiet note.",
         "written",

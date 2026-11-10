@@ -8,7 +8,7 @@ import { readEffectiveVillagerCard } from "../../adapters/engine/catalog.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { continuityActor } from "../../domain/rules/continuity-actors.js";
 import { continuityProtectionFingerprint } from "../../domain/rules/continuity.js";
-import { captureMailContext } from "../../domain/rules/mail-context.js";
+import { captureContinuityContext } from "../../domain/rules/continuity-context.js";
 import { acceptMailExchange, acceptResidentLetter, readDeliveredLetter } from "../../domain/rules/mail-delivery.js";
 import { mailSourceHash } from "../../domain/rules/mail-evidence.js";
 import { queueMailboxLetter } from "../../domain/rules/social-mail.js";
@@ -136,7 +136,7 @@ export function createSocialMail(ports: SocialMailPorts) {
         text: message.text,
         requestId: message.requestId,
       },
-      capture: captureMailContext(state, resident.characterId, message.text, now(state)),
+      capture: captureContinuityContext(state, ["player", resident.characterId], message.text, now(state)),
       identity:
         venueCardProfile(readEffectiveVillagerCard(resident), player.name) +
         "\n\n" +

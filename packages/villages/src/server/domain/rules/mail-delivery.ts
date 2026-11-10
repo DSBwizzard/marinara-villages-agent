@@ -1,8 +1,10 @@
 import type { VillageState } from "../models/world.js";
-import type { MailCapture, MailContinuityPlan } from "../models/social-mail.js";
+import type { MailContinuityPlan } from "../models/social-mail.js";
+import type { ContinuityCapture } from "../models/continuity-model.js";
+import { continuityActor } from "./continuity-actors.js";
 import { acceptMailContinuity, type MailPublication } from "./mail-continuity.js";
 import { mailStagePublication } from "./mail-context.js";
-import { continuityHolderKey } from "./continuity.js";
+import { continuityHolderKey, continuityProtectionFingerprint } from "./continuity.js";
 import { readNarrationEffectHeader } from "./narration-contract.js";
 import { mailSourceHash, type MailIdentity } from "./mail-evidence.js";
 import { asRecord } from "./coerce.js";
@@ -48,7 +50,7 @@ function mailRows(meaning: MailMeaning, mail: MailIdentity) {
 }
 
 /** Rebase only writes already validated inside this same, still unpublished correspondence candidate. */
-function afterMailWrites(capture: MailCapture, before: VillageState, after: VillageState): MailCapture {
+function afterMailWrites(capture: ContinuityCapture, before: VillageState, after: VillageState): ContinuityCapture {
   return {
     ...capture,
     supplied: capture.supplied.map((target) => {
@@ -68,7 +70,7 @@ function afterMailWrites(capture: MailCapture, before: VillageState, after: Vill
     }),
   };
 }
-function supplyRoot(capture: MailCapture, state: VillageState, id: string, baseline: VillageState) {
+function supplyRoot(capture: ContinuityCapture, state: VillageState, id: string, baseline: VillageState) {
   const record = state.continuity.records.find((row) => row.id === id);
   memoryRequire(record, "current letter meaning lost its canonical root");
   const fitted = capture.supplied.find((row) => row.id === id),
@@ -91,7 +93,7 @@ function supplyRoot(capture: MailCapture, state: VillageState, id: string, basel
 /** One model meaning can teach writer and reader at their actual communication stages. */
 function deliverLetter(
   state: VillageState,
-  capture: MailCapture,
+  capture: ContinuityCapture,
   mail: MailIdentity,
   text: string,
   requestId: string,
@@ -173,7 +175,7 @@ function deliverLetter(
 }
 
 export type MailExchange = {
-  capture: MailCapture;
+  capture: ContinuityCapture;
   incoming: MailIdentity & { text: string; requestId: string };
   incomingMeaning: MailMeaning;
   replyText: string;
@@ -277,7 +279,7 @@ export function readDeliveredLetter(state: VillageState, id: string, at: string)
 /** Autonomous mail uses meaning already authored by its existing GM opportunity, with no interpretation purchase. */
 export function acceptResidentLetter(
   state: VillageState,
-  capture: MailCapture,
+  capture: ContinuityCapture,
   mail: MailIdentity,
   text: string,
   requestId: string,
@@ -306,6 +308,19 @@ export function acceptResidentLetter(
     );
     return [];
   }
+  memoryRequire(
+    capture.actors.every((actor) => continuityActor(state, actor.id)?.incarnation === actor.incarnation),
+    "autonomous mail context actor incarnation changed",
+  );
+  const scope = [...capture.actors, ...capture.references];
+  memoryRequire(
+    capture.protection[memoryHash(scope)] ===
+      continuityProtectionFingerprint(
+        state.continuity,
+        scope.map((actor) => ({ kind: "actor", ...actor })),
+      ),
+    "autonomous mail context protection changed",
+  );
   const candidate = { ...state },
     result = deliverLetter(candidate, capture, mail, text, requestId, meaning, digest, at, false);
   state.continuity = candidate.continuity;

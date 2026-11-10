@@ -26,7 +26,7 @@ import {
   continuityMemoryLibrary,
   continuityWishes,
 } from "../packages/villages/src/server/domain/rules/continuity-library.js";
-import { captureMailContext } from "../packages/villages/src/server/domain/rules/mail-context.js";
+import { captureContinuityContext } from "../packages/villages/src/server/domain/rules/continuity-context.js";
 import {
   acceptResidentLetter,
   acceptMailExchange,
@@ -45,7 +45,7 @@ function authorLetter(state: VillageState, id: string, meaningful = true) {
   const writtenAt = id === "original" ? at : later;
   acceptResidentLetter(
     state,
-    captureMailContext(state, "mara", "fair", writtenAt),
+    captureContinuityContext(state, ["player", "mara"], "fair", writtenAt),
     { id, at: writtenAt, from, to },
     "I want to visit the fair, only if Delia comes. I trust you to keep that condition.",
     id,
@@ -267,7 +267,7 @@ await runCase("native-repair/repeated-undo", async () => {
         to = continuityActor(state, "player")!;
       acceptResidentLetter(
         state,
-        captureMailContext(state, "mara", "winter", later),
+        captureContinuityContext(state, ["player", "mara"], "winter", later),
         { id: "winter-letter", at: later, from, to },
         "I now want to visit only in winter.",
         "winter-letter",
@@ -283,7 +283,7 @@ await runCase("native-repair/repeated-undo", async () => {
   f.reopen();
   let state = await f.read();
   assert.equal(remembered(state, "mara").text, "Visit only in spring.");
-  const recall = captureMailContext(state, "mara", "winter", later);
+  const recall = captureContinuityContext(state, ["player", "mara"], "winter", later);
   assert(
     !Object.values(recall.historical).some((source) => source.excerpt.includes("only in winter")),
     "Undo blocks sources derived from the superseded correction",
@@ -318,7 +318,7 @@ await runCase("native-repair/offer-undo", async () => {
           state,
           {
             incoming,
-            capture: captureMailContext(state, "mara", incoming.text, later),
+            capture: captureContinuityContext(state, ["player", "mara"], incoming.text, later),
             incomingMeaning: {
               keep: [
                 {
@@ -376,7 +376,7 @@ await runCase("native-repair/offer-undo", async () => {
     if (!accepted) {
       await f.repository.mutateAuthority(
         (state) => {
-          const capture = captureMailContext(state, "mara", "Saturday", later),
+          const capture = captureContinuityContext(state, ["player", "mara"], "Saturday", later),
             from = continuityActor(state, "mara")!,
             to = continuityActor(state, "player")!;
           acceptResidentLetter(
@@ -758,7 +758,7 @@ await runCase("native-repair/pending-target", async () => {
       acceptMailExchange(
         state,
         {
-          capture: captureMailContext(state, "mara", incoming.text, later),
+          capture: captureContinuityContext(state, ["player", "mara"], incoming.text, later),
           incoming,
           incomingMeaning: { keep: [], requires: [] },
           replyText: "",
