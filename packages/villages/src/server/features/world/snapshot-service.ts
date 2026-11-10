@@ -270,7 +270,7 @@ export function createVillageSnapshot({
         village,
         player,
         residenceAccess,
-        residenceAccess ? sceneAccessContext(residenceAccess) : undefined,
+        residenceAccess ? sceneAccessContext(residenceAccess, undefined, village.timeZone) : undefined,
         now,
       ),
       ...(residenceAccess && capturedVenue
@@ -281,7 +281,7 @@ export function createVillageSnapshot({
                 { ...sceneWorld, venues: [capturedVenue] },
                 player,
                 residenceAccess,
-                sceneAccessContext(residenceAccess),
+                sceneAccessContext(residenceAccess, undefined, sceneWorld.timeZone),
                 new ZonedDate(
                   residenceAccess.continuity?.capturedAt ?? residenceAccess.startedAt,
                   sceneWorld.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,

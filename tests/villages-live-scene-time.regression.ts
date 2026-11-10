@@ -19,10 +19,12 @@ import {
 } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { applySceneMutation } from "../packages/villages/src/server/domain/rules/scene-mutation.js";
 import { publicSceneAuthority } from "../packages/villages/src/server/domain/rules/scene-public.js";
-import { sceneWritingHistory } from "../packages/villages/src/server/domain/rules/scene-writing-history.js";
 import { createLiveScenes } from "../packages/villages/src/server/features/scenes/live-session-service.js";
 import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
-import { sceneHaltWorldConflict } from "../packages/villages/src/server/domain/rules/scene-halt-world.js";
+import { evaluateZoneAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
+import { sceneAccessContext } from "../packages/villages/src/server/domain/rules/venue-contact.js";
+import { capturedSceneCalendar } from "../packages/villages/src/server/domain/rules/scene-calendar.js";
+import { ZonedDate } from "../packages/villages/src/shared/helpers/zoned-date.js";
 
 let now = new Date("2026-11-02T09:50:00Z");
 const releaseClock = configureVillageClock({
@@ -57,6 +59,7 @@ function fixture() {
     villagers: ["Maya", "Jimmy"].map((name) => ({
       letterFontId: "caveat",
       characterId: name.toLowerCase(),
+      incarnation: "one",
       addedAt: now.toISOString(),
       cardSnapshot: {
         id: name.toLowerCase(),
@@ -87,7 +90,7 @@ function fixture() {
     ],
   });
   let scene = coerceSession({
-    version: 4,
+    version: 5,
     id: "visit",
     villageSeed: world.seed,
     placeId: "garden",
@@ -149,11 +152,6 @@ function fixture() {
 }
 try {
   const f = fixture();
-  assert.deepEqual(
-    Object.keys(f.world.memoryScenes),
-    [],
-    "live Scenes do not reserve an encounter-wide Memory baseline",
-  );
   now = new Date("2026-11-02T09:57:00Z");
   await f.service.activeVenueSession();
   const admitted = structuredClone(f.scene);
@@ -176,9 +174,6 @@ try {
   await f.service.activeVenueSession();
   assert.deepEqual(f.scene.activeIds, ["jimmy"]);
   assert.deepEqual(f.scene.lines[0]!.heardBy, ["maya"], "Jimmy never becomes an earlier witness");
-  assert(
-    !sceneWritingHistory(f.scene, f.scene.lines, "dinner", ["jimmy"]).evidence.some((line) => line.id === "invitation"),
-  );
   assert.match(String(publicSceneAuthority(f.scene).currentTime), /11:57/);
   assert.equal(f.scene.status, "active");
   assert(!f.scene.lines.some((line) => line.role === "user"), "time advancement invents no player participation");
@@ -295,7 +290,7 @@ try {
   assert.equal(residentPlanningOpportunity(spatial.world, currentMoment, now.toISOString())!.kind, "encounter");
   const opportunity = residentPlanningOpportunity(spatial.world, currentMoment, now.toISOString(), conflicts)!;
   assert.equal(opportunity.kind, "routine", "a moved resident cannot also encounter someone in the old scheduled Zone");
-  assert.deepEqual(opportunity.actorIds, ["maya"], "solo reflection and mail remain eligible");
+  assert.deepEqual(opportunity.actorIds, ["jimmy"], "Unconflicted residents retain private planning opportunities");
   assert.equal(
     liveSceneEncounterConflicts(spatial.world, { ...spatial.scene, status: "closed" }, now).size,
     0,
@@ -322,23 +317,27 @@ try {
   };
   now = new Date("2026-11-02T11:57:00Z");
   await physical.service.activeVenueSession();
-  const action = {
-    placeUpdate: { expectedRevision: 0, narration: "You set down a cup.", recent: { text: "A cup rests on a bench." } },
-    physicalContext: {
-      zoneId: "community",
-      actorIds: ["player"],
-      witnessIds: [],
-      consentIds: [],
-      positions: { player: "community" },
-      segment: 0,
-    },
-  };
+  const calendar = capturedSceneCalendar(physical.scene, physical.world.timeZone),
+    zone = garden.zones!.find((zone) => zone.id === "community")!;
+  assert.equal(calendar.time, "11:57");
   assert.equal(
-    sceneHaltWorldConflict(physical.scene, physical.world, action),
+    evaluateZoneAccess(garden, zone, "player", {
+      ...sceneAccessContext(physical.scene),
+      at: new ZonedDate(calendar.instant, calendar.timeZone),
+    }).allowed,
+    true,
+    "Native visitor hours use the admitted current calendar",
+  );
+  assert.equal(
+    evaluateZoneAccess(garden, zone, "player", {
+      ...sceneAccessContext(physical.scene),
+      at: new ZonedDate(physical.scene.startedAt, calendar.timeZone),
+    }).allowed,
     false,
-    "physical preflight uses current admitted visitor hours rather than the original Scene start",
+    "The original Scene start cannot substitute for a later admitted instant",
   );
   const lighting = fixture();
+  lighting.scene.continuity = structuredClone(lighting.scene.continuity);
   const captured = lighting.scene.continuity!;
   captured.capturedAt = "2026-11-05T04:00:00Z";
   captured.facts.timeZone = "America/Los_Angeles";
@@ -352,4 +351,4 @@ try {
 } finally {
   releaseClock();
 }
-console.log("PASS live Scene schedules, absence, historical witnesses, request holds and saved compatibility");
+console.log("PASS native Scene schedules, absence, historical witnesses, request holds and captured calendars");

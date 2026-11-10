@@ -6,6 +6,7 @@ import { asRecord, asTrimmedString } from "./coerce.js";
 import { sceneAccessState, sceneLayoutVenue } from "./scene-layout.js";
 import { type AccessContext, evaluateZoneAccess } from "./venue-access.js";
 import { venueZones, zoneClosed } from "./venue-zones.js";
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 
 export type ContactDelivery = "voice" | "loud";
 export type ContactIntent = {
@@ -57,13 +58,13 @@ export function sceneMoveAccompanying(
   zone: VillageVenueZone,
   state: VillageState,
 ) {
-  const context = sceneAccessContext(scene);
+  const context = sceneAccessContext(scene, undefined, state.timeZone);
   for (const grant of venue.access?.permissions ?? []) {
     const escort = grant.accompaniedBy ?? (zone.access?.accompanied ? grant.issuerId : null);
     if (
       !escort ||
       contactPosition(scene, escort) !== scene.zoneId ||
-      !contactPath(state, venue, scene.zoneId ?? "", zone.id, escort, scene)
+      !contactPath(state, venue, scene.zoneId ?? "", zone.id, escort, scene, context.at)
     )
       continue;
     const decision = evaluateZoneAccess(venue, zone, "player", {
@@ -82,11 +83,21 @@ export function sceneMoveAccompanying(
   return scene.accompanying;
 }
 export function sceneAccessContext(
-  scene: Pick<VenueScene, "id" | "startedAt" | "sceneAttendance" | "accompanying" | "departedIds" | "zoneId">,
+  scene: Pick<
+    VenueScene,
+    "id" | "startedAt" | "sceneAttendance" | "accompanying" | "departedIds" | "zoneId" | "continuity"
+  >,
+  at?: Date,
+  timeZone?: string,
 ): AccessContext {
   return {
     sceneId: scene.id,
-    at: new Date(scene.sceneAttendance?.capturedAt ?? scene.startedAt),
+    at:
+      at ??
+      new ZonedDate(
+        scene.sceneAttendance?.capturedAt ?? scene.startedAt,
+        scene.continuity?.facts.timeZone || timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+      ),
     positions: {
       ...Object.fromEntries((scene.sceneAttendance?.occupants ?? []).map((row) => [row.characterId, row.zoneId])),
       ...Object.fromEntries((scene.accompanying ?? []).map((row) => [row.characterId, row.zoneId])),
@@ -101,6 +112,7 @@ export function contactCanEnter(
   zoneId: string,
   characterId: string,
   scene?: VenueScene,
+  at?: Date,
 ): boolean {
   if (scene) state = sceneAccessState(state, scene);
   venue = sceneLayoutVenue(venue, scene);
@@ -109,7 +121,7 @@ export function contactCanEnter(
   return (
     !!zone &&
     evaluateZoneAccess(venue, zone, characterId, {
-      ...(scene ? sceneAccessContext(scene) : {}),
+      ...(scene ? sceneAccessContext(scene, at, state.timeZone) : { at }),
       accepting: characterId === "player",
       unavailable: zoneClosed(state, venue, zone),
       environment: state.narrative,
@@ -124,6 +136,7 @@ export function contactPath(
   to: string,
   actor: string,
   scene?: VenueScene,
+  at?: Date,
 ): string[] | null {
   if (!from || !to) return null;
   const queue = [[from]],
@@ -133,7 +146,7 @@ export function contactPath(
       last = path.at(-1)!;
     if (last === to) return path;
     for (const next of contactNeighbors(venue, last, scene)) {
-      if (seen.has(next) || (to !== "exterior" && !contactCanEnter(state, venue, next, actor, scene))) continue;
+      if (seen.has(next) || (to !== "exterior" && !contactCanEnter(state, venue, next, actor, scene, at))) continue;
       seen.add(next);
       queue.push([...path, next]);
     }

@@ -6,6 +6,7 @@ import type {
   MemoryCorrectRequest,
 } from "../../../shared/contracts/village.js";
 import type { VillageState } from "../models/world.js";
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { ContinuityHolder, ContinuityEvidence } from "../models/continuity-model.js";
 import { episodeSourceGraph } from "../decoding/episode-codec.js";
 import { continuityActor } from "./continuity-actors.js";
@@ -284,7 +285,7 @@ export function continuityRelationships(state: VillageState, at: string): Relati
               zoneId: zone.id,
               name: zone.name,
               active: evaluateZoneAccess(venue, zone, "player", {
-                at: new Date(at),
+                at: new ZonedDate(at, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
                 environment: state.narrative,
                 unavailable: zoneClosed(state, venue, zone),
               }).allowed,

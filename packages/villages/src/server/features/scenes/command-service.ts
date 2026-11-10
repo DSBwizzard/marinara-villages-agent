@@ -9,6 +9,7 @@ import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 import { SESSION_PREFIX, sessionSlot } from "../../adapters/storage/scene-slots.js";
 import { createSceneHistory } from "../../adapters/storage/scene-history.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { GreetingTrace, VenueScene } from "../../domain/models/scene-model.js";
 import type { VillageState } from "../../domain/models/world.js";
 import { badRequest, conflict, notFound, VillagesRequestError } from "../../domain/rules/errors.js";
@@ -268,12 +269,21 @@ export function createSceneCommands({
         });
       });
     if (zoneClosed(village, venue, zone)) throw conflict("This zone is closed for Renovation.");
-    const accompanying = sceneMoveAccompanying(session, venue, zone, village);
+    const accompanying = sceneMoveAccompanying(session, venue, zone, village),
+      accessAt = sceneAccessContext(session, undefined, village.timeZone).at;
     if (
-      !contactPath(village, venue, requireSceneZoneId(session), zone.id, "player", {
-        ...session,
-        accompanying,
-      })
+      !contactPath(
+        village,
+        venue,
+        requireSceneZoneId(session),
+        zone.id,
+        "player",
+        {
+          ...session,
+          accompanying,
+        },
+        accessAt,
+      )
     )
       throw conflict(
         "There is no permitted connection route to that space; its controller may need to grant an invitation.",
@@ -282,7 +292,7 @@ export function createSceneCommands({
     if (people.filter((person) => !person.characterId.startsWith("npc:")).length > 4)
       throw conflict("Five residents occupy this Zone in the Scene. Choose another Zone.");
     const decision = evaluateZoneAccess(venue, zone, "player", {
-      ...sceneAccessContext({ ...session, accompanying }),
+      ...sceneAccessContext({ ...session, accompanying }, accessAt),
       accepting: true,
       unavailable: zoneClosed(village, venue, zone),
       environment: village.narrative,
@@ -298,18 +308,18 @@ export function createSceneCommands({
         sceneAttendance: session.sceneAttendance ? { ...session.sceneAttendance, layout: undefined } : undefined,
         accompanying,
       };
-      if (!contactPath(state, current, requireSceneZoneId(session), target.id, "player", liveScene))
+      if (!contactPath(state, current, requireSceneZoneId(session), target.id, "player", liveScene, accessAt))
         throw conflict("That route is no longer permitted.");
       for (const companion of accompanying ?? []) {
         const origin = contactPosition(session, companion.characterId);
         if (
           origin !== companion.zoneId &&
-          !contactPath(state, current, origin, companion.zoneId, companion.characterId, liveScene)
+          !contactPath(state, current, origin, companion.zoneId, companion.characterId, liveScene, accessAt)
         )
           throw conflict("Your escort can no longer take that route.");
       }
       const currentDecision = evaluateZoneAccess(current, target, "player", {
-        ...sceneAccessContext({ ...session, accompanying }),
+        ...sceneAccessContext({ ...session, accompanying }, accessAt),
         accepting: true,
         unavailable: zoneClosed(state, current, target),
         environment: state.narrative,
@@ -383,7 +393,7 @@ export function createSceneCommands({
         zoneClosed(state, venue, zone) ||
         (venue.access &&
           !evaluateZoneAccess(venue, zone, "player", {
-            ...sceneAccessContext(session),
+            ...sceneAccessContext(session, undefined, state.timeZone),
             unavailable: zoneClosed(state, venue, zone),
             environment: state.narrative,
           }).allowed)
@@ -543,7 +553,10 @@ export function createSceneCommands({
       throw conflict("Starting relationship history needs preparation or clarification before a Scene can begin.");
     const entryAccessContext = {
       sceneId: id,
-      at: new Date(sceneAttendance.capturedAt),
+      at: new ZonedDate(
+        sceneAttendance.capturedAt,
+        village.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+      ),
       positions: Object.fromEntries(sceneAttendance.occupants.map((person) => [person.characterId, person.zoneId])),
       accepting: true,
     };

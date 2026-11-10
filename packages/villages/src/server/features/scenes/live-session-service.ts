@@ -97,7 +97,7 @@ export function createLiveScenes({
       return false;
     if (
       !evaluateZoneAccess(venue, zone, "player", {
-        ...sceneAccessContext(scene),
+        ...sceneAccessContext(scene, undefined, state.timeZone),
         unavailable: zoneClosed(state, venue, zone),
         environment: state.narrative,
       }).allowed
@@ -179,7 +179,7 @@ export function createLiveScenes({
         if (!current) return;
         if (!target) return;
         const decision = evaluateZoneAccess(current, target, "player", {
-          ...sceneAccessContext(session),
+          ...sceneAccessContext(session, undefined, state.timeZone),
           accepting: true,
           unavailable: zoneClosed(state, current, target),
           environment: state.narrative,
@@ -191,7 +191,7 @@ export function createLiveScenes({
         const target = captured && resolveVenueZone(captured, requireSceneZoneId(state));
         if (captured && target) {
           const decision = evaluateZoneAccess(captured, target, "player", {
-            ...sceneAccessContext(state),
+            ...sceneAccessContext(state, undefined, village.timeZone),
             accepting: true,
           });
           if (decision.allowed) claimVisitPermission(captured, decision.permissionId, state.id);

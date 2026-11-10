@@ -111,7 +111,7 @@ export function sceneZoneOccupants(session: VenueScene, venue: VillageVenue, zon
 export function accessExits(session: VenueScene, village: VillageState, venue: VillageVenue) {
   village = sceneAccessState(village, session);
   venue = sceneLayoutVenue(venue, session);
-  const context = sceneAccessContext(session),
+  const context = sceneAccessContext(session, undefined, village.timeZone),
     positions = { ...context.positions };
   const exits: { actor: string; from: string; to: string; destinationVenueId?: string }[] = [];
   const departures = new Map<string, number>();
@@ -147,7 +147,7 @@ export function accessExits(session: VenueScene, village: VillageState, venue: V
               unavailable: zoneClosed(village, venue, target),
               environment: village.narrative,
             }).allowed &&
-            !!contactPath(village, venue, from, target.id, actor, session),
+            !!contactPath(village, venue, from, target.id, actor, session, context.at),
         )?.id ?? "";
       if (!to && actor === "player") continue;
       let destinationVenueId: string | undefined;

@@ -12,6 +12,7 @@ import { claimVisitPermission, evaluateZoneAccess } from "./venue-access.js";
 import { zoneArea, zoneClosed } from "./venue-zones.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { residentMovementOptions } from "./resident-movement.js";
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 
 export function applyNarrationMoveRequest(
   state: VillageState,
@@ -61,7 +62,8 @@ export function applyNarrationMoveRequest(
       .filter(([id]) => id !== "player")
       .map(([characterId, zoneId]) => ({ characterId, zoneId })),
   };
-  const options = residentMovementOptions(state, venue, scene, command.actors),
+  const accessAt = new ZonedDate(readset.calendar.instant, readset.calendar.timeZone),
+    options = residentMovementOptions(state, venue, scene, command.actors, accessAt),
     cohort = command.actors.filter((id) => positions[id] !== command.to);
   memoryRequire(
     options.zones.some((zone) => zone.id === command.to) &&
@@ -149,11 +151,12 @@ export function applyNarrationMove(
       .filter(([id]) => id !== "player")
       .map(([characterId, zoneId]) => ({ characterId, zoneId })),
   };
-  const path = contactPath(state, venue, before[actor.id], command.to, actor.id, scene),
+  const accessAt = new ZonedDate(readset.calendar.instant, readset.calendar.timeZone),
+    path = contactPath(state, venue, before[actor.id], command.to, actor.id, scene, accessAt),
     zone = venue.zones?.find((zone) => zone.id === command.to);
   memoryRequire(path && path.length > 1 && zone, "there is no permitted connected movement route");
   const decision = evaluateZoneAccess(venue, zone, actor.id, {
-    ...sceneAccessContext(scene),
+    ...sceneAccessContext(scene, accessAt),
     accepting: true,
     unavailable: zoneClosed(state, venue, zone),
     environment: state.narrative,
@@ -225,7 +228,15 @@ export function applyNarrationDeparture(
         .filter(([id]) => id !== "player")
         .map(([characterId, zoneId]) => ({ characterId, zoneId })),
     },
-    path = contactPath(state, venue, positions[who], "exterior", who, scene);
+    path = contactPath(
+      state,
+      venue,
+      positions[who],
+      "exterior",
+      who,
+      scene,
+      new ZonedDate(readset.calendar.instant, readset.calendar.timeZone),
+    );
   memoryRequire(path, "departure has no valid native exit route");
   const receipt: AcceptedEpisode["commandReceipts"][number] = {
     id: receiptId,

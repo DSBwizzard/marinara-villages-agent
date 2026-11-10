@@ -1,4 +1,4 @@
-// Test cases: relationships/player-snapshot, relationships/shared-terms, relationships/common-protection, relationships/identity-labels, relationships/native-access, relationships/pure-reads
+// Test cases: relationships/player-snapshot, relationships/shared-terms, relationships/common-protection, relationships/identity-labels, relationships/native-access, relationships/access-calendar, relationships/pure-reads
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -334,6 +334,68 @@ await runCase("relationships/native-access", () => {
   venue.constructionStatus = undefined;
   f.state.villagers[0].incarnation = "replacement";
   assert.deepEqual(f.profiles()[0].access, [], "a replacement does not inherit the old issuer's invitation");
+});
+await runCase("relationships/access-calendar", () => {
+  const previous = process.env.TZ;
+  try {
+    process.env.TZ = "UTC";
+    assert.equal(new Date(at).getHours(), 12);
+    for (const open of [false, true]) {
+      const f = fixture(),
+        venue = venueFixture({ id: "home", residentIds: ["mara"] }),
+        zone = venue.zones!.find((zone) => zone.kind !== "exterior")!,
+        grant = "calendar-invitation";
+      f.state.timeZone = "America/Los_Angeles";
+      f.state.venues = [venue];
+      venue.occupancy.playerHome = false;
+      venue.access!.managerIds = ["mara"];
+      zone.seen = true;
+      zone.access = {
+        ...zone.access!,
+        mode: "permission-required",
+        managerIds: ["mara"],
+        memberIds: [],
+        memberRoles: [],
+        visitorHours: [{ days: ["Monday"], start: open ? "03:00" : "11:00", end: open ? "05:00" : "13:00" }],
+      };
+      applyAccessCommand(
+        venue,
+        readAccessCommand({
+          operationId: grant,
+          expectedRevision: venue.access!.revision,
+          zoneId: zone.id,
+          action: "invite",
+          visitorId: "player",
+          duration: "standing",
+          accompanied: false,
+          outsideHours: false,
+        }),
+        "mara",
+        at,
+        ["player", "mara"],
+        ["invitation"],
+      );
+      retainNativeFact(
+        f.state,
+        {
+          id: grant,
+          kind: "access",
+          targetId: venue.id,
+          revision: venue.access!.revision,
+          text: "Mara granted standing permission during visitor hours.",
+          witnesses: ["player", "mara"],
+        },
+        at,
+      );
+      f.cold();
+      const before = structuredClone(venue.access);
+      assert.equal(f.profiles()[0].access[0]?.active, open, "The People book uses Village-local visitor hours");
+      assert.deepEqual(venue.access, before, "Reading availability cannot change the underlying invitation");
+    }
+  } finally {
+    if (previous === undefined) delete process.env.TZ;
+    else process.env.TZ = previous;
+  }
 });
 await runCase("relationships/pure-reads", async () => {
   const f = fixture();

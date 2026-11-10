@@ -18,7 +18,13 @@ function sceneResidentIds(scene: VenueScene): string[] {
 }
 
 /** Private writing choices, not resident knowledge or evidence of unseen attendance. */
-export function residentMovementOptions(state: VillageState, venue: VillageVenue, scene: VenueScene, ids: string[]) {
+export function residentMovementOptions(
+  state: VillageState,
+  venue: VillageVenue,
+  scene: VenueScene,
+  ids: string[],
+  at?: Date,
+) {
   venue = sceneLayoutVenue(venue, scene);
   const zones = venueZones(venue);
   const occupancy = new Map<string, number>();
@@ -31,8 +37,8 @@ export function residentMovementOptions(state: VillageState, venue: VillageVenue
     zoneIds: zones
       .filter(
         (zone) =>
-          (contactPath(state, venue, contactPosition(scene, characterId), zone.id, characterId, scene)?.length ?? 0) >
-          1,
+          (contactPath(state, venue, contactPosition(scene, characterId), zone.id, characterId, scene, at)?.length ??
+            0) > 1,
       )
       .map((zone) => zone.id),
   }));
