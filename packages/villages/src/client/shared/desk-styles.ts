@@ -171,7 +171,7 @@ export const DESK_STYLES = `
 
 @container village-desk (max-width:700px){
  .${P}-desk-workspace[data-desk="people"]{--desk-art:var(--desk-art-phone,url('/api/capability-packages/villages/assets/people-phone.webp'))}
- .${P}-desk-workspace[data-desk="projects"]{--desk-art:var(--desk-art-phone,url('/api/capability-packages/villages/assets/desk-art/projects-phone.webp'));--desk-art-inset:0}
+ .${P}-desk-workspace[data-desk="projects"]{--desk-art:var(--desk-art-phone,url('/api/capability-packages/villages/assets/desk-art/projects-phone.webp'));--desk-art-inset:-12px -4px 0}
 
 
  .${P}-desk-workspace[data-desk="mailbox"]{--desk-art:var(--desk-art-phone,url('/api/capability-packages/villages/assets/desk-art/mailbox-phone.webp'))}
