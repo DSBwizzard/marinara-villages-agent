@@ -5,6 +5,7 @@ import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import {
   createSceneHistory,
   readSceneHistoryRoot,
@@ -56,6 +57,10 @@ function fixture(count = 140) {
       message: "  Why?\n*A private thought.* 👩🏽‍🚀  ",
       at,
       targetId: "mara",
+      requestFingerprint: memoryHash(["chat", "mara", "  Why?\n*A private thought.* 👩🏽‍🚀  ", null]),
+      acceptance: { status: "applied", rejected: [] },
+      episodeId: "episode-" + index,
+      progressProcessedAt: at,
       replyLineIds: ["line-" + index],
       activeIdsAtTurn: ["mara"],
     })),
@@ -106,6 +111,14 @@ await runCase("scene-history/current-only", async () => {
     await assert.rejects(f.history().decode({ ...current, storageFormat: format }), /unsupported Scene storage/);
   }
   await assert.rejects(f.history().decode({ ...current, version: 4 }), /unsupported Scene storage/);
+  assert.throws(
+    () =>
+      coerceSession({
+        ...f.scene,
+        lines: [{ ...f.scene.lines[0], speechSource: { version: 3, spans: [] } }],
+      }),
+    /unsupported.*speech/,
+  );
   assert.equal(f.writes, writes);
   assert.deepEqual([...f.rows], before);
 });

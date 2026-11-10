@@ -1,4 +1,4 @@
-// Test cases: continuity-retrieval/large-room, continuity-retrieval/required-overflow, continuity-retrieval/fair-private-initiative, continuity-retrieval/minimum-initiative, continuity-retrieval/recent-offer, continuity-retrieval/new-arrival-fairness, continuity-retrieval/source-terms
+// Test cases: continuity-retrieval/large-room, continuity-retrieval/required-overflow, continuity-retrieval/fair-private-initiative, continuity-retrieval/minimum-initiative, continuity-retrieval/recent-offer, continuity-retrieval/new-arrival-fairness, continuity-retrieval/source-terms, continuity-retrieval/shared-budget
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import type {
@@ -420,6 +420,84 @@ await runCase("continuity-retrieval/recent-offer", () => {
   assert.ok(
     packet.fair.some((target) => target.id !== root.id),
     "a pending offer does not consume Mara's independent fair slot",
+  );
+});
+
+await runCase("continuity-retrieval/shared-budget", () => {
+  const holders = [
+    { ...mara, id: "player" },
+    mara,
+    leo,
+    ...Array.from({ length: 5 }, (_, i) => ({ ...mara, id: "guest-" + i })),
+  ];
+  const quotes = [
+    "Please bring the brass telescope and star chart. " + "Keep every lens safely wrapped. ".repeat(15),
+    "Only if everyone comes and the north path is open. " + "Wait for clear weather before leaving. ".repeat(15),
+  ];
+  const episode = accepted("large-shared-offer", holders);
+  episode.privateInput = quotes.join("\n");
+  const sources: ContinuityEvidence[] = quotes.map((excerpt, index) => {
+    const start = episode.privateInput.indexOf(excerpt);
+    return {
+      id: "shared-source-" + index,
+      seed: "world",
+      episodeId: episode.id,
+      unitId: "input",
+      fingerprint: memoryHash(episode.privateInput),
+      kind: "speech",
+      actorId: "player",
+      act: "offer",
+      excerpt,
+      range: { start, end: start + excerpt.length },
+      perceptions: holders.map((holder) => ({ actorId: holder.id, channel: "words", text: excerpt })),
+    };
+  });
+  const state = applyContinuityWrite(
+    emptyContinuity(),
+    {
+      id: "shared-offer",
+      holders,
+      class: "commitment",
+      text: episode.privateInput,
+      sourceIds: sources.map((source) => source.id),
+      offer: { proposer: "player", participants: holders.map((holder) => holder.id) },
+    },
+    { ...context(episode.operationId), actors: holders, episodeId: episode.id, sources },
+  );
+  const root = state.records[0];
+  episode.continuityVersionIds = state.versions.map((version) => version.id);
+  episode.grounding = sources;
+  const history = appendEpisode(emptyEpisodes(), episode, "world");
+  const select = (actors: typeof holders, bytes: number) =>
+    selectActorContinuity(state, history, actors, at, {
+      query: root.id,
+      bytes,
+      requiredIds: [root.id],
+      identity: (id) => holders.find((holder) => holder.id === id),
+    });
+  const complete = select([mara], 64000),
+    exact = select([mara], complete.bytes);
+  assert.deepEqual(exact, complete, "one complete holder slice fits its exact serialized budget");
+  const entry = exact.packet.entries[0];
+  assert.equal(entry.text, episode.privateInput);
+  assert.equal(entry.for, "mara");
+  assert.deepEqual(
+    entry.offer!.contributions[0].sources.map((source) => source.excerpt),
+    quotes,
+  );
+  assert(
+    entry.offer!.contributions[0].sources.every((source) => source.perceptions.every((row) => row.actorId === "mara")),
+  );
+  assert.equal(
+    Object.keys(exact.supplied[0].heads).length,
+    1,
+    "one fitted holder never authorizes the other seven heads",
+  );
+  assert.throws(() => select([mara], complete.bytes - 1), /required actor continuity does not fit/);
+  assert.throws(
+    () => select(holders, complete.bytes),
+    /required actor continuity does not fit/,
+    "an oversized required shared agreement is held, never sliced or truncated",
   );
 });
 

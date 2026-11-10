@@ -166,11 +166,12 @@ const collection = z
     format: z.literal(1),
     revision,
     records: z.array(record),
-    versions: z.array(version),
+    versions: z.array(z.unknown()),
     receipts: z.record(z.string(), z.object({ fingerprint: digest, roots: ids, versions: ids }).strict()),
   })
   .strict();
 const validated = new WeakMap<object, string | undefined>();
+const validatedVersions = new WeakSet<object>();
 
 /** One current format. Invalid or old saved bytes are rejected without rewriting them. */
 export function readContinuity(raw: unknown, seed?: string): ContinuityCollection {
@@ -180,9 +181,11 @@ export function readContinuity(raw: unknown, seed?: string): ContinuityCollectio
   memoryObject(raw);
   const prior = raw as ContinuityCollection;
   value.records = value.records.map((row, i) => (isImmutableMemoryValue(prior.records[i]) ? prior.records[i] : row));
-  value.versions = value.versions.map((row, i) =>
-    isImmutableMemoryValue(prior.versions[i]) ? prior.versions[i] : row,
-  );
+  value.versions = prior.versions.map((row) => {
+    if (isImmutableMemoryValue(row) && validatedVersions.has(row)) return row;
+    const checked = version.parse(row) as ContinuityVersion;
+    return isImmutableMemoryValue(row) ? row : checked;
+  });
   for (const key of Object.keys(value.receipts))
     if (isImmutableMemoryValue(prior.receipts[key])) value.receipts[key] = prior.receipts[key];
   const roots = new Map(value.records.map((row) => [row.id, row])),
@@ -366,6 +369,7 @@ export function readContinuity(raw: unknown, seed?: string): ContinuityCollectio
       "missing continuity receipt target",
     );
   const result = immutableMemoryValue(value);
+  for (const entry of result.versions) validatedVersions.add(entry);
   validated.set(result, seed);
   return result;
 }

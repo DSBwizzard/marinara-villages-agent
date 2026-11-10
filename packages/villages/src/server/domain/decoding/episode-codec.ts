@@ -681,7 +681,9 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
   return result;
 }
 
+const validatedCollections = new WeakMap<object, string>();
 export function readEpisodes(raw: unknown, seed: string): EpisodeCollection {
+  if (raw && typeof raw === "object" && validatedCollections.get(raw) === seed) return raw as EpisodeCollection;
   const value = z
     .object({ format: z.literal(1), revision: z.number().int().nonnegative().safe(), records: z.array(z.unknown()) })
     .strict()
@@ -695,7 +697,9 @@ export function readEpisodes(raw: unknown, seed: string): EpisodeCollection {
   memoryRequire(value.revision === records.length, "episode append revision changed");
   episodeSourceGraph(records);
   assertMailHistory(records);
-  return immutableMemoryValue({ format: 1, revision: value.revision, records });
+  const result = immutableMemoryValue({ format: 1 as const, revision: value.revision, records });
+  validatedCollections.set(result, seed);
+  return result;
 }
 
 export function episodeUnit(episode: AcceptedEpisode, unitId: string) {

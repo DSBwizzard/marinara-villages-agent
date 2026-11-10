@@ -6,7 +6,6 @@ import type { VenueOperation, VenueRequestMetrics } from "./operation-model.js";
 import type { VillageVenueClass } from "./world.js";
 
 export type VenueLine = {
-  speechSource?: { version: 3; spans: import("../rules/source-span.js").InputSourceSpan[] };
   id: string;
   inputOf?: string;
   speakerId: string;
@@ -137,7 +136,6 @@ export type VenueSession = VenueScene;
 export type ActiveVenue = { sessionId: string; placeId: string; playbackSceneId?: string };
 export type GreetingTrace = (stage: string, elapsedMs: number, detail?: string) => void;
 export type VenueReplyLine = {
-  speechSource?: VenueLine["speechSource"];
   zoneId?: string;
   soundOnly?: VenueLine["soundOnly"];
   attentionEvidence?: boolean;

@@ -16,7 +16,7 @@ export type AcceptedEpisode = {
   /** Exact original submission; never a resident-readable transcript. */
   privateInput: string;
   actors: { id: string; incarnation: string; zoneId: string }[];
-  segments: Omit<VenueLine, "speechSource">[];
+  segments: VenueLine[];
   grounding: ContinuityEvidence[];
   continuityVersionIds: string[];
   offered: { holder: Extract<import("./continuity-model.js").ContinuityHolder, { kind: "actor" }>; ids: string[] }[];

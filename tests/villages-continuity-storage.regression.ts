@@ -1,4 +1,4 @@
-// Test cases: continuity-storage/cold-history, continuity-storage/current-only, continuity-storage/publication-failure, continuity-storage/page-integrity, continuity-storage/offer-evidence, continuity-storage/native-replay, continuity-storage/mail-envelope, continuity-storage/mail-publication, continuity-storage/mail-pages, continuity-storage/mail-reply-order
+// Test cases: continuity-storage/cold-history, continuity-storage/current-only, continuity-storage/publication-failure, continuity-storage/page-integrity, continuity-storage/offer-evidence, continuity-storage/native-replay, continuity-storage/mail-envelope, continuity-storage/mail-publication, continuity-storage/mail-pages, continuity-storage/mail-reply-order, continuity-storage/validated-reuse
 import { emptyMailbox } from "../packages/villages/src/server/domain/decoding/mailbox-codec.js";
 import { readMailboxState } from "../packages/villages/src/server/domain/decoding/mailbox-codec.js";
 import { queueMailboxLetter } from "../packages/villages/src/server/domain/rules/social-mail.js";
@@ -17,7 +17,7 @@ import {
 } from "../packages/villages/src/server/adapters/storage/continuity-pages.js";
 import { createMemoryPageTracer } from "../packages/villages/src/server/adapters/storage/memory-pages.js";
 import { appendEpisode } from "../packages/villages/src/server/domain/rules/episodes.js";
-import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import { memoryHash, immutableMemoryValue } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import type { AcceptedEpisode } from "../packages/villages/src/server/domain/models/episode-model.js";
 import {
   emptyContinuity,
@@ -26,7 +26,8 @@ import {
   continuityViews,
   protectContinuity,
 } from "../packages/villages/src/server/domain/rules/continuity.js";
-import { readAcceptedEpisode } from "../packages/villages/src/server/domain/decoding/episode-codec.js";
+import { readAcceptedEpisode, readEpisodes } from "../packages/villages/src/server/domain/decoding/episode-codec.js";
+import { readContinuity } from "../packages/villages/src/server/domain/decoding/continuity-codec.js";
 import { retainNativeFact } from "../packages/villages/src/server/domain/rules/native-continuity.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
 import { emptyPlaceRegistry } from "../packages/villages/src/server/domain/rules/places.js";
@@ -141,6 +142,54 @@ function letterEpisode(mail: MailIdentity, text: string, phase: "written" | "rea
     commandReceipts: [receipt],
   };
 }
+
+await runCase("continuity-storage/validated-reuse", async () => {
+  const f = fixture();
+  await f.seed();
+  await f.repository().mutateAuthority(
+    (state) =>
+      retainNativeFact(
+        state,
+        {
+          id: "known",
+          kind: "initialization",
+          targetId: "known",
+          revision: 1,
+          text: "An exact native account.",
+          witnesses: ["player"],
+        },
+        at,
+      ),
+    { memories: true },
+  );
+  const saved = await f.repository().readAuthority({ memories: true });
+  readContinuity(saved.continuity, saved.seed);
+  assert.throws(() => readContinuity({ ...saved.continuity }, "foreign"), /another world/);
+  const invalidVersion = immutableMemoryValue({ ...saved.continuity.versions[0], text: "x".repeat(33000) });
+  assert.throws(
+    () => readContinuity({ ...saved.continuity, versions: [invalidVersion] }, saved.seed),
+    /invalid|large|maximum|<=/i,
+    "owned immutability alone cannot validate a foreign version",
+  );
+  const invalidHead = structuredClone(saved.continuity);
+  Object.values(invalidHead.records[0].heads)[0].versionId = "missing-version";
+  assert.throws(() => readContinuity(invalidHead, saved.seed), /holder head/);
+  readEpisodes(saved.episodes, saved.seed);
+  assert.throws(() => readEpisodes(saved.episodes, "foreign"), /world/);
+  assert.throws(
+    () => readEpisodes(immutableMemoryValue({ ...saved.episodes, revision: saved.episodes.revision + 1 }), saved.seed),
+    /append revision/,
+  );
+  const mutable = structuredClone(saved.episodes);
+  readEpisodes(mutable, saved.seed);
+  mutable.records.push(structuredClone(mutable.records[0]));
+  mutable.revision++;
+  assert.throws(
+    () => readEpisodes(mutable, saved.seed),
+    /duplicate/,
+    "a previously read mutable wrapper never becomes validation authority",
+  );
+});
 
 await runCase("continuity-storage/cold-history", async () => {
   const f = fixture();

@@ -182,7 +182,11 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
       "continuity source author changed",
     );
     memoryRequire(
-      source.perceptions.every((row) => original.perceptions.some((prior) => memoryHash(prior) === memoryHash(row))),
+      source.perceptions.every((row) =>
+        original.perceptions.some(
+          (prior) => prior.actorId === row.actorId && prior.channel === row.channel && prior.text === row.text,
+        ),
+      ),
       "continuity source widened its projection",
     );
     memoryRequire(

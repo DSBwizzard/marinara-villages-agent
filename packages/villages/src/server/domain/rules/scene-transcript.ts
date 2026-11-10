@@ -50,6 +50,7 @@ export function readSceneLines(value: unknown, participantIds: ReadonlySet<strin
           const canonical = reuseSceneLine(value, participantIds);
           if (canonical) return canonical;
           const row = asRecord(value);
+          memoryRequire(!Object.hasOwn(row, "speechSource"), "unsupported Scene speech metadata");
           if (row.kind === "input") {
             memoryRequire(
               row.role === "user" &&
@@ -58,7 +59,6 @@ export function readSceneLines(value: unknown, participantIds: ReadonlySet<strin
                 row.inputOf.length > 0 &&
                 Array.isArray(row.heardBy) &&
                 !row.heardBy.length &&
-                !row.speechSource &&
                 !row.soundOnly &&
                 !row.staging &&
                 !row.physicalIdsAfter,
@@ -99,9 +99,6 @@ export function readSceneLines(value: unknown, participantIds: ReadonlySet<strin
             ...(row.contactHidden === true ? { contactHidden: true } : {}),
             ...(row.presenceChange === true ? { presenceChange: true as const } : {}),
             ...(row.attentionEvidence === true ? { attentionEvidence: true } : {}),
-            ...(asRecord(row.speechSource).version === 3 && Array.isArray(asRecord(row.speechSource).spans)
-              ? { speechSource: structuredClone(row.speechSource) as VenueLine["speechSource"] }
-              : {}),
             ...(typeof asRecord(row.soundOnly).text === "string" && Array.isArray(asRecord(row.soundOnly).characterIds)
               ? {
                   soundOnly: {

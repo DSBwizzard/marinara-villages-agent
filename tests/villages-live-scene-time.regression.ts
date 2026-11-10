@@ -152,6 +152,16 @@ function fixture() {
 }
 try {
   const f = fixture();
+  const nativeCapture = structuredClone(f.scene.continuity),
+    liveBefore = structuredClone(f.world);
+  const projected = sceneContinuityView(f.world, f.scene);
+  assert.deepEqual(f.scene.continuity, nativeCapture, "projecting native facts leaves the saved capture unchanged");
+  projected.venues[0]!.zones![0].description = "A change only to the returned native projection.";
+  assert.deepEqual(f.scene.continuity, nativeCapture, "mutating returned native facts cannot change the saved capture");
+  assert.deepEqual(f.world, liveBefore, "native presentation cannot mutate live write authority");
+  const unsupported = JSON.parse(JSON.stringify(f.scene));
+  unsupported.continuity.version = 99;
+  assert.throws(() => coerceSession(unsupported), /captured context/);
   now = new Date("2026-11-02T09:57:00Z");
   await f.service.activeVenueSession();
   const admitted = structuredClone(f.scene);
