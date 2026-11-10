@@ -670,7 +670,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     createResidentRoster({
       preparedSpriteManager,
       readVillageState,
-      mutateVillageState,
+      mutateVillageState: mutateVillageMemoryState,
       findVillagerCard,
       queueVillagerAgenda,
       queueStartingTies: startingTies.queue,

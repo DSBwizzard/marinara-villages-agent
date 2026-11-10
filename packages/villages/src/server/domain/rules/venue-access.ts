@@ -374,19 +374,22 @@ export function evaluateZoneAccess(
 /** Settlement is monotonic: losing invitation authority never resurrects an old grant. */
 export function reconcileVenueAccess(venue: VillageVenue, knownActors?: string[]): void {
   if (!venue.access) return;
-  if (knownActors) {
-    venue.access.managerIds = venue.access.managerIds.filter((actor) => knownActors.includes(actor));
+  const known = knownActors && new Set(knownActors);
+  if (known) {
+    venue.access.managerIds = venue.access.managerIds.filter((actor) => known.has(actor));
     for (const zone of venue.zones ?? [])
       if (zone.access) {
-        if (zone.access.managerIds)
-          zone.access.managerIds = zone.access.managerIds.filter((actor) => knownActors.includes(actor));
-        zone.access.memberIds = zone.access.memberIds.filter((actor) => knownActors.includes(actor));
-        zone.access.inviterIds = zone.access.inviterIds.filter((actor) => knownActors.includes(actor));
+        if (zone.access.managerIds) zone.access.managerIds = zone.access.managerIds.filter((actor) => known.has(actor));
+        zone.access.memberIds = zone.access.memberIds.filter((actor) => known.has(actor));
+        zone.access.inviterIds = zone.access.inviterIds.filter((actor) => known.has(actor));
       }
+    for (const ban of venue.access.bans) if (!known.has(ban.visitorId)) ban.active = false;
+    venue.access.visitDenials = venue.access.visitDenials.filter((row) => known.has(row.visitorId));
   }
   for (const grant of venue.access.permissions) {
     const zone = venue.zones?.find((row) => row.id === grant.zoneId);
-    if (!zone || !mayInvite(venue, zone, grant.issuerId)) grant.revoked = true;
+    if (!zone || (known && !known.has(grant.visitorId)) || !mayInvite(venue, zone, grant.issuerId))
+      grant.revoked = true;
   }
 }
 export function applyAccessCommand(
