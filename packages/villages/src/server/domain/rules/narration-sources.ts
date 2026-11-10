@@ -2,7 +2,7 @@ import type { ContinuityClass, ContinuityEvidence, ContinuityHolder } from "../m
 import type { AcceptedEpisode } from "../models/episode-model.js";
 import type { VenueLine, VenueScene } from "../models/scene-model.js";
 import type { VillageVenue } from "../models/world.js";
-import { continuityHolderKey, continuityVersionId } from "./continuity.js";
+import { continuityHolderKey, continuitySelfSource } from "./continuity.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { narrationSourceSchema, type NarrationSource } from "./narration-contract.js";
 import { exactInputSpan } from "./source-span.js";
@@ -101,18 +101,7 @@ export function bindNarrationSource(
           ["perspective", "desire", "motivation", "commitment"].includes(owner.class),
         "self belongs only to an admitted non-player's private perspective",
       );
-      const versionId = continuityVersionId(context.seed, context.operationId + ":" + owner.writeId, owner.holder);
-      return {
-        id: "source-" + memoryHash([context.episodeId, versionId]).slice(0, 32),
-        seed: context.seed,
-        episodeId: context.episodeId,
-        unitId: versionId,
-        fingerprint: memoryHash([versionId, owner.class, owner.text, continuityHolderKey(owner.holder)]),
-        excerpt: owner.text,
-        kind: "self",
-        actorId: owner.holder.id,
-        perceptions: [],
-      };
+      return continuitySelfSource(context, owner);
     }
     if (Object.hasOwn(context.historical, ref)) {
       memoryRequire(

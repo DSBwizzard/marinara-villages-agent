@@ -580,6 +580,7 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
     memoryRequire(
       key === "input" ||
         units.has(key) ||
+        value.commandReceipts.some((receipt) => receipt.mail && key === "mail:" + receipt.mail.sourceHash) ||
         (key.startsWith("version:") && value.continuityVersionIds.includes(key.slice(8))) ||
         value.grounding.some((source) => source.kind !== "knowledge" && source.unitId === key),
       "unknown episode dependency unit",

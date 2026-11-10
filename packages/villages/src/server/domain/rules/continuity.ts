@@ -15,6 +15,27 @@ export const CONTINUITY_TEXT_BYTES = 2400;
 export const ROOM_CONTINUITY_TEXT_BYTES = 16000;
 export const ownedContinuityClass = (value: string) =>
   ["perspective", "desire", "motivation", "commitment"].includes(value);
+export function continuitySelfSource(
+  context: { seed: string; episodeId: string; operationId: string },
+  owner: { holder: ContinuityHolder; writeId: string; text: string; class: ContinuityVersion["class"] },
+): ContinuityEvidence {
+  memoryRequire(
+    owner.holder.kind === "actor" && owner.holder.id !== "player" && ownedContinuityClass(owner.class),
+    "self belongs only to a non-player's private perspective",
+  );
+  const versionId = continuityVersionId(context.seed, context.operationId + ":" + owner.writeId, owner.holder);
+  return {
+    id: "source-" + memoryHash([context.episodeId, versionId]).slice(0, 32),
+    seed: context.seed,
+    episodeId: context.episodeId,
+    unitId: versionId,
+    fingerprint: memoryHash([versionId, owner.class, owner.text, continuityHolderKey(owner.holder)]),
+    excerpt: owner.text,
+    kind: "self",
+    actorId: owner.holder.id,
+    perceptions: [],
+  };
+}
 export const continuityHolderKey = (holder: ContinuityHolder) =>
   holder.kind === "actor"
     ? JSON.stringify(["actor", holder.id, holder.incarnation])

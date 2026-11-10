@@ -1,4 +1,4 @@
-// Test cases: mail-continuity/written-private, mail-continuity/read-terms, mail-continuity/written-consent, mail-continuity/read-no-consent, mail-continuity/stage-identity, mail-continuity/replacement-disclosure, mail-continuity/protection, mail-continuity/source-integrity, mail-continuity/scene-context
+// Test cases: mail-continuity/written-private, mail-continuity/read-terms, mail-continuity/written-consent, mail-continuity/read-no-consent, mail-continuity/stage-identity, mail-continuity/replacement-disclosure, mail-continuity/protection, mail-continuity/source-integrity, mail-continuity/scene-context, mail-continuity/accepted-replay, mail-continuity/authority-race, mail-continuity/optional-effects, mail-continuity/private-reader, mail-continuity/fitted-knowledge
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -7,6 +7,7 @@ import type { AcceptedEpisode } from "../packages/villages/src/server/domain/mod
 import type {
   ContinuityTarget,
   ContinuityEvidence,
+  ContinuityView,
 } from "../packages/villages/src/server/domain/models/continuity-model.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
 import {
@@ -15,8 +16,11 @@ import {
   continuityViews,
   continuityProtectionUnits,
   protectContinuity,
+  continuityProtectionFingerprint,
+  continuityKnowledge,
+  continuitySourceUnit,
 } from "../packages/villages/src/server/domain/rules/continuity.js";
-import { prepareContinuityKeep } from "../packages/villages/src/server/domain/rules/narration-keep.js";
+import { acceptMailContinuity } from "../packages/villages/src/server/domain/rules/mail-continuity.js";
 import {
   mailReceipt,
   mailEvidence,
@@ -31,7 +35,6 @@ import {
   readAcceptedEpisode,
   episodeSourceGraph,
 } from "../packages/villages/src/server/domain/decoding/episode-codec.js";
-import { assertContinuityRetention } from "../packages/villages/src/server/domain/rules/continuity-retention.js";
 import { assertNarrationDecision } from "../packages/villages/src/server/domain/rules/narration-access.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import {
@@ -82,6 +85,7 @@ function fixture() {
     raws: unknown[] = [],
     supplied: ContinuityTarget[] = [],
     act?: ContinuityEvidence["act"],
+    fitted: ContinuityView[] = [],
   ) {
     const receipt = mailReceipt(state.seed, mail, text, phase),
       before = state.continuity;
@@ -89,67 +93,43 @@ function fixture() {
       kind: "actor" as const,
       ...actor,
     }));
-    const episode: AcceptedEpisode = {
-      format: 1,
-      id: receipt.id,
-      seed: state.seed,
-      submissionId: receipt.id,
-      operationId: receipt.id,
-      capturedAt: at,
-      acceptedAt: at,
-      responseDigest: memoryHash([receipt, raws]),
-      admittedContinuityRevision: before.revision,
-      privateInput: "",
-      actors: actors.map((actor) => ({ id: actor.id, incarnation: actor.incarnation, zoneId: "native" })),
-      segments: [],
-      grounding: [],
-      continuityVersionIds: [],
-      offered: [],
-      commandReceipts: [receipt],
-      dependencies: {},
-    };
+    const historical = Object.fromEntries(
+        fitted.map((view, index) => ["h:" + index, continuityKnowledge(view, state.seed, receipt.id)]),
+      ),
+      provenance: Record<string, string[]> = {};
+    for (const [index, view] of fitted.entries())
+      (provenance[continuityHolderKey(view.holder)] ??= []).push(continuitySourceUnit(historical["h:" + index]));
     const admission = {
       seed: state.seed,
-      operationId: episode.operationId,
-      episodeId: episode.id,
+      operationId: receipt.id,
+      episodeId: receipt.id,
       at,
-      actors,
+      actors: actors.map(({ id, incarnation }) => ({ id, incarnation })),
       subjects: [player, mara],
+      continuityRevision: before.revision,
       sources: [],
       supplied,
       protectedRoots: [],
+      protectionFingerprint: continuityProtectionFingerprint(state.continuity, actors),
+      provenance,
     };
-    for (const [ordinal, raw] of raws.entries()) {
-      const prepared = prepareContinuityKeep(raw, ordinal, state.continuity, admission, {
-        seed: state.seed,
-        operationId: episode.operationId,
-        episodeId: episode.id,
-        actors,
-        subjects: [player, mara],
-        bindSource(ref) {
-          assert.equal(ref, "letter");
-          return mailEvidence(episode.id, state.seed, receipt, act);
-        },
-      });
-      state.continuity = applyContinuityWrite(state.continuity, prepared.write, prepared.admission);
-      for (const source of prepared.sources)
-        if (!episode.grounding.some((row) => row.id === source.id)) episode.grounding.push(source);
-    }
-    episode.continuityVersionIds = state.continuity.versions.slice(before.versions.length).map((version) => version.id);
-    state.episodes = appendEpisode(state.episodes, episode, state.seed);
-    state.mailbox = {
-      ...state.mailbox,
-      revision: state.mailbox.revision + 1,
-      messages: {
-        ...state.mailbox.messages,
-        [mail.id]:
-          phase === "written"
-            ? { ...mail, requestId: mail.id, text, status: "delivered", deliveredAt: at }
-            : { ...state.mailbox.messages[mail.id], readAt: at },
-      },
+    const publication = {
+      setupAt: state.setupAt,
+      mail,
+      text,
+      phase,
+      requestId: mail.id,
+      admission,
+      historical,
+      keep: raws,
+      requires: [],
+      responseDigest: memoryHash([receipt, raws]),
     };
-    assertContinuityRetention(state.continuity, state.episodes);
-    return { episode, receipt };
+    const result = acceptMailContinuity(state, publication, at);
+    assert.equal(result.held, false, JSON.stringify(result.rejected));
+    assert(result.episode);
+    if (act) assert(result.episode.grounding.some((source) => source.act === act));
+    return { episode: result.episode, receipt, publication };
   }
   const rows = (holder = player) =>
     continuityViews(
@@ -383,6 +363,7 @@ await runCase("mail-continuity/stage-identity", () => {
       submissionId: receipt.id,
       commandReceipts: [receipt],
       actors: [{ ...receipt.mail!.from, zoneId: "native" }],
+      holderDependencies: {},
     };
     assert.throws(() => appendEpisode(f.state.episodes, conflicting, f.state.seed), /message identity changed/);
   }
@@ -477,6 +458,251 @@ await runCase("mail-continuity/protection", () => {
   assert.deepEqual(f.rows(), []);
 });
 
+await runCase("mail-continuity/accepted-replay", () => {
+  const f = fixture(),
+    { publication } = f.stage(f.identity, terms, "written", [
+      {
+        id: "remember",
+        for: ["mara"],
+        class: "information",
+        text: terms,
+        source: ["letter"],
+      },
+    ]);
+  f.state.continuity = protectContinuity(
+    f.state.continuity,
+    f.target(f.state.continuity.records[0].id),
+    [f.mara],
+    "forget-before-replay",
+    at,
+    { forget: true },
+  );
+  f.state.villagers[0].incarnation = "replacement";
+  const before = structuredClone(f.state);
+  assert.equal(acceptMailContinuity(f.state, publication, "2026-11-09T13:00:00.000Z").replayed, true);
+  assert.deepEqual(f.state, before, "accepted replay precedes changed authority and cannot re-teach forgotten text");
+  assert.throws(() => acceptMailContinuity(f.state, { ...publication, keep: [] }, at), /identity reused/);
+  f.cold();
+  assert.deepEqual(f.rows(f.mara), []);
+});
+
+await runCase("mail-continuity/authority-race", () => {
+  const f = fixture(),
+    empty = structuredClone(f.state),
+    { publication } = f.stage(f.identity, terms, "written");
+  const replaced = structuredClone(empty);
+  replaced.villagers[0].incarnation = "replacement";
+  const beforeReplacement = structuredClone(replaced);
+  assert.throws(() => acceptMailContinuity(replaced, publication, at), /correspondent incarnation changed/);
+  assert.deepEqual(replaced, beforeReplacement);
+  const reset = { ...structuredClone(empty), setupAt: "2026-11-09T13:00:00.000Z" };
+  assert.throws(() => acceptMailContinuity(reset, publication, at), /world changed/);
+  const g = fixture();
+  g.stage(g.identity, terms, "written", [{ id: "known", for: ["mara"], text: terms, source: ["letter"] }]);
+  const original = structuredClone(g.state),
+    next = g.stage({ ...g.identity, id: "second-letter" }, "I will ask Delia.", "written").publication;
+  original.continuity = protectContinuity(
+    original.continuity,
+    g.target(original.continuity.records[0].id),
+    [g.mara],
+    "forget-during-generation",
+    at,
+    { forget: true },
+  );
+  const beforeProtection = structuredClone(original);
+  assert.throws(() => acceptMailContinuity(original, next, at), /protection changed/);
+  assert.deepEqual(original, beforeProtection, "a stale saved completion cannot publish an envelope or any effects");
+  f.state.villagers[0].incarnation = "replacement";
+  f.stage(f.identity, terms, "read");
+  assert.equal(
+    f.state.mailbox.messages[f.identity.id].readAt,
+    at,
+    "the player can read an old author's frozen letter after replacement",
+  );
+  const h = fixture();
+  h.stage(h.identity, terms, "written", [{ id: "author", for: ["mara"], text: terms, source: ["letter"] }]);
+  const root = h.state.continuity.records[0];
+  h.state.villagers[0].incarnation = "replacement";
+  const beforeRead = structuredClone(h.state),
+    read = h.stage(
+      h.identity,
+      terms,
+      "read",
+      [{ id: "reader", replace: root.id, for: ["player"], source: ["letter"] }],
+      [h.target(root.id)],
+    );
+  const untouched = structuredClone(beforeRead),
+    authorWrite = acceptMailContinuity(
+      beforeRead,
+      {
+        ...read.publication,
+        keep: [
+          {
+            id: "change-absent-author",
+            replace: root.id,
+            for: ["mara"],
+            text: "The former author now holds a different view.",
+            source: ["letter"],
+          },
+        ],
+      },
+      at,
+    );
+  assert.equal(authorWrite.held, true);
+  assert(authorWrite.rejected.some((failure) => failure.reason.includes("actual writer or reader")));
+  assert.deepEqual(beforeRead, untouched);
+  assert.equal(beforeRead.mailbox.messages[h.identity.id].readAt, undefined);
+  const originalHead = beforeRead.continuity.records[0].heads[continuityHolderKey(h.mara)];
+  assert.equal(beforeRead.continuity.versions.find((version) => version.id === originalHead.versionId)!.text, terms);
+});
+
+await runCase("mail-continuity/optional-effects", () => {
+  const f = fixture(),
+    before = structuredClone(f.state),
+    { publication } = f.stage(f.identity, terms, "written", [
+      { id: "valid", for: ["mara"], text: terms, source: ["letter"] },
+      { id: "optional", for: ["mara"], text: terms.repeat(30), source: ["letter"], independent: true },
+    ]);
+  assert.equal(f.state.continuity.records.length, 1);
+  assert.equal(f.state.mailbox.messages[f.identity.id].status, "delivered");
+  const candidate = structuredClone(before),
+    held = acceptMailContinuity(candidate, { ...publication, requires: ["optional"] }, at);
+  assert.equal(held.held, true, "an asserted lasting result cannot drop its failed required keep");
+  assert(held.rejected.some((row) => row.id === "optional"));
+  assert.deepEqual(candidate, before, "critical failure publishes neither letter nor valid-looking partial changes");
+  f.cold();
+});
+
+await runCase("mail-continuity/private-reader", () => {
+  const f = fixture(),
+    incoming = { ...f.identity, id: "incoming", from: f.identity.to, to: f.identity.from },
+    text = "Would you consider the fair visit?";
+  f.stage(incoming, text, "written");
+  const unread = structuredClone(f.state),
+    { episode, publication } = f.stage(incoming, text, "read", [
+      {
+        id: "reason",
+        for: ["mara"],
+        owner: "mara",
+        class: "motivation",
+        text: "I want to understand the player's reason before deciding.",
+        source: ["self"],
+      },
+    ]);
+  assert.equal(f.rows(f.mara)[0].version.class, "motivation");
+  assert.deepEqual(f.rows(), []);
+  assert.equal(gmEpisodeView(episode, f.state.continuity, [f.player], f.state.episodes), null);
+  const invalid = acceptMailContinuity(
+    unread,
+    {
+      ...publication,
+      keep: [
+        {
+          id: "invent-player-decision",
+          for: ["player"],
+          owner: "player",
+          class: "commitment",
+          text: "The player decided to attend.",
+          source: ["self"],
+        },
+      ],
+    },
+    at,
+  );
+  assert.equal(invalid.held, true);
+  assert.equal(unread.mailbox.messages.incoming.readAt, undefined);
+  f.cold();
+});
+
+await runCase("mail-continuity/fitted-knowledge", () => {
+  const f = fixture();
+  f.stage(f.identity, "A quiet note.", "written", [
+    {
+      id: "private-goal",
+      for: ["mara"],
+      owner: "mara",
+      class: "desire",
+      text: "I want some quiet time to think.",
+      source: ["self"],
+    },
+  ]);
+  const privateView = f.rows(f.mara)[0],
+    generated = f.stage(
+      { ...f.identity, id: "generated-from-goal" },
+      "I may be busy on Saturday.",
+      "written",
+      [],
+      [],
+      undefined,
+      [privateView],
+    );
+  assert.equal(generated.episode.continuityVersionIds.length, 0, "ordinary generated mail needs no fake Memory");
+  assert(generated.episode.grounding.some((source) => source.kind === "knowledge"));
+  const own = { ...f.identity, id: "own-old-note", from: f.identity.to, to: f.identity.from };
+  f.stage(own, "An old plan I wrote down.", "written", [
+    { id: "own-memory", for: ["player"], text: "I wrote an old plan.", source: ["letter"] },
+  ]);
+  const ownView = f.rows()[0],
+    incoming = { ...own, id: "independent-question" },
+    exact = "Would you consider the fair visit?",
+    original = f.stage(incoming, exact, "written", [], [], undefined, [ownView]),
+    read = f.stage(
+      incoming,
+      exact,
+      "read",
+      [
+        {
+          id: "reader-reason",
+          for: ["mara"],
+          owner: "mara",
+          class: "motivation",
+          text: "I want to think about this question privately.",
+          source: ["self"],
+        },
+      ],
+      [],
+      undefined,
+      [privateView],
+    );
+  f.cold();
+  f.state.continuity = protectContinuity(
+    f.state.continuity,
+    f.target(privateView.id),
+    [f.mara],
+    "forget-private-goal",
+    at,
+    { forget: true },
+  );
+  f.state.continuity = protectContinuity(
+    f.state.continuity,
+    f.target(ownView.id),
+    [f.player],
+    "forget-own-old-plan",
+    at,
+    { forget: true },
+  );
+  f.cold();
+  assert.deepEqual(
+    actorEpisodeView(generated.episode, f.state.continuity, f.mara, f.state.episodes)?.letters,
+    [],
+    "generated prose follows its fitted private knowledge dependency",
+  );
+  assert.equal(
+    actorEpisodeView(original.episode, f.state.continuity, f.player, f.state.episodes)?.letters[0].text,
+    exact,
+    "original player writing is independent of fitted private context",
+  );
+  assert.equal(
+    actorEpisodeView(read.episode, f.state.continuity, f.mara, f.state.episodes)?.letters[0].text,
+    exact,
+    "received words are independent of the reader's private interpretation",
+  );
+  assert(
+    !f.rows(f.mara).some((view) => view.version.text.includes("this question privately")),
+    "the derived private reader meaning still follows its context dependency",
+  );
+});
+
 await runCase("mail-continuity/source-integrity", () => {
   const f = fixture(),
     { receipt, episode } = f.stage(f.identity, terms, "written");
@@ -491,6 +717,7 @@ await runCase("mail-continuity/source-integrity", () => {
   assert.throws(() => readAcceptedEpisode(claimed, f.state.seed), /letter content/);
   const changed = structuredClone(episode);
   changed.actors[0].incarnation = "replacement";
+  changed.holderDependencies = {};
   assert.throws(() => readAcceptedEpisode(changed, f.state.seed), /correspondent incarnation/);
   assert.throws(
     () =>
@@ -530,6 +757,7 @@ await runCase("mail-continuity/source-integrity", () => {
     operationId: read.id,
     submissionId: read.id,
     commandReceipts: [read],
+    holderDependencies: {},
     actors: [f.mara, f.player].map((actor) => ({ id: actor.id, incarnation: actor.incarnation, zoneId: "native" })),
   };
   assert.throws(
@@ -638,6 +866,7 @@ await runCase("mail-continuity/scene-context", () => {
     operationId: "old-conversation",
     sceneId: "old-scene",
     commandReceipts: [],
+    holderDependencies: {},
     actors: [
       { id: "player", incarnation: f.player.incarnation, zoneId },
       { id: "mara", incarnation: "one", zoneId },
