@@ -250,9 +250,7 @@ await withBrowser(browser, async () => {
         const stage = root.querySelector(".marinara-capability-villages-desk-stage");
         const paper = root.querySelector(".marinara-capability-villages-desk-document");
         const bottom = paper.getBoundingClientRect().bottom;
-        return (
-          stage.getBoundingClientRect().bottom + stage.scrollHeight - stage.clientHeight - stage.scrollTop - bottom
-        );
+        return root.getBoundingClientRect().bottom + stage.scrollHeight - stage.clientHeight - stage.scrollTop - bottom;
       });
       assert(margin >= 6, "Menu content leaves the illustrated skyline visible");
     };

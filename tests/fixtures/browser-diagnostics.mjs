@@ -9,6 +9,7 @@ const deskAssets = {
   "storybook-background.webp": "image/webp",
   "letter-fonts/assistant.json": "application/json",
   "letter-fonts/crimson-pro.json": "application/json",
+  "letter-fonts/lora.json": "application/json",
 };
 const mockDeskAsset = async (context) => {
   for (const [asset, contentType] of Object.entries(deskAssets))

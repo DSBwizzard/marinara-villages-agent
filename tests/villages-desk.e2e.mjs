@@ -222,7 +222,7 @@ async function run() {
     await firstLoad.close();
 
     const stalledFont = await makePage();
-    await stalledFont.route("**/letter-fonts/crimson-pro.json", () => new Promise(() => {}));
+    await stalledFont.route("**/letter-fonts/lora.json", () => new Promise(() => {}));
     await people(stalledFont);
     assert.equal(
       await stalledFont.locator(".marinara-capability-villages-desk-document").evaluate((node) => node.inert),

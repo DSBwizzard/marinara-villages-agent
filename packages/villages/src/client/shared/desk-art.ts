@@ -5,7 +5,7 @@ import { loadLetterFont } from "./letter-font-css.js";
 let background: { image: HTMLImageElement; promise: Promise<void> } | undefined;
 
 // Only the fixed menu background is retained; player media keeps its existing lifetime.
-export async function prepareDeskArtwork(_menu: DeskDestination): Promise<void> {
+export async function prepareDeskArtwork(menu: DeskDestination): Promise<void> {
   if (!background) {
     const image = new Image();
     let url: string | undefined;
@@ -24,7 +24,7 @@ export async function prepareDeskArtwork(_menu: DeskDestination): Promise<void> 
     });
     background = { image, promise };
   }
-  await Promise.all([background.promise, loadLetterFont("crimson-pro").catch(() => {})]);
+  await Promise.all([background.promise, loadLetterFont(menu === "people" ? "lora" : "crimson-pro").catch(() => {})]);
   await background.image.decode();
 }
 

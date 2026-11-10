@@ -17,6 +17,7 @@ mkdirSync(output, { recursive: true });
 let executedViewports = 0;
 await withBrowser(browser, async () => {
   for (const [width, height] of [
+    [2560, 1062],
     [1440, 900],
     [1366, 600],
     [977, 932],

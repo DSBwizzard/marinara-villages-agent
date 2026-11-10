@@ -46,6 +46,10 @@ export function RosterScreen({
           </header>
           <label className={`${ELEMENT_TAG}-directory-search`}>
             <span className={`${ELEMENT_TAG}-sr-only`}>Find a person</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="10" cy="10" r="7" />
+              <path d="m15 15 6 6" />
+            </svg>
             <input
               type="search"
               autoComplete="off"
@@ -88,7 +92,9 @@ export function RosterScreen({
                       />
                       <span className={`${ELEMENT_TAG}-directory-text`}>
                         <strong>{person.name}</strong>
-                        {person.summary ? <small>{person.summary}</small> : null}
+                        {person.summary ? (
+                          <small className={`${ELEMENT_TAG}-directory-summary`}>{person.summary}</small>
+                        ) : null}
                         {person.missing ? <small>Card missing</small> : null}
                       </span>
                       <span aria-hidden="true">›</span>
