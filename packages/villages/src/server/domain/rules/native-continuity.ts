@@ -21,13 +21,16 @@ import {
 } from "./continuity.js";
 import { appendEpisode } from "./episodes.js";
 import { assertContinuityRetention } from "./continuity-retention.js";
-import { nativeReceiptSupportsRoom } from "./episode-sources.js";
+import {
+  nativeEpisodeId,
+  nativeReceiptSupportsRoom,
+  removedEpisodeRoom,
+  roomRemovalReceipt,
+} from "./episode-sources.js";
 import { memoryHash, memoryRequire, memoryObject, memoryString } from "./memory-integrity.js";
 import { findLocation } from "./places.js";
 import { episodeSourceGraph } from "../decoding/episode-codec.js";
 import { roomParagraphs } from "./continuity-retrieval.js";
-export const nativeEpisodeId = (seed: string, receiptId: string) =>
-  "native-" + memoryHash([seed, receiptId]).slice(0, 32);
 
 /** Associate native facts with eligible current holder text, including administrative corrections. */
 export function nativeCircumstanceRoots(
@@ -416,4 +419,57 @@ export function initializeRoomContinuity(
   for (const receipt of receipts) retainNativeFact(candidate, receipt, at, { room, authoredRoomParagraph: true });
   state.continuity = candidate.continuity;
   state.episodes = candidate.episodes;
+}
+
+export function roomWasRemoved(state: Pick<VillageState, "seed" | "episodes">, placeId: string, zoneId: string) {
+  const id = nativeEpisodeId(state.seed, roomRemovalReceipt(placeId, zoneId).id);
+  const episode = state.episodes.records.find((episode) => episode.id === id);
+  if (!episode) return false;
+  const removed = removedEpisodeRoom(episode);
+  memoryRequire(removed?.placeId === placeId && removed.zoneId === zoneId, "invalid Room removal scope");
+  return true;
+}
+
+/** A native demolition ends the Room's heads without reading its contents or changing anyone's knowledge. */
+export function removeNativeRoom(state: VillageState, placeId: string, zoneId: string, at: string) {
+  if (roomWasRemoved(state, placeId, zoneId)) return;
+  memoryRequire(
+    findLocation(state, placeId)?.zones?.some((zone) => zone.id === zoneId),
+    "Room to remove is missing",
+  );
+  const candidate = { ...state };
+  const key = continuityHolderKey({ kind: "room", placeId, zoneId });
+  if (state.continuity.records.some((record) => record.heads[key]?.current))
+    candidate.continuity = {
+      ...state.continuity,
+      revision: state.continuity.revision + 1,
+      records: state.continuity.records.map((record) => {
+        const head = record.heads[key];
+        return head?.current
+          ? {
+              ...record,
+              revision: record.revision + 1,
+              heads: { ...record.heads, [key]: { ...head, revision: head.revision + 1, current: false } },
+            }
+          : record;
+      }),
+    };
+  retainNativeFact(candidate, roomRemovalReceipt(placeId, zoneId), at);
+  state.continuity = candidate.continuity;
+  state.episodes = candidate.episodes;
+  const narrative = state.narrative;
+  if (!narrative) return;
+  const active = narrative.conditions.filter(
+    (condition) =>
+      condition.venueId === placeId &&
+      condition.zoneId === zoneId &&
+      !condition.clearedAt &&
+      (!condition.endsAt || condition.endsAt > at),
+  );
+  if (!active.length) return;
+  for (const condition of active) {
+    condition.clearedAt = at;
+    condition.revision++;
+  }
+  narrative.revision++;
 }

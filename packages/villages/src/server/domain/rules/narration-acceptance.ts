@@ -24,6 +24,7 @@ import { narrationLines } from "./narration-lines.js";
 import { admitNpcParticipants, bindNpcReferences, type NpcAdmission } from "./npc-participation.js";
 import { findLocation, findNpc } from "./places.js";
 import { venueDesignHash } from "./project-structure.js";
+import { resolveVenueZone, zoneClosed } from "./venue-zones.js";
 import type { ContactMove } from "./venue-contact.js";
 import { contactPosition } from "./venue-contact.js";
 import { episodeContextActors, episodeContextRooms } from "./episode-sources.js";
@@ -267,8 +268,9 @@ export function acceptNarrationContinuity(
           );
         };
         const current = findLocation(state, holder.placeId);
+        const zone = current && resolveVenueZone(current, holder.zoneId);
         memoryRequire(
-          current && scope(current) && scope(current) === scope(source.venue),
+          current && zone && !zoneClosed(state, current, zone) && scope(current) === scope(source.venue),
           "the Room's native structure or construction site changed",
         );
         const target = keep.write.target;

@@ -1,8 +1,9 @@
-// Test cases: project-cancellation/late-room-change
+// Test cases: project-cancellation/late-room-change, project-cancellation/remove-room
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { fixture, renovation } from "./fixtures/villages-projects.fixture.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
@@ -12,20 +13,36 @@ import {
 } from "../packages/villages/src/server/domain/rules/narration-context.js";
 import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
+import {
+  continuityHolderKey,
+  continuityViews,
+  protectContinuity,
+} from "../packages/villages/src/server/domain/rules/continuity.js";
+import { currentRoomViews } from "../packages/villages/src/server/domain/rules/continuity-retrieval.js";
+import { assertContinuityRetention } from "../packages/villages/src/server/domain/rules/continuity-retention.js";
+import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
+import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
+import {
+  initializeRoomContinuity,
+  retainNativeFact,
+  roomWasRemoved,
+} from "../packages/villages/src/server/domain/rules/native-continuity.js";
 import {
   reconcileProjectLifecycles,
   PROJECT_DURATION_MS,
 } from "../packages/villages/src/server/domain/rules/project-lifecycle-rules.js";
 
 await runCase("project-cancellation/late-room-change", async () => {
-  for (const mode of ["cancel", "complete", "removed-zone"]) {
+  for (const mode of ["cancel", "complete", "closed-zone", "removed-zone"]) {
     const f = fixture(),
       now = new Date("2026-10-24T00:00:00Z"),
       at = now.toISOString();
-    const id = mode === "removed-zone" ? await renovation(f, { zones: [] }) : await f.newProject();
-    if (mode !== "removed-zone") await f.service.startProjectConstruction(id, f.body(id), now);
+    const renovating = mode === "closed-zone" || mode === "removed-zone";
+    const id = renovating ? await renovation(f, { zones: [] }) : await f.newProject();
+    if (!renovating) await f.service.startProjectConstruction(id, f.body(id), now);
     const venue = f.state().venues.find((row) => row.id === f.get(id).venueId)!;
-    const zoneId = mode === "removed-zone" ? "common" : "exterior";
+    const zoneId = renovating ? "common" : "exterior";
     const scene = zoneEventScene(
       coerceSession({
         version: 5,
@@ -80,12 +97,14 @@ await runCase("project-cancellation/late-room-change", async () => {
     const captured = structuredClone(scene.continuity);
     if (mode === "cancel") await f.service.cancelProject(id, f.body(id));
     else {
-      if (mode === "removed-zone") {
+      if (renovating) {
         await f.agree(id);
         await f.service.startProjectConstruction(id, f.body(id), now);
       }
-      await f.mutate((state) => reconcileProjectLifecycles(state, new Date(now.getTime() + PROJECT_DURATION_MS)));
-      assert.equal(f.get(id).status, "complete");
+      if (mode !== "closed-zone") {
+        await f.mutate((state) => reconcileProjectLifecycles(state, new Date(now.getTime() + PROJECT_DURATION_MS)));
+        assert.equal(f.get(id).status, "complete");
+      } else assert.equal(f.get(id).status, "working");
     }
     const before = structuredClone(f.state());
     const rejected = acceptNarration(f.state(), publication, "late", at);
@@ -127,4 +146,113 @@ await runCase("project-cancellation/late-room-change", async () => {
     );
     assert.deepEqual(replay.episodes, committed.episodes);
   }
+});
+
+await runCase("project-cancellation/remove-room", async () => {
+  const f = fixture(),
+    now = new Date("2026-10-24T00:00:00Z"),
+    at = now.toISOString(),
+    room = { kind: "room" as const, placeId: "cafe", zoneId: "common" },
+    key = continuityHolderKey(room);
+  await f.mutate((state) => {
+    state.venues[0].zones![1].image = { id: "room-art", ref: "global-gallery:room-art", url: "/gallery/room-art" };
+    initializeRoomContinuity(state, "cafe", "common", "A shared room.", "founding", at);
+    const initial = state.continuity.records[0];
+    state.continuity = protectContinuity(
+      state.continuity,
+      { id: initial.id, recordRevision: initial.revision, heads: { [key]: initial.heads[key].revision } },
+      [room],
+      "forget-original-room",
+      at,
+      { forget: true },
+    );
+    retainNativeFact(
+      state,
+      {
+        id: "painted-cafe",
+        kind: "structure",
+        targetId: '["cafe","common"]',
+        revision: 1,
+        text: "A painted bench.",
+        witnesses: ["a"],
+        observedBy: ["a"],
+      },
+      at,
+      { room },
+    );
+    state.narrative = {
+      version: 1,
+      adoptedAt: at,
+      revision: 1,
+      weatherRevision: 0,
+      weather: null,
+      situations: [],
+      receipts: [],
+      conditions: [
+        {
+          id: "damp",
+          revision: 1,
+          situationId: "rain",
+          venueId: "cafe",
+          zoneId: "common",
+          observation: "Damp floor.",
+          remedy: "Dry the floor.",
+          restriction: "ordinary-use",
+          startsAt: at,
+          endsAt: null,
+          clearedAt: null,
+        },
+      ],
+    };
+  });
+  const resident = continuityActor(f.state(), "a")!;
+  const known = continuityViews(f.state().continuity, resident, at, new Set());
+  assert.equal(known[0].version.text, "A painted bench.");
+  const histories = structuredClone(f.state().episodes.records);
+  const originalVenue = structuredClone(f.state().venues[0]);
+  const project = await renovation(f, { zones: [] });
+  await f.agree(project);
+  await f.service.startProjectConstruction(project, f.body(project), now);
+  const due = new Date(now.getTime() + PROJECT_DURATION_MS);
+  await f.mutate((state) => reconcileProjectLifecycles(state, due));
+  const storage = sceneHistoryFixture();
+  let completed: ReturnType<typeof f.state>;
+  try {
+    const repository = createVillageRepository(() => storage.gate.documents);
+    await repository.mutateAuthority((saved) => Object.assign(saved, f.state()), { memories: true });
+    completed = await createVillageRepository(() => storage.gate.documents).readAuthority({ memories: true });
+  } finally {
+    storage.release();
+    storage.gate.dispose();
+  }
+  assert.equal(f.get(project).status, "complete");
+  assert.equal(roomWasRemoved(completed, "cafe", "common"), true);
+  assert.equal(completed.venues[0].archivedZones?.[0]?.zone.image?.id, "room-art");
+  assert.equal(currentRoomViews(completed.continuity, completed.episodes, room, due.toISOString()).length, 0);
+  assert(
+    completed.continuity.records.filter((record) => record.heads[key]).every((record) => !record.heads[key].current),
+  );
+  assert.deepEqual(completed.episodes.records.slice(0, histories.length), histories);
+  const after = continuityViews(completed.continuity, resident, at, new Set());
+  assert.deepEqual(after.find((view) => view.id === known[0].id)?.version, known[0].version);
+  assert(!continuityViews(completed.continuity, continuityActor(completed, "player")!, at, new Set()).length);
+  assert.equal(completed.narrative!.conditions[0].clearedAt, due.toISOString());
+  const revived = structuredClone(completed.continuity);
+  revived.records.find((record) => record.heads[key])!.heads[key].current = true;
+  assert.throws(() => assertContinuityRetention(revived, completed.episodes), /removed Room still has a current head/);
+  const forged = structuredClone(completed.episodes);
+  forged.records.find((episode) =>
+    episode.commandReceipts[0]?.id.startsWith("room-removed:"),
+  )!.commandReceipts[0].targetId = '["cafe","exterior"]';
+  assert.throws(() => assertContinuityRetention(completed.continuity, forged), /invalid native Room removal receipt/);
+  assert.throws(
+    () => coerceVillageState({ ...completed, venues: [originalVenue] }),
+    /removed Room is still in the live layout/,
+  );
+  await assert.rejects(
+    renovation(f, {
+      zones: [{ id: "common", name: "New room", kind: "public", venueClass: "community", description: "A new room." }],
+    }),
+    /removed Zone ID cannot be reused/,
+  );
 });

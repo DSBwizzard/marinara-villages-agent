@@ -14,6 +14,7 @@ import {
   nativeReceiptSupportsRoom,
   episodeContextActors,
   episodeContextRooms,
+  removedEpisodeRoom,
 } from "./episode-sources.js";
 import { episodeUnit } from "../decoding/episode-codec.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
@@ -43,7 +44,10 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
   const births = new Map<string, number>(),
     roots = new Map(continuity.records.map((row) => [row.id, row]));
   const repairs = new Map<string, { room: string; admitted: number; proofs: string[] }>();
+  const removedRooms = new Set<string>();
   for (const [sequence, episode] of episodes.records.entries()) {
+    const removed = removedEpisodeRoom(episode);
+    if (removed) removedRooms.add(continuityHolderKey(removed));
     const references = episodeContextActors(episode);
     memoryRequire(
       episode.admittedContinuityRevision <= continuity.revision,
@@ -382,8 +386,11 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
     }
   }
   for (const record of continuity.records)
-    for (const head of Object.values(record.heads)) {
-      if (head.holder.kind !== "actor") continue;
+    for (const [key, head] of Object.entries(record.heads)) {
+      if (head.holder.kind === "room") {
+        memoryRequire(!head.current || !removedRooms.has(key), "removed Room still has a current head");
+        continue;
+      }
       const holder = head.holder;
       const version = versions.get(head.versionId)!;
       memoryRequire(

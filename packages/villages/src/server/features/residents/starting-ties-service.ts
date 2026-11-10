@@ -9,7 +9,8 @@ import { inspectedLoreUse, loreText, LORE_REFERENCE_RULE } from "../../domain/ru
 import { continuityActor } from "../../domain/rules/continuity-actors.js";
 import { continuityHolderKey } from "../../domain/rules/continuity.js";
 import { memoryHash, memoryRequire } from "../../domain/rules/memory-integrity.js";
-import { nativeEpisodeId, retainNativeFact } from "../../domain/rules/native-continuity.js";
+import { retainNativeFact } from "../../domain/rules/native-continuity.js";
+import { nativeEpisodeId } from "../../domain/rules/episode-sources.js";
 import { exactInputSpan } from "../../domain/rules/source-span.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 

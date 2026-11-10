@@ -1,6 +1,6 @@
 import { readResidenceAgreement } from "../rules/residence-agreement.js";
 import { readLoreUse } from "../../../shared/helpers/lore.js";
-import { emptyPlaceRegistry, readPlaceRegistry } from "../rules/places.js";
+import { emptyPlaceRegistry, findLocation, readPlaceRegistry } from "../rules/places.js";
 import { MAX_IDENTITY_DESCRIPTION_LENGTH } from "../../../shared/contracts/resident-description.js";
 import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
 import {
@@ -37,6 +37,7 @@ import { asFraction, asIsoString, asRecord, asString, asStringArray, asTrimmedSt
 import { coerceFoundingTasks } from "../rules/founding-tasks.js";
 import { coerceLoreTokenBudget, coerceSelectedLorebookIds, DEFAULT_LORE_TOKEN_BUDGET } from "../rules/lore-policy.js";
 import { memoryRequire } from "../rules/memory-integrity.js";
+import { removedEpisodeRoom } from "../rules/episode-sources.js";
 import { readContinuity } from "./continuity-codec.js";
 import { readEpisodes } from "./episode-codec.js";
 import { emptyContinuity } from "../rules/continuity.js";
@@ -1535,6 +1536,14 @@ export function coerceVillageState(value: unknown): VillageState {
         })
       : [],
   };
+  for (const episode of episodes.records) {
+    const removed = removedEpisodeRoom(episode);
+    if (removed)
+      memoryRequire(
+        !findLocation(state, removed.placeId)?.zones?.some((zone) => zone.id === removed.zoneId),
+        "removed Room is still in the live layout",
+      );
+  }
   for (const villager of state.villagers) {
     const agenda = villager.agenda;
     if (!agenda) continue;

@@ -20,6 +20,7 @@ import { boundText } from "./prompt-preset.js";
 import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
 import { readPlaceDescription } from "./zone-continuity.js";
 import { assertCommunityVenueUse } from "./community-venue.js";
+import { roomWasRemoved } from "./native-continuity.js";
 
 export function readRenovationChange(
   state: VillageState,
@@ -123,6 +124,9 @@ export function validateRenovationDesign(
   if (residents > (change.capacity ?? venue.residenceCapacity ?? 1))
     throw conflict("Keep room for the current residents.");
   const zones = change.zones ?? venueZones(venue).filter((zone) => zone.kind !== "exterior");
+  const liveZones = new Set(venueZones(venue).map((zone) => zone.id));
+  if (zones.some((zone) => !liveZones.has(zone.id) && roomWasRemoved(state, venue.id, zone.id)))
+    throw conflict("A removed Zone ID cannot be reused. Add a new Zone.");
   for (const old of venueZones(venue).filter((zone) => zone.kind === "private-residence" && zone.ownerId)) {
     if (!zones.some((zone) => zone.id === old.id && zone.kind === old.kind && zone.ownerId === old.ownerId))
       throw conflict("Move residents before removing or transferring their rooms.");

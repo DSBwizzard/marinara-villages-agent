@@ -35,12 +35,12 @@ async function main() {
   assert.throws(() => assertCanAddVillageVenue(fresh, ["residence"]), /maximum 16 total/);
   assert.throws(() => assertVillageVenueCapacity(fresh, [...fresh.venues, venue(16)]), /maximum 16/);
   assert.equal(draft.status, "planning");
-  for (const incompatible of [0, 1, 2, 3, undefined])
+  for (const incompatible of [0, 1, 2, 3, 17, undefined])
     assert.throws(
       () => coerceVillageState({ ...defaultVillageState(), ...fresh, version: incompatible }),
       /Unsupported Village format/,
     );
-  assert.equal(coerceVillageState(null).version, 17);
+  assert.equal(coerceVillageState(null).version, 18);
   const f = fixture();
   await f.mutate((state) => {
     state.venues = Array.from({ length: 15 }, (_, i) => venue(i));
@@ -101,14 +101,20 @@ async function main() {
   } as any);
 
   try {
-    const incompatible = { ...fresh, version: 2 };
-    records.set("villages-village", { id: "villages-village", kind: "village", data: incompatible, revision: 7 });
+    const incompatible = { ...fresh, version: 17 };
+    records.set("villages-village", {
+      id: "villages-village",
+      packageId: "villages",
+      kind: "village",
+      data: incompatible,
+      revision: 7,
+    });
     await assert.rejects(readVillageState({ memories: true }), /Unsupported Village format/);
     await assert.rejects(setVillageName("Unadmitted edit"), /Unsupported Village format/);
     assert.equal(records.get("villages-village").revision, 7);
     assert.deepEqual(records.get("villages-village").data, incompatible, "rejected data is never rewritten");
     records.delete("villages-village");
-    assert.equal((await readVillageState({ memories: true })).version, 17);
+    assert.equal((await readVillageState({ memories: true })).version, 18);
     const reset = await resetVillage();
     assert.equal(reset.settings.maxPlaces, 16);
   } finally {

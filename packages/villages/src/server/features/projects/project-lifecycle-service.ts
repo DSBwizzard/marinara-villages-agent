@@ -20,6 +20,7 @@ import { draftEstablishmentProject } from "./project-drafts.js";
 import { establishmentDraft, establishmentScope, establishmentChange } from "../../domain/rules/establishment.js";
 import { findLocation } from "../../domain/rules/places.js";
 import { completeProject } from "../../domain/rules/project-completion.js";
+import { removeNativeRoom } from "../../domain/rules/native-continuity.js";
 
 export interface ProjectLifecyclePorts {
   mutateVillageState: typeof import("../world/village-store.js").mutateVillageState;
@@ -101,17 +102,20 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
     const row = asRecord(value),
       requestId = asTrimmedString(row.requestId);
     if (!requestId || requestId.length > 200) throw badRequest("A request ID is required.");
-    await mutateVillageState((state) => {
-      const fingerprint = JSON.stringify(["create-renovation", venueId, row]),
-        prior = state.projects.find((project) => project.id === "project:" + requestId);
-      if (prior) {
-        if (prior.lifecycle?.commandReceipts[requestId] !== fingerprint)
-          throw conflict("This request ID was already used.");
-        return;
-      }
-      const project = draftRenovationProject(state, venueId, row, "project:" + requestId);
-      project.lifecycle!.commandReceipts[requestId] = fingerprint;
-    });
+    await mutateVillageState(
+      (state) => {
+        const fingerprint = JSON.stringify(["create-renovation", venueId, row]),
+          prior = state.projects.find((project) => project.id === "project:" + requestId);
+        if (prior) {
+          if (prior.lifecycle?.commandReceipts[requestId] !== fingerprint)
+            throw conflict("This request ID was already used.");
+          return;
+        }
+        const project = draftRenovationProject(state, venueId, row, "project:" + requestId);
+        project.lifecycle!.commandReceipts[requestId] = fingerprint;
+      },
+      { memories: true },
+    );
   }
   async function createEstablishmentProject(venueId: string, value: unknown) {
     const row = asRecord(value),
@@ -238,7 +242,13 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
       project.status = project.lifecycle.phase = "cancelled";
       project.updatedAt = now.toISOString();
       project.lifecycle.blockedReason = "";
-      if (project.kind === "new-venue") state.venues = state.venues.filter((venue) => venue.buildProjectId !== id);
+      if (project.kind === "new-venue") {
+        const site = state.venues.find((venue) => venue.buildProjectId === id);
+        if (site) {
+          for (const zone of site.zones ?? []) removeNativeRoom(state, site.id, zone.id, now.toISOString());
+          state.venues = state.venues.filter((venue) => venue !== site);
+        }
+      }
       projectAgendaReservations(state);
     });
   }

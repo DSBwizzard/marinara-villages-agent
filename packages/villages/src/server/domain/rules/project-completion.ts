@@ -3,7 +3,7 @@ import { applyConnectionEdits } from "../../../shared/helpers/zone-contact.js";
 import type { VillageProject, VillageState, VillageVenue, VillageVenueZone } from "../models/world.js";
 import { readPlaceDescription } from "./zone-continuity.js";
 import { asRecord } from "./coerce.js";
-import { retainNativeFact } from "./native-continuity.js";
+import { removeNativeRoom, retainNativeFact } from "./native-continuity.js";
 import { continuityActor } from "./continuity-actors.js";
 import { badRequest, conflict } from "./errors.js";
 import { prepareRenovatedPrivateInterior } from "./private-interior.js";
@@ -57,10 +57,12 @@ export function completeProject(state: VillageState, project: VillageProject, at
     const old = venueZones(venue);
     const drafts = change.zones ?? old.filter((zone) => zone.kind !== "exterior");
     const retired = old.filter((zone) => zone.kind !== "exterior" && !drafts.some((draft) => draft.id === zone.id));
-    venue.archivedZones = [
-      ...(venue.archivedZones ?? []),
-      ...retired.map((zone) => ({ zone: structuredClone(zone), archivedAt: at })),
-    ].slice(-64);
+    for (const zone of retired) removeNativeRoom(state, venue.id, zone.id, at);
+    if (retired.length)
+      venue.archivedZones = [
+        ...(venue.archivedZones ?? []),
+        ...retired.map((zone) => ({ zone: { ...structuredClone(zone), description: "" }, archivedAt: at })),
+      ].slice(-64);
     venue.zones = [
       old.find((zone) => zone.kind === "exterior")!,
       ...drafts.map((draft) => {

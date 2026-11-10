@@ -38,13 +38,6 @@ assert.equal(f.state().projects.filter((p) => p.status === "complete").length, 2
 assert.equal(f.state().progressTasks.length, 0, "Projects do not create old progress tasks");
 const r = await renovation(f),
   r2 = await renovation(f, { capacity: 4 });
-const baseline = fixture();
-const baselineProject = await renovation(baseline);
-assert.equal(
-  baseline.get(baselineProject).lifecycle!.baseDesignHash,
-  "359cddcb54ac76783524d528f4b5daab3a2a655d27c773f4a4f71fdecb9e52a3",
-  "Previously saved interior-only renovation designs retain their fingerprint",
-);
 await f.agree(r);
 await f.agree(r2, "b");
 await f.service.startProjectConstruction(r, f.body(r), now);
@@ -58,8 +51,8 @@ assert.deepEqual(
 );
 await f.mutate((state) => reconcileProjectLifecycles(state, new Date(now.getTime() + PROJECT_DURATION_MS * 3)));
 assert.equal(f.get(r).status, "cancelled");
-assert.equal(coerceVillageState(undefined).version, 17);
-for (const old of [{ version: 2 }, {}, { version: 0 }, { version: 5 }, { version: 6 }])
+assert.equal(coerceVillageState(undefined).version, 18);
+for (const old of [{ version: 2 }, {}, { version: 0 }, { version: 5 }, { version: 6 }, { version: 17 }])
   assert.throws(() => coerceVillageState(old), /Unsupported Village format/);
 const fresh = defaultVillageState();
 assert.deepEqual(coerceVillageState(fresh).projects, []);

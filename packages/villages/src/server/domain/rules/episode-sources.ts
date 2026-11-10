@@ -3,6 +3,51 @@ import type { ContinuityEvidence, ContinuityHolder } from "../models/continuity-
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { continuityHolderKey, continuitySourceUnit } from "./continuity.js";
 
+export const nativeEpisodeId = (seed: string, receiptId: string) =>
+  "native-" + memoryHash([seed, receiptId]).slice(0, 32);
+
+export function roomRemovalReceipt(placeId: string, zoneId: string): AcceptedEpisode["commandReceipts"][number] {
+  return {
+    id: "room-removed:" + memoryHash([placeId, zoneId]).slice(0, 32),
+    kind: "structure",
+    targetId: JSON.stringify([placeId, zoneId]),
+    revision: 1,
+    text: "The Zone was removed.",
+    witnesses: [],
+  };
+}
+
+export function removedEpisodeRoom(episode: AcceptedEpisode): Extract<ContinuityHolder, { kind: "room" }> | undefined {
+  const receipt = episode.commandReceipts.find((row) => row.id.startsWith("room-removed:"));
+  if (!receipt) return;
+  const target: unknown = JSON.parse(receipt.targetId);
+  memoryRequire(
+    Array.isArray(target) &&
+      target.length === 2 &&
+      target.every((id) => typeof id === "string" && id.length > 0 && id.length <= 160),
+    "invalid Room removal scope",
+  );
+  const [placeId, zoneId] = target;
+  const expected = roomRemovalReceipt(placeId, zoneId);
+  memoryRequire(
+    episode.id === nativeEpisodeId(episode.seed, expected.id) &&
+      episode.operationId === episode.id &&
+      episode.submissionId === expected.id &&
+      episode.commandReceipts.length === 1 &&
+      memoryHash(receipt) === memoryHash(expected) &&
+      episode.responseDigest === memoryHash([expected, {}]) &&
+      !episode.actors.length &&
+      !episode.room &&
+      !episode.sceneId &&
+      !episode.continuityVersionIds.length &&
+      episode.grounding.length === 1 &&
+      episode.grounding[0].kind === "native" &&
+      episode.grounding[0].committedReceiptId === expected.id,
+    "invalid native Room removal receipt",
+  );
+  return { kind: "room", placeId, zoneId };
+}
+
 /** Private GM reference holders are provenance, never Scene attendance or character perception. */
 function episodeContextHolders(
   episode: Pick<AcceptedEpisode, "room" | "holderDependencies"> & { actors: { id: string; incarnation: string }[] },
@@ -48,6 +93,7 @@ export function nativeReceiptSupportsRoom(
 ) {
   return (
     ((receipt.kind === "structure" || receipt.kind === "room") &&
+      !receipt.id.startsWith("room-removed:") &&
       receipt.targetId === JSON.stringify([room.placeId, room.zoneId])) ||
     (receipt.kind === "discovery" && receipt.targetId === room.placeId)
   );

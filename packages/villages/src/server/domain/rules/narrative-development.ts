@@ -24,7 +24,8 @@ import {
   ROOM_CONTINUITY_TEXT_BYTES,
 } from "./continuity.js";
 import { memoryHash } from "./memory-integrity.js";
-import { nativeEpisodeId, retainNativeFact } from "./native-continuity.js";
+import { retainNativeFact } from "./native-continuity.js";
+import { nativeEpisodeId } from "./episode-sources.js";
 import { venueDesignHash } from "./project-structure.js";
 
 export const CONSEQUENCES = ["gentle", "moderate", "dramatic"] as const;
