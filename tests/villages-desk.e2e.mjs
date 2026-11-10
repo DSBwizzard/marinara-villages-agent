@@ -32,7 +32,10 @@ async function bundle() {
     ],
     ["RosterScreen.tsx", `export function RosterScreen(){return <button>Resident</button>}`],
     ["Mailbox.tsx", `export function Mailbox(){return null}`],
-    ["MenuScreen.tsx", `export function MenuScreen(){return <button>Project control</button>}`],
+    [
+      "MenuScreen.tsx",
+      `export function MenuScreen(){return <><button hidden>Hidden draft</button><button>Project control</button></>}`,
+    ],
     ...["FoundingScreen", "PreparationScreen", "ResumeScreen", "ResidentsScreen", "SceneScreen", "VenueScreen"].map(
       (name) => [name + ".tsx", `export function ${name}(){return null}`],
     ),
@@ -124,6 +127,7 @@ async function run() {
     await normal.getByRole("button", { name: "Projects", exact: true }).click();
     await normal.waitForFunction(() => document.querySelector("[data-desk]").dataset.desk === "projects");
     await settle(normal);
+    await normal.waitForFunction(() => document.activeElement?.textContent === "Project control");
     assert.deepEqual(await normal.evaluate(() => window.events), [
       "route:villagers",
       "animate:enter",
@@ -166,7 +170,7 @@ async function run() {
     const art = () =>
       slow
         .locator(".marinara-capability-villages-desk-document")
-        .evaluate((node) => getComputedStyle(node, "::before").backgroundImage);
+        .evaluate((node) => getComputedStyle(node, "::before").borderImageSource);
     const desktopArt = await art();
     assert(desktopArt.includes("blob:"), "Menu paints retained image bytes rather than a no-store asset URL");
     await slow.getByRole("button", { name: "People", exact: true }).click();
@@ -184,6 +188,24 @@ async function run() {
     assert(
       (await art()).includes("blob:") && (await art()) !== desktopArt,
       "Phone artwork is already retained when the viewport changes",
+    );
+    await slow.setViewportSize({ width: 1440, height: 900 });
+    await slow.locator("#root").evaluate((node) => (node.style.width = "480px"));
+    await slow.waitForFunction(() => getComputedStyle(document.querySelector("nav button")).flexDirection === "column");
+    assert.equal(
+      await slow.getByRole("button", { name: "← Village", exact: true }).isVisible(),
+      true,
+      "A narrow Villages panel uses phone navigation even in a wide browser",
+    );
+    assert(
+      await slow.locator("nav button").evaluateAll((buttons) =>
+        buttons.every((button) => {
+          const label = button.querySelector("span").getBoundingClientRect();
+          const bounds = button.getBoundingClientRect();
+          return label.left >= bounds.left && label.right <= bounds.right;
+        }),
+      ),
+      "Every navigation label fits its own target",
     );
     await slow.close();
 

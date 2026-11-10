@@ -3,10 +3,10 @@ import { ELEMENT_TAG as P } from "../../shared/constants.js";
 export const projectStyles = `
 .${P}-root.${P}-project-root{display:block;height:100%;padding:0;overflow:auto;gap:0;background:transparent}
 ${P} .${P}-project-desk{--bp-ink:#fffaf0;--bp-muted:#dce7ec;--bp-line:#b6cfdd;--bp-panel:#103e5740;--primary:#f6ecd8;position:relative;min-height:100%;padding:0 8px;color:var(--bp-ink);background:transparent;font-family:"village-letter-assistant",system-ui,sans-serif;box-sizing:border-box}
-${P} .${P}-project-board{position:relative;box-sizing:border-box;max-width:90rem;min-height:100%;margin:auto;padding:clamp(16px,2vw,28px) calc(4.5% + 18px);border:0;box-shadow:none;background:transparent;color:var(--bp-ink);font-size:1rem;line-height:1.45}
+${P} .${P}-project-board{position:relative;box-sizing:border-box;max-width:90rem;min-height:100%;margin:auto;padding:clamp(16px,2cqw,28px) calc(4.5% + 18px);border:0;box-shadow:none;background:transparent;color:var(--bp-ink);font-size:1rem;line-height:1.45}
 .${P}-project-board *{box-sizing:border-box}
 .${P}-project-board h1,.${P}-project-board h2,.${P}-project-board h3,.${P}-project-board p,.${P}-project-board figure{margin:0}
-.${P}-project-board h1{font-size:clamp(1.65rem,3.3vw,2.8rem);line-height:1.15;font-weight:700;font-family:Georgia,serif}
+.${P}-project-board h1{font-size:clamp(1.65rem,3.3cqw,2.8rem);line-height:1.15;font-weight:700;font-family:Georgia,serif}
 .${P}-project-board h2{font:700 1.65rem/1.25 Georgia,serif}
 .${P}-project-board h3{font-size:1.2rem;font-weight:600;margin-bottom:1rem}
 .${P}-project-board p{margin:.6rem 0;white-space:pre-wrap;overflow-wrap:anywhere}
@@ -61,19 +61,19 @@ ${P} .${P}-project-board{position:relative;box-sizing:border-box;max-width:90rem
 .${P}-project-board .vp-index-tools{display:flex;justify-content:space-between;align-items:center;min-height:2.8rem;gap:.5rem}
 .${P}-project-board .vp-index-tools .vp-note{margin-left:auto}
 .${P}-project-board .vp-workspace{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.7rem;flex:1;min-height:0}
-.${P}-project-board .vp-drafts,.${P}-project-board .vp-active-slot{min-width:0;min-height:0;border:0;background:transparent;padding:clamp(.6rem,1.4vw,1.2rem)}
+.${P}-project-board .vp-drafts,.${P}-project-board .vp-active-slot{min-width:0;min-height:0;border:0;background:transparent;padding:clamp(.6rem,1.4cqw,1.2rem)}
 .${P}-project-board .vp-drafts{display:flex;flex-direction:column;gap:.6rem}
-.${P}-project-board .vp-drafts h2{font-size:clamp(1.15rem,2vw,1.6rem);border-bottom:1px solid var(--bp-line);padding-bottom:.45rem}
+.${P}-project-board .vp-drafts h2{font-size:clamp(1.15rem,2cqw,1.6rem);border-bottom:1px solid var(--bp-line);padding-bottom:.45rem}
 .${P}-project-board .vp-drafts .vp-project-list{gap:.25rem}
 .${P}-project-board .vp-drafts .vp-project-row{min-height:44px;padding:.35rem .65rem}
 .${P}-project-board .vp-drafts .vp-project-row span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .${P}-project-board .vp-draft-create[data-full=false]{display:none}
 .${P}-project-board .vp-active-slot{display:flex;flex-direction:column;gap:1rem;border-left:1px solid var(--bp-line)}
-.${P}-project-board .vp-slot-title{font-size:clamp(1.15rem,2vw,1.6rem)}
-.${P}-project-board .vp-empty-slot{display:flex;flex:1;min-height:0;flex-direction:column;justify-content:center;align-items:center;gap:1rem;width:100%;color:var(--bp-muted)}
+.${P}-project-board .vp-slot-title{font-size:clamp(1.15rem,2cqw,1.6rem)}
+.${P}-project-board .vp-empty-slot{display:flex;flex:1;min-height:0;flex-direction:column;justify-content:flex-start;align-items:center;gap:1rem;width:100%;padding-top:clamp(12px,5vh,48px);color:var(--bp-muted)}
 .${P}-project-board .vp-slot-mark{display:grid;place-items:center;width:min(70%,210px);height:clamp(50px,10vh,110px);border:1px dashed var(--bp-line);color:var(--bp-ink);font:400 48px/1 Georgia,serif}
 .${P}-project-board .vp-new-types{display:grid;grid-template-columns:1fr 1fr;gap:.5rem;width:100%}
-.${P}-project-board .vp-new-types button{min-height:6rem;background:#f6ecd8;color:#173a57;border-color:#f6ecd8}
+.${P}-project-board .vp-new-types button{min-height:4rem;background:#f6ecd8;color:#173a57;border-color:#f6ecd8}
 .${P}-project-board .vp-active-project{display:flex;width:100%;height:100%;flex-direction:column;align-items:stretch;justify-content:start;text-align:left;gap:.65rem;background:transparent}
 .${P}-project-board .vp-active-project strong{font-size:1.4rem;border-bottom:1px solid var(--bp-line);padding-bottom:.4rem}
 .${P}-project-board .vp-active-project img{width:100%;min-height:0;max-height:48%;object-fit:cover}
@@ -112,11 +112,11 @@ ${P} .${P}-project-board{position:relative;box-sizing:border-box;max-width:90rem
 .${P}-project-board .vp-zone-list button[aria-pressed=true],.${P}-project-board .vp-person[aria-pressed=true]{background:#d1e9ef;color:#2b4c60;border-color:#d1e9ef}
 .${P}-project-board button:is([aria-pressed=true],[aria-selected=true],.vp-primary):hover:not(:disabled){background:#e0f1f4;color:#2b4c60}
 .${P}-project-board textarea[rows="2"]{min-height:3.5rem}
-@media(min-width:701px) and (max-width:1050px){
+@container village-desk (min-width:701px) and (max-width:1050px){
  .${P}-project-board .vp-new-types{grid-template-columns:minmax(0,1fr)}
  .${P}-project-board .vp-new-types button{min-height:4rem}
 }
-@media(max-width:700px){
+@container village-desk (max-width:700px){
  ${P} .${P}-project-desk{padding:0 4px}
  ${P} .${P}-project-board{padding:.8rem 18px;min-height:100%}
  .${P}-project-root:has(.vp-workspace) .${P}-project-board{padding:.8rem 18px}
@@ -177,7 +177,8 @@ ${P} .${P}-project-board{position:relative;box-sizing:border-box;max-width:90rem
  .${P}-project-board .vp-draft-create[data-full=false]{display:flex}
  .${P}-project-board .vp-workspace[data-mobile-section="drafts"]>.vp-active-slot,.${P}-project-board .vp-workspace[data-mobile-section="slot1"]>.vp-drafts,.${P}-project-board .vp-workspace[data-mobile-section="slot2"]>.vp-drafts,.${P}-project-board .vp-workspace[data-mobile-section="slot1"]>.vp-active-slot:last-child,.${P}-project-board .vp-workspace[data-mobile-section="slot2"]>.vp-active-slot:nth-child(2){display:none}
 }
-@media(max-width:700px) and (max-height:650px){
+@media(max-height:650px){
+@container village-desk (max-width:700px){
  ${P} .${P}-project-desk{padding:0 4px}
  ${P} .${P}-project-board{padding:.4rem 16px}
  .${P}-project-root:has(.vp-workspace) .${P}-project-board{padding:.4rem 16px}
@@ -199,5 +200,6 @@ ${P} .${P}-project-board{position:relative;box-sizing:border-box;max-width:90rem
  .${P}-project-board .vp-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.35rem}
  .${P}-project-board .vp-facts dt{font-size:.65rem}
  .${P}-project-board textarea{height:44px;min-height:44px}
-}
+}}
+
 `;

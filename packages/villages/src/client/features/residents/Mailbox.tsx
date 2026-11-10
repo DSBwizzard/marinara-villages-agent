@@ -534,7 +534,7 @@ export function Mailbox({
         .villages-mailbox-overlay{position:absolute;inset:0;z-index:1000;display:grid;grid-template: minmax(0,1fr) / minmax(0,1fr);place-items:center;overflow:hidden;background:#0009;padding:1rem;box-sizing:border-box}
         .villages-founding-dialog:has(.villages-letter-layout){position:relative;width:min(76rem,100%);max-width:100%;height:min(46rem,100%);max-height:100%;margin:0;padding:0;background:#53341f url('/api/capability-packages/villages/assets/menu-desk.jpg') center/cover;color:#34271c;border:1px solid #806044;box-shadow:0 14px 50px #0009;font-family:Georgia,"Times New Roman",serif}
         .villages-founding-dialog:has(.villages-letter-layout)>header{display:flex;align-items:center;justify-content:space-between;background:transparent;color:#fff7eb;border:0;padding:1.25rem 1.8rem .7rem}
-        .villages-founding-dialog:has(.villages-letter-layout)>header h3{font:700 clamp(1.8rem,3.2vw,2.8rem) Georgia,serif;color:#fff7eb;text-shadow:0 2px 3px #261407}
+        .villages-founding-dialog:has(.villages-letter-layout)>header h3{font:700 clamp(1.8rem,3.2cqw,2.8rem) Georgia,serif;color:#fff7eb;text-shadow:0 2px 3px #261407}
         .villages-mailbox-title{display:flex;align-items:center;gap:.8rem;min-width:0}
         .villages-founding-dialog .villages-mailbox-title .villages-letter-reading{min-height:44px;border:1px solid #b18f69;background:#efdbb9;color:#302116;border-radius:.35rem;padding:.45rem .7rem;font:1rem Georgia,serif;white-space:nowrap}
         .villages-founding-dialog .villages-mailbox-title .villages-letter-reading[aria-pressed=true]{background:#57717a;color:#fff;border-color:#38535d;box-shadow:inset 0 0 0 1px #fff8}
@@ -555,12 +555,12 @@ export function Mailbox({
         .villages-letter-face{position:relative;display:grid;place-items:center;flex:none;width:3.7rem;height:3.7rem;overflow:hidden;background:#d8c4a4;border-radius:50%;font-size:1.6rem}
         .villages-letter-face img{position:absolute;width:100%;height:100%;object-fit:cover}
         .villages-letter-row>span:last-child{min-width:0;flex:1}.villages-letter-row strong,.villages-letter-row small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.villages-letter-row strong{font-size:1.35rem}.villages-letter-row small{font-size:1rem;margin-top:.2rem}
-        .villages-letter-paper{position:relative;display:flex;flex-direction:column;overflow:auto;padding:clamp(1.2rem,3vw,2.5rem);box-shadow:4px 5px 0 #d1bb98,0 4px 12px #26140799,inset 0 0 35px #a4763a20}
+        .villages-letter-paper{position:relative;display:flex;flex-direction:column;overflow:auto;padding:clamp(1.2rem,3cqw,2.5rem);box-shadow:4px 5px 0 #d1bb98,0 4px 12px #26140799,inset 0 0 35px #a4763a20}
         .villages-letter-paper[data-reading=true]{overflow:hidden}
-        .villages-letter-heading{display:flex;align-items:flex-start;gap:1rem;border-bottom:1px solid #c7ad89;padding-bottom:1rem}.villages-letter-heading h2{margin:0;font-size:clamp(1.8rem,3vw,2.7rem);color:#241a13}.villages-letter-heading small{display:block;margin-top:.25rem;font-size:1rem;color:#6c5640}
+        .villages-letter-heading{display:flex;align-items:flex-start;gap:1rem;border-bottom:1px solid #c7ad89;padding-bottom:1rem}.villages-letter-heading h2{margin:0;font-size:clamp(1.8rem,3cqw,2.7rem);color:#241a13}.villages-letter-heading small{display:block;margin-top:.25rem;font-size:1rem;color:#6c5640}
         .villages-letter-pages{flex:1;min-height:0;overflow:hidden;column-count:1;column-gap:0;column-fill:auto}
         .villages-letter-pages .villages-letter-portrait{float:right;width:5rem;height:5rem;margin:0 0 .65rem 1rem;border-radius:.2rem;background:transparent;font-size:2.5rem}
-        .villages-letter-text{white-space:pre-wrap;overflow-wrap:anywhere;font-size:clamp(1.05rem,1.6vw,1.4rem);line-height:1.55;margin:.5rem 0;orphans:1;widows:1}
+        .villages-letter-text{white-space:pre-wrap;overflow-wrap:anywhere;font-size:clamp(1.05rem,1.6cqw,1.4rem);line-height:1.55;margin:.5rem 0;orphans:1;widows:1}
         .villages-letter-ending{break-inside:avoid}.villages-letter-ending .villages-letter-text{margin:0}
         .villages-letter-signature{clear:both;break-inside:avoid;width:min(14rem,60%);margin:.5rem 0 .5rem auto;color:#59434c;text-align:right}
         .villages-letter-pagination{display:flex;align-items:center;justify-content:center;gap:1rem;min-height:44px}
@@ -575,8 +575,10 @@ export function Mailbox({
         .villages-letter-empty{font-size:1.1rem;line-height:1.5}.villages-letter-back{display:none}.villages-letter-error{color:#6d261b;background:#f9e9d5;padding:.6rem 1rem;margin:0 1.8rem}
         .villages-letter-layout :is(button,select,textarea):focus-visible{outline:3px solid #385c6b;outline-offset:2px}.villages-letter-layout button:disabled{opacity:.55;cursor:default}
         @media(max-height:700px){.villages-founding-dialog:has(.villages-letter-layout)>header{padding:.5rem 1.2rem .25rem}.villages-letter-layout{padding:.25rem 1rem .75rem}.villages-letter-paper{padding:1rem}.villages-letter-heading{padding-bottom:.4rem}}
-        @media(max-width:704px){.villages-mailbox-overlay{padding:0}.villages-founding-dialog:has(.villages-letter-layout){width:100%;max-width:100%;height:100%;max-height:100%;border:0;border-radius:0}.villages-founding-dialog:has(.villages-letter-layout)>header{padding:.7rem 1rem .35rem}.villages-letter-layout{display:flex;padding:.4rem .8rem .8rem;gap:0}.villages-letter-list,.villages-letter-paper{flex:1}.villages-letter-layout[data-detail=true] .villages-letter-list{display:none}.villages-letter-layout[data-detail=false] .villages-letter-paper{display:none}.villages-letter-paper{padding:1.2rem}.villages-letter-pages .villages-letter-portrait{width:4rem;height:4rem;font-size:2rem}.villages-founding-dialog .villages-letter-paper .villages-letter-back{display:block;align-self:flex-start;margin:0 0 .7rem;border:0;background:transparent;color:#59442f;padding:.4rem 0;font:1rem Georgia,serif;box-shadow:none}.villages-letter-error{margin:0 .8rem}}
-        @media(max-width:704px) and (max-height:700px){.villages-letter-paper{padding:.75rem}.villages-founding-dialog .villages-letter-paper .villages-letter-back{margin-bottom:.25rem}}
+        @container village-desk (max-width:700px){.villages-mailbox-overlay{padding:0}.villages-founding-dialog:has(.villages-letter-layout){width:100%;max-width:100%;height:100%;max-height:100%;border:0;border-radius:0}.villages-founding-dialog:has(.villages-letter-layout)>header{padding:.7rem 1rem .35rem}.villages-letter-layout{display:flex;padding:.4rem .8rem .8rem;gap:0}.villages-letter-list,.villages-letter-paper{flex:1}.villages-letter-layout[data-detail=true] .villages-letter-list{display:none}.villages-letter-layout[data-detail=false] .villages-letter-paper{display:none}.villages-letter-paper{padding:1.2rem}.villages-letter-pages .villages-letter-portrait{width:4rem;height:4rem;font-size:2rem}.villages-founding-dialog .villages-letter-paper .villages-letter-back{display:block;align-self:flex-start;margin:0 0 .7rem;border:0;background:transparent;color:#59442f;padding:.4rem 0;font:1rem Georgia,serif;box-shadow:none}.villages-letter-error{margin:0 .8rem}}
+        @media(max-height:700px){
+@container village-desk (max-width:700px){.villages-letter-paper{padding:.75rem}.villages-founding-dialog .villages-letter-paper .villages-letter-back{margin-bottom:.25rem}}}
+
       `}</style>
         {error || loadError ? (
           <p className="villages-letter-error" role="alert">

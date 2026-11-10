@@ -21,7 +21,7 @@ export const DOSSIER_STYLES = `
 .${P}-dossier-root,.${P}-directory-root{container-type:size}
 .${P}-dossier-desk{height:100%;min-height:0;display:flex;flex-direction:column;position:relative;isolation:isolate;margin:auto;padding:6cqh 13% 8cqh 5%;background:transparent}
 .${P}-dossier-desk::before{content:"";position:absolute;z-index:-1;inset:0;background:var(--desk-art,url('/api/capability-packages/villages/assets/people-desk.webp')) center/100% 100% no-repeat;pointer-events:none}
-.${P}-dossier-book{--tab-width:clamp(92px,9vw,140px);position:relative;flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);column-gap:6%;background:transparent}
+.${P}-dossier-book{--tab-width:clamp(92px,9cqw,140px);position:relative;flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);column-gap:6%;background:transparent}
 .${P}-dossier-toolbar{grid-column:1;grid-row:1;z-index:8;min-height:62px;display:flex;align-items:center;gap:8px;margin:14px 28px 0;padding:0 0 12px;background:transparent;border-bottom:1px solid #8c7559}
 .${P}-dossier-toolbar h1{font-size:26px;line-height:1.2;margin:0;flex:1;min-width:0}
 .${P}-dossier-toolbar button,.${P}-dossier-toolbar summary{background:transparent;border:0;box-shadow:none;padding:6px 0;font-size:18px}
@@ -30,7 +30,7 @@ export const DOSSIER_STYLES = `
 .${P}-dossier-management{margin-left:auto;position:relative;z-index:8}
 .${P}-dossier-management>summary{list-style:none;white-space:nowrap}
 .${P}-dossier-management>summary::before{content:"⚙";margin-right:8px;font-size:24px;vertical-align:middle}
-.${P}-dossier-controls{position:absolute;right:0;top:100%;margin-top:6px;width:min(520px,calc(46vw - 44px));max-height:65vh;overflow:auto;display:flex;flex-wrap:wrap;gap:10px;padding:14px;border:1px solid #bba27a;background:${paper};border-radius:5px;box-shadow:0 4px 16px #30201940}
+.${P}-dossier-controls{position:absolute;right:0;top:100%;margin-top:6px;width:min(520px,calc(46cqw - 44px));max-height:65vh;overflow:auto;display:flex;flex-wrap:wrap;gap:10px;padding:14px;border:1px solid #bba27a;background:${paper};border-radius:5px;box-shadow:0 4px 16px #30201940}
 .${P}-description-editor{width:100%;min-width:0}
 .${P}-description-editor label,.${P}-description-editor textarea{display:block;width:100%;box-sizing:border-box}
 .${P}-description-editor textarea{resize:vertical;margin:6px 0}
@@ -79,7 +79,7 @@ export const DOSSIER_STYLES = `
 .${P}-dossier-overview>.${P}-dossier-sheet>h2>svg{display:none}
 .${P}-dossier-tabs{position:absolute;z-index:6;right:calc(-1 * var(--tab-width));top:22px;bottom:22px;width:var(--tab-width)}
 .${P}-dossier-tabs>div{display:flex;flex-direction:column;gap:12px;height:100%;overflow:auto;scrollbar-width:thin}
-.${P}-dossier-tabs>div button{position:relative;background:linear-gradient(100deg,#e5ca8690,#fff0bd80),var(--desk-paper,url('/api/capability-packages/villages/assets/paper-ivory.webp')) center/768px;border:1px solid #d1b68b;border-left:0;border-radius:1px 3px 3px 0;box-shadow:2px 4px 5px #39291c40;padding:12px 6px;min-height:52px;flex-shrink:0;width:100%;font:400 clamp(13px,1.15vw,17px)/1.3 Georgia,serif;white-space:nowrap;overflow-wrap:normal;text-align:center}
+.${P}-dossier-tabs>div button{position:relative;background:linear-gradient(100deg,#e5ca8690,#fff0bd80),var(--desk-paper,url('/api/capability-packages/villages/assets/paper-ivory.webp')) center/768px;border:1px solid #d1b68b;border-left:0;border-radius:1px 3px 3px 0;box-shadow:2px 4px 5px #39291c40;padding:12px 6px;min-height:52px;flex-shrink:0;width:100%;font:400 clamp(13px,1.15cqw,17px)/1.3 Georgia,serif;white-space:nowrap;overflow-wrap:normal;text-align:center}
 .${P}-dossier-tabs>div button::after{content:"";position:absolute;right:0;top:0;border-top:8px solid #fff9e8;border-left:8px solid #c8ac6d80}
 .${P}-dossier-tabs>div button[aria-pressed="true"]{background:linear-gradient(100deg,#99a972c0,#aeb886c0),var(--desk-paper,url('/api/capability-packages/villages/assets/paper-ivory.webp')) center/768px;color:#2c351c;border-color:#7a8958}
 .${P}-dossier-toolbar .${P}-dossier-inspect{position:absolute;right:24px;bottom:18px;display:flex;align-items:center;gap:9px;min-height:44px;padding:5px 14px;border:1px solid #70573b;border-radius:7px;background:#fff4dd60;font-size:18px}
@@ -149,28 +149,28 @@ export const DOSSIER_STYLES = `
 .${P}-directory-reading{min-height:0;overflow:auto;scrollbar-width:thin;scrollbar-color:#bda16b transparent}
 .${P}-directory-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6%}
 .${P}-directory-page{min-width:0;display:flex;flex-direction:column;padding:0 32px 20px}
-.${P}-directory-root .${P}-directory-card{position:relative;width:100%;display:grid;grid-template-columns:clamp(105px,12vw,156px) minmax(0,1fr) 14px;align-items:center;text-align:left;padding:18px 0;gap:24px;background:transparent;border:0;border-radius:0;box-shadow:none}
-.${P}-directory-card::after{content:"";position:absolute;left:calc(clamp(105px,12vw,156px) + 24px);right:0;bottom:0;border-bottom:1px solid #bca481}
+.${P}-directory-root .${P}-directory-card{position:relative;width:100%;display:grid;grid-template-columns:clamp(105px,12cqw,156px) minmax(0,1fr) 14px;align-items:center;text-align:left;padding:18px 0;gap:24px;background:transparent;border:0;border-radius:0;box-shadow:none}
+.${P}-directory-card::after{content:"";position:absolute;left:calc(clamp(105px,12cqw,156px) + 24px);right:0;bottom:0;border-bottom:1px solid #bca481}
 .${P}-directory-card:last-child::after{display:none}
 .${P}-directory-card .${P}-avatar{width:100%;height:auto;aspect-ratio:1.08;max-width:none;border:0;border-radius:3px;background:#e6dccb;font-size:44px}
 .${P}-directory-card .${P}-avatar img{width:100%;height:100%;object-fit:cover}
 .${P}-directory-text{min-width:0}
-.${P}-directory-card strong{display:block;font:700 clamp(24px,2.2vw,34px)/1.1 Georgia,serif;overflow-wrap:anywhere;margin-bottom:9px}
-.${P}-directory-card small{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;font-size:clamp(17px,1.3vw,21px);line-height:1.25}
+.${P}-directory-card strong{display:block;font:700 clamp(24px,2.2cqw,34px)/1.1 Georgia,serif;overflow-wrap:anywhere;margin-bottom:9px}
+.${P}-directory-card small{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;font-size:clamp(17px,1.3cqw,21px);line-height:1.25}
 .${P}-directory-card>span:last-child{font-size:30px;font-weight:400}
 .${P}-directory-root .${P}-picker-item{background:#f9f0df;color:var(--dossier-ink);min-width:0;flex-wrap:wrap}
-@media(min-width:701px) and (max-width:1050px){
+@container village-desk (min-width:701px) and (max-width:1050px){
  .${P}-dossier-toolbar{margin:8px 16px 0;min-height:54px}
  .${P}-dossier-toolbar button,.${P}-dossier-toolbar summary{font-size:16px}
  .${P}-dossier-section-title{font-size:28px;margin:8px 16px 0;padding-right:54px;min-height:54px}
  .${P}-dossier-content{padding:18px 16px 24px;gap:20px 24px}
- .${P}-dossier-content h2{font-size:clamp(21px,2.6vw,27px)}
+ .${P}-dossier-content h2{font-size:clamp(21px,2.6cqw,27px)}
  .${P}-dossier-identity{padding:20px 16px}
  .${P}-directory-page{padding:0 16px 20px}
  .${P}-directory-root .${P}-directory-card{grid-template-columns:80px minmax(0,1fr) 10px;gap:12px}
  .${P}-directory-card::after{left:92px}
 }
-@media(max-width:700px){
+@container village-desk (max-width:700px){
  .${P}-dossier-root,.${P}-directory-root{padding:0 1px 7px;font-size:17px}
  .${P}-dossier-desk{padding:8cqh 9% 6cqh}
  .${P}-dossier-desk::before{background-image:var(--desk-art,url('/api/capability-packages/villages/assets/people-phone.webp'))}

@@ -6,11 +6,13 @@ const images = new Map<string, { image: HTMLImageElement; promise: Promise<HTMLI
 const paper = "paper-ivory.webp";
 const wood = "menu-desk.jpg";
 const materials = ["desk-art/paper-calm.webp", "desk-art/button-olive.webp"];
-const venueFiles = ["desk-art/venue-desktop.webp", "desk-art/venue-phone.webp"];
+const maps = ["desk-art/maps.webp", "desk-art/postcard.webp", "desk-art/polaroid.webp"];
 const files = (menu: DeskDestination) =>
-  menu === "people"
-    ? ["people-desk.webp", "people-phone.webp"]
-    : [`desk-art/${menu}-desktop.webp`, `desk-art/${menu}-phone.webp`];
+  menu === "places"
+    ? maps
+    : menu === "people"
+      ? ["people-desk.webp", "people-phone.webp"]
+      : [`desk-art/${menu}-desktop.webp`, `desk-art/${menu}-phone.webp`];
 
 // Only fixed package artwork is retained, until this client unloads.
 function loadImage(file: string): Promise<HTMLImageElement> {
@@ -36,7 +38,7 @@ function loadImage(file: string): Promise<HTMLImageElement> {
 
 export async function prepareDeskArtwork(menu: DeskDestination): Promise<void> {
   await Promise.all(
-    [wood, paper, ...materials, ...files(menu), ...(menu === "places" ? venueFiles : [])].map(async (file) => {
+    [wood, paper, ...materials, ...files(menu)].map(async (file) => {
       const image = await loadImage(file);
       await image.decode();
     }),
@@ -48,7 +50,7 @@ export function deskArtworkStyle(menu: DeskDestination | null): CSSProperties {
     const image = images.get(file)?.image;
     return image?.complete && image.naturalWidth ? `url("${image.src}")` : undefined;
   };
-  const [desktop, phone] = menu ? files(menu) : [];
+  const [desktop, phone] = menu && menu !== "places" ? files(menu) : [];
   return {
     "--desk-wood": paint(wood),
     "--desk-paper": paint(paper),
@@ -56,7 +58,8 @@ export function deskArtworkStyle(menu: DeskDestination | null): CSSProperties {
     "--desk-olive-button": paint(materials[1]),
     "--desk-art-desktop": desktop ? paint(desktop) : undefined,
     "--desk-art-phone": phone ? paint(phone) : undefined,
-    "--desk-venue-desktop": menu === "places" ? paint(venueFiles[0]) : undefined,
-    "--desk-venue-phone": menu === "places" ? paint(venueFiles[1]) : undefined,
+    "--desk-maps": menu === "places" ? paint(maps[0]) : undefined,
+    "--desk-postcard": menu === "places" ? paint(maps[1]) : undefined,
+    "--desk-polaroid": menu === "places" ? paint(maps[2]) : undefined,
   } as CSSProperties;
 }

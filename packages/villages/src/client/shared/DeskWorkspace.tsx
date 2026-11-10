@@ -100,73 +100,75 @@ export function DeskWorkspace({
     };
   }, [active, venue, documentRef]);
   return (
-    <div
-      className={`${P}-desk-workspace`}
-      data-desk={active ?? "none"}
-      data-venue={venue || undefined}
-      data-phase={phase}
-      style={deskArtworkStyle(active)}
-      role={active === "people" ? "dialog" : active ? "region" : undefined}
-      aria-label={active === "people" ? "People" : active ? "Village desk" : undefined}
-      aria-modal={active === "people" ? true : undefined}
-      onKeyDown={onKeyDown}
-    >
-      <style>{DESK_STYLES}</style>
-      <header className={`${P}-desk-header`} hidden={!active}>
-        <nav className={`${P}-desk-nav`} aria-label="Village navigation">
-          {(Object.keys(icons) as DeskDestination[]).map((destination) => (
+    <div className={`${P}-desk-container`}>
+      <div
+        className={`${P}-desk-workspace`}
+        data-desk={active ?? "none"}
+        data-venue={venue || undefined}
+        data-phase={phase}
+        style={deskArtworkStyle(active)}
+        role={active === "people" ? "dialog" : active ? "region" : undefined}
+        aria-label={active === "people" ? "People" : active ? "Village desk" : undefined}
+        aria-modal={active === "people" ? true : undefined}
+        onKeyDown={onKeyDown}
+      >
+        <style>{DESK_STYLES}</style>
+        <header className={`${P}-desk-header`} hidden={!active}>
+          <nav className={`${P}-desk-nav`} aria-label="Village navigation">
+            {(Object.keys(icons) as DeskDestination[]).map((destination) => (
+              <button
+                type="button"
+                key={destination}
+                disabled={disabled || phase !== "open"}
+                aria-disabled={disabled || phase !== "open"}
+                aria-current={active === destination ? "page" : undefined}
+                onClick={() => {
+                  if (phase === "open") onNavigate(destination);
+                }}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  {icons[destination]}
+                </svg>
+                <span>{destination[0].toUpperCase() + destination.slice(1)}</span>
+              </button>
+            ))}
+          </nav>
+          {onScene ? (
             <button
               type="button"
-              key={destination}
+              className={`${P}-desk-return ${P}-desk-scene`}
+              aria-label="Return to Scene"
               disabled={disabled || phase !== "open"}
               aria-disabled={disabled || phase !== "open"}
-              aria-current={active === destination ? "page" : undefined}
               onClick={() => {
-                if (phase === "open") onNavigate(destination);
+                if (phase === "open") onScene();
               }}
             >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                {icons[destination]}
-              </svg>
-              <span>{destination[0].toUpperCase() + destination.slice(1)}</span>
+              ← Scene
             </button>
-          ))}
-        </nav>
-        {onScene ? (
+          ) : null}
           <button
             type="button"
-            className={`${P}-desk-return ${P}-desk-scene`}
-            aria-label="Return to Scene"
+            className={`${P}-desk-return`}
             disabled={disabled || phase !== "open"}
             aria-disabled={disabled || phase !== "open"}
             onClick={() => {
-              if (phase === "open") onScene();
+              if (phase === "open") onReturn();
             }}
           >
-            ← Scene
+            <span className={`${P}-desk-return-desktop`}>Return to village</span>
+            <span className={`${P}-desk-return-mobile`}>← Village</span>
           </button>
+        </header>
+        {artworkError ? (
+          <p role="alert" className={`${P}-desk-art-error`}>
+            {artworkError}
+          </p>
         ) : null}
-        <button
-          type="button"
-          className={`${P}-desk-return`}
-          disabled={disabled || phase !== "open"}
-          aria-disabled={disabled || phase !== "open"}
-          onClick={() => {
-            if (phase === "open") onReturn();
-          }}
-        >
-          <span className={`${P}-desk-return-desktop`}>Return to village</span>
-          <span className={`${P}-desk-return-mobile`}>← Village</span>
-        </button>
-      </header>
-      {artworkError ? (
-        <p role="alert" className={`${P}-desk-art-error`}>
-          {artworkError}
-        </p>
-      ) : null}
-      <div className={`${P}-desk-stage`}>
-        <div ref={documentRef} className={`${P}-desk-document`} inert={phase === "closing" || phase === "preparing"}>
-          {children}
+        <div className={`${P}-desk-stage`}>
+          <div ref={documentRef} className={`${P}-desk-document`} inert={phase === "closing" || phase === "preparing"}>
+            {children}
+          </div>
         </div>
       </div>
     </div>

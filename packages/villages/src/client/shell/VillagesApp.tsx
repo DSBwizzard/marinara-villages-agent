@@ -101,8 +101,12 @@ function VillagesContent({ element }: { element: HTMLElement }) {
         setPhase("open");
         const focus = element.shadowRoot?.activeElement ?? document.activeElement;
         if (!focus || focus === document.body || !focus.checkVisibility())
-          documentRef.current
-            ?.querySelector<HTMLElement>("button,input,select,textarea")
+          [
+            ...(documentRef.current?.querySelectorAll<HTMLElement>(
+              "button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled)",
+            ) ?? []),
+          ]
+            .find((node) => node.checkVisibility() && !node.closest("[inert],[hidden]"))
             ?.focus({ preventScroll: true });
       })
       .catch(() => {});
