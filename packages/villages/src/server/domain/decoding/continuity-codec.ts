@@ -25,6 +25,7 @@ const id = text(160),
 const at = z.string().refine((value) => Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value);
 const ids = z.array(id).refine((value) => new Set(value).size === value.length);
 const actorHolder = z.object({ kind: z.literal("actor"), id, incarnation: id }).strict();
+const actorReference = z.object({ id, incarnation: id }).strict();
 export const continuityHolderSchema = z.discriminatedUnion("kind", [
   actorHolder,
   z.object({ kind: z.literal("room"), placeId: id, zoneId: id }).strict(),
@@ -81,7 +82,10 @@ const version = z
     createdRevision: revision.min(1),
     text: text(ROOM_CONTINUITY_TEXT_BYTES),
     class: z.enum(["experience", "information", "perspective", "desire", "motivation", "commitment", "open-matter"]),
-    about: ids.max(32),
+    about: z
+      .array(actorReference)
+      .max(32)
+      .refine((rows) => new Set(rows.map((row) => row.id)).size === rows.length),
     parentId: id.optional(),
     facet: z
       .enum(["reason", "attention", "approach", "connection", "stance", "expectation", "concern", "boundary"])
@@ -132,8 +136,12 @@ const record = z
     offer: z
       .object({
         termsVersionId: id,
-        proposer: id,
-        participants: ids.min(2).max(32),
+        proposer: actorReference,
+        participants: z
+          .array(actorReference)
+          .min(2)
+          .max(32)
+          .refine((rows) => new Set(rows.map((row) => row.id)).size === rows.length),
         events: z
           .array(
             z
@@ -181,9 +189,19 @@ export function readContinuity(raw: unknown, seed?: string): ContinuityCollectio
     roots.size === value.records.length && versions.size === value.versions.length,
     "duplicate continuity identity",
   );
+  const subjectsByRoot = new Map<string, Map<string, string>>();
   for (const entry of value.versions) {
     const root = roots.get(entry.rootId);
     memoryRequire(root && entry.createdRevision <= value.revision, "missing or future continuity root");
+    const subjects = subjectsByRoot.get(entry.rootId) ?? new Map<string, string>();
+    for (const subject of entry.about) {
+      memoryRequire(
+        !subjects.has(subject.id) || subjects.get(subject.id) === subject.incarnation,
+        "subject identity changed within continuity root",
+      );
+      subjects.set(subject.id, subject.incarnation);
+    }
+    subjectsByRoot.set(entry.rootId, subjects);
     memoryRequire(!ownedContinuityClass(entry.class) || root.owner || root.offer, "saved private state has no owner");
     if (entry.administrative) {
       const key = continuityHolderKey(entry.administrative.holder),
@@ -293,13 +311,16 @@ export function readContinuity(raw: unknown, seed?: string): ContinuityCollectio
     if (entry.offer) {
       const offer = entry.offer;
       memoryRequire(
-        versions.get(offer.termsVersionId)?.rootId === entry.id && offer.participants.includes(offer.proposer),
+        versions.get(offer.termsVersionId)?.rootId === entry.id &&
+          offer.participants.some(
+            (party) => party.id === offer.proposer.id && party.incarnation === offer.proposer.incarnation,
+          ),
         "invalid retained offer",
       );
       memoryRequire(new Set(offer.events.map((row) => row.id)).size === offer.events.length, "duplicate offer event");
       for (const event of offer.events)
         memoryRequire(
-          offer.participants.includes(event.by) &&
+          offer.participants.some((party) => party.id === event.by) &&
             event.sources.every(
               (source) =>
                 source.kind === "speech" &&

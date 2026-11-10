@@ -5,6 +5,10 @@ import { readSceneCalendar } from "../rules/scene-calendar.js";
 
 const id = z.string().min(1).max(200),
   at = z.string().refine((value) => Number.isFinite(Date.parse(value)));
+const subjects = z
+  .array(z.object({ id: z.string().min(1).max(160), incarnation: z.string().min(1).max(160) }).strict())
+  .max(256)
+  .refine((rows) => new Set(rows.map((row) => row.id)).size === rows.length);
 const saved = z
   .object({
     id,
@@ -53,6 +57,8 @@ const saved = z
             typeof row.source.episodeId === "string" &&
             Array.isArray(row.source.actors) &&
             row.source.actors.length <= 32 &&
+            subjects.safeParse(row.source.subjects).success &&
+            JSON.stringify(row.source.subjects) === JSON.stringify(row.admission.subjects) &&
             row.source.historical &&
             row.admission?.seed === row.source.seed &&
             row.admission.episodeId === row.source.episodeId &&

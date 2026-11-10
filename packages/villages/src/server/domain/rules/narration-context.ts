@@ -192,6 +192,7 @@ export function narrationContinuityContext(
   const actorSelection = selectActorContinuity(state.continuity, state.episodes, holders, at, {
     query: input,
     bytes: capacity,
+    identity: (id) => continuityActor(state, id),
     requiredIds: [...requiredRoots].filter((id) => views.some((view) => view.id === id)),
   });
   const roomSelection = selectRoomContinuity(state.continuity, state.episodes, room, at, {
@@ -609,6 +610,28 @@ export function fittedNarrationReadset(
       offered.set(key, { holder: row.holder, ids: [...new Set([...(prior?.ids ?? []), ...row.ids])] });
     }
   const protectedRoots = [...new Set(context.protections.map((row) => row.id))];
+  const subjectIds = new Set([
+    ...state.villagers.map((row) => row.characterId),
+    ...context.actors.map((row) => row.id),
+    ...context.npcCandidates.map((row) => row.npc.id),
+    ...parts.flatMap((part) =>
+      part.targets.flatMap((target) =>
+        Object.keys(target.heads).flatMap((key) => {
+          const record = state.continuity.records.find((row) => row.id === target.id)!,
+            version = state.continuity.versions.find((row) => row.id === record.heads[key]?.versionId);
+          return [...(version?.about.map((row) => row.id) ?? []), ...(record.owner ? [record.owner.id] : [])];
+        }),
+      ),
+    ),
+  ]);
+  const subjects = [...subjectIds].flatMap((id) => {
+    const actor = continuityActor(state, id);
+    return actor ? [{ id: actor.id, incarnation: actor.incarnation }] : [];
+  });
+  memoryRequire(
+    subjects.length <= 256,
+    "required subject identity scope exceeds the retained request bound before generation",
+  );
   const references = episodeContextActors({ actors: context.actors, room: context.room }, Object.keys(provenance));
   const candidates = context.npcCandidates.filter((row) => evidenceIds.includes("npc-candidate:" + row.npc.id));
   return {
@@ -618,13 +641,14 @@ export function fittedNarrationReadset(
     calendar: context.calendar,
     sceneRevision: context.source.scene.sceneRevision,
     continuityRevision: state.continuity.revision,
-    source: { ...context.source, historical },
+    source: { ...context.source, historical, subjects },
     admission: {
       seed: state.seed,
       operationId: context.source.operationId,
       episodeId: context.episodeId,
       at: context.at,
       actors: context.actors.map(({ id, incarnation }) => ({ id, incarnation })),
+      subjects,
       room: context.room,
       continuityRevision: state.continuity.revision,
       sourceActors: Object.fromEntries(

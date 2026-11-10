@@ -1,4 +1,4 @@
-// Test cases: narration-sources/exact-private-input, narration-sources/spatial-audience, narration-sources/movement-order, narration-sources/routed-segments, narration-sources/own-perspective, narration-sources/fitted-aliases, narration-sources/room-without-knowers, narration-sources/sound-alias-retention, narration-sources/cold-input-widening, narration-sources/keep-binding, narration-sources/first-disclosure, narration-sources/native-combination, narration-sources/absent-owner-disclosure
+// Test cases: narration-sources/exact-private-input, narration-sources/spatial-audience, narration-sources/movement-order, narration-sources/routed-segments, narration-sources/own-perspective, narration-sources/fitted-aliases, narration-sources/room-without-knowers, narration-sources/sound-alias-retention, narration-sources/cold-input-widening, narration-sources/keep-binding, narration-sources/first-disclosure, narration-sources/native-combination, narration-sources/absent-owner-disclosure, narration-sources/subject-identity
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { venueFixture } from "./helpers/venues.fixture.js";
@@ -17,6 +17,7 @@ import {
   continuitySourceUnit,
   continuityViews,
   emptyContinuity,
+  protectContinuity,
 } from "../packages/villages/src/server/domain/rules/continuity.js";
 import type {
   ContinuityEvidence,
@@ -36,6 +37,10 @@ import { prepareNarrationKeep } from "../packages/villages/src/server/domain/rul
 import { retainNativeFact } from "../packages/villages/src/server/domain/rules/native-continuity.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { continuityMemoryLibrary } from "../packages/villages/src/server/domain/rules/continuity-library.js";
+import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
+import { readContinuity } from "../packages/villages/src/server/domain/decoding/continuity-codec.js";
+import { selectActorContinuity } from "../packages/villages/src/server/domain/rules/continuity-retrieval.js";
 
 const at = "2026-11-09T12:00:00.000Z";
 const actor = (id: string): Extract<ContinuityHolder, { kind: "actor" }> => ({ kind: "actor", id, incarnation: "one" });
@@ -680,6 +685,241 @@ await runCase("narration-sources/keep-binding", async () => {
   assert.equal(cold.value.continuity.versions[0].text, raw.text);
 });
 
+await runCase("narration-sources/subject-identity", async () => {
+  const world = { ...defaultVillageState(), seed: "world", setupAt: at },
+    playerHolder = continuityActor(world, "player")!,
+    oldSubject = { id: "leo", incarnation: "old-leo" };
+  world.villagers = [
+    { characterId: "mara", incarnation: "one", cardSnapshot: { name: "Mara" } },
+    { characterId: "leo", incarnation: "new-leo", cardSnapshot: { name: "Replacement Leo" } },
+  ] as VillageState["villagers"];
+  const captured = {
+      ...context(),
+      actors: [playerHolder, mara],
+      subjects: [oldSubject],
+      lines: [line("about", "Leo likes the river.")],
+      labels: { about: "about" },
+    },
+    admission = {
+      seed: captured.seed,
+      operationId: captured.operationId,
+      episodeId: captured.episodeId,
+      at,
+      actors: captured.actors,
+      subjects: captured.subjects,
+      sources: [],
+      supplied: [],
+      protectedRoots: [],
+    };
+  const raw = {
+      for: ["player"],
+      class: "information",
+      about: ["leo"],
+      text: "Mara said Leo likes the river.",
+      source: [{ segment: "about" }],
+    },
+    prepared = prepareNarrationKeep(raw, 0, emptyContinuity(), admission, captured),
+    common = applyContinuityWrite(emptyContinuity(), prepared.write, prepared.admission),
+    root = common.records[0],
+    playerKey = continuityHolderKey(playerHolder);
+  assert.deepEqual(common.versions[0].about, [oldSubject]);
+  assert(
+    !root.heads[continuityHolderKey({ kind: "actor", ...oldSubject })],
+    "a subject descriptor grants no knowledge or presence",
+  );
+  assert.throws(
+    () => prepareNarrationKeep({ ...raw, for: ["leo"] }, 0, emptyContinuity(), admission, captured),
+    /not admitted/,
+  );
+  const episodes = appendEpisode(
+      emptyEpisodes(),
+      episodeFrom(
+        captured,
+        prepared.sources,
+        common.versions.map((version) => version.id),
+      ),
+      captured.seed,
+    ),
+    scope = memoryHash(captured.seed).slice(0, 32),
+    packet = encodeContinuityPages({ continuity: common, episodes, worldPlaces: emptyPlaceRegistry() }, scope),
+    cold = await decodeContinuityPages(
+      packet.manifest,
+      scope,
+      captured.seed,
+      async (id) => packet.pages.get(id) ?? null,
+    );
+  Object.assign(world, cold.value);
+  const selected = selectActorContinuity(common, episodes, [playerHolder], at, {
+    query: "river",
+    bytes: 4000,
+    requiredIds: [],
+    identity: (id) => continuityActor(world, id),
+  });
+  assert.deepEqual(
+    selected.packet.entries[0].pastSubjects,
+    ["leo"],
+    "an offstage replacement cannot inherit the subject's history",
+  );
+  assert.deepEqual(
+    continuityMemoryLibrary(world, {}, at).entries[0].subjects,
+    [],
+    "known notes never attribute old subjects to replacements",
+  );
+  assert.deepEqual(continuityMemoryLibrary(world, { inspection: true }, at).entries[0].subjects, [
+    { id: "leo", name: "Former resident" },
+  ]);
+  for (const repeat of [false, true]) {
+    const later = {
+        ...captured,
+        episodeId: "later-" + repeat,
+        operationId: "later-" + repeat,
+        subjects: [{ id: "leo", incarnation: "new-leo" }],
+      },
+      target = { id: root.id, recordRevision: root.revision, heads: { [playerKey]: root.heads[playerKey].revision } },
+      nextAdmission = {
+        ...admission,
+        episodeId: later.episodeId,
+        operationId: later.operationId,
+        subjects: later.subjects,
+        supplied: [target],
+      },
+      next = prepareNarrationKeep(
+        { replace: root.id, for: ["mara"], ...(repeat ? { about: ["leo"] } : {}), source: [{ segment: "about" }] },
+        0,
+        common,
+        nextAdmission,
+        later,
+      ),
+      changed = applyContinuityWrite(common, next.write, next.admission);
+    assert.deepEqual(
+      changed.versions.at(-1)!.about,
+      [oldSubject],
+      "both omitted and explicitly repeated metadata preserve the fitted identity",
+    );
+    const laterEpisode = episodeFrom(later, next.sources, [changed.versions.at(-1)!.id]);
+    laterEpisode.admittedContinuityRevision = common.revision;
+    const history = appendEpisode(episodes, laterEpisode, captured.seed),
+      encoded = encodeContinuityPages(
+        { continuity: changed, episodes: history, worldPlaces: emptyPlaceRegistry() },
+        scope,
+      );
+    await decodeContinuityPages(encoded.manifest, scope, captured.seed, async (id) => encoded.pages.get(id) ?? null);
+  }
+  const forged = { ...prepared.write, about: [{ id: "leo", incarnation: "forged" }] };
+  assert.throws(
+    () => applyContinuityWrite(emptyContinuity(), forged, prepared.admission),
+    /subject identity was not supplied/,
+  );
+  const oldShape = structuredClone(common);
+  (oldShape.versions[0] as any).about = ["leo"];
+  assert.throws(() => readContinuity(oldShape, captured.seed), /expected object/);
+  const mixedContext = {
+      ...captured,
+      operationId: "mixed",
+      episodeId: "mixed",
+      subjects: [{ id: "leo", incarnation: "new-leo" }],
+    },
+    mixedSource = bindNarrationSource({ segment: "about" }, mixedContext),
+    mixedTarget = {
+      id: root.id,
+      recordRevision: root.revision,
+      heads: { [playerKey]: root.heads[playerKey].revision, [continuityHolderKey(mara)]: 0 },
+    };
+  const correctedSubject = protectContinuity(
+    common,
+    {
+      id: root.id,
+      recordRevision: root.revision,
+      heads: { [playerKey]: root.heads[playerKey].revision },
+    },
+    [playerHolder],
+    "correct-subject",
+    at,
+    { text: raw.text },
+  );
+  for (const state of [common, correctedSubject]) {
+    const target = {
+      ...mixedTarget,
+      recordRevision: state.records[0].revision,
+      heads: { ...mixedTarget.heads, [playerKey]: state.records[0].heads[playerKey].revision },
+    };
+    assert.throws(
+      () =>
+        applyContinuityWrite(
+          state,
+          {
+            id: "mixed",
+            holders: [mara],
+            target,
+            text: raw.text,
+            about: mixedContext.subjects,
+            sourceIds: [mixedSource.id],
+          },
+          {
+            ...admission,
+            operationId: mixedContext.operationId,
+            episodeId: mixedContext.episodeId,
+            subjects: mixedContext.subjects,
+            sources: [mixedSource],
+            supplied: [target],
+          },
+        ),
+      /subject identity cannot change/,
+    );
+  }
+  const mixed = structuredClone(common);
+  mixed.versions.push({ ...structuredClone(mixed.versions[0]), id: "mixed-version", about: mixedContext.subjects });
+  mixed.records[0].heads[continuityHolderKey(mara)] = {
+    ...structuredClone(root.heads[playerKey]),
+    holder: mara,
+    versionId: "mixed-version",
+  };
+  assert.throws(() => readContinuity(mixed, captured.seed), /subject identity changed/);
+  const mixedRoot = mixed.records[0],
+    nextContext = {
+      ...mixedContext,
+      operationId: "ambiguous",
+      episodeId: "ambiguous",
+      actors: [...captured.actors, actor("delia")],
+    },
+    mixedAdmission = {
+      ...admission,
+      actors: nextContext.actors,
+      operationId: nextContext.operationId,
+      episodeId: nextContext.episodeId,
+      subjects: nextContext.subjects,
+      supplied: [
+        {
+          id: root.id,
+          recordRevision: mixedRoot.revision,
+          heads: Object.fromEntries(Object.entries(mixedRoot.heads).map(([key, head]) => [key, head.revision])),
+        },
+      ],
+    };
+  assert.throws(
+    () =>
+      prepareNarrationKeep(
+        { replace: root.id, for: ["delia"], about: ["leo"], source: [{ segment: "about" }] },
+        0,
+        mixed,
+        mixedAdmission,
+        nextContext,
+      ),
+    /subject identity is ambiguous/,
+  );
+  assert.throws(
+    () =>
+      prepareNarrationKeep(
+        { replace: root.id, for: ["delia"], source: [{ segment: "about" }] },
+        0,
+        mixed,
+        mixedAdmission,
+        nextContext,
+      ),
+    /explicit descriptive metadata/,
+  );
+});
+
 await runCase("narration-sources/absent-owner-disclosure", async () => {
   const original = {
     ...context(),
@@ -747,7 +987,9 @@ await runCase("narration-sources/absent-owner-disclosure", async () => {
   const next = prepareNarrationKeep(omitted, 0, first, admission, later);
   assert.deepEqual(next.write.owner, mara);
   assert.equal(next.write.class, "desire");
-  assert.deepEqual(next.write.about, ["mara"]);
+  assert.deepEqual(next.write.about, [
+    { id: "mara", incarnation: original.actors.find((actor) => actor.id === "mara")!.incarnation },
+  ]);
   assert.equal(next.write.current, false);
   const disclosed = applyContinuityWrite(first, next.write, next.admission);
   assert.deepEqual(disclosed.records[0].heads[continuityHolderKey(mara)], root.heads[continuityHolderKey(mara)]);

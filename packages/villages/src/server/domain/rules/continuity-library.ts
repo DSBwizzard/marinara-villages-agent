@@ -172,8 +172,12 @@ function projections(
       occurredAt: version.at,
       recordedAt: version.at,
       subjects: version.about
-        .filter((id) => inspection || id === "player" || state.villagers.some((row) => row.characterId === id))
-        .map((id) => person(state, id)),
+        .filter((subject) => inspection || continuityActor(state, subject.id)?.incarnation === subject.incarnation)
+        .map((subject) =>
+          continuityActor(state, subject.id)?.incarnation === subject.incarnation
+            ? person(state, subject.id)
+            : { id: subject.id, name: "Former resident" },
+        ),
       knownBy: [person(state, holder.id)],
       forgotten: !!protection?.forgotten,
       playerCorrection: !!protection?.repair,

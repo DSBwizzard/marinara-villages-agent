@@ -235,8 +235,14 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
     for (const event of record.offer?.events ?? [])
       for (const source of event.sources) {
         const original = assertSource(source);
+        const party = record.offer!.participants.find((party) => party.id === event.by),
+          episode = byEpisode.get(source.episodeId);
         memoryRequire(
-          original.act === event.act && source.act === event.act && original.actorId === event.by,
+          original.act === event.act &&
+            source.act === event.act &&
+            original.actorId === event.by &&
+            party &&
+            episode?.actors.some((actor) => actor.id === party.id && actor.incarnation === party.incarnation),
           "offer contribution lost its canonical decision",
         );
       }

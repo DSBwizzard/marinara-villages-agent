@@ -38,12 +38,20 @@ function source(state: VillageState) {
     const holder = continuityActor(state, actor.id)!;
     return state.continuity.records.flatMap((record) => {
       const head = record.heads[continuityHolderKey(holder)];
-      const version = head && state.continuity.versions.find((version) => version.id === head.versionId);
-      return version?.class === "perspective" &&
-        !version.parentId &&
-        record.owner &&
-        continuityHolderKey(record.owner) === continuityHolderKey(holder)
-        ? version.about.filter((id) => id !== actor.id).map((id) => JSON.stringify([actor.id, id]))
+      const versions = head
+        ? state.continuity.versions.filter(
+            (version) => version.rootId === record.id && version.class === "perspective" && !version.parentId,
+          )
+        : [];
+      return versions.length && record.owner && continuityHolderKey(record.owner) === continuityHolderKey(holder)
+        ? versions.flatMap((version) =>
+            version.about
+              .filter(
+                (subject) =>
+                  subject.id !== actor.id && continuityActor(state, subject.id)?.incarnation === subject.incarnation,
+              )
+              .map((subject) => JSON.stringify([actor.id, subject.id])),
+          )
         : [];
     });
   });

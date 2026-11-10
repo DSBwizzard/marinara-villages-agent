@@ -192,6 +192,11 @@ export function retainNativeFact(
     })),
   };
   const actors = holders;
+  const subjects = (meaning.about ?? []).map((id) => {
+    const actor = continuityActor(state, id);
+    memoryRequire(actor, "native subject identity is unavailable");
+    return { id: actor.id, incarnation: actor.incarnation };
+  });
   const context = meaning.context ?? [];
   memoryRequire(
     context.length <= 8 &&
@@ -218,7 +223,7 @@ export function retainNativeFact(
               ? { room: { knownBy: receipt.observedBy ?? [] } }
               : {
                   class: meaning.class ?? "experience",
-                  about: meaning.about ?? [],
+                  about: subjects,
                   ...(meaning.current === undefined ? {} : { current: meaning.current }),
                 }),
             text: receipt.text,
@@ -231,6 +236,7 @@ export function retainNativeFact(
             operationId: id,
             at,
             actors,
+            subjects,
             ...(room ? { room } : {}),
             sources: [source],
             supplied: [],

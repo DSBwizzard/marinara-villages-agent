@@ -335,6 +335,14 @@ await runCase("continuity-storage/offer-evidence", () => {
     return decodeContinuityPagesSync(encoded.manifest, world, "world", (id) => encoded.pages.get(id) ?? null);
   }
   cold(payload);
+  const wrongParty = structuredClone(payload);
+  wrongParty.continuity.records[0].offer!.participants[0].incarnation = "replacement";
+  wrongParty.continuity.records[0].offer!.proposer.incarnation = "replacement";
+  assert.throws(
+    () => cold(wrongParty),
+    /canonical decision/,
+    "retained consent belongs to the original speaker incarnation",
+  );
   for (const change of [
     (value: typeof source) => {
       value.excerpt = "An invented unconditional promise.";

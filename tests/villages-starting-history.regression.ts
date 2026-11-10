@@ -307,70 +307,72 @@ await runCase("starting-history/incarnation-fence", async () => {
   }
 });
 await runCase("starting-history/established-perspective", async () => {
-  const f = await fixture();
-  try {
-    await f.repository.mutateAuthority(
-      (state) => {
-        retainNativeFact(
-          state,
-          {
-            id: "prior-information",
-            kind: "initialization",
-            targetId: "leo",
-            revision: 1,
-            text: "Mara saw Leo at the library.",
-            witnesses: ["mara"],
-          },
-          at,
-          { class: "information", about: ["leo"] },
-        );
-      },
-      { memories: true },
-    );
-    await f.feature.prepare();
-    let state = await f.cold();
-    assert(startingHistoryReady(state));
-    assert.equal(
-      state.continuity.records.length,
-      3,
-      "mere prior knowledge does not erase authored history or perspective",
-    );
-    const view = continuityViews(state.continuity, continuityActor(state, "mara")!, at, new Set()).find(
-      (row) => row.version.class === "perspective",
-    )!;
-    await f.repository.mutateAuthority(
-      (state) => {
-        state.continuity = protectContinuity(
-          state.continuity,
-          {
-            id: view.id,
-            recordRevision: view.recordRevision,
-            heads: { [continuityHolderKey(view.holder)]: view.headRevision },
-          },
-          [view.holder],
-          "forget-perspective",
-          at,
-          { forget: true },
-        );
-        delete state.startingHistory.reviewed.mara;
-      },
-      { memories: true },
-    );
-    await f.feature.prepare();
-    state = await f.cold();
-    assert(startingHistoryReady(state));
-    assert.equal(
-      state.continuity.records.filter((row) => row.owner?.id === "mara").length,
-      1,
-      "preparation cannot overwrite or reteach the established protected perspective",
-    );
-    assert.equal(
-      continuityViews(state.continuity, continuityActor(state, "mara")!, at, new Set()).filter(
+  for (const change of [{ forget: true as const }, { text: "A corrected private perspective." }]) {
+    const f = await fixture();
+    try {
+      await f.repository.mutateAuthority(
+        (state) => {
+          retainNativeFact(
+            state,
+            {
+              id: "prior-information",
+              kind: "initialization",
+              targetId: "leo",
+              revision: 1,
+              text: "Mara saw Leo at the library.",
+              witnesses: ["mara"],
+            },
+            at,
+            { class: "information", about: ["leo"] },
+          );
+        },
+        { memories: true },
+      );
+      await f.feature.prepare();
+      let state = await f.cold();
+      assert(startingHistoryReady(state));
+      assert.equal(
+        state.continuity.records.length,
+        3,
+        "mere prior knowledge does not erase authored history or perspective",
+      );
+      const view = continuityViews(state.continuity, continuityActor(state, "mara")!, at, new Set()).find(
         (row) => row.version.class === "perspective",
-      ).length,
-      0,
-    );
-  } finally {
-    f.close();
+      )!;
+      await f.repository.mutateAuthority(
+        (state) => {
+          state.continuity = protectContinuity(
+            state.continuity,
+            {
+              id: view.id,
+              recordRevision: view.recordRevision,
+              heads: { [continuityHolderKey(view.holder)]: view.headRevision },
+            },
+            [view.holder],
+            "forget-perspective",
+            view.version.at,
+            change,
+          );
+          delete state.startingHistory.reviewed.mara;
+        },
+        { memories: true },
+      );
+      await f.feature.prepare();
+      state = await f.cold();
+      assert(startingHistoryReady(state));
+      assert.equal(
+        state.continuity.records.filter((row) => row.owner?.id === "mara").length,
+        1,
+        "preparation cannot overwrite or reteach the established protected perspective",
+      );
+      assert.equal(
+        continuityViews(state.continuity, continuityActor(state, "mara")!, at, new Set()).filter(
+          (row) => row.version.class === "perspective",
+        ).length,
+        "forget" in change ? 0 : 1,
+      );
+    } finally {
+      f.close();
+    }
   }
 });

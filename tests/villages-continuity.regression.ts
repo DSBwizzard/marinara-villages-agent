@@ -1,4 +1,4 @@
-// Test cases: continuity/individual-replacement, continuity/perception, continuity/cross-scene-offer, continuity/withdrawal, continuity/qualified-offer, continuity/room-sequence, continuity/room-expiry, continuity/protection, continuity/desire-closure, continuity/offer-privacy, continuity/concealed-observations, continuity/room-current-evidence, continuity/holder-admission, continuity/parent-protection, continuity/owned-knowledge
+// Test cases: continuity/individual-replacement, continuity/perception, continuity/cross-scene-offer, continuity/withdrawal, continuity/qualified-offer, continuity/room-sequence, continuity/room-expiry, continuity/protection, continuity/desire-closure, continuity/offer-privacy, continuity/concealed-observations, continuity/room-current-evidence, continuity/holder-admission, continuity/parent-protection, continuity/owned-knowledge, continuity/offer-identity
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import type {
@@ -28,6 +28,7 @@ const actor = (id: string): Extract<ContinuityHolder, { kind: "actor" }> => ({ k
 const player = actor("player"),
   mara = actor("mara"),
   leo = actor("leo");
+const identity = (id: string) => [player, mara, leo].find((actor) => actor.id === id);
 const room: ContinuityHolder & { kind: "room" } = { kind: "room", placeId: "home", zoneId: "parlor" };
 assert.throws(
   () =>
@@ -140,6 +141,7 @@ await runCase("continuity/owned-knowledge", () => {
     query: "",
     bytes: 4000,
     requiredIds: [],
+    identity,
   });
   assert.deepEqual(initial.offered, [{ holder: mara, ids: [root.id] }]);
   assert.equal(initial.packet.entries[0].owner, "mara");
@@ -172,11 +174,28 @@ await runCase("continuity/owned-knowledge", () => {
     "telling Leo cannot update or reteach Mara",
   );
   assert.equal(
-    selectActorContinuity(disclosed, emptyEpisodes(), [leo], at, { query: "boat", bytes: 4000, requiredIds: [] })
-      .offered.length,
+    selectActorContinuity(disclosed, emptyEpisodes(), [leo], at, {
+      query: "boat",
+      bytes: 4000,
+      requiredIds: [],
+      identity,
+    }).offered.length,
     0,
   );
   assert(!continuityGuidesHolder(rows(disclosed, leo)[0]));
+  for (const currentOwner of [mara, { ...mara, incarnation: "replacement" }, undefined]) {
+    const packet = selectActorContinuity(disclosed, emptyEpisodes(), [leo], at, {
+      query: "boat",
+      bytes: 4000,
+      requiredIds: [],
+      identity: (id) => (id === "mara" ? currentOwner : identity(id)),
+    }).packet;
+    assert.equal(
+      packet.entries[0].pastOwner,
+      currentOwner?.incarnation === mara.incarnation ? undefined : true,
+      "an offstage owner is resolved independently from the selected holders",
+    );
+  }
   assert.throws(
     () =>
       applyContinuityWrite(
@@ -331,6 +350,108 @@ await runCase("continuity/cross-scene-offer", () => {
     /actual deciding speech/,
     "historical acceptance cannot be laundered into a new current decision",
   );
+});
+
+await runCase("continuity/offer-identity", () => {
+  const offer = offered(),
+    replacement = { ...mara, incarnation: "two" };
+  for (const currentParty of [mara, replacement, undefined]) {
+    const packet = selectActorContinuity(offer.state, emptyEpisodes(), [player], at, {
+      query: "fair",
+      bytes: 8000,
+      requiredIds: [],
+      identity: (id) => (id === "mara" ? currentParty : identity(id)),
+    }).packet;
+    assert.deepEqual(
+      packet.entries[0].offer?.unavailableParties,
+      currentParty?.incarnation === mara.incarnation ? undefined : ["mara"],
+      "absence from attendance does not change the intended party identity",
+    );
+  }
+  assert.deepEqual(offer.state.records[0].offer?.participants, [
+    { id: "player", incarnation: "one" },
+    { id: "mara", incarnation: "one" },
+  ]);
+  const told = source("retold-offer", "player", offer.terms, "scene-2"),
+    supplied = target(offer.state, offer.id, [player, replacement]),
+    admission = { ...context("learn-old-offer", [told], [supplied], "scene-2"), actors: [player, replacement] };
+  admission.sourceActors!["scene-2"] = admission.actors;
+  const learned = applyContinuityWrite(
+    offer.state,
+    {
+      id: "learn",
+      target: supplied,
+      holders: [replacement],
+      text: offer.terms,
+      class: "commitment",
+      current: true,
+      sourceIds: [told.id],
+    },
+    admission,
+  );
+  readContinuity(learned, "world");
+  const selected = selectActorContinuity(learned, emptyEpisodes(), [replacement, player], at, {
+    query: "fair",
+    bytes: 8000,
+    requiredIds: [],
+    identity: (id) => (id === "mara" ? replacement : identity(id)),
+  });
+  assert(!continuityGuidesHolder(rows(learned, replacement)[0]));
+  assert(!selected.offered.some((row) => row.holder.incarnation === "two"));
+  assert.deepEqual(selected.packet.entries.find((row) => row.for === "mara")?.offer?.unavailableParties, ["mara"]);
+  for (const act of ["accept", "refuse", "withdraw"] as const) {
+    const decision = source("decision-" + act, "mara", "I " + act + ".", "scene-3", { act }),
+      supplied = target(learned, offer.id, [replacement]),
+      admission = { ...context("decision-" + act, [decision], [supplied], "scene-3"), actors: [player, replacement] };
+    admission.sourceActors!["scene-3"] = admission.actors;
+    assert.throws(
+      () =>
+        applyContinuityWrite(
+          learned,
+          {
+            id: act,
+            target: supplied,
+            holders: [replacement],
+            sourceIds: [decision.id],
+            ...(act === "accept"
+              ? { accept: "mara" }
+              : {
+                  closeOffer: { by: "mara", reason: act === "refuse" ? ("refused" as const) : ("withdrawn" as const) },
+                }),
+          },
+          admission,
+        ),
+      /not a party incarnation/,
+    );
+  }
+  const corrected = protectContinuity(learned, target(learned, offer.id, [replacement]), [replacement], "correct", at, {
+    text: offer.terms,
+  });
+  assert(!rows(corrected, replacement)[0].offer);
+  assert(!continuityGuidesHolder(rows(corrected, replacement)[0]), "a correction grants no party rights or initiative");
+  const proposal = source("absent-proposal", "player", offer.terms, "scene-4", { act: "offer", perceptions: [] }),
+    absent = applyContinuityWrite(
+      emptyContinuity(),
+      {
+        id: "absent-party",
+        holders: [player],
+        class: "commitment",
+        text: offer.terms,
+        offer: { proposer: "player", participants: ["player", "mara"] },
+        sourceIds: [proposal.id],
+      },
+      {
+        ...context("absent-party", [proposal], [], "scene-4"),
+        actors: [player],
+        subjects: [{ id: "mara", incarnation: "one" }],
+      },
+    );
+  assert.deepEqual(absent.records[0].offer?.participants[1], { id: "mara", incarnation: "one" });
+  assert(!absent.records[0].heads[continuityHolderKey(mara)], "an intended party need not have heard the offer yet");
+  readContinuity(absent, "world");
+  const oldShape = structuredClone(absent);
+  (oldShape.records[0].offer as any).participants = ["player", "mara"];
+  assert.throws(() => readContinuity(oldShape, "world"), /expected object/);
 });
 
 await runCase("continuity/withdrawal", () => {

@@ -97,12 +97,35 @@ export function prepareNarrationKeep(
         })
       : [];
   const description = fittedVersions[0];
+  const about = proposal.about?.map((id) => {
+    const prior = [
+      ...new Map(
+        fittedVersions
+          .flatMap((version) => version.about.filter((row) => row.id === id))
+          .map((row) => [row.incarnation, row]),
+      ).values(),
+    ];
+    memoryRequire(
+      prior.length <= 1,
+      "a subject identity is ambiguous across fitted meanings; retain a distinct meaning",
+    );
+    const subject =
+      prior[0] ??
+      sourceContext.subjects?.find((row) => row.id === id) ??
+      sourceContext.actors.find((row) => row.id === id);
+    memoryRequire(subject, "continuity subject identity was not supplied");
+    return { id: subject.id, incarnation: subject.incarnation };
+  });
   memoryRequire(
     proposal.retire !== null || (record && holders.every((holder) => !record.heads[continuityHolderKey(holder)])),
     "open disclosure cannot reopen an existing holder",
   );
   if (learning) {
     memoryRequire(description, "new knower needs a fitted source head");
+    memoryRequire(
+      typeof proposal.text === "string" || fittedVersions.every((version) => version.text === description.text),
+      "new knower needs explicit meaning for differing fitted heads",
+    );
     for (const [field, supplied] of [
       ["class", proposal.class],
       ["about", proposal.about],
@@ -133,7 +156,10 @@ export function prepareNarrationKeep(
       fittedHeads.every((head) => head.current === fittedHeads[0].current),
       "new knower needs explicit standing for differing fitted heads",
     );
-  const text = typeof proposal.text === "string" ? proposal.text : (prior?.text ?? "");
+  const text =
+    typeof proposal.text === "string"
+      ? proposal.text
+      : (prior?.text ?? (learning ? description?.text : undefined) ?? "");
   const inheritedOwner = record
     ? record.owner
     : proposal.parent
@@ -170,14 +196,14 @@ export function prepareNarrationKeep(
     ...(owner ? { owner } : {}),
     sourceIds: sources.map((source) => source.id),
     ...(target ? { target } : {}),
-    ...(typeof proposal.text === "string" ? { text: proposal.text } : {}),
+    ...(typeof proposal.text === "string" ? { text: proposal.text } : learning ? { text } : {}),
     ...(proposal.class ? { class: proposal.class } : learning ? { class: description!.class } : {}),
     ...(proposal.current !== undefined
       ? { current: proposal.current }
       : learning
         ? { current: fittedHeads[0].current }
         : {}),
-    ...(proposal.about ? { about: proposal.about } : learning ? { about: [...description!.about] } : {}),
+    ...(about ? { about } : learning ? { about: [...description!.about] } : {}),
     ...(proposal.parent
       ? { parentId: proposal.parent }
       : learning && description!.parentId

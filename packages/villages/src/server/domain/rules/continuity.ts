@@ -382,7 +382,14 @@ export function applyContinuityWrite(
         !record.offer.events.some((event) => event.act === "withdraw" || event.act === "refuse"),
         "offer was withdrawn or refused",
       );
-      memoryRequire(record.offer.participants.includes(write.accept), "accepting actor is not a party");
+      memoryRequire(
+        record.offer.participants.some(
+          (party) =>
+            party.id === write.accept &&
+            context.actors.some((actor) => actor.id === party.id && actor.incarnation === party.incarnation),
+        ),
+        "accepting actor is not a party incarnation",
+      );
       memoryRequire(
         before.some(
           ({ key, holder, version }) =>
@@ -401,7 +408,14 @@ export function applyContinuityWrite(
       });
     }
     if (write.closeOffer) {
-      memoryRequire(record.offer.participants.includes(write.closeOffer.by), "withdrawing actor is not a party");
+      memoryRequire(
+        record.offer.participants.some(
+          (party) =>
+            party.id === write.closeOffer!.by &&
+            context.actors.some((actor) => actor.id === party.id && actor.incarnation === party.incarnation),
+        ),
+        "withdrawing actor is not a party incarnation",
+      );
       memoryRequire(
         before.some(({ holder }) => holder.kind === "actor" && holder.id === write.closeOffer!.by),
         "decision must retain the deciding actor",
@@ -424,6 +438,11 @@ export function applyContinuityWrite(
       "offer decision was not heard as words",
     );
   }
+  const subjectBindings = new Map(
+    collection.versions
+      .filter((version) => version.rootId === rootId)
+      .flatMap((version) => version.about.map((subject) => [subject.id, subject.incarnation] as const)),
+  );
   const created: ContinuityVersion[] = [];
   for (const { key, holder, head, version: prior } of before) {
     const text = write.text ?? prior?.text;
@@ -439,7 +458,7 @@ export function applyContinuityWrite(
       createdRevision: collection.revision + 1,
       text,
       class: room ? "information" : (write.class ?? prior?.class ?? "experience"),
-      about: [...(write.about ?? prior?.about ?? [])],
+      about: (write.about ?? prior?.about ?? []).map((subject) => ({ ...subject })),
       ...(write.parentId || prior?.parentId ? { parentId: write.parentId ?? prior!.parentId } : {}),
       ...(write.facet || prior?.facet ? { facet: write.facet ?? prior!.facet } : {}),
       sources: sources.map((source) =>
@@ -468,7 +487,30 @@ export function applyContinuityWrite(
         : {}),
       ...(write.retire ? { closed: { reason: write.retire } } : prior?.closed ? { closed: { ...prior.closed } } : {}),
     };
-    version.about.forEach(memoryKnowerId);
+    memoryRequire(
+      version.about.length <= 32 && new Set(version.about.map((subject) => subject.id)).size === version.about.length,
+      "invalid continuity subject bindings",
+    );
+    for (const subject of version.about) {
+      memoryKnowerId(subject.id);
+      memoryString(subject.incarnation, 160);
+      memoryRequire(
+        !subjectBindings.has(subject.id) || subjectBindings.get(subject.id) === subject.incarnation,
+        "subject identity cannot change within an existing meaning",
+      );
+      subjectBindings.set(subject.id, subject.incarnation);
+      const supplied = [...(context.subjects ?? []), ...context.actors].some(
+        (actor) => actor.id === subject.id && actor.incarnation === subject.incarnation,
+      );
+      const inherited =
+        original &&
+        Object.keys(write.target!.heads).some((key) =>
+          collection.versions
+            .find((row) => row.id === original.heads[key]?.versionId)
+            ?.about.some((actor) => actor.id === subject.id && actor.incarnation === subject.incarnation),
+        );
+      memoryRequire(supplied || inherited, "continuity subject identity was not supplied");
+    }
     memoryRequire(
       !ownedContinuityClass(version.class) || record.owner || record.offer || write.offer,
       "private state has no owner",
@@ -536,11 +578,17 @@ export function applyContinuityWrite(
       };
     }
   }
-  if (write.offer)
+  if (write.offer) {
+    const participants = write.offer.participants.map((id) => {
+      const actor =
+        context.actors.find((actor) => actor.id === id) ?? context.subjects?.find((actor) => actor.id === id);
+      memoryRequire(actor, "offer party identity was not supplied");
+      return { id: actor.id, incarnation: actor.incarnation };
+    });
     record.offer = {
       termsVersionId: created[0].id,
-      proposer: write.offer.proposer,
-      participants: [...write.offer.participants],
+      proposer: participants.find((actor) => actor.id === write.offer!.proposer)!,
+      participants,
       events: [
         {
           id: operationId,
@@ -550,19 +598,20 @@ export function applyContinuityWrite(
         },
       ],
     };
+  }
   if (write.offer) {
     const offer = record.offer!;
-    for (const actorId of offer.participants)
+    for (const party of offer.participants)
       for (const act of ["accept", "refuse", "withdraw"] as const) {
         const deciding = sources.filter(
           (source) =>
             source.kind === "speech" &&
-            source.actorId === actorId &&
+            source.actorId === party.id &&
             source.act === act &&
             source.episodeId === context.episodeId,
         );
         if (deciding.length)
-          offer.events.push({ id: operationId + ":" + actorId + ":" + act, by: actorId, act, sources: deciding });
+          offer.events.push({ id: operationId + ":" + party.id + ":" + act, by: party.id, act, sources: deciding });
       }
     memoryRequire(
       write.holders.every(
@@ -629,8 +678,8 @@ export function continuityViews(
     const closing = events.findLast((event) => event.act === "withdraw" || event.act === "refuse");
     const offer = record.offer &&
       !protection?.repair && {
-        proposer: record.offer.proposer,
-        participants: [...record.offer.participants],
+        proposer: { ...record.offer.proposer },
+        participants: record.offer.participants.map((party) => ({ ...party })),
         contributions: events.map((event) => ({
           by: event.by,
           act: event.act,
@@ -643,8 +692,8 @@ export function continuityViews(
           ? closing.act === "refuse"
             ? ("refused" as const)
             : ("withdrawn" as const)
-          : record.offer.participants.every((id) =>
-                events.some((event) => event.by === id && (event.act === "offer" || event.act === "accept")),
+          : record.offer.participants.every((party) =>
+                events.some((event) => event.by === party.id && (event.act === "offer" || event.act === "accept")),
               )
             ? ("accepted" as const)
             : ("offered" as const),
@@ -659,6 +708,7 @@ export function continuityViews(
         current: head.current,
         version,
         repaired: Boolean(protection?.repair),
+        ...(record.offer ? { parties: record.offer.participants.map((party) => ({ ...party })) } : {}),
         ...(holder.kind === "room"
           ? {
               roomKnownBy: Object.entries(record.heads).flatMap(([key, value]) =>
@@ -676,8 +726,11 @@ export function continuityViews(
 
 export function continuityGuidesHolder(view: ContinuityView) {
   if (view.holder.kind !== "actor") return false;
-  if (view.owner) return continuityHolderKey(view.owner) === continuityHolderKey(view.holder);
-  return !view.offer || view.offer.participants.includes(view.holder.id);
+  const holder = view.holder;
+  if (view.owner) return continuityHolderKey(view.owner) === continuityHolderKey(holder);
+  return (
+    !view.parties || view.parties.some((party) => party.id === holder.id && party.incarnation === holder.incarnation)
+  );
 }
 
 /** Administrative protection changes no fictional event or native state and teaches nobody. */

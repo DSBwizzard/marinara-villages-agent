@@ -25,6 +25,7 @@ const at = "2026-11-09T12:00:00.000Z";
 const room: Extract<ContinuityHolder, { kind: "room" }> = { kind: "room", placeId: "home", zoneId: "parlor" };
 const mara: Extract<ContinuityHolder, { kind: "actor" }> = { kind: "actor", id: "mara", incarnation: "one" };
 const leo: typeof mara = { ...mara, id: "leo" };
+const identity = (id: string) => [mara, leo, { id: "player", incarnation: "one" }].find((actor) => actor.id === id);
 const observed: ContinuityEvidence = {
   id: "outcome",
   seed: "world",
@@ -216,7 +217,12 @@ await runCase("continuity-retrieval/fair-private-initiative", () => {
   const seen = new Set<string>();
   let history = emptyEpisodes();
   for (let turn = 0; turn < 10; turn++) {
-    const packet = selectActorContinuity(state, history, [mara, leo], at, { query: "", bytes: 2000, requiredIds: [] });
+    const packet = selectActorContinuity(state, history, [mara, leo], at, {
+      query: "",
+      bytes: 2000,
+      requiredIds: [],
+      identity,
+    });
     assert.ok(packet.bytes <= 2000);
     assert.equal(packet.packet.entries.length, 2);
     assert.equal(
@@ -226,7 +232,8 @@ await runCase("continuity-retrieval/fair-private-initiative", () => {
     );
     for (const entry of packet.packet.entries) seen.add(entry.id);
     assert.deepEqual(
-      selectActorContinuity(state, history, [mara, leo], at, { query: "", bytes: 2000, requiredIds: [] }).offered,
+      selectActorContinuity(state, history, [mara, leo], at, { query: "", bytes: 2000, requiredIds: [], identity })
+        .offered,
       packet.offered,
       "preparation alone does not advance accepted offers",
     );
@@ -242,8 +249,12 @@ await runCase("continuity-retrieval/fair-private-initiative", () => {
     "twenty motives receive fair exposure within ten accepted Mara opportunities despite twenty global exchanges per visit",
   );
   assert.deepEqual(
-    selectActorContinuity(state, emptyEpisodes(), [leo], at, { query: "private desire", bytes: 2000, requiredIds: [] })
-      .packet.entries,
+    selectActorContinuity(state, emptyEpisodes(), [leo], at, {
+      query: "private desire",
+      bytes: 2000,
+      requiredIds: [],
+      identity,
+    }).packet.entries,
     [],
   );
 });
@@ -272,6 +283,7 @@ await runCase("continuity-retrieval/minimum-initiative", () => {
     query: "",
     bytes: 2400,
     requiredIds: [],
+    identity,
   });
   assert.equal(packet.fair.length, 2);
   assert.deepEqual(
@@ -279,13 +291,24 @@ await runCase("continuity-retrieval/minimum-initiative", () => {
     ["mara", "leo"],
   );
   assert.throws(
-    () => selectActorContinuity(state, emptyEpisodes(), [mara, leo], at, { query: "", bytes: 1900, requiredIds: [] }),
+    () =>
+      selectActorContinuity(state, emptyEpisodes(), [mara, leo], at, {
+        query: "",
+        bytes: 1900,
+        requiredIds: [],
+        identity,
+      }),
     /minimum resident initiative does not fit before generation/,
   );
   let history = emptyEpisodes();
   const seen = new Set<string>();
   for (let turn = 0; turn < 20; turn++) {
-    const selected = selectActorContinuity(motives, history, [mara], at, { query: "", bytes: 240, requiredIds: [] });
+    const selected = selectActorContinuity(motives, history, [mara], at, {
+      query: "",
+      bytes: 240,
+      requiredIds: [],
+      identity,
+    });
     assert.equal(selected.packet.entries.length, 1);
     seen.add(selected.packet.entries[0].id);
     history = appendEpisode(history, accepted("one-slot-" + turn, [mara], selected.offered), "world");
@@ -330,6 +353,7 @@ await runCase("continuity-retrieval/recent-offer", () => {
     query: "Yes.",
     bytes: 2800,
     requiredIds: [],
+    identity,
   });
   const offer = packet.packet.entries.find((row) => row.id === root.id && row.for === "mara")!;
   assert.equal(offer.text, episode.privateInput);
@@ -372,7 +396,12 @@ await runCase("continuity-retrieval/new-arrival-fairness", () => {
   }
   oldId = addMotive("old");
   for (let turn = 0; turn < 20; turn++) {
-    const packet = selectActorContinuity(state, history, [mara], at, { query: "", bytes: 2000, requiredIds: [] });
+    const packet = selectActorContinuity(state, history, [mara], at, {
+      query: "",
+      bytes: 2000,
+      requiredIds: [],
+      identity,
+    });
     if (packet.offered.some((offer) => offer.ids.includes(oldId))) oldOffers++;
     history = appendEpisode(history, accepted("opportunity-" + turn, [mara], packet.offered), "world");
     addMotive("new-a-" + turn);

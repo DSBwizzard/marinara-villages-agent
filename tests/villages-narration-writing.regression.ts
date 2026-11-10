@@ -1,4 +1,4 @@
-// Test cases: narration-writing/single-request, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/required-evidence-bound, narration-writing/circumstance-provenance, narration-writing/learned-wish-initiative
+// Test cases: narration-writing/single-request, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/required-evidence-bound, narration-writing/circumstance-provenance, narration-writing/learned-wish-initiative, narration-writing/subject-scope
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -175,6 +175,34 @@ function fixture() {
     },
   };
 }
+
+await runCase("narration-writing/subject-scope", async () => {
+  const f = fixture();
+  f.state.villagers = [
+    {
+      characterId: "offstage",
+      incarnation: "original",
+      cardSnapshot: { name: "Offstage", description: "PRIVATE_SUBJECT_PROFILE" },
+    },
+  ] as never;
+  const generated = await f.writing.generate(f.scene, "Tell me about Offstage.", "chat");
+  assert(generated.readset.source.subjects!.some((row) => row.id === "offstage" && row.incarnation === "original"));
+  assert(!generated.readset.source.actors.some((row) => row.id === "offstage"));
+  assert(!JSON.stringify(f.messages()).includes("PRIVATE_SUBJECT_PROFILE"));
+  f.state.villagers[0].incarnation = "replacement";
+  f.disable();
+  const replay = await f.writing.generate(f.scene, "Tell me about Offstage.", "chat");
+  assert.deepEqual(replay.readset.source.subjects, generated.readset.source.subjects);
+  assert.equal(f.calls.purchases, 1);
+  const overflow = fixture();
+  overflow.state.villagers = Array.from({ length: 257 }, (_, index) => ({
+    characterId: "subject-" + index,
+    incarnation: "one",
+    cardSnapshot: { name: "Subject " + index },
+  })) as never;
+  await assert.rejects(overflow.writing.generate(overflow.scene, "Hello.", "chat"), /subject identity scope exceeds/);
+  assert.equal(overflow.calls.purchases, 0, "required identity scope must fail before purchase");
+});
 
 await runCase("narration-writing/learned-wish-initiative", () => {
   const f = fixture(),

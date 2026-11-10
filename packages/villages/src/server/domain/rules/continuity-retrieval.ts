@@ -104,19 +104,37 @@ export function selectRoomContinuity(
   };
 }
 
-function actorEntry(view: ContinuityView) {
+function actorEntry(view: ContinuityView, identity: (id: string) => { incarnation: string } | undefined) {
   const version = view.version;
+  const pastSubjects = version.about
+    .filter((subject) => identity(subject.id)?.incarnation !== subject.incarnation)
+    .map((subject) => subject.id);
+  const unavailableParties =
+    view.offer?.participants
+      .filter((party) => identity(party.id)?.incarnation !== party.incarnation)
+      .map((party) => party.id) ?? [];
   return {
     id: view.id,
     for: view.holder.kind === "actor" ? view.holder.id : "",
     text: version.text,
     class: version.class,
     ...(view.owner ? { owner: view.owner.id } : {}),
+    ...(view.owner && identity(view.owner.id)?.incarnation !== view.owner.incarnation ? { pastOwner: true } : {}),
     ...(view.current ? { current: true } : {}),
-    ...(version.about.length ? { about: version.about } : {}),
+    ...(version.about.length ? { about: version.about.map((row) => row.id) } : {}),
+    ...(pastSubjects.length ? { pastSubjects } : {}),
     ...(version.parentId ? { parent: version.parentId, facet: version.facet } : {}),
     ...(version.closed ? { closed: version.closed.reason } : {}),
-    ...(view.offer ? { offer: view.offer } : {}),
+    ...(view.offer
+      ? {
+          offer: {
+            ...view.offer,
+            proposer: view.offer.proposer.id,
+            participants: view.offer.participants.map((party) => party.id),
+            ...(unavailableParties.length ? { unavailableParties } : {}),
+          },
+        }
+      : {}),
   };
 }
 
@@ -126,7 +144,12 @@ export function selectActorContinuity(
   episodes: EpisodeCollection,
   holders: Extract<ContinuityHolder, { kind: "actor" }>[],
   at: string,
-  request: { query: string; bytes: number; requiredIds: string[] },
+  request: {
+    query: string;
+    bytes: number;
+    requiredIds: string[];
+    identity: (id: string) => { incarnation: string } | undefined;
+  },
 ) {
   memoryRequire(Number.isSafeInteger(request.bytes) && request.bytes > 0, "invalid actor context budget");
   const all = holders.flatMap((holder) =>
@@ -137,7 +160,6 @@ export function selectActorContinuity(
       continuityProtectionUnits(collection, holder, episodeSourceGraph(episodes.records, holder)),
     ),
   );
-  const active = new Set(holders.map((holder) => holder.id));
   const recentVersions = new Set(
     recentSharedEpisodes(episodes, holders).flatMap((episode) => episode.continuityVersionIds),
   );
@@ -150,7 +172,10 @@ export function selectActorContinuity(
       (row.current && row.offer && recentOffers.has(row.id)) ||
       (row.current &&
         row.version.facet === "boundary" &&
-        (!row.version.about.length || row.version.about.some((id) => active.has(id)))),
+        (!row.version.about.length ||
+          row.version.about.some((subject) =>
+            holders.some((holder) => holder.id === subject.id && holder.incarnation === subject.incarnation),
+          ))),
   );
   memoryRequire(
     request.requiredIds.every((id) => all.some((row) => row.id === id)),
@@ -166,7 +191,10 @@ export function selectActorContinuity(
       if (!required.includes(parent)) required.push(parent);
     }
   const selected = [...required];
-  const packet = () => ({ partial: selected.length < all.length, entries: selected.map(actorEntry) });
+  const packet = () => ({
+    partial: selected.length < all.length,
+    entries: selected.map((view) => actorEntry(view, request.identity)),
+  });
   const size = () => Buffer.byteLength(JSON.stringify(packet()));
   memoryRequire(size() <= request.bytes, "required actor continuity does not fit before generation");
   const take = (row: ContinuityView, minimum = false) => {
@@ -229,7 +257,9 @@ export function selectActorContinuity(
     if (foreground) take(foreground);
   }
   for (const row of surplus) take(row);
-  for (const { row, score } of rank(all, request.query, (row) => [row.version.text, ...row.version.about].join(" ")))
+  for (const { row, score } of rank(all, request.query, (row) =>
+    [row.version.text, ...row.version.about.map((subject) => subject.id)].join(" "),
+  ))
     if (score > 0) take(row);
   return {
     packet: packet(),

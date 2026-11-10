@@ -28,7 +28,7 @@ export type ContinuityVersion = {
   createdRevision: number;
   text: string;
   class: ContinuityClass;
-  about: string[];
+  about: { id: string; incarnation: string }[];
   parentId?: string;
   facet?: "reason" | "attention" | "approach" | "connection" | "stance" | "expectation" | "concern" | "boundary";
   sources: ContinuityEvidence[];
@@ -57,8 +57,8 @@ export type ContinuityRecord = {
   /** Terms live only in this immutable version's text. */
   offer?: {
     termsVersionId: string;
-    proposer: string;
-    participants: string[];
+    proposer: { id: string; incarnation: string };
+    participants: { id: string; incarnation: string }[];
     events: {
       id: string;
       by: string;
@@ -86,7 +86,7 @@ export type ContinuityWrite = {
   text?: string;
   class?: ContinuityClass;
   current?: boolean;
-  about?: string[];
+  about?: { id: string; incarnation: string }[];
   parentId?: string;
   facet?: ContinuityVersion["facet"];
   retire?: "fulfilled" | "withdrawn" | "ended";
@@ -103,6 +103,7 @@ export type ContinuityAdmission = {
   episodeId: string;
   at: string;
   actors: { id: string; incarnation: string }[];
+  subjects?: { id: string; incarnation: string }[];
   continuityRevision?: number;
   /** Canonical rosters of the historical source episodes actually fitted in this request. */
   sourceActors?: Record<string, { id: string; incarnation: string }[]>;
@@ -126,9 +127,10 @@ export type ContinuityView = {
   version: ContinuityVersion;
   repaired: boolean;
   roomKnownBy?: string[];
+  parties?: { id: string; incarnation: string }[];
   offer?: {
-    proposer: string;
-    participants: string[];
+    proposer: { id: string; incarnation: string };
+    participants: { id: string; incarnation: string }[];
     state: "offered" | "accepted" | "refused" | "withdrawn";
     contributions: { by: string; act: "offer" | "accept" | "refuse" | "withdraw"; sources: ContinuityEvidence[] }[];
   };
