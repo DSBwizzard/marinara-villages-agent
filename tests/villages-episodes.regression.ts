@@ -26,7 +26,10 @@ import {
   continuitySourceUnit,
 } from "../packages/villages/src/server/domain/rules/continuity.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { retainNativeFact } from "../packages/villages/src/server/domain/rules/native-continuity.js";
+import {
+  retainNativeFact,
+  initializeRoomContinuity,
+} from "../packages/villages/src/server/domain/rules/native-continuity.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
 import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
@@ -37,6 +40,16 @@ import {
 } from "../packages/villages/src/server/adapters/storage/continuity-pages.js";
 import { episodeSourceGraph, episodeUnit } from "../packages/villages/src/server/domain/decoding/episode-codec.js";
 import { assertContinuityRetention } from "../packages/villages/src/server/domain/rules/continuity-retention.js";
+import {
+  narrationContinuityContext,
+  fittedNarrationReadset,
+} from "../packages/villages/src/server/domain/rules/narration-context.js";
+import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
+import { venueFixture } from "./helpers/venues.fixture.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
 
 const at = "2026-11-09T12:00:00.000Z";
 const actor = (id: string): Extract<ContinuityHolder, { kind: "actor" }> => ({ kind: "actor", id, incarnation: "one" });
@@ -657,6 +670,126 @@ await runCase("episodes/independent-spans", async () => {
       { withheld: true },
       "either protected span suppresses the whole raw submission",
     );
+    const state = {
+      ...defaultVillageState(),
+      ...cold.value,
+      seed: "world",
+      setupAt: at,
+      foundedAt: at,
+      timeZone: "UTC",
+    };
+    state.villagers = [
+      { characterId: "mara", incarnation: "one", cardSnapshot: { name: "Mara" } },
+    ] as VillageState["villagers"];
+    const venue = venueFixture({
+      id: "home",
+      name: "Home",
+      zones: [
+        {
+          ...defaultVenueSpace("other"),
+          id: "parlor",
+          name: "Parlor",
+          kind: "public",
+          description: "A room with a bench.",
+          connectedTo: ["exterior"],
+        },
+      ],
+    });
+    state.venues = [venue];
+    for (const zone of venue.zones!)
+      initializeRoomContinuity(state, venue.id, zone.id, zone.description, "span-room", at);
+    const scene = zoneEventScene(
+      coerceSession({
+        version: 5,
+        id: "fresh-span-scene",
+        villageSeed: state.seed,
+        placeId: venue.id,
+        zoneId: "parlor",
+        startedAt: at,
+        status: "active",
+        activeIds: ["mara"],
+        participants: [{ characterId: "mara", name: "Mara", doing: "Remembering" }],
+        sceneAttendance: {
+          capturedAt: at,
+          layout: captureSceneLayout(venue),
+          occupants: [{ characterId: "mara", name: "Mara", doing: "Remembering", zoneId: "parlor" }],
+        },
+      }),
+      venue,
+    );
+    const clean = sources[1 - protectedIndex];
+    const context = narrationContinuityContext(
+        state,
+        scene,
+        venue,
+        "learn-other-span",
+        "What do you remember about " + clean.excerpt,
+        at,
+      ),
+      readset = fittedNarrationReadset(
+        state,
+        context,
+        context.parts.map((part) => part.block.evidenceId!),
+      ),
+      ref = Object.entries(readset.source.historical).find(
+        ([, source]) =>
+          source.episodeId === original.id && source.kind === "speech" && source.excerpt === clean.excerpt,
+      )?.[0];
+    assert(ref, "the unrelated exact historical excerpt is actually fitted after cold reopen");
+    assert(
+      !Object.values(readset.source.historical).some(
+        (source) => source.kind === "speech" && source.excerpt === sources[protectedIndex].excerpt,
+      ),
+    );
+    const raw = {
+      segments: [
+        { id: "answer", kind: "dialogue", speakerId: "mara", text: "I remember that lesson.", requires: ["learning"] },
+      ],
+      keep: [
+        {
+          id: "learning",
+          for: ["mara"],
+          replace: continuity.records[1 - protectedIndex].id,
+          text: clean.excerpt,
+          source: [ref],
+          protection: { disposition: "clear", roots: [] },
+        },
+      ],
+    };
+    const accepted = acceptNarration(state, { raw, readset, responseDigest: memoryHash(raw) }, "learn-other-span", at);
+    assert(!accepted.held && accepted.episode, JSON.stringify(accepted.rejected));
+    assert.equal(
+      state.continuity.records.find((row) => row.id === continuity.records[1 - protectedIndex].id)!.heads[key].revision,
+      2,
+      "a fresh screened keep can still update unrelated meaning from the same original submission",
+    );
+    assertContinuityRetention(state.continuity, state.episodes);
+    const denied = structuredClone(raw);
+    denied.keep[0].source = ["h:protected-not-fitted"];
+    denied.keep[0].text = sources[protectedIndex].excerpt;
+    const blockedContext = narrationContinuityContext(
+        state,
+        scene,
+        venue,
+        "blocked-span",
+        "What do you remember about " + clean.excerpt,
+        at,
+      ),
+      blockedReadset = fittedNarrationReadset(
+        state,
+        blockedContext,
+        blockedContext.parts.map((part) => part.block.evidenceId!),
+      );
+    const beforeDenied = memoryHash(state);
+    const rejected = acceptNarration(
+      state,
+      { raw: denied, readset: blockedReadset, responseDigest: memoryHash(denied) },
+      "blocked-span",
+      at,
+    );
+    assert(rejected.held);
+    assert.match(rejected.rejected[0].reason, /source.*(fitted|supplied)|fitted.*source/);
+    assert.equal(memoryHash(state), beforeDenied, "an unfitted protected excerpt cannot publish a new keep");
   }
 });
 

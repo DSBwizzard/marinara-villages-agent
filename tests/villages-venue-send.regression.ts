@@ -41,15 +41,11 @@ assert.deepEqual(sceneResend({ ...saved, status: "complete", error: "invalid-jso
   submissionId: "original",
   retryOfAttemptId: "attempt",
 });
-for (const mode of ["chat", "leave", "contact"])
+for (const message of [" Hello", "Hello ", "Hello\n"])
   assert.deepEqual(
-    sceneResend(
-      { ...saved, kind: "change-interpretation", status: "complete", error: "Invalid background retry.", input: {} },
-      { message: "My next reply", mode },
-      "next",
-    ),
-    { submissionId: "next" },
-    "A failed completed interpretation cannot block a new Scene operation",
+    sceneResend(saved, { ...saved.input, message }, "next"),
+    { submissionId: "next", retryOfAttemptId: "attempt", replaceOfOperationId: "original" },
+    "Changing exact whitespace is a deliberate replacement of the saved contribution",
   );
 for (const mode of ["chat", "leave", "contact"])
   assert.deepEqual(
