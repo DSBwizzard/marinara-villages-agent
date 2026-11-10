@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { MailboxState } from "../models/social-mail.js";
+import type { MailboxState, PersonalMailInput } from "../models/social-mail.js";
 import type { EpisodeCollection } from "../models/episode-model.js";
 import { continuityEvidenceSchema } from "./continuity-codec.js";
 import { mailReceipt } from "../rules/mail-evidence.js";
@@ -39,6 +39,67 @@ export const mailPlanSchema = z
     responseDigest: digest,
   })
   .strict();
+const mailCaptureSchema = z
+  .object({
+    seed: id,
+    setupAt: at,
+    at,
+    actors: z.array(party).length(2),
+    references: z.array(party).max(256),
+    subjects: z.array(party).max(256),
+    continuityRevision: revision,
+    supplied: mailPlanSchema.shape.admission.shape.supplied,
+    protection: z.record(digest, digest),
+    protectedRoots: z.array(id),
+    historical: z.record(z.string().regex(/^h:/), continuityEvidenceSchema),
+    provenance: z.record(z.string(), units),
+    sourceActors: z.record(z.string(), z.array(party).max(32)),
+    prompt: z
+      .object({
+        entries: z.array(z.record(z.string(), z.unknown())),
+        history: z.unknown(),
+        protections: z.array(z.unknown()),
+      })
+      .strict(),
+  })
+  .strict();
+const personalInput = z
+  .object({
+    seed: id,
+    setupAt: at,
+    residentId: id,
+    incarnation: id,
+    residentName: z.string().min(1),
+    identity: z.string().min(1),
+    incoming: z
+      .object({
+        id: z.string().min(1).max(512),
+        at,
+        from: party,
+        to: party,
+        text: z.string().min(1).max(4000),
+        requestId: z.string().regex(/^[a-zA-Z0-9_-]{1,200}$/),
+      })
+      .strict(),
+    capture: mailCaptureSchema,
+  })
+  .strict();
+export function readPersonalMailInput(raw: unknown): PersonalMailInput {
+  const value = personalInput.parse(raw);
+  memoryRequire(
+    value.incoming.from.id === "player" &&
+      value.incoming.to.id === value.residentId &&
+      value.incoming.to.incarnation === value.incarnation &&
+      value.capture.seed === value.seed &&
+      value.capture.setupAt === value.setupAt &&
+      memoryHash(value.capture.actors) === memoryHash([value.incoming.from, value.incoming.to]) &&
+      value.incoming.at <= value.capture.at &&
+      Buffer.byteLength(JSON.stringify(value.capture)) <= 160000,
+    "invalid captured personal mail source",
+  );
+  mailReceipt(value.seed, value.incoming, value.incoming.text, "written");
+  return value as PersonalMailInput;
+}
 const message = z
   .object({
     id: z.string().min(1).max(512),
@@ -153,7 +214,7 @@ export function assertMailboxRetention(value: MailboxState, episodes: EpisodeCol
       memoryRequire(
         publishedAt
           ? accepted &&
-              accepted.episode.acceptedAt === publishedAt &&
+              accepted.episode.capturedAt === publishedAt &&
               memoryHash(accepted.receipt) === memoryHash(expected)
           : !accepted,
         "mail envelope lost its accepted delivery or read receipt",
@@ -165,7 +226,7 @@ export function assertMailboxRetention(value: MailboxState, episodes: EpisodeCol
         read = receipts.get(mailReceipt(seed, original, original.text, "read").id),
         writing = receipts.get(mailReceipt(seed, row, row.text, "written").id);
       memoryRequire(
-        read && writing && read.sequence < writing.sequence && read.episode.acceptedAt <= writing.episode.capturedAt,
+        read && writing && read.sequence < writing.sequence && read.episode.capturedAt <= writing.episode.capturedAt,
         "letter reply predates the original accepted reading",
       );
     }

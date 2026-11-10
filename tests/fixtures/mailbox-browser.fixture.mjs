@@ -1,6 +1,4 @@
-import { createHash } from "node:crypto";
 import { defaultVillageState } from "../../packages/villages/src/server/domain/decoding/village-codec.js";
-import { defaultRelationshipState } from "../../packages/villages/src/server/domain/rules/relationship-rules.js";
 import {
   createMailboxPresentation,
   readMailboxQuery,
@@ -12,33 +10,36 @@ export function createBrowserMailbox(village, mailbox) {
   const world = { ...defaultVillageState(), seed: "browser-mailbox", setupAt: "2026-10-30T00:00:00.000Z" };
   const scope = villageWorldScope(world);
   function presentation() {
-    world.villagers = village.villagers.map((resident) => ({ ...resident, cardSnapshot: { name: resident.name } }));
-    const state = defaultRelationshipState(world.seed),
+    world.villagers = village.villagers.map((resident) => ({
+      ...resident,
+      incarnation: "browser:" + resident.characterId,
+      cardSnapshot: { name: resident.name },
+    }));
+    const state = { format: 1, revision: 1, messages: {} },
       jobs = [];
     for (const thread of mailbox.threads) {
       const resident = thread.residentId;
-      state.mailThreads[thread.id] = {
-        id: thread.id,
-        revision: thread.revision,
-        participantIds: ["player", resident],
-        messages: thread.messages.map((message) => {
-          const sourceHash = createHash("sha256")
-            .update(message.id + ":" + message.text)
-            .digest("hex");
-          if (message.status === "delivered")
-            state.mailDeliveries[message.id] = { messageId: message.id, at: message.at, sourceHash };
-          if (message.retryAvailable)
-            jobs.push({ id: "job:" + message.id, subjectId: message.id, kind: "personal-mail", status: "failed" });
-          return {
-            ...message,
-            requestId: message.id,
-            toId: message.fromId === "player" ? resident : "player",
-            sourceHash,
-            readAt: message.read ? message.at : undefined,
-            replyStatus: message.replyPending ? "pending" : "complete",
-          };
-        }),
-      };
+      for (const message of thread.messages) {
+        if (message.retryAvailable)
+          jobs.push({ id: "job:" + message.id, subjectId: message.id, kind: "personal-mail", status: "failed" });
+        state.messages[message.id] = {
+          id: message.id,
+          at: message.at,
+          text: message.text,
+          status: message.status,
+          requestId: message.id,
+          from: {
+            id: message.fromId,
+            incarnation: message.fromId === "player" ? "browser-player" : "browser:" + resident,
+          },
+          to: {
+            id: message.fromId === "player" ? resident : "player",
+            incarnation: message.fromId === "player" ? "browser:" + resident : "browser-player",
+          },
+          deliveredAt: message.status === "delivered" ? message.at : undefined,
+          readAt: message.read ? message.at : undefined,
+        };
+      }
     }
     return createMailboxPresentation(world, state, jobs);
   }

@@ -84,7 +84,7 @@ export function copySocialOutboxEntry(entry: SocialOutboxEntry): SocialOutboxEnt
 export function copyBackgroundWork(work: BackgroundInput): BackgroundInput {
   const raw = work.input as any;
   const facts = structuredClone({ ...work, input: undefined });
-  if (!raw || !["resident-planning", "personal-mail", "social-recovery"].includes(work.kind))
+  if (!raw || !["resident-planning", "social-recovery"].includes(work.kind))
     return { ...facts, input: structuredClone(raw) };
   if (work.kind === "social-recovery") {
     if (Object.hasOwn(raw, "socialHead")) return { ...facts, input: structuredClone(raw) };

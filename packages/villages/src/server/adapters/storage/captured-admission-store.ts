@@ -1,12 +1,12 @@
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import type { BackgroundKind } from "../../domain/models/background-model.js";
-import type { SocialMailInput, CapturedSocialMailInput } from "../../domain/models/social-mail.js";
+import { readPersonalMailInput } from "../../domain/decoding/mailbox-codec.js";
 import type {
   CapturedSocialOutboxEntry,
   SocialOutboxEntry,
   WorldSocialOutboxEntry,
 } from "../../domain/models/social-outbox-model.js";
-import { cloneWorldContext, copySocialOutboxEntry } from "../../domain/rules/world-context-copy.js";
+import { copySocialOutboxEntry } from "../../domain/rules/world-context-copy.js";
 import { memoryHash, memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import { copySocialWishes } from "../../domain/rules/social-wishes.js";
 import {
@@ -36,8 +36,6 @@ const nativeAdmission = (raw: any) =>
     (Array.isArray(raw.villagers) && raw.villagers.some((row: any) => row && owns(row, "wishHead"))));
 const nativeSocial = (raw: WorldSocialOutboxEntry): raw is CapturedSocialOutboxEntry =>
   owns(raw, "relationshipHead") || nativeAdmission(raw.admitted);
-const nativeMail = (raw: SocialMailInput | CapturedSocialMailInput): raw is CapturedSocialMailInput =>
-  nativeAdmission(raw.admitted);
 function requireLogicalAdmission(raw: any) {
   memoryRequire(
     raw && Array.isArray(raw.villagers) && raw.villagers.every((row: any) => Array.isArray(row.wishes)),
@@ -195,12 +193,12 @@ export function createCapturedAdmissions(documents: CapabilityDocumentStore) {
     seed: string,
     protectedOwners: CapturedAdmissionOwners,
   ): Promise<any> {
-    if (!["resident-planning", "personal-mail", "social-recovery"].includes(kind)) return structuredClone(raw);
+    if (kind === "personal-mail") return readPersonalMailInput(raw);
+    if (!["resident-planning", "social-recovery"].includes(kind)) return structuredClone(raw);
     return prepare(async (encode) => {
       memoryObject(raw);
       let value: any;
-      if (kind === "personal-mail") value = { ...raw, admitted: await encode.admission(raw.admitted, seed, true) };
-      else if (kind === "social-recovery") {
+      if (kind === "social-recovery") {
         const entry = await prepareEntry(raw.entry, seed, encode),
           { social, ...facts } = raw;
         value = {
@@ -282,16 +280,6 @@ export function createCapturedAdmissions(documents: CapabilityDocumentStore) {
           : {
               socialOutbox: await Promise.all(raw.socialOutbox.map((row: any) => prepareEntry(row, raw.seed, encode))),
             }),
-        ...(raw.socialMailOutbox === undefined
-          ? {}
-          : {
-              socialMailOutbox: await Promise.all(
-                raw.socialMailOutbox.map(async (row: any) => ({
-                  ...row,
-                  input: { ...row.input, admitted: await encode.admission(row.input.admitted, raw.seed, true) },
-                })),
-              ),
-            }),
       };
       const snapshot = structuredClone(value),
         owners = capturedWorldOwners(snapshot);
@@ -334,7 +322,7 @@ export function createCapturedAdmissions(documents: CapabilityDocumentStore) {
     raw = structuredClone(raw);
     return withRepairWork(async () => {
       capturedInputOwners(kind, raw, seed);
-      if (kind === "personal-mail") return { ...structuredClone(raw), admitted: await readAdmission(raw.admitted) };
+      if (kind === "personal-mail") return readPersonalMailInput(raw);
       if (kind === "social-recovery") {
         const { socialHead, ...facts } = raw;
         return {
@@ -377,14 +365,6 @@ export function createCapturedAdmissions(documents: CapabilityDocumentStore) {
       return decodeEntry(snapshot);
     });
   }
-  async function readMailInput(raw: SocialMailInput | CapturedSocialMailInput, seed: string): Promise<SocialMailInput> {
-    memoryRequire(raw.seed === seed, "captured mail source belongs to another World");
-    if (!nativeMail(raw)) {
-      requireLogicalAdmission(raw.admitted);
-      return { ...structuredClone({ ...raw, admitted: undefined }), admitted: cloneWorldContext(raw.admitted) };
-    }
-    return readInput("personal-mail", raw, seed);
-  }
-  return { prepareInput, prepareWorld, readInput, readSocialEntry, readMailInput, socialIdentity };
+  return { prepareInput, prepareWorld, readInput, readSocialEntry, socialIdentity };
 }
 export type CapturedAdmissionStore = ReturnType<typeof createCapturedAdmissions>;

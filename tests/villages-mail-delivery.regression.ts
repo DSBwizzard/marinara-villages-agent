@@ -1,4 +1,4 @@
-// Test cases: mail-delivery/shared-offer, mail-delivery/frozen-reading, mail-delivery/rollback, mail-delivery/private-context, mail-delivery/prior-routine, mail-delivery/unfitted-head, mail-delivery/history-provenance, mail-delivery/autonomous
+// Test cases: mail-delivery/shared-offer, mail-delivery/frozen-reading, mail-delivery/rollback, mail-delivery/private-context, mail-delivery/prior-routine, mail-delivery/unfitted-head, mail-delivery/history-provenance, mail-delivery/autonomous, mail-delivery/recovery-time
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -118,6 +118,38 @@ await runCase("mail-delivery/shared-offer", () => {
   readDeliveredLetter(f.state, f.exchange.incoming.id + ":reply", later);
   acceptMailExchange(f.state, f.exchange, later);
   assert.deepEqual(f.state, before, "lost acknowledgements replay without extra learning, acts or changed timestamps");
+});
+
+await runCase("mail-delivery/recovery-time", () => {
+  const first = fixture(),
+    recovered = fixture();
+  acceptMailExchange(first.state, first.exchange, at);
+  acceptMailExchange(recovered.state, recovered.exchange, later);
+  const replyId = recovered.exchange.incoming.id + ":reply";
+  assert.equal(recovered.state.mailbox.messages[replyId].at, at, "writing stays at its captured request time");
+  assert.deepEqual(
+    recovered.state.mailbox,
+    first.state.mailbox,
+    "storage recovery cannot mint a different written source",
+  );
+  assert.deepEqual(
+    recovered.state.episodes.records.map((row) => row.id),
+    first.state.episodes.records.map((row) => row.id),
+  );
+  assert(recovered.state.episodes.records.every((row) => row.capturedAt === at && row.acceptedAt === later));
+  assert.deepEqual(recovered.state.continuity, first.state.continuity);
+  const savedPlan = structuredClone(recovered.state.mailbox.messages[replyId].reading);
+  recovered.cold();
+  readDeliveredLetter(recovered.state, replyId, later);
+  assert.equal(recovered.state.mailbox.messages[replyId].readAt, later, "actual later reading cannot be backdated");
+  assert.equal(recovered.state.episodes.records.at(-1)!.capturedAt, later);
+  assert.deepEqual(
+    recovered.state.mailbox.messages[replyId].reading,
+    savedPlan,
+    "the frozen reading proof is unchanged",
+  );
+  recovered.cold();
+  assert.equal(recovered.rows()[0].offer?.state, "accepted");
 });
 
 await runCase("mail-delivery/frozen-reading", () => {

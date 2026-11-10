@@ -124,7 +124,7 @@ export function assertMailHistory(episodes: AcceptedEpisode[]) {
       stages.add(receipt.id);
       if (receipt.mail.phase === "written") {
         memoryRequire(!written.has(key), "letter writing identity was reused");
-        written.set(key, { receipt, at: episode.acceptedAt });
+        written.set(key, { receipt, at: episode.capturedAt });
       } else {
         const original = written.get(key);
         memoryRequire(

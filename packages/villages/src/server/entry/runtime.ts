@@ -515,14 +515,10 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     completeWithRoom,
   });
   const personalMail = createSocialMail({
-    readMailInput: (value, seed) => createCapturedAdmissions(villagesDocuments()).readMailInput(value, seed),
     withWork: withRepairWork,
-    processLiveMemories,
     withVillageSceneAcceptance,
     readVillageSnapshot,
     mutateVillageState: mutateVillageMemoryState,
-    mutateRelationships,
-    readRelationshipState,
     queueBackgroundJob,
     retryBackgroundJob,
     backgroundWorkSummaries,
@@ -549,7 +545,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseRelationships = configureWorldRelationships({
     readRelationshipState,
-    processPersonalMailOutbox: personalMail.processOutbox,
     reconcileRelationships,
     persistRelationshipAuthority,
     processSocialOutbox,
@@ -916,7 +911,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     wishIdentity,
     afterCatchup: advanceReturnCatchup,
     afterCatchupFailure: advanceReturnCatchup,
-    automaticMail: personalMail.automaticOutbox,
+    automaticMail: personalMail.automaticMail,
     readVillageState,
     readEffectiveVillagerCard,
     queueBackgroundJob,
@@ -985,7 +980,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       withRepairWork,
       withCurrentJobWrite: (work) => withRepairWork(() => villageRepository.withAuthorityLock(work)),
       activityChanged: requestVillageRefresh,
-      readVillageAuthority,
+      readVillageAuthority: (options) => villageRepository.readAuthority(options),
       mutateVillageAuthority: (update, options) => villageRepository.mutateAuthority(update, options),
       villagesDocuments,
       villagesLogger,

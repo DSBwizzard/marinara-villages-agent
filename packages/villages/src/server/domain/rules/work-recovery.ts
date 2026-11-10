@@ -111,6 +111,7 @@ export function backgroundRecoveryState(value: unknown): WorkRecoveryState {
 export function canAutomaticallyRetryBackgroundJob(job: Job): boolean {
   const failed = job.failedStep === null ? undefined : job.steps[job.failedStep];
   return (
+    job.kind !== "personal-mail" &&
     job.status === "failed" &&
     !job.automaticRetryUsed &&
     !job.connectionPaused &&

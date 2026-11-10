@@ -4,76 +4,54 @@ import type {
   MailboxView,
   PersonalLetter,
   PersonalLetterSummary,
-  PersonalMailThread,
 } from "../../../shared/contracts/mailbox.js";
 import type { BackgroundSummary } from "../models/background-model.js";
-import type { RelationshipState } from "../models/relationship-types.js";
-import type { SocialMailMessage, SocialMailThread, WorldSocialMailOutbox } from "../models/social-mail.js";
+import type { MailboxMessage, MailboxState } from "../models/social-mail.js";
 import type { VillageState } from "../models/world.js";
 import { badRequest, conflict } from "./errors.js";
 import { villageWorldScope } from "./village-identity.js";
-import { semanticHash } from "./semantic-contract.js";
+import { memoryHash } from "./memory-integrity.js";
 
-/** A checkpoint may rewind the request-ID directory. Bind commands to the exact content the player selected. */
+const peer = (message: MailboxMessage) => (message.from.id === "player" ? message.to : message.from);
+export const mailboxThreadId = (residentId: string) => "personal:" + residentId;
 export function mailboxLetterIdentity(
   village: VillageState,
-  state: RelationshipState,
+  _state: MailboxState,
   threadId: string,
-  message: SocialMailMessage,
+  message: MailboxMessage,
 ) {
-  return semanticHash([
+  return memoryHash([
     villageWorldScope(village),
     threadId,
     message.id,
-    message.fromId,
-    message.toId,
     message.at,
-    message.sourceHash ?? null,
-    message.fromId === "player" ? null : (state.mailDeliveries[message.id]?.sourceHash ?? null),
+    message.from,
+    message.to,
     message.text,
-    message.disclosures ?? [],
-    message.wishDisclosures ?? [],
+    message.reading ?? null,
   ]);
 }
-export function mailboxRecoveryIdentity(village: VillageState, entry: WorldSocialMailOutbox) {
-  return semanticHash([
-    villageWorldScope(village),
-    entry.id,
-    entry.input.threadId,
-    entry.input.sourceHash,
-    entry.input.admittedAt,
-    entry.result,
-    entry.error,
-  ]);
-}
-
-const PAGE_SIZE = 50,
-  LETTER_PAGE_BYTES = 64 * 1024,
-  RECOVERY_PAGE_BYTES = 16 * 1024;
-type Key = [string, string, string];
-type Kind = "inbox" | "sent" | "recovery";
-const busy = (status?: string) => ["queued", "running", "paused"].includes(status ?? "");
-function visibleMail(thread: SocialMailThread, message: SocialMailMessage, state: RelationshipState) {
-  return (
-    thread.participantIds.includes("player") &&
-    (message.fromId === "player" || (message.toId === "player" && !!state.mailDeliveries[message.id]))
-  );
-}
-export function hasUnreadMail(state: RelationshipState | undefined): boolean {
+export function hasUnreadMail(state: MailboxState | undefined) {
   return (
     !!state &&
-    Object.values(state.mailThreads).some((thread) =>
-      thread.messages.some(
-        (message) => message.fromId !== "player" && !message.readAt && visibleMail(thread, message, state),
-      ),
+    Object.values(state.messages).some(
+      (message) => message.to.id === "player" && message.status === "delivered" && !message.readAt,
     )
   );
 }
-const compare = (a: Key, b: Key) => {
-  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i]! < b[i]! ? -1 : 1;
-  return 0;
-};
-const cursorSchema = z
+const scopeId = z.string().regex(/^[a-f0-9]{64}$/);
+export function readMailboxQuery(raw: unknown): MailboxQuery {
+  return z
+    .object({
+      scope: scopeId.optional(),
+      folder: z.enum(["inbox", "sent"]).optional(),
+      cursor: z.string().min(1).max(4096).optional(),
+      recoveryCursor: z.string().min(1).max(4096).optional(),
+    })
+    .strict()
+    .parse(raw ?? {});
+}
+const cursor = z
   .object({
     version: z.literal(1),
     seed: z.string(),
@@ -82,24 +60,18 @@ const cursorSchema = z
     after: z.tuple([z.string(), z.string(), z.string()]),
   })
   .strict();
-export function readMailboxQuery(raw: unknown): MailboxQuery {
-  return z
-    .object({
-      scope: z
-        .string()
-        .regex(/^[a-f0-9]{64}$/)
-        .optional(),
-      folder: z.enum(["inbox", "sent"]).optional(),
-      cursor: z.string().min(1).max(4096).optional(),
-      recoveryCursor: z.string().min(1).max(4096).optional(),
-    })
-    .strict()
-    .parse(raw ?? {});
-}
+type Key = [string, string, string];
+type Kind = "inbox" | "sent" | "recovery";
+const compare = (a: Key, b: Key) => {
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1;
+  return 0;
+};
+const busy = (status: string) => ["queued", "running", "paused"].includes(status);
 
-/** Index retry state once; project only selected summaries or one exact authorized letter. */
-export function createMailboxPresentation(village: VillageState, state: RelationshipState, jobs: BackgroundSummary[]) {
-  const jobByMessage = new Map<string, BackgroundSummary>();
+/** Native letters own delivery; threads and bounded UI pages are projections, never fictional relationship state. */
+export function createMailboxPresentation(village: VillageState, state: MailboxState, jobs: BackgroundSummary[]) {
+  const scope = { version: 1 as const, seed: village.seed, setupAt: village.setupAt },
+    jobByMessage = new Map<string, BackgroundSummary>();
   for (const job of jobs) {
     if (job.kind !== "personal-mail") continue;
     const prior = jobByMessage.get(job.subjectId);
@@ -110,111 +82,97 @@ export function createMailboxPresentation(village: VillageState, state: Relation
     )
       jobByMessage.set(job.subjectId, job);
   }
-  const errors = new Map((village.socialMailOutbox ?? []).filter((row) => row.error).map((row) => [row.id, row]));
-  const residents = new Map(village.villagers.map((resident) => [resident.characterId, resident]));
-  const metadata = new Map<string, PersonalMailThread>();
-  function threadInfo(thread: SocialMailThread) {
-    if (metadata.has(thread.id)) return metadata.get(thread.id)!;
-    const residentId = thread.participantIds.find((id) => id !== "player");
-    if (!residentId || !thread.participantIds.includes("player")) throw badRequest("That thread is unavailable.");
-    const resident = residents.get(residentId);
-    const letterFontId =
-      resident?.letterFontId ??
-      (village.formerLetterFonts && Object.hasOwn(village.formerLetterFonts, residentId)
-        ? village.formerLetterFonts[residentId]
-        : undefined);
-    if (letterFontId === undefined) throw conflict("This saved correspondent has no writing-style assignment.");
-    const result = {
-      id: thread.id,
-      residentId,
+  const visible = (message: MailboxMessage) =>
+    message.from.id === "player" || (message.to.id === "player" && message.status === "delivered");
+  function threadInfo(message: MailboxMessage) {
+    const party = peer(message),
+      resident = village.villagers.find(
+        (resident) => resident.characterId === party.id && resident.incarnation === party.incarnation,
+      );
+    const letterFontId = resident?.letterFontId ?? village.formerLetterFonts?.[party.id];
+    if (letterFontId === undefined) throw conflict("This correspondent has no writing-style assignment.");
+    return {
+      id: mailboxThreadId(party.id),
+      residentId: party.id,
       residentName: resident?.cardSnapshot.name ?? "Former resident",
-      revision: thread.revision,
+      ...(!resident ? { former: true as const } : {}),
       letterFontId,
+      revision: state.revision,
     };
-    metadata.set(thread.id, result);
-    return result;
   }
-  function canRecover(message: SocialMailMessage | undefined, id: string) {
+  function canRecover(message: MailboxMessage) {
+    const job = jobByMessage.get(message.id);
     return (
-      !message?.replyUnavailable &&
-      !["cancelled", "undeliverable"].includes(message?.status ?? "") &&
-      !busy(jobByMessage.get(id)?.status)
+      message.status === "pending" &&
+      (!job || !busy(job.status)) &&
+      (message.admissionFailed === true || (!!job && ["failed", "interrupted"].includes(job.status)))
     );
   }
-  function summary(thread: SocialMailThread, message: SocialMailMessage) {
-    const job = jobByMessage.get(message.id);
-    const retryAvailable =
-      canRecover(message, message.id) &&
-      (errors.has(message.id) ||
-        (message.admissionFailed === true && message.status === "pending" && !job) ||
-        ["failed", "interrupted"].includes(job?.status ?? ""));
-    let preview = "",
-      characters = 0;
-    if (message.fromId === "player" || message.readAt)
-      for (const character of message.text) {
-        if (characters++ >= 160) break;
-        preview += character;
-      }
+  function summary(message: MailboxMessage) {
+    const job = jobByMessage.get(message.id),
+      retryAvailable = canRecover(message),
+      known = message.from.id === "player" || !!message.readAt;
     return {
-      token: mailboxLetterIdentity(village, state, thread.id, message),
+      token: mailboxLetterIdentity(village, state, mailboxThreadId(peer(message).id), message),
       id: message.id,
-      fromId: message.fromId,
-      preview,
+      fromId: message.from.id,
+      preview: known ? [...message.text].slice(0, 160).join("") : "",
       at: message.at,
-      status: state.mailDeliveries[message.id] ? ("delivered" as const) : message.status,
+      status: message.status,
       read: !!message.readAt,
-      replyPending: message.replyStatus === "pending",
+      replyPending:
+        message.from.id === "player" &&
+        message.status === "pending" &&
+        (!job || !["failed", "interrupted"].includes(job.status)),
       retryAvailable,
       error:
-        message.status === "undeliverable" || message.replyUnavailable
+        message.status === "undeliverable"
           ? message.error
           : retryAvailable
             ? "Letter processing needs attention."
             : undefined,
     };
   }
-  const scope = { version: 1, seed: village.seed, setupAt: village.setupAt };
-  function after(value: string | undefined, kind: Kind): Key | undefined {
-    if (!value) return undefined;
-    let parsed: z.infer<typeof cursorSchema>;
-    try {
-      if (!/^[a-zA-Z0-9_-]{1,4096}$/.test(value)) throw Error();
-      parsed = cursorSchema.parse(JSON.parse(Buffer.from(value, "base64url").toString("utf8")));
-    } catch {
-      throw badRequest("Choose a valid mailbox page.");
-    }
-    if (parsed.seed !== scope.seed || parsed.setupAt !== scope.setupAt || parsed.kind !== kind)
-      throw conflict("The mailbox changed. Open its newest page.");
-    return [parsed.after[0]!, parsed.after[1]!, parsed.after[2]!];
-  }
   function page<T, R>(
     rows: { key: Key; value: T }[],
-    cursor: string | undefined,
+    value: string | undefined,
     kind: Kind,
     limit: number,
     project: (value: T) => R,
   ) {
-    const boundary = after(cursor, kind);
+    let after: Key | undefined;
+    if (value) {
+      try {
+        if (!/^[a-zA-Z0-9_-]{1,4096}$/.test(value)) throw Error();
+        const parsed = cursor.parse(JSON.parse(Buffer.from(value, "base64url").toString("utf8")));
+        if (parsed.seed !== scope.seed || parsed.setupAt !== scope.setupAt || parsed.kind !== kind)
+          throw conflict("The Mailbox changed. Open its newest page.");
+        after = [parsed.after[0]!, parsed.after[1]!, parsed.after[2]!];
+      } catch (error) {
+        if (error instanceof Error && "statusCode" in error) throw error;
+        throw badRequest("Choose a valid Mailbox page.");
+      }
+    }
     rows.sort((a, b) => compare(b.key, a.key));
     const result: R[] = [];
     let bytes = 2,
       last: Key | undefined,
       more = false;
     for (const row of rows) {
-      if (boundary && compare(row.key, boundary) >= 0) continue;
-      if (result.length >= PAGE_SIZE) {
+      if (after && compare(row.key, after) >= 0) continue;
+      if (result.length >= 50) {
         more = true;
         break;
       }
-      const value = project(row.value),
-        size = Buffer.byteLength(JSON.stringify(value)) + 1;
+      const projected = project(row.value),
+        size = Buffer.byteLength(JSON.stringify(projected)) + 1;
       if (size + 2 > limit)
-        throw new Error("A mailbox entry exceeds its response budget. Its saved contents are retained.");
+        throw new Error("A Mailbox entry exceeds its response budget. Its saved contents are retained.");
       if (bytes + size > limit) {
         more = true;
         break;
       }
-      result.push(value);
+      result.push(projected);
       bytes += size;
       last = row.key;
     }
@@ -225,40 +183,32 @@ export function createMailboxPresentation(village: VillageState, state: Relation
     };
   }
   function mailbox(query: MailboxQuery): MailboxView {
-    const folder = query.folder ?? "inbox";
-    const letters: { key: Key; value: { thread: SocialMailThread; message: SocialMailMessage } }[] = [];
-    const sources = new Map<string, Map<string, SocialMailMessage>>();
-    for (const thread of Object.values(state.mailThreads)) {
-      const messages = new Map<string, SocialMailMessage>();
-      sources.set(thread.id, messages);
-      for (const message of thread.messages) {
-        messages.set(message.id, message);
-        if (visibleMail(thread, message, state) && (folder === "sent") === (message.fromId === "player"))
-          letters.push({ key: [message.at, thread.id, message.id], value: { thread, message } });
-      }
-    }
-    const selected = page(
-      letters,
-      query.cursor,
-      folder,
-      LETTER_PAGE_BYTES,
-      ({ thread, message }): PersonalLetterSummary => ({
-        thread: threadInfo(thread),
-        message: summary(thread, message),
-      }),
-    );
-    const pending = [...errors.values()]
-      .filter((row) => canRecover(sources.get(row.input.threadId)?.get(row.id), row.id))
-      .map((row) => ({ key: [row.input.sourceAt, row.input.threadId, row.id] as Key, value: row }));
-    const recovery = page(pending, query.recoveryCursor, "recovery", RECOVERY_PAGE_BYTES, (row) => ({
-      token: sources.get(row.input.threadId)?.get(row.id)
-        ? mailboxLetterIdentity(village, state, row.input.threadId, sources.get(row.input.threadId)!.get(row.id)!)
-        : mailboxRecoveryIdentity(village, row),
-      threadId: row.input.threadId,
-      messageId: row.id,
-      label: "Saved mail processing needs recovery.",
-      reinterpretRequired: !!row.reinterpretRequired,
-    }));
+    const folder = query.folder ?? "inbox",
+      letters = Object.values(state.messages).filter(
+        (message) => visible(message) && (folder === "sent") === (message.from.id === "player"),
+      ),
+      key = (message: MailboxMessage): Key => [message.at, mailboxThreadId(peer(message).id), message.id],
+      selected = page(
+        letters.map((message) => ({ key: key(message), value: message })),
+        query.cursor,
+        folder,
+        64 * 1024,
+        (message): PersonalLetterSummary => ({ thread: threadInfo(message), message: summary(message) }),
+      ),
+      pending = Object.values(state.messages).filter(canRecover),
+      recovery = page(
+        pending.map((message) => ({ key: key(message), value: message })),
+        query.recoveryCursor,
+        "recovery",
+        16 * 1024,
+        (message) => ({
+          token: summary(message).token,
+          threadId: mailboxThreadId(peer(message).id),
+          messageId: message.id,
+          label: "Letter processing needs attention.",
+          reinterpretRequired: false,
+        }),
+      );
     return {
       scope: villageWorldScope(village),
       folder,
@@ -271,14 +221,13 @@ export function createMailboxPresentation(village: VillageState, state: Relation
     };
   }
   function letter(threadId: string, messageId: string): PersonalLetter {
-    if (!Object.hasOwn(state.mailThreads, threadId)) throw badRequest("That letter is unavailable.");
-    const thread = state.mailThreads[threadId];
-    const message = thread?.messages.find((row) => row.id === messageId);
-    if (!thread || !message || !visibleMail(thread, message, state)) throw badRequest("That letter is unavailable.");
+    const message = Object.hasOwn(state.messages, messageId) ? state.messages[messageId] : undefined;
+    if (!message || mailboxThreadId(peer(message).id) !== threadId || !visible(message))
+      throw badRequest("That letter is unavailable.");
     return {
       scope: villageWorldScope(village),
-      thread: threadInfo(thread),
-      message: { ...summary(thread, message), text: message.text },
+      thread: threadInfo(message),
+      message: { ...summary(message), text: message.from.id === "player" || message.readAt ? message.text : "" },
     };
   }
   return { mailbox, letter };

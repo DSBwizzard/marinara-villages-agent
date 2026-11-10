@@ -15,6 +15,8 @@ import {
   type MemoryHead,
 } from "./memory-payload-store.js";
 import { withRepairWork } from "./repair-gate.js";
+import { validateBackgroundJobRecord } from "./background-responses.js";
+import type { Job } from "../../domain/models/background-model.js";
 type CapabilityDocumentRecord = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
 const VILLAGE_DOC_ID = "villages-village";
 const historyFields = ["continuity", "episodes", "worldPlaces", "mailbox"] as const;
@@ -136,6 +138,31 @@ export function createVillageRepository(
             const nextHead = loaded ? await payloads.prepare(state, head, record?.revision ?? 0) : head;
             const stamp = new Date().toISOString(),
               data = encodeRoot(state, nextHead);
+            for (const source of options?.sourceJobs ?? []) {
+              const row = await store.getById(VILLAGES_PACKAGE_ID, source.slot);
+              memoryRequire(
+                row?.id === source.slot &&
+                  row.packageId === VILLAGES_PACKAGE_ID &&
+                  row.kind === "background-work" &&
+                  Number.isSafeInteger(row.revision) &&
+                  row.revision > 0,
+                "source job is missing or changed",
+              );
+              validateBackgroundJobRecord(row);
+              const job = row.data as Job;
+              memoryRequire(
+                job.seed === state.seed &&
+                  job.id === source.id &&
+                  job.instanceId === source.instanceId &&
+                  job.attempt === source.attempt &&
+                  typeof source.owner === "string" &&
+                  source.owner.length > 0 &&
+                  job.owner === source.owner &&
+                  ["queued", "running"].includes(job.status) &&
+                  !job.replacement,
+                "source job changed before publication",
+              );
+            }
             let committed = false;
             try {
               if (record)

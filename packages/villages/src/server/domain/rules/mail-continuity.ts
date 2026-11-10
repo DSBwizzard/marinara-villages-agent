@@ -138,6 +138,7 @@ export function acceptMailContinuity(state: VillageState, publication: MailPubli
     );
   const admission = {
       ...publication.admission,
+      at: phase === "read" && reading ? acceptedAt : publication.admission.at,
       actors: parties.map(({ id, incarnation }) => ({ id, incarnation })),
       blockedSources: blocked,
     },
@@ -274,7 +275,7 @@ export function acceptMailContinuity(state: VillageState, publication: MailPubli
     seed: state.seed,
     submissionId: receipt.id,
     operationId: receipt.id,
-    capturedAt: acceptedAt,
+    capturedAt: admission.at,
     acceptedAt,
     responseDigest: digest,
     admittedContinuityRevision: admission.continuityRevision ?? state.continuity.revision,
@@ -302,11 +303,11 @@ export function acceptMailContinuity(state: VillageState, publication: MailPubli
                   requestId: publication.requestId,
                   text,
                   status: "delivered",
-                  deliveredAt: acceptedAt,
+                  deliveredAt: admission.at,
                   ...(publication.replyTo ? { replyTo: publication.replyTo } : {}),
                   ...(reading ? { reading } : {}),
                 }
-              : { ...original, readAt: acceptedAt },
+              : { ...original, readAt: admission.at },
         },
       },
       state.seed,

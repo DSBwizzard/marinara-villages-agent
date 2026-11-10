@@ -294,7 +294,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       }
       const next = change(record ? await responses.decode(record.data) : null);
       const data = nativeBackgroundJob(next);
-      const capturedKinds = ["resident-planning", "personal-mail", "social-recovery"];
+      const capturedKinds = ["resident-planning", "social-recovery"];
       if (
         (next.input !== null && capturedKinds.includes(next.kind)) ||
         (next.replacement && capturedKinds.includes(next.replacement.kind))
@@ -640,7 +640,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   }
   function readForJob(job: Job): Promise<VillageState> {
     const options = {
-      memories: ["starting-ties", "wish", "agenda"].includes(job.kind) || !!catchupBatchId(job),
+      memories: ["starting-ties", "wish", "agenda", "personal-mail"].includes(job.kind) || !!catchupBatchId(job),
       wishes:
         job.kind === "resident-planning" || !!catchupBatchId(job)
           ? (true as const)
@@ -653,9 +653,15 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     return readVillageState(options);
   }
   function mutateForJob(job: Job, update: (state: VillageState) => void): Promise<unknown> {
-    const sourceJobs = [{ slot: slotId(job), id: job.id, instanceId: job.instanceId, attempt: job.attempt }];
+    const sourceJobs = [
+      { slot: slotId(job), id: job.id, instanceId: job.instanceId, attempt: job.attempt, owner: job.owner },
+    ];
     return handlers.get(job.kind)?.authority === "raw" && ports.mutateVillageAuthority
-      ? ports.mutateVillageAuthority(update, { wishes: catchupBatchId(job) ? true : undefined, sourceJobs })
+      ? ports.mutateVillageAuthority(update, {
+          memories: job.kind === "personal-mail" ? true : undefined,
+          wishes: catchupBatchId(job) ? true : undefined,
+          sourceJobs,
+        })
       : mutateVillageState(update, {
           wishes: job.kind === "resident-planning" ? true : job.kind === "wish" ? [job.subjectId] : undefined,
           sourceJobs,

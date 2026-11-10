@@ -150,7 +150,13 @@ assert.deepEqual(
     await background.settleBackgroundWork();
     const current = [...f.rows.values()].find((row) => row.kind === "background-work")!;
     const sourceJobs = [
-      { slot: current.id, id: current.data.id, instanceId: current.data.instanceId, attempt: current.data.attempt },
+      {
+        slot: current.id,
+        id: current.data.id,
+        instanceId: current.data.instanceId,
+        attempt: current.data.attempt,
+        owner: current.data.owner,
+      },
     ];
     let entered!: () => void, requested!: () => void;
     const atWorldCAS = new Promise<void>((resolve) => {
@@ -1307,7 +1313,13 @@ for (const patch of [
     assert.equal(current.data.status, "failed");
     assert.equal(current.data.input.admitted.villagers[0].wishes, undefined);
     const protectedJob = [
-      { slot: current.id, id: current.data.id, instanceId: current.data.instanceId, attempt: current.data.attempt },
+      {
+        slot: current.id,
+        id: current.data.id,
+        instanceId: current.data.instanceId,
+        attempt: current.data.attempt,
+        owner: current.data.owner,
+      },
     ];
     const root = f.rows.get("villages-village");
     for (const bad of [

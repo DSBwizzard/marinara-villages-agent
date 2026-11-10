@@ -1007,6 +1007,12 @@ await withBrowser(browser, async () => {
     await page.screenshot({ path: resolve(output, `mailbox-inbox-${width}-${height}.png`) });
     if (width === 390) failMailRead = true;
     await letterRows.first().click();
+    if (width === 390) {
+      await expect(mail.getByRole("button", { name: "Retry reading" })).toBeVisible();
+      await expect(mail.getByLabel("Personal mail").getByText("A first letter from Mara.")).toHaveCount(0);
+      assert.equal(mailbox.threads[0].messages.find((message) => message.id === "first-letter").read, false);
+      await mail.getByRole("button", { name: "Retry reading" }).click();
+    }
     await expect(mail.getByLabel("Personal mail").getByText("A first letter from Mara.")).toBeVisible();
     await expect
       .poll(() =>
@@ -1072,14 +1078,9 @@ await withBrowser(browser, async () => {
     );
     await expect(mail.getByLabel("Personal mail").getByText("A second letter from Mara.")).toHaveCount(0);
     await page.screenshot({ path: resolve(output, `mailbox-letter-${width}-${height}.png`) });
-    if (width === 390) {
-      await expect(mail.getByRole("button", { name: "Retry reading" })).toBeVisible();
-      assert.equal(mailbox.threads[0].messages.find((message) => message.id === "first-letter").read, false);
-      await mail.getByRole("button", { name: "Retry reading" }).click();
-      await expect
-        .poll(() => mailbox.threads[0].messages.find((message) => message.id === "first-letter").read)
-        .toBe(true);
-    }
+    await expect
+      .poll(() => mailbox.threads[0].messages.find((message) => message.id === "first-letter").read)
+      .toBe(true);
     await expect.poll(() => writes.findLast((row) => row.path.endsWith("/read"))?.body.messageId).toBe("first-letter");
     assert.equal(mailbox.threads[0].messages.find((message) => message.id === "second-letter").read, false);
     if ([1366, 977, 390, 320].includes(width)) {

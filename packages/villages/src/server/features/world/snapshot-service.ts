@@ -42,11 +42,11 @@ export function createVillageSnapshot({
 }: VillageSnapshotPorts) {
   /** The village as the tab draws it: live library labels and adopted card colors. */
   async function buildVillageSnapshot(at?: Date): Promise<VillageSnapshot> {
-    let village = await readVillageState();
+    let village = await readVillageState({ memories: true });
     const clock = await observeVillageClock();
     let now = at ?? (clock?.instant ? new ZonedDate(clock.instant, clock.timeZone) : villageNow());
     if (clock) now = new ZonedDate(now, clock.timeZone);
-    if (await rollActiveAgendas(now, village, clock?.revision)) village = await readVillageState();
+    if (await rollActiveAgendas(now, village, clock?.revision)) village = await readVillageState({ memories: true });
     const residentIds = village.villagers.map((villager) => villager.characterId);
     const cards = await listVillagerCards(residentIds);
     const cardsById = new Map(cards.map((card) => [card.id, card]));
@@ -143,7 +143,7 @@ export function createVillageSnapshot({
     });
     const snapshot: VillageSnapshot = {
       worldScope: villageWorldScope(village),
-      mailboxUnread: hasUnreadMail(village.relationshipContext),
+      mailboxUnread: hasUnreadMail(village.mailbox),
       status: "ready",
       clock,
       progressEngineVersion: village.progressEngineVersion,

@@ -1,3 +1,4 @@
+import { readPersonalMailInput } from "../../domain/decoding/mailbox-codec.js";
 import { memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import type { BackgroundKind } from "../../domain/models/background-model.js";
 import { isBackgroundKind } from "../../domain/rules/work-recovery.js";
@@ -69,21 +70,6 @@ function actors(opportunity: unknown, stamps: Map<string, string>): string[] {
   );
   return opportunity.actorIds;
 }
-function mail(raw: unknown, seed: string, into: CapturedAdmissionOwners): RelationshipScope {
-  memoryObject(raw);
-  memoryRequire(raw.seed === seed, "captured mail belongs to another World");
-  const scope = admission(raw.admitted, seed, into),
-    stamps = directory(raw.admitted);
-  memoryRequire(
-    typeof raw.residentId === "string" &&
-      typeof raw.incarnation === "string" &&
-      stamps.get(raw.residentId) === raw.incarnation &&
-      owns(raw.admitted, "relationshipHead"),
-    "captured mail recipient changed incarnation",
-  );
-  return scope;
-}
-
 function socialEntry(raw: unknown, seed: string, into: CapturedAdmissionOwners): RelationshipScope {
   memoryObject(raw);
   memoryRequire(
@@ -108,7 +94,7 @@ function input(kind: BackgroundKind, raw: unknown, seed: string, into: CapturedA
     firstOwner = into.wishes.length;
   memoryRequire(!owns(value, "seed") || value.seed === seed, "captured input belongs to another World");
   if (kind === "personal-mail") {
-    mail(value, seed, into);
+    readPersonalMailInput(value);
     return;
   }
   if (kind === "resident-planning") {
@@ -206,15 +192,7 @@ export function capturedWorldOwners(raw: unknown): CapturedAdmissionOwners {
       memoryRequire(scope.setupAt === raw.setupAt, "social capture belongs to another World setup");
     }
   }
-  if (owns(raw, "socialMailOutbox")) {
-    memoryRequire(Array.isArray(raw.socialMailOutbox), "invalid captured mail outbox");
-    for (const row of raw.socialMailOutbox) {
-      memoryObject(row);
-      memoryObject(row.input);
-      const scope = mail(row.input, raw.seed, into);
-      memoryRequire(scope.setupAt === raw.setupAt, "mail capture belongs to another World setup");
-    }
-  }
+
   return into;
 }
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";

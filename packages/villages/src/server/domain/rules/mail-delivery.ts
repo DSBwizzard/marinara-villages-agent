@@ -219,7 +219,7 @@ export function acceptMailExchange(state: VillageState, exchange: MailExchange, 
     true,
   );
   if (exchange.replyText) {
-    const reply: MailIdentity = { id: incoming.id + ":reply", at, from: incoming.to, to: incoming.from },
+    const reply: MailIdentity = { id: incoming.id + ":reply", at: capture.at, from: incoming.to, to: incoming.from },
       replyCapture = afterMailWrites(capture, before, candidate),
       keep = exchange.replyMeaning.keep.map((raw) => {
         const value = asRecord(raw);

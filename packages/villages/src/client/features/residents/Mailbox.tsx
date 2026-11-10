@@ -395,11 +395,7 @@ export function Mailbox({
           next.scope === scope &&
           next.token === selectedToken
         ) {
-          setLoadedLetter((current) =>
-            current?.message.id === next.messageId && current.message.token === selectedToken
-              ? { ...current, message: { ...current.message, read: true } }
-              : current,
-          );
+          setDetailAttempt((attempt) => attempt + 1);
           void refreshLatest.current().catch(() => {});
         }
       })
@@ -435,7 +431,10 @@ export function Mailbox({
       if (epoch === uiEpoch.current) setBusy(false);
     }
   };
-  const sender = selected && snapshot.villagers.find((person) => person.characterId === selected.message.fromId);
+  const sender =
+    selected && !selected.thread.former
+      ? snapshot.villagers.find((person) => person.characterId === selected.message.fromId)
+      : undefined;
   const fontId =
     open && !simpleText && selected?.message.fromId !== "player"
       ? (selected?.thread.letterFontId ?? sender?.letterFontId)
@@ -674,7 +673,7 @@ export function Mailbox({
                   }}
                 >
                   <AvatarFace
-                    portrait={portraits[thread.residentId]}
+                    portrait={thread.former ? undefined : portraits[thread.residentId]}
                     name={thread.residentName}
                     className="villages-letter-face"
                   />
@@ -785,21 +784,31 @@ export function Mailbox({
               </>
             ) : selected ? (
               <>
-                <LetterPages
-                  key={selected.thread.id + ":" + selected.message.id}
-                  page={letterPage}
-                  setPage={setLetterPage}
-                  text={selected.message.text}
-                  fontId={fontId}
-                  simpleText={simpleText}
-                  fontRevision={fontRevision}
-                  sender={selected.message.fromId !== "player" ? sender : undefined}
-                  portrait={selected.message.fromId !== "player" ? portraits[selected.thread.residentId] : undefined}
-                  portraitName={selected.message.fromId !== "player" ? selected.thread.residentName : undefined}
-                />
+                {selected.message.fromId !== "player" && !selected.message.read ? (
+                  <p role="status">Opening letter…</p>
+                ) : (
+                  <LetterPages
+                    key={selected.thread.id + ":" + selected.message.id}
+                    page={letterPage}
+                    setPage={setLetterPage}
+                    text={selected.message.text}
+                    fontId={fontId}
+                    simpleText={simpleText}
+                    fontRevision={fontRevision}
+                    sender={selected.message.fromId !== "player" ? sender : undefined}
+                    portrait={
+                      selected.message.fromId !== "player" && !selected.thread.former
+                        ? portraits[selected.thread.residentId]
+                        : undefined
+                    }
+                    portraitName={selected.message.fromId !== "player" ? selected.thread.residentName : undefined}
+                  />
+                )}
                 {selected.message.error ? <p role="status">{selected.message.error}</p> : null}
                 <div className="villages-letter-actions">
                   {selected.message.fromId !== "player" &&
+                  selected.message.read &&
+                  !selected.thread.former &&
                   people.some((person) => person.id === selected.thread.residentId) ? (
                     <button type="button" onClick={() => write(selected.thread.residentId)}>
                       Write back

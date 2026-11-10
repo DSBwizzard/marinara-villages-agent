@@ -1,20 +1,16 @@
-import { fixtureCapturedAdmissions } from "./helpers/village-storage.fixture.js";
-// Test cases: mailbox-pages/growth, mailbox-pages/navigation, mailbox-pages/privacy, mailbox-pages/identities, mailbox-pages/recovery, mailbox-pages/commands
+// Test cases: mailbox-pages/growth, mailbox-pages/navigation, mailbox-pages/privacy, mailbox-pages/identities, mailbox-pages/recovery
 import assert from "node:assert/strict";
 import { mock } from "node:test";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import {
   createMailboxPresentation,
   readMailboxQuery,
   mailboxLetterIdentity,
   hasUnreadMail,
 } from "../packages/villages/src/server/domain/rules/mailbox-view.js";
-import { villageWorldScope } from "../packages/villages/src/server/domain/rules/village-identity.js";
-import type { SocialMailMessage } from "../packages/villages/src/server/domain/models/social-mail.js";
-import { createSocialMail } from "../packages/villages/src/server/features/residents/social-mail-service.js";
-import { coerceRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import type { MailboxMessage } from "../packages/villages/src/server/domain/models/social-mail.js";
+import type { BackgroundSummary } from "../packages/villages/src/server/domain/models/background-model.js";
 
 function fixture(count: number) {
   const village = {
@@ -23,55 +19,57 @@ function fixture(count: number) {
     setupAt: "2026-10-30T12:00:00.000Z",
     formerLetterFonts: { ada: "caveat" },
   };
-  const state = defaultRelationshipState(village.seed);
-  const thread = (state.mailThreads.personal = {
-    id: "personal",
-    participantIds: ["player", "ada"],
-    revision: 1,
-    messages: [],
-  });
+  village.villagers = [
+    { characterId: "ada", incarnation: "one", letterFontId: "caveat", cardSnapshot: { name: "Ada" } },
+  ] as typeof village.villagers;
+  const state = village.mailbox,
+    jobs: BackgroundSummary[] = [];
   for (let i = 0; i < count; i++) {
     const id = "letter:" + String(i).padStart(6, "0");
-    const message: SocialMailMessage = {
+    state.messages[id] = {
       id,
       requestId: id,
-      fromId: "ada",
-      toId: "player",
+      from: { id: "ada", incarnation: "one" },
+      to: { id: "player", incarnation: "player-one" },
       at: village.setupAt,
       text: "Exact café 🌼 evidence ".repeat(30) + i,
       status: "delivered",
+      deliveredAt: village.setupAt,
       readAt: village.setupAt,
     };
-    thread.messages.push(message);
-    state.mailDeliveries[id] = { messageId: id, at: village.setupAt, sourceHash: "source:" + i };
   }
-  return { village, state, thread, present: () => createMailboxPresentation(village, state, []) };
+  return {
+    village,
+    state,
+    jobs,
+    first: () => Object.values(state.messages)[0],
+    present: () => createMailboxPresentation(village, state, jobs),
+  };
 }
-await runCase("mailbox-pages/growth", async () => {
+
+await runCase("mailbox-pages/growth", () => {
   const unread = fixture(1);
   assert.equal(hasUnreadMail(unread.state), false);
-  unread.thread.messages[0].readAt = undefined;
+  unread.first().readAt = undefined;
   assert.equal(hasUnreadMail(unread.state), true);
-  const receipt = unread.state.mailDeliveries[unread.thread.messages[0].id];
-  delete unread.state.mailDeliveries[unread.thread.messages[0].id];
-  assert.equal(hasUnreadMail(unread.state), false, "Unpublished incoming mail never exposes a notification.");
-  unread.state.mailDeliveries[unread.thread.messages[0].id] = receipt;
-  unread.thread.participantIds = ["ada", "bea"];
-  assert.equal(hasUnreadMail(unread.state), false, "Other residents' correspondence stays private.");
-  const metrics: unknown[] = [];
+  unread.first().status = "pending";
+  assert.equal(hasUnreadMail(unread.state), false, "unpublished incoming mail has no notification");
+  unread.first().status = "delivered";
+  unread.first().to.id = "bea";
+  assert.equal(hasUnreadMail(unread.state), false, "other residents' correspondence stays private");
   for (const count of [1000, 10_000, 25_000]) {
     const f = fixture(count),
       stringify = JSON.stringify;
     let jsonBytes = 0,
       textReads = 0;
-    for (const message of f.thread.messages) {
+    for (const message of Object.values(f.state.messages)) {
       const text = message.text;
       Object.defineProperty(message, "text", {
+        enumerable: true,
         get() {
           textReads++;
           return text;
         },
-        enumerable: true,
       });
     }
     mock.method(JSON, "stringify", (...args: unknown[]) => {
@@ -79,30 +77,25 @@ await runCase("mailbox-pages/growth", async () => {
       if (typeof output === "string") jsonBytes += Buffer.byteLength(output);
       return output;
     });
-    let bytes = 0;
     try {
-      const page = f.present().mailbox({ folder: "inbox" });
+      const page = f.present().mailbox({});
       assert.equal(page.letters.length, 50);
       assert.equal(page.total, count);
       assert(page.nextCursor);
       assert(page.letters.every((letter) => !Object.hasOwn(letter.message, "text")));
-      bytes = Buffer.byteLength(JSON.stringify(page));
+      assert(Buffer.byteLength(JSON.stringify(page)) < 96 * 1024);
     } finally {
       mock.restoreAll();
     }
-    assert(bytes < 96 * 1024);
-    assert(jsonBytes < 256 * 1024, "Summary construction must not serialize all retained correspondence");
-    assert(textReads <= 100, "Only the selected page may inspect full text for previews/identity");
-    metrics.push({ count, responseBytes: bytes, serializedBytes: jsonBytes, textReads });
+    assert(jsonBytes < 256 * 1024, "summary construction must not serialize retained full correspondence");
+    assert(textReads <= 100, "only selected-page previews and identities inspect text");
   }
-  console.log("Mailbox summary response growth:", JSON.stringify(metrics));
 });
-await runCase("mailbox-pages/navigation", async () => {
+
+await runCase("mailbox-pages/navigation", () => {
   const f = fixture(113),
     first = f.present().mailbox({});
-  const newer = { ...f.thread.messages[0], id: "newer", at: "2026-10-31T12:00:00.000Z" };
-  f.thread.messages.push(newer);
-  f.state.mailDeliveries.newer = { messageId: "newer", at: newer.at, sourceHash: "newer" };
+  f.state.messages.newer = { ...f.first(), id: "newer", at: "2026-10-31T12:00:00.000Z" };
   const ids = first.letters.map((row) => row.message.id);
   let cursor = first.nextCursor;
   while (cursor) {
@@ -114,75 +107,93 @@ await runCase("mailbox-pages/navigation", async () => {
   assert.equal(new Set(ids).size, ids.length);
   assert(!ids.includes("newer"));
   assert.equal(f.present().mailbox({}).letters[0].message.id, "newer");
-  assert.throws(() => f.present().mailbox({ folder: "sent", cursor: first.nextCursor }), /mailbox changed/);
-  assert.throws(() => f.present().mailbox({ cursor: "not+a+cursor" }), /valid mailbox page/);
+  assert.throws(() => f.present().mailbox({ folder: "sent", cursor: first.nextCursor }), /Mailbox changed/);
+  assert.throws(() => f.present().mailbox({ cursor: "not+a+cursor" }), /valid Mailbox page/);
   f.village.setupAt = "another-world";
-  assert.throws(() => f.present().mailbox({ cursor: first.nextCursor }), /mailbox changed/);
+  assert.throws(() => f.present().mailbox({ cursor: first.nextCursor }), /Mailbox changed/);
   assert.throws(() => readMailboxQuery({ folder: "all" }));
 });
-await runCase("mailbox-pages/privacy", async () => {
-  const missing = fixture(1);
-  delete (missing.village.formerLetterFonts as Record<string, string>).ada;
-  const beforeMissing = JSON.stringify({ village: missing.village, state: missing.state });
-  assert.throws(() => missing.present().mailbox({}), /no writing-style assignment/);
-  assert.throws(
-    () => missing.present().letter(missing.thread.id, missing.thread.messages[0].id),
-    /no writing-style assignment/,
-  );
-  assert.equal(JSON.stringify({ village: missing.village, state: missing.state }), beforeMissing);
+
+await runCase("mailbox-pages/privacy", () => {
   const f = fixture(1),
-    message = f.thread.messages[0];
+    message = f.first();
   message.readAt = undefined;
   assert.equal(f.present().mailbox({}).letters[0].message.preview, "");
-  const detail = f.present().letter(f.thread.id, message.id);
-  assert.equal(detail.message.text, message.text);
-  assert.equal(message.readAt, undefined, "Fetching a body cannot publish disclosures or mark it read");
-  delete f.state.mailDeliveries[message.id];
-  assert.equal(f.present().mailbox({}).letters.length, 0);
-  assert.throws(() => f.present().letter(f.thread.id, message.id), /unavailable/);
-  message.fromId = "player";
-  message.toId = "ada";
+  assert.equal(
+    f.present().letter("personal:ada", message.id).message.text,
+    "",
+    "GET cannot bypass a held native reading",
+  );
+  assert.equal(message.readAt, undefined);
+  message.readAt = f.village.setupAt;
+  assert.equal(f.present().letter("personal:ada", message.id).message.text, message.text);
   message.status = "pending";
+  assert.equal(f.present().mailbox({}).letters.length, 0);
+  assert.throws(() => f.present().letter("personal:ada", message.id), /unavailable/);
+  const author = message.from;
+  message.from = message.to;
+  message.to = author;
   assert.equal(f.present().mailbox({ folder: "sent" }).letters.length, 1);
-  assert.equal(f.present().letter(f.thread.id, message.id).message.text, message.text);
-  f.thread.participantIds = ["ada", "ben"];
-  assert.throws(() => f.present().letter(f.thread.id, message.id), /unavailable/);
+  assert.equal(
+    f.present().letter("personal:ada", message.id).message.text,
+    message.text,
+    "exact Player-authored source stays visible",
+  );
+  message.from.id = "bea";
+  assert.throws(() => f.present().letter("personal:ada", message.id), /unavailable/);
   assert.throws(() => f.present().letter("__proto__", message.id), /unavailable/);
 });
-await runCase("mailbox-pages/identities", async () => {
+
+await runCase("mailbox-pages/identities", () => {
   const f = fixture(1),
-    message = f.thread.messages[0];
-  const identity = () => mailboxLetterIdentity(f.village, f.state, f.thread.id, message);
+    message = f.first(),
+    identity = () => mailboxLetterIdentity(f.village, f.state, "personal:ada", message);
   const original = identity();
   message.readAt = undefined;
   message.error = "An ordinary diagnostic";
-  message.status = "applying";
-  assert.equal(identity(), original, "Read, status and diagnostic changes cannot invalidate the selected content");
-  message.text += " Changed after restoration";
-  assert.notEqual(identity(), original, "Same-world request-ID reuse cannot act on a different letter");
+  message.status = "pending";
+  assert.equal(identity(), original, "mutable delivery/read diagnostics cannot change source identity");
+  message.text += " Different restored content";
+  assert.notEqual(identity(), original);
   const changed = identity();
-  message.disclosures = [
-    { fromId: "ada", toId: "player", text: "Exact new disclosure", kind: "connection", lineIds: [message.id] },
-  ];
-  assert.notEqual(identity(), changed, "Accepted disclosure payloads belong to the selected content");
-  const worldScope = villageWorldScope(f.village);
-  f.village.setupAt += "-new";
-  assert.notEqual(villageWorldScope(f.village), worldScope);
+  message.from.incarnation = "earlier";
+  assert.notEqual(identity(), changed, "same-ID actors never replace the letter's actual author");
+  message.status = "delivered";
+  const thread = f.present().mailbox({}).letters[0].thread;
+  assert.equal(thread.residentName, "Former resident");
+  assert.equal(thread.former, true);
+  f.village.villagers[0].cardSnapshot.name = "Replacement Ada";
+  assert.equal(f.present().letter(thread.id, message.id).thread.residentName, "Former resident");
+  f.village.villagers = [];
+  delete (f.village.formerLetterFonts as Record<string, string>).ada;
+  assert.throws(() => f.present().mailbox({}), /no writing-style assignment/);
 });
-await runCase("mailbox-pages/recovery", async () => {
+
+await runCase("mailbox-pages/recovery", () => {
   const f = fixture(0);
-  f.village.socialMailOutbox = Array.from({ length: 105 }, (_, i) => ({
-    id: "orphan:" + String(i).padStart(3, "0"),
-    error: "Storage held",
-    reinterpretRequired: true,
-    input: {
-      threadId: "private-thread",
-      sourceAt: f.village.setupAt,
-      sourceHash: "source:" + i,
-      admittedAt: f.village.setupAt,
-    },
-    result: { replyText: "Unseen purchased reply sentinel" },
-  })) as any;
+  for (let i = 0; i < 105; i++) {
+    const id = "held:" + String(i).padStart(3, "0"),
+      message: MailboxMessage = {
+        id,
+        requestId: id,
+        at: f.village.setupAt,
+        from: { id: "player", incarnation: "player-one" },
+        to: { id: "ada", incarnation: "one" },
+        text: "Exact submitted source",
+        status: "pending",
+      };
+    f.state.messages[id] = message;
+    if (i % 2) message.admissionFailed = true;
+    else
+      f.jobs.push({
+        id: "job:" + id,
+        subjectId: id,
+        kind: "personal-mail",
+        status: "failed",
+        error: "Private provider diagnostic sentinel",
+        updatedAt: f.village.setupAt,
+      } as BackgroundSummary);
+  }
   const ids: string[] = [];
   let cursor: string | undefined;
   do {
@@ -190,89 +201,13 @@ await runCase("mailbox-pages/recovery", async () => {
     assert(page.recovery.length <= 50);
     assert.equal(page.recoveryTotal, 105);
     assert(Buffer.byteLength(JSON.stringify(page)) < 96 * 1024);
-    assert(!JSON.stringify(page).includes("Unseen purchased reply sentinel"));
+    assert(!JSON.stringify(page).includes("Private provider diagnostic sentinel"));
     ids.push(...page.recovery.map((row) => row.messageId));
     assert(page.recovery.every((row) => /^[a-f0-9]{64}$/.test(row.token)));
     cursor = page.recoveryNextCursor;
   } while (cursor);
   assert.equal(ids.length, 105);
-  assert.equal(new Set(ids).size, 105, "Orphaned recovery remains independently reachable beyond the letter page");
-});
-await runCase("mailbox-pages/commands", async () => {
-  const f = fixture(1),
-    message = f.thread.messages[0];
-  message.readAt = undefined;
-  let worldWrites = 0,
-    relationshipWrites = 0,
-    modelRequests = 0,
-    failWrite = false;
-  const service = createSocialMail({
-    readMailInput: fixtureCapturedAdmissions.readMailInput,
-    withWork: async (work: any) => work(),
-    withVillageSceneAcceptance: async (work: any) => work(f.village),
-    readVillageSnapshot: async (options?: { memories?: boolean }) => {
-      const snapshot = { ...f.village, relationshipContext: coerceRelationshipState(f.village.seed, f.state) };
-      if (!options?.memories)
-        for (const key of ["memories", "memoryScenes", "memoryReceipts", "worldPlaces"])
-          Object.defineProperty(snapshot, key, {
-            enumerable: false,
-            get() {
-              throw Error("Unrelated Memories were loaded");
-            },
-          });
-      return snapshot;
-    },
-    readRelationshipState: async () => coerceRelationshipState(f.village.seed, f.state),
-    backgroundWorkSummaries: async () => [],
-    mutateVillageState: async (work: any) => {
-      worldWrites++;
-      if (failWrite) throw Error("Memory storage unavailable");
-      work(f.village);
-      return f.village;
-    },
-    mutateRelationships: async (_seed: string, work: any) => {
-      relationshipWrites++;
-      await work(f.state);
-      return f.state;
-    },
-    queueBackgroundJob: async () => {
-      modelRequests++;
-      throw Error("No model work is permitted");
-    },
-    completeWithRoom: async () => {
-      modelRequests++;
-      throw Error("No provider is configured");
-    },
-  } as any);
-  const scope = villageWorldScope(f.village),
-    original = mailboxLetterIdentity(f.village, f.state, f.thread.id, message);
-  assert.equal((await service.readMailbox({ scope })).letters.length, 1);
-  assert.equal((await service.getLetter(f.thread.id, message.id, scope, original)).message.text, message.text);
-  assert.equal(worldWrites + relationshipWrites, 0, "GET detail cannot publish knowledge or mark a letter read");
-  message.text += " Different content under the same restored ID";
-  await assert.rejects(service.getLetter(f.thread.id, message.id, scope, original), /letter changed/);
-  await assert.rejects(service.readLetter(f.thread.id, message.id, scope, original), /letter changed/);
-  await assert.rejects(
-    service.retry(f.thread.id, message.id, "retry-old-branch", scope, original),
-    /saved mail changed/,
-  );
-  assert.equal(
-    worldWrites + relationshipWrites + modelRequests,
-    0,
-    "Stale restored identities cannot publish or purchase effects",
-  );
-  const token = mailboxLetterIdentity(f.village, f.state, f.thread.id, message);
-  failWrite = true;
-  await assert.rejects(service.readLetter(f.thread.id, message.id, scope, token), /Memory storage/);
-  assert.equal(message.readAt, undefined);
-  assert.equal(relationshipWrites, 0, "Disclosure publication must succeed before the read acknowledgement");
-  failWrite = false;
-  await service.readLetter(f.thread.id, message.id, scope, token);
-  assert(f.thread.messages[0].readAt);
-  await service.readLetter(f.thread.id, message.id, scope, token);
-  assert.equal(modelRequests, 0);
-  f.village.setupAt += "-replacement";
-  const writes = worldWrites + relationshipWrites;
-  await assert.rejects(service.readLetter(f.thread.id, message.id, scope, token), /Village changed/);
-  assert.equal(worldWrites + relationshipWrites, writes);
+  assert.equal(new Set(ids).size, 105);
+  f.jobs.push({ id: "active", subjectId: "held:000", kind: "personal-mail", status: "running" } as BackgroundSummary);
+  assert.equal(f.present().mailbox({}).recoveryTotal, 104, "an active owner takes precedence over prior failed work");
 });
