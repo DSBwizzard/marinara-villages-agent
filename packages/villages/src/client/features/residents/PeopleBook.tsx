@@ -26,13 +26,8 @@ export function PeopleBook({
       data-section={section}
       data-inspect={inspect}
     >
-      <header className={`${P}-dossier-toolbar`}>{toolbar}</header>
       <div className={`${P}-dossier-book`}>
-        <div className={`${P}-dossier-rings`} aria-hidden="true">
-          {Array.from({ length: 8 }, (_, index) => (
-            <span key={index} />
-          ))}
-        </div>
+        {toolbar ? <header className={`${P}-dossier-toolbar`}>{toolbar}</header> : null}
         {children}
       </div>
     </section>

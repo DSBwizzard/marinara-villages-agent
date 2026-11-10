@@ -22,21 +22,20 @@ export function RosterScreen({
   const villagers = snapshot?.villagers ?? [];
   return (
     <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-directory-root`} data-page="villagers">
-      <PeopleBook
-        label="People notebook"
-        toolbar={
-          <button
-            type="button"
-            className={`${ELEMENT_TAG}-notebook-close`}
-            onClick={onClose ?? (() => setMenuPage("index"))}
-          >
-            Close ×
-          </button>
-        }
-      >
+      <PeopleBook label="People notebook" toolbar={null}>
         <main className={`${ELEMENT_TAG}-directory-paper`} aria-label="Villagers directory">
           <header className={`${ELEMENT_TAG}-directory-head`}>
-            <h1>Villagers</h1>
+            <h1>People</h1>
+            <span className={`${ELEMENT_TAG}-directory-meta`}>
+              <span>{villagers.length} villagers</span>
+              <button
+                type="button"
+                className={`${ELEMENT_TAG}-notebook-close`}
+                onClick={onClose ?? (() => setMenuPage("index"))}
+              >
+                Close ×
+              </button>
+            </span>
           </header>
           {error ? (
             <p role="alert" className={`${ELEMENT_TAG}-dossier-warning`}>

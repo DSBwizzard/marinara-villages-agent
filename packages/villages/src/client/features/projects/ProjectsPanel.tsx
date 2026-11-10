@@ -297,6 +297,7 @@ export function ProjectsPanel({
                     : entry?.plan?.exteriorImage;
                 return (
                   <section className="vp-active-slot" key={index} aria-label={`Project slot ${index + 1}`}>
+                    <h2 className="vp-slot-title">Project Slot {index + 1}</h2>
                     {entry ? (
                       <button type="button" className="vp-active-project" onClick={() => c.setSelectedId(entry.id)}>
                         <strong>{kindName(entry.kind)}</strong>
@@ -306,6 +307,9 @@ export function ProjectsPanel({
                       </button>
                     ) : (
                       <div className="vp-empty-slot">
+                        <span className="vp-slot-mark" aria-hidden="true">
+                          +
+                        </span>
                         <span>Empty slot</span>
                         {index === 0 ? (
                           <div className="vp-new-types">

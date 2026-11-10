@@ -167,7 +167,6 @@ export function VillagerDossier({
   const [revision, setRevision] = useState(0);
   const content = useRef<HTMLDivElement>(null);
   const positions = useRef<Partial<Record<DossierSection, number>>>({});
-  const [turn, setTurn] = useState({ id: 0, backwards: false });
   const profile = relationships?.profiles?.find((person) => person.characterId === navigation.actorId);
   const name = villager?.name ?? "Former villager";
   useEffect(() => {
@@ -218,16 +217,18 @@ export function VillagerDossier({
     else setInspected((current) => (current.includes(section) ? current : [...current, section]));
   }, [inspect, section]);
   useLayoutEffect(() => {
-    if (content.current) content.current.scrollTop = positions.current[section] ?? 0;
+    const reading = window.matchMedia("(max-width:700px)").matches
+      ? content.current?.closest<HTMLElement>(`.${P}-dossier-book`)
+      : content.current;
+    if (reading) reading.scrollTop = positions.current[section] ?? 0;
   }, [section]);
   const inspectedSection = (tab: DossierSection) => inspect && (section === tab || inspected.includes(tab));
   const choose = (next: DossierSection, inspection = inspect) => {
     setVisited((current) => (current.includes(next) ? current : [...current, next]));
-    if (content.current) positions.current[section] = content.current.scrollTop;
-    if (next !== section) {
-      const order = sections;
-      setTurn((current) => ({ id: current.id + 1, backwards: order.indexOf(next) < order.indexOf(section) }));
-    }
+    const reading = window.matchMedia("(max-width:700px)").matches
+      ? content.current?.closest<HTMLElement>(`.${P}-dossier-book`)
+      : content.current;
+    if (reading) positions.current[section] = reading.scrollTop;
     setSection(next);
     setInspect(inspection);
   };
@@ -269,8 +270,7 @@ export function VillagerDossier({
     ) : (
       <p>No known Venues.</p>
     );
-  const personalMail = links.find((link) => link.id === "personal-mail");
-  const relatedLinks = links.filter((link) => link.id !== "personal-mail" && (inspect || link.playerVisible === true));
+  const relatedLinks = links.filter((link) => inspect || link.playerVisible === true);
   const related = (
     <div className={`${P}-dossier-links`}>
       {relatedLinks.length ? (
@@ -298,11 +298,20 @@ export function VillagerDossier({
             inspect={inspect}
             toolbar={
               <>
-                <button type="button" className={`${P}-dossier-back`} onClick={onBack}>
-                  ← Back to Villagers
+                <button type="button" className={`${P}-dossier-back`} aria-label="← Back to Villagers" onClick={onBack}>
+                  ← People
                 </button>
                 {section !== "overview" || !villager ? <h1>{name}</h1> : null}
                 <div className={`${P}-dossier-actions`} role="group" aria-label="Profile actions">
+                  <button
+                    type="button"
+                    className={`${P}-dossier-inspect`}
+                    aria-pressed={inspect}
+                    onClick={() => setInspect(!inspect)}
+                  >
+                    <DossierIcon name="inspect" />
+                    {inspect ? "Leave Inspect" : "Inspect"}
+                  </button>
                   {villager ? (
                     <details className={`${P}-dossier-management`} open={manageOpen}>
                       <summary
@@ -332,11 +341,6 @@ export function VillagerDossier({
                 <div className={`${P}-dossier-journal-content`}>
                   <div className={`${P}-dossier-portrait`}>{portrait}</div>
                   <h1>{name}</h1>
-                  {personalMail ? (
-                    <button type="button" onClick={personalMail.onOpen}>
-                      Message
-                    </button>
-                  ) : null}
                   <div className={`${P}-dossier-biography`}>
                     {villager?.summary ? <p>{villager.summary}</p> : null}
                     {villager?.missing ? (
@@ -357,6 +361,17 @@ export function VillagerDossier({
               </article>
             </div>
             <main className={`${P}-dossier-workspace`}>
+              <h2 className={`${P}-dossier-section-title`}>{titles[section]}</h2>
+              <label className={`${P}-dossier-section-picker`}>
+                Section
+                <select value={section} onChange={(event) => choose(event.target.value as DossierSection)}>
+                  {sections.map((tab) => (
+                    <option key={tab} value={tab}>
+                      {titles[tab]}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <nav className={`${P}-dossier-tabs`} aria-label="Villager profile sections">
                 <div>
                   {sections.map((tab) => (
@@ -365,16 +380,6 @@ export function VillagerDossier({
                     </button>
                   ))}
                 </div>
-                <button
-                  type="button"
-                  className={`${P}-dossier-inspect`}
-                  aria-pressed={inspect}
-
-                  onClick={() => setInspect(!inspect)}
-                >
-                  <DossierIcon name="inspect" />
-                  {inspect ? "Leave Inspect" : "Inspect"}
-                </button>
               </nav>
               <div
                 ref={content}
@@ -570,9 +575,6 @@ export function VillagerDossier({
                 )}
               </div>
             </main>
-            {turn.id > 0 ? (
-              <div key={turn.id} className={`${P}-dossier-turn`} data-backwards={turn.backwards} aria-hidden="true" />
-            ) : null}
           </PeopleBook>
         </div>
       </RetainedView>

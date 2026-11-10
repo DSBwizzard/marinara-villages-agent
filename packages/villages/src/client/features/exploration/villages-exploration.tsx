@@ -43,6 +43,7 @@ export function useExplorationViewport(host: HTMLElement, active: boolean): void
           ? Math.max(0, host.getBoundingClientRect().bottom - viewport.offsetTop - viewport.height)
           : 0;
       host.style.setProperty("--villages-exploration-inset", inset + "px");
+      if (inset > 0 && focused) document.activeElement?.scrollIntoView({ block: "nearest" });
     };
     const observer = new ResizeObserver(update);
     observer.observe(host);
@@ -244,7 +245,9 @@ export function LocationNavigator({
     if (focusSearch) searchRef.current?.focus({ preventScroll: true });
   }, [focusSearch]);
   useEffect(() => {
-    listRef.current?.querySelector('[data-selected="true"]')?.scrollIntoView({ block: "nearest" });
+    const list = listRef.current;
+    if (list && list.scrollHeight > list.clientHeight)
+      list.querySelector('[data-selected="true"]')?.scrollIntoView({ block: "nearest" });
   }, [selectedId]);
   const filtered = rows.filter((row) => row.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   return (
@@ -265,9 +268,6 @@ export function LocationNavigator({
           <MapIcon name="close" />
         </button>
       </header>
-      <button type="button" className={P + "-discover-places"} disabled={disabled} onClick={onDiscover}>
-        Discover Places
-      </button>
       <label className={P + "-explore-search"}>
         <span className={P + "-sr-only"}>Search places</span>
         <input
@@ -280,11 +280,15 @@ export function LocationNavigator({
         />
       </label>
       <div ref={listRef} className={P + "-explore-list"}>
+        <button type="button" className={P + "-discover-places"} disabled={disabled} onClick={onDiscover}>
+          Discover Places
+        </button>
         {filtered.map((row) => (
           <div key={row.id} className={P + "-navigator-place"} data-selected={row.selected ? "true" : "false"}>
             <button
               type="button"
               className={P + "-explore-row"}
+              aria-label={row.name + (row.detail ? " · " + row.detail : "")}
               data-exploration-row={row.id}
               aria-pressed={row.selected === true}
               disabled={disabled || !row.onSelect}
@@ -294,6 +298,9 @@ export function LocationNavigator({
               <span>
                 <strong>{row.name}</strong>
                 <small>{row.detail}</small>
+              </span>
+              <span className={P + "-place-chevron"} aria-hidden="true">
+                ›
               </span>
             </button>
             {row.selected ? (

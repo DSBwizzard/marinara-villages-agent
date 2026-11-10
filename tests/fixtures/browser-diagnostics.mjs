@@ -5,11 +5,30 @@ import { fileURLToPath } from "node:url";
 
 export { expect };
 const expectations = new WeakMap();
-const deskAsset = fileURLToPath(new URL("../../packages/villages/menu-desk.jpg", import.meta.url));
-const mockDeskAsset = (context) =>
-  context.route("**/api/capability-packages/villages/assets/menu-desk.jpg", (route) =>
-    route.fulfill({ path: deskAsset, contentType: "image/jpeg" }),
-  );
+const deskAssets = {
+  "menu-desk.jpg": "image/jpeg",
+  "paper-ivory.webp": "image/webp",
+  "desk-art/paper-calm.webp": "image/webp",
+  "desk-art/button-olive.webp": "image/webp",
+  "people-desk.webp": "image/webp",
+  "people-phone.webp": "image/webp",
+  "desk-art/projects-desktop.webp": "image/webp",
+  "desk-art/projects-phone.webp": "image/webp",
+  "desk-art/maps.webp": "image/webp",
+  "desk-art/postcard.webp": "image/webp",
+  "desk-art/polaroid.webp": "image/webp",
+  "desk-art/mailbox-desktop.webp": "image/webp",
+  "desk-art/mailbox-phone.webp": "image/webp",
+  "desk-art/settings-desktop.webp": "image/webp",
+  "desk-art/settings-phone.webp": "image/webp",
+  "letter-fonts/assistant.json": "application/json",
+};
+const mockDeskAsset = async (context) => {
+  for (const [asset, contentType] of Object.entries(deskAssets))
+    await context.route("**/api/capability-packages/villages/assets/" + asset, (route) =>
+      route.fulfill({ path: fileURLToPath(new URL("../../packages/villages/" + asset, import.meta.url)), contentType }),
+    );
+};
 
 /** Register a bounded diagnostic for a deliberate negative fixture response. */
 export function allowConsole(page, { type, text, url, count = 1 }) {

@@ -13,8 +13,11 @@ export function useExplorationOutsideClick(ports: {
   const { closeExploration, element, exploreSheet, openPlaceId, screen, setExploreSheet, setOpenPlaceId } = ports;
   useEffect(() => {
     if (screen !== "home" || (!exploreSheet && !openPlaceId)) return;
+    const onDesk = (target: EventTarget | null) =>
+      target instanceof Element && !!target.closest(`.${ELEMENT_TAG}-desk-workspace:not([data-desk="none"])`);
     const outside = (event: PointerEvent) => {
       if (
+        onDesk(event.target) ||
         !(event.target instanceof Element) ||
         !element.contains(event.target) ||
         event.target.closest(
@@ -40,7 +43,13 @@ export function useExplorationOutsideClick(ports: {
       } else closeExploration();
     };
     const escape = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && element.contains(event.target as Node)) closeExploration();
+      if (
+        event.key === "Escape" &&
+        !event.defaultPrevented &&
+        !onDesk(event.target) &&
+        element.contains(event.target as Node)
+      )
+        closeExploration();
     };
     document.addEventListener("pointerdown", outside);
     document.addEventListener("keydown", escape);

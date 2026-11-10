@@ -1,6 +1,23 @@
 import { letterFontAssets } from "./letter-font-assets.mjs";
 
 const description = "A text-first shared-life sim in any setting that reconstructs elapsed life when you return.";
+const deskArtAssets = [
+  "menu-desk.jpg",
+  "paper-ivory.webp",
+  "desk-art/paper-calm.webp",
+  "desk-art/button-olive.webp",
+  "people-desk.webp",
+  "people-phone.webp",
+  "desk-art/projects-desktop.webp",
+  "desk-art/projects-phone.webp",
+  "desk-art/maps.webp",
+  "desk-art/postcard.webp",
+  "desk-art/polaroid.webp",
+  "desk-art/mailbox-desktop.webp",
+  "desk-art/mailbox-phone.webp",
+  "desk-art/settings-desktop.webp",
+  "desk-art/settings-phone.webp",
+];
 
 // Authoritative Villages package metadata; generated payloads are built from this definition.
 export const villagesDefinition = {
@@ -24,7 +41,7 @@ export const villagesDefinition = {
     description,
     runtimeDisabled: false,
   },
-  assetPaths: [...letterFontAssets, "villages-icon.png", "icon-licenses.txt", "menu-desk.jpg"],
+  assetPaths: [...letterFontAssets, "villages-icon.png", "icon-licenses.txt", ...deskArtAssets],
   boundaryDisplayName: "Villages",
   capabilityApi: {
     major: 1,
@@ -38,7 +55,7 @@ export const villagesDefinition = {
       iconPaths: ["villages-icon.png"],
     },
     assets: {
-      paths: [...letterFontAssets.filter((path) => path.endsWith(".json")), "menu-desk.jpg"],
+      paths: [...letterFontAssets.filter((path) => path.endsWith(".json")), ...deskArtAssets],
     },
   },
 };
