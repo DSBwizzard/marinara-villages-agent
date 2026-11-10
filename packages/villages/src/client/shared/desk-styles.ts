@@ -7,14 +7,14 @@ export const DESK_STYLES = `
 .${P}-desk-workspace[data-desk]:not([data-desk="none"]) *{box-sizing:border-box;scrollbar-width:thin;scrollbar-color:#a2859370 transparent}
 .${P}-desk-header{display:flex;flex-direction:column;align-items:stretch;gap:24px;min-width:0;min-height:0;overflow:auto;padding:28px 14px 100px;background:transparent;position:relative;z-index:20}
 .${P}-desk-header[hidden]{display:none}
-.${P}-menu-brand{order:0;text-align:center;font:700 clamp(24px,2.6cqw,42px)/1.1 var(--menu-font);letter-spacing:.025em;margin-bottom:4px}
+.${P}-menu-brand{order:0;text-align:center;font:700 clamp(24px,2.6cqw,54px)/1.1 var(--menu-font);letter-spacing:.025em;margin-bottom:4px}
 .${P}-menu-brand>svg{display:block;width:88%;height:auto;max-height:52px;margin:12px auto 0;fill:#b97980;stroke:none}
 .${P}-desk-nav{order:3;display:grid;gap:14px;min-width:0}
-.${P}-desk-nav button{position:relative;display:flex;align-items:center;gap:14px;min-width:0;min-height:60px;padding:10px 16px;border:0;border-radius:7px;background:transparent;color:inherit;font:400 clamp(18px,2cqw,30px)/1.25 var(--menu-font);text-align:left;cursor:pointer}
+.${P}-desk-nav button{position:relative;display:flex;align-items:center;gap:14px;min-width:0;min-height:60px;padding:10px 16px;border:0;border-radius:7px;background:transparent;color:inherit;font:400 clamp(20px,2.2cqw,40px)/1.25 var(--menu-font);text-align:left;cursor:pointer}
 .${P}-desk-nav button[aria-current="page"]{background:#b979809e;color:#fff0d5}
 .${P}-desk-nav button[aria-current="page"] span::after{content:"";display:block;width:55%;height:3px;margin-top:6px;border-radius:3px;background:#f0dfbc}
-.${P}-desk-nav svg{width:40px;height:40px;flex:none;color:inherit!important;animation:none}
-.${P}-desk-header .${P}-desk-return{order:1;align-self:center;max-width:100%;min-height:44px;padding:4px;border:0;background:transparent;color:inherit;font:400 clamp(16px,1.5cqw,23px)/1.25 var(--menu-font);cursor:pointer;text-align:left}
+.${P}-desk-nav svg{width:clamp(40px,3.3cqw,52px);height:clamp(40px,3.3cqw,52px);flex:none;color:inherit!important;animation:none}
+.${P}-desk-header .${P}-desk-return{order:1;align-self:center;max-width:100%;min-height:44px;padding:4px;border:0;background:transparent;color:inherit;font:400 clamp(16px,1.8cqw,30px)/1.25 var(--menu-font);cursor:pointer;text-align:left}
 .${P}-desk-header .${P}-desk-scene{order:2;font-size:18px;align-self:start;padding-inline:10px}
 .${P}-desk-return-mobile{display:none}
 .${P}-desk-nav button:disabled,.${P}-desk-return:disabled{opacity:.6;cursor:default}

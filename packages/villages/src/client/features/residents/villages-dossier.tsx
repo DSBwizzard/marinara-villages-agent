@@ -172,9 +172,9 @@ export function VillagerDossier({
   const name = villager?.name ?? "Former villager";
   const images = villager?.sprite?.images ?? [];
   const neutral =
-    images.find((image) => image.view === "front" && image.label.toLocaleLowerCase() === "neutral") ??
+    images.find((image) => image.view === "front" && image.label.trim().toLocaleLowerCase() === "neutral") ??
+    images.find((image) => image.label.trim().toLocaleLowerCase() === "neutral") ??
     images.find((image) => image.view === "front" && image.isDefault) ??
-    images.find((image) => image.label.toLocaleLowerCase() === "neutral") ??
     images.find((image) => image.isDefault) ??
     images.find((image) => image.view === "front") ??
     images[0];

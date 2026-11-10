@@ -78,7 +78,7 @@ await withBrowser(browser, async () => {
       framing: { mode: "full" },
       images: [
         { label: "happy", view: "front", isDefault: true, url: mapImage },
-        { label: "Neutral", view: "front", url: neutralSprite },
+        { label: " Neutral ", view: width === 900 ? "side" : "front", url: neutralSprite },
       ],
     };
     const secondName = width <= 390 ? "Eli of the Very Long and Winding Riverside Road" : "Eli";
