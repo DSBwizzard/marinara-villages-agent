@@ -100,7 +100,6 @@ export type BackgroundWork = {
     | "agenda"
     | "wish"
     | "personal-mail"
-    | "social-recovery"
     | "starting-ties"
     | "schedule-influence";
   subjectId: string;
@@ -125,13 +124,12 @@ export type BackgroundWork = {
 
 export type ReturnCatchupView = {
   id: string;
-  status: "queued" | "running" | "failed" | "recovering" | "completed" | "cancelled";
+  status: "queued" | "running" | "failed" | "completed" | "cancelled";
   from?: string;
   until?: string;
   completed: number;
   total: number;
-  settlementRequired: boolean;
-  issue: "preparation" | "generation" | "interpretation" | "settlement" | "authority" | null;
+  issue: "preparation" | "generation" | "authority" | null;
 };
 
 export type VillageSnapshot = {

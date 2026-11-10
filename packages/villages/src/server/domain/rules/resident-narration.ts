@@ -162,7 +162,13 @@ export function captureResidentNarration(
     opportunity.kind !== "encounter" || (actors.length >= 2 && !!opportunity.venueId && !!opportunity.zoneId),
     "encounter needs its actual shared Zone",
   );
-  const context = captureContinuityContext(state, ["player", ...opportunity.actorIds], opportunity.facts.join(" "), at);
+  const context = captureContinuityContext(
+    state,
+    ["player", ...opportunity.actorIds],
+    opportunity.facts.join(" "),
+    at,
+    opportunity.venueId ? { placeId: opportunity.venueId, zoneId: opportunity.zoneId! } : undefined,
+  );
   let room: ResidentNarrationCapture["room"];
   if (opportunity.venueId) {
     const venue = findLocation(state, opportunity.venueId),

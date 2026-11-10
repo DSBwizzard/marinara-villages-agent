@@ -69,9 +69,8 @@ import {
   venueRefusal,
   venueRequestMetrics,
 } from "../adapters/operations/operation-context.js";
-import { createCapturedAdmissions } from "../adapters/storage/captured-admission-store.js";
+
 import { createDocumentMutator, mutateDocument } from "../adapters/storage/document-store.js";
-import { relationshipPayloadStore } from "../adapters/storage/relationship-payload-store.js";
 import { repairGate, withRepairWork } from "../adapters/storage/repair-gate.js";
 import { createSceneRepository } from "../adapters/storage/scene-repository.js";
 import {
@@ -83,15 +82,13 @@ import {
 } from "../adapters/storage/scene-store.js";
 import { createSpriteFiles } from "../adapters/storage/sprite-files.js";
 import { createVillageRepository } from "../adapters/storage/village-repository.js";
-import { wishHistoryStore } from "../adapters/storage/wish-history.js";
 import { configureVillageClock, villageNow } from "../adapters/time/clock-gate.js";
 import { createVillageClock } from "../adapters/time/clock-service.js";
 import { parseCompactFoundingCompletion } from "../domain/rules/compact-founding-rules.js";
 import { reconcileProjectLifecycles } from "../domain/rules/project-lifecycle-rules.js";
 import { filterRelationshipNotices } from "../domain/rules/relationship-presentation.js";
-import { reconcileRelationships } from "../domain/rules/relationship-rules.js";
+
 import { createReturnCatchup } from "../features/background/return-catchup-service.js";
-import { createReturnCatchupSettlement } from "../features/background/return-catchup-settlement.js";
 import { advanceReturnCatchup, configureReturnCatchup } from "../features/background/return-catchup.js";
 import { createFoundingArtworkSources } from "../features/founding/founding-artwork.js";
 import { createCompactFounding } from "../features/founding/founding-compact-service.js";
@@ -112,11 +109,7 @@ import { configureFoundingSuggestions } from "../features/founding/founding-sugg
 import { createFoundingPreparation } from "../features/founding/preparation-service.js";
 import { configureFoundingPreparation, prepareFoundedVillage } from "../features/founding/preparation.js";
 import { createVillageBootstrap } from "../features/founding/village-bootstrap-service.js";
-import {
-  configureVillageBootstrap,
-  draftVillageVenueDescriptions,
-  interpretSocialSource,
-} from "../features/founding/village-bootstrap.js";
+import { configureVillageBootstrap, draftVillageVenueDescriptions } from "../features/founding/village-bootstrap.js";
 import { createModelCompletions } from "../features/generation/completion-service.js";
 import { completeWithRoom, configureModelCompletions } from "../features/generation/model-requests.js";
 import { createImageGeneration } from "../features/media/image-generation-service.js";
@@ -155,18 +148,9 @@ import {
   configureRetainedStorageCleanup,
   createRetainedStorageCleanup,
 } from "../features/repair/retained-storage-cleanup.js";
-import { createLiveMemory } from "../features/residents/live-memory-service.js";
-import { configureLiveMemory, processLiveMemories } from "../features/residents/live-memory.js";
+
 import { createRelationships } from "../features/residents/relationship-service.js";
-import { createRelationshipSocial } from "../features/residents/relationship-social-service.js";
-import { configureRelationshipSocial, processSocialOutbox } from "../features/residents/relationship-social.js";
-import { createRelationshipStore } from "../features/residents/relationship-store-service.js";
-import {
-  configureRelationshipStore,
-  mutateRelationships,
-  persistRelationshipAuthority,
-  readRelationshipState,
-} from "../features/residents/relationship-store.js";
+
 import { configureRelationships } from "../features/residents/relationships.js";
 import { createResidentAgendas } from "../features/residents/resident-agenda-service.js";
 import {
@@ -251,15 +235,13 @@ import {
   mutateVillageState,
   peekVillageAuthority,
   readVillageAuthority,
-  readVillageMemoryAuthority,
-  readVillageMemorySnapshot,
   readVillageMemoryState,
   readVillageSnapshot,
   readVillageState,
   withVillageSceneAcceptance,
 } from "../features/world/village-store.js";
 import { configureWorldCoordination } from "../features/world/village.js";
-import { configureWorldRelationships } from "../features/world/world-relationships.js";
+
 import { createBackgroundWork } from "../jobs/background-service.js";
 import {
   backgroundJobSnapshot,
@@ -483,26 +465,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     }),
   );
   const releaseSceneWork = configureSceneWork(createSceneWork(backendWork.navigation));
-  const releaseRelationshipStore = configureRelationshipStore(
-    createRelationshipStore({
-      VILLAGES_PACKAGE_ID,
-      villagesDocuments,
-      mutateDocument: createDocumentMutator(villagesDocuments),
-    }),
-  );
-  const relationshipSocial = createRelationshipSocial({
-    withVillageSceneAcceptance: (work, options) => withRepairWork(() => withVillageSceneAcceptance(work, options)),
-    readSocialEntry: (value, seed) => createCapturedAdmissions(villagesDocuments()).readSocialEntry(value, seed),
-    socialIdentity: (value, scope) => createCapturedAdmissions(villagesDocuments()).socialIdentity(value, scope),
-    mutateVillageState,
-    mutateRelationships,
-    processLiveMemories,
-    readVillageSnapshot: readVillageMemorySnapshot,
-    queueBackgroundJob,
-    interpretSocialSource,
-    afterCatchup: advanceReturnCatchup,
-  });
-  const releaseRelationshipSocial = configureRelationshipSocial(relationshipSocial);
   const startingTies = createStartingTies({
     readVillageLore,
     readVillageState: readVillageMemoryState,
@@ -534,20 +496,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       backgroundWorkSummaries,
     }),
   );
-  const releaseLiveMemory = configureLiveMemory(
-    createLiveMemory({
-      mutateVillageState: mutateVillageMemoryState,
-      readVillageAuthority: readVillageMemoryAuthority,
-      readVillageState: readVillageMemoryState,
-      mutateRelationships,
-    }),
-  );
-  const releaseRelationships = configureWorldRelationships({
-    readRelationshipState,
-    reconcileRelationships,
-    persistRelationshipAuthority,
-    processSocialOutbox,
-  });
   const villageRepository = createVillageRepository(villagesDocuments, (message) => villagesLogger().warn(message));
   const releaseClock = configureVillageClock(createVillageClock(villageRepository));
   const releaseVillageState = configureVillageStateService(createVillageStateService(villageRepository));
@@ -898,17 +846,10 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       },
     }),
   );
-  const relationshipIdentity: import("../domain/rules/return-capture-revision.js").RelationshipIdentity = (world) =>
-    relationshipPayloadStore(villagesDocuments()).fingerprint(world.relationshipContext, world);
-  const wishIdentity: import("../domain/rules/return-capture-revision.js").WishIdentity = (rows, scope) =>
-    wishHistoryStore(villagesDocuments()).fingerprint(rows, scope);
   const residentPlanning = createResidentPlanning({
     activeVenueSession,
-    relationshipIdentity,
-    wishIdentity,
     afterCatchup: advanceReturnCatchup,
     afterCatchupFailure: advanceReturnCatchup,
-    automaticMail: personalMail.automaticMail,
     readVillageState,
     readEffectiveVillagerCard,
     queueBackgroundJob,
@@ -918,8 +859,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     completeWithRoom,
   });
   const narrative = createNarrative({
-    relationshipIdentity,
-    wishIdentity,
     read: readVillageAuthority,
     mutate: (update) => villageRepository.mutateAuthority(update),
     socialSnapshot: readVillageSnapshot,
@@ -991,22 +930,12 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
         ["schedule-influence", scheduleInfluence.handler],
         ["wish", wishService.handler],
         ["personal-mail", personalMail.handler],
-        ["social-recovery", relationshipSocial.handler],
         ["agenda", bindActivationService(residentAgendas.agendaBackgroundHandler)],
         ["resident-planning", bindActivationService(residentPlanning.handler)],
         ["world-development", bindActivationService(narrative.handler)],
       ],
     }),
   );
-  const returnSettlement = createReturnCatchupSettlement({
-    socialIdentity: (value, scope) => createCapturedAdmissions(villagesDocuments()).socialIdentity(value, scope),
-    relationshipIdentity,
-    wishIdentity,
-    gate: repairGate(),
-    readSnapshot: readVillageSnapshot,
-    mutate: mutateVillageMemoryState,
-    processSocialOutbox,
-  });
   const returnCatchup = createReturnCatchup({
     readAuthority: () => villageRepository.readAuthority({ memories: true, wishes: true }),
     mutateAuthority: (update) => villageRepository.mutateAuthority(update, { memories: true, wishes: true }),
@@ -1020,8 +949,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     job: backgroundJobSnapshot,
     retryJob: retryBackgroundJob,
     cancel: cancelReturnCatchup,
-    settle: returnSettlement.settle,
-    reinterpret: relationshipSocial.recoverCatchup,
+
     hasPresence: hasVillagePresence,
     now: villageNow,
   });
@@ -1094,7 +1022,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseVenueCommands();
     releaseQueries();
     releaseLiveScenes();
-    releaseLiveMemory();
     releaseRelationshipViews();
     releasePersonalMail();
     releaseWishes();
@@ -1102,9 +1029,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseWritingSettings();
     releaseVillageState();
     releaseClock();
-    releaseRelationships();
-    releaseRelationshipSocial();
-    releaseRelationshipStore();
     releaseSceneWork();
     releaseCompactFounding();
     releaseBootstrapRecipes();

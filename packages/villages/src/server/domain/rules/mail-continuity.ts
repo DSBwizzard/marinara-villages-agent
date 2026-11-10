@@ -346,7 +346,7 @@ export function acceptMailContinuity(state: VillageState, publication: MailPubli
     segments: [],
     grounding: [...grounding.values()],
     continuityVersionIds: versions.map((version) => version.id),
-    offered: [],
+    offered: publication.offered,
     commandReceipts: [receipt],
     dependencies: {},
     holderDependencies,

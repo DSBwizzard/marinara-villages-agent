@@ -249,7 +249,7 @@ export async function collectRetainedStorage(gate: RepairGate, removeSpriteFile?
       );
       const manifest = readContinuityPageManifest(JSON.parse(row.data.payload));
       memoryRequire(
-        manifest.revision + manifest.episodeRevision + manifest.placeRevision === head.revision,
+        manifest.revision + manifest.episodeRevision + manifest.placeRevision + manifest.mailRevision === head.revision,
         "owned history revision changed",
       );
       await traceContinuityPages(manifest, row.data.world, view.tracer);

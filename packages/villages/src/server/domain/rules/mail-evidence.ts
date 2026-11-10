@@ -63,7 +63,13 @@ export function assertMailReceipt(episode: AcceptedEpisode, receipt: Receipt) {
       !episode.sceneDelta &&
       !episode.privateInput &&
       !episode.segments.length &&
-      !episode.offered.length &&
+      episode.offered.every(
+        (row) =>
+          receipt.mail!.phase === "written" &&
+          receipt.mail!.from.id !== "player" &&
+          row.holder.id === receipt.mail!.from.id &&
+          row.holder.incarnation === receipt.mail!.from.incarnation,
+      ) &&
       episode.commandReceipts.length === 1,
     "correspondence cannot fabricate a Scene or native action",
   );

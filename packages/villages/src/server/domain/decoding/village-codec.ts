@@ -1168,13 +1168,44 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
     if (!capture.world || typeof capture.world !== "object" || Array.isArray(capture.world))
       throw new Error("The saved Village departure capture could not be read.");
     const world = capture.world as Record<string, unknown>;
-    if (Object.hasOwn(world, "relationshipHead"))
-      throw new Error("Departure history was not loaded for this operation.");
+    readResidentPlans(world.residentPlans);
+    readPlaceRegistry(world.worldPlaces);
     if (
       typeof capture.at !== "string" ||
       !Number.isFinite(Date.parse(capture.at)) ||
-      !Number.isSafeInteger(capture.memoryRevision) ||
-      Number(capture.memoryRevision) < 0 ||
+      Object.keys(capture).some((key) => !["at", "continuityRevision", "episodeRevision", "world"].includes(key)) ||
+      Object.keys(world).some(
+        (key) =>
+          ![
+            "seed",
+            "setupAt",
+            "foundedAt",
+            "timeZone",
+            "name",
+            "setting",
+            "worldName",
+            "worldRules",
+            "narrative",
+            "narrativeConsequence",
+            "eventAttempts",
+            "playerBackground",
+            "playerPersonaId",
+            "playerPersonaName",
+            "playerPersonaIdentity",
+            "playerPersonaMissing",
+            "villagers",
+            "venues",
+            "residences",
+            "projects",
+            "residentPlans",
+            "worldPlaces",
+            "opening",
+          ].includes(key),
+      ) ||
+      !Number.isSafeInteger(capture.continuityRevision) ||
+      Number(capture.continuityRevision) < 0 ||
+      !Number.isSafeInteger(capture.episodeRevision) ||
+      Number(capture.episodeRevision) < 0 ||
       ![
         "seed",
         "setupAt",
@@ -1206,8 +1237,6 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
           typeof venue.id === "string" &&
           !!venue.occupancy &&
           typeof venue.occupancy === "object" &&
-          !!venue.state &&
-          typeof venue.state === "object" &&
           (venue.zones === undefined || Array.isArray(venue.zones))
         );
       }) ||
@@ -1227,7 +1256,7 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
     if (
       typeof batch.id !== "string" ||
       !/^[a-zA-Z0-9-]{1,100}$/.test(batch.id) ||
-      !["queued", "running", "failed", "recovering", "completed", "cancelled"].includes(String(batch.status))
+      !["queued", "running", "failed", "completed", "cancelled"].includes(String(batch.status))
     )
       throw new Error("The saved Village catch-up batch could not be read.");
     if (historical && !["completed", "cancelled"].includes(String(batch.status)))
@@ -1314,8 +1343,8 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
           typeof row.opportunityId !== "string" ||
           !ids.has(row.opportunityId) ||
           recorded.has(row.opportunityId) ||
-          !["pending", "queued", "settling", "settled", "rejected", "held"].includes(String(row.status)) ||
-          (row.heldStage !== undefined && !["queued", "settling"].includes(String(row.heldStage))) ||
+          !["pending", "queued", "settled", "rejected", "held"].includes(String(row.status)) ||
+          (row.heldStage !== undefined && row.heldStage !== "queued") ||
           (row.automaticRetryUsed !== undefined && row.automaticRetryUsed !== true) ||
           (row.error !== undefined && typeof row.error !== "string")
         )
@@ -1428,9 +1457,6 @@ export function coerceVillageState(value: unknown): VillageState {
     noticeSequence: Math.max(0, Math.floor(Number(raw.noticeSequence) || 0)),
     dismissedNoticeIds: [...new Set(asStringArray(raw.dismissedNoticeIds))],
     socialContractVersion: 2,
-    socialMailOutbox: Array.isArray(raw.socialMailOutbox)
-      ? (structuredClone(raw.socialMailOutbox) as VillageState["socialMailOutbox"])
-      : [],
     socialPublications: raw.socialPublications
       ? (structuredClone(raw.socialPublications) as VillageState["socialPublications"])
       : {},
@@ -1579,9 +1605,6 @@ export function coerceVillageState(value: unknown): VillageState {
           ) as VillageState["semanticContinuations"],
         }
       : {}),
-    socialOutbox: Array.isArray(raw.socialOutbox)
-      ? (structuredClone(raw.socialOutbox) as VillageState["socialOutbox"])
-      : [],
     projects: coerceProjects(raw.projects ?? []),
     wishFollowing: Object.fromEntries(
       Object.entries(asRecord(raw.wishFollowing)).filter(([, v]) => typeof v === "boolean"),

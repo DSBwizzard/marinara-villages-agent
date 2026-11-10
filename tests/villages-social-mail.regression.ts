@@ -19,7 +19,7 @@ import { readPersonalMailInput } from "../packages/villages/src/server/domain/de
 import { copyBackgroundWork } from "../packages/villages/src/server/domain/rules/world-context-copy.js";
 import { createBackgroundContext } from "../packages/villages/src/server/adapters/operations/background-context-service.js";
 import { createBackgroundWork } from "../packages/villages/src/server/jobs/background-service.js";
-import { createCapturedAdmissions } from "../packages/villages/src/server/adapters/storage/captured-admission-store.js";
+import { readCapturedInput } from "../packages/villages/src/server/adapters/storage/captured-admissions.js";
 
 const at = "2026-11-09T12:00:00.000Z";
 async function fixture() {
@@ -115,13 +115,8 @@ async function fixture() {
       assert.equal(source.status, "pending", "exact source is durable before any job admission");
       if (failAdmission) throw Error("injected admission failure");
       if (!queued.some((row) => row.revision === work.revision)) {
-        const copied = copyBackgroundWork(work),
-          captures = createCapturedAdmissions(documents);
-        copied.input = await captures.prepareInput(work.kind, copied.input, work.seed, {
-          wishes: [],
-          relationships: [],
-        });
-        copied.input = await captures.readInput(work.kind, copied.input, work.seed);
+        const copied = copyBackgroundWork(work);
+        copied.input = readCapturedInput(work.kind, copied.input, work.seed);
         queued.push(copied);
       }
     },

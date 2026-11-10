@@ -10,7 +10,7 @@ import { continuityActor } from "../../domain/rules/continuity-actors.js";
 import { continuityProtectionFingerprint } from "../../domain/rules/continuity.js";
 import { captureContinuityContext, continuityContextScopeKey } from "../../domain/rules/continuity-context.js";
 import { episodeContextRooms } from "../../domain/rules/episode-sources.js";
-import { acceptMailExchange, acceptResidentLetter, readDeliveredLetter } from "../../domain/rules/mail-delivery.js";
+import { acceptMailExchange, readDeliveredLetter } from "../../domain/rules/mail-delivery.js";
 import { mailSourceHash } from "../../domain/rules/mail-evidence.js";
 import { queueMailboxLetter } from "../../domain/rules/social-mail.js";
 import {
@@ -367,7 +367,6 @@ export function createSocialMail(ports: SocialMailPorts) {
     send: command(send),
     readLetter: command(readLetter),
     retry: command(retry),
-    automaticMail: acceptResidentLetter,
   };
 }
 export type SocialMailService = ReturnType<typeof createSocialMail>;

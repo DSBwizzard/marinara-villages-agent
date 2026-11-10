@@ -14,11 +14,7 @@ import { activityDate, eventAttemptAvailable } from "../../domain/rules/event-at
 import { arrangementActivityAt, preferredActivityLane } from "../../domain/rules/activity-arbitration.js";
 import { backgroundRevision } from "../../domain/rules/background-revision.js";
 import { cloneVillageContext } from "../../domain/rules/world-context-copy.js";
-import {
-  returnCaptureRevision,
-  type RelationshipIdentity,
-  type WishIdentity,
-} from "../../domain/rules/return-capture-revision.js";
+import { returnCaptureRevision } from "../../domain/rules/return-capture-revision.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { fitVenueWritingMessages } from "../../domain/rules/venue-writing.js";
 import { ReturnOpportunityUnavailable, returnCatchupSubject } from "../../domain/rules/return-catchup-authority.js";
@@ -27,8 +23,6 @@ import { completionFailure, WorkFailureError } from "../../domain/rules/work-fai
 import { WORLD_GM_INSTRUCTION } from "../../domain/rules/narrative-prompts.js";
 
 type Ports = {
-  relationshipIdentity: RelationshipIdentity;
-  wishIdentity: WishIdentity;
   read: (options?: import("../../domain/models/world-repository.js").VillageMemoryRead) => Promise<VillageState>;
   mutate: (update: (state: VillageState) => void) => Promise<void>;
   socialSnapshot: () => Promise<VillageState>;
@@ -98,7 +92,7 @@ export function createNarrative(ports: Ports) {
               catchupBatchId: batchId,
               context: { catchup: true },
               opportunity,
-              captureRevision: returnCaptureRevision(capture, ports.relationshipIdentity, ports.wishIdentity),
+              captureRevision: returnCaptureRevision(capture),
               returnUntil: state.returnCatchup?.batch?.until,
             }
           : {}),
@@ -168,8 +162,7 @@ export function createNarrative(ports: Ports) {
       batch.status !== "running" ||
       !batch.opportunities?.some((row) => JSON.stringify(row) === JSON.stringify(opportunity)) ||
       !live.returnCatchup?.capture ||
-      returnCaptureRevision(live.returnCatchup.capture, ports.relationshipIdentity, ports.wishIdentity) !==
-        returnCaptureRevision(capture, ports.relationshipIdentity, ports.wishIdentity)
+      returnCaptureRevision(live.returnCatchup.capture) !== returnCaptureRevision(capture)
     )
       throw new ReturnOpportunityUnavailable("The historical world opportunity changed.");
     const historical = cloneVillageContext({ ...live, ...capture.world });
@@ -215,8 +208,7 @@ export function createNarrative(ports: Ports) {
         input.catchupBatchId &&
         (state.returnCatchup?.batch?.id !== input.catchupBatchId ||
           state.returnCatchup.batch.until !== input.returnUntil ||
-          returnCaptureRevision(state.returnCatchup.capture, ports.relationshipIdentity, ports.wishIdentity) !==
-            input.captureRevision)
+          returnCaptureRevision(state.returnCatchup.capture) !== input.captureRevision)
       )
         return false;
       const claim = state.narrative?.claims?.find((row) => row.id === grant.id);

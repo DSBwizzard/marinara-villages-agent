@@ -1,6 +1,7 @@
 import type { VillageState } from "../models/world.js";
 import type { ContinuityCapture, ContinuityEvidence, ContinuityHolder } from "../models/continuity-model.js";
 import { episodeContextRooms } from "./episode-sources.js";
+import { nativeCircumstanceRoots } from "./native-continuity.js";
 import { continuityActor } from "./continuity-actors.js";
 import {
   continuityConstraints,
@@ -44,6 +45,7 @@ export function captureContinuityContext(
   actorIds: string[],
   query: string,
   at: string,
+  scope?: { placeId: string; zoneId: string },
 ): ContinuityCapture {
   memoryRequire(
     actorIds.length > 0 && actorIds.length <= 5 && new Set(actorIds).size === actorIds.length,
@@ -52,10 +54,18 @@ export function captureContinuityContext(
   const actors = actorIds.map((id) => continuityActor(state, id));
   memoryRequire(actors.every(Boolean), "continuity context actor is unavailable");
   const holders = actors.filter((actor) => actor !== undefined),
+    views = holders.flatMap((holder) =>
+      continuityViews(
+        state.continuity,
+        holder,
+        at,
+        continuityProtectionUnits(state.continuity, holder, episodeSourceGraph(state.episodes.records, holder)),
+      ),
+    ),
     selected = selectActorContinuity(state.continuity, state.episodes, holders, at, {
       query,
       bytes: 24000,
-      requiredIds: [],
+      requiredIds: [...nativeCircumstanceRoots(state, at, views, scope)],
       identity: (id) => continuityActor(state, id),
     }),
     history = selectEpisodeHistory(state.episodes, state.continuity, holders, query, 12000),
@@ -71,14 +81,7 @@ export function captureContinuityContext(
     if (source.kind !== "knowledge") sourceEpisodes.add(source.episodeId);
     return ref;
   };
-  const views = holders.flatMap((holder) =>
-    continuityViews(
-      state.continuity,
-      holder,
-      at,
-      continuityProtectionUnits(state.continuity, holder, episodeSourceGraph(state.episodes.records, holder)),
-    ),
-  );
+
   const entries = selected.packet.entries.map((entry) => {
     const holder = holders.find((holder) => holder.id === entry.for)!,
       view = views.find(

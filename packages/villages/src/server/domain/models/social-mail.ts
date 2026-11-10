@@ -1,5 +1,4 @@
-import type { RelationshipDisclosure, RelationshipHead, RelationshipReview } from "./relationship-types.js";
-import type { CapturedAdmission } from "./captured-admission-model.js";
+import type { RelationshipDisclosure } from "./relationship-types.js";
 import type {
   ContinuityAdmission,
   ContinuityCapture,
@@ -20,6 +19,7 @@ export type MailContinuityPlan = {
   };
   historical: Record<string, ContinuityEvidence>;
   keep: unknown[];
+  offered: import("./episode-model.js").AcceptedEpisode["offered"];
   requires: string[];
   responseDigest: string;
   roomContext?: MailRoomContext;
@@ -91,44 +91,4 @@ export type SocialMailThread = {
   participantIds: string[];
   revision: number;
   messages: SocialMailMessage[];
-};
-export type SocialMailInterpretation = {
-  source: RelationshipReview;
-  reply: RelationshipReview;
-  replyText: string;
-  sourceMemoryChanges?: unknown[];
-  sourceWishChanges?: unknown[];
-  replyWishChanges?: unknown[];
-  replyMemoryChanges?: unknown[];
-};
-export type SocialMailInput = {
-  mode?: "player" | "resident";
-  seed: string;
-  threadId: string;
-  messageId: string;
-  residentId: string;
-  sourceText: string;
-  sourceAt: string;
-  admittedAt?: string;
-  sourceHash: string;
-  incarnation: string;
-  admitted: import("./world.js").VillageState;
-  retainedReply?: string;
-  systemMemory?: ReturnType<typeof import("../rules/scene-memories.js").sceneMemoryContext>;
-  sourceDelivered: boolean;
-};
-export type SocialMailOutbox = {
-  id: string;
-  input: SocialMailInput;
-  result: SocialMailInterpretation;
-  error?: string;
-  reinterpretRequired?: boolean;
-  retryClaim?: string;
-  retryAdmitted?: string;
-};
-export type CapturedSocialMailInput = Omit<SocialMailInput, "admitted"> & {
-  admitted: CapturedAdmission<SocialMailInput["admitted"]> & { relationshipHead: RelationshipHead | null };
-};
-export type WorldSocialMailOutbox = Omit<SocialMailOutbox, "input"> & {
-  input: SocialMailInput | CapturedSocialMailInput;
 };

@@ -125,6 +125,7 @@ function fixture() {
       admission,
       historical,
       keep: raws,
+      offered: [],
       requires: [],
       responseDigest: memoryHash([receipt, raws]),
     };

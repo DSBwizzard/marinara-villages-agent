@@ -11,7 +11,7 @@ const id = z.string().min(1).max(160),
         new Date(value + "T12:00:00.000Z").toISOString().slice(0, 10) === value,
     ),
   minute = z.number().int().min(0).max(1440);
-const socialPlanSchema = z
+export const socialPlanSchema = z
   .object({
     id,
     dateKey: date,

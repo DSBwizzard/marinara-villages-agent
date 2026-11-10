@@ -142,21 +142,13 @@ export function retainedSpriteFiles(kind: string, value: unknown): string[] {
     return [value, value.operation?.snapshot]
       .filter(Boolean)
       .flatMap((scene) => (scene.continuity ? residents(scene.continuity.facts) : []));
-  const outbox = (world: Record<string, any>) =>
-    (world.socialOutbox ?? []).flatMap((entry: any) => (entry.admitted ? residents(entry.admitted) : []));
   if (kind === "village")
-    return [
-      ...residents(value),
-      ...(value.returnCatchup?.capture ? residents(value.returnCatchup.capture.world) : []),
-      ...outbox(value),
-      ...(value.socialMailOutbox ?? []).flatMap((entry: any) => residents(entry.input.admitted)),
-    ];
+    return [...residents(value), ...(value.returnCatchup?.capture ? residents(value.returnCatchup.capture.world) : [])];
   if (["background-work", "background-history"].includes(kind)) {
     return [value, value.replacement].filter(Boolean).flatMap((job) => {
       const input = job.input;
       if (input == null) return [];
-      if (["resident-planning", "personal-mail"].includes(job.kind)) return residents(input.admitted);
-      if (job.kind === "social-recovery") return residents(input.entry.admitted);
+      if (job.kind === "resident-planning") return input.catchup ? residents(input.catchup.world) : [];
       return [];
     });
   }

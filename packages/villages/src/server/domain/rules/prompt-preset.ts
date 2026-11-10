@@ -236,7 +236,6 @@ export function villageCurrentSetting(village: {
   narrative?: import("../models/narrative-model.js").NarrativeState;
   worldName?: string;
 }): string {
-  const facts = currentVillageCircumstances(village);
   return [
     village.setting.trim()
       ? `Local geography and boundary (not a Venue's current physical account): ${village.setting.trim()}`
@@ -246,9 +245,6 @@ export function villageCurrentSetting(village: {
     "Current Venue and Zone records govern physical truth. Lore books are reference material; outdated descriptions cannot undo physical progress. Narrator context does not grant anyone knowledge, witnesses or consent.",
     RESIDENT_CONTINUITY_RULE,
     village.worldName ? `Village world: ${JSON.stringify(village.worldName)}` : "",
-    facts.length
-      ? `Active Village-wide circumstances (context, not automatic knowledge of later developments):\n${facts.map((fact) => `- ${fact}`).join("\n")}`
-      : "",
   ]
     .filter(Boolean)
     .join("\n");

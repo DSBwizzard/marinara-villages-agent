@@ -36,6 +36,7 @@ export const mailPlanSchema = z
       .strict(),
     historical: z.record(z.string().regex(/^h:/), continuityEvidenceSchema),
     keep: z.array(z.unknown()).max(32),
+    offered: continuityCaptureSchema.shape.offered,
     requires: z.array(z.string().min(1).max(48)).max(48),
     responseDigest: digest,
     roomContext: z

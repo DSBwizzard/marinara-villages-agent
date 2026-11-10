@@ -54,6 +54,7 @@ export function nativeCircumstanceRoots(
         .map((receipt) => receipt.id),
     ),
   );
+  const eligible = new Set(views.map((view) => view.id));
   const roots = new Set(
     state.continuity.versions
       .filter((version) =>
@@ -61,7 +62,8 @@ export function nativeCircumstanceRoots(
           (source) => source.kind === "native" && source.committedReceiptId && current.has(source.committedReceiptId),
         ),
       )
-      .map((version) => version.rootId),
+      .map((version) => version.rootId)
+      .filter((id) => eligible.has(id)),
   );
   const conditions = new Set(
     (state.narrative?.conditions ?? [])

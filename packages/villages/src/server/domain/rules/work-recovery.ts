@@ -29,7 +29,6 @@ const kinds: Record<Job["kind"], true> = {
   agenda: true,
   wish: true,
   "personal-mail": true,
-  "social-recovery": true,
 };
 export const isBackgroundKind = (value: unknown): value is Job["kind"] =>
   typeof value === "string" && Object.hasOwn(kinds, value);

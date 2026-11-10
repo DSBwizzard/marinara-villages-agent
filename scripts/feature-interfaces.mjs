@@ -14,7 +14,7 @@ export const serverFeatureInterfaces = Object.freeze({
     "foundingPreparationSnapshot",
     "assertFoundedVillageReady",
   ],
-  "founding/village-bootstrap.ts": ["interpretSocialSource", "draftVillageVenueDescriptions"],
+  "founding/village-bootstrap.ts": ["draftVillageVenueDescriptions"],
   "generation/model-requests.ts": ["completeWithRoom"],
   "media/image-generation.ts": [
     "resolveVillageImageConnectionId",
@@ -52,10 +52,6 @@ export const serverFeatureInterfaces = Object.freeze({
     "reviseRenovationProject",
     "renewRenovationApprovals",
   ],
-  "residents/live-memory.ts": ["processLiveMemories", "processLiveRelationships"],
-  "residents/social-mail.ts": ["processPersonalMailOutbox"],
-  "residents/relationship-social.ts": ["processSocialOutbox", "recoverSocialOutbox"],
-  "residents/relationship-store.ts": ["readRelationshipState", "mutateRelationships", "persistRelationshipAuthority"],
   "residents/resident-agendas.ts": [
     "readFoundingResidentContext",
     "queueVillagerAgenda",

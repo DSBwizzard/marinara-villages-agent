@@ -529,7 +529,7 @@ export type VillagePendingDecision = {
 export const RETURN_CATCHUP_HISTORY_LIMIT = 20;
 export type ReturnCatchupBatch = {
   id: string;
-  status: "queued" | "running" | "failed" | "recovering" | "completed" | "cancelled";
+  status: "queued" | "running" | "failed" | "completed" | "cancelled";
   /** Each batch is bounded by its captured calendar day and allowance. */
   budgetDate: string;
   opportunityLimit: number;
@@ -539,8 +539,8 @@ export type ReturnCatchupBatch = {
   opportunities?: ResidentPlanningOpportunity[];
   records?: {
     opportunityId: string;
-    status: "pending" | "queued" | "settling" | "settled" | "rejected" | "held";
-    heldStage?: "queued" | "settling";
+    status: "pending" | "queued" | "settled" | "rejected" | "held";
+    heldStage?: "queued";
     automaticRetryUsed?: true;
     outcome?: unknown;
     error?: string;
@@ -550,7 +550,8 @@ export type ReturnCatchupBatch = {
 };
 export type ReturnCatchupCapture = {
   at: string;
-  memoryRevision: number;
+  continuityRevision: number;
+  episodeRevision: number;
   world: Pick<
     VillageState,
     | "seed"
@@ -574,7 +575,7 @@ export type ReturnCatchupCapture = {
     | "residences"
     | "projects"
     | "residentPlans"
-    | "relationshipContext"
+    | "worldPlaces"
     | "opening"
   >;
 };
@@ -589,7 +590,6 @@ export type VillageState = {
   residentPlans: import("./resident-plans.js").ResidentPlans;
   startingHistory: import("./starting-history-model.js").StartingHistoryState;
   socialContractVersion: 2;
-  socialMailOutbox?: import("./social-mail.js").WorldSocialMailOutbox[];
   socialPublications?: Record<string, true>;
   eventAttempts?: import("../rules/event-attempts.js").EventAttemptLedger;
   /** Current work remains separate from the recent, terminal debug history. */
@@ -607,7 +607,6 @@ export type VillageState = {
   noticeSequence: number;
   dismissedNoticeIds: string[];
   relationshipContext?: import("./relationship-types.js").RelationshipState;
-  socialOutbox?: import("./social-outbox-model.js").WorldSocialOutboxEntry[];
   backgroundReceipts: Record<string, string>;
   /** Private expiry holds owned by unfinished Scenes or their retained final effects. */
   version: 18;

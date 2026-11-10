@@ -1,7 +1,7 @@
+import { readResidentPlanningInput } from "../domain/rules/resident-planning.js";
 import type { CapabilityDocumentStore, CapabilityRuntimeLogger } from "@marinara-engine/shared";
 import { randomUUID } from "node:crypto";
 import { ZonedDate } from "../../shared/helpers/zoned-date.js";
-import { returnCatchupHasCommittedEffects } from "../domain/rules/return-catchup-recovery.js";
 import { VILLAGES_PACKAGE_ID } from "../adapters/engine/runtime-host.js";
 import { retainLateProviderResponse } from "../adapters/models/provider-deadline.js";
 import type { withUsagePurpose } from "../adapters/models/usage-ledger.js";
@@ -36,9 +36,7 @@ import {
 import { backgroundCompletionId, readBackgroundCompletion } from "../adapters/storage/background-completions.js";
 import { asRecord } from "../domain/rules/coerce.js";
 import { copyBackgroundWork } from "../domain/rules/world-context-copy.js";
-import { capturedJobOwners } from "../adapters/storage/captured-admissions.js";
-import { capturedPublicationOwners } from "../adapters/storage/captured-admission-owners.js";
-import { createCapturedAdmissions } from "../adapters/storage/captured-admission-store.js";
+import { assertCapturedJob, readCapturedInput } from "../adapters/storage/captured-admissions.js";
 import { readVillageRoot } from "../adapters/storage/village-repository.js";
 import { connectionFailureKind } from "../domain/rules/connection-failure.js";
 import { badRequest, conflict } from "../domain/rules/errors.js";
@@ -172,23 +170,13 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   async function cancelReturnCatchup(batchId: string): Promise<void> {
     if (!/^[a-zA-Z0-9-]{1,100}$/.test(batchId)) throw badRequest("Choose a Village catch-up.");
     await withCatchupAdmission(async () => {
-      const before = await (ports.readVillageAuthority ?? readVillageState)();
-      const pendingSocial = before.socialOutbox?.some((entry) => !entry.processed && entry.catchupBatchId === batchId);
-      const mutate = pendingSocial ? mutateVillageState : (ports.mutateVillageAuthority ?? mutateVillageState);
+      const mutate = ports.mutateVillageAuthority ?? mutateVillageState;
       await mutate((state) => {
         const batch = state.returnCatchup?.batch;
         if (!batch || batch.id !== batchId) throw conflict("Village catch-up changed. Refresh its status.");
         if (["completed", "cancelled"].includes(batch.status)) return;
         if (state.narrative?.claims)
           state.narrative.claims = state.narrative.claims.filter((row) => row.batchId !== batchId);
-        const pending =
-          state.socialOutbox?.filter((entry) => !entry.processed && entry.catchupBatchId === batchId) ?? [];
-        if (returnCatchupHasCommittedEffects(state, batchId))
-          throw conflict("Finish recovering the saved encounter before continuing.");
-        if (pending.length) {
-          const ids = new Set(pending.map((entry) => entry.id));
-          state.socialOutbox = state.socialOutbox?.filter((entry) => !ids.has(entry.id));
-        }
         for (const record of batch.records ?? []) {
           if (record.status === "settled" || record.status === "rejected") continue;
           record.status = "rejected";
@@ -294,33 +282,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       }
       const next = change(record ? await responses.decode(record.data) : null);
       const data = nativeBackgroundJob(next);
-      const capturedKinds = ["resident-planning", "social-recovery"];
-      if (
-        (next.input !== null && capturedKinds.includes(next.kind)) ||
-        (next.replacement && capturedKinds.includes(next.replacement.kind))
-      ) {
-        const world = await documents.getById(VILLAGES_PACKAGE_ID, "villages-village");
-        const protectedOwners = await capturedPublicationOwners(documents, world);
-        if (record) {
-          const before = capturedJobOwners(record.data);
-          protectedOwners.wishes.push(...before.wishes);
-          protectedOwners.relationships.push(...before.relationships);
-        }
-        const captures = createCapturedAdmissions(documents);
-        if (next.input !== null)
-          data.input = await captures.prepareInput(next.kind, next.input, next.seed, protectedOwners);
-        if (next.replacement)
-          data.replacement = {
-            ...next.replacement,
-            input: await captures.prepareInput(
-              next.replacement.kind,
-              next.replacement.input,
-              next.replacement.seed,
-              protectedOwners,
-            ),
-          };
-      }
-      capturedJobOwners(data);
+      assertCapturedJob(data);
       next.input = data.input;
       next.replacement = data.replacement;
       if (record && JSON.stringify(data) === JSON.stringify(record.data)) return next;
@@ -627,12 +589,13 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     });
   }
   function catchupBatchId(job: Job): string | undefined {
+    if (job.input === null) return undefined;
     const input = asRecord(job.input);
-    if (job.kind === "social-recovery") {
-      const id = asRecord(input.entry).catchupBatchId;
-      return typeof id === "string" && id ? id : undefined;
+    if (job.kind === "resident-planning") {
+      const value = readResidentPlanningInput(job.input);
+      return value.catchup?.batchId;
     }
-    if (!["resident-planning", "world-development"].includes(job.kind)) return undefined;
+    if (job.kind !== "world-development") return undefined;
     if (asRecord(input.context).catchup !== true) return undefined;
     if (typeof input.catchupBatchId !== "string" || !input.catchupBatchId)
       throw new Obsolete("Catch-up work has no batch identity.");
@@ -640,13 +603,10 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   }
   function readForJob(job: Job): Promise<VillageState> {
     const options = {
-      memories: ["starting-ties", "wish", "agenda", "personal-mail"].includes(job.kind) || !!catchupBatchId(job),
-      wishes:
-        job.kind === "resident-planning" || !!catchupBatchId(job)
-          ? (true as const)
-          : ["wish", "agenda"].includes(job.kind)
-            ? [job.subjectId]
-            : undefined,
+      memories:
+        ["starting-ties", "wish", "agenda", "personal-mail", "resident-planning"].includes(job.kind) ||
+        !!catchupBatchId(job),
+      wishes: ["wish", "agenda"].includes(job.kind) ? [job.subjectId] : undefined,
     };
     if (handlers.get(job.kind)?.authority === "raw" && ports.readVillageAuthority)
       return ports.readVillageAuthority(options);
@@ -658,12 +618,12 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     ];
     return handlers.get(job.kind)?.authority === "raw" && ports.mutateVillageAuthority
       ? ports.mutateVillageAuthority(update, {
-          memories: job.kind === "personal-mail" ? true : undefined,
-          wishes: catchupBatchId(job) ? true : undefined,
+          memories: ["personal-mail", "resident-planning"].includes(job.kind) ? true : undefined,
           sourceJobs,
         })
       : mutateVillageState(update, {
-          wishes: job.kind === "resident-planning" ? true : job.kind === "wish" ? [job.subjectId] : undefined,
+          memories: job.kind === "resident-planning" ? true : undefined,
+          wishes: job.kind === "wish" ? [job.subjectId] : undefined,
           sourceJobs,
         });
   }
@@ -674,12 +634,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     const batchId = catchupBatchId(job),
       batch = state.returnCatchup?.batch;
     const holding = batch && !["completed", "cancelled"].includes(batch.status);
-    if (
-      batchId &&
-      (!holding ||
-        batch.id !== batchId ||
-        (batch.status !== "running" && !(job.kind === "social-recovery" && batch.status === "recovering")))
-    )
+    if (batchId && (!holding || batch.id !== batchId || batch.status !== "running"))
       throw new Obsolete("This catch-up opportunity is no longer active.");
     if (holding && !batchId && (!job.finite || job.kind === "resident-planning"))
       throw new Paused("Waiting for Village catch-up.");
@@ -735,7 +690,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           if (["resident-planning", "world-development"].includes(work.kind) && running.has(id) && previous)
             return previous;
           if (
-            ["personal-mail", "social-recovery"].includes(work.kind) &&
+            work.kind === "personal-mail" &&
             previous?.seed === work.seed &&
             ["queued", "running"].includes(previous.status)
           )
@@ -854,7 +809,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         instanceId: job.instanceId,
         attempt: job.attempt,
         nativeInput: job.input,
-        input: await createCapturedAdmissions(documents).readInput(job.kind, job.input, job.seed),
+        input: readCapturedInput(job.kind, job.input, job.seed),
       };
       job = { ...job, input: admitted.input };
     } catch {
@@ -1488,7 +1443,6 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         job?.kind !== "world-development" &&
         job?.kind !== "starting-ties" &&
         job?.kind !== "personal-mail" &&
-        job?.kind !== "social-recovery" &&
         !state.villagers.some((resident) => resident.characterId === job?.subjectId);
       if (
         !job ||
@@ -1511,7 +1465,6 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
               job?.kind !== "resident-planning" &&
               job?.kind !== "world-development" &&
               job?.kind !== "personal-mail" &&
-              job?.kind !== "social-recovery" &&
               !state.villagers.some((resident) => resident.characterId === job?.subjectId);
             if (subjectGone || job?.seed !== state.seed) discardedReceipts.push(record.id);
           }

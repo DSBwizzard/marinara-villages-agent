@@ -1,162 +1,32 @@
-import { readPersonalMailInput } from "../../domain/decoding/mailbox-codec.js";
-import { memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import type { BackgroundKind } from "../../domain/models/background-model.js";
+import { readPersonalMailInput } from "../../domain/decoding/mailbox-codec.js";
+import { readResidentPlanningInput } from "../../domain/rules/resident-planning.js";
+import { memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import { isBackgroundKind } from "../../domain/rules/work-recovery.js";
-import {
-  createWishHistoryTracer,
-  wishResidentOwners,
-  type WishHistoryHead,
-  type WishHistoryScope,
-} from "./wish-history.js";
-import { MEMORY_PAGE_KIND, type MemoryPageData } from "./memory-pages.js";
-import {
-  assertRelationshipWorld,
-  readRelationshipHead,
-  validateRelationshipHistory,
-  type RelationshipHistoryOwner,
-  type RelationshipScope,
-} from "./relationship-payload-store.js";
 
-export type CapturedAdmissionOwners = {
-  wishes: { scope: WishHistoryScope; head: WishHistoryHead | null; capturedAt: string }[];
-  relationships: RelationshipHistoryOwner[];
-};
-const emptyOwners = (): CapturedAdmissionOwners => ({ wishes: [], relationships: [] });
-const owns = (value: object, key: string) => Object.hasOwn(value, key);
-
-function relationship(raw: Record<string, any>, key: string, scope: RelationshipScope, into: CapturedAdmissionOwners) {
-  if (!owns(raw, key)) return;
-  if (raw[key] === null) return; // Unknown context is distinct from an encoded, known-empty relationship state.
-  const head = readRelationshipHead(raw[key]);
-  assertRelationshipWorld(head, scope);
-  into.relationships.push({ scope, head });
-}
-
-function admission(raw: unknown, seed: string, into: CapturedAdmissionOwners): RelationshipScope {
-  memoryObject(raw);
-  memoryRequire(
-    raw.admissionFormat === 1 &&
-      raw.seed === seed &&
-      typeof raw.setupAt === "string" &&
-      !owns(raw, "relationshipContext"),
-    "unsupported captured admission; start a fresh Village",
-  );
-  const scope = { seed, setupAt: raw.setupAt };
-  for (const [index, owner] of wishResidentOwners(raw.villagers, scope).entries()) {
-    const row = raw.villagers[index];
-    memoryRequire(
-      owns(row, "wishHead") &&
-        typeof row.cardSnapshot.capturedAt === "string" &&
-        row.cardSnapshot.capturedAt.length > 0,
-      "invalid admitted Wish owner",
-    );
-    into.wishes.push({ scope: owner.scope, head: owner.head, capturedAt: row.cardSnapshot.capturedAt });
-  }
-  relationship(raw, "relationshipHead", scope, into);
-  return scope;
-}
-
-function directory(raw: Record<string, any>): Map<string, string> {
-  return new Map(raw.villagers.map((row: any) => [row.characterId, row.cardSnapshot.capturedAt]));
-}
-function actors(opportunity: unknown, stamps: Map<string, string>): string[] {
-  memoryObject(opportunity);
-  memoryRequire(
-    Array.isArray(opportunity.actorIds) &&
-      opportunity.actorIds.length > 0 &&
-      new Set(opportunity.actorIds).size === opportunity.actorIds.length &&
-      opportunity.actorIds.every((id: unknown) => typeof id === "string" && stamps.has(id)),
-    "captured opportunity actor is unavailable",
-  );
-  return opportunity.actorIds;
-}
-function socialEntry(raw: unknown, seed: string, into: CapturedAdmissionOwners): RelationshipScope {
-  memoryObject(raw);
-  memoryRequire(
-    raw.seed === seed && !owns(raw, "relationshipSnapshot") && owns(raw, "relationshipHead"),
-    "invalid captured social source",
-  );
-  const scope = admission(raw.admitted, seed, into);
-  actors(raw.opportunity, directory(raw.admitted));
-  relationship(raw, "relationshipHead", scope, into);
-  return scope;
-}
-export function capturedSocialOwners(raw: unknown, seed: string): CapturedAdmissionOwners {
-  const into = emptyOwners();
-  socialEntry(raw, seed, into);
-  return into;
-}
-
-function input(kind: BackgroundKind, raw: unknown, seed: string, into: CapturedAdmissionOwners) {
-  if (!["resident-planning", "personal-mail", "social-recovery"].includes(kind)) return;
-  memoryObject(raw);
-  const value = raw as Record<string, any>,
-    firstOwner = into.wishes.length;
-  memoryRequire(!owns(value, "seed") || value.seed === seed, "captured input belongs to another World");
+/** Native captures contain exact fitted data; common history remains owned by the Village head. */
+export function readCapturedInput(kind: BackgroundKind, raw: unknown, seed: string): unknown {
   if (kind === "personal-mail") {
-    readPersonalMailInput(value);
-    return;
+    const value = readPersonalMailInput(raw);
+    memoryRequire(value.seed === seed, "personal mail capture belongs to another World");
+    return value;
   }
   if (kind === "resident-planning") {
-    admission(value.admitted, seed, into);
-    memoryObject(value.context);
-    memoryObject(value.actorIncarnations);
-    const stamps = directory(value.admitted),
-      active = actors(value.opportunity, stamps);
-    memoryRequire(
-      Object.entries(value.actorIncarnations).every(([id, stamp]) => stamps.get(id) === stamp) &&
-        active.every((id) => owns(value.actorIncarnations, id)),
-      "captured activity actor changed incarnation",
-    );
-    {
-      memoryRequire(Array.isArray(value.context.residents), "invalid admitted resident view");
-      const ids = new Set<string>(),
-        directory = new Map(into.wishes.slice(firstOwner).map((owner) => [owner.scope.actorId, owner]));
-      for (const row of value.context.residents) {
-        memoryObject(row);
-        const owner = directory.get(row.characterId);
-        memoryRequire(
-          !owns(row, "wishes") && !ids.has(row.characterId) && owner && row.capturedAt === owner.capturedAt,
-          "admitted resident view changed incarnation",
-        );
-        ids.add(row.characterId);
-      }
-      memoryRequire(
-        active.every((id) => ids.has(id)),
-        "captured activity actor has no context",
-      );
-    }
-    {
-      memoryObject(value.context.social);
-      memoryRequire(
-        !owns(value.context.social, "state") && owns(value.context.social, "head"),
-        "inline captured social state",
-      );
-      memoryObject(value.admitted);
-      relationship(value.context.social, "head", { seed, setupAt: value.admitted.setupAt }, into);
-    }
+    const value = readResidentPlanningInput(raw);
+    memoryRequire(value.context.narration.context.seed === seed, "resident capture belongs to another World");
+    return value;
   }
-  if (kind === "social-recovery") {
-    const scope = socialEntry(value.entry, seed, into);
-    memoryRequire(!owns(value, "social") && owns(value, "socialHead"), "inline social recovery baseline");
-    relationship(value, "socialHead", scope, into);
-  }
-}
-export function capturedInputOwners(kind: BackgroundKind, raw: unknown, seed: string): CapturedAdmissionOwners {
-  const into = emptyOwners();
-  input(kind, raw, seed, into);
-  return into;
+  return structuredClone(raw);
 }
 
-/** Closed paths only: prose and arbitrary saved objects cannot create history ownership. */
-export function capturedJobOwners(raw: unknown): CapturedAdmissionOwners {
+/** Releasing a capture cannot release an unfinished paid response or its recovery proof. */
+export function assertCapturedJob(raw: unknown): void {
   memoryObject(raw);
   memoryRequire(
     raw.responseStorage === 4 && typeof raw.seed === "string" && isBackgroundKind(raw.kind),
     "unsupported captured background format",
   );
-  const into = emptyOwners();
-  if (raw.input === null && ["resident-planning", "personal-mail", "social-recovery"].includes(raw.kind)) {
+  if (raw.input === null && ["resident-planning", "personal-mail"].includes(raw.kind)) {
     memoryRequire(
       ["completed", "obsolete"].includes(raw.status) &&
         Array.isArray(raw.steps) &&
@@ -166,77 +36,13 @@ export function capturedJobOwners(raw: unknown): CapturedAdmissionOwners {
         !raw.partialResult,
       "unfinished background capture was released",
     );
-  } else if (raw.input !== null) input(raw.kind, raw.input, raw.seed, into);
-  if (owns(raw, "replacement") && raw.replacement !== undefined) {
+  } else if (raw.input !== null) readCapturedInput(raw.kind, raw.input, raw.seed);
+  if (raw.replacement !== undefined) {
     memoryObject(raw.replacement);
     memoryRequire(
       typeof raw.replacement.seed === "string" && isBackgroundKind(raw.replacement.kind),
       "invalid replacement capture scope",
     );
-    input(raw.replacement.kind, raw.replacement.input, raw.replacement.seed, into);
+    readCapturedInput(raw.replacement.kind, raw.replacement.input, raw.replacement.seed);
   }
-  return into;
-}
-
-export function capturedWorldOwners(raw: unknown): CapturedAdmissionOwners {
-  memoryObject(raw);
-  memoryRequire(
-    raw.version === 17 && typeof raw.seed === "string" && typeof raw.setupAt === "string",
-    "unsupported captured World format",
-  );
-  const into = emptyOwners();
-  if (owns(raw, "socialOutbox")) {
-    memoryRequire(Array.isArray(raw.socialOutbox), "invalid captured social outbox");
-    for (const row of raw.socialOutbox) {
-      const scope = socialEntry(row, raw.seed, into);
-      memoryRequire(scope.setupAt === raw.setupAt, "social capture belongs to another World setup");
-    }
-  }
-
-  return into;
-}
-import type { CapabilityDocumentStore } from "@marinara-engine/shared";
-
-/** Validate the complete declared graph before adopting references or releasing unowned storage. */
-export async function validateCapturedOwners(
-  documents: Pick<CapabilityDocumentStore, "getById">,
-  owners: CapturedAdmissionOwners,
-): Promise<Set<string>> {
-  const retained = new Set<string>();
-  const get: CapabilityDocumentStore["getById"] = async (packageId, id) => {
-    const row = await documents.getById(packageId, id);
-    if (row) retained.add(row.id);
-    return row;
-  };
-  const wishes = createWishHistoryTracer(async (id) => {
-    const row = await get("villages", id);
-    memoryRequire(
-      row?.id === id && row.packageId === "villages" && row.kind === MEMORY_PAGE_KIND && row.revision === 1,
-      "captured Wish history is missing or changed",
-    );
-    return row.data as MemoryPageData;
-  });
-  for (const owner of owners.wishes) await wishes.trace(owner.head, owner.scope);
-  await validateRelationshipHistory({ getById: get }, owners.relationships);
-  return retained;
-}
-
-export async function validateCapturedSources(
-  documents: Pick<CapabilityDocumentStore, "getById">,
-  rows: readonly { kind: string; data: unknown }[],
-) {
-  const into = emptyOwners();
-  for (const row of rows) {
-    const owners =
-      row.kind === "village"
-        ? capturedWorldOwners(row.data)
-        : ["background-work", "background-history"].includes(row.kind)
-          ? capturedJobOwners(row.data)
-          : undefined;
-    if (owners) {
-      into.wishes.push(...owners.wishes);
-      into.relationships.push(...owners.relationships);
-    }
-  }
-  return validateCapturedOwners(documents, into);
 }

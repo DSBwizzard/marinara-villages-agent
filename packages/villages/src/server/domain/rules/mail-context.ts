@@ -70,6 +70,7 @@ export function mailStagePublication(
     ...(replyTo ? { replyTo } : {}),
     historical,
     keep,
+    offered: generated ? capture.offered.filter((row) => row.holder.id === mail.from.id) : [],
     requires,
     responseDigest,
     ...(roomContext ? { roomContext } : {}),
