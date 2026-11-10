@@ -15,6 +15,8 @@ import { applyNarrationProject, applyNarrationProjectStart } from "./narration-p
 import { applyNarrationScene } from "./narration-scene.js";
 import { narrationAppointment } from "./narration-appointment.js";
 import { applyNarrationResidence } from "./narration-residence.js";
+import { applyNarrationPlace } from "./narration-place.js";
+import { placeDraftSchema } from "./place-discovery.js";
 import { MAX_VENUE_NAME_LENGTH } from "./prompt-preset.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 import { projectSpeechContext } from "./project-interpretation.js";
@@ -33,6 +35,28 @@ const nativeCommand = z.discriminatedUnion("type", [
   z.object({ ...base, type: z.literal("contact.end"), who: id }).strict(),
   z.object({ ...base, type: z.literal("scene.end") }).strict(),
   z.object({ ...base, type: z.literal("project.start"), project: id }).strict(),
+  z
+    .object({
+      ...base,
+      type: z.literal("place.discover"),
+      existingId: id.optional(),
+      place: placeDraftSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      ...base,
+      type: z.literal("place.establish"),
+      project: id,
+      objective: id,
+      quote: z
+        .string()
+        .min(1)
+        .max(1200)
+        .refine((value) => value.trim().length > 0),
+      met: z.literal(true),
+    })
+    .strict(),
   z.object({ ...base, type: z.literal("residence.request"), by: id, venue: id }).strict(),
   z
     .object({ ...base, type: z.literal("residence.decide"), by: id, person: id, venue: id, approved: z.boolean() })
@@ -102,7 +126,7 @@ export function readNarrationNativeCommand(raw: unknown) {
   return nativeCommand.parse(raw);
 }
 export const NARRATION_NATIVE =
-  'Native commands share {id?:label,at:segment label,source:[exact consequential sources],requires?:[effect IDs],independent?:true}. Current communication is required; recalled/private consent is never authority. Supported commands: {type:"residence.request",by,venue}; {type:"residence.decide",by,person,venue,approved:boolean}; {type:"venue.request",by,name,classes:[native Venue classes]} submits a Villager request without establishing any service; {type:"project.start",project} invokes the same native Start/Resume only for explicit actual Player intent and current ready authority; {type:"appointment",by,when:{dayOffset:integer}|{weekday:weekday name,afterToday?:boolean}|{date:"YYYY-MM-DD"},minute?:0-1439} binds an actual current spoken appointment using the supplied calendar, never a past instant or clock mutation; {type:"scene.end"} only from the actual Player spoken/visible departure intent at the final segment; {type:"contact.end",who} ends only an admitted doorway contact, with deciding words (or the actual Player intent); {type:"project.decide",by,project,decision:"approval|builder|refuse|withdrawal|conditional|uncertain"}; {type:"permission.grant|permission.revoke",by,visitor,venue,zone}; {type:"access.decide",by,venue,zone,decision:{outcome:"invite-now|invite-later|invite-outside-hours|refuse|dismiss|ban-zone|ban-venue",visitor,accompanies?}|{outcome:"access-management",management:exact native AccessCommand action fields without operationId,expectedRevision,zoneId,sceneId}}. Use only supplied native scopes. A conditional or uncertain Project answer grants no approval or lead. An access condition beyond accompaniment cannot grant access. Native success assertions must require their command ID.';
+  'Native commands share {id?:label,at:segment label,source:[exact consequential sources],requires?:[effect IDs],independent?:true}. Current communication is required; recalled/private consent is never authority. Supported commands: {type:"place.discover",existingId: supplied Place id} OR {type:"place.discover",place:{name,description,form?,report?,controllers?,zones?:[{id,name,kind:"public|staff|restricted",description,purpose?,controllers?,connectedTo?}],people?:[{ref,name,label?,characterization,existingId?,facts?,role?,availability?}]}} discovers existing infrastructure, never builds, grants ownership or establishes a service (maximum two); {type:"place.establish",project,objective,quote,met:true} records a current Player-witnessed objective, not a promise or Project completion (maximum eight); {type:"residence.request",by,venue}; {type:"residence.decide",by,person,venue,approved:boolean}; {type:"venue.request",by,name,classes:[native Venue classes]} submits a Villager request without establishing any service; {type:"project.start",project} invokes the same native Start/Resume only for explicit actual Player intent and current ready authority; {type:"appointment",by,when:{dayOffset:integer}|{weekday:weekday name,afterToday?:boolean}|{date:"YYYY-MM-DD"},minute?:0-1439} binds an actual current spoken appointment using the supplied calendar, never a past instant or clock mutation; {type:"scene.end"} only from the actual Player spoken/visible departure intent at the final segment; {type:"contact.end",who} ends only an admitted doorway contact, with deciding words (or the actual Player intent); {type:"project.decide",by,project,decision:"approval|builder|refuse|withdrawal|conditional|uncertain"}; {type:"permission.grant|permission.revoke",by,visitor,venue,zone}; {type:"access.decide",by,venue,zone,decision:{outcome:"invite-now|invite-later|invite-outside-hours|refuse|dismiss|ban-zone|ban-venue",visitor,accompanies?}|{outcome:"access-management",management:exact native AccessCommand action fields without operationId,expectedRevision,zoneId,sceneId}}. Use only supplied native scopes. A conditional or uncertain Project answer grants no approval or lead. An access condition beyond accompaniment cannot grant access. Native success assertions must require their command ID.';
 
 /** Fixed native validators prepare a detached candidate inside the existing Village CAS. */
 export function prepareNarrationNative(
@@ -175,6 +199,15 @@ export function prepareNarrationNative(
     const receiptId = "native-" + memoryHash([readset.source.episodeId, effect.id]).slice(0, 40);
     if (command.type === "scene.end" || command.type === "contact.end")
       return applyNarrationScene(candidate, command, readset, context, sources, receiptId, row.segment);
+    if (command.type === "place.discover" || command.type === "place.establish") {
+      const kind = command.type === "place.discover" ? "discovery" : "establishment",
+        limit = kind === "discovery" ? 2 : 8;
+      memoryRequire(
+        Object.values(native.receipts).filter((receipt) => receipt.kind === kind).length < limit,
+        "too many native Place outcomes in one reply",
+      );
+      return { receipt: applyNarrationPlace(candidate, command, readset, context, sources, receiptId, at), sources };
+    }
     if (command.type === "project.start") {
       const project = state.projects.find((project) => project.id === command.project);
       memoryRequire(project?.lifecycle, "the Project is unavailable");

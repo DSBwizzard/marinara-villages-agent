@@ -1,3 +1,4 @@
+import { narrationWitnesses } from "./narration-sources.js";
 import type { VillageState } from "../models/world.js";
 import type { NarrationReadset } from "../models/narration-model.js";
 import type { ContinuityEvidence } from "../models/continuity-model.js";
@@ -95,14 +96,7 @@ export function applyNarrationResidence(
     "the native request or decision must actually be communicated",
   );
   const now = new ZonedDate(at, readset.calendar.timeZone),
-    witnesses = [
-      ...new Set([
-        command.by,
-        ...sources.flatMap((source) =>
-          source.perceptions.filter((row) => row.channel === "words").map((row) => row.actorId),
-        ),
-      ]),
-    ];
+    witnesses = narrationWitnesses(sources);
   if (command.type === "venue.request") {
     memoryRequire(
       sources.every((source) => source.perceptions.some((row) => row.actorId === "player" && row.channel === "words")),

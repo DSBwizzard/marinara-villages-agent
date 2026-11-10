@@ -10,7 +10,7 @@ import { beginProject, pauseProject, projectFor } from "./project-lifecycle-rule
 import { assertNarrationPlayerIntent } from "./narration-scene.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { approvalScope, projectDesignKey, renovationAffectedIds } from "./project-terms.js";
-import { narrationPositions, type NarrationSourceContext } from "./narration-sources.js";
+import { narrationPositions, narrationWitnesses, type NarrationSourceContext } from "./narration-sources.js";
 import { projectSpeechTerms, type ProjectSpeechContext } from "./project-interpretation.js";
 
 export function applyNarrationProjectStart(
@@ -42,14 +42,7 @@ export function applyNarrationProjectStart(
     targetId: project.id,
     revision: project.lifecycle.revision,
     text: "The Player " + (resume ? "resumed " : "started ") + project.title + ".",
-    witnesses: [
-      ...new Set([
-        "player",
-        ...sources.flatMap((source) =>
-          source.perceptions.filter((row) => row.channel !== "sound-only").map((row) => row.actorId),
-        ),
-      ]),
-    ],
+    witnesses: narrationWitnesses(sources),
   };
 }
 
@@ -216,13 +209,6 @@ export function applyNarrationProject(
               : " did not grant agreement for ") +
       project.title +
       ".",
-    witnesses: [
-      ...new Set([
-        actorId,
-        ...sources.flatMap((source) =>
-          source.perceptions.filter((row) => row.channel === "words").map((row) => row.actorId),
-        ),
-      ]),
-    ],
+    witnesses: narrationWitnesses(sources),
   };
 }

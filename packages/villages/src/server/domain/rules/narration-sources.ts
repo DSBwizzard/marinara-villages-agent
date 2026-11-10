@@ -9,6 +9,24 @@ import { exactInputSpan } from "./source-span.js";
 import { contactNeighbors, contactPosition, type ContactMove } from "./venue-contact.js";
 import { nativeReceiptSupportsRoom } from "./episode-sources.js";
 
+/** A complete native outcome is known only to holders who perceived every material proof. */
+export function narrationWitnesses(
+  sources: ContinuityEvidence[],
+  channels: readonly ContinuityEvidence["perceptions"][number]["channel"][] = ["words", "sight"],
+): string[] {
+  const eligible = (source: ContinuityEvidence) =>
+    new Set([
+      ...source.perceptions.filter((row) => channels.includes(row.channel)).map((row) => row.actorId),
+      ...(source.actorId &&
+      ((source.kind === "speech" && channels.includes("words")) ||
+        (source.kind === "observation" && channels.includes("sight")))
+        ? [source.actorId]
+        : []),
+    ]);
+  const audiences = sources.map(eligible);
+  return [...(audiences[0] ?? [])].filter((id) => audiences.every((audience) => audience.has(id)));
+}
+
 type Actor = Extract<ContinuityHolder, { kind: "actor" }>;
 export type NarrationSourceContext = {
   seed: string;

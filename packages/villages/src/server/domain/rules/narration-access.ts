@@ -4,7 +4,7 @@ import type { NarrationReadset } from "../models/narration-model.js";
 import type { VillageState } from "../models/world.js";
 import { continuityActor } from "./continuity-actors.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
-import { narrationPositions, type NarrationSourceContext } from "./narration-sources.js";
+import { narrationPositions, narrationWitnesses, type NarrationSourceContext } from "./narration-sources.js";
 import { findLocation, sceneActorIds } from "./places.js";
 import { applyAccessCommand, managesAccess, mayInvite, readAccessCommand } from "./venue-access.js";
 
@@ -298,13 +298,6 @@ export function applyNarrationAccess(
     targetId: venue.id,
     revision: venue.access.revision,
     text: "Access decision recorded for " + venue.name + ".",
-    witnesses: [
-      ...new Set([
-        decision.by,
-        ...sources.flatMap((source) =>
-          source.perceptions.filter((row) => row.channel === "words").map((row) => row.actorId),
-        ),
-      ]),
-    ],
+    witnesses: narrationWitnesses(sources),
   };
 }

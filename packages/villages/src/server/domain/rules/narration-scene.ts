@@ -3,7 +3,7 @@ import type { NarrationReadset } from "../models/narration-model.js";
 import type { ContinuityEvidence } from "../models/continuity-model.js";
 import type { AcceptedEpisode } from "../models/episode-model.js";
 import type { NarrationSourceContext } from "./narration-sources.js";
-import { narrationPositions } from "./narration-sources.js";
+import { narrationPositions, narrationWitnesses } from "./narration-sources.js";
 import { assertNarrationDecision } from "./narration-access.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 
@@ -60,28 +60,14 @@ export function applyNarrationScene(
     )
       opening.stage = "complete";
   }
-  const observedBy = [
-    ...new Set([
-      ...sources.flatMap((source) =>
-        source.perceptions.filter((row) => row.channel === "sight").map((row) => row.actorId),
-      ),
-      ...sources.filter((source) => source.kind === "observation" && source.actorId === by).map(() => by),
-    ]),
-  ];
+  const observedBy = narrationWitnesses(sources, ["sight"]);
   const receipt: AcceptedEpisode["commandReceipts"][number] = {
     id: receiptId,
     kind: closed ? "scene" : "contact",
     targetId: closed ? context.scene.id : by,
     revision: readset.sceneRevision,
     text: closed ? "The Player ended the Scene." : "Doorway contact ended.",
-    witnesses: [
-      ...new Set([
-        by,
-        ...sources.flatMap((source) =>
-          source.perceptions.filter((row) => row.channel !== "sound-only").map((row) => row.actorId),
-        ),
-      ]),
-    ],
+    witnesses: narrationWitnesses(sources),
     ...(observedBy.length ? { observedBy } : {}),
     ...(!closed ? { endedContacts: contactEndedIds } : {}),
   };

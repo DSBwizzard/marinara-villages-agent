@@ -39,6 +39,7 @@ const saved = z
             Number.isSafeInteger(row.continuityRevision) &&
             Array.isArray(row.projects) &&
             Array.isArray(row.access) &&
+            Array.isArray(row.places) &&
             Array.isArray(row.residence?.homes) &&
             Array.isArray(row.residence?.requests) &&
             Array.isArray(row.offered) &&

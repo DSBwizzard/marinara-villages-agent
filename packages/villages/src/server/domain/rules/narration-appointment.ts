@@ -1,3 +1,4 @@
+import { narrationWitnesses } from "./narration-sources.js";
 import type { VillageState } from "../models/world.js";
 import type { NarrationReadset } from "../models/narration-model.js";
 import type { ContinuityEvidence } from "../models/continuity-model.js";
@@ -60,13 +61,6 @@ export function narrationAppointment(
       calendar.timeZone +
       (chosen.minute === null ? "" : "; " + target.toISOString()) +
       ")",
-    witnesses: [
-      ...new Set([
-        command.by,
-        ...sources.flatMap((source) =>
-          source.perceptions.filter((row) => row.channel === "words").map((row) => row.actorId),
-        ),
-      ]),
-    ],
+    witnesses: narrationWitnesses(sources),
   };
 }
