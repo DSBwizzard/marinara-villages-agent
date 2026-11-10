@@ -924,7 +924,9 @@ console.log(
       .zones!.filter((z) => z.kind !== "exterior")
       .map((z) => ({ ...z, venueClass: "residence", kind: "shared-residence" })),
   });
-  const id = "project:repurpose-community";
+  const id = f
+    .state()
+    .projects.find((project) => Object.hasOwn(project.lifecycle!.commandReceipts, "repurpose-community"))!.id;
   await f.agree(id);
   await f.service.startProjectConstruction(id, f.body(id));
   await f.service.debugCompleteProjectConstruction(id, f.body(id));

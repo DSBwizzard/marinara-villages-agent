@@ -3,7 +3,12 @@ import { applyConnectionEdits } from "../../../shared/helpers/zone-contact.js";
 import type { VillageProject, VillageState, VillageVenue, VillageVenueZone } from "../models/world.js";
 import { readPlaceDescription } from "./zone-continuity.js";
 import { asRecord } from "./coerce.js";
-import { removeNativeRoom, retainNativeFact } from "./native-continuity.js";
+import {
+  completeWorksiteEntrance,
+  initializeRoomContinuity,
+  removeNativeRoom,
+  retainNativeFact,
+} from "./native-continuity.js";
 import { continuityActor } from "./continuity-actors.js";
 import { badRequest, conflict } from "./errors.js";
 import { prepareRenovatedPrivateInterior } from "./private-interior.js";
@@ -19,6 +24,7 @@ import { initializeVenueAccess } from "./venue-access.js";
 import { readVenueImageContext } from "./village-projections.js";
 import { findLocation } from "./places.js";
 import { promotePlace, establishmentControllers } from "./establishment.js";
+import { captureZoneObservation } from "./zone-observation.js";
 
 /** Only the saved committed design is applied; the lifecycle stages this transaction. */
 export function completeProject(state: VillageState, project: VillageProject, at: string): void {
@@ -26,6 +32,7 @@ export function completeProject(state: VillageState, project: VillageProject, at
   const venue = findLocation(state, project.venueId);
   if (!venue) throw conflict("The Project site is missing.");
   const controllers = project.kind === "establishment" ? establishmentControllers(state, project) : undefined;
+  const priorIds = new Set(venueZones(venue).map((zone) => zone.id));
   if (project.kind === "new-venue") {
     if (!project.plan) throw conflict("The committed design is missing.");
     const plan = readProjectPlan(project.plan, venue);
@@ -41,13 +48,24 @@ export function completeProject(state: VillageState, project: VillageProject, at
       venue.classes ?? ["other"],
       state,
     );
+    const oldEntrance = venue.zones?.find((zone) => zone.kind === "exterior");
+    zones[0].observed = oldEntrance?.observed;
+    if (oldEntrance && !plan.exteriorImage) {
+      zones[0].image = oldEntrance.image;
+      zones[0].picture = oldEntrance.picture && { ...oldEntrance.picture, claim: undefined, dirty: false };
+      zones[0].dayNight = oldEntrance.dayNight;
+      zones[0].dayNightManual = oldEntrance.dayNightManual;
+      zones[0].freezePicture = oldEntrance.freezePicture;
+    }
+    zones[0].pictureRevision = (oldEntrance?.pictureRevision ?? 0) + 1;
     venue.zones = zones;
     venue.form = plan.form;
     venue.venueType = plan.venueType;
     venue.imageContext = plan.imageContext;
     venue.description = plan.exteriorDescription;
-    venue.presentation.image = plan.exteriorImage;
+    venue.presentation.image = zones[0].image;
     venue.residenceCapacity = plan.capacity;
+    completeWorksiteEntrance(state, venue, project.id, at);
     venue.constructionStatus = "complete";
   } else if (project.kind !== "establishment" || project.establishment?.physical) {
     const change = effectiveRenovationChange(venue, flow.change!, flow.changedZoneIds);
@@ -114,6 +132,12 @@ export function completeProject(state: VillageState, project: VillageProject, at
   }
   venue.layoutVersion = 1;
   initializeVenueAccess(venue);
+  for (const zone of venue.zones ?? []) {
+    if (priorIds.has(zone.id) || (zone.preparation && zone.preparation.status !== "ready")) continue;
+    if (zone.description.trim())
+      initializeRoomContinuity(state, venue.id, zone.id, zone.description, project.id + ":complete", at);
+    if (zone.seen) zone.observed = captureZoneObservation(venue, zone, zone.description);
+  }
   venue.spaces = venue.zones!.filter((zone) => ["public", "shared-residence"].includes(zone.kind));
   venue.privateSpaces = venue
     .zones!.filter((zone) => zone.kind === "private-residence")

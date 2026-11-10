@@ -1,4 +1,4 @@
-import type { VillageState } from "../models/world.js";
+import type { VillageState, VillageVenue } from "../models/world.js";
 import type { AcceptedEpisode } from "../models/episode-model.js";
 import type {
   ContinuityClass,
@@ -30,7 +30,9 @@ import {
 import { memoryHash, memoryRequire, memoryObject, memoryString } from "./memory-integrity.js";
 import { findLocation } from "./places.js";
 import { episodeSourceGraph } from "../decoding/episode-codec.js";
-import { roomParagraphs } from "./continuity-retrieval.js";
+import { currentRoomViews, roomParagraphs } from "./continuity-retrieval.js";
+
+export const WORKSITE_DESCRIPTION = "Construction is underway at the site.";
 
 /** Associate native facts with eligible current holder text, including administrative corrections. */
 export function nativeCircumstanceRoots(
@@ -382,6 +384,21 @@ export function retainNativeFact(
   state.episodes = episodes;
 }
 
+function authoredRoomReceipts(seed: string, placeId: string, zoneId: string, text: string, operationId: string) {
+  memoryString(text, ROOM_CONTINUITY_TEXT_BYTES);
+  const creation = "room-initial:" + memoryHash([seed, operationId, placeId, zoneId, text]).slice(0, 32);
+  const receipts = roomParagraphs(text).map((paragraph, index) => ({
+    id: creation + ":" + index,
+    kind: "structure" as const,
+    targetId: JSON.stringify([placeId, zoneId]),
+    revision: 1,
+    text: paragraph,
+    witnesses: [],
+  }));
+  memoryRequire(receipts.length, "new Room needs an authored description");
+  return receipts;
+}
+
 /** Fresh native creation only; an existing room's current meaning must use its captured heads. */
 export function initializeRoomContinuity(
   state: VillageState,
@@ -392,17 +409,7 @@ export function initializeRoomContinuity(
   at: string,
 ) {
   const room = { kind: "room" as const, placeId, zoneId };
-  memoryString(text, ROOM_CONTINUITY_TEXT_BYTES);
-  const creation = "room-initial:" + memoryHash([state.seed, operationId, placeId, zoneId, text]).slice(0, 32);
-  const receipts = roomParagraphs(text).map((paragraph, index) => ({
-    id: creation + ":" + index,
-    kind: "structure" as const,
-    targetId: JSON.stringify([placeId, zoneId]),
-    revision: 1,
-    text: paragraph,
-    witnesses: [],
-  }));
-  memoryRequire(receipts.length, "new Room needs an authored description");
+  const receipts = authoredRoomReceipts(state.seed, placeId, zoneId, text, operationId);
   const ids = new Set(receipts.map((receipt) => nativeEpisodeId(state.seed, receipt.id)));
   const retained = state.episodes.records.filter((row) => ids.has(row.id)).length;
   if (!retained)
@@ -417,6 +424,65 @@ export function initializeRoomContinuity(
   );
   const candidate = { ...state };
   for (const receipt of receipts) retainNativeFact(candidate, receipt, at, { room, authoredRoomParagraph: true });
+  state.continuity = candidate.continuity;
+  state.episodes = candidate.episodes;
+}
+
+function endRoomHeads(collection: VillageState["continuity"], key: string, onlyRoots?: ReadonlySet<string>) {
+  const records = collection.records.map((record) => {
+    const head = record.heads[key];
+    if (!head?.current || (onlyRoots && !onlyRoots.has(record.id))) return record;
+    return {
+      ...record,
+      revision: record.revision + 1,
+      heads: { ...record.heads, [key]: { ...head, revision: head.revision + 1, current: false } },
+    };
+  });
+  return records.some((record, index) => record !== collection.records[index])
+    ? { ...collection, revision: collection.revision + 1, records }
+    : collection;
+}
+
+/** Completion owns the temporary native appearance and the new design. Scene-authored heads stay independent. */
+export function completeWorksiteEntrance(state: VillageState, site: VillageVenue, projectId: string, at: string) {
+  const zone = site.zones?.find((row) => row.kind === "exterior");
+  memoryRequire(
+    zone &&
+      findLocation(state, site.id) === site &&
+      site.constructionStatus === "worksite" &&
+      site.buildProjectId === projectId,
+    "worksite Entrance changed",
+  );
+  const room = { kind: "room" as const, placeId: site.id, zoneId: zone.id },
+    key = continuityHolderKey(room);
+  const [opening] = authoredRoomReceipts(state.seed, site.id, zone.id, WORKSITE_DESCRIPTION, projectId);
+  const start = state.episodes.records.find((episode) => episode.id === nativeEpisodeId(state.seed, opening.id));
+  const original = state.continuity.versions.find((version) => version.id === start?.continuityVersionIds[0]);
+  const head = original && state.continuity.records.find((record) => record.id === original.rootId)?.heads[key];
+  memoryRequire(
+    start &&
+      original &&
+      head &&
+      memoryHash(start.commandReceipts[0]) === memoryHash(opening) &&
+      start.responseDigest === memoryHash([opening, { room, authoredRoomParagraph: true }]),
+    "worksite lost its native Room source",
+  );
+  const receipts = authoredRoomReceipts(state.seed, site.id, zone.id, zone.description, projectId + ":complete");
+  const planned = new Set(receipts.map((receipt) => receipt.text));
+  const retire = new Set(head.versionId === original.id ? [original.rootId] : []);
+  const enduring = new Map<string, number>();
+  for (const { id, version } of currentRoomViews(state.continuity, state.episodes, room, at)) {
+    if (retire.has(id) || !planned.has(version.text)) continue;
+    memoryRequire(version.room?.visibility === "observable", "The finished Entrance overlaps a retained Room entry.");
+    if (version.room.expiresAt) retire.add(id);
+    else enduring.set(version.text, (enduring.get(version.text) ?? 0) + 1);
+  }
+  const candidate = { ...state, continuity: endRoomHeads(state.continuity, key, retire) };
+  for (const receipt of receipts) {
+    const matches = enduring.get(receipt.text) ?? 0;
+    if (matches) enduring.set(receipt.text, matches - 1);
+    else retainNativeFact(candidate, receipt, at, { room, authoredRoomParagraph: true });
+  }
   state.continuity = candidate.continuity;
   state.episodes = candidate.episodes;
 }
@@ -437,23 +503,8 @@ export function removeNativeRoom(state: VillageState, placeId: string, zoneId: s
     findLocation(state, placeId)?.zones?.some((zone) => zone.id === zoneId),
     "Room to remove is missing",
   );
-  const candidate = { ...state };
   const key = continuityHolderKey({ kind: "room", placeId, zoneId });
-  if (state.continuity.records.some((record) => record.heads[key]?.current))
-    candidate.continuity = {
-      ...state.continuity,
-      revision: state.continuity.revision + 1,
-      records: state.continuity.records.map((record) => {
-        const head = record.heads[key];
-        return head?.current
-          ? {
-              ...record,
-              revision: record.revision + 1,
-              heads: { ...record.heads, [key]: { ...head, revision: head.revision + 1, current: false } },
-            }
-          : record;
-      }),
-    };
+  const candidate = { ...state, continuity: endRoomHeads(state.continuity, key) };
   retainNativeFact(candidate, roomRemovalReceipt(placeId, zoneId), at);
   state.continuity = candidate.continuity;
   state.episodes = candidate.episodes;

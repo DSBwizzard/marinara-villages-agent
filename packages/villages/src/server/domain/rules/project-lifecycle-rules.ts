@@ -22,6 +22,8 @@ import {
   projectAgreementCurrent,
 } from "./project-terms.js";
 import { cloneVillageContext } from "./world-context-copy.js";
+import { initializeRoomContinuity } from "./native-continuity.js";
+import { captureZoneObservation } from "./zone-observation.js";
 export { renovationAffectedIds, validImage } from "./project-terms.js";
 
 export const PROJECT_DURATION_MS = 24 * 60 * 60_000;
@@ -187,6 +189,7 @@ export function beginProject(
   now: Date,
 ) {
   const flow = project.lifecycle;
+  const at = now.toISOString();
   if (project.status !== (resume ? "paused" : "planning"))
     throw conflict(resume ? "This Project is not paused." : "This Project has already started.");
   const lead = asTrimmedString(row.residentId) || flow.builderId;
@@ -267,14 +270,16 @@ export function beginProject(
         (candidate) => projectAgreementCurrent(state, candidate) && matchesProjectDesign(candidate.scope, project),
       );
       state.venues.push(shell);
+      const entrance = shell.zones![0];
+      initializeRoomContinuity(state, shell.id, entrance.id, entrance.description, project.id, at);
+      entrance.observed = captureZoneObservation(shell, entrance, entrance.description);
       project.venueId = shell.id;
       flow.targetVenueId = shell.id;
       // Assigning the live site is an implementation detail, not changed agreement terms.
       for (const candidate of agreed) candidate.scope = projectDesignKey(project);
     }
   }
-  const at = now.toISOString(),
-    remaining = resume ? flow.workOrder!.remainingMs : PROJECT_DURATION_MS;
+  const remaining = resume ? flow.workOrder!.remainingMs : PROJECT_DURATION_MS;
   const previousFocus = flow.workOrder?.focus;
   flow.builderId = lead;
   flow.workOrder = {

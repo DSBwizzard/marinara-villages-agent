@@ -100,9 +100,8 @@ const draftRace = await Promise.allSettled([
 assert.equal(draftRace.filter((result) => result.status === "fulfilled").length, 1);
 assert.equal(draftRace.filter((result) => result.status === "rejected").length, 1);
 assert.equal(record.data.projects.filter((project) => project.status === "planning").length, 6);
-const winningDraft = record.data.projects.find((project) => ["project:six-a", "project:six-b"].includes(project.id))!;
 const winningBody =
-  winningDraft.id === "project:six-a"
+  draftRace[0].status === "fulfilled"
     ? { ...create, requestId: "six-a", name: "Six A" }
     : { ...create, requestId: "six-b", name: "Six B" };
 await service.createNewVenueProject(winningBody);

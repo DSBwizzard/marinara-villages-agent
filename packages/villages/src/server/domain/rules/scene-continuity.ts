@@ -8,7 +8,8 @@ import { immutableMemoryValue } from "./memory-integrity.js";
 
 /** Current writer context, never evidence or a public attendance/room disclosure. */
 export function sceneLocationContext(scene: VenueScene, venue: VillageVenue, actorIds: readonly string[]) {
-  const zones = venueZones(sceneLayoutVenue(venue, scene));
+  const current = sceneLayoutVenue(venue, scene);
+  const zones = venueZones(current);
   const origin = requireSceneZoneId(scene);
   const adjacent = contactNeighbors(venue, origin, scene);
   const knownZone = (id: string) => {
@@ -17,6 +18,7 @@ export function sceneLocationContext(scene: VenueScene, venue: VillageVenue, act
   };
   return {
     venue: scene.placeName,
+    ...(current.constructionStatus === "worksite" ? { construction: "worksite" } : {}),
     player: { zone: knownZone(origin) ?? { id: origin } },
     residents: [...new Set(actorIds)]
       .filter((id) => !scene.departedIds?.includes(id))

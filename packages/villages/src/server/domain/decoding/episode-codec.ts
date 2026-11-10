@@ -4,7 +4,12 @@ import { continuityEvidenceSchema, continuityHolderSchema } from "./continuity-c
 import { readSceneLines } from "../rules/scene-transcript.js";
 import { continuityHolderKey, continuitySourceUnit, continuityVersionUnit } from "../rules/continuity.js";
 import type { ContinuityHolder } from "../models/continuity-model.js";
-import { nativeReceiptSupportsRoom, episodeContextActors, episodeContextRooms } from "../rules/episode-sources.js";
+import {
+  nativeReceiptSupportsRoom,
+  episodeContextActors,
+  episodeContextRooms,
+  removedEpisodeRoom,
+} from "../rules/episode-sources.js";
 import { immutableMemoryValue, isImmutableMemoryValue, memoryHash, memoryRequire } from "../rules/memory-integrity.js";
 import { readNpc } from "../rules/places.js";
 import type { NpcIdentity } from "../models/places.js";
@@ -12,6 +17,11 @@ import { assertMailReceipt, assertMailHistory, mailEvidence, episodeMailEvidence
 
 const id = z.string().min(1).max(160),
   ids = z.array(id).refine((rows) => new Set(rows).size === rows.length);
+// A Room receipt can encode two maximum-size IDs containing escaped ASCII.
+const receiptTarget = z
+  .string()
+  .min(1)
+  .max(2 * 160 * 6 + 7);
 const at = z.string().refine((value) => Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value);
 const episode = z
   .object({
@@ -62,7 +72,7 @@ const episode = z
               "venue-request",
               "mail",
             ]),
-            targetId: id,
+            targetId: receiptTarget,
             revision: z.number().int().nonnegative().safe(),
             text: z.string().min(1).max(16000),
             witnesses: ids.max(32),
@@ -195,12 +205,19 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
         value.commandReceipts.length > 0),
     "an unobserved native episode cannot invent Scene participation",
   );
-  for (const receipt of value.commandReceipts)
+  for (const receipt of value.commandReceipts) {
+    memoryRequire(
+      receipt.targetId.length <= 160 ||
+        (value.room && nativeReceiptSupportsRoom(receipt, value.room)) ||
+        (receipt.id.startsWith("room-removed:") && removedEpisodeRoom(value)),
+      "native receipt target exceeds its scope",
+    );
     memoryRequire(
       receipt.witnesses.every((id) => cast.has(id)) &&
         (receipt.observedBy ?? []).every((id) => receipt.witnesses.includes(id)),
       "native observer was not an admitted witness",
     );
+  }
   memoryRequire(cast.size === value.actors.length, "duplicate episode actor");
   if (value.sceneDelta) {
     const delta = value.sceneDelta;

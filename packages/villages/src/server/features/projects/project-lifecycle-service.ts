@@ -21,6 +21,14 @@ import { establishmentDraft, establishmentScope, establishmentChange } from "../
 import { findLocation } from "../../domain/rules/places.js";
 import { completeProject } from "../../domain/rules/project-completion.js";
 import { removeNativeRoom } from "../../domain/rules/native-continuity.js";
+import { memoryHash } from "../../domain/rules/memory-integrity.js";
+
+function projectDraftRequest(value: unknown) {
+  const row = asRecord(value),
+    requestId = asTrimmedString(row.requestId);
+  if (!requestId || requestId.length > 200) throw badRequest("A request ID is required.");
+  return { row, requestId, projectId: "project:" + memoryHash(requestId).slice(0, 32) };
+}
 
 export interface ProjectLifecyclePorts {
   mutateVillageState: typeof import("../world/village-store.js").mutateVillageState;
@@ -47,14 +55,15 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
       (state) => {
         const project = projectFor(state, id),
           flow = project.lifecycle;
-        if (flow.commandReceipts[requestId]) {
+        if (Object.hasOwn(flow.commandReceipts, requestId)) {
           if (flow.commandReceipts[requestId] !== fingerprint) throw conflict("This request ID was already used.");
           return;
         }
         if (flow.revision !== row.expectedRevision)
           throw conflict("The Project design changed. Refresh and try again.");
         apply(state, project, row);
-        projectFor(state, id).lifecycle.commandReceipts[requestId] = fingerprint;
+        const current = projectFor(state, id).lifecycle;
+        current.commandReceipts = { ...current.commandReceipts, [requestId]: fingerprint };
       },
       { memories: true },
     );
@@ -83,55 +92,49 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
     if (!flow.candidates.some((row) => row.residentId === flow.builderId)) flow.builderId = "";
   }
   async function createNewVenueProject(value: unknown) {
-    const row = asRecord(value),
-      requestId = asTrimmedString(row.requestId);
-    if (!requestId || requestId.length > 200) throw badRequest("A request ID is required.");
+    const { row, requestId, projectId } = projectDraftRequest(value);
     await mutateVillageState((state) => {
       const fingerprint = JSON.stringify(["create-new", row]),
-        prior = state.projects.find((project) => project.id === "project:" + requestId);
+        prior = state.projects.find((project) => project.id === projectId);
       if (prior) {
         if (prior.lifecycle?.commandReceipts[requestId] !== fingerprint)
           throw conflict("This request ID was already used.");
         return;
       }
-      const project = draftNewVenueProject(state, row, "", "project:" + requestId);
-      project.lifecycle!.commandReceipts[requestId] = fingerprint;
+      const project = draftNewVenueProject(state, row, "", projectId);
+      project.lifecycle!.commandReceipts = { [requestId]: fingerprint };
     });
   }
   async function createRenovationProject(venueId: string, value: unknown) {
-    const row = asRecord(value),
-      requestId = asTrimmedString(row.requestId);
-    if (!requestId || requestId.length > 200) throw badRequest("A request ID is required.");
+    const { row, requestId, projectId } = projectDraftRequest(value);
     await mutateVillageState(
       (state) => {
         const fingerprint = JSON.stringify(["create-renovation", venueId, row]),
-          prior = state.projects.find((project) => project.id === "project:" + requestId);
+          prior = state.projects.find((project) => project.id === projectId);
         if (prior) {
           if (prior.lifecycle?.commandReceipts[requestId] !== fingerprint)
             throw conflict("This request ID was already used.");
           return;
         }
-        const project = draftRenovationProject(state, venueId, row, "project:" + requestId);
-        project.lifecycle!.commandReceipts[requestId] = fingerprint;
+        const project = draftRenovationProject(state, venueId, row, projectId);
+        project.lifecycle!.commandReceipts = { [requestId]: fingerprint };
       },
       { memories: true },
     );
   }
   async function createEstablishmentProject(venueId: string, value: unknown) {
-    const row = asRecord(value),
-      requestId = asTrimmedString(row.requestId);
-    if (!requestId || requestId.length > 200) throw badRequest("A request ID is required.");
+    const { row, requestId, projectId } = projectDraftRequest(value);
     await mutateVillageState(
       (state) => {
         const fingerprint = JSON.stringify(["create-establishment", venueId, row]);
-        const prior = state.projects.find((project) => project.id === "project:" + requestId);
+        const prior = state.projects.find((project) => project.id === projectId);
         if (prior) {
           if (prior.lifecycle?.commandReceipts[requestId] !== fingerprint)
             throw conflict("This request ID was already used.");
           return;
         }
-        const project = draftEstablishmentProject(state, venueId, row, "project:" + requestId);
-        project.lifecycle!.commandReceipts[requestId] = fingerprint;
+        const project = draftEstablishmentProject(state, venueId, row, projectId);
+        project.lifecycle!.commandReceipts = { [requestId]: fingerprint };
       },
       { memories: true },
     );

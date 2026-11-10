@@ -140,15 +140,19 @@ export function fixture() {
           });
       }
     });
-  const newProject = async (name = "Workshop", lead = "a", position = { x: 0.7, y: 0.7 }) => {
-    const requestId = randomUUID();
+  const newProject = async (
+    name = "Workshop",
+    lead = "a",
+    position = { x: 0.7, y: 0.7 },
+    requestId: string = randomUUID(),
+  ) => {
     await service.createNewVenueProject({
       requestId,
       name,
       classes: ["community"],
       description: "A shared place for making art.",
     });
-    const id = "project:" + requestId;
+    const id = state.projects.find((project) => Object.hasOwn(project.lifecycle!.commandReceipts, requestId))!.id;
     await service.saveProjectPlan(
       id,
       body(id, {
@@ -186,7 +190,7 @@ export async function renovation(f: Fixture, change: Record<string, unknown> = {
     capacity: 3,
     ...change,
   });
-  return "project:" + requestId;
+  return f.state().projects.find((project) => Object.hasOwn(project.lifecycle!.commandReceipts, requestId))!.id;
 }
 export const projectState = (project: VillageProject) => ({
   status: project.status,

@@ -63,19 +63,16 @@ await runCase("project-cancellation/late-room-change", async () => {
       venue,
     );
     scene.continuity = captureSceneContinuity(f.state(), scene, now.getTime());
-    const context = narrationContinuityContext(
-      f.state(),
-      scene,
-      venue,
-      "pending-mark",
-      "I scratch a mark on the wall.",
-      at,
-    );
-    const readset = fittedNarrationReadset(
-      f.state(),
-      context,
-      context.parts.flatMap((part) => (part.block.evidenceId ? [part.block.evidenceId] : [])),
-    );
+    const captureMark = (operation: string) => {
+      const state = f.state();
+      const context = narrationContinuityContext(state, scene, venue, operation, "I scratch a mark on the wall.", at);
+      return fittedNarrationReadset(
+        state,
+        context,
+        context.parts.flatMap((part) => (part.block.evidenceId ? [part.block.evidenceId] : [])),
+      );
+    };
+    const readset = captureMark("pending-mark");
     const raw = {
       segments: [{ id: "mark", kind: "narration", text: "A scratch marks the wall.", requires: ["room-mark"] }],
       keep: [
@@ -95,6 +92,10 @@ await runCase("project-cancellation/late-room-change", async () => {
       "the original current room can accept this freeform change",
     );
     const captured = structuredClone(scene.continuity);
+    if (mode === "complete") {
+      const worksiteEdit = { ...publication, readset: captureMark("worksite-mark") };
+      await f.mutate((state) => assert.equal(acceptNarration(state, worksiteEdit, "worksite-mark", at).held, false));
+    }
     if (mode === "cancel") await f.service.cancelProject(id, f.body(id));
     else {
       if (renovating) {
@@ -107,6 +108,11 @@ await runCase("project-cancellation/late-room-change", async () => {
       } else assert.equal(f.get(id).status, "working");
     }
     const before = structuredClone(f.state());
+    if (mode === "complete") {
+      const current = currentRoomViews(before.continuity, before.episodes, readset.admission.room!, at);
+      assert(current.some((view) => view.version.text === "A scratch marks the wall."));
+      assert(current.some((view) => view.version.text === "A clear entrance."));
+    }
     const rejected = acceptNarration(f.state(), publication, "late", at);
     assert.equal(rejected.held, true, mode);
     assert(rejected.rejected.some((row) => /native structure|construction site/.test(row.reason)));

@@ -20,7 +20,7 @@ import { boundText } from "./prompt-preset.js";
 import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
 import { readPlaceDescription } from "./zone-continuity.js";
 import { assertCommunityVenueUse } from "./community-venue.js";
-import { roomWasRemoved } from "./native-continuity.js";
+import { roomWasRemoved, WORKSITE_DESCRIPTION } from "./native-continuity.js";
 
 export function readRenovationChange(
   state: VillageState,
@@ -56,6 +56,7 @@ export function readRenovationChange(
       name = boundText(raw.name, 100).trim();
     if (
       !id ||
+      Buffer.byteLength(id) > 160 ||
       id === "exterior" ||
       !name ||
       !["public", "shared-residence", "private-residence", "staff", "restricted"].includes(kind)
@@ -168,7 +169,7 @@ export function validateRenovationDesign(
 export function plannedVenue(project: VillageProject): VillageVenue {
   const draft = project.venueDraft!;
   const entrance = {
-    ...defaultVenueSpace(draft.classes[0] ?? "other", project.plan?.exteriorDescription ?? ""),
+    ...defaultVenueSpace(draft.classes[0] ?? "other", WORKSITE_DESCRIPTION),
     id: "exterior",
     name: "Entrance",
     kind: "exterior" as const,
@@ -182,8 +183,7 @@ export function plannedVenue(project: VillageProject): VillageVenue {
     residenceCapacity: project.plan?.capacity ?? 1,
     buildProjectId: project.id,
     constructionStatus: "worksite",
-    form: project.plan?.form ?? draft.description,
-    description: project.plan?.exteriorDescription ?? "",
+    description: WORKSITE_DESCRIPTION,
     category: "",
     layoutVersion: 1,
     zones: [entrance],

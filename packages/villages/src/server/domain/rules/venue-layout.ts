@@ -146,6 +146,8 @@ export function readBaseVenueLayout(
     ...rooms.map((raw) => [true, raw] as const),
   ]) {
     const area = asRecord(raw);
+    const id = asTrimmedString(area.id) || (isPrivate ? "private:base" : "common:base");
+    if (Buffer.byteLength(id) > 160) throw badRequest("A Zone ID must fit within 160 UTF-8 bytes.");
     const role = area.venueClass as VillageVenueClass;
     if (!classes.includes(role)) throw badRequest("Choose one of this venue's Classes for each area.");
     const description = asTrimmedString(area.description);
@@ -167,7 +169,7 @@ export function readBaseVenueLayout(
       ...defaultVenueSpace(role, description),
       ...daylight(area),
       ...(prepareInterior ? { roomSpecification } : {}),
-      id: asTrimmedString(area.id) || (isPrivate ? "private:base" : "common:base"),
+      id,
       connectedTo: Array.isArray(area.connectedTo) ? (area.connectedTo as string[]) : undefined,
       name: asTrimmedString(area.name).slice(0, 100) || "Zone",
       purpose:
