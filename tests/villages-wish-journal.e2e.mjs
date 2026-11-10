@@ -1,3 +1,4 @@
+import { clickCharacterTool } from "./fixtures/browser-diagnostics.mjs";
 import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
 const { authorSceneResponse } = await scenePlaybackFixtures();
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
@@ -196,13 +197,16 @@ await withBrowser(browser, async () => {
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     const nav = page.getByRole("navigation", { name: "Village exploration" });
-    const chooseSection = (label) =>
-      width <= 700
+    const chooseSection = async (label) => {
+      if (["Agenda", "Venues"].includes(label))
+        return clickCharacterTool(page, label === "Agenda" ? "Agenda records" : "Venue connections");
+      return width <= 700
         ? page.getByRole("combobox", { name: "Section" }).selectOption({ label })
         : page
             .getByRole("navigation", { name: "Villager profile sections" })
             .getByRole("button", { name: label, exact: true })
             .click();
+    };
     await nav.getByRole("button", { name: "People", exact: true }).click();
     await page.getByRole("button", { name: "Open Feddy profile" }).click();
     const profile = page.getByRole("region", { name: "Feddy profile" });
@@ -253,7 +257,7 @@ await withBrowser(browser, async () => {
           .getByRole("navigation", { name: "Village navigation" })
           .getByRole("button", { name: "People", exact: true }),
       ).toBeInViewport({ ratio: 0.99 });
-      await expect(profile.getByRole("button", { name: /^(Inspect|Leave Inspect)$/ })).toBeInViewport({ ratio: 0.99 });
+      await expect(profile.locator("summary").filter({ hasText: "Character tools" })).toBeInViewport({ ratio: 0.99 });
       if (width <= 700) await details.getByRole("button", { name: "← Wishes", exact: true }).scrollIntoViewIfNeeded();
       await expect(details.getByRole("button", { name: "← Wishes", exact: true })).toBeInViewport({ ratio: 0.99 });
       if (width <= 700) await section.scrollIntoViewIfNeeded();
@@ -308,7 +312,7 @@ await withBrowser(browser, async () => {
     await expect(profile.getByRole("button", { name: "Follow", exact: true })).toHaveAttribute("aria-pressed", "false");
     assert.equal(wish.status, "open");
     assert.equal(follows, 1);
-    await profile.getByRole("button", { name: "Inspect", exact: true }).click();
+    await clickCharacterTool(page, "Inspect");
     await expect(profile.getByText("PRIVATE SOCIAL DESIRE", { exact: true })).toBeVisible();
     assert.equal(privateReads, 1);
     await expect(profile.getByText(/PRIVATE REASON/)).toHaveCount(0);
@@ -387,7 +391,7 @@ await withBrowser(browser, async () => {
     );
     await noScroll();
     await details.getByRole("button", { name: "← Wishes", exact: true }).click();
-    await profile.getByRole("button", { name: "Leave Inspect", exact: true }).click();
+    await clickCharacterTool(page, "Leave Inspect");
     await expect(profile.getByText("PRIVATE SOCIAL DESIRE")).toHaveCount(0);
     await page
       .getByRole("navigation", { name: "Village navigation", exact: true })

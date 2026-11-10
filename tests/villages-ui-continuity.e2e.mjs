@@ -1,3 +1,4 @@
+import { clickCharacterTool, openCharacterTools } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { build } from "../scripts/esbuild.mjs";
 import { chromium, expect, fulfill, withBrowser } from "./fixtures/browser-diagnostics.mjs";
@@ -163,10 +164,13 @@ await withBrowser(browser, async () => {
     await page.goto("http://continuity.test/");
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
     const tabs = page.getByRole("navigation", { name: "Villager profile sections" });
-    const chooseSection = (label) =>
-      panelWidth <= 700
+    const chooseSection = async (label) => {
+      if (["Agenda", "Venues"].includes(label))
+        return clickCharacterTool(page, label === "Agenda" ? "Agenda records" : "Venue connections");
+      return panelWidth <= 700
         ? page.getByRole("combobox", { name: "Section" }).selectOption({ label })
         : tabs.getByRole("button", { name: label, exact: true }).click();
+    };
     const overviewControl =
       panelWidth <= 700
         ? page.getByRole("combobox", { name: "Section" })
@@ -175,13 +179,11 @@ await withBrowser(browser, async () => {
     await expect(overview.getByText(summary)).toBeVisible();
 
     const scroller = page.locator(
-      panelWidth <= 700
-        ? ".marinara-capability-villages-dossier-book"
-        : ".marinara-capability-villages-dossier-content",
+      panelWidth <= 700 ? ".marinara-capability-villages-dossier-root" : ".marinara-capability-villages-dossier-book",
     );
     const position = await scroller.evaluate((element) => {
-      element.style.height = "80px";
-      element.style.maxHeight = "80px";
+      element.style.height = "320px";
+      element.style.maxHeight = "320px";
       element.scrollTop = 60;
       return element.scrollTop;
     });
@@ -199,7 +201,7 @@ await withBrowser(browser, async () => {
     );
     await chooseSection("Agenda");
     await chooseSection("Overview");
-    assert.equal(await scroller.evaluate((element) => element.scrollTop), position);
+    await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBe(position);
     await page.getByText("Character tools", { exact: true }).click();
     const draft = page.getByRole("textbox", { name: "Identity draft" });
     await draft.fill("Unfinished identity");
@@ -274,10 +276,7 @@ await withBrowser(browser, async () => {
         await expect(tabs.getByRole("button", { name: "Wishes", exact: true })).toHaveAttribute("aria-pressed", "true");
       await expect(page.getByRole("button", { name: "← Wishes", exact: true })).toBeVisible();
     }
-    await page
-      .getByRole("group", { name: "Profile actions" })
-      .getByRole("button", { name: "Inspect", exact: true })
-      .click();
+    await clickCharacterTool(page, "Inspect");
     await page.getByRole("button", { name: "Open Wish: Private Wish" }).click();
     const privateNode = await page.getByText("Private reason", { exact: true }).elementHandle();
     const privateRead = pause(
@@ -336,26 +335,23 @@ await withBrowser(browser, async () => {
     await expect(page.getByText("Saved memory")).toBeVisible();
     memoryRead.gate.resolve();
     hold = null;
-    await page
-      .getByRole("group", { name: "Profile actions" })
-      .getByRole("button", { name: "Leave Inspect", exact: true })
-      .click();
+    await clickCharacterTool(page, "Leave Inspect");
     await expect(page.getByText("Private reason", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Saved memory")).toHaveCount(0);
 
     await chooseSection("Wishes");
-    await page
-      .getByRole("group", { name: "Profile actions" })
-      .getByRole("button", { name: "Inspect", exact: true })
-      .click();
+    await clickCharacterTool(page, "Inspect");
     await page.getByRole("button", { name: "Open Wish: Private Wish" }).click();
     const siblingDenied = pause("/api/villages/memories/inspect", 403);
     await chooseSection("Memories");
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
     await expect.poll(() => siblingDenied.started).toBeGreaterThan(0);
     siblingDenied.gate.resolve();
+    await openCharacterTools(page);
     await expect(
-      page.getByRole("group", { name: "Profile actions" }).getByRole("button", { name: "Inspect", exact: true }),
+      page
+        .getByRole("group", { name: "Profile actions", exact: true, includeHidden: true })
+        .getByRole("button", { name: "Inspect", exact: true, includeHidden: true }),
     ).toBeVisible();
     await expect(page.getByText("Private reason", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Saved memory")).toHaveCount(0);

@@ -1,3 +1,4 @@
+import { clickCharacterTool } from "./fixtures/browser-diagnostics.mjs";
 import { createBrowserMailbox } from "./fixtures/mailbox-browser.fixture.mjs";
 import { fixtureWish } from "./helpers/social-wishes-fixture.js";
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
@@ -60,10 +61,26 @@ await withBrowser(browser, async () => {
       }),
     );
     village.villagers[0].summary = "A curious explorer who enjoys meeting people and sharing stories.";
+    village.villagers[0].summary +=
+      " They collect old maps, study unfamiliar machinery and enjoy long walks by the river.";
     if (width === 390) village.villagers[0].summary = village.villagers[0].summary.repeat(12);
     village.villagers[0].identityDescription = { text: village.villagers[0].summary, revision: "description-1" };
     let failDescription = false;
     village.villagers[0].tags = ["explorer", "friendly"];
+    const neutralSprite =
+      "data:image/svg+xml," +
+      encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1536"><path fill="#98816e" d="M320 80h384v1370H320Z"/></svg>',
+      );
+    village.villagers[0].sprite = {
+      assetId: "resident-sprites",
+      expressions: [],
+      framing: { mode: "full" },
+      images: [
+        { label: "happy", view: "front", isDefault: true, url: mapImage },
+        { label: "Neutral", view: "front", url: neutralSprite },
+      ],
+    };
     const secondName = width <= 390 ? "Eli of the Very Long and Winding Riverside Road" : "Eli";
     village.villagers[1].name = secondName;
     village.villagers[1].summary = "";
@@ -647,15 +664,47 @@ await withBrowser(browser, async () => {
     await expect(directory.getByRole("button", { name: "Add a villager" })).toHaveCount(0);
     await expect(directory.getByText("explorer", { exact: true })).toHaveCount(0);
     await expect(directory.getByRole("button", { name: /^Open .* profile$/ })).toHaveCount(2);
+    const galleryPortraits = directory.locator(`.${P}-avatar`);
+    const portraitSizes = await galleryPortraits.evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const { width, height } = node.getBoundingClientRect();
+        return { width, height };
+      }),
+    );
     await directory.getByRole("button", { name: "Open Mara profile" }).click();
     const profile = page.getByRole("region", { name: "Mara profile", exact: true });
     await expect(profile.getByRole("button", { name: "Message", exact: true })).toHaveCount(0);
     const tabs = page.getByRole("navigation", { name: "Villager profile sections" });
-    const chooseSection = (label) =>
-      width <= 700
+    const chooseSection = async (label) => {
+      if (["Agenda", "Venues"].includes(label))
+        return clickCharacterTool(page, label === "Agenda" ? "Agenda records" : "Venue connections");
+      return width <= 700
         ? page.getByRole("combobox", { name: "Section" }).selectOption({ label })
         : tabs.getByRole("button", { name: label, exact: true }).click();
+    };
     await expect(profile).toBeVisible();
+    await expect(page.getByRole("img", { name: "Mara — neutral sprite", exact: true })).toHaveAttribute(
+      "src",
+      neutralSprite,
+    );
+    if (width > 700)
+      assert.deepEqual(
+        await galleryPortraits.evaluateAll((nodes) =>
+          nodes.map((node) => {
+            const { width, height } = node.getBoundingClientRect();
+            return { width, height };
+          }),
+        ),
+        portraitSizes,
+        "Selecting a resident preserves portrait dimensions",
+      );
+    assert(
+      await profile.locator(`.${P}-dossier-biography`).evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
+      "Biography has no clipped or separately scrolling text",
+    );
+    await expect(tabs.getByRole("button", { name: "Agenda", exact: true })).toHaveCount(0);
+    await expect(tabs.getByRole("button", { name: "Venues", exact: true })).toHaveCount(0);
+    await expect(profile.getByRole("button", { name: "Inspect", exact: true })).toHaveCount(0);
     await expect(profile.getByRole("heading", { name: "Mara", exact: true })).toHaveCount(1);
     await expect(profile.getByRole("heading", { name: "Mara", exact: true })).toBeInViewport({ ratio: 1 });
     const overview = profile.getByRole("region", { name: "Overview content" });
@@ -708,10 +757,7 @@ await withBrowser(browser, async () => {
     await expect(profile.getByText("Unseen private place", { exact: true })).toHaveCount(0);
     await expect(profile.getByRole("button", { name: /Projects Open Projects/ })).toBeVisible();
     await expect(profile.getByRole("button", { name: /Venue Requests Open Venue Requests/ })).toBeVisible();
-    await page
-      .getByRole("group", { name: "Profile actions", exact: true })
-      .getByRole("button", { name: "Inspect", exact: true })
-      .click();
+    await clickCharacterTool(page, "Inspect");
     await expect(profile.getByText("Mara's workshop", { exact: true })).toBeVisible();
     await expect(profile.getByRole("heading", { name: "Unseen private place", exact: true })).toBeVisible();
     await expect(profile.getByText("Other person's request", { exact: true })).toHaveCount(0);
@@ -830,7 +876,7 @@ await withBrowser(browser, async () => {
       "Profile fits viewport",
     );
     if (width <= 700) {
-      const paper = profile.locator(`.${P}-dossier-book`);
+      const paper = profile.locator(`xpath=ancestor::*[contains(@class,'${P}-dossier-root')]`);
       const position = await paper.evaluate((node) => {
         node.scrollTop = 200;
         return node.scrollTop;
@@ -893,10 +939,7 @@ await withBrowser(browser, async () => {
     await expect(profile.getByText("Shared wish 12", { exact: true }).filter({ visible: true }).first()).toBeVisible();
     await expect(profile.locator(`.${P}-dossier-turn`)).toHaveCount(0);
     await page.screenshot({ path: resolve(output, `wishes-${width}-${height}.png`) });
-    await page
-      .getByRole("group", { name: "Profile actions", exact: true })
-      .getByRole("button", { name: "Inspect", exact: true })
-      .click();
+    await clickCharacterTool(page, "Inspect");
     await expect(profile.getByText("PRIVATE MARA WISH", { exact: true })).toBeVisible();
     await expect(profile.getByText("PRIVATE ELI WISH", { exact: true })).toHaveCount(0);
     await chooseSection("Agenda");
@@ -945,8 +988,8 @@ await withBrowser(browser, async () => {
       await page.evaluate(() => window.dispatchEvent(new Event("focus")));
       await expect(
         page
-          .getByRole("group", { name: "Profile actions", exact: true })
-          .getByRole("button", { name: "Inspect", exact: true }),
+          .getByRole("group", { name: "Profile actions", exact: true, includeHidden: true })
+          .getByRole("button", { name: "Inspect", exact: true, includeHidden: true }),
       ).toBeVisible();
       await expect(compare).toBeEnabled();
       const finishedAgenda = page.waitForResponse((response) => response.url().endsWith("/agendas/mara/influence"));
@@ -957,10 +1000,7 @@ await withBrowser(browser, async () => {
       await profile.getByText("Character tools", { exact: true }).click();
       await page.evaluate(() => window.dispatchEvent(new Event("focus")));
       await expect(profile.getByRole("alert")).toHaveCount(0);
-      await page
-        .getByRole("group", { name: "Profile actions", exact: true })
-        .getByRole("button", { name: "Inspect", exact: true })
-        .click();
+      await clickCharacterTool(page, "Inspect");
     }
     await chooseSection("Overview");
     await page.evaluate((tag) => {
@@ -1432,21 +1472,15 @@ await withBrowser(browser, async () => {
     if (reopenProfileAfterMail) {
       await people.click();
       await directory.getByRole("button", { name: "Open Mara profile", exact: true }).click();
-      await page
-        .getByRole("group", { name: "Profile actions", exact: true })
-        .getByRole("button", { name: "Inspect", exact: true })
-        .click();
+      await clickCharacterTool(page, "Inspect");
     }
     if (
       (await page
-        .getByRole("group", { name: "Profile actions", exact: true })
-        .getByRole("button", { name: /^(?:Leave )?Inspect$/, exact: true })
+        .getByRole("group", { name: "Profile actions", exact: true, includeHidden: true })
+        .getByRole("button", { name: /^(?:Leave )?Inspect$/, exact: true, includeHidden: true })
         .getAttribute("aria-pressed")) === "false"
     )
-      await page
-        .getByRole("group", { name: "Profile actions", exact: true })
-        .getByRole("button", { name: "Inspect", exact: true })
-        .click();
+      await clickCharacterTool(page, "Inspect");
     await chooseSection("Memories");
     await expect(profile.getByText("PRIVATE MARA MEMORY", { exact: true })).toBeVisible();
     await expect(profile.getByText("PRIVATE ELI MEMORY", { exact: true })).toHaveCount(0);
@@ -1509,14 +1543,8 @@ await withBrowser(browser, async () => {
       await expect(profile.getByText("PRIVATE corrected wording", { exact: true })).toBeVisible();
       await expect(correction.getByRole("textbox")).toHaveValue("Deferred correction");
       await expect(correction.getByRole("textbox")).toBeDisabled();
-      await page
-        .getByRole("group", { name: "Profile actions", exact: true })
-        .getByRole("button", { name: "Leave Inspect", exact: true })
-        .click();
-      await page
-        .getByRole("group", { name: "Profile actions", exact: true })
-        .getByRole("button", { name: "Inspect", exact: true })
-        .click();
+      await clickCharacterTool(page, "Leave Inspect");
+      await clickCharacterTool(page, "Inspect");
       await profile.getByRole("combobox", { name: "Memory knower" }).selectOption("eli");
       await expect(profile.getByText("PRIVATE ELI MEMORY", { exact: true })).toBeVisible();
       const readsBeforeRelease = reads.filter((path) => path.endsWith("/memories/inspect")).length;
@@ -1556,8 +1584,8 @@ await withBrowser(browser, async () => {
     await expect(page.getByText("No home or workplace assigned.", { exact: true })).toBeVisible();
     await expect(
       page
-        .getByRole("group", { name: "Profile actions", exact: true })
-        .getByRole("button", { name: "Inspect", exact: true }),
+        .getByRole("group", { name: "Profile actions", exact: true, includeHidden: true })
+        .getByRole("button", { name: "Inspect", exact: true, includeHidden: true }),
     ).toHaveAttribute("aria-pressed", "false");
     await expect(page.getByText(/PRIVATE/)).toHaveCount(0);
     await expect(page.getByText("No character summary recorded.", { exact: true })).toHaveCount(0);

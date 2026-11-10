@@ -10,7 +10,6 @@ export function PeopleBook({
   overview,
   section,
   inspect,
-  footer,
 }: {
   toolbar: ReactNode;
   children: ReactNode;
@@ -18,7 +17,6 @@ export function PeopleBook({
   overview?: boolean;
   section?: string;
   inspect?: boolean;
-  footer?: ReactNode;
 }) {
   return (
     <section
@@ -32,7 +30,6 @@ export function PeopleBook({
         {toolbar ? <header className={`${P}-dossier-toolbar`}>{toolbar}</header> : null}
         {children}
       </div>
-      {footer}
     </section>
   );
 }

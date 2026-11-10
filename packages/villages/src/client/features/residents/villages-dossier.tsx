@@ -9,6 +9,7 @@ import { PeopleBook } from "./PeopleBook.js";
 import { type RelationshipView, VillagesRelationships } from "./villages-relationships.js";
 import { VillagerSignature } from "./villages-signature.js";
 import { VillagerWishJournal } from "./villages-wish-journal.js";
+import type { ResidentSprite } from "../../../shared/contracts/village.js";
 
 export type DossierSection = "overview" | "relationships" | "wishes" | "memories" | "agenda" | "venues";
 export type DossierNavigation = {
@@ -19,7 +20,16 @@ export type DossierNavigation = {
 };
 type Request = <T>(path: string, options?: RequestInit) => Promise<T>;
 const P = "marinara-capability-villages";
-const sections: DossierSection[] = ["overview", "relationships", "wishes", "memories", "agenda", "venues"];
+function readingArea(content: HTMLElement | null) {
+  const root = content?.closest<HTMLElement>(`.${P}-dossier-root`);
+  const book = content?.closest<HTMLElement>(`.${P}-dossier-book`);
+  return root && getComputedStyle(root).overflowY === "auto"
+    ? root
+    : book && getComputedStyle(book).overflowY === "auto"
+      ? book
+      : content;
+}
+const sections: DossierSection[] = ["overview", "relationships", "wishes", "memories"];
 const titles: Record<DossierSection, string> = {
   overview: "Overview",
   relationships: "Relationships",
@@ -126,6 +136,7 @@ export function VillagerDossier({
     missing: boolean;
     signatureFallback?: ResidentSignature;
     signature?: ResidentSignatureImage;
+    sprite?: ResidentSprite | null;
   };
   portrait: ReactNode;
   request: Request;
@@ -149,6 +160,7 @@ export function VillagerDossier({
   const [manageOpen, setManageOpen] = useState(false);
   const [signatureTools, setSignatureTools] = useState<HTMLDivElement | null>(null);
   const [signatureSurface, setSignatureSurface] = useState<HTMLDivElement | null>(null);
+  const [failedSprite, setFailedSprite] = useState("");
   const [inspected, setInspected] = useState<DossierSection[]>([]);
   const [relationships, setRelationships] = useState<RelationshipView | null>(null);
   const relationshipEpoch = useRef(0);
@@ -158,6 +170,14 @@ export function VillagerDossier({
   const positions = useRef<Partial<Record<DossierSection, number>>>({});
   const profile = relationships?.profiles?.find((person) => person.characterId === navigation.actorId);
   const name = villager?.name ?? "Former villager";
+  const images = villager?.sprite?.images ?? [];
+  const neutral =
+    images.find((image) => image.view === "front" && image.label.toLocaleLowerCase() === "neutral") ??
+    images.find((image) => image.view === "front" && image.isDefault) ??
+    images.find((image) => image.label.toLocaleLowerCase() === "neutral") ??
+    images.find((image) => image.isDefault) ??
+    images.find((image) => image.view === "front") ??
+    images[0];
   useEffect(() => {
     if (!visible || showingSprites) return;
     const controller = new AbortController();
@@ -206,15 +226,13 @@ export function VillagerDossier({
     else setInspected((current) => (current.includes(section) ? current : [...current, section]));
   }, [inspect, section]);
   useLayoutEffect(() => {
-    const book = content.current?.closest<HTMLElement>(`.${P}-dossier-book`);
-    const reading = book && getComputedStyle(book).overflowY === "auto" ? book : content.current;
+    const reading = readingArea(content.current);
     if (reading) reading.scrollTop = positions.current[section] ?? 0;
   }, [section]);
   const inspectedSection = (tab: DossierSection) => inspect && (section === tab || inspected.includes(tab));
   const choose = (next: DossierSection, inspection = inspect) => {
     setVisited((current) => (current.includes(next) ? current : [...current, next]));
-    const book = content.current?.closest<HTMLElement>(`.${P}-dossier-book`);
-    const reading = book && getComputedStyle(book).overflowY === "auto" ? book : content.current;
+    const reading = readingArea(content.current);
     if (reading) positions.current[section] = reading.scrollTop;
     setSection(next);
     setInspect(inspection);
@@ -283,19 +301,6 @@ export function VillagerDossier({
             overview={section === "overview" && !!villager}
             section={section}
             inspect={inspect}
-            footer={
-              <footer className={`${P}-dossier-footer`} role="group" aria-label="Profile actions">
-                <button
-                  type="button"
-                  className={`${P}-dossier-inspect`}
-                  aria-pressed={inspect}
-                  onClick={() => setInspect(!inspect)}
-                >
-                  <DossierIcon name="inspect" />
-                  {inspect ? "Leave Inspect" : "Inspect"}
-                </button>
-              </footer>
-            }
             toolbar={
               <>
                 <div className={`${P}-dossier-actions`}>
@@ -310,6 +315,38 @@ export function VillagerDossier({
                         <VillageIcon name="settings" /> Character tools
                       </summary>
                       <div className={`${P}-dossier-controls`} role="group" aria-label="Character tools">
+                        <div role="group" aria-label="Profile actions">
+                          <button
+                            type="button"
+                            className={`${P}-dossier-inspect`}
+                            aria-pressed={inspect}
+                            onClick={() => {
+                              setInspect(!inspect);
+                              setManageOpen(false);
+                            }}
+                          >
+                            <DossierIcon name="inspect" />
+                            {inspect ? "Leave Inspect" : "Inspect"}
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            choose("agenda");
+                            setManageOpen(false);
+                          }}
+                        >
+                          Agenda records
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            choose("venues");
+                            setManageOpen(false);
+                          }}
+                        >
+                          Venue connections
+                        </button>
                         {controls}
                         <div ref={setSignatureTools} />
                       </div>
@@ -322,7 +359,6 @@ export function VillagerDossier({
             <div className={`${P}-dossier-identity`}>
               <article className={`${P}-dossier-journal`} aria-label={`${name} journal`}>
                 <div className={`${P}-dossier-journal-content`}>
-                  <div className={`${P}-dossier-portrait`}>{portrait}</div>
                   <h1>{name}</h1>
                   <div className={`${P}-dossier-biography`}>
                     {villager?.summary ? <p>{villager.summary}</p> : null}
@@ -338,6 +374,7 @@ export function VillagerDossier({
               <label className={`${P}-dossier-section-picker`}>
                 <span className={`${P}-sr-only`}>Section</span>
                 <select value={section} onChange={(event) => choose(event.target.value as DossierSection)}>
+                  {!sections.includes(section) ? <option value={section}>{titles[section]}</option> : null}
                   {sections.map((tab) => (
                     <option key={tab} value={tab}>
                       {titles[tab]}
@@ -392,7 +429,7 @@ export function VillagerDossier({
                             </p>
                           ) : (
                             <>
-                              <Sheet title="Routine" icon="agenda">
+                              <Sheet title="Agenda" icon="agenda">
                                 {profile?.routine?.length ? (
                                   <ul>
                                     {profile.routine.map((line, index) => (
@@ -400,7 +437,7 @@ export function VillagerDossier({
                                     ))}
                                   </ul>
                                 ) : (
-                                  <p>No routine shared yet.</p>
+                                  <p>No agenda shared yet.</p>
                                 )}
                               </Sheet>
                             </>
@@ -521,6 +558,18 @@ export function VillagerDossier({
               </div>
             </main>
           </PeopleBook>
+
+          <aside
+            className={`${P}-dossier-character`}
+            aria-label={`${name} artwork`}
+            data-sprite={!!neutral && failedSprite !== neutral.url}
+          >
+            {neutral && failedSprite !== neutral.url ? (
+              <img src={neutral.url} alt={`${name} — neutral sprite`} onError={() => setFailedSprite(neutral.url)} />
+            ) : (
+              <div className={`${P}-dossier-portrait`}>{portrait}</div>
+            )}
+          </aside>
 
           {villager ? (
             <VillagerSignature

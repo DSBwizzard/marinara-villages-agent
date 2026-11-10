@@ -1,3 +1,4 @@
+import { clickCharacterTool, openCharacterTools } from "./fixtures/browser-diagnostics.mjs";
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
 const { authorSceneResponse } = await scenePlaybackFixtures();
@@ -192,24 +193,23 @@ import {ConfirmationProvider} from './packages/villages/src/client/shared/confir
     window.navigation.setScreen("person");
   });
   await expect(page.locator("#screen")).toHaveText("person");
+  await openCharacterTools(page);
   await expect(page.getByRole("button", { name: "Inspect", exact: true })).toBeEnabled();
+  await page.getByText("Character tools", { exact: true }).click();
   await page.getByText("Character tools", { exact: true }).click();
   await expect(page.getByRole("button", { name: "Generate signature", exact: true })).toBeEnabled();
   await page.getByText("Character tools", { exact: true }).click();
   await page.getByText("Character tools", { exact: true }).click();
   await expect(page.getByRole("button", { name: "Character card", exact: true })).toBeEnabled();
   await page.getByText("Character tools", { exact: true }).click();
-  await page
-    .getByRole("navigation", { name: "Villager profile sections" })
-    .getByRole("button", { name: "Venues", exact: true })
-    .click();
+  await clickCharacterTool(page, "Venue connections");
   await expect(page.getByRole("heading", { name: "The Mill", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "View Venue", exact: true })).toBeEnabled();
   await expect(page.getByRole("button", { name: "A project" })).toHaveCount(0);
-  await page.getByRole("button", { name: "Inspect", exact: true }).click();
+  await clickCharacterTool(page, "Inspect");
   await expect(page.getByRole("button", { name: "View Venue", exact: true })).toBeEnabled();
   await expect(page.getByRole("button", { name: "A project" })).toBeEnabled();
-  await page.getByRole("button", { name: "Leave Inspect", exact: true }).click();
+  await clickCharacterTool(page, "Leave Inspect");
   await page.getByRole("button", { name: "Wishes", exact: true }).click();
   await page.getByRole("button", { name: "Open Wish: Share gardening stories", exact: true }).click();
   await expect(page.getByRole("button", { name: "Following", exact: true })).toBeEnabled();

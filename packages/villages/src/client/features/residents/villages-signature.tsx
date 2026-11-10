@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import type {
   ResidentSignature,
   ResidentSignatureImage,
@@ -130,7 +130,7 @@ export function VillagerSignature({
       {artContainer
         ? createPortal(
             <div className={`${P}-signature`}>
-              <SignatureArt name={name} signature={local} saved={image} />
+              <SignatureArt name={name} signature={local} saved={image} ink />
             </div>,
             artContainer,
           )
@@ -144,11 +144,14 @@ export function SignatureArt({
   name,
   signature,
   saved,
+  ink = false,
 }: {
   name: string;
   signature?: ResidentSignature;
   saved?: ResidentSignatureImage | null;
+  ink?: boolean;
 }) {
+  const inkId = useId();
   const [broken, setBroken] = useState("");
   const local = signature ?? { name, hand: "flowing", slant: 0, spacing: 0, flourish: 0 };
   const url = saved?.image.url;
@@ -158,8 +161,29 @@ export function SignatureArt({
       role="img"
       aria-label={`${url && broken !== url ? saved?.name : local.name}'s signature`}
     >
+      {ink ? (
+        <svg width="0" height="0" aria-hidden="true" style={{ position: "absolute" }}>
+          <defs>
+            <filter id={inkId} colorInterpolationFilters="sRGB">
+              <feColorMatrix type="luminanceToAlpha" />
+              <feComponentTransfer>
+                <feFuncA type="linear" slope="-1.25" intercept="1.125" />
+              </feComponentTransfer>
+              <feComposite operator="in" in2="SourceAlpha" result="ink" />
+              <feFlood floodColor="currentColor" />
+              <feComposite operator="in" in2="ink" />
+            </filter>
+          </defs>
+        </svg>
+      ) : null}
       {url && broken !== url ? (
-        <img className={`${P}-signature-image`} src={url} alt="" onError={() => setBroken(url)} />
+        <img
+          className={`${P}-signature-image`}
+          src={url}
+          alt=""
+          onError={() => setBroken(url)}
+          style={ink ? { filter: `url("#${inkId}")` } : undefined}
+        />
       ) : (
         <>
           <span

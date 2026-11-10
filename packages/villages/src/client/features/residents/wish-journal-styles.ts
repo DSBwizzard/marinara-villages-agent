@@ -1,11 +1,13 @@
 export const WISH_JOURNAL_STYLES = `
 .marinara-capability-villages-dossier-desk[data-section="wishes"] .marinara-capability-villages-dossier-identity{padding:44px 0 12px}
+.marinara-capability-villages-dossier-desk[data-section="wishes"] .marinara-capability-villages-dossier-book{overflow:clip}
+.marinara-capability-villages-dossier-desk[data-section="wishes"] .marinara-capability-villages-dossier-workspace{min-height:0;flex:1}
 .marinara-capability-villages-dossier-desk[data-section="wishes"] .marinara-capability-villages-dossier-journal-content{grid-template-columns:minmax(0,1fr)}
 .marinara-capability-villages-dossier-desk[data-section="wishes"] :is(.marinara-capability-villages-dossier-portrait,.marinara-capability-villages-dossier-biography){display:none}
-.marinara-capability-villages-dossier-desk[data-section="wishes"] .marinara-capability-villages-dossier-journal h1{grid-column:1;font-size:30px}
+.marinara-capability-villages-dossier-desk[data-section="wishes"] .marinara-capability-villages-dossier-journal h1{grid-column:1;font-size:30px;min-height:0;padding:0}
 @container village-desk (max-width:700px){.marinara-capability-villages-dossier-desk[data-section="wishes"] .marinara-capability-villages-dossier-identity{padding-top:0}}
 .marinara-capability-villages-dossier-root:has(.marinara-capability-villages-dossier-desk[data-section="wishes"]){overflow:clip}
-.marinara-capability-villages-dossier-desk[data-section="wishes"] .marinara-capability-villages-dossier-content{display:block;overflow:clip;height:100%;padding:8px 4px}
+.marinara-capability-villages-dossier-desk[data-section="wishes"] .marinara-capability-villages-dossier-content{display:block;overflow:clip;height:auto;flex:1;min-height:0;padding:8px 4px}
 .villages-wish-browser{grid-column:1/-1;min-width:0;min-height:0;height:100%;container-type:inline-size;display:flex;flex-direction:column}
 .villages-wish-layout{min-width:0;min-height:0;flex:1;display:grid;grid-template-rows:minmax(0,1fr);gap:24px;align-items:stretch}
 .villages-wish-list{min-width:0;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr) 44px;gap:10px}

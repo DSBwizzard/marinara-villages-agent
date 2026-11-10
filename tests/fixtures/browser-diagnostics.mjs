@@ -4,6 +4,17 @@ import { chromium as browserType, expect } from "@playwright/test";
 import { fileURLToPath } from "node:url";
 
 export { expect };
+
+export async function openCharacterTools(page) {
+  const tools = page.locator(".marinara-capability-villages-dossier-management:visible");
+  if ((await tools.getAttribute("open")) === null) await tools.locator("summary").click();
+  return tools.getByRole("group", { name: "Character tools", exact: true });
+}
+
+export async function clickCharacterTool(page, name) {
+  const tools = await openCharacterTools(page);
+  await tools.getByRole("button", { name, exact: true }).click();
+}
 const expectations = new WeakMap();
 const deskAssets = {
   "storybook-background.webp": "image/webp",
