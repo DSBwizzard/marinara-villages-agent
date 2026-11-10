@@ -640,7 +640,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   }
   function readForJob(job: Job): Promise<VillageState> {
     const options = {
-      memories: !!catchupBatchId(job),
+      memories: job.kind === "starting-ties" || !!catchupBatchId(job),
       wishes:
         job.kind === "resident-planning" || !!catchupBatchId(job)
           ? (true as const)

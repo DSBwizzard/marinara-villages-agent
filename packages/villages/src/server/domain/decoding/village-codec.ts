@@ -89,6 +89,8 @@ import { defaultVenueSpace, validVenueClasses, venueResidentIds } from "../rules
 import { chooseAgendaZone, synchronizeVenueZones, ZONE_KINDS } from "../rules/venue-zones.js";
 import { randomVillageSeed, VILLAGE_WEEKDAYS } from "../rules/village-clock.js";
 import { zonePictureBaseline, zonePicturePhysicalRecord } from "../rules/zone-picture.js";
+import { emptyStartingHistory } from "../rules/starting-history.js";
+import { readStartingHistory } from "./starting-history-codec.js";
 
 export function defaultVillageState(): VillageState {
   return {
@@ -96,6 +98,7 @@ export function defaultVillageState(): VillageState {
     version: 18,
     continuity: emptyContinuity(),
     episodes: emptyEpisodes(),
+    startingHistory: emptyStartingHistory(),
     backgroundReceipts: {},
     exchangeReceipts: {},
     noticeSequence: 0,
@@ -1370,7 +1373,8 @@ function readZoneObservation(
 export function coerceVillageState(value: unknown): VillageState {
   const raw = asRecord(value);
   if (value != null && raw.version !== 18) throw new Error("Unsupported Village format. Start a fresh Village.");
-  if (value != null) memoryRequire(raw.continuity && raw.episodes, "current Village continuity data is missing");
+  if (value != null)
+    memoryRequire(raw.continuity && raw.episodes && raw.startingHistory, "current Village continuity data is missing");
   const fallback = defaultVillageState();
   const venues = coerceVenues(raw.venues);
   const villagers = Array.isArray(raw.villagers)
@@ -1407,6 +1411,7 @@ export function coerceVillageState(value: unknown): VillageState {
     version: 18,
     continuity,
     episodes,
+    startingHistory: value == null ? fallback.startingHistory : readStartingHistory(raw.startingHistory),
     backgroundReceipts: Object.fromEntries(
       Object.entries(asRecord(raw.backgroundReceipts)).filter(
         (entry): entry is [string, string] => typeof entry[1] === "string",
@@ -1418,9 +1423,6 @@ export function coerceVillageState(value: unknown): VillageState {
     socialContractVersion: 2,
     socialMailOutbox: Array.isArray(raw.socialMailOutbox)
       ? (structuredClone(raw.socialMailOutbox) as VillageState["socialMailOutbox"])
-      : [],
-    socialClarifications: Array.isArray(raw.socialClarifications)
-      ? (raw.socialClarifications as VillageState["socialClarifications"])
       : [],
     socialPublications: raw.socialPublications
       ? (structuredClone(raw.socialPublications) as VillageState["socialPublications"])
@@ -1558,9 +1560,6 @@ export function coerceVillageState(value: unknown): VillageState {
             Object.entries(asRecord(raw.semanticRequestReceipts)).filter(([, value]) => typeof value === "string"),
           ) as Record<string, string>,
         }
-      : {}),
-    ...(asRecord(raw.semanticStartingTies).sourceHash
-      ? { semanticStartingTies: structuredClone(raw.semanticStartingTies) as VillageState["semanticStartingTies"] }
       : {}),
     ...(raw.semanticContinuations
       ? {

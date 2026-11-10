@@ -166,6 +166,27 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
         );
     }
   for (const record of continuity.records)
+    if (record.owner) {
+      const owner = record.owner,
+        key = continuityHolderKey(owner);
+      const initial = continuity.versions.filter((version) => version.rootId === record.id && !version.administrative);
+      const firstRevision = Math.min(...initial.map((version) => version.createdRevision));
+      memoryRequire(
+        initial.some((version) => {
+          const episode = byEpisode.get(owners.get(version.id)!);
+          return (
+            version.createdRevision === firstRevision &&
+            episode &&
+            version.id === continuityVersionId(episode.seed, version.operationId, owner) &&
+            episode.actors.some((actor) => actor.id === owner.id && actor.incarnation === owner.incarnation) &&
+            version.sources.some((source) => source.actorId === owner.id || source.kind === "native") &&
+            record.heads[key]
+          );
+        }),
+        "continuity owner lost its initial evidence",
+      );
+    }
+  for (const record of continuity.records)
     for (const event of record.offer?.events ?? [])
       for (const source of event.sources) {
         const original = assertSource(source);

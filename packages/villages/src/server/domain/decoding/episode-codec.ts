@@ -44,6 +44,7 @@ const episode = z
               "npc",
               "establishment",
               "circumstance",
+              "initialization",
             ]),
             targetId: id,
             revision: z.number().int().nonnegative().safe(),
@@ -188,6 +189,21 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
       memoryRequire(
         !source.actorId || receipt.witnesses.includes(source.actorId),
         "native source has a non-witness author",
+      );
+      continue;
+    }
+    if (!value.sceneId && source.kind === "context" && source.unitId.startsWith("authored:")) {
+      memoryRequire(
+        value.commandReceipts.length === 1 &&
+          value.commandReceipts[0].kind === "initialization" &&
+          source.unitId.endsWith(":" + source.fingerprint.slice(0, 16)) &&
+          !source.actorId &&
+          !source.perceptions.length &&
+          !source.act &&
+          !source.committedReceiptId &&
+          source.range &&
+          source.range.end - source.range.start === source.excerpt.length,
+        "invalid authored preparation source",
       );
       continue;
     }
@@ -363,7 +379,8 @@ function buildEpisodeGraph(records: AcceptedEpisode[], scope: string) {
               ...(episode.holderDependencies?.[scope]?.[source.unitId] ?? []),
             ],
           });
-        if (!container.dependencies.includes(key)) container.dependencies = [...container.dependencies, key];
+        if (container !== nodes.get(key) && !container.dependencies.includes(key))
+          container.dependencies = [...container.dependencies, key];
       }
   });
   const resolved = new Set<string>(),

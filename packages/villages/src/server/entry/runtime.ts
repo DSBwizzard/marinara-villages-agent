@@ -505,11 +505,9 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   });
   const releaseRelationshipSocial = configureRelationshipSocial(relationshipSocial);
   const startingTies = createStartingTies({
-    withVillageSceneAcceptance,
     readVillageLore,
-    readVillageState,
+    readVillageState: readVillageMemoryState,
     mutateVillageState: mutateVillageMemoryState,
-    mutateRelationships,
     queueBackgroundJob,
     settleBackgroundWork,
     villagesLanguageModels,
@@ -541,7 +539,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       prepareStartingTies: startingTies.prepare,
       clarifyStartingTies: startingTies.clarify,
       backgroundWorkSummaries,
-      applySavedStartingTies: startingTies.applySaved,
     }),
   );
   const releaseLiveMemory = configureLiveMemory(
@@ -617,7 +614,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseSceneCommands = configureSceneCommands(
     createSceneCommands({
       selectActiveScene: sceneRepository.selectActiveScene,
-      applySavedStartingTies: startingTies.applySaved,
       generate,
       loadPrivateSpaceImages: () => import("../features/media/location-image.js"),
       processSavedExchange,
@@ -922,7 +918,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     wishIdentity,
     afterCatchup: advanceReturnCatchup,
     afterCatchupFailure: advanceReturnCatchup,
-    applySavedStartingTies: startingTies.applySaved,
     automaticMail: personalMail.automaticOutbox,
     readVillageState,
     readEffectiveVillagerCard,

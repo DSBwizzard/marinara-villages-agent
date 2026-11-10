@@ -70,7 +70,6 @@ export type ResidentPlanningPorts = {
   wishIdentity: WishIdentity;
   afterCatchup?: (input: unknown) => Promise<void>;
   afterCatchupFailure?: (input: unknown) => Promise<void>;
-  applySavedStartingTies?: () => Promise<void>;
   automaticMail?: import("./social-mail-service.js").SocialMailService["automaticOutbox"];
   readVillageState: typeof import("../world/village-store.js").readVillageState;
   readEffectiveVillagerCard: typeof import("../../adapters/engine/catalog.js").readEffectiveVillagerCard;
@@ -92,7 +91,6 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
     completeWithRoom,
   } = ports;
   async function reconcile(now: Date, dueOnly = false): Promise<boolean | void> {
-    await ports.applySavedStartingTies?.();
     const village = await readVillageState({ memories: true, wishes: true });
     const dateKey = activityDate(village, now),
       allowance = planningAllowance(village.backgroundPace, village.seed, dateKey);

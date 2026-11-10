@@ -1,28 +1,48 @@
 import type { VillageState } from "../models/world.js";
 import type { AcceptedEpisode } from "../models/episode-model.js";
-import type { ContinuityEvidence, ContinuityHolder } from "../models/continuity-model.js";
+import type { ContinuityClass, ContinuityEvidence, ContinuityHolder } from "../models/continuity-model.js";
 import { continuityActor } from "./continuity-actors.js";
-import { applyContinuityWrite, continuityHolderKey } from "./continuity.js";
+import { applyContinuityWrite, continuityHolderKey, continuitySourceUnit } from "./continuity.js";
 import { appendEpisode } from "./episodes.js";
 import { assertContinuityRetention } from "./continuity-retention.js";
 import { nativeReceiptSupportsRoom } from "./episode-sources.js";
-import { memoryHash, memoryRequire } from "./memory-integrity.js";
+import { memoryHash, memoryRequire, memoryObject } from "./memory-integrity.js";
 import { findLocation } from "./places.js";
+export const nativeEpisodeId = (seed: string, receiptId: string) =>
+  "native-" + memoryHash([seed, receiptId]).slice(0, 32);
 
 /** Called in the native authority mutation; the same root CAS publishes its evidence and individual knowledge. */
 export function retainNativeFact(
   state: VillageState,
   receipt: AcceptedEpisode["commandReceipts"][number],
   at: string,
-  about: string[] = [],
-  room?: Extract<ContinuityHolder, { kind: "room" }>,
+  meaning: {
+    about?: string[];
+    class?: ContinuityClass;
+    current?: boolean;
+    owner?: Extract<ContinuityHolder, { kind: "actor" }>;
+    room?: Extract<ContinuityHolder, { kind: "room" }>;
+    context?: ContinuityEvidence[];
+  } = {},
 ) {
+  memoryObject(meaning, ["about", "class", "current", "owner", "room", "context"]);
+  const { room } = meaning;
+  memoryRequire(
+    !room ||
+      (meaning.class === undefined &&
+        meaning.about === undefined &&
+        meaning.current === undefined &&
+        !meaning.owner &&
+        !meaning.context?.length),
+    "room fact cannot carry actor classification",
+  );
   memoryRequire(!room || nativeReceiptSupportsRoom(receipt, room), "native receipt does not own this room");
-  const id = "native-" + memoryHash([state.seed, receipt.id]).slice(0, 32);
+  const id = nativeEpisodeId(state.seed, receipt.id),
+    digest = memoryHash([receipt, meaning]);
   const prior = state.episodes.records.find((row) => row.id === id);
   if (prior) {
     memoryRequire(
-      memoryHash(prior.commandReceipts[0]) === memoryHash(receipt) && memoryHash(prior.room) === memoryHash(room),
+      memoryHash(prior.commandReceipts[0]) === memoryHash(receipt) && prior.responseDigest === digest,
       "native continuity identity reused",
     );
     return;
@@ -48,6 +68,20 @@ export function retainNativeFact(
     })),
   };
   const actors = holders;
+  const context = meaning.context ?? [];
+  memoryRequire(
+    context.length <= 8 &&
+      (!context.length || receipt.kind === "initialization") &&
+      context.every(
+        (source) =>
+          source.kind === "context" &&
+          source.seed === state.seed &&
+          source.episodeId === id &&
+          source.unitId.startsWith("authored:") &&
+          !source.perceptions.length,
+      ),
+    "native preparation source scope changed",
+  );
   const continuity =
     room || holders.length
       ? applyContinuityWrite(
@@ -55,7 +89,14 @@ export function retainNativeFact(
           {
             id: "fact",
             holders: room ? [room] : holders,
-            ...(room ? { room: { knownBy: receipt.observedBy ?? [] } } : { class: "experience" as const, about }),
+            ...(meaning.owner ? { owner: meaning.owner } : {}),
+            ...(room
+              ? { room: { knownBy: receipt.observedBy ?? [] } }
+              : {
+                  class: meaning.class ?? "experience",
+                  about: meaning.about ?? [],
+                  ...(meaning.current === undefined ? {} : { current: meaning.current }),
+                }),
             text: receipt.text,
             sourceIds: [source.id],
           },
@@ -80,16 +121,16 @@ export function retainNativeFact(
     operationId: id,
     capturedAt: at,
     acceptedAt: at,
-    responseDigest: memoryHash(receipt),
+    responseDigest: digest,
     admittedContinuityRevision: state.continuity.revision,
     privateInput: "",
     actors: actors.map((actor) => ({ id: actor.id, incarnation: actor.incarnation, zoneId: "native" })),
     ...(room ? { room } : {}),
     segments: [],
-    grounding: [source],
+    grounding: [...context, source],
     offered: [],
     commandReceipts: [receipt],
-    dependencies: {},
+    dependencies: context.length ? { [source.unitId]: context.map(continuitySourceUnit) } : {},
     continuityVersionIds: continuity.versions.slice(state.continuity.versions.length).map((row) => row.id),
   };
   const episodes = appendEpisode(state.episodes, episode, state.seed);
@@ -120,11 +161,11 @@ export function initializeRoomContinuity(
     text,
     witnesses: [],
   };
-  const id = "native-" + memoryHash([state.seed, receipt.id]).slice(0, 32);
+  const id = nativeEpisodeId(state.seed, receipt.id);
   memoryRequire(
     state.episodes.records.some((row) => row.id === id) ||
       !state.continuity.records.some((record) => record.heads[continuityHolderKey(room)]),
     "room continuity is already initialized",
   );
-  retainNativeFact(state, receipt, at, [], room);
+  retainNativeFact(state, receipt, at, { room });
 }

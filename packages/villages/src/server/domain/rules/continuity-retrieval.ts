@@ -6,7 +6,12 @@ import type {
 } from "../models/continuity-model.js";
 import type { EpisodeCollection } from "../models/episode-model.js";
 import { episodeSourceGraph } from "../decoding/episode-codec.js";
-import { continuityHolderKey, continuityProtectionUnits, continuityViews } from "./continuity.js";
+import {
+  continuityHolderKey,
+  continuityGuidesHolder,
+  continuityProtectionUnits,
+  continuityViews,
+} from "./continuity.js";
 import { memoryRequire } from "./memory-integrity.js";
 import { recallTerms } from "./text-recall.js";
 import { recentSharedEpisodes } from "./episodes.js";
@@ -106,6 +111,7 @@ function actorEntry(view: ContinuityView) {
     for: view.holder.kind === "actor" ? view.holder.id : "",
     text: version.text,
     class: version.class,
+    ...(view.owner ? { owner: view.owner.id } : {}),
     ...(view.current ? { current: true } : {}),
     ...(version.about.length ? { about: version.about } : {}),
     ...(version.parentId ? { parent: version.parentId, facet: version.facet } : {}),
@@ -198,7 +204,7 @@ export function selectActorContinuity(
   for (const holder of holders.filter((holder) => holder.id !== "player")) {
     const key = continuityHolderKey(holder);
     const current = all
-      .filter((row) => continuityHolderKey(row.holder) === key && row.current)
+      .filter((row) => continuityHolderKey(row.holder) === key && row.current && continuityGuidesHolder(row))
       .sort(
         (a, b) =>
           (lastOffered.get(JSON.stringify([key, a.id])) ?? created.get(a.id) ?? 0) -
@@ -217,6 +223,7 @@ export function selectActorContinuity(
       (row) =>
         continuityHolderKey(row.holder) === continuityHolderKey(holder) &&
         row.current &&
+        continuityGuidesHolder(row) &&
         row.version.facet === "attention",
     );
     if (foreground) take(foreground);
@@ -246,7 +253,12 @@ export function selectActorContinuity(
       .map((holder) => ({
         holder,
         ids: selected
-          .filter((row) => row.current && continuityHolderKey(row.holder) === continuityHolderKey(holder))
+          .filter(
+            (row) =>
+              row.current &&
+              continuityGuidesHolder(row) &&
+              continuityHolderKey(row.holder) === continuityHolderKey(holder),
+          )
           .map((row) => row.id),
       }))
       .filter((row) => row.ids.length > 0),

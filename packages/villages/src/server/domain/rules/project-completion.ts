@@ -135,7 +135,7 @@ export function completeProject(state: VillageState, project: VillageProject, at
       witnesses: flow.builderId && continuityActor(state, flow.builderId) ? [flow.builderId] : [],
     },
     at,
-    flow.builderId ? [flow.builderId] : [],
+    { about: flow.builderId ? [flow.builderId] : [] },
   );
 }
 export function readProjectPlan(value: unknown, venue: VillageVenue): NonNullable<VillageProject["plan"]> {

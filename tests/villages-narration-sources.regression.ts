@@ -1,4 +1,4 @@
-// Test cases: narration-sources/exact-private-input, narration-sources/spatial-audience, narration-sources/movement-order, narration-sources/routed-segments, narration-sources/own-perspective, narration-sources/fitted-aliases, narration-sources/room-without-knowers, narration-sources/sound-alias-retention, narration-sources/cold-input-widening, narration-sources/keep-binding, narration-sources/first-disclosure, narration-sources/native-combination
+// Test cases: narration-sources/exact-private-input, narration-sources/spatial-audience, narration-sources/movement-order, narration-sources/routed-segments, narration-sources/own-perspective, narration-sources/fitted-aliases, narration-sources/room-without-knowers, narration-sources/sound-alias-retention, narration-sources/cold-input-widening, narration-sources/keep-binding, narration-sources/first-disclosure, narration-sources/native-combination, narration-sources/absent-owner-disclosure
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { venueFixture } from "./helpers/venues.fixture.js";
@@ -158,7 +158,14 @@ function keep(
 ) {
   return applyContinuityWrite(
     emptyContinuity(),
-    { id: "note", holders: [holder], text: source.excerpt, class: className, sourceIds: [source.id] },
+    {
+      id: "note",
+      holders: [holder],
+      ...(className !== "information" ? { owner: holder } : {}),
+      text: source.excerpt,
+      class: className,
+      sourceIds: [source.id],
+    },
     {
       seed: "world",
       episodeId: "episode",
@@ -354,7 +361,7 @@ await runCase("narration-sources/own-perspective", () => {
   const self = bindNarrationSource("self", captured, owner),
     state = applyContinuityWrite(
       emptyContinuity(),
-      { id: "note", holders: [mara], class: "desire", text: owner.text, sourceIds: [self.id] },
+      { id: "note", holders: [mara], owner: mara, class: "desire", text: owner.text, sourceIds: [self.id] },
       {
         seed: "world",
         episodeId: captured.episodeId,
@@ -673,6 +680,172 @@ await runCase("narration-sources/keep-binding", async () => {
   assert.equal(cold.value.continuity.versions[0].text, raw.text);
 });
 
+await runCase("narration-sources/absent-owner-disclosure", async () => {
+  const original = {
+    ...context(),
+    lines: [line("wish-words", "I want to sail a boat of my own.")],
+    labels: { wish: "wish-words" },
+  };
+  const initialAdmission = {
+    seed: original.seed,
+    operationId: original.operationId,
+    episodeId: original.episodeId,
+    at,
+    actors: original.actors,
+    sources: [],
+    supplied: [],
+    protectedRoots: [],
+  };
+  const prepared = prepareNarrationKeep(
+    {
+      for: ["player", "mara"],
+      owner: "mara",
+      class: "desire",
+      about: ["mara"],
+      current: false,
+      text: "Mara wants to sail a boat of her own.",
+      source: [{ segment: "wish" }],
+    },
+    0,
+    emptyContinuity(),
+    initialAdmission,
+    original,
+  );
+  const first = applyContinuityWrite(emptyContinuity(), prepared.write, prepared.admission),
+    root = first.records[0],
+    playerKey = continuityHolderKey(player);
+  const fitted = { id: root.id, recordRevision: root.revision, heads: { [playerKey]: root.heads[playerKey].revision } };
+  const later = {
+    ...context("Mara wants to sail a boat of her own."),
+    episodeId: "disclosure",
+    operationId: "tell-leo",
+    actors: [player, leo],
+    lines: [],
+    labels: {},
+    scene: structuredClone(scene),
+  };
+  later.scene.activeIds = ["leo"];
+  later.scene.sceneAttendance!.occupants = later.scene
+    .sceneAttendance!.occupants.filter((row) => row.characterId === "leo")
+    .map((row) => ({ ...row, zoneId: "parlor" }));
+  const admission = {
+    ...initialAdmission,
+    operationId: later.operationId,
+    episodeId: later.episodeId,
+    actors: later.actors,
+    supplied: [fitted],
+  };
+  const raw = {
+    for: ["leo"],
+    replace: root.id,
+    owner: "mara",
+    class: "desire",
+    text: later.input,
+    source: [{ input: later.input, ground: { kind: "spoken", to: ["leo"] } }],
+  };
+  const { class: _class, ...omitted } = raw;
+  const next = prepareNarrationKeep(omitted, 0, first, admission, later);
+  assert.deepEqual(next.write.owner, mara);
+  assert.equal(next.write.class, "desire");
+  assert.deepEqual(next.write.about, ["mara"]);
+  assert.equal(next.write.current, false);
+  const disclosed = applyContinuityWrite(first, next.write, next.admission);
+  assert.deepEqual(disclosed.records[0].heads[continuityHolderKey(mara)], root.heads[continuityHolderKey(mara)]);
+  assert.throws(
+    () => prepareNarrationKeep({ ...raw, owner: "leo" }, 0, first, admission, later),
+    /ownership cannot change/,
+  );
+  let episodes = appendEpisode(
+    emptyEpisodes(),
+    episodeFrom(
+      original,
+      prepared.sources,
+      first.versions.map((row) => row.id),
+    ),
+    original.seed,
+  );
+  episodes = appendEpisode(episodes, episodeFrom(later, next.sources, [disclosed.versions.at(-1)!.id]), original.seed);
+  const world = memoryHash(original.seed).slice(0, 32),
+    packet = encodeContinuityPages({ continuity: disclosed, episodes, worldPlaces: emptyPlaceRegistry() }, world);
+  const cold = await decodeContinuityPages(
+    packet.manifest,
+    world,
+    original.seed,
+    async (id) => packet.pages.get(id) ?? null,
+  );
+  assert.deepEqual(continuityViews(cold.value.continuity, leo, at, new Set())[0].owner, mara);
+  const closureContext = { ...original, episodeId: "fulfilled-privately", operationId: "private-fulfillment" };
+  const closureAdmission = {
+    ...initialAdmission,
+    episodeId: closureContext.episodeId,
+    operationId: closureContext.operationId,
+    supplied: [
+      {
+        id: root.id,
+        recordRevision: root.revision,
+        heads: { [continuityHolderKey(mara)]: root.heads[continuityHolderKey(mara)].revision },
+      },
+    ],
+  };
+  const closure = prepareNarrationKeep(
+    {
+      for: ["mara"],
+      replace: root.id,
+      text: "Mara is satisfied that she has sailed her own boat.",
+      retire: "fulfilled",
+      source: ["self"],
+    },
+    0,
+    first,
+    closureAdmission,
+    closureContext,
+  );
+  const mixed = applyContinuityWrite(first, closure.write, closure.admission),
+    mixedRoot = mixed.records[0];
+  const mixedAdmission = {
+    ...admission,
+    supplied: [
+      {
+        id: root.id,
+        recordRevision: mixedRoot.revision,
+        heads: {
+          [playerKey]: mixedRoot.heads[playerKey].revision,
+          [continuityHolderKey(mara)]: mixedRoot.heads[continuityHolderKey(mara)].revision,
+        },
+      },
+    ],
+  };
+  assert.throws(() => prepareNarrationKeep(omitted, 0, mixed, mixedAdmission, later), /explicit closure/);
+  const openAccount = prepareNarrationKeep(
+    { ...omitted, current: false, retire: null },
+    0,
+    mixed,
+    mixedAdmission,
+    later,
+  );
+  const learned = applyContinuityWrite(mixed, openAccount.write, openAccount.admission);
+  assert.equal(
+    continuityViews(learned, leo, at, new Set())[0].version.closed,
+    undefined,
+    "Leo learns only the still-open account actually disclosed",
+  );
+  assert.equal(
+    continuityViews(learned, mara, at, new Set())[0].version.closed?.reason,
+    "fulfilled",
+    "private owner fulfillment remains intact",
+  );
+  assert.throws(
+    () =>
+      prepareNarrationKeep(
+        { ...omitted, for: ["mara"], retire: null },
+        0,
+        mixed,
+        { ...mixedAdmission, actors: original.actors },
+        { ...later, actors: original.actors },
+      ),
+    /open disclosure cannot reopen/,
+  );
+});
 await runCase("narration-sources/first-disclosure", async () => {
   const original = context("The fair is on Saturday.");
   const privateSource = bindNarrationSource({ input: original.input, ground: { kind: "private" } }, original);

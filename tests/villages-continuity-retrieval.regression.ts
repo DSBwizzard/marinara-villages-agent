@@ -206,7 +206,7 @@ for (let i = 0; i < 20; i++) {
   };
   motives = applyContinuityWrite(
     motives,
-    { id: "wish", holders: [mara], class: "desire", text: source.excerpt, sourceIds: [source.id] },
+    { id: "wish", holders: [mara], owner: mara, class: "desire", text: source.excerpt, sourceIds: [source.id] },
     { ...context("wish-" + i), sources: [source] },
   );
 }
@@ -264,7 +264,7 @@ await runCase("continuity-retrieval/minimum-initiative", () => {
     };
     state = applyContinuityWrite(
       state,
-      { id: "motive", holders: [holder], class: "desire", text: source.excerpt, sourceIds: [source.id] },
+      { id: "motive", holders: [holder], owner: holder, class: "desire", text: source.excerpt, sourceIds: [source.id] },
       { ...context(holder.id), sources: [source] },
     );
   }
@@ -362,7 +362,7 @@ await runCase("continuity-retrieval/new-arrival-fairness", () => {
     };
     state = applyContinuityWrite(
       state,
-      { id: "motive", holders: [mara], class: "desire", text: source.excerpt, sourceIds: [source.id] },
+      { id: "motive", holders: [mara], owner: mara, class: "desire", text: source.excerpt, sourceIds: [source.id] },
       { ...context(birth.operationId), sources: [source] },
     );
     const record = state.records.at(-1)!;

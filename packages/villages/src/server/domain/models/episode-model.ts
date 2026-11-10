@@ -31,7 +31,8 @@ export type AcceptedEpisode = {
       | "discovery"
       | "npc"
       | "establishment"
-      | "circumstance";
+      | "circumstance"
+      | "initialization";
     targetId: string;
     revision: number;
     text: string;

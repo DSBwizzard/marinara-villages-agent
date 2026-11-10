@@ -51,6 +51,7 @@ export type ContinuityProtection = {
 export type ContinuityRecord = {
   id: string;
   revision: number;
+  owner?: Extract<ContinuityHolder, { kind: "actor" }>;
   heads: Record<string, ContinuityHead>;
   protection: Record<string, ContinuityProtection>;
   /** Terms live only in this immutable version's text. */
@@ -79,6 +80,7 @@ export type ContinuityTarget = { id: string; recordRevision: number; heads: Reco
 export type ContinuityWrite = {
   id: string;
   holders: ContinuityHolder[];
+  owner?: Extract<ContinuityHolder, { kind: "actor" }>;
   sourceIds: string[];
   target?: ContinuityTarget;
   text?: string;
@@ -116,6 +118,7 @@ export type ContinuityAdmission = {
 
 export type ContinuityView = {
   id: string;
+  owner?: Extract<ContinuityHolder, { kind: "actor" }>;
   recordRevision: number;
   headRevision: number;
   holder: ContinuityHolder;

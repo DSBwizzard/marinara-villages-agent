@@ -1,4 +1,4 @@
-// Test cases: continuity/individual-replacement, continuity/perception, continuity/cross-scene-offer, continuity/withdrawal, continuity/qualified-offer, continuity/room-sequence, continuity/room-expiry, continuity/protection, continuity/desire-closure, continuity/offer-privacy, continuity/concealed-observations, continuity/room-current-evidence, continuity/holder-admission, continuity/parent-protection
+// Test cases: continuity/individual-replacement, continuity/perception, continuity/cross-scene-offer, continuity/withdrawal, continuity/qualified-offer, continuity/room-sequence, continuity/room-expiry, continuity/protection, continuity/desire-closure, continuity/offer-privacy, continuity/concealed-observations, continuity/room-current-evidence, continuity/holder-admission, continuity/parent-protection, continuity/owned-knowledge
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import type {
@@ -14,14 +14,17 @@ import {
   continuityHolderKey,
   continuityProtectionUnits,
   continuityViews,
+  continuityGuidesHolder,
   emptyContinuity,
   protectContinuity,
 } from "../packages/villages/src/server/domain/rules/continuity.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { readContinuity } from "../packages/villages/src/server/domain/decoding/continuity-codec.js";
+import { selectActorContinuity } from "../packages/villages/src/server/domain/rules/continuity-retrieval.js";
+import { emptyEpisodes } from "../packages/villages/src/server/domain/rules/episodes.js";
 
 const at = "2026-11-09T12:00:00.000Z";
-const actor = (id: string): ContinuityHolder => ({ kind: "actor", id, incarnation: "one" });
+const actor = (id: string): Extract<ContinuityHolder, { kind: "actor" }> => ({ kind: "actor", id, incarnation: "one" });
 const player = actor("player"),
   mara = actor("mara"),
   leo = actor("leo");
@@ -116,6 +119,81 @@ function apply(
 const rows = (state: ContinuityCollection, holder = mara, when = at) =>
   continuityViews(state, holder, when, continuityProtectionUnits(state, holder, new Map()));
 
+await runCase("continuity/owned-knowledge", () => {
+  const said = source("wish-spoken", "mara", "I want to sail a boat of my own.");
+  const owned: ContinuityWrite = {
+    id: "wish",
+    holders: [player, mara],
+    owner: mara,
+    class: "desire",
+    text: said.excerpt,
+    sourceIds: [said.id],
+  };
+  const state = apply(emptyContinuity(), owned, [said], "shared-wish"),
+    root = state.records[0];
+  const maraView = rows(state, mara)[0],
+    playerView = rows(state, player)[0];
+  assert.deepEqual(maraView.owner, mara);
+  assert(continuityGuidesHolder(maraView));
+  assert(!continuityGuidesHolder(playerView));
+  const initial = selectActorContinuity(state, emptyEpisodes(), [mara, player], at, {
+    query: "",
+    bytes: 4000,
+    requiredIds: [],
+  });
+  assert.deepEqual(initial.offered, [{ holder: mara, ids: [root.id] }]);
+  assert.equal(initial.packet.entries[0].owner, "mara");
+  const retold = source("retold", "player", "Mara wants to sail a boat of her own.", "scene-2", {
+    perceptions: [{ actorId: "leo", channel: "words", text: "Mara wants to sail a boat of her own." }],
+  });
+  const supplied: ContinuityTarget = {
+    id: root.id,
+    recordRevision: root.revision,
+    heads: { [continuityHolderKey(leo)]: 0 },
+  };
+  const admission = { ...context("disclose", [retold], [supplied], "scene-2"), actors: [player, leo] };
+  const disclosed = applyContinuityWrite(
+    state,
+    {
+      id: "learn",
+      holders: [leo],
+      target: supplied,
+      class: "desire",
+      text: retold.excerpt,
+      current: true,
+      sourceIds: [retold.id],
+    },
+    admission,
+  );
+  assert.deepEqual(disclosed.records[0].owner, mara, "later disclosure preserves the absent owner's incarnation");
+  assert.deepEqual(
+    disclosed.records[0].heads[continuityHolderKey(mara)],
+    root.heads[continuityHolderKey(mara)],
+    "telling Leo cannot update or reteach Mara",
+  );
+  assert.equal(
+    selectActorContinuity(disclosed, emptyEpisodes(), [leo], at, { query: "boat", bytes: 4000, requiredIds: [] })
+      .offered.length,
+    0,
+  );
+  assert(!continuityGuidesHolder(rows(disclosed, leo)[0]));
+  assert.throws(
+    () =>
+      applyContinuityWrite(
+        state,
+        { ...owned, id: "steal", owner: leo, target: supplied, holders: [leo], sourceIds: [retold.id] },
+        admission,
+      ),
+    /ownership cannot change/,
+  );
+  const raw = JSON.parse(JSON.stringify(disclosed));
+  delete raw.records[0].owner;
+  assert.throws(() => readContinuity(raw, "world"), /no owner/);
+  const repaired = protectContinuity(disclosed, target(disclosed, root.id, [leo]), [leo], "correct-owner-view", at, {
+    text: "Mara wants a boat of her own, when she is ready.",
+  });
+  assert.deepEqual(rows(repaired, leo)[0].owner, mara);
+});
 await runCase("continuity/individual-replacement", () => {
   const first = source("report", "player", "Rowan taught me to repair chairs.");
   const original = apply(
@@ -188,7 +266,7 @@ await runCase("continuity/perception", () => {
   });
   const desire = apply(
     emptyContinuity(),
-    { id: "wish", holders: [mara], class: "desire", text: self.excerpt, sourceIds: [self.id] },
+    { id: "wish", holders: [mara], owner: mara, class: "desire", text: self.excerpt, sourceIds: [self.id] },
     [self],
     "wish",
   );
@@ -524,7 +602,7 @@ await runCase("continuity/desire-closure", () => {
   });
   const state = apply(
     emptyContinuity(),
-    { id: "desire", holders: [mara], class: "desire", text: motive.excerpt, sourceIds: [motive.id] },
+    { id: "desire", holders: [mara], owner: mara, class: "desire", text: motive.excerpt, sourceIds: [motive.id] },
     [motive],
     "desire",
   );
@@ -769,7 +847,14 @@ await runCase("continuity/parent-protection", () => {
   });
   const parent = apply(
     emptyContinuity(),
-    { id: "wish", holders: [mara], class: "desire", text: "Sail a boat of my own.", sourceIds: [motivation.id] },
+    {
+      id: "wish",
+      holders: [mara],
+      owner: mara,
+      class: "desire",
+      text: "Sail a boat of my own.",
+      sourceIds: [motivation.id],
+    },
     [motivation],
     "wish",
   );

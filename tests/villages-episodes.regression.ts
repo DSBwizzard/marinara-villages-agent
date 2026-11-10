@@ -371,7 +371,7 @@ await runCase("episodes/self-native-retention", async () => {
   };
   const continuity = applyContinuityWrite(
     emptyContinuity(),
-    { id: "motive", holders: [mara], class: "desire", text: motive, sourceIds: [self.id] },
+    { id: "motive", holders: [mara], owner: mara, class: "desire", text: motive, sourceIds: [self.id] },
     {
       seed: "world",
       operationId: own.operationId,

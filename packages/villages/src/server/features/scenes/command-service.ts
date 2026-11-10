@@ -13,7 +13,7 @@ import type { GreetingTrace, VenueRecordEvent, VenueScene } from "../../domain/m
 import type { VillageState } from "../../domain/models/world.js";
 import { badRequest, conflict, notFound, VillagesRequestError } from "../../domain/rules/errors.js";
 import { rejectedSubmission } from "../../domain/rules/rejected-submissions.js";
-import { startingRelationshipsReady } from "../../domain/rules/relationship-rules.js";
+import { startingHistoryReady } from "../../domain/rules/starting-history.js";
 import { captureSceneAttendance, sceneZoneOccupants } from "../../domain/rules/scene-attendance.js";
 import { movedAttentionContacts } from "../../domain/rules/scene-attention.js";
 import { sceneContinuityView, cloneSceneFacts } from "../../domain/rules/scene-continuity.js";
@@ -35,7 +35,6 @@ import { metadataFailure } from "../../domain/rules/work-failure.js";
 import { narrationBlocker } from "../../domain/rules/scene-submissions.js";
 import { zoneEventScene } from "../../domain/rules/zone-events.js";
 export interface SceneCommandPorts {
-  applySavedStartingTies?: () => Promise<void>;
   generate: typeof import("./writing.js").generate;
   processSavedExchange: typeof import("./progress.js").processSavedExchange;
   abandonSavedExchange: typeof import("./progress.js").abandonSavedExchange;
@@ -90,7 +89,6 @@ export interface SceneCommandPorts {
 }
 /** Inert Scene command orchestration; callbacks retain originating feature connections. */
 export function createSceneCommands({
-  applySavedStartingTies,
   generate,
   processSavedExchange,
   abandonSavedExchange,
@@ -425,7 +423,6 @@ export function createSceneCommands({
       throw venueRefusal("SCENE_BUSY", "Wait for the scene reply before entering another Zone.");
     const existing = await activeVenueSession();
     if (!existing) {
-      await applySavedStartingTies?.();
       await rollActiveAgendas();
     }
     const live = await readVillageState();
@@ -436,7 +433,7 @@ export function createSceneCommands({
     const discovery = live.worldPlaces.places[placeId];
     if (discovery && (!discovery.knownBy.includes("player") || !discovery.prepared))
       throw conflict("Prepare this known Place before visiting.");
-    if (!existing && !startingRelationshipsReady(village))
+    if (!existing && !startingHistoryReady(village))
       throw conflict(
         "Starting relationship history is not ready. Open Inspect → Relationships to check preparation, retry failed work, or clarify history before opening a Scene.",
       );

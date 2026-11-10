@@ -1,6 +1,11 @@
 import { z } from "zod";
 import type { ContinuityCollection, ContinuityVersion } from "../models/continuity-model.js";
-import { continuityHolderKey, CONTINUITY_TEXT_BYTES, ROOM_CONTINUITY_TEXT_BYTES } from "../rules/continuity.js";
+import {
+  continuityHolderKey,
+  ownedContinuityClass,
+  CONTINUITY_TEXT_BYTES,
+  ROOM_CONTINUITY_TEXT_BYTES,
+} from "../rules/continuity.js";
 import {
   immutableMemoryValue,
   isImmutableMemoryValue,
@@ -19,8 +24,9 @@ const id = text(160),
   revision = z.number().int().nonnegative().safe();
 const at = z.string().refine((value) => Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value);
 const ids = z.array(id).refine((value) => new Set(value).size === value.length);
+const actorHolder = z.object({ kind: z.literal("actor"), id, incarnation: id }).strict();
 export const continuityHolderSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("actor"), id, incarnation: id }).strict(),
+  actorHolder,
   z.object({ kind: z.literal("room"), placeId: id, zoneId: id }).strict(),
 ]);
 export const continuityEvidenceSchema = z
@@ -103,6 +109,7 @@ const record = z
   .object({
     id,
     revision: revision.min(1),
+    owner: actorHolder.optional(),
     heads: z.record(
       z.string(),
       z
@@ -177,6 +184,7 @@ export function readContinuity(raw: unknown, seed?: string): ContinuityCollectio
   for (const entry of value.versions) {
     const root = roots.get(entry.rootId);
     memoryRequire(root && entry.createdRevision <= value.revision, "missing or future continuity root");
+    memoryRequire(!ownedContinuityClass(entry.class) || root.owner || root.offer, "saved private state has no owner");
     if (entry.administrative) {
       const key = continuityHolderKey(entry.administrative.holder),
         receipt = value.receipts[entry.operationId];
@@ -190,8 +198,13 @@ export function readContinuity(raw: unknown, seed?: string): ContinuityCollectio
     }
     for (const source of entry.sources)
       memoryRequire(!seed || source.seed === seed, "continuity source belongs to another world");
-    if (entry.parentId)
+    if (entry.parentId) {
       memoryRequire(entry.parentId !== root.id && roots.has(entry.parentId), "missing continuity parent");
+      memoryRequire(
+        memoryHash(root.owner ?? null) === memoryHash(roots.get(entry.parentId)?.owner ?? null),
+        "saved facet changed ownership",
+      );
+    }
     memoryRequire(!entry.facet || entry.parentId, "continuity facet has no parent");
     for (const event of entry.offerEvents ?? [])
       memoryRequire(
@@ -200,6 +213,13 @@ export function readContinuity(raw: unknown, seed?: string): ContinuityCollectio
       );
   }
   for (const entry of value.records) {
+    memoryRequire(
+      !entry.owner ||
+        (entry.heads[continuityHolderKey(entry.owner)] &&
+          !entry.offer &&
+          !Object.values(entry.heads).some((head) => head.holder.kind === "room")),
+      "invalid continuity ownership",
+    );
     memoryRequire(
       Object.values(entry.heads).filter((head) => head.holder.kind === "room").length <= 1,
       "continuity root belongs to more than one room",
@@ -234,7 +254,10 @@ export function readContinuity(raw: unknown, seed?: string): ContinuityCollectio
           current.sources.every(
             (source) =>
               !(source.kind === "self" || (source.kind === "private" && source.actorId !== "player")) ||
-              (actorId !== "player" && ["perspective", "desire", "motivation", "commitment"].includes(current.class)),
+              (actorId !== "player" &&
+                ownedContinuityClass(current.class) &&
+                entry.owner &&
+                continuityHolderKey(entry.owner) === key),
           ),
           "saved self source widened its meaning",
         );

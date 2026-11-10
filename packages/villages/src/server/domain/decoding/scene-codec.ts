@@ -15,6 +15,7 @@ import type { DoorwayContact } from "../rules/venue-contact.js";
 import { coerceVillageState } from "./village-codec.js";
 import { emptyContinuity } from "../rules/continuity.js";
 import { emptyEpisodes } from "../rules/episodes.js";
+import { emptyStartingHistory } from "../rules/starting-history.js";
 import { immutableMemoryValue, memoryRequire } from "../rules/memory-integrity.js";
 
 export function coerceActive(value: unknown): ActiveVenue {
@@ -44,6 +45,7 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
     setupAt: raw.setupAt,
     continuity: emptyContinuity(),
     episodes: emptyEpisodes(),
+    startingHistory: emptyStartingHistory(),
   });
   const keepCapturedLighting = (venue: import("../models/world.js").VillageVenue, value: unknown) => {
     const zones = asRecord(value).zones;

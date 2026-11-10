@@ -777,6 +777,7 @@ await runCase("narration-writing/optional-facets", () => {
     {
       id: "desire",
       holders: [holder],
+      owner: holder,
       current: true,
       class: "desire",
       text: "I want to learn marquetry.",
@@ -944,6 +945,7 @@ await runCase("narration-writing/required-evidence-bound", async () => {
     {
       id: "purpose",
       holders: [holder],
+      owner: holder,
       text: "I want to preserve my craft boundaries.",
       class: "desire",
       current: true,

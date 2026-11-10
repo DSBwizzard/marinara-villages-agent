@@ -88,12 +88,69 @@ export function prepareNarrationKeep(
   const prior =
     record &&
     collection.versions.find((version) => version.id === record.heads[continuityHolderKey(holders[0])]?.versionId);
+  const learning = record && holders.some((holder) => !record.heads[continuityHolderKey(holder)]);
+  const fittedVersions =
+    record && fittedTarget
+      ? Object.keys(fittedTarget.heads).flatMap((key) => {
+          const version = collection.versions.find((version) => version.id === record.heads[key]?.versionId);
+          return version ? [version] : [];
+        })
+      : [];
+  const description = fittedVersions[0];
+  memoryRequire(
+    proposal.retire !== null || (record && holders.every((holder) => !record.heads[continuityHolderKey(holder)])),
+    "open disclosure cannot reopen an existing holder",
+  );
+  if (learning) {
+    memoryRequire(description, "new knower needs a fitted source head");
+    for (const [field, supplied] of [
+      ["class", proposal.class],
+      ["about", proposal.about],
+      ["parentId", proposal.parent],
+      ["facet", proposal.facet],
+    ] as const)
+      memoryRequire(
+        supplied !== undefined ||
+          fittedVersions.every(
+            (version) => memoryHash(version[field] ?? null) === memoryHash(description[field] ?? null),
+          ),
+        "new knower needs explicit descriptive metadata for differing fitted heads",
+      );
+    memoryRequire(
+      proposal.retire !== undefined ||
+        fittedVersions.every(
+          (version) => memoryHash(version.closed ?? null) === memoryHash(description.closed ?? null),
+        ),
+      "new knower needs explicit closure for differing fitted heads",
+    );
+  }
+  const fittedHeads =
+    record && fittedTarget
+      ? Object.keys(fittedTarget.heads).flatMap((key) => (record.heads[key] ? [record.heads[key]] : []))
+      : [];
+  if (learning && proposal.current === undefined)
+    memoryRequire(
+      fittedHeads.every((head) => head.current === fittedHeads[0].current),
+      "new knower needs explicit standing for differing fitted heads",
+    );
   const text = typeof proposal.text === "string" ? proposal.text : (prior?.text ?? "");
+  const inheritedOwner = record
+    ? record.owner
+    : proposal.parent
+      ? collection.records.find((row) => row.id === proposal.parent)?.owner
+      : undefined;
+  memoryRequire(
+    !proposal.owner || !inheritedOwner || proposal.owner === inheritedOwner.id,
+    "continuity ownership cannot change",
+  );
+  const owner =
+    inheritedOwner ?? (proposal.owner ? sourceContext.actors.find((actor) => actor.id === proposal.owner) : undefined);
+  memoryRequire(!proposal.owner || owner, "continuity owner was not admitted");
   const sourceOwner = {
-    holder: holders[0],
+    holder: owner ?? holders[0],
     writeId: header.id,
     text,
-    class: proposal.class ?? prior?.class ?? ("experience" as const),
+    class: proposal.class ?? prior?.class ?? (learning ? description?.class : undefined) ?? ("experience" as const),
   };
   const sources = citedSources(proposal.source.map((ref) => bindNarrationSource(ref, sourceContext, sourceOwner)));
   assertNarrationSourceOrder(sources);
@@ -110,15 +167,32 @@ export function prepareNarrationKeep(
   const write: ContinuityWrite = {
     id: header.id,
     holders,
+    ...(owner ? { owner } : {}),
     sourceIds: sources.map((source) => source.id),
     ...(target ? { target } : {}),
     ...(typeof proposal.text === "string" ? { text: proposal.text } : {}),
-    ...(proposal.class ? { class: proposal.class } : {}),
-    ...(proposal.current !== undefined ? { current: proposal.current } : {}),
-    ...(proposal.about ? { about: proposal.about } : {}),
-    ...(proposal.parent ? { parentId: proposal.parent } : {}),
-    ...(proposal.facet ? { facet: proposal.facet } : {}),
-    ...(proposal.retire || proposal.text === null ? { retire: proposal.retire ?? "ended" } : {}),
+    ...(proposal.class ? { class: proposal.class } : learning ? { class: description!.class } : {}),
+    ...(proposal.current !== undefined
+      ? { current: proposal.current }
+      : learning
+        ? { current: fittedHeads[0].current }
+        : {}),
+    ...(proposal.about ? { about: proposal.about } : learning ? { about: [...description!.about] } : {}),
+    ...(proposal.parent
+      ? { parentId: proposal.parent }
+      : learning && description!.parentId
+        ? { parentId: description!.parentId }
+        : {}),
+    ...(proposal.facet
+      ? { facet: proposal.facet }
+      : learning && description!.facet
+        ? { facet: description!.facet }
+        : {}),
+    ...(proposal.retire || proposal.text === null
+      ? { retire: proposal.retire ?? "ended" }
+      : learning && proposal.retire !== null && description!.closed
+        ? { retire: description!.closed.reason }
+        : {}),
     ...(proposal.offer ? { offer: proposal.offer } : {}),
     ...(proposal.accept ? { accept: proposal.accept } : {}),
     ...(proposal.closeOffer ? { closeOffer: proposal.closeOffer } : {}),

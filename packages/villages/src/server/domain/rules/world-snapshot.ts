@@ -171,7 +171,7 @@ export function villageSettings(
           entries: readLoreUse(village.foundingPreparation?.tasks?.[resident.characterId]?.[kind]?.lore),
         })),
       ),
-      { label: "Starting history", entries: readLoreUse(village.semanticStartingTies?.lore) },
+      { label: "Starting history", entries: readLoreUse(village.startingHistory.lore) },
       ...village.venues.flatMap((venue) =>
         (venue.zones ?? [])
           .filter((zone) => zone.preparation?.status === "ready")

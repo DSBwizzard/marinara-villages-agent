@@ -13,6 +13,8 @@ import { memoryHash, memoryKnowerId, memoryRequire, memoryString, memoryTimestam
 
 export const CONTINUITY_TEXT_BYTES = 2400;
 export const ROOM_CONTINUITY_TEXT_BYTES = 16000;
+export const ownedContinuityClass = (value: string) =>
+  ["perspective", "desire", "motivation", "commitment"].includes(value);
 export const continuityHolderKey = (holder: ContinuityHolder) =>
   holder.kind === "actor"
     ? JSON.stringify(["actor", holder.id, holder.incarnation])
@@ -215,7 +217,8 @@ export function applyContinuityWrite(
         write.current === undefined &&
         write.about === undefined &&
         !write.parentId &&
-        !write.facet),
+        !write.facet &&
+        !write.owner),
     "room continuity has no actor classification",
   );
   memoryRequire(!room || write.holders.length === 1, "room and actor continuity cannot mix");
@@ -281,6 +284,25 @@ export function applyContinuityWrite(
   const record: ContinuityRecord = original
     ? structuredClone(original)
     : { id: rootId, revision: 0, heads: {}, protection: {} };
+  const parentOwner = write.parentId ? collection.records.find((row) => row.id === write.parentId)?.owner : undefined;
+  const inheritedOwner = original ? original.owner : parentOwner;
+  memoryRequire(
+    !write.owner || !(original || write.parentId) || (inheritedOwner && same(write.owner, inheritedOwner)),
+    "continuity ownership cannot change",
+  );
+  const owner = inheritedOwner ?? write.owner;
+  memoryRequire(!owner || (!room && !write.offer && !record.offer), "room and mutual offers have no individual owner");
+  if (owner && !original) {
+    memoryRequire(
+      write.holders.some((holder) => same(holder, owner)),
+      "new private state needs its owning holder",
+    );
+    memoryRequire(
+      sources.some((source) => source.actorId === owner.id || source.kind === "native"),
+      "private state needs its owner's evidence",
+    );
+    record.owner = structuredClone(owner);
+  }
   const before = write.holders.map((holder) => {
     const key = continuityHolderKey(holder);
     const head = record.heads[key];
@@ -300,7 +322,9 @@ export function applyContinuityWrite(
           sources
             .filter((source) => source.kind === "self" || (source.kind === "private" && source.actorId !== "player"))
             .every((source) => source.actorId === holder.id) &&
-          ["perspective", "desire", "motivation", "commitment"].includes(write.class ?? version?.class ?? ""),
+          ownedContinuityClass(write.class ?? version?.class ?? "") &&
+          record.owner &&
+          same(record.owner, holder),
         "self establishes only the non-player owner's perspective",
       );
   if (write.offer) {
@@ -409,6 +433,10 @@ export function applyContinuityWrite(
       ...(write.retire ? { closed: { reason: write.retire } } : prior?.closed ? { closed: { ...prior.closed } } : {}),
     };
     version.about.forEach(memoryKnowerId);
+    memoryRequire(
+      !ownedContinuityClass(version.class) || record.owner || record.offer || write.offer,
+      "private state has no owner",
+    );
     if (version.parentId) {
       const parent = collection.records.find((row) => row.id === version.parentId);
       memoryRequire(
@@ -421,6 +449,7 @@ export function applyContinuityWrite(
         parent.id !== rootId && parentVersion && !parentVersion.parentId && !parent.protection[key],
         "invalid or protected continuity parent",
       );
+      memoryRequire(same(record.owner ?? null, parent.owner ?? null), "continuity facet changed ownership");
     }
     if (holder.kind === "room") {
       const duration = write.room?.expiresInMinutes;
@@ -587,6 +616,7 @@ export function continuityViews(
     return [
       {
         id: record.id,
+        ...(record.owner ? { owner: structuredClone(record.owner) } : {}),
         recordRevision: record.revision,
         headRevision: head.revision,
         holder: structuredClone(holder),
@@ -606,6 +636,12 @@ export function continuityViews(
       },
     ];
   });
+}
+
+export function continuityGuidesHolder(view: ContinuityView) {
+  if (view.holder.kind !== "actor") return false;
+  if (view.owner) return continuityHolderKey(view.owner) === continuityHolderKey(view.holder);
+  return !view.offer || view.offer.participants.includes(view.holder.id);
 }
 
 /** Administrative protection changes no fictional event or native state and teaches nobody. */

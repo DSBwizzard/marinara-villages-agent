@@ -585,6 +585,7 @@ export type VillageState = {
   narrativeConsequence?: import("../../../shared/contracts/village.js").VillageNarrativeConsequence;
   continuity: import("./continuity-model.js").ContinuityCollection;
   episodes: import("./episode-model.js").EpisodeCollection;
+  startingHistory: import("./starting-history-model.js").StartingHistoryState;
   socialContractVersion: 2;
   socialMailOutbox?: import("./social-mail.js").WorldSocialMailOutbox[];
   socialPublications?: Record<string, true>;
@@ -595,19 +596,10 @@ export type VillageState = {
     batch?: ReturnCatchupBatch;
     history?: ReturnCatchupBatch[];
   };
-  socialClarifications?: { id: string; actorIds: string[]; text: string; at: string }[];
   opening?: import("../rules/opening-project.js").OpeningRecord;
   semanticRequestReceipts?: Record<string, string>;
   semanticContinuations?: Record<string, import("./exchange-model.js").ExchangeDomain[]>;
-  semanticStartingTies?: {
-    lore?: import("../../../shared/contracts/lore.js").LoreUse[];
-    preparedAt?: string;
-    sourceHash: string;
-    stateHash?: string;
-    ties: import("./relationship-types.js").StartingTie[];
-    conflicts?: { actorIds: string[]; question: string; sourceIds: string[] }[];
-    sources?: import("./relationship-types.js").SocialEvidence[];
-  };
+
   /** Prepared residents awaiting their one-time, finite post-reset Wish attempt. */
   exchangeReceipts: Record<string, import("./wish-check-model.js").ExchangeEffectReceipt>;
   noticeSequence: number;

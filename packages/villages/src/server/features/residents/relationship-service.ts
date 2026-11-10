@@ -1,5 +1,5 @@
 import type { readVillageLore } from "../../adapters/engine/lorebooks.js";
-import { startingRelationshipsReady } from "../../domain/rules/relationship-rules.js";
+import { startingHistoryReady } from "../../domain/rules/starting-history.js";
 import { encounterPhysicalId } from "../../domain/rules/social-encounter.js";
 import { projectRelationshipProfiles } from "../../domain/rules/relationship-knowledge.js";
 import type { RelationshipInspectView, RelationshipView } from "../../../shared/contracts/relationships.js";
@@ -9,7 +9,6 @@ export type RelationshipPorts = {
   backgroundWorkSummaries?: typeof import("../../jobs/background-work.js").backgroundWorkSummaries;
   clarifyStartingTies?: (value: unknown) => Promise<void>;
   prepareStartingTies?: () => Promise<void>;
-  applySavedStartingTies?: () => Promise<void>;
   readVillageLore: typeof readVillageLore;
   readVillageState: typeof readVillageState;
   mutateRelationships: typeof mutateRelationships;
@@ -22,7 +21,7 @@ export function createRelationships(ports: RelationshipPorts) {
     return {
       profiles: current ? projectRelationshipProfiles(current, village) : [],
       starting: {
-        pending: !startingRelationshipsReady(village),
+        pending: !startingHistoryReady(village),
       },
     };
   }
@@ -61,7 +60,7 @@ export function createRelationships(ports: RelationshipPorts) {
       residents: village.villagers.map((person) => ({
         characterId: person.characterId,
         name: name(person.characterId),
-        initialized: !!state?.reviewedActorIds.includes(person.characterId),
+        initialized: village.startingHistory.reviewed[person.characterId] === person.incarnation,
         perspectives: Object.values(state?.edges ?? {})
           .filter((edge) => edge.fromId === person.characterId)
           .map((edge) => ({
@@ -93,12 +92,12 @@ export function createRelationships(ports: RelationshipPorts) {
             technical: { fromId: edge.fromId, toId: edge.toId, receiptIds: edge.experiences },
           })),
       })),
-      conflicts: (state?.initializationConflicts ?? []).map((row) => ({
+      conflicts: village.startingHistory.conflicts.map((row) => ({
         question: row.question,
         residents: row.actorIds.map(name),
-        sourceIds: row.sourceIds,
+        sourceIds: row.citations.map((citation) => citation.sourceId),
         actorIds: row.actorIds,
-        sourceHash: village.semanticStartingTies?.sourceHash ?? "",
+        sourceHash: village.startingHistory.sourceHash,
       })),
     };
   }
