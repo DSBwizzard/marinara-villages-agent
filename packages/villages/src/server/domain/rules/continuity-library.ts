@@ -26,6 +26,7 @@ import { badRequest, conflict, notFound } from "./errors.js";
 import { findNpc } from "./places.js";
 import { recallTerms } from "./text-recall.js";
 import type { KnownWish } from "../../../shared/contracts/wishes.js";
+import { nativeCircumstanceRoots } from "./native-continuity.js";
 
 export function continuityContextRevision(state: VillageState, actorId: string) {
   const holder = continuityActor(state, actorId),
@@ -45,7 +46,11 @@ export function continuityPreparationContext(state: VillageState, actorId: strin
     circumstances = continuityCircumstances(state, actorId, at);
   const rows = holder ? projections(state, holder, false, at) : [];
   const wishRoots = new Set(wishes.map((wish) => wish.wishId)),
-    circumstanceRoots = currentCircumstanceRoots(state);
+    circumstanceRoots = nativeCircumstanceRoots(
+      state,
+      at,
+      rows.map((row) => ({ id: row.record.id, holder: holder!, version: row.version })),
+    );
   return {
     fingerprint: continuityContextRevision(state, actorId),
     protectionFingerprint: continuityProtectionFingerprint(state.continuity, holder ? [holder] : []),
@@ -58,42 +63,16 @@ export function continuityPreparationContext(state: VillageState, actorId: strin
   };
 }
 
-function currentCircumstanceRoots(state: VillageState) {
-  const current = new Set(
-    state.episodes.records.flatMap((episode) =>
-      episode.commandReceipts
-        .filter(
-          (receipt) =>
-            receipt.kind === "circumstance" &&
-            state.narrative?.situations.some(
-              (row) =>
-                row.status === "active" &&
-                row.id === receipt.targetId &&
-                row.revision === receipt.revision &&
-                row.summary === receipt.text,
-            ),
-        )
-        .map((receipt) => receipt.id),
-    ),
-  );
-  const roots = new Set(
-    state.continuity.versions
-      .filter((version) =>
-        version.sources.some(
-          (source) => source.kind === "native" && source.committedReceiptId && current.has(source.committedReceiptId),
-        ),
-      )
-      .map((version) => version.rootId),
-  );
-  return roots;
-}
 export function continuityCircumstances(state: VillageState, actorId: string, at: string): string[] {
   const holder = continuityActor(state, actorId);
   if (!holder) return [];
-  const roots = currentCircumstanceRoots(state);
-  return projections(state, holder, false, at)
-    .filter((row) => roots.has(row.record.id))
-    .map((row) => row.version.text);
+  const rows = projections(state, holder, false, at),
+    roots = nativeCircumstanceRoots(
+      state,
+      at,
+      rows.map((row) => ({ id: row.record.id, holder, version: row.version })),
+    );
+  return rows.filter((row) => roots.has(row.record.id)).map((row) => row.version.text);
 }
 
 /** A notebook reads only its holder's learned versions, never the owner's later private state. */

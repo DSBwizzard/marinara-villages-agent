@@ -30,6 +30,10 @@ import {
 import { readAcceptedEpisode } from "../packages/villages/src/server/domain/decoding/episode-codec.js";
 import { venueDraftFixture } from "./helpers/venues.fixture.js";
 import { fixture as projectFixture } from "./fixtures/villages-projects.fixture.js";
+import {
+  continuityCircumstances,
+  continuityPreparationContext,
+} from "../packages/villages/src/server/domain/rules/continuity-library.js";
 const at = "2026-11-10T12:00:00.000Z";
 function fixture() {
   const state = { ...defaultVillageState(), seed: "circumstance-world", setupAt: at, foundedAt: at, timeZone: "UTC" },
@@ -195,6 +199,10 @@ await runCase("narration-circumstance/context", () => {
     text = context.parts.map((part) => part.block.text).join("\n");
   assert(text.includes("Secure its bracket."));
   assert(text.includes("13:00:00"));
+  assert(
+    continuityCircumstances(f.state, "player", at).some((text) => text.includes("Secure its bracket.")),
+    "resident preparation reads the same current native fact as Scenes",
+  );
   const prompt = JSON.stringify(narrationCircumstancePrompt(f.readset.circumstance));
   assert(!prompt.includes("quiet hall"));
   assert(!prompt.includes("description"));
@@ -602,4 +610,8 @@ await runCase("narration-circumstance/corrected-active-condition", () => {
     "eligible corrected active-condition meaning stays required even without query overlap",
   );
   assert(!context.parts.some((part) => part.block.text.includes("Secure its bracket.")));
+  const preparation = continuityPreparationContext(f.state, "player", next.capturedAt);
+  assert(preparation.circumstances.includes(corrected));
+  assert(!preparation.circumstances.some((text) => text.includes("Secure its bracket.")));
+  assert(preparation.sources.includes(f.state.continuity.records[0].heads[key].versionId));
 });

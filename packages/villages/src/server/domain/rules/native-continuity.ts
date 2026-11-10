@@ -5,6 +5,7 @@ import type {
   ContinuityEvidence,
   ContinuityHolder,
   ContinuityWrite,
+  ContinuityView,
 } from "../models/continuity-model.js";
 import { continuityActor } from "./continuity-actors.js";
 import {
@@ -22,6 +23,97 @@ import { memoryHash, memoryRequire, memoryObject } from "./memory-integrity.js";
 import { findLocation } from "./places.js";
 export const nativeEpisodeId = (seed: string, receiptId: string) =>
   "native-" + memoryHash([seed, receiptId]).slice(0, 32);
+
+/** Associate native facts with eligible current holder text, including administrative corrections. */
+export function nativeCircumstanceRoots(
+  state: VillageState,
+  at: string,
+  views: Pick<ContinuityView, "id" | "holder" | "version">[],
+  scope?: { placeId: string; zoneId: string },
+) {
+  const situations = (state.narrative?.situations ?? []).filter(
+    (row) =>
+      row.status === "active" &&
+      (!scope ||
+        row.scope === "village" ||
+        row.targets.some((target) => target.venueId === scope.placeId && target.zoneId === scope.zoneId)),
+  );
+  const current = new Set(
+    state.episodes.records.flatMap((episode) =>
+      episode.commandReceipts
+        .filter(
+          (receipt) =>
+            receipt.kind === "circumstance" &&
+            situations.some(
+              (row) =>
+                row.id === receipt.targetId &&
+                row.revision === receipt.revision &&
+                row.summary === (receipt.circumstance?.summary ?? receipt.text),
+            ),
+        )
+        .map((receipt) => receipt.id),
+    ),
+  );
+  const roots = new Set(
+    state.continuity.versions
+      .filter((version) =>
+        version.sources.some(
+          (source) => source.kind === "native" && source.committedReceiptId && current.has(source.committedReceiptId),
+        ),
+      )
+      .map((version) => version.rootId),
+  );
+  const conditions = new Set(
+    (state.narrative?.conditions ?? [])
+      .filter(
+        (row) =>
+          !row.clearedAt &&
+          (!row.endsAt || row.endsAt > at) &&
+          (!scope || (row.venueId === scope.placeId && row.zoneId === scope.zoneId)),
+      )
+      .map((row) => row.id),
+  );
+  if (!conditions.size) return roots;
+  const receipts = new Map(
+    state.episodes.records.flatMap((episode) =>
+      episode.commandReceipts.flatMap((receipt) => {
+        if (!receipt.circumstance) return [];
+        const meaning = JSON.parse(receipt.text);
+        return [
+          [
+            receipt.id,
+            new Map<string, Set<string>>(
+              (Array.isArray(meaning.conditions) ? meaning.conditions : []).map((row: { id: string }) => [
+                row.id,
+                new Set(Object.keys(row)),
+              ]),
+            ),
+          ],
+        ] as const;
+      }),
+    ),
+  );
+  const byRoot = new Map<string, Map<string, Set<string>>>();
+  for (const version of state.continuity.versions)
+    for (const source of version.sources) {
+      const fields = source.committedReceiptId && receipts.get(source.committedReceiptId);
+      if (!fields) continue;
+      const known = byRoot.get(version.rootId) ?? new Map<string, Set<string>>();
+      for (const [id, keys] of fields) known.set(id, new Set([...(known.get(id) ?? []), ...keys]));
+      byRoot.set(version.rootId, known);
+    }
+  for (const holder of new Set(views.map((view) => continuityHolderKey(view.holder)))) {
+    const own = views
+      .filter((view) => continuityHolderKey(view.holder) === holder)
+      .sort((a, b) => b.version.createdRevision - a.version.createdRevision);
+    for (const id of conditions)
+      for (const field of ["observation", "remedy"]) {
+        const known = own.find((view) => byRoot.get(view.id)?.get(id)?.has(field));
+        if (known) roots.add(known.id);
+      }
+  }
+  return roots;
+}
 
 /** Called in the native authority mutation; the same root CAS publishes its evidence and individual knowledge. */
 export function retainNativeFact(
