@@ -4,7 +4,6 @@ import type { DocumentSlot } from "../../adapters/storage/document-store.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
 import type { SceneTerminal } from "../../domain/models/scene-terminal-model.js";
 import { asRecord } from "../../domain/rules/coerce.js";
-import { isSceneTurnOutcome } from "../../../shared/contracts/scene-turn-outcome.js";
 import { scenePresenceNotices } from "../../domain/rules/scene-public.js";
 
 export const SCENE_TERMINAL_KIND = "scene-terminal";
@@ -28,7 +27,6 @@ function slot(id: string): DocumentSlot<SceneTerminal> {
           endReason: "",
           submissions: [],
           navigationReceipts: [],
-          rejectedSubmissions: [],
           generationReceipts: [],
           recordEvents: [],
         };
@@ -45,7 +43,6 @@ function slot(id: string): DocumentSlot<SceneTerminal> {
         !["player", "scene", "inactivity", "debug", ""].includes(String(raw.endReason)) ||
         !Array.isArray(raw.submissions) ||
         !Array.isArray(raw.navigationReceipts) ||
-        !Array.isArray(raw.rejectedSubmissions) ||
         !Array.isArray(raw.generationReceipts) ||
         !Array.isArray(raw.recordEvents)
       )
@@ -58,20 +55,6 @@ function slot(id: string): DocumentSlot<SceneTerminal> {
             !row.id ||
             typeof row.inputHash !== "string" ||
             !/^[a-f0-9]{64}$/u.test(row.inputHash)
-          );
-        })
-      )
-        throw new Error("Saved Scene receipt is invalid; Scene cleanup is deferred.");
-      if (
-        raw.rejectedSubmissions.some((value) => {
-          const row = asRecord(value);
-          return (
-            typeof row.id !== "string" ||
-            !row.id ||
-            typeof row.inputHash !== "string" ||
-            !/^[a-f0-9]{64}$/u.test(row.inputHash) ||
-            !Number.isSafeInteger(row.sceneRevision) ||
-            !isSceneTurnOutcome(row.turnOutcome)
           );
         })
       )
@@ -116,8 +99,7 @@ function slot(id: string): DocumentSlot<SceneTerminal> {
           operation.status !== "complete" ||
           typeof operation.id !== "string" ||
           typeof operation.kind !== "string" ||
-          typeof operation.attemptId !== "string" ||
-          (operation.turnOutcome !== undefined && !isSceneTurnOutcome(operation.turnOutcome))
+          typeof operation.attemptId !== "string"
         )
           throw new Error("Saved Scene receipt is invalid; Scene cleanup is deferred.");
       }
@@ -151,7 +133,6 @@ export function terminalForScene(scene: VenueScene, sourceRevision: number): Sce
       inputHash: turn.requestFingerprint,
     })),
     navigationReceipts: structuredClone(scene.navigationReceipts ?? []),
-    rejectedSubmissions: structuredClone(scene.rejectedSubmissions ?? []),
     generationReceipts: structuredClone(scene.generationReceipts ?? []),
     recordEvents: [...scenePresenceNotices(scene), ...scene.submissions.flatMap((turn) => turn.recordEvents ?? [])],
     ...(scene.operation?.status === "complete"
@@ -161,7 +142,6 @@ export function terminalForScene(scene: VenueScene, sourceRevision: number): Sce
             kind: scene.operation.kind,
             attemptId: scene.operation.attemptId,
             status: "complete" as const,
-            ...(scene.operation.turnOutcome ? { turnOutcome: scene.operation.turnOutcome } : {}),
           },
         }
       : {}),

@@ -5,7 +5,6 @@ import { refreshSceneAfterFailure } from "./ScenePanel.js";
 import { hasPublishedRoomSubmission } from "./villages-room-reading.js";
 import { request } from "../../shared/api.js";
 import type { RoomOperation } from "../../../shared/contracts/village.js";
-import { isSceneTurnOutcome, sceneTurnOutcomeMessage } from "../../../shared/contracts/scene-turn-outcome.js";
 
 type Pending = {
   sceneId: string;
@@ -28,7 +27,6 @@ export function useTurnRecovery(ports: {
   setRoomDraft: React.Dispatch<React.SetStateAction<string>>;
   submission: React.RefObject<string | null>;
   editVersion?: React.RefObject<number>;
-  setRoomRuling?: React.Dispatch<React.SetStateAction<string>>;
   receiveRoomRecordEvents?: (events: readonly import("../../../shared/contracts/village.js").RoomRecordEvent[]) => void;
   refreshSnapshot?: () => void;
 }) {
@@ -73,24 +71,6 @@ export function useTurnRecovery(ports: {
       ).catch(() => ({ operation: null }));
       if (reading.current === token) reading.current = null;
       if (!owns()) return;
-      if (operation?.id === pending.submissionId && isSceneTurnOutcome(operation.turnOutcome)) {
-        if (scene) latest.current.setRoom(scene);
-        if (operation.terminal) {
-          latest.current.setRoom((current) =>
-            current?.id === pending.sceneId ? { ...current, status: "closed" } : current,
-          );
-          latest.current.setRoomEnded(true);
-        }
-        latest.current.setRoomError("");
-        if (!latest.current.editVersion || latest.current.editVersion.current === pending.editVersion) {
-          latest.current.setRoomDraft(pending.text);
-          latest.current.setRoomRuling?.(sceneTurnOutcomeMessage(operation.turnOutcome));
-        }
-        if (latest.current.submission.current === pending.submissionId) latest.current.submission.current = null;
-        setPending(null);
-        setStatus("");
-        return;
-      }
       if (operation?.id === pending.submissionId && operation.terminal && operation.status === "complete") {
         recordTurnTiming(pending.sceneId, pending.submissionId, "recovered");
         latest.current.receiveRoomRecordEvents?.(operation.recordEvents ?? []);

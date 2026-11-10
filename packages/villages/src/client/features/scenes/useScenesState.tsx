@@ -31,8 +31,6 @@ export function useScenesState(isFounded?: boolean) {
 
   const roomMoveOperationIdRef = useRef<string | null>(null);
 
-  const [roomRuling, setRoomRuling] = useState("");
-
   const [roomNotices, setRoomNotices] = useState<RoomRecordEvent[]>([]);
 
   const seenRoomEventIdsRef = useRef(new Set<string>());
@@ -118,8 +116,6 @@ export function useScenesState(isFounded?: boolean) {
     roomMoveZoneId,
     setRoomMoveZoneId,
     roomMoveOperationIdRef,
-    roomRuling,
-    setRoomRuling,
     roomNotices,
     setRoomNotices,
     seenRoomEventIdsRef,

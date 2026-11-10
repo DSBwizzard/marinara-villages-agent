@@ -1,4 +1,4 @@
-// Test cases: scene-halt/captured-calendar, scene-halt/calendar, scene-halt/evidence, scene-halt/world, scene-halt/authority-order
+// Test cases: scene-halt/captured-calendar, scene-halt/calendar, scene-halt/evidence, scene-halt/world, scene-halt/authority-order, scene-halt/explanation, scene-halt/protection-race
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -17,6 +17,9 @@ import {
 } from "../packages/villages/src/server/domain/rules/narration-context.js";
 import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import { retainNativeFact } from "../packages/villages/src/server/domain/rules/native-continuity.js";
+import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
+import { protectContinuity } from "../packages/villages/src/server/domain/rules/continuity.js";
 const at = "2026-10-15T20:00:00.000Z",
   zone = "America/Los_Angeles";
 function fixture(when: object = { dayOffset: 1 }, minute: number | undefined = 15 * 60, capturedAt = at) {
@@ -202,6 +205,78 @@ await runCase("scene-halt/world", () => {
   assert.throws(() => changedActor.accept(), /incarnation changed/);
   assert.equal(changedActor.state.episodes.records.length, 0);
 });
+const haltMessage = "Village time cannot be skipped through narration.";
+const halt = (source: unknown[]) => ({ segments: [], halt: { reason: "time", message: haltMessage, source } });
+await runCase("scene-halt/explanation", () => {
+  const f = fixture(),
+    before = memoryHash(f.state);
+  f.raw.segments = [];
+  delete f.raw.commands;
+  f.raw.halt = halt([{ input: f.readset.source.input }]).halt;
+  for (let replay = 0; replay < 2; replay++)
+    assert.throws(
+      () => f.accept(),
+      (error) =>
+        error instanceof Error &&
+        error.message === haltMessage &&
+        (error as { statusCode?: number }).statusCode === 409,
+    );
+  assert.equal(memoryHash(f.state), before);
+  for (const source of ["h:missing", "native:missing", "self", { input: "Words never supplied in this request." }]) {
+    f.raw.halt.source = [source];
+    assert.throws(
+      () => f.accept(),
+      (error) => error instanceof Error && !error.message.includes(haltMessage),
+    );
+    assert.equal(memoryHash(f.state), before, "invalid halt evidence publishes no state or model explanation");
+  }
+});
+
+await runCase("scene-halt/protection-race", () => {
+  for (const forget of [false, true]) {
+    const f = fixture(),
+      holder = continuityActor(f.state, f.actor)!;
+    retainNativeFact(
+      f.state,
+      {
+        id: "past",
+        kind: "initialization",
+        targetId: f.actor,
+        revision: 1,
+        text: "Mara remembers an earlier meeting.",
+        witnesses: [f.actor],
+      },
+      at,
+      { class: "information", current: true },
+    );
+    const location = f.state.worldPlaces.places.cafe.location,
+      context = narrationContinuityContext(f.state, f.scene, location, "halt-race", f.readset.source.input, at),
+      readset = fittedNarrationReadset(
+        f.state,
+        context,
+        context.parts.map((part) => part.block.evidenceId!),
+      ),
+      root = f.state.continuity.records[0],
+      target = readset.admission.supplied.find((row) => row.id === root.id);
+    assert(target, "the corrected meaning was actually fitted before the reply");
+    f.state.continuity = protectContinuity(
+      f.state.continuity,
+      target,
+      [holder],
+      "repair-race",
+      at,
+      forget ? { forget: true } : { text: "Mara remembers a different earlier meeting." },
+    );
+    const raw = halt([{ input: readset.source.input }]),
+      before = memoryHash(f.state);
+    assert.throws(
+      () => acceptNarration(f.state, { raw, readset, responseDigest: memoryHash(raw) }, "halt-race", at),
+      /protection changed/,
+    );
+    assert.equal(memoryHash(f.state), before);
+  }
+});
+
 await runCase("scene-halt/authority-order", () => {
   const f = fixture();
   const accepted = f.accept();

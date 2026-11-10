@@ -8,7 +8,6 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { isSceneTurnOutcomeMessage } from "../../../shared/contracts/scene-turn-outcome.js";
 import type { ScenePlaybackWindow } from "../../../shared/contracts/scene-playback.js";
 import type {
   ResidentSprite,
@@ -24,7 +23,7 @@ import { drawVillagesNodes, renderVillagesMarkdown, villagesSpeechPaintStyle } f
 import type { Portrait, PortraitMap, SceneComposerMode, VillageBeatRegister } from "../../shared/types.js";
 import { AvatarFace } from "../residents/ResidentPanels.js";
 import type { SceneReadingSession } from "./reading-session.js";
-import { SceneErrorChip, SceneInformationChip, type SceneErrorItem } from "./scene-errors.js";
+import { SceneErrorChip, type SceneErrorItem } from "./scene-errors.js";
 import { CardFlipSprite } from "./villages-card-flip-sprite.js";
 import { classifyVillagesParagraph } from "../../../shared/helpers/scene-paragraphs.js";
 import { scenePlaybackSteps } from "./scene-playback.js";
@@ -220,7 +219,6 @@ export function RoomPanel({
   sceneErrors = [],
   onCheckSavedReply,
   draftWhilePending,
-  ruling,
   open,
   ended,
   playerName,
@@ -275,7 +273,6 @@ export function RoomPanel({
   sceneErrors?: SceneErrorItem[];
   onCheckSavedReply?: () => void;
   draftWhilePending?: boolean;
-  ruling: string;
   open: boolean;
   ended: boolean;
   playerName: string;
@@ -317,7 +314,6 @@ export function RoomPanel({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement | null>(null);
   const [noticesOpen, setNoticesOpen] = useState(false);
-  const [informationOpen, setInformationOpen] = useState(false);
   const [errorsOpen, setErrorsOpen] = useState(false);
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
   const [openMemory, setOpenMemory] = useState<RoomRecordEvent | null>(null);
@@ -980,17 +976,6 @@ export function RoomPanel({
         </p>
       ) : null}
       <div className={`${ELEMENT_TAG}-scene-notice-chips`}>
-        <SceneInformationChip
-          items={isSceneTurnOutcomeMessage(ruling) ? [{ id: "held-turn", title: "Information", message: ruling }] : []}
-          open={informationOpen}
-          onOpen={(value) => {
-            setInformationOpen(value);
-            if (value) {
-              setErrorsOpen(false);
-              setNoticesOpen(false);
-            }
-          }}
-        />
         {!settingsOpen ? (
           <SceneErrorChip
             items={errorItems}
@@ -998,7 +983,6 @@ export function RoomPanel({
             open={errorsOpen}
             onOpen={(value) => {
               setErrorsOpen(value);
-              if (value) setInformationOpen(false);
               if (value) setNoticesOpen(false);
             }}
           />
@@ -1011,7 +995,6 @@ export function RoomPanel({
               onClick={() => {
                 setNoticesOpen((value) => !value);
                 setErrorsOpen(false);
-                setInformationOpen(false);
               }}
               aria-expanded={noticesOpen}
               aria-label={`${notices.length} ${notices.length === 1 ? "World change" : "World changes"}`}
@@ -1452,7 +1435,6 @@ export function RoomPanel({
             </span>
           </div>
         </div>
-        {ruling && !isSceneTurnOutcomeMessage(ruling) ? <p className={`${ELEMENT_TAG}-empty`}>{ruling}</p> : null}
         {room.status === "closing" ? <p className={ELEMENT_TAG + "-hint"}>Closing this Scene…</p> : null}
 
         {canCompose ? (

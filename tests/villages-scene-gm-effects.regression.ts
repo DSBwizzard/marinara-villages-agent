@@ -1,4 +1,4 @@
-// Test cases: gm-effects/npc, gm-effects/project-chat, gm-effects/project-leave, gm-effects/project-greet, gm-effects/wish, gm-effects/wish-new, gm-effects/relationship, gm-effects/capacity, gm-effects/empty-leave, gm-effects/past-appointment, gm-effects/circumstance
+// Test cases: gm-effects/npc, gm-effects/project-chat, gm-effects/project-leave, gm-effects/project-greet, gm-effects/wish, gm-effects/wish-new, gm-effects/relationship, gm-effects/capacity, gm-effects/empty-leave, gm-effects/past-appointment, gm-effects/circumstance, gm-effects/halt
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { packagedSceneServer } from "./fixtures/packaged-scene-server.fixture.js";
@@ -25,6 +25,7 @@ const scenarios = [
   "empty-leave",
   "past-appointment",
   "circumstance",
+  "halt",
 ] as const;
 const said = (text: string) => ({ id: "said", kind: "dialogue", speakerId: "mara", text });
 const seen = (segment: string) => ({ segment, perceive: { kind: "seen", by: ["player"] } });
@@ -40,7 +41,7 @@ for (const scenario of scenarios)
   await runCase("gm-effects/" + scenario, async () => {
     const project = scenario.startsWith("project-"),
       leave = scenario.endsWith("-leave"),
-      held = ["capacity", "past-appointment"].includes(scenario);
+      held = ["capacity", "past-appointment", "halt"].includes(scenario);
     const host = await packagedSceneServer({
       configure(world, now) {
         if (scenario === "capacity")
@@ -228,6 +229,15 @@ for (const scenario of scenarios)
             source: [seen("cross")],
           })),
         };
+      else if (scenario === "halt")
+        raw = {
+          segments: [],
+          halt: {
+            reason: "time",
+            message: "Village time cannot be skipped through narration.",
+            source: [{ input: "I advance the Village clock by two days." }],
+          },
+        };
       else if (scenario === "past-appointment")
         raw = {
           segments: [{ ...said("Meet me yesterday at 19:30."), requires: ["meeting"] }],
@@ -274,13 +284,16 @@ for (const scenario of scenarios)
       const payload = {
         sessionId: "browser",
         submissionId: "b1111111-1111-4111-8111-111111111111",
-        message: leave
-          ? ""
-          : scenario === "npc"
-            ? "I am waiting for an important letter."
-            : scenario === "capacity"
-              ? "Mara and Bryn, come outside now."
-              : "Hello.",
+        message:
+          scenario === "halt"
+            ? "I advance the Village clock by two days."
+            : leave
+              ? ""
+              : scenario === "npc"
+                ? "I am waiting for an important letter."
+                : scenario === "capacity"
+                  ? "Mara and Bryn, come outside now."
+                  : "Hello.",
         mode: leave ? "leave" : "chat",
         targetId: "",
         expectedSceneRevision: host.scene().sceneRevision,
@@ -319,7 +332,21 @@ for (const scenario of scenarios)
               "common",
               "over-capacity movement applies no partial result",
             );
-        } else assert(turn.acceptance.rejected.some((row) => /past|nonexistent/.test(row.reason)));
+        } else if (scenario === "past-appointment")
+          assert(turn.acceptance.rejected.some((row) => /past|nonexistent/.test(row.reason)));
+        else {
+          assert.equal(response.statusCode, 409);
+          assert.equal(response.json().error, raw.halt.message, "a supported halt explains the boundary directly");
+          assert(turn.acceptance.rejected.some((row) => row.reason.includes(raw.halt.message)));
+          const status = await host.app.inject({
+            method: "GET",
+            url: `/api/villages/rooms/browser/operations/${payload.submissionId}`,
+          });
+          assert.equal(status.statusCode, 200, status.body);
+          assert.equal(status.json().operation.acceptance, "held");
+          assert.equal(status.json().operation.input.message, payload.message);
+          assert.deepEqual(world.clock, before.clock, "a native halt changes no Village time");
+        }
       } else {
         assert.equal(turn.acceptance.status, "applied");
         const episode = world.episodes.records.find((row) => row.id === turn.episodeId)!;

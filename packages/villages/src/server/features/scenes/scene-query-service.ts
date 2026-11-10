@@ -183,7 +183,7 @@ export function createSceneQueryService({ readSession, readVillageState, village
       lines,
       playback,
       participants: scene.participants.filter((person) => cast.has(person.characterId)),
-      operation: operationSummary(scene.operation, scene.rejectedSubmissions),
+      operation: operationSummary(scene.operation),
     };
   }
   async function playbackWindow(

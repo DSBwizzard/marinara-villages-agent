@@ -735,7 +735,6 @@ export type RoomOperation = {
   /** The Scene has ended and its completed transcript is no longer retained. */
   terminal?: boolean;
   recordEvents?: RoomRecordEvent[];
-  turnOutcome?: import("./scene-turn-outcome.js").SceneTurnOutcome;
   recoverable?: boolean;
   id: string;
   kind: string;
@@ -803,19 +802,6 @@ export type RoomRecordEvent = {
   kind: "memory" | "wish" | "venue" | "request" | "project" | "relationship-up" | "relationship-down";
   text: string;
   detail?: string;
-};
-
-/**
- * What the village decided about a claim the player made.
- *
- * `fulfilled` is shown nowhere and is the flag the styling hangs off; `reason`
- * is the judge's own sentence and is the thing the player is actually owed,
- * because the villager's reply deliberately does not contain it. A player told
- * no with no reason would be told nothing at all.
- */
-export type WishVerdict = {
-  fulfilled: boolean;
-  reason: string;
 };
 
 export type MemoryPerson = { id: string; name: string };

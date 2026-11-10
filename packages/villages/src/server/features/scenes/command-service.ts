@@ -9,10 +9,9 @@ import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 import { SESSION_PREFIX, sessionSlot } from "../../adapters/storage/scene-slots.js";
 import { createSceneHistory } from "../../adapters/storage/scene-history.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
-import type { GreetingTrace, VenueRecordEvent, VenueScene } from "../../domain/models/scene-model.js";
+import type { GreetingTrace, VenueScene } from "../../domain/models/scene-model.js";
 import type { VillageState } from "../../domain/models/world.js";
 import { badRequest, conflict, notFound, VillagesRequestError } from "../../domain/rules/errors.js";
-import { rejectedSubmission } from "../../domain/rules/rejected-submissions.js";
 import { startingHistoryReady } from "../../domain/rules/starting-history.js";
 import { captureSceneAttendance, sceneZoneOccupants } from "../../domain/rules/scene-attendance.js";
 import { movedAttentionContacts } from "../../domain/rules/scene-attention.js";
@@ -780,33 +779,8 @@ export function createSceneCommands({
     if ((await abandonSavedExchange(scene, operationId)) === "applied")
       throw conflict("The saved reply already committed and has been recovered. Review the Scene before continuing.");
   }
-  function unavailableTurnResult(session: VenueScene, submissionId: string) {
-    return {
-      session,
-      turnOutcome:
-        session.rejectedSubmissions?.find((row) => row.id === submissionId)?.turnOutcome ?? "occupancy-unavailable",
-      verdict: null,
-      action: null,
-      recordEvents: [] as VenueRecordEvent[],
-    };
-  }
   async function sendVenueTurn(input: VenueTurnInput) {
     assertSceneTurnMode(input.mode);
-    const rejected = await readSession(input.sessionId);
-    if (rejectedSubmission(rejected, input.submissionId, input)) {
-      if (rejected.operation?.id === input.submissionId && rejected.operation.status !== "complete")
-        return coordinateVenue(
-          input.sessionId,
-          input.submissionId,
-          "turn",
-          rejected.operation.input,
-          undefined,
-          undefined,
-          async () => unavailableTurnResult(await readSession(input.sessionId), input.submissionId),
-          { replay: true, recovery: true },
-        );
-      return unavailableTurnResult(rejected, input.submissionId);
-    }
     const scene = await readSession(input.sessionId);
     assertCurrentSceneGeneration(scene);
     const prior = scene.submissions.find((entry) => entry.id === input.submissionId);
@@ -878,7 +852,6 @@ export function createSceneCommands({
       targetId: "",
     });
     const farewellMs = Math.round(performance.now() - started);
-    if ("turnOutcome" in result && result.turnOutcome) return result;
     const ending = await closeVenueSessionWithReceipts(sessionId);
     villagesLogger().debug(
       "[villages] Scene close: farewellMs=%d archiveMs=%d",

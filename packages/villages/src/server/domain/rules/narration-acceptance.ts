@@ -14,6 +14,7 @@ import {
 import { assertContinuityRetention } from "./continuity-retention.js";
 import { appendEpisode } from "./episodes.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
+import { conflict } from "./errors.js";
 import { narrationProtectionFingerprint } from "./narration-context.js";
 import { readNarrationEffectHeader, readNarrationReply } from "./narration-contract.js";
 import { prepareNarrationKeep } from "./narration-keep.js";
@@ -172,7 +173,6 @@ export function acceptNarrationContinuity(
     ],
     native: Object.fromEntries(Object.entries(native.receipts).map(([id, receipt]) => ["native:" + id, receipt])),
   };
-  memoryRequire(!reply.halt, "a halted reply cannot publish fiction or consequences");
   memoryRequire(
     source.lines.length === reply.segments.length &&
       source.lines.every(
@@ -228,6 +228,10 @@ export function acceptNarrationContinuity(
       provenance[continuityHolderKey(holder)] ?? [],
       new Set(blocked[continuityHolderKey(holder)]),
     );
+  if (reply.halt) {
+    for (const ref of reply.halt.source) bindNarrationSource(ref, source);
+    throw conflict(reply.halt.message);
+  }
   const admission = { ...readset.admission, actors: source.actors, blockedSources: blocked, sources: [] };
   const effects = native.effects.map((effect) => ({ ...effect, requires: [...effect.requires] }));
   memoryRequire(effects.length === reply.commands.length, "native validation did not cover every proposed command");

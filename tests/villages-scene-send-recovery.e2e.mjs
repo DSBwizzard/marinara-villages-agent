@@ -39,7 +39,7 @@ await withBrowser(browser, async () => {
     ];
     fixture.settings.venues[0] = venueSnapshotFixture(fixture.settings.venues[0]);
     const session = {
-      version: 2,
+      version: 1,
       id: "send-recovery",
       placeId: "mill",
       placeName: "The Mill",
@@ -77,31 +77,26 @@ await withBrowser(browser, async () => {
     let hideReads = false;
     let loseOperationRead = false;
     let staleRecovery = null;
-    let semanticRecovery = null;
-    let occupancyUnavailable = false;
-    let heldOutcome = "occupancy-unavailable";
-    let loseUnavailableResponse = false;
-    let delayUnavailableResponse = false;
-    let changeFailureReason = "The suggested memory had no witnessed evidence.";
-    let continuations = 0;
+    let savedChangeRecovery = null;
+    let replays = 0;
     const turns = [];
     const settingsWrites = [];
     await page.route("**/api/villages**", async (route) => {
       const request = route.request();
       const path = new URL(request.url()).pathname;
       let value = fixture;
-      if (path.endsWith("/continue")) {
+      if (path.endsWith("/changes/replay")) {
         assert.equal(request.method(), "POST");
-        assert.deepEqual(request.postDataJSON(), { domain: "memories" });
-        continuations++;
-        semanticRecovery = null;
+        assert.equal(request.postData(), null);
+        replays++;
+        savedChangeRecovery = null;
         value = {
-          processingSummary: { pending: 0, failed: 0, rejected: 1 },
+          processingSummary: { pending: 0, failed: 0, rejected: 0 },
           unresolved: [],
           notices: [],
           changes: [],
           hasMore: false,
-          nextCursor: "0:0",
+          nextCursor: "0",
         };
       } else if (path.endsWith("/playback")) {
         const query = new URL(request.url()).searchParams;
@@ -145,22 +140,14 @@ await withBrowser(browser, async () => {
           changes: [],
           notices: [],
           dismissedNoticeIds: [],
-          processingSummary: { pending: 0, failed: 0, rejected: 1 },
-          unresolved: [
-            {
-              submissionId: "opening",
-              domain: "memories",
-              status: "rejected",
-              at: now,
-              reason: changeFailureReason,
-            },
-          ],
-          nextCursor: "0:0",
+          processingSummary: { pending: 0, failed: 0, rejected: 0 },
+          unresolved: [],
+          nextCursor: "0",
           hasMore: false,
         };
-        if (semanticRecovery) {
+        if (savedChangeRecovery) {
           value.processingSummary = { pending: 0, failed: 1, rejected: 0 };
-          value.unresolved = [semanticRecovery];
+          value.unresolved = [savedChangeRecovery];
         }
       } else if (/\/rooms\/[^/]+\/operations?/.test(path)) {
         if (hideReads) return fulfill(route, { status: 503, json: { error: "Read unavailable" } });
@@ -203,28 +190,15 @@ await withBrowser(browser, async () => {
             },
           });
         }
-        if (occupancyUnavailable) {
-          session.operation = {
-            id: input.submissionId,
-            kind: "turn",
-            status: "complete",
-            error: "",
-            turnOutcome: heldOutcome,
-            input: { message: input.message, mode: input.mode, targetId: input.targetId },
-          };
-          const result = { session: structuredClone(session), turnOutcome: heldOutcome, recordEvents: [] };
-          if (loseUnavailableResponse) {
-            loseUnavailableResponse = false;
-            return abort(route, "failed");
-          }
-          if (delayUnavailableResponse) await new Promise((resolve) => setTimeout(resolve, 800));
-          return fulfill(route, { status: 200, json: authorSceneResponse(result, snapshot.worldScope) });
-        }
         if (failure) {
           const message =
-            failure === "sound"
-              ? "The reply used an invalid narrated sound. Your draft is preserved."
-              : "Invalid request details";
+            failure === "native-hold"
+              ? "The reply would overcrowd a Zone. Your draft is preserved."
+              : failure === "halt"
+                ? "Village time cannot be skipped through narration."
+                : failure === "sound"
+                  ? "The reply used an invalid narrated sound. Your draft is preserved."
+                  : "Invalid request details";
           session.operation = {
             id: input.submissionId,
             kind: "turn",
@@ -232,7 +206,12 @@ await withBrowser(browser, async () => {
             attemptId: "failed-attempt",
             stage: "turn-reply",
             error: message,
-            input: { message: input.message, mode: input.mode, targetId: input.targetId },
+            input: {
+              message: input.message,
+              mode: input.mode,
+              targetId: input.targetId,
+              ...(input.contact ? { contact: input.contact } : {}),
+            },
           };
           const detail = failure;
           failure = null;
@@ -242,15 +221,16 @@ await withBrowser(browser, async () => {
               hideReads = false;
             }, 1000);
           }
-          return fulfill(route, { status: 400, json: { error: "Bad Request", message } });
+          return fulfill(route, { status: detail === "halt" ? 409 : 400, json: { error: message } });
         }
         const beforeSuccess = structuredClone(session);
         session.lines.push(
           {
             id: "player-" + input.submissionId,
             role: "user",
-            speakerId: "",
-            name: "",
+            speakerId: "player",
+            name: "You",
+            kind: "input",
             content: input.message,
             at: now,
           },
@@ -465,11 +445,10 @@ await withBrowser(browser, async () => {
     };
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(page.getByText(/Saved Contact action/)).toBeVisible();
-    occupancyUnavailable = true;
+    failure = "native-hold";
     await page.getByRole("button", { name: "Retry original action", exact: true }).click();
     await expect.poll(() => turns.length).toBe(beforeConflict + 1);
     await expect(composer).toHaveValue("My newer unsent draft");
-    occupancyUnavailable = false;
     session.operation = null;
     turns.length = 0;
     await load();
@@ -480,17 +459,16 @@ await withBrowser(browser, async () => {
     assert.equal(turns.length, 0, "Enter is disabled by default");
 
     failure = "sound";
-    changeFailureReason = "The reply used an invalid narrated sound. Your draft is preserved.";
     await composer.fill("Original draft");
     await send.click();
     await expect(composer).toBeEnabled();
     await expect(composer).toHaveValue("Original draft");
     const failurePanel = await openSceneErrors(page);
-    await expect(page.getByRole("button", { name: "2 Scene errors", exact: true })).toBeVisible();
-    await expect(failurePanel.getByRole("group")).toHaveCount(2);
+    await expect(page.getByRole("button", { name: "1 Scene error", exact: true })).toBeVisible();
+    await expect(failurePanel.getByRole("group")).toHaveCount(1);
     await expect(
       failurePanel.getByText("The AI described a sound the game couldn’t place in the Scene.", { exact: true }),
-    ).toHaveCount(2);
+    ).toHaveCount(1);
     const failedMessage = failurePanel.getByRole("group", { name: "Message failed", exact: true });
     await expect(failedMessage.getByRole("button", { name: "Retry original message", exact: true })).toHaveCount(1);
     await expect(failedMessage).toContainText("The AI described a sound the game couldn’t place in the Scene.");
@@ -506,7 +484,6 @@ await withBrowser(browser, async () => {
     assert.match(copied, /Exact sound validation field: attentionWitnesses.segment/u);
     await page.screenshot({ path: `.build-tmp/scene-status/friendly-error-${mobile ? "mobile" : "desktop"}.png` });
     await closeSceneErrors(page);
-    changeFailureReason = "The suggested memory had no witnessed evidence.";
     assert.equal(turns.length, 1, "no automatic resend");
     await expect(page.getByText("Original draft", { exact: true }).and(page.locator(":not(textarea)"))).toHaveCount(0);
     await composer.fill("Revised draft");
@@ -525,9 +502,9 @@ await withBrowser(browser, async () => {
     await expect(composer).toBeEnabled();
     await page.waitForTimeout(1700);
     assert.equal(turns.length, 3, "recovery waits do not send");
-    const informationalRetryPanel = await openSceneErrors(page);
-    await informationalRetryPanel.getByRole("button", { name: "Retry original message", exact: true }).click();
-    await closeSceneErrors(page);
+    const retryPanel = await openSceneErrors(page);
+    await retryPanel.getByRole("button", { name: "Retry original message", exact: true }).click();
+    await expect(retryPanel).toHaveCount(0);
     const retryNext = page.getByRole("button", { name: "Next paragraph", exact: true });
     await expect
       .poll(
@@ -590,7 +567,6 @@ await withBrowser(browser, async () => {
         await expect(page.getByRole("button", { name: "Check saved reply", exact: true })).toHaveCount(0);
         const panel = await openSceneErrors(page);
         await expect(panel.getByRole("group", { name: "Reply connection interrupted", exact: true })).toBeVisible();
-        await expect(panel).toContainText("The AI based a memory on words a resident didn’t hear.");
         const canvas = page.locator(`.${tag}-chat`);
         const screen = page.locator(`.${tag}-room-screen`);
         const canvasBox = await canvas.boundingBox();
@@ -605,10 +581,17 @@ await withBrowser(browser, async () => {
         await expect(page.getByRole("button", { name: "Check saved reply", exact: true })).toHaveCount(0, {
           timeout: 12000,
         });
-        await closeSceneErrors(page);
-        const next = page.getByRole("button", { name: "Next paragraph", exact: true });
-        if (await next.isEnabled()) await next.click();
+        await page.keyboard.press("Escape");
       }
+      const next = page.getByRole("button", { name: "Next paragraph", exact: true });
+      await expect
+        .poll(
+          async () =>
+            (await next.isEnabled()) ||
+            ((await composer.isVisible()) && (await composer.isEnabled()) && (await composer.inputValue()) === ""),
+        )
+        .toBe(true);
+      while (await next.isEnabled()) await next.click();
       await expect(composer).toBeEnabled();
       await expect(composer).toHaveValue("");
       await expect(page.locator("." + tag + "-room-error")).toHaveCount(0);
@@ -617,107 +600,18 @@ await withBrowser(browser, async () => {
       loseOperationRead = false;
     }
 
-    // An unavailable request is informational, editable, and absent from the story.
-    const savedStory = structuredClone({
-      lines: session.lines,
-      submissions: session.submissions,
-      revision: session.sceneRevision,
-    });
-    const info = page.getByRole("button", { name: "Scene information", exact: true });
-    const infoPanel = page.getByRole("region", { name: "Information", exact: true });
-    const occupancyMessage = "The game couldn’t change who occupies this space.";
-    failure = "sound";
-    await composer.fill("Saved request that resolves as unavailable");
+    failure = "halt";
+    const haltedDraft = "I advance the Village clock by two days.";
+    await composer.fill(haltedDraft);
     await send.click();
-    await expectSceneError(page, "The AI described a sound the game couldn’t place in the Scene.");
-    occupancyUnavailable = true;
-    const retryPanel = await openSceneErrors(page);
-    await retryPanel.getByRole("button", { name: "Retry original message", exact: true }).click();
-    await expect(info).toBeVisible();
-    await expect(composer).toHaveValue("Saved request that resolves as unavailable");
-    await expect(composer).toBeEnabled();
-    await composer.fill("Edit after saved retry");
-    await expect(info).toHaveCount(0);
-    for (const lost of [false, true]) {
-      loseUnavailableResponse = lost;
-      const beforeBlocked = turns.length;
-      await composer.fill("Everyone, come here now. *folds the cloth*");
-      await send.click();
-      await expect(info).toBeVisible();
-      await expect(composer).toBeEnabled();
-      await expect(composer).toHaveValue("Everyone, come here now. *folds the cloth*");
-      assert.equal(turns.length, beforeBlocked + 1, "lost informational responses never resend");
-      await info.click();
-      await expect(infoPanel).toContainText(occupancyMessage);
-      await expect(infoPanel.locator("details")).toHaveCount(0);
-      await expect(infoPanel.getByRole("button", { name: /retry/i })).toHaveCount(0);
-      const icon = info.locator("span").first();
-      await expect(icon).toHaveText("i");
-      assert.deepEqual(
-        await icon.evaluate((node) => [getComputedStyle(node).backgroundColor, getComputedStyle(node).color]),
-        ["rgb(117, 183, 245)", "rgb(16, 42, 67)"],
-      );
-      await page.screenshot({
-        path: `.build-tmp/scene-status/information-${lost ? "lost-" : ""}${mobile ? "mobile" : "desktop"}.png`,
-      });
-      await infoPanel.getByRole("button", { name: "Close Information", exact: true }).click();
-      await composer.fill("Edited request");
-      await expect(info).toHaveCount(0);
-    }
-    assert.deepEqual(
-      { lines: session.lines, submissions: session.submissions, revision: session.sceneRevision },
-      savedStory,
-    );
-    await composer.fill("Reload unavailable draft");
-    await send.click();
-    await expect(info).toBeVisible();
+    await expectSceneError(page, "Village time cannot be skipped through narration.");
+    await expect(composer).toHaveValue(haltedDraft);
     await load();
-    await expect(info).toBeVisible();
-    await expect(composer).toHaveValue("Reload unavailable draft");
-    await composer.fill("Newer draft before blocked response");
-    delayUnavailableResponse = true;
-    const beforeDelayed = turns.length;
-    const delayedResponse = page.waitForResponse((response) => response.url().endsWith("/rooms/turn"));
-    await send.click();
-    await expect.poll(() => turns.length).toBe(beforeDelayed + 1);
-    await composer.fill("Newer edit while processing");
-    await delayedResponse;
-    await expect(send).toBeEnabled();
-    await expect(composer).toBeEnabled();
-    await expect(composer).toHaveValue("Newer edit while processing");
-    await expect(info).toHaveCount(0);
-    delayUnavailableResponse = false;
-    for (const [outcome, notice] of [
-      ["halt-time", "The game can’t skip or change Village time."],
-      ["halt-appointment", "That appointment’s time has passed in the Village."],
-      ["halt-state", "The game doesn’t support that activity or condition."],
-      ["halt-world", "That change conflicts with the current Village."],
-    ]) {
-      heldOutcome = outcome;
-      await page.getByRole("button", { name: /Mode: .*Choose mode/ }).click();
-      await page.getByRole("menuitemradio", { name: "Conclude", exact: true }).click();
-      loseUnavailableResponse = true;
-      const draft = '"Hello." *I sleep for two months*';
-      await composer.fill(draft);
-      await send.click();
-      await expect(info).toBeVisible();
-      await expect(composer).toHaveValue(draft);
-      await info.click();
-      await expect(infoPanel).toContainText(notice);
-      await infoPanel.getByRole("button", { name: "Close Information", exact: true }).click();
-      await load();
-      await expect(composer).toHaveValue(draft);
-      await expect(info).toBeVisible();
-      await composer.fill("I sit down beside the bike.");
-      await expect(info).toHaveCount(0);
-      assert.deepEqual(
-        { lines: session.lines, submissions: session.submissions, revision: session.sceneRevision },
-        savedStory,
-      );
-    }
-    await page.getByRole("button", { name: /Mode: .*Choose mode/ }).click();
-    await page.getByRole("menuitemradio", { name: "Say / Do", exact: true }).click();
-    occupancyUnavailable = false;
+    await expect(composer).toHaveValue(haltedDraft);
+    await composer.fill("A newer unsent draft");
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(composer).toHaveValue("A newer unsent draft");
+    session.operation = null;
 
     // Reach General settings with no active Scene, then verify persistence.
     active = false;
@@ -747,27 +641,23 @@ await withBrowser(browser, async () => {
     await expect(composer).toHaveValue("");
     await expect(composer).toBeEnabled();
     assert.equal(turns.length, beforeEnter + 1);
-    session.semanticVersion = 2;
-    semanticRecovery = {
+    savedChangeRecovery = {
       submissionId: "semantic-failure",
-      domain: "memories",
-      status: "failed",
-      canContinue: true,
+      status: "held",
       at: now,
-      reason: "System update metadata is missing.",
+      reason: "The saved reply needs review.",
     };
     await load();
     await expect(composer).toBeVisible();
     await composer.fill("Keep this draft during recovery");
-    await expect(send).toBeDisabled();
     const recoveryPanel = await openSceneErrors(page);
-    await expect(recoveryPanel.getByRole("button", { name: "Continue", exact: true })).toBeVisible();
-    await page.screenshot({ path: `.build-tmp/scene-status/semantic-continue-${mobile ? "mobile" : "desktop"}.png` });
-    await recoveryPanel.getByRole("button", { name: "Continue", exact: true }).click();
-    await closeSceneErrors(page);
+    await expect(recoveryPanel.getByRole("button", { name: "Replay", exact: true })).toBeVisible();
+    await page.screenshot({ path: `.build-tmp/scene-status/native-replay-${mobile ? "mobile" : "desktop"}.png` });
+    await recoveryPanel.getByRole("button", { name: "Replay", exact: true }).click();
+    await expect(recoveryPanel).toHaveCount(0);
     await expect(send).toBeEnabled();
     await expect(composer).toHaveValue("Keep this draft during recovery");
-    assert.equal(continuations, 1, "Continue is an explicit local request, never an automatic model retry");
+    assert.equal(replays, 1, "Replay is an explicit local request, never an automatic model retry");
     session.operation = null;
     session.liveSceneVersion = 1;
     session.currentTime = "Monday, 2 November · 09:57";

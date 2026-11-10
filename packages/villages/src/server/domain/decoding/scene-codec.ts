@@ -1,5 +1,4 @@
 import { readNarrationSubmission } from "./narration-submission.js";
-import { isSceneTurnOutcome, type SceneTurnOutcome } from "../../../shared/contracts/scene-turn-outcome.js";
 import type { VenueOperation } from "../models/operation-model.js";
 import type { ActiveVenue, VenueScene } from "../models/scene-model.js";
 import { asRecord, asString, asTrimmedString } from "../rules/coerce.js";
@@ -117,26 +116,6 @@ export function coerceSession(value: unknown): VenueScene {
     ...(raw.abandonedOperations
       ? { abandonedOperations: structuredClone(raw.abandonedOperations) as VenueOperation[] }
       : {}),
-    rejectedSubmissions: Array.isArray(raw.rejectedSubmissions)
-      ? raw.rejectedSubmissions
-          .map(asRecord)
-          .filter(
-            (row) =>
-              typeof row.id === "string" &&
-              row.id.length > 0 &&
-              typeof row.inputHash === "string" &&
-              /^[a-f0-9]{64}$/u.test(row.inputHash) &&
-              Number.isSafeInteger(row.sceneRevision) &&
-              Number(row.sceneRevision) >= 0 &&
-              isSceneTurnOutcome(row.turnOutcome),
-          )
-          .map((row) => ({
-            id: String(row.id),
-            inputHash: String(row.inputHash),
-            sceneRevision: Number(row.sceneRevision),
-            turnOutcome: row.turnOutcome as SceneTurnOutcome,
-          }))
-      : [],
     navigationReceipts: Array.isArray(raw.navigationReceipts)
       ? raw.navigationReceipts
           .map(asRecord)

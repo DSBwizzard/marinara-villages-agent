@@ -67,7 +67,6 @@ export type SceneScreenController = {
   readonly roomMoveZoneId: ScenesState["roomMoveZoneId"];
   readonly roomNotices: ScenesState["roomNotices"];
   readonly roomOpen: ScenesState["roomOpen"];
-  readonly roomRuling: ScenesState["roomRuling"];
   readonly roomSubmissionIdRef: ScenesState["roomSubmissionIdRef"];
   readonly roomTargetId: ScenesState["roomTargetId"];
   readonly roomUnresolvedChanges: ScenesState["roomUnresolvedChanges"];
@@ -83,7 +82,6 @@ export type SceneScreenController = {
   readonly setRoomContactBoundary: ScenesState["setRoomContactBoundary"];
   readonly setRoomContactKind: ScenesState["setRoomContactKind"];
   readonly setRoomDraft: ScenesState["setRoomDraft"];
-  readonly setRoomRuling: ScenesState["setRoomRuling"];
   readonly setRoomError: ScenesState["setRoomError"];
   readonly setRoomMode: ScenesState["setRoomMode"];
   readonly setRoomMoveZoneId: ScenesState["setRoomMoveZoneId"];

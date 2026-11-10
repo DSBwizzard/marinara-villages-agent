@@ -1,4 +1,3 @@
-import { isSceneTurnOutcome } from "../../shared/contracts/scene-turn-outcome.js";
 import { retainLateProviderResponse } from "../adapters/models/provider-deadline.js";
 import { villageNow } from "../adapters/time/clock-gate.js";
 import type { VenueScene } from "../domain/models/scene-model.js";
@@ -613,17 +612,6 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
             throw venueRefusal("OPERATION_INTERRUPTED", "That request was abandoned. Send a new message.");
           // A durable business result survives a crash before coordinator cleanup.
           // It cannot keep a later edited submission behind an interrupted request.
-          if (
-            prior &&
-            prior.id !== id &&
-            (data.rejectedSubmissions as VenueScene["rejectedSubmissions"])?.some((receipt) => receipt.id === prior.id)
-          ) {
-            prior.status = "complete";
-            prior.error = "";
-            prior.turnOutcome = (data.rejectedSubmissions as NonNullable<VenueScene["rejectedSubmissions"]>).find(
-              (receipt) => receipt.id === prior.id,
-            )!.turnOutcome;
-          }
           if (prior?.id === id && JSON.stringify(prior.input) !== fingerprint)
             throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID belongs to a different line.");
           let abandoned = false;
@@ -703,8 +691,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
             (prior.status !== "complete" || rejectedTerminal) &&
             prior.sceneRevision !== sceneRevision(data) &&
             !submissions.some((turn) => turn.id === id) &&
-            !(data.navigationReceipts as { id: string }[] | undefined)?.some((receipt) => receipt.id === id) &&
-            !(data.rejectedSubmissions as { id: string }[] | undefined)?.some((receipt) => receipt.id === id)
+            !(data.navigationReceipts as { id: string }[] | undefined)?.some((receipt) => receipt.id === id)
           )
             throw venueRefusal("SCENE_STALE", "The Scene changed after generation. Saved results are preserved.");
           if (prior?.id === id && (prior.status !== "complete" || rejectedTerminal)) {
@@ -779,8 +766,6 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
             try {
               const result = await work();
               assertVenueOwnership();
-              const outcome = asRecord(result).turnOutcome;
-              if (isSceneTurnOutcome(outcome)) operation.turnOutcome = outcome;
               if (current.blocked.size)
                 throw venueRefusal(
                   "OPERATION_INTERRUPTED",
@@ -790,13 +775,6 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
               operation.timing!.elapsedMs = Math.round(performance.now() - runStarted);
               await updateWithSubmissions(sessionId, (data, submissions) => {
                 assertVenueOwnership(data);
-                if (
-                  operation.turnOutcome &&
-                  (data.rejectedSubmissions as VenueScene["rejectedSubmissions"])?.some(
-                    (receipt) => receipt.id === id && receipt.turnOutcome === operation.turnOutcome,
-                  )
-                )
-                  operation.checkpointClaims = {};
                 const turn = mutableSceneSubmission({ submissions }, id);
                 if (turn && !turn.timing) turn.timing = structuredClone(operation.timing);
               });
@@ -954,16 +932,6 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       if (!terminal) throw new VillagesRequestError(404, "That Scene is no longer available.");
       const requested = operationId ?? terminal.operation?.id;
       if (!requested) return null;
-      const rejected = terminal.rejectedSubmissions.find((row) => row.id === requested);
-      if (rejected)
-        return {
-          id: requested,
-          status: "complete" as const,
-          kind: "turn",
-          attemptId: "",
-          terminal: true,
-          turnOutcome: rejected.turnOutcome,
-        };
       const committed =
         terminal.submissions.some((row) => row.id === requested) ||
         terminal.navigationReceipts.some((row) => row.id === requested);
@@ -995,17 +963,6 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
     readSceneHistoryRoot(data);
     memoryRequire(data.id === id, "Scene operation owner identity changed");
     const operation = data.operation as VenueOperation | undefined;
-    const rejected = (data.rejectedSubmissions as VenueScene["rejectedSubmissions"])?.find(
-      (row) => row.id === (operationId ?? operation?.id),
-    );
-    if (rejected)
-      return {
-        id: rejected.id,
-        status: "complete" as const,
-        kind: "turn",
-        turnOutcome: rejected.turnOutcome,
-        input: operation?.id === rejected.id ? operation.input : null,
-      };
     const requested = operationId ?? operation?.id;
     const header = readSceneIndex(data),
       head = readSceneSubmissionHead(data.submissionHistory, header);

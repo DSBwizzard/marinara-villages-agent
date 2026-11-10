@@ -1408,8 +1408,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     roomNotices: scenes.roomNotices,
     sceneReading: scenes.sceneReading,
     roomOpen: scenes.roomOpen,
-    roomRuling: scenes.roomRuling,
-    setRoomRuling: scenes.setRoomRuling,
     roomSubmissionIdRef: scenes.roomSubmissionIdRef,
     roomTargetId: scenes.roomTargetId,
     roomUnresolvedChanges: scenes.roomUnresolvedChanges,

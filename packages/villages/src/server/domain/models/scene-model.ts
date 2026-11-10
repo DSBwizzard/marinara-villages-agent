@@ -88,13 +88,6 @@ export type VenueScene = {
   abandonedOperations?: VenueOperation[];
   /** Idempotent free navigation, separate from conversational turns. */
   navigationReceipts?: { id: string; originZoneId: string; destinationZoneId: string; at: string }[];
-  /** Operational receipts only: rejected inputs never become fictional submissions. */
-  rejectedSubmissions?: {
-    id: string;
-    inputHash: string;
-    sceneRevision: number;
-    turnOutcome: import("../../../shared/contracts/scene-turn-outcome.js").SceneTurnOutcome;
-  }[];
   generationReceipts?: {
     operationId: string;
     attemptId: string;
@@ -146,14 +139,6 @@ export type VenueScene = {
 export type VenueSession = VenueScene;
 export type ActiveVenue = { sessionId: string; placeId: string; playbackSceneId?: string };
 export type GreetingTrace = (stage: string, elapsedMs: number, detail?: string) => void;
-export type VenueReplyFailureKind =
-  | "invalid-json"
-  | "invalid-segments"
-  | "player-echo"
-  | "repeated-question"
-  | "residence-consent"
-  | "construction-worksite"
-  | "unsupported-physical-claim";
 export type VenueReplyLine = {
   speechSource?: VenueLine["speechSource"];
   zoneId?: string;
@@ -173,19 +158,4 @@ export type VenueReplyLine = {
   staging?: StagingCue[];
   targetId?: string;
   anchorIndex?: number;
-};
-export type SavedAccessEvent = {
-  interpretationVersion: 1;
-  id: string;
-  facts: {
-    actorId: string;
-    venueId: string;
-    zoneId: string | null;
-    accessRevision: number;
-    semanticVersion: 2;
-    accompanies?: boolean;
-    accessCommand?: import("../../../shared/helpers/venue-access.js").AccessCommand;
-  };
-  outcome: string;
-  evidenceIds: string[];
 };

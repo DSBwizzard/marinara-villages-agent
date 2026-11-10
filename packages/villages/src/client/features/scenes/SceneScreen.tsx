@@ -1,9 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  isSceneTurnOutcome,
-  isSceneTurnOutcomeMessage,
-  sceneTurnOutcomeMessage,
-} from "../../../shared/contracts/scene-turn-outcome.js";
 import type { RoomOperation, SceneView } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
@@ -65,20 +60,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     (message: string) => reportSettingsError("diagnostics", "Saved change diagnostics unavailable", message),
     [reportSettingsError],
   );
-  const restoreRoomDraft = controller.setRoomDraft;
-  const currentOperation = controller.room?.operation;
-  const editVersionRef = controller.composerEditVersionRef;
-  const showInformation = controller.setRoomRuling;
-  const restoredInformation = useRef("");
-  useEffect(() => {
-    const operation = currentOperation;
-    const key = `${sceneId}:${operation?.id}`;
-    if (!operation || !isSceneTurnOutcome(operation.turnOutcome) || restoredInformation.current === key) return;
-    restoredInformation.current = key;
-    if (editVersionRef.current !== 0) return;
-    restoreRoomDraft((current) => current || operation.input?.message || "");
-    showInformation(sceneTurnOutcomeMessage(operation.turnOutcome));
-  }, [sceneId, currentOperation, editVersionRef, showInformation, restoreRoomDraft]);
   const {
     closeRoom,
     composerEditVersionRef,
@@ -113,7 +94,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     setContactRecovery,
     roomNotices,
     roomOpen,
-    roomRuling,
     roomSubmissionIdRef,
     roomUnresolvedChanges,
     sendRoom,
@@ -318,7 +298,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           }
           draftWhilePending={controller.replyPending}
           greetingNotice={roomGreetingNotice}
-          ruling={roomRuling}
           open={roomOpen}
           ended={roomEnded}
           playerName={room.playerName ?? playerDisplayName(snapshot)}
@@ -328,14 +307,12 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
             (snapshot?.villagers ?? []).map((villager) => [villager.characterId, villager.sprite]),
           )}
           onDraft={(value) => {
-            if (isSceneTurnOutcomeMessage(roomRuling)) controller.setRoomRuling("");
             composerEditVersionRef.current++;
             roomSubmissionIdRef.current = null;
             roomLeaveSubmissionIdRef.current = null;
             setRoomDraft(value);
           }}
           onMode={(value) => {
-            if (isSceneTurnOutcomeMessage(roomRuling)) controller.setRoomRuling("");
             composerEditVersionRef.current++;
             roomSubmissionIdRef.current = null;
             setRoomMode(value);

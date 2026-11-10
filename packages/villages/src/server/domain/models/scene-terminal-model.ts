@@ -10,7 +10,6 @@ export type SceneTerminal = {
   endReason: VenueScene["endReason"];
   submissions: { id: string; inputHash: string }[];
   navigationReceipts: NonNullable<VenueScene["navigationReceipts"]>;
-  rejectedSubmissions: NonNullable<VenueScene["rejectedSubmissions"]>;
   generationReceipts: NonNullable<VenueScene["generationReceipts"]>;
   recordEvents: NonNullable<VenueScene["submissions"][number]["recordEvents"]>;
   operation?: {
@@ -18,6 +17,5 @@ export type SceneTerminal = {
     kind: string;
     attemptId: string;
     status: "complete";
-    turnOutcome?: NonNullable<VenueScene["operation"]>["turnOutcome"];
   };
 };

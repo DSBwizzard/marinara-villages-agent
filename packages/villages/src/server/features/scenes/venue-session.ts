@@ -11,9 +11,7 @@ export type {
   VenueSession,
   ActiveVenue,
   GreetingTrace,
-  VenueReplyFailureKind,
   VenueReplyLine,
-  SavedAccessEvent,
 } from "../../domain/models/scene-model.js";
 
 export { venueCardProfile } from "../../domain/rules/venue-writing.js";
