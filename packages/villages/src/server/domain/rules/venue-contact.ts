@@ -3,7 +3,6 @@ import type { VenueLine, VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue, VillageVenueZone } from "../models/world.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 
-import { sceneRelationshipView } from "./relationship-rules.js";
 import { sceneAccessState, sceneLayoutVenue } from "./scene-layout.js";
 import { type AccessContext, evaluateZoneAccess } from "./venue-access.js";
 import { canOccupyZone, venueZones, zoneClosed } from "./venue-zones.js";
@@ -80,12 +79,10 @@ export function sceneAccessContext(
     | "villageSeed"
     | "submissions"
   >,
-  state: VillageState,
 ): AccessContext {
   return {
     sceneId: scene.id,
     at: new Date(scene.sceneAttendance?.capturedAt ?? scene.startedAt),
-    relationships: sceneRelationshipView(state.relationshipContext, scene),
     positions: {
       ...Object.fromEntries((scene.sceneAttendance?.occupants ?? []).map((row) => [row.characterId, row.zoneId])),
       ...Object.fromEntries((scene.accompanying ?? []).map((row) => [row.characterId, row.zoneId])),
@@ -108,7 +105,7 @@ export function contactCanEnter(
   return (
     !!zone &&
     evaluateZoneAccess(venue, zone, characterId, {
-      ...(scene ? sceneAccessContext(scene, state) : { relationships: state.relationshipContext }),
+      ...(scene ? sceneAccessContext(scene) : {}),
       accepting: characterId === "player",
       unavailable: zoneClosed(state, venue, zone),
       environment: state.narrative,

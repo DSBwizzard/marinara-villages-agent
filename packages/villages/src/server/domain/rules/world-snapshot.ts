@@ -291,7 +291,6 @@ export function villageSettings(
             accepting: true,
             unavailable: zoneClosed(village, venue, originalZone),
             environment: village.narrative,
-            relationships: village.relationshipContext,
           }),
         };
         return {

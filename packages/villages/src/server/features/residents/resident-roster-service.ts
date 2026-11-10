@@ -113,7 +113,6 @@ export function createResidentRoster({
           },
           addedAt,
           agenda: unwrittenVillageAgenda(villageNow()),
-          wishes: [],
           scheduleInfluence: influenceSettings(null),
         });
       });

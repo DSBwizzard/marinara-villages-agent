@@ -14,6 +14,7 @@ import type { VillageSnapshot, VillageState } from "../../domain/models/world.js
 import { calendarReplay } from "../../domain/rules/clock-state.js";
 import { conflict } from "../../domain/rules/errors.js";
 import { captureReturnContext } from "../../domain/rules/return-catchup-capture.js";
+import { returnCaptureRevision } from "../../domain/rules/return-capture-revision.js";
 import { discoverReturnBatch, recordReturnVisibility } from "../../domain/rules/return-catchup-state.js";
 import type { reconcileProjectLifecycles } from "../../domain/rules/project-lifecycle-rules.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
@@ -84,7 +85,7 @@ export function createWorldCoordination({
       (state) => {
         Object.assign(state, defaultVillageState());
       },
-      { memories: true, wishes: true },
+      { memories: true },
     );
     return buildVillageSnapshot();
   }
@@ -110,44 +111,18 @@ export function createWorldCoordination({
     if (!options.advanceTime) await reconcileNarrative?.(options.now ?? villageNow());
     if (options.advanceTime) {
       const request = options.advanceTime;
-      const departure = await readVillageAuthority({ memories: true, wishes: true });
-      const hydrated = await readVillageState({ memories: true, wishes: true });
+      const departure = await readVillageAuthority({ memories: true });
       await advanceVillageClock(request, (state, from, until) => {
-        if (
-          state.seed !== departure.seed ||
-          state.setupAt !== departure.setupAt ||
-          state.memories.revision !== departure.memories.revision
-        )
+        const captured = captureReturnContext(state, from);
+        if (returnCaptureRevision(captured) !== returnCaptureRevision(captureReturnContext(departure, from)))
           throw conflict("The Village changed. Refresh before advancing time.");
         const batch = state.returnCatchup?.batch;
         if (batch && !["completed", "cancelled"].includes(batch.status))
           throw conflict("Finish Village catch-up before advancing time.");
-        const previousRelationships = state.relationshipContext;
-        try {
-          // Root authority must still match the saved departure. Relationship
-          // authority is checked again by the opportunity admission path.
-          departure.relationshipContext = undefined;
-          state.relationshipContext = undefined;
-          if (
-            JSON.stringify(captureReturnContext(state, from).world) !==
-            JSON.stringify(captureReturnContext(departure, from).world)
-          )
-            throw conflict("The Village changed. Refresh before advancing time.");
-          state.relationshipContext = hydrated.relationshipContext;
-          state.returnCatchup ??= {};
-          state.returnCatchup.capture = captureReturnContext(state, from);
-          const captured = state.returnCatchup.capture;
-          discoverReturnBatch(state, until, request.actionId);
-          // Even an empty selection must verify the separately stored relationship
-          // authority before it is allowed to complete.
-          if (state.returnCatchup.batch?.id === request.actionId && state.returnCatchup.batch.status === "completed") {
-            state.returnCatchup.capture = captured;
-            state.returnCatchup.batch.status = "queued";
-          }
-          if (until.getTime() - from.getTime() < 60 * 60_000) recordReturnVisibility(state, until);
-        } finally {
-          state.relationshipContext = previousRelationships;
-        }
+        state.returnCatchup ??= {};
+        state.returnCatchup.capture = captured;
+        discoverReturnBatch(state, until, request.actionId);
+        if (until.getTime() - from.getTime() < 60 * 60_000) recordReturnVisibility(state, until);
       });
     }
     let recorded = await readVillageState();

@@ -1,4 +1,5 @@
-import { villageFixtureDocuments } from "../helpers/village-storage.fixture.js";
+import { randomUUID } from "node:crypto";
+import { nativeBackgroundJob } from "../../packages/villages/src/server/adapters/storage/background-responses.js";
 import assert from "node:assert/strict";
 import type { CapabilityDocumentStore, CapabilityRuntimeHost } from "@marinara-engine/shared";
 import {
@@ -84,24 +85,31 @@ function graph(label: "A" | "B") {
   village.seed = "same-seed";
   village.name = label;
   village.narrationStyle.writingGuidance = `${label} writing`;
-  seed("villages-village", "village", village);
+  const { continuity: _continuity, episodes: _episodes, worldPlaces: _places, mailbox: _mailbox, ...native } = village;
+  seed("villages-village", "village", { ...native, memoryHead: null });
   seed("villages-ai-usage", "settings", { since: `${label}-ledger`, requests: [] });
   seed("villages-connections", "settings", {
     systemConnectionId: "same-connection",
     narrationConnectionId: "same-connection",
     imageConnectionId: "same-connection",
   });
-  seed(settingsJobId, "background-work", {
-    id: "same-job",
-    seed: "same-seed",
-    kind: "agenda",
-    subjectId: "same-resident",
-    status: "paused",
-    label: `${label} job`,
-    steps: [],
-    input: { privateScene: `${label} secret` },
-    finite: true,
-  });
+  seed(
+    settingsJobId,
+    "background-work",
+    nativeBackgroundJob({
+      id: "same-job",
+      seed: "same-seed",
+      kind: "agenda",
+      subjectId: "same-resident",
+      status: "paused",
+      label: `${label} job`,
+      steps: [],
+      input: { privateScene: `${label} secret` },
+      finite: true,
+      instanceId: randomUUID(),
+      attempt: 1,
+    } as any),
+  );
   async function touch(op: string, id: string) {
     calls.push({ op, id, owner: activationScope() === owner });
     const key = `${op}:${id}`,
@@ -172,7 +180,7 @@ function graph(label: "A" | "B") {
     };
   };
   const host: CapabilityRuntimeHost = {
-    persistence: unused<CapabilityRuntimeHost["persistence"]>({ documents: villageFixtureDocuments(documents) }),
+    persistence: unused<CapabilityRuntimeHost["persistence"]>({ documents }),
     resources: unused(),
     achievements: unused(),
     embeddings: unused(),

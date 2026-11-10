@@ -96,7 +96,7 @@ export function chooseAgendaZone(
   actorId: string,
   activity = "",
   requestedId = "",
-  state?: Pick<VillageState, "projects" | "relationshipContext" | "narrative">,
+  state?: Pick<VillageState, "projects" | "narrative">,
   accessContext?: import("./venue-access.js").AccessContext,
 ): VillageVenueZone {
   const eligible = venueZones(venue).filter(
@@ -106,7 +106,6 @@ export function chooseAgendaZone(
       evaluateZoneAccess(venue, zone, actorId, {
         ...accessContext,
         unavailable: !!state && zoneClosed(state, venue, zone),
-        relationships: state?.relationshipContext,
       }).allowed &&
       (!state || !zoneClosed(state, venue, zone)),
   );

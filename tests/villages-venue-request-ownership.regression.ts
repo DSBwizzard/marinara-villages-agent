@@ -1,4 +1,14 @@
 import assert from "node:assert/strict";
+import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
+import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
+import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
+import {
+  continuityViews,
+  protectContinuity,
+  continuityHolderKey,
+} from "../packages/villages/src/server/domain/rules/continuity.js";
+import { createVillageSnapshot } from "../packages/villages/src/server/features/world/snapshot-service.js";
+import { configureVillageClock } from "../packages/villages/src/server/adapters/time/clock-gate.js";
 import {
   createActivationScope,
   activationScope,
@@ -27,12 +37,14 @@ function fixture(name: string) {
     ...defaultVillageState(),
 
     name,
+    seed: "venue-request-" + name,
     setupAt: stamp,
     foundedAt: stamp,
     villagers: [
       {
         letterFontId: "caveat",
         characterId: "same",
+        incarnation: "original-" + name,
         addedAt: stamp,
         cardSnapshot: { id: "same", name, revision: 1, sourceStatus: "available", capturedAt: stamp },
       },
@@ -150,6 +162,16 @@ await assert.rejects(
   /no longer pending/,
 );
 assert.equal(recorded.state.projects.length, 1);
+assert.equal(recorded.state.episodes.records.length, 1);
+const notification = recorded.state.episodes.records[0].commandReceipts[0];
+assert.equal(notification.kind, "venue-request");
+assert.equal(notification.targetId, decision.id);
+assert.deepEqual(notification.witnesses, ["player", "same"]);
+assert.equal(recorded.state.continuity.records.length, 1);
+assert.equal(
+  continuityViews(recorded.state.continuity, continuityActor(recorded.state, "same")!, stamp, new Set())[0].current,
+  false,
+);
 
 const countered = fixture("Countered");
 const counter = request(countered);
@@ -168,6 +190,101 @@ const deniedRequest = request(denied);
 await denied.service.decideVillageVenueRequest(deniedRequest.id, false, null);
 assert.equal(denied.state.pendingDecisions[0]!.status, "denied");
 assert.deepEqual(denied.calls, ["mutate", "snapshot"]);
+assert.match(denied.state.episodes.records[0].commandReceipts[0].text, /declined/);
+
+for (const change of ["removed", "replaced", "retry-replaced"]) {
+  const f = fixture(change),
+    pending = request(f);
+  const replace = (state: VillageState) => {
+    state.villagers[0].incarnation = "replacement";
+  };
+  if (change === "removed") f.state.villagers = [];
+  else if (change === "replaced") replace(f.state);
+  else f.retryWith(replace);
+  await f.service.decideVillageVenueRequest(pending.id, true, { ...core, description: "A planned glasshouse." });
+  assert.equal(f.state.projects[0].requesterCharacterId, "");
+  assert.deepEqual(f.state.episodes.records[0].commandReceipts[0].witnesses, ["player"]);
+  assert(
+    !JSON.stringify(f.state.episodes.records[0]).includes("Could we grow herbs?"),
+    "native notification does not revive private request prose",
+  );
+  if (f.state.villagers.length)
+    assert.deepEqual(continuityViews(f.state.continuity, continuityActor(f.state, "same")!, stamp, new Set()), []);
+}
+
+const storage = sceneHistoryFixture();
+const releaseClock = configureVillageClock({ now: () => new Date(stamp), observe: async () => null });
+try {
+  const f = fixture("Cold"),
+    repository = createVillageRepository(() => storage.gate.documents);
+  const pending = request(f);
+  const withoutIdentity = structuredClone(f.state);
+  delete withoutIdentity.pendingDecisions[0].requesterIncarnation;
+  assert.throws(() => coerceVillageState(withoutIdentity), /original requester identity/);
+  await repository.mutateAuthority((state) => Object.assign(state, f.state), { memories: true });
+  const native = createVenueRequests({
+    draftNewVenueProject,
+    buildVillageSnapshot: async () => ({}) as VillageSnapshot,
+    mutateVillageState: async (update) => {
+      await repository.mutateAuthority(update, { memories: true });
+      return repository.readAuthority({ memories: true });
+    },
+  });
+  await native.decideVillageVenueRequest(pending.id, true, { ...core, description: "A planned glasshouse." });
+  let cold = await createVillageRepository(() => storage.gate.documents).readAuthority({ memories: true });
+  assert.equal(cold.projects[0].requesterIncarnation, "original-Cold");
+  const snapshot = () =>
+    createVillageSnapshot({
+      readVillageState: async () => cold,
+      listVillagerCards: async () => [],
+      rollActiveAgendas: async () => false,
+      sceneQueries: () => ({ activeVenueSession: async () => null }),
+      backgroundWorkSummaries: async () => [],
+      privatePreparationRooms: () => [],
+    } as any).buildVillageSnapshot(new Date(stamp));
+  assert.equal((await snapshot()).projects[0].requesterCharacterId, "same");
+  const player = continuityActor(cold, "player")!,
+    actor = continuityActor(cold, "same")!;
+  await repository.mutateAuthority(
+    (state) => {
+      const record = state.continuity.records[0];
+      state.continuity = protectContinuity(
+        state.continuity,
+        {
+          id: record.id,
+          recordRevision: record.revision,
+          heads: Object.fromEntries(Object.entries(record.heads).map(([key, row]) => [key, row.revision])),
+        },
+        [player, actor],
+        "forget-notification",
+        stamp,
+        { forget: true },
+      );
+      state.villagers[0].incarnation = "replacement";
+    },
+    { memories: true },
+  );
+  await assert.rejects(
+    native.decideVillageVenueRequest(pending.id, true, { ...core, description: "A planned glasshouse." }),
+    /no longer pending/,
+  );
+  cold = await createVillageRepository(() => storage.gate.documents).readAuthority({ memories: true });
+  assert.equal(cold.episodes.records.length, 1);
+  assert.equal(
+    (await snapshot()).projects[0].requesterCharacterId,
+    undefined,
+    "replacement does not inherit earlier Project attribution",
+  );
+  assert.deepEqual(
+    continuityViews(cold.continuity, player, stamp, new Set()),
+    [],
+    "a finalized decision never re-teaches forgotten notifications",
+  );
+  assert.equal(cold.continuity.records[0].heads[continuityHolderKey(actor)].holder.incarnation, "original-Cold");
+} finally {
+  releaseClock();
+  storage.release();
+}
 
 const a = createActivationScope(),
   b = createActivationScope();

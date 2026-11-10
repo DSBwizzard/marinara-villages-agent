@@ -278,7 +278,7 @@ export function createSceneCommands({
     if (people.filter((person) => !person.characterId.startsWith("npc:")).length > 4)
       throw conflict("Five residents occupy this Zone in the Scene. Choose another Zone.");
     const decision = evaluateZoneAccess(venue, zone, "player", {
-      ...sceneAccessContext({ ...session, accompanying }, village),
+      ...sceneAccessContext({ ...session, accompanying }),
       accepting: true,
       unavailable: zoneClosed(village, venue, zone),
       environment: village.narrative,
@@ -293,7 +293,7 @@ export function createSceneCommands({
       const target = current && resolveVenueZone(current, zone.id);
       if (!current || !target) return;
       const decision = evaluateZoneAccess(current, target, "player", {
-        ...sceneAccessContext({ ...session, accompanying }, state),
+        ...sceneAccessContext({ ...session, accompanying }),
         accepting: true,
         unavailable: zoneClosed(state, current, target),
         environment: state.narrative,
@@ -365,7 +365,7 @@ export function createSceneCommands({
         zoneClosed(state, venue, zone) ||
         (venue.access &&
           !evaluateZoneAccess(venue, zone, "player", {
-            ...sceneAccessContext(session, state),
+            ...sceneAccessContext(session),
             unavailable: zoneClosed(state, venue, zone),
             environment: state.narrative,
           }).allowed)
@@ -515,9 +515,12 @@ export function createSceneCommands({
           zoneId: zone.id,
         }));
     if (
-      sceneAttendance.occupants.some(
-        (person) => !village.relationshipContext?.reviewedActorIds.includes(person.characterId),
-      )
+      !startingHistoryReady({
+        villagers: village.villagers.filter((resident) =>
+          sceneAttendance.occupants.some((person) => person.characterId === resident.characterId),
+        ),
+        startingHistory: village.startingHistory,
+      })
     )
       throw conflict("Starting relationship history needs preparation or clarification before a Scene can begin.");
     const entryAccessContext = {
@@ -529,7 +532,6 @@ export function createSceneCommands({
     let initialPermissionId: string | undefined;
     const decision = evaluateZoneAccess(place, zone, "player", {
       ...entryAccessContext,
-      relationships: village.relationshipContext,
     });
     if (!decision.allowed) {
       if (requestedZoneId) throw conflict(decision.explanation);
@@ -540,7 +542,6 @@ export function createSceneCommands({
         const target = resolveVenueZone(current, zone!.id)!;
         const checked = evaluateZoneAccess(current, target, "player", {
           ...entryAccessContext,
-          relationships: state.relationshipContext,
           unavailable: zoneClosed(state, current, target),
           environment: state.narrative,
         });

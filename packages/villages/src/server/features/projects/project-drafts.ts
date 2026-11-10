@@ -12,6 +12,7 @@ import { randomUUID } from "node:crypto";
 import { MAX_PROJECT_DRAFTS } from "../../../shared/helpers/project-design.js";
 import { establishmentControllers, establishmentDraft, establishmentChange } from "../../domain/rules/establishment.js";
 import { findLocation } from "../../domain/rules/places.js";
+import { continuityActor } from "../../domain/rules/continuity-actors.js";
 
 function requireDraftSpace(state: VillageState): void {
   if (state.projects.filter((project) => project.status === "planning").length >= MAX_PROJECT_DRAFTS)
@@ -38,6 +39,8 @@ export function draftNewVenueProject(
   if (!name || !description || !validVenueClasses(classes))
     throw badRequest("Choose one or two Classes, a name and a description.");
   if (!state.setupAt) throw conflict("Found the Village before planning a Project.");
+  const requester = requesterCharacterId ? continuityActor(state, requesterCharacterId) : undefined;
+  if (requesterCharacterId && !requester) throw conflict("The Project requester is unavailable.");
   const project: VillageProject = {
     id: requestId || randomUUID(),
     kind: "new-venue",
@@ -45,6 +48,7 @@ export function draftNewVenueProject(
     venueId: "",
     participantIds: [],
     requesterCharacterId,
+    ...(requester ? { requesterIncarnation: requester.incarnation } : {}),
     progress: 0,
     status: "planning",
     updatedAt: villageNow().toISOString(),

@@ -48,6 +48,7 @@ export function queueVillageVenueRequest(
     status: "pending",
     venueDraft: venueRequestDraft(core),
     requesterCharacterId,
+    requesterIncarnation: requester.incarnation,
     requesterName: requester.cardSnapshot.name,
     requestQuote: boundText(requestQuote, MAX_VENUE_NOTE_LENGTH),
     source,

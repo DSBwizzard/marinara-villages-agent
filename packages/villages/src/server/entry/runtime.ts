@@ -86,7 +86,6 @@ import { configureVillageClock, villageNow } from "../adapters/time/clock-gate.j
 import { createVillageClock } from "../adapters/time/clock-service.js";
 import { parseCompactFoundingCompletion } from "../domain/rules/compact-founding-rules.js";
 import { reconcileProjectLifecycles } from "../domain/rules/project-lifecycle-rules.js";
-import { filterRelationshipNotices } from "../domain/rules/relationship-presentation.js";
 
 import { createReturnCatchup } from "../features/background/return-catchup-service.js";
 import { advanceReturnCatchup, configureReturnCatchup } from "../features/background/return-catchup.js";
@@ -823,9 +822,9 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
         if (!receipt || receipt.villageSeed !== state.seed) return null;
         return {
           ...receipt,
-          recordEvents: filterRelationshipNotices([
-            ...new Map(receipt.recordEvents.map((event) => [event.id, event])).values(),
-          ]).filter((event) => !state.dismissedNoticeIds.includes(event.id)),
+          recordEvents: [...new Map(receipt.recordEvents.map((event) => [event.id, event])).values()].filter(
+            (event) => !state.dismissedNoticeIds.includes(event.id),
+          ),
         };
       },
     }),
@@ -921,8 +920,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     }),
   );
   const returnCatchup = createReturnCatchup({
-    readAuthority: () => villageRepository.readAuthority({ memories: true, wishes: true }),
-    mutateAuthority: (update) => villageRepository.mutateAuthority(update, { memories: true, wishes: true }),
+    readAuthority: () => villageRepository.readAuthority({ memories: true }),
+    mutateAuthority: (update) => villageRepository.mutateAuthority(update, { memories: true }),
     activityChanged: requestVillageRefresh,
     readSnapshot: readVillageSnapshot,
     mutate: mutateVillageMemoryState,

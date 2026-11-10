@@ -24,7 +24,6 @@ export type VillageVenueDeletionDependencies = {
   workerCharacterIds: string[];
   pendingResidenceCharacterIds: string[];
   roomPresent: boolean;
-  eventCount: number;
 };
 
 /** Effectful reads remain explicit: Scene queries can reconcile an existing visit. */
@@ -129,7 +128,6 @@ export function createVenueCommands({
         .filter((residence) => residence.status === "pending" && residence.proposedVenueId === venueId)
         .map((residence) => residence.characterId),
       roomPresent: (await activeVisitAtVenue(venueId)) === true,
-      eventCount: village.venueEvents.filter((event) => event.venueId === venueId).length,
     };
   }
 

@@ -188,7 +188,7 @@ function focusAvailability(state: VillageState, project: VillageProject): (at: D
       !block.commitmentId &&
       !rest.has(block.activity) &&
       capacity.get(instantMinute) &&
-      canOccupyZone(venue, zone, lead, { at, relationships: state.relationshipContext, environment: state.narrative })
+      canOccupyZone(venue, zone, lead, { at, environment: state.narrative })
     );
   };
 }

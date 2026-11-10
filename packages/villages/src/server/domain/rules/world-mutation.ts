@@ -52,13 +52,6 @@ export function normalizeVillageMutation(
   const capacity = villageVenueUsage(state);
   if (capacity.total > previousCapacity.total || capacity.nonResidential > previousCapacity.nonResidential)
     assertVillageVenueCapacity(state);
-  // Assign notice order in the same document write as its committed effect.
-  for (const receipt of Object.values(state.exchangeReceipts)) {
-    if (receipt.status === "applied") receipt.committedAt ||= sources.now().toISOString();
-    if (!receipt.notice || receipt.noticeSequence) continue;
-    receipt.noticeSequence = ++state.noticeSequence;
-    receipt.committedAt = sources.now().toISOString();
-  }
   for (const venue of state.venues) {
     synchronizeVenueZones(venue, previousVenues.get(venue.id));
     if (previousVenues.has(venue.id) && !venue.access)

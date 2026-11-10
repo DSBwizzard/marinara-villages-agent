@@ -97,7 +97,7 @@ export function createLiveScenes({
       return false;
     if (
       !evaluateZoneAccess(venue, zone, "player", {
-        ...sceneAccessContext(scene, state),
+        ...sceneAccessContext(scene),
         unavailable: zoneClosed(state, venue, zone),
         environment: state.narrative,
       }).allowed
@@ -180,7 +180,7 @@ export function createLiveScenes({
         if (!current) return;
         if (!target) return;
         const decision = evaluateZoneAccess(current, target, "player", {
-          ...sceneAccessContext(session, state),
+          ...sceneAccessContext(session),
           accepting: true,
           unavailable: zoneClosed(state, current, target),
           environment: state.narrative,
@@ -192,7 +192,7 @@ export function createLiveScenes({
         const target = captured && resolveVenueZone(captured, requireSceneZoneId(state));
         if (captured && target) {
           const decision = evaluateZoneAccess(captured, target, "player", {
-            ...sceneAccessContext(state, village),
+            ...sceneAccessContext(state),
             accepting: true,
           });
           if (decision.allowed) claimVisitPermission(captured, decision.permissionId, state.id);
@@ -210,7 +210,7 @@ export function createLiveScenes({
           for (const exit of accessExits(state, village, venue)) {
             const witnesses = [
               ...new Set(
-                Object.entries(sceneAccessContext(state, village).positions ?? {})
+                Object.entries(sceneAccessContext(state).positions ?? {})
                   .filter(([, position]) => position === exit.from || position === exit.to)
                   .map(([actor]) => actor),
               ),
@@ -270,7 +270,7 @@ export function createLiveScenes({
           // mutation result intentionally strips that transient context.
           continuity = captureSceneContinuity(state, session, now);
         },
-        { wishes: true },
+        { memories: true },
       );
       session = await changeSession(session.id, (state) => {
         if (state.status === "closed" || (!completing && hasVenueOperation(session.id))) return;
@@ -334,7 +334,7 @@ export function createLiveScenes({
 
   async function refreshLiveScene(session: VenueScene): Promise<VenueScene> {
     if (session.status === "closed") return session;
-    const village = await readVillageState({ wishes: true });
+    const village = await readVillageState({ memories: true });
     if (village.seed !== session.villageSeed) throw conflict("That Village changed. Its saved Scene is preserved.");
     const venue = findLocation(village, session.placeId);
     if (!venue) return session;

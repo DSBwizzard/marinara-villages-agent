@@ -1,4 +1,4 @@
-// Test cases: narration-residence/request, narration-residence/decisions, narration-residence/authority, narration-residence/stale, narration-residence/venue-request, narration-residence/replay, narration-residence/same-response, narration-residence/private-room
+// Test cases: narration-residence/request, narration-residence/decisions, narration-residence/authority, narration-residence/stale, narration-residence/venue-request, narration-residence/replay, narration-residence/same-response, narration-residence/private-room, narration-residence/player-review
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { fixture as projectFixture, venue as homeFixture } from "./fixtures/villages-projects.fixture.js";
@@ -14,6 +14,7 @@ import { acceptNarration } from "../packages/villages/src/server/domain/rules/na
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { requestResidenceMove } from "../packages/villages/src/server/domain/rules/residence-move.js";
 import { createVillageSnapshot } from "../packages/villages/src/server/features/world/snapshot-service.js";
+import { createResidences } from "../packages/villages/src/server/features/venues/residence-service.js";
 const at = "2026-11-09T18:00:00.000Z";
 function fixture() {
   const state = projectFixture().state(),
@@ -296,4 +297,36 @@ await runCase("narration-residence/private-room", () => {
   assert.deepEqual(turn.readset.residence.requests[0].householdIds, ["a"]);
   assert.equal(turn.accept().held, false);
   assert.equal(f.state.residences[0].agreement!.sleepZoneId, "blue");
+});
+
+await runCase("narration-residence/player-review", async () => {
+  for (const approved of [true, false]) {
+    const f = fixture();
+    f.home.residentIds = [];
+    f.home.occupancy.playerHome = true;
+    f.home.access!.managerIds = ["player"];
+    f.pending();
+    const move = f.state.residences[0],
+      scope = move.agreement!.scope;
+    const service = createResidences({
+      mutateVillageState: async (update) => {
+        const next = structuredClone(f.state);
+        await update(next);
+        Object.assign(f.state, next);
+        return f.state;
+      },
+      buildVillageSnapshot: async () => ({}) as any,
+    });
+    await assert.rejects(service.decideVillageResidence("b", approved, "stale"), /reviewed move/);
+    if (approved) await service.approveVillageResidence("b", scope);
+    else await service.decideVillageResidence("b", false, scope);
+    assert.equal(
+      f.state.residences.some((row) => row.characterId === "b" && row.status === "moving"),
+      approved,
+    );
+    const committed = structuredClone(f.state);
+    if (approved) await service.decideVillageResidence("b", true, scope);
+    else await assert.rejects(service.decideVillageResidence("b", false, scope), /no pending residence/);
+    assert.deepEqual(f.state, committed, "repeated Player review cannot restart or undo a committed move");
+  }
 });

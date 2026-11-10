@@ -155,7 +155,7 @@ export function createNarrative(ports: Ports) {
     opportunity: ResidentPlanningOpportunity,
     capture: ReturnCatchupCapture,
   ): Promise<void> {
-    const live = await ports.read({ wishes: true });
+    const live = await ports.read({ memories: true });
     const batch = live.returnCatchup?.batch;
     if (
       batch?.id !== batchId ||

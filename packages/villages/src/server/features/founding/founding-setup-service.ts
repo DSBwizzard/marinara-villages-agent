@@ -278,7 +278,6 @@ export function createFoundingSetup({
           },
           addedAt: villageNow().toISOString(),
           agenda: unwrittenVillageAgenda(villageNow()),
-          wishes: [],
           scheduleInfluence: influenceSettings(null),
         });
         addedResidents.push(card);

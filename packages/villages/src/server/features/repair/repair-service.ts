@@ -1159,7 +1159,6 @@ export function createRepairService(ports: RepairPorts) {
           operationId,
           villageNow(restored.clock?.advanceMs ?? 0).toISOString(),
         );
-      restored.noticeSequence = Math.max(restored.noticeSequence, state.noticeSequence);
       restored.dismissedNoticeIds = [...new Set([...restored.dismissedNoticeIds, ...state.dismissedNoticeIds])];
       for (const letter of Object.values(restored.mailbox.messages))
         if (letter.status === "delivered" && letter.to.id === "player" && !letter.readAt) {

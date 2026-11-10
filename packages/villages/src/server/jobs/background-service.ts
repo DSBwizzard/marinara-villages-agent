@@ -606,7 +606,6 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       memories:
         ["starting-ties", "wish", "agenda", "personal-mail", "resident-planning"].includes(job.kind) ||
         !!catchupBatchId(job),
-      wishes: ["wish", "agenda"].includes(job.kind) ? [job.subjectId] : undefined,
     };
     if (handlers.get(job.kind)?.authority === "raw" && ports.readVillageAuthority)
       return ports.readVillageAuthority(options);
@@ -618,12 +617,11 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     ];
     return handlers.get(job.kind)?.authority === "raw" && ports.mutateVillageAuthority
       ? ports.mutateVillageAuthority(update, {
-          memories: ["personal-mail", "resident-planning"].includes(job.kind) ? true : undefined,
+          memories: ["wish", "personal-mail", "resident-planning"].includes(job.kind) ? true : undefined,
           sourceJobs,
         })
       : mutateVillageState(update, {
-          memories: job.kind === "resident-planning" ? true : undefined,
-          wishes: job.kind === "wish" ? [job.subjectId] : undefined,
+          memories: ["wish", "resident-planning"].includes(job.kind) ? true : undefined,
           sourceJobs,
         });
   }

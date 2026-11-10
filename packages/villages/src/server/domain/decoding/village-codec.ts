@@ -13,7 +13,7 @@ import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
 import { readZoneLayout } from "../../../shared/helpers/zone-layout.js";
 import { validTimeZone } from "../../../shared/helpers/zoned-date.js";
 import { RETURN_CATCHUP_HISTORY_LIMIT } from "../models/world.js";
-import { cloneReturnCapture, copyExchangeReceipts } from "../rules/world-context-copy.js";
+import { cloneReturnCapture } from "../rules/world-context-copy.js";
 import { readEstablishment } from "../rules/establishment.js";
 import type {
   VillageAgenda,
@@ -25,7 +25,6 @@ import type {
   VillageTownMapView,
   VillageVenue,
   VillageVenueClass,
-  VillageVenueEvent,
   VillageVenueImage,
   VillageVenueZone,
   VillageVillager,
@@ -68,8 +67,6 @@ import {
   MAX_AGENDA_ACTIVITY_LENGTH,
   MAX_ROUTINE_SUMMARY_LENGTH,
   MAX_SETTING_LENGTH,
-  MAX_VENUE_DESCRIPTION_LENGTH,
-  MAX_VENUE_EVENTS,
   MAX_VENUE_IMAGE_ID_LENGTH,
   MAX_VENUE_IMAGE_URL_LENGTH,
   MAX_VENUE_NAME_LENGTH,
@@ -80,13 +77,12 @@ import {
   TOWN_MAP_ZOOM_MIN,
 } from "../rules/prompt-preset.js";
 
-import { copySocialWishes } from "../rules/social-wishes.js";
 import { coerceSpriteManager, managerResidentSprite } from "../rules/sprite-manager-model.js";
 import { readVenueAccess, readZonePolicy } from "../rules/venue-access.js";
 import { readNarrativeState } from "./narrative-codec.js";
 import { defaultVenueSpace, validVenueClasses, venueResidentIds } from "../rules/venue-model.js";
 import { chooseAgendaZone, synchronizeVenueZones, ZONE_KINDS } from "../rules/venue-zones.js";
-import { randomVillageSeed, VILLAGE_WEEKDAYS } from "../rules/village-clock.js";
+import { VILLAGE_WEEKDAYS } from "../rules/village-clock.js";
 import { zonePictureBaseline, zonePicturePhysicalRecord } from "../rules/zone-picture.js";
 import { emptyStartingHistory } from "../rules/starting-history.js";
 import { readStartingHistory } from "./starting-history-codec.js";
@@ -103,8 +99,6 @@ export function defaultVillageState(): VillageState {
     residentPlans: emptyResidentPlans(),
     startingHistory: emptyStartingHistory(),
     backgroundReceipts: {},
-    exchangeReceipts: {},
-    noticeSequence: 0,
     dismissedNoticeIds: [],
     socialContractVersion: 2,
     progressEngineVersion: 1,
@@ -136,7 +130,6 @@ export function defaultVillageState(): VillageState {
       "large-home": HOME_BUILDINGS["large-home"].name,
       "huge-home": HOME_BUILDINGS["huge-home"].name,
     },
-    venueEvents: [],
     visitRetention: { mode: "forever", value: 0 },
     residences: [],
     // Empty means "not founded yet", which is what opens the setup wizard. It
@@ -187,7 +180,6 @@ export function defaultVillageState(): VillageState {
 }
 function coerceVillager(value: unknown): VillageVillager | null {
   const raw = asRecord(value);
-  if (Object.hasOwn(raw, "wishHead")) throw new Error("Wish history was not loaded for this operation.");
   const characterId = asTrimmedString(raw.characterId);
   if (characterId.length === 0) return null;
   memoryRequire(
@@ -223,7 +215,6 @@ function coerceVillager(value: unknown): VillageVillager | null {
     // village write one. An empty agenda is a positive statement that asking
     // produced nothing, and it must only ever come from actually asking.
     agenda: coerceAgenda(raw.agenda),
-    wishes: copySocialWishes(raw.wishes),
     scheduleInfluence: influenceSettings(raw.scheduleInfluence),
   };
 }
@@ -794,52 +785,6 @@ function coerceVenues(value: unknown): VillageVenue[] {
   }
   return venues;
 }
-function coerceVenueEvent(value: unknown): VillageVenueEvent | null {
-  const raw = asRecord(value),
-    receipt = asRecord(raw.actionReceipt),
-    after = asRecord(receipt.after);
-  const venueId = asTrimmedString(raw.venueId),
-    text = boundText(raw.text, MAX_EVENT_TEXT_LENGTH);
-  if (!venueId || !text) return null;
-  let actionReceipt: VillageVenueEvent["actionReceipt"];
-  if (raw.actionReceipt !== undefined) {
-    const state = readPlaceContinuity(after.state);
-    if (
-      typeof after.description !== "string" ||
-      after.description.length > MAX_VENUE_DESCRIPTION_LENGTH ||
-      !Number.isSafeInteger(receipt.expectedRevision) ||
-      Number(receipt.expectedRevision) < 0 ||
-      state.revision !== Number(receipt.expectedRevision) + 1 ||
-      receipt.happened !== true ||
-      !asTrimmedString(receipt.submissionId)
-    )
-      throw new Error("Invalid saved physical outcome; its bytes are preserved.");
-    actionReceipt = {
-      submissionId: asTrimmedString(receipt.submissionId),
-      happened: true,
-      expectedRevision: Number(receipt.expectedRevision),
-      narration: boundText(receipt.narration, MAX_PHYSICAL_NARRATION_LENGTH),
-      witnessIds: coerceVenueIds(receipt.witnessIds),
-      after: { description: after.description, state },
-    };
-  }
-  return {
-    id: asTrimmedString(raw.id) || randomVillageSeed(),
-    venueId,
-    text,
-    venueName: boundText(raw.venueName, MAX_VENUE_NAME_LENGTH),
-    zoneId: asTrimmedString(raw.zoneId) || undefined,
-    at: asIsoString(raw.at) ?? "",
-    ...(actionReceipt ? { actionReceipt } : {}),
-  };
-}
-function coerceVenueEvents(value: unknown): VillageVenueEvent[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map(coerceVenueEvent)
-    .filter((entry): entry is VillageVenueEvent => entry !== null)
-    .slice(0, MAX_VENUE_EVENTS);
-}
 function coerceResidence(value: unknown): VillageResidence | null {
   const raw = asRecord(value);
   const venueId = asTrimmedString(raw.venueId);
@@ -933,6 +878,8 @@ function coerceProjects(value: unknown): VillageProject[] {
       !Array.isArray(flow.evidenceIds)
     )
       throw new Error("Invalid Project record.");
+    if (!!asTrimmedString(raw.requesterCharacterId) !== !!asTrimmedString(raw.requesterIncarnation))
+      throw new Error("Project requester identity is incomplete.");
     const approvals = flow.approvals;
     const rows = [...approvals, ...flow.candidates];
     if (
@@ -1011,6 +958,7 @@ function coerceProjects(value: unknown): VillageProject[] {
       progress: raw.status === "complete" ? 100 : 0,
       updatedAt: asIsoString(raw.updatedAt) ?? "",
       requesterCharacterId: asTrimmedString(raw.requesterCharacterId),
+      ...(raw.requesterIncarnation ? { requesterIncarnation: asTrimmedString(raw.requesterIncarnation) } : {}),
       ...(raw.kind === "new-venue"
         ? {
             venueDraft: {
@@ -1118,6 +1066,11 @@ function coercePendingDecisions(value: unknown): VillagePendingDecision[] {
       const draft = asRecord(raw.venueDraft);
       const requestName = boundText(draft.name, MAX_VENUE_NAME_LENGTH);
       const requestClasses = validVenueClasses(draft.classes) ? draft.classes : [];
+      if (raw.kind === "venue")
+        memoryRequire(
+          asTrimmedString(raw.requesterCharacterId) && asTrimmedString(raw.requesterIncarnation),
+          "Venue request has no original requester identity",
+        );
       return [
         {
           id,
@@ -1147,6 +1100,7 @@ function coercePendingDecisions(value: unknown): VillagePendingDecision[] {
               }
             : {}),
           requesterCharacterId: asTrimmedString(raw.requesterCharacterId),
+          ...(raw.kind === "venue" ? { requesterIncarnation: asTrimmedString(raw.requesterIncarnation) } : {}),
           venueId: asTrimmedString(raw.venueId),
           requesterName: boundText(raw.requesterName, MAX_REQUESTER_NAME_LENGTH),
           requestQuote: boundText(raw.requestQuote, MAX_VENUE_NOTE_LENGTH),
@@ -1420,27 +1374,6 @@ export function coerceVillageState(value: unknown): VillageState {
   const foundedAt = asIsoString(raw.foundedAt) ?? "";
   const continuity = readContinuity(raw.continuity ?? fallback.continuity, asString(raw.seed));
   const episodes = readEpisodes(raw.episodes ?? fallback.episodes, asString(raw.seed));
-  const exchangeReceipts = copyExchangeReceipts(asRecord(raw.exchangeReceipts) as VillageState["exchangeReceipts"]);
-  for (const [id, receipt] of Object.entries(exchangeReceipts)) {
-    if (receipt?.domain !== "physical") continue;
-    if (
-      receipt.id !== id ||
-      !receipt.sceneId ||
-      !receipt.submissionId ||
-      !["applied", "rejected"].includes(String(receipt.status)) ||
-      !asIsoString(receipt.at) ||
-      !asIsoString(receipt.committedAt)
-    )
-      throw new Error("Invalid saved physical receipt; its bytes are preserved.");
-    if (receipt.physicalOutcome !== undefined) {
-      if (receipt.status !== "applied")
-        throw new Error("Rejected physical outcome cannot carry applied proof; its bytes are preserved.");
-      const outcome = coerceVenueEvent(receipt.physicalOutcome);
-      if (!outcome?.actionReceipt || outcome.id !== id || outcome.actionReceipt.submissionId !== receipt.submissionId)
-        throw new Error("Invalid saved physical proof; its bytes are preserved.");
-      receipt.physicalOutcome = outcome;
-    }
-  }
   const state: VillageState = {
     worldPlaces: readPlaceRegistry(raw.worldPlaces),
     version: 18,
@@ -1454,8 +1387,6 @@ export function coerceVillageState(value: unknown): VillageState {
         (entry): entry is [string, string] => typeof entry[1] === "string",
       ),
     ),
-    exchangeReceipts,
-    noticeSequence: Math.max(0, Math.floor(Number(raw.noticeSequence) || 0)),
     dismissedNoticeIds: [...new Set(asStringArray(raw.dismissedNoticeIds))],
     socialContractVersion: 2,
     socialPublications: raw.socialPublications
@@ -1500,7 +1431,6 @@ export function coerceVillageState(value: unknown): VillageState {
         boundText(asRecord(raw.homeBuildingNames)[kind], 60) || building.name,
       ]),
     ) as VillageState["homeBuildingNames"],
-    venueEvents: coerceVenueEvents(raw.venueEvents),
     visitRetention: (() => {
       const retention = asRecord(raw.visitRetention);
       const value = Number(retention.value);
@@ -1588,24 +1518,6 @@ export function coerceVillageState(value: unknown): VillageState {
       .map((id) => id.trim())
       .filter(Boolean)
       .slice(-MAX_SIMULATION_RECORDS),
-    ...(raw.semanticRequestReceipts
-      ? {
-          semanticRequestReceipts: Object.fromEntries(
-            Object.entries(asRecord(raw.semanticRequestReceipts)).filter(([, value]) => typeof value === "string"),
-          ) as Record<string, string>,
-        }
-      : {}),
-    ...(raw.semanticContinuations
-      ? {
-          semanticContinuations: Object.fromEntries(
-            Object.entries(asRecord(raw.semanticContinuations)).filter(
-              ([, value]) =>
-                Array.isArray(value) &&
-                value.every((domain) => ["memories", "relationships", "wishes", "projects"].includes(String(domain))),
-            ),
-          ) as VillageState["semanticContinuations"],
-        }
-      : {}),
     projects: coerceProjects(raw.projects ?? []),
     wishFollowing: Object.fromEntries(
       Object.entries(asRecord(raw.wishFollowing)).filter(([, v]) => typeof v === "boolean"),

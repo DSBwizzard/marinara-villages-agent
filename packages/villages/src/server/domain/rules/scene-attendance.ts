@@ -36,7 +36,7 @@ export function liveSceneEncounterConflicts(village: VillageState, scene: VenueS
     return new Set();
   const at = new ZonedDate(now, village.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
   const scheduled = villagePresence(village, at.getHours() * 60 + at.getMinutes(), at);
-  const positions = sceneAccessContext(scene, village).positions ?? {};
+  const positions = sceneAccessContext(scene).positions ?? {};
   const moved = village.villagers
     .filter(
       (row) =>
@@ -80,7 +80,6 @@ export function captureSceneAttendance(
         resolveVenueZone(venue, position.zoneId ?? "") ??
         chooseAgendaZone(venue, villager.characterId, block?.activity, block?.zoneId, village, {
           at: now,
-          relationships: village.relationshipContext,
         });
       return [
         {
@@ -113,7 +112,7 @@ export function sceneZoneOccupants(session: VenueScene, venue: VillageVenue, zon
 export function accessExits(session: VenueScene, village: VillageState, venue: VillageVenue) {
   village = sceneAccessState(village, session);
   venue = sceneLayoutVenue(venue, session);
-  const context = sceneAccessContext(session, village),
+  const context = sceneAccessContext(session),
     positions = { ...context.positions };
   const exits: { actor: string; from: string; to: string; destinationVenueId?: string }[] = [];
   const departures = new Map<string, number>();

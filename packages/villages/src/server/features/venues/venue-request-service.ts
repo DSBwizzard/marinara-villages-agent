@@ -1,6 +1,6 @@
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillageSnapshot, VillageState } from "../../domain/models/world.js";
-import { rememberDomainFact } from "../../domain/rules/domain-memories.js";
+import { retainNativeFact } from "../../domain/rules/native-continuity.js";
 import { badRequest, notFound } from "../../domain/rules/errors.js";
 import { boundText, MAX_VENUE_DESCRIPTION_LENGTH } from "../../domain/rules/prompt-preset.js";
 import { queueVillageVenueRequest } from "../../domain/rules/venue-request-state.js";
@@ -59,6 +59,9 @@ export function createVenueRequests({
     if (!decision || decision.status === "approved" || decision.status === "denied" || !decision.venueDraft)
       throw notFound("That venue request is no longer pending.");
     const core = edits ?? decision.venueDraft;
+    const requester = state.villagers.find(
+      (row) => row.characterId === decision.requesterCharacterId && row.incarnation === decision.requesterIncarnation,
+    );
     if (
       approved &&
       edits &&
@@ -71,7 +74,7 @@ export function createVenueRequests({
       draftNewVenueProject(
         state,
         { ...core, classes: core.classes, description, requestQuote: decision.requestQuote },
-        decision.requesterCharacterId,
+        requester?.characterId,
         `request:${requestId}`,
       );
     }
@@ -87,14 +90,19 @@ export function createVenueRequests({
     const text = approved
       ? `The player accepted ${who}'s request to plan ${core.name}. Construction has not begun.`
       : `The player declined ${who}'s request for ${decision.venueDraft.name}.`;
-    rememberDomainFact(state, {
-      id: "venue-decision:" + requestId,
-      at: moment.instant,
-      recordedAt: moment.instant,
-      text,
-      subjects: decision.requesterCharacterId ? [decision.requesterCharacterId] : [],
-      knowers: ["player", ...(decision.requesterCharacterId ? [decision.requesterCharacterId] : [])],
-    });
+    retainNativeFact(
+      state,
+      {
+        id: "venue-decision:" + requestId,
+        kind: "venue-request",
+        targetId: requestId,
+        revision: 1,
+        text,
+        witnesses: ["player", ...(requester ? [requester.characterId] : [])],
+      },
+      moment.instant,
+      { about: requester ? [requester.characterId] : [], current: false },
+    );
   }
   return {
     recordVillageVenueRequest,

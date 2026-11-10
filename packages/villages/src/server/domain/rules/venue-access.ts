@@ -6,7 +6,7 @@ import type {
   ZoneAccessDecision,
   ZoneAccessPolicy,
 } from "../../../shared/helpers/venue-access.js";
-import type { VillageState, VillageVenue, VillageVenueZone } from "../models/world.js";
+import type { VillageVenue, VillageVenueZone } from "../models/world.js";
 import { badRequest, conflict, VillagesRequestError } from "./errors.js";
 import { z } from "zod";
 import { communityVenueEligible } from "./community-venue.js";
@@ -257,9 +257,8 @@ export type AccessContext = {
   /** Only deliberate entry may claim an invitation not yet bound to a Scene. */
   accepting?: boolean;
   unavailable?: boolean;
-  relationships?: VillageState["relationshipContext"];
 };
-/** Pure decision. Neither relationships nor invitations mutate while evaluating. */
+/** Pure native access decision; invitations never mutate while evaluating. */
 export function evaluateZoneAccess(
   venue: VillageVenue,
   zone: VillageVenueZone,

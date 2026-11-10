@@ -153,7 +153,7 @@ export function applyNarrationMove(
     zone = venue.zones?.find((zone) => zone.id === command.to);
   memoryRequire(path && path.length > 1 && zone, "there is no permitted connected movement route");
   const decision = evaluateZoneAccess(venue, zone, actor.id, {
-    ...sceneAccessContext(scene, state),
+    ...sceneAccessContext(scene),
     accepting: true,
     unavailable: zoneClosed(state, venue, zone),
     environment: state.narrative,

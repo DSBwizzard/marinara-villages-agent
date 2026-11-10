@@ -2,9 +2,6 @@ import type { VillageState } from "./world.js";
 
 export type VillageMemoryRead = {
   memories?: boolean;
-  wishes?: true | readonly string[];
-  /** Exact historical Wish after-images needed by this operation. */
-  wishEffects?: true | readonly string[] | ((state: VillageState) => readonly string[]);
 };
 export type VillageMemoryWrite = Omit<VillageMemoryRead, "memories"> & {
   memories?: boolean | ((state: VillageState) => boolean);
@@ -12,7 +9,7 @@ export type VillageMemoryWrite = Omit<VillageMemoryRead, "memories"> & {
   sourceJobs?: readonly { slot: string; id: string; instanceId: string; attempt: number; owner: string }[];
 };
 
-/** Raw saved authority; relationship hydration and side effects belong to its service. */
+/** Native authority, with common history loaded explicitly by its consumers. */
 export interface VillageRepository {
   /** Short, provider-free acceptance window shared with all authority mutations. */
   withAuthorityLock?<T>(work: () => Promise<T>): Promise<T>;

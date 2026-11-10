@@ -445,7 +445,6 @@ export function validateRoutineDay(
     if (!block.venueId) return block;
     const venue = state.venues.find((item) => item.id === block.venueId);
     const accessContext = {
-      relationships: state.relationshipContext,
       at: calendarAt(date, dayKey(date), block.startMinute),
     };
     const zone =

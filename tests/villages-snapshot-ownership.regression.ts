@@ -1,3 +1,13 @@
+import {
+  narrationContinuityContext,
+  fittedNarrationReadset,
+} from "../packages/villages/src/server/domain/rules/narration-context.js";
+import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
+import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
+import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
+import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import { retainNativeFact } from "../packages/villages/src/server/domain/rules/native-continuity.js";
+import { mutableSceneSubmission } from "../packages/villages/src/server/domain/rules/scene-submissions.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import { captureZoneObservation } from "../packages/villages/src/server/domain/rules/zone-observation.js";
 import assert from "node:assert/strict";
@@ -11,7 +21,6 @@ import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import type { VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
 import {
   createVillageSnapshot,
@@ -35,11 +44,11 @@ function fixture(label: string, missingColors = false) {
     name: label,
     foundedAt: stamp,
     setupAt: stamp,
-    visitMemoryBackfilled: true,
     villagers: [
       {
         letterFontId: "caveat",
         characterId: "resident",
+        incarnation: "founding-resident",
         cardSnapshot: {
           id: "resident",
           name: label + " adopted",
@@ -52,7 +61,6 @@ function fixture(label: string, missingColors = false) {
       },
     ],
   });
-  world.visitMemoryBackfilled = true;
   const adopted = world.villagers[0]!.cardSnapshot;
   const card = {
     ...villagerCardFromSnapshot(adopted),
@@ -147,7 +155,6 @@ async function main() {
   await assert.rejects(buildVillageSnapshot(now), /not configured/);
   const history = fixture("history");
   history.world.foundingPreparation = { status: "ready", completedIds: ["resident"], currentId: "", error: "" };
-  history.world.relationshipContext = defaultRelationshipState(history.world.seed);
   let admission = await history.service.buildVillageSnapshot(now);
   assert.equal(admission.foundingPreparation?.startingHistoryReady, false);
   assert.equal(
@@ -159,30 +166,54 @@ async function main() {
     !JSON.stringify(admission).includes("initializationConflicts"),
     "Ordinary snapshots do not disclose Inspect history",
   );
-  history.world.relationshipContext.reviewedActorIds.push("resident");
+  history.world.startingHistory.reviewed.resident = "founding-resident";
   admission = await history.service.buildVillageSnapshot(now);
   assert.equal(admission.foundingPreparation?.startingHistoryReady, true);
   assert.equal(admission.foundingPreparation?.canPlay, true);
   const marker = fixture("marker");
-  const scene = coerceSession({
-    version: 4,
-    id: "active",
-    villageSeed: marker.world.seed,
-    status: "active",
-    startedAt: stamp,
-    placeId: "square",
-    participants: [],
-    activeIds: [],
-    lines: [],
-    submissions: [],
+  const venue = venueFixture({ id: "square", name: "Square" });
+  marker.world.venues.push(venue);
+  const scene = zoneEventScene(
+    coerceSession({
+      version: 5,
+      id: "active",
+      villageSeed: marker.world.seed,
+      status: "active",
+      startedAt: stamp,
+      placeId: venue.id,
+      zoneId: "exterior",
+      participants: [],
+      activeIds: [],
+      lines: [],
+      submissions: [],
+      sceneAttendance: { capturedAt: stamp, layout: captureSceneLayout(venue), occupants: [] },
+    }),
+    venue,
+  );
+  const context = narrationContinuityContext(marker.world, scene, venue, "wait", "I wait.", stamp);
+  const readset = fittedNarrationReadset(
+    marker.world,
+    context,
+    context.parts.flatMap((part) => (part.block.evidenceId ? [part.block.evidenceId] : [])),
+  );
+  const raw = { segments: [{ id: "wait", kind: "narration", text: "The player waits." }] };
+  scene.submissions.push({
+    mode: "chat",
+    id: "late",
+    targetId: "",
+    message: readset.source.input,
+    requestFingerprint: memoryHash("wait"),
+    at: stamp,
+    changeSequence: 1,
+    acceptance: { status: "pending", rejected: [] },
+    narration: { raw, readset, responseDigest: memoryHash(raw) },
   });
-  scene.submissions.push({ mode: "chat", id: "late", changeSequence: 1, semanticReady: false } as any);
   marker.setScene(scene);
   marker.world.foundingPreparation = { status: "ready", completedIds: [], currentId: "", error: "" };
   assert.equal(
     (await marker.service.buildVillageSnapshot(now)).foundingPreparation?.canPlay,
     true,
-    "An existing Scene retains its saved contract while live starting history is pending",
+    "An existing Scene retains its captured contract while starting history is pending",
   );
   const revision = (await marker.service.buildVillageSnapshot(now)).sceneChanges!.revision;
   assert.equal(
@@ -190,13 +221,31 @@ async function main() {
     revision,
     "idle snapshots do not restart the feed",
   );
-  scene.submissions[0]!.semanticReady = true;
+  const turn = mutableSceneSubmission(scene, "late")!;
+  const accepted = acceptNarration(marker.world, turn.narration!, turn.id, stamp);
+  assert.equal(accepted.held, false);
+  turn.acceptance = { status: "applied", rejected: [] };
+  turn.episodeId = accepted.episode!.id;
+  turn.progressProcessedAt = stamp;
+  turn.replyLineIds = accepted.episode!.segments.map((row) => row.id);
+  delete turn.narration;
+  scene.lines = accepted.episode!.segments;
   const ready = (await marker.service.buildVillageSnapshot(now)).sceneChanges!;
-  assert.equal(ready.sceneId, scene.id);
-  assert.notEqual(ready.revision, revision, "late readiness reopens delivery without a processing sequence change");
-  marker.world.exchangeReceipts.foreign = { id: "foreign", sceneId: "elsewhere", noticeSequence: 1 } as any;
+  assert.notEqual(ready.revision, revision, "native acceptance reopens delivery without a processing sequence change");
+  retainNativeFact(
+    marker.world,
+    {
+      id: "unrelated",
+      kind: "initialization",
+      targetId: "player",
+      revision: 1,
+      text: "An unrelated native fact.",
+      witnesses: ["player"],
+    },
+    stamp,
+  );
   assert.equal((await marker.service.buildVillageSnapshot(now)).sceneChanges!.revision, ready.revision);
-  marker.world.exchangeReceipts.own = { id: "own", sceneId: scene.id, noticeSequence: 2 } as any;
+  turn.recordEvents = [{ id: "own", kind: "project", text: "Work is ready." }];
   assert.notEqual(
     (await marker.service.buildVillageSnapshot(now)).sceneChanges!.revision,
     ready.revision,
@@ -210,7 +259,7 @@ async function main() {
     zone.observed = captureZoneObservation(venue, zone);
     zone.description = "Newly observed approach";
     const current = coerceSession({
-      version: 4,
+      version: 5,
       id: "observed",
       villageSeed: f.world.seed,
       placeId: venue.id,
@@ -262,13 +311,8 @@ async function main() {
   await rolled.service.buildVillageSnapshot(now);
   assert.deepEqual(rolled.calls, ["world", "roll", "world", "catalog", "query-connection", "scene", "background"]);
   const oldRead = fixture("double-read");
-  oldRead.world.visitMemoryBackfilled = false;
   await oldRead.service.buildVillageSnapshot(now);
-  assert.deepEqual(
-    oldRead.calls.slice(0, 2),
-    ["world", "roll"],
-    "Snapshot reads do not backfill retired memory stores",
-  );
+  assert.deepEqual(oldRead.calls.slice(0, 2), ["world", "roll"], "Snapshot reads remain inert");
   const colors = fixture("colors", true);
   const capturedColors = JSON.stringify(colors.world);
   const painted = await colors.service.buildVillageSnapshot(now);

@@ -1,7 +1,6 @@
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { randomUUID } from "node:crypto";
 import type { VillageSnapshot } from "../../domain/models/world.js";
-import { conflict } from "../../domain/rules/errors.js";
 import { completeResidenceMove, requestResidenceMove, decideResidenceMove } from "../../domain/rules/residence-move.js";
 import { residenceCharacterId, residenceVenueId } from "../../domain/rules/world-input.js";
 import type { buildVillageSnapshot } from "../world/snapshot.js";
@@ -36,28 +35,17 @@ export function createResidences(ports: ResidencePorts) {
   }
 
   async function approveVillageResidence(characterValue: unknown, expectedScope?: string): Promise<VillageSnapshot> {
-    return decideVillageResidence(characterValue, true, "player", undefined, undefined, expectedScope);
+    return decideVillageResidence(characterValue, true, expectedScope);
   }
 
   async function decideVillageResidence(
     characterValue: unknown,
     approved: boolean,
-    actor: "player" | "villager",
-    operationId?: string,
-    approverId?: string,
     expectedScope?: string,
   ): Promise<VillageSnapshot> {
     const characterId = residenceCharacterId(characterValue);
     await mutateVillageState((state) => {
-      if (operationId) {
-        const fingerprint = JSON.stringify([characterId, approved, actor, approverId, expectedScope]);
-        const prior = state.semanticRequestReceipts?.[operationId];
-        if (prior && prior !== fingerprint) throw conflict("That residence decision ID belongs to another request.");
-        if (prior) return;
-        state.semanticRequestReceipts ??= {};
-        state.semanticRequestReceipts[operationId] = fingerprint;
-      }
-      decideResidenceMove(state, characterId, approved, actor, approverId, expectedScope, villageNow());
+      decideResidenceMove(state, characterId, approved, "player", undefined, expectedScope, villageNow());
     });
     return buildVillageSnapshot();
   }

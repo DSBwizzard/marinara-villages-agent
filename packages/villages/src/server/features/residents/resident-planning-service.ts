@@ -72,7 +72,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
     if (!scene || Date.parse(scene.startedAt) > at.getTime()) return new Set<string>();
     const conflicts = liveSceneEncounterConflicts(state, scene, at);
     if (scene.liveSceneVersion !== 1 || scene.status === "closed" || scene.villageSeed !== state.seed) return conflicts;
-    const positions = sceneAccessContext(scene, state).positions ?? {},
+    const positions = sceneAccessContext(scene).positions ?? {},
       zone = positions.player;
     for (const resident of state.villagers)
       if (zone && positions[resident.characterId] === zone && sameSceneRoutine(state, scene, resident.characterId, at))

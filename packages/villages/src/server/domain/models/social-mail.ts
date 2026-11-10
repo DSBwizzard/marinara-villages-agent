@@ -1,4 +1,3 @@
-import type { RelationshipDisclosure } from "./relationship-types.js";
 import type {
   ContinuityAdmission,
   ContinuityCapture,
@@ -66,29 +65,4 @@ export type PersonalMailResult = {
   incomingMeaning: { keep: unknown[]; requires: string[] };
   replyMeaning: { keep: unknown[]; requires: string[] };
   responseDigest: string;
-};
-export type SocialMailMessage = {
-  id: string;
-  requestId: string;
-  fromId: string;
-  toId: string;
-  text: string;
-  at: string;
-  status: "pending" | "applying" | "delivered" | "cancelled" | "undeliverable";
-  sourceHash?: string;
-  incarnation?: string;
-  readAt?: string;
-  replyTo?: string;
-  replyStatus?: "pending" | "complete";
-  disclosures?: RelationshipDisclosure[];
-  wishDisclosures?: import("../../../shared/contracts/wishes.js").WishDisclosure[];
-  error?: string;
-  admissionFailed?: boolean;
-  replyUnavailable?: boolean;
-};
-export type SocialMailThread = {
-  id: string;
-  participantIds: string[];
-  revision: number;
-  messages: SocialMailMessage[];
 };

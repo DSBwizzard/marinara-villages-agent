@@ -153,14 +153,7 @@ export function validateRenovationDesign(
         zone.kind === "exterior" ||
         zone.venueClass !== "residence" ||
         (zone.ownerId && zone.ownerId !== actor) ||
-        !accessibleVenueRoute(
-          { projects: [], relationshipContext: state.relationshipContext },
-          proposed,
-          actor,
-          zone.id,
-          new ZonedDate(at, state.timeZone),
-          true,
-        )
+        !accessibleVenueRoute({ projects: [] }, proposed, actor, zone.id, new ZonedDate(at, state.timeZone), true)
       )
         throw conflict(
           "Keep every household member's home and sleeping destination accessible. Choose another destination before removing or converting its Zone.",

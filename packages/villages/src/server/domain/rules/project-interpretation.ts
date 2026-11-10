@@ -4,6 +4,7 @@ import { approvalScope, projectDesignKey, renovationAffectedIds } from "./projec
 import { establishmentControllers, establishmentScope } from "./establishment.js";
 import { findLocation } from "./places.js";
 import { memoryHash } from "./memory-integrity.js";
+import { continuityActor } from "./continuity-actors.js";
 import { recallTerms } from "./text-recall.js";
 export type ProjectSpeechContext = {
   projectId: string;
@@ -93,7 +94,10 @@ export function projectSpeechContexts(
       [
         ...project.participantIds,
         ...project.lifecycle.affectedIds,
-        project.requesterCharacterId,
+        project.requesterCharacterId &&
+        continuityActor(state, project.requesterCharacterId)?.incarnation === project.requesterIncarnation
+          ? project.requesterCharacterId
+          : "",
         project.lifecycle.builderId,
         ...project.lifecycle.candidates.map((candidate) => candidate.residentId),
       ].some((id) => id && activeIds.includes(id)) ||
