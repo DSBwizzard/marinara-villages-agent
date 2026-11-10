@@ -1,3 +1,4 @@
+import { clickCharacterTool } from "./fixtures/browser-diagnostics.mjs";
 import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
 const { authorSceneResponse } = await scenePlaybackFixtures();
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
@@ -570,19 +571,13 @@ await withBrowser(browser, async () => {
         .click();
       await page.getByRole("button", { name: "Open Mara profile", exact: true }).click();
       const person = page.getByRole("region", { name: "Mara profile", exact: true });
-      await person
-        .getByRole("navigation", { name: "Villager profile sections" })
-        .getByRole("button", { name: "Venues", exact: true })
-        .click();
+      await clickCharacterTool(page, "Venue connections");
       await person.getByRole("button", { name: /Projects Open Projects/ }).click();
       await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
       await page.getByRole("button", { name: /^Close/ }).click();
       await page.getByRole("button", { name: "People", exact: true }).click();
       await page.getByRole("button", { name: "Open Mara profile", exact: true }).click();
-      await person
-        .getByRole("navigation", { name: "Villager profile sections" })
-        .getByRole("button", { name: "Venues", exact: true })
-        .click();
+      await clickCharacterTool(page, "Venue connections");
       await person.getByRole("button", { name: /Venue Requests Open Venue Requests/ }).click();
       await expect(page.getByRole("button", { name: "Show all requests", exact: true })).toHaveCount(0);
       await expect(page.getByRole("main").locator('[data-villager-request="residence:eli"]')).toBeVisible();

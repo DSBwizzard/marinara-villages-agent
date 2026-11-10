@@ -11,8 +11,8 @@ export const DOSSIER_STYLES = `
 .${P}-dossier-root,.${P}-directory-root{--dossier-ink:#f0dfbc;--dossier-line:#a39b8460;--notebook-hand:var(--menu-font,Georgia,serif);color:var(--dossier-ink);background:transparent;box-sizing:border-box;height:100%;min-height:0;min-width:0;overflow:visible;position:relative;font:400 20px/1.6 var(--notebook-hand);padding:0;container-type:size}
 .${P}-dossier-root{display:grid;grid-template-columns:minmax(0,1fr) clamp(200px,38%,520px);gap:24px}
 .${P}-dossier-root>.${P}-dossier-desk{height:100%;grid-column:1;grid-row:1;position:static}
-.${P}-dossier-character{grid-column:2;grid-row:1;min-width:0;min-height:0;height:100%;padding-top:72px;display:flex;align-items:start;justify-content:center;pointer-events:none}
-.${P}-dossier-character>img{width:100%;height:100%;object-fit:contain;object-position:center bottom}
+.${P}-dossier-character{grid-column:2;grid-row:1;min-width:0;min-height:0;height:100%;padding-top:18px;display:flex;align-items:start;justify-content:center;pointer-events:none}
+.${P}-dossier-root .${P}-dossier-character>.${P}-dossier-sprite{width:100%;height:100%;overflow:hidden}
 .${P}-dossier-root *,.${P}-directory-root *{box-sizing:border-box}
 .${P}-dossier-root button,.${P}-directory-root button,.${P}-dossier-root summary{font:inherit;min-height:44px;max-width:100%;color:#f0dfbc;border:1px solid #a39b84;border-radius:4px;background:#514157;padding:8px 12px;cursor:pointer;white-space:normal;overflow-wrap:anywhere;box-shadow:none}
 .${P}-dossier-root button:disabled,.${P}-directory-root button:disabled{opacity:.55;cursor:default}

@@ -146,7 +146,7 @@ async function run() {
     const waitingArt = new Promise((resolve) => {
       releaseArt = resolve;
     });
-    await slow.route("**/storybook-background.webp", async (route) => {
+    await slow.route("**/storybook-background-wide.webp", async (route) => {
       artRequests++;
       await waitingArt;
       await route.fallback();
@@ -207,7 +207,7 @@ async function run() {
 
     const firstLoad = await makePage();
     let failFirstArt = true;
-    await firstLoad.route("**/storybook-background.webp", (route) =>
+    await firstLoad.route("**/storybook-background-wide.webp", (route) =>
       failFirstArt ? fulfill(route, { status: 503, body: "Unavailable" }) : route.fallback(),
     );
     await firstLoad.getByRole("button", { name: "Open People", exact: true }).click();

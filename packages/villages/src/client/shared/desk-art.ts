@@ -10,7 +10,7 @@ export async function prepareDeskArtwork(menu: DeskDestination): Promise<void> {
     const image = new Image();
     let url: string | undefined;
     const promise = (async () => {
-      const response = await fetch("/api/capability-packages/villages/assets/storybook-background.webp", {
+      const response = await fetch("/api/capability-packages/villages/assets/storybook-background-wide.webp", {
         signal: AbortSignal.timeout(15_000),
       });
       if (!response.ok) throw new Error("Artwork unavailable");

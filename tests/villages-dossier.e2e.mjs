@@ -683,10 +683,14 @@ await withBrowser(browser, async () => {
         : tabs.getByRole("button", { name: label, exact: true }).click();
     };
     await expect(profile).toBeVisible();
-    await expect(page.getByRole("img", { name: "Mara — neutral sprite", exact: true })).toHaveAttribute(
-      "src",
-      neutralSprite,
+    const neutralArtwork = page.getByRole("img", { name: "Mara — neutral sprite", exact: true });
+    await expect(neutralArtwork.locator("image")).toHaveAttribute("href", neutralSprite);
+    const [inkX, inkY, inkWidth, inkHeight] = (await neutralArtwork.getAttribute("viewBox")).split(" ").map(Number);
+    assert(
+      inkX <= 320 && inkY <= 80 && inkX + inkWidth >= 704 && inkY + inkHeight >= 1450,
+      "Visible-art framing keeps the complete source character",
     );
+    assert(inkWidth < 410 && inkHeight < 1400, "Transparent canvas padding does not shrink the sprite");
     if (width > 700)
       assert.deepEqual(
         await galleryPortraits.evaluateAll((nodes) =>

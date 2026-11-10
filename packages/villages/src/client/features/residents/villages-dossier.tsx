@@ -10,6 +10,7 @@ import { type RelationshipView, VillagesRelationships } from "./villages-relatio
 import { VillagerSignature } from "./villages-signature.js";
 import { VillagerWishJournal } from "./villages-wish-journal.js";
 import type { ResidentSprite } from "../../../shared/contracts/village.js";
+import { ResidentArtwork } from "./ResidentArtwork.js";
 
 export type DossierSection = "overview" | "relationships" | "wishes" | "memories" | "agenda" | "venues";
 export type DossierNavigation = {
@@ -160,7 +161,6 @@ export function VillagerDossier({
   const [manageOpen, setManageOpen] = useState(false);
   const [signatureTools, setSignatureTools] = useState<HTMLDivElement | null>(null);
   const [signatureSurface, setSignatureSurface] = useState<HTMLDivElement | null>(null);
-  const [failedSprite, setFailedSprite] = useState("");
   const [inspected, setInspected] = useState<DossierSection[]>([]);
   const [relationships, setRelationships] = useState<RelationshipView | null>(null);
   const relationshipEpoch = useRef(0);
@@ -559,13 +559,14 @@ export function VillagerDossier({
             </main>
           </PeopleBook>
 
-          <aside
-            className={`${P}-dossier-character`}
-            aria-label={`${name} artwork`}
-            data-sprite={!!neutral && failedSprite !== neutral.url}
-          >
-            {neutral && failedSprite !== neutral.url ? (
-              <img src={neutral.url} alt={`${name} — neutral sprite`} onError={() => setFailedSprite(neutral.url)} />
+          <aside className={`${P}-dossier-character`} aria-label={`${name} artwork`} data-sprite={!!neutral}>
+            {neutral ? (
+              <ResidentArtwork
+                key={neutral.url}
+                url={neutral.url}
+                name={name}
+                fallback={<div className={`${P}-dossier-portrait`}>{portrait}</div>}
+              />
             ) : (
               <div className={`${P}-dossier-portrait`}>{portrait}</div>
             )}
