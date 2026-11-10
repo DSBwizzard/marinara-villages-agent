@@ -1,6 +1,16 @@
 import type { AcceptedEpisode } from "../models/episode-model.js";
-import type { ContinuityEvidence } from "../models/continuity-model.js";
+import type { ContinuityEvidence, ContinuityHolder } from "../models/continuity-model.js";
 import { memoryHash } from "./memory-integrity.js";
+
+export function nativeReceiptSupportsRoom(
+  receipt: AcceptedEpisode["commandReceipts"][number],
+  room: Extract<ContinuityHolder, { kind: "room" }>,
+) {
+  return (
+    (receipt.kind === "structure" && receipt.targetId === JSON.stringify([room.placeId, room.zoneId])) ||
+    (receipt.kind === "discovery" && receipt.targetId === room.placeId)
+  );
+}
 
 /** Routed speech is already canonical evidence; ordinary dialogue needs no earlier keep/classifier. */
 export function episodeSpeechEvidence(episode: AcceptedEpisode, lineId: string): ContinuityEvidence | undefined {

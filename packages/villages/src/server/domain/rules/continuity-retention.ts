@@ -1,19 +1,8 @@
-import type { ContinuityCollection, ContinuityHolder, ContinuityEvidence } from "../models/continuity-model.js";
-import type { AcceptedEpisode } from "../models/episode-model.js";
+import type { ContinuityCollection, ContinuityEvidence } from "../models/continuity-model.js";
 import type { EpisodeCollection } from "../models/episode-model.js";
 import { continuityHolderKey, continuityVersionId, assertContinuityKnowledge } from "./continuity.js";
-import { episodeSpeechEvidence } from "./episode-sources.js";
+import { episodeSpeechEvidence, nativeReceiptSupportsRoom } from "./episode-sources.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
-
-export function nativeReceiptSupportsRoom(
-  receipt: AcceptedEpisode["commandReceipts"][number],
-  room: Extract<ContinuityHolder, { kind: "room" }>,
-) {
-  return (
-    (receipt.kind === "structure" && receipt.targetId === JSON.stringify([room.placeId, room.zoneId])) ||
-    (receipt.kind === "discovery" && receipt.targetId === room.placeId)
-  );
-}
 
 /** Retirement cannot sever the accepted episode, canonical meaning or committed native evidence. */
 export function assertContinuityRetention(continuity: ContinuityCollection, episodes: EpisodeCollection) {

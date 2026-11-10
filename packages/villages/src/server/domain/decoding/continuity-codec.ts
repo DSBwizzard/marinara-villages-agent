@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ContinuityCollection } from "../models/continuity-model.js";
-import { continuityHolderKey } from "../rules/continuity.js";
+import { continuityHolderKey, CONTINUITY_TEXT_BYTES, ROOM_CONTINUITY_TEXT_BYTES } from "../rules/continuity.js";
 import {
   immutableMemoryValue,
   isImmutableMemoryValue,
@@ -40,13 +40,17 @@ export const continuityEvidenceSchema = z
       .strict()
       .optional(),
     positions: z.record(z.string(), z.string()).optional(),
-    excerpt: text(8000),
+    excerpt: text(ROOM_CONTINUITY_TEXT_BYTES),
     kind: z.enum(["speech", "observation", "self", "private", "native", "context", "knowledge"]),
     actorId: id.optional(),
     perceptions: z
       .array(
         z
-          .object({ actorId: id, channel: z.enum(["words", "sight", "sound-only", "private"]), text: text(8000) })
+          .object({
+            actorId: id,
+            channel: z.enum(["words", "sight", "sound-only", "private"]),
+            text: text(ROOM_CONTINUITY_TEXT_BYTES),
+          })
           .strict(),
       )
       .max(32)
@@ -67,7 +71,7 @@ const version = z
     id,
     rootId: id,
     createdRevision: revision.min(1),
-    text: text(2400),
+    text: text(ROOM_CONTINUITY_TEXT_BYTES),
     class: z.enum(["experience", "information", "perspective", "desire", "motivation", "commitment", "open-matter"]),
     about: ids.max(32),
     parentId: id.optional(),
@@ -86,6 +90,7 @@ const version = z
       .optional(),
   })
   .strict()
+  .refine((value) => value.room || Buffer.byteLength(value.text) <= CONTINUITY_TEXT_BYTES)
   .refine((value) =>
     value.administrative ? value.sources.length === 0 && value.administrative.at >= value.at : value.sources.length > 0,
   )

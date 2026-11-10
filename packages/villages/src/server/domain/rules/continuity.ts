@@ -12,6 +12,7 @@ import type {
 import { memoryHash, memoryKnowerId, memoryRequire, memoryString, memoryTimestamp } from "./memory-integrity.js";
 
 export const CONTINUITY_TEXT_BYTES = 2400;
+export const ROOM_CONTINUITY_TEXT_BYTES = 16000;
 export const continuityHolderKey = (holder: ContinuityHolder) =>
   holder.kind === "actor"
     ? JSON.stringify(["actor", holder.id, holder.incarnation])
@@ -366,7 +367,7 @@ export function applyContinuityWrite(
   const created: ContinuityVersion[] = [];
   for (const { key, holder, head, version: prior } of before) {
     const text = write.text ?? prior?.text;
-    memoryString(text, CONTINUITY_TEXT_BYTES);
+    memoryString(text, holder.kind === "room" ? ROOM_CONTINUITY_TEXT_BYTES : CONTINUITY_TEXT_BYTES);
     memoryRequire(!prior?.closed || write.current !== true, "closed continuity cannot be reopened");
     const version: ContinuityVersion = {
       id: continuityVersionId(context.seed, operationId, holder),
@@ -609,7 +610,11 @@ export function protectContinuity(
   memoryString(operationId, 160);
   memoryRequire(!operationId.startsWith("narration-abandoned:"), "reserved narration receipt namespace");
   memoryTimestamp(at);
-  if ("text" in action) memoryString(action.text, CONTINUITY_TEXT_BYTES);
+  if ("text" in action)
+    memoryString(
+      action.text,
+      holders.every((holder) => holder.kind === "room") ? ROOM_CONTINUITY_TEXT_BYTES : CONTINUITY_TEXT_BYTES,
+    );
   const fingerprint = memoryHash([target, holders, action]);
   const receipt = collection.receipts[operationId];
   if (receipt) {

@@ -7,7 +7,7 @@ import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { narrationSourceSchema, type NarrationSource } from "./narration-contract.js";
 import { exactInputSpan } from "./source-span.js";
 import { contactNeighbors, contactPosition, type ContactMove } from "./venue-contact.js";
-import { nativeReceiptSupportsRoom } from "./continuity-retention.js";
+import { nativeReceiptSupportsRoom } from "./episode-sources.js";
 
 type Actor = Extract<ContinuityHolder, { kind: "actor" }>;
 export type NarrationSourceContext = {
@@ -58,7 +58,10 @@ function inputMoment(value: Extract<NarrationSource, { input: string }>, context
   return { index, side: "before" in at ? ("before" as const) : ("after" as const) };
 }
 
-export function narrationPositions(context: NarrationSourceContext, moment: { index: number; side: "before" | "after" }) {
+export function narrationPositions(
+  context: NarrationSourceContext,
+  moment: { index: number; side: "before" | "after" },
+) {
   return Object.fromEntries(context.actors.map((actor) => [actor.id, position(context, actor.id, moment)]));
 }
 
@@ -259,8 +262,7 @@ export function bindNarrationSource(
   }
   memoryRequire(!ref.act || source.kind === "speech", "only actual communication supports an offer decision");
   if (ref.act) source.act = ref.act;
-  if (source.moment)
-    source.positions = narrationPositions(context, source.moment);
+  if (source.moment) source.positions = narrationPositions(context, source.moment);
   source.id = "source-" + memoryHash([context.episodeId, ref, source]).slice(0, 32);
   return source;
 }

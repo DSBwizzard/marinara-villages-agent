@@ -4,6 +4,7 @@ import { continuityEvidenceSchema, continuityHolderSchema } from "./continuity-c
 import { coerceSession } from "./scene-codec.js";
 import { continuityHolderKey, continuitySourceUnit, continuityVersionUnit } from "../rules/continuity.js";
 import type { ContinuityHolder } from "../models/continuity-model.js";
+import { nativeReceiptSupportsRoom } from "../rules/episode-sources.js";
 import { immutableMemoryValue, isImmutableMemoryValue, memoryHash, memoryRequire } from "../rules/memory-integrity.js";
 
 const id = z.string().min(1).max(160),
@@ -22,10 +23,7 @@ const episode = z
     responseDigest: z.string().regex(/^[a-f0-9]{64}$/),
     admittedContinuityRevision: z.number().int().nonnegative().safe(),
     privateInput: z.string().max(4000),
-    actors: z
-      .array(z.object({ id, incarnation: id, zoneId: id }).strict())
-      .min(1)
-      .max(32),
+    actors: z.array(z.object({ id, incarnation: id, zoneId: id }).strict()).max(32),
     segments: z.array(z.unknown()).max(24),
     grounding: z.array(continuityEvidenceSchema).max(1024),
     continuityVersionIds: ids,
@@ -78,9 +76,19 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
   const value = episode.parse(raw) as AcceptedEpisode;
   memoryRequire(value.seed === seed && value.acceptedAt >= value.capturedAt, "invalid accepted episode world or time");
   const cast = new Map(value.actors.map((actor) => [actor.id, actor]));
+  memoryRequire(
+    value.actors.length > 0 ||
+      (!value.sceneId &&
+        !value.privateInput &&
+        !value.segments.length &&
+        !value.offered.length &&
+        value.commandReceipts.length > 0),
+    "an unobserved native episode cannot invent Scene participation",
+  );
   for (const receipt of value.commandReceipts)
     memoryRequire(
-      (receipt.observedBy ?? []).every((id) => receipt.witnesses.includes(id)),
+      receipt.witnesses.every((id) => cast.has(id)) &&
+        (receipt.observedBy ?? []).every((id) => receipt.witnesses.includes(id)),
       "native observer was not an admitted witness",
     );
   memoryRequire(cast.size === value.actors.length, "duplicate episode actor");
@@ -241,7 +249,13 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
     "duplicate native receipt",
   );
   memoryRequire(
-    !value.room || (value.room.kind === "room" && cast.get("player")?.zoneId === value.room.zoneId),
+    !value.room ||
+      (value.room.kind === "room" &&
+        (cast.get("player")?.zoneId === value.room.zoneId ||
+          (!value.sceneId &&
+            !value.privateInput &&
+            !value.segments.length &&
+            value.commandReceipts.some((receipt) => nativeReceiptSupportsRoom(receipt, value.room!))))),
     "invalid episode room scope",
   );
   const holderKeys = new Set([

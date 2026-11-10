@@ -1,4 +1,6 @@
 import { chooseLetterFont } from "../../../shared/helpers/letter-font-selection.js";
+import { initializeRoomContinuity } from "../../domain/rules/native-continuity.js";
+import { randomVillageSeed } from "../../domain/rules/village-clock.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
 import { inspectedLoreUse } from "../../domain/rules/lore-context.js";
 import { randomUUID } from "node:crypto";
@@ -212,6 +214,7 @@ export function createFoundingSetup({
     const addedResidents: VillagerCard[] = [];
     await mutateVillageState((state) => {
       if (isVillageFounded(state)) throw conflict("The village changed during setup. Reload it before saving.");
+      state.seed ||= randomVillageSeed();
       state.playerBackground = playerBackground;
       state.name = name;
       state.setting = setting;
@@ -237,6 +240,16 @@ export function createFoundingSetup({
         state.personalizeVenueImagesByDefault = readBool(input.personalizeVenueImagesByDefault);
       state.homeBuildingNames = readHomeBuildingNames(input.homeBuildingNames ?? state.homeBuildingNames);
       state.setupAt ||= villageNow().toISOString();
+      for (const venue of state.venues)
+        for (const zone of venue.zones ?? [])
+          initializeRoomContinuity(
+            state,
+            venue.id,
+            zone.id,
+            zone.description,
+            "founding:" + state.setupAt,
+            state.setupAt,
+          );
       state.progressEngineVersion = 1;
       state.opening = initialOpening([...assignedResidents], communityVenueId, randomUUID());
       state.foundingPreparation = {
