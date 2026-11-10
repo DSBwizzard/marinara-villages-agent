@@ -1,7 +1,13 @@
 import type { ContinuityCollection, ContinuityHolder } from "../models/continuity-model.js";
 import type { AcceptedEpisode, EpisodeCollection } from "../models/episode-model.js";
 import { episodeSourceGraph, episodeUnit, readAcceptedEpisode } from "../decoding/episode-codec.js";
-import { continuityHolderKey, continuityProtectionUnits, continuitySourceUnit } from "./continuity.js";
+import {
+  continuityHolderKey,
+  continuityProtectionUnits,
+  continuitySourceUnit,
+  actorContinuityEvidence,
+} from "./continuity.js";
+import { episodeSpeechEvidence } from "./episode-sources.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 
 export const emptyEpisodes = (): EpisodeCollection => ({ format: 1, revision: 0, records: [] });
@@ -55,7 +61,11 @@ export function actorEpisodeView(
   history: EpisodeCollection,
 ) {
   assertEpisodeScope(episode, history);
-  return projectActorEpisode(episode, holder, blockedUnits(continuity, holder, episodeSourceGraph(history.records)));
+  return projectActorEpisode(
+    episode,
+    holder,
+    blockedUnits(continuity, holder, episodeSourceGraph(history.records, holder)),
+  );
 }
 function projectActorEpisode(
   episode: AcceptedEpisode,
@@ -146,11 +156,18 @@ export function gmEpisodeView(
   history: EpisodeCollection,
 ) {
   assertEpisodeScope(episode, history);
-  const graph = episodeSourceGraph(history.records);
   return projectGmEpisode(
     episode,
     holders,
-    new Map(holders.map((holder) => [continuityHolderKey(holder), blockedUnits(continuity, holder, graph)])),
+    new Map(
+      holders.map((holder) => [
+        continuityHolderKey(holder),
+        blockedUnits(continuity, holder, episodeSourceGraph(history.records, holder)),
+      ]),
+    ),
+    episode.room
+      ? blockedUnits(continuity, episode.room, episodeSourceGraph(history.records, episode.room))
+      : new Set(),
   );
 }
 function assertEpisodeScope(episode: AcceptedEpisode, history: EpisodeCollection) {
@@ -160,15 +177,36 @@ function assertEpisodeScope(episode: AcceptedEpisode, history: EpisodeCollection
     "episode is outside the supplied history scope",
   );
 }
+
+export function recallEpisodeSpeech(
+  episode: AcceptedEpisode,
+  lineId: string,
+  continuity: ContinuityCollection,
+  holder: Extract<ContinuityHolder, { kind: "actor" }>,
+  history: EpisodeCollection,
+) {
+  const view = actorEpisodeView(episode, continuity, holder, history);
+  const source = episodeSpeechEvidence(episode, lineId);
+  if (!source || !view?.segments.some((line) => line.id === lineId)) return;
+  const projected = actorContinuityEvidence(source, holder.id);
+  return view.segments.some(
+    (line) =>
+      line.id === lineId && line.text === projected.excerpt && line.channel === projected.perceptions[0]?.channel,
+  )
+    ? projected
+    : undefined;
+}
 function projectGmEpisode(
   episode: AcceptedEpisode,
   holders: Extract<ContinuityHolder, { kind: "actor" }>[],
   protections: Map<string, Set<string>>,
+  roomProtection: Set<string>,
 ) {
   const relevant = holders.filter((holder) => admitted(episode, holder));
   if (!relevant.length) return null;
   const blocked = relevant.map((holder) => protections.get(continuityHolderKey(holder))!);
-  const inputProtected = blocked.some((units) => protectedUnit(episode, "input", units));
+  const inputProtected =
+    blocked.some((units) => protectedUnit(episode, "input", units)) || protectedUnit(episode, "input", roomProtection);
   const views = relevant.map((holder, index) => ({
     holder,
     view: projectActorEpisode(episode, holder, blocked[index])!,
@@ -190,6 +228,7 @@ function projectGmEpisode(
       const narrator =
         line.kind === "narration" &&
         !line.contactHidden &&
+        !protectedUnit(episode, line.id, roomProtection) &&
         !blocked.some((units) => protectedUnit(episode, line.id, units));
       if (!perceived.length && !narrator) return [];
       return [
@@ -221,12 +260,21 @@ export function selectEpisodeHistory(
       .toLocaleLowerCase("en-US")
       .match(/[\p{L}\p{N}]+/gu) ?? [],
   );
-  const graph = episodeSourceGraph(collection.records),
-    protections = new Map(
-      holders.map((holder) => [continuityHolderKey(holder), blockedUnits(continuity, holder, graph)]),
-    );
+  const protections = new Map(
+    holders.map((holder) => [
+      continuityHolderKey(holder),
+      blockedUnits(continuity, holder, episodeSourceGraph(collection.records, holder)),
+    ]),
+  );
   const candidates = collection.records.flatMap((episode, index) => {
-    const view = projectGmEpisode(episode, holders, protections);
+    const view = projectGmEpisode(
+      episode,
+      holders,
+      protections,
+      episode.room
+        ? blockedUnits(continuity, episode.room, episodeSourceGraph(collection.records, episode.room))
+        : new Set(),
+    );
     if (!view) return [];
     const text = JSON.stringify(view),
       words = new Set(
@@ -245,9 +293,9 @@ export function selectEpisodeHistory(
       },
     ];
   });
-  const shared = recentSharedEpisodes(collection, holders).map((episode) =>
-    candidates.find((row) => row.episode.id === episode.id)!,
-  );
+  const shared = recentSharedEpisodes(collection, holders)
+    .map((episode) => candidates.find((row) => row.episode.id === episode.id)!)
+    .sort((a, b) => b.index - a.index);
   const recent = candidates.slice(-2),
     rest = candidates
       .slice(0, -2)

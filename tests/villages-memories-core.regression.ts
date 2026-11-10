@@ -5,10 +5,8 @@ import {
   applyMemoryRepair,
 } from "../packages/villages/src/server/domain/rules/memory-application.js";
 import { memoryHash, readMemoryCollection } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
-import {
-  estimatedMemoryTokens,
-  memoryProtectionContext,
-} from "../packages/villages/src/server/domain/rules/memory-protection.js";
+import { memoryProtectionContext } from "../packages/villages/src/server/domain/rules/memory-protection.js";
+import { estimatedTextTokens } from "../packages/villages/src/server/domain/rules/text-recall.js";
 import { recallMemories } from "../packages/villages/src/server/domain/rules/memory-recall.js";
 import { semanticContext } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -91,7 +89,7 @@ await runCase("memories/context", () => {
     audience: ["player", "aqua"],
     query: "bakery",
     context: "greenhouse repairs",
-    budget: estimatedMemoryTokens(JSON.stringify({ memories: [primary] })),
+    budget: estimatedTextTokens(JSON.stringify({ memories: [primary] })),
   });
   assert.deepEqual(
     constrained.candidates.map((row) => row.id),
@@ -519,7 +517,7 @@ await runCase("memories/protection", () => {
     protection: conflicting.context.protection,
   });
   assert.ok(system.tokens <= 1800);
-  assert.equal(system.tokens, estimatedMemoryTokens(system.serialized));
+  assert.equal(system.tokens, estimatedTextTokens(system.serialized));
   assert.throws(
     () =>
       recallMemories(repaired, {

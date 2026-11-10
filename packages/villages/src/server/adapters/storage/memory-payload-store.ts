@@ -2,20 +2,19 @@ import { createHash, randomUUID } from "node:crypto";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 type CapabilityDocumentRecord = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
 import type { VillageState } from "../../domain/models/world.js";
+import { immutableMemoryValue, memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
+import { readContinuity } from "../../domain/decoding/continuity-codec.js";
+import { readEpisodes } from "../../domain/decoding/episode-codec.js";
+import { emptyContinuity } from "../../domain/rules/continuity.js";
+import { emptyEpisodes } from "../../domain/rules/episodes.js";
+import { assertContinuityRetention } from "../../domain/rules/continuity-retention.js";
+import { MEMORY_PAGE_KIND, type MemoryPageData } from "./memory-pages.js";
 import {
-  immutableMemoryCollection,
-  immutableMemoryValue,
-  memoryObject,
-  memoryRequire,
-} from "../../domain/rules/memory-integrity.js";
-import { readMemorySceneStates, readMemoryReceipts } from "../../domain/rules/village-memories.js";
-import {
-  encodeMemoryPages,
-  decodeMemoryPages,
-  MEMORY_PAGE_KIND,
-  type MemoryPageLayout,
-  type MemoryPageData,
-} from "./memory-pages.js";
+  encodeContinuityPages,
+  decodeContinuityPages,
+  type ContinuityPageLayout,
+  type ContinuityPayload,
+} from "./continuity-pages.js";
 import { isRepairSimulation } from "./repair-gate.js";
 import { emptyPlaceRegistry, readPlaceRegistry } from "../../domain/rules/places.js";
 import { VILLAGES_PACKAGE_ID } from "../engine/runtime-host.js";
@@ -24,7 +23,9 @@ export const MEMORY_PAYLOAD_KIND = "memory-payload";
 const INTENT_KIND = "memory-payload-intent";
 const PAYLOAD_ID = /^villages-memory-([a-f0-9]{32})-[a-f0-9-]{36}$/;
 export type MemoryHead = { id: string; digest: string; revision: number };
-export type MemoryPayload = Pick<VillageState, "memories" | "memoryScenes" | "memoryReceipts" | "worldPlaces">;
+export type MemoryPayload = ContinuityPayload;
+const payloadRevision = (value: MemoryPayload) =>
+  value.continuity.revision + value.episodes.revision + value.worldPlaces.revision;
 export const memoryDigest = (text: string) => createHash("sha256").update(text).digest("hex");
 const worldKey = (state: Pick<VillageState, "seed" | "setupAt">) =>
   memoryDigest(JSON.stringify([state.seed, state.setupAt])).slice(0, 32);
@@ -47,26 +48,24 @@ export function assertMemoryWorld(head: MemoryHead, state: Pick<VillageState, "s
 }
 export function memoryPayload(state: VillageState): MemoryPayload {
   return {
-    memories: state.memories,
-    memoryScenes: state.memoryScenes,
-    memoryReceipts: state.memoryReceipts,
+    continuity: state.continuity,
+    episodes: state.episodes,
     worldPlaces: state.worldPlaces,
   };
 }
 export function emptyMemoryPayload(): MemoryPayload {
   return {
-    memories: { format: 1, revision: 0, records: [] },
-    memoryScenes: {},
-    memoryReceipts: {},
+    continuity: emptyContinuity(),
+    episodes: emptyEpisodes(),
     worldPlaces: emptyPlaceRegistry(),
   };
 }
 function isEmpty(payload: MemoryPayload) {
   return (
-    !payload.memories.records.length &&
-    !payload.memories.revision &&
-    !Object.keys(payload.memoryScenes).length &&
-    !Object.keys(payload.memoryReceipts).length &&
+    !payload.continuity.records.length &&
+    !payload.continuity.revision &&
+    !payload.episodes.records.length &&
+    !payload.episodes.revision &&
     !payload.worldPlaces.revision &&
     !Object.keys(payload.worldPlaces.places).length &&
     !Object.keys(payload.worldPlaces.npcs).length &&
@@ -95,16 +94,16 @@ export async function memoryPayloadDocuments(
 }
 /** Bulk records are immutable. The Village's CAS is their only publication point. */
 export function createMemoryPayloadStore(documents: CapabilityDocumentStore) {
-  type Cached = { head: MemoryHead; value: MemoryPayload; layout: MemoryPageLayout };
+  type Cached = { head: MemoryHead; value: MemoryPayload; layout: ContinuityPageLayout };
   let cached: Cached | undefined, candidateCache: Cached | undefined;
-  const normalize = (raw: MemoryPayload): MemoryPayload => {
-    const memories = immutableMemoryCollection(raw.memories);
-    return immutableMemoryValue({
-      memories,
-      memoryScenes: readMemorySceneStates(raw.memoryScenes, memories),
-      memoryReceipts: readMemoryReceipts(raw.memoryReceipts),
+  const normalize = (raw: MemoryPayload, seed: string): MemoryPayload => {
+    const value = immutableMemoryValue({
+      continuity: readContinuity(raw.continuity, seed),
+      episodes: readEpisodes(raw.episodes, seed),
       worldPlaces: readPlaceRegistry(raw.worldPlaces),
     });
+    assertContinuityRetention(value.continuity, value.episodes);
+    return value;
   };
   function validateRecord(record: CapabilityDocumentRecord, head: MemoryHead) {
     memoryRequire(
@@ -116,7 +115,7 @@ export function createMemoryPayloadStore(documents: CapabilityDocumentStore) {
     );
     memoryObject(record.data, ["format", "world", "payload"]);
     memoryRequire(
-      record.data.format === 2 &&
+      record.data.format === 3 &&
         record.data.world === PAYLOAD_ID.exec(head.id)?.[1] &&
         typeof record.data.payload === "string" &&
         memoryDigest(record.data.payload) === head.digest,
@@ -129,12 +128,13 @@ export function createMemoryPayloadStore(documents: CapabilityDocumentStore) {
     if (!record) return null;
     validateRecord(record, head);
     if (!isRepairSimulation(documents) && cached?.head.id === head.id && cached.head.digest === head.digest) {
-      memoryRequire(cached.value.memories.revision === head.revision, "history revision changed");
+      memoryRequire(payloadRevision(cached.value) === head.revision, "history revision changed");
       return cached.value;
     }
-    const decoded = await decodeMemoryPages(
+    const decoded = await decodeContinuityPages(
       JSON.parse((record.data as { payload: string }).payload),
       worldKey(state),
+      state.seed,
       async (id) => {
         const row = await documents.getById(VILLAGES_PACKAGE_ID, id);
         if (!row) return null;
@@ -145,8 +145,8 @@ export function createMemoryPayloadStore(documents: CapabilityDocumentStore) {
         return row.data as MemoryPageData;
       },
     );
-    const value = normalize(decoded.value);
-    memoryRequire(value.memories.revision === head.revision, "history revision changed");
+    const value = normalize(decoded.value, state.seed);
+    memoryRequire(payloadRevision(value) === head.revision, "history revision changed");
     if (!isRepairSimulation(documents)) cached = { head, value, layout: decoded.layout };
     return value;
   }
@@ -156,8 +156,8 @@ export function createMemoryPayloadStore(documents: CapabilityDocumentStore) {
     expectedRevision: number,
   ): Promise<MemoryHead | null> {
     candidateCache = undefined;
-    const value = normalize(memoryPayload(state)),
-      encoded = encodeMemoryPages(
+    const value = normalize(memoryPayload(state), state.seed),
+      encoded = encodeContinuityPages(
         value,
         worldKey(state),
         !isRepairSimulation(documents) &&
@@ -175,7 +175,7 @@ export function createMemoryPayloadStore(documents: CapabilityDocumentStore) {
       : {
           id: "villages-memory-" + worldKey(state) + "-" + randomUUID(),
           digest,
-          revision: value.memories.revision,
+          revision: payloadRevision(value),
         };
     if (!candidate && !previous) return null;
     const stamp = new Date().toISOString();
@@ -221,7 +221,7 @@ export function createMemoryPayloadStore(documents: CapabilityDocumentStore) {
         name: "Memories",
         description: "Immutable private history",
         // Opaque prose has no media ownership and must fit the host's reference scan.
-        data: { format: 2, world: worldKey(state), payload: serialized },
+        data: { format: 3, world: worldKey(state), payload: serialized },
         createdAt: stamp,
         updatedAt: stamp,
       });

@@ -1,7 +1,4 @@
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
-import { departureHistoryOwner } from "../../adapters/storage/departure-history.js";
-import { worldWishOwners, validateWorldWishHistory } from "../../adapters/storage/world-wishes.js";
-import { capturedWorldOwners, validateCapturedSources } from "../../adapters/storage/captured-admissions.js";
 import { createHash } from "node:crypto";
 import type {
   RepairCheckpoint,
@@ -15,10 +12,9 @@ import { memoryObject, memoryRequire } from "../../domain/rules/memory-integrity
 import { conflict } from "../../domain/rules/errors.js";
 import type { RepairDocument, RepairWrite } from "../../adapters/storage/repair-gate.js";
 import { createRepairSnapshots } from "../../adapters/storage/repair-snapshot-store.js";
-import { readRelationshipRoot, relationshipDocumentId } from "../../adapters/storage/relationship-payload-store.js";
+import { createMemoryPayloadStore, readMemoryHead } from "../../adapters/storage/memory-payload-store.js";
 import {
-  sceneHistoryOwners,
-  sceneWishOwners,
+  readSceneHistoryRoot,
   validateSceneHistory,
   readActiveSceneOwner,
 } from "../../adapters/storage/scene-history.js";
@@ -33,7 +29,6 @@ export const REPAIR_HISTORY_KIND = "repair-history",
 export const REPAIR_GAME_KINDS = [
   "venue-visit",
   "venue-active",
-  "relationships",
   "repair-annotation",
   "scene-terminal",
   "project-scene-evidence",
@@ -108,8 +103,7 @@ function validateScenePointers(rows: RepairDocument[], owner: { seed: string; se
       const scene = rows.find((row) => row.id === "villages-venue-visit-" + id);
       memoryRequire(scene?.kind === "venue-visit", "snapshot Scene pointer ownership is missing or changed");
       memoryObject(scene.data);
-      for (const context of [...sceneHistoryOwners(scene.data), ...sceneWishOwners(scene.data)])
-        memoryRequire(owns(context.scope, owner), "snapshot Scene pointer belongs to another world");
+      readSceneHistoryRoot(scene.data);
       memoryRequire(
         scene?.kind === "venue-visit" && scene.data.id === id && scene.data.villageSeed === owner.seed,
         "snapshot Scene pointer ownership is missing or changed",
@@ -135,22 +129,15 @@ function validateSources(rows: RepairDocument[], owner: { seed: string; setupAt:
         row.id === "villages-village" && owns(row.data as VillageState, owner),
         "snapshot Village ownership changed",
       );
-      departureHistoryOwner(row.data);
-      worldWishOwners(row.data);
-      capturedWorldOwners(row.data);
-    } else if (row.kind === "relationships") {
-      const root = readRelationshipRoot(row.data, owner);
-      memoryRequire(row.id === relationshipDocumentId(root.seed), "snapshot relationship ownership changed");
+      memoryRequire(row.data.version === 18, "unsupported Village snapshot format");
     } else if (row.kind === "venue-visit") {
       memoryRequire(
         row.id === "villages-venue-visit-" + row.data.id && row.data.villageSeed === owner.seed,
         "snapshot Scene ownership changed",
       );
-      for (const context of [...sceneHistoryOwners(row.data), ...sceneWishOwners(row.data)])
-        memoryRequire(
-          context.scope.seed === owner.seed && context.scope.setupAt === owner.setupAt,
-          "snapshot Scene belongs to another world",
-        );
+      readSceneHistoryRoot(row.data);
+      for (const scene of [row.data, row.data.operation?.snapshot].filter(Boolean))
+        if (scene.continuity) memoryRequire(owns(scene.continuity, owner), "snapshot Scene belongs to another world");
     } else
       for (const key of ["seed", "villageSeed"])
         if (Object.hasOwn(row.data, key))
@@ -203,28 +190,24 @@ export function createRepairStorage(documents: CapabilityDocumentStore, artifact
       proposed.map((write) => ({ id: (write.after ?? write.before)!.id, after: write.after })),
     );
     await readActiveSceneOwner(view);
-    await validateCapturedSources(
-      documents,
-      writes.flatMap((write) => (write.before ? [write.before] : [])),
-    );
-    await validateCapturedSources(
-      view,
-      writes.flatMap((write) => (write.after ? [write.after] : [])),
-    );
-    await validateWorldWishHistory(
-      documents,
-      writes
-        .map((write) => write.before)
-        .filter((row) => row?.kind === "village")
-        .map((row) => row!.data),
-    );
-    await validateWorldWishHistory(
-      view,
-      writes
-        .map((write) => write.after)
-        .filter((row) => row?.kind === "village")
-        .map((row) => row!.data),
-    );
+    for (const [source, rows] of [
+      [documents, writes.flatMap((write) => (write.before ? [write.before] : []))],
+      [view, writes.flatMap((write) => (write.after ? [write.after] : []))],
+    ] as const)
+      for (const row of rows)
+        if (row.kind === "village") {
+          memoryObject(row.data);
+          memoryRequire(
+            row.data.version === 18 && typeof row.data.seed === "string" && typeof row.data.setupAt === "string",
+            "unsupported Village snapshot format",
+          );
+          const head = readMemoryHead(row.data.memoryHead);
+          if (head)
+            memoryRequire(
+              await createMemoryPayloadStore(source as CapabilityDocumentStore).read(head, row.data as VillageState),
+              "snapshot continuity is missing",
+            );
+        }
     await validateSceneHistory(
       documents,
       writes.filter((write) => write.before?.kind === "venue-visit").map((write) => write.before!.data),

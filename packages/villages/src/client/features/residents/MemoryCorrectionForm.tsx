@@ -32,20 +32,23 @@ export function MemoryCorrectionForm({
       active.current = false;
     };
   }, []);
-  const tooLong = new TextEncoder().encode(text).length > 600;
+  const tooLong = new TextEncoder().encode(text).length > 2400;
   const change = () => {
     pending.current = null;
     setError("");
   };
   const save = async () => {
     if (saving.current || busy || !text.trim() || tooLong || !knowers.length) return;
+    if (!inspection.target) {
+      setError("Refresh the memory before correcting it.");
+      return;
+    }
     const { entry } = inspection;
     // An uncertain response retries the exact operation; never silently rebase onto new history.
     pending.current ??= {
       operationId: createVillagesClientId(),
       seed: inspection.seed,
-      expectedCollectionRevision: inspection.revision,
-      target: { id: entry.id, revision: entry.revision, rootRevision: entry.rootRevision },
+      target: inspection.target,
       knowers: [...knowers],
       text,
     };

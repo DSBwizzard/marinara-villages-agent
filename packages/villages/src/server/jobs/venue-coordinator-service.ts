@@ -7,7 +7,7 @@ import { withVillageClockWork } from "../adapters/time/clock-gate.js";
 import { asRecord } from "../domain/rules/coerce.js";
 import { createDocumentMutator } from "../adapters/storage/document-store.js";
 import {
-  sceneHistoryOwners,
+  readSceneHistoryRoot,
   readSceneIndex,
   readSceneWorkIndex,
   publishSceneOperationHistory,
@@ -119,12 +119,12 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
         record.id === prefix + id && record.packageId === VILLAGES_PACKAGE_ID && record.kind === "venue-visit",
         "invalid Scene operation owner identity",
       );
-      sceneHistoryOwners(record.data);
+      readSceneHistoryRoot(record.data);
       memoryRequire((record.data as { id?: string }).id === id, "Scene operation owner identity changed");
       const data = structuredClone(record.data) as Record<string, unknown>;
       await mutate(data, store);
       await publishSceneOperationHistory(store, record.data as Record<string, unknown>, data);
-      sceneHistoryOwners(data);
+      readSceneHistoryRoot(data);
       const saved = await store.update({
         id: record.id,
         packageId: VILLAGES_PACKAGE_ID,
@@ -148,7 +148,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
   ) {
     return update(id, async (data, documents) => {
       const scene = coerceSession({
-        version: 4,
+        version: 5,
         id: data.id,
         villageSeed: data.villageSeed,
         participants: data.participants,
@@ -249,12 +249,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
         const record = await documents.getById(VILLAGES_PACKAGE_ID, prefix + current.sessionId);
         memoryRequire(record, "Scene checkpoint owner is missing");
         assertVenueOwnership(record.data as Record<string, unknown>);
-        const saved = await evidence.prepare(
-          result,
-          owner,
-          claim.token,
-          (record.data as Record<string, unknown>).operation,
-        );
+        const saved = await evidence.prepare(result, owner, claim.token);
         await evidence.publish(new Map([[saved.ref.id, saved.data]]));
         current.operation.checkpoints[stage] = saved.value;
       } else current.operation.checkpoints[stage] = immutableMemoryValue(result);
@@ -977,7 +972,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       record.id === prefix + id && record.packageId === VILLAGES_PACKAGE_ID && record.kind === "venue-visit",
       "invalid Scene operation owner identity",
     );
-    sceneHistoryOwners(data);
+    readSceneHistoryRoot(data);
     memoryRequire(data.id === id, "Scene operation owner identity changed");
     const operation = data.operation as VenueOperation | undefined;
     const rejected = (data.rejectedSubmissions as VenueScene["rejectedSubmissions"])?.find(
@@ -1053,6 +1048,12 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       const { submissions } = await readSceneWorkIndex(documents, data);
       // Expired, uncommitted generation is archived evidence, not work to resume at startup.
       if (
+        submissions.some(
+          (turn) => turn.acceptance.status === "held" && turn.narration?.readset.source.operationId === operation.id,
+        )
+      )
+        continue;
+      if (
         data.status === "closed" &&
         data.endReason === "inactivity" &&
         ["turn", "greet"].includes(operation.kind) &&
@@ -1066,6 +1067,13 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
         const latest = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, prefix + sceneId);
         const current = asRecord(latest?.data).operation as VenueOperation | undefined;
         if (!current || current.status === "complete" || current.token !== operation.token) return;
+        const currentScene = await readSceneWorkIndex(documents, latest!.data);
+        if (
+          currentScene.submissions.some(
+            (turn) => turn.acceptance.status === "held" && turn.narration?.readset.source.operationId === current.id,
+          )
+        )
+          return;
         await update(sceneId, (saved) => {
           const op = saved.operation as VenueOperation | undefined;
           if (!op || op.token !== current.token || op.status === "complete") return;

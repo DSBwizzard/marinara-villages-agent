@@ -38,7 +38,11 @@ import { decodeVillageClock } from "../rules/clock-state.js";
 import { asFraction, asIsoString, asRecord, asString, asStringArray, asTrimmedString } from "../rules/coerce.js";
 import { coerceFoundingTasks } from "../rules/founding-tasks.js";
 import { coerceLoreTokenBudget, coerceSelectedLorebookIds, DEFAULT_LORE_TOKEN_BUDGET } from "../rules/lore-policy.js";
-import { memoryRequire, readMemoryCollection } from "../rules/memory-integrity.js";
+import { memoryRequire } from "../rules/memory-integrity.js";
+import { readContinuity } from "./continuity-codec.js";
+import { readEpisodes } from "./episode-codec.js";
+import { emptyContinuity } from "../rules/continuity.js";
+import { emptyEpisodes } from "../rules/episodes.js";
 import { readPlaceContinuity, readPlaceDescription } from "../rules/zone-continuity.js";
 import { coerceVillageNarrationStyle, defaultVillageNarrationStyle } from "../rules/narration-style.js";
 import { readOpening } from "../rules/opening-project.js";
@@ -84,16 +88,14 @@ import { readNarrativeState } from "./narrative-codec.js";
 import { defaultVenueSpace, validVenueClasses, venueResidentIds } from "../rules/venue-model.js";
 import { chooseAgendaZone, synchronizeVenueZones, ZONE_KINDS } from "../rules/venue-zones.js";
 import { randomVillageSeed, VILLAGE_WEEKDAYS } from "../rules/village-clock.js";
-import { readMemorySceneStates, readMemoryReceipts } from "../rules/village-memories.js";
 import { zonePictureBaseline, zonePicturePhysicalRecord } from "../rules/zone-picture.js";
 
 export function defaultVillageState(): VillageState {
   return {
     worldPlaces: emptyPlaceRegistry(),
-    version: 17,
-    memories: { format: 1, revision: 0, records: [] },
-    memoryScenes: {},
-    memoryReceipts: {},
+    version: 18,
+    continuity: emptyContinuity(),
+    episodes: emptyEpisodes(),
     backgroundReceipts: {},
     exchangeReceipts: {},
     noticeSequence: 0,
@@ -182,11 +184,16 @@ function coerceVillager(value: unknown): VillageVillager | null {
   if (Object.hasOwn(raw, "wishHead")) throw new Error("Wish history was not loaded for this operation.");
   const characterId = asTrimmedString(raw.characterId);
   if (characterId.length === 0) return null;
+  memoryRequire(
+    typeof raw.incarnation === "string" && raw.incarnation.length > 0 && raw.incarnation.length <= 160,
+    "missing resident incarnation",
+  );
   const cardSnapshot = coerceVillagerCardSnapshot(raw.cardSnapshot);
   if (!cardSnapshot || cardSnapshot.id !== characterId) return null;
   if (typeof raw.letterFontId !== "string" || raw.letterFontId.length > 120)
     throw new Error("This saved resident needs a current writing-style assignment.");
   return {
+    incarnation: raw.incarnation,
     characterId,
     letterFontId: raw.letterFontId,
     agendaGeneration: asString(raw.agendaGeneration),
@@ -1144,15 +1151,6 @@ function coercePendingDecisions(value: unknown): VillagePendingDecision[] {
     })
     .slice(-MAX_SIMULATION_RECORDS);
 }
-/** Native runtime values and their exact JSON storage representation share one strict schema. */
-function memoryField(value: unknown): unknown {
-  if (typeof value !== "string") return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    throw new Error("Invalid saved Memories JSON.");
-  }
-}
 function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
   if (value === undefined || value === null) return undefined;
   if (typeof value !== "object" || Array.isArray(value))
@@ -1371,8 +1369,8 @@ function readZoneObservation(
 
 export function coerceVillageState(value: unknown): VillageState {
   const raw = asRecord(value);
-  if (value != null && raw.version !== 17) throw new Error("Unsupported Village format. Start a fresh Village.");
-  if (value != null) memoryRequire(raw.memories && raw.memoryScenes, "current Village memory data is missing");
+  if (value != null && raw.version !== 18) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (value != null) memoryRequire(raw.continuity && raw.episodes, "current Village continuity data is missing");
   if (raw.foundedAt && raw.socialContractVersion !== 2)
     throw new Error(
       "This Village uses an unsupported relationship contract. Create an independent new Village; its saved data has not been changed.",
@@ -1385,11 +1383,8 @@ export function coerceVillageState(value: unknown): VillageState {
   const seen = new Set<string>();
 
   const foundedAt = asIsoString(raw.foundedAt) ?? "";
-  const memories = readMemoryCollection(memoryField(raw.memories ?? fallback.memories));
-  const memoryReceipts = readMemoryReceipts(raw.memoryReceipts === undefined ? {} : memoryField(raw.memoryReceipts));
-  for (const id of Object.keys(memoryReceipts)) {
-    memoryRequire(!Object.hasOwn(asRecord(raw.exchangeReceipts), id), "duplicate memory receipt");
-  }
+  const continuity = readContinuity(raw.continuity ?? fallback.continuity, asString(raw.seed));
+  const episodes = readEpisodes(raw.episodes ?? fallback.episodes, asString(raw.seed));
   const exchangeReceipts = copyExchangeReceipts(asRecord(raw.exchangeReceipts) as VillageState["exchangeReceipts"]);
   for (const [id, receipt] of Object.entries(exchangeReceipts)) {
     if (receipt?.domain !== "physical") continue;
@@ -1413,15 +1408,14 @@ export function coerceVillageState(value: unknown): VillageState {
   }
   const state: VillageState = {
     worldPlaces: readPlaceRegistry(raw.worldPlaces),
-    version: 17,
-    memories,
-    memoryScenes: readMemorySceneStates(memoryField(raw.memoryScenes ?? {}), memories),
+    version: 18,
+    continuity,
+    episodes,
     backgroundReceipts: Object.fromEntries(
       Object.entries(asRecord(raw.backgroundReceipts)).filter(
         (entry): entry is [string, string] => typeof entry[1] === "string",
       ),
     ),
-    memoryReceipts,
     exchangeReceipts,
     noticeSequence: Math.max(0, Math.floor(Number(raw.noticeSequence) || 0)),
     dismissedNoticeIds: [...new Set(asStringArray(raw.dismissedNoticeIds))],

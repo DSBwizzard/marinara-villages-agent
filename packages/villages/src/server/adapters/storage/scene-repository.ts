@@ -5,8 +5,7 @@ import { notFound, conflict } from "../../domain/rules/errors.js";
 import { applySceneMutation } from "../../domain/rules/scene-mutation.js";
 import { VILLAGES_PACKAGE_ID } from "../engine/runtime-host.js";
 import { ACTIVE_ID, SESSION_PREFIX, activeSlot, sessionSlot } from "./scene-slots.js";
-import { createSceneHistory, readActiveSceneOwner, sceneWishOwners } from "./scene-history.js";
-import { wishHistoryStore } from "./wish-history.js";
+import { createSceneHistory, readActiveSceneOwner } from "./scene-history.js";
 import { withRepairWork } from "./repair-gate.js";
 import { memoryRequire } from "../../domain/rules/memory-integrity.js";
 export interface SceneRepositoryPorts {
@@ -20,13 +19,6 @@ export function createSceneRepository({ villagesDocuments, mutateDocument, onPla
     return withRepairWork(async () => {
       const documents = villagesDocuments();
       const active = await readActiveSceneOwner(documents);
-      const scene = active.scene?.data as VenueScene | undefined;
-      wishHistoryStore(documents).retainScene(
-        scene ? sceneWishOwners(scene) : [],
-        scene?.continuity
-          ? { sceneId: scene.id, seed: scene.continuity.seed, setupAt: scene.continuity.setupAt }
-          : undefined,
-      );
       return coerceActive(active.pointer?.data);
     });
   }

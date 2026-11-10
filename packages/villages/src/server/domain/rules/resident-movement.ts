@@ -162,7 +162,9 @@ export function residentPositionsAt(
 ): Record<string, string> {
   return Object.fromEntries(
     sceneResidentIds(scene).map((id) => {
-      const move = moves.find((entry) => entry.characterId === id && entry.segment <= segment);
+      const move = moves
+        .toSorted((a, b) => a.segment - b.segment)
+        .findLast((entry) => entry.characterId === id && entry.segment <= segment);
       return [id, move?.zoneId ?? contactPosition(scene, id)];
     }),
   );

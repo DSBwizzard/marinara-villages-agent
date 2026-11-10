@@ -352,43 +352,17 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           }}
           changeStatus={room?.memoryMode === "live" ? roomChangeStatus : undefined}
           unresolvedChanges={roomUnresolvedChanges}
-          onContinueChange={(submissionId, domain) => {
-            if (!room?.id || roomBusy) return;
-            setRoomBusy(true);
-            void request(`/rooms/${encodeURIComponent(room.id)}/changes/${encodeURIComponent(submissionId)}/continue`, {
-              method: "POST",
-              body: JSON.stringify({ domain }),
-            })
-              .catch((cause) => setRoomError(messageFrom(cause, "Could not continue.")))
-              .finally(() => setRoomBusy(false));
-          }}
-          onRetryChangeInterpretation={(submissionId, domain) => {
-            if (!room?.id || roomBusy) return;
-            setRoomBusy(true);
-            void request(
-              `/rooms/${encodeURIComponent(room.id)}/changes/${encodeURIComponent(submissionId)}/interpret`,
-              {
-                method: "POST",
-                body: JSON.stringify({ domain, retryOfAttemptId: room.operation?.attemptId }),
-              },
-            )
-              .catch(async (cause) => {
-                setRoomError(messageFrom(cause, "Interpretation needs an explicit retry."));
-                const result = await request<{ operation: RoomOperation | null }>(
-                  `/rooms/${encodeURIComponent(room.id)}/operation`,
-                ).catch(() => null);
-                if (result)
-                  setRoom((current) =>
-                    current?.id === room.id ? { ...current, operation: result.operation } : current,
-                  );
-              })
-              .finally(() => setRoomBusy(false));
-          }}
           onReplayChanges={() => {
-            if (!room?.id) return;
-            void request(`/rooms/${encodeURIComponent(room.id)}/changes/replay`, { method: "POST" }).catch((cause) =>
-              setRoomError(messageFrom(cause, "World changes could not be replayed.")),
-            );
+            if (!room?.id || roomBusy) return;
+            setRoomBusy(true);
+            void (async () => {
+              await request("/rooms/" + encodeURIComponent(room.id) + "/changes/replay", { method: "POST" });
+              const active = await request<{ session: SceneView | null }>("/rooms/active");
+              if (active.session?.id === room.id) setRoom(active.session);
+              await loadSnapshot();
+            })()
+              .catch((cause) => setRoomError(messageFrom(cause, "Could not replay the saved reply.")))
+              .finally(() => setRoomBusy(false));
           }}
           debugDiscardEnabled={debugDiscardEnabled}
           onDebugDiscard={() => void discardRoomDebug()}

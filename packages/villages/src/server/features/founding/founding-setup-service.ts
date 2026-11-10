@@ -251,6 +251,7 @@ export function createFoundingSetup({
       for (const card of initialResidents) {
         if (state.villagers.some((villager) => villager.characterId === card.id)) continue;
         state.villagers.push({
+          incarnation: randomUUID(),
           characterId: card.id,
           letterFontId:
             (state.formerLetterFonts && Object.hasOwn(state.formerLetterFonts, card.id)

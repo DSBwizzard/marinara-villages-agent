@@ -16,7 +16,7 @@ import {
 import { captureSceneContinuity, sceneContinuityView } from "../../domain/rules/scene-continuity.js";
 import { requireSceneZoneId, captureSceneLayout } from "../../domain/rules/scene-layout.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
-import { semanticBlocker } from "../../domain/rules/semantic-continuity.js";
+import { narrationBlocker } from "../../domain/rules/scene-submissions.js";
 import { appendLine } from "../../domain/rules/scene-record.js";
 import { claimVisitPermission, evaluateZoneAccess } from "../../domain/rules/venue-access.js";
 import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
@@ -85,7 +85,7 @@ export function createLiveScenes({
       scene.zoneId !== zoneId ||
       scene.villageSeed !== state.seed ||
       (scene.continuity && scene.continuity.setupAt !== state.setupAt) ||
-      semanticBlocker(scene) ||
+      narrationBlocker(scene) ||
       (scene.operation && (scene.operation.status !== "complete" || scene.operation.error)) ||
       zoneClosed(state, venue, zone) ||
       zone.observed?.context !== zonePictureContext(state, venue, zone)
@@ -109,7 +109,7 @@ export function createLiveScenes({
       latest.placeId === scene.placeId &&
       latest.zoneId === scene.zoneId &&
       latest.status === "active" &&
-      !semanticBlocker(latest) &&
+      !narrationBlocker(latest) &&
       (!latest.operation || (latest.operation.status === "complete" && !latest.operation.error))
     );
   }
@@ -152,7 +152,7 @@ export function createLiveScenes({
     if (!completing) {
       // Durable failed work owns its admitted context even after the in-memory operation has gone.
       if (session.operation && (session.operation.status !== "complete" || session.operation.error)) return session;
-      if (semanticBlocker(session)) return session;
+      if (narrationBlocker(session)) return session;
     }
     if (session.status === "closed") return session;
     if (session.liveSceneVersion !== 1 || !session.zoneId || !session.sceneAttendance)
@@ -294,7 +294,7 @@ export function createLiveScenes({
     });
   }
   async function rememberCurrentZone(session: VenueScene): Promise<void> {
-    if (session.status !== "active" || semanticBlocker(session) || hasVenueOperation(session.id)) return;
+    if (session.status !== "active" || narrationBlocker(session) || hasVenueOperation(session.id)) return;
     const captured = findLocation(session.continuity?.facts, session.placeId);
     const source = captured && resolveVenueZone(captured, requireSceneZoneId(session));
     if (!source || !captured || (await readActive()).sessionId !== session.id) return;
@@ -393,7 +393,7 @@ export function createLiveScenes({
         state.sceneRevision !== session.sceneRevision ||
         hasVenueOperation(state.id) ||
         (state.operation && (state.operation.status !== "complete" || state.operation.error)) ||
-        semanticBlocker(state)
+        narrationBlocker(state)
       )
         return;
       state.sceneAttendance = attendance;
@@ -431,7 +431,7 @@ export function createLiveScenes({
           speakerId: "__venue_scene__",
           name: "Narration",
           at: now.toISOString(),
-          heardBy: [],
+          heardBy: ["player"],
           physicalIdsAfter: activeIds,
           presenceChange: true,
           content: [

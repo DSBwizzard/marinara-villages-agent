@@ -11,7 +11,8 @@ import type { VenueLine } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
 import { asRecord } from "./coerce.js";
 import { memoryHash, memoryObject, memoryRequire, memoryString, validateMemoryLearning } from "./memory-integrity.js";
-import { estimatedMemoryTokens, memoryProtectionContext, type MemoryProtectionContext } from "./memory-protection.js";
+import { memoryProtectionContext, type MemoryProtectionContext } from "./memory-protection.js";
+import { estimatedTextTokens } from "./text-recall.js";
 import { recallMemories } from "./memory-recall.js";
 
 /** Saved server context for the existing System call; never Narration knowledge. */
@@ -31,7 +32,7 @@ export function sceneMemoryContext(
   context = "",
 ) {
   const budget = 1796;
-  const envelopeTokens = estimatedMemoryTokens(JSON.stringify({ administrative: {}, memories: [] }));
+  const envelopeTokens = estimatedTextTokens(JSON.stringify({ administrative: {}, memories: [] }));
   const protection = memoryProtectionContext(
     state.memories,
     { knowers: audience, query: input + " " + narration + " " + context.slice(-4000) },

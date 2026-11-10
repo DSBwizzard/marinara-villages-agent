@@ -312,15 +312,7 @@ for (const duration of [90 * 60_000, day, 7 * day, 30 * day]) {
       actionId: "before-reset",
       milliseconds: 30 * day,
     });
-    const stateService = createVillageStateService(
-      f.repository as any,
-      () =>
-        ({
-          readRelationshipState: async (seed: string) => defaultRelationshipState(seed),
-          reconcileRelationships,
-          persistRelationshipAuthority: async () => {},
-        }) as any,
-    );
+    const stateService = createVillageStateService(f.repository as any);
     await stateService.mutateVillageState((state) => Object.assign(state, defaultVillageState()));
     assert.equal(
       f.state.foundedAt,

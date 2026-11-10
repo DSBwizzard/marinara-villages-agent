@@ -6,10 +6,8 @@ import {
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { bindLiveProposals, liveEvidence } from "../packages/villages/src/server/domain/rules/live-exchange.js";
 import { readMemoryCollection } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
-import {
-  estimatedMemoryTokens,
-  memoryProtectionContext,
-} from "../packages/villages/src/server/domain/rules/memory-protection.js";
+import { memoryProtectionContext } from "../packages/villages/src/server/domain/rules/memory-protection.js";
+import { estimatedTextTokens } from "../packages/villages/src/server/domain/rules/text-recall.js";
 import { projectMemories } from "../packages/villages/src/server/domain/rules/memory-views.js";
 import {
   bindSceneMemorySuggestion,
@@ -425,12 +423,12 @@ await runCase("memories-runtime/protection-boundary", () => {
   for (let length = 1; length <= 590; length++) {
     for (const root of state.memories.records) root.text = "nebula " + "x".repeat(length);
     const old = memoryProtectionContext(state.memories, { knowers: ["player"], query: "nebula " });
-    const envelope = estimatedMemoryTokens(JSON.stringify({ administrative: JSON.parse(old.payload), memories: [] }));
+    const envelope = estimatedTextTokens(JSON.stringify({ administrative: JSON.parse(old.payload), memories: [] }));
     if (old.complete && envelope > 1796) {
       const context = sceneMemoryContext(state, ["player"], "nebula");
       assert.equal(context.saved.protection.complete, false);
       assert.equal(context.envelope.administrative.incomplete, true);
-      assert.ok(estimatedMemoryTokens(JSON.stringify(context.envelope)) <= 1796);
+      assert.ok(estimatedTextTokens(JSON.stringify(context.envelope)) <= 1796);
       boundary = true;
       break;
     }

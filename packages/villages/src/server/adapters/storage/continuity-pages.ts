@@ -12,6 +12,7 @@ import {
   type HistoryPageRef,
   type HistoryPageTree,
   type MemoryPageData,
+  type createMemoryPageTracer,
 } from "./memory-pages.js";
 
 export type ContinuityPayload = {
@@ -65,7 +66,7 @@ export function encodeContinuityPages(value: ContinuityPayload, world: string, p
   return { manifest, layout, pages: writer.pages, serializedBytes: writer.serializedBytes };
 }
 
-function* decoder(raw: unknown, world: string, seed: string) {
+export function readContinuityPageManifest(raw: unknown): ContinuityPageManifest {
   memoryObject(raw, ["format", "revision", "episodeRevision", "placeRevision", ...trees]);
   memoryRequire(
     raw.format === 1 &&
@@ -74,6 +75,23 @@ function* decoder(raw: unknown, world: string, seed: string) {
       ),
     "unsupported continuity history directory",
   );
+  return raw as ContinuityPageManifest;
+}
+
+export async function traceContinuityPages(
+  raw: unknown,
+  world: string,
+  tracer: ReturnType<typeof createMemoryPageTracer>,
+) {
+  const manifest = readContinuityPageManifest(raw);
+  return tracer.traceTrees(
+    trees.map((key) => manifest[key]),
+    world,
+  );
+}
+
+function* decoder(manifest: unknown, world: string, seed: string) {
+  const raw = readContinuityPageManifest(manifest);
   const reader = createHistoryPageReader(world),
     layout = {} as ContinuityPageLayout;
   for (const key of trees)
@@ -122,5 +140,17 @@ export async function decodeContinuityPages(
   const read = decoder(raw, world, seed);
   let next = read.next();
   while (next.done === false) next = read.next(await get(next.value));
+  return next.value;
+}
+
+export function decodeContinuityPagesSync(
+  raw: unknown,
+  world: string,
+  seed: string,
+  get: (id: string) => MemoryPageData | null,
+) {
+  const read = decoder(raw, world, seed);
+  let next = read.next();
+  while (next.done === false) next = read.next(get(next.value));
   return next.value;
 }

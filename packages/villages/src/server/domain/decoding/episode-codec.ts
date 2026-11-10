@@ -2,7 +2,8 @@ import { z } from "zod";
 import type { AcceptedEpisode, EpisodeCollection } from "../models/episode-model.js";
 import { continuityEvidenceSchema, continuityHolderSchema } from "./continuity-codec.js";
 import { coerceSession } from "./scene-codec.js";
-import { continuitySourceUnit } from "../rules/continuity.js";
+import { continuityHolderKey, continuitySourceUnit, continuityVersionUnit } from "../rules/continuity.js";
+import type { ContinuityHolder } from "../models/continuity-model.js";
 import { immutableMemoryValue, isImmutableMemoryValue, memoryHash, memoryRequire } from "../rules/memory-integrity.js";
 
 const id = z.string().min(1).max(160),
@@ -19,13 +20,14 @@ const episode = z
     capturedAt: at,
     acceptedAt: at,
     responseDigest: z.string().regex(/^[a-f0-9]{64}$/),
+    admittedContinuityRevision: z.number().int().nonnegative().safe(),
     privateInput: z.string().max(4000),
     actors: z
       .array(z.object({ id, incarnation: id, zoneId: id }).strict())
       .min(1)
       .max(32),
     segments: z.array(z.unknown()).max(24),
-    grounding: z.array(continuityEvidenceSchema).max(256),
+    grounding: z.array(continuityEvidenceSchema).max(1024),
     continuityVersionIds: ids,
     offered: z.array(z.object({ holder: continuityHolderSchema, ids }).strict()).max(32),
     commandReceipts: z
@@ -48,11 +50,14 @@ const episode = z
             revision: z.number().int().nonnegative().safe(),
             text: z.string().min(1).max(8000),
             witnesses: ids.max(32),
+            observedBy: ids.max(32).optional(),
           })
           .strict(),
       )
       .max(16),
     dependencies: z.record(z.string(), z.array(z.string().min(1).max(700))),
+    room: continuityHolderSchema.optional(),
+    holderDependencies: z.record(z.string(), z.record(z.string(), z.array(z.string().min(1).max(700)))).optional(),
   })
   .strict();
 const validated = new WeakMap<object, string>();
@@ -67,10 +72,17 @@ const boundary = (text: string, offset: number) =>
   );
 
 export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode {
-  if (raw && typeof raw === "object" && validated.get(raw) === seed) return raw as AcceptedEpisode;
+  memoryRequire(typeof seed === "string" && seed.length > 0, "accepted episode needs its world identity");
+  if (raw && typeof raw === "object" && validated.has(raw) && validated.get(raw) === seed)
+    return raw as AcceptedEpisode;
   const value = episode.parse(raw) as AcceptedEpisode;
   memoryRequire(value.seed === seed && value.acceptedAt >= value.capturedAt, "invalid accepted episode world or time");
   const cast = new Map(value.actors.map((actor) => [actor.id, actor]));
+  for (const receipt of value.commandReceipts)
+    memoryRequire(
+      (receipt.observedBy ?? []).every((id) => receipt.witnesses.includes(id)),
+      "native observer was not an admitted witness",
+    );
   memoryRequire(cast.size === value.actors.length, "duplicate episode actor");
   memoryRequire(
     new Set(value.offered.map((row) => row.holder.id)).size === value.offered.length &&
@@ -80,7 +92,7 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
     "initiative offer lacks its admitted actor",
   );
   const decoded = coerceSession({
-    version: 4,
+    version: 5,
     lines: value.segments,
     participants: value.actors.map((actor) => ({ characterId: actor.id, name: actor.id, doing: "" })),
   });
@@ -119,6 +131,19 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
       "unknown episode source witness",
     );
     memoryRequire(source.kind !== "context" || !source.perceptions.length, "context cannot grant character perception");
+    if (source.kind === "knowledge") {
+      memoryRequire(
+        source.actorId &&
+          !source.range &&
+          !source.act &&
+          !source.committedReceiptId &&
+          source.perceptions.every(
+            (row) => row.actorId === source.actorId && row.channel === "private" && row.text === source.excerpt,
+          ),
+        "knowledge anchor cannot grant speech or another holder's knowledge",
+      );
+      continue;
+    }
     if (source.kind === "private" || source.kind === "self")
       memoryRequire(
         source.actorId &&
@@ -142,7 +167,13 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
         "native source lacks its committed receipt",
       );
       memoryRequire(
-        source.perceptions.every((row) => receipt.witnesses.includes(row.actorId) && row.text === receipt.text),
+        source.perceptions.every(
+          (row) =>
+            receipt.witnesses.includes(row.actorId) &&
+            row.text === receipt.text &&
+            row.channel !== "sound-only" &&
+            (row.channel !== "sight" || receipt.observedBy?.includes(row.actorId)),
+        ),
         "native source widened its committed witnesses",
       );
       memoryRequire(
@@ -187,10 +218,7 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
       );
       for (const perception of source.perceptions) {
         const sound = line.soundOnly;
-        const full =
-          line.heardBy.includes(perception.actorId) ||
-          line.speakerId === perception.actorId ||
-          (perception.actorId === "player" && !line.contactHidden);
+        const full = line.heardBy.includes(perception.actorId) || line.speakerId === perception.actorId;
         memoryRequire(
           perception.channel === "sound-only"
             ? Boolean(
@@ -212,9 +240,29 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
     new Set(value.commandReceipts.map((row) => row.id)).size === value.commandReceipts.length,
     "duplicate native receipt",
   );
-  for (const key of Object.keys(value.dependencies))
+  memoryRequire(
+    !value.room || (value.room.kind === "room" && cast.get("player")?.zoneId === value.room.zoneId),
+    "invalid episode room scope",
+  );
+  const holderKeys = new Set([
+    ...value.actors.map((actor) =>
+      continuityHolderKey({ kind: "actor", id: actor.id, incarnation: actor.incarnation }),
+    ),
+    ...(value.room ? [continuityHolderKey(value.room)] : []),
+  ]);
+  for (const [key, dependencies] of Object.entries(value.holderDependencies ?? {})) {
+    memoryRequire(holderKeys.has(key), "unknown episode provenance holder");
+    memoryRequire(!Object.hasOwn(dependencies, "input"), "authored input cannot depend on generated context");
+  }
+  for (const key of [
+    Object.keys(value.dependencies),
+    ...Object.values(value.holderDependencies ?? {}).map(Object.keys),
+  ].flat())
     memoryRequire(
-      key === "input" || units.has(key) || value.grounding.some((source) => source.unitId === key),
+      key === "input" ||
+        units.has(key) ||
+        (key.startsWith("version:") && value.continuityVersionIds.includes(key.slice(8))) ||
+        value.grounding.some((source) => source.kind !== "knowledge" && source.unitId === key),
       "unknown episode dependency unit",
     );
   const result = isImmutableMemoryValue(raw) ? (raw as AcceptedEpisode) : immutableMemoryValue(value);
@@ -239,6 +287,8 @@ export function readEpisodes(raw: unknown, seed: string): EpisodeCollection {
 }
 
 export function episodeUnit(episode: AcceptedEpisode, unitId: string) {
+  if (unitId.startsWith("version:") && episode.continuityVersionIds.includes(unitId.slice(8)))
+    return continuityVersionUnit(unitId.slice(8));
   const original = unitId === "input" ? episode.privateInput : episode.segments.find((line) => line.id === unitId);
   const source = episode.grounding.find((source) => source.unitId === unitId);
   if (original === undefined && source) return continuitySourceUnit(source);
@@ -247,24 +297,57 @@ export function episodeUnit(episode: AcceptedEpisode, unitId: string) {
 }
 
 /** Validate direct edges; reverse traversal avoids quadratic stored ancestry for long histories. */
-export function episodeSourceGraph(records: AcceptedEpisode[]) {
+const graphCache = new WeakMap<AcceptedEpisode[], Map<string, Map<string, Set<string>>>>();
+export function episodeSourceGraph(records: AcceptedEpisode[], holder?: ContinuityHolder) {
+  const scope = holder ? continuityHolderKey(holder) : "";
+  let graphs = graphCache.get(records);
+  if (graphs) return graphs.get(scope) ?? graphs.get("")!;
+  const scopes = [...new Set(["", ...records.flatMap((row) => Object.keys(row.holderDependencies ?? {}))])];
+  graphs = new Map();
+  for (const scoped of scopes) graphs.set(scoped, buildEpisodeGraph(records, scoped));
+  if (Object.isFrozen(records) && records.every(Object.isFrozen)) graphCache.set(records, graphs);
+  return graphs.get(scope) ?? graphs.get("")!;
+}
+function buildEpisodeGraph(records: AcceptedEpisode[], scope: string) {
   const nodes = new Map<string, { index: number; dependencies: string[] }>();
   records.forEach((episode, index) => {
     const unitIds = new Set([
       "input",
       ...episode.segments.map((line) => line.id),
-      ...episode.grounding.map((source) => source.unitId),
+      ...episode.continuityVersionIds.map((id) => "version:" + id),
+      ...episode.grounding.filter((source) => source.kind !== "knowledge").map((source) => source.unitId),
     ]);
     for (const unitId of unitIds) {
       const key = episodeUnit(episode, unitId);
       memoryRequire(!nodes.has(key), "duplicate episode evidence unit");
-      nodes.set(key, { index, dependencies: episode.dependencies[unitId] ?? [] });
+      nodes.set(key, {
+        index,
+        dependencies: [
+          ...(episode.dependencies[unitId] ?? []),
+          ...(episode.holderDependencies?.[scope]?.[unitId] ?? []),
+        ],
+      });
     }
     for (const source of episode.grounding)
-      if (source.range) {
+      if (source.kind === "knowledge") {
+        const version = continuityVersionUnit(source.unitId),
+          key = continuitySourceUnit(source);
+        if (!nodes.has(version)) nodes.set(version, { index: -1, dependencies: [] });
+        if (!nodes.has(key)) nodes.set(key, { index, dependencies: [version] });
+      } else if (source.kind === "self") {
+        const node = nodes.get(continuitySourceUnit(source))!;
+        node.dependencies = [...node.dependencies, continuityVersionUnit(source.unitId)];
+      } else if (source.range) {
         const key = continuitySourceUnit(source),
           container = nodes.get(episodeUnit(episode, source.unitId))!;
-        if (!nodes.has(key)) nodes.set(key, { index, dependencies: [...(episode.dependencies[source.unitId] ?? [])] });
+        if (!nodes.has(key))
+          nodes.set(key, {
+            index,
+            dependencies: [
+              ...(episode.dependencies[source.unitId] ?? []),
+              ...(episode.holderDependencies?.[scope]?.[source.unitId] ?? []),
+            ],
+          });
         if (!container.dependencies.includes(key)) container.dependencies = [...container.dependencies, key];
       }
   });

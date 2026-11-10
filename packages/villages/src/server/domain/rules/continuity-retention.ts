@@ -1,7 +1,8 @@
-import type { ContinuityCollection, ContinuityHolder } from "../models/continuity-model.js";
+import type { ContinuityCollection, ContinuityHolder, ContinuityEvidence } from "../models/continuity-model.js";
 import type { AcceptedEpisode } from "../models/episode-model.js";
 import type { EpisodeCollection } from "../models/episode-model.js";
-import { continuityHolderKey } from "./continuity.js";
+import { continuityHolderKey, continuityVersionId, assertContinuityKnowledge } from "./continuity.js";
+import { episodeSpeechEvidence } from "./episode-sources.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 
 export function nativeReceiptSupportsRoom(
@@ -19,20 +20,34 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
   const owners = new Map<string, string>(),
     versions = new Map(continuity.versions.map((row) => [row.id, row]));
   const byEpisode = new Map(episodes.records.map((row) => [row.id, row]));
+  const sourceActors = Object.fromEntries(episodes.records.map((episode) => [episode.id, episode.actors]));
   const births = new Map<string, number>(),
     roots = new Map(continuity.records.map((row) => [row.id, row]));
   for (const [sequence, episode] of episodes.records.entries()) {
+    memoryRequire(
+      episode.admittedContinuityRevision <= continuity.revision,
+      "episode admitted a future continuity revision",
+    );
     for (const id of episode.continuityVersionIds) {
       const version = versions.get(id);
       memoryRequire(
-        version && !owners.has(id) && version.operationId.startsWith(episode.operationId + ":"),
+        version &&
+          !version.administrative &&
+          !owners.has(id) &&
+          version.operationId.startsWith(episode.operationId + ":"),
         "missing or changed episode version owner",
       );
       owners.set(id, episode.id);
       if (!births.has(version.rootId)) births.set(version.rootId, sequence);
     }
     for (const source of episode.grounding)
-      if (source.kind === "self") {
+      if (source.kind === "knowledge") {
+        assertContinuityKnowledge(continuity, source, episode.actors, episode.admittedContinuityRevision, sourceActors);
+        memoryRequire(
+          !episode.continuityVersionIds.includes(source.unitId),
+          "knowledge anchor cannot cite its own exchange",
+        );
+      } else if (source.kind === "self") {
         const version = versions.get(source.unitId),
           actor = episode.actors.find((actor) => actor.id === source.actorId);
         const holder = actor && { kind: "actor" as const, id: actor.id, incarnation: actor.incarnation };
@@ -56,49 +71,118 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
           roots.get(id)?.heads[continuityHolderKey(offer.holder)] && (births.get(id) ?? Infinity) < sequence,
           "initiative offer lost its admitted prior root",
         );
+  function assertSource(source: ContinuityEvidence) {
+    const episode = byEpisode.get(source.episodeId);
+    const speech = episode && episodeSpeechEvidence(episode, source.unitId);
+    const original =
+      episode?.grounding.find((row) => row.id === source.id) ?? (speech?.id === source.id ? speech : undefined);
+    const soundOnly = source.perceptions.length > 0 && source.perceptions.every((row) => row.channel === "sound-only");
+    memoryRequire(
+      original &&
+        original.seed === source.seed &&
+        original.unitId === source.unitId &&
+        original.fingerprint === source.fingerprint &&
+        original.kind === source.kind &&
+        (original.act === source.act || (!source.act && soundOnly)) &&
+        original.committedReceiptId === source.committedReceiptId,
+      "continuity source lost its canonical evidence",
+    );
+    memoryRequire(
+      source.actorId === original.actorId || (!source.actorId && soundOnly),
+      "continuity source author changed",
+    );
+    memoryRequire(
+      source.perceptions.every((row) => original.perceptions.some((prior) => memoryHash(prior) === memoryHash(row))),
+      "continuity source widened its projection",
+    );
+    memoryRequire(
+      source.excerpt === original.excerpt || source.perceptions.some((row) => row.text === source.excerpt),
+      "continuity source excerpt changed",
+    );
+    memoryRequire(
+      !source.range || memoryHash(source.range) === memoryHash(original.range),
+      "continuity source range changed",
+    );
+    return original;
+  }
   for (const version of continuity.versions) {
-    memoryRequire(owners.has(version.id), "continuity version lost its accepted episode");
-    for (const source of version.sources) {
-      const episode = byEpisode.get(source.episodeId),
-        original = episode?.grounding.find((row) => row.id === source.id);
-      const soundOnly =
-        source.perceptions.length > 0 && source.perceptions.every((row) => row.channel === "sound-only");
-      memoryRequire(
-        original &&
-          original.seed === source.seed &&
-          original.unitId === source.unitId &&
-          original.fingerprint === source.fingerprint &&
-          original.kind === source.kind &&
-          (original.act === source.act || (!source.act && soundOnly)) &&
-          original.committedReceiptId === source.committedReceiptId,
-        "continuity source lost its canonical evidence",
+    const receipt = version.administrative && continuity.receipts[version.operationId];
+    memoryRequire(
+      version.administrative
+        ? !owners.has(version.id) &&
+            receipt &&
+            receipt.roots.includes(version.rootId) &&
+            receipt.versions.includes(version.id)
+        : owners.has(version.id),
+      "continuity version lost its episode or administrative owner",
+    );
+    if (!version.administrative) {
+      const creator = byEpisode.get(owners.get(version.id)!)!;
+      const actor = creator.actors.find(
+        (actor) =>
+          continuityVersionId(creator.seed, version.operationId, {
+            kind: "actor",
+            id: actor.id,
+            incarnation: actor.incarnation,
+          }) === version.id,
       );
+      const room = Object.values(roots.get(version.rootId)!.heads).find(
+        (head) =>
+          head.holder.kind === "room" &&
+          continuityVersionId(creator.seed, version.operationId, head.holder) === version.id,
+      );
+      memoryRequire(actor || (version.room && room), "continuity version lost its creating holder");
+      if (actor)
+        for (const source of version.sources)
+          memoryRequire(
+            sourceActors[source.episodeId]?.some(
+              (original) => original.id === actor.id && original.incarnation === actor.incarnation,
+            ),
+            "historical source belongs to another incarnation",
+          );
+    }
+    for (const source of version.sources) {
+      assertSource(source);
       if (version.room && source.kind === "native") {
         const room = Object.values(roots.get(version.rootId)!.heads).find(
           (head) => head.holder.kind === "room",
         )?.holder;
-        const receipt = episode?.commandReceipts.find((receipt) => receipt.id === source.committedReceiptId);
+        const receipt = byEpisode
+          .get(source.episodeId)
+          ?.commandReceipts.find((receipt) => receipt.id === source.committedReceiptId);
         memoryRequire(
           room?.kind === "room" && receipt && nativeReceiptSupportsRoom(receipt, room),
           "native receipt does not establish this room outcome",
         );
       }
-      memoryRequire(
-        source.actorId === original.actorId || (!source.actorId && soundOnly),
-        "continuity source author changed",
-      );
-      memoryRequire(
-        source.perceptions.every((row) => original.perceptions.some((prior) => memoryHash(prior) === memoryHash(row))),
-        "continuity source widened its projection",
-      );
-      memoryRequire(
-        source.excerpt === original.excerpt || source.perceptions.some((row) => row.text === source.excerpt),
-        "continuity source excerpt changed",
-      );
-      memoryRequire(
-        !source.range || memoryHash(source.range) === memoryHash(original.range),
-        "continuity source range changed",
-      );
     }
   }
+  for (const record of continuity.records)
+    for (const head of Object.values(record.heads)) {
+      if (head.holder.kind !== "actor") continue;
+      const holder = head.holder;
+      const version = versions.get(head.versionId)!;
+      memoryRequire(
+        version.administrative ||
+          version.room ||
+          version.id === continuityVersionId(byEpisode.get(owners.get(version.id)!)!.seed, version.operationId, holder),
+        "actor head belongs to another canonical holder",
+      );
+      for (const source of version.sources)
+        memoryRequire(
+          sourceActors[source.episodeId]?.some(
+            (actor) => actor.id === holder.id && actor.incarnation === holder.incarnation,
+          ),
+          "historical source belongs to another incarnation",
+        );
+    }
+  for (const record of continuity.records)
+    for (const event of record.offer?.events ?? [])
+      for (const source of event.sources) {
+        const original = assertSource(source);
+        memoryRequire(
+          original.act === event.act && source.act === event.act && original.actorId === event.by,
+          "offer contribution lost its canonical decision",
+        );
+      }
 }

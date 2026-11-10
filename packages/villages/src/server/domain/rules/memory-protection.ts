@@ -1,19 +1,7 @@
 import type { MemoryCollection, MemoryDomainRef, MemoryScreening, MemorySource } from "../models/memories.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 
-const stop = new Set(
-  "a an and are as at be been but by can could did do does for from had has have he her him his how i if in is it its me my of on or our she so some that the their them then there they this to us was we were what when where which who will with would you your about again remember happened tell said today now please yesterday".split(
-    " ",
-  ),
-);
-export const memoryTerms = (text: string): string[] =>
-  (
-    text
-      .normalize("NFKC")
-      .toLocaleLowerCase("en-US")
-      .match(/[\p{L}\p{N}]+/gu) ?? []
-  ).filter((term) => !stop.has(term));
-export const estimatedMemoryTokens = (text: string) => Math.ceil(Buffer.byteLength(text, "utf8") / 4);
+import { recallTerms, estimatedTextTokens } from "./text-recall.js";
 export type MemoryProtectionSelector = {
   knowers: string[];
   query: string;
@@ -30,7 +18,7 @@ export function memoryProtectionContext(
   selector: MemoryProtectionSelector,
   budget = 1800,
 ) {
-  const query = new Set(memoryTerms(selector.query));
+  const query = new Set(recallTerms(selector.query));
   const targets = new Set(selector.targetIds ?? []),
     sources = new Set((selector.sourceRefs ?? []).map((e) => JSON.stringify([e.source.kind, e.source.id, e.lineId])));
   const domains = new Set((selector.domainRefs ?? []).map(memoryHash));
@@ -69,7 +57,7 @@ export function memoryProtectionContext(
                 state.support.some((e) => sources.has(JSON.stringify([e.source.kind, e.source.id, e.lineId]))),
             ),
         ) ||
-        memoryTerms(
+        recallTerms(
           [
             root.text,
             ...related.map((row) => row.text),
@@ -88,7 +76,7 @@ export function memoryProtectionContext(
     fingerprint,
     roots,
   });
-  const complete = estimatedMemoryTokens(payload) <= budget;
+  const complete = estimatedTextTokens(payload) <= budget;
   const available = complete ? payload : JSON.stringify({ fingerprint, incomplete: true });
   return {
     selector: structuredClone(selector),
@@ -96,7 +84,7 @@ export function memoryProtectionContext(
     roots,
     complete,
     payload: available,
-    tokens: estimatedMemoryTokens(available),
+    tokens: estimatedTextTokens(available),
     budget,
   };
 }

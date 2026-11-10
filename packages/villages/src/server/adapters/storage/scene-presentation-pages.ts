@@ -469,7 +469,7 @@ export function encodeScenePresentations(
   });
   const boundaries = stagingBoundaries(
     lines,
-    scene.submissions.filter((turn) => turn.semanticProvenance?.version !== 2 || turn.semanticReady === true),
+    scene.submissions.filter((turn) => turn.acceptance.status === "applied"),
   );
   const byId = new Map(positions.map((position) => [position.id, position]));
   const sources = groupSceneMoments(lines).map(({ line, asides }) => {

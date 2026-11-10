@@ -242,8 +242,6 @@ export function RoomPanel({
   changeStatus,
   onReplayChanges,
   unresolvedChanges,
-  onRetryChangeInterpretation,
-  onContinueChange,
   debugDiscardEnabled,
   onDebugDiscard,
   onUseMailbox,
@@ -299,11 +297,6 @@ export function RoomPanel({
   changeStatus?: { pending: number; failed: number; rejected: number };
   onReplayChanges?: () => void;
   unresolvedChanges?: SceneChangeIssue[];
-  onContinueChange?: (submissionId: string, domain: string) => void;
-  onRetryChangeInterpretation?: (
-    submissionId: string,
-    domain: "memories" | "relationships" | "wishes" | "projects",
-  ) => void;
   debugDiscardEnabled: boolean;
   onDebugDiscard: () => void;
   onUseMailbox?: () => void;
@@ -510,75 +503,21 @@ export function RoomPanel({
   for (const change of unresolvedChanges ?? []) {
     if (change.status === "pending") continue;
     errorItems.push({
-      id: change.submissionId + ":" + change.domain,
+      id: "narration:" + change.submissionId,
       diagnosticId: change.diagnosticId,
-      domain: change.domain,
-      title: "World change" + (change.status === "rejected" ? " not saved" : " failed") + " · " + change.domain,
-      message: change.reason ?? "World change could not be saved.",
+      title: "Saved reply needs review",
+      message: change.reason ?? "The saved reply could not be applied.",
       fields: [
         { label: "Scene", value: room.placeName },
-        { label: "Scene ID", value: room.id },
-        { label: "Message ID", value: change.submissionId },
-        { label: "World change", value: change.domain },
-        { label: "Result", value: change.status === "rejected" ? "Not saved" : "Needs attention" },
         ...(change.at ? [{ label: "Time", value: new Date(change.at).toLocaleString() }] : []),
       ],
-      actions:
-        change.status !== "rejected" ? (
-          <>
-            {onReplayChanges ? (
-              <button type="button" disabled={busy} onClick={onReplayChanges}>
-                Replay
-              </button>
-            ) : null}
-            {onContinueChange && change.canContinue && !change.continued && change.status === "failed" ? (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => onContinueChange(change.submissionId, change.domain)}
-              >
-                Continue
-              </button>
-            ) : null}
-            {onRetryChangeInterpretation &&
-            ["memories", "relationships", "wishes", "projects"].includes(change.domain) ? (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() =>
-                  onRetryChangeInterpretation(
-                    change.submissionId,
-                    change.domain as "memories" | "relationships" | "wishes" | "projects",
-                  )
-                }
-              >
-                Retry {change.domain}
-              </button>
-            ) : null}
-          </>
-        ) : undefined,
+      actions: onReplayChanges ? (
+        <button type="button" disabled={busy} onClick={onReplayChanges}>
+          Replay
+        </button>
+      ) : undefined,
     });
   }
-  if (
-    changeStatus &&
-    changeStatus.failed + changeStatus.rejected >
-      (unresolvedChanges ?? []).filter((change) => change.status !== "pending").length
-  )
-    errorItems.push({
-      id: "other-world-updates",
-      title: "Other World changes need attention",
-      message: "The game couldn’t apply some updates.",
-      fields: [
-        { label: "Failed", value: String(changeStatus.failed) },
-        { label: "Not saved", value: String(changeStatus.rejected) },
-      ],
-      actions:
-        changeStatus.failed > 0 && onReplayChanges ? (
-          <button type="button" disabled={busy} onClick={onReplayChanges}>
-            Replay saved work · no model request
-          </button>
-        ) : undefined,
-    });
 
   /** Each playback moment supplies its captured presentation and source lines. */
   const steps = useMemo(
@@ -737,7 +676,7 @@ export function RoomPanel({
     if (
       !canCompose ||
       !!contactRecovery ||
-      (room.semanticVersion === 2 && !!changeStatus && changeStatus.pending + changeStatus.failed > 0) ||
+      (!!changeStatus && changeStatus.pending + changeStatus.failed > 0) ||
       mode === "move" ||
       busy ||
       (mode !== "conclude" && !draft.trim())
@@ -1620,9 +1559,7 @@ export function RoomPanel({
                       disabled={
                         !canCompose ||
                         !!contactRecovery ||
-                        (room.semanticVersion === 2 &&
-                          !!changeStatus &&
-                          changeStatus.pending + changeStatus.failed > 0) ||
+                        (!!changeStatus && changeStatus.pending + changeStatus.failed > 0) ||
                         busy ||
                         ended ||
                         room.status !== "active" ||

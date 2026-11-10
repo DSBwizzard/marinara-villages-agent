@@ -8,14 +8,14 @@ import type { EpisodeCollection } from "../models/episode-model.js";
 import { episodeSourceGraph } from "../decoding/episode-codec.js";
 import { continuityHolderKey, continuityProtectionUnits, continuityViews } from "./continuity.js";
 import { memoryRequire } from "./memory-integrity.js";
-import { memoryTerms } from "./memory-protection.js";
+import { recallTerms } from "./text-recall.js";
 import { recentSharedEpisodes } from "./episodes.js";
 
 function rank<T>(rows: T[], query: string, prose: (row: T) => string) {
-  const terms = new Set(memoryTerms(query)),
+  const terms = new Set(recallTerms(query)),
     frequencies = new Map<string, number>();
   const documents = rows.map((row, index) => {
-    const tokens = memoryTerms(prose(row)),
+    const tokens = recallTerms(prose(row)),
       counts = new Map<string, number>();
     for (const term of tokens) counts.set(term, (counts.get(term) ?? 0) + 1);
     for (const term of counts.keys()) frequencies.set(term, (frequencies.get(term) ?? 0) + 1);
@@ -62,7 +62,7 @@ export function selectRoomContinuity(
     collection,
     holder,
     at,
-    continuityProtectionUnits(collection, holder, episodeSourceGraph(episodes.records)),
+    continuityProtectionUnits(collection, holder, episodeSourceGraph(episodes.records, holder)),
   ).sort((a, b) => a.version.room!.order - b.version.room!.order);
   const required = new Set(
     request.wholeRoom ? all.map((row) => row.id) : [...request.requiredIds, ...(all[0] ? [all[0].id] : [])],
@@ -91,7 +91,12 @@ export function selectRoomContinuity(
     selected.push(row);
     if (size() > request.bytes) selected.pop();
   }
-  return { packet: packet(), supplied: targets(selected), bytes: size() };
+  return {
+    packet: packet(),
+    supplied: targets(selected),
+    required: targets(selected.filter((row) => required.has(row.id))),
+    bytes: size(),
+  };
 }
 
 function actorEntry(view: ContinuityView) {
@@ -118,9 +123,13 @@ export function selectActorContinuity(
   request: { query: string; bytes: number; requiredIds: string[] },
 ) {
   memoryRequire(Number.isSafeInteger(request.bytes) && request.bytes > 0, "invalid actor context budget");
-  const graph = episodeSourceGraph(episodes.records);
   const all = holders.flatMap((holder) =>
-    continuityViews(collection, holder, at, continuityProtectionUnits(collection, holder, graph)),
+    continuityViews(
+      collection,
+      holder,
+      at,
+      continuityProtectionUnits(collection, holder, episodeSourceGraph(episodes.records, holder)),
+    ),
   );
   const active = new Set(holders.map((holder) => holder.id));
   const recentVersions = new Set(
@@ -218,6 +227,19 @@ export function selectActorContinuity(
   return {
     packet: packet(),
     supplied: targets(selected),
+    required: targets([
+      ...required,
+      ...fair,
+      ...fair.flatMap((row) =>
+        row.version.parentId
+          ? all.filter(
+              (parent) =>
+                parent.id === row.version.parentId &&
+                continuityHolderKey(parent.holder) === continuityHolderKey(row.holder),
+            )
+          : [],
+      ),
+    ]),
     fair: targets(fair),
     offered: holders
       .filter((holder) => holder.id !== "player")

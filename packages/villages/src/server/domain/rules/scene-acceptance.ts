@@ -44,6 +44,7 @@ export function selectSceneEffects(effects: SceneEffectResult[], assertedDepende
   const held = assertionFailed || effects.some((effect) => !effect.independent && !resolved.get(effect.id));
   return {
     held,
+    usableIds: effects.filter((effect) => resolved.get(effect.id)).map((effect) => effect.id),
     acceptedIds: held ? [] : effects.filter((effect) => resolved.get(effect.id)).map((effect) => effect.id),
     rejected: [...failures].map(([id, reason]) => ({ id, reason })),
   };

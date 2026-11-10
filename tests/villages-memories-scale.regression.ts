@@ -6,10 +6,8 @@ import { performance } from "node:perf_hooks";
 import { runCase } from "../scripts/test-cases.mjs";
 import { applyMemoryRepair } from "../packages/villages/src/server/domain/rules/memory-application.js";
 import { readMemoryCollection } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
-import {
-  estimatedMemoryTokens,
-  memoryProtectionContext,
-} from "../packages/villages/src/server/domain/rules/memory-protection.js";
+import { memoryProtectionContext } from "../packages/villages/src/server/domain/rules/memory-protection.js";
+import { estimatedTextTokens } from "../packages/villages/src/server/domain/rules/text-recall.js";
 import { recallMemories } from "../packages/villages/src/server/domain/rules/memory-recall.js";
 import {
   captureMemoryScene,
@@ -51,7 +49,7 @@ for (const count of [1000, 10000, 25000])
       );
       assert.ok(lookup.targetIds.includes("history-memory-0"));
       assert.ok(lookup.tokens <= 1800);
-      assert.equal(lookup.tokens, estimatedMemoryTokens(lookup.serialized));
+      assert.equal(lookup.tokens, estimatedTextTokens(lookup.serialized));
       assert.doesNotMatch(lookup.serialized, /stolen|locked attic/u);
       promptBytes = Math.max(promptBytes, Buffer.byteLength(lookup.serialized));
     }

@@ -71,6 +71,9 @@ function context(
     episodeId,
     at,
     actors: ["player", "mara", "leo"].map((id) => ({ id, incarnation: "one" })),
+    sourceActors: Object.fromEntries(
+      sources.map((source) => [source.episodeId, ["player", "mara", "leo"].map((id) => ({ id, incarnation: "one" }))]),
+    ),
     room,
     sources,
     supplied,
@@ -529,6 +532,22 @@ await runCase("continuity/desire-closure", () => {
   assert.equal(view.version.closed?.reason, "fulfilled", "book status derives from the same retirement event");
   assert.equal(view.version.sources[0].id, outcome.id);
   assert.deepEqual(rows(closed, player), [], "private fulfillment does not update the notebook");
+  const corrected = protectContinuity(
+    closed,
+    target(closed, state.records[0].id, [mara]),
+    [mara],
+    "correct-closed",
+    at,
+    {
+      text: "Mara wanted to sail a small boat of her own.",
+    },
+  );
+  assert.equal(rows(corrected)[0].current, false);
+  assert.equal(
+    rows(corrected)[0].version.closed?.reason,
+    "fulfilled",
+    "Correct changes text without inventing a new lifecycle state",
+  );
 });
 
 await runCase("continuity/offer-privacy", () => {

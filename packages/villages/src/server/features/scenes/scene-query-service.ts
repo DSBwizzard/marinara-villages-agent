@@ -407,10 +407,9 @@ export function createSceneQueryService({
       const eligible = session.submissions.filter(
         (turn) => turn.at && (!village.foundedAt || Date.parse(turn.at) >= Date.parse(village.foundedAt)),
       );
-      for (const turn of eligible) requireSceneExchange(session, turn);
       backlog.push(
         ...eligible
-          .filter((turn) => unfinishedExchange(turn.processing!))
+          .filter((turn) => turn.acceptance.status === "pending")
           .map((turn) => ({
             sessionId: session.id,
             submissionId: turn.id,

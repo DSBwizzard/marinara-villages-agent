@@ -2,9 +2,6 @@ import { findNpc, placeRegistry } from "../../domain/rules/places.js";
 import { currentVillageCircumstances } from "../../domain/rules/prompt-preset.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { retainBackgroundJob } from "../../adapters/storage/background-responses.js";
-import { createDepartureHistory, validateDepartureHistory } from "../../adapters/storage/departure-history.js";
-import { createWorldWishes, validateWorldWishHistory } from "../../adapters/storage/world-wishes.js";
-import { validateCapturedSources } from "../../adapters/storage/captured-admissions.js";
 import { mutableSocialWish } from "../../domain/rules/social-wishes.js";
 import { createHash, randomUUID } from "node:crypto";
 import type {
@@ -32,7 +29,7 @@ import { MEMORY_PAGE_KIND } from "../../adapters/storage/memory-pages.js";
 import {
   readSceneWorkIndex,
   readSceneTranscriptIndex,
-  sceneHistoryOwners,
+  readSceneHistoryRoot,
   validateSceneHistory,
   readActiveSceneOwner,
 } from "../../adapters/storage/scene-history.js";
@@ -618,24 +615,10 @@ export function createRepairService(ports: RepairPorts) {
           repairDocumentDigest(rows.find((row) => row.id === scene.id) ?? null) !== repairDocumentDigest(copy(scene)))
       )
         throw conflict("The active Scene source ownership is missing from this checkpoint.");
-    const social = await currentSocial(state),
-      listed = rows.find((row) => row.id === relationshipDocumentId(state.seed));
-    if (repairDocumentDigest(listed ?? null) !== repairDocumentDigest(social ? copy(social) : null))
-      throw conflict("The current relationship owner is missing from the checkpoint sources.");
-    await socialData(social, state);
     await validateSceneHistory(
       documents,
       rows.filter((row) => row.kind === "venue-visit").map((row) => row.data),
     );
-    await validateDepartureHistory(
-      documents,
-      rows.filter((row) => row.kind === "village").map((row) => row.data),
-    );
-    await validateWorldWishHistory(
-      documents,
-      rows.filter((row) => row.kind === "village").map((row) => row.data),
-    );
-    await validateCapturedSources(documents, rows);
     return storage.checkpoint(state, rows, id, title, randomUUID(), mode);
   }
   async function retireWorldJob(row: Doc, at: string) {
@@ -1070,10 +1053,7 @@ export function createRepairService(ports: RepairPorts) {
           const target = write.after ?? write.before!,
             current = await documents.getById(PKG, target.id);
           if (write.before?.kind === "village") {
-            const priorWorld = await createWorldWishes(documents).decode(
-              await createDepartureHistory(documents).decode(write.before.data),
-              true,
-            );
+            const priorWorld = write.before.data as Record<string, unknown>;
             const priorHead = readMemoryHead(priorWorld.memoryHead);
             const priorPayload = priorHead
               ? await createMemoryPayloadStore(documents).read(priorHead, priorWorld as unknown as VillageState)
@@ -1083,16 +1063,15 @@ export function createRepairService(ports: RepairPorts) {
               (currentState) => {
                 const prior = coerceVillageState({
                   ...priorWorld,
-                  memories: currentState.memories,
-                  memoryScenes: currentState.memoryScenes,
-                  memoryReceipts: currentState.memoryReceipts,
+                  continuity: currentState.continuity,
+                  episodes: currentState.episodes,
                   worldPlaces: ["npc", "place"].includes(repairParts(saved.request.recordId)[0])
                     ? priorPayload.worldPlaces
                     : currentState.worldPlaces,
                 });
                 prior.clock = currentState.clock;
                 advanceRestoredRevisions(prior, currentState);
-                normalizeVillageMutation(currentState, currentState.seed, () => {
+                normalizeVillageMutation(currentState, () => {
                   Object.assign(currentState, prior);
                 });
               },
@@ -1103,17 +1082,6 @@ export function createRepairService(ports: RepairPorts) {
           } else {
             const value = structuredClone(write.before),
               stamp = new Date().toISOString();
-            if (value.kind === "relationships") {
-              const owner = readRelationshipRoot(value.data),
-                previous = await socialData(value, owner),
-                live = await socialData(current, owner);
-              previous.eventSequence = Math.max(previous.eventSequence, live?.eventSequence ?? 0);
-              for (const [key, edge] of Object.entries(previous.edges)) {
-                edge.revision = Math.max(edge.revision, live?.edges[key]?.revision ?? 0) + 1;
-                edge.updatedAt = stamp;
-              }
-              value.data = await socialRootData(previous, owner, current);
-            }
             if (current)
               await documents.update({
                 ...value,
@@ -1253,17 +1221,7 @@ export function createRepairService(ports: RepairPorts) {
         documents,
         checkpointDocuments.filter((row) => row.kind === "venue-visit").map((row) => row.data),
       );
-      await validateDepartureHistory(
-        documents,
-        checkpointDocuments.filter((row) => row.kind === "village").map((row) => row.data),
-      );
-      await validateWorldWishHistory(
-        documents,
-        checkpointDocuments.filter((row) => row.kind === "village").map((row) => row.data),
-      );
-      await validateCapturedSources(documents, checkpointDocuments);
       let current: Doc[] = [];
-      await currentSocial(state);
       for (const kind of GAME_KINDS) current.push(...(await documents.list(PKG, kind)));
       current = storage.worldSources(current, state, false);
       for (const savedScene of [...current, ...checkpointDocuments].filter((r) => r.kind === "venue-visit")) {
@@ -1330,13 +1288,7 @@ export function createRepairService(ports: RepairPorts) {
         ? await createMemoryPayloadStore(documents).read(savedHead, data as unknown as VillageState)
         : emptyMemoryPayload();
       if (!payload) throw conflict("The checkpoint’s Memories payload is unavailable.");
-      if (
-        Object.keys(payload.memoryScenes).some((id) => id !== checkpointSceneId) ||
-        (checkpointSceneId && !payload.memoryScenes[checkpointSceneId])
-      )
-        throw conflict("The checkpoint’s Scene and frozen memories do not match.");
-      const restored = coerceVillageState({ ...(await createWorldWishes(documents).decode(data, true)), ...payload });
-      assertSettledSocial(restored);
+      const restored = coerceVillageState({ ...data, ...payload });
       advanceRestoredRevisions(restored, state);
       if (restored.narrative) restored.narrative.claims = [];
       for (const venue of restored.venues) {
@@ -1350,14 +1302,25 @@ export function createRepairService(ports: RepairPorts) {
                 outcome: "rejected",
               };
       }
-      restored.memories.revision = Math.max(restored.memories.revision, state.memories.revision) + 1;
-      const currentMemories = new Map(state.memories.records.map((record) => [record.id, record]));
-      restored.memories.records = restored.memories.records.map((record) => ({
-        ...record,
-        revision: Math.max(record.revision, currentMemories.get(record.id)?.revision ?? 0) + 1,
-      }));
+      const currentRoots = new Map(state.continuity.records.map((record) => [record.id, record]));
+      restored.continuity = {
+        ...restored.continuity,
+        revision: Math.max(restored.continuity.revision, state.continuity.revision) + 1,
+        records: restored.continuity.records.map((record) => ({
+          ...record,
+          revision: Math.max(record.revision, currentRoots.get(record.id)?.revision ?? 0) + 1,
+          heads: Object.fromEntries(
+            Object.entries(record.heads).map(([key, head]) => [
+              key,
+              {
+                ...head,
+                revision: Math.max(head.revision, currentRoots.get(record.id)?.heads[key]?.revision ?? 0) + 1,
+              },
+            ]),
+          ),
+        })),
+      };
       restored.exchangeReceipts = restoredReceipts(restored.exchangeReceipts, state.exchangeReceipts);
-      restored.memoryReceipts = restoredReceipts(restored.memoryReceipts, state.memoryReceipts);
       restored.noticeSequence = Math.max(restored.noticeSequence, state.noticeSequence);
       restored.dismissedNoticeIds = [...new Set([...restored.dismissedNoticeIds, ...state.dismissedNoticeIds])];
       // Publish a new immutable history payload; never rewind a head or reuse old revisions.
@@ -1372,30 +1335,8 @@ export function createRepairService(ports: RepairPorts) {
           continue;
         const old = await documents.getById(PKG, value.id),
           stamp = new Date().toISOString();
-        if (value.kind === "relationships") {
-          const owner = readRelationshipRoot(value.data),
-            social = await socialData(value, owner),
-            live = await socialData(old, owner);
-          if (
-            social.startingActorIds.length ||
-            social.initializationConflicts.length ||
-            restored.villagers.some((p) => !social.reviewedActorIds.includes(p.characterId))
-          )
-            throw conflict("Complete the checkpoint’s starting-relationship review before using it for restoration.");
-          social.applied = { ...live?.applied, ...social.applied };
-          social.noticeSequence = Math.max(social.noticeSequence, live?.noticeSequence ?? 0);
-          social.eventSequence = Math.max(social.eventSequence, live?.eventSequence ?? 0);
-          for (const [key, record] of Object.entries(social.sharedRecords))
-            social.sharedRecords[key] = {
-              ...record,
-              revision: Math.max(record.revision, live?.sharedRecords[key]?.revision ?? 0) + 1,
-            };
-          for (const [key, edge] of Object.entries(social.edges))
-            edge.revision = Math.max(edge.revision, live?.edges[key]?.revision ?? 0) + 1;
-          value.data = await socialRootData(social, owner, old);
-        }
         if (value.kind === "venue-visit") {
-          sceneHistoryOwners(value.data);
+          readSceneHistoryRoot(value.data);
           const scene = value.data as {
               id: string;
               sceneRevision: number;
@@ -1425,7 +1366,7 @@ export function createRepairService(ports: RepairPorts) {
       { label: "Current circumstances", value: currentVillageCircumstances(world).join("\n") },
       { label: "Standing rules", value: world.worldRules },
       { label: "Residents", value: world.villagers.map((p) => p.cardSnapshot.name).join(", ") },
-      { label: "Memories", value: String(world.memories.records.length) },
+      { label: "Memories", value: String(world.continuity.records.length) },
       { label: "Places", value: world.venues.map((v) => v.name).join(", ") },
       { label: "Projects", value: world.projects.map((p) => `${p.title} · ${p.status}`).join("\n") },
     ];

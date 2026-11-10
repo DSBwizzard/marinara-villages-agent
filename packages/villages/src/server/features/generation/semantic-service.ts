@@ -17,7 +17,7 @@ import { readSceneNarrativeReview } from "../../domain/rules/scene-narrative-eff
 import { fenceIntroductionWitnesses } from "../../domain/rules/npc-participation.js";
 import { parseRelationshipProposals } from "../../domain/rules/relationship-review.js";
 import { assertSceneMovementCapacity, residentMovementUnavailable } from "../../domain/rules/resident-movement.js";
-import { sceneContinuityView, sceneWishEffectIds } from "../../domain/rules/scene-continuity.js";
+import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
 import { sceneEvidencePerception } from "../../domain/rules/scene-evidence-perception.js";
 import { readSceneBoundary } from "../../domain/rules/scene-halt.js";
 import {
@@ -53,16 +53,14 @@ function semanticCheckpointKey(stage: string, identity: Record<string, unknown>)
 
 export function createSemanticService(ports: SemanticPorts) {
   async function readSceneAuthority(scene: VenueScene) {
-    const wishEffects = (state: import("../../domain/models/world.js").VillageState) =>
-      sceneWishEffectIds(state, scene);
-    const state = await ports.readVillageState({ wishEffects, memories: true });
+    const state = await ports.readVillageState({ memories: true });
     const actors = scene.contactGeneration?.actorIds ?? [
       ...scene.activeIds,
       ...(scene.contactGeneration?.remoteIds ?? []),
     ];
     const captured = scene.continuity && scene.continuity.seed === state.seed && scene.villageSeed === state.seed;
     return !captured && state.villagers.some((row) => actors.includes(row.characterId) && !wishHistoryLoaded(row))
-      ? ports.readVillageState({ wishes: actors, wishEffects, memories: true })
+      ? ports.readVillageState({ wishes: actors, memories: true })
       : state;
   }
   async function validateReply<Input, Result>(

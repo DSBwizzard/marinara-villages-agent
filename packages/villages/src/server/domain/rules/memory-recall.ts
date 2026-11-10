@@ -1,6 +1,7 @@
 import type { MemoryCandidate, MemoryCollection, MemorySceneSnapshot } from "../models/memories.js";
 import { memoryRequire } from "./memory-integrity.js";
-import { estimatedMemoryTokens, memoryTerms, type MemoryProtectionContext } from "./memory-protection.js";
+import { type MemoryProtectionContext } from "./memory-protection.js";
+import { estimatedTextTokens, recallTerms } from "./text-recall.js";
 import { projectMemories, sceneMemoryCollection } from "./memory-views.js";
 
 export type MemoryRecallRequest = {
@@ -32,14 +33,14 @@ export function recallMemories(collection: MemoryCollection, request: MemoryReca
   const view = request.snapshot ? sceneMemoryCollection(collection, request.snapshot) : collection;
   const administrative = request.protection ? JSON.parse(request.protection.payload) : undefined;
   const emptyPayload = { ...(administrative ? { administrative } : {}), memories: [] };
-  const allowance = budget - estimatedMemoryTokens(JSON.stringify(emptyPayload));
+  const allowance = budget - estimatedTextTokens(JSON.stringify(emptyPayload));
   const candidates = projectMemories(view, request.audience).flatMap((candidate) => {
-    if (estimatedMemoryTokens(JSON.stringify(candidate)) <= allowance) return [candidate];
+    if (estimatedTextTokens(JSON.stringify(candidate)) <= allowance) return [candidate];
     return Object.keys(candidate.knowers).map((id) => ({ ...candidate, knowers: { [id]: candidate.knowers[id] } }));
   });
   const query = request.query + " " + (request.purpose === "system" ? (request.narration ?? "") : "");
-  const terms = new Set(memoryTerms(query));
-  const contextTerms = new Set(memoryTerms((request.context ?? "").slice(-4000)));
+  const terms = new Set(recallTerms(query));
+  const contextTerms = new Set(recallTerms((request.context ?? "").slice(-4000)));
   const documents = new Map<string, number>();
   const rows = candidates.map((candidate, index) => {
     const counts = new Map<string, number>();
@@ -49,7 +50,7 @@ export function recallMemories(collection: MemoryCollection, request: MemoryReca
       ...candidate.subjects.map((id) => request.names?.[id] ?? ""),
       ...Object.values(candidate.knowers).flatMap((state) => state.support.map((e) => e.excerpt)),
     ].join(" ");
-    const tokens = memoryTerms(text);
+    const tokens = recallTerms(text);
     for (const term of tokens) counts.set(term, (counts.get(term) ?? 0) + 1);
     for (const term of counts.keys()) documents.set(term, (documents.get(term) ?? 0) + 1);
     return { candidate, counts, length: tokens.length, index, score: 0, contextScore: 0, explicit: false };
@@ -91,11 +92,11 @@ export function recallMemories(collection: MemoryCollection, request: MemoryReca
       ...(administrative ? { administrative } : {}),
       memories: request.purpose === "system" ? selected : promptMemoryCandidates(selected),
     });
-  memoryRequire(estimatedMemoryTokens(encode()) <= budget, "required protection exceeds recall budget");
+  memoryRequire(estimatedTextTokens(encode()) <= budget, "required protection exceeds recall budget");
   const take = (row: (typeof ranked)[number]) => {
     if (selectedRows.has(row.index) || (request.countCap !== undefined && selected.length >= request.countCap)) return;
     selected.push(row.candidate);
-    if (estimatedMemoryTokens(encode()) > budget) {
+    if (estimatedTextTokens(encode()) > budget) {
       selected.pop();
       return;
     }
@@ -147,7 +148,7 @@ export function recallMemories(collection: MemoryCollection, request: MemoryReca
     targetIds: [...new Set(targetIds)],
     ambiguous,
     serialized,
-    tokens: estimatedMemoryTokens(serialized),
+    tokens: estimatedTextTokens(serialized),
     eligibleCount: candidates.length,
   };
 }

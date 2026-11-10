@@ -76,6 +76,7 @@ export function fixture() {
   ];
   state.venues = [venue()];
   state.villagers = ["a", "b", "c"].map((id) => ({
+    incarnation: "founding-" + id,
     letterFontId: "caveat",
     characterId: id,
     addedAt: state.setupAt,

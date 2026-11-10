@@ -6,9 +6,7 @@ import type { VenueOperation } from "../packages/villages/src/server/domain/mode
 import { applySceneMutation } from "../packages/villages/src/server/domain/rules/scene-mutation.js";
 import { createVenueCoordinator } from "../packages/villages/src/server/jobs/venue-coordinator-service.js";
 import { createVenueOperationContext } from "../packages/villages/src/server/adapters/operations/operation-context-service.js";
-import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
-import { createSceneWishContexts } from "../packages/villages/src/server/adapters/storage/scene-wish-contexts.js";
 import {
   createOperationEvidence,
   encodeOperationEvidence,
@@ -50,13 +48,7 @@ function operation(checkpoints: Record<string, unknown> = {}): VenueOperation {
   };
 }
 async function world(f: ReturnType<typeof sceneHistoryFixture>) {
-  const {
-    memories: _memories,
-    memoryScenes: _scenes,
-    memoryReceipts: _receipts,
-    worldPlaces: _places,
-    ...fields
-  } = defaultVillageState();
+  const { continuity: _continuity, episodes: _episodes, worldPlaces: _places, ...fields } = defaultVillageState();
   await f.documents.create({
     id: "villages-village",
     packageId: "villages",
@@ -69,7 +61,6 @@ async function world(f: ReturnType<typeof sceneHistoryFixture>) {
       setupAt: at,
       foundedAt: at,
       memoryHead: null,
-      wishArchiveHead: { count: 0, root: null },
     },
   });
 }
@@ -89,24 +80,11 @@ for (const fault of ["before", "after"] as const) {
   const f = sceneHistoryFixture();
   try {
     await world(f);
-    const repository = createVillageRepository(() => f.gate.documents),
-      initial = wishWorld();
-    initial.seed = scope.villageSeed;
-    initial.setupAt = at;
-    initial.villagers[0].wishes = [fixtureWish({ wish: "Original World Wish" })];
-    await repository.mutateAuthority((state) => Object.assign(state, initial));
-    const baseline = await repository.readAuthority({ wishes: true });
-    const capturedScene = coerceSession({ version: 4, ...scope, status: "active", startedAt: at });
+    const repository = createVillageRepository(() => f.gate.documents);
+    const baseline = await repository.readAuthority({ memories: true });
+    const capturedScene = coerceSession({ version: 5, ...scope, status: "active", startedAt: at });
     capturedScene.continuity = captureSceneContinuity(baseline, capturedScene, Date.parse(at));
-    const capturedOwners = [
-      {
-        actorId: "a",
-        wishId: "",
-        fingerprint: "",
-        capturedAt: baseline.villagers[0].cardSnapshot.capturedAt,
-        wishes: [{ ...baseline.villagers[0].wishes[0], wish: "Exact unacknowledged capture café 東京" }],
-      },
-    ];
+    const capturedSources = [{ id: "fitted-source", text: "Exact unacknowledged capture café 東京", revision: 1 }];
     await f.mutateDocument("villages-venue-visit-" + scope.id, sessionSlot(f.gate.documents), (scene) =>
       Object.assign(scene, capturedScene),
     );
@@ -120,7 +98,7 @@ for (const fault of ["before", "after"] as const) {
       if (
         !publicationStarted ||
         !f.gate.isIdle() ||
-        ![...f.rows.values()].some((row) => row.kind === "memory-page" && !originalPages.has(row.id))
+        ![...f.rows.values()].some((row) => row.kind === OPERATION_EVIDENCE_KIND && !originalPages.has(row.id))
       )
         return;
       const operation = f.rows.get("villages-venue-visit-" + scope.id)?.data.operation;
@@ -141,7 +119,7 @@ for (const fault of ["before", "after"] as const) {
         first.venueCheckpoint("local-evidence", async () => {
           computations++;
           publicationStarted = true;
-          return { exact: "First accepted café 🌼 evidence", wishContexts: capturedOwners };
+          return { exact: "First accepted café 🌼 evidence", fittedSources: capturedSources };
         }),
       ),
       /acknowledgement/,
@@ -150,7 +128,7 @@ for (const fault of ["before", "after"] as const) {
     assert.equal(
       unsafePublicationGaps,
       0,
-      "Cleanup never sees idle storage between creating Wish pages and their published checkpoint owner",
+      "Cleanup never sees idle storage between creating evidence and its published checkpoint owner",
     );
     const retainedScene = f.rows.get("villages-venue-visit-" + scope.id).data;
     const publishedRef = retainedScene.operation.checkpoints["local-evidence"];
@@ -177,15 +155,6 @@ for (const fault of ["before", "after"] as const) {
     }
     await collectRetainedStorage(f.gate);
     assert(f.rows.has(expectedBody), "Collection preserves a prospective or published checkpoint value");
-    const packet = (operationEvidenceValue(f.rows.get(expectedBody).data) as any).wishContexts;
-    assert(!Array.isArray(packet));
-    const root = f.rows.get(packet.owners[0].head.root.id),
-      child = f.rows.get(root.data.node.content.id);
-    f.rows.delete(child.id);
-    const held = structuredClone(f.rows);
-    await assert.rejects(collectRetainedStorage(f.gate), /missing/);
-    assert.deepEqual(f.rows, held, "A missing Wish page in an unfinished checkpoint holds all cleanup deletion");
-    f.rows.set(child.id, child);
     if (pendingClaim) {
       const wrongStage = structuredClone(retainedScene.operation);
       wrongStage.checkpointClaims.other = wrongStage.checkpointClaims["local-evidence"];
@@ -212,9 +181,9 @@ for (const fault of ["before", "after"] as const) {
     assert.equal(computations, 1, "A durable but unacknowledged parsed checkpoint must not be recomputed");
     assert.equal(value.exact, "First accepted café 🌼 evidence");
     assert.deepEqual(
-      await createSceneWishContexts({ ...f.gate.documents }).read((value as any).wishContexts, capturedScene),
-      capturedOwners,
-      "Restart recovery reuses the exact captured library without recomputing the checkpoint",
+      (value as any).fittedSources,
+      capturedSources,
+      "Cold recovery retains the exact final fitted readset",
     );
   } finally {
     f.release();
@@ -286,7 +255,7 @@ for (const fault of ["before", "after"] as const) {
       response: { ...saved.ref, claim: saved.claim },
     };
     await f.mutateDocument("villages-venue-visit-" + scope.id, sessionSlot(f.gate.documents), (scene) =>
-      Object.assign(scene, coerceSession({ version: 4, ...scope, status: "active", startedAt: at, operation: op })),
+      Object.assign(scene, coerceSession({ version: 5, ...scope, status: "active", startedAt: at, operation: op })),
     );
     const native = f.rows.get("villages-venue-visit-" + scope.id).data;
     assert.equal(
@@ -486,32 +455,13 @@ for (const fault of ["before", "after"] as const) {
 {
   const f = sceneHistoryFixture();
   try {
-    const state = wishWorld();
-    state.seed = scope.villageSeed;
-    state.villagers[0].wishes = Array.from({ length: 25_000 }, (_, index) =>
-      fixtureWish({ wish: "Exact retained wish " + index }, "wish:" + index, at),
-    );
-    const repository = createVillageRepository(() => f.gate.documents);
-    await repository.mutateAuthority((world) => Object.assign(world, state));
-    const captured = await repository.readAuthority({ wishes: true });
-    const scene = coerceSession({ version: 4, ...scope, status: "active", startedAt: at });
-    scene.continuity = captureSceneContinuity(captured, scene, Date.parse(at));
-    await f.mutateDocument("villages-venue-visit-" + scope.id, sessionSlot(f.gate.documents), (value) =>
-      Object.assign(value, scene),
-    );
     const rich = {
-      wishContexts: [
-        {
-          actorId: "a",
-          capturedAt: captured.villagers[0].cardSnapshot.capturedAt,
-          wishId: "",
-          fingerprint: "captured",
-          wishes: captured.villagers[0].wishes,
-        },
-      ],
+      fittedSources: Array.from({ length: 64 }, (_, index) => ({
+        id: "source-" + index,
+        text: "Complete fitted meaning " + index,
+      })),
     };
-    assert.throws(() => prepareOperationValue(rich, scope), /require canonical references/);
-    const saved = await f.gate.work(() => operationEvidenceStore(f.gate.documents).prepare(rich, scene));
+    const saved = prepareOperationValue(rich, scope);
     await f.gate.work(() => operationEvidenceStore(f.gate.documents).publish(new Map([[saved.ref.id, saved.data]])));
     let nodes = 0;
     const pending: unknown[] = [f.rows.get(saved.ref.id).data];
@@ -521,15 +471,10 @@ for (const fault of ["before", "after"] as const) {
       if (value && typeof value === "object") pending.push(...Object.values(value));
       else if (typeof value === "string") assert.equal(value.startsWith("global-gallery:"), false);
     }
-    assert(nodes < 32, "A 25k-Wish checkpoint stays opaque to Host native-reference traversal");
-    assert(saved.data.payload.length < 1024, "A full library is referenced once instead of copied into the checkpoint");
+    assert(nodes < 32, "Fitted continuity stays opaque to Host native-reference traversal");
     const cold = createOperationEvidence(f.documents);
     const restored = (await cold.read(saved.ref, scope, true)) as typeof rich;
-    assert.deepEqual(
-      await createSceneWishContexts(f.documents).read(restored.wishContexts, scene),
-      rich.wishContexts,
-      "The compact cold checkpoint explicitly resolves its exact captured library",
-    );
+    assert.deepEqual(restored, rich, "Cold recovery retains all and only the actual fitted evidence");
     for (const value of [undefined, null]) {
       const body = prepareOperationValue(value, scope);
       await f.gate.work(() => cold.publish(new Map([[body.ref.id, body.data]])));
@@ -545,7 +490,7 @@ for (const durable of [false, true]) {
   try {
     await world(f);
     await f.mutateDocument("villages-venue-visit-" + scope.id, sessionSlot(f.gate.documents), (scene) =>
-      Object.assign(scene, coerceSession({ version: 4, ...scope, status: "active", startedAt: at })),
+      Object.assign(scene, coerceSession({ version: 5, ...scope, status: "active", startedAt: at })),
     );
     const coordinator = coordinatorFor(f);
     await coordinator.coordinateVenue(scope.id, "refused", "turn", {}, 0, undefined, async () => {

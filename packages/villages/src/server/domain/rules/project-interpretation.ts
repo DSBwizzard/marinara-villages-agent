@@ -1,9 +1,82 @@
 import { projectPhysicalDesign } from "../../../shared/helpers/project-design.js";
-import type { VillageState } from "../models/world.js";
+import type { VillageState, VillageProject } from "../models/world.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
-import { renovationTerms } from "./project-terms.js";
-import { memoryTerms } from "./memory-protection.js";
-export type ProjectSpeechContext = { projectId: string; revision: number; phase: string };
+import { approvalScope, projectDesignKey, renovationAffectedIds } from "./project-terms.js";
+import { establishmentControllers, establishmentScope } from "./establishment.js";
+import { findLocation } from "./places.js";
+import { memoryHash } from "./memory-integrity.js";
+import { recallTerms } from "./text-recall.js";
+export type ProjectSpeechContext = {
+  projectId: string;
+  revision: number;
+  phase: string;
+  terms: ReturnType<typeof projectSpeechTerms>;
+  agreements: Record<string, string>;
+};
+
+export function projectSpeechTerms(state: VillageState, project: VillageProject) {
+  const venue = findLocation(state, project.venueId),
+    flow = project.lifecycle!;
+  const requiredApprovers =
+    project.kind === "establishment"
+      ? establishmentControllers(state, project)
+      : venue
+        ? renovationAffectedIds(venue, flow.change, flow.changedZoneIds)
+        : [];
+  return {
+    kind: project.kind,
+    venueId: project.venueId,
+    proposal: structuredClone(
+      project.kind === "new-venue" ? { draft: project.venueDraft ?? null, plan: project.plan ?? null } : flow.change,
+    ),
+    ...(project.establishment
+      ? {
+          establishment: {
+            goal: project.establishment.goal,
+            physical: project.establishment.physical,
+            zoneIds: [...project.establishment.zoneIds],
+            objectives: project.establishment.objectives.map(({ id, text }) => ({ id, text })),
+          },
+        }
+      : {}),
+    requiredApprovers: requiredApprovers.toSorted(),
+  };
+}
+
+/** Compute once against the native batch's unmodified authority, then apply its commands to a detached candidate. */
+export function projectSpeechContext(
+  state: VillageState,
+  project: VillageProject,
+  actorIds: string[],
+): ProjectSpeechContext {
+  const flow = project.lifecycle!,
+    terms = projectSpeechTerms(state, project),
+    venue = findLocation(state, project.venueId);
+  return {
+    projectId: project.id,
+    revision: flow.revision,
+    phase: flow.phase,
+    terms,
+    agreements: Object.fromEntries(
+      [...new Set([...actorIds, ...terms.requiredApprovers, flow.builderId].filter(Boolean))].map((id) => [
+        id,
+        memoryHash({
+          approvalScope:
+            project.kind === "establishment"
+              ? establishmentScope(project)
+              : venue && flow.change
+                ? approvalScope(venue, flow.change, id, flow.changedZoneIds)
+                : "",
+          design: projectDesignKey(project),
+          approvals: flow.approvals.filter((row) => row.residentId === id),
+          candidates: flow.candidates.filter((row) => row.residentId === id),
+          selectedLead: flow.builderId === id,
+          history: flow.spokenProofs.filter((row) => row.speakerId === id),
+        }),
+      ]),
+    ),
+  };
+}
 export type ProjectSpeechProposal = ProjectSpeechContext & {
   version: 1;
   kind: "approval" | "builder" | "withdrawal";
@@ -23,7 +96,7 @@ export function projectSpeechContexts(
   venueId = "",
 ): ProjectSpeechContext[] {
   const query = message + "\n" + conversation;
-  const terms = new Set(memoryTerms(query));
+  const terms = new Set(recallTerms(query));
   return state.projects.flatMap((project) =>
     project.lifecycle &&
     ["planning", "paused", "working"].includes(project.status) &&
@@ -38,8 +111,8 @@ export function projectSpeechContexts(
       ].some((id) => id && activeIds.includes(id)) ||
       query.includes(project.id) ||
       query.includes(project.title) ||
-      memoryTerms(project.title + " " + projectPhysicalDesign(project)).some((term) => terms.has(term)))
-      ? [{ projectId: project.id, revision: project.lifecycle.revision, phase: project.lifecycle.phase }]
+      recallTerms(project.title + " " + projectPhysicalDesign(project)).some((term) => terms.has(term)))
+      ? [projectSpeechContext(state, project, activeIds)]
       : [],
   );
 }
@@ -54,50 +127,15 @@ export function projectSpeechPrompt(state: VillageState, contexts: ProjectSpeech
           projectId: context.projectId,
           phase: context.phase,
           title: project.title,
-          establishment: project.establishment,
-          description: project.lifecycle?.change
-            ? renovationTerms(project.lifecycle.change)
-            : projectPhysicalDesign(project),
-          design: project.plan
-            ? {
-                form: project.plan.form,
-                venueType: project.plan.venueType,
-                exteriorDescription: project.plan.exteriorDescription,
-                capacity: project.plan.capacity,
-                layout: project.plan.layout,
-                zones: [...project.plan.spaces, ...project.plan.privateSpaces].map(
-                  ({
-                    id,
-                    name,
-                    kind,
-                    description,
-                    roomSpecification,
-                    venueClass,
-                    purpose,
-                    controllerIds,
-                    ownerId,
-                    connectedTo,
-                  }) => ({
-                    id,
-                    name,
-                    kind,
-                    description,
-                    roomSpecification,
-                    venueClass,
-                    purpose,
-                    controllerIds,
-                    ownerId,
-                    connectedTo,
-                  }),
-                ),
-              }
-            : undefined,
-          leadId: project.lifecycle?.builderId,
-          affectedIds: project.lifecycle?.affectedIds,
+          terms: context.terms,
+          ...(project.lifecycle?.builderId ? { leadId: project.lifecycle.builderId } : {}),
+          ...(project.establishment
+            ? { completedObjectives: project.establishment.objectives.filter((row) => row.met).map((row) => row.id) }
+            : {}),
         };
       }),
     ) +
-    ". Scoped supporting controllers may approve their own Place or later Renovations; only Villagers can volunteer to lead physical work. Establishment objectives may be social and require actual witnessed outcomes, not promises of future results. Social establishment uses no timer or lead. Residents may approve a relevant physical design, willingly commit to lead it, decline or withdraw in natural language. Approval and volunteering can occur in the same exchange. No speech starts, resumes or completes work. Physical Projects take 24 elapsed real hours after the player's explicit Start. Gifts and objects provide no Project benefit."
+    ". These complete scoped terms are native reference, not automatically shared character knowledge. Supporting controllers may approve their own Place or Renovations; only Villagers may volunteer to lead physical work. Native approval requires the deciding person's actual unqualified current words about these exact terms, witnessed by the player. Conditions, uncertainty, politeness and promises of later agreement are not approval. Preserve them as ordinary roleplay/common offers. Approval and volunteering may use the same utterance. A refusal or withdrawal is unilateral. No speech starts, resumes or completes work. Physical Projects take 24 elapsed real hours after the player's explicit Start. Social establishment uses no timer or lead and requires actual witnessed objectives, never promised future results. Gifts and objects provide no Project benefit."
   );
 }
 export function coerceProjectSpeech(value: unknown): ProjectSpeechProposal[] {

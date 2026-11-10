@@ -755,11 +755,8 @@ export type RoomOperation = {
 
 export type SceneChangeIssue = {
   diagnosticId?: string;
-  canContinue?: boolean;
-  continued?: boolean;
   submissionId: string;
-  domain: string;
-  status?: "pending" | "failed" | "rejected";
+  status: "pending" | "held";
   at?: string;
   reason?: string;
 };
@@ -827,10 +824,8 @@ export type MemoryPerson = { id: string; name: string };
 export type MemoryCursor = { revision: number; afterId: string };
 export type MemoryListEntry = {
   id: string;
-  rootId: string;
   revision: number;
-  rootRevision: number;
-  kind: "experience" | "information" | "open-matter";
+  kind: "experience" | "information" | "open-matter" | "perspective" | "desire" | "motivation" | "commitment";
   text: string;
   occurredAt: string;
   recordedAt: string;
@@ -854,23 +849,26 @@ export type MemoryInspection = {
   seed: string;
   revision: number;
   entry: MemoryListEntry;
+  target?: { id: string; recordRevision: number; heads: Record<string, number> };
   knowers: {
     person: MemoryPerson;
-    basis: "observation" | "report" | "interpretation" | "validated-event";
-    attributedTo?: string;
-    learnedAt: string;
-    reinforcedAt: string;
     forgotten: boolean;
     playerCorrection: boolean;
     text: string;
-    support: { sourceId: string; sceneId?: string; lineId: string; excerpt: string }[];
+    support: {
+      sourceId: string;
+      sceneId?: string;
+      lineId: string;
+      excerpt: string;
+      kind: string;
+      speaker?: MemoryPerson;
+    }[];
   }[];
 };
 export type MemoryForgetRequest = {
   operationId: string;
   seed: string;
-  expectedCollectionRevision: number;
-  target: { id: string; revision: number; rootRevision: number };
+  target: { id: string; recordRevision: number; heads: Record<string, number> };
   knowers: string[];
 };
 export type MemoryCorrectRequest = MemoryForgetRequest & { text: string };

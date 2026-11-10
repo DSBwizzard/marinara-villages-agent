@@ -545,7 +545,7 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
       place.revision++;
     }
     state.worldPlaces.revision++;
-    normalizeVillageMutation(state, state.seed, () => {});
+    normalizeVillageMutation(state, () => {});
     return;
   }
   if (kind === "narrative-claim") {
@@ -702,7 +702,6 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
   }
   normalizeVillageMutation(
     state,
-    state.seed,
     () => {
       if (kind === "world") {
         if (!str("name") || str("name").length > 120 || str("setting").length > 4096 || str("worldName").length > 120)

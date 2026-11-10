@@ -1,4 +1,4 @@
-// Test cases: episodes/natural-private-chronology, episodes/perception-arrivals, episodes/protection, episodes/identity, episodes/cold-pages-scale, episodes/shared-followup, episodes/ancestry, episodes/private-narration, episodes/self-native-retention, episodes/independent-spans
+// Test cases: episodes/natural-private-chronology, episodes/perception-arrivals, episodes/protection, episodes/identity, episodes/cold-pages-scale, episodes/shared-followup, episodes/ancestry, episodes/private-narration, episodes/self-native-retention, episodes/independent-spans, episodes/repeated-correction, episodes/shared-pair-budget
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import type { AcceptedEpisode } from "../packages/villages/src/server/domain/models/episode-model.js";
@@ -21,7 +21,13 @@ import {
   continuityViews,
   emptyContinuity,
   protectContinuity,
+  continuityKnowledge,
+  continuitySourceUnit,
 } from "../packages/villages/src/server/domain/rules/continuity.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { retainNativeFact } from "../packages/villages/src/server/domain/rules/native-continuity.js";
+import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
+import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { emptyPlaceRegistry } from "../packages/villages/src/server/domain/rules/places.js";
 import {
@@ -47,6 +53,7 @@ function episode(id = "one", input = "Why?", reply = "Because I hoped you would 
     capturedAt: at,
     acceptedAt: at,
     responseDigest: memoryHash([id, input, reply]),
+    admittedContinuityRevision: 0,
     privateInput: input,
     actors: [player, mara].map((actor) => ({ id: actor.id, incarnation: actor.incarnation, zoneId: "parlor" })),
     segments: [
@@ -69,6 +76,32 @@ function episode(id = "one", input = "Why?", reply = "Because I hoped you would 
     dependencies: {},
   };
 }
+await runCase("episodes/shared-pair-budget", () => {
+  const old = [
+    episode("mara-one", "A prior question.", "A".repeat(600)),
+    episode("mara-two", "Another question.", "B".repeat(600)),
+  ];
+  const latest = episode("leo-latest", "Why, Leo?", "C".repeat(850));
+  latest.actors = [player, leo].map(({ id, incarnation }) => ({ id, incarnation, zoneId: "parlor" }));
+  latest.segments[0] = { ...latest.segments[0], speakerId: "leo", name: "Leo", heardBy: ["player", "leo"] };
+  const history = readEpisodes({ format: 1, revision: 3, records: [...old, latest] }, "world"),
+    continuity = emptyContinuity(),
+    holders = [player, mara, leo];
+  const oldBytes = Buffer.byteLength(
+    JSON.stringify(projectGmEpisode(history.records[0], continuity, holders, history)),
+  );
+  const latestBytes = Buffer.byteLength(
+    JSON.stringify(projectGmEpisode(history.records[2], continuity, holders, history)),
+  );
+  assert(latestBytes > oldBytes);
+  const selected = selectEpisodeHistory(history, continuity, holders, "Why?", oldBytes + latestBytes + 10);
+  assert(
+    selected.episodes.some((row) => row.id === latest.id),
+    "older exchanges for another resident cannot exhaust the budget before the actual latest answer",
+  );
+  assert.equal(selected.episodes.length, 2);
+});
+
 function inputSource(episode: AcceptedEpisode, text: string): ContinuityEvidence {
   const start = episode.privateInput.indexOf(text);
   return {
@@ -370,7 +403,7 @@ await runCase("episodes/self-native-retention", async () => {
     false,
     "an unspoken motive never becomes player knowledge",
   );
-  assert.throws(() => assertContinuityRetention(continuity, emptyEpisodes()), /lost its accepted episode/);
+  assert.throws(() => assertContinuityRetention(continuity, emptyEpisodes()), /lost its.*owner/);
   const native = episode("native");
   const receipt: AcceptedEpisode["commandReceipts"][number] = {
     id: "grant",
@@ -533,6 +566,221 @@ await runCase("episodes/cold-pages-scale", async () => {
   await assert.rejects(
     decodeContinuityPages(first.manifest, world, "world", async () => null),
     /missing/,
+  );
+});
+
+await runCase("episodes/repeated-correction", async () => {
+  const state = { ...defaultVillageState(), seed: "world", setupAt: at };
+  state.villagers = [
+    { characterId: "mara", incarnation: "one", cardSnapshot: { name: "Mara" } },
+  ] as VillageState["villagers"];
+  const owner = continuityActor(state, "mara")!,
+    player = continuityActor(state, "player")!;
+  retainNativeFact(
+    state,
+    {
+      id: "roof-completed",
+      kind: "project",
+      targetId: "roof",
+      revision: 1,
+      text: "The roof repairs were completed.",
+      witnesses: ["mara", "player"],
+    },
+    at,
+  );
+  const rootId = state.continuity.records[0].id,
+    key = continuityHolderKey(owner);
+  const target = () => {
+    const record = state.continuity.records.find((record) => record.id === rootId)!;
+    return { id: record.id, recordRevision: record.revision, heads: { [key]: record.heads[key].revision } };
+  };
+  const correctedAt = "2026-11-09T12:01:00.000Z";
+  state.continuity = protectContinuity(state.continuity, target(), [owner], "first-correction", correctedAt, {
+    text: "Only the porch roof was repaired.",
+  });
+  const first = continuityViews(state.continuity, owner, correctedAt, new Set())[0];
+  assert.equal(first.version.at, at, "correction preserves the original occurrence time");
+  assert.equal(first.version.administrative?.at, correctedAt);
+  assert.equal(state.episodes.records.length, 1, "administration has no fictional exchange");
+  const derived = episode("derived", "Yes.", "Then only the porch roof was repaired.");
+  derived.operationId = "derive";
+  derived.capturedAt = derived.acceptedAt = correctedAt;
+  derived.admittedContinuityRevision = state.continuity.revision;
+  derived.actors = [owner, player].map((actor) => ({ id: actor.id, incarnation: actor.incarnation, zoneId: "parlor" }));
+  const anchor = continuityKnowledge(first, "world", derived.id),
+    input = inputSource(derived, "Yes.");
+  derived.grounding = [anchor, input];
+  const provenance = [continuitySourceUnit(anchor)],
+    count = state.continuity.versions.length;
+  for (const action of [{ text: "The porch still needs repair." }, { forget: true as const }]) {
+    const changed = protectContinuity(
+      state.continuity,
+      target(),
+      [owner],
+      "changed-before-first-use",
+      correctedAt,
+      action,
+    );
+    const blocked = continuityProtectionUnits(changed, owner, episodeSourceGraph(state.episodes.records));
+    assert.throws(
+      () =>
+        applyContinuityWrite(
+          changed,
+          {
+            id: "pending-first-use",
+            holders: [owner],
+            class: "information",
+            text: first.version.text,
+            sourceIds: [input.id],
+          },
+          {
+            seed: "world",
+            operationId: derived.operationId,
+            episodeId: derived.id,
+            at: correctedAt,
+            actors: derived.actors,
+            sources: [input],
+            supplied: [],
+            protectedRoots: [],
+            blockedSources: { [key]: [...blocked] },
+            provenance: { [key]: provenance },
+          },
+        ),
+      /source descendant|source replay/,
+      "first-use captured knowledge is vetoed before any accepted anchor exists",
+    );
+  }
+  state.continuity = applyContinuityWrite(
+    state.continuity,
+    {
+      id: "derived-information",
+      holders: [owner],
+      class: "information",
+      text: first.version.text,
+      sourceIds: [input.id],
+    },
+    {
+      seed: "world",
+      operationId: derived.operationId,
+      episodeId: derived.id,
+      at: correctedAt,
+      actors: derived.actors,
+      continuityRevision: derived.admittedContinuityRevision,
+      sources: [input],
+      supplied: [],
+      protectedRoots: [],
+      provenance: { [key]: provenance },
+    },
+  );
+  derived.continuityVersionIds = state.continuity.versions.slice(count).map((version) => version.id);
+  derived.dependencies = Object.fromEntries([
+    [derived.segments[0].id, provenance],
+    ...derived.continuityVersionIds.map((id) => ["version:" + id, provenance]),
+  ]);
+  state.episodes = appendEpisode(state.episodes, derived, "world");
+  assertContinuityRetention(state.continuity, state.episodes);
+  const secondAt = "2026-11-09T12:02:00.000Z";
+  state.continuity = protectContinuity(state.continuity, target(), [owner], "second-correction", secondAt, {
+    text: "Mara now remembers that the porch still needs repair.",
+  });
+  const foreign = structuredClone(state.continuity);
+  const foreignRoot = foreign.records.find((record) => record.id === rootId)!;
+  foreignRoot.heads[continuityHolderKey(player)].versionId = foreignRoot.heads[key].versionId;
+  const foreignPages = encodeContinuityPages(
+    { continuity: foreign, episodes: state.episodes, worldPlaces: state.worldPlaces },
+    "a".repeat(32),
+  );
+  await assert.rejects(
+    decodeContinuityPages(
+      foreignPages.manifest,
+      "a".repeat(32),
+      "world",
+      async (id) => foreignPages.pages.get(id) ?? null,
+    ),
+    /another holder/,
+    "digest-valid pages cannot attach Mara's source-less correction to the player's head",
+  );
+  assert.notEqual(
+    continuitySourceUnit(anchor),
+    continuitySourceUnit({ ...anchor, kind: "self", episodeId: "knowledge" }),
+    "canonical knowledge anchors cannot collide with episode source units",
+  );
+  const packet = encodeContinuityPages(
+    { continuity: state.continuity, episodes: state.episodes, worldPlaces: state.worldPlaces },
+    "a".repeat(32),
+  );
+  const cold = (
+    await decodeContinuityPages(packet.manifest, "a".repeat(32), "world", async (id) => packet.pages.get(id) ?? null)
+  ).value;
+  const graph = episodeSourceGraph(cold.episodes.records),
+    blocked = continuityProtectionUnits(cold.continuity, owner, graph);
+  const visible = continuityViews(cold.continuity, owner, secondAt, blocked);
+  assert.deepEqual(
+    visible.map((row) => row.version.text),
+    ["Mara now remembers that the porch still needs repair."],
+    "input-only support cannot resurrect generated meaning derived from a prior correction",
+  );
+  assert.deepEqual(
+    actorEpisodeView(cold.episodes.records[1], cold.continuity, owner, cold.episodes)?.input.map((row) => row.text),
+    ["Yes."],
+    "authored input remains independent of the fitted correction",
+  );
+  assert.deepEqual(actorEpisodeView(cold.episodes.records[1], cold.continuity, owner, cold.episodes)?.segments, []);
+  assert.equal(
+    actorEpisodeView(cold.episodes.records[1], cold.continuity, player, cold.episodes)?.segments.length,
+    1,
+    "another holder keeps what they actually heard",
+  );
+  assert.equal(
+    continuityViews(cold.continuity, player, secondAt, new Set())[0].version.text,
+    "The roof repairs were completed.",
+  );
+  const latest = cold.continuity.records.find((record) => record.id === rootId)!;
+  const forgotten = protectContinuity(
+    cold.continuity,
+    {
+      id: rootId,
+      recordRevision: latest.revision,
+      heads: { [key]: latest.heads[key].revision },
+    },
+    [owner],
+    "forget-corrected",
+    secondAt,
+    { forget: true },
+  );
+  assert.deepEqual(continuityViews(forgotten, owner, secondAt, continuityProtectionUnits(forgotten, owner, graph)), []);
+  assertContinuityRetention(forgotten, cold.episodes);
+  assert.throws(
+    () =>
+      applyContinuityWrite(
+        cold.continuity,
+        {
+          id: "unrelated-input",
+          holders: [owner],
+          text: first.version.text,
+          sourceIds: [input.id],
+        },
+        {
+          seed: "world",
+          operationId: "stale-fitted-prose",
+          episodeId: derived.id,
+          at: secondAt,
+          actors: derived.actors,
+          sources: [input],
+          supplied: [],
+          protectedRoots: [],
+          blockedSources: { [key]: [...blocked] },
+          provenance: { [key]: provenance },
+        },
+      ),
+    /source descendant/,
+    "stale fitted context is vetoed even when the cited input itself is independent",
+  );
+  const bad = structuredClone(derived);
+  bad.admittedContinuityRevision = first.version.createdRevision - 1;
+  assert.throws(
+    () => assertContinuityRetention(cold.continuity, { ...cold.episodes, records: [cold.episodes.records[0], bad] }),
+    /canonical meaning/,
   );
 });
 

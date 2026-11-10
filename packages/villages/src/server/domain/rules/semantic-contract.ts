@@ -6,7 +6,7 @@ import type { VillageState } from "../models/world.js";
 import { accessManagementContext } from "./access-speech.js";
 import { asRecord } from "./coerce.js";
 import { badGateway } from "./errors.js";
-import { memoryTerms } from "./memory-protection.js";
+import { recallTerms } from "./text-recall.js";
 import { environmentCircumstances, environmentObservations } from "./narrative-environment.js";
 import { findLocation, findNpc, npcProfile } from "./places.js";
 import { currentVillageCircumstances } from "./prompt-preset.js";
@@ -88,12 +88,12 @@ export function semanticContext(
     history.unshift(row);
   }
   const wishQuery = [query, narration, ...history.map((row) => row.content)].join("\n");
-  const wishTerms = new Set(memoryTerms(wishQuery));
+  const wishTerms = new Set(recallTerms(wishQuery));
   const fullWish = (wish: VillageState["villagers"][number]["wishes"][number]) =>
     !compact ||
     wish.attention.state === "foreground" ||
     wishQuery.includes(wish.id) ||
-    memoryTerms(
+    recallTerms(
       [
         wish.wish,
         wish.reason,

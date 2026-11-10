@@ -5,27 +5,24 @@ import type {
   MemoryForgetRequest,
   MemoryInspection,
   MemoryLibrary,
-  MemoryListEntry,
 } from "../../../shared/contracts/village.js";
 import type { villagesLogger } from "../../adapters/engine/runtime-host.js";
 import type { outsideVenueOperation } from "../../adapters/operations/operation-context.js";
 import { advanceVillageClock, villageNow, villageTimeAdvanceSettled } from "../../adapters/time/clock-gate.js";
 import { defaultVillageState } from "../../domain/decoding/village-codec.js";
-import type { MemoryCandidate } from "../../domain/models/memories.js";
 import type { VillageSnapshot, VillageState } from "../../domain/models/world.js";
 import { calendarReplay } from "../../domain/rules/clock-state.js";
-import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
-import { MEMORY_TEXT_LIMIT } from "../../domain/rules/memory-integrity.js";
-import { memoryTerms } from "../../domain/rules/memory-protection.js";
+import { conflict } from "../../domain/rules/errors.js";
 import { captureReturnContext } from "../../domain/rules/return-catchup-capture.js";
 import { discoverReturnBatch, recordReturnVisibility } from "../../domain/rules/return-catchup-state.js";
-import { inspectMemoryCandidates, projectMemories } from "../../domain/rules/memory-views.js";
 import type { reconcileProjectLifecycles } from "../../domain/rules/project-lifecycle-rules.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import {
-  correctVillageMemory as applyCorrection,
-  forgetVillageMemory as applyForget,
-} from "../../domain/rules/village-memories.js";
+  continuityMemoryLibrary,
+  inspectContinuityMemory,
+  changeContinuityMemory,
+  type MemoryQuery,
+} from "../../domain/rules/continuity-library.js";
 import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
 import type { preparePrivateSpaces } from "../../jobs/private-space-preparation.js";
 import type {
@@ -215,145 +212,28 @@ export function createWorldCoordination({
     return buildVillageSnapshot(now);
   }
 
-  /**
-   * The whole of what the village remembers, newest first, as the story tab draws
-   * it.
-   *
-   * Read on its own route rather than folded into the snapshot, for the same
-   * reason the town map is: the snapshot is read on every chat send and on every
-   * pulse, and a story that grows forever has no business being re-sent with it.
-   *
-   * Two things are resolved here and nowhere else. The calendar date is derived
-   * from `foundedAt` so the tab never does clock arithmetic, and each actor's name
-   * is read back off the live card, falling back to the name the village wrote
-   * down — the same rule `projectVillager` and `projectHomes` follow, so a
-   * villager's own memory does not go nameless when their card is deleted.
-   *
-   * `at` travels untouched. It is shown and never read.
-   */
-  type MemoryQuery = {
-    inspection?: boolean;
-    characterId?: string;
-    query?: string;
-    limit?: number;
-    cursor?: { revision: number; afterId: string };
-  };
-  const memoryPerson = (state: import("../../domain/models/world.js").VillageState, id: string) => ({
-    id,
-    name:
-      id === "player"
-        ? state.playerName || "You"
-        : (state.villagers.find((row) => row.characterId === id)?.cardSnapshot.name ?? "Former resident"),
-  });
-  function memoryEntry(
-    state: import("../../domain/models/world.js").VillageState,
-    row: MemoryCandidate,
-  ): MemoryListEntry {
-    const knowledge = Object.values(row.knowers);
-    return {
-      id: row.id,
-      rootId: row.rootId,
-      revision: row.revision,
-      rootRevision: row.rootRevision,
-      kind: row.kind,
-      text: row.text,
-      occurredAt: row.occurredAt,
-      recordedAt: row.recordedAt,
-      subjects: row.subjects.map((id) => memoryPerson(state, id)),
-      knownBy: Object.keys(row.knowers).map((id) => memoryPerson(state, id)),
-      forgotten: knowledge.some((row) => !!row.forgotten),
-      playerCorrection: knowledge.some((row) => !!row.repair),
-    };
-  }
   async function buildVillageMemories(input: MemoryQuery = {}): Promise<MemoryLibrary> {
-    const state = await readVillageAuthority();
-    const characterId = input.inspection ? input.characterId || "player" : "player";
-    const limit = input.limit ?? 50,
-      query = (input.query ?? "").trim();
-    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100 || query.length > 400)
-      throw badRequest("Invalid memory page.");
-    if (input.cursor && input.cursor.revision !== state.memories.revision)
-      throw conflict("Memories changed. Refresh the list.");
-    const terms = memoryTerms(query);
-    const candidates = input.inspection
-      ? inspectMemoryCandidates(state.memories, characterId)
-      : projectMemories(state.memories, ["player"]);
-    const rows = candidates
-      .filter((row) => {
-        const text = [
-          row.text,
-          row.id,
-          row.rootId,
-          ...row.subjects,
-          ...Object.values(row.knowers).flatMap((knower) => knower.support.map((e) => e.excerpt)),
-        ]
-          .join(" ")
-          .toLocaleLowerCase("en-US");
-        return terms.every((term) => text.includes(term));
-      })
-      .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || a.id.localeCompare(b.id));
-    const after = input.cursor ? rows.findIndex((row) => row.id === input.cursor!.afterId) : -1;
-    if (input.cursor && after < 0) throw conflict("The memory page changed. Refresh the list.");
-    const selected = rows.slice(after + 1, after + 1 + limit);
-    return {
-      inspection: input.inspection === true,
-      seed: state.seed,
-      revision: state.memories.revision,
-      characterId,
-      query,
-      residents: [memoryPerson(state, "player"), ...state.villagers.map((row) => memoryPerson(state, row.characterId))],
-      entries: selected.map((row) => memoryEntry(state, row)),
-      total: rows.length,
-      next:
-        after + 1 + limit < rows.length ? { revision: state.memories.revision, afterId: selected.at(-1)!.id } : null,
-    };
+    const state = await readVillageAuthority({ memories: true });
+    return continuityMemoryLibrary(state, input, villageNow(state.clock?.advanceMs ?? 0).toISOString());
   }
   async function readVillageMemoryEvidence(
     id: string,
     inspection = false,
     characterId = "player",
   ): Promise<MemoryInspection> {
-    const state = await readVillageAuthority();
-    const audience = inspection ? characterId : "player";
-    const selected = (
-      inspection ? inspectMemoryCandidates(state.memories, audience) : projectMemories(state.memories, ["player"])
-    ).find((row) => row.id === id || row.rootId === id);
-    if (!selected) throw notFound("That memory is unavailable.");
-    const stored = state.memories.records.find((row) => row.id === selected.id)!;
-    const root = state.memories.records.find((row) => row.id === stored.rootId)!;
-    const knowers = inspection ? stored.knowers : selected.knowers;
-    return {
-      seed: state.seed,
-      revision: state.memories.revision,
-      entry: memoryEntry(state, selected),
-      knowers: Object.entries(knowers).map(([knower, value]) => ({
-        person: memoryPerson(state, knower),
-        basis: value.basis,
-        ...(value.attributedTo ? { attributedTo: value.attributedTo } : {}),
-        learnedAt: value.learnedAt,
-        reinforcedAt: value.reinforcedAt,
-        forgotten: !!root.knowers[knower]?.forgotten,
-        playerCorrection: !!root.knowers[knower]?.repair,
-        text: root.knowers[knower]?.repair?.text ?? stored.text,
-        support: value.support.map((e) => ({
-          sourceId: e.source.id,
-          ...(e.source.sceneId ? { sceneId: e.source.sceneId } : {}),
-          lineId: e.lineId,
-          excerpt: e.excerpt,
-        })),
-      })),
-    };
+    const state = await readVillageAuthority({ memories: true });
+    return inspectContinuityMemory(
+      state,
+      id,
+      characterId,
+      inspection,
+      villageNow(state.clock?.advanceMs ?? 0).toISOString(),
+    );
   }
   async function forgetMemory(id: string, input: MemoryForgetRequest) {
     return mutateMemory(id, input, "forget");
   }
   async function correctMemory(id: string, input: MemoryCorrectRequest) {
-    if (
-      typeof input?.text !== "string" ||
-      !input.text.trim() ||
-      Buffer.byteLength(input.text, "utf8") > MEMORY_TEXT_LIMIT
-    )
-      throw badRequest("Enter a shorter, non-empty correction.");
     return mutateMemory(id, input, "repair");
   }
   async function mutateMemory(
@@ -361,31 +241,17 @@ export function createWorldCoordination({
     input: MemoryForgetRequest | MemoryCorrectRequest,
     action: "forget" | "repair",
   ) {
-    if (
-      !input ||
-      input.target?.id !== id ||
-      !input.operationId ||
-      !Array.isArray(input.knowers) ||
-      !input.knowers.length
-    )
-      throw badRequest("Choose existing memory knowers.");
     await mutateMemoryAuthority((state) => {
-      if (state.seed !== input.seed) throw conflict("Village identity changed.");
       try {
-        (action === "forget" ? applyForget : applyCorrection)(
+        state.continuity = changeContinuityMemory(
           state,
-          {
-            operationId: input.operationId,
-            expectedCollectionRevision: input.expectedCollectionRevision,
-            target: input.target,
-            knowers: input.knowers,
-            action,
-            ...(action === "repair" ? { text: (input as MemoryCorrectRequest).text } : {}),
-          },
+          id,
+          input,
+          action,
           villageNow(state.clock?.advanceMs ?? 0).toISOString(),
         );
       } catch (error) {
-        throw conflict(error instanceof Error ? error.message : "The memory changed.");
+        throw conflict(error instanceof Error ? error.message : "The continuity changed.");
       }
     });
   }

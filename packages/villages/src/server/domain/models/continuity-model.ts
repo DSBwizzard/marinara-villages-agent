@@ -15,7 +15,7 @@ export type ContinuityEvidence = {
   moment?: { index: number; side: "before" | "after" };
   positions?: Record<string, string>;
   excerpt: string;
-  kind: "speech" | "observation" | "self" | "private" | "native" | "context";
+  kind: "speech" | "observation" | "self" | "private" | "native" | "context" | "knowledge";
   actorId?: string;
   perceptions: { actorId: string; channel: "words" | "sight" | "sound-only" | "private"; text: string }[];
   act?: "offer" | "accept" | "refuse" | "withdraw";
@@ -34,6 +34,7 @@ export type ContinuityVersion = {
   sources: ContinuityEvidence[];
   at: string;
   operationId: string;
+  administrative?: { holder: ContinuityHolder; at: string };
   offerEvents?: string[];
   closed?: { reason: "fulfilled" | "withdrawn" | "ended" };
   room?: { order: number; visibility: "observable" | "concealed"; expiresAt?: string };
@@ -44,7 +45,7 @@ export type ContinuityProtection = {
   operationId: string;
   at: string;
   forgotten?: true;
-  repair?: { text: string; versionId: string };
+  repair?: { versionId: string };
   sourceUnits: string[];
 };
 export type ContinuityRecord = {
@@ -100,12 +101,17 @@ export type ContinuityAdmission = {
   episodeId: string;
   at: string;
   actors: { id: string; incarnation: string }[];
+  continuityRevision?: number;
+  /** Canonical rosters of the historical source episodes actually fitted in this request. */
+  sourceActors?: Record<string, { id: string; incarnation: string }[]>;
   room?: Extract<ContinuityHolder, { kind: "room" }>;
   sources: ContinuityEvidence[];
   supplied: ContinuityTarget[];
   protectedRoots: string[];
   protectionFingerprint?: string;
   blockedSources?: Record<string, string[]>;
+  /** Actual fitted context dependencies, separate from evidence authorizing learning. */
+  provenance?: Record<string, string[]>;
 };
 
 export type ContinuityView = {

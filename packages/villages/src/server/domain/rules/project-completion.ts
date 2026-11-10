@@ -3,7 +3,8 @@ import { applyConnectionEdits } from "../../../shared/helpers/zone-contact.js";
 import type { VillageProject, VillageState, VillageVenue, VillageVenueZone } from "../models/world.js";
 import { readPlaceDescription } from "./zone-continuity.js";
 import { asRecord } from "./coerce.js";
-import { rememberDomainFact } from "./domain-memories.js";
+import { retainNativeFact } from "./native-continuity.js";
+import { continuityActor } from "./continuity-actors.js";
 import { badRequest, conflict } from "./errors.js";
 import { prepareRenovatedPrivateInterior } from "./private-interior.js";
 import { effectiveRenovationChange, validateRenovationDesign } from "./project-design.js";
@@ -123,16 +124,19 @@ export function completeProject(state: VillageState, project: VillageProject, at
   project.status = "complete";
   project.progress = 100;
   project.updatedAt = at;
-  rememberDomainFact(state, {
-    id: "project-complete:" + project.id,
+  retainNativeFact(
+    state,
+    {
+      id: "project-complete:" + project.id,
+      kind: "project",
+      targetId: project.id,
+      revision: 1,
+      text: project.title + " was completed.",
+      witnesses: flow.builderId && continuityActor(state, flow.builderId) ? [flow.builderId] : [],
+    },
     at,
-    recordedAt: at,
-    text: project.title + " was completed.",
-    subjects: flow.builderId ? [flow.builderId] : [],
-    knowers: flow.builderId ? [flow.builderId] : [],
-    domainRef: { kind: "project", id: project.id },
-    event: true,
-  });
+    flow.builderId ? [flow.builderId] : [],
+  );
 }
 export function readProjectPlan(value: unknown, venue: VillageVenue): NonNullable<VillageProject["plan"]> {
   const row = asRecord(value);

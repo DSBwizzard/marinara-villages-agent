@@ -21,11 +21,6 @@ const binding = createActivationBinding<SceneCommands>("Scene commands are not c
 export function configureSceneCommands(service: SceneCommands): () => void {
   return binding.configure(bindActivationService(service));
 }
-export async function retrySceneChangeInterpretation(
-  ...args: Parameters<SceneCommands["retrySceneChangeInterpretation"]>
-) {
-  return binding.get().retrySceneChangeInterpretation(...args);
-}
 export async function moveVenueZone(...args: Parameters<SceneCommands["moveVenueZone"]>) {
   return binding.get().moveVenueZone(...args);
 }
@@ -43,12 +38,6 @@ export async function sendVenueTurn(...args: Parameters<SceneCommands["sendVenue
 }
 export async function leaveVenueSession(...args: Parameters<SceneCommands["leaveVenueSession"]>) {
   return binding.get().leaveVenueSession(...args);
-}
-export async function recordRoomAccessEvents(...args: Parameters<SceneCommands["recordRoomAccessEvents"]>) {
-  return binding.get().recordRoomAccessEvents(...args);
-}
-export async function recordSpokenInvitation(...args: Parameters<SceneCommands["recordSpokenInvitation"]>) {
-  return binding.get().recordSpokenInvitation(...args);
 }
 export async function endVenueSession(...args: Parameters<SceneCommands["endVenueSession"]>) {
   return binding.get().endVenueSession(...args);
@@ -70,9 +59,6 @@ export async function discardVenueVisitDebug(...args: Parameters<SceneCommands["
 export async function recoverVenueSceneWork(...args: Parameters<SceneCommands["recoverVenueSceneWork"]>) {
   return binding.get().recoverVenueSceneWork(...args);
 }
-export function sceneReplayEffects(...args: Parameters<SceneCommands["sceneReplayEffects"]>) {
-  return binding.get().sceneReplayEffects(...args);
-}
-export async function finishSemanticScene(...args: Parameters<SceneCommands["finishSemanticScene"]>) {
-  return binding.get().finishSemanticScene(...args);
+export async function settleScene(...args: Parameters<SceneCommands["settleScene"]>) {
+  return binding.get().settleScene(...args);
 }

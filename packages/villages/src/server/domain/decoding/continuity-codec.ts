@@ -6,6 +6,7 @@ import {
   isImmutableMemoryValue,
   memoryObject,
   memoryRequire,
+  memoryHash,
 } from "../rules/memory-integrity.js";
 
 const text = (bytes: number) =>
@@ -40,7 +41,7 @@ export const continuityEvidenceSchema = z
       .optional(),
     positions: z.record(z.string(), z.string()).optional(),
     excerpt: text(8000),
-    kind: z.enum(["speech", "observation", "self", "private", "native", "context"]),
+    kind: z.enum(["speech", "observation", "self", "private", "native", "context", "knowledge"]),
     actorId: id.optional(),
     perceptions: z
       .array(
@@ -73,9 +74,10 @@ const version = z
     facet: z
       .enum(["reason", "attention", "approach", "connection", "stance", "expectation", "concern", "boundary"])
       .optional(),
-    sources: z.array(continuityEvidenceSchema).min(1).max(8),
+    sources: z.array(continuityEvidenceSchema).max(8),
     at,
     operationId: text(210),
+    administrative: z.object({ holder: continuityHolderSchema, at }).strict().optional(),
     offerEvents: ids.optional(),
     closed: closed.optional(),
     room: z
@@ -84,6 +86,9 @@ const version = z
       .optional(),
   })
   .strict()
+  .refine((value) =>
+    value.administrative ? value.sources.length === 0 && value.administrative.at >= value.at : value.sources.length > 0,
+  )
   .refine((value) => Buffer.byteLength(JSON.stringify(value)) <= 32768);
 const record = z
   .object({
@@ -102,10 +107,7 @@ const record = z
           operationId: id,
           at,
           forgotten: z.literal(true).optional(),
-          repair: z
-            .object({ text: text(2400), versionId: id })
-            .strict()
-            .optional(),
+          repair: z.object({ versionId: id }).strict().optional(),
           sourceUnits: z.array(text(700)),
         })
         .strict()
@@ -166,6 +168,17 @@ export function readContinuity(raw: unknown, seed?: string): ContinuityCollectio
   for (const entry of value.versions) {
     const root = roots.get(entry.rootId);
     memoryRequire(root && entry.createdRevision <= value.revision, "missing or future continuity root");
+    if (entry.administrative) {
+      const key = continuityHolderKey(entry.administrative.holder),
+        receipt = value.receipts[entry.operationId];
+      memoryRequire(
+        root.heads[key] &&
+          receipt?.roots.includes(root.id) &&
+          receipt.versions.includes(entry.id) &&
+          entry.id === "continuity-version-" + memoryHash([root.id, entry.operationId, key]).slice(0, 32),
+        "administrative version lost its holder or receipt",
+      );
+    }
     for (const source of entry.sources)
       memoryRequire(!seed || source.seed === seed, "continuity source belongs to another world");
     if (entry.parentId)
@@ -179,6 +192,10 @@ export function readContinuity(raw: unknown, seed?: string): ContinuityCollectio
   }
   for (const entry of value.records) {
     memoryRequire(
+      Object.values(entry.heads).filter((head) => head.holder.kind === "room").length <= 1,
+      "continuity root belongs to more than one room",
+    );
+    memoryRequire(
       entry.revision <= value.revision && Object.keys(entry.heads).length > 0,
       "invalid continuity root revision",
     );
@@ -188,12 +205,16 @@ export function readContinuity(raw: unknown, seed?: string): ContinuityCollectio
         key === continuityHolderKey(head.holder) && current?.rootId === entry.id && head.revision <= entry.revision,
         "invalid continuity holder head",
       );
+      memoryRequire(
+        !current.administrative || continuityHolderKey(current.administrative.holder) === key,
+        "administrative meaning belongs to another holder",
+      );
       memoryRequire(!current.closed || !head.current, "closed continuity remains current");
       if (head.holder.kind === "actor") {
         const actorId = head.holder.id;
         memoryRequire(
           current.sources.every((source) =>
-            source.kind === "private" || source.kind === "self"
+            source.kind === "private" || source.kind === "self" || source.kind === "knowledge"
               ? source.actorId === actorId
               : source.perceptions.some((row) => row.actorId === actorId) ||
                 (source.kind !== "native" && source.kind !== "context" && source.actorId === actorId),
@@ -225,11 +246,18 @@ export function readContinuity(raw: unknown, seed?: string): ContinuityCollectio
         memoryRequire(parent && !parent.parentId, "invalid continuity parent head");
       }
     }
-    for (const [key, protection] of Object.entries(entry.protection))
+    for (const [key, protection] of Object.entries(entry.protection)) {
+      const repaired = protection.repair && versions.get(protection.repair.versionId);
       memoryRequire(
-        entry.heads[key] && (!protection.repair || versions.get(protection.repair.versionId)?.rootId === entry.id),
+        entry.heads[key] &&
+          (!protection.repair ||
+            (repaired?.rootId === entry.id &&
+              repaired.administrative &&
+              continuityHolderKey(repaired.administrative.holder) === key &&
+              repaired.operationId === protection.operationId)),
         "invalid continuity protection owner",
       );
+    }
     if (entry.offer) {
       const offer = entry.offer;
       memoryRequire(

@@ -186,10 +186,14 @@ export function routeZoneEvents(
   ].filter((id) => !scene.departedIds?.includes(id));
   const playerZoneAt = (index: number) =>
     playerMoves.findLast((move) => move.segment <= index)?.zoneId ?? scene.zoneId ?? "exterior";
+  const orderedMoves = moves.toSorted((a, b) => a.segment - b.segment);
   const position = (id: string, index: number) =>
     id === "player"
       ? playerZoneAt(index)
-      : (moves.find((move) => move.characterId === id && move.segment <= index)?.zoneId ?? contactPosition(scene, id));
+      : scene.pendingNpcAdmissions?.some((arrival) => arrival.npc.id === id && arrival.segment > index)
+        ? ""
+        : (orderedMoves.findLast((move) => move.characterId === id && move.segment <= index)?.zoneId ??
+          contactPosition(scene, id));
   const inZones = (zones: string[], index: number) => ids.filter((id) => zones.includes(position(id, index)));
   parsed.heardPlayerBy = [];
   parsed.lines.forEach((line, index) => {
@@ -227,6 +231,9 @@ export function routeZoneEvents(
         throw badGateway("A whisper needs a recipient in the same Zone. Your draft is preserved.");
       line.heardBy = local.filter((id) => id === actor || id === line.targetId);
     }
+    const playerWords =
+      speechDelivery(line) === "whisper" ? line.targetId === "player" : (loud ? near : [origin]).includes(playerZone);
+    if (line.kind === "narration" || playerWords) line.heardBy.push("player");
     if (actor === "player") {
       line.role = "user";
       line.speakerId = "";

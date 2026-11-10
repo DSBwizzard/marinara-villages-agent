@@ -22,7 +22,7 @@ export type NarrationSourceContext = {
   labels: Record<string, string>;
   historical: Record<string, ContinuityEvidence>;
   native: Record<string, AcceptedEpisode["commandReceipts"][number]>;
-  moves: ContactMove[];
+  moves: Pick<ContactMove, "characterId" | "zoneId" | "segment">[];
 };
 export type NarrationSourceOwner = { holder: ContinuityHolder; writeId: string; text: string; class: ContinuityClass };
 
@@ -31,6 +31,9 @@ function position(
   actorId: string,
   moment: { index: number; side: "before" | "after" },
 ) {
+  const arrival = context.scene.pendingNpcAdmissions?.find((row) => row.npc.id === actorId);
+  if (arrival && (moment.index < arrival.segment || (moment.index === arrival.segment && moment.side === "before")))
+    return "";
   return (
     context.moves
       .toSorted((a, b) => a.segment - b.segment)
@@ -55,6 +58,10 @@ function inputMoment(value: Extract<NarrationSource, { input: string }>, context
   return { index, side: "before" in at ? ("before" as const) : ("after" as const) };
 }
 
+export function narrationPositions(context: NarrationSourceContext, moment: { index: number; side: "before" | "after" }) {
+  return Object.fromEntries(context.actors.map((actor) => [actor.id, position(context, actor.id, moment)]));
+}
+
 /** Only fitted aliases, code-routed segments and exact consequential excerpts can become evidence. */
 export function bindNarrationSource(
   raw: unknown,
@@ -68,6 +75,7 @@ export function bindNarrationSource(
         owner?.holder.kind === "actor" &&
           owner.holder.id !== "player" &&
           context.actors.some((actor) => continuityHolderKey(actor) === continuityHolderKey(owner.holder)) &&
+          (context.scene.contactGeneration?.actorIds ?? context.scene.activeIds).includes(owner.holder.id) &&
           ["perspective", "desire", "motivation", "commitment"].includes(owner.class),
         "self belongs only to an admitted non-player's private perspective",
       );
@@ -111,9 +119,14 @@ export function bindNarrationSource(
         excerpt: receipt.text,
         kind: "native",
         committedReceiptId: receipt.id,
-        perceptions: receipt.witnesses.map((actorId) => ({ actorId, channel: "private", text: receipt.text })),
+        perceptions: receipt.witnesses.map((actorId) => ({
+          actorId,
+          channel: receipt.observedBy?.includes(actorId) ? "sight" : "private",
+          text: receipt.text,
+        })),
       };
     }
+    memoryRequire(!ref.startsWith("h:") && !ref.startsWith("native:"), "source alias was not supplied");
     return bindNarrationSource({ segment: ref }, context, owner);
   }
   const source: ContinuityEvidence = {
@@ -186,13 +199,7 @@ export function bindNarrationSource(
     source.fingerprint = memoryHash(line);
     source.excerpt = line.content;
     source.moment = { index, side: "after" };
-    const full = [
-      ...new Set([
-        ...line.heardBy,
-        ...(!line.contactHidden && !line.attentionEvidence ? ["player"] : []),
-        ...(line.kind !== "narration" ? [line.speakerId] : []),
-      ]),
-    ];
+    const full = [...new Set([...line.heardBy, ...(line.kind !== "narration" ? [line.speakerId] : [])])];
     const sound = [...(line.soundOnly?.characterIds ?? []), ...(line.soundOnly?.player ? ["player"] : [])];
     const perceive = ref.perceive;
     if (line.kind !== "narration") {
@@ -204,7 +211,7 @@ export function bindNarrationSource(
       source.actorId = line.speakerId;
       for (const actorId of perceive?.by ?? [...new Set([...full, ...sound])]) {
         memoryRequire(
-          context.actors.some((actor) => actor.id === actorId),
+          context.actors.some((actor) => actor.id === actorId) && position(context, actorId, { index, side: "after" }),
           "unknown segment recipient",
         );
         const words = full.includes(actorId) && perceive?.kind !== "sound-only";
@@ -223,13 +230,18 @@ export function bindNarrationSource(
     } else if (perceive) {
       source.kind = perceive.kind === "private" ? "private" : "observation";
       memoryRequire(
-        perceive.kind !== "private" || (perceive.by.length === 1 && perceive.by[0] !== "player"),
+        perceive.kind !== "private" ||
+          (perceive.by.length === 1 &&
+            perceive.by[0] !== "player" &&
+            (context.scene.contactGeneration?.actorIds ?? context.scene.activeIds).includes(perceive.by[0])),
         "private narration is only its actor's own perspective",
       );
       if (perceive.kind === "private") source.actorId = perceive.by[0];
       for (const actorId of perceive.by) {
         memoryRequire(
-          context.actors.some((actor) => actor.id === actorId) && (full.includes(actorId) || sound.includes(actorId)),
+          context.actors.some((actor) => actor.id === actorId) &&
+            position(context, actorId, { index, side: "after" }) &&
+            (full.includes(actorId) || sound.includes(actorId)),
           "narrated perception was not eligible",
         );
         const acoustic = perceive.kind === "heard" || perceive.kind === "sound-only";
@@ -248,9 +260,7 @@ export function bindNarrationSource(
   memoryRequire(!ref.act || source.kind === "speech", "only actual communication supports an offer decision");
   if (ref.act) source.act = ref.act;
   if (source.moment)
-    source.positions = Object.fromEntries(
-      context.actors.map((actor) => [actor.id, position(context, actor.id, source.moment!)]),
-    );
+    source.positions = narrationPositions(context, source.moment);
   source.id = "source-" + memoryHash([context.episodeId, ref, source]).slice(0, 32);
   return source;
 }

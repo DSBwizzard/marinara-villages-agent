@@ -108,26 +108,14 @@ function learn(state: VillageState, text: string, sceneId?: string) {
 {
   const { state, scene } = fixture(true);
   let raw = structuredClone(state);
-  const relationships = structuredClone(state.relationshipContext!);
-  delete raw.relationshipContext;
-  const world = createVillageStateService(
-    {
-      readAuthority: async () => structuredClone(raw),
-      mutateAuthority: async (update) => {
-        const candidate = structuredClone(raw);
-        await update(candidate);
-        raw = candidate;
-      },
+  const world = createVillageStateService({
+    readAuthority: async () => structuredClone(raw),
+    mutateAuthority: async (update) => {
+      const candidate = structuredClone(raw);
+      await update(candidate);
+      raw = candidate;
     },
-    () => ({
-      readRelationshipState: async () => structuredClone(relationships),
-      reconcileRelationships() {},
-      persistRelationshipAuthority: async () => {},
-      processSocialOutbox: async () => false,
-      projectSocialActivities() {},
-      reconcileSocialPlans() {},
-    }),
-  );
+  });
   const live = createLiveScenes({
     ...world,
     readActive: async () => ({ sessionId: scene.id, placeId: scene.placeId }),

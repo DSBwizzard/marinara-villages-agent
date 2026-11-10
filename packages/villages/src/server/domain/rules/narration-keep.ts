@@ -88,10 +88,7 @@ export function prepareNarrationKeep(
   const prior =
     record &&
     collection.versions.find((version) => version.id === record.heads[continuityHolderKey(holders[0])]?.versionId);
-  const text =
-    typeof proposal.text === "string"
-      ? proposal.text
-      : (record?.protection[continuityHolderKey(holders[0])]?.repair?.text ?? prior?.text ?? "");
+  const text = typeof proposal.text === "string" ? proposal.text : (prior?.text ?? "");
   const sourceOwner = {
     holder: holders[0],
     writeId: header.id,

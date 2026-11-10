@@ -15,7 +15,6 @@ export interface VillageMutationSources {
 /** Normalize a Village change independently of hydration and revision-safe storage. */
 export function normalizeVillageMutation(
   state: VillageState,
-  relationshipSeed: string,
   mutate: (state: VillageState) => void,
   sources: VillageMutationSources = { now: () => new Date(), seed: randomVillageSeed },
 ): void {
@@ -48,7 +47,6 @@ export function normalizeVillageMutation(
     if (prior && venue.presentation.mapId !== prior.presentation.mapId)
       throw new Error("Moving an existing Venue between maps is not supported.");
   }
-  if (state.seed !== relationshipSeed) delete state.relationshipContext;
   const capacity = villageVenueUsage(state);
   if (capacity.total > previousCapacity.total || capacity.nonResidential > previousCapacity.nonResidential)
     assertVillageVenueCapacity(state);
@@ -115,6 +113,4 @@ export function normalizeVillageMutation(
   projectAgendaReservations(state);
   if (state.foundedAt.length === 0) state.foundedAt = sources.now().toISOString();
   if (state.seed.length === 0) state.seed = sources.seed();
-  // Relationship authority lives in its own seed-scoped document, never the village DTO.
-  delete state.relationshipContext;
 }

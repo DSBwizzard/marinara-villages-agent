@@ -22,7 +22,6 @@ const sources = {
 };
 normalizeVillageMutation(
   fresh,
-  fresh.seed,
   (state) => {
     events.push("mutation");
     for (const id of ["first", "second"])
@@ -47,7 +46,7 @@ assert.equal(fresh.exchangeReceipts.second.committedAt, "2026-10-06T12:01:00.000
 assert.equal(fresh.foundedAt, "2026-10-06T12:02:00.000Z");
 assert.equal(fresh.seed, "stable-world-seed");
 events.length = 0;
-normalizeVillageMutation(fresh, fresh.seed, () => {}, sources);
+normalizeVillageMutation(fresh, () => {}, sources);
 assert.deepEqual(events, [], "existing notice order, founding stamp and seed are never regenerated");
 assert.equal(fresh.noticeSequence, 2);
 assert.equal(fresh.foundedAt, "2026-10-06T12:02:00.000Z");
@@ -77,7 +76,6 @@ assert.doesNotThrow(
   () =>
     normalizeVillageMutation(
       oversizedSave,
-      oversizedSave.seed,
       (state) => {
         state.name = "Renamed";
       },
@@ -90,7 +88,6 @@ assert.throws(
   () =>
     normalizeVillageMutation(
       oversizedSave,
-      oversizedSave.seed,
       (state) => {
         state.venues.push(venue(18));
       },
@@ -109,7 +106,6 @@ const newVenue = venue(0);
 delete newVenue.access;
 normalizeVillageMutation(
   native,
-  native.seed,
   (state) => {
     state.venues.push(newVenue);
   },
@@ -118,12 +114,11 @@ normalizeVillageMutation(
 assert(native.venues[0].access);
 const missing = structuredClone(native);
 delete missing.venues[0].access;
-assert.throws(() => normalizeVillageMutation(missing, missing.seed, () => {}, sources), /native access ledger/);
+assert.throws(() => normalizeVillageMutation(missing, () => {}, sources), /native access ledger/);
 assert.equal(missing.venues[0].access, undefined);
 const ledger = structuredClone(native.venues[0].access);
 normalizeVillageMutation(
   native,
-  native.seed,
   (state) => {
     state.name = "Renamed native Village";
   },
@@ -160,7 +155,6 @@ applyAccessCommand(
 const unloadedAuthority = structuredClone({ ledger: privateVenue.access, policy: privateZone.access });
 normalizeVillageMutation(
   unhydrated,
-  unhydrated.seed,
   (state) => {
     state.name = "Renamed without registry hydration";
   },

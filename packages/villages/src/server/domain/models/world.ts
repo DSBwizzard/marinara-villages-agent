@@ -56,6 +56,7 @@ export type VillageDayView = {
 
 /** One library card the village has adopted. */
 export type VillageVillager = {
+  incarnation: string;
   letterFontId: string;
   identityDescription?: import("../../../shared/contracts/resident-description.js").ResidentIdentityDescription & {
     initialGenerationComplete: boolean;
@@ -582,9 +583,8 @@ export type VillageState = {
   worldPlaces: import("./places.js").PlaceRegistry;
   narrative?: import("./narrative-model.js").NarrativeState;
   narrativeConsequence?: import("../../../shared/contracts/village.js").VillageNarrativeConsequence;
-  memories: import("./memories.js").MemoryCollection;
-  memoryScenes: Record<string, import("./memories.js").MemorySceneState>;
-  memoryReceipts: Record<string, import("./wish-check-model.js").ExchangeEffectReceipt>;
+  continuity: import("./continuity-model.js").ContinuityCollection;
+  episodes: import("./episode-model.js").EpisodeCollection;
   socialContractVersion: 2;
   socialMailOutbox?: import("./social-mail.js").WorldSocialMailOutbox[];
   socialPublications?: Record<string, true>;
@@ -616,7 +616,7 @@ export type VillageState = {
   socialOutbox?: import("./social-outbox-model.js").WorldSocialOutboxEntry[];
   backgroundReceipts: Record<string, string>;
   /** Private expiry holds owned by unfinished Scenes or their retained final effects. */
-  version: 17;
+  version: 18;
   /** Shared evidence engine used by Wishes. */
   progressEngineVersion: 1;
   name: string;

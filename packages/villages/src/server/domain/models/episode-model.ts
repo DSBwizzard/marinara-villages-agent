@@ -11,6 +11,7 @@ export type AcceptedEpisode = {
   capturedAt: string;
   acceptedAt: string;
   responseDigest: string;
+  admittedContinuityRevision: number;
   /** Exact original submission; never a resident-readable transcript. */
   privateInput: string;
   actors: { id: string; incarnation: string; zoneId: string }[];
@@ -34,8 +35,12 @@ export type AcceptedEpisode = {
     revision: number;
     text: string;
     witnesses: string[];
+    observedBy?: string[];
   }[];
   /** Code-bound source ancestry for each input/segment unit. */
   dependencies: Record<string, string[]>;
+  room?: Extract<import("./continuity-model.js").ContinuityHolder, { kind: "room" }>;
+  /** Generated provenance is private to the holder who received that context. */
+  holderDependencies?: Record<string, Record<string, string[]>>;
 };
 export type EpisodeCollection = { format: 1; revision: number; records: AcceptedEpisode[] };

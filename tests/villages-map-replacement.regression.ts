@@ -92,14 +92,14 @@ assert.equal(projects.state.projects[0].venueDraft!.position.x, 0.8);
 assert.equal(projects.state.projects[0].lifecycle!.revision, 2);
 assert.equal(plannedVenue(projects.state.projects[0]).presentation.mapId, "map-house");
 const mutation = mapsFixture();
-normalizeVillageMutation(mutation.state, mutation.state.seed, (state) => {
+normalizeVillageMutation(mutation.state, (state) => {
   state.venues[0].presentation.x = 0.4;
 });
 assert.equal(mutation.state.maps[0].revision, 2);
 assert.equal(mutation.state.maps[1].revision, 1);
 assert.throws(
   () =>
-    normalizeVillageMutation(mutation.state, mutation.state.seed, (state) => {
+    normalizeVillageMutation(mutation.state, (state) => {
       state.venues[0].presentation.mapId = "map-street";
     }),
   /between maps/,

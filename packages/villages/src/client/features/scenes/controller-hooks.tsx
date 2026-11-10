@@ -47,8 +47,6 @@ export function useSceneChangesPolling(ports: {
     }
     const controller = new AbortController();
     let retries = 0;
-    let wasActive = false;
-    let settling = false;
     let stopped = false,
       timer: ReturnType<typeof setTimeout>;
     let cursor = cursorRef.current.cursor;
@@ -56,7 +54,6 @@ export function useSceneChangesPolling(ports: {
       try {
         const answer = await request<{
           activeRequest?: { status?: string };
-          backgroundChecks?: { status: string }[];
           changes: { notices: RoomRecordEvent[] }[];
           notices: RoomRecordEvent[];
           dismissedNoticeIds: string[];
@@ -79,17 +76,7 @@ export function useSceneChangesPolling(ports: {
         cursor = answer.nextCursor ?? cursor;
         cursorRef.current.cursor = cursor;
         retries = 0;
-        // The operation/recovery monitor owns a running turn. This loop owns only its asynchronous Wish checks.
-        const active = answer.backgroundChecks?.some((job) => ["queued", "running"].includes(job.status));
         if (answer.hasMore) timer = setTimeout(() => void poll(), 25);
-        else if (room.status !== "closed" && active) {
-          wasActive = true;
-          timer = setTimeout(() => void poll(), 1500);
-        } else if (room.status !== "closed" && wasActive && !settling) {
-          settling = true;
-          timer = setTimeout(() => void poll(), 1500);
-        }
-        // Late afterApply commits change the shared snapshot revision and reopen this read.
       } catch {
         if (!stopped && retries++ < 2) timer = setTimeout(() => void poll(), 3000);
       }

@@ -1,0 +1,825 @@
+// Test cases: narration-writing/single-request, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/required-evidence-bound
+import assert from "node:assert/strict";
+import { runCase } from "../scripts/test-cases.mjs";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import {
+  episodeSourceGraph,
+  readAcceptedEpisode,
+} from "../packages/villages/src/server/domain/decoding/episode-codec.js";
+import type { AcceptedEpisode } from "../packages/villages/src/server/domain/models/episode-model.js";
+import { establishPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
+import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
+import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
+import {
+  applyContinuityWrite,
+  continuityHolderKey,
+  continuityVersionUnit,
+  protectContinuity,
+} from "../packages/villages/src/server/domain/rules/continuity.js";
+import { bindNarrationSource } from "../packages/villages/src/server/domain/rules/narration-sources.js";
+import { routeZoneEvents, zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
+import { fitVenueWritingMessages } from "../packages/villages/src/server/domain/rules/venue-writing.js";
+import type { VenueReplyLine } from "../packages/villages/src/server/domain/models/scene-model.js";
+import {
+  fittedNarrationReadset,
+  narrationContinuityContext,
+} from "../packages/villages/src/server/domain/rules/narration-context.js";
+import { actorEpisodeView, appendEpisode } from "../packages/villages/src/server/domain/rules/episodes.js";
+import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import { retainNativeFact } from "../packages/villages/src/server/domain/rules/native-continuity.js";
+import {
+  createSceneWriting,
+  type SceneWritingPorts,
+} from "../packages/villages/src/server/features/scenes/writing-service.js";
+import {
+  encodeContinuityPages,
+  decodeContinuityPagesSync,
+} from "../packages/villages/src/server/adapters/storage/continuity-pages.js";
+
+const at = "2026-11-09T12:00:00.000Z";
+function fixture() {
+  const state = { ...defaultVillageState(), seed: "world", setupAt: at, foundedAt: at };
+  const place = establishPlace(
+    state,
+    {
+      name: "Lantern",
+      description: "A restaurant.",
+      controllers: ["mara"],
+      people: [
+        {
+          ref: "mara",
+          name: "Mara",
+          characterization: "AUTHORED IDENTITY: a reserved host who speaks plainly.",
+          role: "Proprietor",
+        },
+      ],
+      zones: [{ id: "parlor", name: "Parlor", kind: "public", description: "Wooden tables." }],
+    },
+    "lantern",
+    "map",
+    "request:place",
+    at,
+    true,
+  );
+  const id = Object.keys(state.worldPlaces.npcs)[0];
+  const scene = coerceSession({
+    version: 5,
+    id: "scene",
+    placeId: place.id,
+    placeName: "Lantern",
+    zoneId: "parlor",
+    villageSeed: state.seed,
+    sceneRevision: 1,
+    startedAt: at,
+    lastActivityAt: at,
+    status: "active",
+    activeIds: [id],
+    participants: [{ characterId: id, name: "Mara", doing: "Talking" }],
+    sceneAttendance: {
+      capturedAt: at,
+      layout: captureSceneLayout(place.location),
+      occupants: [{ characterId: id, name: "Mara", doing: "Talking", zoneId: "parlor" }],
+    },
+  });
+  const checkpoints = new Map<string, unknown>(),
+    calls = { purchases: 0, resolutions: 0, reads: 0 };
+  let messages: any[] = [],
+    unavailable = false,
+    overflow = false,
+    hiddenRequest = false,
+    configuredConnection = "narration",
+    usedModel = "";
+  const model = {
+    model: "fixture",
+    connectionId: "narration",
+    maxOutputTokens: 4096,
+    fitContext(input: any[], options: any) {
+      return { messages: overflow ? input.slice(1) : input, maxTokens: options.maxTokens, trimmed: overflow };
+    },
+  };
+  const writing = createSceneWriting({
+    venueOperationId: () => "operation",
+    venueCheckpoint: async (stage: string, work: () => Promise<unknown>) => {
+      if (!checkpoints.has(stage)) checkpoints.set(stage, structuredClone(await work()));
+      return structuredClone(checkpoints.get(stage));
+    },
+    venueSavedCheckpoint: (stage: string) =>
+      hiddenRequest && stage.startsWith("writing-request:") ? undefined : structuredClone(checkpoints.get(stage)),
+    readVillageState: async () => {
+      calls.reads++;
+      assert(!unavailable);
+      return state;
+    },
+    villagesConnectionIdFor: async () => configuredConnection,
+    villagesLanguageModels: () => ({
+      resolveForRequest: async ({ connectionId }: { connectionId: string }) => {
+        calls.resolutions++;
+        assert(!unavailable);
+        return { ...model, connectionId, model: connectionId === "changed" ? "different-model" : model.model };
+      },
+    }),
+    readEffectiveVillagerCard: () => {
+      throw new Error("Only NPC identity expected");
+    },
+    readVillageLore: async () => {
+      assert(!unavailable);
+      return [];
+    },
+    completeWithRoom: async (selected: { model: string }, input: any[]) => {
+      calls.purchases++;
+      usedModel = selected.model;
+      messages = structuredClone(input);
+      return {
+        content: JSON.stringify({ segments: [{ kind: "dialogue", speakerId: id, text: "Because it matters to me." }] }),
+        finishReason: "stop",
+      };
+    },
+    rejectVenueCompletion: async () => {
+      throw new Error("Unexpected rejection");
+    },
+    measurePipeline: async (_name: unknown, _context: unknown, work: () => Promise<unknown>) => work(),
+    runtimeDebug: () => {},
+  } as unknown as SceneWritingPorts);
+  return {
+    state,
+    scene,
+    venue: place.location,
+    id,
+    checkpoints,
+    calls,
+    writing,
+    messages: () => messages,
+    disable: () => {
+      unavailable = true;
+    },
+    overflow: () => {
+      overflow = true;
+    },
+    hideRequestAndChangeConnection: () => {
+      hiddenRequest = true;
+      configuredConnection = "changed";
+    },
+    usedModel: () => usedModel,
+  };
+}
+
+await runCase("narration-writing/single-request", async () => {
+  const f = fixture(),
+    input = "I privately fear she will leave. I ask, “Why?”\n  Keep my spacing. 🪑";
+  const reply = await f.writing.generate(f.scene, input, "chat");
+  assert.equal(f.calls.purchases, 1);
+  assert.equal(f.messages().at(-1).content, input);
+  assert.equal(reply.readset.source.input, input);
+  assert.deepEqual(reply.readset.source.historical, {});
+  assert(
+    f
+      .messages()
+      .filter((row) => row.cacheBreakpoint)
+      .some((row) => row.content.includes("AUTHORED IDENTITY")),
+  );
+  assert(!f.messages().some((row) => row.content.includes("input:[")));
+  assert(!Object.hasOwn(reply.raw, "input"), "ordinary dialogue has no classification inventory");
+  assert.equal(reply.readset.source.scene.lines.length, 0);
+  assert.equal(reply.readset.source.scene.submissions.length, 0);
+});
+
+await runCase("narration-writing/saved-replay", async () => {
+  const f = fixture(),
+    first = await f.writing.generate(f.scene, "Why?", "chat");
+  const before = { ...f.calls };
+  f.disable();
+  const replay = await f.writing.generate(f.scene, "Why?", "chat");
+  assert.deepEqual(replay, first);
+  assert.deepEqual(f.calls, before, "retained response replay requires no model resolution, world read or purchase");
+});
+
+await runCase("narration-writing/required-overflow", async () => {
+  const f = fixture();
+  f.overflow();
+  await assert.rejects(() => f.writing.generate(f.scene, "Why?", "chat"), /required context do not fit/);
+  assert.equal(f.calls.purchases, 0);
+  assert.equal(f.checkpoints.size, 0);
+});
+
+await runCase("narration-writing/fitted-evidence", () => {
+  const f = fixture();
+  for (let i = 0; i < 3; i++)
+    retainNativeFact(
+      f.state,
+      {
+        id: "receipt-" + i,
+        kind: "npc",
+        targetId: f.id,
+        revision: i + 1,
+        text: "Mara explained detail " + i,
+        witnesses: [f.id, "player"],
+      },
+      at,
+    );
+  const context = narrationContinuityContext(f.state, f.scene, f.venue, "next", "detail", at);
+  const required = context.parts.filter((part) => !part.block.optional);
+  const fitted = fittedNarrationReadset(
+    f.state,
+    context,
+    required.map((part) => part.block.evidenceId!),
+  );
+  const all = fittedNarrationReadset(
+    f.state,
+    context,
+    context.parts.map((part) => part.block.evidenceId!),
+  );
+  assert(Object.keys(all.source.historical).length > Object.keys(fitted.source.historical).length);
+  assert(all.admission.supplied.length > fitted.admission.supplied.length);
+  assert.equal(Object.keys(fitted.admission.sourceActors ?? {}).length, 0);
+  assert.deepEqual(fitted.offered, [], "unsupplied history is never counted as an initiative offer");
+  for (const source of Object.values(fitted.source.historical)) assert.equal(source.kind, "knowledge");
+});
+
+await runCase("narration-writing/scoped-cold-provenance", () => {
+  const f = fixture(),
+    mara = continuityActor(f.state, f.id)!,
+    player = continuityActor(f.state, "player")!;
+  retainNativeFact(
+    f.state,
+    {
+      id: "original",
+      kind: "npc",
+      targetId: f.id,
+      revision: 1,
+      text: "Mara described a private family story.",
+      witnesses: [f.id, "player"],
+    },
+    at,
+  );
+  const roots = f.state.continuity.records,
+    versions = f.state.continuity.versions;
+  const version = (key: string) => roots.flatMap((root) => (root.heads[key] ? [root.heads[key].versionId] : []))[0];
+  const answer: AcceptedEpisode = {
+    format: 1,
+    id: "answer",
+    seed: f.state.seed,
+    sceneId: f.scene.id,
+    submissionId: "question",
+    operationId: "answer-operation",
+    capturedAt: at,
+    acceptedAt: at,
+    responseDigest: memoryHash("answer"),
+    admittedContinuityRevision: f.state.continuity.revision,
+    privateInput: "Why?",
+    actors: [mara, player].map((actor) => ({ id: actor.id, incarnation: actor.incarnation, zoneId: "parlor" })),
+    segments: [
+      {
+        id: "reply",
+        role: "assistant",
+        speakerId: f.id,
+        name: "Mara",
+        kind: "dialogue",
+        content: "That story still matters.",
+        heardBy: [f.id, "player"],
+        at,
+        zoneId: "parlor",
+      },
+    ],
+    grounding: [],
+    continuityVersionIds: [],
+    offered: [],
+    commandReceipts: [],
+    dependencies: {},
+    holderDependencies: {
+      [continuityHolderKey(mara)]: { reply: [continuityVersionUnit(version(continuityHolderKey(mara)))] },
+      [continuityHolderKey(player)]: { reply: [continuityVersionUnit(version(continuityHolderKey(player)))] },
+    },
+  };
+  f.state.episodes = appendEpisode(f.state.episodes, answer, f.state.seed);
+  const root = roots.find((row) => row.heads[continuityHolderKey(mara)])!,
+    key = continuityHolderKey(mara);
+  f.state.continuity = protectContinuity(
+    f.state.continuity,
+    { id: root.id, recordRevision: root.revision, heads: { [key]: root.heads[key].revision } },
+    [mara],
+    "forget",
+    at,
+    { forget: true },
+  );
+  const packet = encodeContinuityPages(
+    { continuity: f.state.continuity, episodes: f.state.episodes, worldPlaces: f.state.worldPlaces },
+    "a".repeat(32),
+  );
+  const cold = decodeContinuityPagesSync(
+    packet.manifest,
+    "a".repeat(32),
+    f.state.seed,
+    (id) => packet.pages.get(id) ?? null,
+  ).value;
+  const saved = cold.episodes.records.at(-1)!;
+  assert.deepEqual(actorEpisodeView(saved, cold.continuity, mara, cold.episodes)?.segments, []);
+  assert.equal(
+    actorEpisodeView(saved, cold.continuity, player, cold.episodes)?.segments[0].text,
+    "That story still matters.",
+  );
+  assert.equal(saved.privateInput, "Why?");
+  assert.equal(versions.length, 2);
+  const unknown = structuredClone(answer);
+  unknown.holderDependencies![JSON.stringify(["actor", f.id, "other-incarnation"])] = { reply: [] };
+  assert.throws(() => readAcceptedEpisode(unknown, f.state.seed), /unknown episode provenance holder/);
+  const invalidUnit = structuredClone(answer);
+  invalidUnit.holderDependencies![key].invented = [];
+  assert.throws(() => readAcceptedEpisode(invalidUnit, f.state.seed), /unknown episode dependency unit/);
+  const cyclic = structuredClone(answer);
+  cyclic.holderDependencies![key].reply = [JSON.stringify([cyclic.id, "reply", memoryHash(cyclic.segments[0])])];
+  assert.throws(() => episodeSourceGraph([f.state.episodes.records[0], cyclic], mara), /cyclic/);
+});
+
+await runCase("narration-writing/advanced-clock-expiry", async () => {
+  const f = fixture(),
+    now = new Date().toISOString(),
+    text = "A shallow puddle is drying near the window.";
+  const context = narrationContinuityContext(f.state, f.scene, f.venue, "puddle", text, now);
+  const line = {
+    id: "puddle-outcome",
+    speakerId: "__venue_scene__",
+    name: "Narration",
+    kind: "narration" as const,
+    role: "assistant" as const,
+    content: text,
+    heardBy: ["player"],
+    at: now,
+    zoneId: "parlor",
+  };
+  const source = bindNarrationSource(
+    { segment: "puddle", perceive: { kind: "seen", by: ["player"] } },
+    {
+      ...context.source,
+      lines: [line],
+      labels: { puddle: line.id },
+      native: {},
+      moves: [],
+    },
+  );
+  f.state.continuity = applyContinuityWrite(
+    f.state.continuity,
+    {
+      id: "puddle",
+      holders: [context.room],
+      text,
+      sourceIds: [source.id],
+      room: { expiresInMinutes: 60 },
+    },
+    {
+      seed: f.state.seed,
+      episodeId: context.episodeId,
+      operationId: "puddle",
+      at: now,
+      actors: context.actors,
+      room: context.room,
+      sources: [source],
+      supplied: [],
+      protectedRoots: [],
+    },
+  );
+  f.state.episodes = appendEpisode(
+    f.state.episodes,
+    {
+      format: 1,
+      id: context.episodeId,
+      seed: f.state.seed,
+      submissionId: "puddle",
+      operationId: "puddle",
+      sceneId: f.scene.id,
+      capturedAt: now,
+      acceptedAt: now,
+      responseDigest: memoryHash(text),
+      admittedContinuityRevision: 0,
+      privateInput: text,
+      actors: context.actors.map(({ id, incarnation }) => ({ id, incarnation, zoneId: "parlor" })),
+      segments: [line],
+      grounding: [source],
+      continuityVersionIds: f.state.continuity.versions.map((row) => row.id),
+      offered: [],
+      commandReceipts: [],
+      dependencies: {},
+      room: context.room,
+    },
+    f.state.seed,
+  );
+  assert(
+    narrationContinuityContext(f.state, f.scene, f.venue, "before", "window", now).parts.some((part) =>
+      part.block.text.includes('"roomEntry"'),
+    ),
+  );
+  f.state.clock = { revision: 1, trustedAt: now, replayUntilDate: "", advanceMs: 2 * 86400000 };
+  const reply = await f.writing.generate(f.scene, "Look near the window.", "chat");
+  assert(Date.parse(reply.readset.capturedAt) >= Date.now() + 2 * 86400000 - 1000);
+  assert(
+    !f.messages().some((row) => row.content.includes('"roomEntry"')),
+    "expired appearance is omitted using Village time before purchase",
+  );
+  assert.equal(f.state.continuity.versions[0].text, text, "expiry never discards the retained entry");
+});
+
+await runCase("narration-writing/pending-request-model", async () => {
+  const f = fixture();
+  const captured = await f.writing.prepareVenueTurnMessages(f.scene, "Why?", "chat");
+  f.hideRequestAndChangeConnection();
+  const reply = await f.writing.generate(f.scene, "Why?", "chat");
+  assert.equal(f.calls.purchases, 1);
+  assert.equal(f.usedModel(), "fixture", "adoption of a durable pending request re-resolves its original model");
+  assert.deepEqual(reply.readset, captured.readset);
+  assert.equal(reply.responseDiagnostics.model, "fixture");
+});
+
+function routed(f: ReturnType<typeof fixture>, scene: typeof f.scene, rows: any[], moves: any[] = []) {
+  const lines: VenueReplyLine[] = rows.map((row) => ({
+    kind: row.delivery === "whisper" ? "whisper" : row.kind,
+    speakerId: row.speakerId ?? "__venue_scene__",
+    content: row.text,
+    heardBy: [],
+    ...(row.delivery ? { delivery: row.delivery } : {}),
+    ...(row.targetId ? { targetId: row.targetId } : {}),
+    ...(row.staging ? { staging: row.staging } : {}),
+  }));
+  routeZoneEvents({ segments: rows }, scene, { lines, heardPlayerBy: [] }, moves);
+  return lines.map(({ anchorIndex: _anchor, ...line }, index) => ({
+    ...line,
+    id: "line-" + index,
+    name:
+      line.kind === "narration"
+        ? "Narration"
+        : scene.participants.find((row) => row.characterId === line.speakerId)!.name,
+    role: "assistant" as const,
+    at,
+  }));
+}
+
+await runCase("narration-writing/arrival-routing", () => {
+  const f = fixture(),
+    npc = { ...f.state.worldPlaces.npcs[f.id], id: "npc:arrival", name: "Leo", label: "Leo" };
+  f.state.worldPlaces.npcs[npc.id] = npc;
+  const scene = structuredClone(f.scene);
+  scene.pendingNpcAdmissions = [{ npc, segment: 1, zoneId: "parlor", source: "Leo arrives." }];
+  scene.activeIds.push(npc.id);
+  scene.participants.push({ characterId: npc.id, name: "Leo", doing: "Arriving" });
+  scene.sceneAttendance!.occupants.push({ characterId: npc.id, name: "Leo", doing: "Arriving", zoneId: "parlor" });
+  const projected = zoneEventScene(scene, f.venue);
+  const rows = [
+    {
+      kind: "dialogue",
+      speakerId: f.id,
+      text: "The earlier private subject.",
+      staging: [
+        { characterId: npc.id, expression: "smile" },
+        { characterId: f.id, look: { target: "villager", characterId: npc.id } },
+      ],
+    },
+    { kind: "narration", text: "Leo arrives." },
+    { kind: "dialogue", speakerId: f.id, text: "This whisper is for you.", delivery: "whisper", targetId: "player" },
+    { kind: "dialogue", speakerId: f.id, text: "Good evening, Leo." },
+  ];
+  const lines = routed(f, projected, rows);
+  assert(!lines[0].heardBy.includes(npc.id));
+  assert(!lines[0].staging?.some((cue) => cue.characterId === npc.id || cue.look?.characterId === npc.id));
+  assert(!lines[2].heardBy.includes(npc.id));
+  assert(lines[2].heardBy.includes("player"));
+  assert(lines[3].heardBy.includes(npc.id));
+  assert.throws(
+    () => routed(f, projected, [{ kind: "dialogue", speakerId: npc.id, text: "Too early." }]),
+    /unknown sound source/,
+  );
+  const acoustic: VenueReplyLine[] = [
+    { kind: "narration", speakerId: "__venue_scene__", content: "An early voice.", heardBy: [] },
+  ];
+  assert.throws(
+    () =>
+      routeZoneEvents(
+        {
+          segments: [
+            { kind: "narration", text: "An early voice.", sound: { sourceId: npc.id, text: "An early voice." } },
+          ],
+        },
+        projected,
+        { lines: acoustic, heardPlayerBy: [] },
+        [],
+      ),
+    /unknown sound source/,
+  );
+  const context = narrationContinuityContext(f.state, projected, f.venue, "arrival", "Hello", at);
+  const sourceContext = {
+    ...context.source,
+    scene: projected,
+    lines,
+    labels: { before: "line-0", after: "line-3" },
+    native: {},
+    moves: [],
+  };
+  assert.throws(
+    () => bindNarrationSource({ segment: "before", perceive: { kind: "heard", by: [npc.id] } }, sourceContext),
+    /unknown segment recipient|not routed/,
+  );
+  assert.throws(
+    () => bindNarrationSource({ input: "Hello", ground: { kind: "spoken", to: [npc.id], at: "start" } }, sourceContext),
+    /cannot perceive/,
+  );
+  assert.equal(
+    bindNarrationSource({ segment: "after", perceive: { kind: "heard", by: [npc.id] } }, sourceContext).perceptions[0]
+      .text,
+    "Good evening, Leo.",
+  );
+});
+
+await runCase("narration-writing/explicit-player-delivery", () => {
+  const f = fixture(),
+    scene = zoneEventScene(f.scene, f.venue);
+  const lines = routed(
+    f,
+    scene,
+    [
+      { kind: "dialogue", speakerId: f.id, text: "A whisper.", delivery: "whisper", targetId: "player" },
+      { kind: "dialogue", speakerId: f.id, text: "Ordinary words outside." },
+      { kind: "dialogue", speakerId: f.id, text: "Ordinary words back inside." },
+      { kind: "dialogue", speakerId: f.id, text: "A raised call outside.", delivery: "shout" },
+    ],
+    [
+      { characterId: f.id, zoneId: "exterior", segment: 1 },
+      { characterId: f.id, zoneId: "parlor", segment: 2 },
+      { characterId: f.id, zoneId: "exterior", segment: 3 },
+    ],
+  );
+  assert.deepEqual(
+    lines.map((line) => line.heardBy.includes("player")),
+    [true, false, true, true],
+  );
+  assert.equal(lines[1].soundOnly?.player, true);
+  const context = narrationContinuityContext(f.state, scene, f.venue, "route", "", at);
+  const sourceContext = {
+    ...context.source,
+    lines,
+    labels: { whisper: "line-0", remote: "line-1", local: "line-2", shout: "line-3" },
+    native: {},
+    moves: [],
+  };
+  assert.equal(
+    bindNarrationSource({ segment: "local", perceive: { kind: "heard", by: ["player"] } }, sourceContext).perceptions[0]
+      .text,
+    lines[2].content,
+  );
+  const hidden = { ...lines[2], heardBy: [] };
+  assert.throws(
+    () =>
+      bindNarrationSource(
+        { segment: "local", perceive: { kind: "heard", by: ["player"] } },
+        { ...sourceContext, lines: [lines[0], lines[1], hidden, lines[3]] },
+      ),
+    /not routed/,
+    "visibility flags never substitute for explicit routed player hearing",
+  );
+});
+
+await runCase("narration-writing/optional-facets", () => {
+  const f = fixture(),
+    holder = continuityActor(f.state, f.id)!,
+    key = continuityHolderKey(holder);
+  retainNativeFact(
+    f.state,
+    {
+      id: "learning",
+      kind: "npc",
+      targetId: f.id,
+      revision: 1,
+      text: "Mara discussed craft learning.",
+      witnesses: [f.id],
+    },
+    at,
+  );
+  const original = f.state.episodes.records[0],
+    before = f.state.continuity.versions.length;
+  const admission = {
+    seed: f.state.seed,
+    episodeId: "desire-episode",
+    operationId: "desire-operation",
+    at,
+    actors: original.actors,
+    sourceActors: { [original.id]: original.actors },
+    sources: original.grounding,
+    supplied: [] as { id: string; recordRevision: number; heads: Record<string, number> }[],
+    protectedRoots: [],
+  };
+  f.state.continuity = applyContinuityWrite(
+    f.state.continuity,
+    {
+      id: "desire",
+      holders: [holder],
+      current: true,
+      class: "desire",
+      text: "I want to learn marquetry.",
+      sourceIds: [original.grounding[0].id],
+    },
+    admission,
+  );
+  const root = f.state.continuity.records.at(-1)!;
+  admission.supplied = [{ id: root.id, recordRevision: root.revision, heads: { [key]: root.heads[key].revision } }];
+  for (let i = 0; i < 20; i++)
+    f.state.continuity = applyContinuityWrite(
+      f.state.continuity,
+      {
+        id: "reason-" + i,
+        holders: [holder],
+        class: "perspective",
+        parentId: root.id,
+        facet: "reason",
+        text: "Detail " + i + ": " + "This intricate craft rewards patient attention. ".repeat(35),
+        sourceIds: [original.grounding[0].id],
+      },
+      admission,
+    );
+  f.state.episodes = appendEpisode(
+    f.state.episodes,
+    {
+      ...original,
+      id: admission.episodeId,
+      operationId: admission.operationId,
+      submissionId: "craft",
+      admittedContinuityRevision: before,
+      commandReceipts: [],
+      grounding: [],
+      continuityVersionIds: f.state.continuity.versions.slice(before).map((row) => row.id),
+    },
+    f.state.seed,
+  );
+  const context = narrationContinuityContext(f.state, f.scene, f.venue, "next", "Detail marquetry", at);
+  assert(context.parts.some((part) => part.block.optional === "memory"));
+  const required = context.parts.filter((part) => !part.block.optional);
+  assert(
+    required.reduce((sum, part) => sum + part.block.text.length, 0) < 1000,
+    "optional sibling facets never become part of the required initiative block",
+  );
+  const fitted = fitVenueWritingMessages(
+    {
+      fitContext(messages, options) {
+        const fits = JSON.stringify(messages).length < 1300;
+        return { messages: fits ? messages : [], maxTokens: options?.maxTokens ?? 512, trimmed: !fits } as any;
+      },
+    },
+    context.parts.map((part) => part.block),
+    "Detail marquetry",
+    512,
+  );
+  const captured = fittedNarrationReadset(f.state, context, fitted.evidenceIds);
+  assert(captured.admission.supplied.some((row) => row.id === root.id));
+  assert.equal(captured.offered[0].ids[0], root.id);
+});
+
+await runCase("narration-writing/long-followup", async () => {
+  const f = fixture(),
+    actor = continuityActor(f.state, f.id)!,
+    player = continuityActor(f.state, "player")!;
+  for (let index = 0; index < 4; index++)
+    retainNativeFact(
+      f.state,
+      {
+        id: "weaving-memory-" + index,
+        kind: "npc",
+        targetId: f.id,
+        revision: 1,
+        text:
+          "A meaningful weaving memory " +
+          index +
+          ": " +
+          "Patient handwoven craft rewards careful attention. ".repeat(25).slice(0, 1000),
+        witnesses: [f.id, "player"],
+      },
+      at,
+    );
+  const segments: AcceptedEpisode["segments"] = Array.from({ length: 8 }, (_, index) => ({
+    id: "earlier-line-" + index,
+    role: "assistant",
+    kind: "dialogue",
+    speakerId: f.id,
+    name: "Mara",
+    at,
+    zoneId: "parlor",
+    heardBy: [f.id, "player"],
+    content: "A careful explanation of the old chair and its history. ".repeat(40).slice(0, 1900) + " END_" + index,
+  }));
+  const question = "Why do you treasure this particular old chair?";
+  f.state.episodes = appendEpisode(
+    f.state.episodes,
+    {
+      format: 1,
+      id: "prior-exchange",
+      seed: f.state.seed,
+      sceneId: f.scene.id,
+      submissionId: "prior-question",
+      operationId: "prior-operation",
+      capturedAt: at,
+      acceptedAt: at,
+      admittedContinuityRevision: 0,
+      privateInput: question,
+      responseDigest: memoryHash(segments),
+      actors: [actor, player].map(({ id, incarnation }) => ({ id, incarnation, zoneId: "parlor" })),
+      segments,
+      grounding: [],
+      continuityVersionIds: [],
+      offered: [],
+      commandReceipts: [],
+      dependencies: {},
+    },
+    f.state.seed,
+  );
+  await f.writing.generate(f.scene, "Why weaving?", "chat");
+  const prompt = f
+    .messages()
+    .map((row) => row.content)
+    .join("\n");
+  assert(
+    prompt.includes(question) && prompt.includes("END_7"),
+    "a complete recent exchange borrows unused standing capacity before older optional context",
+  );
+  assert(
+    prompt.includes("A meaningful weaving memory 0"),
+    "recent history can borrow the unused older reserve while standing context remains supplied",
+  );
+  assert.equal(f.calls.purchases, 1);
+});
+
+await runCase("narration-writing/required-evidence-bound", async () => {
+  const f = fixture(),
+    holder = continuityActor(f.state, f.id)!,
+    key = continuityHolderKey(holder);
+  retainNativeFact(
+    f.state,
+    {
+      id: "prior",
+      kind: "npc",
+      targetId: f.id,
+      revision: 1,
+      text: "Mara described her craft boundaries.",
+      witnesses: [f.id],
+    },
+    at,
+  );
+  const original = f.state.episodes.records[0],
+    before = f.state.continuity.versions.length;
+  const admission = {
+    seed: f.state.seed,
+    operationId: "boundaries",
+    episodeId: "boundaries-episode",
+    at,
+    actors: original.actors,
+    sourceActors: { [original.id]: original.actors },
+    sources: original.grounding,
+    protectedRoots: [],
+    supplied: [] as { id: string; recordRevision: number; heads: Record<string, number> }[],
+  };
+  f.state.continuity = applyContinuityWrite(
+    f.state.continuity,
+    {
+      id: "purpose",
+      holders: [holder],
+      text: "I want to preserve my craft boundaries.",
+      class: "desire",
+      current: true,
+      sourceIds: [original.grounding[0].id],
+    },
+    admission,
+  );
+  const parent = f.state.continuity.records.at(-1)!;
+  admission.supplied = [
+    { id: parent.id, recordRevision: parent.revision, heads: { [key]: parent.heads[key].revision } },
+  ];
+  for (let index = 0; index < 625; index++)
+    f.state.continuity = applyContinuityWrite(
+      f.state.continuity,
+      {
+        id: "boundary-" + index,
+        holders: [holder],
+        text: "A lasting personal craft boundary " + index,
+        class: "perspective",
+        current: true,
+        parentId: parent.id,
+        facet: "boundary",
+        sourceIds: [original.grounding[0].id],
+      },
+      admission,
+    );
+  f.state.episodes = appendEpisode(
+    f.state.episodes,
+    {
+      ...original,
+      id: admission.episodeId,
+      operationId: admission.operationId,
+      submissionId: "boundaries",
+      admittedContinuityRevision: before,
+      grounding: [],
+      commandReceipts: [],
+      continuityVersionIds: f.state.continuity.versions.slice(before).map((row) => row.id),
+    },
+    f.state.seed,
+  );
+  await assert.rejects(
+    () => f.writing.generate(f.scene, "Hello.", "chat"),
+    /evidence exceeds the retained request bound before generation/,
+  );
+  assert.equal(f.calls.purchases, 0, "a fit that cannot retain all required provenance never reaches the provider");
+  assert.equal(f.checkpoints.size, 0);
+});

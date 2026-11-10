@@ -1,245 +1,91 @@
-import type { CapabilityDocumentStore } from "@marinara-engine/shared";
-import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
-
-import {
-  continueSemanticDomain,
-  semanticContinuationKey,
-  semanticContinued,
-  semanticAuthorityDomain,
-} from "../../domain/rules/semantic-continuity.js";
-import type { ExchangeDomain } from "../../domain/models/exchange-model.js";
-import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
-import { mutableSceneSubmission } from "../../domain/rules/scene-submissions.js";
 import type { VillageState } from "../../domain/models/world.js";
-import { asRecord } from "../../domain/rules/coerce.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
-import { coerceResponseDiagnostics } from "../../domain/rules/response-diagnostics.js";
 import { scenePresenceNotices, sceneProcessingSummary } from "../../domain/rules/scene-public.js";
-import { filterRelationshipNotices } from "../../domain/rules/relationship-presentation.js";
-import { sceneChangeDiagnosticId, sceneChangeError, sceneErrorDetails } from "./error-details.js";
+import { sceneChangeDiagnosticId, sceneErrorDetails } from "./error-details.js";
+
 export interface SceneChangesPorts {
   withSceneWork?<T>(id: string, work: () => Promise<T>): Promise<T>;
-  finishSemanticScene?(id: string): Promise<void>;
-  mutateRelationships?: typeof import("../residents/relationship-store.js").mutateRelationships;
-  changeSession?: typeof import("../../adapters/storage/scene-store.js").changeSession;
   readSession(id: string): Promise<VenueScene>;
-  readVillageSnapshot(): Promise<VillageState>;
   readVillageState(): Promise<VillageState>;
   mutateVillageState(update: (state: VillageState) => void): Promise<VillageState>;
-  villagesDocuments(): Pick<CapabilityDocumentStore, "list">;
   processSavedExchange(sessionId: string, submissionId: string): Promise<void>;
   readTerminal?(id: string): Promise<import("../../domain/models/scene-terminal-model.js").SceneTerminal | null>;
-  venueRequestMetrics: typeof import("../../adapters/operations/operation-context.js").venueRequestMetrics;
 }
-/** Inert saved diagnostics, dismissal and explicit replay with originating connections. */
+/** Saved results and explicit provider-free replay; reads never execute gameplay or model work. */
 export function createSceneChanges({
   withSceneWork,
-  finishSemanticScene,
-  mutateRelationships,
   readSession,
-  changeSession,
-  readVillageSnapshot,
   readVillageState,
   mutateVillageState,
-  villagesDocuments,
   processSavedExchange,
   readTerminal,
-  venueRequestMetrics,
 }: SceneChangesPorts) {
-  async function readSceneErrorDetails(id: string) {
-    const scene = await readSession(id);
-    const village = await readVillageState();
-    if (scene.villageSeed && scene.villageSeed !== village.seed)
-      throw conflict("This Scene belongs to a previous village.");
-    return sceneErrorDetails(scene);
+  async function current(id: string) {
+    const [scene, village] = await Promise.all([readSession(id), readVillageState()]);
+    if (scene.villageSeed !== village.seed) throw conflict("This Scene belongs to a different Village.");
+    return { scene, village };
   }
-  /** Privileged diagnostics use the saved record only. A read never starts interpretation or recovery. */
+  async function readSceneErrorDetails(id: string) {
+    return sceneErrorDetails((await current(id)).scene);
+  }
   async function readSceneChanges(id: string, cursor = "", limit = 20) {
-    const scene = await readSession(id);
-    const village = await readVillageSnapshot();
-    if (scene.villageSeed && scene.villageSeed !== village.seed)
-      throw conflict("This Scene belongs to a previous village.");
-    const parts = (cursor || "0:0").split(":").map(Number);
-    if (parts.length > 3 || parts.some((part) => !Number.isSafeInteger(part) || part < 0))
-      throw badRequest("Invalid changes cursor.");
-    const [afterScene, afterNotice = 0, afterRelationship = 0] = parts;
+    const { scene, village } = await current(id);
+    const after = cursor ? Number(cursor) : 0;
+    if (!Number.isSafeInteger(after) || after < 0) throw badRequest("Invalid changes cursor.");
     const size = Math.max(1, Math.min(50, Math.floor(Number(limit) || 20)));
-    const changed = scene.submissions
-      .map((turn, index) => ({ turn, sequence: turn.changeSequence || index + 1 }))
-      .filter(({ turn }) => turn.semanticProvenance?.version !== 2 || turn.semanticReady === true)
-      .filter((entry) => entry.sequence > afterScene)
-      .sort((a, b) => a.sequence - b.sequence);
-    const turns = changed.slice(0, size);
-    const effects = [...Object.values(village.exchangeReceipts), ...Object.values(village.memoryReceipts)];
-    const effectsBySubmission = new Map<string, typeof effects>();
-    for (const receipt of effects)
-      if (receipt.sceneId === id) {
-        const rows = effectsBySubmission.get(receipt.submissionId) ?? [];
-        rows.push(receipt);
-        effectsBySubmission.set(receipt.submissionId, rows);
-      }
-    const projectReceiptIndex = new Map(
-      village.progressTasks.flatMap((task) => task.receipts.map((receipt) => [receipt.id, receipt] as const)),
-    );
-    const notices = effects
-      .filter(
-        (receipt) =>
-          receipt.sceneId === id &&
-          receipt.notice &&
-          (receipt.noticeSequence ?? 0) > afterNotice &&
-          !village.dismissedNoticeIds.includes(receipt.id),
-      )
-      .sort((a, b) => (a.noticeSequence ?? 0) - (b.noticeSequence ?? 0));
-    const page = notices.slice(0, size);
-    const relationshipState = village.relationshipContext;
-    const relationshipReceipts = Object.values(relationshipState?.receipts ?? {})
-      .filter(
-        (receipt) =>
-          (receipt.sceneId === id || (!receipt.sceneId && receipt.sourceId === id)) &&
-          (receipt.noticeSequence ?? 0) > afterRelationship,
-      )
-      .sort((a, b) => a.noticeSequence! - b.noticeSequence!);
-    const relationshipPage = relationshipReceipts.slice(0, size);
-    const relationshipCursor =
-      relationshipReceipts.length > relationshipPage.length
-        ? relationshipPage.at(-1)!.noticeSequence!
-        : (relationshipState?.noticeSequence ?? afterRelationship);
-    const backgroundChecks = (await villagesDocuments().list(VILLAGES_PACKAGE_ID, "background-work"))
-      .map((record) => asRecord(record.data))
-      .filter(
-        (job) =>
-          job.seed === village.seed &&
-          job.kind === "wish-check" &&
-          (asRecord(job.input).sceneId === id ||
-            String(job.subjectId).startsWith(`wish-change:${id}:`) ||
-            String(job.subjectId).startsWith(`wish-batch:${id}:`)),
-      )
-      .sort(
-        (a, b) =>
-          Number(["queued", "running"].includes(String(b.status))) -
-          Number(["queued", "running"].includes(String(a.status))),
-      )
-      .slice(0, 50)
-      .map((job) => ({
-        id: job.id,
-        subjectId: job.subjectId,
-        status: job.status,
-        requests: job.requests,
-        tokens: job.usageComplete ? job.tokens : null,
-        error: job.error,
-      }));
-    const sceneCursor = turns.at(-1)?.sequence ?? afterScene;
-    const noticeCursor = notices.length > page.length ? page.at(-1)!.noticeSequence! : village.noticeSequence;
+    const rows = scene.submissions
+      .map((turn, index) => ({ turn, sequence: turn.changeSequence ?? index + 1 }))
+      .filter((row) => row.sequence > after)
+      .toSorted((a, b) => a.sequence - b.sequence);
+    const page = rows.slice(0, size);
+    const notices = [
+      ...scenePresenceNotices(scene),
+      ...page.flatMap(({ turn }) => (turn.acceptance.status === "applied" ? (turn.recordEvents ?? []) : [])),
+    ].filter((event) => !village.dismissedNoticeIds.includes(event.id));
     return {
       sceneId: id,
-      backgroundChecks,
-      notificationDelivery: [...page, ...relationshipPage]
-        .filter((receipt) => receipt.committedAt)
-        .map((receipt) => ({
-          receiptId: receipt.id,
-          committedAt: receipt.committedAt,
-          commitToFeedMs: Math.max(0, Date.now() - Date.parse(receipt.committedAt!)),
-        })),
-      activeRequest: {
-        status: scene.operation?.status,
-        error: scene.operation?.error,
-        failure: scene.operation?.failure,
-        timing: scene.operation?.timing,
-        requests: venueRequestMetrics(scene.operation),
-      },
-      changes: turns.map(({ turn }) => ({
+      changes: page.map(({ turn }) => ({
         submissionId: turn.id,
-        timing: turn.timing,
         at: turn.at,
-        processing: turn.processing ?? null,
-        receipts: {
-          physical: turn.action ?? null,
-          domainEffects: effectsBySubmission.get(turn.id) ?? [],
-          relationships: (turn.processing?.domains.relationships.receiptIds ?? []).flatMap((id) =>
-            relationshipState?.receipts[id] ? [relationshipState.receipts[id]] : [],
-          ),
-          projects: (turn.processing?.domains.projects.receiptIds ?? []).flatMap((id) =>
-            projectReceiptIndex.has(id) ? [projectReceiptIndex.get(id)!] : [],
-          ),
-          memories: village.memories.records.filter(
-            (row) => row.origin.sceneId === id && row.origin.id === id + ":" + turn.id,
-          ),
-        },
-        requests: turn.requestMetrics ?? null,
-        responseDiagnostics: coerceResponseDiagnostics(turn.liveProposals?.responseDiagnostics) ?? null,
-        interpretationHistory: turn.interpretationHistory ?? [],
-        notices: filterRelationshipNotices(turn.recordEvents ?? []).filter(
-          (event) => !village.dismissedNoticeIds.includes(event.id),
-        ),
-        evidence: scene.lines.filter(
-          (line) => turn.processing?.lineIds.includes(line.id) || turn.liveProposals?.earlierLineIds.includes(line.id),
-        ),
-        interpretations: {
-          source: turn.interpretationHistory?.at(-1)?.source ?? "saved narration reply",
-          version: turn.processing?.interpretationVersion,
-          memory: turn.liveProposals?.memoryChanges,
-          relationship: turn.liveProposals?.relationshipChanges,
-          wishes: turn.wishProposals,
-          memoryContexts: turn.liveProposals?.memoryContexts,
-        },
+        notices:
+          turn.acceptance.status === "applied"
+            ? (turn.recordEvents ?? []).filter((event) => !village.dismissedNoticeIds.includes(event.id))
+            : [],
       })),
-      notices: filterRelationshipNotices([
-        ...scenePresenceNotices(scene).filter((event) => !village.dismissedNoticeIds.includes(event.id)),
-        ...page.flatMap((receipt) => (receipt.notice ? [receipt.notice] : [])),
-      ]),
+      notices,
       dismissedNoticeIds: village.dismissedNoticeIds,
       unresolved: scene.submissions
-        .flatMap((turn) =>
-          Object.entries(turn.processing?.domains ?? {})
-            .filter(([, result]) => ["pending", "failed", "rejected"].includes(result.status))
-            .map(([domain, result]) => ({
-              submissionId: turn.id,
-              diagnosticId: sceneChangeDiagnosticId(turn.id, domain, result),
-              domain,
-              status: result.status,
-              continued: turn.semanticContinuedDomains?.includes(domain as ExchangeDomain) ?? false,
-              canContinue:
-                turn.semanticProvenance?.version === 2 &&
-                turn.semanticReady === true &&
-                result.status === "failed" &&
-                !semanticAuthorityDomain(turn, domain as ExchangeDomain),
-              at: turn.at,
-              reason:
-                result.status === "pending"
-                  ? "This proposed update is still being checked."
-                  : sceneChangeError(result, domain),
-            })),
-        )
-        .sort((left, right) => {
-          const priority = (status: string) => (status === "failed" ? 0 : status === "pending" ? 1 : 2);
-          return priority(left.status) - priority(right.status) || (right.at ?? "").localeCompare(left.at ?? "");
-        })
-        .slice(0, 50),
+        .filter((turn) => turn.acceptance.status !== "applied")
+        .map((turn) => ({
+          submissionId: turn.id,
+          diagnosticId: sceneChangeDiagnosticId(turn),
+          status: turn.acceptance.status,
+          at: turn.at,
+          reason: turn.acceptance.status === "held" ? "The saved reply needs review." : "Applying the saved reply.",
+        })),
       processingSummary: sceneProcessingSummary(scene),
-      nextCursor: `${sceneCursor}:${noticeCursor}:${relationshipCursor}`,
-      hasMore:
-        changed.length > turns.length ||
-        notices.length > page.length ||
-        relationshipReceipts.length > relationshipPage.length,
+      activeRequest: { status: scene.operation?.status },
+      nextCursor: String(page.at(-1)?.sequence ?? after),
+      hasMore: rows.length > page.length,
     };
   }
-
   async function dismissSceneNotice(id: string, noticeId: string) {
-    const scene = await readSession(id).catch(async (error: unknown) => {
-      if ((error as { statusCode?: number })?.statusCode !== 404 || !readTerminal) throw error;
-      const terminal = await readTerminal(id);
-      if (!terminal) throw error;
-      return terminal;
-    });
-    const village = await readVillageState();
-    if (scene.villageSeed && scene.villageSeed !== village.seed) throw conflict("Village identity changed.");
+    const [village, scene] = await Promise.all([
+      readVillageState(),
+      readSession(id).catch(async (error: unknown) => {
+        if ((error as { statusCode?: number })?.statusCode !== 404 || !readTerminal) throw error;
+        const terminal = await readTerminal(id);
+        if (!terminal) throw error;
+        return terminal;
+      }),
+    ]);
+    if (scene.villageSeed !== village.seed) throw conflict("Village identity changed.");
     const known =
-      ("recordEvents" in scene
+      "recordEvents" in scene
         ? scene.recordEvents.some((event) => event.id === noticeId)
         : scenePresenceNotices(scene).some((event) => event.id === noticeId) ||
-          scene.submissions.some((turn) => turn.recordEvents?.some((event) => event.id === noticeId))) ||
-      !!village.exchangeReceipts[noticeId]?.notice;
+          scene.submissions.some((turn) => turn.recordEvents?.some((event) => event.id === noticeId));
     if (!known) throw notFound("That saved notice is unavailable.");
     await mutateVillageState((state) => {
       if (state.seed !== village.seed) throw conflict("Village identity changed.");
@@ -247,69 +93,15 @@ export function createSceneChanges({
     });
     return { dismissed: true };
   }
-
-  /** Explicit recovery applies saved results in their existing order. */
   async function replaySceneChanges(id: string) {
-    const work = () => replaySceneChangesOnce(id);
-    return withSceneWork ? withSceneWork(id, work) : work();
+    const replay = async () => {
+      const { scene } = await current(id);
+      for (const turn of scene.submissions.filter((turn) => turn.acceptance.status !== "applied"))
+        await processSavedExchange(id, turn.id);
+      return readSceneChanges(id);
+    };
+    return withSceneWork ? withSceneWork(id, replay) : replay();
   }
-  async function replaySceneChangesOnce(id: string) {
-    const scene = await readSession(id);
-    for (const turn of scene.submissions.filter((turn) => turn.processing && unfinishedExchange(turn.processing)))
-      await processSavedExchange(id, turn.id);
-    await finishSemanticScene?.(id);
-    return readSceneChanges(id);
-  }
-
-  async function continueSceneChange(id: string, submissionId: string, domain: ExchangeDomain) {
-    const work = () => continueSceneChangeOnce(id, submissionId, domain);
-    return withSceneWork ? withSceneWork(id, work) : work();
-  }
-  async function continueSceneChangeOnce(id: string, submissionId: string, domain: ExchangeDomain) {
-    if (!changeSession) throw badRequest("Scene continuation is unavailable.");
-    const saved = await readSession(id);
-    const original = saved.submissions.find((row) => row.id === submissionId);
-    if (!original) throw notFound("No saved exchange.");
-    // Validate before writing either document. Wish tombstones fence delayed background application.
-    const recoverAccepted = semanticContinued(await readVillageState(), id, submissionId, domain);
-    continueSemanticDomain(structuredClone(original), domain, recoverAccepted);
-    const key = semanticContinuationKey(id, submissionId);
-    if (domain === "relationships" && !mutateRelationships)
-      throw badRequest("Relationship continuation is unavailable.");
-    await mutateVillageState((state) => {
-      if (state.seed !== saved.villageSeed) throw conflict("Village identity changed.");
-      state.semanticContinuations ??= {};
-      state.semanticContinuations[key] = [...new Set([...(state.semanticContinuations[key] ?? []), domain])];
-    });
-    if (domain === "relationships")
-      await mutateRelationships!(saved.villageSeed!, (state) => {
-        state.applied[key] = true;
-      });
-    if (domain === "wishes")
-      await mutateVillageState((state) => {
-        if (state.seed !== saved.villageSeed) throw conflict("Village identity changed.");
-        for (const proposal of original.wishProposals ?? []) {
-          const receiptId = `wish-change:${id}:${submissionId}:${proposal.wishId}:${proposal.intent}`;
-          state.exchangeReceipts[receiptId] ??= {
-            id: receiptId,
-            sceneId: id,
-            submissionId,
-            domain: "wishes",
-            at: original.at,
-            status: "rejected",
-            evidenceIds: proposal.evidence.filter((id): id is string => typeof id === "string"),
-            reason: "Continued without this failed update",
-          };
-        }
-      });
-    await changeSession(id, (scene) => {
-      const turn = mutableSceneSubmission(scene, submissionId);
-      if (!turn) throw notFound("No saved exchange.");
-      continueSemanticDomain(turn, domain, recoverAccepted);
-    });
-    await finishSemanticScene?.(id);
-    return readSceneChanges(id);
-  }
-  return { readSceneChanges, readSceneErrorDetails, dismissSceneNotice, replaySceneChanges, continueSceneChange };
+  return { readSceneErrorDetails, readSceneChanges, dismissSceneNotice, replaySceneChanges };
 }
 export type SceneChanges = ReturnType<typeof createSceneChanges>;

@@ -1,4 +1,4 @@
-// Test cases: narration-sources/exact-private-input, narration-sources/spatial-audience, narration-sources/movement-order, narration-sources/routed-segments, narration-sources/own-perspective, narration-sources/fitted-aliases, narration-sources/room-without-knowers, narration-sources/sound-alias-retention, narration-sources/cold-input-widening, narration-sources/keep-binding, narration-sources/first-disclosure
+// Test cases: narration-sources/exact-private-input, narration-sources/spatial-audience, narration-sources/movement-order, narration-sources/routed-segments, narration-sources/own-perspective, narration-sources/fitted-aliases, narration-sources/room-without-knowers, narration-sources/sound-alias-retention, narration-sources/cold-input-widening, narration-sources/keep-binding, narration-sources/first-disclosure, narration-sources/native-combination
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { venueFixture } from "./helpers/venues.fixture.js";
@@ -33,6 +33,9 @@ import {
   decodeContinuityPages,
 } from "../packages/villages/src/server/adapters/storage/continuity-pages.js";
 import { prepareNarrationKeep } from "../packages/villages/src/server/domain/rules/narration-keep.js";
+import { retainNativeFact } from "../packages/villages/src/server/domain/rules/native-continuity.js";
+import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 
 const at = "2026-11-09T12:00:00.000Z";
 const actor = (id: string): Extract<ContinuityHolder, { kind: "actor" }> => ({ kind: "actor", id, incarnation: "one" });
@@ -50,7 +53,7 @@ const venue = venueFixture({
   ],
 });
 const scene = coerceSession({
-  version: 4,
+  version: 5,
   id: "scene",
   placeId: "house",
   villageSeed: "world",
@@ -97,6 +100,56 @@ const context = (input = "Good morning."): NarrationSourceContext => ({
   historical: {},
   native: {},
   moves: [],
+});
+
+await runCase("narration-sources/native-combination", () => {
+  const state = { ...defaultVillageState(), seed: "world", setupAt: at };
+  for (const id of ["roof", "garden"])
+    retainNativeFact(
+      state,
+      {
+        id: "complete:" + id,
+        kind: "project",
+        targetId: id,
+        revision: 1,
+        text: "The " + id + " project was completed.",
+        witnesses: ["player"],
+      },
+      at,
+    );
+  const captured = context();
+  captured.actors = [continuityActor(state, "player")!];
+  captured.historical = Object.fromEntries(
+    state.episodes.records.map((episode, index) => ["h:" + index, episode.grounding[0]]),
+  );
+  const prepared = prepareNarrationKeep(
+    {
+      for: ["player"],
+      class: "experience",
+      text: "The roof and garden projects were completed.",
+      source: ["h:0", "h:1"],
+    },
+    0,
+    state.continuity,
+    {
+      seed: "world",
+      operationId: captured.operationId,
+      episodeId: captured.episodeId,
+      at,
+      actors: captured.actors,
+      sourceActors: Object.fromEntries(state.episodes.records.map((episode) => [episode.id, episode.actors])),
+      sources: [],
+      supplied: [],
+      protectedRoots: [],
+    },
+    captured,
+  );
+  assert.equal(
+    prepared.sources.length,
+    2,
+    "two native operations remain independently identifiable when recalled together",
+  );
+  assert.equal(applyContinuityWrite(state.continuity, prepared.write, prepared.admission).records.length, 3);
 });
 function keep(
   source: ContinuityEvidence,
@@ -365,6 +418,7 @@ await runCase("narration-sources/fitted-aliases", () => {
       capturedAt: at,
       acceptedAt: at,
       responseDigest: memoryHash("response"),
+      admittedContinuityRevision: 0,
       privateInput: captured.input,
       actors: captured.actors.map((actor) => ({
         id: actor.id,
@@ -399,6 +453,7 @@ const episodeFrom = (
   capturedAt: at,
   acceptedAt: at,
   responseDigest: memoryHash(captured.lines),
+  admittedContinuityRevision: 0,
   privateInput: captured.input,
   actors: captured.actors.map((actor) => ({
     id: actor.id,
@@ -515,6 +570,7 @@ await runCase("narration-sources/sound-alias-retention", async () => {
       episodeId: later.episodeId,
       at,
       actors: later.actors,
+      sourceActors: { [captured.episodeId]: captured.actors },
       sources: [reused],
       supplied: [target],
       protectedRoots: [],

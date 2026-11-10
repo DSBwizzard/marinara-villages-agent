@@ -3,12 +3,13 @@ import { defaultVillageState } from "../packages/villages/src/server/domain/deco
 import { establishPlace, projectPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
 import { findLocation, findNpc, readPlaceRegistry } from "../packages/villages/src/server/domain/rules/places.js";
 import {
-  encodeMemoryPages,
-  decodeMemoryPagesSync,
-} from "../packages/villages/src/server/adapters/storage/memory-pages.js";
+  encodeContinuityPages,
+  decodeContinuityPagesSync,
+} from "../packages/villages/src/server/adapters/storage/continuity-pages.js";
 import { memoryPayload } from "../packages/villages/src/server/adapters/storage/memory-payload-store.js";
 
 const state = defaultVillageState();
+state.seed = "world";
 const place = establishPlace(
   state,
   {
@@ -41,8 +42,13 @@ assert.equal(projectPlace(state, place).zones?.find((zone) => zone.id === "kitch
 assert.equal(projected.access, undefined);
 assert.equal(projected.zones?.find((zone) => zone.id === "kitchen")?.description, "");
 assert.equal(projected.zones?.find((zone) => zone.id === "kitchen")?.access, undefined);
-const encoded = encodeMemoryPages(memoryPayload(state), "a".repeat(32));
-const decoded = decodeMemoryPagesSync(encoded.manifest, "a".repeat(32), (id) => encoded.pages.get(id) ?? null);
+const encoded = encodeContinuityPages(memoryPayload(state), "a".repeat(32));
+const decoded = decodeContinuityPagesSync(
+  encoded.manifest,
+  "a".repeat(32),
+  state.seed,
+  (id) => encoded.pages.get(id) ?? null,
+);
 assert.deepEqual(
   decoded.value.worldPlaces,
   JSON.parse(JSON.stringify(state.worldPlaces)),

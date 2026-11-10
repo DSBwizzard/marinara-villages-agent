@@ -218,7 +218,20 @@ export function fenceIntroductionWitnesses(
 
 export function admitNpcParticipants(scene: VenueScene, admissions: readonly NpcAdmission[]) {
   for (const { npc, zoneId } of admissions) {
-    if (scene.continuity?.facts.worldPlaces) scene.continuity.facts.worldPlaces.npcs[npc.id] = structuredClone(npc);
+    if (scene.continuity?.facts.worldPlaces) {
+      const context = scene.continuity,
+        places = context.facts.worldPlaces!;
+      scene.continuity = {
+        ...context,
+        facts: {
+          ...context.facts,
+          worldPlaces: {
+            ...places,
+            npcs: { ...places.npcs, [npc.id]: structuredClone(npc) },
+          },
+        },
+      };
+    }
     if (!scene.participants.some((person) => person.characterId === npc.id))
       scene.participants.push({ characterId: npc.id, name: npc.label || npc.name, doing: "Joining this Scene" });
     if (!scene.activeIds.includes(npc.id)) scene.activeIds.push(npc.id);

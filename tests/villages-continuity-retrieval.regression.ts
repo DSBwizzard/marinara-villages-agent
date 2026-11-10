@@ -184,6 +184,7 @@ const accepted = (id: string, holders: (typeof mara)[], offered: AcceptedEpisode
   capturedAt: at,
   acceptedAt: at,
   responseDigest: memoryHash(id),
+  admittedContinuityRevision: 0,
   privateInput: "Good morning.",
   actors: holders.map(({ id, incarnation }) => ({ id, incarnation, zoneId: "parlor" })),
   segments: [],

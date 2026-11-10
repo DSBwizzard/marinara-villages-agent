@@ -32,6 +32,12 @@ export function mutableSceneSubmission(scene: Pick<VenueScene, "submissions">, i
   return (scene.submissions[index] = structuredClone(row));
 }
 
+export function narrationBlocker(scene: Pick<VenueScene, "submissions">): string | null {
+  return scene.submissions.some((turn) => turn.acceptance.status !== "applied")
+    ? "Recover the saved reply before continuing this Scene."
+    : null;
+}
+
 /** Saved effects must belong to the exact admitted Scene and submission. */
 export function requireSceneExchange(scene: VenueScene, turn: VenueSubmission | undefined) {
   const processing = turn?.processing;

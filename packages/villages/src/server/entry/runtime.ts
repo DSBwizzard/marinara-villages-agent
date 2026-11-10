@@ -227,14 +227,13 @@ import {
 import { createSceneProgress } from "../features/scenes/progress-service.js";
 import { configureSceneProgress, processSavedExchange } from "../features/scenes/progress.js";
 import { createProjectEvidenceIndex } from "../features/scenes/project-evidence-index.js";
-import { createSceneNarrative } from "../features/scenes/scene-narrative-service.js";
 import { createSceneQueryService } from "../features/scenes/scene-query-service.js";
 import { createSceneRetirement } from "../features/scenes/scene-retirement-service.js";
 import { createSceneTerminalStore } from "../features/scenes/scene-terminal.js";
 import { createSceneWork } from "../features/scenes/scene-work-service.js";
 import { configureSceneWork, sceneWork } from "../features/scenes/scene-work.js";
 import { configureSceneQueries, sceneQueries } from "../features/scenes/services.js";
-import { configureSceneCommands, finishSemanticScene, sceneReplayEffects } from "../features/scenes/venue-session.js";
+import { configureSceneCommands, settleScene } from "../features/scenes/venue-session.js";
 import { createSceneWriting } from "../features/scenes/writing-service.js";
 import { configureSceneWriting, generate, VENUE_REPLY_MAX_TOKENS } from "../features/scenes/writing.js";
 import { createConnectionSettings } from "../features/settings/connection-service.js";
@@ -593,9 +592,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   });
   const villageRepository = createVillageRepository(villagesDocuments, (message) => villagesLogger().warn(message));
   const releaseClock = configureVillageClock(createVillageClock(villageRepository));
-  const releaseVillageState = configureVillageStateService(
-    createVillageStateService(villageRepository, worldRelationships),
-  );
+  const releaseVillageState = configureVillageStateService(createVillageStateService(villageRepository));
   const releaseFoundingProgress = configureFoundingProgress(
     createFoundingProgress({ readVillageState, mutateVillageState }),
   );
@@ -631,24 +628,12 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const semantic = createSemanticService({ readVillageState: readVillageMemoryState, venueCheckpoint });
 
-  const sceneNarrative = createSceneNarrative({
-    read: readVillageSnapshot,
-    mutate: (work) => villageRepository.mutateAuthority(work),
-    relationships: readRelationshipState,
-    now: villageNow,
-  });
   const releaseSceneWriting = configureSceneWriting(
     createSceneWriting({
-      readCapturedWishContexts: (contexts, scene) => createSceneWishContexts(villagesDocuments()).read(contexts, scene),
-      sceneNarrative,
-      semantic,
       venueCheckpoint,
       venueSavedCheckpoint,
-      venueExplicitRetry,
-      refreshZoneParticipants,
       readEffectiveVillagerCard,
       readVillageLore,
-      villagesLogger,
       villagesLanguageModels,
       measurePipeline,
       runtimeDebug,
@@ -662,27 +647,18 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseSceneCommands = configureSceneCommands(
     createSceneCommands({
       selectActiveScene: sceneRepository.selectActiveScene,
-      readCapturedWishContexts: (contexts, scene) => createSceneWishContexts(villagesDocuments()).read(contexts, scene),
-      sceneNarrative,
       applySavedStartingTies: startingTies.applySaved,
-      withVillageSceneAcceptance,
       generate,
-      VENUE_REPLY_MAX_TOKENS,
       loadPrivateSpaceImages: () => import("../features/media/location-image.js"),
-      readSceneChanges,
       processSavedExchange,
       activeVenueSession,
       requireLiveVenueSession,
       refreshZoneParticipants,
-      decideVillageResidence,
-      proposeVillageResidence,
       activationScope,
-      bindReplayEffects: bindActivationService,
       sceneWork,
       villagesDebugAgentsEnabled,
       villagesDocuments,
       villagesLogger,
-      villagesLanguageModels,
       runtimeDebug,
       assertVenueOwnership,
       outsideVenueOperation,
@@ -700,17 +676,9 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       coordinateVenue,
       hasVenueOperation,
       recoverVenueOperations,
-      rejectVenueCompletion,
-      venueCheckpoint,
-      completeWithRoom,
       rollActiveAgendas,
-      bindWishProposals,
-      WISH_PROPOSAL_INSTRUCTION,
-      villagesConnectionIdFor,
       mutateVillageState: mutateVillageMemoryState,
-      readVillageSnapshot: readVillageMemorySnapshot,
       readVillageState: readVillageMemoryState,
-      queueVillageVenueRequest,
     }),
   );
   const releaseSceneProgress = configureSceneProgress(
@@ -718,36 +686,22 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       withSceneWork: backendWork.sceneFence.run,
       onSettled: onSceneSettled,
       onRecoveryFinished: scheduleRetirementScan,
-      readVillageState: readVillageMemoryState,
+      assertVenueOwnership: operations.assertVenueOwnership,
       readSession,
-      processProjectSpeechTurn,
       mutateVillageState: mutateVillageMemoryState,
       changeSession,
       measurePipeline,
-      createLiveEvidenceContext,
-      processWishExchange,
-      processLiveMemories,
-      processLiveRelationships,
-      runtimeDebug,
-      dispatchExchange,
       sceneQueries,
       villagesLogger,
-      ...sceneReplayEffects(),
     }),
   );
   const releaseSceneChanges = configureSceneChanges(
     createSceneChanges({
       withSceneWork: backendWork.sceneFence.run,
-      finishSemanticScene,
-      mutateRelationships,
-      changeSession,
       readSession,
-      readVillageSnapshot: readVillageMemorySnapshot,
-      readVillageState: readVillageMemoryState,
+      readVillageState: () => villageRepository.readAuthority(),
       mutateVillageState: mutateVillageMemoryState,
-      villagesDocuments,
       processSavedExchange,
-      venueRequestMetrics: operations.venueRequestMetrics,
       readTerminal: sceneTerminals.read,
     }),
   );
