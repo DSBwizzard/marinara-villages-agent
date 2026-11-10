@@ -278,7 +278,7 @@ async function main() {
   try {
     await mutateVillageState((current) => Object.assign(current, migrated));
     const before = await readVillageState({ memories: true });
-    const key = sceneryImageKey(before, before.venues[1]!);
+    const key = sceneryImageKey(before, before.venues[1]!, before.setupAt);
     await mutateVillageState((current) => {
       current.sceneryArtStyle = "Pixel art";
     });
@@ -514,7 +514,10 @@ async function privateInteriorLifecycle() {
   assert.equal(bedroom.seen, false);
   const reloaded = coerceVillageState(structuredClone(village));
   assert.equal(resolveVenueZone(reloaded.venues[0], "bedroom")!.description, bedroom.description);
-  assert.equal(sceneryImageKey(village, home, "bedroom"), sceneryImageKey(village, structuredClone(home), "bedroom"));
+  assert.equal(
+    sceneryImageKey(village, home, village.setupAt, "bedroom"),
+    sceneryImageKey(village, structuredClone(home), village.setupAt, "bedroom"),
+  );
   bedroom.image = null;
   let draws = 0;
   const images = createLocationImages({
@@ -555,7 +558,7 @@ async function privateInteriorLifecycle() {
     bedroom.initialImageAttemptedAt,
   );
   bedroom.description += "\n" + "Large established physical detail. ".repeat(70);
-  bedroom.observed = captureZoneObservation(home, bedroom);
+  bedroom.observed = captureZoneObservation(home, bedroom, bedroom.description);
   await assert.rejects(
     () => images.generateVillageLocationImage("bungalow", "bedroom", undefined),
     /Synthetic image failure/,

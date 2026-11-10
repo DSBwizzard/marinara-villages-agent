@@ -24,6 +24,8 @@ Episode selection has a 32,000-byte preliminary budget. Optional memories and Ep
 
 Room entries preserve one ordered current account. Ordinary requests can supply selected complete entries. An operation that needs the whole room must fit it intact. Revisions and exact supplied targets preserve unrelated entries on a change. Retrieval and selection run locally.
 
+An admitted visit records the ordered observable appearance, including any temporary entries still current at that time. The player view and explicit artwork actions use that observation. Offscreen rooms retain their last known appearance. Artwork retains the appearance it depicts, so only a visible difference from the last observation marks it out of date. Concealed entries stay private.
+
 ## Storage and validation
 
 Immutable pages in Engine's existing document store retain the common collections, with compact Village references published alongside mechanical state. Warm writes share unchanged text and page structure. Cold reads and local selection still process retained history. The storage contract preserves admitted requests, checkpoints, Undo and repair dependencies. See [architecture](architecture-migration.md#saved-work-and-compatibility).

@@ -79,6 +79,7 @@ const mutateVillageState = async (mutate: (value: typeof state) => void) => {
   return state;
 };
 const live = createLiveScenes({
+  withIdleSceneWork: (_id, observe) => observe(),
   readActive: async () => pointer,
   readSession: async () => saved,
   changeSession: async (_id, change) => {

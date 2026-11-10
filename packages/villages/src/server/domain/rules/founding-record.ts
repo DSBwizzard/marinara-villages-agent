@@ -143,7 +143,7 @@ export function parsePlace(value: unknown): VillageVenue {
       result.destinations![actor][role] = target;
     }
   }
-  for (const zone of zones) zone.observed = captureZoneObservation(result, zone);
+  for (const zone of zones) zone.observed = captureZoneObservation(result, zone, zone.description);
   return result;
 }
 export function parsePlaces(

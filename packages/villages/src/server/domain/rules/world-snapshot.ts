@@ -232,7 +232,7 @@ export function villageSettings(
         const present =
           residenceAccess?.placeId === venue.id &&
           residenceAccess?.zoneId === originalZone.id &&
-          originalZone.observed?.context === zonePictureContext(village, venue, originalZone);
+          originalZone.observed?.context === zonePictureContext(village, venue, originalZone, previewAt.toISOString());
         const zone = {
           ...visible,
           observed: undefined,
@@ -243,6 +243,11 @@ export function villageSettings(
             !!originalZone.picture?.reference &&
             originalZone.picture.referenceAppliedId !== originalZone.picture.reference.id,
           pictureGenerateAvailable: authoring || !!originalZone.observed,
+          pictureOutdated: !!(
+            originalZone.observed?.image &&
+            originalZone.observed.pictureContext &&
+            originalZone.observed.pictureContext !== originalZone.observed.context
+          ),
           daylightReady: visible.picture?.daylight === true,
           nightImage:
             visible.dayNight && visible.image && visible.picture?.night?.sourceId === visible.image.id

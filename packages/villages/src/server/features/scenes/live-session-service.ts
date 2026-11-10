@@ -1,5 +1,5 @@
 import { captureZoneObservation } from "../../domain/rules/zone-observation.js";
-import { zonePictureContext } from "../../domain/rules/zone-picture.js";
+import { observableRoomDescription, zonePictureContext } from "../../domain/rules/zone-picture.js";
 import { findLocation } from "../../domain/rules/places.js";
 import { findNpc } from "../../domain/rules/places.js";
 import { randomUUID } from "node:crypto";
@@ -21,12 +21,14 @@ import { appendLine } from "../../domain/rules/scene-record.js";
 import { claimVisitPermission, evaluateZoneAccess } from "../../domain/rules/venue-access.js";
 import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
 import { resolveVenueZone, zoneArea, zoneClosed } from "../../domain/rules/venue-zones.js";
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 export interface LiveScenePorts {
   readActive: typeof import("../../adapters/storage/scene-store.js").readActive;
   readSession: typeof import("../../adapters/storage/scene-store.js").readSession;
   changeSession: typeof import("../../adapters/storage/scene-store.js").changeSession;
   clearActivePointer: typeof import("../../adapters/storage/scene-store.js").clearActivePointer;
   hasVenueOperation: typeof import("../../jobs/venue-coordinator.js").hasVenueOperation;
+  withIdleSceneWork(id: string, work: () => Promise<void>): Promise<void>;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
   mutateVillageState: typeof import("../world/village-store.js").mutateVillageState;
 }
@@ -38,6 +40,7 @@ export function createLiveScenes({
   changeSession,
   clearActivePointer,
   hasVenueOperation,
+  withIdleSceneWork,
   readVillageState: readVillageStateWithoutPlaces,
   mutateVillageState: mutateVillageStateWithoutPlaces,
 }: LiveScenePorts) {
@@ -73,6 +76,7 @@ export function createLiveScenes({
     if (!pointer.sessionId) return false;
     const scene = await readSession(pointer.sessionId),
       state = await readVillageState();
+    const at = villageNow().toISOString();
     const venue = state.venues.find((row) => row.id === venueId);
     const zone = venue && resolveVenueZone(venue, zoneId);
     if (
@@ -88,13 +92,12 @@ export function createLiveScenes({
       narrationBlocker(scene) ||
       (scene.operation && (scene.operation.status !== "complete" || scene.operation.error)) ||
       zoneClosed(state, venue, zone) ||
-      zone.observed?.context !== zonePictureContext(state, venue, zone)
+      zone.observed?.context !== zonePictureContext(state, venue, zone, at)
     )
       return false;
     const captured = findLocation(scene.continuity?.facts, venueId);
     const capturedZone = captured && resolveVenueZone(captured, zoneId);
-    if (captured && (!capturedZone || zonePictureContext(state, captured, capturedZone) !== zone.observed.context))
-      return false;
+    if (captured && (!capturedZone || captured.form !== venue.form)) return false;
     if (
       !evaluateZoneAccess(venue, zone, "player", {
         ...sceneAccessContext(scene, undefined, state.timeZone),
@@ -158,7 +161,7 @@ export function createLiveScenes({
     if (!session.zoneId || !session.sceneAttendance) throw conflict("That Scene has no current live admission.");
     if (!completing) {
       session = await refreshLiveScene(session);
-      await rememberCurrentZone(session);
+      await withIdleSceneWork(session.id, () => rememberCurrentZone(session));
       if (hasVenueOperation(session.id)) return session;
     }
     const village = sceneContinuityView(await readVillageState(), session),
@@ -293,7 +296,7 @@ export function createLiveScenes({
     });
   }
   async function rememberCurrentZone(session: VenueScene): Promise<void> {
-    if (session.status !== "active" || narrationBlocker(session) || hasVenueOperation(session.id)) return;
+    if (session.status === "closed" || narrationBlocker(session) || hasVenueOperation(session.id)) return;
     const captured = findLocation(session.continuity?.facts, session.placeId);
     const source = captured && resolveVenueZone(captured, requireSceneZoneId(session));
     if (!source || !captured || (await readActive()).sessionId !== session.id) return;
@@ -301,32 +304,50 @@ export function createLiveScenes({
     if (
       latest.sceneRevision !== session.sceneRevision ||
       latest.zoneId !== session.zoneId ||
-      latest.status !== "active"
+      latest.status === "closed" ||
+      narrationBlocker(latest) ||
+      (latest.operation && (latest.operation.status !== "complete" || latest.operation.error))
     )
       return;
-    const observed = captureZoneObservation(captured, source);
     const village = await readVillageState(),
       venue = findLocation(village, session.placeId);
     const zone = venue && resolveVenueZone(venue, source.id);
+    const at = villageNow();
+    const access = (state: typeof village, location: NonNullable<typeof venue>, area: NonNullable<typeof zone>) =>
+      evaluateZoneAccess(location, area, "player", {
+        ...sceneAccessContext(latest, new ZonedDate(at, state.timeZone || "UTC")),
+        unavailable: zoneClosed(state, location, area),
+        environment: state.narrative,
+      }).allowed;
     if (
       !zone ||
       !venue ||
-      zoneClosed(village, venue, zone) ||
-      zonePictureContext(village, venue, zone) !== observed.context ||
-      (zone.seen && JSON.stringify(zone.observed) === JSON.stringify(observed))
+      village.seed !== session.villageSeed ||
+      village.setupAt !== session.continuity?.setupAt ||
+      captured.form !== venue.form ||
+      !access(village, venue, zone)
     )
       return;
+    const instant = at.toISOString();
+    const observed = captureZoneObservation(
+      venue,
+      zone,
+      observableRoomDescription(village, venue.id, zone.id, instant),
+    );
+    if (zone.seen && JSON.stringify(zone.observed) === JSON.stringify(observed)) return;
     await mutateVillageState((state) => {
       const current = findLocation(state, session.placeId),
         target = current && resolveVenueZone(current, source.id);
       if (
         state.seed === session.villageSeed &&
+        state.setupAt === village.setupAt &&
         current &&
         target &&
-        zonePictureContext(state, current, target) === observed.context
+        access(state, current, target) &&
+        zonePictureContext(state, current, target, instant) === observed.context
       ) {
         target.seen = true;
-        target.observed = observed;
+        target.observed = captureZoneObservation(current, target, observed.description);
       }
     });
   }

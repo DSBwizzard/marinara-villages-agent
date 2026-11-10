@@ -428,6 +428,7 @@ export type VillageVenue = {
     freezePicture?: boolean;
     pictureRetryAvailable?: boolean;
     pictureGenerateAvailable?: boolean;
+    pictureOutdated?: boolean;
     pictureReference?: VillageVenueImage;
     referenceAppliedId?: string;
     referencePending?: boolean;

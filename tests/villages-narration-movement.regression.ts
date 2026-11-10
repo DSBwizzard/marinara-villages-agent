@@ -415,8 +415,12 @@ await runCase("narration-movement/calendar-operations", () =>
             assert.equal(active.statusCode, 200, active.body);
             const scene = active.json().session;
             assert(scene);
-            if (kind === "live") assert.equal(scene.zoneId, open ? "common" : "exterior");
-            else {
+            if (kind === "live") {
+              assert.equal(scene.zoneId, open ? "common" : "exterior");
+              const state = fixtureVillageState(host.records.get("villages-village").data, host.records);
+              const observation = state.venues[0].zones!.find((zone) => zone.id === "common")!.observed;
+              assert.equal(Boolean(observation), open, "Room observation uses the Village time zone");
+            } else {
               const answer = await host.app.inject({
                 method: "POST",
                 url: "/api/villages/rooms/zone",

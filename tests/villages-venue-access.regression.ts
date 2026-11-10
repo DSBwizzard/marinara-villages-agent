@@ -426,10 +426,10 @@ command({
 assert.equal(decide("bedroom", "player", { at: new Date(2026, 9, 5, 23) }).allowed, true);
 const state = defaultVillageState();
 state.venues = [venue];
-const imageKey = sceneryImageKey(state, venue, "office"),
+const imageKey = sceneryImageKey(state, venue, state.setupAt, "office"),
   prepKey = privatePreparationKey(venue, zone("office"));
 zone("office").access!.mode = "public";
-assert.equal(sceneryImageKey(state, venue, "office"), imageKey);
+assert.equal(sceneryImageKey(state, venue, state.setupAt, "office"), imageKey);
 assert.equal(privatePreparationKey(venue, zone("office")), prepKey);
 const before = projectZoneAccess(venue, zone("mara-bedroom"), "player", context);
 assert.equal(before.policy, undefined);

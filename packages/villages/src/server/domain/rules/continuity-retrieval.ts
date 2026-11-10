@@ -54,6 +54,20 @@ const roomEntry = (view: ContinuityView) => ({
   ...(view.version.room?.expiresAt ? { expiresAt: view.version.room.expiresAt } : {}),
 });
 
+export function currentRoomViews(
+  collection: ContinuityCollection,
+  episodes: EpisodeCollection,
+  holder: Extract<ContinuityHolder, { kind: "room" }>,
+  at: string,
+) {
+  const key = continuityHolderKey(holder);
+  if (!collection.records.some((record) => record.heads[key])) return [];
+  const blocked = collection.records.some((record) => record.protection[key]?.sourceUnits.length)
+    ? continuityProtectionUnits(collection, holder, episodeSourceGraph(episodes.records, holder))
+    : new Set<string>();
+  return continuityViews(collection, holder, at, blocked).sort((a, b) => a.version.room!.order - b.version.room!.order);
+}
+
 /** Every current entry stays stored; only complete selected entries become legal mutation targets. */
 export function selectRoomContinuity(
   collection: ContinuityCollection,
@@ -63,12 +77,7 @@ export function selectRoomContinuity(
   request: { query: string; bytes: number; requiredIds: string[]; wholeRoom: boolean },
 ) {
   memoryRequire(Number.isSafeInteger(request.bytes) && request.bytes > 0, "invalid room context budget");
-  const all = continuityViews(
-    collection,
-    holder,
-    at,
-    continuityProtectionUnits(collection, holder, episodeSourceGraph(episodes.records, holder)),
-  ).sort((a, b) => a.version.room!.order - b.version.room!.order);
+  const all = currentRoomViews(collection, episodes, holder, at);
   const required = new Set(
     request.wholeRoom ? all.map((row) => row.id) : [...request.requiredIds, ...(all[0] ? [all[0].id] : [])],
   );

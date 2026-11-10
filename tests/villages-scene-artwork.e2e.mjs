@@ -74,6 +74,7 @@ await withBrowser(browser, async () => {
         connectedTo: ["exterior"],
       },
     ];
+    venue.zones.find((zone) => zone.id === targetId).pictureOutdated = true;
     Object.assign(venue, venueSnapshotFixture(venue));
     const scene = {
       id: "artwork-scene",
@@ -129,6 +130,7 @@ await withBrowser(browser, async () => {
           zone.pictureReference = undefined;
           zone.referencePending = false;
         }
+        if (req.method() === "POST") zone.pictureOutdated = false;
       } else if (req.method() !== "GET" && /\/rooms(?:\/|$)/.test(path))
         assert.fail("artwork must not mutate the Scene");
       await fulfill(route, { json: authorSceneResponse(value, snapshot.worldScope) });
@@ -150,6 +152,7 @@ await withBrowser(browser, async () => {
     const returnToScene = () => page.getByRole("button", { name: "Back to Scene", exact: true }).click();
     await openSettings();
     await expect(page.getByRole("button", { name: "Generate new picture", exact: true })).toBeEnabled();
+    await expect(page.getByText("Artwork is out of date.", { exact: true })).toBeVisible();
     const header = page.locator(".marinara-capability-villages-workspace-venue-header > img");
     await expect(header).toHaveAttribute("src", night);
     if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS && area === "outside") {
@@ -165,6 +168,7 @@ await withBrowser(browser, async () => {
     await page.getByRole("button", { name: "Generate new picture", exact: true }).click();
     await expect.poll(() => mutations.length).toBe(1);
     await expect(page.getByRole("button", { name: "Picture", exact: true })).toBeVisible();
+    await expect(page.getByText("Artwork is out of date.", { exact: true })).toHaveCount(0);
     await returnToScene();
     await expect(backdrop).toHaveAttribute("src", generated);
     await expect(composer).toHaveValue("Keep this unsent Scene draft.");

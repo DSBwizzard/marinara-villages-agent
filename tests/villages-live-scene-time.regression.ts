@@ -120,6 +120,7 @@ function fixture() {
   scene.continuity = captureSceneContinuity(world, scene, now.getTime());
   let busy = false;
   const service = createLiveScenes({
+    withIdleSceneWork: (_id, observe) => observe(),
     readActive: async () => ({ sessionId: scene.id, placeId: scene.placeId }),
     readSession: async () => structuredClone(scene),
     changeSession: async (_id, change) => {

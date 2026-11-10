@@ -331,14 +331,20 @@ function ZoneArtwork({
           </div>
         </details>
       </div>
-      {zone.pictureProblem || zone.pictureUpdating || zone.nightPending || zone.referencePending ? (
+      {zone.pictureProblem ||
+      zone.pictureUpdating ||
+      zone.nightPending ||
+      zone.referencePending ||
+      zone.pictureOutdated ? (
         <p role="status">
           {zone.pictureProblem ||
             (zone.pictureUpdating
               ? "Artwork pending"
               : zone.referencePending
                 ? "Reference saved for your next visit."
-                : "Artwork pending")}
+                : zone.pictureOutdated
+                  ? "Artwork is out of date."
+                  : "Artwork pending")}
         </p>
       ) : null}
     </>

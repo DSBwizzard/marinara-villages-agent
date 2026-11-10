@@ -142,10 +142,11 @@ function fixture() {
     dirty: (text: string, id = "living") => {
       zone(id).description += "\n" + text;
       zone(id).picture!.dirty = true;
-      if (present) zone(id).observed = captureZoneObservation(state.venues[0], zone(id));
+      if (present) zone(id).observed = captureZoneObservation(state.venues[0], zone(id), zone(id).description);
     },
     enter: (id = "living") => {
-      if (present && zone(id).seen) zone(id).observed = captureZoneObservation(state.venues[0], zone(id));
+      if (present && zone(id).seen)
+        zone(id).observed = captureZoneObservation(state.venues[0], zone(id), zone(id).description);
       return service.requestZonePicture("home", id);
     },
   };
@@ -828,6 +829,7 @@ console.log(
   });
   let moveDuringRead = false;
   const live = createLiveScenes({
+    withIdleSceneWork: (_id, observe) => observe(),
     readActive: async () => ({ sessionId: "visit", placeId: "home" }),
     readSession: async () => structuredClone(scene),
     readVillageState: async () => {
@@ -838,7 +840,7 @@ console.log(
   assert.equal(await live.canGenerateZonePicture("home", "living"), true);
   const entrance = f.zone("exterior"),
     ledger = f.world().venues[0].access;
-  entrance.observed = captureZoneObservation(f.world().venues[0], entrance);
+  entrance.observed = captureZoneObservation(f.world().venues[0], entrance, entrance.description);
   scene.zoneId = "exterior";
   assert.equal(await live.canGenerateZonePicture("home", "exterior"), true);
   delete f.world().venues[0].access;
@@ -890,7 +892,7 @@ console.log(
     false,
     "a held observation cannot buy current hidden facts",
   );
-  f.zone().observed = captureZoneObservation(f.world().venues[0], f.zone());
+  f.zone().observed = captureZoneObservation(f.world().venues[0], f.zone(), f.zone().description);
   const clockFailure = new Error("Clock authority could not be read");
   const release = configureVillageClock({
     observe: async () => {
@@ -941,7 +943,7 @@ console.log(
   const venue = f.world().venues[0];
   venue.form = "A known brick cottage";
   f.zone().dayNight = true;
-  f.zone().observed = captureZoneObservation(venue, f.zone());
+  f.zone().observed = captureZoneObservation(venue, f.zone(), f.zone().description);
   const known = structuredClone(f.zone().observed!);
   const key = zoneObservationKey(known);
   f.present(false);

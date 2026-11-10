@@ -1,4 +1,3 @@
-import { captureZoneObservation } from "../rules/zone-observation.js";
 import { readResidenceAgreement } from "../rules/residence-agreement.js";
 import { readLoreUse } from "../../../shared/helpers/lore.js";
 import { emptyPlaceRegistry, readPlaceRegistry } from "../rules/places.js";
@@ -83,7 +82,6 @@ import { readNarrativeState } from "./narrative-codec.js";
 import { defaultVenueSpace, validVenueClasses, venueResidentIds } from "../rules/venue-model.js";
 import { chooseAgendaZone, synchronizeVenueZones, ZONE_KINDS } from "../rules/venue-zones.js";
 import { VILLAGE_WEEKDAYS } from "../rules/village-clock.js";
-import { zonePictureBaseline, zonePicturePhysicalRecord } from "../rules/zone-picture.js";
 import { emptyStartingHistory } from "../rules/starting-history.js";
 import { readStartingHistory } from "./starting-history-codec.js";
 import { emptyMailbox, readMailboxState } from "./mailbox-codec.js";
@@ -441,8 +439,8 @@ function coerceVenue(value: unknown): VillageVenue | null {
               : ("update" as const),
         problem: boundText(asRecord(row.picture).problem, 300) || undefined,
         lastAutomaticAt: asIsoString(asRecord(row.picture).lastAutomaticAt) ?? undefined,
-        context: boundText(asRecord(row.picture).context, 24000) || undefined,
-        baseline: boundText(asRecord(row.picture).baseline, 24000) || undefined,
+        context: asString(asRecord(row.picture).context) || undefined,
+        baseline: asString(asRecord(row.picture).baseline) || undefined,
         attempted: boundText(asRecord(row.picture).attempted, 128) || undefined,
         claim: boundText(asRecord(row.picture).claim, 128) || undefined,
       },
@@ -575,7 +573,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
           }
         : undefined,
       seen: row.seen === true,
-      observed: readZoneObservation(row.observed, row.image, row.picture),
+      observed: readZoneObservation(row.observed),
       dayNight: row.dayNightManual === false ? row.dayNight !== false : true,
       dayNightManual: false,
       freezePicture: row.freezePicture === true,
@@ -601,20 +599,13 @@ function coerceVenue(value: unknown): VillageVenue | null {
               : ("update" as const),
         problem: boundText(asRecord(row.picture).problem, 300) || undefined,
         lastAutomaticAt: asIsoString(asRecord(row.picture).lastAutomaticAt) ?? undefined,
-        context: boundText(asRecord(row.picture).context, 24000) || undefined,
-        baseline: boundText(asRecord(row.picture).baseline, 24000) || undefined,
+        context: asString(asRecord(row.picture).context) || undefined,
+        baseline: asString(asRecord(row.picture).baseline) || undefined,
         attempted: boundText(asRecord(row.picture).attempted, 128) || undefined,
         claim: boundText(asRecord(row.picture).claim, 128) || undefined,
       },
       initialImageAttemptedAt: asIsoString(row.initialImageAttemptedAt) ?? "",
     };
-    if (zone.image && !zone.picture?.baseline) {
-      zone.picture = {
-        ...zone.picture,
-        base: zone.picture?.base ?? zone.image,
-        baseline: zone.picture?.context ?? zonePictureBaseline(JSON.stringify(zonePicturePhysicalRecord(zone))),
-      };
-    }
     return zone;
   };
   if (Array.isArray(raw.zones)) {
@@ -625,43 +616,6 @@ function coerceVenue(value: unknown): VillageVenue | null {
       ids.add(zone.id);
       return [zone];
     });
-    for (const [index, zone] of venue.zones.entries()) {
-      if (zone.observed) continue;
-      if (!zone.seen) {
-        // Only persisted artwork context proves an older unvisited appearance; readZone may synthesize a live baseline.
-        const picture = asRecord(asRecord(raw.zones[index]).picture);
-        const baseline =
-          zonePictureBaseline(boundText(picture.context, 24000)) ||
-          zonePictureBaseline(boundText(picture.baseline, 24000));
-        const physical = baseline ? JSON.parse(baseline) : { description: "" };
-        const form = physical.form ?? venue.zones.find((row) => row.kind === "exterior")?.observed?.form;
-        zone.observed = readZoneObservation({
-          context: JSON.stringify({ description: physical.description, ...(form ? { form } : {}) }),
-          name: zone.name,
-          description: physical.description,
-          form,
-          image: baseline ? zone.image : null,
-          dayNight: true,
-          daylight: !!baseline && zone.picture?.daylight,
-          night: baseline ? zone.picture?.night : undefined,
-          pictureContext: baseline || undefined,
-        });
-        continue;
-      }
-      const observed = captureZoneObservation(venue, zone);
-      try {
-        const prior = JSON.parse(zone.picture?.context ?? zone.picture?.baseline ?? "{}");
-        if (typeof prior.description === "string") observed.description = prior.description;
-        if (typeof prior.form === "string") observed.form = prior.form;
-        observed.context = JSON.stringify({
-          description: observed.description,
-          ...(observed.form ? { form: observed.form } : {}),
-        });
-      } catch {
-        /* Unusable artwork context leaves the captured physical account intact. */
-      }
-      zone.observed = observed;
-    }
     if (!venue.zones.some((zone) => zone.id === "exterior" && zone.kind === "exterior"))
       throw new Error("A saved Venue needs its Entrance.");
     const exterior = venue.zones.find((zone) => zone.kind === "exterior");
@@ -1326,19 +1280,15 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
   if (capture) result.capture = cloneReturnCapture(capture as import("../models/world.js").ReturnCatchupCapture);
   return result;
 }
-function readZoneObservation(
-  value: unknown,
-  sourceImage?: unknown,
-  picture?: unknown,
-): import("../models/world.js").ZoneObservation | undefined {
+function readZoneObservation(value: unknown): import("../models/world.js").ZoneObservation | undefined {
   const row = asRecord(value);
   if (typeof row.context !== "string" || typeof row.description !== "string") return undefined;
   const night = asRecord(row.night),
     image = coerceVenueImage(night.image);
   return {
-    context: boundText(row.context, 24000),
+    context: row.context,
     name: boundText(row.name, 100),
-    description: readPlaceDescription(row.description),
+    description: row.description,
     purpose: boundText(row.purpose, 240),
     roomSpecification:
       typeof row.roomSpecification === "string" ? readPlaceDescription(row.roomSpecification) : undefined,
@@ -1347,11 +1297,7 @@ function readZoneObservation(
     image: coerceVenueImage(row.image),
     dayNight: row.dayNight !== false,
     daylight: row.daylight === true,
-    pictureContext:
-      boundText(row.pictureContext, 24000) ||
-      (coerceVenueImage(row.image)?.id && coerceVenueImage(row.image)?.id === coerceVenueImage(sourceImage)?.id
-        ? zonePictureBaseline(boundText(asRecord(picture).context || asRecord(picture).baseline, 24000)) || undefined
-        : undefined),
+    pictureContext: asString(row.pictureContext) || undefined,
     night: image && typeof night.sourceId === "string" ? { sourceId: night.sourceId, image } : undefined,
   };
 }

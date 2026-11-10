@@ -1,4 +1,4 @@
-import { observedZone } from "./zone-observation.js";
+import { captureZoneObservation, observedZone } from "./zone-observation.js";
 import { zoneDayNightDefault, ZONE_DAY_NIGHT_INSTRUCTION } from "../../../shared/helpers/zone-day-night.js";
 import { z } from "zod";
 import type { VillageState, VillageVenue, VillageVenueZone } from "../models/world.js";
@@ -145,6 +145,10 @@ export function establishPlace(
     residenceCapacity: 1,
     state: defaultVenueSpace("other").state,
   };
+  const entrance = connected.find((zone) => zone.id === "exterior")!;
+  entrance.observed = priorEntrance
+    ? priorEntrance.observed
+    : captureZoneObservation(location, entrance, draft.description);
   initializeVenueAccess(location);
   location.access!.managerIds = controllers(draft.controllers);
   const place: WorldPlace = {

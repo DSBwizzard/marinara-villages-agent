@@ -22,6 +22,12 @@ import { createLiveScenes } from "../packages/villages/src/server/features/scene
 import { readNarrationSubmission } from "../packages/villages/src/server/domain/decoding/narration-submission.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import {
+  initializeRoomContinuity,
+  retainNativeFact,
+} from "../packages/villages/src/server/domain/rules/native-continuity.js";
+import { captureZoneObservation } from "../packages/villages/src/server/domain/rules/zone-observation.js";
+import { createSceneWorkFence } from "../packages/villages/src/server/jobs/scene-work-fence.js";
+import {
   narrationContinuityContext,
   fittedNarrationReadset,
 } from "../packages/villages/src/server/domain/rules/narration-context.js";
@@ -75,6 +81,10 @@ function fixture(name: string) {
       ],
     });
   initializeVenueAccess(world.venues[0]!);
+  for (const zone of world.venues[0].zones!) {
+    initializeRoomContinuity(world, "venue", zone.id, zone.description, "founding", stamp);
+    zone.observed = captureZoneObservation(world.venues[0], zone, zone.description);
+  }
   const saved = coerceSession({
     version: 5,
     id: "same",
@@ -117,7 +127,9 @@ function fixture(name: string) {
     await gate.promise;
     note(call + ":resumed");
   }
+  const fence = createSceneWorkFence();
   const service = createLiveScenes({
+    withIdleSceneWork: (id, observe) => (fence.isBusy(id) ? Promise.resolve() : fence.run(id, observe)),
     async readActive() {
       note("active");
       await wait("active");
@@ -177,6 +189,7 @@ function fixture(name: string) {
     calls,
     owners,
     service,
+    fence,
     entered,
     gate,
     submission(status: "held" | "applied", id = "accepted") {
@@ -219,6 +232,40 @@ function fixture(name: string) {
   };
 }
 async function main() {
+  {
+    const f = fixture("observation-fence");
+    const zone = f.world.venues[0].zones!.find((row) => row.id === "community")!;
+    const previous = structuredClone(zone.observed);
+    const queued = deferred(),
+      release = deferred();
+    const owner = f.fence.run(f.saved.id, async () => {
+      retainNativeFact(
+        f.world,
+        {
+          id: "room-edit",
+          kind: "structure",
+          targetId: JSON.stringify(["venue", "community"]),
+          revision: 1,
+          text: "A fresh lamp stands by the chair.",
+          witnesses: [],
+        },
+        now.toISOString(),
+        { room: { kind: "room", placeId: "venue", zoneId: "community" } },
+      );
+      queued.resolve();
+      await release.promise;
+    });
+    try {
+      await queued.promise;
+      await f.service.activeVenueSession();
+      assert.deepEqual(zone.observed, previous, "An admitted owner prevents a concurrent observation");
+    } finally {
+      release.resolve();
+      await owner;
+    }
+    await f.service.activeVenueSession();
+    assert.match(zone.observed!.description, /fresh lamp/);
+  }
   {
     const f = fixture("authored-unvisited");
     const zone = f.world.venues[0].zones!.find((row) => row.id === "community")!;

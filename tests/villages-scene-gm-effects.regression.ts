@@ -1,4 +1,4 @@
-// Test cases: gm-effects/npc, gm-effects/project-chat, gm-effects/project-leave, gm-effects/project-greet, gm-effects/wish, gm-effects/wish-new, gm-effects/relationship, gm-effects/capacity, gm-effects/empty-leave, gm-effects/past-appointment, gm-effects/circumstance, gm-effects/halt
+// Test cases: gm-effects/npc, gm-effects/project-chat, gm-effects/project-leave, gm-effects/project-greet, gm-effects/wish, gm-effects/wish-new, gm-effects/relationship, gm-effects/capacity, gm-effects/empty-leave, gm-effects/past-appointment, gm-effects/circumstance, gm-effects/halt, gm-effects/room-appearance
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { packagedSceneServer } from "./fixtures/packaged-scene-server.fixture.js";
@@ -12,6 +12,13 @@ import { retainNativeFact } from "../packages/villages/src/server/domain/rules/n
 import { ensureNarrative, admitNarrative } from "../packages/villages/src/server/domain/rules/narrative-development.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
 import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
+import { currentRoomViews } from "../packages/villages/src/server/domain/rules/continuity-retrieval.js";
+import {
+  observableRoomDescription,
+  zoneAppearanceContext,
+} from "../packages/villages/src/server/domain/rules/zone-picture.js";
+import { createLocationImages } from "../packages/villages/src/server/features/media/location-image-service.js";
+import { createVenueCommands } from "../packages/villages/src/server/features/venues/venue-service.js";
 
 const scenarios = [
   "npc",
@@ -449,3 +456,134 @@ for (const scenario of scenarios)
       await host.stop();
     }
   });
+
+await runCase("gm-effects/room-appearance", async () => {
+  const host = await packagedSceneServer({
+    configure(world) {
+      world.automaticZonePictures = true;
+      const venue = world.venues[0];
+      const zone = venue.zones!.find((zone) => zone.id === "common")!;
+      zone.dayNight = false;
+      zone.image = { id: "old-art", ref: "global-gallery:old-art", url: "/old-art.png" };
+      zone.picture = { base: zone.image, daylight: true, context: zoneAppearanceContext(zone.description, venue.form) };
+    },
+  });
+  try {
+    const active = await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+    assert.equal(active.statusCode, 200, active.body);
+    const read = () => createVillageRepository(() => host.documents as any).readAuthority({ memories: true });
+    const before = await read();
+    const holder = { kind: "room" as const, placeId: "mill", zoneId: "common" };
+    const prior = currentRoomViews(before.continuity, before.episodes, holder, before.foundedAt)[0];
+    const visible = "The wooden bench now faces the window.";
+    const temporary = "An independent bright patch from a lantern falls on the floor.";
+    const secret = "A violet envelope is hidden beneath the bench.";
+    let reply: unknown = {
+      segments: [{ id: "change", kind: "narration", text: visible + " " + temporary }],
+      keep: [
+        { for: "room", replace: prior.id, text: visible, source: [seen("change")] },
+        { for: "room", text: temporary, source: [seen("change")], expiresInMinutes: 60 },
+      ],
+    };
+    host.model.chatComplete = async () => ({
+      content: JSON.stringify(reply),
+      finishReason: "stop",
+      usage: { inputTokens: 10, outputTokens: 10 },
+    });
+    const send = async (submissionId: string, message: string) => {
+      const result = await host.app.inject({
+        method: "POST",
+        url: "/api/villages/rooms/turn",
+        payload: {
+          sessionId: "browser",
+          submissionId,
+          message,
+          mode: "chat",
+          targetId: "",
+          expectedSceneRevision: host.scene().sceneRevision,
+        },
+      });
+      assert.equal(result.statusCode, 200, result.body);
+    };
+    await send("a1111111-1111-4111-8111-111111111111", "I turn the bench toward the window and light a lantern.");
+    const edited = await read();
+    const acceptedAt = edited.episodes.records.at(-1)!.capturedAt;
+    const description = visible + "\n\n" + temporary;
+    assert.equal(observableRoomDescription(edited, "mill", "common", acceptedAt), description);
+    assert.equal(
+      observableRoomDescription(edited, "mill", "common", new Date(Date.parse(acceptedAt) + 3600000).toISOString()),
+      visible,
+      "an independent temporary entry expires without restoring earlier prose",
+    );
+    const inspect = async () => {
+      const snapshot = await host.app.inject({ method: "GET", url: "/api/villages" });
+      assert.equal(snapshot.statusCode, 200, snapshot.body);
+      const body = snapshot.json();
+      for (const venue of [body.settings.venues[0], body.sceneVenue.venue]) {
+        const zone = venue.zones.find((zone: { id: string }) => zone.id === "common");
+        assert.equal(zone.description, description);
+        assert.equal(zone.pictureOutdated, true, "Only known appearance makes existing artwork stale");
+      }
+      assert.doesNotMatch(JSON.stringify(body.settings.venues), /violet envelope|bench stands against/);
+      return (await read()).venues[0].zones!.find((zone) => zone.id === "common")!.observed!.context;
+    };
+    const observed = await inspect();
+    reply = {
+      segments: [{ id: "change", kind: "narration", text: "Something slides quietly beneath the bench." }],
+      keep: [{ for: "room", text: secret, visibility: "concealed", source: [seen("change")] }],
+    };
+    await send("a2222222-2222-4222-8222-222222222222", "I hide the envelope under the bench.");
+    assert.equal(await inspect(), observed, "concealed-only changes leave observable appearance unchanged");
+    const cold = await read();
+    assert(
+      currentRoomViews(cold.continuity, cold.episodes, holder, acceptedAt).some(
+        ({ version }) => version.text === secret,
+      ),
+    );
+    assert.equal(cold.zonePictureBudget?.used ?? 0, 0);
+    assert.equal(cold.venues[0].zones!.find((zone) => zone.id === "common")!.image?.id, "old-art");
+
+    const readVillageState = async () => structuredClone(cold);
+    const mutateVillageState = async (update: (state: VillageState) => unknown) => {
+      await update(cold);
+      return structuredClone(cold);
+    };
+    const buildVillageSnapshot = async () => ({}) as never;
+    const commands = createVenueCommands({
+      readVillageState,
+      mutateVillageState,
+      buildVillageSnapshot,
+      withSceneNavigation: (operation) => operation(),
+      sceneQueries: () => ({ activeVenueSession: async () => null }),
+    });
+    const prompts: string[] = [];
+    const images = createLocationImages({
+      readVillageState,
+      mutateVillageState,
+      buildVillageSnapshot,
+      canGenerateZonePicture: async () => true,
+      assertVenueImageAccess: commands.assertVenueImageAccess,
+      setVillageVenueImage: commands.setVillageVenueImage,
+      readVillageImageLore: async () => "",
+      generateVillageImage: async ({ prompt, beforeDispatch }) => {
+        await beforeDispatch?.();
+        prompts.push(prompt);
+        return { bytes: Buffer.from("fixture"), mime: "image/png", base64: "" };
+      },
+      uploadVillageGalleryImage: async () => ({ id: "new-art", ref: "global-gallery:new-art", url: "/new-art.png" }),
+      decodeImageDataUrl: () => {
+        throw new Error("Unexpected reference upload");
+      },
+      villagesLogger: () => ({ warn() {} }),
+    });
+    await images.generateVillageLocationImage("mill", "common");
+    assert.equal(prompts.length, 1);
+    assert(prompts[0].includes(visible) && prompts[0].includes(temporary));
+    assert.doesNotMatch(prompts[0], /violet envelope|bench stands against/);
+    const pictured = cold.venues[0].zones!.find((zone) => zone.id === "common")!;
+    assert.equal(pictured.picture?.context, observed);
+    assert.equal(pictured.image?.id, "new-art");
+  } finally {
+    await host.stop();
+  }
+});

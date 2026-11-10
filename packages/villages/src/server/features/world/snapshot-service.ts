@@ -73,6 +73,14 @@ export function createVillageSnapshot({
     if (residenceAccess) village = await readVillageState({ memories: true });
     const sceneWorld = residenceAccess ? sceneContinuityView(village, residenceAccess) : village;
     const capturedVenue = residenceAccess && findLocation(sceneWorld, residenceAccess.placeId);
+    const liveVenue = residenceAccess && findLocation(village, residenceAccess.placeId);
+    const scenePresentation = capturedVenue && {
+      ...capturedVenue,
+      zones: capturedVenue.zones?.map((zone) => {
+        const observed = liveVenue && resolveVenueZone(liveVenue, zone.id)?.observed;
+        return observed ? { ...zone, observed } : zone;
+      }),
+    };
     // ONE schedule read for the whole village, so every villager's pin and their
     // own drawer's plate are resolved off the same answer. Null when the Engine
     // will not answer, which leaves every villager unplaced rather than failing
@@ -273,12 +281,12 @@ export function createVillageSnapshot({
         residenceAccess ? sceneAccessContext(residenceAccess, undefined, village.timeZone) : undefined,
         now,
       ),
-      ...(residenceAccess && capturedVenue
+      ...(residenceAccess && scenePresentation
         ? {
             sceneVenue: {
               sceneId: residenceAccess.id,
               venue: villageSettings(
-                { ...sceneWorld, venues: [capturedVenue] },
+                { ...sceneWorld, venues: [scenePresentation] },
                 player,
                 residenceAccess,
                 sceneAccessContext(residenceAccess, undefined, sceneWorld.timeZone),
@@ -286,7 +294,7 @@ export function createVillageSnapshot({
                   residenceAccess.continuity?.capturedAt ?? residenceAccess.startedAt,
                   sceneWorld.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
                 ),
-              ).venues.find((venue) => venue.id === capturedVenue.id)!,
+              ).venues.find((venue) => venue.id === scenePresentation.id)!,
             },
           }
         : {}),

@@ -1,5 +1,6 @@
 import { observedPictureKey } from "../../domain/rules/zone-observation.js";
-import { currentVillageCircumstances } from "../../domain/rules/prompt-preset.js";
+import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.js";
+import { observableRoomDescription } from "../../domain/rules/zone-picture.js";
 import { DAYTIME_IMAGE_INSTRUCTION } from "../../domain/rules/location-image-rules.js";
 import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import { createZonePictures } from "./zone-picture-service.js";
@@ -87,6 +88,7 @@ export function createLocationImages(ports: LocationImagePorts) {
     guard?: (state: VillageState) => boolean,
     fromObservation = false,
   ): Promise<string | undefined> {
+    await observeVillageClock();
     const found = await requireVenue(venueId);
     const village = found.village;
     if (guard && !guard(village)) {
@@ -96,7 +98,13 @@ export function createLocationImages(ports: LocationImagePorts) {
     const targetZone = resolveVenueZone(found.venue, zoneId);
     if (!targetZone) throw conflict("Choose the exact Zone before drawing its image.");
     await assertVenueImageAccess(venueId, zoneId, fromObservation);
-    const venue = venueInZone(found.venue, zoneId);
+    const at = villageNow().toISOString();
+    const venue = {
+      ...venueInZone(found.venue, zoneId),
+      description: fromObservation
+        ? (targetZone.observed?.description ?? "")
+        : observableRoomDescription(village, venueId, zoneId, at),
+    };
     const character = onlyIfEmpty
       ? sceneryCharacterContext(
           village,
@@ -106,7 +114,7 @@ export function createLocationImages(ports: LocationImagePorts) {
       : "";
     const expectedContext = fromObservation
       ? observedPictureKey(village, targetZone)
-      : sceneryImageKey(village, found.venue, zoneId);
+      : sceneryImageKey(village, found.venue, at, zoneId);
     if (!(await ports.canGenerateZonePicture(venueId, targetZone.id, guard, fromObservation)))
       throw conflict("Reload this Zone before generating its artwork.");
     const reference = targetZone.picture?.reference;
@@ -115,6 +123,7 @@ export function createLocationImages(ports: LocationImagePorts) {
       throw conflict("Choose an image connection that supports references before generating artwork.");
     const referenceImages = reference ? [(await ports.readZonePictureReference!(reference)).dataUrl] : undefined;
     const exterior = targetZone.kind === "exterior";
+    const exteriorContext = resolveVenueZone(found.venue, "exterior")?.observed?.description;
     let inspection: LoreInspection | undefined;
     const lore = fromObservation
       ? ""
@@ -122,7 +131,7 @@ export function createLocationImages(ports: LocationImagePorts) {
           village.selectedLorebookIds,
           loreText(
             village.name,
-            villageLoreContext(village),
+            villageLoreContext({ ...village, narrative: undefined }),
             venue.name,
             venue.form,
             venue.description,
@@ -152,19 +161,16 @@ export function createLocationImages(ports: LocationImagePorts) {
             `Venue Type: ${venue.venueType || venue.name}. Physical form: ${venue.form || "unspecified"}. Selected Zone: ${targetZone?.name || "Entrance"}. Used for: ${targetZone?.purpose || "arrival and approach"}.`,
             ...basePrompt.split("\n"),
             "Shared architecture: Venue form defines the whole place. Preserve its scale and construction across every Zone. Zone appearance describes part of this same place and must not redefine its architecture. Use only explicitly described architectural facts; do not invent materials, windows or proportions from the building type alone.",
-            !exterior && !(targetZone && isPrivateInterior(targetZone))
-              ? `Public exterior context for architectural continuity only: ${found.venue.description}. Carry over explicit architectural cues that apply inside; do not depict this exterior or infer hidden contents.`
+            !exterior && exteriorContext && !isPrivateInterior(targetZone)
+              ? `Known exterior context for architectural continuity only: ${exteriorContext}. Carry over explicit architectural cues that apply inside; do not depict this exterior or infer hidden contents.`
               : "",
             targetZone && isPrivateInterior(targetZone)
               ? "Illustrate this saved interior without adding possessions from personality context."
               : "",
           ],
           [
-            targetZone && isPrivateInterior(targetZone) && targetZone.roomSpecification
-              ? `Known room specification: ${targetZone.roomSpecification}.`
-              : "",
-            targetZone && isPrivateInterior(targetZone)
-              ? `Public exterior context for architectural continuity only: ${found.venue.description.slice(0, 400)}. Do not depict the exterior or infer hidden contents.`
+            exteriorContext && isPrivateInterior(targetZone)
+              ? `Known exterior context for architectural continuity only: ${exteriorContext.slice(0, 400)}. Do not depict the exterior or infer hidden contents.`
               : "",
             character && !(targetZone && isPrivateInterior(targetZone))
               ? `Occupant context, reflect preferences without depicting people: ${character}`
@@ -178,9 +184,6 @@ export function createLocationImages(ports: LocationImagePorts) {
               ? "Authored place description; later verified state takes precedence: " + village.setting
               : "",
             village.worldRules ? "Standing world rules: " + village.worldRules : "",
-            ...currentVillageCircumstances(village, found.venue.id, targetZone.id).map(
-              (fact) => "Current circumstance: " + fact,
-            ),
             `Current physical account: ${venue.description}`,
             DAYTIME_IMAGE_INSTRUCTION,
             ...(reference
@@ -207,7 +210,6 @@ export function createLocationImages(ports: LocationImagePorts) {
           [
             "Complete known physical account: " + remembered!.context,
             remembered!.purpose ? "Observed use: " + remembered!.purpose : "",
-            remembered!.roomSpecification ? "Observed room specification: " + remembered!.roomSpecification : "",
             village.worldRules ? "Player-authored standing world rules: " + village.worldRules : "",
             DAYTIME_IMAGE_INSTRUCTION,
             reference
@@ -226,8 +228,9 @@ export function createLocationImages(ports: LocationImagePorts) {
         latest.automaticZonePictures === false ||
         latestZone.freezePicture ||
         latestZone.picture?.removed ||
-        (fromObservation ? observedPictureKey(latest, latestZone) : sceneryImageKey(latest, latestVenue, zoneId)) !==
-          expectedContext
+        (fromObservation
+          ? observedPictureKey(latest, latestZone)
+          : sceneryImageKey(latest, latestVenue, villageNow().toISOString(), zoneId)) !== expectedContext
       )
         return;
     }
@@ -239,6 +242,7 @@ export function createLocationImages(ports: LocationImagePorts) {
     const decoded = await generateVillageImage({
       loreImages: inspectedLoreImages(inspection, usedLore),
       beforeDispatch: async () => {
+        await observeVillageClock();
         const latest = await readVillageState();
         const current = latest.venues.find((entry) => entry.id === venueId);
         const zone = current && resolveVenueZone(current, zoneId);
@@ -246,8 +250,9 @@ export function createLocationImages(ports: LocationImagePorts) {
           !current ||
           !zone ||
           latest.seed !== village.seed ||
-          (fromObservation ? observedPictureKey(latest, zone) : sceneryImageKey(latest, current, zone.id)) !==
-            expectedContext ||
+          (fromObservation
+            ? observedPictureKey(latest, zone)
+            : sceneryImageKey(latest, current, villageNow().toISOString(), zone.id)) !== expectedContext ||
           (guard && !guard(latest)) ||
           (onlyIfEmpty && (latest.automaticZonePictures === false || zone.freezePicture || zone.picture?.removed))
         )

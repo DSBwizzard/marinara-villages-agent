@@ -256,7 +256,7 @@ async function main() {
     const venue = venueFixture({ id: "square", name: "Square", description: "Old approach" });
     f.world.venues.push(venue);
     const zone = venue.zones![0];
-    zone.observed = captureZoneObservation(venue, zone);
+    zone.observed = captureZoneObservation(venue, zone, zone.description);
     zone.description = "Newly observed approach";
     const current = coerceSession({
       version: 5,
@@ -273,7 +273,7 @@ async function main() {
       rollActiveAgendas: async () => false,
       sceneQueries: () => ({
         activeVenueSession: async () => {
-          zone.observed = captureZoneObservation(venue, zone);
+          zone.observed = captureZoneObservation(venue, zone, zone.description);
           return structuredClone(current);
         },
       }),

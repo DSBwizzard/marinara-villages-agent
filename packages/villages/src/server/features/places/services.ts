@@ -41,7 +41,7 @@ export async function listPlaces(query: Record<string, unknown>): Promise<PlaceD
       !place.disabled &&
       place.knownBy.includes("player") &&
       (!query.mapId || place.location.presentation.mapId === query.mapId) &&
-      (!search || `${place.location.name} ${place.location.description}`.toLocaleLowerCase().includes(search)),
+      (!search || `${place.location.name} ${placeSummary(place).description}`.toLocaleLowerCase().includes(search)),
   );
   const bounds = query.bounds === undefined ? undefined : String(query.bounds).split(",").map(Number);
   if (bounds && (bounds.length !== 4 || bounds.some((n) => !Number.isFinite(n) || n < 0 || n > 1)))

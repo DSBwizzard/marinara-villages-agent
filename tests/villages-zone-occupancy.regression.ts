@@ -682,6 +682,7 @@ assert.equal(paint.description, "A yellow motorcycle.", "closing never replays a
     ["player", ...ids],
   );
   const live = createLiveScenes({
+    withIdleSceneWork: (_id, observe) => observe(),
     readVillageState: async () => structuredClone(state),
     hasVenueOperation: () => false,
     readSession: async () => structuredClone(saved),

@@ -1,16 +1,21 @@
 import type { VillageState, VillageVenue, VillageVenueZone, ZoneObservation } from "../models/world.js";
-import { zonePictureContext } from "./zone-picture.js";
+import { zoneAppearanceContext } from "./zone-picture.js";
+import { emptyPlaceContinuity } from "../../../shared/helpers/place-continuity.js";
 
 /** Known presentation from authoring or a settled visit; never physical or access authority. */
-export function captureZoneObservation(venue: VillageVenue, zone: VillageVenueZone): ZoneObservation {
+export function captureZoneObservation(
+  venue: VillageVenue,
+  zone: VillageVenueZone,
+  description: string,
+): ZoneObservation {
   return {
-    context: zonePictureContext({}, venue, zone),
+    context: zoneAppearanceContext(description, venue.form),
     name: zone.name,
-    description: zone.description,
+    description,
     purpose: zone.purpose,
     roomSpecification: zone.roomSpecification,
     form: venue.form,
-    state: structuredClone(zone.state),
+    state: emptyPlaceContinuity(),
     image: zone.image,
     dayNight: zone.dayNight !== false,
     daylight: zone.picture?.daylight,

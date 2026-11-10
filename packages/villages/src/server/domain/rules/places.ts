@@ -197,7 +197,7 @@ export function placeSummary(place: WorldPlace): PlaceSummary {
     id: place.id,
     revision: place.revision,
     name: place.location.name,
-    description: place.location.description,
+    description: place.location.zones?.find((zone) => zone.id === "exterior")?.observed?.description ?? "",
     mapId: place.location.presentation.mapId,
     x: place.location.presentation.x,
     y: place.location.presentation.y,

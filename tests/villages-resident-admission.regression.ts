@@ -158,9 +158,9 @@ assert.notEqual(
   preparationKey,
   "the actual room owner fences generation even with a different controller",
 );
-const visualKey = sceneryImageKey(state, venue);
+const visualKey = sceneryImageKey(state, venue, state.setupAt);
 state.worldName = "Another setting";
-assert.notEqual(sceneryImageKey(state, venue), visualKey);
+assert.notEqual(sceneryImageKey(state, venue, state.setupAt), visualKey);
 const requiredNote = "START " + "a".repeat(1200) + " END";
 assert.ok(
   sceneryPrompt(["A room", "A long description ".repeat(300)], ["optional ".repeat(300)], "", [requiredNote]).includes(
