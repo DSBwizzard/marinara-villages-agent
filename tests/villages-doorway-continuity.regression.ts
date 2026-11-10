@@ -47,7 +47,6 @@ const scene = coerceSession({
   placeId: "home",
   zoneId: "exterior",
   status: "active",
-  memoryMode: "live",
   participants: [{ characterId: "buster", name: "Buster", doing: "Talking" }],
   activeIds: [],
   sceneAttendance: {

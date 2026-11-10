@@ -142,7 +142,6 @@ await withBrowser(browser, async () => {
           lastActivityAt: now,
           endedAt: "",
           status: "active",
-          memoryMode: "live",
           activeIds: ["feddy"],
           participants: [{ characterId: "feddy", name: "Feddy" }],
           lines: [

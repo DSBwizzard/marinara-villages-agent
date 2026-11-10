@@ -50,7 +50,6 @@ let saved = coerceSession({
   version: 4,
   semanticVersion: 2,
   id: "gathering",
-  liveSceneVersion: 1,
   placeId: "community",
   placeName: "Meeting Hall",
   zoneId: "community",

@@ -23,7 +23,6 @@ const scene: VenueScene = {
   endedAt: "",
   lastActivityAt: stamp,
   endReason: "",
-  memoryMode: "live",
   status: "active",
   participants: [],
   activeIds: [],

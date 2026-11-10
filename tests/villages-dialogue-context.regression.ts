@@ -196,7 +196,6 @@ async function run() {
       area: "outside",
       spaceClass: "community",
       startedAt: stamp,
-      memoryMode: "live",
       participants: state.villagers.map((person) => ({
         characterId: person.characterId,
         name: person.cardSnapshot.name,
@@ -260,7 +259,6 @@ async function run() {
 
     const playerGuard = "The player controls their own speech, decisions, actions, thoughts, feelings, and consent";
     assert.ok(prompt.includes(playerGuard));
-    scene.memoryMode = "live";
     const opening = (await prepareVenueTurnMessages(scene, "", "greet", "", null)).fitted.messages
       .map((entry) => entry.content)
       .join("\n");
@@ -274,7 +272,6 @@ async function run() {
     );
     assert.ok(!currentTurn.includes("recollections:["));
 
-    scene.memoryMode = "live";
     scene.area = "private";
     const controlled = String(
       (await prepareVenueTurnMessages(scene, "I rearrange the room.", "chat", "", null)).fitted.messages

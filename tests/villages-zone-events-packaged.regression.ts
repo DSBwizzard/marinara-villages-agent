@@ -126,7 +126,6 @@ const village = coerceVillageState(world);
 const scene = coerceSession({
   version: 4,
   id: "harbour-scene",
-  liveSceneVersion: 1,
   placeId: "harbour",
   placeName: "The Harbour Terrace",
   zoneId: "terrace",
@@ -920,7 +919,6 @@ try {
     ["condition", "leave", "halt-state"],
   ] as const) {
     editFixtureScene((saved) => {
-      saved.liveSceneVersion = 1;
       saved.accompanying = saved.sceneAttendance.occupants.map(({ characterId, zoneId }: any) => ({
         characterId,
         zoneId,

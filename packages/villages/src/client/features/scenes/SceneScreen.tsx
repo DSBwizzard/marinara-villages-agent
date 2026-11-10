@@ -331,7 +331,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           onOpenWish={(actorId, wishId) => {
             openPerson({ actorId, wishId, section: "wishes", returnTo: "room" });
           }}
-          changeStatus={room?.memoryMode === "live" ? roomChangeStatus : undefined}
+          changeStatus={room.id ? roomChangeStatus : undefined}
           unresolvedChanges={roomUnresolvedChanges}
           onReplayChanges={() => {
             if (!room?.id || roomBusy) return;
@@ -375,16 +375,9 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           onProposals={() => openMenu("venueRequests")}
           spriteCardFlipEnabled={snapshot?.settings.spriteCardFlipEnabled !== false}
           sceneSettings={
-            <>
-              {room.memoryMode === "live" ? (
-                <SavedChangesDiagnostics
-                  key={room.id}
-                  sceneId={room.id}
-                  api={request}
-                  onError={reportDiagnosticsError}
-                />
-              ) : null}
-            </>
+            room.id ? (
+              <SavedChangesDiagnostics key={room.id} sceneId={room.id} api={request} onError={reportDiagnosticsError} />
+            ) : undefined
           }
         />
       ) : (

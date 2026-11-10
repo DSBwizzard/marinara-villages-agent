@@ -50,7 +50,6 @@ await withBrowser(browser, async () => {
       zoneId: "exterior",
       area: "outside",
       status: "active",
-      memoryMode: "live",
       startedAt: now,
       lastActivityAt: now,
       sceneRevision: 2,

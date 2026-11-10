@@ -32,7 +32,7 @@ import { fixtureWish } from "./helpers/social-wishes-fixture.js";
 const day = 86400000;
 const start = Date.now() - 3 * day,
   at = new Date(start).toISOString();
-function fixture(live = false) {
+function fixture(active = false) {
   const state = coerceVillageState({
     ...defaultVillageState(),
 
@@ -69,11 +69,10 @@ function fixture(live = false) {
   const scene = coerceSession({
     version: 4,
     id: "morning",
-    ...(live ? { liveSceneVersion: 1 } : {}),
     villageSeed: state.seed,
     placeId: "square",
     placeName: "Square",
-    status: live ? "active" : "closed",
+    status: active ? "active" : "closed",
     zoneId: "community",
     area: "public",
     spaceClass: "community",

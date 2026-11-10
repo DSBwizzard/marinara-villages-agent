@@ -81,8 +81,6 @@ export type VenueScene = {
   changeSequence?: number;
   villageSeed?: string;
   sceneRevision: number;
-  /** Interactive Scenes follow the Village clock; noninteractive memory inputs omit this marker. */
-  liveSceneVersion?: 1;
   operation?: VenueOperation;
   /** Opaque stored operation heads retain purchases from explicitly abandoned requests. */
   abandonedOperations?: VenueOperation[];
@@ -127,7 +125,6 @@ export type VenueScene = {
   endedAt: string;
   lastActivityAt: string;
   endReason: "player" | "scene" | "inactivity" | "debug" | "";
-  memoryMode: "live";
   status: "opening" | "active" | "closing" | "closed";
   participants: VenueParticipant[];
   sceneAttendance?: SceneAttendance;

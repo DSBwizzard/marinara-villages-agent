@@ -32,8 +32,7 @@ export function sameSceneRoutine(village: VillageState, scene: VenueScene, actor
 
 /** Do not invent an NPC encounter in a resident's scheduled Zone while evidenced movement puts them elsewhere. */
 export function liveSceneEncounterConflicts(village: VillageState, scene: VenueScene | null, now: Date): Set<string> {
-  if (scene?.liveSceneVersion !== 1 || scene.status === "closed" || scene.villageSeed !== village.seed)
-    return new Set();
+  if (!scene || scene.status === "closed" || scene.villageSeed !== village.seed) return new Set();
   const at = new ZonedDate(now, village.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
   const scheduled = villagePresence(village, at.getHours() * 60 + at.getMinutes(), at);
   const positions = sceneAccessContext(scene).positions ?? {};

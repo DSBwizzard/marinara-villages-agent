@@ -619,9 +619,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
           if (!options.replay && expected !== undefined && expected !== sceneRevision(data))
             throw venueRefusal(
               "SCENE_STALE",
-              data.liveSceneVersion === 1
-                ? "The situation changed. Your message has not been sent. Review who is here and send again."
-                : "The scene changed in another tab. Your draft is preserved; review the updated scene before sending again.",
+              "The situation changed. Your message has not been sent. Review who is here and send again.",
             );
           const rejectedTerminal =
             prior?.status === "complete" &&

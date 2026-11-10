@@ -444,7 +444,6 @@ await runCase("resident-planning/live-scene", async () => {
     return zoneEventScene(
       coerceSession({
         version: 5,
-        liveSceneVersion: 1,
         id: "active-scene",
         placeId: "square",
         placeName: "Square",

@@ -51,7 +51,6 @@ const snapshot = {
 const session = {
   version: 2,
   id: "live",
-  memoryMode: "live",
   sceneRevision: 1,
   placeId: "park",
   placeName: "The Park",

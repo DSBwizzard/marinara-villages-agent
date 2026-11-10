@@ -1051,7 +1051,6 @@ console.log(
     zoneId: "common:base",
     area: "public",
     status: "active",
-    liveSceneVersion: 1,
     villageSeed: state.seed,
     startedAt: at,
     participants: [],

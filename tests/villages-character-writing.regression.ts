@@ -325,7 +325,6 @@ async function run() {
         area: "outside",
         zoneId: "exterior",
         spaceClass,
-        memoryMode: "live",
         sceneAttendance: {
           capturedAt: stamp,
           occupants: [{ characterId: card.id, zoneId: "exterior", doing: "Checking a map", availability: "free" }],

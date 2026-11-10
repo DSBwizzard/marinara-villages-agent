@@ -97,7 +97,6 @@ export async function packagedSceneServer(
       initializeRoomContinuity(world, venue.id, zone.id, zone.description, "packaged-founding", now);
   const scene = coerceSession({
     version: 5,
-    liveSceneVersion: 1,
     accompanying: [{ characterId: "mara", zoneId: "common" }],
     id: "browser",
     placeId: "mill",

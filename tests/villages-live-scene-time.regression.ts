@@ -32,7 +32,7 @@ const releaseClock = configureVillageClock({
     throw Error("No clock administration in this test");
   },
 });
-function fixture(live = true) {
+function fixture() {
   const world = coerceVillageState({
     ...defaultVillageState(),
     seed: "live-time",
@@ -92,7 +92,6 @@ function fixture(live = true) {
     villageSeed: world.seed,
     placeId: "garden",
     placeName: "Garden",
-    ...(live ? { liveSceneVersion: 1 } : {}),
     status: "active",
     zoneId: "community",
     area: "public",
@@ -240,12 +239,12 @@ try {
   );
 
   now = new Date("2026-11-02T09:50:00Z");
-  const incomplete = fixture(false);
+  const incomplete = fixture();
+  incomplete.scene.sceneAttendance = undefined;
   now = new Date("2026-11-02T11:57:00Z");
   const incompleteSource = structuredClone(incomplete.scene);
   await assert.rejects(incomplete.service.activeVenueSession(), /no current live admission/);
   assert.deepEqual(incomplete.scene, incompleteSource);
-  assert.throws(() => coerceSession({ ...f.scene, liveSceneVersion: 2 }), /Unsupported live Scene/);
 
   now = new Date("2026-11-02T09:50:00Z");
   const crowded = fixture();
@@ -298,9 +297,9 @@ try {
   assert.equal(opportunity.kind, "routine", "a moved resident cannot also encounter someone in the old scheduled Zone");
   assert.deepEqual(opportunity.actorIds, ["maya"], "solo reflection and mail remain eligible");
   assert.equal(
-    liveSceneEncounterConflicts(spatial.world, { ...spatial.scene, liveSceneVersion: undefined }, now).size,
+    liveSceneEncounterConflicts(spatial.world, { ...spatial.scene, status: "closed" }, now).size,
     0,
-    "existing saved Scenes keep their original background contract",
+    "closed Scenes do not constrain current background attendance",
   );
   assert.equal(
     liveSceneEncounterConflicts(spatial.world, spatial.scene, new Date("2026-11-02T10:01:00Z")).size,
@@ -338,11 +337,6 @@ try {
     sceneHaltWorldConflict(physical.scene, physical.world, action),
     false,
     "physical preflight uses current admitted visitor hours rather than the original Scene start",
-  );
-  assert.equal(
-    sceneHaltWorldConflict({ ...physical.scene, liveSceneVersion: undefined }, physical.world, action),
-    true,
-    "the same preflight preserves the older frozen contract",
   );
   const lighting = fixture();
   const captured = lighting.scene.continuity!;

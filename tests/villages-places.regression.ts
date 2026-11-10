@@ -385,7 +385,6 @@ console.log("Places: shared Zones, identity, scoped control, private projection 
     placeName: site.location.name,
     zoneId: "room",
     startedAt: state.setupAt,
-    liveSceneVersion: 1,
     activeIds: [alice],
     participants: [{ characterId: alice, name: "Alice" }],
     sceneAttendance: { capturedAt: state.setupAt, occupants: [{ characterId: alice, zoneId: "room" }] },

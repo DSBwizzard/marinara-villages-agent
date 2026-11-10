@@ -653,7 +653,6 @@ assert.equal(paint.description, "A yellow motorcycle.", "closing never replays a
     version: 4,
     ...scene,
     id: "forced",
-    liveSceneVersion: 1,
     status: "active",
     zoneId: "exterior",
     activeIds: ids.slice(1),

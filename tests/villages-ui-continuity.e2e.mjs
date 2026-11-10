@@ -36,7 +36,7 @@ function Harness(){
  const influence=useSetScheduleInfluence({currentSnapshotRef,setAgendas,setError,setBusy:()=>{}});
  const [validating,setValidating]=useState(false),observed=useRef(''),completion=useRef({roomId:'',submissionId:''}),movement=useRef(''),seen=useRef(new Set());
  const noChange=useCallback(()=>{},[]);
- useSceneSelectionReset({snapshot:{village:{instant:'same'}},loadSnapshot:noChange,observedRoomIdRef:observed,room:validating?{id:'saved-scene',status:'active',liveSceneVersion:1}:null,roomCompletionRef:completion,roomMoveOperationIdRef:movement,screen:'room',seenRoomEventIdsRef:seen,setLastSceneEnding:noChange,setRoom:noChange,setRoomContactBoundary:noChange,setRoomMoveZoneId:noChange,setRoomNotices:noChange,setRoomOpen:noChange,setRoomTargetId:noChange,setScreen:noChange});
+ useSceneSelectionReset({snapshot:{village:{instant:'same'}},loadSnapshot:noChange,observedRoomIdRef:observed,room:validating?{id:'saved-scene',status:'active'}:null,roomCompletionRef:completion,roomMoveOperationIdRef:movement,screen:'room',seenRoomEventIdsRef:seen,setLastSceneEnding:noChange,setRoom:noChange,setRoomContactBoundary:noChange,setRoomMoveZoneId:noChange,setRoomNotices:noChange,setRoomOpen:noChange,setRoomTargetId:noChange,setScreen:noChange});
  window.h={scope:setScope,actor:setActor,refresh:()=>setRevision(value=>String(Number(value)+1)),active:setActive,hidden:setHidden,visible,sprites:setSprites,loadAgendas,influence,agendas,validate:setValidating,navigateWish:()=>setNavigation({actorId:actor,returnTo:'home',wishId:actor+'-wish'})};
  return <VillageActivity value={{visible,backgroundRevision:revision,worldScope:scope}}>
  <RetainedView active={active}><VillagerDossier key={scope+actor} navigation={personProfile} villager={{characterId:actor,name:actor,summary:'A villager',missing:false}}
@@ -213,8 +213,7 @@ await withBrowser(browser, async () => {
       } else if (url.pathname.endsWith("/agendas") || url.pathname.endsWith("/influence"))
         json = { villagers: [{ characterId: "mara", name: agendaName }] };
       else if (url.pathname.endsWith("/signature")) json = { status: "idle", attempt: 0 };
-      else if (url.pathname.endsWith("/rooms/active"))
-        json = { session: { id: "saved-scene", status: "active", liveSceneVersion: 1 } };
+      else if (url.pathname.endsWith("/rooms/active")) json = { session: { id: "saved-scene", status: "active" } };
       else throw Error("Unexpected read " + url.pathname);
       const pending = hold?.path === url.pathname ? hold : null;
       if (pending) {

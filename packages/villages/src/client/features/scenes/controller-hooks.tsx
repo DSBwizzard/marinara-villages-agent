@@ -39,7 +39,7 @@ export function useSceneChangesPolling(ports: {
   const sceneChanges = ports.snapshot?.sceneChanges;
   const revision = room?.id && sceneChanges?.sceneId === room.id ? sceneChanges.revision : "";
   useEffect(() => {
-    if (!room?.id || room.memoryMode !== "live" || !ports.visible || !ports.viewing || ports.busy) return;
+    if (!room?.id || !ports.visible || !ports.viewing || ports.busy) return;
     if (cursorRef.current.sceneId !== room.id) {
       cursorRef.current = { sceneId: room.id, cursor: "" };
       setRoomChangeStatus({ pending: 0, failed: 0, rejected: 0 });
@@ -89,7 +89,6 @@ export function useSceneChangesPolling(ports: {
     };
   }, [
     room?.id,
-    room?.memoryMode,
     room?.status,
     room?.sceneRevision,
     room?.operation?.status,
@@ -195,7 +194,7 @@ export function useSceneSelectionReset(ports: {
     const onFocus = () => {
       if (!document.hidden) validate();
     };
-    if (room.liveSceneVersion === 1 && !document.hidden) validate();
+    if (!document.hidden) validate();
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);
     return () => {
@@ -207,7 +206,6 @@ export function useSceneSelectionReset(ports: {
     room?.id,
     room?.status,
     ports.snapshot?.village.instant,
-    room?.liveSceneVersion,
     screen,
     loadSnapshot,
     observedRoomIdRef,

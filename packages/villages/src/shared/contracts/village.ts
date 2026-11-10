@@ -761,7 +761,6 @@ export type SceneChangeIssue = {
 
 export type SceneView = {
   lore?: import("./lore.js").LoreUse[];
-  liveSceneVersion?: 1;
   currentTime?: string;
   lighting?: "day" | "night";
   capturedContext?: true;
@@ -769,7 +768,6 @@ export type SceneView = {
   /** An existing handoff needs return/recovery controls; private context stays server-side. */
   semanticVersion?: 2;
   connectionMap?: { id: string; connectedTo?: string[] }[];
-  memoryMode?: "live";
   version: 1;
   sceneRevision?: number;
   operation?: RoomOperation | null;

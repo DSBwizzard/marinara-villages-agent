@@ -49,7 +49,6 @@ await withBrowser(browser, async () => {
       startedAt: now,
       lastActivityAt: now,
       status: "active",
-      memoryMode: "live",
       sceneRevision: 0,
       activeIds: ["mara"],
       initialActiveIds: ["mara"],
@@ -659,7 +658,6 @@ await withBrowser(browser, async () => {
     await expect(composer).toHaveValue("Keep this draft during recovery");
     assert.equal(replays, 1, "Replay is an explicit local request, never an automatic model retry");
     session.operation = null;
-    session.liveSceneVersion = 1;
     session.currentTime = "Monday, 2 November · 09:57";
     await load();
     await expect(page.locator(`.${tag}-room-time`)).toHaveText(session.currentTime);

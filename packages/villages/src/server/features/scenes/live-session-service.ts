@@ -155,8 +155,7 @@ export function createLiveScenes({
       if (narrationBlocker(session)) return session;
     }
     if (session.status === "closed") return session;
-    if (session.liveSceneVersion !== 1 || !session.zoneId || !session.sceneAttendance)
-      throw conflict("That Scene has no current live admission.");
+    if (!session.zoneId || !session.sceneAttendance) throw conflict("That Scene has no current live admission.");
     if (!completing) {
       session = await refreshLiveScene(session);
       await rememberCurrentZone(session);

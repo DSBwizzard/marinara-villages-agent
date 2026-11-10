@@ -16,7 +16,6 @@ async function main() {
   const scene = {
     version: 4,
     id: sceneId,
-    memoryMode: "live",
     villageSeed: state.seed,
     status: "active",
     startedAt: new Date().toISOString(),

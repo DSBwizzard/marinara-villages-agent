@@ -162,8 +162,6 @@ const sceneFields = [
   "endReason",
   "status",
   "sceneRevision",
-  "memoryMode",
-  "liveSceneVersion",
 ] as const;
 function authority(scene: VenueScene) {
   const facts = scene.continuity?.facts;

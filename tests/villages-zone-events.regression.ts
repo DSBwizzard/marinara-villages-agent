@@ -62,7 +62,6 @@ const base = coerceSession({
   area: "outside",
   zoneId: "exterior",
   status: "active",
-  memoryMode: "live",
   startedAt: at,
   lastActivityAt: at,
   activeIds: ["local"],
