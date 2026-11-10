@@ -28,6 +28,7 @@ import {
   decodeContinuityPagesSync,
 } from "../packages/villages/src/server/adapters/storage/continuity-pages.js";
 import { readAcceptedEpisode } from "../packages/villages/src/server/domain/decoding/episode-codec.js";
+import { initializeRoomContinuity } from "../packages/villages/src/server/domain/rules/native-continuity.js";
 import { venueDraftFixture } from "./helpers/venues.fixture.js";
 import { fixture as projectFixture } from "./fixtures/villages-projects.fixture.js";
 import {
@@ -157,8 +158,10 @@ await runCase("narration-circumstance/race", () => {
         "world",
       );
     if (variant === "setting") f.state.setting = "A changed setting.";
-    if (variant === "zone")
-      f.venue.zones!.find((zone) => zone.id === f.scene.zoneId)!.description = "Changed physical authority.";
+    if (variant === "zone") {
+      const zone = f.venue.zones!.find((zone) => zone.id === f.scene.zoneId)!;
+      initializeRoomContinuity(f.state, f.venue.id, zone.id, zone.description, "concurrent-room", at);
+    }
     if (variant === "consequence") {
       f.readset.circumstance!.consequence = "dramatic";
       f.raw.commands[0].severity = "dramatic";
@@ -231,7 +234,7 @@ await runCase("narration-circumstance/context", () => {
 });
 await runCase("narration-circumstance/strict-boundary", () => {
   for (const [field, value] of Object.entries({
-    physical: [],
+    room: [],
     weather: { description: "A storm." },
     clock: "tomorrow",
     edits: [],

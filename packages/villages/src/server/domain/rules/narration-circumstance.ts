@@ -71,7 +71,7 @@ export function applyNarrationCircumstance(
         summary: command.situation.summary,
         status: command.situation.status ?? "active",
       },
-      physical: [],
+      room: [],
       weather: null,
       conditions: (command.conditions ?? []).map((row) => {
         const old = grant.conditions.find((condition) => condition.id === row.id);
@@ -80,9 +80,9 @@ export function applyNarrationCircumstance(
           expectedRevision: old?.revision ?? 0,
           venueId: grant.targets[0]!.venueId,
           zoneId: grant.targets[0]!.zoneId,
-          observation: row.observation ?? old?.observation,
+          ...(row.observation !== undefined ? { observation: row.observation } : {}),
           restriction: row.restriction ?? old?.restriction ?? "none",
-          remedy: row.remedy ?? old?.remedy ?? "",
+          ...(row.remedy !== undefined || !old ? { remedy: row.remedy ?? "" } : {}),
           endsAt:
             row.durationMinutes === undefined
               ? (old?.endsAt ?? null)

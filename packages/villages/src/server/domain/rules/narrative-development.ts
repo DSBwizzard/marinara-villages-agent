@@ -1,4 +1,3 @@
-import { applyZoneDayNightDefault } from "./zone-picture.js";
 import type { VillageState } from "../models/world.js";
 import type {
   NarrativeAdmission,
@@ -7,18 +6,69 @@ import type {
   NarrativeDevelopment,
   NarrativeReceipt,
   NarrativeState,
+  NarrativeTarget,
 } from "../models/narrative-model.js";
 import { conflict, badGateway } from "./errors.js";
 import { currentVillageCircumstances, villageCurrentSetting } from "./prompt-preset.js";
-import { hashString, deriveVillageMoment } from "./village-clock.js";
+import { hashString, deriveVillageMoment, WORLD_WEATHER } from "./village-clock.js";
 import { backgroundRevision } from "./background-revision.js";
 import { activeNarrativeConditions } from "./narrative-environment.js";
 import { venueZones, zoneClosed, zoneControllerIds } from "./venue-zones.js";
-import { applyPlaceUpdate, readPlaceUpdate } from "./zone-continuity.js";
 import { accessibleVenueRoute } from "./venue-path.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
+import { currentRoomViews } from "./continuity-retrieval.js";
+import {
+  continuityConstraints,
+  continuityHolderKey,
+  continuityProtectionFingerprint,
+  ROOM_CONTINUITY_TEXT_BYTES,
+} from "./continuity.js";
+import { memoryHash } from "./memory-integrity.js";
+import { nativeEpisodeId, retainNativeFact } from "./native-continuity.js";
+import { venueDesignHash } from "./project-structure.js";
 
 export const CONSEQUENCES = ["gentle", "moderate", "dramatic"] as const;
+const WORLD_ROOM_BYTES = 32000;
+function narrativeStructure(venue: VillageState["venues"][number], zone: ReturnType<typeof venueZones>[number]) {
+  return memoryHash([
+    venueDesignHash(venue, [zone.id]),
+    venue.form,
+    venue.constructionStatus,
+    zone.preparation?.status,
+  ]);
+}
+function narrativeRoom(state: VillageState, venueId: string, zoneId: string, at: string) {
+  const holder = { kind: "room" as const, placeId: venueId, zoneId };
+  const views = currentRoomViews(state.continuity, state.episodes, holder, at).filter(
+    (row) => row.version.room?.visibility === "observable",
+  );
+  const protections = continuityConstraints(state.continuity, [holder]);
+  const protectedIds = new Set(protections.map((row) => row.id));
+  const concealedProtection = state.continuity.versions.some(
+    (row) => protectedIds.has(row.rootId) && row.room?.visibility === "concealed",
+  );
+  const room = views.map(({ id, version }) => ({
+    id,
+    text: version.text,
+    ...(version.room?.expiresAt ? { expiresAt: version.room.expiresAt } : {}),
+  }));
+  const fits =
+    Buffer.byteLength(JSON.stringify([room, concealedProtection ? [] : protections]), "utf8") <= WORLD_ROOM_BYTES;
+  const roomWritable = fits && !concealedProtection;
+  const protectionFingerprint = continuityProtectionFingerprint(state.continuity, [holder]);
+  return {
+    holder,
+    views,
+    room: fits ? room : [],
+    protections: roomWritable ? protections : [],
+    roomWritable,
+    protectionFingerprint,
+    roomBasis: memoryHash([
+      views.map(({ id, recordRevision, headRevision, version }) => [id, recordRevision, headRevision, version.id]),
+      protectionFingerprint,
+    ]),
+  };
+}
 function correctiveActors(
   state: VillageState,
   venue: VillageState["venues"][number],
@@ -86,7 +136,8 @@ export function admitNarrative(
         .filter(
           (zone) =>
             !zoneClosed(state, venue, zone) &&
-            !!zone.description.trim() &&
+            venue.constructionStatus !== "worksite" &&
+            (!zone.preparation || zone.preparation.status === "ready") &&
             !narrative.claims?.some((claim) => claim.venueId === venue.id && claim.zoneId === zone.id) &&
             (!local || (venue.id === local.venueId && zone.id === local.zoneId)),
         )
@@ -95,8 +146,7 @@ export function admitNarrative(
           zoneId: zone.id,
           name: venue.name + " / " + zone.name,
           exterior: zone.kind === "exterior",
-          description: zone.description,
-          state: structuredClone(zone.state),
+          structure: narrativeStructure(venue, zone),
           controllers: [...zoneControllerIds(venue, zone)].sort(),
           correctiveActorIds: correctiveActors(state, venue, zone, at),
         })),
@@ -105,15 +155,24 @@ export function admitNarrative(
   if (!targets.length) return null;
   const count =
     state.eventAttempts?.attempts.filter((row) => row.origin === "world" || row.origin === "scene").length ?? 0;
-  const target = targets[(hashString(state.seed) + count) % targets.length]!;
+  const location = targets[(hashString(state.seed) + count) % targets.length]!;
+  const { room, roomBasis, protections, roomWritable } = narrativeRoom(state, location.venueId, location.zoneId, at);
+  const target: NarrativeTarget = {
+    ...location,
+    room: source === "world" ? room : [],
+    protections: source === "world" ? protections : [],
+    roomWritable: source === "world" && roomWritable,
+    roomBasis,
+  };
   const relevant = (row: { venueId: string; zoneId: string }) =>
     row.venueId === target.venueId && row.zoneId === target.zoneId;
   return structuredClone({
-    version: 1,
+    version: 2,
     id: sourceId,
     source,
     sourceId,
     seed: state.seed,
+    setupAt: state.setupAt,
     at,
     adoptedAt: narrative.adoptedAt,
     setting: villageCurrentSetting(state),
@@ -149,8 +208,9 @@ export function admitNarrative(
 }
 export function assertNarrativeAdmission(state: VillageState, grant: NarrativeAdmission): void {
   if (
-    grant.version !== 1 ||
+    grant.version !== 2 ||
     grant.seed !== state.seed ||
+    grant.setupAt !== state.setupAt ||
     state.narrative?.adoptedAt !== grant.adoptedAt ||
     grant.at < grant.adoptedAt ||
     grant.setting !== villageCurrentSetting(state) ||
@@ -161,21 +221,27 @@ export function assertNarrativeAdmission(state: VillageState, grant: NarrativeAd
   for (const target of grant.targets) {
     const venue = state.venues.find((row) => row.id === target.venueId);
     const zone = venue && venueZones(venue).find((row) => row.id === target.zoneId);
+    const room = narrativeRoom(state, target.venueId, target.zoneId, grant.at);
     if (
       !venue ||
       !zone ||
       zoneClosed(state, venue, zone) ||
-      zone.description !== target.description ||
+      venue.constructionStatus === "worksite" ||
+      (zone.preparation && zone.preparation.status !== "ready") ||
+      narrativeStructure(venue, zone) !== target.structure ||
+      room.roomBasis !== target.roomBasis ||
+      JSON.stringify(grant.source === "world" ? room.room : []) !== JSON.stringify(target.room) ||
+      JSON.stringify(grant.source === "world" ? room.protections : []) !== JSON.stringify(target.protections) ||
+      target.roomWritable !== (grant.source === "world" && room.roomWritable) ||
       JSON.stringify(correctiveActors(state, venue, zone, grant.at)) !== JSON.stringify(target.correctiveActorIds) ||
-      JSON.stringify([...zoneControllerIds(venue, zone)].sort()) !== JSON.stringify(target.controllers) ||
-      JSON.stringify(zone.state) !== JSON.stringify(target.state)
+      JSON.stringify([...zoneControllerIds(venue, zone)].sort()) !== JSON.stringify(target.controllers)
     )
       throw conflict("The admitted Zone changed. The saved result is retained.");
   }
 }
 export function readNarrativeDevelopment(value: unknown, grant: NarrativeAdmission): NarrativeDevelopment {
   const row = object(value);
-  exact(row, ["severity", "occurrence", "situation", "physical", "conditions", "weather"]);
+  exact(row, ["severity", "occurrence", "situation", "room", "conditions", "weather", "protection"]);
   if (!CONSEQUENCES.includes(row.severity)) throw badGateway("Invalid narrative consequence.");
   const situation = object(row.situation);
   exact(situation, ["scope", "id", "expectedRevision", "title", "summary", "status"]);
@@ -195,22 +261,48 @@ export function readNarrativeDevelopment(value: unknown, grant: NarrativeAdmissi
     return admitted;
   };
   if (
-    !Array.isArray(row.physical) ||
-    row.physical.length > 1 ||
+    !Array.isArray(row.room) ||
+    row.room.length > 4 ||
+    (!grant.targets[0]?.roomWritable && row.room.length > 0) ||
     !Array.isArray(row.conditions) ||
     row.conditions.length > 4
   )
     throw badGateway("Narrative effect exceeds its finite grant.");
-  const physical = row.physical.map((entry: unknown) => {
+  const protections = grant.targets[0]!.protections;
+  let protection: NarrativeDevelopment["protection"];
+  if (row.protection !== undefined || protections.length) {
+    const screening = object(row.protection);
+    exact(screening, ["roots", "disposition"]);
+    if (
+      screening.disposition !== "clear" ||
+      !Array.isArray(screening.roots) ||
+      screening.roots.some((id: unknown) => !protections.some((row) => row.id === id)) ||
+      new Set(screening.roots).size !== screening.roots.length
+    )
+      throw badGateway("The environmental proposal needs clear screening against the supplied Room protections.");
+    protection = { roots: [...screening.roots], disposition: "clear" };
+  }
+  const updated = new Set<string>();
+  const room: NarrativeDevelopment["room"] = row.room.map((entry: unknown) => {
     const change = object(entry);
-    exact(change, ["venueId", "zoneId", "update"]);
-    const admitted = target(change.venueId, change.zoneId);
-    const update = object(change.update);
-    exact(update, ["narration", "expectedRevision", "appearanceChanged", "dayNight", "edits", "append", "recent"]);
+    exact(change, ["replace", "text", "expiresInMinutes"]);
+    const prior = grant.targets[0]?.room.find((row) => row.id === change.replace);
+    if ((change.replace !== undefined && (!prior || updated.has(prior.id))) || (change.text === null && !prior))
+      throw badGateway("The Room entry was not admitted or was changed twice.");
+    const description = change.text === null ? null : text(change.text, ROOM_CONTINUITY_TEXT_BYTES);
+    if (
+      description !== null &&
+      (Buffer.byteLength(description, "utf8") > ROOM_CONTINUITY_TEXT_BYTES || description === prior?.text)
+    )
+      throw badGateway("Supply a complete changed Room entry within its text limit.");
+    const duration = change.expiresInMinutes;
+    if (duration !== undefined && (prior || !Number.isSafeInteger(duration) || duration < 1 || duration > 10080))
+      throw badGateway("Only an independent new Room entry may expire.");
+    if (prior) updated.add(prior.id);
     return {
-      venueId: admitted.venueId,
-      zoneId: admitted.zoneId,
-      update: readPlaceUpdate({ ...update, happened: true }, admitted, grant.at)!,
+      text: description,
+      ...(prior ? { replace: prior.id } : {}),
+      ...(duration !== undefined ? { expiresInMinutes: duration } : {}),
     };
   });
   const conditions = row.conditions.map((entry: unknown) => {
@@ -227,22 +319,20 @@ export function readNarrativeDevelopment(value: unknown, grant: NarrativeAdmissi
       "clear",
     ]);
     const admitted = target(change.venueId, change.zoneId);
-    if (
-      change.id !== null &&
-      !grant.conditions.some(
-        (item) => item.id === change.id && item.venueId === admitted.venueId && item.zoneId === admitted.zoneId,
-      )
-    )
-      throw badGateway("Condition was not admitted.");
+    const prior = grant.conditions.find(
+      (item) => item.id === change.id && item.venueId === admitted.venueId && item.zoneId === admitted.zoneId,
+    );
+    if (change.id !== null && !prior) throw badGateway("Condition was not admitted.");
     if (!["none", "ordinary-use"].includes(change.restriction) || typeof change.clear !== "boolean")
       throw badGateway("Invalid condition restriction.");
     const endsAt = change.endsAt === null ? null : stamp(change.endsAt);
     if (endsAt && (endsAt <= grant.at || Date.parse(endsAt) - Date.parse(grant.at) > 7 * 86400_000))
       throw badGateway("Condition deadline is outside the admitted window.");
-    const remedy = text(change.remedy, 600, true);
+    const observation = prior && change.observation === undefined ? undefined : text(change.observation, 600);
+    const remedy = prior && change.remedy === undefined ? undefined : text(change.remedy, 600, true);
     if (
       change.restriction === "ordinary-use" &&
-      (admitted.exterior || (!endsAt && (!remedy.trim() || !admitted.correctiveActorIds.length)))
+      (admitted.exterior || (!endsAt && (!(remedy ?? prior?.remedy)?.trim() || !admitted.correctiveActorIds.length)))
     )
       throw badGateway(
         "A restriction needs accessible corrective work or an established timed release; Entrances remain open.",
@@ -252,9 +342,9 @@ export function readNarrativeDevelopment(value: unknown, grant: NarrativeAdmissi
       expectedRevision: revision(change.expectedRevision),
       venueId: admitted.venueId,
       zoneId: admitted.zoneId,
-      observation: text(change.observation, 600),
+      ...(observation !== undefined ? { observation } : {}),
       restriction: change.restriction,
-      remedy,
+      ...(remedy !== undefined ? { remedy } : {}),
       endsAt,
       clear: change.clear,
     };
@@ -271,7 +361,8 @@ export function readNarrativeDevelopment(value: unknown, grant: NarrativeAdmissi
       (change.supersedes !== null && change.supersedes !== grant.weather?.id)
     )
       throw badGateway("Invalid weather interval or predecessor.");
-    weather = { description: text(change.description, 600), endsAt, supersedes: change.supersedes };
+    if (!WORLD_WEATHER.includes(change.description)) throw badGateway("Choose a supplied weather value.");
+    weather = { description: change.description, endsAt, supersedes: change.supersedes };
   }
   return {
     severity: row.severity,
@@ -284,21 +375,28 @@ export function readNarrativeDevelopment(value: unknown, grant: NarrativeAdmissi
       summary: text(situation.summary, 1200),
       status: situation.status,
     },
-    physical,
+    room,
+    ...(protection ? { protection } : {}),
     conditions,
     weather,
   };
 }
-/** One root transaction publishes physical after-values, conditions and their receipt together. */
+/** One root transaction publishes the accepted Room entries, conditions and their evidence. */
 export function applyNarrativeDevelopment(
   state: VillageState,
   grant: NarrativeAdmission,
-  development: NarrativeDevelopment,
+  saved: unknown,
 ): NarrativeReceipt {
   const narrative = state.narrative!;
   const previous = narrative?.receipts.find((row) => row.id === grant.id);
   if (previous?.rejected) throw conflict("This saved environmental proposal was explicitly rejected.");
-  if (previous) return previous;
+  const development = readNarrativeDevelopment(saved, grant);
+  const resultFingerprint = memoryHash([grant, development]);
+  if (previous) {
+    if (previous.resultFingerprint !== resultFingerprint)
+      throw conflict("The environmental receipt belongs to another result.");
+    return previous;
+  }
   assertNarrativeAdmission(state, grant);
   const source = narrative.claims?.find((row) => row.id === grant.id && row.fingerprint === backgroundRevision(grant));
   if (!source) throw conflict("The environmental source has no matching shared opportunity admission.");
@@ -309,9 +407,9 @@ export function applyNarrativeDevelopment(
     throw conflict("Consequence was lowered. The incompatible saved result is retained.");
   const proposed = development.situation;
   const prior = narrative.situations.find((row) => row.id === proposed.id);
-  if (!prior && !development.physical.length && !development.conditions.length && !development.weather)
+  if (!prior && !development.room.length && !development.conditions.length && !development.weather)
     throw badGateway("A new world occurrence needs a perceivable consequence.");
-  if ((prior?.revision ?? 0) !== proposed.expectedRevision)
+  if ((proposed.id !== null && !prior) || (prior?.revision ?? 0) !== proposed.expectedRevision)
     throw conflict("The situation changed. The saved result is retained.");
   const situation = {
     ...proposed,
@@ -321,47 +419,6 @@ export function applyNarrativeDevelopment(
     targets: proposed.scope === "village" ? [] : grant.targets.map(({ venueId, zoneId }) => ({ venueId, zoneId })),
     updatedAt: grant.at,
   };
-  const conditions: NarrativeCondition[] = development.conditions.map((change, index) => {
-    const old = narrative.conditions.find((row) => row.id === change.id);
-    if ((old?.revision ?? 0) !== change.expectedRevision)
-      throw conflict("The condition changed. The saved result is retained.");
-    if (change.clear && !old) throw badGateway("Only an admitted condition can be cleared.");
-    const physical = development.physical.find((row) => row.venueId === change.venueId && row.zoneId === change.zoneId);
-    const before = grant.targets.find((row) => row.venueId === change.venueId && row.zoneId === change.zoneId)!;
-    const enduring = physical && applyPlaceUpdate(before, physical.update, grant.at).description !== before.description;
-    if (
-      old?.physicalRevision !== undefined &&
-      (change.clear || (old.restriction === "ordinary-use" && change.restriction === "none")) &&
-      !enduring
-    )
-      throw badGateway("Reopening this repair-linked condition needs matching physical work.");
-    if (
-      change.restriction === "ordinary-use" &&
-      (old?.physicalRevision !== undefined || enduring) &&
-      (!before.correctiveActorIds.length || change.endsAt !== null)
-    )
-      throw badGateway(
-        "Damage-linked restrictions need an accessible corrective route and cannot expire as a substitute for repair.",
-      );
-    return {
-      id: old?.id ?? grant.id + ":condition:" + index,
-      revision: change.expectedRevision + 1,
-      situationId: situation.id,
-      venueId: change.venueId,
-      zoneId: change.zoneId,
-      observation: change.observation,
-      restriction: change.restriction,
-      remedy: change.remedy,
-      startsAt: old?.startsAt ?? grant.at,
-      endsAt: change.endsAt,
-      clearedAt: change.clear ? grant.at : null,
-      ...(old?.physicalRevision !== undefined || enduring
-        ? { physicalRevision: enduring ? before.state.revision + 1 : old!.physicalRevision }
-        : {}),
-    };
-  });
-  if (new Set(conditions.map((row) => row.id)).size !== conditions.length)
-    throw badGateway("Duplicate condition effects.");
   if (
     development.weather &&
     (narrative.weatherRevision !== grant.weatherRevision ||
@@ -370,16 +427,135 @@ export function applyNarrativeDevelopment(
         development.weather.supersedes !== narrative.weather.id))
   )
     throw conflict("Weather changed or needs explicit supersession. The saved result is retained.");
-  const physical = development.physical.map(({ venueId, zoneId, update }) => {
-    const zone = venueZones(state.venues.find((row) => row.id === venueId)!).find((row) => row.id === zoneId)!;
-    const after = applyPlaceUpdate(zone, update, grant.at);
-    if (after.description !== zone.description && update.appearanceChanged === true)
-      zone.picture = { ...zone.picture, base: zone.picture?.base ?? zone.image, dirty: true };
-    if (after.description !== zone.description) applyZoneDayNightDefault(zone, update.dayNight);
-    zone.description = after.description;
-    zone.state = after.state;
-    return { ...after, venueId, zoneId, appearanceChanged: update.appearanceChanged === true };
+  const target = grant.targets[0]!;
+  const { holder, views, protectionFingerprint } = narrativeRoom(state, target.venueId, target.zoneId, grant.at);
+  const provenance = grant.source === "world" && target.room.length ? views.map((row) => row.version.id) : [];
+  const blocked = new Set(target.protections.flatMap((row) => row.forbidden));
+  const suppliedText = [
+    proposed.title,
+    proposed.summary,
+    development.occurrence,
+    development.weather?.description,
+    ...development.conditions.flatMap((row) => [row.observation, row.remedy]),
+    ...development.room.map((row) => row.text),
+  ];
+  if (suppliedText.some((row) => row && blocked.has(row)))
+    throw conflict("The environmental proposal would restore protected Room text.");
+  const holderKey = continuityHolderKey(holder);
+  const candidate = { ...state };
+  const affected = new Set<string>();
+  const currentEffects: string[] = [];
+  let enduring = false;
+  for (const [index, change] of development.room.entries()) {
+    const before = views.find((row) => row.id === change.replace);
+    const receiptId = "world-room:" + memoryHash([state.seed, grant.id, index]).slice(0, 40);
+    retainNativeFact(
+      candidate,
+      {
+        id: receiptId,
+        kind: "room",
+        targetId: JSON.stringify([target.venueId, target.zoneId]),
+        revision: narrative.revision + 1,
+        text: change.text ?? development.occurrence,
+        witnesses: [],
+      },
+      grant.at,
+      {
+        room: holder,
+        provenance,
+        ...(development.protection
+          ? { screening: { ...development.protection, fingerprint: protectionFingerprint } }
+          : {}),
+        roomChange: {
+          ...(before
+            ? {
+                target: {
+                  id: before.id,
+                  recordRevision: before.recordRevision,
+                  heads: { [holderKey]: before.headRevision },
+                },
+              }
+            : {}),
+          ...(change.text === null ? { retire: true } : {}),
+          ...(change.expiresInMinutes !== undefined ? { expiresInMinutes: change.expiresInMinutes } : {}),
+        },
+      },
+    );
+    if (change.expiresInMinutes === undefined && !before?.version.room?.expiresAt) {
+      enduring = true;
+      const root = candidate.continuity.receipts[nativeEpisodeId(state.seed, receiptId) + ":fact"].roots[0]!;
+      if (before) affected.add(root);
+      if (change.text !== null) currentEffects.push(root);
+    }
+  }
+  const conditions: NarrativeCondition[] = development.conditions.map((change, index) => {
+    const old = narrative.conditions.find((row) => row.id === change.id);
+    if ((change.id !== null && !old) || (old?.revision ?? 0) !== change.expectedRevision)
+      throw conflict("The condition changed. The saved result is retained.");
+    if (change.clear && !old) throw badGateway("Only an admitted condition can be cleared.");
+    if (
+      old?.repairEntries?.length &&
+      (change.clear || (old.restriction === "ordinary-use" && change.restriction === "none")) &&
+      !old.repairEntries.every((id) => affected.has(id))
+    )
+      throw badGateway("Reopening this repair-linked condition needs matching physical work.");
+    const repairEntries =
+      old?.repairEntries ?? (enduring && change.restriction === "ordinary-use" ? currentEffects : undefined);
+    if (
+      change.restriction === "ordinary-use" &&
+      repairEntries &&
+      (!repairEntries.length || !target.correctiveActorIds.length || change.endsAt !== null)
+    )
+      throw badGateway(
+        "Damage-linked restrictions need current Room entries and an accessible corrective route. They cannot expire as a substitute for repair.",
+      );
+    return {
+      id: old?.id ?? grant.id + ":condition:" + index,
+      revision: change.expectedRevision + 1,
+      situationId: situation.id,
+      venueId: change.venueId,
+      zoneId: change.zoneId,
+      observation: change.observation ?? old!.observation,
+      restriction: change.restriction,
+      remedy: change.remedy ?? old!.remedy,
+      startsAt: old?.startsAt ?? grant.at,
+      endsAt: change.endsAt,
+      clearedAt: change.clear ? grant.at : null,
+      ...(repairEntries ? { repairEntries } : {}),
+    };
   });
+  if (new Set(conditions.map((row) => row.id)).size !== conditions.length)
+    throw badGateway("Duplicate condition effects.");
+  if (grant.source === "world") {
+    retainNativeFact(
+      candidate,
+      {
+        id: "world-circumstance:" + memoryHash([state.seed, grant.id]).slice(0, 40),
+        kind: "circumstance",
+        targetId: situation.id,
+        revision: situation.revision,
+        text: JSON.stringify({
+          at: grant.at,
+          situation: { title: situation.title, summary: situation.summary, status: situation.status },
+          conditions: conditions.map((condition, index) => ({
+            id: condition.id,
+            revision: condition.revision,
+            ...Object.fromEntries(
+              Object.entries(development.conditions[index]).filter(([key]) =>
+                ["observation", "remedy", "restriction", "endsAt", "clear"].includes(key),
+              ),
+            ),
+          })),
+        }),
+        circumstance: { summary: situation.summary, status: situation.status },
+        witnesses: [],
+      },
+      grant.at,
+      { room: holder, provenance },
+    );
+    state.continuity = candidate.continuity;
+    state.episodes = candidate.episodes;
+  }
   const after: NarrativeAfter = { situations: [situation], conditions };
   if (development.weather) {
     narrative.weatherRevision++;
@@ -403,7 +579,7 @@ export function applyNarrativeDevelopment(
     at: grant.at,
     occurrence: development.occurrence,
     after: structuredClone(after),
-    physical: structuredClone(physical),
+    resultFingerprint,
   };
   narrative.receipts.push(receipt);
   return receipt;
@@ -420,49 +596,4 @@ export function mergeNarrativeAfter(state: NarrativeState, after: NarrativeAfter
     state.weatherRevision = after.weatherRevision;
     state.weather = structuredClone(after.weather ?? null);
   }
-}
-/** Ordinary action authority is established by the existing physical-effect owner first. */
-export function clearRepairedConditions(
-  state: VillageState,
-  venueId: string,
-  zoneId: string,
-  changes: { id: string; expectedRevision: number }[] | undefined,
-  sourceId: string,
-  at: string,
-): void {
-  if (!changes?.length) return;
-  if (!state.narrative || changes.length > 4) throw conflict("The repair conditions are unavailable.");
-  const id = "repair:" + sourceId + ":" + venueId + ":" + zoneId + ":" + hashString(JSON.stringify(changes));
-  if (state.narrative.receipts.some((row) => row.id === id)) return;
-  const conditions = changes.map((change) => {
-    const row = state.narrative!.conditions.find(
-      (item) => item.id === change.id && item.venueId === venueId && item.zoneId === zoneId,
-    );
-    if (!row || row.revision !== change.expectedRevision || row.clearedAt)
-      throw conflict("A repair condition changed. The draft is retained.");
-    return { ...row, revision: row.revision + 1, clearedAt: at };
-  });
-  const after = { situations: [], conditions };
-  mergeNarrativeAfter(state.narrative, after);
-  state.narrative.revision++;
-  const zone = state.venues.find((row) => row.id === venueId)?.zones?.find((row) => row.id === zoneId);
-  state.narrative.receipts.push({
-    id,
-    at,
-    sourceId,
-    source: "action",
-    occurrence: "Completed evidenced corrective work.",
-    after,
-    physical: zone
-      ? [
-          {
-            venueId,
-            zoneId,
-            description: zone.description,
-            state: structuredClone(zone.state),
-            appearanceChanged: false,
-          },
-        ]
-      : [],
-  });
 }

@@ -49,6 +49,7 @@ const episode = z
               "movement-request",
               "departure",
               "structure",
+              "room",
               "discovery",
               "npc",
               "establishment",
@@ -604,11 +605,38 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
         "resident native outcome lost its complete current communication proof",
       );
     }
+  const directWorld = value.commandReceipts.some(
+    (receipt) => receipt.kind === "room" || (!value.sceneId && value.room && receipt.kind === "circumstance"),
+  );
+  if (directWorld) {
+    const receipt = value.commandReceipts[0]!,
+      source = value.grounding[0];
+    memoryRequire(
+      value.room &&
+        !value.sceneId &&
+        !value.opportunity &&
+        !value.privateInput &&
+        !value.actors.length &&
+        !value.segments.length &&
+        !value.offered.length &&
+        !value.holderDependencies &&
+        value.commandReceipts.length === 1 &&
+        !receipt.witnesses.length &&
+        (receipt.kind === "room"
+          ? nativeReceiptSupportsRoom(receipt, value.room)
+          : receipt.kind === "circumstance" && receipt.circumstance && !value.continuityVersionIds.length) &&
+        value.grounding.length === 1 &&
+        source?.kind === "native" &&
+        source.committedReceiptId === receipt.id,
+      "invalid standalone World Room receipt",
+    );
+  }
   const nativeRoomContext =
     !value.sceneId &&
     !value.privateInput &&
     !value.segments.length &&
-    ((value.room && value.commandReceipts.some((receipt) => nativeReceiptSupportsRoom(receipt, value.room!))) ||
+    (directWorld ||
+      (value.room && value.commandReceipts.some((receipt) => nativeReceiptSupportsRoom(receipt, value.room!))) ||
       (value.commandReceipts.length > 0 && value.commandReceipts.every((receipt) => receipt.kind === "mail")));
   memoryRequire(
     !value.room ||
@@ -772,6 +800,11 @@ function buildEpisodeGraph(records: AcceptedEpisode[], scope: string) {
   const resolved = new Set<string>(),
     visiting = new Set<string>(),
     reverse = new Map<string, Set<string>>();
+  // Administrative versions belong to the common collection and have no producing Episode.
+  for (const node of [...nodes.values()])
+    for (const dependency of node.dependencies)
+      if (!nodes.has(dependency) && /^\["version","continuity-version-[a-f0-9]{32}"\]$/u.test(dependency))
+        nodes.set(dependency, { index: -1, dependencies: [] });
   function visit(key: string) {
     if (resolved.has(key)) return;
     const node = nodes.get(key);

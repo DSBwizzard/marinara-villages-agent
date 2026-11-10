@@ -188,7 +188,6 @@ export function villageSettings(
     communityVenueId: village.communityVenueId,
     worldName: village.worldName ?? null,
     playerBackground: village.playerBackground,
-    circumstances: structuredClone(village.narrative?.situations ?? []),
     selectedLorebookIds: village.selectedLorebookIds,
     sceneryArtStyle: village.sceneryArtStyle,
     sceneryStyleProfileId: village.sceneryStyleProfileId ?? null,

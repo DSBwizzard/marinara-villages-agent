@@ -4,6 +4,7 @@ import type {
   ContinuityClass,
   ContinuityEvidence,
   ContinuityHolder,
+  ContinuityTarget,
   ContinuityWrite,
   ContinuityView,
 } from "../models/continuity-model.js";
@@ -15,12 +16,14 @@ import {
   continuityVersionId,
   continuityVersionUnit,
   continuityProtectionFingerprint,
+  continuityProtectionUnits,
 } from "./continuity.js";
 import { appendEpisode } from "./episodes.js";
 import { assertContinuityRetention } from "./continuity-retention.js";
 import { nativeReceiptSupportsRoom } from "./episode-sources.js";
 import { memoryHash, memoryRequire, memoryObject } from "./memory-integrity.js";
 import { findLocation } from "./places.js";
+import { episodeSourceGraph } from "../decoding/episode-codec.js";
 export const nativeEpisodeId = (seed: string, receiptId: string) =>
   "native-" + memoryHash([seed, receiptId]).slice(0, 32);
 
@@ -128,6 +131,7 @@ export function retainNativeFact(
     current?: boolean;
     owner?: Extract<ContinuityHolder, { kind: "actor" }>;
     room?: Extract<ContinuityHolder, { kind: "room" }>;
+    roomChange?: { target?: ContinuityTarget; retire?: true; expiresInMinutes?: number };
     context?: ContinuityEvidence[];
     provenance?: string[];
     ancestry?: ContinuityEvidence[];
@@ -140,12 +144,21 @@ export function retainNativeFact(
     "current",
     "owner",
     "room",
+    "roomChange",
     "context",
     "provenance",
     "ancestry",
     "screening",
   ]);
-  const { room } = meaning;
+  const { room, roomChange } = meaning;
+  const roomContext = room && receipt.kind === "circumstance" && receipt.witnesses.length === 0;
+  memoryRequire(
+    !roomChange ||
+      (room &&
+        (receipt.kind === "room" || receipt.kind === "structure") &&
+        (!roomChange.retire || (roomChange.target && roomChange.expiresInMinutes === undefined))),
+    "native Room change needs its exact authority and target",
+  );
   memoryRequire(
     !room ||
       (meaning.class === undefined &&
@@ -155,7 +168,10 @@ export function retainNativeFact(
         !meaning.context?.length),
     "room fact cannot carry actor classification",
   );
-  memoryRequire(!room || nativeReceiptSupportsRoom(receipt, room), "native receipt does not own this room");
+  memoryRequire(
+    !room || roomContext || nativeReceiptSupportsRoom(receipt, room),
+    "native receipt does not own this room",
+  );
   const id = nativeEpisodeId(state.seed, receipt.id),
     digest = memoryHash([receipt, meaning]);
   const prior = state.episodes.records.find((row) => row.id === id);
@@ -173,16 +189,18 @@ export function retainNativeFact(
   memoryRequire(holders.length === receipt.witnesses.length, "native continuity has an unknown witness");
   const provenance = meaning.provenance ?? [];
   memoryRequire(
-    !provenance.length || (!room && holders.length === 1),
+    !provenance.length || (room ? (receipt.kind === "room" || roomContext) && !holders.length : holders.length === 1),
     "private native provenance needs one owning holder",
   );
   for (const versionId of provenance) {
     const version = state.continuity.versions.find((version) => version.id === versionId),
-      holder = holders[0],
+      holder = room ?? holders[0],
       key = continuityHolderKey(holder);
+    const head = version && state.continuity.records.find((record) => record.id === version.rootId)?.heads[key];
     memoryRequire(
       version &&
-        state.continuity.records.find((record) => record.id === version.rootId)?.heads[key]?.versionId === version.id &&
+        head &&
+        (room ? version.room?.visibility === "observable" : head.versionId === version.id) &&
         (version.administrative
           ? continuityHolderKey(version.administrative.holder) === key
           : version.id === continuityVersionId(state.seed, version.operationId, holder)),
@@ -243,7 +261,7 @@ export function retainNativeFact(
     "native preparation source scope changed",
   );
   const continuity =
-    room || holders.length
+    (room && !roomContext) || holders.length
       ? applyContinuityWrite(
           state.continuity,
           {
@@ -251,13 +269,22 @@ export function retainNativeFact(
             holders: room ? [room] : holders,
             ...(meaning.owner ? { owner: meaning.owner } : {}),
             ...(room
-              ? { room: { knownBy: receipt.observedBy ?? [] } }
+              ? {
+                  room: {
+                    knownBy: receipt.observedBy ?? [],
+                    ...(roomChange?.expiresInMinutes !== undefined
+                      ? { expiresInMinutes: roomChange.expiresInMinutes }
+                      : {}),
+                  },
+                  ...(roomChange?.target ? { target: roomChange.target } : {}),
+                  ...(roomChange?.retire ? { retire: "ended" as const } : {}),
+                }
               : {
                   class: meaning.class ?? "experience",
                   about: subjects,
                   ...(meaning.current === undefined ? {} : { current: meaning.current }),
                 }),
-            text: receipt.text,
+            ...(roomChange?.retire ? {} : { text: receipt.text }),
             sourceIds: [source.id],
             ...(meaning.screening ? { screening: meaning.screening } : {}),
           },
@@ -270,7 +297,7 @@ export function retainNativeFact(
             subjects,
             ...(room ? { room } : {}),
             sources: [source],
-            supplied: [],
+            supplied: roomChange?.target ? [roomChange.target] : [],
             protectedRoots: meaning.screening
               ? state.continuity.records
                   .filter((record) =>
@@ -281,6 +308,24 @@ export function retainNativeFact(
             protectionFingerprint: meaning.screening
               ? continuityProtectionFingerprint(state.continuity, room ? [room] : holders)
               : undefined,
+            ...(room && provenance.length
+              ? {
+                  provenance: { [continuityHolderKey(room)]: provenance.map(continuityVersionUnit) },
+                  ...(meaning.screening
+                    ? {
+                        blockedSources: {
+                          [continuityHolderKey(room)]: [
+                            ...continuityProtectionUnits(
+                              state.continuity,
+                              room,
+                              episodeSourceGraph(state.episodes.records, room),
+                            ),
+                          ],
+                        },
+                      }
+                    : {}),
+                }
+              : {}),
           },
         )
       : state.continuity;

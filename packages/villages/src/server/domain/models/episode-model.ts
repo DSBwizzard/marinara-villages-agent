@@ -31,6 +31,7 @@ export type AcceptedEpisode = {
       | "movement-request"
       | "departure"
       | "structure"
+      | "room"
       | "discovery"
       | "npc"
       | "establishment"

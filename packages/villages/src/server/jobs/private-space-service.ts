@@ -1,7 +1,6 @@
 import { ZONE_DAY_NIGHT_INSTRUCTION } from "../../shared/helpers/zone-day-night.js";
 import { applyZoneDayNightDefault } from "../domain/rules/zone-picture.js";
 import { recordLoreUse } from "../adapters/observability/runtime-debug.js";
-import { currentVillageCircumstances } from "../domain/rules/prompt-preset.js";
 import { backgroundRevision } from "../domain/rules/background-revision.js";
 import type { mutateDocument } from "../adapters/storage/document-store.js";
 import { rejectedSyntaxError } from "../domain/rules/rejected-response.js";
@@ -30,7 +29,6 @@ export function privatePreparationKey(venue: VillageVenue, zone: VillageVenueZon
     village && [
       village.worldName,
       village.setting,
-      currentVillageCircumstances(village),
       village.selectedLorebookIds,
       village.loreTokenBudget,
       village.villagers
@@ -236,7 +234,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
             role: "system",
             content:
               (room.characters.some((person) => person.admissionContext) ? RESIDENT_CONTINUITY_RULE + "\n" : "") +
-              'Define exactly the one saved private space in the input. Respect venue form, world facts, roomSpecification, selected lore and occupant personalities. A tent corner is valid; never assume a bedroom. Respect the saved layout, including a private-only interior or no Common Space. Never invent adjoining rooms, named people or exceptional possessions. Without occupants prepare a functional neutral interior. If existingInterior is supplied, apply the approved roomSpecification to that interior, preserving unrelated furnishings, damage and history. Return the complete reconciled description, removing only details contradicted by the approved work; preserve unrelated established details. For a Private work area derive a fitting short name (vault, office, staff room, storage, etc.). Return JSON only: {"rooms":[{"venueId":"exact input","id":"exact input","name":"short room name","description":"complete current physical account, at most 4000 characters"}]}. Keep the complete reply concise.' +
+              'Define exactly the one saved private space in the input. Respect venue form, standing world rules, roomSpecification, selected lore and occupant personalities. A tent corner is valid; never assume a bedroom. Respect the saved layout, including a private-only interior or no Common Space. Never invent adjoining rooms, named people or exceptional possessions. Without occupants prepare a functional neutral interior. If existingInterior is supplied, apply the approved roomSpecification to that interior, preserving unrelated furnishings, damage and history. Return the complete reconciled description, removing only details contradicted by the approved work; preserve unrelated established details. For a Private work area derive a fitting short name (vault, office, staff room, storage, etc.). Return JSON only: {"rooms":[{"venueId":"exact input","id":"exact input","name":"short room name","description":"complete current physical account, at most 4000 characters"}]}. Keep the complete reply concise.' +
               ZONE_DAY_NIGHT_INSTRUCTION,
           },
           {
@@ -244,7 +242,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
             content: JSON.stringify({
               setting: village.setting,
               worldName: village.worldName,
-              worldFacts: currentVillageCircumstances(village),
+              worldRules: village.worldRules,
               rooms: [{ ...room, lore }],
             }),
           },

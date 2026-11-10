@@ -1,11 +1,13 @@
 import type { BackgroundKind } from "../../domain/models/background-model.js";
 import { readPersonalMailInput } from "../../domain/decoding/mailbox-codec.js";
+import { readWorldNarrativeInput } from "../../domain/decoding/narrative-codec.js";
 import { readResidentPlanningInput } from "../../domain/rules/resident-planning.js";
 import { memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import { isBackgroundKind } from "../../domain/rules/work-recovery.js";
 
 /** Native captures contain exact fitted data; common history remains owned by the Village head. */
 export function readCapturedInput(kind: BackgroundKind, raw: unknown, seed: string): unknown {
+  if (kind === "world-development") return readWorldNarrativeInput(raw, seed);
   if (kind === "personal-mail") {
     const value = readPersonalMailInput(raw);
     memoryRequire(value.seed === seed, "personal mail capture belongs to another World");

@@ -45,12 +45,16 @@ export function discoverReturnBatch(state: VillageState, now: Date, id: string):
   let reason = "";
   if (calendarReplay(state, localNow)) reason = "The calendar is replaying a previously visited date.";
   else {
-    const historical = { ...defaultVillageState(), ...capture.world };
     const residentEligible = departureContinuityAvailable(capture, state);
+    const historical = {
+      ...defaultVillageState(),
+      ...capture.world,
+      ...(residentEligible ? { continuity: state.continuity, episodes: state.episodes } : {}),
+    };
     const selected = returnCatchupOpportunities(historical, new Date(capture.at), now, remaining, residentEligible);
     opportunities = selected.opportunities;
     reason = selected.reason;
-    if (!residentEligible) reason += " Resident continuity changed after departure.";
+    if (!residentEligible) reason += " Continuity changed after departure.";
   }
   if (prior?.id === id || tracking.history?.some((row) => row.id === id)) return;
   if (prior) tracking.history = rememberFinishedBatch(tracking.history ?? [], prior);

@@ -552,7 +552,6 @@ export type VillageSettings = {
   communityVenueId: string;
   worldName: string | null;
   playerBackground: PlayerBackground | null;
-  circumstances: VillageCircumstance[];
   selectedLorebookIds: string[];
   sceneryArtStyle: string;
   sceneryStyleProfileId: string | null;

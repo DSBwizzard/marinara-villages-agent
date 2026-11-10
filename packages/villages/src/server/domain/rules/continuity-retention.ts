@@ -1,5 +1,5 @@
 import type { ContinuityCollection, ContinuityEvidence, ContinuityVersion } from "../models/continuity-model.js";
-import type { EpisodeCollection } from "../models/episode-model.js";
+import type { AcceptedEpisode, EpisodeCollection } from "../models/episode-model.js";
 import {
   continuityHolderKey,
   continuityVersionId,
@@ -9,6 +9,7 @@ import {
   assertContinuitySoundIdentity,
 } from "./continuity.js";
 import {
+  circumstanceRoomOrigins,
   episodeSpeechEvidence,
   nativeReceiptSupportsRoom,
   episodeContextActors,
@@ -17,6 +18,20 @@ import {
 import { episodeUnit } from "../decoding/episode-codec.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { episodeMailEvidence } from "./mail-evidence.js";
+
+function worldRoomReceipt(episode: AcceptedEpisode) {
+  const receipt = episode.commandReceipts[0];
+  if (
+    episode.room &&
+    !episode.sceneId &&
+    !episode.actors.length &&
+    episode.commandReceipts.length === 1 &&
+    receipt &&
+    !receipt.witnesses.length &&
+    (receipt.kind === "room" || receipt.kind === "circumstance")
+  )
+    return receipt;
+}
 
 /** Retirement cannot sever the accepted episode, canonical meaning or committed native evidence. */
 export function assertContinuityRetention(continuity: ContinuityCollection, episodes: EpisodeCollection) {
@@ -33,6 +48,20 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
       episode.admittedContinuityRevision <= continuity.revision,
       "episode admitted a future continuity revision",
     );
+    for (const dependency of new Set([
+      ...Object.values(episode.dependencies).flat(),
+      ...Object.values(episode.holderDependencies ?? {}).flatMap((rows) => Object.values(rows).flat()),
+    ])) {
+      if (!dependency.startsWith('["version",')) continue;
+      const unit = JSON.parse(dependency);
+      const version = versions.get(unit[1]);
+      memoryRequire(
+        unit.length === 2 &&
+          version &&
+          (!version.administrative || version.createdRevision <= episode.admittedContinuityRevision),
+        "episode lost its admitted continuity version",
+      );
+    }
     for (const id of episode.continuityVersionIds) {
       const version = versions.get(id);
       memoryRequire(
@@ -110,6 +139,33 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
       }
   }
   for (const [sequence, episode] of episodes.records.entries()) {
+    const roomReceipt = worldRoomReceipt(episode);
+    if (roomReceipt) {
+      const holder = episode.room!,
+        key = continuityHolderKey(holder),
+        nativeUnit = "native:" + roomReceipt.id;
+      memoryRequire(
+        Object.keys(episode.dependencies).every((unit) => unit === nativeUnit),
+        "World Room receipt has unrelated dependencies",
+      );
+      for (const dependency of episode.dependencies[nativeUnit] ?? []) {
+        const unit: unknown = JSON.parse(dependency);
+        const version =
+          Array.isArray(unit) && unit.length === 2 && unit[0] === "version" ? versions.get(unit[1]) : undefined;
+        const prior = version && byEpisode.get(owners.get(version.id) ?? "");
+        memoryRequire(
+          version?.room?.visibility === "observable" &&
+            version.createdRevision <= episode.admittedContinuityRevision &&
+            roots.get(version.rootId)?.heads[key] &&
+            (version.administrative
+              ? continuityHolderKey(version.administrative.holder) === key
+              : version.id === continuityVersionId(episode.seed, version.operationId, holder) &&
+                !!prior &&
+                (sequenceById.get(prior.id) ?? Infinity) < sequence),
+          "World Room context lost its admitted observable version",
+        );
+      }
+    }
     for (const holder of [
       ...episodeContextRooms(episode),
       ...(!episode.sceneId && episode.room && episode.commandReceipts.some((receipt) => receipt.mail)
@@ -142,11 +198,18 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
           );
         } else {
           const prior = typeof unit[0] === "string" ? byEpisode.get(unit[0]) : undefined;
+          const circumstance = prior?.commandReceipts.find(
+            (receipt) => receipt.kind === "circumstance" && unit[1] === "native:" + receipt.id,
+          );
           memoryRequire(
             prior &&
               (sequenceById.get(prior.id) ?? Infinity) < sequence &&
               typeof unit[1] === "string" &&
-              prior.holderDependencies?.[key]?.[unit[1]]?.length &&
+              (prior.holderDependencies?.[key]?.[unit[1]]?.length ||
+                (circumstance &&
+                  circumstanceRoomOrigins(prior, circumstance, byEpisode).some(
+                    (room) => continuityHolderKey(room) === key,
+                  ))) &&
               episodeUnit(prior, unit[1]) === dependency,
             "private room context lost its prior scoped source",
           );

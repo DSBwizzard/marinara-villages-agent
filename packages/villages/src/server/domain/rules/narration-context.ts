@@ -29,7 +29,7 @@ import { projectSpeechContexts } from "./project-interpretation.js";
 import { sceneContinuityView } from "./scene-continuity.js";
 import { narrationAccessScopes } from "./narration-access.js";
 import { capturedSceneCalendar } from "./scene-calendar.js";
-import { episodeContextActors, episodeContextRooms } from "./episode-sources.js";
+import { circumstanceRoomOrigins, episodeContextActors, episodeContextRooms } from "./episode-sources.js";
 import { capturePlaceContext, npcProfile } from "./places.js";
 import { offerSceneNarrative } from "./scene-narrative.js";
 import { nativeCircumstanceRoots } from "./native-continuity.js";
@@ -232,6 +232,7 @@ export function narrationContinuityContext(
       },
     });
   const emitted = new Set<string>();
+  const episodesById = new Map(state.episodes.records.map((episode) => [episode.id, episode]));
   for (const { situation, episode, receipt, roots: rootIds } of circumstances) {
     const roots = new Set(rootIds);
     const groups = new Map<
@@ -277,7 +278,14 @@ export function narrationContinuityContext(
       const source = episode.grounding.find((source) => source.committedReceiptId === receipt.id)!;
       memoryRequire(source, "current circumstance has no native evidence");
       const unit = continuitySourceUnit(source),
-        owners = [...actors, room];
+        owners = [
+          ...new Map(
+            [...actors, room, ...circumstanceRoomOrigins(episode, receipt, episodesById)].map((holder) => [
+              continuityHolderKey(holder),
+              holder,
+            ]),
+          ).values(),
+        ];
       if (
         owners.some((holder) =>
           continuityProtectionUnits(state.continuity, holder, episodeSourceGraph(state.episodes.records, holder)).has(

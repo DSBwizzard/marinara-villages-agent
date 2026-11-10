@@ -1,4 +1,3 @@
-import { currentVillageCircumstances } from "./prompt-preset.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
 import { venueZones } from "./venue-zones.js";
 
@@ -57,9 +56,6 @@ export function buildLocationPrompt(
       : "",
     setting.length > 0 ? `Village setting and theme: ${setting}.` : "",
     village.worldRules ? `Standing world rules: ${village.worldRules}` : "",
-    currentVillageCircumstances(village).length
-      ? `Current circumstances: ${currentVillageCircumstances(village).join("; ")}.`
-      : "",
     surrounding ? `Other known places in the village: ${surrounding}.` : "",
     lore ? `Established visual lore: ${lore}.` : "",
     "Current Venue and Zone records govern physical truth; lore and starting descriptions cannot undo changed physical conditions.",

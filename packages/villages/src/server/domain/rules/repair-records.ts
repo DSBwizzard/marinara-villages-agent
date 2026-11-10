@@ -571,7 +571,6 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
       occurrence: "Saved proposal explicitly rejected in REPAIR.",
       rejected: true,
       after: { situations: [], conditions: [] },
-      physical: [],
     });
     narrative.revision++;
     return;

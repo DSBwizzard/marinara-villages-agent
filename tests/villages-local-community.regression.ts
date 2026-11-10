@@ -490,7 +490,7 @@ assert.throws(
         summary: "Transport is running again.",
         status: "resolved",
       },
-      physical: [],
+      room: [],
       conditions: [],
       weather: null,
     },
@@ -593,7 +593,6 @@ await housing();
       startsAt: at,
       endsAt: null,
       clearedAt: null,
-      physicalRevision: 0,
     },
   ];
   const access = evaluateZoneAccess(target, zone, "player", { environment: state.narrative, at: new Date(at) });

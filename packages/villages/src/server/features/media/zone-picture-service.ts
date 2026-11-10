@@ -342,14 +342,7 @@ export function createZonePictures(
             ? ""
             : await ports.readVillageImageLore(
                 village.selectedLorebookIds,
-                loreText(
-                  villageLoreContext({ ...village, narrative: undefined }),
-                  venue.name,
-                  venue.form,
-                  zone.name,
-                  zone.purpose,
-                  target,
-                ),
+                loreText(villageLoreContext(village), venue.name, venue.form, zone.name, zone.purpose, target),
                 900,
                 village.loreTokenBudget,
                 (report) => {

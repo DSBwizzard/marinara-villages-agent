@@ -604,8 +604,9 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   function readForJob(job: Job): Promise<VillageState> {
     const options = {
       memories:
-        ["starting-ties", "wish", "agenda", "personal-mail", "resident-planning"].includes(job.kind) ||
-        !!catchupBatchId(job),
+        ["starting-ties", "wish", "agenda", "personal-mail", "resident-planning", "world-development"].includes(
+          job.kind,
+        ) || !!catchupBatchId(job),
     };
     if (handlers.get(job.kind)?.authority === "raw" && ports.readVillageAuthority)
       return ports.readVillageAuthority(options);
@@ -617,11 +618,13 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     ];
     return handlers.get(job.kind)?.authority === "raw" && ports.mutateVillageAuthority
       ? ports.mutateVillageAuthority(update, {
-          memories: ["wish", "personal-mail", "resident-planning"].includes(job.kind) ? true : undefined,
+          memories: ["wish", "personal-mail", "resident-planning", "world-development"].includes(job.kind)
+            ? true
+            : undefined,
           sourceJobs,
         })
       : mutateVillageState(update, {
-          memories: ["wish", "resident-planning"].includes(job.kind) ? true : undefined,
+          memories: ["wish", "resident-planning", "world-development"].includes(job.kind) ? true : undefined,
           sourceJobs,
         });
   }

@@ -1,6 +1,7 @@
 import type { AcceptedEpisode } from "../models/episode-model.js";
 import type { ContinuityEvidence, ContinuityHolder } from "../models/continuity-model.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
+import { continuityHolderKey, continuitySourceUnit } from "./continuity.js";
 
 /** Private GM reference holders are provenance, never Scene attendance or character perception. */
 function episodeContextHolders(
@@ -46,9 +47,37 @@ export function nativeReceiptSupportsRoom(
   room: Extract<ContinuityHolder, { kind: "room" }>,
 ) {
   return (
-    (receipt.kind === "structure" && receipt.targetId === JSON.stringify([room.placeId, room.zoneId])) ||
+    ((receipt.kind === "structure" || receipt.kind === "room") &&
+      receipt.targetId === JSON.stringify([room.placeId, room.zoneId])) ||
     (receipt.kind === "discovery" && receipt.targetId === room.placeId)
   );
+}
+
+/** Administrative edits inherit the origin Rooms of the exact circumstance prose they carry forward. */
+export function circumstanceRoomOrigins(
+  episode: AcceptedEpisode,
+  receipt: AcceptedEpisode["commandReceipts"][number],
+  episodes: ReadonlyMap<string, AcceptedEpisode>,
+) {
+  const pending = [{ episode, receipt }],
+    seen = new Set<string>();
+  const rooms = new Map<string, NonNullable<AcceptedEpisode["room"]>>();
+  for (const { episode: row, receipt: fact } of pending) {
+    if (row.sceneId || seen.has(row.id) || fact.kind !== "circumstance") continue;
+    seen.add(row.id);
+    if (row.room) rooms.set(continuityHolderKey(row.room), row.room);
+    else
+      for (const dependency of row.dependencies["native:" + fact.id] ?? []) {
+        const unit: unknown = JSON.parse(dependency);
+        const prior = Array.isArray(unit) && typeof unit[0] === "string" ? episodes.get(unit[0]) : undefined;
+        const source = prior?.grounding.find(
+          (source) => source.kind === "native" && continuitySourceUnit(source) === dependency,
+        );
+        const inherited = source && prior?.commandReceipts.find((receipt) => receipt.id === source.committedReceiptId);
+        if (prior && inherited?.targetId === fact.targetId) pending.push({ episode: prior, receipt: inherited });
+      }
+  }
+  return [...rooms.values()];
 }
 
 /** Routed speech is already canonical evidence; ordinary dialogue needs no earlier keep/classifier. */
