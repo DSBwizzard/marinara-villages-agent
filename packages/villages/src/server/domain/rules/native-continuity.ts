@@ -1,8 +1,20 @@
 import type { VillageState } from "../models/world.js";
 import type { AcceptedEpisode } from "../models/episode-model.js";
-import type { ContinuityClass, ContinuityEvidence, ContinuityHolder } from "../models/continuity-model.js";
+import type {
+  ContinuityClass,
+  ContinuityEvidence,
+  ContinuityHolder,
+  ContinuityWrite,
+} from "../models/continuity-model.js";
 import { continuityActor } from "./continuity-actors.js";
-import { applyContinuityWrite, continuityHolderKey, continuitySourceUnit } from "./continuity.js";
+import {
+  applyContinuityWrite,
+  continuityHolderKey,
+  continuitySourceUnit,
+  continuityVersionId,
+  continuityVersionUnit,
+  continuityProtectionFingerprint,
+} from "./continuity.js";
 import { appendEpisode } from "./episodes.js";
 import { assertContinuityRetention } from "./continuity-retention.js";
 import { nativeReceiptSupportsRoom } from "./episode-sources.js";
@@ -23,9 +35,11 @@ export function retainNativeFact(
     owner?: Extract<ContinuityHolder, { kind: "actor" }>;
     room?: Extract<ContinuityHolder, { kind: "room" }>;
     context?: ContinuityEvidence[];
+    provenance?: string[];
+    screening?: ContinuityWrite["screening"];
   } = {},
 ) {
-  memoryObject(meaning, ["about", "class", "current", "owner", "room", "context"]);
+  memoryObject(meaning, ["about", "class", "current", "owner", "room", "context", "provenance", "screening"]);
   const { room } = meaning;
   memoryRequire(
     !room ||
@@ -52,6 +66,24 @@ export function retainNativeFact(
     return holder ? [holder] : [];
   });
   memoryRequire(holders.length === receipt.witnesses.length, "native continuity has an unknown witness");
+  const provenance = meaning.provenance ?? [];
+  memoryRequire(
+    !provenance.length || (!room && holders.length === 1),
+    "private native provenance needs one owning holder",
+  );
+  for (const versionId of provenance) {
+    const version = state.continuity.versions.find((version) => version.id === versionId),
+      holder = holders[0],
+      key = continuityHolderKey(holder);
+    memoryRequire(
+      version &&
+        state.continuity.records.find((record) => record.id === version.rootId)?.heads[key]?.versionId === version.id &&
+        (version.administrative
+          ? continuityHolderKey(version.administrative.holder) === key
+          : version.id === continuityVersionId(state.seed, version.operationId, holder)),
+      "native context is not this holder's captured knowledge",
+    );
+  }
   const source: ContinuityEvidence = {
     id: "source-" + memoryHash([id, receipt.id]).slice(0, 32),
     seed: state.seed,
@@ -99,6 +131,7 @@ export function retainNativeFact(
                 }),
             text: receipt.text,
             sourceIds: [source.id],
+            ...(meaning.screening ? { screening: meaning.screening } : {}),
           },
           {
             seed: state.seed,
@@ -109,7 +142,16 @@ export function retainNativeFact(
             ...(room ? { room } : {}),
             sources: [source],
             supplied: [],
-            protectedRoots: [],
+            protectedRoots: meaning.screening
+              ? state.continuity.records
+                  .filter((record) =>
+                    (room ? [room] : holders).some((holder) => record.protection[continuityHolderKey(holder)]),
+                  )
+                  .map((record) => record.id)
+              : [],
+            protectionFingerprint: meaning.screening
+              ? continuityProtectionFingerprint(state.continuity, room ? [room] : holders)
+              : undefined,
           },
         )
       : state.continuity;
@@ -130,7 +172,10 @@ export function retainNativeFact(
     grounding: [...context, source],
     offered: [],
     commandReceipts: [receipt],
-    dependencies: context.length ? { [source.unitId]: context.map(continuitySourceUnit) } : {},
+    dependencies:
+      context.length || provenance.length
+        ? { [source.unitId]: [...context.map(continuitySourceUnit), ...provenance.map(continuityVersionUnit)] }
+        : {},
     continuityVersionIds: continuity.versions.slice(state.continuity.versions.length).map((row) => row.id),
   };
   const episodes = appendEpisode(state.episodes, episode, state.seed);

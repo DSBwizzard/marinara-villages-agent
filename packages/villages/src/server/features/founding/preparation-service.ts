@@ -92,7 +92,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
       let connectionBlocked = false;
       for (const kind of ["routine", "wish"] as const) {
         for (const villager of initial.villagers) {
-          const latest = await readVillageState({ wishes: [villager.characterId] }),
+          const latest = await readVillageState({ memories: true }),
             marker = latest.foundingPreparation,
             id = villager.characterId;
           if (latest.seed !== initial.seed || marker?.status !== "pending") return;
@@ -290,7 +290,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
   }
 
   async function initializeTasks(seed: string) {
-    const initial = await readVillageState();
+    const initial = await readVillageState({ memories: true });
     const retained = new Map<string, { revision: string; context: unknown }>();
     if (initial.seed === seed)
       for (const [id, tasks] of Object.entries(initial.foundingPreparation?.tasks ?? {}))
@@ -336,7 +336,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
             };
           }
       },
-      { wishes: true },
+      { memories: true },
     );
   }
   return {

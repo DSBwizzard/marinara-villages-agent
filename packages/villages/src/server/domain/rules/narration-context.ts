@@ -13,6 +13,9 @@ import {
   continuitySourceUnit,
   continuityVersionUnit,
   continuityViews,
+  continuityGuidesHolder,
+  continuityConstraints,
+  continuityProtectionFingerprint,
 } from "./continuity.js";
 import { selectActorContinuity, selectRoomContinuity } from "./continuity-retrieval.js";
 import { actorEpisodeView, recentSharedEpisodes, recallEpisodeSpeech, selectEpisodeHistory } from "./episodes.js";
@@ -33,15 +36,7 @@ type Part = {
 };
 
 export function narrationProtectionFingerprint(state: VillageState, holders: ContinuityHolder[]) {
-  return memoryHash(
-    state.continuity.records.flatMap((record) =>
-      holders.flatMap((holder) => {
-        const key = continuityHolderKey(holder),
-          protection = record.protection[key];
-        return protection ? [[record.id, key, protection]] : [];
-      }),
-    ),
-  );
+  return continuityProtectionFingerprint(state.continuity, holders);
 }
 
 function mergeTargets(targets: ContinuityTarget[]) {
@@ -292,7 +287,8 @@ export function narrationContinuityContext(
           for (const episode of state.episodes.records)
             if (episode.continuityVersionIds.includes(view.version.id)) part.episodeIds.push(episode.id);
           part.episodeIds.push(...view.version.sources.map((source) => source.episodeId));
-          if (row.current && holder.id !== "player") part.offered.push({ holder, ids: [row.id] });
+          if (row.current && holder.id !== "player" && continuityGuidesHolder(view))
+            part.offered.push({ holder, ids: [row.id] });
           return { ...row, source: ref };
         });
     const required = part.targets.some((target) => requiredKey(target, key));
@@ -470,29 +466,7 @@ export function narrationContinuityContext(
     }),
   );
   const bounded = parts.filter((part) => retained.has(part));
-  const protections = state.continuity.records.flatMap((record) =>
-    [...actors, room].flatMap((holder) => {
-      const protection = record.protection[continuityHolderKey(holder)];
-      if (!protection) return [];
-      return [
-        {
-          id: record.id,
-          for: holder.kind === "actor" ? holder.id : "room",
-          forgotten: protection.forgotten === true,
-          forbidden: [
-            ...new Set(
-              state.continuity.versions
-                .filter((version) => protection.sourceUnits.includes(continuityVersionUnit(version.id)))
-                .map((version) => version.text),
-            ),
-          ],
-          ...(protection.repair
-            ? { corrected: state.continuity.versions.find((row) => row.id === protection.repair!.versionId)!.text }
-            : {}),
-        },
-      ];
-    }),
-  );
+  const protections = continuityConstraints(state.continuity, [...actors, room]);
   return {
     episodeId,
     actors,

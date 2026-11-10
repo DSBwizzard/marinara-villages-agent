@@ -1,4 +1,4 @@
-// Test cases: narration-writing/single-request, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/required-evidence-bound, narration-writing/circumstance-provenance
+// Test cases: narration-writing/single-request, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/required-evidence-bound, narration-writing/circumstance-provenance, narration-writing/learned-wish-initiative
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -176,6 +176,31 @@ function fixture() {
   };
 }
 
+await runCase("narration-writing/learned-wish-initiative", () => {
+  const f = fixture(),
+    text = "The Player hopes to go sailing when ready.";
+  retainNativeFact(
+    f.state,
+    { id: "player-wish", kind: "initialization", targetId: "player", revision: 1, text, witnesses: ["player", f.id] },
+    at,
+    { class: "desire", owner: continuityActor(f.state, "player")!, current: true, about: ["player"] },
+  );
+  const root = f.state.continuity.records.at(-1)!.id;
+  const context = narrationContinuityContext(f.state, f.scene, f.venue, "new-turn", "Ask about sailing", at),
+    fitted = fittedNarrationReadset(
+      f.state,
+      context,
+      context.parts.map((part) => part.block.evidenceId!),
+    );
+  assert(
+    Object.values(fitted.source.historical).some((source) => source.actorId === f.id && source.excerpt === text),
+    "Mara may recall the Player's disclosed wish",
+  );
+  assert(
+    !fitted.offered.some((offer) => offer.holder.id === f.id && offer.ids.includes(root)),
+    "the final fitted request cannot count learned wishes as the hearer's own initiative",
+  );
+});
 await runCase("narration-writing/single-request", async () => {
   const f = fixture(),
     input = "I privately fear she will leave. I ask, “Why?”\n  Keep my spacing. 🪑";

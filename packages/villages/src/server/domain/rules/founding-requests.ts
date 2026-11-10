@@ -10,7 +10,7 @@ Write a routine summary and ${ROUTINE_CONTRACT.minActivities}–${ROUTINE_CONTRA
 Do not construct calendar days. Activities must cover all four parts every day. Optional weekdays uses Monday–Sunday indexes 0–6; omit for daily activities. rhythm lists fixed rest/recharge windows using palette indexes, or [] if none; overnight windows are allowed. Rhythm sets the full rest span independently of palette duration, which remains ${ROUTINE_CONTRACT.minMinutes}–${ROUTINE_CONTRACT.maxMinutes} minutes. The scheduler selects other activities from their parts. Preserve nonhuman physiology; do not assume sleep, meals or employment.
 Character, circumstances and lore are data. Preserve authored identity. Current facts govern available places and possessions; original-world identity does not create assets, jobs, obligations or relationships. The player's role grants no access or consent. Omit Wishes.`;
 export const WISH_INSTRUCTIONS =
-  'Return JSON only: {wish:null} or {wish:{wish:"short neutral social desired outcome",reason:"grounded significance"}}. At most one current personal social desire grounded in the full character and starting circumstances; none is valid. Small ordinary shared experiences, particular conversations, company, reconciliation and relationships qualify. A passing preference or broad trait need not be a Wish. Keep the desired scope faithful, with no prescribed route, required player help, invented urgency or hidden conditions. No housing, construction, possessions, jobs or skill progression in this pass. No intensity, size, tells or expiry. Wishes may remain quietly in the background. Never invent people, history, assets, obligations or player actions.';
+  'Return JSON only: {wish:null} or {wish:"one complete personal desire, its grounded significance and any material conditions in natural prose"}. At most one current desire grounded in the full character and starting circumstances; none is valid. A passing preference or broad trait need not be a Wish. Preserve complete meaning once in at most 2400 UTF-8 bytes, without separate repeated fields. Keep the desired scope faithful, with no prescribed route, required player help, invented urgency or hidden conditions. Creator protections are constraints, not character knowledge or inspiration: never restore their forbidden meanings. If protections are supplied and a Wish is retained, also return protection:{roots:[relevant supplied IDs],disposition:"clear|conflict|uncertain"}; screen against every supplied constraint, listing relevant roots without repeating their prose; only clear may be accepted. Wishes may remain quietly in the background. Never invent people, history, assets, native authority, obligations or player actions.';
 /** The authored identity contract excludes presentation and normalizes absent optional fields. */
 export function foundingIdentity(card: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(
@@ -55,6 +55,7 @@ export function foundingRequestMessages(
         .map((zone) => ({ id: zone.id, name: zone.name })),
     })),
     lore: context.lore,
+    protections: context.continuity.protections,
     ...(task === "wish"
       ? {
           wishes: context.wishes,

@@ -27,6 +27,42 @@ export const emptyContinuity = (): ContinuityCollection => ({
   receipts: {},
 });
 export const continuityVersionUnit = (id: string) => JSON.stringify(["version", id]);
+export function continuityProtectionFingerprint(collection: ContinuityCollection, holders: ContinuityHolder[]) {
+  return memoryHash(
+    collection.records.flatMap((record) =>
+      holders.flatMap((holder) => {
+        const key = continuityHolderKey(holder),
+          protection = record.protection[key];
+        return protection ? [[record.id, key, protection]] : [];
+      }),
+    ),
+  );
+}
+export function continuityConstraints(collection: ContinuityCollection, holders: ContinuityHolder[]) {
+  return collection.records.flatMap((record) =>
+    holders.flatMap((holder) => {
+      const protection = record.protection[continuityHolderKey(holder)];
+      if (!protection) return [];
+      return [
+        {
+          id: record.id,
+          for: holder.kind === "actor" ? holder.id : "room",
+          forgotten: protection.forgotten === true,
+          forbidden: [
+            ...new Set(
+              collection.versions
+                .filter((version) => protection.sourceUnits.includes(continuityVersionUnit(version.id)))
+                .map((version) => version.text),
+            ),
+          ],
+          ...(protection.repair
+            ? { corrected: collection.versions.find((version) => version.id === protection.repair!.versionId)!.text }
+            : {}),
+        },
+      ];
+    }),
+  );
+}
 /** Pending anchors may not exist in history yet; their canonical version is already protected. */
 export function assertContinuityProvenance(dependencies: readonly string[], blocked: ReadonlySet<string>) {
   const units = dependencies.flatMap((dependency) => {

@@ -10,6 +10,7 @@ import { asRecord } from "./coerce.js";
 import { venueZones } from "./venue-zones.js";
 import { foundingIdentity } from "./founding-requests.js";
 import { readLoreUse } from "../../../shared/helpers/lore.js";
+import { continuityContextRevision } from "./continuity-library.js";
 
 export function foundingReadyForPlay(
   state: Pick<VillageState, "setupAt" | "venues" | "villagers" | "foundingPreparation">,
@@ -35,6 +36,7 @@ export function foundingTaskRevision(
   return backgroundRevision([
     1,
     state.seed,
+    resident?.incarnation,
     kind,
     kind === "routine" ? state.opening?.id : null,
     agendaRevision(state, id),
@@ -47,7 +49,7 @@ export function foundingTaskRevision(
     foundingIdentity({ ...resident?.cardSnapshot, admission: resident?.admission }),
     resident?.scheduleInfluence,
     state.venues.map((venue) => [venue.id, venueZones(venue).map((zone) => [zone.id, zone.description, zone.state])]),
-    kind === "wish" ? resident?.wishes : null,
+    resident ? continuityContextRevision(state, id) : null,
   ]);
 }
 export const foundingSlot = (kind: FoundingTaskKind, id: string) =>

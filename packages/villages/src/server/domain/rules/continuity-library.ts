@@ -14,6 +14,10 @@ import {
   continuityHolderKey,
   continuityProtectionUnits,
   continuityViews,
+  continuityVersionId,
+  continuityProtectionFingerprint,
+  continuityConstraints,
+  continuitySourceUnit,
   protectContinuity,
   CONTINUITY_TEXT_BYTES,
 } from "./continuity.js";
@@ -21,6 +25,124 @@ import { memoryHash, memoryObject, memoryRequire } from "./memory-integrity.js";
 import { badRequest, conflict, notFound } from "./errors.js";
 import { findNpc } from "./places.js";
 import { recallTerms } from "./text-recall.js";
+import type { KnownWish } from "../../../shared/contracts/wishes.js";
+
+export function continuityContextRevision(state: VillageState, actorId: string) {
+  const holder = continuityActor(state, actorId),
+    key = holder && continuityHolderKey(holder);
+  return memoryHash([
+    state.seed,
+    holder,
+    state.continuity.records.flatMap((record) =>
+      key && record.heads[key] ? [[record.id, record.heads[key], record.protection[key] ?? null]] : [],
+    ),
+  ]);
+}
+
+export function continuityPreparationContext(state: VillageState, actorId: string, at: string) {
+  const holder = continuityActor(state, actorId);
+  const wishes = continuityWishes(state, actorId, true, at),
+    circumstances = continuityCircumstances(state, actorId, at);
+  const rows = holder ? projections(state, holder, false, at) : [];
+  const wishRoots = new Set(wishes.map((wish) => wish.wishId)),
+    circumstanceRoots = currentCircumstanceRoots(state);
+  return {
+    fingerprint: continuityContextRevision(state, actorId),
+    protectionFingerprint: continuityProtectionFingerprint(state.continuity, holder ? [holder] : []),
+    protections: continuityConstraints(state.continuity, holder ? [holder] : []),
+    sources: rows
+      .filter((row) => wishRoots.has(row.record.id) || circumstanceRoots.has(row.record.id))
+      .map((row) => row.version.id),
+    wishes: wishes.map((wish) => wish.text),
+    circumstances,
+  };
+}
+
+function currentCircumstanceRoots(state: VillageState) {
+  const current = new Set(
+    state.episodes.records.flatMap((episode) =>
+      episode.commandReceipts
+        .filter(
+          (receipt) =>
+            receipt.kind === "circumstance" &&
+            state.narrative?.situations.some(
+              (row) =>
+                row.status === "active" &&
+                row.id === receipt.targetId &&
+                row.revision === receipt.revision &&
+                row.summary === receipt.text,
+            ),
+        )
+        .map((receipt) => receipt.id),
+    ),
+  );
+  const roots = new Set(
+    state.continuity.versions
+      .filter((version) =>
+        version.sources.some(
+          (source) => source.kind === "native" && source.committedReceiptId && current.has(source.committedReceiptId),
+        ),
+      )
+      .map((version) => version.rootId),
+  );
+  return roots;
+}
+export function continuityCircumstances(state: VillageState, actorId: string, at: string): string[] {
+  const holder = continuityActor(state, actorId);
+  if (!holder) return [];
+  const roots = currentCircumstanceRoots(state);
+  return projections(state, holder, false, at)
+    .filter((row) => roots.has(row.record.id))
+    .map((row) => row.version.text);
+}
+
+/** A notebook reads only its holder's learned versions, never the owner's later private state. */
+export function continuityWishes(state: VillageState, actorId: string, inspection: boolean, at: string): KnownWish[] {
+  const owner = continuityActor(state, actorId),
+    holder = continuityActor(state, inspection ? actorId : "player");
+  if (!owner || !holder) return [];
+  const key = continuityHolderKey(holder),
+    rows = projections(state, holder, false, at);
+  const blocked = continuityProtectionUnits(
+    state.continuity,
+    holder,
+    episodeSourceGraph(state.episodes.records, holder),
+  );
+  return rows
+    .filter(
+      ({ record, version }) =>
+        record.owner &&
+        continuityHolderKey(record.owner) === continuityHolderKey(owner) &&
+        version.class === "desire" &&
+        !version.parentId,
+    )
+    .map(({ record, version }) => {
+      const facts = record.protection[key]
+        ? [version]
+        : state.continuity.versions.filter(
+            (prior) =>
+              prior.rootId === record.id &&
+              (prior.administrative
+                ? continuityHolderKey(prior.administrative.holder) === key
+                : prior.id === continuityVersionId(state.seed, prior.operationId, holder)) &&
+              !blocked.has(JSON.stringify(["version", prior.id])) &&
+              prior.sources.every((source) => !blocked.has(continuitySourceUnit(source))),
+          );
+      return {
+        wishId: record.id,
+        text: version.text,
+        at: version.at,
+        status: version.closed?.reason ?? "open",
+        followed: state.wishFollowing?.[actorId + ":" + record.id] !== false,
+        details: rows
+          .filter((row) => row.version.parentId === record.id && row.head.current)
+          .map((row) => ({ id: row.record.id, kind: row.version.facet ?? row.version.class, text: row.version.text })),
+        facts: facts
+          .toSorted((a, b) => a.createdRevision - b.createdRevision)
+          .map((row) => ({ id: row.id, text: row.text, at: row.at })),
+      };
+    });
+}
 
 export type MemoryQuery = {
   inspection?: boolean;

@@ -1,4 +1,4 @@
-export type WishStatus = "open" | "fulfilled" | "withdrawn";
+export type WishStatus = "open" | "fulfilled" | "withdrawn" | "ended";
 export type WishAttention = { state: "background" | "foreground"; reason: string };
 export type SocialWish = {
   id: string;
@@ -35,4 +35,5 @@ export type KnownWish = {
   status?: WishStatus;
   followed: boolean;
   facts: { id: string; text: string; at: string }[];
+  details?: { id: string; kind: string; text: string }[];
 };

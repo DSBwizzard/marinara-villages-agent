@@ -501,7 +501,6 @@ export function VillagerDossier({
                             characterId={navigation.actorId}
                             prefix={P}
                             focusWishId={navigation.wishId}
-                            wishes={relationships ? (profile?.knownWishes ?? []) : null}
                             onWishes={(knownWishes) => {
                               relationshipEpoch.current++;
                               setRelationships((current) =>
