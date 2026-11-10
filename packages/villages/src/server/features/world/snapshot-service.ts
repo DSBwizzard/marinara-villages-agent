@@ -1,4 +1,5 @@
 import { findLocation, placeRegistry } from "../../domain/rules/places.js";
+import { projectAgreementCurrent } from "../../domain/rules/project-terms.js";
 import { hasUnreadMail } from "../../domain/rules/mailbox-view.js";
 import { projectPlace } from "../../domain/rules/place-discovery.js";
 import { createHash } from "node:crypto";
@@ -212,9 +213,17 @@ export function createVillageSnapshot({
               targetVenueId: project.lifecycle.targetVenueId,
               change: project.lifecycle.change,
               affectedIds: project.lifecycle.affectedIds,
-              approvals: project.lifecycle.approvals.map(({ residentId, source }) => ({ residentId, source })),
-              candidates: project.lifecycle.candidates.map(({ residentId }) => ({ residentId })),
-              builderId: project.lifecycle.builderId,
+              approvals: project.lifecycle.approvals
+                .filter((row) => projectAgreementCurrent(village, row))
+                .map(({ residentId, source }) => ({ residentId, source })),
+              candidates: project.lifecycle.candidates
+                .filter((row) => projectAgreementCurrent(village, row))
+                .map(({ residentId }) => ({ residentId })),
+              builderId: project.lifecycle.candidates.some(
+                (row) => row.residentId === project.lifecycle!.builderId && projectAgreementCurrent(village, row),
+              )
+                ? project.lifecycle.builderId
+                : "",
               workOrder: project.lifecycle.workOrder
                 ? {
                     startsAt: project.lifecycle.workOrder.startsAt,

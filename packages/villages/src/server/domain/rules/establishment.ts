@@ -5,7 +5,7 @@ import { findLocation, placeRegistry } from "./places.js";
 import { zoneManagers } from "./venue-access.js";
 import { assertCanAddVillageVenue } from "./venue-capacity.js";
 import { conflict, badRequest } from "./errors.js";
-import { renovationAffectedIds } from "./project-terms.js";
+import { renovationAffectedIds, projectAgreementCurrent } from "./project-terms.js";
 import { readRenovationChange } from "./project-design.js";
 import type { VillageVenue } from "../models/world.js";
 import { asRecord } from "./coerce.js";
@@ -128,7 +128,12 @@ export function promotePlace(
   const flow = project.lifecycle!;
   const missing = controllers.filter(
     (id) =>
-      !flow.approvals.some((approval) => approval.residentId === id && approval.scope === establishmentScope(project)),
+      !flow.approvals.some(
+        (approval) =>
+          approval.residentId === id &&
+          projectAgreementCurrent(state, approval) &&
+          approval.scope === establishmentScope(project),
+      ),
   );
   if (missing.length) throw conflict("Renew the necessary establishment agreements.");
   if (place.location.presentation.x === null || place.location.presentation.y === null)

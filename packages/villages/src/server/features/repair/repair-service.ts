@@ -1087,11 +1087,6 @@ export function createRepairService(ports: RepairPorts) {
       for (const [key, row] of wanted) {
         if (row.kind === "scene-terminal" && restoredScenes.has((row.data as { sceneId: string }).sceneId))
           wanted.delete(key);
-        if (row.kind === "project-scene-evidence") {
-          const index = row.data as { scenes?: { scene: { id: string } }[] };
-          if (Array.isArray(index.scenes))
-            index.scenes = index.scenes.filter((entry) => !restoredScenes.has(entry.scene.id));
-        }
       }
       const root = wanted.get("villages-village")!;
       const data = root.data as Record<string, unknown>;

@@ -434,12 +434,13 @@ export type VillageProjectLifecycle = {
   affectedIds: string[];
   approvals: {
     residentId: string;
+    incarnation: string;
     source: "conversation";
     evidenceId: string;
     scope: string;
     at: string;
   }[];
-  candidates: { residentId: string; evidenceId: string; scope: string; at: string }[];
+  candidates: { residentId: string; incarnation: string; evidenceId: string; scope: string; at: string }[];
   builderId: string;
   spokenProofs: {
     lineId: string;

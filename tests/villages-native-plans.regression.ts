@@ -1,5 +1,7 @@
 // Test cases: native-plans/admission, native-plans/attendance, native-plans/epochs, native-plans/stale, native-plans/availability, native-plans/project-priority, native-plans/round-trip, native-plans/continuity, native-plans/planner-publication
 import assert from "node:assert/strict";
+import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
+import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
   coerceVillageState,
@@ -413,14 +415,20 @@ await runCase("native-plans/planner-publication", async () => {
     });
   try {
     await repository().mutateAuthority((state) => Object.assign(state, f.state), { memories: true });
-    const service = createResidentPlanning({} as any),
-      input = {
-        dateKey: date,
-        now: at,
-        opportunity: { id: "native-opportunity", actorIds: ["a", "b"] },
-        context: { social: { candidates: f.candidates }, residents: [] },
+    const queued: any[] = [];
+    const service = createResidentPlanning({
+      readVillageState: () => repository().readAuthority({ memories: true }),
+      activeVenueSession: async () => null,
+      readEffectiveVillagerCard,
+      backgroundJobSnapshot: async () => null,
+      queueBackgroundJob: async (input) => {
+        queued.push(input);
       },
-      proposal = { social: { planId: f.plan.id }, housingRequests: [] };
+    } as any);
+    await service.reconcile(now);
+    assert.equal(queued.length, 1);
+    const input = queued[0].input,
+      proposal = { proposal: { planId: f.plan.id }, responseDigest: memoryHash("saved-native-plan") };
     loseAcknowledgement = true;
     await assert.rejects(
       repository().mutateAuthority((state) => service.handler.apply!(state, input, proposal), { memories: true }),
@@ -428,8 +436,12 @@ await runCase("native-plans/planner-publication", async () => {
     );
     const cold = await repository().readAuthority({ memories: true });
     assert.equal(cold.residentPlans.plans[0].id, f.plan.id);
-    assert(cold.processedActionIds.includes(input.opportunity.id));
-    assert(!cold.socialOutbox?.length, "native plan selection creates no fictional settlement outbox");
+    assert(cold.processedActionIds.includes(input.context.narration.opportunity.id));
+    assert.equal(
+      Object.hasOwn(cold, "socialOutbox"),
+      false,
+      "native plan selection creates no fictional settlement outbox",
+    );
     await repository().mutateAuthority((state) => service.handler.apply!(state, input, proposal), { memories: true });
     const replayed = await repository().readAuthority({ memories: true });
     assert.deepEqual(replayed.residentPlans, cold.residentPlans);

@@ -13,7 +13,7 @@ import { boundText, MAX_ROUTINE_SUMMARY_LENGTH } from "./prompt-preset.js";
 import { generatedIdentityDescription } from "./resident-description.js";
 import { ROUTINE_CONTRACT } from "./routine-contract.js";
 import type { NativeWeekSchedule } from "./schedule-rules.js";
-import { semanticHash } from "./semantic-contract.js";
+import { backgroundRevision } from "./background-revision.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 
 export class RoutineResponseError extends Error {}
@@ -101,7 +101,7 @@ function checkedPalette(value: unknown, venues: readonly VillageVenue[]): Palett
 
 /** Models select activities and dayparts; code owns the repeated calendar structure. */
 export function compileRoutineDays(palette: readonly PaletteEntry[], residentId: string): number[][] {
-  const seed = Number.parseInt(semanticHash(residentId).slice(0, 8), 16);
+  const seed = Number.parseInt(backgroundRevision(residentId).slice(0, 8), 16);
   return VILLAGE_WEEKDAYS.map((_, day) =>
     Array.from({ length: 8 }, (_, slot) => {
       const candidates = palette.flatMap((activity, index) =>
@@ -209,7 +209,7 @@ export function parseCompactFounding(
     const row = influence as Record<string, unknown>;
     profile.influence = {
       version: 1,
-      signature: semanticHash(influence),
+      signature: backgroundRevision(influence),
       available: !!context.schedule,
       enabled: true,
       rhythms: Array.isArray(row.rhythms)

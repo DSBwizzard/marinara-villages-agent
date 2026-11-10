@@ -3,7 +3,19 @@ export { changedZoneIds } from "./project-structure.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { venueResidentIds } from "./venue-model.js";
 import { venueZones, zoneControllerIds } from "./venue-zones.js";
-import type { VillageVenue, VillageVenueImage, VillageProject, VillageProjectChange } from "../models/world.js";
+import type {
+  VillageVenue,
+  VillageVenueImage,
+  VillageProject,
+  VillageProjectChange,
+  VillageState,
+} from "../models/world.js";
+import { continuityActor } from "./continuity-actors.js";
+
+export function projectAgreementCurrent(state: VillageState, agreement: { residentId: string; incarnation: string }) {
+  const actor = continuityActor(state, agreement.residentId);
+  return !!actor && actor.incarnation === agreement.incarnation;
+}
 
 export function validImage(value: unknown): VillageVenueImage | null {
   const row = asRecord(value),

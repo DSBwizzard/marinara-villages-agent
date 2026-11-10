@@ -75,11 +75,7 @@ export function zoneEventScene(
     ...rotate(far).slice(0, 1),
     ...nearby,
   ];
-  const plannedZones = new Set(scene.semanticIntent?.timeline.map((step) => step.zoneId).filter(Boolean));
-  const required = remote.filter((person) => plannedZones.has(contactPosition(scene, person.characterId)));
-  const offered = [
-    ...new Map([...required, ...candidates].map((person) => [person.characterId, person])).values(),
-  ].slice(0, Math.max(4, required.length));
+  const offered = [...new Map(candidates.map((person) => [person.characterId, person])).values()].slice(0, 4);
   const priority = [
     ...named.filter((person) => person.characterId === intent.targetId).map((person) => person.characterId),
     ...named.map((person) => person.characterId),

@@ -121,6 +121,7 @@ export function fixture() {
         flow = project.lifecycle!;
       flow.candidates.push({
         residentId: lead,
+        incarnation: current.villagers.find((row) => row.characterId === lead)!.incarnation,
         evidenceId: "spoken:" + id,
         scope: projectDesignKey(project),
         at: current.setupAt,
@@ -131,6 +132,7 @@ export function fixture() {
         for (const residentId of flow.affectedIds)
           flow.approvals.push({
             residentId,
+            incarnation: current.villagers.find((row) => row.characterId === residentId)!.incarnation,
             source: "conversation",
             scope: approvalScope(target, flow.change, residentId, flow.changedZoneIds),
             evidenceId: "consent:" + id,

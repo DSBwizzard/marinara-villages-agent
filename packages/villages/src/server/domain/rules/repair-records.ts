@@ -1,4 +1,5 @@
 import { placeRegistry, readNpc, findLocation } from "./places.js";
+import { projectAgreementCurrent } from "./project-terms.js";
 import { LETTER_FONTS } from "../../../shared/helpers/letter-fonts.js";
 import type { RepairField, RepairRecord, RepairRequest } from "../../../shared/contracts/repair.js";
 import type { ContinuityRecord, ContinuityHolder, ContinuityEvidence } from "../models/continuity-model.js";
@@ -478,7 +479,12 @@ export function worldRepairRecords(
         revision: project.lifecycle.revision,
         source: [
           `Status: ${project.status}`,
-          `Agreements: ${project.lifecycle.approvals.map((a) => people.find((p) => p.id === a.residentId)?.name ?? "Former resident").join(", ") || "None"}`,
+          `Agreements: ${
+            project.lifecycle.approvals
+              .filter((row) => projectAgreementCurrent(state, row))
+              .map((a) => people.find((p) => p.id === a.residentId)?.name ?? "Former resident")
+              .join(", ") || "None"
+          }`,
         ],
         actions: [
           ...actions,

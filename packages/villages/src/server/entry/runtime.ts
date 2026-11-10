@@ -132,8 +132,6 @@ import { configureTownMapImage, generateVillageTownMap } from "../features/media
 import { createTownMapReview } from "../features/media/town-map-review-service.js";
 import { configureTownMapReview, prepareVillageMap } from "../features/media/town-map-review.js";
 import { createNarrative } from "../features/narrative/narrative-service.js";
-import { createProjectEvidence } from "../features/projects/project-evidence-service.js";
-import { configureProjectEvidence } from "../features/projects/project-evidence.js";
 import { createProjectLifecycle } from "../features/projects/project-lifecycle-service.js";
 import {
   cancelProject,
@@ -189,7 +187,6 @@ import {
 } from "../features/scenes/live-session.js";
 import { createSceneProgress } from "../features/scenes/progress-service.js";
 import { configureSceneProgress, processSavedExchange, abandonSavedExchange } from "../features/scenes/progress.js";
-import { createProjectEvidenceIndex } from "../features/scenes/project-evidence-index.js";
 import { createSceneQueryService } from "../features/scenes/scene-query-service.js";
 import { createSceneRetirement } from "../features/scenes/scene-retirement-service.js";
 import { createSceneTerminalStore } from "../features/scenes/scene-terminal.js";
@@ -299,10 +296,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     onPlaybackReleased: (id) => scheduleRetirement(id),
   });
   const sceneTerminals = createSceneTerminalStore({
-    villagesDocuments,
-    mutateDocument: createDocumentMutator(villagesDocuments),
-  });
-  const projectEvidenceIndex = createProjectEvidenceIndex({
     villagesDocuments,
     mutateDocument: createDocumentMutator(villagesDocuments),
   });
@@ -622,20 +615,11 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       readSession,
       readVillageState,
       villagesDocuments,
-      readRetiredProjectScenes: projectEvidenceIndex.read,
     }),
     activeVenueSession,
     listVenueVisits,
-    listRetiredProjectScenes: projectEvidenceIndex.read,
     processSavedExchange,
   });
-  const releaseProjectEvidence = configureProjectEvidence(
-    createProjectEvidence({
-      readVillageState: readVillageMemoryState,
-      mutateVillageState: mutateVillageMemoryState,
-      sceneQueries,
-    }),
-  );
   const releaseVillageSnapshot = configureVillageSnapshot(
     createVillageSnapshot({
       readVillageState,
@@ -1014,7 +998,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseSceneWriting();
     releaseSceneChanges();
     releaseSceneProgress();
-    releaseProjectEvidence();
     releaseVillageSnapshot();
     releaseResidentAgendas();
     releaseSceneArchive();

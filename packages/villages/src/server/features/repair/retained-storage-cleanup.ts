@@ -84,7 +84,6 @@ const ordinaryKinds = new Set([
   "venue-active",
   "repair-annotation",
   "scene-terminal",
-  "project-scene-evidence",
   "background-work",
   "background-history",
   "sprite-setup",

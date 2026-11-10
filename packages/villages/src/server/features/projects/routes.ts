@@ -6,7 +6,6 @@ import { notFound } from "../../domain/rules/errors.js";
 import { sceneQueries } from "../scenes/services.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
 import { readVillageState } from "../world/village-store.js";
-import { listProjectEvidenceCandidates, recordProjectSpokenEvidence } from "./project-evidence.js";
 import {
   cancelProject,
   createNewVenueProject,
@@ -54,14 +53,6 @@ export function registerProjectRoutes(engine: FastifyInstance) {
   projectAction("debug-complete", debugCompleteProjectConstruction);
   projectAction("revise", reviseRenovationProject);
   projectAction("renew-approvals", renewRenovationApprovals);
-  projectAction("record", recordProjectSpokenEvidence);
-  app.get<{ Params: { projectId: string } }>("/projects/:projectId/evidence", async (request, reply) => {
-    try {
-      return { candidates: await listProjectEvidenceCandidates(readVenueId(request.params.projectId)) };
-    } catch (error) {
-      return fail(reply, error, "reading saved Project evidence");
-    }
-  });
   app.get("/progress/debug", async (_request, reply) => {
     try {
       if (!villagesDebugAgentsEnabled()) throw notFound("Progress debugging is unavailable.");

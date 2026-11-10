@@ -1,6 +1,5 @@
 import { projectPhysicalDesign } from "../../../shared/helpers/project-design.js";
 import type { VillageState, VillageProject } from "../models/world.js";
-import { asRecord, asTrimmedString } from "./coerce.js";
 import { approvalScope, projectDesignKey, renovationAffectedIds } from "./project-terms.js";
 import { establishmentControllers, establishmentScope } from "./establishment.js";
 import { findLocation } from "./places.js";
@@ -77,17 +76,6 @@ export function projectSpeechContext(
     ),
   };
 }
-export type ProjectSpeechProposal = ProjectSpeechContext & {
-  version: 1;
-  kind: "approval" | "builder" | "withdrawal";
-  speakerId: string;
-  citations: { lineId: string; quote: string }[];
-  contextual?: { version: 1; source: "system" | "gm"; checkId: string };
-};
-type SpeechLine = { id: string; speakerId: string; content: string; heardBy?: string[]; kind?: string };
-const normalized = (text: string) =>
-  text.normalize("NFKC").replace(/[’‘]/gu, "'").replace(/\s+/gu, " ").trim().toLowerCase();
-
 export function projectSpeechContexts(
   state: VillageState,
   activeIds: string[],
@@ -137,83 +125,4 @@ export function projectSpeechPrompt(state: VillageState, contexts: ProjectSpeech
     ) +
     ". These complete scoped terms are native reference, not automatically shared character knowledge. Supporting controllers may approve their own Place or Renovations; only Villagers may volunteer to lead physical work. Native approval requires the deciding person's actual unqualified current words about these exact terms, witnessed by the player. Conditions, uncertainty, politeness and promises of later agreement are not approval. Preserve them as ordinary roleplay/common offers. Approval and volunteering may use the same utterance. A refusal or withdrawal is unilateral. Approval or willingness alone never starts work. Only the actual Player explicit Start/Resume request can invoke project.start; no command directly completes work. Physical Projects take 24 elapsed real hours after the player's explicit Start. Social establishment uses no timer or lead and requires actual witnessed objectives, never promised future results. Gifts and objects provide no Project benefit."
   );
-}
-export function coerceProjectSpeech(value: unknown): ProjectSpeechProposal[] {
-  if (!Array.isArray(value)) return [];
-  return value.slice(0, 12).flatMap((value) => {
-    const row = asRecord(value),
-      context = asRecord(row.contextual);
-    if (row.version !== 1 || !["approval", "builder", "withdrawal"].includes(String(row.kind))) return [];
-    return [
-      {
-        version: 1 as const,
-        projectId: asTrimmedString(row.projectId),
-        revision: Number(row.revision),
-        phase: asTrimmedString(row.phase),
-        kind: row.kind as ProjectSpeechProposal["kind"],
-        speakerId: asTrimmedString(row.speakerId),
-        citations: Array.isArray(row.citations)
-          ? row.citations.slice(0, 12).map((value) => ({
-              lineId: asTrimmedString(asRecord(value).lineId),
-              quote: asTrimmedString(asRecord(value).quote),
-            }))
-          : [],
-        ...(context.version === 1 && ["system", "gm"].includes(String(context.source))
-          ? {
-              contextual: {
-                version: 1 as const,
-                source: context.source as "system" | "gm",
-                checkId: asTrimmedString(context.checkId),
-              },
-            }
-          : {}),
-      },
-    ];
-  });
-}
-export function bindProjectSpeech(
-  value: unknown,
-  contexts: ProjectSpeechContext[],
-  lines: SpeechLine[],
-): ProjectSpeechProposal[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((value) => {
-    const row = asRecord(value),
-      context = contexts.find((context) => context.projectId === row.projectId);
-    if (!context) return [];
-    return coerceProjectSpeech([
-      {
-        ...row,
-        ...context,
-        version: 1,
-        citations: Array.isArray(row.citations)
-          ? row.citations.map((value) => {
-              const citation = asRecord(value);
-              return {
-                ...citation,
-                lineId: Number.isInteger(citation.segment) ? lines[Number(citation.segment)]?.id : "",
-              };
-            })
-          : [],
-      },
-    ]);
-  });
-}
-export function validateProjectSpeech(proposal: ProjectSpeechProposal, lines: SpeechLine[]): string {
-  if (!proposal.citations.length) return "Interpretation has no saved speech citation.";
-  for (const citation of proposal.citations) {
-    const line = lines.find((entry) => entry.id === citation.lineId);
-    if (
-      !line ||
-      citation.quote.length > 2000 ||
-      line.speakerId !== proposal.speakerId ||
-      line.kind === "narration" ||
-      !normalized(citation.quote) ||
-      (proposal.contextual
-        ? !line.content.includes(citation.quote)
-        : !normalized(line.content).includes(normalized(citation.quote)))
-    )
-      return "Interpretation citation does not match this speaker's saved words.";
-  }
-  return "";
 }

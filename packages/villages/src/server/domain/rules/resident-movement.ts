@@ -1,74 +1,11 @@
 import type { VenueReplyLine, VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
-import { findLocation, NPC_PREFIX } from "./places.js";
+import { NPC_PREFIX } from "./places.js";
 import { badGateway } from "./errors.js";
 import { contactNeighbors, contactPath, contactPosition, type ContactMove } from "./venue-contact.js";
 import { venueZones } from "./venue-zones.js";
 import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
-import { asRecord } from "./coerce.js";
-import type { SemanticIntent } from "../models/semantic-model.js";
-
-/** Private control signal, handled as an expected result before coordinator failure handling. */
-export class UnavailableResidentMovement extends Error {}
-
-/** Bind System's immediate-request nominations; code alone decides mechanical availability. */
-export function residentMovementUnavailable(
-  value: unknown,
-  intent: SemanticIntent,
-  state: VillageState,
-  scene: VenueScene,
-): boolean {
-  const invalid = () => badGateway("System movement request interpretation is incomplete. Your draft is preserved.");
-  if (!Array.isArray(value) || value.length > 8) throw invalid();
-  const venue = findLocation(state, scene.placeId);
-  if (!venue) throw invalid();
-  const zones = venueZones(sceneLayoutVenue(venue, scene));
-  const residents = sceneResidentIds(scene);
-  const cohorts = new Map<string, Set<string>>();
-  const destinations = new Map<string, string>();
-  for (const entry of value) {
-    const row = asRecord(entry);
-    const source = Number.isSafeInteger(row.source) ? intent.timeline[Number(row.source)] : undefined;
-    if (
-      !source ||
-      !["speech", "action"].includes(source.kind) ||
-      typeof row.zoneId !== "string" ||
-      !zones.some((zone) => zone.id === row.zoneId && (zone.seen || zone.id === scene.zoneId)) ||
-      !Array.isArray(row.characterIds) ||
-      !row.characterIds.length ||
-      row.characterIds.length > residents.length ||
-      new Set(row.characterIds).size !== row.characterIds.length ||
-      row.characterIds.some((id) => typeof id !== "string" || !residents.includes(id))
-    )
-      throw invalid();
-    const cohort = cohorts.get(row.zoneId) ?? new Set<string>();
-    for (const id of row.characterIds as string[]) {
-      if (destinations.has(id) && destinations.get(id) !== row.zoneId) throw invalid();
-      destinations.set(id, row.zoneId);
-      if (contactPosition(scene, id) !== row.zoneId) cohort.add(id);
-    }
-    cohorts.set(row.zoneId, cohort);
-  }
-  for (const [zoneId, cohort] of cohorts) {
-    const ids = [...cohort];
-    if (!ids.length) continue;
-    const options = residentMovementOptions(state, venue, scene, ids);
-    const allowed =
-      ids.length === 1
-        ? options.destinations[0]?.zoneIds.includes(zoneId)
-        : options.groups.some((group) => group.characterIds.length === ids.length && group.zoneIds.includes(zoneId)) ||
-          options.cohorts.some(
-            (cohort) =>
-              cohort.zoneId === zoneId &&
-              cohort.canCrossTogether &&
-              cohort.characterIds.length === ids.length &&
-              ids.every((id) => cohort.characterIds.includes(id)),
-          );
-    if (!allowed) return true;
-  }
-  return false;
-}
 
 function sceneResidentIds(scene: VenueScene): string[] {
   return [

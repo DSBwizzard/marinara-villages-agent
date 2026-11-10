@@ -13,7 +13,7 @@ import {
 } from "../../domain/rules/project-lifecycle-rules.js";
 import { changedZoneIds, venueDesignHash } from "../../domain/rules/project-structure.js";
 import { projectAgendaReservations, trimProjectFocus } from "../../domain/rules/project-focus.js";
-import { approvalScope, matchesProjectDesign } from "../../domain/rules/project-terms.js";
+import { approvalScope, matchesProjectDesign, projectAgreementCurrent } from "../../domain/rules/project-terms.js";
 import { validVenueClasses } from "../../domain/rules/venue-model.js";
 import { assertMapRevision, villageMap } from "../../domain/rules/village-maps.js";
 import { draftEstablishmentProject } from "./project-drafts.js";
@@ -69,13 +69,16 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
       flow.approvals = flow.approvals.filter(
         (row) =>
           flow.affectedIds.includes(row.residentId) &&
+          projectAgreementCurrent(state, row) &&
           row.scope ===
             (project.kind === "establishment"
               ? establishmentScope(project)
               : approvalScope(venue, flow.change!, row.residentId, flow.changedZoneIds)),
       );
     }
-    flow.candidates = flow.candidates.filter((row) => matchesProjectDesign(row.scope, project));
+    flow.candidates = flow.candidates.filter(
+      (row) => projectAgreementCurrent(state, row) && matchesProjectDesign(row.scope, project),
+    );
     if (!flow.candidates.some((row) => row.residentId === flow.builderId)) flow.builderId = "";
   }
   async function createNewVenueProject(value: unknown) {
@@ -207,12 +210,15 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
     });
   }
   async function lockProjectBuilder(id: string, value: unknown) {
-    await command(id, value, "lead", (_state, project, row) => {
+    await command(id, value, "lead", (state, project, row) => {
       if (!["planning", "paused"].includes(project.status)) throw conflict("Choose a lead before Start or Resume.");
       const residentId = asTrimmedString(row.residentId);
       if (
         !project.lifecycle.candidates.some(
-          (candidate) => candidate.residentId === residentId && matchesProjectDesign(candidate.scope, project),
+          (candidate) =>
+            candidate.residentId === residentId &&
+            projectAgreementCurrent(state, candidate) &&
+            matchesProjectDesign(candidate.scope, project),
         )
       )
         throw conflict("Ask this resident to lead the current design.");

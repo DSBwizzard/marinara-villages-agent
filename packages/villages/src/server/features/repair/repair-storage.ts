@@ -26,13 +26,7 @@ import {
 export const REPAIR_HISTORY_KIND = "repair-history",
   REPAIR_CHECKPOINT_KIND = "repair-checkpoint",
   REPAIR_UNDO_KIND = "repair-undo";
-export const REPAIR_GAME_KINDS = [
-  "venue-visit",
-  "venue-active",
-  "repair-annotation",
-  "scene-terminal",
-  "project-scene-evidence",
-];
+export const REPAIR_GAME_KINDS = ["venue-visit", "venue-active", "repair-annotation", "scene-terminal"];
 const RETENTION_ID = "villages-repair-retention";
 type Doc = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
 export const repairStorageId = (kind: string, id: string) =>

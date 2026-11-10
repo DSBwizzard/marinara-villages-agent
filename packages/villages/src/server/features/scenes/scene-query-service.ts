@@ -1,4 +1,3 @@
-import { projectSpeakerAtTurn } from "../../domain/rules/project-scene-evidence.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { z } from "zod";
 import type { SceneHistoryPage } from "../../../shared/contracts/scene-history.js";
@@ -22,7 +21,6 @@ import {
   projectSceneHistoryPage,
 } from "../../adapters/storage/scene-public-history.js";
 import { asRecord } from "../../domain/rules/coerce.js";
-import { projectMetadataRejected } from "../../domain/rules/semantic-continuity.js";
 
 import { withRepairWork } from "../../adapters/storage/repair-gate.js";
 import { readVillageRoot } from "../../adapters/storage/village-repository.js";
@@ -31,7 +29,6 @@ export interface SceneQueryPorts {
   readSession: typeof import("../../adapters/storage/scene-store.js").readSession;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
   villagesDocuments(): Pick<CapabilityDocumentStore, "list" | "getById">;
-  readRetiredProjectScenes?(seed: string): Promise<import("../../domain/models/scene-model.js").VenueScene[]>;
 }
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
 const historyQuery = z.object({ scope: hash, cursor: z.string().min(1).max(4096).optional() }).strict();
@@ -61,13 +58,8 @@ const playbackCursor = z
     digest: hash,
   })
   .strict();
-/** Inert internal Scene evidence/backlog queries with explicit originating connections. */
-export function createSceneQueryService({
-  readSession,
-  readVillageState,
-  villagesDocuments,
-  readRetiredProjectScenes,
-}: SceneQueryPorts) {
+/** Inert Scene history and backlog queries with explicit originating connections. */
+export function createSceneQueryService({ readSession, readVillageState, villagesDocuments }: SceneQueryPorts) {
   async function readPublicOwner(id: string, requestedScope?: string) {
     const documents = villagesDocuments();
     const rawWorld = readVillageRoot(await documents.getById(VILLAGES_PACKAGE_ID, "villages-village"));
@@ -310,89 +302,6 @@ export function createSceneQueryService({
       ...(newerCursor ? { newerCursor } : {}),
     };
   }
-  async function readProjectTurnEvidence(sessionId: string, submissionId: string) {
-    const session = await readSession(sessionId).catch(async (error: unknown) => {
-      if ((error as { statusCode?: number })?.statusCode !== 404 || !readRetiredProjectScenes) throw error;
-      const seed = (await readVillageState()).seed;
-      const saved = (await readRetiredProjectScenes(seed)).find((scene) => scene.id === sessionId);
-      if (!saved) throw error;
-      return saved;
-    });
-    const submission = session.submissions.find((entry) => entry.id === submissionId);
-    if (!submission) throw notFound("That roleplay turn was not recorded.");
-    const zoneId = submission.zoneIdAtTurn;
-    const playerSources = session.lines.filter(
-      (line) =>
-        line.role === "user" &&
-        (line.id === submission.liveProposals?.playerLineId ||
-          (line.attentionEvidence && submission.replyLineIds?.includes(line.id))),
-    );
-    const playerMessagesByActor = Object.fromEntries(
-      [...new Set(playerSources.flatMap((line) => line.heardBy))].map((actor) => [
-        actor,
-        playerSources
-          .filter((line) => line.heardBy.includes(actor))
-          .map((line) => line.content)
-          .join("\n"),
-      ]),
-    );
-    return {
-      sessionId,
-      villageSeed: session.villageSeed,
-      semanticVersion: submission.semanticProvenance?.version,
-      preservationVersion: submission.semanticProvenance?.preservationVersion,
-      occurrenceVersion: submission.semanticProvenance?.occurrenceVersion,
-      venueId: session.placeId,
-      zoneId,
-      submissionId,
-      mode: submission.mode,
-      message: submission.message,
-      ...(submission.zoneEventsVersion === 1 ? { playerMessagesByActor } : {}),
-      at: submission.at ?? "",
-      areaAtTurn: submission.areaAtTurn ?? session.area,
-      activeIdsAtTurn: [
-        ...new Set([
-          ...(submission.activeIdsAtTurn ?? session.participants.map((participant) => participant.characterId)),
-          ...(submission.speechIdsAtTurn ?? []),
-          ...(submission.npcAdmissions ?? []).map((arrival) => arrival.npc.id),
-        ]),
-      ],
-      action: submission.action ?? null,
-      projectContexts: submission.projectContexts ?? [],
-      projectSpeech: projectMetadataRejected(submission) ? [] : (submission.projectSpeech ?? []),
-      projectMetadataRejected: projectMetadataRejected(submission),
-      contextualInterpretation: submission.projectInterpretationVersion === 1,
-      contextLines: session.lines
-        .slice(
-          0,
-          Math.max(
-            0,
-            session.lines.findIndex((line) => submission.replyLineIds?.includes(line.id)),
-          ),
-        )
-        .filter(
-          (line) =>
-            (!line.contactHidden || line.attentionEvidence) &&
-            !line.contactReport &&
-            line.kind !== "side" &&
-            line.kind !== "whisper",
-        ),
-      lines: session.lines.filter((line) =>
-        submission.replyLineIds?.length
-          ? submission.replyLineIds.includes(line.id) &&
-            line.role === "assistant" &&
-            projectSpeakerAtTurn(submission, line) &&
-            !line.contactHidden &&
-            !line.contactReport
-          : line.at === submission.at &&
-            line.role === "assistant" &&
-            !line.contactHidden &&
-            !line.contactReport &&
-            session.participants.some((participant) => participant.characterId === line.speakerId),
-      ),
-    };
-  }
-
   async function progressBacklog() {
     const village = await readVillageState();
     const documents = villagesDocuments(),
@@ -419,7 +328,6 @@ export function createSceneQueryService({
     return backlog;
   }
   return {
-    readProjectTurnEvidence,
     progressBacklog: () => withRepairWork(progressBacklog),
     readHistoryPage: (id: string, query: unknown) => withRepairWork(() => readHistoryPage(id, query)),
     readPlaybackPage: (id: string, query: unknown) => withRepairWork(() => readPlaybackPage(id, query)),

@@ -41,7 +41,6 @@ export const isolatedTests = new Set([
   "tests/villages-clock.regression.ts",
   "tests/villages-time-advance.regression.ts",
   "tests/villages-time-advance.e2e.mjs",
-  "tests/villages-project-interpretation.regression.ts",
   "tests/villages-scene-json-hardening.regression.ts",
   "tests/villages-founding-phone-layout.e2e.mjs",
   "tests/villages-founding-compact-layout.e2e.mjs",

@@ -125,9 +125,7 @@ export type SocialEncounter = {
     segment: number;
   };
   wishChanges?: unknown[];
-  semanticProvenance?: import("./semantic-model.js").SemanticProvenance;
   memoryChanges?: unknown;
-  memoryContexts?: Record<string, import("../rules/scene-memories.js").SceneMemoryContext>;
   rejectedProposals?: import("../rules/relationship-review.js").RelationshipProposalRejection[];
   id: string;
   at: string;

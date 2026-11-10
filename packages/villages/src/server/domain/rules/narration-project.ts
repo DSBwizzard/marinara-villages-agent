@@ -151,6 +151,7 @@ export function applyNarrationProject(
       flow.approvals = flow.approvals.filter((row) => row.residentId !== actorId);
       flow.approvals.push({
         residentId: actorId,
+        incarnation: actor.incarnation,
         source: "conversation",
         evidenceId: request.receiptId,
         scope:
@@ -163,6 +164,7 @@ export function applyNarrationProject(
       flow.candidates = flow.candidates.filter((row) => row.residentId !== actorId);
       flow.candidates.push({
         residentId: actorId,
+        incarnation: actor.incarnation,
         evidenceId: request.receiptId,
         scope: projectDesignKey(project),
         at: readset.capturedAt,

@@ -21,7 +21,8 @@ import { assertNarrationSourceOrder, bindNarrationSource, type NarrationSourceCo
 import { selectSceneEffects, type SceneEffectResult } from "./scene-acceptance.js";
 import { narrationLines } from "./narration-lines.js";
 import { admitNpcParticipants, bindNpcReferences, type NpcAdmission } from "./npc-participation.js";
-import { findNpc } from "./places.js";
+import { findLocation, findNpc } from "./places.js";
+import { venueDesignHash } from "./project-structure.js";
 import type { ContactMove } from "./venue-contact.js";
 import { contactPosition } from "./venue-contact.js";
 import { episodeContextActors, episodeContextRooms } from "./episode-sources.js";
@@ -246,6 +247,26 @@ export function acceptNarrationContinuity(
     const effect: SceneEffectResult = { ...header };
     try {
       const keep = prepareNarrationKeep(raw, index, state.continuity, admission, source);
+      for (const holder of keep.write.holders.filter((holder) => holder.kind === "room")) {
+        const scope = (venue: typeof source.venue) => {
+          const zone = venue.zones?.find((row) => row.id === holder.zoneId);
+          return (
+            zone &&
+            memoryHash([
+              venueDesignHash(venue, [holder.zoneId]),
+              venue.form ?? "",
+              venue.buildProjectId ?? "",
+              venue.constructionStatus ?? "",
+              zone.description,
+            ])
+          );
+        };
+        const current = findLocation(state, holder.placeId);
+        memoryRequire(
+          current && scope(current) && scope(current) === scope(source.venue),
+          "the Room's native structure or construction site changed",
+        );
+      }
       const nativeDependencies = keep.sources
         .filter((row) => row.kind === "native" && row.episodeId === source.episodeId)
         .map((row) => {

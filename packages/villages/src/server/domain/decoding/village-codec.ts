@@ -933,13 +933,14 @@ function coerceProjects(value: unknown): VillageProject[] {
       !Array.isArray(flow.evidenceIds)
     )
       throw new Error("Invalid Project record.");
-    const approvals = flow.approvals.filter((value) => asRecord(value).source !== "mailbox");
+    const approvals = flow.approvals;
     const rows = [...approvals, ...flow.candidates];
     if (
       rows.some((value) => {
         const row = asRecord(value);
         return (
           !asTrimmedString(row.residentId) ||
+          !asTrimmedString(row.incarnation) ||
           !asTrimmedString(row.evidenceId) ||
           typeof row.scope !== "string" ||
           !asIsoString(row.at)

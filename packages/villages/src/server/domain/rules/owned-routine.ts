@@ -2,7 +2,7 @@ import type { VillageAgenda, VillageAgendaBlock, VillageState, VillageVillager }
 import { flexibleAgendaBlock } from "./agenda-flexibility.js";
 import type { NativeWeekSchedule } from "./schedule-rules.js";
 import { canOccupyZone, chooseAgendaZone, venueZones, zoneClosed } from "./venue-zones.js";
-import { semanticHash } from "./semantic-contract.js";
+import { backgroundRevision } from "./background-revision.js";
 import { hashString, VILLAGE_WEEKDAYS } from "./village-clock.js";
 import { calendarAt } from "../../../shared/helpers/zoned-date.js";
 
@@ -47,7 +47,7 @@ export type RoutineProfile = {
 
 /** Weekly refresh dates are not authored schedule changes. */
 export const scheduleSemanticSource = (schedule: NativeWeekSchedule | null, settings: ScheduleInfluence) =>
-  semanticHash([schedule?.characterId, schedule?.days, settings]);
+  backgroundRevision([schedule?.characterId, schedule?.days, settings]);
 
 export function readPreparedInfluence(value: unknown): InfluenceSnapshot | undefined {
   const raw = record(value);

@@ -32,11 +32,6 @@ export const serverFeatureInterfaces = Object.freeze({
   "media/town-map-image.ts": ["generateVillageTownMap"],
   "media/town-map-review.ts": ["prepareVillageMap", "createVillageMap", "updateVillageMap"],
   "media/sprite-setup.ts": ["preparedSpriteManager"],
-  "projects/project-evidence.ts": [
-    "recordProjectSpokenEvidence",
-    "processProjectSpeechTurn",
-    "listProjectEvidenceCandidates",
-  ],
   "projects/project-lifecycle.ts": [
     "saveProjectPlan",
     "draftNewVenueProject",

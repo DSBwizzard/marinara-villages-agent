@@ -77,8 +77,6 @@ export type VenueScene = {
   /** Private captured writing context; never part of a client projection. */
   continuity?: import("../rules/scene-continuity.js").SceneContinuity;
   openingGatheringId?: string;
-  semanticVersion?: 2;
-  semanticIntent?: import("./semantic-model.js").SemanticIntent;
   version: 5;
   changeSequence?: number;
   villageSeed?: string;

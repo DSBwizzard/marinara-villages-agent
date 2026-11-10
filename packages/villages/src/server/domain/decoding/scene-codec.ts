@@ -111,7 +111,6 @@ export function coerceSession(value: unknown): VenueScene {
   return {
     version: 5,
     changeSequence: Math.max(0, Math.floor(Number(raw.changeSequence) || 0)),
-    ...(raw.semanticVersion === 2 ? { semanticVersion: 2 as const } : {}),
     ...(raw.villageSeed ? { villageSeed: asString(raw.villageSeed) } : {}),
     sceneRevision: sceneRevision(raw),
     operation: raw.operation as VenueOperation | undefined,

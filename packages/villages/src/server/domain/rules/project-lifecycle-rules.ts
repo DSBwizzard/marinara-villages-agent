@@ -14,7 +14,13 @@ import {
   projectFocusValid,
   trimProjectFocus,
 } from "./project-focus.js";
-import { approvalScope, matchesProjectDesign, renovationAffectedIds, projectDesignKey } from "./project-terms.js";
+import {
+  approvalScope,
+  matchesProjectDesign,
+  renovationAffectedIds,
+  projectDesignKey,
+  projectAgreementCurrent,
+} from "./project-terms.js";
 import { cloneVillageContext } from "./world-context-copy.js";
 export { renovationAffectedIds, validImage } from "./project-terms.js";
 
@@ -57,7 +63,11 @@ export function missingProjectAgreements(state: VillageState, project: VillagePr
   if (project.kind === "establishment") {
     flow.affectedIds = establishmentControllers(state, project);
     return flow.affectedIds.filter(
-      (id) => !flow.approvals.some((row) => row.residentId === id && row.scope === establishmentScope(project)),
+      (id) =>
+        !flow.approvals.some(
+          (row) =>
+            row.residentId === id && projectAgreementCurrent(state, row) && row.scope === establishmentScope(project),
+        ),
     );
   }
   if (project.kind !== "renovation") return [];
@@ -68,7 +78,9 @@ export function missingProjectAgreements(state: VillageState, project: VillagePr
     (id) =>
       !flow.approvals.some(
         (approval) =>
-          approval.residentId === id && approval.scope === approvalScope(venue, flow.change!, id, flow.changedZoneIds),
+          approval.residentId === id &&
+          projectAgreementCurrent(state, approval) &&
+          approval.scope === approvalScope(venue, flow.change!, id, flow.changedZoneIds),
       ),
   );
 }
@@ -77,6 +89,8 @@ export function refreshProjectAgreements(state: VillageState): void {
   for (const project of state.projects) {
     const flow = project.lifecycle;
     if (!flow || !["planning", "working", "paused"].includes(project.status)) continue;
+    flow.candidates = flow.candidates.filter((row) => projectAgreementCurrent(state, row));
+    if (!flow.candidates.some((row) => row.residentId === flow.builderId)) flow.builderId = "";
     if (project.kind === "establishment" && !placeRegistry(state)) continue;
     const venue = findLocation(state, project.venueId);
     if (project.kind === "new-venue" || !venue || !flow.change) continue;
@@ -84,6 +98,7 @@ export function refreshProjectAgreements(state: VillageState): void {
     flow.approvals = flow.approvals.filter(
       (approval) =>
         flow.affectedIds.includes(approval.residentId) &&
+        projectAgreementCurrent(state, approval) &&
         approval.scope ===
           (project.kind === "establishment"
             ? establishmentScope(project)
@@ -133,7 +148,10 @@ export function reconcileProjectLifecycles(state: VillageState, now: Date): void
     if (
       !state.villagers.some((resident) => resident.characterId === flow.builderId) ||
       !flow.candidates.some(
-        (candidate) => candidate.residentId === flow.builderId && matchesProjectDesign(candidate.scope, project),
+        (candidate) =>
+          candidate.residentId === flow.builderId &&
+          projectAgreementCurrent(state, candidate) &&
+          matchesProjectDesign(candidate.scope, project),
       )
     ) {
       pauseProject(project, at, "Choose a willing resident lead, then Resume.");
@@ -177,7 +195,10 @@ export function beginProject(
     !social &&
     (!state.villagers.some((resident) => resident.characterId === lead) ||
       !flow.candidates.some(
-        (candidate) => candidate.residentId === lead && matchesProjectDesign(candidate.scope, project),
+        (candidate) =>
+          candidate.residentId === lead &&
+          projectAgreementCurrent(state, candidate) &&
+          matchesProjectDesign(candidate.scope, project),
       ))
   )
     throw conflict("Choose a willing resident lead for this design.");
@@ -242,7 +263,9 @@ export function beginProject(
         )
       )
         throw conflict("That spot overlaps a Venue.");
-      const agreed = flow.candidates.filter((candidate) => matchesProjectDesign(candidate.scope, project));
+      const agreed = flow.candidates.filter(
+        (candidate) => projectAgreementCurrent(state, candidate) && matchesProjectDesign(candidate.scope, project),
+      );
       state.venues.push(shell);
       project.venueId = shell.id;
       flow.targetVenueId = shell.id;

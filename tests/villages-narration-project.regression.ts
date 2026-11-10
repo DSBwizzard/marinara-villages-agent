@@ -1,7 +1,25 @@
-// Test cases: narration-project/approval-and-lead, narration-project/controller, narration-project/captured-terms, narration-project/current-witness, narration-project/withdrawal, narration-project/pending-withdrawal, narration-project/selected-lead, narration-project/new-venue-terms, narration-project/explicit-start
+// Test cases: narration-project/approval-and-lead, narration-project/controller, narration-project/captured-terms, narration-project/current-witness, narration-project/withdrawal, narration-project/pending-withdrawal, narration-project/selected-lead, narration-project/new-venue-terms, narration-project/explicit-start, narration-project/identity-replacement, narration-project/retired-proof
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import {
+  defaultVillageState,
+  coerceVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
+import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
+import { sessionSlot } from "../packages/villages/src/server/adapters/storage/scene-slots.js";
+import { createSceneRetirement } from "../packages/villages/src/server/features/scenes/scene-retirement-service.js";
+import { createSceneTerminalStore } from "../packages/villages/src/server/features/scenes/scene-terminal.js";
+import { collectRetainedStorage } from "../packages/villages/src/server/features/repair/retained-storage-cleanup.js";
+import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import {
+  missingProjectAgreements,
+  beginProject,
+  refreshProjectAgreements,
+  reconcileProjectLifecycles,
+  projectFor,
+} from "../packages/villages/src/server/domain/rules/project-lifecycle-rules.js";
+import { ZonedDate } from "../packages/villages/src/shared/helpers/zoned-date.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import { EMPTY_RESIDENT_ADMISSION } from "../packages/villages/src/shared/helpers/resident-admission.js";
@@ -409,5 +427,147 @@ await runCase("narration-project/explicit-start", () => {
     const before = memoryHash(g.state);
     assert.equal(g.accept().held, true, kind);
     assert.equal(memoryHash(g.state), before);
+  }
+});
+
+await runCase("narration-project/identity-replacement", () => {
+  for (const replacement of ["removed", "rejoined"]) {
+    const f = fixture(),
+      e = f.evidence;
+    for (const decision of ["approval", "builder"] as const)
+      applyNarrationProject(f.state, f.request(decision), e.readset, e.context, e.sources, e.baseline);
+    f.project.lifecycle!.builderId = "a";
+    const old = f.state.villagers.find((row) => row.characterId === "a")!;
+    f.state.villagers = f.state.villagers.filter((row) => row !== old);
+    if (replacement === "rejoined") f.state.villagers.push({ ...old, incarnation: "replacement" });
+    assert.deepEqual(missingProjectAgreements(f.state, f.project), ["a"]);
+    assert.throws(
+      () => beginProject(f.state, projectFor(f.state, f.project.id), {}, false, new Date(f.at)),
+      /willing resident/,
+    );
+    f.project.status = f.project.lifecycle!.phase = "working";
+    reconcileProjectLifecycles(f.state, new Date(f.at));
+    assert.equal(f.project.status, "paused", replacement);
+    refreshProjectAgreements(f.state);
+    assert.deepEqual(f.project.lifecycle!.approvals, []);
+    assert.deepEqual(f.project.lifecycle!.candidates, []);
+    assert.equal(f.project.lifecycle!.builderId, "");
+    assert.equal(f.project.lifecycle!.spokenProofs.length, 1, "former consent remains historical proof only");
+  }
+  const f = fixture(),
+    e = f.evidence;
+  applyNarrationProject(f.state, f.request("builder"), e.readset, e.context, e.sources, e.baseline);
+  const raw = structuredClone(f.state);
+  delete (raw.projects[0].lifecycle!.candidates[0] as any).incarnation;
+  assert.throws(() => coerceVillageState(raw), /Invalid Project agreement records/);
+  const mailbox = structuredClone(f.state);
+  (mailbox.projects[0].lifecycle!.approvals as any[]).push({
+    ...mailbox.projects[0].lifecycle!.candidates[0],
+    source: "mailbox",
+  });
+  assert.throws(() => coerceVillageState(mailbox), /Invalid Project agreement records/);
+});
+
+await runCase("narration-project/retired-proof", async () => {
+  const f = fixture(),
+    storage = sceneHistoryFixture();
+  try {
+    const { readset } = f.evidence;
+    const quote = "I approve the covered entrance exactly as planned, and I willingly offer to lead the work.";
+    const raw = {
+      segments: [{ id: "decision", kind: "dialogue", speakerId: "a", text: quote }],
+      commands: ["approval", "builder"].map((decision) => ({
+        id: decision,
+        type: "project.decide",
+        by: "a",
+        project: f.project.id,
+        decision,
+        at: "decision",
+        source: [{ segment: "decision" }],
+      })),
+    };
+    const publication = { raw, readset, responseDigest: memoryHash(raw) };
+    const result = acceptNarration(f.state, publication, "submission", f.at);
+    assert.equal(result.held, false, JSON.stringify(result.rejected));
+    const episode = result.episode!;
+    assert.equal(episode.commandReceipts.length, 2);
+    f.project = f.state.projects[0];
+    f.project.lifecycle!.builderId = "a";
+    f.scene.status = "closed";
+    f.scene.lines = episode.segments;
+    f.scene.submissions = [
+      {
+        id: episode.submissionId,
+        message: episode.privateInput,
+        mode: "chat",
+        targetId: "",
+        at: f.at,
+        requestFingerprint: memoryHash("request"),
+        acceptance: { status: "applied", rejected: [] },
+        episodeId: episode.id,
+        replyLineIds: episode.segments.map((row) => row.id),
+        progressProcessedAt: f.at,
+      },
+    ];
+    f.scene.continuity = captureSceneContinuity(f.state, f.scene, Date.parse(f.at));
+    const repository = createVillageRepository(() => storage.gate.documents);
+    await repository.mutateAuthority((state) => Object.assign(state, f.state), { memories: true });
+    await storage.mutateDocument("villages-venue-visit-scene", sessionSlot, (scene) => Object.assign(scene, f.scene));
+    const terminals = createSceneTerminalStore({
+      villagesDocuments: () => storage.gate.documents,
+      mutateDocument: storage.mutateDocument,
+    });
+    let missingEpisode = true;
+    const retire = createSceneRetirement({
+      villagesDocuments: () => storage.gate.documents,
+      readVillageState: async () => {
+        const state = await repository.readAuthority({ memories: true });
+        return missingEpisode ? { ...state, episodes: { ...state.episodes, records: [] } } : state;
+      },
+      readActive: async () => ({ sessionId: "", placeId: "" }),
+      hasVenueOperation: () => false,
+      saveTerminal: terminals.save,
+      withRepairWork: (work) => work(),
+      withSceneWork: (_id, work) => work(),
+      withLateResponseWork: (_id, work) => work(),
+    });
+    assert.equal(await retire.retire("scene"), false, "the Scene cannot retire without its canonical Episode");
+    missingEpisode = false;
+    assert.equal(await retire.retire("scene"), true);
+    await collectRetainedStorage(storage.gate);
+    assert.equal(storage.rows.has("villages-venue-visit-scene"), false);
+    const cold = await createVillageRepository(() => storage.gate.documents).readAuthority({ memories: true });
+    const project = projectFor(cold, f.project.id),
+      saved = cold.episodes.records.find((row) => row.id === episode.id)!;
+    assert.deepEqual(project.lifecycle.approvals, f.project.lifecycle!.approvals);
+    assert.deepEqual(project.lifecycle.candidates, f.project.lifecycle!.candidates);
+    assert.deepEqual(
+      project.lifecycle.evidenceIds,
+      episode.commandReceipts.map((row) => row.id),
+    );
+    assert.equal(project.lifecycle.spokenProofs.length, 1);
+    assert.equal(project.lifecycle.spokenProofs[0].quote, quote);
+    assert.deepEqual(saved, episode);
+    assert.equal(saved.actors.find((row) => row.id === "a")!.incarnation, "founding-a");
+    for (const receipt of saved.commandReceipts) {
+      const dependencies = saved.dependencies["native:" + receipt.id];
+      assert(dependencies.length > 0);
+      assert(
+        saved.grounding.some(
+          (source) =>
+            source.kind === "speech" &&
+            source.actorId === "a" &&
+            source.excerpt === quote &&
+            source.perceptions.some((row) => row.actorId === "player" && row.channel === "words"),
+        ),
+      );
+    }
+    assert.deepEqual(missingProjectAgreements(cold, project), []);
+    beginProject(cold, project, {}, false, new ZonedDate(f.at, readset.calendar.timeZone));
+    assert.equal(project.status, "working", "native consent survives retirement without a separate evidence index");
+    assert.equal(acceptNarration(cold, publication, "submission", f.at).held, false);
+    assert.equal(cold.episodes.records.length, f.state.episodes.records.length);
+  } finally {
+    storage.release();
   }
 });
