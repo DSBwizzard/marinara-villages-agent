@@ -194,7 +194,7 @@ import { configureWishes, createWishes, queueFoundingWish } from "../features/re
 import { createSceneArchive } from "../features/scenes/archive-service.js";
 import { configureSceneArchive, listVenueVisits } from "../features/scenes/archive.js";
 import { createSceneChanges } from "../features/scenes/changes-service.js";
-import { configureSceneChanges, continueSceneChange, replaySceneChanges } from "../features/scenes/changes.js";
+import { configureSceneChanges, replaySceneChanges } from "../features/scenes/changes.js";
 import { createSceneCommands } from "../features/scenes/command-service.js";
 import { createLiveScenes } from "../features/scenes/live-session-service.js";
 import {
@@ -962,7 +962,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       resumeProject,
       cancelProject,
       replaySaved: replaySceneChanges,
-      continueSaved: continueSceneChange,
     }),
   );
   const retainedCleanup = createRetainedStorageCleanup(

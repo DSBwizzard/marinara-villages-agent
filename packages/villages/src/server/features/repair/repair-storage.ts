@@ -6,7 +6,7 @@ import type {
   RepairRecord,
   RepairRequest,
 } from "../../../shared/contracts/repair.js";
-import type { MemoryKnower } from "../../domain/models/memories.js";
+import type { ContinuityRecord } from "../../domain/models/continuity-model.js";
 import type { VillageState } from "../../domain/models/world.js";
 import { memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import { conflict } from "../../domain/rules/errors.js";
@@ -44,7 +44,7 @@ export type HistoryData = RepairHistoryEntry & {
   record?: RepairRecord;
   inverse?: RepairRequest;
   guard: string;
-  memoryBefore?: { id: string; knowers: Record<string, MemoryKnower> };
+  memoryBefore?: ContinuityRecord;
   memoryGuard?: string;
   undoWrites?: RepairWrite[];
   undoOf?: string;

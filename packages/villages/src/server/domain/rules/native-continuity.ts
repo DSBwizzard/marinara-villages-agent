@@ -128,10 +128,21 @@ export function retainNativeFact(
     room?: Extract<ContinuityHolder, { kind: "room" }>;
     context?: ContinuityEvidence[];
     provenance?: string[];
+    ancestry?: ContinuityEvidence[];
     screening?: ContinuityWrite["screening"];
   } = {},
 ) {
-  memoryObject(meaning, ["about", "class", "current", "owner", "room", "context", "provenance", "screening"]);
+  memoryObject(meaning, [
+    "about",
+    "class",
+    "current",
+    "owner",
+    "room",
+    "context",
+    "provenance",
+    "ancestry",
+    "screening",
+  ]);
   const { room } = meaning;
   memoryRequire(
     !room ||
@@ -198,6 +209,24 @@ export function retainNativeFact(
     return { id: actor.id, incarnation: actor.incarnation };
   });
   const context = meaning.context ?? [];
+  const ancestry = meaning.ancestry ?? [];
+  memoryRequire(
+    ancestry.length <= 512 &&
+      (!ancestry.length || (receipt.kind === "circumstance" && !room && !holders.length)) &&
+      ancestry.every((source) => {
+        const episode = state.episodes.records.find((row) => row.id === source.episodeId);
+        return (
+          source.kind === "native" &&
+          source.seed === state.seed &&
+          episode?.grounding.some((row) => memoryHash(row) === memoryHash(source)) &&
+          episode.commandReceipts.some(
+            (row) =>
+              row.id === source.committedReceiptId && row.kind === "circumstance" && row.targetId === receipt.targetId,
+          )
+        );
+      }),
+    "administrative circumstance lost its canonical ancestry",
+  );
   memoryRequire(
     context.length <= 8 &&
       (!context.length || receipt.kind === "initialization") &&
@@ -271,8 +300,14 @@ export function retainNativeFact(
     offered: [],
     commandReceipts: [receipt],
     dependencies:
-      context.length || provenance.length
-        ? { [source.unitId]: [...context.map(continuitySourceUnit), ...provenance.map(continuityVersionUnit)] }
+      context.length || provenance.length || ancestry.length
+        ? {
+            [source.unitId]: [
+              ...context.map(continuitySourceUnit),
+              ...provenance.map(continuityVersionUnit),
+              ...ancestry.map(continuitySourceUnit),
+            ],
+          }
         : {},
     continuityVersionIds: continuity.versions.slice(state.continuity.versions.length).map((row) => row.id),
   };

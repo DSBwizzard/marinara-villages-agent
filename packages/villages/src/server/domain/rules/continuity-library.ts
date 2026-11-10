@@ -193,6 +193,21 @@ function projections(
   });
 }
 
+/** Administrative books share the same per-holder projections as ordinary recall and Inspect. */
+export function continuityRepairEntries(state: VillageState, at: string) {
+  const ids = ["player", ...state.villagers.map((row) => row.characterId), ...Object.keys(state.worldPlaces.npcs)];
+  return ids.flatMap((id) => {
+    const holder = continuityActor(state, id);
+    return holder
+      ? projections(state, holder, true, at).map((row) => ({
+          ...row,
+          holder,
+          person: person(state, id),
+        }))
+      : [];
+  });
+}
+
 function sourceSpeaker(state: VillageState, source: ContinuityEvidence) {
   const actor = state.episodes.records
     .find((episode) => episode.id === source.episodeId)

@@ -1,26 +1,96 @@
-import { placeRegistry, readNpc } from "./places.js";
+import { placeRegistry, readNpc, findLocation } from "./places.js";
 import { LETTER_FONTS } from "../../../shared/helpers/letter-fonts.js";
-import {
-  MAX_PLACE_DESCRIPTION,
-  MAX_RECENT_PLACE_CONTEXT,
-  RECENT_PLACE_DURATION,
-} from "../../../shared/helpers/place-continuity.js";
 import type { RepairField, RepairRecord, RepairRequest } from "../../../shared/contracts/repair.js";
-import type { MemoryKnower } from "../models/memories.js";
+import type { ContinuityRecord, ContinuityHolder, ContinuityEvidence } from "../models/continuity-model.js";
 import type { VillageState } from "../models/world.js";
 import { badRequest, conflict } from "./errors.js";
-import { memoryHash, validateMemoryRecord } from "./memory-integrity.js";
-import { inspectMemoryCandidates, retainMemoryScenes } from "./memory-views.js";
+import { memoryHash, memoryRequire, memoryString, memoryTimestamp } from "./memory-integrity.js";
+import { continuityRepairEntries, changeContinuityMemory } from "./continuity-library.js";
+import { continuityActor } from "./continuity-actors.js";
+import { continuityHolderKey, protectContinuity } from "./continuity.js";
 import { completeAgendaWeek, workingAgendaWeek } from "./agenda-week.js";
 import { routineProfileFromWeek } from "./owned-routine.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 import { keepAgendaPlaces } from "./resident-agenda.js";
-import { readSocialWish } from "./social-wishes.js";
 import { assertResidencePrivateDestination } from "./venue-layout.js";
 import { hasVenueClass, venueCapacity, venueResidentIds } from "./venue-model.js";
 import { venueZones } from "./venue-zones.js";
-import { correctVillageMemory, forgetVillageMemory } from "./village-memories.js";
 import { normalizeVillageMutation } from "./world-mutation.js";
+import { retainNativeFact } from "./native-continuity.js";
+
+export function retainAdministrativeCircumstance(
+  state: VillageState,
+  situationId: string,
+  operationId: string,
+  at: string,
+) {
+  const situation = state.narrative?.situations.find((row) => row.id === situationId);
+  memoryRequire(situation, "administrative circumstance is missing");
+  const receiptId = "repair-circumstance-" + memoryHash([operationId, situation.id, situation.revision]);
+  const fields = new Map<string, string>([
+    ["summary", situation.summary],
+    ["title", situation.title],
+  ]);
+  for (const condition of state.narrative!.conditions.filter((row) => row.situationId === situationId))
+    for (const field of ["observation", "remedy"] as const)
+      if (condition[field]) fields.set(condition.id + ":" + field, condition[field]);
+  const ancestry = new Map<string, ContinuityEvidence>();
+  for (const episode of state.episodes.records.toReversed())
+    for (const receipt of episode.commandReceipts.toReversed()) {
+      if (
+        !fields.size ||
+        receipt.id === receiptId ||
+        receipt.kind !== "circumstance" ||
+        receipt.targetId !== situationId
+      )
+        continue;
+      const prior = receipt.circumstance ? JSON.parse(receipt.text) : { situation: { summary: receipt.text } },
+        supplied = new Map<string, string>([
+          ["summary", prior.situation?.summary],
+          ["title", prior.situation?.title],
+        ]);
+      for (const condition of prior.conditions ?? [])
+        for (const field of ["observation", "remedy"] as const)
+          if (typeof condition[field] === "string") supplied.set(condition.id + ":" + field, condition[field]);
+      const inherited = [...fields].filter(([key, value]) => supplied.get(key) === value);
+      if (!inherited.length) continue;
+      const source = episode.grounding.find(
+        (source) => source.kind === "native" && source.committedReceiptId === receipt.id,
+      );
+      memoryRequire(source, "administrative circumstance lost its inherited source");
+      ancestry.set(source.id, source);
+      for (const [key] of inherited) fields.delete(key);
+    }
+  retainNativeFact(
+    state,
+    {
+      id: receiptId,
+      kind: "circumstance",
+      targetId: situation.id,
+      revision: situation.revision,
+      text: JSON.stringify({
+        at,
+        situation: { title: situation.title, summary: situation.summary, status: situation.status },
+        conditions: state
+          .narrative!.conditions.filter((row) => row.situationId === situationId)
+          .map((row) => ({
+            id: row.id,
+            revision: row.revision,
+            observation: row.observation,
+            restriction: row.restriction,
+            remedy: row.remedy,
+            endsAt: row.endsAt,
+            clear: row.clearedAt !== null,
+          })),
+      }),
+      circumstance: { summary: situation.summary, status: situation.status },
+      witnesses: [],
+      observedBy: [],
+    },
+    at,
+    { ancestry: [...ancestry.values()] },
+  );
+}
 
 export const repairId = (...parts: string[]) => JSON.stringify(parts);
 export const repairParts = (id: string): string[] => {
@@ -40,7 +110,12 @@ const choices = (
   options: { value: string; label: string }[],
 ): RepairField => ({ key, label, value, type: "choice", options });
 const actions = [{ id: "correct", label: "Modify" }];
-export function worldRepairRecords(state: VillageState, includeMemories = true, personId?: string): RepairRecord[] {
+export function worldRepairRecords(
+  state: VillageState,
+  includeMemories = true,
+  personId?: string,
+  at = state.simulatedThrough || state.foundedAt || state.setupAt,
+): RepairRecord[] {
   const records: RepairRecord[] = [];
   const add = (
     parts: string[],
@@ -84,9 +159,6 @@ export function worldRepairRecords(state: VillageState, includeMemories = true, 
       { revision: situation.revision },
     );
   for (const condition of state.narrative?.conditions ?? []) {
-    const zone = state.venues
-      .find((row) => row.id === condition.venueId)
-      ?.zones?.find((row) => row.id === condition.zoneId);
     add(
       ["narrative-condition", condition.id],
       "world",
@@ -100,15 +172,10 @@ export function worldRepairRecords(state: VillageState, includeMemories = true, 
           { value: "no", label: "Active" },
           { value: "yes", label: "Cleared" },
         ]),
-        ...(zone ? [text("description", "Physical description", zone.description)] : []),
       ],
       {
         revision: condition.revision,
-        source: [
-          "Situation: " + condition.situationId,
-          "Zone: " + condition.zoneId,
-          "Physical and condition values are published together.",
-        ],
+        source: ["Situation: " + condition.situationId, "Zone: " + condition.zoneId],
       },
     );
   }
@@ -175,69 +242,36 @@ export function worldRepairRecords(state: VillageState, includeMemories = true, 
     ...Object.values(placeRegistry(state)?.npcs ?? {}).map((npc) => ({ id: npc.id, name: npc.label || npc.name })),
   ];
   if (includeMemories) {
-    for (const id of new Set(state.memories.records.flatMap((r) => Object.keys(r.knowers))))
-      if (!people.some((p) => p.id === id)) people.push({ id, name: "Former resident" });
-    const storedById = new Map(state.memories.records.map((r) => [r.id, r]));
-    const projected = new Map(people.map((p) => [p.id, inspectMemoryCandidates(state.memories, p.id)]));
-    const effective = new Map([...projected].map(([id, rows]) => [id, new Map(rows.map((row) => [row.rootId, row]))]));
-    const memories = [...(personId ? (projected.get(personId) ?? []) : []), ...[...projected.values()].flat()];
-    const seen = new Set<string>();
-    for (const candidate of memories) {
-      if (seen.has(candidate.rootId)) continue;
-      const root = storedById.get(candidate.rootId)!;
-      const focused = personId ? effective.get(personId)?.get(root.id) : undefined;
-      const row = focused ?? candidate;
-      if (personId && !focused && !row.subjects.includes(personId)) continue;
-      seen.add(root.id);
-      const knowers = Object.keys(root.knowers).filter((id) => effective.get(id)?.has(root.id));
+    const grouped = new Map<string, ReturnType<typeof continuityRepairEntries>>();
+    for (const row of continuityRepairEntries(state, at)) {
+      const rows = grouped.get(row.record.id) ?? [];
+      rows.push(row);
+      grouped.set(row.record.id, rows);
+    }
+    for (const rows of grouped.values()) {
+      const focused = rows.find((row) => row.holder.id === personId),
+        row = focused ?? rows[0];
+      if (personId && !focused && !row.entry.subjects.some((subject) => subject.id === personId)) continue;
       add(
-        ["memory", root.id],
+        ["memory", row.record.id],
         "memories",
-        row.text,
-        `${row.kind} · ${new Date(row.occurredAt).toLocaleDateString("en-US")}`,
-        [text("text", "Memory", row.text)],
+        row.entry.text,
+        row.entry.kind + " · " + new Date(row.entry.occurredAt).toLocaleDateString("en-US"),
+        [text("text", "Text", row.entry.text)],
         {
-          source:
-            root.origin.kind === "domain" && root.origin.id.startsWith("player-repair:")
-              ? ["Added by you"]
-              : knowers.flatMap((id) => {
-                  const candidate = effective.get(id)!.get(root.id)!;
-                  return storedById.get(candidate.id)!.knowers[id].support.map((e) => e.excerpt);
-                }),
-          actions: [
-            ...actions,
-            { id: "forget", label: "Forget" },
-            ...(knowers.some((k) => root.knowers[k]?.forgotten) ? [{ id: "remember", label: "Restore memory" }] : []),
-          ],
-          people: people
-            .filter((p) => knowers.includes(p.id))
-            .map((p) => ({
-              ...p,
-              text: effective.get(p.id)!.get(row.rootId)!.text,
-              forgotten: !!root.knowers[p.id]?.forgotten,
-            })),
-          revision: root.revision,
-          subjects: row.subjects,
-          related:
-            row.domainRef && ["wish", "project"].includes(row.domainRef.kind)
-              ? [
-                  {
-                    id:
-                      row.domainRef.kind === "project"
-                        ? repairId("project", row.domainRef.id)
-                        : repairId(row.domainRef.kind, row.domainRef.characterId ?? "", row.domainRef.id),
-                    title: `Linked ${row.domainRef.kind} record`,
-                  },
-                ]
-              : [],
+          source: [...new Set(rows.flatMap((value) => value.version.sources.map((source) => source.excerpt)))],
+          actions: [...actions, { id: "forget", label: "Forget" }],
+          people: rows.map((value) => ({ ...value.person, text: value.entry.text, forgotten: value.entry.forgotten })),
+          revision: row.record.revision,
+          target: {
+            id: row.record.id,
+            recordRevision: row.record.revision,
+            heads: Object.fromEntries(rows.map((value) => [continuityHolderKey(value.holder), value.head.revision])),
+          },
+          subjects: row.entry.subjects.map((subject) => subject.id),
         },
       );
     }
-    add(["new-memory"], "memories", "Add memory", "", [text("text", "Memory", "")], {
-      people,
-      source: [],
-      creating: true,
-    });
   }
   for (const person of state.villagers) {
     const id = person.characterId,
@@ -333,34 +367,29 @@ export function worldRepairRecords(state: VillageState, includeMemories = true, 
         ]),
       ]);
     }
-    for (const wish of person.wishes)
-      add(
-        ["wish", id, wish.id],
-        "progress",
-        name + " · " + wish.wish,
-        wish.status,
-        [
-          text("wish", "Desired outcome", wish.wish),
-          text("reason", "Reason", wish.reason),
-          choices(
-            "status",
-            "Status",
-            wish.status,
-            ["open", "fulfilled", "withdrawn"].map((value) => ({ value, label: value })),
-          ),
-          text("approach", "Approach", wish.approach),
-          choices(
-            "attention",
-            "Attention",
-            wish.attention.state,
-            ["background", "foreground"].map((value) => ({ value, label: value })),
-          ),
-          text("attentionReason", "Attention reason", wish.attention.reason),
-          ...wish.conditions.map((c) => text("condition:" + c.id, "Essential condition", c.quote)),
-        ],
-        { source: ["Private retained desire. Player knowledge is repaired separately."] },
-      );
   }
+  for (const root of state.continuity.records)
+    for (const head of Object.values(root.heads)) {
+      if (head.holder.kind !== "room" || !head.current) continue;
+      const holder = head.holder,
+        venue = findLocation(state, holder.placeId),
+        zone = venue && venueZones(venue).find((row) => row.id === holder.zoneId);
+      if (!zone) continue;
+      const version = state.continuity.versions.find((row) => row.id === head.versionId)!,
+        key = continuityHolderKey(holder);
+      add(
+        ["room", root.id],
+        "places",
+        venue!.name + " · " + zone.name,
+        "Room description",
+        [text("text", "Text", version.text)],
+        {
+          revision: root.revision,
+          target: { id: root.id, recordRevision: root.revision, heads: { [key]: head.revision } },
+          source: version.sources.map((source) => source.excerpt),
+        },
+      );
+    }
   for (const venue of state.venues) {
     add(["venue", venue.id], "places", venue.name, "Venue identity and map placement", [
       text("name", "Name", venue.name),
@@ -377,31 +406,6 @@ export function worldRepairRecords(state: VillageState, includeMemories = true, 
         })),
     ]);
     for (const zone of venueZones(venue)) {
-      add(
-        ["zone", venue.id, zone.id],
-        "places",
-        `${venue.name} · ${zone.name}`,
-        "Zone physical state",
-        [
-          text("description", "Long-term details", zone.description),
-          text("recent", "Short-term details", zone.state.recent?.text ?? ""),
-        ],
-        {
-          revision: zone.state.revision,
-          source: [
-            `Owner: ${people.find((p) => p.id === zone.ownerId)?.name ?? "Unassigned"}`,
-            ...(zone.state.recent ? [`Short-term details expire: ${zone.state.recent.expiresAt}`] : []),
-          ],
-          actions: [
-            { id: "correct", label: "Modify" },
-            { id: "clear-recent", label: "Clear short-term details" },
-            ...(zone.state.recent ? [{ id: "renew-recent", label: "Renew for one day" }] : []),
-          ],
-          related: state.projects
-            .filter((p) => p.venueId === venue.id)
-            .map((p) => ({ id: repairId("project", p.id), title: p.title })),
-        },
-      );
       if (zone.access) {
         add(
           ["access", venue.id, zone.id],
@@ -592,22 +596,11 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
             str("endsAt") <= row.startsAt))
       )
         throw badRequest("Check the condition and its end time.");
-      const zone = state.venues
-        .find((venue) => venue.id === row.venueId)
-        ?.zones?.find((item) => item.id === row.zoneId);
-      if (zone && (!str("description") || str("description").length > MAX_PLACE_DESCRIPTION))
-        throw badRequest("Check the physical description.");
       row.observation = str("observation");
       row.remedy = str("remedy");
       row.endsAt = str("endsAt") || null;
       row.clearedAt = str("cleared") === "yes" ? at : null;
       row.revision++;
-      if (zone && zone.description !== str("description")) {
-        zone.description = str("description");
-        zone.state.revision++;
-        zone.state.updatedAt = at;
-        zone.picture = { ...zone.picture, base: zone.picture?.base ?? zone.image, dirty: true };
-      }
     } else if (kind === "narrative-weather") {
       const weather = narrative.weather;
       if (
@@ -625,79 +618,47 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
       weather.revision = ++narrative.weatherRevision;
     }
     narrative.revision++;
+    const situationId =
+      kind === "narrative-situation" ? id : narrative.conditions.find((row) => row.id === id)?.situationId;
+    if (situationId) retainAdministrativeCircumstance(state, situationId, request.operationId, at);
+    return;
+  }
+  if (kind === "room") {
+    const root = state.continuity.records.find((row) => row.id === id);
+    const holders = Object.values(root?.heads ?? {})
+      .filter(
+        (head) =>
+          head.holder.kind === "room" &&
+          record.target &&
+          Object.hasOwn(record.target.heads, continuityHolderKey(head.holder)),
+      )
+      .map((head) => head.holder);
+    memoryRequire(record.target && holders.length === 1, "room repair target changed");
+    state.continuity = protectContinuity(state.continuity, record.target, holders, request.operationId, at, {
+      text: str("text"),
+    });
     return;
   }
   if (kind === "memory") {
-    const target = state.memories.records.find((r) => r.id === id)!;
-    const root = state.memories.records.find((r) => r.id === target.rootId)!;
     if (
+      !record.target ||
       !request.knowers.length ||
-      new Set(request.knowers).size !== request.knowers.length ||
-      request.knowers.some((k) => !record.people?.some((p) => p.id === k))
+      request.knowers.some((id) => !record.people?.some((person) => person.id === id))
     )
-      throw badRequest("Choose existing memory knowers.");
-    if (request.action === "remember") {
-      changeMemoryProtection(
-        state,
-        id,
-        Object.fromEntries(request.knowers.map((k) => [k, { ...root.knowers[k], forgotten: undefined }])),
-        request.operationId,
-      );
-    } else {
-      const operation = {
+      throw badRequest("Choose existing continuity holders.");
+    state.continuity = changeContinuityMemory(
+      state,
+      id,
+      {
         operationId: request.operationId,
-        expectedCollectionRevision: state.memories.revision,
-        target: { id, revision: target.revision, rootRevision: root.revision },
+        seed: state.seed,
+        target: record.target,
         knowers: request.knowers,
-        action: request.action === "forget" ? ("forget" as const) : ("repair" as const),
         ...(request.action === "correct" ? { text: str("text") } : {}),
-      };
-      (request.action === "forget" ? forgetVillageMemory : correctVillageMemory)(state, operation, at);
-    }
-    return;
-  }
-  if (kind === "new-memory") {
-    if (
-      !str("text") ||
-      Buffer.byteLength(str("text"), "utf8") > 600 ||
-      !request.knowers.length ||
-      request.knowers.some((k) => !record.people?.some((p) => p.id === k))
-    )
-      throw badRequest("Enter a short memory and choose who remembers it.");
-    const memoryId = "player-repair:" + request.operationId;
-    const source = { kind: "domain" as const, id: memoryId, revision: 1, fingerprint: memoryHash(request) };
-    const row = {
-      id: memoryId,
-      rootId: memoryId,
-      revision: 1,
-      createdRevision: state.memories.revision + 1,
-      updatedRevision: state.memories.revision + 1,
-      kind: "information" as const,
-      text: str("text"),
-      subjects: [],
-      knowers: Object.fromEntries(
-        request.knowers.map((k) => [
-          k,
-          {
-            basis: "report" as const,
-            attributedTo: "player",
-            support: [{ source, lineId: memoryId, excerpt: "Player-authored repair", audience: request.knowers }],
-            learnedAt: at,
-            reinforcedAt: at,
-          },
-        ]),
-      ),
-      origin: source,
-      occurredAt: at,
-      recordedAt: at,
-      lastApplication: { id: request.operationId, fingerprint: memoryHash(request) },
-    };
-    validateMemoryRecord(row);
-    state.memories = {
-      ...state.memories,
-      revision: state.memories.revision + 1,
-      records: [...state.memories.records, row],
-    };
+      },
+      request.action === "forget" ? "forget" : "repair",
+      at,
+    );
     return;
   }
   normalizeVillageMutation(
@@ -788,29 +749,12 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
         v.form = str("form");
         if (Object.hasOwn(values, "x")) v.presentation.x = Number(values.x);
         if (Object.hasOwn(values, "y")) v.presentation.y = Number(values.y);
-      } else if (kind === "zone" || kind === "access" || kind === "permission") {
+      } else if (kind === "access" || kind === "permission") {
         const v = state.venues.find((v) => v.id === id)!;
         v.zones ??= venueZones(v);
         v.layoutVersion = 1;
         const z = v.zones.find((z) => z.id === sub)!;
-        if (kind === "zone") {
-          if (str("description").length > MAX_PLACE_DESCRIPTION || str("recent").length > MAX_RECENT_PLACE_CONTEXT)
-            throw badRequest("Shorten the Zone details.");
-          z.description = str("description");
-          const summary = str("recent").trim();
-          if (request.action === "clear-recent" || !summary) z.state.recent = null;
-          else {
-            const renew = request.action === "renew-recent" || !z.state.recent;
-            const occurredAt = renew ? at : z.state.recent!.occurredAt;
-            z.state.recent = {
-              text: summary,
-              occurredAt,
-              expiresAt: new Date(Date.parse(occurredAt) + RECENT_PLACE_DURATION).toISOString(),
-            };
-          }
-          z.state.revision++;
-          z.state.updatedAt = at;
-        } else if (kind === "access") {
+        if (kind === "access") {
           const ids = ["player", ...state.villagers.map((p) => p.characterId)],
             managers = ids.filter((p) => values[`manager:${p}`] === true),
             members = ids.filter((p) => values[`member:${p}`] === true);
@@ -851,41 +795,6 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
               sourceLineIds: [],
             });
         }
-      } else if (kind === "wish") {
-        const owner = state.villagers.find((p) => p.characterId === id)!,
-          wish = owner.wishes.find((w) => w.id === sub)!;
-        const status = str("status"),
-          attention = str("attention");
-        if (
-          !["open", "fulfilled", "withdrawn"].includes(status) ||
-          !["background", "foreground"].includes(attention) ||
-          !["wish", "reason", "attentionReason"].every((key) => str(key).length > 0 && str(key).length <= 320) ||
-          str("approach").length > 320
-        )
-          throw badRequest("Enter a short desired outcome, reason and valid status.");
-        const corrected = readSocialWish({
-          ...wish,
-          wish: str("wish"),
-          reason: str("reason"),
-          status,
-          approach: str("approach"),
-          attention: { state: attention, reason: str("attentionReason") },
-          revision: wish.revision + 1,
-          changedAt: at,
-          conditions: wish.conditions.map((c) => ({ ...c, quote: str("condition:" + c.id) })).filter((c) => c.quote),
-          history: [
-            ...wish.history,
-            {
-              id: request.operationId,
-              at,
-              kind: "repair",
-              text: "Administrative correction.",
-              sourceId: request.operationId,
-              lineIds: [],
-            },
-          ],
-        });
-        owner.wishes = owner.wishes.map((w) => (w.id === sub ? corrected : w));
       } else if (kind === "project") {
         const project = state.projects.find((p) => p.id === id)!;
         if (!str("title") || str("title").length > 160) throw badRequest("Enter a short Project title.");
@@ -898,36 +807,64 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
   );
 }
 
-/** New revision and copy-before-write snapshots; never replace a historical collection. */
-export function changeMemoryProtection(
+/** Explicit administrative undo restores only selected existing holders, retaining every immutable version and receipt. */
+export function restoreContinuityProtection(
   state: VillageState,
-  id: string,
-  knowers: Record<string, MemoryKnower>,
+  prior: ContinuityRecord,
+  holders: ContinuityHolder[],
+  expected: string,
   operationId: string,
+  at: string,
 ) {
-  const target = state.memories.records.find((r) => r.id === id);
-  if (!target) throw conflict("The memory is unavailable.");
-  const root = structuredClone(state.memories.records.find((r) => r.id === target.rootId)!);
-  const snapshots = retainMemoryScenes(
-    state.memories,
-    [root.id],
-    Object.values(state.memoryScenes).map((s) => s.snapshot),
-  );
-  for (const snapshot of snapshots) state.memoryScenes[snapshot.sceneId].snapshot = snapshot;
-  for (const [knower, prior] of Object.entries(knowers)) {
-    if (!root.knowers[knower]) throw conflict("The memory’s audience changed.");
-    if (prior.forgotten) root.knowers[knower].forgotten = structuredClone(prior.forgotten);
-    else delete root.knowers[knower].forgotten;
-    if (prior.repair) root.knowers[knower].repair = structuredClone(prior.repair);
-    else delete root.knowers[knower].repair;
+  memoryString(operationId, 160);
+  memoryTimestamp(at);
+  memoryRequire(!operationId.startsWith("narration-abandoned:"), "reserved narration receipt namespace");
+  const fingerprint = memoryHash(["restore-protection", prior, holders, expected]),
+    receipt = state.continuity.receipts[operationId];
+  if (receipt) {
+    memoryRequire(receipt.fingerprint === fingerprint, "administrative undo identity reused");
+    return;
   }
-  root.revision++;
-  root.updatedRevision = state.memories.revision + 1;
-  root.lastApplication = { id: operationId, fingerprint: memoryHash(knowers) };
-  validateMemoryRecord(root);
-  state.memories = {
-    ...state.memories,
-    revision: root.updatedRevision,
-    records: state.memories.records.map((record) => (record.id === root.id ? root : record)),
+  const current = state.continuity.records.find((row) => row.id === prior.id);
+  memoryRequire(current && memoryHash(current) === expected, "continuity changed after the repair");
+  memoryRequire(
+    holders.length > 0 && new Set(holders.map(continuityHolderKey)).size === holders.length,
+    "choose existing continuity holders",
+  );
+  let collection = state.continuity;
+  const versions: string[] = [];
+  for (const holder of holders) {
+    const key = continuityHolderKey(holder),
+      head = prior.heads[key];
+    if (holder.kind === "actor")
+      memoryRequire(continuityActor(state, holder.id)?.incarnation === holder.incarnation, "continuity holder changed");
+    else {
+      const place = findLocation(state, holder.placeId);
+      memoryRequire(place && venueZones(place).some((zone) => zone.id === holder.zoneId), "room holder changed");
+    }
+    memoryRequire(key && head && current.heads[key], "continuity holder changed");
+    const original = collection.versions.find(
+      (version) => version.id === head.versionId && version.rootId === prior.id,
+    );
+    memoryRequire(original, "administrative undo lost its prior meaning");
+    const target = collection.records.find((row) => row.id === prior.id)!;
+    const childId = operationId + ":" + memoryHash(key).slice(0, 32);
+    collection = protectContinuity(
+      collection,
+      {
+        id: prior.id,
+        recordRevision: target.revision,
+        heads: { [key]: target.heads[key].revision },
+      },
+      [holder],
+      childId,
+      at,
+      prior.protection[key]?.forgotten ? { forget: true } : { text: original.text, restore: original.id },
+    );
+    versions.push(...collection.receipts[childId].versions);
+  }
+  state.continuity = {
+    ...collection,
+    receipts: { ...collection.receipts, [operationId]: { fingerprint, roots: [prior.id], versions } },
   };
 }

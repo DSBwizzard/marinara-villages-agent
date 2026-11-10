@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { ContinuityCollection, ContinuityVersion } from "../models/continuity-model.js";
 import {
   continuityHolderKey,
+  continuityVersionId,
   continuityOfferSource,
   ownedContinuityClass,
   CONTINUITY_TEXT_BYTES,
@@ -214,6 +215,23 @@ export function readContinuity(raw: unknown, seed?: string): ContinuityCollectio
           entry.id === "continuity-version-" + memoryHash([root.id, entry.operationId, key]).slice(0, 32),
         "administrative version lost its holder or receipt",
       );
+      if (entry.about.length || entry.offerEvents?.length)
+        memoryRequire(
+          value.versions.some(
+            (prior) =>
+              prior.rootId === entry.rootId &&
+              prior.createdRevision < entry.createdRevision &&
+              prior.text === entry.text &&
+              prior.class === entry.class &&
+              memoryHash(prior.about) === memoryHash(entry.about) &&
+              memoryHash(prior.offerEvents ?? []) === memoryHash(entry.offerEvents ?? []) &&
+              (prior.administrative
+                ? continuityHolderKey(prior.administrative.holder) === key
+                : prior.id ===
+                  continuityVersionId(prior.sources[0].seed, prior.operationId, entry.administrative!.holder)),
+          ),
+          "administrative restoration lost its prior knowledge or subjects",
+        );
     }
     for (const source of entry.sources)
       memoryRequire(!seed || source.seed === seed, "continuity source belongs to another world");

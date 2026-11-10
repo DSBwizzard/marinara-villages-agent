@@ -97,7 +97,7 @@ export function projectEpisodeRecall(
     return [line];
   });
   const gmUnits = [
-    ...("text" in view.gmPrivateInput ? [episodeUnit(episode, "input")] : []),
+    ...("text" in view.gmPrivateInput && view.gmPrivateInput.text.length > 0 ? [episodeUnit(episode, "input")] : []),
     ...segments.filter((row) => "gmOnlyText" in row).map((row) => episodeUnit(episode, row.id)),
   ];
   for (const holder of holders.filter((holder) =>

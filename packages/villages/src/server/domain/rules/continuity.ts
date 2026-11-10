@@ -452,7 +452,18 @@ export function applyContinuityWrite(
             holder.kind === "actor" &&
             holder.id === write.accept &&
             version?.text === terms.text &&
-            !record.protection[key],
+            (!record.protection[key] ||
+              (record.protection[key].repair?.versionId === version.id &&
+                version.offerEvents?.some((id) =>
+                  record.offer!.events.some(
+                    (event) =>
+                      event.id === id &&
+                      event.act === "offer" &&
+                      event.sources.every((source) =>
+                        continuityOfferSource(source, holder, version, collection, event.id),
+                      ),
+                  ),
+                ))),
         ),
         "accepting actor does not hold the unchanged offer",
       );
@@ -724,15 +735,13 @@ export function continuityViews(
     const version = structuredClone(original);
     if (protection?.repair) {
       version.sources = [];
-      version.about = [];
-      delete version.offerEvents;
     } else if (holder.kind === "actor")
       version.sources = version.sources.map((source) => actorContinuityEvidence(source, holder.id));
     if (holder.kind === "actor") delete version.room;
     const events = record.offer?.events.filter((event) => version.offerEvents?.includes(event.id)) ?? [];
     const closing = events.findLast((event) => event.act === "withdraw" || event.act === "refuse");
     const offer = record.offer &&
-      !protection?.repair && {
+      (!protection?.repair || Boolean(version.offerEvents?.length)) && {
         proposer: { ...record.offer.proposer },
         participants: record.offer.participants.map((party) => ({ ...party })),
         contributions: events.map((event) => ({
@@ -797,7 +806,7 @@ export function protectContinuity(
   holders: ContinuityHolder[],
   operationId: string,
   at: string,
-  action: { forget: true } | { text: string },
+  action: { forget: true } | { text: string; restore?: string },
 ): ContinuityCollection {
   memoryString(operationId, 160);
   memoryRequire(!operationId.startsWith("narration-abandoned:"), "reserved narration receipt namespace");
@@ -823,8 +832,25 @@ export function protectContinuity(
       head = record.heads[key];
     memoryRequire(head && head.revision === target.heads[key], "administrative correction cannot teach");
     const prior = record.protection[key];
-    memoryRequire(!prior?.forgotten || "forget" in action, "forgotten holder cannot be corrected");
-    const previous = collection.versions.find((version) => version.id === head.versionId)!;
+    memoryRequire(
+      !prior?.forgotten || "forget" in action || Boolean(action.restore),
+      "forgotten holder cannot be corrected",
+    );
+    const restored =
+      "text" in action && action.restore
+        ? collection.versions.find((version) => version.id === action.restore)
+        : undefined;
+    if ("text" in action && action.restore)
+      memoryRequire(
+        restored &&
+          restored.rootId === record.id &&
+          restored.text === action.text &&
+          (restored.administrative
+            ? continuityHolderKey(restored.administrative.holder) === key
+            : restored.id === continuityVersionId(restored.sources[0].seed, restored.operationId, holder)),
+        "administrative undo changed its prior holder or meaning",
+      );
+    const previous = restored ?? collection.versions.find((version) => version.id === head.versionId)!;
     if ("text" in action) {
       const version: ContinuityVersion = {
         ...previous,
@@ -832,11 +858,11 @@ export function protectContinuity(
         createdRevision: collection.revision + 1,
         text: action.text,
         sources: [],
-        about: [],
+        about: restored ? structuredClone(restored.about) : [],
         operationId,
         administrative: { holder: structuredClone(holder), at },
       };
-      delete version.offerEvents;
+      if (!restored) delete version.offerEvents;
       created.push(version);
       head.versionId = version.id;
       head.revision++;

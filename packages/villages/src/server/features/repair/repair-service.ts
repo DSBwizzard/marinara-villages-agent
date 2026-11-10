@@ -2,7 +2,6 @@ import { findNpc, placeRegistry } from "../../domain/rules/places.js";
 import { currentVillageCircumstances } from "../../domain/rules/prompt-preset.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { retainBackgroundJob } from "../../adapters/storage/background-responses.js";
-import { mutableSocialWish } from "../../domain/rules/social-wishes.js";
 import { createHash, randomUUID } from "node:crypto";
 import type {
   RepairChange,
@@ -33,25 +32,20 @@ import {
   validateSceneHistory,
   readActiveSceneOwner,
 } from "../../adapters/storage/scene-history.js";
-import {
-  relationshipPayloadStore,
-  readRelationshipRoot,
-  readRelationshipOwner,
-  relationshipDocumentId,
-  type RelationshipScope,
-} from "../../adapters/storage/relationship-payload-store.js";
-import type { RelationshipState } from "../../domain/models/relationship-types.js";
 import { createRepairTransactionCodec } from "../../adapters/storage/repair-transaction-codec.js";
-import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
 import { coerceVillageState } from "../../domain/decoding/village-codec.js";
-import type { ExchangeEffectReceipt } from "../../domain/models/wish-check-model.js";
 import type { VillageRepository } from "../../domain/models/world-repository.js";
 import type { VillageState } from "../../domain/models/world.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
-import { defaultRelationshipState, relationshipKey } from "../../domain/rules/relationship-rules.js";
+import { memoryHash } from "../../domain/rules/memory-integrity.js";
+import { continuityHolderKey } from "../../domain/rules/continuity.js";
+import { backgroundRecoveryState } from "../../domain/rules/work-recovery.js";
+import { validateBackgroundJobRecord } from "../../adapters/storage/background-responses.js";
+import { readDeliveredLetter } from "../../domain/rules/mail-delivery.js";
 import {
   applyWorldRepair,
-  changeMemoryProtection,
+  restoreContinuityProtection,
+  retainAdministrativeCircumstance,
   repairId,
   repairParts,
   worldRepairRecords,
@@ -90,27 +84,6 @@ type PlanData = {
   transaction: RepairTransaction;
   history: HistoryData;
 };
-function restoredReceipts(
-  saved: Record<string, ExchangeEffectReceipt>,
-  current: Record<string, ExchangeEffectReceipt>,
-) {
-  const result: Record<string, ExchangeEffectReceipt> = {};
-  for (const [id, row] of Object.entries(current))
-    if (!saved[id])
-      result[id] = {
-        id: row.id,
-        sceneId: row.sceneId,
-        submissionId: row.submissionId,
-        domain: row.domain,
-        at: row.at,
-        committedAt: row.committedAt ?? row.at,
-        status: "rejected",
-        evidenceIds: [],
-        reason: "Superseded by checkpoint restoration",
-        ...(row.wishOutcome ? { wishOutcome: "corrected" as const } : {}),
-      };
-  return { ...result, ...saved };
-}
 function advanceRestoredRevisions(prior: VillageState, current: VillageState) {
   if (placeRegistry(prior) && placeRegistry(current)) {
     prior.worldPlaces.revision = Math.max(prior.worldPlaces.revision, current.worldPlaces.revision) + 1;
@@ -146,13 +119,7 @@ function advanceRestoredRevisions(prior: VillageState, current: VillageState) {
       1;
   for (const person of prior.villagers) {
     const live = current.villagers.find((p) => p.characterId === person.characterId);
-    const wishRevisions = new Map(live?.wishes.map((wish) => [wish.id, wish.revision]) ?? []);
     person.cardSnapshot.revision = Math.max(person.cardSnapshot.revision, live?.cardSnapshot.revision ?? 0) + 1;
-    person.wishes = person.wishes.map((value) => {
-      const wish = mutableSocialWish(value);
-      wish.revision = Math.max(wish.revision, wishRevisions.get(wish.id) ?? 0) + 1;
-      return wish;
-    });
   }
   for (const venue of prior.venues) {
     const currentVenue = current.venues.find((v) => v.id === venue.id);
@@ -172,9 +139,9 @@ function advanceRestoredRevisions(prior: VillageState, current: VillageState) {
         Math.max(venue.access.revision, current.venues.find((v) => v.id === venue.id)?.access?.revision ?? 0) + 1;
   }
 }
-function assertSettledSocial(state: VillageState) {
-  if (state.socialMailOutbox?.length || state.socialOutbox?.some((row) => !row.processed))
-    throw conflict("Resolve pending correspondence and social recovery before restoring a checkpoint.");
+function assertSettledMail(state: VillageState) {
+  if (Object.values(state.mailbox.messages).some((message) => message.status === "pending"))
+    throw conflict("Resolve pending correspondence before restoring a checkpoint.");
 }
 function recordChanges(before: RepairRecord[], after: RepairRecord[], selectedId: string) {
   const changes: RepairChange[] = [],
@@ -233,48 +200,13 @@ export type RepairPorts = {
   resumeProject(id: string, value: unknown, now?: Date): Promise<void>;
   cancelProject(id: string, value: unknown, now?: Date): Promise<void>;
   replaySaved(sceneId: string): Promise<unknown>;
-  continueSaved(
-    sceneId: string,
-    submissionId: string,
-    domain: "memories" | "relationships" | "wishes" | "projects",
-  ): Promise<unknown>;
 };
 export function createRepairService(ports: RepairPorts) {
   const { gate, repository } = ports,
     documents = gate.documents;
   const storage = createRepairStorage(documents, gate.raw),
     codec = createRepairTransactionCodec(gate.raw);
-  const read = () => repository.readAuthority({ memories: true, wishes: true });
-  const relationshipPayloads = relationshipPayloadStore(documents);
-  async function socialData(
-    row: Pick<RepairDocument, "id" | "kind" | "data"> | null | undefined,
-    owner: RelationshipScope,
-  ) {
-    if (!row) return defaultRelationshipState(owner.seed);
-    const root = readRelationshipOwner(row, owner);
-    return relationshipPayloads.read(root.head, root);
-  }
-  async function currentSocial(owner: RelationshipScope) {
-    const row = await documents.getById(PKG, relationshipDocumentId(owner.seed));
-    if (row) {
-      if (row.packageId !== PKG) throw conflict("Invalid relationship owner identity.");
-      readRelationshipOwner(row, owner);
-    }
-    return row;
-  }
-  async function socialRootData(
-    value: RelationshipState,
-    owner: RelationshipScope,
-    current: Pick<Doc, "data" | "revision"> | null | undefined,
-  ) {
-    const previous = current ? readRelationshipRoot(current.data, owner).head : undefined;
-    return {
-      format: 4,
-      seed: owner.seed,
-      setupAt: owner.setupAt,
-      head: await relationshipPayloads.prepare(value, owner, previous, current?.revision ?? 0),
-    };
-  }
+  const read = () => repository.readAuthority({ memories: true });
   const store = async (id: string, kind: string, data: unknown) => {
     const stamp = new Date().toISOString();
     await documents.create({
@@ -373,8 +305,13 @@ export function createRepairService(ports: RepairPorts) {
     });
   }
   async function allRecords(includeMemories = true, includeArchives = true, personId?: string) {
-    const state = await repository.readAuthority({ memories: true, wishes: true }),
-      result = worldRepairRecords(state, includeMemories, personId);
+    const state = await repository.readAuthority({ memories: true }),
+      result = worldRepairRecords(
+        state,
+        includeMemories,
+        personId,
+        villageNow(state.clock?.advanceMs ?? 0).toISOString(),
+      );
     if (
       personId &&
       personId !== "player" &&
@@ -382,70 +319,24 @@ export function createRepairService(ports: RepairPorts) {
       !findNpc(state, personId)
     )
       throw notFound("Choose a person from People.");
-    const saved = await currentSocial(state),
-      social = await socialData(saved, state);
-    for (const edge of Object.values(social.edges)) {
-      const name = (id: string) =>
-        id === "player"
-          ? "Your Persona"
-          : (state.villagers.find((v) => v.characterId === id)?.cardSnapshot.name ?? "Former resident");
-      result.push({
-        id: repairId("relationship", edge.fromId, edge.toId),
-        topic: "people",
-        title: `${name(edge.fromId)} → ${name(edge.toId)}`,
-        summary: "Directional relationship",
-        fields: [
-          { key: "connection", label: "Connection", type: "text", value: edge.connection },
-          { key: "stance", label: "Current stance", type: "text", value: edge.stance },
-          {
-            key: "expectations",
-            label: "Expectations (one per line)",
-            type: "text",
-            value: edge.expectations.join("\n"),
-          },
-          { key: "concerns", label: "Concerns (one per line)", type: "text", value: edge.concerns.join("\n") },
-        ],
-        source: ["Current relationship record. Permissions and disclosures remain separate."],
-        actions: [{ id: "correct", label: "Modify" }],
-        related: [],
-      });
-    }
     if (includeArchives) {
       const sceneIds = new Set<string>();
       for (const row of await documents.list(PKG, "venue-visit")) {
         const scene = await readSceneWorkIndex(documents, row.data);
         sceneIds.add(scene.id);
-        const unfinished =
-          scene.submissions?.filter((turn) => turn.processing && unfinishedExchange(turn.processing)) ?? [];
-        if (unfinished.length) {
+        const unfinished = pendingProgressTurns(scene, state.foundedAt);
+        if (unfinished.length)
           result.push({
             id: repairId("saved-scene", scene.id),
             topic: "progress",
-            title: `${scene.placeName} · saved work`,
-            summary: `${unfinished.length} exchanges need saved changes`,
+            title: scene.placeName + " · saved work",
+            summary: unfinished.length + " exchanges need acceptance",
             fields: [],
-            source: ["Applies retained output without requesting replacement generation."],
+            source: ["Retained response; no replacement request."],
             actions: [{ id: "replay", label: "Replay saved work" }],
             related: [],
             revision: scene.sceneRevision,
           });
-          for (const turn of unfinished)
-            for (const domain of ["memories", "relationships", "wishes", "projects"] as const)
-              if (turn.processing?.domains[domain]?.status === "failed")
-                result.push({
-                  id: repairId("saved-domain", scene.id, turn.id, domain),
-                  topic: "progress",
-                  title: `${scene.placeName} · failed ${domain} update`,
-                  summary: "Unresolved saved effect",
-                  fields: [],
-                  source: [
-                    "Continue keeps accepted writing and explicitly discards this failed update. Immediate-authority work must be recovered first.",
-                  ],
-                  actions: [{ id: "continue", label: "Continue without this update" }],
-                  related: [],
-                  revision: scene.sceneRevision,
-                });
-        }
         if (scene.status !== "closed") continue;
         const annotation = await documents.getById(PKG, docId("repair-annotation", scene.id));
         result.push({
@@ -587,8 +478,8 @@ export function createRepairService(ports: RepairPorts) {
   async function inspect(id: string, personId?: string) {
     const kind = repairParts(id)[0];
     const { records } = await allRecords(
-        ["memory", "new-memory", "npc", "place"].includes(kind),
-        ["scene", "saved-scene", "saved-domain"].includes(kind),
+        ["memory", "npc", "place"].includes(kind),
+        ["scene", "saved-scene"].includes(kind),
         personId,
       ),
       record = records.find((r) => r.id === id);
@@ -640,42 +531,10 @@ export function createRepairService(ports: RepairPorts) {
     });
   }
   async function applyRecord(record: RepairRecord, request: RepairRequest) {
-    const [kind, id, sub] = repairParts(record.id),
+    const [kind, id] = repairParts(record.id),
       now = villageNow((await repository.readAuthority()).clock?.advanceMs),
       at = now.toISOString();
-    if (kind === "relationship") {
-      const state = await repository.readAuthority(),
-        documentId = relationshipDocumentId(state.seed);
-      const row = await documents.getById(PKG, documentId);
-      if (!row) throw conflict("That relationship is unavailable.");
-      const social = await socialData(row, state),
-        edge = social.edges[relationshipKey(id, sub)];
-      if (!edge) throw conflict("That relationship changed.");
-      for (const key of ["connection", "stance", "expectations", "concerns"] as const) {
-        const value = request.values[key];
-        if (typeof value !== "string" || value.length > 2000) throw badRequest("Enter shorter relationship details.");
-        if (key === "connection" || key === "stance") edge[key] = value;
-        else
-          edge[key] = value
-            .split("\n")
-            .map((v) => v.trim())
-            .filter(Boolean);
-      }
-      edge.revision++;
-      edge.updatedAt = at;
-      if (
-        !(await documents.update({
-          id: row.id,
-          packageId: PKG,
-          expectedRevision: row.revision,
-          name: row.name,
-          description: row.description,
-          data: await socialRootData(social, state, row),
-          updatedAt: at,
-        }))
-      )
-        throw conflict("The relationship changed.");
-    } else if (kind === "scene") {
+    if (kind === "scene") {
       if (
         request.action !== "correct" ||
         typeof request.values.text !== "string" ||
@@ -707,12 +566,6 @@ export function createRepairService(ports: RepairPorts) {
         });
       else await store(key, "repair-annotation", data);
     } else if (kind === "saved-scene") await ports.replaySaved(id);
-    else if (kind === "saved-domain")
-      await ports.continueSaved(
-        id,
-        sub,
-        repairParts(record.id)[3] as "memories" | "relationships" | "wishes" | "projects",
-      );
     else if (kind === "project" && ["resume", "cancel"].includes(request.action)) {
       const project = (await repository.readAuthority()).projects.find((p) => p.id === id)!;
       await (request.action === "resume" ? ports.resumeProject : ports.cancelProject)(
@@ -750,8 +603,7 @@ export function createRepairService(ports: RepairPorts) {
       await repository.mutateAuthority((state) => applyWorldRepair(state, record, request, at));
     } else
       await repository.mutateAuthority((state) => applyWorldRepair(state, record, request, at), {
-        memories: ["memory", "new-memory", "npc", "place"].includes(kind),
-        wishes: kind === "wish" ? true : undefined,
+        memories: ["memory", "room", "npc", "place"].includes(kind) || kind.startsWith("narrative-"),
       });
   }
   function validateRequest(input: RepairRequest) {
@@ -790,10 +642,8 @@ export function createRepairService(ports: RepairPorts) {
     if (await documents.getById(PKG, docId(HISTORY, request.operationId)))
       throw conflict("This repair was already applied. Open Repair history.");
     const simulation = await gate.simulate(async () => {
-      const includeMemories = ["memory", "new-memory", "npc", "place", "wish", "saved-scene", "saved-domain"].includes(
-        repairParts(request.recordId)[0],
-      );
-      const includeArchives = ["scene", "saved-scene", "saved-domain"].includes(repairParts(request.recordId)[0]);
+      const includeMemories = ["memory", "npc", "place", "saved-scene"].includes(repairParts(request.recordId)[0]);
+      const includeArchives = ["scene", "saved-scene"].includes(repairParts(request.recordId)[0]);
       const { state, records } = await allRecords(includeMemories, includeArchives, request.personId),
         record = records.find((r) => r.id === request.recordId);
       if (!record) throw notFound("That record is unavailable.");
@@ -807,53 +657,28 @@ export function createRepairService(ports: RepairPorts) {
         consequential = [
           "npc",
           "place",
-          "zone",
+          "room",
           "access",
           "permission",
           "home",
           "project",
-          "wish",
           "venue",
-          "saved-domain",
           "narrative-claim",
           "narrative-condition",
           "narrative-weather",
           "narrative-situation",
         ].includes(kind);
-      let before: HistoryData["memoryBefore"], addedText: string | undefined;
-      if (kind === "memory") {
-        const target = state.memories.records.find((r) => r.id === id)!,
-          root = state.memories.records.find((r) => r.id === target.rootId)!;
-        before = {
-          id: root.id,
-          knowers: Object.fromEntries(request.knowers.map((k) => [k, structuredClone(root.knowers[k])])),
-        };
-      }
+      const before = ["memory", "room"].includes(kind)
+        ? structuredClone(state.continuity.records.find((row) => row.id === id)!)
+        : undefined;
       if (consequential) await checkpoint(`Before ${record.title}`, request.operationId);
       await applyRecord(record, request);
       const after = await allRecords(includeMemories, includeArchives, request.personId);
-      if (kind === "new-memory") {
-        const added = after.state.memories.records.find((r) => r.id === "player-repair:" + request.operationId)!;
-        addedText = added.text;
-        before = {
-          id: added.id,
-          knowers: Object.fromEntries(
-            request.knowers.map((k) => [
-              k,
-              {
-                ...structuredClone(added.knowers[k]),
-                forgotten: { at: new Date().toISOString(), operationId: "undo:" + request.operationId },
-              },
-            ]),
-          ),
-        };
-      }
       const memoryGuard = before
-        ? repairDigest(after.state.memories.records.find((r) => r.id === before.id))
+        ? memoryHash(after.state.continuity.records.find((r) => r.id === before.id))
         : undefined;
       return {
         record,
-        addedText,
         before,
         memoryGuard,
         seed: state.seed,
@@ -867,8 +692,7 @@ export function createRepairService(ports: RepairPorts) {
     const { record, before, seed, consequential } = simulation.value,
       [kind] = repairParts(record.id);
     const diff = recordChanges(simulation.value.beforeRecords, simulation.value.afterRecords, record.id),
-      changedFields =
-        kind === "new-memory" ? [{ label: "Memory", before: "", after: simulation.value.addedText! }] : diff.changes,
+      changedFields = diff.changes,
       affectedRecords = diff.affected;
     if (request.action !== "correct" && kind !== "memory")
       changedFields.push({
@@ -877,24 +701,21 @@ export function createRepairService(ports: RepairPorts) {
         after: record.actions.find((a) => a.id === request.action)?.label ?? request.action,
       });
     if (!changedFields.length) throw badRequest("Change a value before reviewing.");
-    const memory = ["memory", "new-memory"].includes(kind)
-      ? {
-          creating: kind === "new-memory",
-          people: request.knowers.map((k) => record.people!.find((p) => p.id === k)!.name),
-        }
-      : undefined;
-    const affected =
-      kind === "new-memory"
-        ? memory!.people.map((name) => `${name} · Memories`)
-        : [...new Set([record.title, ...affectedRecords])];
-    if (record.people && kind !== "new-memory")
-      affected.push(...request.knowers.map((k) => record.people!.find((p) => p.id === k)?.name ?? k));
+    const memory =
+      kind === "memory"
+        ? {
+            creating: false,
+            people: request.knowers.map((k) => record.people!.find((p) => p.id === k)!.name),
+          }
+        : undefined;
+    const affected = [...new Set([record.title, ...affectedRecords])];
+    if (record.people) affected.push(...request.knowers.map((k) => record.people!.find((p) => p.id === k)?.name ?? k));
     if (kind === "memory")
       affected.push("Remembered knowledge only; physical state and completion records stay separate.");
-    if (kind === "zone") affected.push("Future Scene physical context and artwork eligibility.");
+    if (kind === "room") affected.push("Future Scene room context.");
     if (kind === "access") affected.push("Future entry and management checks.");
     if (kind === "scene") affected.push("Historical annotation; mechanical outcomes are retained.");
-    if (kind === "saved-scene" || kind === "saved-domain")
+    if (kind === "saved-scene")
       affected.push("Retained Scene effects change. A previously requested conclusion may finish after recovery.");
     if (await sceneOpen()) affected.push("The unfinished Scene keeps its captured context and draft.");
     const rootWrite = simulation.transaction.writes.find((w) => (w.after ?? w.before)?.kind === "village");
@@ -903,8 +724,7 @@ export function createRepairService(ports: RepairPorts) {
       repairDigest((rootWrite.before?.data as { memoryHead?: unknown })?.memoryHead) ===
         repairDigest((rootWrite.after?.data as { memoryHead?: unknown })?.memoryHead);
     const documentUndo =
-      !["memory", "new-memory", "saved-scene", "saved-domain"].includes(kind) &&
-      (sameMemoryHead || ["npc", "place"].includes(kind));
+      !["memory", "saved-scene"].includes(kind) && (sameMemoryHead || ["npc", "place"].includes(kind));
     const review: RepairReview = {
       kind: "repair",
       id: request.operationId,
@@ -1031,7 +851,7 @@ export function createRepairService(ports: RepairPorts) {
         throw conflict("This repair changed. Reopen its history.");
       if (saved.memoryBefore) {
         if (
-          repairDigest(before.state.memories.records.find((r) => r.id === saved.memoryBefore!.id)) !== saved.memoryGuard
+          memoryHash(before.state.continuity.records.find((r) => r.id === saved.memoryBefore!.id)) !== saved.memoryGuard
         )
           throw conflict("This memory changed after the repair. Review a new correction instead.");
       } else if (!saved.undoWrites && (await guardRecord(record, saved.request.personId)) !== saved.guard)
@@ -1039,7 +859,20 @@ export function createRepairService(ports: RepairPorts) {
       if (saved.memoryBefore)
         await repository.mutateAuthority(
           (current) =>
-            changeMemoryProtection(current, saved.memoryBefore!.id, saved.memoryBefore!.knowers, operationId),
+            restoreContinuityProtection(
+              current,
+              saved.memoryBefore!,
+              Object.values(saved.memoryBefore!.heads)
+                .filter(
+                  (head) =>
+                    Object.hasOwn(saved.record?.target?.heads ?? {}, continuityHolderKey(head.holder)) &&
+                    (head.holder.kind === "room" || saved.request.knowers.includes(head.holder.id)),
+                )
+                .map((head) => head.holder),
+              saved.memoryGuard!,
+              operationId,
+              villageNow(current.clock?.advanceMs ?? 0).toISOString(),
+            ),
           { memories: true },
         );
       else if (saved.undoWrites) {
@@ -1065,6 +898,7 @@ export function createRepairService(ports: RepairPorts) {
                   ...priorWorld,
                   continuity: currentState.continuity,
                   episodes: currentState.episodes,
+                  mailbox: currentState.mailbox,
                   worldPlaces: ["npc", "place"].includes(repairParts(saved.request.recordId)[0])
                     ? priorPayload.worldPlaces
                     : currentState.worldPlaces,
@@ -1075,7 +909,7 @@ export function createRepairService(ports: RepairPorts) {
                   Object.assign(currentState, prior);
                 });
               },
-              { memories: true, wishes: true },
+              { memories: true },
             );
           } else if (!write.before) {
             if (current) await documents.remove(PKG, current.id, current.revision);
@@ -1119,7 +953,7 @@ export function createRepairService(ports: RepairPorts) {
       title: `Undo ${saved.title}`,
       changes: result.value.changes,
       affected: result.value.affected,
-      ...(saved.memoryBefore
+      ...(saved.memoryBefore && repairParts(saved.request.recordId)[0] === "memory"
         ? {
             memory: {
               creating: false,
@@ -1201,17 +1035,21 @@ export function createRepairService(ports: RepairPorts) {
         throw conflict("This checkpoint belongs to another Village.");
       if (await sceneOpen())
         throw conflict("Conclude the unfinished Scene before restoring a checkpoint. Its draft is kept.");
-      assertSettledSocial(state);
+      assertSettledMail(state);
+      const targetRoot = checkpointDocuments.find((row) => row.kind === "village");
+      if (!targetRoot) throw conflict("The checkpoint has no Village authority.");
+      const targetData = targetRoot.data as Record<string, unknown>,
+        targetHead = readMemoryHead(targetData.memoryHead);
+      const targetPayload = targetHead
+        ? await createMemoryPayloadStore(documents).read(targetHead, targetData as unknown as VillageState)
+        : emptyMemoryPayload();
+      if (!targetPayload) throw conflict("The checkpoint continuity payload is unavailable.");
+      assertSettledMail(coerceVillageState({ ...targetData, ...targetPayload }));
       for (const row of await documents.list(PKG, "background-work")) {
-        const job = row.data as {
-          status?: string;
-          steps?: { status: string }[];
-        };
-        if (
-          !["completed", "failed", "obsolete"].includes(job.status ?? "") ||
-          job.steps?.some((step) => step.status === "running")
-        )
+        validateBackgroundJobRecord(row);
+        if (["pending", "recoverable", "uncertain"].includes(backgroundRecoveryState(row.data)))
           throw conflict("Resolve pending background work before restoring this checkpoint.");
+        const job = row.data as { status: string };
         if ((row.data as { kind?: string }).kind === "world-development" && job.status === "failed")
           await retireWorldJob(row, new Date().toISOString());
       }
@@ -1231,7 +1069,6 @@ export function createRepairService(ports: RepairPorts) {
           (scene.status !== "closed" &&
             !(belongsToCheckpoint && scene.id === checkpointSceneId && scene.status === "active")) ||
           (scene.operation && scene.operation.status !== "complete") ||
-          scene.submissions?.some((turn) => turn.processing && unfinishedExchange(turn.processing)) ||
           (scene.submissions && pendingProgressTurns(scene, state.foundedAt).length > 0)
         )
           throw conflict(
@@ -1266,8 +1103,6 @@ export function createRepairService(ports: RepairPorts) {
         "lastPlanningDate",
         "processedActionIds",
         "backgroundReceipts",
-        "semanticRequestReceipts",
-        "semanticContinuations",
         "backgroundPace",
         "narrativeConsequence",
         "selectedLorebookIds",
@@ -1320,15 +1155,32 @@ export function createRepairService(ports: RepairPorts) {
           ),
         })),
       };
-      restored.exchangeReceipts = restoredReceipts(restored.exchangeReceipts, state.exchangeReceipts);
+      for (const situation of restored.narrative?.situations ?? [])
+        retainAdministrativeCircumstance(
+          restored,
+          situation.id,
+          operationId,
+          villageNow(restored.clock?.advanceMs ?? 0).toISOString(),
+        );
       restored.noticeSequence = Math.max(restored.noticeSequence, state.noticeSequence);
       restored.dismissedNoticeIds = [...new Set([...restored.dismissedNoticeIds, ...state.dismissedNoticeIds])];
+      for (const letter of Object.values(restored.mailbox.messages))
+        if (letter.status === "delivered" && letter.to.id === "player" && !letter.readAt) {
+          try {
+            readDeliveredLetter({ ...restored }, letter.id, villageNow(restored.clock?.advanceMs ?? 0).toISOString());
+          } catch (error) {
+            throw conflict(
+              "The checkpoint's unread mail needs recovery: " +
+                (error instanceof Error ? error.message : String(error)),
+            );
+          }
+        }
       // Publish a new immutable history payload; never rewind a head or reuse old revisions.
       await repository.mutateAuthority(
         (value) => {
           Object.assign(value, restored);
         },
-        { memories: true, wishes: true },
+        { memories: true },
       );
       for (const value of wanted.values()) {
         if (value.id === "villages-village" || value.kind === "memory-payload" || value.kind === MEMORY_PAGE_KIND)
