@@ -34,8 +34,7 @@ export function narrationLines(
         },
   );
   routeZoneEvents(reply.segments, scene, lines, moves, playerMoves);
-  if (scene.pendingNpcAdmissions?.length)
-    fenceIntroductionWitnesses(lines, [], scene.pendingNpcAdmissions, scene.activeIds, false);
+  if (scene.pendingNpcAdmissions?.length) fenceIntroductionWitnesses(lines, scene.pendingNpcAdmissions);
   settleSceneSpriteCues(lines, presentation, episodeId);
   const cast = [
     ...new Map(

@@ -117,6 +117,8 @@ function fixture(now = new Date()) {
     villagesLanguageModels: () => ({ resolveForRequest: async () => model }) as any,
     villagesConnectionIdFor: async () => "fixture",
     completeWithRoom: async (_model, messages, _tokens, options) => {
+      assert.equal(options?.responseFormat?.type, "json_object");
+      assert(messages.some((row) => row.role === "system" && /\bJSON\b/i.test(String(row.content))));
       await options?.beforeBackgroundDispatch?.();
       calls.push(messages);
       const complete = background.backgroundCalls.getStore();

@@ -121,7 +121,6 @@ export function bindNpcReferences(
     "knownBy",
     "actors",
     "controllers",
-    "heardPlayerBy",
     "characterIds",
     "managerIds",
     "memberIds",
@@ -157,13 +156,7 @@ export function bindNpcReferences(
   return bound;
 }
 
-export function fenceIntroductionWitnesses(
-  lines: VenueReplyLine[],
-  heardPlayerBy: string[],
-  admissions: readonly NpcAdmission[],
-  localIds: readonly string[] = [],
-  emitBoundaries = true,
-) {
+export function fenceIntroductionWitnesses(lines: VenueReplyLine[], admissions: readonly NpcAdmission[]) {
   if (
     new Set(
       lines
@@ -194,20 +187,6 @@ export function fenceIntroductionWitnesses(
             ...(cue.look?.target === "villager" && cue.look.characterId === id ? { look: undefined } : {}),
           }));
     }
-    if (emitBoundaries) {
-      const boundary = lines[admission.segment];
-      const previous =
-        lines.slice(0, admission.segment + 1).findLast((line) => line.physicalIdsAfter)?.physicalIdsAfter ?? localIds;
-      const future = new Set(admissions.filter((row) => row.segment > admission.segment).map((row) => row.npc.id));
-      boundary.physicalIdsAfter = [
-        ...new Set([
-          ...previous,
-          ...admissions.filter((row) => row.segment === admission.segment).map((row) => row.npc.id),
-        ]),
-      ].filter((actor) => !future.has(actor));
-    }
-    const playerIndex = heardPlayerBy.indexOf(id);
-    if (playerIndex >= 0) heardPlayerBy.splice(playerIndex, 1);
   }
 }
 

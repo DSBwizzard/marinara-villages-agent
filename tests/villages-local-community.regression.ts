@@ -6,7 +6,11 @@ import {
   communityVenueEligible,
   designateCommunityVenue,
 } from "../packages/villages/src/server/domain/rules/community-venue.js";
-import { applyAccessCommand, projectVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
+import {
+  applyAccessCommand,
+  projectVenueAccess,
+  readAccessCommand,
+} from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { createVenueCommands } from "../packages/villages/src/server/features/venues/venue-service.js";
 import { validateRoutineDay } from "../packages/villages/src/server/domain/rules/owned-routine.js";
 import assert from "node:assert/strict";
@@ -270,10 +274,26 @@ for (const [groups, count] of [
     assert.throws(() => designateCommunityVenue(copy, target, command, at), /public, always-open/);
     assert.equal(JSON.stringify(copy), unchanged);
   }
+  const beforeDesignation = structuredClone(live);
   await commands.changeVenueAccess(candidate.id, command);
   const committed = JSON.stringify(live);
   await commands.changeVenueAccess(candidate.id, command);
   assert.equal(JSON.stringify(live), committed, "A lost acknowledgement retries the exact designation without replay");
+  const beforeCandidate = beforeDesignation.venues.find((row) => row.id === candidate.id)!;
+  beforeCandidate.access!.receipts[command.operationId] = {
+    ...live.venues.find((row) => row.id === candidate.id)!.access!.receipts[command.operationId],
+    revision: beforeCandidate.access!.revision,
+    outcome: "rejected",
+  };
+  const rolledBack = coerceVillageState(beforeDesignation);
+  const restoredCandidate = rolledBack.venues.find((row) => row.id === candidate.id)!;
+  const parsed = readAccessCommand(command);
+  assert.equal(parsed.action, "community-venue");
+  assert.throws(
+    () => designateCommunityVenue(rolledBack, restoredCandidate, parsed, at),
+    /designation was rolled back/,
+  );
+  assert.equal(rolledBack.communityVenueId, current.id);
   assert.equal(live.communityVenueId, candidate.id);
   const loaded = coerceVillageState(JSON.parse(committed));
   assert.equal(loaded.communityVenueId, candidate.id, "The ongoing designation survives restart");

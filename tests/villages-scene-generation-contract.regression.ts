@@ -38,12 +38,9 @@ for (const version of [undefined, 1, 2, 3, 4, "5", 6]) {
     readVillageState: forbidden,
     completeWithRoom: forbidden,
   } as any);
+  await assert.rejects(writer.generate(source as any, "A reply", "chat"), (error: any) => error.statusCode === 409);
   await assert.rejects(
-    writer.generate(source as any, "A reply", "chat", "", null),
-    (error: any) => error.statusCode === 409,
-  );
-  await assert.rejects(
-    writer.prepareVenueTurnMessages(source as any, "A reply", "chat", "", null),
+    writer.prepareVenueTurnMessages(source as any, "A reply", "chat"),
     (error: any) => error.statusCode === 409,
   );
   assert.equal(hostWork, 0, "Unsupported Scenes cannot purchase or replace retained responses");

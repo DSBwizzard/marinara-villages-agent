@@ -54,6 +54,7 @@ export function designateCommunityVenue(
   const receipt = ledger.receipts[command.operationId];
   if (receipt) {
     if (receipt.fingerprint !== fingerprint) throw conflict("This operation ID belongs to a different designation.");
+    if (receipt.outcome === "rejected") throw conflict("This designation was rolled back. Use a new operation ID.");
     return;
   }
   const previous = state.venues.find((row) => row.id === state.communityVenueId);
@@ -88,5 +89,5 @@ export function designateCommunityVenue(
   record(previous!, "community-venue-release");
   record(venue, "community-venue-designate");
   state.communityVenueId = venue.id;
-  ledger.receipts[command.operationId] = { fingerprint, revision: ledger.revision, outcome: "applied" };
+  ledger.receipts[command.operationId] = { fingerprint, revision: ledger.revision };
 }

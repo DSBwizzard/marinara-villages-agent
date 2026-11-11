@@ -321,7 +321,6 @@ export function applyNarrationAccess(
     venue.access.receipts[receiptId] = {
       fingerprint: memoryHash([decision, lineIds]),
       revision: venue.access.revision,
-      outcome: "applied",
     };
   } else if (decision.type === "permission.grant" || decision.outcome !== "access-management") {
     const outcome = decision.type === "permission.grant" ? "standing" : decision.outcome;

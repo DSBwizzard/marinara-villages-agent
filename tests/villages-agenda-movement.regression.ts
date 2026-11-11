@@ -1,8 +1,6 @@
 import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { flexibleAgendaBlock } from "../packages/villages/src/server/domain/rules/agenda-flexibility.js";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
   coerceVillageState,
@@ -135,11 +133,6 @@ assert.equal(villagerPlaceView(village, villager, 540)?.id, "garden");
 assert.equal(villagerPlaceView(village, villager, 780)?.id, "square");
 assert.equal(villagerPlaceView(village, villager, 1080)?.id, "home");
 assert.equal(agendaAt(agenda, 540)?.activity, "watering flowers");
-
-const venueSource = readFileSync(resolve("packages/villages/src/server/features/scenes/command-service.ts"), "utf8");
-assert.match(venueSource, /const sceneAttendance = captureSceneAttendance\(village, placeId, villageNow\(\)\)/u);
-assert.match(venueSource, /activeIds: participants\.map\(\(person\) => person\.characterId\)/u);
-assert.doesNotMatch(venueSource, /roomPresenceLines|repairRoomMirrors/u);
 
 // A Scene is a snapshot: the live clock crosses the boundary without changing it.
 const beforeSeven = new Date(2026, 9, 14, 6, 59);

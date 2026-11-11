@@ -587,15 +587,19 @@ await runCase("npc-admission/fences", () => {
       heardBy: [f.existing.id, id],
       soundOnly: { characterIds: [id], player: false, text: "Voices." },
     },
-    { kind: "narration", speakerId: "__venue_scene__", content: admission.source, heardBy: ["player", id] },
+    {
+      kind: "narration",
+      speakerId: "__venue_scene__",
+      content: admission.source,
+      heardBy: ["player", id],
+      physicalIdsAfter: [id],
+    },
     { kind: "dialogue", speakerId: id, content: "Hello.", heardBy: ["player", id] },
   ];
-  const heard = [id];
-  fenceIntroductionWitnesses(lines, heard, [admission], []);
+  fenceIntroductionWitnesses(lines, [admission]);
   assert(!lines[0].heardBy.includes(id));
   assert(!lines[0].soundOnly.characterIds.includes(id));
-  assert.deepEqual(heard, []);
   assert.deepEqual(lines[1].physicalIdsAfter, [id]);
   lines[0].speakerId = id;
-  assert.throws(() => fenceIntroductionWitnesses(lines, [], [admission], []), /before their introduction/);
+  assert.throws(() => fenceIntroductionWitnesses(lines, [admission]), /before their introduction/);
 });

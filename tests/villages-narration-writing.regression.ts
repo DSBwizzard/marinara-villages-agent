@@ -1,6 +1,10 @@
-// Test cases: narration-writing/single-request, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/required-evidence-bound, narration-writing/circumstance-provenance, narration-writing/learned-wish-initiative, narration-writing/subject-scope
+// Test cases: narration-writing/single-request, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/required-evidence-bound, narration-writing/circumstance-provenance, narration-writing/learned-wish-initiative, narration-writing/subject-scope, narration-writing/activation-owner
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
+import {
+  activationScope,
+  createActivationScope,
+} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
@@ -37,13 +41,14 @@ import {
   createSceneWriting,
   type SceneWritingPorts,
 } from "../packages/villages/src/server/features/scenes/writing-service.js";
+import { configureSceneWriting, generate } from "../packages/villages/src/server/features/scenes/writing.js";
 import {
   encodeContinuityPages,
   decodeContinuityPagesSync,
 } from "../packages/villages/src/server/adapters/storage/continuity-pages.js";
 
 const at = "2026-11-09T12:00:00.000Z";
-function fixture() {
+function fixture(beforeRead?: () => void | Promise<void>) {
   const state = { ...defaultVillageState(), seed: "world", setupAt: at, foundedAt: at };
   const place = establishPlace(
     state,
@@ -115,6 +120,7 @@ function fixture() {
     readVillageState: async () => {
       calls.reads++;
       assert(!unavailable);
+      await beforeRead?.();
       return state;
     },
     villagesConnectionIdFor: async () => configuredConnection,
@@ -175,6 +181,48 @@ function fixture() {
     },
   };
 }
+
+await runCase("narration-writing/activation-owner", async () => {
+  const a = createActivationScope(),
+    b = createActivationScope(),
+    entered = Promise.withResolvers<void>(),
+    proceed = Promise.withResolvers<void>();
+  const first = fixture(async () => {
+      assert.equal(activationScope(), a);
+      entered.resolve();
+      await proceed.promise;
+      assert.equal(activationScope(), a);
+    }),
+    second = fixture(() => assert.equal(activationScope(), b));
+  second.hideRequestAndChangeConnection();
+  const releaseA = a.run(() => configureSceneWriting(first.writing));
+  const pending = a.run(() => generate(first.scene, "First room", "chat"));
+  await entered.promise;
+  const releaseB = b.run(() => configureSceneWriting(second.writing));
+  b.run(releaseA);
+  const reason = new Error("Cancelled before narration");
+  await assert.rejects(
+    b.run(() => generate(second.scene, "Cancelled", "chat", AbortSignal.abort(reason))),
+    (error) => error === reason,
+  );
+  assert.deepEqual(second.calls, { purchases: 0, resolutions: 0, reads: 0 });
+  const current = await b.run(() => generate(second.scene, "Second room", "chat"));
+  proceed.resolve();
+  const original = await pending;
+  assert.equal(original.readset.source.input, "First room");
+  assert.equal(current.readset.source.input, "Second room");
+  assert.equal(first.usedModel(), "fixture");
+  assert.equal(second.usedModel(), "different-model");
+  assert.equal(first.calls.purchases, 1);
+  assert.equal(second.calls.purchases, 1);
+  a.dispose();
+  await assert.rejects(
+    a.run(() => generate(first.scene, "Disposed", "chat")),
+    /not configured/,
+  );
+  releaseB();
+  b.dispose();
+});
 
 await runCase("narration-writing/subject-scope", async () => {
   const f = fixture();

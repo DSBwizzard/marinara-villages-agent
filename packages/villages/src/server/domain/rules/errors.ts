@@ -16,29 +16,6 @@ export class VillagesRequestError extends Error {
   }
 }
 
-/** System identified an unsupported player act in a specific returned draft. */
-export class UnsupportedPlayerAgency extends VillagesRequestError {
-  constructor() {
-    super(502, "The Scene reply invented a player action or speech. Retry to replace the reply; your input is saved.");
-  }
-}
-
-export class UnsupportedScenePerception extends VillagesRequestError {
-  constructor() {
-    super(
-      502,
-      "The Scene reply contradicts its hearing or positions. Retry to replace the reply; your input is saved.",
-    );
-  }
-}
-
-/** A synchronous GM response validator rejected paid output, rather than its storage. */
-export class InvalidGmReply extends VillagesRequestError {
-  constructor(cause: unknown) {
-    super(502, cause instanceof Error ? cause.message : "The GM response could not be validated.");
-  }
-}
-
 export function badRequest(message: string): VillagesRequestError {
   return new VillagesRequestError(400, message);
 }

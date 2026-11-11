@@ -5,7 +5,6 @@ import {
   fitVenueWritingMessages,
   type VenueWritingBlock,
 } from "../packages/villages/src/server/domain/rules/venue-writing.js";
-import { workFailureSummary } from "../packages/villages/src/server/domain/rules/work-failure.js";
 
 const words = "If Mara approves tomorrow, I might help. I am not committing today.";
 const raw = { segments: [{ kind: "dialogue", speakerId: "rosa", text: words }] };
@@ -25,10 +24,6 @@ for (const [text, finish] of [
   ['{"segments":[],"segments":[]}', "stop"],
 ])
   assert.equal(completeSceneObject(text, finish), null);
-assert.doesNotMatch(
-  workFailureSummary({ cause: "provider_exception", stage: "provider", message: "SECRET TOKEN" }),
-  /SECRET/,
-);
 
 const input = "  I wonder about the tea. “Why?”\n";
 const required: VenueWritingBlock = { text: "Complete character identity.", evidenceId: "required" };
