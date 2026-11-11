@@ -18,6 +18,7 @@ import type {
 } from "../../../shared/contracts/village.js";
 import { createStagingCursor, stagingPresentation } from "../../../shared/helpers/scene-staging.js";
 import { messageFrom, request } from "../../shared/api.js";
+import { ArtworkImage } from "../../shared/ArtworkImage.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { drawVillagesNodes, renderVillagesMarkdown, villagesSpeechPaintStyle } from "../../shared/presentation.js";
 import type { Portrait, PortraitMap, VillageBeatRegister } from "../../shared/types.js";
@@ -733,7 +734,7 @@ export function RoomPanel({
       <div className={`${ELEMENT_TAG}-chat-scene`} aria-hidden="true">
         {picture ? (
           <>
-            <img className={`${ELEMENT_TAG}-chat-scene-backdrop`} src={picture} alt="" />
+            <ArtworkImage className={`${ELEMENT_TAG}-chat-scene-backdrop`} src={picture} alt="" />
             <span className={`${ELEMENT_TAG}-chat-scrim`} />
             <span className={`${ELEMENT_TAG}-chat-vignette`} />
           </>

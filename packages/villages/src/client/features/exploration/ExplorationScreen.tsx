@@ -5,6 +5,7 @@ import { MapStage } from "./MapStage.js";
 import { ExplorationNavigation, LocationNavigator, MapIcon } from "./villages-exploration.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
+import { ArtworkImage } from "../../shared/ArtworkImage.js";
 import { StorybookHeading } from "../../shared/StorybookHeading.js";
 import { HomeDateWeather, placeSpot } from "../../shared/presentation.js";
 import { useVillageLighting } from "../../shared/useVillageLighting.js";
@@ -400,7 +401,7 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
             <div className={ELEMENT_TAG + "-maps-grid"}>
               {(snapshot?.settings.maps ?? []).map((map) => (
                 <button type="button" key={map.id} onClick={() => setSelectedMapId(map.id)}>
-                  <img src={map.artwork.url} alt="" loading="lazy" />
+                  <ArtworkImage src={map.artwork.url} alt="" tile />
                   <strong>{map.name}</strong>
                   <small>
                     {snapshot.settings.venues.filter((venue) => venue.presentation.mapId === map.id).length} Venues
