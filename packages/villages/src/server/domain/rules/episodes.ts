@@ -9,6 +9,7 @@ import {
 } from "./continuity.js";
 import { episodeSpeechEvidence, episodeContextActors, episodeContextRooms } from "./episode-sources.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
+import { recallTerms } from "./text-recall.js";
 import { assertMailHistory, episodeMailEvidence } from "./mail-evidence.js";
 
 export const emptyEpisodes = (): EpisodeCollection => ({ format: 1, revision: 0, records: [] });
@@ -381,13 +382,15 @@ export function selectEpisodeHistory(
       ),
     );
     if (!view) return [];
-    const text = JSON.stringify(view),
-      words = new Set(
-        text
-          .normalize("NFKC")
-          .toLocaleLowerCase("en-US")
-          .match(/[\p{L}\p{N}]+/gu) ?? [],
-      );
+    const text = JSON.stringify(view);
+    const words = sceneId
+      ? new Set<string>()
+      : new Set(
+          text
+            .normalize("NFKC")
+            .toLocaleLowerCase("en-US")
+            .match(/[\p{L}\p{N}]+/gu) ?? [],
+        );
     return [
       {
         index,
@@ -398,6 +401,42 @@ export function selectEpisodeHistory(
       },
     ];
   });
+  if (sceneId) {
+    const current = candidates.filter((row) => row.episode.sceneId === sceneId);
+    const sceneWindow = appendHistoryWithin(current, bytes, (row) => row.bytes);
+    const sceneIds = new Set(sceneWindow.map((row) => row.view.id));
+    const cue =
+      /(?:^\s*about\b|\b(?:remember|earlier|before|yesterday|last time|previously|promis(?:e|ed)|(?:you|we) (?:said|talked|agreed)|told me)\b)/giu;
+    const explicit = new RegExp(cue.source, "iu").test(query);
+    const queryTerms = [...new Set(recallTerms(query.replace(cue, " ")))].filter((term) => term.length >= 3);
+    // shortcut: match eligible prose locally; add semantic recall only if players miss specific callbacks.
+    const recalled = candidates
+      .map((row) => {
+        const { gmPrivateInput, groundedInput, segments, letters } = row.view;
+        const prose = [
+          "text" in gmPrivateInput ? gmPrivateInput.text : "",
+          ...groundedInput.map((source) => source.text),
+          ...segments.flatMap((segment) => [
+            "text" in segment ? segment.text : "gmOnlyText" in segment ? segment.gmOnlyText : "",
+            ...segment.projections.map((projection) => projection.text),
+          ]),
+          ...(letters ?? []).map((letter) => letter.text),
+        ].join(" ");
+        const words = new Set(recallTerms(prose));
+        return { row, matches: queryTerms.filter((term) => words.has(term)).length };
+      })
+      .filter(({ matches }) => matches >= (explicit ? 1 : 3))
+      .sort((a, b) => b.matches - a.matches || b.row.index - a.row.index)
+      .map(({ row }) => row);
+    return {
+      partial: sceneWindow.length < candidates.length,
+      omitted: candidates.length - sceneWindow.length,
+      bytes: sceneWindow.reduce((total, row) => total + row.bytes, 0),
+      sceneWindow: sceneIds,
+      episodes: sceneWindow.map((row) => row.view),
+      recallCandidates: recalled.map((row) => row.view),
+    };
+  }
   const shared = recentSharedEpisodes(collection, holders)
     .map((episode) => candidates.find((row) => row.episode.id === episode.id))
     .filter((row) => row !== undefined)
@@ -407,11 +446,9 @@ export function selectEpisodeHistory(
       .slice(0, -2)
       .filter((row) => row.score > 0)
       .sort((a, b) => b.score - a.score || b.index - a.index);
-  const current = sceneId ? candidates.filter((row) => row.episode.sceneId === sceneId) : [];
-  const sceneWindow = new Set(appendHistoryWithin(current, bytes, (row) => row.bytes));
   const selected: typeof candidates = [];
   let used = 0;
-  for (const row of [...[...sceneWindow].reverse(), ...shared, ...recent.toReversed(), ...rest]) {
+  for (const row of [...shared, ...recent.toReversed(), ...rest]) {
     if (!selected.includes(row) && used + row.bytes <= bytes) {
       selected.push(row);
       used += row.bytes;
@@ -421,9 +458,7 @@ export function selectEpisodeHistory(
     partial: selected.length < candidates.length,
     omitted: candidates.length - selected.length,
     bytes: used,
-    sceneWindow: new Set(selected.filter((row) => sceneWindow.has(row)).map((row) => row.view.id)),
-    episodes: selected
-      .sort((a, b) => Number(sceneWindow.has(b)) - Number(sceneWindow.has(a)) || a.index - b.index)
-      .map((row) => row.view),
+    sceneWindow: new Set<string>(),
+    episodes: selected.sort((a, b) => a.index - b.index).map((row) => row.view),
   };
 }

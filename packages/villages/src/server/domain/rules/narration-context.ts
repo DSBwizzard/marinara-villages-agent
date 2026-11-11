@@ -1,4 +1,4 @@
-import { projectEpisodeRecall } from "./episode-recall.js";
+import { compactSceneExchange, projectEpisodeRecall } from "./episode-recall.js";
 import { readOnlyRoomContext } from "./continuity-context.js";
 import type { ContinuityEvidence, ContinuityHolder, ContinuityTarget } from "../models/continuity-model.js";
 import type { AcceptedEpisode } from "../models/episode-model.js";
@@ -22,7 +22,7 @@ import {
   continuityProtectionFingerprint,
 } from "./continuity.js";
 import { selectActorContinuity, selectRoomContinuity } from "./continuity-retrieval.js";
-import { appendHistoryWithin, recentSharedEpisodes, selectEpisodeHistory } from "./episodes.js";
+import { appendHistoryWithin, selectEpisodeHistory } from "./episodes.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { estimatedTextTokens } from "./text-recall.js";
 import { hasWritingEvidence, type VenueWritingBlock } from "./venue-writing.js";
@@ -260,13 +260,17 @@ export function narrationContinuityContext(
     episodeIds: [],
     offered: [],
   });
-  const shared = new Set(recentSharedEpisodes(state.episodes, holders).map((row) => row.id));
-  const history = selectEpisodeHistory(state.episodes, state.continuity, holders, input, 20000, scene.id);
+  // Raw witness views are larger than the rendered transcript. Fit the model-facing
+  // transcript below, with a separate ceiling on raw projection work.
+  const transcriptBudget = 32_000;
+  const recallBudget = 750;
+  const history = selectEpisodeHistory(state.episodes, state.continuity, holders, input, 256_000, scene.id);
+  const episodeOrder = new Map(state.episodes.records.map((row, index) => [row.id, index]));
   const contextScopes = new Map(
     [...actors, ...npcCandidates.map((row) => row.holder)].map((holder) => [holder.id, holder.incarnation]),
   );
-  for (const view of history.episodes) {
-    const transcript = history.sceneWindow.has(view.id);
+  const historyPart = (view: (typeof history.episodes)[number], transcript: boolean): Part => {
+    let localAlias = 0;
     const episode = state.episodes.records.find((row) => row.id === view.id)!,
       { interaction, ...recall } = projectEpisodeRecall(
         state,
@@ -274,20 +278,43 @@ export function narrationContinuityContext(
         view,
         holders,
         actors,
-        contextScopes,
-        sourceAlias,
+        transcript ? contextScopes : new Map(contextScopes),
+        () => `h:${episodeOrder.get(episode.id)! + 1}.${++localAlias}`,
       ),
-      part = { ...emptyPart(), ...recall };
-    parts.push({
-      ...part,
+      compact = compactSceneExchange(interaction, recall.sources);
+    const text = JSON.stringify({
+      interaction: compact.exchange,
+      ...(transcript ? {} : { earlierRecall: true }),
+    });
+    return {
+      ...emptyPart(),
+      ...recall,
+      sources: compact.sources,
       sharedLoreWords: sharedLoreWords(episode, view, loreAudience),
       block: {
-        text: JSON.stringify({ interaction, ...(transcript ? {} : { earlierRecall: true }) }),
+        text,
         evidenceId: "episode-context:" + view.id,
         optional: "history",
-        ...(transcript ? { transcript: true } : { pruningPriority: Number(shared.has(view.id)) }),
+        ...(transcript ? { transcript: true } : {}),
       },
-    });
+    };
+  };
+  const transcript = appendHistoryWithin(
+    history.episodes.map((view) => historyPart(view, true)),
+    transcriptBudget,
+    (part) => estimatedTextTokens(part.block.text),
+  );
+  const transcriptIds = new Set(transcript.map((part) => part.episodeIds[0]));
+  parts.push(...transcript);
+  let recallTokens = 0;
+  for (const view of history.recallCandidates ?? []) {
+    if (transcriptIds.has(view.id)) continue;
+    const part = historyPart(view, false);
+    const tokens = estimatedTextTokens(part.block.text);
+    if (tokens > recallBudget) continue;
+    parts.push(part);
+    recallTokens = tokens;
+    break;
   }
   const requiredKey = (target: ContinuityTarget, holderKey: string) =>
     actorSelection.required.some((row) => row.id === target.id && Object.hasOwn(row.heads, holderKey));
@@ -388,6 +415,7 @@ export function narrationContinuityContext(
       });
     }
   }
+  const sharedPrivate = new Map<string, { part: Part; knownBy: { for: string; source: string }[] }>();
   for (const entry of actorSelection.packet.entries) {
     if (circumstanceRoots.has(entry.id)) continue;
     const holder = holders.find((row) => row.id === entry.for)!,
@@ -424,14 +452,32 @@ export function narrationContinuityContext(
           return { ...row, source: ref };
         });
     const required = part.targets.some((target) => requiredKey(target, key));
-    parts.push({
+    const packet: Part = {
       ...part,
       block: {
         text: JSON.stringify({ privateContinuity: entries }),
         evidenceId: "actor-context:" + parts.length,
         ...(!required ? { optional: "memory" as const } : {}),
       },
-    });
+    };
+    if (!required && group.length === 1 && entries.length === 1 && !entries[0].parent) {
+      const { for: actor, source, ...meaning } = entries[0];
+      const meaningKey = JSON.stringify(meaning);
+      const knower = { for: actor, source };
+      const prior = sharedPrivate.get(meaningKey);
+      if (prior) {
+        prior.knownBy.push(knower);
+        prior.part.block.text = JSON.stringify({ privateContinuity: [{ ...meaning, knownBy: prior.knownBy }] });
+        prior.part.sources[source] = part.sources[source];
+        prior.part.provenance[key] = part.provenance[key];
+        prior.part.targets.push(...part.targets);
+        prior.part.offered.push(...part.offered);
+        prior.part.episodeIds.push(...part.episodeIds);
+        continue;
+      }
+      sharedPrivate.set(meaningKey, { part: packet, knownBy: [knower] });
+    }
+    parts.push(packet);
   }
   for (const entry of roomSelection.packet.entries) {
     const target = roomSelection.supplied.find((row) => row.id === entry.id)!;
@@ -494,25 +540,10 @@ export function narrationContinuityContext(
       },
     });
   }
-  // The selector fits witness views before expanding their evidence aliases. Rebase the rendered
-  // transcript here if it fills the optional budget, before ranked recall competes for the rest.
-  const optionalBudget = 8000;
-  const transcript = appendHistoryWithin(
-    parts.filter((part) => part.block.transcript),
-    optionalBudget,
-    (part) => estimatedTextTokens(part.block.text),
-  );
-  // Soft envelopes borrow unused capacity; required context is tested only by the actual model fitter.
-  let standingTokens = 0,
-    optionalTokens = 0;
-  const historyOrder = parts
-    .filter((part) => part.block.optional === "history" && !part.block.transcript)
-    .toReversed()
-    .sort((a, b) => (b.block.pruningPriority ?? 0) - (a.block.pruningPriority ?? 0));
   const selectionOrder = [
     ...parts.filter((part) => !part.block.optional),
     ...transcript,
-    ...historyOrder.filter((part) => part.block.pruningPriority),
+    ...parts.filter((part) => part.block.optional === "history" && !part.block.transcript),
     ...parts
       .filter((part) => part.block.optional === "memory")
       .sort(
@@ -520,24 +551,18 @@ export function narrationContinuityContext(
           Number(b.block.evidenceId?.startsWith("room-context:")) -
           Number(a.block.evidenceId?.startsWith("room-context:")),
       ),
-    ...historyOrder.filter((part) => !part.block.pruningPriority),
   ];
   const retained = new Set(
     selectionOrder.filter((part) => {
-      if (!part.block.optional) return true;
+      if (part.block.optional !== "memory") return true;
       const tokens = estimatedTextTokens(part.block.text);
-      if (optionalTokens + tokens > optionalBudget) return false;
-      if (part.block.optional === "memory") {
-        if (standingTokens + tokens > 4000) return false;
-        standingTokens += tokens;
-      }
-      optionalTokens += tokens;
+      if (recallTokens + tokens > recallBudget) return false;
+      recallTokens += tokens;
       return true;
     }),
   );
   const evidenceIds = new Set([...retained].map((part) => part.block.evidenceId));
   const bounded = parts.filter((part) => retained.has(part) && hasWritingEvidence(part.block, evidenceIds));
-  const episodeOrder = new Map(state.episodes.records.map((row, index) => [row.id, index]));
   const references = episodeContextActors({ actors, room }, [
     ...new Set(bounded.flatMap((part) => Object.keys(part.provenance))),
   ]);

@@ -163,3 +163,73 @@ export function projectEpisodeRecall(
   };
   return { ...part, interaction };
 }
+
+/** Shorten the on-wire projection while leaving immutable line IDs in the readset. */
+export function compactSceneExchange(
+  {
+    id,
+    at,
+    gmPrivateInput,
+    formerActors,
+    groundedInput,
+    letters,
+    segments,
+  }: ReturnType<typeof projectEpisodeRecall>["interaction"],
+  sources: Record<string, ContinuityEvidence>,
+) {
+  const visible: Record<string, ContinuityEvidence> = {};
+  const citation = (ref: string) => {
+    const source = sources[ref];
+    visible[ref] = source;
+    return source.act ? [ref, source.act] : ref;
+  };
+  const exchange = {
+    id,
+    at,
+    ...("text" in gmPrivateInput ? { gmPrivateInput: gmPrivateInput.text } : { inputWithheld: true }),
+    ...(formerActors?.length ? { formerActors } : {}),
+    ...(groundedInput.length
+      ? {
+          groundedInput: groundedInput.map(({ id: _id, source, ...row }) => ({
+            ...row,
+            source: source.map(citation),
+          })),
+        }
+      : {}),
+    ...(letters?.length
+      ? {
+          letters: letters.map(({ id: _id, knownBy, ...row }) => ({
+            ...row,
+            knownBy: Object.entries<{ source: { ref: string }[] }>(knownBy).map(([actor, { source }]) => [
+              actor,
+              ...(source.length ? [source.map(({ ref }) => citation(ref))] : []),
+            ]),
+          })),
+        }
+      : {}),
+    segments: segments.map(({ id: _id, perceivedBy, projections, ...line }) => {
+      const audiences = Object.entries(perceivedBy);
+      return {
+        ...line,
+        ...(audiences.length
+          ? {
+              perceivedBy: audiences.map(([actor, { channel, source }]) => [
+                actor,
+                channel,
+                ...(source.length ? [source.map(({ ref }) => citation(ref))] : []),
+              ]),
+            }
+          : {}),
+        ...(projections.length
+          ? {
+              projections: projections.map(({ source, ...row }) => ({
+                ...row,
+                source: source.map(({ ref }) => citation(ref)),
+              })),
+            }
+          : {}),
+      };
+    }),
+  };
+  return { exchange, sources: visible };
+}

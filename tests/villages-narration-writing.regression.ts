@@ -1001,7 +1001,7 @@ await runCase("narration-writing/long-followup", async () => {
     },
     f.state.seed,
   );
-  await f.writing.generate(f.scene, "Why weaving?", "chat");
+  const reply = await f.writing.generate(f.scene, "Why weaving?", "chat");
   const prompt = f
     .messages()
     .map((row) => row.content)
@@ -1010,11 +1010,58 @@ await runCase("narration-writing/long-followup", async () => {
     prompt.includes(question) && prompt.includes("END_7"),
     "a complete recent exchange borrows unused standing capacity before older optional context",
   );
-  assert(
-    prompt.includes("A meaningful weaving memory 0"),
-    "recent history can borrow the unused older reserve while standing context remains supplied",
-  );
+  assert.match(prompt, /A meaningful weaving memory [0-3]/, "relevant standing context still fits");
+  const memory = f
+    .messages()
+    .flatMap((row) => row.content.split("\n\n"))
+    .filter((row) => row.startsWith('{"privateContinuity":'))
+    .flatMap((row) => JSON.parse(row).privateContinuity);
+  assert(memory.length < 4, "routine standing context has a separate budget");
+  const shared = memory.find((row) => row.knownBy?.length === 2);
+  assert(shared, "identical meanings retain each holder's own citation");
+  for (const knower of shared.knownBy) assert.equal(reply.readset.source.historical[knower.source].actorId, knower.for);
   assert.equal(f.calls.purchases, 1);
+
+  const saved = f.state.episodes.records.find((row) => row.id === "prior-exchange")!;
+  for (const id of ["astrolabe-note", "oversized-astrolabe-note"]) {
+    const lines = id.startsWith("oversized")
+      ? segments.map((line) => ({ ...line, content: "The astrolabe. " + line.content }))
+      : [{ ...segments[0], content: "The brass astrolabe belongs to the ferryman." }];
+    f.state.episodes = appendEpisode(
+      f.state.episodes,
+      {
+        ...saved,
+        id,
+        sceneId: "older-scene",
+        operationId: id,
+        submissionId: id,
+        privateInput: "What is the astrolabe?",
+        segments: lines,
+        responseDigest: memoryHash(lines),
+      },
+      f.state.seed,
+    );
+  }
+  f.nextOperation("astrolabe-callback");
+  const callback = await f.writing.prepareVenueTurnMessages(f.scene, "Remember the astrolabe?", "chat");
+  const recalled = callback.fitted.messages
+    .flatMap((row) => row.content.split("\n\n"))
+    .filter((row) => row.startsWith('{"interaction":'))
+    .map((row) => JSON.parse(row))
+    .filter((row) => row.earlierRecall);
+  assert.deepEqual(
+    recalled.map((row) => row.interaction.id),
+    ["astrolabe-note"],
+  );
+  assert.match(JSON.stringify(recalled), /brass astrolabe belongs to the ferryman/);
+  for (const [holder, channel, [ref]] of recalled[0].interaction.segments[0].perceivedBy) {
+    assert.match(ref, /^h:\d+\.\d+$/u);
+    const evidence = callback.readset.source.historical[ref];
+    assert.equal(evidence.excerpt, "The brass astrolabe belongs to the ferryman.");
+    assert(evidence.perceptions.some((row) => row.actorId === holder && row.channel === channel));
+  }
+  const ordinary = await f.writing.prepareVenueTurnMessages(f.scene, "Look around the room.", "chat");
+  assert(ordinary.fitted.messages.every((row) => !row.content.includes("brass astrolabe")));
 });
 
 await runCase("narration-writing/history-prefix", async () => {
@@ -1026,11 +1073,11 @@ await runCase("narration-writing/history-prefix", async () => {
   }));
   let previous: string[] = [],
     resets = 0;
-  for (let count = 1; count <= 36; count++) {
+  for (let count = 1; count <= 108; count++) {
     const id = "exchange-" + count;
     const keyword = count % 2 ? "cedar" : "maple";
-    const oversized = count === 13;
-    const segments: AcceptedEpisode["segments"] = Array.from({ length: oversized ? 14 : 1 }, (_, index) => ({
+    const longExchange = count === 13;
+    const segments: AcceptedEpisode["segments"] = Array.from({ length: longExchange ? 14 : 1 }, (_, index) => ({
       id: id + "-answer-" + index,
       role: "assistant",
       kind: "dialogue",
@@ -1039,7 +1086,9 @@ await runCase("narration-writing/history-prefix", async () => {
       at,
       zoneId: "parlor",
       heardBy: [f.id, "player"],
-      content: (keyword + " weathered wood catches the afternoon light. ").repeat(oversized ? 38 : count > 12 ? 28 : 7),
+      content: (keyword + " weathered wood catches the afternoon light. ").repeat(
+        longExchange ? 38 : count > 12 ? 28 : 7,
+      ),
     }));
     f.state.episodes = appendEpisode(
       f.state.episodes,
@@ -1071,10 +1120,6 @@ await runCase("narration-writing/history-prefix", async () => {
       .flatMap((row) => row.content.split("\n\n"))
       .filter((row) => row.startsWith('{"interaction":'));
     const active = blocks.filter((row) => !JSON.parse(row).earlierRecall);
-    if (oversized) {
-      assert.deepEqual(active, previous, "one unfit exchange cannot evict the already fitting transcript");
-      continue;
-    }
     assert.equal(JSON.parse(active.at(-1)!).interaction.id, id);
     assert.deepEqual(blocks.slice(0, active.length), active);
     const cacheBoundary = request.fitted.messages.findLast((row) => row.cacheBreakpoint);
@@ -1089,7 +1134,7 @@ await runCase("narration-writing/history-prefix", async () => {
     assert(tail.some((row) => row.role === "user" && row.content.includes("## Current Scene circumstances")));
     assert.equal(tail.at(-2)?.content, "## Current player submission");
     assert.equal(tail.at(-1)?.content, keyword);
-    if (count <= 12) assert.equal(active.length, count, "short exchanges can append past four and eight turns");
+    if (count <= 50) assert.equal(active.length, count, "a substantial transcript fits without a rebase");
     if (previous.length && active[0] === previous[0])
       assert.deepEqual(active.slice(0, -1), previous, "new turns append to the byte-identical history prefix");
     else if (previous.length) resets++;
