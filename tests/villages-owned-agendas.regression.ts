@@ -24,6 +24,7 @@ import {
 } from "../packages/villages/src/server/features/residents/resident-agendas.js";
 import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { createScheduleInfluence } from "../packages/villages/src/server/features/residents/schedule-influence-service.js";
 
 import { readNativeScheduleSnapshot } from "../packages/villages/src/server/adapters/engine/native-schedules.js";
 import {
@@ -129,6 +130,72 @@ let source: any = {
   },
 };
 const records = new Map<string, any>();
+
+{
+  const world = coerceVillageState(raw),
+    resident = world.villagers[0]!,
+    agenda = resident.agenda!,
+    activeDay = structuredClone(agenda.activeDay);
+  const prepared = {
+    version: 1,
+    signature: "prepared",
+    available: true,
+    enabled: true,
+    rhythms: [{ weekday: "Monday", startMinute: 1320, endMinute: 360 }],
+    busy: [],
+    patterns: [],
+    interests: [],
+    entities: [],
+    adopted: [],
+    unresolved: [],
+  };
+  let job: any,
+    requests = 0;
+  const influence = createScheduleInfluence({
+    readVillageState: async () => world,
+    readNativeScheduleSnapshot: async () => ({ cardsReadable: true, schedules: [source] }),
+    queueBackgroundJob: async (value: unknown) => {
+      job = value;
+    },
+    villagesConnectionIdFor: async () => "fixture",
+    villagesLanguageModels: () => ({
+      resolveForRequest: async () => ({ fitContext: (messages: unknown) => ({ messages }) }),
+    }),
+    completeWithRoom: async () => {
+      requests++;
+      return { finishReason: "stop", content: JSON.stringify(prepared) };
+    },
+  } as any);
+  for (const hold of [{ personalizationPending: true }, { personalizationFailure: "Preparation failed" }]) {
+    Object.assign(agenda, hold);
+    await influence.queue("a");
+    assert.equal(job, undefined);
+    agenda.personalizationPending = false;
+    agenda.personalizationFailure = "";
+  }
+  await influence.queue("a");
+  assert.equal(job.kind, "schedule-influence");
+  assert.equal(job.finite, true);
+  assert.equal(requests, 0);
+  assert(influence.handler.valid(world, job.input));
+  agenda.personalizationPending = true;
+  assert.equal(influence.handler.valid(world, job.input), false);
+  agenda.personalizationPending = false;
+  const result = await influence.handler.generate(job.input);
+  influence.handler.apply(world, job.input, result, { retrying: false });
+  assert.deepEqual(deriveInfluence(source, resident).rhythms, prepared.rhythms);
+  assert.deepEqual(agenda.activeDay, activeDay);
+  assert.equal(requests, 1);
+  job = undefined;
+  await influence.queue("a");
+  assert.equal(job, undefined);
+  resident.scheduleInfluence!.categories.rhythm = false;
+  await influence.queue("a");
+  assert(job);
+  resident.scheduleInfluence!.categories.rhythm = true;
+  assert.equal(influence.handler.valid(world, job.input), false);
+}
+
 let calls = 0,
   fail = false,
   lastOptions: any;

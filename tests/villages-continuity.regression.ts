@@ -303,8 +303,7 @@ await runCase("continuity/perception", () => {
   );
 });
 
-function offered() {
-  const terms = "Visit the fair together on Saturday only if Delia comes and the north path is open.";
+function offered(terms = "Visit the fair together on Saturday only if Delia comes and the north path is open.") {
   const proposal = source("proposal", "player", terms, "scene-1", { act: "offer" });
   const state = apply(
     emptyContinuity(),
@@ -455,7 +454,8 @@ await runCase("continuity/offer-identity", () => {
 });
 
 await runCase("continuity/withdrawal", () => {
-  const offer = offered();
+  const terms = "Visit the fair together. " + "Confirm each guest before leaving. ".repeat(15).trim();
+  const offer = offered(terms);
   const withdrawal = source("withdraw", "player", "I withdraw my invitation.", "scene-2", {
     act: "withdraw",
     perceptions: [],
@@ -474,6 +474,7 @@ await runCase("continuity/withdrawal", () => {
     "scene-2",
   );
   assert.equal(rows(withdrawn, player)[0].offer?.state, "withdrawn");
+  assert.equal(rows(withdrawn, player)[0].version.text, terms, "Withdrawal preserves the full original terms");
   assert.equal(
     rows(withdrawn, mara)[0].offer?.state,
     "offered",

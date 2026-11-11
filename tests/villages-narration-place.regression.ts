@@ -237,6 +237,8 @@ await runCase("narration-place/objective", () => {
   assert.equal(result.held, false);
   const project = f.state.projects[0];
   assert.equal(project.establishment!.objectives[0].met, true);
+  assert.equal(f.accept().held, false);
+  assert.equal(f.state.projects[0].establishment!.objectives[0].evidence.length, 1);
   assert.equal(project.status, "planning");
   assert.equal(project.lifecycle!.workOrder, null, "objective evidence never starts or completes the Project");
   assert.equal(f.state.venues.length, 1);

@@ -11,6 +11,7 @@ import {
 } from "../packages/villages/src/server/domain/rules/repair-records.js";
 import { establishPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
 import { findLocation } from "../packages/villages/src/server/domain/rules/places.js";
+import { applyAccessCommand } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { retainNativeFact } from "../packages/villages/src/server/domain/rules/native-continuity.js";
 import { ensureNarrative } from "../packages/villages/src/server/domain/rules/narrative-development.js";
 import {
@@ -719,10 +720,22 @@ await runCase("native-repair/stale", async () => {
 });
 
 await runCase("native-repair/checkpoint", async () => {
-  const f = await fixture(),
-    checkpoint = await f.api.createCheckpoint("Before edit", "before-edit"),
+  const f = await fixture();
+  await f.repository.mutateAuthority((state) => {
+    state.venues = [venueFixture({ id: "hall", name: "Hall" })];
+  });
+  const checkpoint = await f.api.createCheckpoint("Before edit", "before-edit"),
     record = await wishRecord(f),
     original = await f.read();
+  const access = {
+    action: "venue-policy" as const,
+    operationId: "hall-hours",
+    expectedRevision: original.venues[0].access!.revision,
+    zoneId: null,
+    managerIds: ["player"],
+    visitorHours: [],
+  };
+  await f.repository.mutateAuthority((state) => applyAccessCommand(state.venues[0], access, "player", at, ["player"]));
   const edit = await f.prepare(record.id, "edit", "Only in spring.");
   await f.api.apply(edit.id, edit.token);
   const changed = await f.read(),
@@ -735,7 +748,10 @@ await runCase("native-repair/checkpoint", async () => {
   assert.deepEqual(restored.episodes, original.episodes);
   assert(restored.continuity.records[0].revision > changed.continuity.records[0].revision);
   f.reopen();
-  assert.equal(remembered(await f.read(), "mara").text, remembered(original, "mara").text);
+  const reloaded = await f.read();
+  assert.equal(remembered(reloaded, "mara").text, remembered(original, "mara").text);
+  assert.equal(reloaded.venues[0].access!.visitorHours, null);
+  assert.throws(() => applyAccessCommand(reloaded.venues[0], access, "player", at, ["player"]), /already rejected/);
 });
 
 await runCase("native-repair/missing-page", async () => {
