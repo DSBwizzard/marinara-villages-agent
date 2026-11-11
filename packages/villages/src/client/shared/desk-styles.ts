@@ -55,6 +55,14 @@ export const DESK_STYLES = `
 .${P}-sectioned-menu .${P}-menu-content>.${P}-field{max-width:44rem}
 .${P}-sectioned-menu .${P}-menu-content>.${P}-field + .${P}-field{padding-top:12px;border-top:1px solid var(--border)}
 .${P}-workspace-content :is(.${P}-panel,.${P}-overlay,.villages-lorebook-card){color:inherit;background:transparent;border-color:var(--border);box-shadow:none}
+.${P}-workspace-content .villages-lorebook-header{flex-wrap:wrap;justify-content:start;gap:8px}
+.${P}-workspace-content .villages-lorebook-heading{flex:1 0 10rem}
+.${P}-workspace-content .villages-lorebook-card :is(.villages-lore-launch,.villages-lorebook-action,.${P}-lore-chip){border-color:var(--menu-field-border);background:var(--secondary);color:var(--foreground)}
+.${P}-workspace-content .villages-lorebook-card :is(.villages-lore-launch,.villages-lorebook-action){min-height:44px;padding:7px 10px;font:400 15px/1.3 var(--menu-font);border:1px solid var(--menu-field-border);border-radius:7px}
+.${P}-workspace-content .villages-lore-launch svg{stroke:var(--menu-sage)}
+.${P}-workspace-content .villages-lorebook-budget{border-top-color:var(--border)}
+.${P}-workspace-content .villages-lorebook-option{background:var(--secondary);border-color:var(--menu-field-border)}
+.${P}-workspace-content .villages-lorebook-option[data-selected="true"]{background:var(--menu-selected);border-color:var(--menu-tab-line)}
 .${P}-workspace-content :is(.${P}-panel-title,.${P}-label,.${P}-hint,.${P}-empty){color:inherit;font-family:var(--menu-font);letter-spacing:0;text-transform:none}
 .${P}-workspace-content .${P}-panel-title{font-size:24px}
 .${P}-workspace-content .${P}-label{font-size:18px}
@@ -228,6 +236,8 @@ export const DESK_STYLES = `
  .${P}-desk-workspace[data-desk="places"] .${P}-explore-marker:not([data-selected="true"]) .${P}-map-label{display:none}
  .${P}-desk-workspace[data-desk="mailbox"] .villages-mailbox-dialog>header{padding-bottom:16px}
  .${P}-desk-workspace[data-desk="mailbox"] .villages-mailbox-title:has(.villages-letter-reading) .${P}-directory-flourish{display:none}
+ .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-compose-fields{margin:12px 0;gap:12px}
+ .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-compose-fields textarea{min-height:clamp(96px,16vh,144px)}
  .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-layout{padding:0;gap:0}
  .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-list{padding:0;border:0}
  .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-paper{padding:0}
