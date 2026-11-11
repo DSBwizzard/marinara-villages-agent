@@ -532,7 +532,7 @@ await withBrowser(browser, async () => {
     await select("Village Market");
     await closePlaces();
     await settleLayout();
-    await marker.locator("." + P + "-map-point").click();
+    await marker.press("Enter");
     await street
       .getByRole("navigation", { name: "Paths" })
       .getByRole("button", { name: /A nearby venue/ })
