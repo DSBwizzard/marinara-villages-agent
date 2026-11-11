@@ -21,7 +21,6 @@ assert.equal(playerBackgroundForSetup("Before", "After", true), "After");
 const state = coerceVillageState({
   ...defaultVillageState(),
   playerBackground: "At founding I held the crown.",
-  worldFacts: ["The player later abdicated."],
 });
 assert.equal(state.playerBackground, "At founding I held the crown.");
 const context = renderPlayerBackgroundContext(state);

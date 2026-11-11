@@ -2,186 +2,140 @@
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { runCase } from "../scripts/test-cases.mjs";
+import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
+import { retainAuthoredNote } from "./helpers/continuity.fixture.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { projectMemories, captureMemoryScene } from "../packages/villages/src/server/domain/rules/memory-views.js";
-import { forgetVillageMemory, sceneMemories } from "../packages/villages/src/server/domain/rules/village-memories.js";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
+import { continuityHolderKey } from "../packages/villages/src/server/domain/rules/continuity.js";
+import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
+import {
+  continuityMemoryLibrary,
+  changeContinuityMemory,
+  inspectContinuityMemory,
+} from "../packages/villages/src/server/domain/rules/continuity-library.js";
 import { createWorldCoordination } from "../packages/villages/src/server/features/world/village-service.js";
 import { configureWorldCoordination } from "../packages/villages/src/server/features/world/village.js";
 import { registerHistoryRoutes } from "../packages/villages/src/server/features/world/routes.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { villagesRoutes } from "../packages/villages/src/server/entry/routes.js";
-import { addMemory, memoryRepair, memoryTime } from "./helpers/memories-fixture.js";
+
+const at = "2026-11-11T00:00:00.000Z";
+const originalText = "Aqua offered to lend the telescope and promised to polish it.";
+const correctedText = "Aqua offered to lend the telescope, with no commitment to polish it.";
+const visible = (state: VillageState, id: string) =>
+  continuityMemoryLibrary(state, { inspection: id !== "player", characterId: id }, at).entries;
+function request(state: VillageState, id: string, operationId: string, knowers = ["player"]) {
+  const inspection = inspectContinuityMemory(state, id, "player", true, at);
+  return { seed: state.seed, target: inspection.target!, operationId, knowers };
+}
+function unchangedNative(state: VillageState) {
+  const { continuity: _continuity, ...native } = state;
+  return native;
+}
 
 async function fixture() {
-  const rows = new Map<string, any>();
-  const clone = (value: any) => (value === undefined ? null : structuredClone(value));
-  let beforeRoot: (() => Promise<void>) | undefined;
-  const store: any = {
-    async getById(_pkg: string, id: string) {
-      return clone(rows.get(id));
-    },
-    async list(_pkg: string, kind: string) {
-      return [...rows.values()].filter((row) => row.kind === kind).map(clone);
-    },
-    async create(input: any) {
-      assert.ok(!rows.has(input.id));
-      const row = { ...clone(input), revision: 1 };
-      rows.set(row.id, row);
-      return clone(row);
-    },
-    async update(input: any) {
-      if (input.id === "villages-village" && beforeRoot) {
-        const hook = beforeRoot;
-        beforeRoot = undefined;
-        await hook();
-      }
-      const prior = rows.get(input.id);
-      if (!prior || prior.revision !== input.expectedRevision) return null;
-      const row = { ...prior, ...clone(input), revision: prior.revision + 1 };
-      rows.set(row.id, row);
-      return clone(row);
-    },
-    async remove(_pkg: string, id: string, revision: number) {
-      if (rows.get(id)?.revision !== revision) return false;
-      rows.delete(id);
-      return true;
-    },
-  };
-  const repository = () =>
-    createVillageRepository(
-      () => store,
-      (message) => {
-        throw Error(message);
-      },
-    );
+  const storage = sceneHistoryFixture();
+  const repository = () => createVillageRepository(() => storage.gate.documents);
   const repo = repository();
-  const initial = defaultVillageState();
-  initial.seed = "correction-world";
-  initial.setupAt = memoryTime();
-  initial.memories = addMemory(initial.memories);
-  initial.memories = addMemory(initial.memories, {
-    sourceId: "private",
-    audience: ["aqua", "ella"],
-    text: "Ella privately prefers plum tea.",
+  const initial = coerceVillageState({
+    ...defaultVillageState(),
+    seed: "correction-world",
+    setupAt: at,
+    foundedAt: at,
+    villagers: ["aqua", "ella"].map((id) => ({
+      characterId: id,
+      incarnation: id + "-one",
+      letterFontId: "caveat",
+      addedAt: at,
+      cardSnapshot: { id, name: id, revision: 1, sourceStatus: "available", capturedAt: at },
+    })),
   });
-  initial.memoryScenes.frozen = {
-    snapshot: captureMemoryScene(initial.memories, "frozen", ["aqua", "player"], memoryTime(4)),
-    effects: {},
-  };
-  await repo.mutateAuthority(
-    (state) => {
-      Object.assign(state, initial);
-    },
-    { memories: true },
-  );
+  const id = retainAuthoredNote(initial, "original", originalText, ["aqua", "player"], at);
+  retainAuthoredNote(initial, "private", "Ella privately prefers plum tea.", ["aqua", "ella"], at);
+  await repo.mutateAuthority((state) => Object.assign(state, initial), { memories: true });
   const api = createWorldCoordination({
     readVillageAuthority: () => repo.readAuthority({ memories: true }),
-    mutateMemoryAuthority: (update: any) => repo.mutateAuthority(update, { memories: true }),
-    readScene: () => {
-      throw Error("Correction cannot read or change a transcript.");
-    },
+    mutateMemoryAuthority: (update) => repo.mutateAuthority(update, { memories: true }),
   } as any);
-  const release = configureWorldCoordination(api);
-  const app = Fastify();
+  const release = configureWorldCoordination(api),
+    app = Fastify();
   registerHistoryRoutes(app);
-  const inspection = await api.readVillageMemoryEvidence(initial.memories.records[0].id, true, "player");
-  const input = {
-    operationId: "player-correction",
-    seed: inspection.seed,
-    expectedCollectionRevision: inspection.revision,
-    target: {
-      id: inspection.entry.id,
-      revision: inspection.entry.revision,
-      rootRevision: inspection.entry.rootRevision,
-    },
-    knowers: ["player"],
-    text: "Aqua offered to lend the telescope, without promising to polish it.",
+  const update = storage.documents.update;
+  let beforeRoot: (() => Promise<unknown>) | undefined;
+  storage.documents.update = async (input: any) => {
+    if (input.id === "villages-village" && beforeRoot) {
+      const hook = beforeRoot;
+      beforeRoot = undefined;
+      await hook();
+    }
+    return update(input);
   };
+  const input = { ...request(initial, id, "correct-player"), text: correctedText };
   return {
-    store,
-    rows,
-    api,
-    app,
+    id,
     input,
     initial,
-    inspection,
+    api,
+    app,
     repo,
     repository,
+    storage,
     read: () => repo.readAuthority({ memories: true }),
-    post: (payload: any = input, id = input.target.id) =>
-      app.inject({ method: "POST", url: `/memories/${id}/correct`, payload }),
-    beforeRoot(hook: () => Promise<void>) {
+    post: (payload: unknown = input) => app.inject({ method: "POST", url: `/memories/${id}/correct`, payload }),
+    beforeRoot: (hook: () => Promise<unknown>) => {
       beforeRoot = hook;
     },
-    async close() {
+    close: async () => {
       await app.close();
       release();
+      storage.release();
+      storage.gate.dispose();
     },
   };
-}
-function mechanics(state: any) {
-  return Object.fromEntries(
-    Object.entries(state).filter(([key]) => !["memories", "memoryScenes", "memoryHead"].includes(key)),
-  );
 }
 
 await runCase("memory-correction/scope", async () => {
   const f = await fixture();
   try {
     const original = await f.read();
-    assert.deepEqual(f.inspection.knowers.map((k) => k.person.id).sort(), ["aqua", "player"]);
     const response = await f.post();
     assert.equal(response.statusCode, 200, response.body);
     assert.deepEqual(response.json(), { corrected: true });
     let current = await f.read();
-    assert.equal(projectMemories(current.memories, ["player"])[0].text, f.input.text);
-    assert.equal(projectMemories(current.memories, ["aqua"])[0].text, original.memories.records[0].text);
-    assert.deepEqual(projectMemories(current.memories, ["ella"]), projectMemories(original.memories, ["ella"]));
+    assert.equal(visible(current, "player")[0].text, correctedText);
+    assert.equal(visible(current, "aqua").find((row) => row.id === f.id)?.text, originalText);
+    assert.deepEqual(visible(current, "ella"), visible(original, "ella"));
     assert.deepEqual(
-      mechanics(current),
-      mechanics(original),
-      "Correction cannot change gameplay, time, receipts or settings.",
+      unchangedNative(current),
+      unchangedNative(original),
+      "Manual correction keeps native state and accepted episodes intact",
     );
-    assert.deepEqual(sceneMemories(current, "frozen"), sceneMemories(original, "frozen"));
-    const retained = current.memories.records[0];
-    assert.deepEqual(retained.knowers.player.support, original.memories.records[0].knowers.player.support);
-    assert.deepEqual(retained.knowers.player.repair?.repairs, { id: retained.id, revision: 1 });
-    assert.equal(retained.recordedAt, original.memories.records[0].recordedAt);
-    assert.equal(projectMemories(current.memories, ["player"])[0].knowers.player.support.length, 0);
-    const ordinary = await f.app.inject({ url: `/memories/${retained.id}/evidence` });
+    const ordinary = (await f.app.inject({ url: `/memories/${f.id}/evidence` })).json();
     assert.deepEqual(
-      ordinary.json().knowers.map((k: any) => k.person.id),
+      ordinary.knowers.map((row: any) => row.person.id),
       ["player"],
     );
-    assert.deepEqual(
-      ordinary.json().knowers[0].support,
-      [],
-      "Ordinary projection cannot reintroduce replaced source prose.",
-    );
-    const inspect = await f.api.readVillageMemoryEvidence(retained.id, true);
-    assert.equal(inspect.knowers.find((k) => k.person.id === "player")?.text, f.input.text);
-    assert.ok(inspect.knowers.find((k) => k.person.id === "player")?.playerCorrection);
-    assert.equal(inspect.knowers[0].support[0].excerpt, original.memories.records[0].text);
+    assert.deepEqual(ordinary.knowers[0].support, []);
+    assert(!JSON.stringify(ordinary).includes(originalText));
+    const inspection = await f.api.readVillageMemoryEvidence(f.id, true);
+    assert.equal(inspection.knowers.find((row) => row.person.id === "player")?.text, correctedText);
+    assert(inspection.knowers.find((row) => row.person.id === "player")?.playerCorrection);
+    assert.equal(inspection.knowers.find((row) => row.person.id === "aqua")?.support[0].excerpt, originalText);
     assert.equal((await f.api.buildVillageMemories({ query: "lend the telescope" })).total, 1);
     assert.equal((await f.api.buildVillageMemories({ query: "promised to polish" })).total, 0);
-    // Independent repository and serialized document bytes simulate a cold service reopen.
-    for (const [key, value] of f.rows) f.rows.set(key, JSON.parse(JSON.stringify(value)));
     assert.deepEqual(await f.repository().readAuthority({ memories: true }), current);
-    assert.equal((await f.post()).statusCode, 200, "Lost-response retry remains idempotent after reopen.");
+    assert.equal((await f.post()).statusCode, 200, "Lost response replay returns the exact saved effect");
     assert.deepEqual(await f.read(), current);
-    await f.api.forgetMemory(retained.id, {
-      ...memoryRepair(current.memories, "forget", ["player"]),
-      seed: current.seed,
-    });
+    await f.api.forgetMemory(f.id, request(current, f.id, "forget-corrected"));
     current = await f.read();
-    const repairForgotten = {
-      ...memoryRepair(current.memories, "repair", ["player"], "A further correction."),
-      seed: current.seed,
-    };
-    assert.equal((await f.post(repairForgotten)).statusCode, 200);
-    assert.equal(projectMemories((await f.read()).memories, ["player"]).length, 0, "Correct never undoes Forget.");
-    assert.ok((await f.api.buildVillageMemories({ inspection: true, characterId: "player" })).entries[0].forgotten);
+    const invalid = await f.post({ ...request(current, f.id, "restore-forgotten"), text: "A further correction." });
+    assert.equal(invalid.statusCode, 409);
+    assert.deepEqual(visible(await f.read(), "player"), []);
+    assert((await f.api.buildVillageMemories({ inspection: true, characterId: "player" })).entries[0].forgotten);
   } finally {
     await f.close();
   }
@@ -191,37 +145,28 @@ await runCase("memory-correction/guards", async () => {
   const f = await fixture();
   try {
     const original = await f.read();
+    const key = continuityHolderKey(continuityActor(original, "player")!);
     for (const patch of [
-      { seed: "replaced-world" },
+      { seed: "another-world" },
       { expectedCollectionRevision: 0 },
-      { target: { ...f.input.target, revision: 99 } },
-      { target: { ...f.input.target, rootRevision: 99 } },
-      { knowers: ["ella"] },
-      { knowers: ["player", "ella"] },
-      { knowers: ["player", "player"] },
-      { knowers: ["constructor"] },
-    ]) {
-      assert.equal((await f.post({ ...f.input, ...patch })).statusCode, 409);
-      assert.deepEqual(await f.read(), original, "Rejected correction is atomic even with a valid earlier knower.");
-    }
-    for (const patch of [
-      { text: " " },
-      { text: "é".repeat(301) },
-      { text: 1 },
-      { text: undefined },
-      { operationId: "" },
-      { knowers: [] },
+      { target: { ...f.input.target, heads: { ...f.input.target.heads, [key]: 99 } } },
+      { target: { ...f.input.target, recordRevision: 99 } },
       { target: { ...f.input.target, id: "different" } },
-    ])
-      assert.equal((await f.post({ ...f.input, ...patch })).statusCode, 400);
-    assert.deepEqual(await f.read(), original);
-    assert.equal((await f.post({ ...f.input, knowers: ["aqua", "player"], text: "é".repeat(300) })).statusCode, 200);
-    const current = await f.read();
-    assert.ok(
-      projectMemories(current.memories, ["aqua", "player"]).some((row) => Object.keys(row.knowers).length === 2),
-    );
+      ...[["ella"], ["player", "ella"], ["player", "player"], ["constructor"], []].map((knowers) => ({ knowers })),
+      ...[" ", "é".repeat(1201), 1, undefined].map((text) => ({ text })),
+      { operationId: "" },
+    ]) {
+      const result = await f.post({ ...f.input, ...patch });
+      assert.equal(result.statusCode, 409, JSON.stringify(patch));
+      assert.deepEqual(await f.read(), original, "Rejected correction is atomic");
+    }
+    const text = "é".repeat(1200);
+    assert.equal((await f.post({ ...f.input, knowers: ["aqua", "player"], text })).statusCode, 200);
+    const state = await f.read();
+    assert.equal(visible(state, "player")[0].text, text);
+    assert.equal(visible(state, "aqua").find((row) => row.id === f.id)?.text, text);
     assert.equal((await f.post({ ...f.input, text: "Reused identity with different contents." })).statusCode, 409);
-    assert.deepEqual(await f.read(), current);
+    assert.deepEqual(await f.read(), state);
   } finally {
     await f.close();
   }
@@ -230,28 +175,35 @@ await runCase("memory-correction/guards", async () => {
 await runCase("memory-correction/concurrency", async () => {
   const f = await fixture();
   try {
-    f.beforeRoot(async () => {
-      await f.repo.mutateAuthority((state) => {
-        state.name = "Concurrent mechanical edit";
-      });
-    });
+    f.beforeRoot(() =>
+      f.repository().mutateAuthority((state) => {
+        state.name = "Concurrent native edit";
+      }),
+    );
     assert.equal((await f.post()).statusCode, 200);
-    assert.equal((await f.read()).name, "Concurrent mechanical edit");
     const latest = await f.read();
-    const next = { ...memoryRepair(latest.memories, "repair", ["player"], "Uncommitted edit."), seed: latest.seed };
-    f.beforeRoot(async () => {
-      await f.repo.mutateAuthority(
+    assert.equal(latest.name, "Concurrent native edit");
+    const correction = { ...request(latest, f.id, "stale-correction"), text: "Uncommitted edit." };
+    f.beforeRoot(() =>
+      f.repository().mutateAuthority(
         (state) => {
-          forgetVillageMemory(state, memoryRepair(state.memories, "forget", ["player"]), memoryTime(12));
+          state.continuity = changeContinuityMemory(state, f.id, request(state, f.id, "racing-forget"), "forget", at);
         },
         { memories: true },
-      );
-    });
-    assert.equal((await f.post(next)).statusCode, 409, "A Memory conflict is never silently rebased.");
+      ),
+    );
+    assert.equal((await f.post(correction)).statusCode, 409);
     const final = await f.read();
-    assert.equal(projectMemories(final.memories, ["player"]).length, 0);
-    assert.equal(final.memories.records[0].knowers.player.repair?.text, f.input.text);
-    assert.deepEqual(sceneMemories(final, "frozen"), sceneMemories(f.initial, "frozen"));
+    assert.deepEqual(visible(final, "player"), []);
+    assert.equal(
+      final.continuity.versions.some((row) => row.text === correction.text),
+      false,
+    );
+    assert.equal(
+      final.continuity.versions.some((row) => row.text === correctedText),
+      true,
+    );
+    assert.deepEqual(final.episodes, f.initial.episodes);
   } finally {
     await f.close();
   }
@@ -260,66 +212,44 @@ await runCase("memory-correction/concurrency", async () => {
 await runCase("memory-correction/runtime", async () => {
   const f = await fixture();
   await f.repo.mutateAuthority((state) => {
-    state.clock = { revision: 1, trustedAt: memoryTime(), recovery: null, replayUntilDate: "", advanceMs: 86400000 };
+    state.clock = { revision: 1, trustedAt: at, recovery: null, replayUntilDate: "", advanceMs: 86400000 };
     state.timeZone = "UTC";
   });
   const original = await f.read();
   const release = configureVillagesRuntime({
-    persistence: { documents: f.store },
+    persistence: { documents: f.storage.documents },
     resources: {},
-    languageModels: {
-      resolveForRequest() {
-        throw Error("Manual edits must never request a model.");
-      },
-    },
+    languageModels: { resolveForRequest: () => assert.fail("Manual edits cannot request a model") },
+    logger: { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} },
     isDebugAgentsEnabled: () => false,
     getAgentConfig: async () => ({ connectionId: "" }),
-    json: { parseJsonish: (value: string) => JSON.parse(value) },
   } as any);
   const app = Fastify();
   try {
     await villagesRoutes(app);
-    const evidence = (await app.inject({ url: `/memories/inspect/${f.input.target.id}?characterId=player` })).json();
-    assert.equal(evidence.seed, original.seed);
-    const correctionStarted = Date.now();
-    const response = await app.inject({
-      method: "POST",
-      url: `/memories/${f.input.target.id}/correct`,
-      payload: f.input,
-    });
+    const started = Date.now();
+    const response = await app.inject({ method: "POST", url: `/memories/${f.id}/correct`, payload: f.input });
     assert.equal(response.statusCode, 200, response.body);
-    const corrected = await f.read();
-    const correctedAt = Date.parse(corrected.memories.records[0].knowers.player.repair!.at);
-    assert.ok(
-      correctedAt >= correctionStarted + 86400000 && correctedAt <= Date.now() + 86400000,
-      "Cold manual correction uses the saved time advance without observing the clock.",
-    );
-    assert.deepEqual(
-      mechanics(corrected),
-      mechanics(original),
-      "Actual runtime wiring cannot observe/write the old clock, found the world, or reconcile relationships/mechanics.",
-    );
-    assert.deepEqual(sceneMemories(corrected, "frozen"), sceneMemories(original, "frozen"));
-    assert.equal(projectMemories(corrected.memories, ["player"])[0].text, f.input.text);
-    const forgetStarted = Date.now();
+    const corrected = await f.read(),
+      root = corrected.continuity.records.find((row) => row.id === f.id)!;
+    const key = continuityHolderKey(continuityActor(corrected, "player")!);
+    assert.equal(visible(corrected, "player")[0].text, correctedText);
+    const correctedAt = Date.parse(root.protection[key].at);
+    assert(correctedAt >= started + 86400000 && correctedAt <= Date.now() + 86400000);
+    assert.deepEqual(unchangedNative(corrected), unchangedNative(original));
     const forgotten = await app.inject({
       method: "POST",
-      url: `/memories/${f.input.target.id}/forget`,
-      payload: {
-        ...memoryRepair(corrected.memories, "forget", ["player"]),
-        seed: corrected.seed,
-      },
+      url: `/memories/${f.id}/forget`,
+      payload: request(corrected, f.id, "runtime-forget"),
     });
     assert.equal(forgotten.statusCode, 200, forgotten.body);
-    const forgottenState = await f.read();
-    const forgottenAt = Date.parse(forgottenState.memories.records[0].knowers.player.forgotten!.at);
-    assert.ok(forgottenAt >= forgetStarted + 86400000 && forgottenAt <= Date.now() + 86400000);
-    assert.deepEqual(mechanics(forgottenState), mechanics(original), "Forget uses the same history-only boundary.");
-    assert.ok(
-      [...f.rows.values()].every((row) =>
+    const final = await f.read();
+    assert.deepEqual(visible(final, "player"), []);
+    assert.deepEqual(unchangedNative(final), unchangedNative(original));
+    assert(
+      [...f.storage.rows.values()].every((row) =>
         ["village", "memory-payload", "memory-page", "memory-payload-intent"].includes(row.kind),
       ),
-      "No relationship, Scene, settings or other domain documents are written.",
     );
   } finally {
     await app.close();

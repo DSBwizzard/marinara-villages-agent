@@ -1,319 +1,196 @@
-import { agendaFixture } from "./helpers/agenda.fixture.js";
 import assert from "node:assert/strict";
-import { context } from "../packages/villages/src/server/adapters/operations/operation-context.js";
-import { addMemory } from "./helpers/memories-fixture.js";
-import { venueFixture } from "./helpers/venues.fixture.js";
-import { fixtureVillageState, villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
-
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { relationshipWritingPrompt } from "../packages/villages/src/server/domain/rules/relationship-presentation.js";
-import { RELATIONSHIP_REVIEW_INSTRUCTION } from "../packages/villages/src/server/domain/rules/relationship-review.js";
+import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import {
-  defaultRelationshipState,
-  neutralRelationship,
-  relationshipKey,
-} from "../packages/villages/src/server/domain/rules/relationship-rules.js";
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import { prepareVenueTurnMessages } from "../packages/villages/src/server/features/scenes/writing.js";
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
+import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
+import {
+  changeContinuityMemory,
+  inspectContinuityMemory,
+} from "../packages/villages/src/server/domain/rules/continuity-library.js";
+import { appendEpisode } from "../packages/villages/src/server/domain/rules/episodes.js";
+import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import { prepareScenePrompt, scenePromptPacket } from "./fixtures/villages-scene-writing.fixture.js";
+import { retainAuthoredNote } from "./helpers/continuity.fixture.js";
+import { venueFixture } from "./helpers/venues.fixture.js";
 
-const stamp = new Date().toISOString();
-const state = defaultVillageState();
-state.seed = "dialogue-context";
-state.foundedAt = state.setupAt = stamp;
-
-state.narrationStyle.writingGuidance = "Make all residents agreeable and reluctant to act.";
-state.villagers = ["outgoing", "reserved"].map((id) => ({
-  letterFontId: "caveat",
-  characterId: id,
-  addedAt: stamp,
-  wishes: [],
-  cardSnapshot: {
+const at = "2026-11-10T12:00:00.000Z";
+const cards = ["outgoing", "reserved", "absent"].map((id) =>
+  readVillagerCard({
     id,
-    name: id,
-    description: "FULL CARD ".repeat(500) + id + " DESCRIPTION TAIL",
-    personality:
-      id === "outgoing"
-        ? "Outgoing, energetic, opinionated; enjoys inviting people."
-        : "Quiet, selective, competitive; acts readily when a challenge matters.",
-    appearance: id + " APPEARANCE",
-    backstory: id + " BACKSTORY",
-    exampleDialogue: id + " VOICE EXAMPLE",
-    postHistoryInstructions: id + " AUTHORED INSTRUCTION",
-    revision: 1,
-    sourceStatus: "available",
-    capturedAt: stamp,
-  },
-  agenda: agendaFixture({
-    day: [],
-    week: {},
-    routineSummary: "",
-    generatedAt: stamp,
-    source: "village",
-  }),
-})) as any;
-state.venues = [
-  venueFixture({
-    id: "camp",
-    name: "Camp",
-    classes: ["community"],
-    residentIds: [],
-    workerIds: [],
-    occupancy: { playerHome: false, residentCharacterId: null },
-    zones: [
+    data: {
+      name: id,
+      description: "FULL CARD ".repeat(500) + id + " DESCRIPTION TAIL",
+      personality:
+        id === "outgoing" ? "Energetic, opinionated and quick to invite people." : "Quiet, selective and competitive.",
+      mes_example: id + " VOICE EXAMPLE",
+      post_history_instructions: id + " AUTHORED INSTRUCTION",
+      extensions: { appearance: id + " APPEARANCE", backstory: id + " BACKSTORY" },
+    },
+  } as any),
+);
+const venue = venueFixture({
+  id: "camp",
+  name: "Camp",
+  classes: ["community"],
+  description: "A clearing with a bench.",
+});
+const state = coerceVillageState({
+  ...defaultVillageState(),
+  seed: "dialogue-context",
+  setupAt: at,
+  foundedAt: at,
+  venues: [venue],
+  villagers: cards.map((card) => ({
+    characterId: card.id,
+    incarnation: card.id + "-one",
+    letterFontId: "caveat",
+    addedAt: at,
+    cardSnapshot: snapshotFromCard(card, 1),
+  })),
+});
+state.narrationStyle.writingGuidance = "Make all residents agreeable and reluctant to act.";
+const perspective = (id: string, text: string) =>
+  retainAuthoredNote(state, "perspective-" + id, text, [id], at, {
+    class: "perspective",
+    current: true,
+    owner: continuityActor(state, id)!,
+    about: ["player"],
+  });
+perspective("outgoing", "Values the player's reliability.");
+perspective("reserved", "Distrustful after a broken promise.");
+retainAuthoredNote(state, "violin", "Reserved promised to repair Alex’s violin on Sunday.", ["reserved"], at, {
+  class: "commitment",
+  current: true,
+  owner: continuityActor(state, "reserved")!,
+});
+retainAuthoredNote(state, "talk", "Reserved and the player are discussing the violin.", ["reserved"], at);
+retainAuthoredNote(state, "absent-secret", "ABSENT PERSON SECRET", ["absent"], at);
+const old = "Returned the borrowed camera intact.";
+const oldRoot = retainAuthoredNote(state, "camera", old, ["outgoing"], at);
+const oldEvidence = inspectContinuityMemory(state, oldRoot, "outgoing", true, at);
+state.continuity = changeContinuityMemory(
+  state,
+  oldRoot,
+  { operationId: "forget-camera", seed: state.seed, target: oldEvidence.target!, knowers: ["outgoing"] },
+  "forget",
+  at,
+);
+
+const participants = cards.slice(0, 2).map((card) => ({ characterId: card.id, name: card.name, doing: "Talking" }));
+const previous = "I prefer an early start.";
+state.episodes = appendEpisode(
+  state.episodes,
+  {
+    format: 1,
+    id: "prior",
+    seed: state.seed,
+    sceneId: "retired",
+    submissionId: "prior-submission",
+    operationId: "prior-operation",
+    capturedAt: at,
+    acceptedAt: at,
+    admittedContinuityRevision: state.continuity.revision,
+    responseDigest: memoryHash(previous),
+    privateInput: "When should we start?",
+    actors: ["player", "reserved", "outgoing"].map((id) => ({
+      id,
+      incarnation: continuityActor(state, id)!.incarnation,
+      zoneId: "exterior",
+    })),
+    segments: [
       {
-        id: "exterior",
-        name: "Clearing",
-        kind: "exterior",
-        description: "A clearing with a bench.",
-        state: { revision: 0, updatedAt: "", recent: null },
+        id: "earlier-spoken",
+        role: "assistant",
+        kind: "dialogue",
+        name: "reserved",
+        speakerId: "reserved",
+        content: previous,
+        zoneId: "exterior",
+        heardBy: ["reserved", "outgoing", "player"],
+        at,
       },
     ],
-    state: { revision: 0, updatedAt: "", recent: null },
-  }),
-] as any;
-state.memories = addMemory(state.memories, {
-  sourceId: "dialogue-0",
-  text: "Reserved promised to repair Alex’s violin on Sunday.",
-  audience: ["reserved"],
-});
-state.memories = addMemory(state.memories, {
-  sourceId: "dialogue-1",
-  text: "ABSENT PERSON SECRET",
-  audience: ["absent"],
-});
-state.memories = addMemory(state.memories, {
-  sourceId: "dialogue-2",
-  text: "Reserved and the player are discussing the violin.",
-  audience: ["reserved"],
-});
-state.relationshipContext = defaultRelationshipState(state.seed);
-const original = structuredClone(state.relationshipContext);
-for (const id of ["outgoing", "reserved"]) {
-  const writing = relationshipWritingPrompt(state, id);
-  assert.ok(writing.includes("Missing history establishes neither distrust nor intimacy"));
-  assert.ok(!writing.includes("Unestablished"));
-  assert.ok(!writing.includes("warmth 0"));
-  assert.ok(!writing.includes("trust 0"));
-  assert.ok(!writing.includes("whenever"));
-}
-assert.deepEqual(state.relationshipContext, original, "Writing rendering does not change relationship state");
-state.relationshipContext.edges[relationshipKey("outgoing", "player")] = {
-  ...neutralRelationship("outgoing", "player"),
-  connection: "Friends",
-  stance: "Values the player's reliability",
-  revision: 1,
-  experiences: ["trust"],
-};
-state.relationshipContext.edges[relationshipKey("reserved", "player")] = {
-  ...neutralRelationship("reserved", "player"),
-  connection: "Strained acquaintances",
-  stance: "Distrustful after a broken promise",
-  revision: 1,
-};
-const after = structuredClone(state.relationshipContext.edges[relationshipKey("outgoing", "player")]!);
-state.relationshipContext.receipts.trust = {
-  id: "trust",
-  fromId: "outgoing",
-  toId: "player",
-  beforeRevision: 0,
-  sceneBeforeRevision: 0,
-  sequence: ++state.relationshipContext.eventSequence,
-  liveAfter: {
-    connection: after.connection,
-    stance: after.stance,
-    expectations: after.expectations,
-    concerns: after.concerns,
-    records: Object.values(after.records),
+    grounding: [],
+    continuityVersionIds: [],
+    offered: [],
+    commandReceipts: [],
+    dependencies: {},
   },
-  at: stamp,
-  reason: "Returned the borrowed camera intact",
-  sourceId: "earlier",
-  lineIds: ["earlier"],
-  evidence: [],
-};
-assert.ok(
-  !relationshipWritingPrompt(state, "outgoing").includes("Returned the borrowed camera intact"),
-  "Historical receipts cannot bypass Memory recall or player repair",
+  state.seed,
 );
-assert.ok(relationshipWritingPrompt(state, "reserved").includes("Distrustful after a broken promise"));
-assert.ok(relationshipWritingPrompt(state, "outgoing").includes("Values the player's reliability"));
-
-let paidCalls = 0;
-let shrink = false;
-const model: any = {
-  model: "fixture",
-  maxOutputTokens: 4096,
-  fitContext: (messages: any, options: any) => ({ ...options, messages: shrink ? [] : messages }),
-  chatComplete() {
-    paidCalls++;
-    throw Error("Prompt regressions must not call a model");
-  },
+const scene = {
+  placeId: venue.id,
+  zoneId: "exterior",
+  startedAt: at,
+  participants,
+  activeIds: participants.map((row) => row.characterId),
 };
-const savedRows = new Map<string, any>([
-  ["villages-village", { id: "villages-village", packageId: "villages", kind: "village", data: state, revision: 1 }],
-]);
-const release = configureVillagesRuntime({
-  logger: { debug() {}, info() {}, warn() {}, error() {} },
-  getAgentConfig: async () => ({ connectionId: "fixture" }),
-  resources: { listLorebooks: async () => [], listCharacters: async () => [] },
-  persistence: {
-    documents: villageFixtureDocuments({
-      getById: async (_pkg: any, id: string) => structuredClone(savedRows.get(id) ?? null),
-      list: async (_pkg: any, kind: string) =>
-        [...savedRows.values()].filter((row) => row.kind === kind).map((row) => structuredClone(row)),
-      update: async (input: any) => {
-        const old = savedRows.get(input.id);
-        if (!old || old.revision !== input.expectedRevision) return null;
-        const row = { ...old, ...structuredClone(input), revision: old.revision + 1 };
-        savedRows.set(input.id, row);
-        if (input.id === "villages-village") Object.assign(state, fixtureVillageState(input.data, savedRows));
-        return structuredClone(row);
-      },
-      create: async (input: any) => {
-        const row = { ...structuredClone(input), revision: 1 };
-        savedRows.set(input.id, row);
-        return structuredClone(row);
-      },
-      remove: async (_pkg: any, id: string, revision: number) => {
-        if (savedRows.get(id)?.revision !== revision) return false;
-        savedRows.delete(id);
-        return true;
-      },
-    }),
-  },
-  languageModels: { resolveForRequest: async () => model },
-} as any);
-async function run() {
-  try {
-    const scene: any = {
-      semanticVersion: 2,
-      villageSeed: state.seed,
-      version: 4,
-      id: "fixture",
-      placeId: "camp",
-      placeName: "Camp",
-      zoneId: "exterior",
-      area: "outside",
-      spaceClass: "community",
-      startedAt: stamp,
-      participants: state.villagers.map((person) => ({
-        characterId: person.characterId,
-        name: person.cardSnapshot.name,
-        doing: "Talking",
-      })),
-      activeIds: ["outgoing", "reserved"],
-      lines: [
-        {
-          id: "earlier-spoken",
-          role: "assistant",
-          speakerId: "reserved",
-          name: "reserved",
-          kind: "dialogue",
-          content: "I prefer an early start.",
-          heardBy: ["reserved", "outgoing"],
-          at: stamp,
-        },
-      ],
-      submissions: [],
-      recap: "",
-      pendingRoomQuestions: [],
-      pendingProjectQuestions: [],
-    };
-    const prepared = await prepareVenueTurnMessages(scene, "What about Alex’s violin music?", "chat", "outgoing", null);
-    const prompt = prepared.fitted.messages.map((entry) => entry.content).join("\n");
-    const positions = [
-      "## Writing direction",
-      "## Response format and evidence metadata",
-      "## Complete authored character identity",
-      "## Authored post-history direction",
-      "## Witnessed conversation",
-      "## Current Scene circumstances",
-    ].map((heading) => prompt.indexOf(heading));
-    assert.ok(positions.every((position, i) => position >= 0 && (!i || position > positions[i - 1])));
-    for (const person of state.villagers)
-      for (const suffix of ["DESCRIPTION TAIL", "APPEARANCE", "BACKSTORY", "VOICE EXAMPLE", "AUTHORED INSTRUCTION"])
-        assert.ok(prompt.includes(person.characterId + " " + suffix), suffix);
-    assert.ok(prompt.indexOf('["earlier-spoken",') > prompt.indexOf("outgoing AUTHORED INSTRUCTION"));
-    const reordered = await prepareVenueTurnMessages(
-      { ...scene, participants: scene.participants.toReversed(), activeIds: scene.activeIds.toReversed() },
-      "A different topic",
-      "chat",
-      "reserved",
-      null,
-    );
-    const prefix = (messages: typeof prepared.fitted.messages) =>
-      messages.filter((message) => message.cacheBreakpoint).slice(0, 2);
-    assert.deepEqual(prefix(reordered.fitted.messages), prefix(prepared.fitted.messages));
-    assert.equal(prefix(prepared.fitted.messages).length, 2);
-    assert.ok(prompt.includes("where compatible with character identity"));
-    assert.ok(!prompt.includes("LEGACY TELL SECRET"));
-    assert.ok(prompt.includes(state.memories.records[0].text), "Relevant native memory is recalled");
-    assert.ok(prompt.includes(state.memories.records[2].text), "Contextual memory is recalled");
-    assert.ok(prompt.includes('"knowers":{"reserved":'));
-    assert.ok(!prompt.includes('"rootRevision":'));
-    assert.ok(!prompt.includes("ABSENT PERSON SECRET"));
-    assert.ok(!prompt.includes("Pending exact Residence edit proposals:"));
-    assert.ok(!prompt.includes("Pending player requests to move:"));
+const baseline = memoryHash(state);
+const prepared = await prepareScenePrompt(state, cards[0], "chat", "What about Alex’s violin music?", scene);
+const { prompt } = prepared;
+const positions = [
+  "## Writing direction",
+  "## Response format and evidence metadata",
+  "## Complete authored character identity",
+  "## Authored post-history direction",
+  "## Witnessed conversation",
+  "## Current Scene circumstances",
+].map((heading) => prompt.indexOf(heading));
+assert(positions.every((position, index) => position >= 0 && (!index || position > positions[index - 1])));
+for (const { characterId } of participants)
+  for (const field of ["DESCRIPTION TAIL", "APPEARANCE", "BACKSTORY", "VOICE EXAMPLE", "AUTHORED INSTRUCTION"])
+    assert(prompt.includes(characterId + " " + field));
+assert(prompt.indexOf(previous) > prompt.indexOf("outgoing AUTHORED INSTRUCTION"));
+const ordered = await prepareScenePrompt(state, cards[0], "chat", "A different topic", {
+  ...scene,
+  participants: participants.toReversed(),
+  activeIds: scene.activeIds.toReversed(),
+});
+const prefix = (messages: typeof prepared.fitted.messages) =>
+  messages.filter((message) => message.cacheBreakpoint).slice(0, 2);
+assert.equal(prefix(prepared.fitted.messages).length, 2);
+assert.deepEqual(prefix(ordered.fitted.messages), prefix(prepared.fitted.messages));
+assert.match(prompt, /where compatible with character identity/);
+assert.match(prompt, /Residents may initiate plausible actions/);
+assert.match(prompt, /The player controls their own speech, decisions, actions, thoughts, feelings, and consent/);
+assert.match(prompt, /permission\.grant\|permission\.revoke/);
+assert.doesNotMatch(prompt, /ABSENT PERSON SECRET|"rootRevision"/);
 
-    assert.ok(RELATIONSHIP_REVIEW_INSTRUCTION.includes("liveAfter"));
-
-    const playerGuard = "The player controls their own speech, decisions, actions, thoughts, feelings, and consent";
-    assert.ok(prompt.includes(playerGuard));
-    const opening = (await prepareVenueTurnMessages(scene, "", "greet", "", null)).fitted.messages
-      .map((entry) => entry.content)
-      .join("\n");
-
-    assert.ok(!opening.includes("recollections:["));
-    assert.ok(!opening.includes("contactIntent:"));
-    const currentTurn = String(
-      (await prepareVenueTurnMessages(scene, "Your move.", "chat", "reserved", null)).fitted.messages
-        .map((entry) => entry.content)
-        .join("\n"),
-    );
-    assert.ok(!currentTurn.includes("recollections:["));
-
-    scene.area = "private";
-    const controlled = String(
-      (await prepareVenueTurnMessages(scene, "I rearrange the room.", "chat", "", null)).fitted.messages
-        .map((entry) => entry.content)
-        .join("\n"),
-    );
-    assert.match(controlled, /Standing permission uses permission/);
-    scene.area = "outside";
-    scene.activeIds = ["reserved"];
-    const one = String(
-      (await prepareVenueTurnMessages(scene, "Your move.", "chat", "reserved", null)).fitted.messages
-        .map((entry) => entry.content)
-        .join("\n"),
-    );
-    assert.ok(one.includes("reserved DESCRIPTION TAIL"));
-    assert.ok(!one.includes("outgoing DESCRIPTION TAIL"));
-    shrink = true;
-    await assert.rejects(
-      prepareVenueTurnMessages(scene, "Your move.", "chat", "reserved", null),
-      /No reply was requested/,
-    );
-    assert.equal(paidCalls, 0);
-  } finally {
-    release();
-  }
-  console.log(
-    "Dialogue context: temperament/history separation, full cards, section order, spontaneous effects, live evidence, and fitting passed without model requests.",
-  );
-}
-await context.run(
-  {
-    controller: new AbortController(),
-    operation: {
-      id: "prompt",
-      input: {
-        writingContractVersion: 3,
-        semanticPipelineVersion: 3,
-        residentActionsVersion: 2,
-        interactionScopeVersion: 6,
-      },
-      checkpoints: {},
-    },
-  } as any,
-  run,
+const notes = prompt
+  .split("\n")
+  .filter((line) => line.startsWith('{"privateContinuity":'))
+  .flatMap((line) => JSON.parse(line).privateContinuity) as { for: string; text: string }[];
+assert(notes.some((row) => row.for === "outgoing" && row.text === "Values the player's reliability."));
+assert(notes.some((row) => row.for === "reserved" && row.text === "Distrustful after a broken promise."));
+assert(
+  notes.some((row) => row.for === "reserved" && row.text === "Reserved promised to repair Alex’s violin on Sunday."),
 );
+assert(
+  notes.some((row) => row.for === "reserved" && row.text === "Reserved and the player are discussing the violin."),
+);
+assert(!notes.some((row) => row.text === old), "Forgotten history cannot reappear as resident knowledge");
+assert(
+  scenePromptPacket(prompt, "calendar").protections.some(
+    (row: { for: string; forbidden: string[] }) => row.for === "outgoing" && row.forbidden.includes(old),
+  ),
+);
+
+const reserved = participants.find((row) => row.characterId === "reserved")!;
+const one = await prepareScenePrompt(state, cards[1], "greet", "", {
+  ...scene,
+  participants: [reserved],
+  activeIds: ["reserved"],
+});
+assert.match(one.prompt, /reserved DESCRIPTION TAIL/);
+assert.doesNotMatch(one.prompt, /outgoing DESCRIPTION TAIL/);
+await assert.rejects(
+  prepareScenePrompt(state, cards[0], "chat", "Your move.", scene, (_messages, options) => ({
+    messages: [],
+    maxTokens: options?.maxTokens,
+  })),
+  /No reply was requested/,
+);
+assert.equal(memoryHash(state), baseline, "Prompt preparation leaves native and individual continuity untouched");

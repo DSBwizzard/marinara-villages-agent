@@ -1,452 +1,297 @@
-import { agendaFixture } from "./helpers/agenda.fixture.js";
 import assert from "node:assert/strict";
 import {
   readEffectiveVillagerCard,
   readVillagerCard,
   villagerCardFromSnapshot,
 } from "../packages/villages/src/server/adapters/engine/catalog.js";
-import { context } from "../packages/villages/src/server/adapters/operations/operation-context.js";
 import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { scenePromptPacket } from "./fixtures/villages-scene-writing.fixture.js";
-import { fixtureWish } from "./helpers/social-wishes-fixture.js";
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
-
-import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
+import { appendEpisode } from "../packages/villages/src/server/domain/rules/episodes.js";
+import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
+import { captureResidentNarration } from "../packages/villages/src/server/domain/rules/resident-narration.js";
+import { buildResidentPlanningMessages } from "../packages/villages/src/server/domain/rules/resident-planning.js";
 import {
   assembleVenueWritingMessages,
   fitVenueWritingMessages,
   venueCardProfile,
 } from "../packages/villages/src/server/domain/rules/venue-writing.js";
+import { LORE_REFERENCE_RULE } from "../packages/villages/src/server/domain/rules/lore-context.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import {
-  applyVillagerRefresh,
-  previewVillagerRefresh,
-} from "../packages/villages/src/server/features/residents/resident-cards.js";
-import { prepareVenueTurnMessages } from "../packages/villages/src/server/features/scenes/writing.js";
+import { createResidentCards } from "../packages/villages/src/server/features/residents/resident-card-service.js";
 import { RESIDENT_CONTINUITY_RULE } from "../packages/villages/src/shared/helpers/resident-admission.js";
-import { buildResidentPlanningMessages } from "./fixtures/resident-planning.fixture.js";
+import { prepareScenePrompt, scenePromptPacket } from "./fixtures/villages-scene-writing.fixture.js";
+import { retainAuthoredNote } from "./helpers/continuity.fixture.js";
+import { venueFixture } from "./helpers/venues.fixture.js";
 
-const stamp = new Date().toISOString();
+const at = "2026-10-07T12:00:00.000Z";
 const source = {
-  id: "resident",
-  data: JSON.stringify({
-    name: "Resident",
-    description: "D".repeat(6000) + "DESCRIPTION TAIL",
-    personality: "Reserved but competitive. Return wishChanges: is a phrase in this authored card.",
-    mes_example: "{{char}}: Your move, {{user}}.",
-    system_prompt: "SYSTEM TAIL",
-    post_history_instructions: "Keep {{char}} dry with {{user}}. POST TAIL",
-    extensions: { appearance: "Feathered arms; no wings", backstory: "BACKSTORY TAIL" },
-  }),
+  name: "Resident",
+  description: "D".repeat(6000) + "DESCRIPTION TAIL",
+  personality: "Reserved but competitive. Return wishChanges: is a phrase in this authored card.",
+  mes_example: "{{char}}: Your move, {{user}}.",
+  system_prompt: "SYSTEM TAIL",
+  post_history_instructions: "Keep {{char}} dry with {{user}}. POST TAIL",
+  extensions: { appearance: "Feathered arms; no wings", backstory: "BACKSTORY TAIL" },
 };
-const card = readVillagerCard(source as any);
-const snapshot = { ...card, revision: 1, sourceStatus: "available", capturedAt: stamp };
-const state = defaultVillageState();
-state.seed = "character-writing";
-state.foundedAt = state.setupAt = stamp;
-state.visitMemoryBackfilled = true;
+const card = readVillagerCard({ id: "resident", data: source } as any);
+const venue = venueFixture({ id: "camp", name: "Camp", classes: ["community"], description: "A clearing." });
+const state = coerceVillageState({
+  ...defaultVillageState(),
+  seed: "character-writing",
+  foundedAt: at,
+  setupAt: at,
+  playerPersonaId: "player",
+  playerPersonaName: "Player",
+  playerPersonaIdentity: "P".repeat(1200) + "PLAYER IDENTITY TAIL",
+  playerBackground: "B".repeat(1000) + "PLAYER BACKGROUND TAIL",
+  setting: "S".repeat(2000) + "WORLD SETTING TAIL",
+  worldRules: "R".repeat(2000) + "WORLD RULES TAIL",
+  worldName: "WORLD NAME TAIL",
+  venues: [venue],
+  villagers: [
+    {
+      characterId: card.id,
+      incarnation: "resident-one",
+      letterFontId: "caveat",
+      addedAt: at,
+      cardSnapshot: snapshotFromCard(card, 1),
+      admission: { homeworld: "Othiras", startingSituation: "REMEMBERED MECCA; CURRENT LOCATION UNDECIDED." },
+    },
+  ],
+});
 state.narrationStyle.writingGuidance = "Make everyone cheerful, compliant, and timid.";
-state.playerPersonaId = "player";
-state.playerPersonaName = "Player";
-state.playerPersonaIdentity = "P".repeat(1200) + "PLAYER IDENTITY TAIL";
-state.playerBackground = "B".repeat(1000) + "PLAYER BACKGROUND TAIL";
-state.setting = "S".repeat(2000) + "WORLD SETTING TAIL";
-state.worldRules = "R".repeat(2000) + "WORLD RULES TAIL";
-state.worldName = "WORLD NAME TAIL";
-state.villagers = [
-  {
-    letterFontId: "caveat",
-    characterId: card.id,
-    admission: {
-      homeworld: "Othiras",
-      startingSituation: "REMEMBERED MECCA; CURRENT LOCATION UNDECIDED. NARRATOR SECRET IS UNKNOWN TO RESIDENT.",
-    },
-    cardSnapshot: snapshot,
-    addedAt: stamp,
-    wishes: [fixtureWish({ wish: "See a concert" }, "concert", stamp)],
-    agenda: agendaFixture({
-      day: [],
-      week: {},
-      routineSummary: "",
-      generatedAt: stamp,
-      source: "village",
-    }),
-  },
-] as any;
-let row: any = { id: "villages-village", kind: "village", data: coerceVillageState(state), revision: 1 };
-const historyRows = new Map<string, any>();
-let paidCalls = 0;
-const model: any = {
-  model: "fixture",
-  maxOutputTokens: 4096,
-  fitContext: (messages: any, options: any) => ({
-    messages,
-    ...options,
-    estimatedTokensBefore: Math.ceil(JSON.stringify(messages).length / 4),
-    estimatedTokensAfter: Math.ceil(JSON.stringify(messages).length / 4),
-    trimmed: false,
-  }),
-  chatComplete: () => {
-    paidCalls++;
-    throw Error("Not permitted in prompt test");
-  },
+const authored = readEffectiveVillagerCard(state.villagers[0]);
+const wishId = retainAuthoredNote(state, "concert", "See a concert", [card.id], at, {
+  class: "desire",
+  owner: continuityActor(state, card.id)!,
+  current: true,
+});
+const absent = {
+  ...state.villagers[0],
+  characterId: "absent",
+  incarnation: "absent-one",
+  cardSnapshot: { ...state.villagers[0].cardSnapshot, id: "absent", name: "Absent" },
 };
-const release = configureVillagesRuntime({
-  logger: { debug() {}, info() {}, warn() {}, error() {} },
-  getAgentConfig: async () => ({ connectionId: "fixture" }),
-  resources: { listCharacters: async () => [source], listLorebooks: async () => [] },
-  persistence: {
-    documents: villageFixtureDocuments({
-      getById: async (_p: any, id: string) => (id === row.id ? row : (historyRows.get(id) ?? null)),
-      list: async (_pkg: string, kind: string) => [...historyRows.values()].filter((entry) => entry.kind === kind),
-      update: async (input: any) => {
-        if (input.id !== row.id) {
-          const current = historyRows.get(input.id);
-          if (!current || current.revision !== input.expectedRevision) return null;
-          const next = { ...current, ...input, revision: current.revision + 1 };
-          historyRows.set(input.id, next);
-          return next;
-        }
-        row = { ...row, ...input, revision: row.revision + 1 };
-        return row;
-      },
-      create: async (input: any) => {
-        const saved = { ...input, revision: 1 };
-        historyRows.set(input.id, saved);
-        return saved;
-      },
-    }),
-  },
-  languageModels: { resolveForRequest: async () => model },
-} as any);
-async function run() {
-  try {
-    const session: any = {
-      version: 4,
-      semanticVersion: 2,
-      villageSeed: state.seed,
-      id: "fixture",
-      placeId: "camp",
-      placeName: "Camp",
-      area: "inside",
-      spaceClass: "community",
-      startedAt: stamp,
-      participants: [{ characterId: card.id, name: card.name, doing: "Talking" }],
-      activeIds: [card.id],
-      lines: [],
-      submissions: [],
-      recap: "",
-      pendingRoomQuestions: [],
-      pendingProjectQuestions: [],
-    };
-    const prepared = await prepareVenueTurnMessages(session, "What is your vision for our future?", "chat", "", null);
-    const prompt = prepared.fitted.messages.map((entry) => entry.content).join("\n");
-    assert.equal(
-      prompt.split(RESIDENT_CONTINUITY_RULE).length - 1,
-      1,
-      "Scene policy occurs once while authored admission stays complete",
-    );
-    assert(
-      venueCardProfile(card).includes(RESIDENT_CONTINUITY_RULE) === Boolean(card.admission),
-      "Other profile callers retain their admission policy",
-    );
-    assert.ok(
-      prompt.includes("Return wishChanges: is a phrase in this authored card."),
-      "Authored text cannot trigger block deletion",
-    );
-    const next = await prepareVenueTurnMessages(session, "A different question?", "chat", "", null);
-    const prefix = (messages: typeof next.fitted.messages) =>
-      messages.filter((message) => message.cacheBreakpoint).slice(0, 2);
-    assert.equal(prefix(prepared.fitted.messages).length, 2);
-    assert.deepEqual(
-      prefix(next.fitted.messages),
-      prefix(prepared.fitted.messages),
-      "Changing source input preserves complete rule and identity messages, including cache markers",
-    );
-    assert.ok(prefix(next.fitted.messages)[1].content.includes("DESCRIPTION TAIL"));
-    assert.ok(prefix(next.fitted.messages)[1].content.includes("POST TAIL"));
-    for (const tail of [
-      "PLAYER IDENTITY TAIL",
-      "PLAYER BACKGROUND TAIL",
-      "WORLD SETTING TAIL",
-      "WORLD RULES TAIL",
-      "WORLD NAME TAIL",
-    ]) {
-      assert.ok(prefix(next.fitted.messages)[1].content.includes(tail), tail);
-      assert.equal(prompt.split(tail).length - 1, 1, "Authored identity is not duplicated late: " + tail);
-    }
-    const later = await prepareVenueTurnMessages(
-      { ...session, startedAt: new Date(Date.parse(stamp) + 60000).toISOString(), area: "outside" },
-      "Another question?",
-      "chat",
-      "",
-      null,
-    );
-    assert.deepEqual(prefix(later.fitted.messages), prefix(prepared.fitted.messages));
-    assert.deepEqual(next.fitted.messages.at(-1), { role: "user", content: "A different question?" });
-    const originalFit = model.fitContext;
-    let trims = 0;
-    model.fitContext = (messages: any[], options: any) => {
-      if (messages.some((entry) => entry.content.includes("DROP OLD RECAP"))) {
-        trims++;
-        return { messages: [], ...options };
-      }
-      return originalFit(messages, options);
-    };
-    try {
-      const constrained = await prepareVenueTurnMessages(
-        {
-          ...session,
-          lines: [
-            ...Array.from({ length: 7 }, (_, index) => ({
-              id: "older-" + index,
-              speakerId: card.id,
-              role: "assistant",
-              kind: "dialogue",
-              content: index === 0 ? "DROP OLD RECAP" : "Earlier conversation " + index,
-              heardBy: [card.id],
-              at: stamp,
-            })),
-            {
-              id: "recent-witnessed",
-              speakerId: card.id,
-              role: "assistant",
-              kind: "dialogue",
-              content: "LATEST WITNESSED FACT",
-              heardBy: [card.id],
-              at: stamp,
-            },
-          ],
-        },
-        "A different question?",
-        "chat",
-        "",
-        null,
-      );
-      const kept = constrained.fitted.messages.map((entry) => entry.content).join("\n");
-      assert.ok(trims > 0, "The constrained fit actually trims supplied older history");
-      assert.ok(!kept.includes("DROP OLD RECAP"));
-      assert.ok(!constrained.fitted.evidenceIds.includes("older-0"));
-      assert.ok(constrained.fitted.evidenceIds.includes("recent-witnessed"));
-      assert.ok(
-        kept.includes("LATEST WITNESSED FACT"),
-        "A tight context drops the older recap before recent witnessed evidence",
-      );
-      assert.equal(kept.split("LATEST WITNESSED FACT").length - 1, 1, "Witnessed history is sent only once");
-      assert.deepEqual(prefix(constrained.fitted.messages), prefix(prepared.fitted.messages));
-      assert.ok(kept.includes("DESCRIPTION TAIL") && kept.includes("POST TAIL"));
-      assert.deepEqual(constrained.fitted.messages.at(-1), { role: "user", content: "A different question?" });
-      model.fitContext = (messages: any[], options: any) =>
-        messages.some((entry) => entry.content.includes("LATEST WITNESSED FACT"))
-          ? { messages: [], ...options }
-          : originalFit(messages, options);
-      await assert.rejects(
-        prepareVenueTurnMessages(
-          {
-            ...session,
-            lines: [
-              {
-                id: "last",
-                speakerId: card.id,
-                role: "assistant",
-                kind: "dialogue",
-                content: "LATEST WITNESSED FACT",
-                heardBy: [card.id],
-                at: stamp,
-              },
-            ],
-          },
-          "What was that fact?",
-          "chat",
-          "",
-          null,
-        ),
-        /complete character cards and required context do not fit/u,
-      );
-      assert.equal(paidCalls, 0, "Missing required recent context fails before purchase");
-    } finally {
-      model.fitContext = originalFit;
-    }
-    assert.deepEqual(
-      assembleVenueWritingMessages([{ text: "UNMARKED CARD" }, { text: "optional lore", optional: "lore" }], "input"),
-      [
-        {
-          role: "system",
-          content:
-            "UNMARKED CARD\n\n" +
-            (await import("../packages/villages/src/server/domain/rules/lore-context.js")).LORE_REFERENCE_RULE,
-        },
-        { role: "user", content: JSON.stringify({ lorebookReferences: ["optional lore"] }) },
-        { role: "user", content: "input" },
-      ],
-      "Non-Scene callers retain their exact message bytes",
-    );
-    const capturedWorld = coerceVillageState(state);
-    capturedWorld.villagers[0].wishes = [fixtureWish({ wish: "Exact captured desire" }, "captured")];
-    const capturedScene = { ...session, version: 4, villageSeed: state.seed, status: "closed" };
-    capturedScene.continuity = captureSceneContinuity(capturedWorld, capturedScene, Date.parse(stamp));
-    const captured = await prepareVenueTurnMessages(capturedScene, "A frozen Wish context", "chat", "", null);
-    assert.equal(
-      captured.wishContexts[0].wishes[0].id,
-      "captured",
-      "Recovery captures the same Wish authority as the frozen writing context",
-    );
-    assert.equal(Object.isFrozen(captured.wishContexts[0].wishes), true);
-    assert.equal(paidCalls, 0, "Exact Wish context is captured before purchasing work");
-    for (const fragment of [
-      "DESCRIPTION TAIL",
-      "SYSTEM TAIL",
-      "POST TAIL",
-      "BACKSTORY TAIL",
-      "Appearance:\nFeathered arms; no wings",
-      "Example dialogue:\nResident: Your move,",
-      "REMEMBERED MECCA; CURRENT LOCATION UNDECIDED",
-      "narrator-only truths are not resident knowledge",
-    ])
-      assert.ok(prompt.includes(fragment), fragment);
-    assert.ok(prompt.includes("where compatible with character identity"));
-    assert.ok(prompt.includes("present tense"));
-    assert.ok(prompt.includes('Address the player as "you"'));
-    assert.ok(prompt.includes("When describing the player's actions, narrate only what they explicitly submitted"));
-    assert.ok(prompt.includes("Residents may initiate plausible actions according to their own cards"));
-    assert.ok(!prompt.includes("Narrate only an action the player explicitly submitted"));
-    assert.ok(!prompt.includes("SCRIPTED TELL SECRET"));
-    assert.equal(prepared.fitted.messages[0].role, "system");
-    assert.ok(prompt.indexOf("## Witnessed conversation") < prompt.indexOf("## Current Scene circumstances"));
-    assert.ok(prompt.indexOf("Authored post-history instructions") < prompt.indexOf("## Current Scene circumstances"));
-    row.data.playerBackground = "Neighbors know me through harbor projects.";
-    for (const spaceClass of ["community", "residence"]) {
-      const exterior = {
-        ...session,
-        area: "outside",
-        zoneId: "exterior",
-        spaceClass,
-        sceneAttendance: {
-          capturedAt: stamp,
-          occupants: [{ characterId: card.id, zoneId: "exterior", doing: "Checking a map", availability: "free" }],
-        },
-      };
-      const outside = await prepareVenueTurnMessages(exterior, "What do you like playing?", "chat", "", null);
-      const outsidePrompt = outside.fitted.messages.map((entry) => entry.content).join("\n");
-      const outsidePacket = scenePromptPacket(outsidePrompt);
-      assert.equal(scenePromptPacket(outsidePrompt, "frame").frame.zoneId, "exterior");
-      assert.ok(!outsidePrompt.includes("The player is outside this Venue."));
-      assert.ok(outsidePrompt.includes("Neighbors know me through harbor projects."));
-      assert.ok(!outsidePrompt.includes("look to them to coordinate Projects"));
-      assert.equal(outsidePacket.residentActivity[0].doing, "Checking a map");
-
-      for (const fragment of ["DESCRIPTION TAIL", "SYSTEM TAIL", "POST TAIL", "Appearance:\nFeathered arms; no wings"])
-        assert.ok(outsidePrompt.includes(fragment), fragment);
-      const greeting = await prepareVenueTurnMessages(exterior, "", "greet", "", null);
-      assert.deepEqual(
-        greeting.fitted.messages.at(-1),
-        { role: "user", content: "" },
-        "Opening contains no invented player input",
-      );
-    }
-    const background = buildResidentPlanningMessages({
-      village: "Camp",
-      setting: "Clearing",
-      moment: deriveVillageMoment({ foundedAt: stamp, seed: state.seed, now: new Date(stamp) }),
-      residents: [
-        {
-          characterId: card.id,
-          name: card.name,
-          profile: venueCardProfile(readEffectiveVillagerCard(state.villagers[0])),
-          summary: "",
-          doing: "Talking",
-          agenda: state.villagers[0].agenda,
-          wishes: state.villagers[0].wishes,
-        },
-      ],
-      venues: [],
-      opportunities: [{ id: "encounter", kind: "encounter", actorIds: [card.id], venueId: "camp", facts: [] }],
-      recent: [],
-    } as any);
-    assert.ok(String(background[0].content).includes("DESCRIPTION TAIL"));
-    assert.match(String(background[0].content), /REMEMBERED MECCA; CURRENT LOCATION UNDECIDED/);
-    assert.match(String(background[0].content), /narrator-only truths are not resident knowledge/);
-    assert.ok(String(background[0].content).includes("See a concert"));
-    assert.ok(!String(background[0].content).includes("SCRIPTED TELL SECRET"));
-    assert.equal(paidCalls, 0);
-    const withoutPostHistory = coerceVillageState({
-      ...defaultVillageState(),
-
-      ...state,
-      villagers: [{ ...state.villagers[0], cardSnapshot: { ...snapshot, postHistoryInstructions: undefined } }],
-    });
-    assert.equal(withoutPostHistory.villagers[0].cardSnapshot.postHistoryInstructions, "");
-    assert.equal(villagerCardFromSnapshot(withoutPostHistory.villagers[0].cardSnapshot).postHistoryInstructions, "");
-    source.data = JSON.stringify({
-      ...JSON.parse(source.data),
-      post_history_instructions: "REFRESHED AUTHOR INSTRUCTION",
-    });
-    assert.ok(!venueCardProfile(villagerCardFromSnapshot(row.data.villagers[0].cardSnapshot)).includes("REFRESHED"));
-    const preview = await previewVillagerRefresh(card.id);
-    assert.equal(preview.proposed?.postHistoryInstructions, "REFRESHED AUTHOR INSTRUCTION");
-    await applyVillagerRefresh(card.id);
-    assert.equal(row.data.villagers[0].cardSnapshot.postHistoryInstructions, "REFRESHED AUTHOR INSTRUCTION");
-    assert.match(row.data.villagers[0].admission.startingSituation, /CURRENT LOCATION UNDECIDED/);
-    const removed: string[] = [];
-    const budgetModel: any = {
-      fitContext(messages: any, options: any) {
-        const text = messages.map((message: { content: string }) => message.content).join("\n");
-        removed.push(text);
-        return {
-          ...options,
-          messages: text.includes("OPTIONAL") ? [{ role: "system", content: "truncated" }] : messages,
-        };
-      },
-    };
-    const fitted = fitVenueWritingMessages(
-      budgetModel,
-      [
-        { text: "COMPLETE CARD" },
-        { text: "OPTIONAL LORE", optional: "lore" },
-        { text: "OPTIONAL MEMORY", optional: "memory" },
-        { text: "OPTIONAL HISTORY", optional: "history" },
-      ],
-      "latest input",
-      4096,
-    );
-    assert.ok(!removed[1].includes("OPTIONAL HISTORY"));
-    assert.ok(removed[1].includes("OPTIONAL MEMORY"));
-    assert.ok(!removed[2].includes("OPTIONAL MEMORY"));
-    assert.equal(fitted.messages[0].content, "COMPLETE CARD");
-    assert.equal(fitted.messages[1].content, "latest input");
-    assert.throws(
-      () =>
-        fitVenueWritingMessages(
-          { fitContext: () => ({ messages: [] }) } as any,
-          [{ text: "COMPLETE CARD" }],
-          "input",
-          4096,
-        ),
-      /No reply was requested/,
-    );
-    assert.equal(paidCalls, 0);
-  } finally {
-    release();
-  }
-  console.log("Complete cards, live prompts, refresh, legacy snapshots, wish privacy and context protection passed.");
-}
-await context.run(
-  {
-    controller: new AbortController(),
-    operation: {
-      id: "prompt",
-      input: {
-        writingContractVersion: 3,
-        semanticPipelineVersion: 3,
-        residentActionsVersion: 2,
-        interactionScopeVersion: 6,
-      },
-      checkpoints: {},
-    },
-  } as any,
-  run,
+state.villagers.push(absent);
+retainAuthoredNote(state, "absent-secret", "UNRELATED SECRET FROM AN ABSENT RESIDENT", ["absent"], at);
+retainAuthoredNote(state, "scripted-secret", "SCRIPTED TELL SECRET", ["absent"], at);
+const scene = { placeId: venue.id, zoneId: "exterior", startedAt: at };
+const prepared = await prepareScenePrompt(state, card, "chat", "What is your vision for our future?", scene);
+const next = await prepareScenePrompt(state, card, "chat", "A different question?", {
+  ...scene,
+  startedAt: "2026-10-07T12:01:00.000Z",
+});
+const prefix = (value: typeof prepared) =>
+  value.fitted.messages.filter((message) => message.cacheBreakpoint).slice(0, 2);
+assert.equal(prefix(prepared).length, 2);
+assert.deepEqual(
+  prefix(next),
+  prefix(prepared),
+  "Changing the source and time preserves the cacheable authored prefix",
 );
+assert.deepEqual(next.fitted.messages.at(-1), { role: "user", content: "A different question?" });
+for (const tail of [
+  "PLAYER IDENTITY TAIL",
+  "PLAYER BACKGROUND TAIL",
+  "WORLD SETTING TAIL",
+  "WORLD RULES TAIL",
+  "WORLD NAME TAIL",
+]) {
+  assert(prefix(next)[1].content.includes(tail), tail);
+  assert.equal(prepared.prompt.split(tail).length - 1, 1);
+}
+for (const fragment of [
+  "DESCRIPTION TAIL",
+  "SYSTEM TAIL",
+  "POST TAIL",
+  "BACKSTORY TAIL",
+  "Appearance:\nFeathered arms; no wings",
+  "Example dialogue:\nResident: Your move, Player.",
+  "REMEMBERED MECCA; CURRENT LOCATION UNDECIDED",
+  "Return wishChanges: is a phrase in this authored card.",
+])
+  assert(prepared.prompt.includes(fragment), fragment);
+assert.equal(prepared.prompt.split("REMEMBERED MECCA; CURRENT LOCATION UNDECIDED").length - 1, 1);
+assert(venueCardProfile(authored).includes(RESIDENT_CONTINUITY_RULE));
+assert.match(prepared.prompt, /where compatible with character identity/);
+assert.match(prepared.prompt, /present tense/);
+assert.match(prepared.prompt, /Address the player as "you"/);
+assert.match(prepared.prompt, /Residents may initiate plausible actions according to their own cards/);
+assert.doesNotMatch(prepared.prompt, /UNRELATED SECRET FROM AN ABSENT RESIDENT|SCRIPTED TELL SECRET/);
+assert(
+  prepared.readset.admission.supplied.some((row) => row.id === wishId),
+  "The purchased request can use only the fitted current desire",
+);
+
+for (const [index, text] of ["DROP OLD RECAP", "LATEST WITNESSED FACT"].entries()) {
+  const date = new Date(Date.parse(at) + index * 60_000).toISOString();
+  state.episodes = appendEpisode(
+    state.episodes,
+    {
+      format: 1,
+      id: "history-" + index,
+      seed: state.seed,
+      sceneId: "older-scene",
+      submissionId: "history-" + index,
+      operationId: "history-operation-" + index,
+      capturedAt: date,
+      acceptedAt: date,
+      admittedContinuityRevision: state.continuity.revision,
+      responseDigest: memoryHash(text),
+      privateInput: "What happened?",
+      actors: ["player", card.id].map((id) => ({
+        id,
+        incarnation: continuityActor(state, id)!.incarnation,
+        zoneId: "exterior",
+      })),
+      segments: [
+        {
+          id: "line-" + index,
+          role: "assistant",
+          kind: "dialogue",
+          name: card.name,
+          speakerId: card.id,
+          content: text,
+          heardBy: [card.id, "player"],
+          zoneId: "exterior",
+          at: date,
+        },
+      ],
+      grounding: [],
+      continuityVersionIds: [],
+      offered: [],
+      commandReceipts: [],
+      dependencies: {},
+    },
+    state.seed,
+  );
+}
+let trims = 0;
+const constrained = await prepareScenePrompt(
+  state,
+  card,
+  "chat",
+  "A different question?",
+  scene,
+  (messages, options) => {
+    if (messages.some((message) => String(message.content).includes("DROP OLD RECAP"))) {
+      trims++;
+      return { messages: [], maxTokens: options?.maxTokens };
+    }
+    return { messages, maxTokens: options?.maxTokens };
+  },
+);
+assert(trims > 0);
+assert(!constrained.fitted.evidenceIds.includes("episode-context:history-0"));
+assert(constrained.fitted.evidenceIds.includes("episode-context:history-1"));
+assert.equal(constrained.prompt.split("LATEST WITNESSED FACT").length - 1, 1);
+assert.deepEqual(prefix(constrained), prefix(prepared));
+await assert.rejects(
+  prepareScenePrompt(state, card, "chat", "What happened?", scene, () => ({ messages: [] })),
+  /required context do not fit/,
+);
+
+assert.deepEqual(
+  assembleVenueWritingMessages([{ text: "UNMARKED CARD" }, { text: "optional lore", optional: "lore" }], "input"),
+  [
+    { role: "system", content: "UNMARKED CARD\n\n" + LORE_REFERENCE_RULE },
+    { role: "user", content: JSON.stringify({ lorebookReferences: ["optional lore"] }) },
+    { role: "user", content: "input" },
+  ],
+);
+state.playerBackground = "Neighbors know me through harbor projects.";
+const outside = await prepareScenePrompt(state, card, "greet", "", scene);
+assert.equal(scenePromptPacket(outside.prompt, "location").location.player.zone.id, "exterior");
+assert.match(outside.prompt, /Neighbors know me through harbor projects/);
+assert.deepEqual(outside.fitted.messages.at(-1), { role: "user", content: "" });
+
+const background = buildResidentPlanningMessages({
+  format: 1,
+  village: "Camp",
+  setting: "Clearing",
+  residents: [{ characterId: card.id, name: card.name, profile: venueCardProfile(authored) }],
+  moment: deriveVillageMoment({ foundedAt: at, seed: state.seed, now: new Date(at) }),
+  housing: [],
+  plans: [],
+  narration: captureResidentNarration(state, {
+    id: "ordinary-routine",
+    kind: "routine",
+    actorIds: [card.id],
+    venueId: "",
+    startsAt: at,
+    endsAt: at,
+    facts: [],
+  }),
+})
+  .map((row) => row.content)
+  .join("\n");
+for (const fragment of [
+  "DESCRIPTION TAIL",
+  "REMEMBERED MECCA; CURRENT LOCATION UNDECIDED",
+  "narrator-only truths are not resident knowledge",
+  "See a concert",
+])
+  assert(background.includes(fragment), fragment);
+assert.doesNotMatch(background, /UNRELATED SECRET FROM AN ABSENT RESIDENT|SCRIPTED TELL SECRET/);
+
+const withoutPostHistory = coerceVillageState({
+  ...state,
+  villagers: [
+    { ...state.villagers[0], cardSnapshot: { ...state.villagers[0].cardSnapshot, postHistoryInstructions: undefined } },
+    absent,
+  ],
+});
+assert.equal(villagerCardFromSnapshot(withoutPostHistory.villagers[0].cardSnapshot).postHistoryInstructions, "");
+const changed = readVillagerCard({
+  id: card.id,
+  data: { ...source, post_history_instructions: "REFRESHED AUTHOR INSTRUCTION" },
+} as any);
+const cards = createResidentCards({
+  readVillageState: async () => state,
+  mutateVillageState: async (update) => {
+    update(state);
+    return state;
+  },
+  findVillagerCard: async () => changed,
+  buildVillageSnapshot: async () => ({ village: {} }) as any,
+  listVillagerCards: async () => [changed],
+  toCatalogEntry: () => assert.fail("No catalog request is needed for refresh"),
+});
+const preview = await cards.previewVillagerRefresh(card.id);
+assert.equal(preview.proposed?.postHistoryInstructions, "REFRESHED AUTHOR INSTRUCTION");
+assert.doesNotMatch(venueCardProfile(readEffectiveVillagerCard(state.villagers[0])), /REFRESHED/);
+await cards.applyVillagerRefresh(card.id);
+assert.equal(state.villagers[0].cardSnapshot.postHistoryInstructions, "REFRESHED AUTHOR INSTRUCTION");
+assert.match(state.villagers[0].admission!.startingSituation, /CURRENT LOCATION UNDECIDED/);
+
+const attempts: string[] = [];
+const fitted = fitVenueWritingMessages(
+  {
+    fitContext(messages, options) {
+      const text = messages.map((row) => row.content).join("\n");
+      attempts.push(text);
+      return {
+        messages: text.includes("OPTIONAL") ? [{ role: "system", content: "truncated" }] : messages,
+        maxTokens: options?.maxTokens,
+      };
+    },
+  },
+  [
+    { text: "COMPLETE CARD" },
+    { text: "OPTIONAL LORE", optional: "lore" },
+    { text: "OPTIONAL MEMORY", optional: "memory" },
+    { text: "OPTIONAL HISTORY", optional: "history" },
+  ],
+  "latest input",
+  4096,
+);
+assert(!attempts[1].includes("OPTIONAL HISTORY") && attempts[1].includes("OPTIONAL MEMORY"));
+assert(!attempts[2].includes("OPTIONAL MEMORY"));
+assert.deepEqual(fitted.messages, [
+  { role: "system", content: "COMPLETE CARD" },
+  { role: "user", content: "latest input" },
+]);

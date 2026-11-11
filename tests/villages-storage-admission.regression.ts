@@ -9,7 +9,7 @@ import {
   configureRepairGate,
 } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
-import { addMemory, memoryTime } from "./helpers/memories-fixture.js";
+import { retainAuthoredNote } from "./helpers/continuity.fixture.js";
 import { createRepairTransactionCodec } from "../packages/villages/src/server/adapters/storage/repair-transaction-codec.js";
 import { createHistoryPageWriter } from "../packages/villages/src/server/adapters/storage/memory-pages.js";
 import {
@@ -572,8 +572,8 @@ await runCase("storage-admission/history-read", async () => {
     await repo.mutateAuthority(
       (state) => {
         state.seed = "read-owner";
-        state.setupAt = memoryTime();
-        state.memories = addMemory(state.memories, { audience: ["player"] });
+        state.setupAt = "2026-11-11T00:00:00.000Z";
+        retainAuthoredNote(state, "history-read", "The Player remembers the bridge.", ["player"], state.setupAt);
       },
       { memories: true },
     );
@@ -599,7 +599,9 @@ await runCase("storage-admission/history-read", async () => {
       /Other Village work is active/,
     );
     release.resolve();
-    assert.equal((await reading).memories.records.length, 1);
+    const loaded = await reading;
+    assert.equal(loaded.continuity.versions[0].text, "The Player remembers the bridge.");
+    assert.equal(loaded.episodes.records.length, 1);
   } finally {
     unbind();
   }

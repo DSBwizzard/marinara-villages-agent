@@ -51,6 +51,7 @@ async function main() {
   const resident = (characterId: string, venueId: string, zoneId: string, activity: string) => ({
     letterFontId: "caveat",
     characterId,
+    incarnation: characterId + "-one",
     cardSnapshot: {
       id: characterId,
       name: characterId === "hidden" ? "HIDDEN_PERSON_POISON" : characterId,
@@ -59,7 +60,6 @@ async function main() {
       capturedAt: stamp,
     },
     addedAt: stamp,
-    wishes: [],
     agenda: agendaFixture({
       routineSummary: "Owned day",
       source: "village",
@@ -88,6 +88,7 @@ async function main() {
       {
         letterFontId: "caveat",
         characterId: "unplaced",
+        incarnation: "unplaced-one",
         cardSnapshot: { id: "unplaced", name: "Unplaced", revision: 1, sourceStatus: "missing", capturedAt: stamp },
         addedAt: stamp,
       },
@@ -107,7 +108,7 @@ async function main() {
     "capture spans all Zones in the selected Venue and excludes other Venues/unplaced residents",
   );
   const scene = coerceSession({
-    version: 4,
+    version: 5,
     id: "attendance-scene",
     placeId: "hub",
     placeName: "Shared building",
@@ -130,13 +131,16 @@ async function main() {
   );
   const card = readEffectiveVillagerCard(world.villagers.find((entry) => entry.characterId === "visible")!);
   const prompt = await currentScenePrompt(world, card, "chat", "What are you doing?", scene);
-  assert.match(prompt, /sorting herbs/u);
-  const packet = scenePromptPacket(prompt);
+  const packet = scenePromptPacket(prompt, "location");
+  assert.equal(
+    packet.location.residents.find((resident: { characterId: string }) => resident.characterId === "visible").zone.id,
+    "common",
+  );
   assert.doesNotMatch(prompt, /HIDDEN_ACTIVITY_POISON/u);
   assert.doesNotMatch(
-    JSON.stringify([packet.context.actors, packet.residentActivity, scenePromptPacket(prompt, "frame").positions]),
-    /HIDDEN_PERSON_POISON/u,
-    "Private attendance is absent from actors and positions",
+    JSON.stringify(packet.location),
+    /private:hidden|Private Space/u,
+    "The prompt never identifies a privately occupied unseen Zone",
   );
   assert.doesNotMatch(
     JSON.stringify(publicSceneResponse(scene)),
@@ -158,7 +162,7 @@ async function main() {
   );
   assert.deepEqual(scene.sceneAttendance, before);
   const laterPrompt = await currentScenePrompt(world, card, "chat", "And now?", scene);
-  assert.match(laterPrompt, /sorting herbs/u);
+  assert.deepEqual(scenePromptPacket(laterPrompt, "location"), packet);
   assert.doesNotMatch(laterPrompt, /BACKGROUND_ACTIVITY_POISON/u);
   const reloaded = coerceSession(JSON.parse(JSON.stringify(scene)));
   assert.deepEqual(reloaded.sceneAttendance, before, "new Scene attendance survives save/reload");

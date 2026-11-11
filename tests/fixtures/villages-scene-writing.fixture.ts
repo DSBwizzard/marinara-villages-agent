@@ -8,22 +8,28 @@ import {
 import type { VillagerCard } from "../../packages/villages/src/server/domain/models/catalog-model.js";
 import type { VenueScene } from "../../packages/villages/src/server/domain/models/scene-model.js";
 import type { VillageState } from "../../packages/villages/src/server/domain/models/world.js";
+import { findLocation } from "../../packages/villages/src/server/domain/rules/places.js";
+import { captureSceneContinuity } from "../../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { captureSceneLayout } from "../../packages/villages/src/server/domain/rules/scene-layout.js";
 import { snapshotFromCard } from "../../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
-import { wishFingerprint } from "../../packages/villages/src/server/domain/rules/social-wishes.js";
+import { venueFixture } from "../helpers/venues.fixture.js";
 import {
   createSceneWriting,
   type SceneWritingPorts,
 } from "../../packages/villages/src/server/features/scenes/writing-service.js";
 
+type Model = Awaited<ReturnType<ReturnType<SceneWritingPorts["villagesLanguageModels"]>["resolveForRequest"]>>;
+
 /** Exercise the current Scene prompt path with a fitting model that cannot generate. */
-export async function currentScenePrompt(
+export async function prepareScenePrompt(
   state: VillageState,
   card: VillagerCard,
   mode: "greet" | "chat" | "leave" = "chat",
   message = "What do you think?",
   overrides: Partial<VenueScene> = {},
-  operationInput: Record<string, unknown> = {},
+  fitContext?: Model["fitContext"],
 ) {
+  const at = overrides.startedAt ?? "2026-10-07T12:00:00.000Z";
   const snapshot = {
     ...snapshotFromCard(
       {
@@ -36,20 +42,27 @@ export async function currentScenePrompt(
       },
       1,
     ),
-    capturedAt: "2026-10-07T12:00:00.000Z",
+    capturedAt: at,
   };
   const world = coerceVillageState({
     ...defaultVillageState(),
 
     ...state,
     seed: state.seed || "prompt-fixture",
+    setupAt: state.setupAt || at,
     villagers: state.villagers.some((resident) => resident.characterId === card.id)
       ? state.villagers.map((resident) =>
           resident.characterId === card.id ? { ...resident, cardSnapshot: snapshot } : resident,
         )
       : [
           ...state.villagers,
-          { letterFontId: "caveat", characterId: card.id, cardSnapshot: snapshot, addedAt: "2026-10-07T12:00:00.000Z" },
+          {
+            letterFontId: "caveat",
+            characterId: card.id,
+            incarnation: "prompt-" + card.id,
+            cardSnapshot: snapshot,
+            addedAt: at,
+          },
         ],
   });
   assert.deepEqual(
@@ -57,35 +70,43 @@ export async function currentScenePrompt(
     [...new Set([...state.villagers.map((resident) => resident.characterId), card.id])].sort(),
     "all supplied residents, including hidden actors, survive current save decoding",
   );
+  const placeId = overrides.placeId ?? "common-room";
+  let venue = findLocation(world, placeId);
+  if (!venue && !overrides.placeId) {
+    venue = venueFixture({
+      id: placeId,
+      name: "Common room",
+      classes: ["community"],
+      description: "A familiar gathering place.",
+    });
+    world.venues.push(venue);
+  }
+  assert(venue, "The prompt fixture needs its current Place");
+  const zoneId = overrides.zoneId ?? "exterior";
+  const participants = overrides.participants ?? [{ characterId: card.id, name: card.name, doing: "keeping bees" }];
   const session = coerceSession({
-    version: 4,
-    semanticVersion: 2,
     id: "prompt-fixture",
-    placeId: "common-room",
-    placeName: "Common room",
-    area: "public",
+    placeId,
+    placeName: venue.name,
     status: "active",
-    startedAt: "2026-10-07T12:00:00.000Z",
-    zoneId: "exterior",
+    startedAt: at,
+    zoneId,
     villageSeed: world.seed,
-    participants: [{ characterId: card.id, name: card.name, doing: "keeping bees" }],
-    activeIds: [card.id],
+    participants,
+    activeIds: participants.map(({ characterId }) => characterId),
+    sceneAttendance: {
+      capturedAt: at,
+      layout: captureSceneLayout(venue),
+      occupants: participants.map((participant) => ({ ...participant, zoneId })),
+    },
     lines: [],
     submissions: [],
     ...overrides,
+    version: 5,
   });
-  // Contact generation is request-local and intentionally absent from saved decoding.
   session.contactGeneration = overrides.contactGeneration;
-  const admission = {
-    writingContractVersion: 4,
-    semanticPipelineVersion: 3,
-    residentActionsVersion: 2,
-    interactionScopeVersion: 6,
-    ...operationInput,
-  };
-  session.operation ??= { input: admission } as VenueScene["operation"];
-  const forbidden = () => assert.fail("Prompt preparation must not generate, interpret, or mutate a Scene.");
-  type Model = Awaited<ReturnType<ReturnType<SceneWritingPorts["villagesLanguageModels"]>["resolveForRequest"]>>;
+  session.continuity ??= captureSceneContinuity(world, session, Date.parse(at));
+  const forbidden = () => assert.fail("Prompt preparation called generation.");
   const model: Model = {
     name: "Prompt fixture",
     model: "prompt-fixture",
@@ -93,15 +114,15 @@ export async function currentScenePrompt(
     maxContext: 100000,
     maxOutputTokens: 4096,
     chatComplete: forbidden,
-    fitContext(messages, options) {
-      return {
+    fitContext:
+      fitContext ??
+      ((messages, options) => ({
         messages,
         maxTokens: options?.maxTokens,
         estimatedTokensBefore: 10,
         estimatedTokensAfter: 10,
         trimmed: false,
-      };
-    },
+      })),
   };
   const ports: SceneWritingPorts = {
     readVillageState: async () => world,
@@ -117,16 +138,13 @@ export async function currentScenePrompt(
     }),
     readVillageLore: async () => [],
     readEffectiveVillagerCard,
-    wishFingerprint,
-    villagesLogger: () => ({ warn: forbidden }),
     measurePipeline: forbidden,
     runtimeDebug() {},
-    venueOperationId: () => "",
+    venueOperationId: () => "prompt-fixture-operation",
     rejectVenueCompletion: forbidden,
     completeWithRoom: forbidden,
-    refreshZoneParticipants: forbidden,
   };
-  const result = await createSceneWriting(ports).prepareVenueTurnMessages(session, message, mode, "", null);
+  const result = await createSceneWriting(ports).prepareVenueTurnMessages(session, message, mode);
   const prompt = result.fitted.messages.map((entry) => entry.content).join("\n");
   assert.doesNotMatch(prompt, /no longer resident/u);
   for (const field of [
@@ -138,7 +156,11 @@ export async function currentScenePrompt(
     "appearance",
     "postHistoryInstructions",
   ] as const) {
-    if (result.audience.includes(card.id) && card[field]?.trim())
+    if (
+      result.readset.source.scene.contactGeneration?.actorIds?.includes(card.id) &&
+      card[field]?.trim() &&
+      !card[field].includes("{{")
+    )
       assert.ok(prompt.includes(card[field].trim()), `the actual Scene writer includes authored ${field}`);
   }
   if (mode === "chat")
@@ -147,10 +169,14 @@ export async function currentScenePrompt(
       { role: "user", content: message },
       "the actual submitted player line remains a separate final user message",
     );
-  return prompt;
+  return { ...result, prompt };
 }
 
-export function scenePromptPacket(prompt: string, root: "context" | "player" | "frame" = "context"): any {
+export async function currentScenePrompt(...args: Parameters<typeof prepareScenePrompt>) {
+  return (await prepareScenePrompt(...args)).prompt;
+}
+
+export function scenePromptPacket(prompt: string, root: "calendar" | "player" | "location" | "interaction"): any {
   const packet = prompt.split("\n").find((line) => line.startsWith(`{"${root}":`));
   assert(packet, "The GM receives the requested structured Scene packet");
   return JSON.parse(packet);
