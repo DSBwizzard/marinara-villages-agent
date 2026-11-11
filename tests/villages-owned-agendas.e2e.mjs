@@ -1,3 +1,4 @@
+import { clickCharacterTool } from "./fixtures/browser-diagnostics.mjs";
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
@@ -89,11 +90,14 @@ await withBrowser(browser, async () => {
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     await page.getByRole("button", { name: /^(Open settings menu|More)$/, exact: true }).click();
-    await page.getByRole("button", { name: "People", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Village navigation" })
+      .getByRole("button", { name: "People", exact: true })
+      .click();
     await page.getByRole("button", { name: "Open Mara profile" }).click();
     const sections = page.getByRole("navigation", { name: "Villager profile sections" });
-    await sections.getByRole("button", { name: "Agenda", exact: true }).click();
-    await sections.getByRole("button", { name: "Inspect", exact: true }).click();
+    await clickCharacterTool(page, "Agenda records");
+    await clickCharacterTool(page, "Inspect");
     const master = page.getByRole("checkbox", { name: "Schedule influence", exact: true });
     const interpret = page.getByRole("button", { name: "Interpret schedule", exact: true });
     await expect(interpret).toBeDisabled();

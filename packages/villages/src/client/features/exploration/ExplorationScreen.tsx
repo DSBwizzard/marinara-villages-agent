@@ -5,6 +5,7 @@ import { MapStage } from "./MapStage.js";
 import { ExplorationNavigation, LocationNavigator, MapIcon } from "./villages-exploration.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
+import { StorybookHeading } from "../../shared/StorybookHeading.js";
 import { HomeDateWeather, placeSpot } from "../../shared/presentation.js";
 import { useVillageLighting } from "../../shared/useVillageLighting.js";
 import type { ExplorationScreenController } from "./screen-contracts.js";
@@ -422,16 +423,16 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
                   setDiscoveryOpen(true);
                 }}
                 onClose={() => {
-                  if (mobile) closeExploration();
-                  else {
-                    setExploreSheet(null);
-                  }
+                  closeExploration();
                   setFocusSearch(false);
                 }}
                 rows={rows}
               />
             ) : null}
-            <div className={`${ELEMENT_TAG}-home-map-viewport`}>
+            <div className={`${ELEMENT_TAG}-home-map-paper`}>
+              <div className={`${ELEMENT_TAG}-places-title`}>
+                <StorybookHeading>Places</StorybookHeading>
+              </div>
               {!placingProjectId && !markerDraft ? (
                 <div className={`${ELEMENT_TAG}-map-tools`}>
                   <button
@@ -480,135 +481,138 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
                   </details>
                 </div>
               ) : null}
-              <MapStage
-                key={selectedMap?.id}
-                lighting={lighting}
-                src={townMapImage || null}
-                alt={`A map of ${selectedMap?.name ?? snapshot?.village.name ?? "the village"}.`}
-                pins={[
-                  ...pins,
-                  ...(!markerDraft && showPlaces
-                    ? placeMarkers
-                        .filter((place) => place.x !== null && place.y !== null)
-                        .map((place) => ({
-                          id: place.id,
-                          x: place.x!,
-                          y: place.y!,
-                          text: place.name,
-                          tone: "venue" as const,
-                          onSelect: () => {
-                            setDiscoveryId(place.id);
-                            setDiscoveryOpen(true);
-                          },
-                        }))
-                    : []),
-                ]}
-                placing={(!!placingProjectId || !!placingPlace || !!markerDraft?.selected) && !busy}
-                view={savedTownMapView}
-                shape={savedTownMapShape}
-                onPlace={(x, y) => {
-                  if (placingPlace && !busy) {
-                    const place = placingPlace;
+              <div className={`${ELEMENT_TAG}-home-map-viewport`}>
+                <MapStage
+                  navigationControlsOnMobile={navigatorOpen}
+                  key={selectedMap?.id}
+                  lighting={lighting}
+                  src={townMapImage || null}
+                  alt={`A map of ${selectedMap?.name ?? snapshot?.village.name ?? "the village"}.`}
+                  pins={[
+                    ...pins,
+                    ...(!markerDraft && showPlaces
+                      ? placeMarkers
+                          .filter((place) => place.x !== null && place.y !== null)
+                          .map((place) => ({
+                            id: place.id,
+                            x: place.x!,
+                            y: place.y!,
+                            text: place.name,
+                            tone: "venue" as const,
+                            onSelect: () => {
+                              setDiscoveryId(place.id);
+                              setDiscoveryOpen(true);
+                            },
+                          }))
+                      : []),
+                  ]}
+                  placing={(!!placingProjectId || !!placingPlace || !!markerDraft?.selected) && !busy}
+                  view={savedTownMapView}
+                  shape={savedTownMapShape}
+                  onPlace={(x, y) => {
+                    if (placingPlace && !busy) {
+                      const place = placingPlace;
+                      setBusy(true);
+                      setError("");
+                      void request<PlaceDetail>("/places/" + encodeURIComponent(place.id) + "/position", {
+                        method: "POST",
+                        body: JSON.stringify({
+                          requestId: createVillagesClientId(),
+                          expectedRevision: place.revision,
+                          expectedMapRevision: selectedMap?.revision,
+                          mapId: selectedMap?.id,
+                          x,
+                          y,
+                        }),
+                      })
+                        .then(() => request<VillageSnapshot>("/"))
+                        .then((next) => {
+                          setSnapshot(next);
+                          setPlacingPlace(null);
+                        })
+                        .catch((cause) => setError(messageFrom(cause, "Could not place this location.")))
+                        .finally(() => setBusy(false));
+                      return;
+                    }
+                    if (markerDraft?.selected && !busy) {
+                      moveMarker(markerDraft.selected, x, y);
+                      return;
+                    }
+                    if (!placingProjectId || busy) return;
+                    const projectId = placingProjectId;
                     setBusy(true);
                     setError("");
-                    void request<PlaceDetail>("/places/" + encodeURIComponent(place.id) + "/position", {
+                    void request<VillageSnapshot>(`/projects/${encodeURIComponent(projectId)}/place`, {
                       method: "POST",
                       body: JSON.stringify({
-                        requestId: createVillagesClientId(),
-                        expectedRevision: place.revision,
-                        expectedMapRevision: selectedMap?.revision,
-                        mapId: selectedMap?.id,
                         x,
                         y,
+                        mapId: selectedMap?.id,
+                        expectedMapRevision: selectedMap?.revision,
+                        requestId: createVillagesClientId(),
+                        expectedRevision: snapshot?.projects.find((project) => project.id === projectId)?.lifecycle
+                          ?.revision,
                       }),
                     })
-                      .then(() => request<VillageSnapshot>("/"))
                       .then((next) => {
                         setSnapshot(next);
-                        setPlacingPlace(null);
+                        setPlacingProjectId("");
+                        setFocusedProjectId(projectId);
+                        openMenu("projects");
                       })
-                      .catch((cause) => setError(messageFrom(cause, "Could not place this location.")))
+                      .catch((cause) => setError(messageFrom(cause, "The Project could not be placed here.")))
                       .finally(() => setBusy(false));
-                    return;
+                  }}
+                  onDismiss={() => {
+                    if (markerDraft) return;
+                    setExploreSheet(null);
+                    setOpenPlaceId(null);
+                  }}
+                  mobile={mobile}
+                  exploration
+                  navigationView={navigationView}
+                  onNavigationView={setNavigationView}
+                  onViewportBounds={setBounds}
+                  keyboardPlacementId={markerDraft?.selected}
+                  onNudgePin={
+                    markerDraft && !busy
+                      ? (id, dx, dy) => {
+                          const point = markerDraft.placements[id];
+                          if (!point) return;
+                          moveMarker(
+                            id,
+                            Math.round(Math.max(0, Math.min(1, (point.x ?? 0.5) + dx)) * 10000) / 10000,
+                            Math.round(Math.max(0, Math.min(1, (point.y ?? 0.5) + dy)) * 10000) / 10000,
+                          );
+                        }
+                      : undefined
                   }
-                  if (markerDraft?.selected && !busy) {
-                    moveMarker(markerDraft.selected, x, y);
-                    return;
-                  }
-                  if (!placingProjectId || busy) return;
-                  const projectId = placingProjectId;
-                  setBusy(true);
-                  setError("");
-                  void request<VillageSnapshot>(`/projects/${encodeURIComponent(projectId)}/place`, {
-                    method: "POST",
-                    body: JSON.stringify({
-                      x,
-                      y,
-                      mapId: selectedMap?.id,
-                      expectedMapRevision: selectedMap?.revision,
-                      requestId: createVillagesClientId(),
-                      expectedRevision: snapshot?.projects.find((project) => project.id === projectId)?.lifecycle
-                        ?.revision,
-                    }),
-                  })
-                    .then((next) => {
-                      setSnapshot(next);
-                      setPlacingProjectId("");
-                      setFocusedProjectId(projectId);
-                      openMenu("projects");
-                    })
-                    .catch((cause) => setError(messageFrom(cause, "The Project could not be placed here.")))
-                    .finally(() => setBusy(false));
-                }}
-                onDismiss={() => {
-                  if (markerDraft) return;
-                  setExploreSheet(null);
-                  setOpenPlaceId(null);
-                }}
-                mobile={mobile}
-                exploration
-                navigationView={navigationView}
-                onNavigationView={setNavigationView}
-                onViewportBounds={setBounds}
-                keyboardPlacementId={markerDraft?.selected}
-                onNudgePin={
-                  markerDraft && !busy
-                    ? (id, dx, dy) => {
-                        const point = markerDraft.placements[id];
-                        if (!point) return;
-                        moveMarker(
-                          id,
-                          Math.round(Math.max(0, Math.min(1, (point.x ?? 0.5) + dx)) * 10000) / 10000,
-                          Math.round(Math.max(0, Math.min(1, (point.y ?? 0.5) + dy)) * 10000) / 10000,
-                        );
-                      }
-                    : undefined
-                }
-              >
-                {error || settingsError || lastSceneEnding || markerError ? (
-                  <div className={`${ELEMENT_TAG}-notice`}>
-                    {error ? (
-                      <p role="alert" className={`${ELEMENT_TAG}-error`}>
-                        {error}
-                      </p>
-                    ) : null}
-                    {markerError ? (
-                      <p role="alert" className={`${ELEMENT_TAG}-error`}>
-                        {markerError}
-                      </p>
-                    ) : null}
-                    {settingsError ? (
-                      <p role="alert" className={`${ELEMENT_TAG}-error`}>
-                        {settingsError}
-                      </p>
-                    ) : null}
-                    {lastSceneEnding ? <p className={`${ELEMENT_TAG}-status`}>{lastSceneEnding}</p> : null}
-                  </div>
-                ) : null}
-                {!places.length && !placingProjectId ? (
-                  <div className={ELEMENT_TAG + "-maps-empty"}>No Venues on this map.</div>
-                ) : null}
-              </MapStage>
+                >
+                  {error || settingsError || lastSceneEnding || markerError ? (
+                    <div className={`${ELEMENT_TAG}-notice`}>
+                      {error ? (
+                        <p role="alert" className={`${ELEMENT_TAG}-error`}>
+                          {error}
+                        </p>
+                      ) : null}
+                      {markerError ? (
+                        <p role="alert" className={`${ELEMENT_TAG}-error`}>
+                          {markerError}
+                        </p>
+                      ) : null}
+                      {settingsError ? (
+                        <p role="alert" className={`${ELEMENT_TAG}-error`}>
+                          {settingsError}
+                        </p>
+                      ) : null}
+                      {lastSceneEnding ? <p className={`${ELEMENT_TAG}-status`}>{lastSceneEnding}</p> : null}
+                    </div>
+                  ) : null}
+                  {!places.length && !placingProjectId ? (
+                    <div className={ELEMENT_TAG + "-maps-empty"}>No Venues on this map.</div>
+                  ) : null}
+                </MapStage>
+              </div>
             </div>
           </>
         )}

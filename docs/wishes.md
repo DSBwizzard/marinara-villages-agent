@@ -30,6 +30,8 @@ The canonical Episode and its common versions publish together with native effec
 
 Known Wishes projects what the player has learned. Inspect's All Wishes includes eligible private and closed records for the resident. Status, complete text, related details and history derive from those same versions.
 
+Select a Wish to open its details in the profile reading area. Longer collections use list pages. Following changes the player's notebook and notices.
+
 The current build requires a fresh Village as described in [saved-state contracts](architecture-migration.md#saved-work-and-compatibility). There is no migration, old response adoption, compatibility reader or retained Wish/Pursuit implementation. Existing storage is left untouched.
 
 Provider-free tests cover retained meaning, individual knowledge, closure, replay and recovery. Actual model judgment and characterization still require playtesting of the isolated preview.

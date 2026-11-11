@@ -43,9 +43,12 @@ await withBrowser(browser, async () => {
     await page.goto("http://sprite-entry.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     await page.getByRole("button", { name: "More", exact: true }).click();
-    await page.getByRole("button", { name: "People", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Village navigation" })
+      .getByRole("button", { name: "People", exact: true })
+      .click();
     await page.getByRole("button", { name: "Open Mara profile" }).click();
-    await page.getByText("Character tools", { exact: true }).click();
+    await page.getByRole("button", { name: "Character Tools", exact: true }).click();
     await page
       .getByRole("button", { name: /Manage sprites ·/ })
       .first()

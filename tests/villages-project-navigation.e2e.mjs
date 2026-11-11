@@ -92,7 +92,10 @@ async function checkMapPlacement(width, activeScene = false) {
     await page.getByRole("menuitem", { name: "Projects", exact: true }).click();
   } else {
     await page.getByRole("button", { name: /^(Open settings menu|More)$/ }).click();
-    await page.getByRole("button", { name: "Projects", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Village navigation" })
+      .getByRole("button", { name: "Projects", exact: true })
+      .click();
   }
   await openSite();
   await page.getByRole("button", { name: "Choose map position", exact: true }).click();
@@ -101,7 +104,10 @@ async function checkMapPlacement(width, activeScene = false) {
   await openSite();
   assert.equal(placements.length, 0, "cancelling returns to the Project without saving a position");
   if (activeScene) {
-    await page.getByRole("button", { name: "Return to Scene", exact: true }).click();
+    await page
+      .locator(".marinara-capability-villages-desk-header")
+      .getByRole("button", { name: "Return to Scene", exact: true })
+      .click();
     await expect(page.getByRole("textbox", { name: "Message at The Mill", exact: true })).toHaveValue(
       "An unsent Scene draft.",
     );
@@ -142,7 +148,10 @@ async function checkMapPlacement(width, activeScene = false) {
   await expect(page.getByRole("button", { name: "Change map position", exact: true })).toBeEnabled();
   if (output) await page.screenshot({ path: resolve(output, "projects-placed-" + width + ".png"), fullPage: true });
   if (activeScene) {
-    await page.getByRole("button", { name: "Return to Scene", exact: true }).click();
+    await page
+      .locator(".marinara-capability-villages-desk-header")
+      .getByRole("button", { name: "Return to Scene", exact: true })
+      .click();
     const composer = page.getByRole("textbox", { name: "Message at The Mill", exact: true });
     await expect(composer).toHaveValue("An unsent Scene draft.");
     assert(await composer.evaluate((node) => node === window.retainedComposer), "the original Scene stays mounted");

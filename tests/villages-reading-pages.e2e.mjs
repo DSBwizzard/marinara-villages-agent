@@ -144,7 +144,10 @@ await withBrowser(browser, async () => {
       await page.getByRole("menuitem", { name: "View Venue", exact: true }).click();
       await expect(page.getByRole("heading", { name: "The Mill", exact: true })).toBeVisible();
       await expect(page.getByRole("region", { name: "About this venue" })).toBeVisible();
-      await page.getByRole("button", { name: "Return to Scene", exact: true }).click();
+      await page
+        .locator(".marinara-capability-villages-desk-header")
+        .getByRole("button", { name: "Return to Scene", exact: true })
+        .click();
       await expect(reading).toBeVisible();
     };
 
@@ -192,7 +195,12 @@ await withBrowser(browser, async () => {
     // Exercise navigation independently of the mobile dialogue overlay's pointer layout.
     await page.getByRole("button", { name: /View .*Inspect Mara's wish/ }).evaluate((button) => button.click());
     await expect(page.getByRole("region", { name: "Mara profile", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Close ×", exact: true }).click();
+    await expect(page.locator("[data-desk=people]")).toHaveAttribute("data-phase", "open");
+    await page
+      .getByRole("navigation", { name: "Village navigation", exact: true })
+      .getByRole("button", { name: "People", exact: true })
+      .focus();
+    await page.keyboard.press("Escape");
     await expect(text).toHaveText("A quiet afternoon.");
     await expect(draft).toHaveCount(0);
     await tray.click();

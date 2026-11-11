@@ -826,6 +826,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    */
   const openVenue = useOpenVenue({
     openPlace,
+    exploreSheet,
     explorationOrigin,
     explorationReturnTab,
     setExploreSheet,
@@ -1227,7 +1228,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   const venueExplorationActions = createVenueExplorationActions({
     openMenu,
-    openPlace,
+    openPlace: openVenue,
     openRoom,
     setExploreSheet,
     setFocusedProjectId,

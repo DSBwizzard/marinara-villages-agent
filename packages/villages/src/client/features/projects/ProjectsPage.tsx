@@ -11,14 +11,12 @@ export function renderProjectsPage(ports: ProjectsPagePorts) {
     setFocusedProjectId,
     setPlacingProjectId,
     setScreen,
-    setSiteProjectId,
     siteProjectId,
     snapshot,
   } = ports;
   return (
     <ProjectsPanel
       snapshot={snapshot}
-      onClose={() => ports.openMenu?.("index")}
       onPeople={() => ports.openMenu?.("villagers")}
       onVenue={(id) => {
         const venue = snapshot.settings.venues.find((entry) => entry.id === id);
@@ -26,10 +24,6 @@ export function renderProjectsPage(ports: ProjectsPagePorts) {
       }}
       room={room}
       onReturn={() => setScreen("room")}
-      onMap={() => {
-        setSiteProjectId("");
-        goHome();
-      }}
       onPlaceOnMap={(projectId) => {
         setFocusedProjectId(projectId);
         setPlacingProjectId(projectId);

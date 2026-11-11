@@ -2,13 +2,15 @@ import { useEffect, useState } from "react";
 import { findLetterFont } from "../../shared/helpers/letter-font-selection.js";
 
 const loading = new Map<string, Promise<void>>();
-function loadLetterFont(id: string): Promise<void> {
+export function loadLetterFont(id: string): Promise<void> {
   const current = loading.get(id);
   if (current) return current;
   const font = findLetterFont(id);
   if (!font) return Promise.resolve();
   const promise = (async () => {
-    const response = await fetch("/api/capability-packages/villages/assets/letter-fonts/" + id + ".json");
+    const response = await fetch("/api/capability-packages/villages/assets/letter-fonts/" + id + ".json", {
+      signal: AbortSignal.timeout(3_000),
+    });
     if (!response.ok) throw new Error("Letter font unavailable");
     const data: unknown = await response.json();
     if (!data || typeof data !== "object") throw new Error("Invalid letter font");

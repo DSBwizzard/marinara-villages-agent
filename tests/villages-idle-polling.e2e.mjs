@@ -17,6 +17,7 @@ function Harness(){
  const {snapshot,setSnapshot,beginSnapshotRead}=useVillageSnapshot(window.initialSnapshot);
  const [room,setRoom]=useState({id:'scene',status:'active',sceneRevision:1});
  const [viewing,setViewing]=useState(true),[busy,setBusy]=useState(false),[notices,setNotices]=useState([]),[summary,setSummary]=useState({});
+ const [signatureArt,setSignatureArt]=useState(null),[signatureTools,setSignatureTools]=useState(null);
  const dismissed=useRef(new Set()),session=useRef('');
  const receive=useCallback(events=>setNotices(old=>[...old,...events.filter(event=>!old.some(saved=>saved.id===event.id))]),[]);
  const unresolved=useCallback(()=>{},[]);
@@ -25,7 +26,7 @@ function Harness(){
  const load=useCallback(async ({signal}={})=>{const read=beginSnapshotRead();const next=await request('',{signal});if(!signal?.aborted)read.publish(next)},[beginSnapshotRead]);
  usePendingWorkPolling({visible,backgroundPending:snapshot.backgroundWork.some(job=>['queued','running'].includes(job.status)),loadSnapshot:load});
  window.h={snapshot:setSnapshot,room:setRoom,view:setViewing,busy:setBusy};
- return <VillageActivity value={{visible,backgroundRevision:''}}><pre id='state'>{JSON.stringify({visible,notices,summary})}</pre><VillagerSignature actorId='ada' name='Ada' request={request}/></VillageActivity>;
+ return <VillageActivity value={{visible,backgroundRevision:''}}><pre id='state'>{JSON.stringify({visible,notices,summary})}</pre><div ref={setSignatureArt}/><div ref={setSignatureTools}/><VillagerSignature actorId='ada' name='Ada' request={request} artContainer={signatureArt} toolsContainer={signatureTools}/></VillageActivity>;
 }createRoot(document.getElementById('root')).render(<Harness/>);`,
     loader: "tsx",
     resolveDir: process.cwd(),
