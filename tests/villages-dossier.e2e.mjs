@@ -1383,7 +1383,7 @@ await withBrowser(browser, async () => {
       await correction.getByRole("checkbox", { name: "Mara", exact: true }).uncheck();
       await expect(correction.getByRole("button", { name: "Save correction" })).toBeDisabled();
       await correction.getByRole("checkbox", { name: "Mara", exact: true }).check();
-      await correction.getByRole("textbox").fill("é".repeat(301));
+      await correction.getByRole("textbox").fill("é".repeat(1201));
       await expect(correction.getByRole("alert")).toContainText("too long");
       await expect(correction.getByRole("button", { name: "Save correction" })).toBeDisabled();
       await correction.getByRole("textbox").fill("PRIVATE corrected wording");

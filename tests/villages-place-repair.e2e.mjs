@@ -10,6 +10,7 @@ import {
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { worldRepairRecords, applyWorldRepair } from "../packages/villages/src/server/domain/rules/repair-records.js";
+import { initializeRoomContinuity } from "../packages/villages/src/server/domain/rules/native-continuity.js";
 
 const bundle = await build({
   stdin: {
@@ -32,15 +33,18 @@ await withBrowser(browser, async () => {
   ])
     await runCase("place-repair/" + name, async () => {
       const at = "2026-10-28T12:00:00.000Z";
+      const description = "White walls. Two windows.\n\nA table.";
       let state = coerceVillageState({
         ...defaultVillageState(),
         seed: "place-repair",
+        setupAt: at,
+        foundedAt: at,
         venues: [
           venueFixture({
             id: "hall",
             name: "Hall",
             classes: ["community"],
-            description: "White walls. Two windows. A table.",
+            description,
             layoutVersion: 1,
             zones: [
               {
@@ -48,20 +52,22 @@ await withBrowser(browser, async () => {
                 name: "Entrance",
                 kind: "exterior",
                 venueClass: "community",
-                description: "White walls. Two windows. A table.",
+                description,
                 image: null,
-                state: {
-                  revision: 2,
-                  updatedAt: at,
-                  recent: { text: "Cups after tea.", occurredAt: at, expiresAt: "2026-10-29T12:00:00.000Z" },
-                },
               },
             ],
           }),
         ],
       });
-      const getRecord = () => ({
-        ...worldRepairRecords(state, false).find((row) => JSON.parse(row.id)[0] === "zone"),
+      initializeRoomContinuity(state, "hall", "exterior", description, "founding", at);
+      const roomRecords = (world = state) =>
+        worldRepairRecords(world, false).filter((row) => row.summary === "Room description");
+      const original = roomRecords();
+      const wall = original.find((row) => row.fields[0].value === "White walls. Two windows.");
+      const table = original.find((row) => row.fields[0].value === "A table.");
+      assert(wall && table);
+      const getRecord = (world = state) => ({
+        ...roomRecords(world).find((row) => row.id === wall.id),
         token: "current",
       });
       const index = () => ({
@@ -96,14 +102,9 @@ await withBrowser(browser, async () => {
               title: getRecord().title,
               changes: [
                 {
-                  label: "Long-term details",
-                  before: state.venues[0].zones[0].description,
-                  after: staged.venues[0].zones[0].description,
-                },
-                {
-                  label: "Short-term details",
-                  before: state.venues[0].zones[0].state.recent?.text ?? "",
-                  after: staged.venues[0].zones[0].state.recent?.text ?? "",
+                  label: "Text",
+                  before: getRecord().fields[0].value,
+                  after: getRecord(staged).fields[0].value,
                 },
               ],
               affected: ["Hall"],
@@ -124,41 +125,33 @@ await withBrowser(browser, async () => {
       await page.addScriptTag({ content: bundle.outputFiles[0].text });
       const open = async () => {
         await page.getByRole("button", { name: "Places Venues, Zones, homes, and access.", exact: true }).click();
-        await page.getByRole("button", { name: /Hall · Entrance Zone physical state/ }).click();
+        await page.getByRole("button", { name: /Hall · Entrance Room description/ }).click();
       };
       await open();
       await expect(page.getByText("Current", { exact: true })).toHaveCount(0);
-      await expect(page.getByRole("textbox", { name: "Long-term details", exact: true })).toHaveValue(
-        "White walls. Two windows. A table.",
-      );
-      await expect(page.getByRole("textbox", { name: "Short-term details", exact: true })).toHaveValue(
-        "Cups after tea.",
-      );
-      await expect(page.getByRole("button", { name: "Clear short-term details", exact: true })).toBeVisible();
-      await page
-        .getByRole("textbox", { name: "Long-term details", exact: true })
-        .fill("White walls. Two windows. A table. Shelves beside the window.");
-      await page.getByRole("textbox", { name: "Short-term details", exact: true }).fill("Fresh cups after tea.");
-      await page.getByRole("button", { name: "Renew for one day", exact: true }).click();
+      const editor = page.getByRole("textbox", { name: "Text", exact: true });
+      const correction = "White walls. Two windows. Shelves beside the window.";
+      await expect(editor).toHaveValue("White walls. Two windows.");
+      await editor.fill(correction);
       await page.locator(".villages-repair").screenshot({ path: `.build-tmp/place-repair/${name}-editor.png` });
       assert.equal(await page.locator(".villages-repair").evaluate((el) => el.scrollWidth <= el.clientWidth + 1), true);
       await page.getByRole("button", { name: "Review changes", exact: true }).click();
       assert.equal(applied, 0, "review does not apply the correction");
-      assert.equal(pending.action, "renew-recent");
+      assert.equal(pending.action, "correct");
+      assert.equal(pending.recordId, wall.id);
+      assert.equal(getRecord().fields[0].value, "White walls. Two windows.");
       await page.getByRole("button", { name: "Save changes", exact: true }).click();
       await expect(page.getByRole("heading", { name: "Changes saved", exact: true })).toBeVisible();
       assert.equal(applied, 1);
-      assert.equal(state.venues[0].zones[0].state.revision, 3);
-      assert.equal(state.venues[0].zones[0].state.recent.expiresAt, "2026-10-29T15:00:00.000Z");
-      assert.match(state.venues[0].zones[0].description, /Two windows.*Shelves/);
+      assert.equal(getRecord().fields[0].value, correction);
+      assert.deepEqual(
+        roomRecords().find((row) => row.id === table.id),
+        table,
+      );
+      assert.equal(state.venues[0].zones[0].description, description);
       await page.getByRole("button", { name: "Back to REPAIR", exact: true }).click();
       await open();
-      await page.getByRole("button", { name: "Clear short-term details", exact: true }).click();
-      await page.getByRole("button", { name: "Review changes", exact: true }).click();
-      await page.getByRole("button", { name: "Save changes", exact: true }).click();
-      await expect(page.getByRole("heading", { name: "Changes saved", exact: true })).toBeVisible();
-      assert.equal(state.venues[0].zones[0].state.recent, null);
-      assert.match(state.venues[0].zones[0].description, /Shelves/);
+      await expect(editor).toHaveValue(correction);
       await page.close();
     });
 });
