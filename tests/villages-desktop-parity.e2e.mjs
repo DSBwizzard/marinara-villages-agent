@@ -454,7 +454,6 @@ await withBrowser(browser, async () => {
     await page.getByRole("button", { name: "Venue actions" }).click();
     await page.getByRole("menuitem", { name: "Projects", exact: true }).click();
     await expect(page.getByRole("main", { name: "Projects" })).toBeVisible();
-    await page.getByRole("button", { name: /^Close/ }).click();
     await page.getByRole("button", { name: "Return to Scene", exact: true }).click();
     while (await page.getByRole("button", { name: "Next paragraph" }).isEnabled())
       await page.getByRole("button", { name: "Next paragraph" }).click();

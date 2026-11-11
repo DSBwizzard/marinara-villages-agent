@@ -9,6 +9,7 @@ import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import { playerDisplayName } from "../../shared/presentation.js";
 import { venueAssignedCountFor, venueCapacityFor, venueClassesFor } from "../../shared/venue.js";
 import { WorkspaceShell } from "../../shared/WorkspaceShell.js";
+import { StorybookHeading } from "../../shared/StorybookHeading.js";
 import type { VenueScreenController } from "./screen-contracts.js";
 import { venueDisplayZones, type VenueDisplayZone } from "./venue-view.js";
 import { VenueLayoutEditor } from "./VenueLayoutEditor.js";
@@ -594,7 +595,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
   };
   const sidebar = (
     <>
-      <h2>Places</h2>
+      <StorybookHeading as="h2">Places</StorybookHeading>
       <label className={`${ELEMENT_TAG}-workspace-venue-picker`}>
         Venue
         <select

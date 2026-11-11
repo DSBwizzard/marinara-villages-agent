@@ -5,7 +5,6 @@ const P = "marinara-capability-villages";
 export const DOSSIER_STYLES = `
 @font-face{font-family:Villages Notebook;src:url("${handwriting}") format("truetype");font-weight:400;font-style:normal;font-display:swap}
 .${P}-people-session{height:100%;min-height:0}.${P}-people-session[hidden]{display:none}
-.${P}-desk-container .${P}-desk-workspace[data-desk="people"]:not([data-desk="none"]){--menu-font:"village-letter-lora",Georgia,serif}
 .${P}-people-layout{height:100%;min-height:0;min-width:0;width:100%;margin:0;display:grid;grid-template-columns:clamp(280px,27%,420px) minmax(0,1fr);gap:36px}
 .${P}-people-index{height:100%;min-height:0;min-width:0}
 .${P}-dossier-root,.${P}-directory-root{--dossier-ink:#f0dfbc;--dossier-line:#a39b8460;--notebook-hand:var(--menu-font,Georgia,serif);color:var(--dossier-ink);background:transparent;box-sizing:border-box;height:100%;min-height:0;min-width:0;overflow:visible;position:relative;font:400 20px/1.6 var(--notebook-hand);padding:0;container-type:size}
@@ -97,9 +96,8 @@ export const DOSSIER_STYLES = `
 .${P}-dossier-root .${P}-memory-section-head h3{font-size:23px}
 .${P}-directory-paper{height:100%;min-height:0;min-width:0;display:flex;flex-direction:column}
 .${P}-directory-root .${P}-dossier-book{overflow:hidden}
-.${P}-directory-head{display:flex;align-items:center;gap:20px;flex:none;margin:0 0 26px}
-.${P}-directory-head h1{display:flex;align-items:center;gap:12px;font:600 clamp(50px,3.2vw,76px)/1.1 var(--notebook-hand);letter-spacing:-.025em;margin:0;flex:1;min-width:0}
-.${P}-directory-flourish{width:64px;height:40px;flex:none;fill:#969b7e}
+.${P}-directory-head{--menu-heading-size:clamp(50px,3.2vw,76px);display:flex;align-items:center;gap:20px;flex:none;margin:0 0 26px}
+.${P}-directory-head .${P}-directory-flourish{width:64px;height:40px}
 .${P}-directory-search{position:relative;display:block;flex:none;width:100%;max-width:620px;margin:0 0 28px}
 .${P}-directory-search svg{position:absolute;left:18px;top:50%;transform:translateY(-50%);width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;pointer-events:none}
 .${P}-directory-root .${P}-directory-search input{width:100%;min-height:56px;padding:10px 16px 10px 56px;border:1px solid #b47f92aa;border-radius:13px;background:#74536755;font:400 22px/1.4 var(--notebook-hand)}
@@ -118,7 +116,7 @@ export const DOSSIER_STYLES = `
 
 @container village-desk (min-width:701px) and (max-width:1100px){
  .${P}-people-layout{grid-template-columns:220px minmax(0,1fr);gap:24px}
- .${P}-directory-head h1{font-size:44px}
+ .${P}-directory-head{--menu-heading-size:44px}
  .${P}-dossier-journal h1{font-size:40px}
  .${P}-directory-head{flex-wrap:wrap;gap:8px}
  .${P}-directory-root .${P}-directory-card{padding:8px 8px 5px}
@@ -149,7 +147,7 @@ export const DOSSIER_STYLES = `
  .${P}-dossier-content h2{font-size:27px}
  .${P}-dossier-venues article{grid-template-columns:1fr}
  .${P}-dossier-root .${P}-agenda-days{grid-template-columns:1fr;gap:12px}
- .${P}-directory-head{margin-bottom:20px;gap:12px}.${P}-directory-head h1{font-size:40px}
+ .${P}-directory-head{--menu-heading-size:40px;margin-bottom:20px;gap:12px}
  .${P}-directory-search{margin-bottom:22px}
  .${P}-directory-root .${P}-directory-search input{font-size:18px;min-height:50px;padding-left:46px}
  .${P}-directory-search svg{left:14px;width:22px;height:22px}
@@ -158,7 +156,7 @@ export const DOSSIER_STYLES = `
  .${P}-directory-card strong{font-size:19px}
 }
 @media(max-height:700px){
- .${P}-directory-head{margin-bottom:10px}.${P}-directory-head h1{font-size:32px}
+ .${P}-directory-head{--menu-heading-size:32px;margin-bottom:10px}
  .${P}-directory-search{margin-bottom:12px}.${P}-directory-root .${P}-directory-search input{min-height:44px;padding-block:6px;font-size:18px}
  .${P}-dossier-journal h1{font-size:32px}
  .${P}-dossier-biography p{font-size:16px}

@@ -38,11 +38,8 @@ async function prepareLayer(layer: ArtworkLayer): Promise<void> {
   await image.decode();
 }
 
-export async function prepareDeskArtwork(menu: DeskDestination): Promise<void> {
-  await Promise.all([
-    ...artwork.map(prepareLayer),
-    loadLetterFont(menu === "people" ? "lora" : "crimson-pro").catch(() => {}),
-  ]);
+export async function prepareDeskArtwork(): Promise<void> {
+  await Promise.all([...artwork.map(prepareLayer), loadLetterFont("lora").catch(() => {})]);
 }
 
 export function deskArtworkStyle(menu: DeskDestination | null): CSSProperties {

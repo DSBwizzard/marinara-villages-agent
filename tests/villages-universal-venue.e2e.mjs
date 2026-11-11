@@ -221,12 +221,19 @@ await withBrowser(browser, async () => {
       .getByRole("button", { name: "Projects", exact: true })
       .click();
     await expect(page.getByRole("main", { name: "Projects" })).toBeVisible();
-    await page.getByRole("main", { name: "Projects" }).getByRole("button", { name: "Close ×", exact: true }).click();
     await page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();
     await page
       .getByRole("navigation", { name: "Village exploration" })
       .getByRole("button", { name: "Places", exact: true })
       .click();
+    const placesDirectory = page.getByRole("complementary", { name: "Places navigator" });
+    await placesDirectory.getByRole("button", { name: /^(Collapse|Close) places$/ }).click();
+    await expect(placesDirectory).toHaveCount(0);
+    await page
+      .getByRole("navigation", { name: "Village exploration" })
+      .getByRole("button", { name: "Places", exact: true })
+      .click();
+    await expect(placesDirectory.getByRole("searchbox", { name: "Search places", exact: true })).toBeFocused();
     const openProfile = async (id = place.id) => {
       const navigator = page.getByRole("complementary", { name: "Places navigator" });
       await navigator.locator(`[data-exploration-row="${id}"]`).click();
@@ -552,7 +559,6 @@ await withBrowser(browser, async () => {
     await expect(page.getByRole("heading", { name: "Renovation", exact: true })).toBeVisible();
     await expect(page.getByRole("combobox", { name: "Venue", exact: true })).toHaveValue(place.id);
     assert.equal(writes.length, beforeName + 1, "planning does not submit a Project");
-    await page.getByRole("button", { name: /^Close/, exact: false }).click();
     await page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();
     await page
       .getByRole("navigation", { name: "Village exploration" })
@@ -574,7 +580,6 @@ await withBrowser(browser, async () => {
       await clickCharacterTool(page, "Venue connections");
       await person.getByRole("button", { name: /Projects Open Projects/ }).click();
       await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
-      await page.getByRole("button", { name: /^Close/ }).click();
       await page.getByRole("button", { name: "People", exact: true }).click();
       await page.getByRole("button", { name: "Open Mara profile", exact: true }).click();
       await clickCharacterTool(page, "Venue connections");
@@ -651,7 +656,6 @@ await withBrowser(browser, async () => {
       .getByRole("button", { name: "Projects", exact: true })
       .click();
     await expect(page.getByRole("main", { name: "Projects" })).toBeVisible();
-    await page.getByRole("main", { name: "Projects" }).getByRole("button", { name: "Close ×", exact: true }).click();
     await page.getByRole("button", { name: "Return to Scene", exact: true }).click();
     await expect(composer).toHaveValue("An unsent Scene draft.");
     assert.deepEqual(

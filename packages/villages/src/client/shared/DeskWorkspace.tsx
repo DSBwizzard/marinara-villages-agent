@@ -57,7 +57,7 @@ export function DeskWorkspace({
   onKeyDown: React.KeyboardEventHandler<HTMLDivElement>;
   children: ReactNode;
 }) {
-  useLetterFont(active === "people" ? "lora" : active ? "crimson-pro" : undefined);
+  useLetterFont(active ? "lora" : undefined);
   const scrollPositions = useRef(new Map<string | null, number>());
   useLayoutEffect(() => {
     const stage = documentRef.current?.parentElement;

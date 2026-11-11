@@ -326,8 +326,8 @@ await withBrowser(browser, async () => {
           .getByRole("button", { name: "Projects" })
           .click();
         await page
-          .getByRole("main", { name: "Projects" })
-          .getByRole("button", { name: /^Close/ })
+          .getByRole("navigation", { name: "Village navigation" })
+          .getByRole("button", { name: "Settings", exact: true })
           .click();
         await selectSection("progress");
         await expect(main.getByText("Engine version: loading", { exact: true })).toBeVisible();

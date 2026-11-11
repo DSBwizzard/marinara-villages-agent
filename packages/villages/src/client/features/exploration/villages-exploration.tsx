@@ -1,6 +1,7 @@
 import { VillageIcon } from "../../shared/VillageIcon.js";
+import { StorybookHeading, StorybookSearchIcon } from "../../shared/StorybookHeading.js";
 import type { MobileMapBox, MobileMapSize } from "./villages-mobile-map";
-import { type DOMAttributes, type ReactNode, useEffect, useLayoutEffect, useRef } from "react";
+import { type CSSProperties, type DOMAttributes, type ReactNode, useEffect, useLayoutEffect, useRef } from "react";
 
 const P = "marinara-capability-villages";
 
@@ -156,14 +157,19 @@ export function ExplorationMarkers({
           const left = picture.left + pin.x * picture.width;
           const top = picture.top + pin.y * picture.height;
           if (left < 0 || top < 0 || left > frame.width || top > frame.height) return null;
+          const pinLeft = left + (offset?.id === pin.id ? offset.x : 0);
           return (
             <span
               key={pin.id}
               className={P + "-explore-anchor"}
-              style={{
-                left: left + (offset?.id === pin.id ? offset.x : 0),
-                top: top + (offset?.id === pin.id ? offset.y : 0),
-              }}
+              style={
+                {
+                  left: pinLeft,
+                  top: top + (offset?.id === pin.id ? offset.y : 0),
+                  "--pin-left": `${pinLeft}px`,
+                  "--pin-right": `${frame.width - pinLeft}px`,
+                } as CSSProperties
+              }
             >
               <button
                 type="button"
@@ -248,13 +254,14 @@ export function LocationNavigator({
       }}
     >
       <header>
-        <h2>Places</h2>
+        <StorybookHeading as="h2">Places</StorybookHeading>
         <button type="button" aria-label={mobile ? "Close places" : "Collapse places"} onClick={onClose}>
           <MapIcon name="close" />
         </button>
       </header>
       <label className={P + "-explore-search"}>
         <span className={P + "-sr-only"}>Search places</span>
+        <StorybookSearchIcon />
         <input
           ref={searchRef}
           autoComplete="off"

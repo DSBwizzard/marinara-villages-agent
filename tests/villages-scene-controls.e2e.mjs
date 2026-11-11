@@ -220,7 +220,6 @@ await withBrowser(browser, async () => {
         await page.getByRole("menuitem", { name: menu, exact: true }).click();
         await expect(page.locator("." + tag + "-room-screen")).toBeHidden();
         await expect(page.locator("." + tag + "-home")).toHaveCount(0);
-        if (menu === "Projects") await page.getByRole("button", { name: /^Close/ }).click();
         await page.getByRole("button", { name: "Return to Scene", exact: true }).click();
         await expect(composer).toHaveValue(draftBeforeVenue);
       }

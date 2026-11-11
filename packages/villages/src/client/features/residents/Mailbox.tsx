@@ -4,6 +4,7 @@ import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { invalidatesRead, request, VillageApiError, VILLAGE_ACCESS_DENIED } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { useLetterFont, letterFontFamily } from "../../shared/letter-font-css.js";
+import { StorybookHeading } from "../../shared/StorybookHeading.js";
 import type { PortraitMap } from "../../shared/types.js";
 import { AvatarFace } from "./ResidentPanels.js";
 import { SignatureArt } from "./villages-signature.js";
@@ -506,7 +507,7 @@ export function Mailbox({
       <div className="villages-founding-dialog villages-mailbox-dialog" role="dialog" aria-label="Mailbox">
         <header>
           <div className="villages-mailbox-title">
-            <h3>Mailbox</h3>
+            <StorybookHeading>Mailbox</StorybookHeading>
             {selected && !composing ? (
               <button
                 type="button"
@@ -534,7 +535,6 @@ export function Mailbox({
         .villages-mailbox-overlay{position:absolute;inset:0;z-index:1000;display:grid;grid-template: minmax(0,1fr) / minmax(0,1fr);place-items:center;overflow:hidden;background:#0009;padding:1rem;box-sizing:border-box}
         .villages-founding-dialog:has(.villages-letter-layout){position:relative;width:min(76rem,100%);max-width:100%;height:min(46rem,100%);max-height:100%;margin:0;padding:0;background:transparent;color:#f0dfbc;border:1px solid #a39b84;box-shadow:0 14px 50px #0009;font-family:var(--menu-font,Georgia,serif)}
         .villages-founding-dialog:has(.villages-letter-layout)>header{display:flex;align-items:center;justify-content:space-between;background:transparent;color:#f0dfbc;border:0;padding:1.25rem 1.8rem .7rem}
-        .villages-founding-dialog:has(.villages-letter-layout)>header h3{font:700 clamp(1.8rem,3.2cqw,2.8rem) var(--menu-font,Georgia,serif);color:#f0dfbc;text-shadow:0 2px 3px #261407}
         .villages-mailbox-title{display:flex;align-items:center;gap:.8rem;min-width:0}
         .villages-founding-dialog .villages-mailbox-title .villages-letter-reading{min-height:44px;border:1px solid #a39b84;background:#969b7e;color:#292938;border-radius:.35rem;padding:.45rem .7rem;font:1rem var(--menu-font,Georgia,serif);white-space:nowrap}
         .villages-founding-dialog .villages-mailbox-title .villages-letter-reading[aria-pressed=true]{background:#b97980;color:#fff;border-color:#d39a9f;box-shadow:inset 0 0 0 1px #fff8}
@@ -544,15 +544,15 @@ export function Mailbox({
         .villages-letter-list,.villages-letter-paper{min-width:0;min-height:0;color:#f0dfbc;background:radial-gradient(ellipse at 20% 10%,#fff7e6aa,transparent 60%),linear-gradient(120deg,#514157,#514157);border:1px solid #a39b84;border-radius:.3rem;box-shadow:0 3px 9px #261407a0,inset 0 0 28px #a4763a22}
         .villages-letter-list{display:flex;flex-direction:column;overflow:hidden;padding:.75rem}
         .villages-letter-list-head{display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.5rem}
-        .villages-letter-folders{display:flex;gap:.2rem}
+        .villages-letter-folders{display:flex;gap:.35rem;border-bottom:1px solid var(--border,#a39b8460)}
         .villages-founding-dialog .villages-letter-layout button{font-family:var(--menu-font,Georgia,serif);cursor:pointer}
-        .villages-founding-dialog .villages-letter-folders button{border:0;background:transparent;color:#f0dfbc;padding:.45rem .55rem;font-size:1rem}
-        .villages-founding-dialog .villages-letter-folders button[aria-pressed=true]{color:#fff0d5;border-bottom:2px solid #d29399;font-weight:bold}
-        .villages-founding-dialog .villages-letter-compose{border:1px solid #a39b84;border-radius:.25rem;background:#969b7e;color:#292938;padding:.55rem .8rem;white-space:nowrap;box-shadow:0 2px 3px #79512d38}
+        .villages-founding-dialog .villages-letter-folders button{border:0;border-bottom:3px solid transparent;border-radius:0;background:transparent;color:#f0dfbc;padding:.45rem .55rem;font-size:1rem}
+        .villages-founding-dialog .villages-letter-folders button[aria-pressed=true]{color:#fff0d5;border-bottom-color:var(--menu-tab-line,#d29399)}
+        .villages-founding-dialog .villages-letter-compose{border:1px solid #a5ac8b;border-radius:7px;background:#969b7e;color:#292938;padding:.55rem .8rem;white-space:nowrap;box-shadow:none}
         .villages-letter-rows{min-height:0;overflow:auto}
         .villages-founding-dialog .villages-letter-row{display:flex;align-items:center;gap:.75rem;width:100%;min-height:5.6rem;padding:.7rem;text-align:left;background:transparent;color:#f0dfbc;border:1px solid transparent;border-bottom-color:#a39b8460;border-radius:.25rem}
         .villages-founding-dialog .villages-letter-row[aria-pressed=true]{background:#b979809e;border-color:#c78d93;box-shadow:inset 0 0 10px #a2b9bd55}
-        .villages-letter-face{position:relative;display:grid;place-items:center;flex:none;width:3.7rem;height:3.7rem;overflow:hidden;background:#969b7e;border-radius:50%;font-size:1.6rem}
+        .villages-letter-face{position:relative;display:grid;place-items:center;flex:none;width:3.7rem;height:3.7rem;overflow:hidden;background:#969b7e;border-radius:7px;font-size:1.6rem}
         .villages-letter-face img{position:absolute;width:100%;height:100%;object-fit:cover}
         .villages-letter-row>span:last-child{min-width:0;flex:1}.villages-letter-row strong,.villages-letter-row small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.villages-letter-row strong{font-size:1.35rem}.villages-letter-row small{font-size:1rem;margin-top:.2rem}
         .villages-letter-paper{position:relative;display:flex;flex-direction:column;overflow:auto;padding:clamp(1.2rem,3cqw,2.5rem);box-shadow:4px 5px 0 #d1bb98,0 4px 12px #26140799,inset 0 0 35px #a4763a20}
@@ -822,9 +822,9 @@ export function Mailbox({
                   ) : null}
                 </div>
               </>
-            ) : (
+            ) : shown.length ? (
               <p className="villages-letter-empty">Choose a letter to read.</p>
-            )}
+            ) : null}
           </section>
         </div>
       </div>

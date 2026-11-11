@@ -4,6 +4,7 @@ import { MAX_PHYSICAL_DESIGN_LENGTH, MAX_PROJECT_DRAFTS } from "../../../shared/
 import { SpaceConnections } from "../../shared/SpaceConnections.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG as P } from "../../shared/constants.js";
+import { StorybookHeading } from "../../shared/StorybookHeading.js";
 import { readFileAsDataUrl } from "../../shared/presentation.js";
 
 import { ArtworkUpload, ClassChoices, ProjectDrawing, titleCase } from "./ProjectDesign.js";
@@ -34,8 +35,6 @@ export function ProjectsPanel({
   onPlaceOnMap,
   onPeople,
   onVenue,
-  onMap,
-  onClose = onMap,
   room,
   onReturn,
   mobile,
@@ -46,8 +45,6 @@ export function ProjectsPanel({
   onPlaceOnMap(id: string): void;
   onPeople(): void;
   onVenue(id: string): void;
-  onMap(): void;
-  onClose?(): void;
   debugEnabled?: boolean;
   room: SceneView | null;
   onReturn(): void;
@@ -194,32 +191,25 @@ export function ProjectsPanel({
       <style>{projectStyles}</style>
       <main ref={boardRef} className={P + "-project-board"} aria-label="Projects">
         <header className="vp-header">
-          <div>
-            <h1>Projects</h1>
-          </div>
+          <StorybookHeading>Projects</StorybookHeading>
           <div className="vp-actions">
+            {!project && !c.draftType && indexView === "projects" ? (
+              <span className="vp-note">{activeProjects.length} / 2 active</span>
+            ) : null}
             {project || c.draftType ? (
               <button type="button" className="vp-subtle" onClick={allProjects}>
                 ‹ All Projects
               </button>
             ) : null}
-            <button type="button" className="vp-subtle" onClick={onClose}>
-              Close ×
-            </button>
+            {!project && !c.draftType && indexView === "projects" && history.length ? (
+              <button type="button" onClick={() => setIndexView("history")}>
+                History
+              </button>
+            ) : null}
           </div>
         </header>
         {!project && !c.draftType && indexView === "projects" ? (
           <>
-            <div className="vp-index-tools">
-              <div className="vp-actions">
-                {history.length ? (
-                  <button type="button" onClick={() => setIndexView("history")}>
-                    History
-                  </button>
-                ) : null}
-              </div>
-              <span className="vp-note">{activeProjects.length} / 2 active</span>
-            </div>
             <div className="vp-mobile-sections" role="group" aria-label="Project sections">
               {(
                 [
@@ -307,9 +297,6 @@ export function ProjectsPanel({
                       </button>
                     ) : (
                       <div className="vp-empty-slot">
-                        <span className="vp-slot-mark" aria-hidden="true">
-                          +
-                        </span>
                         <span>Empty slot</span>
                         {index === 0 ? (
                           <div className="vp-new-types">

@@ -5,6 +5,7 @@ import { MapStage } from "./MapStage.js";
 import { ExplorationNavigation, LocationNavigator, MapIcon } from "./villages-exploration.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
+import { StorybookHeading } from "../../shared/StorybookHeading.js";
 import { HomeDateWeather, placeSpot } from "../../shared/presentation.js";
 import { useVillageLighting } from "../../shared/useVillageLighting.js";
 import type { ExplorationScreenController } from "./screen-contracts.js";
@@ -422,16 +423,16 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
                   setDiscoveryOpen(true);
                 }}
                 onClose={() => {
-                  if (mobile) closeExploration();
-                  else {
-                    setExploreSheet(null);
-                  }
+                  closeExploration();
                   setFocusSearch(false);
                 }}
                 rows={rows}
               />
             ) : null}
             <div className={`${ELEMENT_TAG}-home-map-paper`}>
+              <div className={`${ELEMENT_TAG}-places-title`}>
+                <StorybookHeading>Places</StorybookHeading>
+              </div>
               {!placingProjectId && !markerDraft ? (
                 <div className={`${ELEMENT_TAG}-map-tools`}>
                   <button

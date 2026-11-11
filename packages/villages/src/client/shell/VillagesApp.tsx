@@ -135,7 +135,7 @@ function VillagesContent({ element }: { element: HTMLElement }) {
     if (next) {
       setPhase("preparing");
       try {
-        await prepareDeskArtwork(next);
+        await prepareDeskArtwork();
       } catch {
         if (ticket === lifetime.current.epoch) {
           moving.current = false;

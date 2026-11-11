@@ -6,7 +6,7 @@ export type ProjectsPagePorts = {
   readonly debugDiscardEnabled: boolean;
   readonly projectsController: ProjectsController;
   readonly goHome: () => void;
-  readonly openMenu?: (page: "villagers" | "index") => void;
+  readonly openMenu?: (page: "villagers") => void;
   readonly openVenue?: (venue: VillageSnapshot["settings"]["venues"][number]) => void;
   readonly mobile: boolean;
   readonly room: SceneView | null;
@@ -15,7 +15,6 @@ export type ProjectsPagePorts = {
   readonly setScreen: React.Dispatch<
     React.SetStateAction<"person" | "venue" | "home" | "menu" | "room" | "setup" | "resume" | "preparing">
   >;
-  readonly setSiteProjectId: React.Dispatch<React.SetStateAction<string>>;
   readonly siteProjectId: string;
   readonly snapshot: VillageSnapshot;
 };

@@ -14,7 +14,7 @@ function Harness(){
  const controller=useProjectsController({snapshot,onSnapshot:setSnapshot,focusProjectId:"",focusProjectRequest:0});
  window.projectsHarness={replace:setSnapshot,unmount:()=>root.unmount()};
  return <div className="marinara-capability-villages-root marinara-capability-villages-project-root"><ProjectsPanel snapshot={snapshot} controller={controller} room={null} mobile={innerWidth<700} siteProjectId=""
-  debugEnabled onReturn={()=>{}} onMap={()=>{}} onVenue={id=>window.lastVisit=id}
+  debugEnabled onReturn={()=>{}} onVenue={id=>window.lastVisit=id}
   onPeople={()=>window.peopleOpened=true} onPlaceOnMap={id=>window.lastPlacement=id}/></div>;
 }
 const root=createRoot(document.getElementById("root"));root.render(<ConfirmationProvider><Harness/></ConfirmationProvider>);

@@ -13,6 +13,7 @@ import { renderVenueRequestsPage } from "../features/venues/VenueRequestsPage.js
 import { ELEMENT_TAG } from "../shared/constants.js";
 import type { MenuPage } from "../shared/types.js";
 import { WorkspaceShell } from "../shared/WorkspaceShell.js";
+import { StorybookHeading } from "../shared/StorybookHeading.js";
 import type { MenuScreenController } from "./menu-contracts.js";
 import { MENU_PAGE_TITLES } from "./navigation.js";
 
@@ -66,7 +67,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     setSceneryStyle,
     setSceneryStyleProfileId,
     setScreen,
-    setSiteProjectId,
     setSnapshot,
     settingsError,
     siteProjectId,
@@ -113,7 +113,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
           setFocusedProjectId,
           setPlacingProjectId,
           setScreen,
-          setSiteProjectId,
           siteProjectId,
           snapshot,
         })}
@@ -153,7 +152,7 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     };
     const sidebar = (
       <>
-        <h2>Settings</h2>
+        <StorybookHeading as="h2">Settings</StorybookHeading>
         <nav className={ELEMENT_TAG + "-workspace-sections"} aria-label="Settings sections">
           {sections.map(({ page, label }) => (
             <button
