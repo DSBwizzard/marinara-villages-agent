@@ -145,7 +145,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         .join("\n"),
       home: (() => {
         const home = village.venues.find((venue) => venueResidentIds(venue).includes(characterId));
-        return home ? [home.name, home.form, home.description].filter(Boolean).join("; ") : "";
+        return home ? [home.name, home.form].filter(Boolean).join("; ") : "";
       })(),
       wishes: continuity.wishes,
       lore: await readVillageLore(
@@ -254,7 +254,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       state.villagers.some((resident) => resident.characterId === input.characterId) &&
       input.context.continuity?.fingerprint === continuityContextRevision(state, input.characterId) &&
       (input.foundingContract === 1
-        ? ownsFoundingTask(state, input.characterId, "routine", input.revision, input.context)
+        ? ownsFoundingTask(state, input.characterId, "routine", input.revision)
         : agendaRevision(state, input.characterId) === input.revision),
     apply: (state, input, result) => {
       const task = state.foundingPreparation?.tasks?.[input.characterId]?.routine;
@@ -266,7 +266,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
           input.context.identityDescriptionRevision,
           result.identityDescription,
         );
-      applyAgenda(state, input.characterId, result.agenda ?? result);
+      applyAgenda(state, input.characterId, result.agenda);
       if (input.foundingContract === 1) completeFoundingTask(state, input.characterId, "routine", input.revision);
     },
   };

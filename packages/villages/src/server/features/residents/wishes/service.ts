@@ -16,7 +16,7 @@ import { extractModelJsonObject } from "../../../domain/rules/json-reply.js";
 import { continuityActor } from "../../../domain/rules/continuity-actors.js";
 import { continuityWishes, continuityContextRevision } from "../../../domain/rules/continuity-library.js";
 import { retainNativeFact } from "../../../domain/rules/native-continuity.js";
-import { memoryHash, memoryRequire } from "../../../domain/rules/memory-integrity.js";
+import { memoryHash, memoryRequire, memoryTimestamp } from "../../../domain/rules/memory-integrity.js";
 import { continuityConstraints, continuityProtectionFingerprint } from "../../../domain/rules/continuity.js";
 import { completionFailure, WorkFailureError } from "../../../domain/rules/work-failure.js";
 type Ports = {
@@ -139,15 +139,19 @@ export function createWishes(ports: Ports) {
         Math.min(maxTokens, fit.maxTokens ?? maxTokens),
       );
     },
-    valid: (state, input) =>
-      input.context.continuity?.fingerprint === continuityContextRevision(state, input.characterId) &&
-      ownsFoundingTask(state, input.characterId, "wish", input.revision, input.context) &&
-      state.villagers.some(
-        (person) =>
-          person.characterId === input.characterId &&
-          person.incarnation === input.incarnation &&
-          person.cardSnapshot.capturedAt === input.capturedAt,
-      ),
+    valid: (state, input) => {
+      memoryTimestamp(input.now);
+      return (
+        input.context.continuity?.fingerprint === continuityContextRevision(state, input.characterId) &&
+        ownsFoundingTask(state, input.characterId, "wish", input.revision) &&
+        state.villagers.some(
+          (person) =>
+            person.characterId === input.characterId &&
+            person.incarnation === input.incarnation &&
+            person.cardSnapshot.capturedAt === input.capturedAt,
+        )
+      );
+    },
     apply(state, input, raw) {
       const prepared = result.parse(raw),
         text = prepared.wish,

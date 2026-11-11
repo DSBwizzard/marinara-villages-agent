@@ -40,7 +40,10 @@ export function foundingRequestMessages(
   const data = {
     village: context.village,
     setting: context.setting,
-    circumstances: context.circumstances,
+    circumstances: context.circumstances && {
+      worldFacts: context.circumstances.worldFacts,
+      worldRules: context.circumstances.worldRules,
+    },
     player: { name: context.playerPersonaName, startingBackground: context.playerBackground ?? "" },
     home: context.home,
     identity,
@@ -49,7 +52,6 @@ export function foundingRequestMessages(
       id: venue.id,
       name: venue.name,
       form: venue.form,
-      description: venue.description,
       zones: venue.zones
         ?.filter((zone) => zone.kind === "exterior" || zone.kind === "public")
         .map((zone) => ({ id: zone.id, name: zone.name })),

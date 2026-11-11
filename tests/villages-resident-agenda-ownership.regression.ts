@@ -286,7 +286,7 @@ assert(!handler.valid(changed, input));
 const departed = structuredClone(a.state);
 departed.villagers = [];
 assert(!handler.valid(departed, input));
-handler.apply(departed, input, retained, { retrying: false });
+handler.apply(departed, input, { agenda: retained }, { retrying: false });
 assert.deepEqual(departed.villagers, []);
 assert.equal(handler.recoverSavedResult!(input, []), undefined);
 assert.equal(a.parsed, 0);
@@ -330,7 +330,7 @@ a.resident.agenda.activeDay = structuredClone(current);
 const result = structuredClone(a.resident.agenda);
 const wishesBefore = continuityWishes(a.state, "same", true, now.toISOString());
 (result as any).keep = [{ for: ["same"], class: "desire", text: "An unadmitted desire.", source: ["self"] }];
-handler.apply(a.state, input, result, { retrying: false });
+handler.apply(a.state, input, { agenda: result }, { retrying: false });
 assert.deepEqual(a.state.villagers[0]!.agenda!.activeDay, current, "A profile result preserves today's captured plan.");
 assert.deepEqual(
   continuityWishes(a.state, "same", true, now.toISOString()),

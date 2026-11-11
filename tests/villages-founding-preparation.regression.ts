@@ -1,21 +1,22 @@
-import { relationshipDocumentId } from "../packages/villages/src/server/adapters/storage/relationship-payload-store.js";
-import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
+import { continuityWishes } from "../packages/villages/src/server/domain/rules/continuity-library.js";
 import { parseCompactFoundingCompletion } from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
 import {
   foundingReadyForPlay,
   foundingSlot,
   foundingTaskRevision,
 } from "../packages/villages/src/server/domain/rules/founding-tasks.js";
-import { villageFixtureDocuments, authorBackgroundFixture } from "./helpers/village-storage.fixture.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { validateBackgroundResponse } from "../packages/villages/src/server/adapters/storage/background-responses.js";
 
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { observableRoomDescription } from "../packages/villages/src/server/domain/rules/zone-picture.js";
+import { capturePrivateInterior } from "../packages/villages/src/server/domain/rules/private-interior.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   assertFoundedVillageReady,
@@ -53,15 +54,15 @@ let releaseWish: (() => void) | undefined;
 let feddyWishCalls = 0;
 let conflicts = 0;
 let writes = 0;
+let holdRoutinePublication = false;
 let retainedWishProof: { revision: string; input: string; fingerprints: string[] } | undefined;
-const sourceSnapshots = new Map<string, any>();
+const wishText = "Aqua wants to keep the station's old lantern lit for returning travelers.";
 
 function fixture(seeded = true) {
   const names = ["Aqua", "Feddy Fastbayer", "Sneak McKnickit"];
   const state = coerceVillageState({
     ...defaultVillageState(),
 
-    wishSystemVersion: 3,
     seed: "station-fields",
     name: "Station Fields",
     setting: "A disused station",
@@ -74,6 +75,7 @@ function fixture(seeded = true) {
     villagers: names.map((name, index) => ({
       letterFontId: "caveat",
       characterId: ["aqua", "feddy", "sneak"][index],
+      incarnation: ["aqua", "feddy", "sneak"][index] + "-one",
       admission: {
         homeworld: "Othiras",
         startingSituation: "STARTING-CONTEXT-" + name + ": former home is elsewhere; current work undecided.",
@@ -115,9 +117,9 @@ function fixture(seeded = true) {
       }),
     ),
   });
+  state.venues[0].description = "UNSCOPED-OLD-ROOM-PROSE";
   for (const resident of state.villagers) resident.agenda = unwrittenVillageAgenda();
-  state.relationshipContext = defaultRelationshipState(state.seed);
-  state.relationshipContext.reviewedActorIds = state.villagers.map((row) => row.characterId);
+  state.startingHistory.reviewed = Object.fromEntries(state.villagers.map((row) => [row.characterId, row.incarnation]));
   return state;
 }
 function install(seeded = true) {
@@ -125,13 +127,18 @@ function install(seeded = true) {
   calls.length = 0;
   stages.length = 0;
   writes = 0;
+  holdRoutinePublication = false;
   feddyWishCalls = 0;
   wishStarted = undefined;
   releaseWish = undefined;
   const state = fixture(seeded);
-  rows.set("villages-village", { id: "villages-village", packageId: "villages", data: state, revision: 1 });
-  const id = relationshipDocumentId(state.seed);
-  rows.set(id, { id, packageId: "villages", kind: "relationships", data: state.relationshipContext, revision: 1 });
+  rows.set("villages-village", {
+    id: "villages-village",
+    packageId: "villages",
+    kind: "village",
+    data: state,
+    revision: 1,
+  });
 }
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async () => new Response("[]", { headers: { "content-type": "application/json" } });
@@ -168,6 +175,14 @@ const release = configureVillagesRuntime({
         if (!previous || previous.revision !== input.expectedRevision) return null;
         if (input.id === "villages-village" && conflicts-- > 0) return null;
         const row = { ...previous, ...structuredClone(input), revision: previous.revision + 1 };
+        if (
+          holdRoutinePublication &&
+          input.id === "villages-village" &&
+          row.data.foundingPreparation?.tasks?.aqua?.routine?.status === "completed"
+        ) {
+          holdRoutinePublication = false;
+          throw new Error("Synthetic failure after retaining the paid routine result");
+        }
         if (
           retainedWishProof &&
           row.kind === "background-work" &&
@@ -272,13 +287,14 @@ const release = configureVillagesRuntime({
           };
         }
         assert.match(messages[1].content, /STARTING-CONTEXT-/);
+        assert.doesNotMatch(messages[1].content, /UNSCOPED-OLD-ROOM-PROSE/);
         assert.equal(options.reasoningEffort, "none");
         assert.equal(options.responseFormat.type, "json_object");
         if (messages[0].content.includes("{wish:null}")) {
           calls.push("wish");
           if (mode === "wish-invalid-clock" && JSON.parse(messages[1].content).identity.id === "feddy")
             return {
-              content: JSON.stringify({ wish: { wish: "Talk with a neighbor", reason: "Get acquainted." } }),
+              content: JSON.stringify({ wish: "Talk with a neighbor to get acquainted." }),
               finishReason: "stop",
             };
           if (mode === "wish-auto-held" && JSON.parse(messages[1].content).identity.id === "feddy") {
@@ -292,14 +308,12 @@ const release = configureVillagesRuntime({
           if (mode === "wish-one-fail" && JSON.parse(messages[1].content).identity.id === "feddy")
             return { content: "{}", finishReason: "stop" };
           assert.equal(options.maxTokens, Math.min(limit, 1536));
-          return { content: JSON.stringify({ wish: null }), finishReason: "stop" };
+          const wish =
+            mode === "wish-paid-ack" && JSON.parse(messages[1].content).identity.id === "aqua" ? wishText : null;
+          return { content: JSON.stringify({ wish }), finishReason: "stop" };
         }
         calls.push("routine");
-        if (mode === "routine-invalid")
-          sourceSnapshots.set(
-            JSON.parse(messages[1].content).identity.id,
-            structuredClone(rows.get("villages-village").data),
-          );
+        const actorId = JSON.parse(messages[1].content).identity.id;
         if (
           ["routine-timeout", "inherited-pause"].includes(mode) &&
           JSON.parse(messages[1].content).identity.id === "aqua"
@@ -307,17 +321,17 @@ const release = configureVillagesRuntime({
           throw new Error("Provider request exceeded 30 seconds.");
         if (mode === "json-unsupported") throw new Error("response_format json_object is not supported");
         assert.equal(options.maxTokens, Math.min(limit, 2048));
+        if (mode === "routine-recovery-malformed" && actorId === "aqua") return { content: "{}", finishReason: "stop" };
+        const invalid =
+          mode === "routine-invalid" ||
+          (mode === "routine-one-fail" && actorId === "aqua") ||
+          (mode.startsWith("routine-recovery-") && actorId !== "aqua");
         return {
           content: JSON.stringify({
             routine: "Quiet days at the station",
-            wishes: [],
             palette: ["resting", "reading", "walking", "writing", "thinking", "tidying"].map((activity) => ({
               activity,
-              venue:
-                mode === "routine-invalid" ||
-                (mode === "routine-one-fail" && JSON.parse(messages[1].content).identity.id === "aqua")
-                  ? "0"
-                  : 0,
+              venue: invalid ? "0" : 0,
               status: "idle",
               flexible: true,
               essential: false,
@@ -327,7 +341,7 @@ const release = configureVillagesRuntime({
             days: Array.from({ length: 7 }, () => [0, 1, 2, 3, 4, 5, 0, 1]),
             rhythm: [],
           }),
-          finishReason: "stop",
+          finishReason: mode === "routine-recovery-truncated" && actorId === "aqua" ? "length" : "stop",
         };
       },
     }),
@@ -366,6 +380,7 @@ async function main() {
     await mutateVillageState((current) => {
       const newcomer = structuredClone(current.villagers[0]!);
       newcomer.characterId = newcomer.cardSnapshot.id = "newcomer";
+      newcomer.incarnation = "newcomer-one";
       newcomer.cardSnapshot.name = "Newcomer";
       newcomer.agenda = unwrittenVillageAgenda();
       current.villagers.push(newcomer);
@@ -406,9 +421,12 @@ async function main() {
     assert.ok(stages.includes("residents:model:aqua"));
     assert.ok(stages.includes("residents:saving:aqua"));
     assert.equal(state.townMapImage, fixture().townMapImage);
-    assert.ok(
-      privatePreparationRooms(state).every(({ zone }) => zone.description.length <= 4000 && zone.state.recent === null),
-    );
+    for (const { venue, zone } of privatePreparationRooms(state)) {
+      const description = observableRoomDescription(state, venue.id, zone.id, new Date().toISOString());
+      assert(description.includes("PRIVATE CONTENT MUST STAY HIDDEN") && description.length <= 4000);
+      assert.equal(zone.description, "");
+      assert.equal(zone.state.recent, null);
+    }
 
     install();
     mode = "wish-auto-held";
@@ -429,7 +447,7 @@ async function main() {
     assert.equal(state.foundingPreparation?.tasks?.feddy.wish?.attempt, 2);
     assert.equal(calls.filter((call) => call === "wish").length, 4);
     assert.ok(
-      state.villagers.every((resident) => resident.wishes.length === 0),
+      state.villagers.every((resident) => continuityWishes(state, resident.characterId, true, stamp).length === 0),
       "A valid quiet result is final.",
     );
 
@@ -438,15 +456,12 @@ async function main() {
     await prepareFoundedVillage();
     state = await readVillageState();
     assert.equal(state.foundingPreparation?.status, "failed");
-    assert.equal(
-      calls.filter((call) => call === "wish").length,
-      3,
-      "Damaged saved input cannot purchase a replacement response.",
-    );
+    assert.equal(calls.filter((call) => call === "wish").length, 2, "Damaged saved input cannot purchase a response.");
     const damagedWish = [...rows.values()].find(
       (row) => row.kind === "background-work" && row.data.kind === "wish" && row.data.subjectId === "feddy",
     )!;
     assert.equal(damagedWish.data.automaticRetryUsed, undefined);
+    assert.equal(damagedWish.data.requests, 0);
 
     // Independent tasks survive each other's failure; retries never repeat successes.
     for (const failure of ["routine-one-fail", "wish-one-fail", "routine-timeout", "inherited-pause"]) {
@@ -482,7 +497,7 @@ async function main() {
               ),
             ]),
           );
-          state.foundingPreparation!.retryActions = ["legacy-upgrade-retry"];
+          state.foundingPreparation!.retryActions = ["admitted-retry"];
         });
       }
       await prepareFoundedVillage();
@@ -561,57 +576,29 @@ async function main() {
     );
 
     // Recover current purchased replies locally before discarding a failed checkpoint.
-    for (const recovery of ["current", "captured-source", "malformed", "truncated", "stale"]) {
+    for (const recovery of ["current", "malformed", "truncated", "stale"]) {
       install();
-      mode = "routine-invalid";
+      const valid = recovery === "current" || recovery === "stale";
+      mode = "routine-recovery-" + recovery;
+      holdRoutinePublication = valid;
       await prepareFoundedVillage();
       assert.equal((await readVillageState({ memories: true })).foundingPreparation?.status, "failed");
       const checkpoint = [...rows.values()].find(
-        (row) => row.kind === "background-work" && row.data.kind === "agenda",
+        (row) => row.kind === "background-work" && row.data.kind === "agenda" && row.data.subjectId === "aqua",
       )!;
-      if (recovery === "captured-source") {
-        const context = checkpoint.data.input.context;
-        context.circumstances.details = "History retained only in an already admitted request";
-        const revision = foundingTaskRevision(await readVillageState(), "aqua", "routine", context);
-        context.sourceRevision = checkpoint.data.input.revision = checkpoint.data.revision = revision;
-        checkpoint.data.id = backgroundRevision([checkpoint.data.seed, "agenda", "aqua", revision]);
-        await mutateVillageState((live) => {
-          live.foundingPreparation!.tasks!.aqua.routine!.revision = revision;
-        });
-      }
-      if (recovery === "current") {
-        const current = await readVillageState({ memories: true }),
-          old = sourceSnapshots.get("aqua");
-        const diffs = Object.keys(current).filter(
-          (key) => JSON.stringify((current as any)[key]) !== JSON.stringify(old[key]),
-        );
-        assert.equal(
-          checkpoint.data.revision,
-          foundingTaskRevision(current, "aqua", "routine"),
-          "source drift after Wish pass: " + JSON.stringify(diffs.map((key) => [key, (current as any)[key], old[key]])),
-        );
-      }
-      const saved = structuredClone(
-        validateBackgroundResponse(rows.get(checkpoint.data.steps[0].responseRef.id)).response,
-      );
-      const response = JSON.parse(saved.content);
-      response.palette = response.palette.map((row: any) => ({ ...row, venue: 0 }));
-      response.rhythm = [{ startMinute: 1320, endMinute: 360, activity: 0 }];
-      saved.content = recovery === "malformed" ? "{}" : JSON.stringify(response);
-      if (recovery === "truncated") saved.finishReason = "length";
-      const { responseStorage: _storage, ...authored } = checkpoint.data;
-      checkpoint.data = authorBackgroundFixture(rows, {
-        ...authored,
-        attempt: authored.attempt + 1,
-        steps: authored.steps.map((step: any, index: number) => (index === 0 ? { ...step, response: saved } : step)),
-      });
-      if (recovery === "current")
+      const current = await readVillageState({ memories: true });
+      assert.equal(checkpoint.data.revision, foundingTaskRevision(current, "aqua", "routine"));
+      const saved = validateBackgroundResponse(rows.get(checkpoint.data.steps[0].responseRef.id)).response;
+      if (valid) {
+        assert.equal(holdRoutinePublication, false);
+        assert.equal(checkpoint.data.hasResult, true);
         assert.ok(parseCompactFoundingCompletion(saved, checkpoint.data.input.context).agenda);
+      } else assert.throws(() => parseCompactFoundingCompletion(saved, checkpoint.data.input.context));
       mode = "valid";
       calls.length = 0;
       if (recovery === "stale") {
         await mutateVillageState((current) => {
-          current.seed = "replacement-village";
+          current.villagers[0].incarnation = "replacement-aqua";
         });
         await retryBackgroundJob(
           checkpoint.id,
@@ -626,10 +613,7 @@ async function main() {
         continue;
       }
       const previewWrites = writes;
-      assert.equal(
-        (await previewVillageBurst({ action: "founding" })).requests,
-        ["current", "captured-source"].includes(recovery) ? 2 : 3,
-      );
+      assert.equal((await previewVillageBurst({ action: "founding" })).requests, valid ? 2 : 3);
       assert.equal(writes, previewWrites, "recovery forecasts do not write");
       assert.equal(calls.length, 0, "recovery forecasts do not dispatch");
       conflicts = 2;
@@ -640,7 +624,7 @@ async function main() {
       assert.equal(state.foundingPreparation?.completedIds.length, 3);
       assert.equal(
         calls.length,
-        ["current", "captured-source"].includes(recovery) ? 2 : 3,
+        valid ? 2 : 3,
         "only invalid saved replies need replacement requests: " + recovery + JSON.stringify(calls),
       );
       assert.ok(
@@ -660,58 +644,56 @@ async function main() {
     const retainedWish = [...rows.values()].find(
       (row) => row.kind === "background-work" && row.data.kind === "wish" && row.data.subjectId === "aqua",
     )!;
-    const { responseStorage: _wishStorage, ...wishJob } = retainedWish.data;
-    assert.ok(wishJob.input, "Failed application retains admitted Wish context");
-    wishJob.steps = wishJob.steps.map((step: any) => ({
-      ...step,
-      response: validateBackgroundResponse(rows.get(step.responseRef.id)).response,
-    }));
-    const actorId = wishJob.subjectId;
-    wishJob.input.context.circumstances.details = "Retained paid Wish source";
-    const current = await readVillageState();
-    const wishRevision = foundingTaskRevision(current, actorId, "wish", wishJob.input.context);
-    wishJob.input.context.sourceRevision = foundingTaskRevision(current, actorId, "routine", wishJob.input.context);
-    wishJob.input.revision = wishJob.revision = wishRevision;
-    wishJob.id = backgroundRevision([wishJob.seed, "wish", actorId, wishRevision]);
-    wishJob.status = "failed";
-    retainedWish.data = authorBackgroundFixture(rows, wishJob);
+    assert.equal(retainedWish.data.status, "failed");
+    assert.equal(retainedWish.data.hasResult, true);
+    const actorId = retainedWish.data.subjectId;
+    const wishRevision = retainedWish.data.revision;
+    const savedWish = validateBackgroundResponse(rows.get(retainedWish.data.steps[0].responseRef.id)).response;
+    assert.deepEqual(JSON.parse(savedWish.content!), { wish: wishText });
     retainedWishProof = {
       revision: wishRevision,
       input: JSON.stringify(retainedWish.data.input),
       fingerprints: retainedWish.data.steps.map((step: any) => step.fingerprint),
     };
-    await mutateVillageState((live) => {
-      live.foundingPreparation!.status = "failed";
-      const task = live.foundingPreparation!.tasks![actorId].wish!;
-      task.status = "failed";
-      task.revision = wishRevision;
-    });
+    assert.equal((await readVillageState({ memories: true })).foundingPreparation?.status, "failed");
     calls.length = 0;
     await retryFoundedVillagePreparation();
     await prepareFoundedVillage();
-    assert.equal(calls.length, 0, "Retired history never repurchases a saved Wish response");
-    assert.equal((await readVillageState()).foundingPreparation!.tasks![actorId].wish!.revision, wishRevision);
+    assert.equal(calls.length, 0, "A saved current Wish response recovers without another request");
+    const recovered = await readVillageState({ memories: true });
+    assert.equal(recovered.foundingPreparation!.tasks![actorId].wish!.revision, wishRevision);
+    const replayAt = new Date().toISOString();
+    assert.equal(continuityWishes(recovered, actorId, true, replayAt)[0]?.text, wishText);
+    assert.deepEqual(continuityWishes(recovered, actorId, false, replayAt), []);
     assert.equal(rows.get(retainedWish.id).data.status, "completed");
     retainedWishProof = undefined;
 
-    for (const interruptedStatus of ["queued", "paused"]) {
-      install();
-      mode = "routine-invalid";
-      await prepareFoundedVillage();
-      const saved = [...rows.values()].find(
-        (row) => row.kind === "background-work" && row.data.kind === "agenda",
-      )!.data;
-      saved.owner = "previous-process";
-      saved.status = interruptedStatus;
-      saved.steps = [];
-      saved.hasResult = false;
-      saved.requests = 0;
-      calls.length = 0;
-      await recoverBackgroundWork();
-      await settleBackgroundWork();
-      assert.equal(calls.length, 0, "Founding " + interruptedStatus + " work cannot dispatch at startup");
-      assert.equal(saved.requests, 0);
-    }
+    for (const kind of ["agenda", "wish"])
+      for (const interruptedStatus of ["queued", "paused"]) {
+        install();
+        mode = kind === "agenda" ? "routine-invalid" : "wish-one-fail";
+        await prepareFoundedVillage();
+        const row = [...rows.values()].find(
+          (record) =>
+            record.kind === "background-work" &&
+            record.data.kind === kind &&
+            record.data.subjectId === (kind === "agenda" ? "aqua" : "feddy"),
+        )!;
+        assert.equal(row.data.status, "failed");
+        Object.assign(row.data, {
+          owner: "previous-process",
+          status: interruptedStatus,
+          steps: [],
+          hasResult: false,
+          requests: 0,
+        });
+        calls.length = 0;
+        await recoverBackgroundWork();
+        await settleBackgroundWork();
+        assert.equal(calls.length, 0, `Prior ${interruptedStatus} ${kind} cannot dispatch at startup`);
+        assert.equal(rows.get(row.id).data.status, "interrupted");
+        assert.equal(rows.get(row.id).data.requests, 0);
+      }
 
     for (const failure of [
       "truncated",
@@ -737,9 +719,9 @@ async function main() {
       assert.equal(state.venues[2].zones![1].preparation?.status, "pending");
       assert.match(
         state.foundingPreparation!.error,
-        failure === "provider" ? /Storage Bay: Offline/ : /Storage Bay: Space response/,
+        failure === "provider" ? /Private room: Offline/ : /Private room: Space response/,
       );
-      assert.doesNotMatch(state.foundingPreparation!.error, /PRIVATE CONTENT|private-secret/);
+      assert.doesNotMatch(state.foundingPreparation!.error, /Storage Bay|PRIVATE CONTENT|private-secret/);
       await foundingPreparationSnapshot();
       await preparePrivateSpaces();
       assert.deepEqual(
@@ -777,14 +759,20 @@ async function main() {
     limit = 4096;
 
     install();
-    await mutateVillageState((current) => {
-      current.venues[0].zones![1].preparation = {
-        status: "pending",
-        claimId: "previous-process",
-        startedAt: stamp,
-        attempt: 4,
-      };
-    });
+    await mutateVillageState(
+      (current) => {
+        const venue = current.venues[0],
+          zone = venue.zones![1];
+        zone.preparation = {
+          status: "pending",
+          claimId: "previous-process",
+          startedAt: stamp,
+          basis: capturePrivateInterior(current, venue, zone, stamp).basis,
+          attempt: 4,
+        };
+      },
+      { memories: true },
+    );
     await assert.rejects(preparePrivateSpaces(), /interrupted/);
     assert.equal(calls.length, 0, "orphaned claims cannot dispatch automatically");
     await retryPrivateSpaces();
@@ -803,17 +791,20 @@ async function main() {
       await admitted;
       if (change === "abort") controller.abort();
       else
-        await mutateVillageState((current) => {
-          if (change === "seed") {
-            current.seed = "new-village";
-            current.name = "New Village";
-          } else current.venues[0].zones![1].description = "Author changed the space";
-        });
+        await mutateVillageState(
+          (current) => {
+            if (change === "seed") {
+              current.seed = "new-village";
+              current.name = "New Village";
+            } else current.venues[0].zones![1].name = "Author changed the room";
+          },
+          { memories: true },
+        );
       hold!();
       if (change === "seed") await work;
       else await assert.rejects(work, change === "abort" ? /interrupted/ : /changed/);
       state = await readVillageState({ memories: true });
-      assert.doesNotMatch(state.venues[0].zones![1].description, /PRIVATE CONTENT/);
+      assert.equal(observableRoomDescription(state, "aqua", "private:base", new Date().toISOString()), "");
       assert.equal(calls.length, 1, "stale/aborted work does not continue to later spaces");
     }
 

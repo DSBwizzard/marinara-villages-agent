@@ -1431,7 +1431,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         !["completed", "obsolete"].includes(job.status);
       const interruptedPreparation =
         job.owner !== recoveryOwner &&
-        asRecord(job.input).foundingContract === 1 &&
+        (job.kind === "wish" || asRecord(job.input).foundingContract === 1) &&
         !job.hasResult &&
         ["queued", "paused", "running"].includes(job.status);
       if (unknownRequest || interruptedPreparation) {

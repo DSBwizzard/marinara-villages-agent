@@ -58,6 +58,24 @@ for (const task of ["routine", "wish"] as const) {
   assert(messages.reduce((n, row) => n + (row.content as string).length, 0) <= (task === "routine" ? 6000 : 6500));
   assert.equal((JSON.stringify(messages).match(/AUTHOR-BACKSTORY/g) ?? []).length, 1, "identity is supplied once");
 }
+const scoped = {
+  ...context,
+  circumstances: {
+    worldFacts: ["The river is rising."],
+    worldRules: "No overnight ferries.",
+    details: "retired prose",
+  },
+  venues: [
+    venueFixture({ id: "station", name: "Station", form: "Station building", description: "retired Room prose" }),
+  ],
+};
+for (const task of ["routine", "wish"] as const) {
+  const content = String(foundingRequestMessages(scoped, task)[1].content),
+    data = JSON.parse(content);
+  assert.deepEqual(data.circumstances, { worldFacts: ["The river is rising."], worldRules: "No overnight ferries." });
+  assert.equal(data.places[0].form, "Station building");
+  assert.doesNotMatch(content, /retired.*prose/);
+}
 const long = foundingRequestMessages({ ...context, card: { ...card, description: "d".repeat(40000) } }, "routine");
 assert.equal(
   JSON.parse(long[1].content as string).identity.description.length,

@@ -39,7 +39,7 @@ export type CompactFoundingContext = {
   loreUse?: import("../../../shared/contracts/lore.js").LoreUse[];
   identityDescriptionRevision?: string;
   sourceRevision?: string;
-  circumstances?: unknown;
+  circumstances?: { worldFacts: readonly string[]; worldRules: string };
   playerBackground?: VillagePlayerBackground | null;
   playerPersonaName?: string;
   village: string;

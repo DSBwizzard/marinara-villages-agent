@@ -1097,8 +1097,7 @@ console.log(
   const loaded = coerceVillageState(JSON.parse(JSON.stringify(state)));
   assert.equal(returnCaptureRevision(loaded.returnCatchup!.capture), identity);
   assert.equal(Object.hasOwn(loaded, "foundingHistory"), false);
-  const context = { circumstances: { details: "Admitted source history" } };
-  const revision = foundingTaskRevision(state, "a", "routine", context);
+  const revision = foundingTaskRevision(state, "a", "routine");
   state.foundingPreparation = {
     status: "pending",
     tasksVersion: 1,
@@ -1107,13 +1106,13 @@ console.log(
     currentId: "",
     error: "",
   };
-  assert.equal(ownsFoundingTask(state, "a", "routine", revision, context), true);
+  assert.equal(ownsFoundingTask(state, "a", "routine", revision), true);
   const changed = structuredClone(state);
   changed.venues[0].zones![1].description += " A new room layout.";
   assert.equal(
-    ownsFoundingTask(changed, "a", "routine", revision, context),
+    ownsFoundingTask(changed, "a", "routine", revision),
     false,
-    "Retained source history does not bypass current physical validation",
+    "Changing the native layout invalidates a pending founding routine",
   );
 }
 
