@@ -708,7 +708,8 @@ await runCase("narration-acceptance/player-movement", () => {
 });
 
 await runCase("narration-acceptance/inherited-room-context", () => {
-  const f = fixture("Hello."),
+  const callback = "Remember the shelf?",
+    f = fixture(callback),
     room = { kind: "room" as const, placeId: "former-place", zoneId: "parlor" },
     key = continuityHolderKey(room);
   for (const [id, text] of [
@@ -768,7 +769,7 @@ await runCase("narration-acceptance/inherited-room-context", () => {
   });
   assert(pub.readset.admission.provenance![key]?.length, "the Scene really fits remote-room-derived history");
   assert.notEqual(pub.readset.admission.room!.placeId, room.placeId);
-  const context = narrationContinuityContext(f.state, f.scene, pub.readset.source.venue, "next", "Hello.", at),
+  const context = narrationContinuityContext(f.state, f.scene, pub.readset.source.venue, "next", callback, at),
     markers = JSON.stringify(context.roomReferences);
   assert(markers.includes(other.id));
   assert(
