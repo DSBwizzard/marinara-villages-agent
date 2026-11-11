@@ -1,6 +1,6 @@
 # Villages development
 
-“Staging” means the Git/GitHub staging branch. Merging and deployment are separate outcomes.
+“Staging” means the Git/GitHub staging branch. “Publish to staging” means merge the approved change to staging and publish its verified Villages package to the Agent Organizer catalog. The owner chooses when to install it on 8500. Engine upgrades are a separate request.
 
 - Optimize for simple, reliable development and low maintenance. Start with the smallest root-cause fix; reuse existing code and standard tools. Add permanent machinery only for a demonstrated problem with a clear net benefit. Remove replaced paths.
 - Evaluate proposals candidly and explain concrete tradeoffs. Routine reversible engineering, testing, corrections, previews, and completed staging delivery are autonomous. Ask only for missing product decisions or authorization that materially affects the work.
