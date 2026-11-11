@@ -117,9 +117,9 @@ export const EXPLORATION_STYLES = `
 .${P}-maps-grid small { padding:0 12px 12px; color:var(--explore-muted); }
 .${P}-maps-empty { position:absolute; top:16px; left:16px; padding:10px 14px; border-radius:7px; background:#141b27eb; color:#edf0f5; }
 .${P}-maps-settings { margin:16px 0; }
-.${P}-maps-saved-row { display:flex; align-items:center; gap:12px; border:1px solid var(--border); border-radius:8px; padding:10px; margin:10px 0; }
+.${P}-maps-saved-row { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:12px; border:1px solid var(--border); border-radius:8px; padding:10px; margin:10px 0; }
 .${P}-maps-saved-row img { width:100px; height:64px; object-fit:cover; border-radius:4px; }
-.${P}-maps-saved-row span { flex:1; min-width:0; overflow-wrap:anywhere; }
+.${P}-maps-saved-row span { min-width:0; overflow-wrap:anywhere; }
 .${P}-maps-saved-row small { display:block; color:var(--muted-foreground); margin-top:4px; }
 .${P}-maps-editor { padding:14px; border:1px solid var(--border); border-radius:8px; }
 .${P}-maps-editor>label { display:block; margin:12px 0; }
@@ -129,7 +129,6 @@ export const EXPLORATION_STYLES = `
 @container (max-width:500px) {
   .${P}-maps-toolbar { padding:4px 8px; gap:4px; overflow-x:auto; }
   .${P}-maps-toolbar>* { flex-shrink:0; white-space:nowrap; }
-  .${P}-maps-saved-row { flex-wrap:wrap; }
   .${P}-maps-saved-row img { width:72px; height:52px; }
 }
 

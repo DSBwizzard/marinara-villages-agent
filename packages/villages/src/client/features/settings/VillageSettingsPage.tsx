@@ -91,7 +91,6 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
           </p>
           {snapshot ? (
             <section className={`${ELEMENT_TAG}-panel`}>
-              <h2 className={`${ELEMENT_TAG}-panel-title`}>World Configuration</h2>
               <fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
                 <MapsPanel
                   snapshot={snapshot}

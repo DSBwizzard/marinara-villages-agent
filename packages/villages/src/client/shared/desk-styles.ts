@@ -61,12 +61,18 @@ export const DESK_STYLES = `
 .${P}-workspace-content .${P}-menu-content :is(input:not([type="checkbox"],[type="radio"]),select,textarea){background:var(--menu-field);color:var(--foreground);border:1px solid var(--menu-field-border);border-radius:8px;font:400 17px/1.4 var(--menu-font)}
 .${P}-workspace-content .${P}-menu-content>.${P}-field:first-child>.${P}-label{font-size:24px}
 .${P}-workspace-content :is(.${P}-hint,.${P}-empty){color:#d0c1b3}
+.${P}-workspace-content .${P}-menu-content .${P}-hint{font-size:14px;line-height:1.5}
 .${P}-workspace-content .${P}-notice-row{color:var(--muted-foreground);background:var(--menu-field);border-color:var(--border)}
 .${P}-workspace-content :is(.${P}-row,.${P}-field){min-width:0}
 .${P}-workspace-content .${P}-row{flex-wrap:wrap}
 .${P}-workspace-content .${P}-button{background:var(--secondary);color:var(--foreground);border:1px solid var(--menu-field-border);border-radius:7px;font:inherit;min-height:44px}
 .${P}-workspace-content .${P}-button:not(:disabled):hover{background:#685269}
 .${P}-workspace-content .${P}-button.${P}-danger{color:var(--destructive);border-color:var(--destructive)}
+.${P}-sectioned-menu[data-page="visual"] .${P}-venue-card{display:grid;gap:6px;padding:16px}
+.${P}-sectioned-menu[data-page="visual"] label:has(>input[type="checkbox"]){display:flex;flex-direction:row;align-items:center;gap:8px;min-height:44px}
+.${P}-sectioned-menu[data-page="visual"] .${P}-visual-setting{margin:0}
+.${P}-sectioned-menu[data-page="visual"] .${P}-visual-setting + .${P}-visual-setting{border-top:1px solid var(--border);padding-top:10px;margin-top:6px}
+.${P}-sectioned-menu .villages-scenery-fields{display:grid;gap:8px;width:min(100%,42rem);min-width:0;margin:14px 0 0;padding:8px 0 0;border:0;border-top:1px solid var(--border);border-radius:0}
 .${P}-workspace-content .${P}-venue-profile{margin:0;padding:0;max-width:none;background:transparent;color:inherit}
 .${P}-workspace-venue-header{display:flex;align-items:start;gap:14px;padding:0 0 22px;border:0;background:transparent;color:inherit}
 .${P}-workspace-venue-header>div{flex:1;min-width:0}
@@ -92,7 +98,8 @@ export const DESK_STYLES = `
 .${P}-workspace-content .${P}-venue-primary{display:inline-block;margin-top:22px;padding:8px 24px;font:600 22px/1.3 var(--menu-font);min-height:44px;background:#969b7e;color:#292938;border-color:#a5ac8b}
 .${P}-workspace-content .${P}-picture-menu :is(summary,div){background:var(--secondary);border-color:var(--menu-field-border)}
 .${P}-workspace-content .${P}-picture-menu summary:focus-visible{outline-color:#dca5ab}
-.${P}-workspace-content .${P}-zone-artwork-frame:has(>.${P}-venue-image-empty){height:100px;border-radius:8px;background:var(--menu-field);color:var(--muted-foreground)}
+.${P}-workspace-content .${P}-zone-artwork-frame{border-radius:8px}
+.${P}-workspace-content .${P}-zone-artwork-frame>.${P}-venue-image-empty{background:var(--menu-field);color:var(--muted-foreground);border-color:var(--border)}
 .${P}-workspace-content .villages-zone-map-tile[aria-pressed="true"]{background:var(--menu-selected);border-color:var(--menu-tab-line);box-shadow:none}
 .${P}-desk-workspace[data-desk="places"] .${P}-home{--explore-background:transparent;--explore-panel:#393047;--explore-surface:#514157;--explore-text:#f0dfbc;--explore-muted:#d0c1b3;--explore-border:#a39b8460;--explore-selected:#b97980;background:transparent;color:inherit;border:0;border-radius:0;box-shadow:none;padding:0;font:inherit;overflow:visible}
 .${P}-desk-workspace[data-desk="places"] .${P}-home>.${P}-room{display:grid;grid-template-columns:clamp(180px,26%,300px) minmax(0,1fr);gap:26px;overflow:visible;background:transparent}
@@ -139,6 +146,9 @@ export const DESK_STYLES = `
 .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-paper{padding:0 0 8px}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-row[aria-pressed="true"]{background:var(--menu-selected);color:#fff0d5;border-color:#c78d9370;box-shadow:none}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-mailbox-dialog :is(button,select,input,textarea){font-family:var(--menu-font)}
+.${P}-desk-workspace[data-desk="mailbox"] .villages-letter-compose-fields{flex:none;margin:16px 0;align-content:start}
+.${P}-desk-workspace[data-desk="mailbox"] .villages-letter-compose-fields :is(select,textarea){background:var(--menu-field);border-color:var(--menu-field-border);border-radius:8px}
+.${P}-desk-workspace[data-desk="mailbox"] .villages-letter-compose-fields + .villages-letter-actions{margin:0}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-empty{color:var(--muted-foreground);margin:14px 0}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-error{color:#f3c2b8}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-pages{container-type:size}
@@ -146,6 +156,11 @@ export const DESK_STYLES = `
 .${P}-desk-workspace[data-desk="settings"] .villages-repair{--repair-bg:transparent;--repair-paper:#514157;--repair-ink:var(--foreground);--repair-muted:var(--muted-foreground);--repair-line:var(--border);--repair-soft:var(--menu-field);--repair-primary:var(--menu-sage);--repair-onprimary:#292938;--repair-mark:var(--menu-selected);--repair-warn:#f3b6b7;--repair-focus:#dca5ab;height:100%;font:inherit}
 .${P}-desk-workspace[data-desk="settings"] .repair-chrome{justify-content:end;padding:0 5px 12px;background:transparent}
 .${P}-desk-workspace[data-desk="settings"] .repair-chrome>span{display:none}
+@container village-desk (max-width:1050px){
+ .${P}-workspace-content .${P}-maps-saved-row{grid-template-columns:72px minmax(0,1fr);gap:8px 12px}
+ .${P}-workspace-content .${P}-maps-saved-row img{width:72px;height:52px}
+ .${P}-workspace-content .${P}-maps-saved-row>button{grid-column:2;justify-self:start}
+}
 @container village-desk (max-width:1050px) and (min-width:701px){
  .${P}-desk-workspace[data-desk]:not([data-desk="none"]){--menu-heading-size:36px}
  .${P}-desk-workspace:not([data-desk="none"])>.${P}-desk-stage{padding:24px 20px 80px}
@@ -154,6 +169,7 @@ export const DESK_STYLES = `
  .${P}-workspace-about{grid-template-columns:minmax(0,1fr)}
  .${P}-workspace-venue-header{flex-direction:column}.${P}-venue-back{order:0}
  .${P}-desk-nav button{gap:10px;padding-inline:10px}
+ .${P}-desk-header .${P}-desk-return{font-size:17px}
 }
 @container village-desk (max-width:700px){
  .${P}-desk-workspace[data-desk]:not([data-desk="none"]){--menu-heading-size:38px;display:flex;font-size:17px;background-size:auto 100%;background-position:right bottom}
