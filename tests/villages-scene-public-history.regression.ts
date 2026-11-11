@@ -143,7 +143,7 @@ function source(scene: VenueScene, previous?: HistoryPageTree) {
     scene,
     entries.map((entry) => entry.position),
   );
-  const projected = projectSceneHistoryPage(selected, entries, scene.participants, head.privateHearing);
+  const projected = projectSceneHistoryPage(selected, entries, scene.participants);
   assert.deepEqual(projected, publicSceneResponse(scene).lines);
   assert.equal(projected.find((row) => row.kind === "input")?.content, exact);
   assert(
@@ -160,7 +160,6 @@ function source(scene: VenueScene, previous?: HistoryPageTree) {
         [{ ...selected[0], content: "Changed public evidence" }, ...selected.slice(1)],
         entries,
         [],
-        head.privateHearing,
       ),
     /content changed/,
   );
@@ -201,11 +200,23 @@ function source(scene: VenueScene, previous?: HistoryPageTree) {
     villageSeed: "public-world",
     startedAt: at,
     participants: [{ characterId: "visible", name: "Visible", doing: "Listening" }],
-    lines: [{ ...line("heard"), heardBy: ["player", "visible", "later-known"] }],
+    lines: [
+      {
+        ...line("heard"),
+        heardBy: ["player", "visible", "later-known"],
+        staging: [{ characterId: "visible", position: "left" }],
+      },
+    ],
     submissions: [],
   });
   let native = source(scene);
   const before = await store.prepare(scene, native.transcript.head, native.submissions.head);
+  const beforeEntries = await store.readRange(before, native.transcript.head.count, 0, 1);
+  assert.throws(
+    () => readScenePublicHistoryHead({ ...before, format: 2 }, scene, native.transcript.head, native.submissions.head),
+    /owner/,
+    "A retired index format cannot be read or converted",
+  );
   scene.participants.push({ characterId: "later-known", name: "Known", doing: "Listening" });
   native = source(scene, native.transcript.layout);
   const after = await store.prepare(scene, native.transcript.head, native.submissions.head, before);
@@ -215,12 +226,12 @@ function source(scene: VenueScene, previous?: HistoryPageTree) {
     "Private hearing changes cannot invalidate the public content digest",
   );
   const entries = await store.readRange(after, native.transcript.head.count, 0, 1);
-  assert(
-    !Object.hasOwn(
-      projectSceneHistoryPage(scene.lines, entries, scene.participants, after.privateHearing)[0],
-      "heardBy",
-    ),
-  );
+  assert.equal(entries[0].publicDigest, beforeEntries[0].publicDigest);
+  const cold = createScenePublicHistory(f.documents);
+  const coldEntries = await cold.readRange(after, native.transcript.head.count, 0, 1);
+  const coldLine = projectSceneHistoryPage(scene.lines, coldEntries, scene.participants)[0];
+  assert.deepEqual(coldLine.staging, [{ characterId: "visible", position: "left" }]);
+  assert(!Object.hasOwn(coldLine, "heardBy"));
 }
 
 for (const count of [1000, 10_000, 25_000]) {

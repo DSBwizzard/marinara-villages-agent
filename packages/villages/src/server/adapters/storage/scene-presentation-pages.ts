@@ -399,25 +399,11 @@ export function createScenePresentations(documents: Pick<CapabilityDocumentStore
     remember(head, entry);
     return entry;
   }
-  async function prepare(
-    scene: VenueScene,
-    positions: Position[],
-    privateHearing: boolean,
-    source: string,
-    previous?: ScenePresentationHead,
-  ) {
+  async function prepare(scene: VenueScene, positions: Position[], source: string, previous?: ScenePresentationHead) {
     if (previous) readScenePresentationHead(previous, scene);
     const old = previous ? await read(previous, scene, scene.lines.length) : undefined;
     if (previous?.source === source) return previous;
-    const { head, pages, ...entry } = encodeScenePresentations(
-      scene,
-      positions,
-      privateHearing,
-      source,
-      previous,
-      old,
-      versions,
-    );
+    const { head, pages, ...entry } = encodeScenePresentations(scene, positions, source, previous, old, versions);
     const stamp = new Date().toISOString();
     for (const [id, data] of pages) {
       const exists = await documents.getById("villages", id);
@@ -452,7 +438,6 @@ export function createScenePresentations(documents: Pick<CapabilityDocumentStore
 export function encodeScenePresentations(
   scene: VenueScene,
   positions: Position[],
-  privateHearing: boolean,
   source: string,
   previous?: ScenePresentationHead,
   old?: Entry,
@@ -516,7 +501,7 @@ export function encodeScenePresentations(
         ? prior!
         : { ...prior!, lines: source.positions };
     }
-    const project = (line: typeof source.line) => publicSceneResponse([line], visible, privateHearing)[0];
+    const project = (line: typeof source.line) => publicSceneResponse([line], visible)[0];
     const main = project(source.line);
     const paragraphs = main.presenceChange ? 0 : splitVillagesParagraphs(main.content).length,
       offset = paragraphStart;

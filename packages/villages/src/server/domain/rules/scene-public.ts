@@ -115,23 +115,17 @@ function publicLine(value: unknown, visible?: Set<string>) {
       : {}),
   };
 }
-export function publicSceneHistoryProjection(scene: VenueScene) {
+export function publicSceneHistoryPositions(scene: VenueScene) {
   const hidden = unpublishedLines(scene.submissions);
-  return {
-    positions: scene.lines.flatMap((line, position) => (!hidden.has(line.id) && publicLine(line) ? [position] : [])),
-    privateHearing: true,
-  };
+  return scene.lines.flatMap((line, position) => (!hidden.has(line.id) && publicLine(line) ? [position] : []));
 }
 export function scenePresenceNotices(scene: VenueScene): VenueRecordEvent[] {
-  return publicSceneHistoryProjection(scene).positions.flatMap((position) => {
+  return publicSceneHistoryPositions(scene).flatMap((position) => {
     const line = scene.lines[position];
     return line.presenceChange
       ? [{ id: "presence:" + scene.id + ":" + line.id, kind: "venue" as const, text: line.content }]
       : [];
   });
-}
-export function publicSceneHistoryHearing(_value: unknown) {
-  return true;
 }
 export function sameSceneHistoryTurnPolicy(before: unknown, after: unknown) {
   const policy = (value: unknown) => {
@@ -214,7 +208,7 @@ export function publicSceneAuthority(scene: VenueScene) {
 }
 
 /** Explicit public fields: the private fit, sources, native authority and purchased proposals never cross this boundary. */
-export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, _privateHearing = true): T {
+export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>): T {
   if (Array.isArray(value))
     return value.flatMap((line) => {
       const view = publicLine(line, visibleIds);

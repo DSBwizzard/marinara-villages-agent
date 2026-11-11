@@ -183,16 +183,10 @@ try {
     valid.publicHistory.count,
   );
   const full = await f.repository.readSession("playback");
-  const omitted = encodeScenePresentations(
-    full,
-    positions.slice(1),
-    valid.publicHistory.privateHearing,
-    valid.publicHistory.source,
-  );
+  const omitted = encodeScenePresentations(full, positions.slice(1), valid.publicHistory.source);
   const repointed = encodeScenePresentations(
     full,
     positions.map((position, index) => (index === 0 ? { ...position, publicDigest: "f".repeat(64) } : position)),
-    valid.publicHistory.privateHearing,
     valid.publicHistory.source,
   );
   for (const encoded of [omitted, repointed])
@@ -213,35 +207,20 @@ try {
   row.data = structuredClone(valid);
 
   const warm = createScenePresentations(f.documents);
-  await warm.prepare(
-    full,
-    positions,
-    valid.publicHistory.privateHearing,
-    valid.publicHistory.source,
-    valid.publicHistory.presentation,
-  );
+  await warm.prepare(full, positions, valid.publicHistory.source, valid.publicHistory.presentation);
   const malformedVersion = { ...valid.publicHistory.presentation, publicVersion: "f".repeat(64) };
   for (const store of [warm, createScenePresentations(f.documents)])
     await assert.rejects(
-      store.prepare(full, positions, valid.publicHistory.privateHearing, valid.publicHistory.source, {
+      store.prepare(full, positions, valid.publicHistory.source, {
         ...valid.publicHistory.presentation,
         paragraphs: valid.publicHistory.presentation.paragraphs + 1,
       }),
       /paragraph count changed/,
     );
   for (const source of [valid.publicHistory.source, "e".repeat(64)]) {
+    await assert.rejects(warm.prepare(full, positions, source, malformedVersion), /version changed/);
     await assert.rejects(
-      warm.prepare(full, positions, valid.publicHistory.privateHearing, source, malformedVersion),
-      /version changed/,
-    );
-    await assert.rejects(
-      createScenePresentations(f.documents).prepare(
-        full,
-        positions,
-        valid.publicHistory.privateHearing,
-        source,
-        malformedVersion,
-      ),
+      createScenePresentations(f.documents).prepare(full, positions, source, malformedVersion),
       /version changed/,
     );
   }

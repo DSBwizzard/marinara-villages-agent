@@ -132,7 +132,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       memoryRequire((record.data as { id?: string }).id === id, "Scene operation owner identity changed");
       const data = structuredClone(record.data) as Record<string, unknown>;
       await mutate(data, store);
-      await publishSceneOperationHistory(store, record.data as Record<string, unknown>, data);
+      publishSceneOperationHistory(record.data as Record<string, unknown>, data);
       readSceneHistoryRoot(data);
       const saved = await store.update({
         id: record.id,

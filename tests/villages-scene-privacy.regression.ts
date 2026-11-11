@@ -8,7 +8,7 @@ import { conflict } from "../packages/villages/src/server/domain/rules/errors.js
 import {
   publicSceneResponse,
   publicSceneAuthority,
-  publicSceneHistoryProjection,
+  publicSceneHistoryPositions,
   sameSceneHistoryTurnPolicy,
 } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import { operationSummary } from "../packages/villages/src/server/adapters/operations/operation-context.js";
@@ -81,7 +81,7 @@ async function main() {
     });
     const pending = pendingSceneSubmission(scene, "turn", exact, "unaccepted");
     scene.submissions.push({ ...pending, acceptance: { status: "held", rejected: [] } });
-    const { positions } = publicSceneHistoryProjection(scene);
+    const positions = publicSceneHistoryPositions(scene);
     assert.deepEqual(positions, [0, 1001, 1002], "Hidden-only spans and unaccepted drafts add no public positions");
     const selected = positions.map((position) => publicSceneResponse([scene.lines[position]], new Set(["visible"]))[0]);
     assert.deepEqual(
@@ -101,7 +101,7 @@ async function main() {
       episodeId: "episode",
       progressProcessedAt: at,
     };
-    assert.deepEqual(publicSceneHistoryProjection(scene).positions, [0, 1001, 1002, 1003]);
+    assert.deepEqual(publicSceneHistoryPositions(scene), [0, 1001, 1002, 1003]);
   }
   const handlers = new Map<string, (request: unknown, reply: unknown) => Promise<any>>();
   const collector = Object.fromEntries(

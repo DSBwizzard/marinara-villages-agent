@@ -123,7 +123,7 @@ export function createSceneQueryService({ readSession, readVillageState, village
       scene,
       entries.map((entry) => entry.position),
     );
-    const projected = projectSceneHistoryPage(source, entries, scene.participants, head.privateHearing);
+    const projected = projectSceneHistoryPage(source, entries, scene.participants);
     let first = 0,
       last = projected.length,
       bytes = 0;
@@ -227,7 +227,7 @@ export function createSceneQueryService({ readSession, readVillageState, village
       scene,
       positions.map((entry) => entry.position),
     );
-    const projected = projectSceneHistoryPage(lines, positions, scene.participants, head.privateHearing);
+    const projected = projectSceneHistoryPage(lines, positions, scene.participants);
     const byId = new Map(projected.map((line) => [line.id, line]));
     const cursor = (direction: "older" | "newer" | "around", index: number) => {
       const entry = entries[index - start];

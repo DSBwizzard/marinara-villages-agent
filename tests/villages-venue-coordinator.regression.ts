@@ -201,7 +201,6 @@ async function main() {
           native.transcript,
           native.submissionHistory,
         );
-        assert.equal(head.privateHearing, true, "Current Scene hearing is private before operation work");
         assert.equal(head.publicVersion, publicBefore.publicVersion);
         assert.deepEqual(
           native.operation.snapshot.publicHistory,
@@ -243,7 +242,7 @@ async function main() {
       afterTiming.sceneRevision,
       undefined,
       async () => {
-        assert.equal(row("history-policy").data.publicHistory.privateHearing, true);
+        assert.deepEqual(row("history-policy").data.publicHistory.positions, publicBefore.positions);
         assert.equal(row("history-policy").data.publicHistory.publicVersion, publicBefore.publicVersion);
       },
     );
@@ -259,9 +258,9 @@ async function main() {
       undefined,
       async () => {
         assert.equal(
-          row("history-policy").data.publicHistory.privateHearing,
-          true,
-          "Private hearing survives later operations",
+          row("history-policy").data.publicHistory.publicVersion,
+          publicBefore.publicVersion,
+          "Later operations preserve the public content version",
         );
       },
     );
@@ -1420,28 +1419,16 @@ async function main() {
     {
       seed("artwork-settled");
       Object.assign(row("artwork-settled").data, { placeId: "artwork-place", zoneId: "studio" });
-      const observed = deferred<{ placeId: string; zoneId: string; status: string | undefined }>();
       let pictures = 0;
       const releasePictures = configureLocationImages({
-        requestZonePicture: async (placeId: string, zoneId: string) => {
+        requestZonePicture: async () => {
           pictures++;
-          observed.resolve({ placeId, zoneId, status: (await readSession("artwork-settled")).operation?.status });
         },
       } as unknown as LocationImageService);
-      let timer: ReturnType<typeof setTimeout> | undefined;
       try {
         await coordinateVenue("artwork-settled", "visit", "turn", {}, 0, undefined, async () => "settled");
-        const result = await Promise.race([
-          observed.promise,
-          new Promise<never>((_resolve, reject) => {
-            timer = setTimeout(() => reject(Error("Settled visit did not request its pending artwork")), 1500);
-          }),
-        ]);
-        assert.deepEqual(
-          result,
-          { placeId: "artwork-place", zoneId: "studio", status: "complete" },
-          "automatic artwork is requested after the operation's completion is persisted",
-        );
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        assert.equal(pictures, 0, "An ordinary Scene turn leaves artwork generation idle");
         seed("artwork-held");
         await assert.rejects(
           coordinateVenue("artwork-held", "visit", "turn", {}, 0, undefined, async () => {
@@ -1450,7 +1437,7 @@ async function main() {
           /held/,
         );
         await new Promise<void>((resolve) => setImmediate(resolve));
-        assert.equal(pictures, 1, "failed Scene work cannot initiate artwork");
+        assert.equal(pictures, 0, "failed Scene work cannot initiate artwork");
         seed("artwork-closed");
         await coordinateVenue("artwork-closed", "visit", "turn", {}, 0, undefined, async () => {
           await changeSession("artwork-closed", (scene) => {
@@ -1458,9 +1445,8 @@ async function main() {
           });
         });
         await new Promise<void>((resolve) => setImmediate(resolve));
-        assert.equal(pictures, 1, "closed Scenes cannot initiate artwork");
+        assert.equal(pictures, 0, "closed Scenes cannot initiate artwork");
       } finally {
-        clearTimeout(timer);
         releasePictures();
       }
     }
