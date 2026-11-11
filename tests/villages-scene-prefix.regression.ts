@@ -194,7 +194,11 @@ await runCase("scene-prefix/current-native-context", async () => {
         assert.equal(answer.statusCode, 200, answer.body);
       }
       assert.equal(groupPrefixes.length, 2);
-      assert.deepEqual(groupPrefixes[1], groupPrefixes[0], "a new speaker cannot reorder the same cached cast");
+      assert.deepEqual(
+        groupPrefixes[1].slice(0, groupPrefixes[0].length),
+        groupPrefixes[0],
+        "a new speaker cannot reorder the same cached cast",
+      );
     } finally {
       await group.stop();
     }

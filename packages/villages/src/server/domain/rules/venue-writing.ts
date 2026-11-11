@@ -37,6 +37,7 @@ export function venueCardProfile(
 export type VenueWritingBlock = {
   text: string;
   cacheBreakpoint?: true;
+  transcript?: true;
   evidenceId?: string;
   /** Each group needs at least one retained source. */
   requiresEvidence?: string[][];
@@ -51,6 +52,7 @@ export const hasWritingEvidence = (block: VenueWritingBlock, retained: ReadonlyS
 export type VenueWritingSections = {
   direction: VenueWritingBlock[];
   identity: VenueWritingBlock[];
+  transcript?: VenueWritingBlock[];
   frame?: VenueWritingBlock[];
   circumstances: VenueWritingBlock[];
   conversation: VenueWritingBlock[];
@@ -66,6 +68,7 @@ export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWrit
     identity: "Complete authored character identity",
     authoredInstructions: "Authored post-history direction",
     frame: "Current Scene reference",
+    transcript: "Witnessed Scene transcript",
     conversation: "Witnessed conversation and recalled memories",
     circumstances: "Current Scene circumstances",
   };
@@ -84,13 +87,18 @@ export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWrit
 /** Shared by live generation and isolated evaluations. Never silently shrink a character. */
 export function assembleVenueWritingMessages(blocks: readonly VenueWritingBlock[], input: string) {
   const lore = blocks.filter((block) => block.optional === "lore").map((block) => block.text);
+  const transcriptEnd = blocks.findLast((block) => block.transcript);
   const messages: CapabilityLanguageModelMessage[] = [];
   let text: string[] = [];
   for (const block of blocks) {
     if (block.optional === "lore") continue;
     if (block.text) text.push(block.text);
-    if (block.cacheBreakpoint && text.length) {
-      messages.push({ role: "system", content: text.join("\n\n"), cacheBreakpoint: true });
+    if ((block.cacheBreakpoint || block.transcript) && text.length) {
+      messages.push({
+        role: "system",
+        content: text.join("\n\n"),
+        ...(block.cacheBreakpoint || block === transcriptEnd ? { cacheBreakpoint: true } : {}),
+      });
       text = [];
     }
   }
@@ -120,8 +128,8 @@ export function fitVenueWritingMessages(
   connectionName = "Narration",
 ) {
   let kept = [...blocks];
-  // Low-priority history first, then optional memories/lore. Essential blocks and the
-  // latest player input must survive fitting byte-for-byte before any paid call.
+  // Prune optional recall, memories and lore before rebuilding the Scene transcript.
+  // Essential blocks and the latest player input must survive fitting byte-for-byte.
   for (;;) {
     const evidence = new Set(kept.map((block) => block.evidenceId));
     kept = kept.filter((block) => hasWritingEvidence(block, evidence));
@@ -136,17 +144,16 @@ export function fitVenueWritingMessages(
         lore: mergeLoreUse(kept.flatMap((block) => (block.lore ? [block.lore] : []))),
       };
     const optional =
-      ["history", "memory", "lore"]
+      ["history", "memory", "lore", "transcript"]
         .map((kind) =>
-          kind === "lore"
-            ? kept
-                .map((block, index) => ({ block, index }))
-                .filter(({ block }) => block.optional === kind)
-                .reverse()
-            : kept
-                .map((block, index) => ({ block, index }))
-                .filter(({ block }) => block.optional === kind)
-                .sort((a, b) => (a.block.pruningPriority ?? 0) - (b.block.pruningPriority ?? 0) || a.index - b.index),
+          kept
+            .map((block, index) => ({ block, index }))
+            .filter(({ block }) => (block.transcript ? "transcript" : block.optional) === kind)
+            .sort((a, b) =>
+              kind === "lore"
+                ? b.index - a.index
+                : (a.block.pruningPriority ?? 0) - (b.block.pruningPriority ?? 0) || a.index - b.index,
+            ),
         )
         .find((rows) => rows.length) ?? [];
     if (!optional.length)

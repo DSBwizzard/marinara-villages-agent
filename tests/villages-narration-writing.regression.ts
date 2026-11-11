@@ -1024,23 +1024,23 @@ await runCase("narration-writing/history-prefix", async () => {
     incarnation: continuityActor(f.state, id)!.incarnation,
     zoneId: "parlor",
   }));
-  let previous: string[] = [];
-  for (let count = 1; count <= 17; count++) {
+  let previous: string[] = [],
+    resets = 0;
+  for (let count = 1; count <= 36; count++) {
     const id = "exchange-" + count;
     const keyword = count % 2 ? "cedar" : "maple";
-    const segments: AcceptedEpisode["segments"] = [
-      {
-        id: id + "-answer",
-        role: "assistant",
-        kind: "dialogue",
-        speakerId: f.id,
-        name: "Mara",
-        at,
-        zoneId: "parlor",
-        heardBy: [f.id, "player"],
-        content: (keyword + " weathered wood catches the afternoon light. ").repeat(30),
-      },
-    ];
+    const oversized = count === 13;
+    const segments: AcceptedEpisode["segments"] = Array.from({ length: oversized ? 14 : 1 }, (_, index) => ({
+      id: id + "-answer-" + index,
+      role: "assistant",
+      kind: "dialogue",
+      speakerId: f.id,
+      name: "Mara",
+      at,
+      zoneId: "parlor",
+      heardBy: [f.id, "player"],
+      content: (keyword + " weathered wood catches the afternoon light. ").repeat(oversized ? 38 : count > 12 ? 28 : 7),
+    }));
     f.state.episodes = appendEpisode(
       f.state.episodes,
       {
@@ -1065,20 +1065,29 @@ await runCase("narration-writing/history-prefix", async () => {
       },
       f.state.seed,
     );
-    if (count < 12) continue;
     f.nextOperation("after-" + id);
     const request = await f.writing.prepareVenueTurnMessages(f.scene, keyword, "chat");
     const blocks = request.fitted.messages
       .flatMap((row) => row.content.split("\n\n"))
       .filter((row) => row.startsWith('{"interaction":'));
     const active = blocks.filter((row) => !JSON.parse(row).earlierRecall);
+    if (oversized) {
+      assert.deepEqual(active, previous, "one unfit exchange cannot evict the already fitting transcript");
+      continue;
+    }
     assert.equal(JSON.parse(active.at(-1)!).interaction.id, id);
-    assert(active.length <= 7);
     assert.deepEqual(blocks.slice(0, active.length), active);
-    if (count % 4 !== 0 && previous.length)
+    const cacheBoundary = request.fitted.messages.findLast((row) => row.cacheBreakpoint);
+    assert(cacheBoundary?.content.endsWith(active.at(-1)!));
+    const tail = request.fitted.messages.slice(request.fitted.messages.indexOf(cacheBoundary!) + 1);
+    assert(tail.some((row) => row.content.includes("## Current Scene circumstances")));
+    if (count <= 12) assert.equal(active.length, count, "short exchanges can append past four and eight turns");
+    if (previous.length && active[0] === previous[0])
       assert.deepEqual(active.slice(0, -1), previous, "new turns append to the byte-identical history prefix");
+    else if (previous.length) resets++;
     previous = active;
   }
+  assert(resets > 0, "long Scenes eventually rebuild the bounded transcript");
   assert.equal(f.calls.purchases, 0);
 });
 

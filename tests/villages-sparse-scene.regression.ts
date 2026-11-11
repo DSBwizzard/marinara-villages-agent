@@ -76,4 +76,26 @@ assert(
 );
 assert.equal(fitted.messages.at(-1)?.content, input);
 assert.deepEqual(blocks, frozen, "Fitting leaves saved source blocks intact");
+
+const transcript = { ...shared, evidenceId: "transcript", transcript: true as const };
+const constrained = fitVenueWritingMessages(
+  {
+    fitContext(messages, options) {
+      const size = messages.reduce((sum, row) => sum + row.content.length, 0);
+      const limit = [required.text, transcript.text].join("\n\n").length + input.length;
+      return {
+        ...options,
+        messages: size <= limit ? messages : [],
+        trimmed: size > limit,
+        estimatedTokensBefore: Math.ceil(size / 4),
+        estimatedTokensAfter: Math.ceil(Math.min(size, limit) / 4),
+      };
+    },
+  },
+  [required, transcript, ...history.slice(0, 2), memory],
+  input,
+  4096,
+);
+assert.deepEqual(constrained.evidenceIds, ["required", "transcript"]);
+assert.equal(constrained.messages.findLast((row) => row.cacheBreakpoint)?.content.endsWith(transcript.text), true);
 console.log("Sparse narration parsing and bounded exact prompt fitting passed.");

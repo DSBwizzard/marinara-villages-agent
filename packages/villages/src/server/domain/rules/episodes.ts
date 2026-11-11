@@ -324,6 +324,26 @@ function projectGmEpisode(
     : null;
 }
 
+/** Replay whole-exchange boundaries so ordinary growth never changes the head of a fitting transcript. */
+export function appendHistoryWithin<T>(rows: readonly T[], budget: number, weight: (row: T) => number): T[] {
+  let window: T[] = [],
+    used = 0,
+    previousSize = 0;
+  for (const row of rows) {
+    const size = weight(row);
+    if (size > budget) continue;
+    if (used + size > budget) {
+      const overlap = previousSize + size <= budget;
+      window = overlap ? window.slice(-1) : [];
+      used = overlap ? previousSize : 0;
+    }
+    window.push(row);
+    used += size;
+    previousSize = size;
+  }
+  return window;
+}
+
 /** Select complete exchanges locally; omission never means that an earlier event did not happen. */
 export function selectEpisodeHistory(
   collection: EpisodeCollection,
@@ -388,8 +408,7 @@ export function selectEpisodeHistory(
       .filter((row) => row.score > 0)
       .sort((a, b) => b.score - a.score || b.index - a.index);
   const current = sceneId ? candidates.filter((row) => row.episode.sceneId === sceneId) : [];
-  // Keep one completed group and the growing group, so each new turn can append until the next group starts.
-  const sceneWindow = new Set(current.slice(Math.max(0, current.length - (current.length % 4) - 4)));
+  const sceneWindow = new Set(appendHistoryWithin(current, bytes, (row) => row.bytes));
   const selected: typeof candidates = [];
   let used = 0;
   for (const row of [...[...sceneWindow].reverse(), ...shared, ...recent.toReversed(), ...rest]) {

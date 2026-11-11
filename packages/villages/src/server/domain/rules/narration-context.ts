@@ -22,7 +22,7 @@ import {
   continuityProtectionFingerprint,
 } from "./continuity.js";
 import { selectActorContinuity, selectRoomContinuity } from "./continuity-retrieval.js";
-import { recentSharedEpisodes, selectEpisodeHistory } from "./episodes.js";
+import { appendHistoryWithin, recentSharedEpisodes, selectEpisodeHistory } from "./episodes.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { estimatedTextTokens } from "./text-recall.js";
 import { hasWritingEvidence, type VenueWritingBlock } from "./venue-writing.js";
@@ -183,7 +183,7 @@ export function narrationContinuityContext(
   const holders = [
     ...actors.filter((holder) => holder.id === "player" || writerIds.includes(holder.id)),
     ...npcCandidates.map((row) => row.holder),
-  ];
+  ].sort((a, b) => a.id.localeCompare(b.id, "en"));
   const room: Extract<ContinuityHolder, { kind: "room" }> = {
     kind: "room",
     placeId: scene.placeId,
@@ -266,6 +266,7 @@ export function narrationContinuityContext(
     [...actors, ...npcCandidates.map((row) => row.holder)].map((holder) => [holder.id, holder.incarnation]),
   );
   for (const view of history.episodes) {
+    const transcript = history.sceneWindow.has(view.id);
     const episode = state.episodes.records.find((row) => row.id === view.id)!,
       { interaction, ...recall } = projectEpisodeRecall(
         state,
@@ -281,10 +282,10 @@ export function narrationContinuityContext(
       ...part,
       sharedLoreWords: sharedLoreWords(episode, view, loreAudience),
       block: {
-        text: JSON.stringify({ interaction, ...(history.sceneWindow.has(view.id) ? {} : { earlierRecall: true }) }),
+        text: JSON.stringify({ interaction, ...(transcript ? {} : { earlierRecall: true }) }),
         evidenceId: "episode-context:" + view.id,
         optional: "history",
-        pruningPriority: shared.has(view.id) ? 2 : Number(history.sceneWindow.has(view.id)),
+        ...(transcript ? { transcript: true } : { pruningPriority: Number(shared.has(view.id)) }),
       },
     });
   }
@@ -493,15 +494,24 @@ export function narrationContinuityContext(
       },
     });
   }
+  // The selector fits witness views before expanding their evidence aliases. Rebase the rendered
+  // transcript here if it fills the optional budget, before ranked recall competes for the rest.
+  const optionalBudget = 8000;
+  const transcript = appendHistoryWithin(
+    parts.filter((part) => part.block.transcript),
+    optionalBudget,
+    (part) => estimatedTextTokens(part.block.text),
+  );
   // Soft envelopes borrow unused capacity; required context is tested only by the actual model fitter.
   let standingTokens = 0,
     optionalTokens = 0;
   const historyOrder = parts
-    .filter((part) => part.block.optional === "history")
+    .filter((part) => part.block.optional === "history" && !part.block.transcript)
     .toReversed()
     .sort((a, b) => (b.block.pruningPriority ?? 0) - (a.block.pruningPriority ?? 0));
   const selectionOrder = [
     ...parts.filter((part) => !part.block.optional),
+    ...transcript,
     ...historyOrder.filter((part) => part.block.pruningPriority),
     ...parts
       .filter((part) => part.block.optional === "memory")
@@ -516,7 +526,7 @@ export function narrationContinuityContext(
     selectionOrder.filter((part) => {
       if (!part.block.optional) return true;
       const tokens = estimatedTextTokens(part.block.text);
-      if (optionalTokens + tokens > 8000) return false;
+      if (optionalTokens + tokens > optionalBudget) return false;
       if (part.block.optional === "memory") {
         if (standingTokens + tokens > 4000) return false;
         standingTokens += tokens;

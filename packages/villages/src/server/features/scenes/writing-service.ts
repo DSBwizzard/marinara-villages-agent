@@ -185,6 +185,7 @@ export function createSceneWriting({
             : "",
         ),
       ),
+      transcript: context.parts.filter((part) => part.block.transcript).map((part) => part.block),
       frame: blocksFor([
         scene.contactGeneration?.instruction ?? "",
         JSON.stringify({
@@ -198,7 +199,7 @@ export function createSceneWriting({
         {
           text: "Interaction history is private GM context. Entries marked earlierRecall are recalled context after the current Scene history. Only explicit per-character perceptions/sources establish character knowledge. Omission never means absence.",
         },
-        ...context.parts.map((part) => part.block),
+        ...context.parts.filter((part) => !part.block.transcript).map((part) => part.block),
         ...lore.map((text, index): VenueWritingBlock => ({
           text: "Relevant world lore: " + text,
           optional: "lore",
