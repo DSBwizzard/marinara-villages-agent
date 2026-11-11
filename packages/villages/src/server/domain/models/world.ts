@@ -1,5 +1,5 @@
 import type { SpriteManagerState } from "../../../shared/contracts/sprites.js";
-import type { VillageSettings } from "../../../shared/contracts/village.js";
+import type { ProjectRoomEdit, VillageSettings } from "../../../shared/contracts/village.js";
 import type { VillageNarrationStyle } from "../rules/narration-style.js";
 import type { ProgressTask } from "../rules/progress-engine.js";
 import type { HomeBuildingKind } from "../rules/prompt-preset.js";
@@ -255,7 +255,7 @@ export type ZoneObservation = {
   night?: ZonePicture["night"];
   pictureContext?: string;
 };
-export type VillageZoneDraft = { preserveDescription?: boolean } & Pick<
+export type VillageZoneDraft = Pick<
   VillageVenueZone,
   | "id"
   | "name"
@@ -400,7 +400,7 @@ export type ResidentPlanningOpportunity = {
 export type VillageProjectPhase = "planning" | "working" | "paused" | "complete" | "cancelled";
 export type VillageProjectChange = {
   form?: string;
-  exteriorDescription?: string;
+  roomEdits?: ProjectRoomEdit[];
   classes?: VillageVenueClass[];
   capacity?: number;
   zones?: VillageZoneDraft[];
@@ -438,6 +438,7 @@ export type VillageProjectLifecycle = {
   evidenceIds: string[];
   commandReceipts: Record<string, string>;
   baseDesignHash: string;
+  roomBasis?: string[];
   changedZoneIds: string[];
   workOrder: {
     startsAt: string;

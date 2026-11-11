@@ -14,7 +14,7 @@ import { narrationCircumstancePrompt } from "../../domain/rules/narration-circum
 import { venueAdditionalWritingGuidance, venueWritingDirection } from "../../domain/rules/narration-style.js";
 import { findLocation, findNpc, npcProfile } from "../../domain/rules/places.js";
 import { renderPlayerBackgroundContext } from "../../domain/rules/player-background.js";
-import { projectSpeechPrompt } from "../../domain/rules/project-interpretation.js";
+import { PROJECT_SPEECH_DIRECTION } from "../../domain/rules/project-interpretation.js";
 import { narrationAccessPrompt } from "../../domain/rules/narration-access.js";
 import { narrationResidencePrompt } from "../../domain/rules/narration-residence.js";
 import { narrationPlacePrompt } from "../../domain/rules/narration-place.js";
@@ -155,7 +155,6 @@ export function createSceneWriting({
       villagesLanguageModels().resolveForRequest({ connectionId }),
     ]);
     signal?.throwIfAborted();
-    const projectContexts = context.projects;
     const calendar = context.calendar;
     const presentation = sceneSpriteSelection(scene, village),
       loreUses = inspectedLoreUse(loreInspection, "GM");
@@ -208,7 +207,7 @@ export function createSceneWriting({
           : mode === "leave"
             ? "Interpret the whole authored submission, then close naturally without inventing the player's goodbye."
             : "",
-        projectSpeechPrompt(village, projectContexts),
+        context.projects.length ? PROJECT_SPEECH_DIRECTION : "",
         narrationAccessPrompt(context.access),
         narrationResidencePrompt(context.residence),
         narrationPlacePrompt(context.places),

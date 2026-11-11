@@ -25,6 +25,7 @@ import { readVenueImageContext } from "./village-projections.js";
 import { findLocation } from "./places.js";
 import { promotePlace, establishmentControllers } from "./establishment.js";
 import { captureZoneObservation } from "./zone-observation.js";
+import { stageProjectRoomEdits } from "./project-room-edits.js";
 
 /** Only the saved committed design is applied; the lifecycle stages this transaction. */
 export function completeProject(state: VillageState, project: VillageProject, at: string): void {
@@ -72,6 +73,7 @@ export function completeProject(state: VillageState, project: VillageProject, at
     if (flow.baseDesignHash !== venueDesignHash(venue, flow.changedZoneIds, flow.change))
       throw conflict("The Venue design changed. Cancel this Project and plan the current layout.");
     validateRenovationDesign(state, venue, change, new Date(at));
+    Object.assign(state, stageProjectRoomEdits(state, venue, flow, project.id, at));
     const old = venueZones(venue);
     const drafts = change.zones ?? old.filter((zone) => zone.kind !== "exterior");
     const retired = old.filter((zone) => zone.kind !== "exterior" && !drafts.some((draft) => draft.id === zone.id));
@@ -90,7 +92,7 @@ export function completeProject(state: VillageState, project: VillageProject, at
           ...defaultVenueSpace(draft.venueClass),
           ...previous,
           ...draft,
-          description: draft.preserveDescription && previous ? previous.description : draft.description,
+          description: previous ? previous.description : draft.description,
           roomSpecification: draft.roomSpecification ?? previous?.roomSpecification,
           access: previous?.access,
           image: previous?.image ?? null,
@@ -100,32 +102,14 @@ export function completeProject(state: VillageState, project: VillageProject, at
               ? { status: "pending" }
               : previous?.preparation,
         };
-        if (
-          previous &&
-          (zone.description !== previous.description || zone.roomSpecification !== previous.roomSpecification)
-        )
-          zone.picture = { ...zone.picture, base: zone.picture?.base ?? zone.image, dirty: true };
         prepareRenovatedPrivateInterior(zone, previous);
-        if (previous && zone.description !== previous.description)
-          zone.state = { ...previous.state, revision: previous.state.revision + 1, updatedAt: at };
         return zone;
       }),
     ];
     venue.zones = applyConnectionEdits(venue.zones, drafts);
     validateConnections(venue.zones);
-    const entrance = venue.zones.find((zone) => zone.kind === "exterior")!;
-    if (change.exteriorDescription !== undefined) {
-      entrance.description = change.exteriorDescription;
-      venue.description = change.exteriorDescription;
-      entrance.state = { ...entrance.state, revision: entrance.state.revision + 1, updatedAt: at };
-      entrance.picture = { ...entrance.picture, base: entrance.picture?.base ?? entrance.image, dirty: true };
-    }
     if (change.form !== undefined) {
       venue.form = change.form;
-      for (const zone of venue.zones) {
-        zone.state = { ...zone.state, revision: zone.state.revision + 1, updatedAt: at };
-        zone.picture = { ...zone.picture, base: zone.picture?.base ?? zone.image, dirty: true };
-      }
     }
     venue.classes = change.classes ?? venue.classes;
     venue.residenceCapacity = change.capacity ?? venue.residenceCapacity;

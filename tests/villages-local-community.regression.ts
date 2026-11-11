@@ -785,17 +785,24 @@ console.log(
 }
 
 {
-  const { fixture, renovation, venue: makeVenue } = await import("./fixtures/villages-projects.fixture.js");
+  const {
+    fixture,
+    renovation,
+    venue: makeVenue,
+    seedObservedProjectRoom,
+  } = await import("./fixtures/villages-projects.fixture.js");
   const { venueFixture } = await import("./helpers/venues.fixture.js");
   const { buildLocationPrompt } = await import("../packages/villages/src/server/domain/rules/location-image-rules.js");
   const { venueInZone } = await import("../packages/villages/src/server/domain/rules/venue-zones.js");
+  const { observableRoomDescription } = await import("../packages/villages/src/server/domain/rules/zone-picture.js");
+  const { projectRoomEntries } = await import("../packages/villages/src/server/domain/rules/project-room-edits.js");
   const f = fixture();
   await f.mutate((state) => {
     const mall = state.venues[0];
     mall.name = "Seafront mall";
     mall.description = "An abandoned mall with a boarded entrance";
     mall.zones![0].description = mall.description;
-    mall.zones![1].description = "The atrium floor is damaged; shopfronts remain boarded.";
+    seedObservedProjectRoom(state, mall, "common", "The atrium floor is damaged; shopfronts remain boarded.");
     state.venues.push(
       venueFixture({ ...makeVenue("second-mall", "community"), description: "An operating mall with glass doors" }),
     );
@@ -804,25 +811,29 @@ console.log(
     state.worldRules = "The sun never sets";
   });
   const mall = f.state().venues[0];
+  const [entry] = projectRoomEntries(f.state(), mall, "common", f.state().setupAt)!;
   const id = await renovation(f, {
-    zones: mall
-      .zones!.filter((z) => z.kind !== "exterior")
-      .map((z) => ({ ...z, description: "The atrium floor is repaired; shopfronts remain boarded." })),
+    roomEdits: [
+      {
+        zoneId: "common",
+        entryId: entry.id,
+        version: entry.version,
+        text: "The atrium floor is repaired; shopfronts remain boarded.",
+      },
+    ],
   });
   await f.agree(id);
   await f.service.startProjectConstruction(id, f.body(id));
   await f.service.debugCompleteProjectConstruction(id, f.body(id));
   const restarted = coerceVillageState(JSON.parse(JSON.stringify(f.state())));
   const restored = restarted.venues.find((v) => v.id === mall.id)!;
-  assert.match(
-    restored.zones!.find((z) => z.id === "common")!.description,
-    /floor is repaired; shopfronts remain boarded/,
-  );
+  const appearance = observableRoomDescription(restarted, restored.id, "common", restored.state.updatedAt);
+  assert.match(appearance, /floor is repaired; shopfronts remain boarded/);
   assert.match(restored.description, /boarded entrance/);
   assert.equal(restarted.venues.find((v) => v.id === "second-mall")!.description, "An operating mall with glass doors");
   const picture = buildLocationPrompt(
     restarted,
-    venueInZone(restored, "common"),
+    { ...venueInZone(restored, "common"), description: appearance },
     "Old lore describes a damaged atrium",
     "interior",
   );

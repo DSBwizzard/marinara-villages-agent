@@ -215,6 +215,9 @@ export type VenueRequest = {
   venueDraft?: { name: string; classes: Array<"residence" | "workplace" | "community" | "other">; description: string };
 };
 
+export type ProjectRoomEdit = { zoneId: string; entryId?: string; text: string | null };
+export type ProjectRoomEntry = { id: string; version: string; text: string };
+
 export type BuildProject = {
   actorNames?: Record<string, string>;
   id: string;
@@ -253,7 +256,7 @@ export type BuildProject = {
     targetVenueId: string;
     change: {
       form?: string;
-      exteriorDescription?: string;
+      roomEdits?: ProjectRoomEdit[];
       classes?: VenueClass[];
       capacity?: number;
       zones?: VillageZoneDraft[];
@@ -481,7 +484,7 @@ export type VillageVenue = {
 export type TownMapFit = "cover" | "stretch" | "contain";
 
 /** Reviewed zone terms; artwork and discovered state are not part of a layout draft. */
-export type VillageZoneDraft = { preserveDescription?: boolean } & Pick<
+export type VillageZoneDraft = Pick<
   NonNullable<VillageVenue["zones"]>[number],
   | "id"
   | "name"

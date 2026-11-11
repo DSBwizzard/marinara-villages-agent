@@ -89,6 +89,12 @@ ${P} .${P}-project-board{position:relative;box-sizing:border-box;max-width:90rem
 .${P}-project-board .vp-number{display:flex;align-items:center;justify-content:center;width:2.6rem;height:2.6rem;border:1px solid var(--bp-line);font-size:1.2rem}
 .${P}-project-board .vp-zone-list,.${P}-project-board .vp-people{display:grid;gap:.6rem;margin-bottom:1rem}
 .${P}-project-board .vp-zone-list button{padding:.7rem;gap:.7rem}
+.${P}-project-board .vp-room-edits{display:grid;gap:.45rem;min-width:0}
+.${P}-project-board .vp-room-picker{display:flex;align-items:center;gap:.45rem}
+.${P}-project-board .vp-room-picker select{min-width:0;flex:1}
+.${P}-project-board .vp-room-picker button{flex:none}
+.${P}-project-board .vp-room-edits ul{margin:0;padding:0;display:grid;gap:.25rem;list-style:none;max-height:8rem;overflow:auto}
+.${P}-project-board .vp-room-edits li{display:flex;align-items:center;gap:.45rem;overflow-wrap:anywhere}
 .${P}-project-board .vp-zone-artwork{max-height:10rem;max-width:100%;display:block;margin-bottom:1rem}
 .${P}-project-board .vp-facts{margin:0}
 .${P}-project-board .vp-facts>div{padding:.75rem 0;border-bottom:1px solid var(--bp-line)}

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { VillageProject, VillageState } from "../models/world.js";
+import type { VillageProject, VillageProjectLifecycle, VillageState } from "../models/world.js";
 import type { Establishment } from "../../../shared/contracts/places.js";
 import { findLocation, placeRegistry } from "./places.js";
 import { zoneManagers } from "./venue-access.js";
@@ -17,6 +17,7 @@ export function establishmentChange(
   value: unknown,
   spec: Establishment,
   at: Date,
+  prior?: VillageProjectLifecycle,
 ) {
   const row = asRecord(value),
     classes = row.classes ?? venue.classes;
@@ -35,6 +36,7 @@ export function establishmentChange(
     venue,
     spec.physical ? { ...row, zones: row.zones ?? zones } : { classes, zones, detail: spec.goal },
     at,
+    prior,
   );
 }
 

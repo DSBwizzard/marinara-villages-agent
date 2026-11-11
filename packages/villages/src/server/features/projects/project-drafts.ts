@@ -70,7 +70,8 @@ export function draftRenovationProject(
   const venue = state.venues.find((venue) => venue.id === venueId && venue.constructionStatus !== "worksite");
   if (!venue) throw notFound("Choose a finished Venue.");
   const row = asRecord(value),
-    change = readRenovationChange(state, venue, row, villageNow());
+    design = readRenovationChange(state, venue, row, villageNow()),
+    { change } = design;
   const project: VillageProject = {
     id: requestId || randomUUID(),
     kind: "renovation",
@@ -80,7 +81,7 @@ export function draftRenovationProject(
     progress: 0,
     status: "planning",
     updatedAt: villageNow().toISOString(),
-    lifecycle: lifecycle(venueId, change),
+    lifecycle: { ...lifecycle(venueId), ...design },
   };
   project.lifecycle!.changedZoneIds = changedZoneIds(venue, change);
   project.lifecycle!.baseDesignHash = venueDesignHash(venue, project.lifecycle!.changedZoneIds, change);
@@ -102,7 +103,8 @@ export function draftEstablishmentProject(
   if (!place || !venue || !place.knownBy.includes("player") || !place.prepared || place.report)
     throw conflict("Visit and prepare the Place before establishing it.");
   const establishment = establishmentDraft(row.establishment);
-  const change = establishmentChange(state, venue, row, establishment, villageNow());
+  const design = establishmentChange(state, venue, row, establishment, villageNow()),
+    { change } = design;
   const project: VillageProject = {
     id: requestId,
     kind: "establishment",
@@ -113,7 +115,7 @@ export function draftEstablishmentProject(
     status: "planning",
     updatedAt: villageNow().toISOString(),
     establishment,
-    lifecycle: lifecycle(venueId, change),
+    lifecycle: { ...lifecycle(venueId), ...design },
   };
   project.lifecycle!.changedZoneIds = establishment.physical ? changedZoneIds(venue, change) : [];
   project.lifecycle!.baseDesignHash = venueDesignHash(venue, project.lifecycle!.changedZoneIds, change);

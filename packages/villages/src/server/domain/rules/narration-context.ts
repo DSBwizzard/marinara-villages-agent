@@ -25,7 +25,7 @@ import { recentSharedEpisodes, selectEpisodeHistory } from "./episodes.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { estimatedTextTokens } from "./text-recall.js";
 import type { VenueWritingBlock } from "./venue-writing.js";
-import { projectSpeechContexts } from "./project-interpretation.js";
+import { projectSpeechContexts, projectSpeechPrompt } from "./project-interpretation.js";
 import { sceneContinuityView } from "./scene-continuity.js";
 import { narrationAccessScopes } from "./narration-access.js";
 import { capturedSceneCalendar } from "./scene-calendar.js";
@@ -431,6 +431,24 @@ export function narrationContinuityContext(
       },
     });
   }
+  const projectWorld = sceneContinuityView(state, scene);
+  const projects = projectSpeechContexts(projectWorld, writerIds, "", input, scene.placeId);
+  const projectQuery = input.toLocaleLowerCase("en-US");
+  for (const project of projects) {
+    const title = projectWorld.projects.find((row) => row.id === project.projectId)!.title.toLocaleLowerCase("en-US");
+    const requested =
+      projectQuery.includes(project.projectId.toLocaleLowerCase("en-US")) ||
+      (title.length > 3 && projectQuery.includes(title)) ||
+      (projects.length === 1 && /\b(?:project|renovation|establishment)\b/iu.test(input));
+    parts.push({
+      ...emptyPart(),
+      block: {
+        text: projectSpeechPrompt(projectWorld, [project]),
+        evidenceId: "project-context:" + project.projectId,
+        ...(!requested ? { optional: "memory" as const } : {}),
+      },
+    });
+  }
   // Soft envelopes borrow unused capacity; required context is tested only by the actual model fitter.
   let standingTokens = 0,
     recentTokens = 0,
@@ -499,7 +517,7 @@ export function narrationContinuityContext(
     repairs,
     at,
     parts: bounded,
-    projects: projectSpeechContexts(sceneContinuityView(state, scene), writerIds, "", input, scene.placeId),
+    projects: projects.filter((project) => evidenceIds.has("project-context:" + project.projectId)),
     access: narrationAccessScopes(sceneContinuityView(state, scene), ["player", ...writerIds]),
     residence: narrationResidenceContext(sceneContinuityView(state, scene), ["player", ...writerIds]),
     places: narrationPlaceContext(sceneContinuityView(state, scene), ["player", ...writerIds]),
@@ -621,7 +639,7 @@ export function fittedNarrationReadset(
       incarnation: holder.incarnation,
       offered: offered.get(continuityHolderKey(holder))?.ids ?? [],
     })),
-    projects: context.projects,
+    projects: context.projects.filter((project) => evidenceIds.includes("project-context:" + project.projectId)),
     access: context.access,
     residence: context.residence,
     places: context.places,

@@ -6,6 +6,9 @@ import { notFound } from "../../domain/rules/errors.js";
 import { sceneQueries } from "../scenes/services.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
 import { readVillageState } from "../world/village-store.js";
+import { findLocation } from "../../domain/rules/places.js";
+import { projectRoomEntries } from "../../domain/rules/project-room-edits.js";
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import {
   cancelProject,
   createNewVenueProject,
@@ -53,6 +56,21 @@ export function registerProjectRoutes(engine: FastifyInstance) {
   projectAction("debug-complete", debugCompleteProjectConstruction);
   projectAction("revise", reviseRenovationProject);
   projectAction("renew-approvals", renewRenovationApprovals);
+  app.get<{ Params: { placeId: string; zoneId: string } }>(
+    "/projects/rooms/:placeId/:zoneId",
+    async (request, reply) => {
+      try {
+        const state = await readVillageState({ memories: true });
+        const venue = findLocation(state, readVenueId(request.params.placeId));
+        if (!venue) throw notFound("Choose an existing location.");
+        return {
+          entries: projectRoomEntries(state, venue, readVenueId(request.params.zoneId), villageNow().toISOString()),
+        };
+      } catch (error) {
+        return fail(reply, error, "reading Room entries");
+      }
+    },
+  );
   app.get("/progress/debug", async (_request, reply) => {
     try {
       if (!villagesDebugAgentsEnabled()) throw notFound("Progress debugging is unavailable.");

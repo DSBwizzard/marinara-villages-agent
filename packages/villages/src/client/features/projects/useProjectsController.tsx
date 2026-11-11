@@ -74,7 +74,6 @@ export function useProjectsController({
             ...target,
             classes: project?.lifecycle?.change?.classes ?? target.classes,
             form: project?.lifecycle?.change?.form ?? target.form,
-            description: project?.lifecycle?.change?.exteriorDescription ?? target.description,
           }
         : null;
   const workspace = useProjectWorkspaces(
@@ -86,6 +85,7 @@ export function useProjectsController({
       title: project?.title ?? name,
       detail: project?.lifecycle?.change?.detail ?? description,
       zones: project?.lifecycle?.change?.zones ?? target?.zones?.filter((zone) => zone.kind !== "exterior") ?? [],
+      roomEdits: project?.lifecycle?.change?.roomEdits ?? [],
       capacity: project?.lifecycle?.change?.capacity ?? initial?.residenceCapacity ?? 1,
     },
     String(snapshot?.isFounded ?? ""),
@@ -130,8 +130,8 @@ export function useProjectsController({
             classes: workspace.draft.venue?.classes,
             capacity: workspace.draft.capacity,
             form: workspace.draft.venue?.form,
-            exteriorDescription: workspace.draft.venue?.description,
             zones: workspace.draft.zones,
+            roomEdits: workspace.draft.roomEdits,
           },
     );
     if (next && selected.current === selectedId) {
@@ -168,10 +168,10 @@ export function useProjectsController({
           title: draft.title,
           detail: draft.detail,
           form: venue.form,
-          exteriorDescription: venue.description,
           classes: venue.classes,
           capacity: draft.capacity,
           zones: draft.zones,
+          roomEdits: draft.roomEdits,
         }));
     if (next) workspace.field("dirty")(false);
     return next;

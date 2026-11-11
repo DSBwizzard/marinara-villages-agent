@@ -83,7 +83,7 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
           row.scope ===
             (project.kind === "establishment"
               ? establishmentScope(project)
-              : approvalScope(venue, flow.change!, row.residentId, flow.changedZoneIds)),
+              : approvalScope(venue, flow.change!, row.residentId, flow.changedZoneIds, flow.roomBasis)),
       );
     }
     flow.candidates = flow.candidates.filter(
@@ -199,10 +199,11 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
           row = { classes: row.classes ?? venue.classes, detail: project.establishment.goal };
         }
       }
-      project.lifecycle.change =
+      const design =
         project.kind === "establishment"
-          ? establishmentChange(state, venue, row, project.establishment!, villageNow())
-          : readRenovationChange(state, venue, row, villageNow());
+          ? establishmentChange(state, venue, row, project.establishment!, villageNow(), project.lifecycle)
+          : readRenovationChange(state, venue, row, villageNow(), project.lifecycle);
+      Object.assign(project.lifecycle, design);
       project.lifecycle.changedZoneIds =
         project.establishment && !project.establishment.physical ? [] : changedZoneIds(venue, project.lifecycle.change);
       project.lifecycle.baseDesignHash = venueDesignHash(

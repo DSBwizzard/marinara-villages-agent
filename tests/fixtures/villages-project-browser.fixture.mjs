@@ -145,6 +145,12 @@ export async function openProjectPage(browser, width, snapshot = projectSnapshot
   await page.route("**/api/villages/**", async (route) => {
     const path = new URL(route.request().url()).pathname.replace(/^.*\/api\/villages/, ""),
       body = route.request().postDataJSON();
+    if (path.startsWith("/projects/rooms/")) {
+      const entries = [
+        { id: "continuity-" + "a".repeat(32), version: "continuity-version-" + "b".repeat(32), text: "An approach." },
+      ];
+      return fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify({ entries }) });
+    }
     calls.push({ path, body });
     if (mutate) await mutate(path, body, snapshot, route);
     await fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(snapshot) });

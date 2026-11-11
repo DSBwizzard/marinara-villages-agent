@@ -1,4 +1,4 @@
-// Test cases: narration-project/approval-and-lead, narration-project/controller, narration-project/captured-terms, narration-project/current-witness, narration-project/withdrawal, narration-project/pending-withdrawal, narration-project/selected-lead, narration-project/new-venue-terms, narration-project/explicit-start, narration-project/identity-replacement, narration-project/retired-proof
+// Test cases: narration-project/approval-and-lead, narration-project/controller, narration-project/captured-terms, narration-project/fitted-terms, narration-project/current-witness, narration-project/withdrawal, narration-project/pending-withdrawal, narration-project/selected-lead, narration-project/new-venue-terms, narration-project/explicit-start, narration-project/identity-replacement, narration-project/retired-proof
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -112,7 +112,7 @@ function fixture(speakerId = "a", whisper = false) {
     {
       title: "Covered entrance",
       detail: "Build a covered entrance.",
-      exteriorDescription: "A covered entrance with a wooden roof.",
+      form: "A house with a covered entrance and a wooden roof.",
     },
     "project",
   );
@@ -234,6 +234,35 @@ await runCase("narration-project/captured-terms", () => {
     assert.throws(() => applyNarrationProject(f.state, f.request("approval"), readset, context, sources, baseline));
     assert.deepEqual(f.state, before);
   }
+});
+
+await runCase("narration-project/fitted-terms", () => {
+  const f = fixture();
+  const large = ["Timber. ".repeat(1500), "Stone. ".repeat(1600)];
+  f.project.lifecycle!.change!.roomEdits = large.map((text) => ({ zoneId: "exterior", text }));
+  const incidental = narrationContinuityContext(f.state, f.scene, f.venue, "greeting", "Good morning.", f.at);
+  assert.equal(incidental.projects.length, 0, "a large incidental design cannot make ordinary chat require the plan");
+  const requested = narrationContinuityContext(
+    f.state,
+    f.scene,
+    f.venue,
+    "review",
+    "Let's review Covered entrance.",
+    f.at,
+  );
+  const projectBlock = requested.parts.find(
+    (part) => part.block.evidenceId === "project-context:" + f.project.id,
+  )!.block;
+  assert.equal(projectBlock.optional, undefined);
+  assert(
+    large.every((text) => projectBlock.text.includes(text)),
+    "the requested terms remain complete",
+  );
+  assert.equal(fittedNarrationReadset(f.state, requested, []).projects.length, 0);
+  assert.equal(
+    fittedNarrationReadset(f.state, requested, [projectBlock.evidenceId!]).projects[0].projectId,
+    f.project.id,
+  );
 });
 
 await runCase("narration-project/current-witness", () => {

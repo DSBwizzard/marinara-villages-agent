@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { fixture, renovation } from "./fixtures/villages-projects.fixture.js";
+import { fixture, renovation, seedObservedProjectRoom } from "./fixtures/villages-projects.fixture.js";
 const persisted = fixture();
+await persisted.mutate((state) => seedObservedProjectRoom(state, state.venues[0], "exterior", "A stone arch."));
 const persistedId = await renovation(persisted, {
   form: "A restored stone hall",
-  exteriorDescription: "A repaired doorway beneath the original arch.",
+  roomEdits: [{ zoneId: "exterior", text: "A repaired doorway beneath the original arch." }],
 });
 await persisted.agree(persistedId);
 const savedDesign = structuredClone(persisted.get(persistedId).lifecycle!.change!);
@@ -13,7 +14,7 @@ assert.equal(persisted.get(persistedId).lifecycle!.candidates.length, 1, "spoken
 assert.equal(persisted.get(persistedId).lifecycle!.approvals.length, 1, "unchanged approval remains valid");
 await persisted.service.reviseRenovationProject(
   persistedId,
-  persisted.body(persistedId, { ...savedDesign, exteriorDescription: "A different Entrance." }),
+  persisted.body(persistedId, { ...savedDesign, roomEdits: [{ zoneId: "exterior", text: "A different Entrance." }] }),
 );
 assert.equal(persisted.get(persistedId).lifecycle!.builderId, "", "changed physical terms need renewed willingness");
 assert.equal(persisted.get(persistedId).lifecycle!.candidates.length, 0);

@@ -65,7 +65,7 @@ export function projectSpeechContext(
             project.kind === "establishment"
               ? establishmentScope(project)
               : venue && flow.change
-                ? approvalScope(venue, flow.change, id, flow.changedZoneIds)
+                ? approvalScope(venue, flow.change, id, flow.changedZoneIds, flow.roomBasis)
                 : "",
           design: projectDesignKey(project),
           approvals: flow.approvals.filter((row) => row.residentId === id),
@@ -126,7 +126,9 @@ export function projectSpeechPrompt(state: VillageState, contexts: ProjectSpeech
             : {}),
         };
       }),
-    ) +
-    ". These complete scoped terms are native reference, not automatically shared character knowledge. Supporting controllers may approve their own Place or Renovations; only Villagers may volunteer to lead physical work. Native approval requires the deciding person's actual unqualified current words about these exact terms, witnessed by the player. Conditions, uncertainty, politeness and promises of later agreement are not approval. Preserve them as ordinary roleplay/common offers. Approval and volunteering may use the same utterance. A refusal or withdrawal is unilateral. Approval or willingness alone never starts work. Only the actual Player explicit Start/Resume request can invoke project.start; no command directly completes work. Physical Projects take 24 elapsed real hours after the player's explicit Start. Social establishment uses no timer or lead and requires actual witnessed objectives, never promised future results. Gifts and objects provide no Project benefit."
+    )
   );
 }
+
+export const PROJECT_SPEECH_DIRECTION =
+  "Use only the fitted Project terms as native reference. Residents know the terms through actual communication. Controllers can approve their own Place or Renovation. Villagers may volunteer to lead physical work. Approval needs unqualified current words about the exact terms, witnessed by the player. Conditions, politeness and later promises stay ordinary roleplay or common offers. Approval and volunteering may share an utterance. Refusal or withdrawal is unilateral. Only explicit Player Start or Resume begins physical work, which takes 24 elapsed hours. Social establishment needs witnessed objectives. Gifts and objects provide no Project benefit.";

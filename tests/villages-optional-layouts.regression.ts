@@ -435,7 +435,7 @@ async function main() {
       zones: target.zones!.filter((zone) => zone.kind !== "exterior").map((zone) => ({ ...zone, description: "" })),
     });
     assert.equal(proposal.lifecycle!.change!.zones![0]!.description, "");
-    assert.equal(proposal.lifecycle!.change!.zones![0]!.preserveDescription, true);
+    assert.equal(proposal.lifecycle!.change!.roomEdits, undefined);
     assert.equal(
       villageSettings(proposalState, { name: "Player", personaAvailable: false } as never, null).venues.find(
         (venue) => venue.id === target.id,

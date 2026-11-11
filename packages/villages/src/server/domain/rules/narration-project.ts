@@ -157,7 +157,7 @@ export function applyNarrationProject(
         scope:
           project.kind === "establishment"
             ? establishmentScope(project)
-            : approvalScope(venue, flow.change, actorId, flow.changedZoneIds),
+            : approvalScope(venue, flow.change, actorId, flow.changedZoneIds, flow.roomBasis),
         at: readset.capturedAt,
       });
     } else {

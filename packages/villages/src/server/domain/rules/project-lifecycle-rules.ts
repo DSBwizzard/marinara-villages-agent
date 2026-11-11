@@ -24,6 +24,7 @@ import {
 import { cloneVillageContext } from "./world-context-copy.js";
 import { initializeRoomContinuity } from "./native-continuity.js";
 import { captureZoneObservation } from "./zone-observation.js";
+import { stageProjectRoomEdits } from "./project-room-edits.js";
 export { renovationAffectedIds, validImage } from "./project-terms.js";
 
 export const PROJECT_DURATION_MS = 24 * 60 * 60_000;
@@ -82,7 +83,7 @@ export function missingProjectAgreements(state: VillageState, project: VillagePr
         (approval) =>
           approval.residentId === id &&
           projectAgreementCurrent(state, approval) &&
-          approval.scope === approvalScope(venue, flow.change!, id, flow.changedZoneIds),
+          approval.scope === approvalScope(venue, flow.change!, id, flow.changedZoneIds, flow.roomBasis),
       ),
   );
 }
@@ -104,7 +105,7 @@ export function refreshProjectAgreements(state: VillageState): void {
         approval.scope ===
           (project.kind === "establishment"
             ? establishmentScope(project)
-            : approvalScope(venue, flow.change!, approval.residentId, flow.changedZoneIds)),
+            : approvalScope(venue, flow.change!, approval.residentId, flow.changedZoneIds, flow.roomBasis)),
     );
   }
 }
@@ -244,6 +245,7 @@ export function beginProject(
     )
       throw conflict("Choose a physical change before Start.");
     validateRenovationDesign(state, venue, effectiveRenovationChange(venue, flow.change!, flow.changedZoneIds), now);
+    stageProjectRoomEdits(state, venue, flow, project.id, at);
   } else {
     if (!project.plan) throw conflict("Save the physical design first.");
     const position = project.venueDraft!.position;

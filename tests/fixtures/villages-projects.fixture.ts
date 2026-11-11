@@ -18,6 +18,17 @@ import {
   draftRenovationProject,
 } from "../../packages/villages/src/server/features/projects/project-drafts.js";
 import { createProjectLifecycle } from "../../packages/villages/src/server/features/projects/project-lifecycle-service.js";
+import { initializeRoomContinuity } from "../../packages/villages/src/server/domain/rules/native-continuity.js";
+import { captureZoneObservation } from "../../packages/villages/src/server/domain/rules/zone-observation.js";
+import { projectRoomEntries } from "../../packages/villages/src/server/domain/rules/project-room-edits.js";
+
+export function seedObservedProjectRoom(state: VillageState, venue: VillageVenue, zoneId: string, text: string) {
+  const zone = venue.zones!.find((row) => row.id === zoneId)!;
+  zone.description = text;
+  initializeRoomContinuity(state, venue.id, zoneId, text, "project-fixture", state.setupAt);
+  zone.observed = captureZoneObservation(venue, zone, text);
+  return projectRoomEntries(state, venue, zoneId, state.setupAt)!;
+}
 
 export function venue(id = "cafe", role: "community" | "residence" = "community"): VillageVenue {
   const entrance = {
@@ -134,7 +145,7 @@ export function fixture() {
             residentId,
             incarnation: current.villagers.find((row) => row.characterId === residentId)!.incarnation,
             source: "conversation",
-            scope: approvalScope(target, flow.change, residentId, flow.changedZoneIds),
+            scope: approvalScope(target, flow.change, residentId, flow.changedZoneIds, flow.roomBasis),
             evidenceId: "consent:" + id,
             at: current.setupAt,
           });

@@ -21,11 +21,7 @@ export function prepareRenovatedPrivateInterior(zone: VillageVenueZone, previous
     zone.preparation = { status: "pending" };
     return;
   }
-  const specificationChanged =
-    zone.roomSpecification !== previous.roomSpecification &&
-    !(previous.roomSpecification === undefined && zone.roomSpecification === previous.description);
-  if (specificationChanged || zone.description !== previous.description) {
-    zone.description = previous.description;
+  if (zone.roomSpecification !== previous.roomSpecification) {
     zone.preparation = { status: "pending", mode: "renovation" };
   }
 }

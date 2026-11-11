@@ -38,6 +38,7 @@ import { coerceFoundingTasks } from "../rules/founding-tasks.js";
 import { coerceLoreTokenBudget, coerceSelectedLorebookIds, DEFAULT_LORE_TOKEN_BUDGET } from "../rules/lore-policy.js";
 import { memoryRequire } from "../rules/memory-integrity.js";
 import { removedEpisodeRoom } from "../rules/episode-sources.js";
+import { projectRoomEditsSchema } from "../rules/project-room-edits.js";
 import { readContinuity } from "./continuity-codec.js";
 import { readEpisodes } from "./episode-codec.js";
 import { emptyContinuity } from "../rules/continuity.js";
@@ -665,9 +666,6 @@ function coerceZoneDrafts(value: unknown): VillageZoneDraft[] | undefined {
     if (
       !id ||
       !name ||
-      (!description &&
-        !row.preserveDescription &&
-        !["private-residence", "staff", "restricted"].includes(String(row.kind))) ||
       !["public", "shared-residence", "private-residence", "staff", "restricted"].includes(String(row.kind))
     )
       return [];
@@ -685,7 +683,6 @@ function coerceZoneDrafts(value: unknown): VillageZoneDraft[] | undefined {
         connectedTo: Array.isArray(row.connectedTo)
           ? row.connectedTo.filter((id): id is string => typeof id === "string")
           : undefined,
-        preserveDescription: row.preserveDescription === true,
         kind: row.kind as VillageZoneDraft["kind"],
         venueClass: validVenueClasses([row.venueClass]) ? (row.venueClass as VillageVenueClass) : "other",
       },
@@ -880,15 +877,30 @@ function coerceProjects(value: unknown): VillageProject[] {
     if (raw.kind === "new-venue" && (!validVenueClasses(draft.classes) || !asTrimmedString(draft.name)))
       throw new Error("Invalid Project Venue.");
     const change = asRecord(flow.change),
-      zones = flow.change === null ? undefined : coerceZoneDrafts(change.zones);
+      zones = flow.change === null ? undefined : coerceZoneDrafts(change.zones),
+      roomEdits = projectRoomEditsSchema.parse(change.roomEdits === undefined ? [] : change.roomEdits),
+      roomBasis = flow.roomBasis === undefined ? [] : flow.roomBasis;
+    const changedZones = asStringArray(flow.changedZoneIds);
+    const editTargets = roomEdits.flatMap(({ entryId }) => (entryId ? [entryId] : []));
+    if (
+      !Array.isArray(roomBasis) ||
+      roomBasis.length !== roomEdits.length ||
+      roomBasis.some((digest) => typeof digest !== "string" || !/^[a-f0-9]{64}$/u.test(digest)) ||
+      new Set(editTargets).size !== editTargets.length ||
+      roomEdits.some(
+        ({ zoneId, entryId, text }) =>
+          !changedZones.includes(zoneId) ||
+          (zoneId !== "exterior" && !zones?.some((zone) => zone.id === zoneId)) ||
+          (!entryId && text === null),
+      ) ||
+      (roomEdits.length &&
+        (raw.kind === "new-venue" || (raw.kind === "establishment" && asRecord(raw.establishment).physical !== true)))
+    )
+      throw new Error("Invalid Project Room basis.");
     if (
       ["renovation", "establishment"].includes(String(raw.kind)) &&
       (!validVenueClasses(change.classes) ||
         (change.form !== undefined && (typeof change.form !== "string" || change.form.length > 2000)) ||
-        (change.exteriorDescription !== undefined &&
-          (typeof change.exteriorDescription !== "string" ||
-            !change.exteriorDescription.trim() ||
-            change.exteriorDescription.length > 4000)) ||
         !Number.isInteger(change.capacity) ||
         Number(change.capacity) < 1 ||
         Number(change.capacity) > 4 ||
@@ -958,15 +970,14 @@ function coerceProjects(value: unknown): VillageProject[] {
               ...(asRecord(flow.change).form !== undefined
                 ? { form: asTrimmedString(asRecord(flow.change).form) }
                 : {}),
-              ...(asRecord(flow.change).exteriorDescription !== undefined
-                ? { exteriorDescription: asTrimmedString(asRecord(flow.change).exteriorDescription) }
-                : {}),
+              ...(roomEdits.length ? { roomEdits } : {}),
             },
       affectedIds: asStringArray(flow.affectedIds),
       approvals: structuredClone(approvals) as NonNullable<VillageProject["lifecycle"]>["approvals"],
       candidates: structuredClone(flow.candidates) as NonNullable<VillageProject["lifecycle"]>["candidates"],
       baseDesignHash: asTrimmedString(flow.baseDesignHash),
-      changedZoneIds: asStringArray(flow.changedZoneIds),
+      ...(roomBasis.length ? { roomBasis } : {}),
+      changedZoneIds: changedZones,
       builderId: asTrimmedString(flow.builderId),
       spokenProofs: structuredClone(flow.spokenProofs) as NonNullable<VillageProject["lifecycle"]>["spokenProofs"],
       evidenceIds: asStringArray(flow.evidenceIds),
