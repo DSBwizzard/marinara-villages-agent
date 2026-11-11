@@ -24,7 +24,7 @@ import { residentMovementOptions } from "../../domain/rules/resident-movement.js
 import { responseDiagnostics } from "../../domain/rules/response-diagnostics.js";
 import { sceneContinuityView, sceneLocationContext } from "../../domain/rules/scene-continuity.js";
 import { assertCurrentSceneGeneration, completeSceneObject } from "../../domain/rules/scene-writing-contract.js";
-import { sceneSpriteSelection, describeSpriteExpressions } from "../../domain/rules/sprite-expressions.js";
+import { describeSpriteExpressions } from "../../domain/rules/sprite-expressions.js";
 import {
   buildVenueSceneBlocks,
   fitVenueWritingMessages,
@@ -157,7 +157,8 @@ export function createSceneWriting({
     ]);
     signal?.throwIfAborted();
     const calendar = context.calendar;
-    const presentation = sceneSpriteSelection(scene, village),
+    const presentation = context.presentation,
+      sprites = Object.entries(presentation.sprites),
       loreUses = inspectedLoreUse(loreInspection, "GM");
     const blocksFor = (texts: string[]): VenueWritingBlock[] => texts.filter(Boolean).map((text) => ({ text }));
     const blocks = buildVenueSceneBlocks({
@@ -215,18 +216,25 @@ export function createSceneWriting({
         narrationAccessPrompt(context.access),
         narrationResidencePrompt(context.residence),
         narrationPlacePrompt(context.places),
+        sprites.length
+          ? 'Optional staging:[{characterId,expression?,look?:{target:"player"|"villager"|"direction",characterId?,direction?}}] uses supplied sprite IDs and visible actors. Code owns placement.'
+          : "",
         JSON.stringify({
           calendar,
           protections: context.protections,
           roomReferences: context.roomReferences,
           circumstance: narrationCircumstancePrompt(context.circumstance),
-          presentation: {
-            state: presentation.state,
-            sprites: Object.entries(presentation.sprites).map(([actorId, sprite]) => ({
-              actorId,
-              expressions: describeSpriteExpressions(sprite, presentation.variants),
-            })),
-          },
+          presentation: sprites.length
+            ? {
+                state: Object.fromEntries(
+                  Object.entries(presentation.state).map(([id, { expression, look }]) => [id, { expression, look }]),
+                ),
+                sprites: sprites.map(([actorId, sprite]) => ({
+                  actorId,
+                  expressions: describeSpriteExpressions(sprite, presentation.variants),
+                })),
+              }
+            : undefined,
         }),
       ]),
     });

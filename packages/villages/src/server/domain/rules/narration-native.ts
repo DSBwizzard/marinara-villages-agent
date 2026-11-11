@@ -192,6 +192,7 @@ export function prepareNarrationNative(
         readset.capturedAt,
         planned.filter((move) => move.characterId !== "player"),
         planned.filter((move) => move.characterId === "player"),
+        readset.presentation,
       ),
       native: {},
       moves: planned,

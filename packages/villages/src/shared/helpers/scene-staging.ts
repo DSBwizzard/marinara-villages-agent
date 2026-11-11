@@ -100,7 +100,7 @@ export function lineStagingCues(line: StagingLine): StagingCue[] {
   return cues;
 }
 
-function retainAttention(state: StagingState, ids: readonly string[]): StagingState {
+export function retainStagingAttention(state: StagingState, ids: readonly string[]): StagingState {
   return Object.fromEntries(
     Object.entries(state).map(([id, person]) => [
       id,
@@ -118,7 +118,7 @@ export function currentStaging(ids: readonly string[], events: readonly StagingE
   for (const event of events) {
     if (event.beforeIds) {
       activeIds = event.beforeIds;
-      state = retainAttention(state, activeIds);
+      state = retainStagingAttention(state, activeIds);
     }
     for (const cue of event.cues ?? []) {
       if (!activeIds.includes(cue.characterId) || !state[cue.characterId]) continue;
@@ -127,7 +127,7 @@ export function currentStaging(ids: readonly string[], events: readonly StagingE
     }
     if (event.afterIds) {
       activeIds = event.afterIds;
-      state = retainAttention(state, activeIds);
+      state = retainStagingAttention(state, activeIds);
     }
   }
   return state;

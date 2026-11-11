@@ -35,6 +35,7 @@ import { capturePlaceContext, npcProfile } from "./places.js";
 import { offerSceneNarrative } from "./scene-narrative.js";
 import { nativeCircumstanceRoots } from "./native-continuity.js";
 import { sceneRepairOffers } from "./narration-circumstance.js";
+import { sceneSpriteSelection } from "./sprite-expressions.js";
 
 type Part = {
   block: VenueWritingBlock;
@@ -157,6 +158,7 @@ export function narrationContinuityContext(
     });
   memoryRequire(actors.length <= 32, "the complete Scene witness roster exceeds the retained episode bound");
   const writerIds = scene.contactGeneration?.actorIds ?? scene.activeIds;
+  const captured = sceneContinuityView(state, scene);
   const loreAudience = ["player", ...writerIds];
   const npcCandidates = Object.values(
     capturePlaceContext(
@@ -539,6 +541,7 @@ export function narrationContinuityContext(
   return {
     episodeId,
     actors,
+    presentation: sceneSpriteSelection(scene, captured),
     npcCandidates,
     circumstance: offerSceneNarrative(
       state,
@@ -557,9 +560,9 @@ export function narrationContinuityContext(
       .filter(({ text }) => text.length <= 4000)
       .slice(-6),
     projects: projects.filter((project) => evidenceIds.has("project-context:" + project.projectId)),
-    access: narrationAccessScopes(sceneContinuityView(state, scene), ["player", ...writerIds]),
-    residence: narrationResidenceContext(sceneContinuityView(state, scene), ["player", ...writerIds]),
-    places: narrationPlaceContext(sceneContinuityView(state, scene), ["player", ...writerIds]),
+    access: narrationAccessScopes(captured, ["player", ...writerIds]),
+    residence: narrationResidenceContext(captured, ["player", ...writerIds]),
+    places: narrationPlaceContext(captured, ["player", ...writerIds]),
     protections,
     roomReferences: readOnlyRoomContext(
       state,
@@ -637,6 +640,7 @@ export function fittedNarrationReadset(
     calendar: context.calendar,
     sceneRevision: context.source.scene.sceneRevision,
     continuityRevision: state.continuity.revision,
+    presentation: context.presentation,
     source: { ...context.source, historical, subjects },
     admission: {
       seed: state.seed,

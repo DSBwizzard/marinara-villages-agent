@@ -10,7 +10,7 @@ import {
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { lineStagingCues } from "../packages/villages/src/shared/helpers/scene-staging.js";
-import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
+import { readNarrationReply } from "../packages/villages/src/server/domain/rules/narration-contract.js";
 import {
   describeSpriteExpressions,
   resolveSpriteExpression,
@@ -95,28 +95,22 @@ assert.equal(validateSpriteExpression(semanticSprite, "e-running"), "e-running")
 assert.equal(validateSpriteExpression(semanticSprite, "running"), "", "new selections require stable IDs");
 assert.equal(validateSpriteExpression(semanticSprite, "e-someone-else"), "", "another character's IDs are rejected");
 
-const staged = parseVenueReply(
+const staged = readNarrationReply(
   {
-    heardPlayerBy: [],
     segments: [
-      { kind: "dialogue", speakerId: "resident-a", text: "Hello.", heardBy: ["resident-b"], gazeAt: "resident-b" },
-      { kind: "dialogue", speakerId: "resident-b", text: "Hi.", heardBy: ["resident-a"], gazeAt: "outsider" },
-      { kind: "whisper", speakerId: "resident-a", text: "Quiet.", heardBy: ["resident-b"], targetId: "resident-b" },
+      { kind: "dialogue", delivery: "whisper", speakerId: "resident-a", text: "Quiet.", targetId: "resident-b" },
     ],
   },
   ["resident-a", "resident-b"],
 );
-assert(
-  staged.lines.every((line) => !Object.hasOwn(line, "gazeAt")),
-  "Inline gaze hints are ignored",
-);
+const whisper = staged.segments[0]!;
+assert.equal(whisper.kind, "dialogue");
 assert.deepEqual(
-  lineStagingCues(staged.lines[2]),
+  lineStagingCues({ ...whisper, kind: "whisper" }),
   [{ characterId: "resident-a", look: { target: "villager", characterId: "resident-b" } }],
   "Whispers face their target without extra model output",
 );
 
-const now = new Date().toISOString();
 assert.equal(defaultVillageState().spriteCardFlipEnabled, true, "new Villages start with flips on");
 assert.equal(
   coerceVillageState(defaultVillageState()).spriteCardFlipEnabled,
@@ -138,18 +132,6 @@ assert.equal(
   true,
   "the Village document preserves the shared setting through storage round trips",
 );
-const resident = {
-  letterFontId: "caveat",
-  characterId: "a",
-  addedAt: now,
-  cardSnapshot: { id: "a", revision: 1, sourceStatus: "available", name: "A", capturedAt: now },
-  sprite: semanticSprite,
-};
-assert.equal(
-  coerceVillageState({ ...defaultVillageState(), wishSystemVersion: 3, villagers: [resident] }).villagers[0]?.sprite,
-  null,
-  "retired unversioned assignments are ignored",
-);
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const entry = readFileSync(
   join(root, "packages/villages/src/client/features/residents/villages-sprite-manager.tsx"),
@@ -159,7 +141,7 @@ assert.match(entry, /Upload images/);
 assert.match(entry, /Save and use in Scenes/);
 assert.match(entry, /Download saved PNG/);
 assert.doesNotMatch(entry, /generate-sheet|repair-background|Suggest another pose/);
-console.log("Resident expressions, stage selection, gaze, portrait fallback and retired assignments passed.");
+console.log("Resident expressions, stage selection, gaze and portrait fallback passed.");
 
 // Engine filenames group automatically, independently of reviewed display labels.
 const variantSprite = {

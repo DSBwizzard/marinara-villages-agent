@@ -23,6 +23,47 @@ const subjects = z
   .array(z.object({ id: z.string().min(1).max(160), incarnation: z.string().min(1).max(160) }).strict())
   .max(256)
   .refine((rows) => new Set(rows.map((row) => row.id)).size === rows.length);
+const presentation = z
+  .object({
+    variants: z.boolean(),
+    state: z.record(
+      id,
+      z
+        .object({
+          position: z.enum(["left", "center", "right"]),
+          expression: z.string().max(40),
+          look: z.discriminatedUnion("target", [
+            z.object({ target: z.literal("player") }).strict(),
+            z.object({ target: z.literal("villager"), characterId: id }).strict(),
+            z.object({ target: z.literal("direction"), direction: z.enum(["left", "right"]) }).strict(),
+          ]),
+        })
+        .strict(),
+    ),
+    sprites: z.record(
+      id,
+      z
+        .object({
+          defaultExpressionId: id.optional(),
+          expressions: z.array(
+            z
+              .object({
+                expressionId: id,
+                name: z.string(),
+                spriteName: z.string().optional(),
+                view: z.enum(["front", "side"]),
+              })
+              .strict(),
+          ),
+        })
+        .strict(),
+    ),
+  })
+  .strict()
+  .refine(
+    (row) =>
+      Object.keys(row.state).length <= 32 && Object.keys(row.sprites).every((id) => Object.hasOwn(row.state, id)),
+  );
 const repairs = z
   .array(
     z
@@ -70,6 +111,7 @@ const saved = z
             Number.isFinite(Date.parse(row.capturedAt)) &&
             Number.isSafeInteger(row.sceneRevision) &&
             Number.isSafeInteger(row.continuityRevision) &&
+            presentation.safeParse(row.presentation).success &&
             Array.isArray(row.projects) &&
             Array.isArray(row.access) &&
             Array.isArray(row.places) &&

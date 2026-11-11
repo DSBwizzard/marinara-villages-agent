@@ -5,6 +5,7 @@ import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import type { ContactMove } from "./venue-contact.js";
 import { routeZoneEvents } from "./zone-events.js";
 import { fenceIntroductionWitnesses } from "./npc-participation.js";
+import { settleSceneSpriteCues, type SpriteSelectionContext } from "./sprite-expressions.js";
 
 /** Bind labels, routing and presentation once, before any source fingerprint or saved episode is authored. */
 export function narrationLines(
@@ -14,12 +15,13 @@ export function narrationLines(
   at: string,
   moves: Pick<ContactMove, "characterId" | "zoneId" | "segment">[],
   playerMoves: { zoneId: string; segment: number }[] = [],
+  presentation?: SpriteSelectionContext,
 ) {
   memoryRequire(scene.contactGeneration?.venue, "narration needs its captured routing scope");
   const ids = reply.segments.map((row) => "line-" + memoryHash([episodeId, row.id]).slice(0, 32));
   const lines: VenueReplyLine[] = reply.segments.map((row) =>
     row.kind === "narration"
-      ? { kind: "narration", speakerId: "__venue_scene__", content: row.text, heardBy: [] }
+      ? { kind: "narration", speakerId: "__venue_scene__", content: row.text, heardBy: [], staging: row.staging }
       : {
           kind: row.delivery === "whisper" ? "whisper" : row.presentation === "aside" ? "side" : "dialogue",
           speakerId: row.speakerId,
@@ -34,6 +36,7 @@ export function narrationLines(
   routeZoneEvents(reply.segments, scene, lines, moves, playerMoves);
   if (scene.pendingNpcAdmissions?.length)
     fenceIntroductionWitnesses(lines, [], scene.pendingNpcAdmissions, scene.activeIds, false);
+  settleSceneSpriteCues(lines, presentation, episodeId);
   const cast = [
     ...new Map(
       [...scene.participants, ...(scene.sceneAttendance?.occupants ?? [])].map((person) => [

@@ -169,7 +169,15 @@ export function acceptNarrationContinuity(
     ...readset.source,
     scene,
     actors,
-    ...narrationLines(reply, scene, readset.source.episodeId, readset.capturedAt, native.moves, native.playerMoves),
+    ...narrationLines(
+      reply,
+      scene,
+      readset.source.episodeId,
+      readset.capturedAt,
+      native.moves,
+      native.playerMoves,
+      readset.presentation,
+    ),
     moves: [
       ...native.moves,
       ...native.playerMoves.map((move) => ({ characterId: "player", zoneId: move.zoneId, segment: move.segment })),
