@@ -11,6 +11,7 @@ import { readVillagerCard } from "../packages/villages/src/server/adapters/engin
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageSnapshot, VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import { DEFAULT_TOWN_MAP_VIEW } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
+import { observableRoomDescription } from "../packages/villages/src/server/domain/rules/zone-picture.js";
 import { createFoundingSetup } from "../packages/villages/src/server/features/founding/founding-setup-service.js";
 import {
   configureFoundingSetup,
@@ -45,7 +46,7 @@ function input(name: string) {
         category: id === "hall" ? "public-center" : "house",
         classes: [id === "hall" ? "community" : "residence"],
         layoutVersion: 1,
-        layout: "common",
+        layout: id === "same" ? "both" : "common",
         spaces: [
           {
             id: "common:base",
@@ -55,7 +56,19 @@ function input(name: string) {
             venueClass: id === "hall" ? "community" : "residence",
           },
         ],
-        privateSpaces: [],
+        privateSpaces:
+          id === "same"
+            ? [
+                {
+                  id: "private:same",
+                  name: "Private room",
+                  purpose: "Rest",
+                  description: "A narrow oak bed",
+                  venueClass: "residence",
+                  ownerId: "same",
+                },
+              ]
+            : [],
         occupancy: { playerHome: id === "player", residentCharacterId: id === "same" ? id : null, homeKind: null },
         presentation: { x: 0.2 + index * 0.2, y: 0.5 },
       });
@@ -342,6 +355,8 @@ assert.equal(direct.state.villagers[0]!.agenda!.personalizationPending, true);
 assert.equal(direct.state.progressEngineVersion, 1);
 assert.equal(direct.state.foundingPreparation!.status, "pending");
 assert.equal(direct.state.venues.length, 3);
+assert.equal(observableRoomDescription(direct.state, "same", "private:same", direct.state.setupAt), "A narrow oak bed");
+assert.equal(observableRoomDescription(direct.state, "same", "common:base", direct.state.setupAt), "A table");
 assert(direct.calls.indexOf("validate-connections") < direct.calls.indexOf("persona:player"));
 assert(direct.calls.indexOf("cards") < direct.calls.indexOf("mutate"));
 assert.equal(direct.calls.filter((call) => call === "mutate").length, 2);

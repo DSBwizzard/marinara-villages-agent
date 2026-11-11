@@ -164,8 +164,11 @@ export function villageSettings(
       { label: "Starting history", entries: readLoreUse(village.startingHistory.lore) },
       ...village.venues.flatMap((venue) =>
         (venue.zones ?? [])
-          .filter((zone) => zone.preparation?.status === "ready")
-          .map((zone) => ({ label: `${venue.name} · ${zone.name}`, entries: readLoreUse(zone.preparation?.lore) })),
+          .filter((zone) => zone.preparation?.status === "ready" && (!isVillageFounded(village) || !!zone.observed))
+          .map((zone) => ({
+            label: `${venue.name} · ${observedZone(zone, !isVillageFounded(village)).name}`,
+            entries: readLoreUse(zone.preparation?.lore),
+          })),
       ),
     ].filter((row) => row.entries.length),
     backgroundPace: village.backgroundPace,
@@ -262,8 +265,13 @@ export function villageSettings(
             originalZone.picture?.failed === true,
           pictureProblem: present ? originalZone.picture?.problem : undefined,
           pictureUpdating: present && !!originalZone.picture?.claim && originalZone.picture?.failed !== true,
-          preparation: visible.preparation
-            ? { status: visible.preparation.status, error: visible.preparation.error }
+          preparation: originalZone.preparation
+            ? {
+                status: originalZone.preparation.status,
+                error:
+                  visible.preparation?.error ||
+                  (originalZone.preparation.status === "failed" ? "Room preparation failed." : undefined),
+              }
             : undefined,
           access: undefined,
           controllerIds: undefined,

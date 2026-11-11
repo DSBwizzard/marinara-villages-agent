@@ -166,7 +166,7 @@ export function readBaseVenueLayout(
     if (area.access === undefined && isPrivate && !["residence", "workplace"].includes(role) && !controllers.length)
       throw badRequest("Choose controllers for the Private Space.");
     result.push({
-      ...defaultVenueSpace(role, description),
+      ...defaultVenueSpace(role, prepareInterior ? "" : description),
       ...daylight(area),
       ...(prepareInterior ? { roomSpecification } : {}),
       id,

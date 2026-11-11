@@ -223,6 +223,8 @@ export type PrivateSpacePreparation = {
   error?: string;
   /** Persisted before dispatch. A surviving claim requires deliberate retry. */
   claimId?: string;
+  /** Exact private generation scope. A retry may reopen only this scope. */
+  basis?: string;
   startedAt?: string;
   attempt?: number;
 };

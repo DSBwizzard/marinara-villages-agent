@@ -38,7 +38,7 @@ import {
   proposeVillageResidence,
 } from "../packages/villages/src/server/features/venues/residences.js";
 import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
-import { privatePreparationKey } from "../packages/villages/src/server/jobs/private-space-preparation.js";
+import { capturePrivateInterior } from "../packages/villages/src/server/domain/rules/private-interior.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 import type { VillageVenue } from "../packages/villages/src/server/domain/models/world.js";
@@ -564,7 +564,10 @@ async function main() {
     assert.throws(() => assertResidencePrivateDestination(reserved, expanded, "player", chamber.id), /reserved/);
     const changedLayout = structuredClone(expanded);
     changedLayout.zones!.push({ ...chamber, id: "another", ownerId: undefined });
-    assert.notEqual(privatePreparationKey(expanded, chamber), privatePreparationKey(changedLayout, chamber));
+    assert.notEqual(
+      capturePrivateInterior(current, expanded, chamber, current.setupAt).basis,
+      capturePrivateInterior(current, changedLayout, chamber, current.setupAt).basis,
+    );
     // An unoccupied Residence can be assigned directly.
     await movePlayerToResidence(privateOnly.id, "personal");
     current = await readVillageState({ memories: true });

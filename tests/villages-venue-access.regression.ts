@@ -80,7 +80,7 @@ import { configureVillagesRuntime } from "../packages/villages/src/server/entry/
 import type { VillageVenue, VillageVenueZone } from "../packages/villages/src/server/domain/models/world.js";
 import { sceneryImageKey } from "../packages/villages/src/server/domain/rules/scenery-context.js";
 import { villageSettings } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
-import { privatePreparationKey } from "../packages/villages/src/server/jobs/private-space-preparation.js";
+import { capturePrivateInterior } from "../packages/villages/src/server/domain/rules/private-interior.js";
 import type { AccessCommand } from "../packages/villages/src/shared/helpers/venue-access.js";
 
 const known = ["player", "jim", "mara", "trina", "employee", "visitor"],
@@ -427,10 +427,10 @@ assert.equal(decide("bedroom", "player", { at: new Date(2026, 9, 5, 23) }).allow
 const state = defaultVillageState();
 state.venues = [venue];
 const imageKey = sceneryImageKey(state, venue, state.setupAt, "office"),
-  prepKey = privatePreparationKey(venue, zone("office"));
+  prepKey = capturePrivateInterior(state, venue, zone("office"), state.setupAt).basis;
 zone("office").access!.mode = "public";
 assert.equal(sceneryImageKey(state, venue, state.setupAt, "office"), imageKey);
-assert.equal(privatePreparationKey(venue, zone("office")), prepKey);
+assert.equal(capturePrivateInterior(state, venue, zone("office"), state.setupAt).basis, prepKey);
 const before = projectZoneAccess(venue, zone("mara-bedroom"), "player", context);
 assert.equal(before.policy, undefined);
 assert.equal(before.permissions, undefined);

@@ -408,22 +408,51 @@ export function initializeRoomContinuity(
   operationId: string,
   at: string,
 ) {
+  const authored = findLocation(state, placeId)?.zones?.some((zone) => zone.id === zoneId && zone.description === text);
+  seedRoomParagraphs(state, placeId, zoneId, text, operationId, at, !!authored, true);
+}
+
+export function initializePreparedRoomContinuity(
+  state: VillageState,
+  placeId: string,
+  zoneId: string,
+  text: string,
+  claimId: string,
+  basis: string,
+  at: string,
+) {
+  const preparation = findLocation(state, placeId)?.zones?.find((zone) => zone.id === zoneId)?.preparation;
+  const admitted =
+    preparation?.status === "pending" &&
+    !preparation.mode &&
+    preparation.claimId === claimId &&
+    preparation.basis === basis;
+  seedRoomParagraphs(state, placeId, zoneId, text, "private-room:" + basis, at, admitted, false);
+}
+
+function seedRoomParagraphs(
+  state: VillageState,
+  placeId: string,
+  zoneId: string,
+  text: string,
+  operationId: string,
+  at: string,
+  admitted: boolean,
+  authored: boolean,
+) {
   const room = { kind: "room" as const, placeId, zoneId };
   const receipts = authoredRoomReceipts(state.seed, placeId, zoneId, text, operationId);
   const ids = new Set(receipts.map((receipt) => nativeEpisodeId(state.seed, receipt.id)));
   const retained = state.episodes.records.filter((row) => ids.has(row.id)).length;
-  if (!retained)
-    memoryRequire(
-      findLocation(state, placeId)?.zones?.some((zone) => zone.id === zoneId && zone.description === text),
-      "new room does not match its native creation",
-    );
+  if (!retained) memoryRequire(admitted, "new room does not match its native creation");
   memoryRequire(
     retained === receipts.length ||
       (!retained && !state.continuity.records.some((record) => record.heads[continuityHolderKey(room)])),
     "room continuity is already initialized",
   );
   const candidate = { ...state };
-  for (const receipt of receipts) retainNativeFact(candidate, receipt, at, { room, authoredRoomParagraph: true });
+  for (const receipt of receipts)
+    retainNativeFact(candidate, receipt, at, { room, ...(authored ? { authoredRoomParagraph: true } : {}) });
   state.continuity = candidate.continuity;
   state.episodes = candidate.episodes;
 }

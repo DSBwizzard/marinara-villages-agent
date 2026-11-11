@@ -538,6 +538,27 @@ function coerceVenue(value: unknown): VillageVenue | null {
       !(residentIds.includes(ownerId) || (ownerId === "player" && playerHome))
     )
       return null;
+    const preparation = asRecord(row.preparation);
+    const { status, mode, claimId, basis, startedAt, attempt } = preparation;
+    if (
+      row.preparation !== undefined &&
+      ((status !== "pending" && status !== "failed" && status !== "ready") ||
+        (mode !== undefined && mode !== "renovation") ||
+        (basis !== undefined && (typeof basis !== "string" || !/^[a-f0-9]{64}$/u.test(basis))) ||
+        (attempt !== undefined && (typeof attempt !== "number" || !Number.isSafeInteger(attempt) || attempt < 0)) ||
+        (claimId !== undefined &&
+          (typeof claimId !== "string" ||
+            !claimId ||
+            claimId.trim() !== claimId ||
+            claimId.length > 100 ||
+            status === "ready" ||
+            !basis ||
+            !attempt ||
+            typeof startedAt !== "string" ||
+            !Number.isFinite(Date.parse(startedAt)))) ||
+        (startedAt !== undefined && claimId === undefined))
+    )
+      throw new Error("Invalid saved private Room preparation scope.");
     const zone: VillageVenueZone = {
       id,
       connectedTo: Array.isArray(row.connectedTo) ? (row.connectedTo as string[]) : undefined,
@@ -554,26 +575,19 @@ function coerceVenue(value: unknown): VillageVenue | null {
       purpose: boundText(row.purpose, 240),
       ...(row.access === undefined ? {} : { access: readZonePolicy(row.access) }),
       controllerIds: coerceVenueIds(row.controllerIds),
-      preparation: ["pending", "ready", "failed"].includes(String(asRecord(row.preparation).status))
-        ? {
-            status: asRecord(row.preparation).status as "pending" | "ready" | "failed",
-            ...(asRecord(row.preparation).lore !== undefined
-              ? { lore: readLoreUse(asRecord(row.preparation).lore) }
-              : {}),
-            ...(asRecord(row.preparation).mode === "renovation" ? { mode: "renovation" as const } : {}),
-            error: boundText(asRecord(row.preparation).error, 300),
-            ...(asTrimmedString(asRecord(row.preparation).claimId)
-              ? { claimId: asTrimmedString(asRecord(row.preparation).claimId).slice(0, 100) }
-              : {}),
-            ...(asIsoString(asRecord(row.preparation).startedAt)
-              ? { startedAt: asIsoString(asRecord(row.preparation).startedAt)! }
-              : {}),
-            ...(typeof asRecord(row.preparation).attempt === "number" &&
-            Number.isFinite(asRecord(row.preparation).attempt)
-              ? { attempt: Math.max(0, Math.floor(asRecord(row.preparation).attempt as number)) }
-              : {}),
-          }
-        : undefined,
+      preparation:
+        status === "pending" || status === "ready" || status === "failed"
+          ? {
+              status,
+              ...(preparation.lore !== undefined ? { lore: readLoreUse(preparation.lore) } : {}),
+              ...(mode === "renovation" ? { mode } : {}),
+              error: boundText(preparation.error, 300),
+              ...(typeof claimId === "string" ? { claimId } : {}),
+              ...(typeof basis === "string" ? { basis } : {}),
+              ...(typeof startedAt === "string" ? { startedAt } : {}),
+              ...(typeof attempt === "number" ? { attempt } : {}),
+            }
+          : undefined,
       seen: row.seen === true,
       observed: readZoneObservation(row.observed),
       dayNight: row.dayNightManual === false ? row.dayNight !== false : true,

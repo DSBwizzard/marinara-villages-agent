@@ -15,7 +15,7 @@ export const serverFeatureInterfaces = Object.freeze({
     "assertFoundedVillageReady",
   ],
   "founding/village-bootstrap.ts": ["draftVillageVenueDescriptions"],
-  "generation/model-requests.ts": ["completeWithRoom"],
+  "generation/model-requests.ts": ["completeWithRoom", "reopenSavedResponse"],
   "media/image-generation.ts": [
     "resolveVillageImageConnectionId",
     "resolveVillageImageEditing",

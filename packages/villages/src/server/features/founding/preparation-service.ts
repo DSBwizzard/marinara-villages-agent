@@ -16,6 +16,7 @@ import type {
 } from "../../jobs/background-work.js";
 import type { preparePrivateSpaces } from "../../jobs/private-space-preparation.js";
 import { privatePreparationRooms } from "../../jobs/private-space-preparation.js";
+import { retryPrivateInterior } from "../../domain/rules/private-interior.js";
 import type { readFoundingResidentContext } from "../residents/resident-agendas.js";
 import type { queueFoundingWish } from "../residents/wishes/service.js";
 import type { buildVillageSnapshot } from "../world/snapshot.js";
@@ -249,10 +250,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
           throw conflict("Preparation changed. Refresh before retrying.");
         admitted = true;
         live.retryActions = [...(live.retryActions ?? []), actionId].slice(-32);
-        if (!targeted)
-          for (const { zone } of privatePreparationRooms(state))
-            if (zone.preparation?.status === "failed")
-              zone.preparation = { status: "pending", attempt: zone.preparation.attempt };
+        if (!targeted) for (const { zone } of privatePreparationRooms(state)) retryPrivateInterior(zone);
         live.selectedTasks = targeted ? [input.task + ":" + input.characterId] : undefined;
         live.status = "pending";
         live.error = "";
