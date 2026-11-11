@@ -22,23 +22,29 @@ import {
   publicSceneAuthority,
   publicSceneResponse,
 } from "../packages/villages/src/server/domain/rules/scene-public.js";
-import { sharedLoreHistory } from "../packages/villages/src/server/domain/rules/scene-writing-history.js";
+import { establishPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
+import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
+import {
+  fittedNarrationReadset,
+  narrationContinuityContext,
+} from "../packages/villages/src/server/domain/rules/narration-context.js";
+import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
+import { continuityHolderKey, protectContinuity } from "../packages/villages/src/server/domain/rules/continuity.js";
+import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
+import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { buildTownMapPrompt } from "../packages/villages/src/server/domain/rules/town-map-image-rules.js";
 import { fitVenueWritingMessages } from "../packages/villages/src/server/domain/rules/venue-writing.js";
 import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
-import { createSemanticService } from "../packages/villages/src/server/features/generation/semantic-service.js";
 import { createSceneWriting } from "../packages/villages/src/server/features/scenes/writing-service.js";
 import { mergeLoreUse, readLoreUse } from "../packages/villages/src/shared/helpers/lore.js";
-import { venueDraftFixture } from "./helpers/venues.fixture.js";
+import { pendingSceneSubmission } from "./helpers/narration-submission.fixture.js";
 
 async function main() {
   assert.deepEqual(defaultVillageState().selectedLorebookIds, []);
-  assert.deepEqual(coerceVillageState({ ...defaultVillageState(), wishSystemVersion: 3 }).selectedLorebookIds, []);
   assert.deepEqual(
     coerceVillageState({
       ...defaultVillageState(),
 
-      wishSystemVersion: 3,
       selectedLorebookIds: ["world", "world", "missing"],
     }).selectedLorebookIds,
     ["world", "missing"],
@@ -50,10 +56,7 @@ async function main() {
   assert.equal(readLoreTokenBudget(0), 0);
   assert.equal(readLoreTokenBudget(100), 100);
   assert.equal(coerceLoreTokenBudget(0), 0);
-  assert.equal(
-    coerceVillageState({ ...defaultVillageState(), wishSystemVersion: 3, loreTokenBudget: 0 }).loreTokenBudget,
-    0,
-  );
+  assert.equal(coerceVillageState({ ...defaultVillageState(), loreTokenBudget: 0 }).loreTokenBudget, 0);
   assert.throws(() => readLoreTokenBudget(-1));
   assert.throws(() => readLoreTokenBudget(1.5));
   assert.throws(() => readLoreTokenBudget(3201));
@@ -365,61 +368,159 @@ async function main() {
   assert.deepEqual(crowded.selected, ["fits: Complete fact."]);
   assert.equal(crowded.inspection.entries[0]?.id, "fits", "Included entries always survive diagnostic bounds");
 
-  const scene: any = { zoneId: "common" };
-  const shared: any = {
-    id: "shared",
-    kind: "dialogue",
-    role: "assistant",
-    speakerId: "a",
-    content: "harbor",
-    zoneId: "common",
-    heardBy: ["a", "b"],
-  };
-  const lines = [
-    shared,
-    { ...shared, id: "whisper", content: "secretguild", heardBy: ["a"] },
-    { ...shared, id: "hidden", content: "hidden", contactHidden: true },
-    { ...shared, id: "remote", content: "remote", zoneId: "private" },
+  const history = ["Discarded harbor", "Kept harbor, lantern and orchard", "Kept bridge"];
+  const historySelection = selectVillageLore(
+    [
+      make("Any", { keys: ["waves"], selective: true, secondaryKeys: ["discarded", "orchard"] }),
+      make("Primary", { keys: ["harbor"] }),
+      make("All", {
+        keys: ["waves"],
+        selective: true,
+        selectiveLogic: "and_all",
+        secondaryKeys: ["waves", "lantern", "orchard", "bridge"],
+      }),
+      make("Needs discarded", {
+        keys: ["waves"],
+        selective: true,
+        selectiveLogic: "and_all",
+        secondaryKeys: ["waves", "lantern", "orchard", "discarded"],
+      }),
+    ],
+    { setting: "", current: "waves", recent: history },
+    1600,
+  );
+  const historyFit = fitVenueWritingMessages(
     {
-      ...shared,
-      id: "sound",
-      content: "unseen action",
-      heardBy: [],
-      soundOnly: { characterIds: ["a", "b"], text: "bang" },
+      fitContext: (messages, options) =>
+        ({ ...options, messages: JSON.stringify(messages).includes("Discarded harbor") ? [] : messages }) as any,
     },
-    { ...shared, id: "narrator", content: "narrator secret", kind: "narration" },
-    { ...shared, id: "legacy-player", content: "private player thought", role: "user" },
-    {
-      ...shared,
-      id: "captured-player",
-      content: "spoken guild",
-      role: "user",
-      speechSource: { version: 3, spans: [] },
-    },
-  ];
-  assert.deepEqual(sharedLoreHistory(scene, lines, ["a", "b"]), ["harbor", "spoken guild"]);
+    [
+      ...history.map((text, index) => ({ text, evidenceId: String(index), optional: "history" as const })),
+      ...historySelection.selected.map((text, index) => ({
+        text,
+        optional: "lore" as const,
+        requiresEvidence: historySelection.recentRequirements[index]!.map((group) => group.map(String)),
+      })),
+    ],
+    "waves",
+    4096,
+  );
   assert.deepEqual(
-    sharedLoreHistory({} as any, lines, ["a", "b"]),
-    [],
-    "Legacy scenes without Zone identity do not widen retrieval",
+    historyFit.loreEntries.map((text) => text.split(":")[0]),
+    ["All", "Any", "Primary"],
+    "Fitting keeps alternate witnesses and checks all required keys beyond the bounded diagnostic trace",
   );
-  assert.equal(
+
+  const at = "2026-11-05T20:00:00.000Z";
+  const authority = { ...defaultVillageState(), seed: "lore-history", setupAt: at, foundedAt: at };
+  const place = establishPlace(
+    authority,
+    {
+      name: "Lantern",
+      description: "A restaurant.",
+      people: [
+        { ref: "jo", name: "Jo", characterization: "A quiet host." },
+        { ref: "lee", name: "Lee", characterization: "A neighbor." },
+      ],
+      zones: [{ id: "common", name: "Common", kind: "public", description: "Wooden tables." }],
+    },
+    "lantern",
+    "map",
+    "request:place",
+    at,
+    true,
+  );
+  const ids = Object.keys(authority.worldPlaces.npcs);
+  const participants = Object.values(authority.worldPlaces.npcs).map(({ id: characterId, name }) => ({
+    characterId,
+    name,
+    doing: "Talking",
+  }));
+  const scene = zoneEventScene(
+    coerceSession({
+      version: 5,
+      id: "lore-first",
+      villageSeed: authority.seed,
+      placeId: place.id,
+      zoneId: "common",
+      sceneRevision: 1,
+      status: "active",
+      startedAt: at,
+      activeIds: ids,
+      participants,
+      sceneAttendance: {
+        capturedAt: at,
+        layout: captureSceneLayout(place.location),
+        occupants: participants.map((person) => ({ ...person, zoneId: "common" })),
+      },
+    }),
+    place.location,
+  );
+  const spoken = "The spoken guild meets at noon.";
+  const original = `I privately wonder about vaultcipher. I say, “${spoken}”`;
+  const admitted = narrationContinuityContext(authority, scene, place.location, "first", original, at);
+  const raw = {
+    segments: [
+      { id: "shared", kind: "dialogue", speakerId: ids[0], text: "The harbor is quiet." },
+      {
+        id: "limited",
+        kind: "dialogue",
+        speakerId: ids[0],
+        delivery: "whisper",
+        targetId: "player",
+        text: "secretguild",
+      },
+      { id: "narrator", kind: "narration", text: "Unseen narratorsigil." },
+    ],
+    keep: [{ for: ids, text: spoken, source: [{ input: spoken, ground: { kind: "spoken", to: ids } }] }],
+  };
+  const accepted = acceptNarration(
+    authority,
+    {
+      raw,
+      responseDigest: memoryHash(raw),
+      readset: fittedNarrationReadset(
+        authority,
+        admitted,
+        admitted.parts.flatMap((part) => part.block.evidenceId ?? []),
+      ),
+    },
+    "first",
+    at,
+  );
+  assert.equal(accepted.held, false, JSON.stringify(accepted.rejected));
+  const nextScene = { ...scene, id: "lore-next" };
+  const recall = () => narrationContinuityContext(authority, nextScene, place.location, "next", "What about it?", at);
+  const recalled = recall();
+  assert.deepEqual(
+    recalled.recentLore.map(({ text }) => text),
+    [spoken, "The harbor is quiet."],
+  );
+  assert(recalled.parts.some((part) => part.block.text.includes(original)));
+  const keyed = ["harbor", "vaultcipher", "secretguild", "narratorsigil"];
+  assert.deepEqual(
     selectVillageLore(
-      [make("harbor")],
-      { setting: "", current: "What about it?", recent: sharedLoreHistory(scene, lines, ["a", "b"]) },
+      keyed.map((key) => make(key)),
+      { setting: "", recent: recalled.recentLore.map(({ text }) => text) },
       1600,
-    ).selected.length,
-    1,
+    ).selected,
+    ["harbor: Complete fact."],
   );
-  assert.equal(
-    sharedLoreHistory(
-      scene,
-      Array.from({ length: 10 }, () => shared),
-      ["a", "b"],
-    ).length,
-    6,
+  const holder = continuityActor(authority, ids[0])!;
+  const key = continuityHolderKey(holder);
+  const root = authority.continuity.records[0]!;
+  authority.continuity = protectContinuity(
+    authority.continuity,
+    { id: root.id, recordRevision: root.revision, heads: { [key]: root.heads[key].revision } },
+    [holder],
+    "forget",
+    at,
+    { forget: true },
   );
-  assert.deepEqual(sharedLoreHistory(scene, [{ ...shared, content: "x".repeat(4001) }], ["a", "b"]), []);
+  assert.deepEqual(
+    recall().recentLore.map(({ text }) => text),
+    ["The harbor is quiet."],
+  );
   const fit = fitVenueWritingMessages(
     {
       fitContext: (messages: any, options: any) => ({
@@ -456,18 +557,6 @@ async function main() {
     "Application instructions cannot activate a key",
   );
   assert.equal(loreText("quiet", { personality: "hidden property" }, ["harbor"]), "quiet\nharbor");
-  assert.equal(
-    selectVillageLore([make("secretguild")], { setting: "", recent: sharedLoreHistory(scene, lines, ["a", "b"]) }, 1600)
-      .selected.length,
-    0,
-    "A whisper heard only by a cannot retrieve shared reference text for b",
-  );
-  assert.equal(
-    selectVillageLore([make("secretguild")], { setting: "", recent: sharedLoreHistory(scene, lines, ["a"]) }, 1600)
-      .selected.length,
-    1,
-    "The same witnessed whisper remains eligible for its own audience",
-  );
 
   const originalUse = { id: "same", bookId: "one", name: "Harbor", bookName: "World", targets: ["Narration"] };
   const combined = mergeLoreUse(
@@ -535,14 +624,29 @@ async function main() {
     "Final image fitting counts actual occurrences, not substring matches",
   );
   const savedScene = coerceSession({
-    version: 4,
+    version: 5,
     id: "lore",
+    villageSeed: "lore",
+    startedAt: at,
     sceneRevision: 1,
     placeId: "harbor",
     participants: [],
     activeIds: [],
     lines: [],
-    submissions: [{ id: "turn", message: "Hello", mode: "chat", lore: combined }],
+    submissions: [
+      {
+        id: "turn",
+        at,
+        message: "Hello",
+        mode: "chat",
+        targetId: "",
+        requestFingerprint: memoryHash(["chat", "", null, "Hello"]),
+        episodeId: "accepted-lore",
+        progressProcessedAt: at,
+        acceptance: { status: "applied", rejected: [] },
+        lore: combined,
+      },
+    ],
   });
   assert.deepEqual(
     coerceSession(JSON.parse(JSON.stringify(savedScene))).submissions[0]!.lore,
@@ -560,10 +664,7 @@ async function main() {
     submissions: [
       ...savedScene.submissions,
       {
-        ...savedScene.submissions[0]!,
-        id: "hidden",
-        semanticProvenance: { version: 2 },
-        semanticReady: false,
+        ...pendingSceneSubmission(savedScene, "hidden", "Unpublished turn", "hidden:reply"),
         lore: [{ ...originalUse, name: "Unpublished secret" }],
       },
     ],
@@ -589,38 +690,7 @@ async function main() {
       unavailable = false,
       loreReads = 0,
       paid = 0;
-    const world = defaultVillageState();
-    Object.assign(world, {
-      seed: "gm-lore",
-      setupAt: "2026-11-05T20:00:00Z",
-      foundedAt: "2026-11-05T20:00:00Z",
-      selectedLorebookIds: ["book"],
-    });
-    world.venues = [
-      venueDraftFixture({ id: "harbor", name: "Harbor", description: "A quiet quay.", category: "public" }, null),
-    ];
-    const admission = {
-      writingContractVersion: 4,
-      semanticPipelineVersion: 3,
-      residentActionsVersion: 2,
-      interactionScopeVersion: 6,
-    };
-    const scene = coerceSession({
-      version: 4,
-      semanticVersion: 2,
-      id: "gm-lore",
-      villageSeed: world.seed,
-      placeId: "harbor",
-      zoneId: "exterior",
-      status: "active",
-      startedAt: world.setupAt,
-      activeIds: [],
-      participants: [],
-      lines: [],
-      submissions: [],
-    });
-    scene.operation = { id: "turn", input: admission } as any;
-    Object.assign(scene, zoneEventScene(scene, world.venues[0]));
+    authority.selectedLorebookIds = ["book"];
     const model = {
       model: "fixture",
       connectionId: "fixture",
@@ -628,29 +698,34 @@ async function main() {
       fitContext(messages: any[], options: any) {
         return {
           ...options,
-          messages: JSON.stringify(messages).includes("Low: expendable background") ? [] : messages,
+          messages: /The harbor is quiet\.|Low: expendable background/.test(JSON.stringify(messages)) ? [] : messages,
         };
       },
     };
     const ports: any = {
-      readVillageState: async () => world,
+      readVillageState: async () => authority,
       readVillageLore: async (_ids: any, _context: any, _signal: any, _budget: any, options: any) => {
         loreReads++;
         if (unavailable) throw Error("Engine unavailable");
-        options.inspect({
-          purpose: "Lore lookup",
-          stage: "selection",
-          budget: 1600,
-          omittedDiagnostics: 0,
-          entries: ["High", "Low"].map((name) => ({
-            id: name,
-            bookId: "book",
-            name,
-            status: "included",
-            match: "current",
-          })),
-        });
-        return ["High: relevant fact", "Low: expendable background"];
+        const selection = selectVillageLore(
+          [
+            make("High", { keys: ["waves"], content: "relevant fact" }),
+            make("Low", { constant: true, content: "expendable background" }),
+            make("Recent", { keys: ["harbor"], content: "primary history match" }),
+            make("Secondary", {
+              keys: ["waves"],
+              selective: true,
+              secondaryKeys: ["harbor"],
+              content: "secondary history match",
+            }),
+          ],
+          { setting: "", current: options.current, recent: options.recent },
+          1600,
+        );
+        assert(selection.selected.some((entry) => entry.startsWith("Recent:")));
+        assert(selection.selected.some((entry) => entry.startsWith("Secondary:")));
+        options.inspect(selection.inspection, selection.recentRequirements);
+        return selection.selected;
       },
       villagesConnectionIdFor: async (purpose: string) => {
         assert.equal(purpose, "narration");
@@ -660,11 +735,11 @@ async function main() {
       venueCheckpoint: async (key: string, work: any) => {
         if (checkpoints.has(key)) return structuredClone(checkpoints.get(key));
         const value = await work();
-        if (holdInput && key.startsWith("gm:semantic-") && key.endsWith(":input")) {
+        checkpoints.set(key, structuredClone(value));
+        if (holdInput && key.startsWith("writing-completion:")) {
           holdInput = false;
           throw Error("Held purchased request");
         }
-        checkpoints.set(key, structuredClone(value));
         return value;
       },
       venueSavedCheckpoint: (key: string) => checkpoints.get(key),
@@ -675,10 +750,12 @@ async function main() {
       completeWithRoom: async (_model: any, messages: any[]) => {
         paid++;
         sent.push(structuredClone(messages));
-        assert.doesNotMatch(JSON.stringify(messages), /Low: expendable background/);
+        assert.doesNotMatch(
+          JSON.stringify(messages),
+          /Low: expendable background|primary history match|secondary history match/,
+        );
         return {
           content: JSON.stringify({
-            input: [{ kind: "action", text: "I watch the waves." }],
             segments: [{ kind: "narration", text: "The harbor is quiet." }],
           }),
           finishReason: "stop",
@@ -697,12 +774,13 @@ async function main() {
       measurePipeline: async (_label: string, _metadata: unknown, work: any) => work(),
       refreshZoneParticipants: async (current: any) => current,
     };
-    const writer = createSceneWriting({ ...ports, semantic: createSemanticService(ports) });
-    const generate = () => writer.generate(scene, "I watch the waves.", "chat", "", null);
+    const writer = createSceneWriting(ports);
+    const generate = () => writer.generate(nextScene, "I watch the waves.", "chat");
     await assert.rejects(generate(), /Held purchased request/);
     assert.equal(rejected, 0, "A local storage failure cannot reject purchased GM writing");
     assert.equal(paid, 1);
-    assert.equal(reports[0].entries.find((entry: any) => entry.id === "Low").status, "context-limit");
+    for (const id of ["Low", "Recent", "Secondary"])
+      assert.equal(reports[0].entries.find((entry: any) => entry.id === id).status, "context-limit");
     unavailable = true;
     const replayed = await generate();
     assert.deepEqual(

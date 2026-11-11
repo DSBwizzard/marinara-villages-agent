@@ -38,11 +38,15 @@ export type VenueWritingBlock = {
   text: string;
   cacheBreakpoint?: true;
   evidenceId?: string;
-  requiresEvidenceIds?: string[];
+  /** Each group needs at least one retained source. */
+  requiresEvidence?: string[][];
   pruningPriority?: number;
   optional?: "history" | "memory" | "lore";
   lore?: LoreUse;
 };
+
+export const hasWritingEvidence = (block: VenueWritingBlock, retained: ReadonlySet<string | undefined>) =>
+  block.requiresEvidence?.every((group) => group.some((id) => retained.has(id))) ?? true;
 
 export type VenueWritingSections = {
   direction: VenueWritingBlock[];
@@ -120,7 +124,7 @@ export function fitVenueWritingMessages(
   // latest player input must survive fitting byte-for-byte before any paid call.
   for (;;) {
     const evidence = new Set(kept.map((block) => block.evidenceId));
-    kept = kept.filter((block) => block.requiresEvidenceIds?.every((id) => evidence.has(id)) ?? true);
+    kept = kept.filter((block) => hasWritingEvidence(block, evidence));
     const messages = assembleVenueWritingMessages(kept, input);
     const fitted = model.fitContext(messages, { maxTokens });
     if (JSON.stringify(fitted.messages) === JSON.stringify(messages))

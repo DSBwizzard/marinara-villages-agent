@@ -56,7 +56,6 @@ type Request = {
   fitted: ReturnType<typeof fitVenueWritingMessages>;
   readset: NarrationReadset;
   model: { model: string; connectionId: string };
-  loreInspection?: LoreInspection;
 };
 
 /** One GM purchase. Existing operation checkpoints own the exact fit and purchased reply through recovery. */
@@ -129,6 +128,7 @@ export function createSceneWriting({
       villageNow(authority.clock?.advanceMs ?? 0).toISOString(),
     );
     let loreInspection: LoreInspection | undefined;
+    let loreRequirements: number[][][] = [];
     const [lore, model] = await Promise.all([
       readVillageLore(
         village.selectedLorebookIds,
@@ -146,9 +146,10 @@ export function createSceneWriting({
         village.loreTokenBudget,
         {
           current: input,
-          recent: context.parts.filter((part) => part.block.optional === "history").map((part) => part.block.text),
-          inspect: (report) => {
+          recent: context.recentLore.map(({ text }) => text),
+          inspect: (report, recentRequirements) => {
             loreInspection = report;
+            loreRequirements = recentRequirements;
           },
         },
       ),
@@ -199,6 +200,9 @@ export function createSceneWriting({
           text: "Relevant world lore: " + text,
           optional: "lore",
           lore: loreUses[index],
+          requiresEvidence: loreRequirements[index]?.map((group) =>
+            group.map((source) => context.recentLore[source]!.evidenceId),
+          ),
         })),
       ],
       circumstances: blocksFor([
@@ -233,8 +237,8 @@ export function createSceneWriting({
       Math.min(model.maxOutputTokens ?? VENUE_REPLY_MAX_TOKENS, VENUE_REPLY_MAX_TOKENS),
     );
     if (loreInspection) {
-      let index = 0;
-      loreInspection = {
+      const included = new Set((fitted.lore ?? []).map(({ bookId, id }) => JSON.stringify([bookId, id])));
+      runtimeDebug("lore inspection", {
         ...loreInspection,
         purpose: "Scene Narration",
         stage: "prompt",
@@ -242,16 +246,15 @@ export function createSceneWriting({
           if (entry.status !== "included") return entry;
           return {
             ...entry,
-            status: fitted.loreEntries.includes("Relevant world lore: " + lore[index++]) ? "included" : "context-limit",
+            status: included.has(JSON.stringify([entry.bookId, entry.id])) ? "included" : "context-limit",
           };
         }),
-      };
+      });
     }
     const request: Request = {
       fitted,
       readset: fittedNarrationReadset(authority, context, fitted.evidenceIds),
       model: { model: model.model, connectionId: model.connectionId },
-      loreInspection,
     };
     const retained = await venueCheckpoint("writing-request:" + key, async () => request);
     assertRequestIdentity(retained, original, input);

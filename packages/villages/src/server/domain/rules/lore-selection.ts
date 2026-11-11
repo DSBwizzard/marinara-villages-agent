@@ -67,10 +67,11 @@ function matchContext(key: string, text: string, source: string, entry: LoreEntr
 /** No host I/O, authored regex execution, recursive activation, or model requests. */
 export function selectVillageLore(entries: readonly LoreEntry[], query: LoreQuery, budgetValue: number) {
   const budget = coerceLoreTokenBudget(budgetValue);
-  const scopes = [query.current ?? "", ...(query.recent ?? []), query.setting];
+  const recent = query.recent ?? [];
+  const scopes = [query.current ?? "", ...recent, query.setting];
   const sources = [
     "Current request",
-    ...(query.recent ?? []).map((_, index) => `Recent dialogue ${index + 1} of ${query.recent!.length}`),
+    ...recent.map((_, index) => `Recent dialogue ${index + 1} of ${recent.length}`),
     "Setting / generation context",
   ];
   const contextFor = (key: string, entry: LoreEntry, indices = scopes.map((_, index) => index)) => {
@@ -152,18 +153,12 @@ export function selectVillageLore(entries: readonly LoreEntry[], query: LoreQuer
       if (hasPrimary && !secondaryMatches) trace.status = "conditions";
       continue;
     }
-    const rank = primary(query.current ?? "")
-      ? 0
-      : (query.recent ?? []).some(primary)
-        ? 1
-        : primary(query.setting)
-          ? 2
-          : 3;
+    const rank = primary(query.current ?? "") ? 0 : recent.some(primary) ? 1 : primary(query.setting) ? 2 : 3;
     trace.match = (["current", "recent", "setting", "constant"] as const)[rank]!;
     const key = entry.useRegex
       ? undefined
       : (entry.keys ?? []).find((key) =>
-          (rank === 0 ? [query.current ?? ""] : rank === 1 ? (query.recent ?? []) : [query.setting]).some((text) =>
+          (rank === 0 ? [query.current ?? ""] : rank === 1 ? recent : [query.setting]).some((text) =>
             keyMatches(key, text, entry),
           ),
         );
@@ -178,7 +173,7 @@ export function selectVillageLore(entries: readonly LoreEntry[], query: LoreQuer
             context: contextFor(
               key,
               entry,
-              rank === 0 ? [0] : rank === 1 ? (query.recent ?? []).map((_, index) => index + 1) : [scopes.length - 1],
+              rank === 0 ? [0] : rank === 1 ? recent.map((_, index) => index + 1) : [scopes.length - 1],
             ),
           }
         : {}),
@@ -195,6 +190,7 @@ export function selectVillageLore(entries: readonly LoreEntry[], query: LoreQuer
       compare(a.entry.id, b.entry.id),
   );
   const selected: string[] = [];
+  const recentRequirements: number[][][] = [];
   let tokens = 0;
   for (const { entry, trace } of candidates) {
     const content = entry.content.trim();
@@ -204,6 +200,20 @@ export function selectVillageLore(entries: readonly LoreEntry[], query: LoreQuer
     else {
       trace.status = "included";
       selected.push(`${entry.name}: ${content}`);
+      const requirements: number[][] = [];
+      if (!entry.constant && recent.length) {
+        const requireMatch = (matches: (text: string) => boolean) => {
+          if (matches(query.current ?? "") || matches(query.setting)) return;
+          requirements.push(recent.flatMap((text, index) => (matches(text) ? [index] : [])));
+        };
+        requireMatch((text) => (entry.keys ?? []).some((key) => keyMatches(key, text, entry)));
+        const secondary = entry.secondaryKeys ?? [];
+        if (trace.trigger?.secondary?.logic === "and_any")
+          requireMatch((text) => secondary.some((key) => keyMatches(key, text, entry)));
+        if (trace.trigger?.secondary?.logic === "and_all")
+          for (const key of secondary) requireMatch((text) => keyMatches(key, text, entry));
+      }
+      recentRequirements.push(requirements);
       tokens += cost;
     }
   }
@@ -215,6 +225,7 @@ export function selectVillageLore(entries: readonly LoreEntry[], query: LoreQuer
   ];
   return {
     selected,
+    recentRequirements,
     inspection: {
       purpose: "Lore lookup",
       stage: "selection" as const,

@@ -1,6 +1,7 @@
 import { projectEpisodeRecall } from "./episode-recall.js";
 import { readOnlyRoomContext } from "./continuity-context.js";
 import type { ContinuityEvidence, ContinuityHolder, ContinuityTarget } from "../models/continuity-model.js";
+import type { AcceptedEpisode } from "../models/episode-model.js";
 import type { NarrationReadset } from "../models/narration-model.js";
 import { narrationResidenceContext } from "./narration-residence.js";
 import { narrationPlaceContext } from "./narration-place.js";
@@ -24,7 +25,7 @@ import { selectActorContinuity, selectRoomContinuity } from "./continuity-retrie
 import { recentSharedEpisodes, selectEpisodeHistory } from "./episodes.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { estimatedTextTokens } from "./text-recall.js";
-import type { VenueWritingBlock } from "./venue-writing.js";
+import { hasWritingEvidence, type VenueWritingBlock } from "./venue-writing.js";
 import { projectSpeechContexts, projectSpeechPrompt } from "./project-interpretation.js";
 import { sceneContinuityView } from "./scene-continuity.js";
 import { narrationAccessScopes } from "./narration-access.js";
@@ -42,7 +43,41 @@ type Part = {
   provenance: Record<string, string[]>;
   episodeIds: string[];
   offered: NarrationReadset["offered"];
+  sharedLoreWords?: string[];
 };
+
+function sharedLoreWords(
+  episode: AcceptedEpisode,
+  view: ReturnType<typeof selectEpisodeHistory>["episodes"][number],
+  audience: string[],
+) {
+  const heard = new Map<string, Set<string>>();
+  for (const row of view.groundedInput) {
+    if (row.channel !== "words") continue;
+    const key = JSON.stringify([row.id, row.text]);
+    if (!heard.has(key)) heard.set(key, new Set());
+    heard.get(key)!.add(row.for);
+  }
+  return [
+    ...view.groundedInput.flatMap((row) =>
+      row.for === "player" &&
+      row.channel === "words" &&
+      audience.every((id) => heard.get(JSON.stringify([row.id, row.text]))?.has(id))
+        ? [row.text]
+        : [],
+    ),
+    ...view.segments.flatMap((line) =>
+      "text" in line &&
+      typeof line.text === "string" &&
+      line.kind !== "narration" &&
+      line.kind !== "input" &&
+      audience.every((id) => line.perceivedBy[id] === "words") &&
+      episode.segments.some((source) => source.id === line.id && !source.contactHidden && !source.contactReport)
+        ? [line.text]
+        : [],
+    ),
+  ];
+}
 
 export function narrationProtectionFingerprint(state: VillageState, holders: ContinuityHolder[]) {
   return continuityProtectionFingerprint(
@@ -122,6 +157,7 @@ export function narrationContinuityContext(
     });
   memoryRequire(actors.length <= 32, "the complete Scene witness roster exceeds the retained episode bound");
   const writerIds = scene.contactGeneration?.actorIds ?? scene.activeIds;
+  const loreAudience = ["player", ...writerIds];
   const npcCandidates = Object.values(
     capturePlaceContext(
       state,
@@ -384,7 +420,7 @@ export function narrationContinuityContext(
         text: JSON.stringify({ repair }),
         evidenceId: "repair-context:" + repair.id,
         optional: "memory",
-        requiresEvidenceIds: repair.entries.map((id) => "room-context:" + id),
+        requiresEvidence: repair.entries.map((id) => ["room-context:" + id]),
       },
     });
   parts.push({
@@ -423,6 +459,7 @@ export function narrationContinuityContext(
       part = { ...emptyPart(), ...recall };
     parts.push({
       ...part,
+      sharedLoreWords: sharedLoreWords(episode, view, loreAudience),
       block: {
         text: JSON.stringify({ interaction }),
         evidenceId: "episode-context:" + view.id,
@@ -487,9 +524,7 @@ export function narrationContinuityContext(
     }),
   );
   const evidenceIds = new Set([...retained].map((part) => part.block.evidenceId));
-  const bounded = parts.filter(
-    (part) => retained.has(part) && (part.block.requiresEvidenceIds?.every((id) => evidenceIds.has(id)) ?? true),
-  );
+  const bounded = parts.filter((part) => retained.has(part) && hasWritingEvidence(part.block, evidenceIds));
   const references = episodeContextActors({ actors, room }, [
     ...new Set(bounded.flatMap((part) => Object.keys(part.provenance))),
   ]);
@@ -517,6 +552,10 @@ export function narrationContinuityContext(
     repairs,
     at,
     parts: bounded,
+    recentLore: bounded
+      .flatMap((part) => (part.sharedLoreWords ?? []).map((text) => ({ text, evidenceId: part.block.evidenceId! })))
+      .filter(({ text }) => text.length <= 4000)
+      .slice(-6),
     projects: projects.filter((project) => evidenceIds.has("project-context:" + project.projectId)),
     access: narrationAccessScopes(sceneContinuityView(state, scene), ["player", ...writerIds]),
     residence: narrationResidenceContext(sceneContinuityView(state, scene), ["player", ...writerIds]),
