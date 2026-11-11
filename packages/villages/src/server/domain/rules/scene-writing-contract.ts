@@ -18,11 +18,12 @@ export function completeSceneObject(content: string, finishReason?: string): Rec
   if (!text.startsWith("{") || !text.endsWith("}")) return null;
   const parsed = extractModelJsonObject({ content: text, finishReason });
   if (parsed) return parsed;
-  // Some replies close the root after segments, then emit the keep field.
-  const boundary = /\}\s*,\s*(?:keep|"keep")\s*:\s*(?=\[)/u.exec(text);
+  // Some replies close the root after segments, then emit the keep field or a keep-only object.
+  const boundary = /\}\s*(?=\{\s*"keep"\s*:)|\}(?:\s*,\s*|[ \t]*\r?\n\s*)(?:keep|"keep")\s*:\s*(?=\[)/u.exec(text);
   if (!boundary) return null;
   const first = parseSceneObject(text.slice(0, boundary.index + 1));
-  const tail = parseSceneObject('{"keep":' + text.slice(boundary.index + boundary[0].length));
+  const suffix = text.slice(boundary.index + boundary[0].length);
+  const tail = parseSceneObject(suffix.startsWith("{") ? suffix : '{"keep":' + suffix);
   if (
     !first ||
     Object.keys(first).length !== 1 ||

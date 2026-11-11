@@ -66,6 +66,15 @@ await runCase("scene-json-hardening/ambiguity", () => {
   assert.deepEqual(completeSceneObject(split, "stop"), { ...core, keep });
   const quoted = split.replace(",keep:", ',"keep":');
   assert.deepEqual(completeSceneObject(quoted, "stop"), { ...core, keep });
+  const followingField = split.replace(",keep:", "keep:");
+  const separateObject = coreJson + "\n" + JSON.stringify({ keep });
+  for (const candidate of [followingField, separateObject]) {
+    assert.deepEqual(completeSceneObject(candidate, "stop"), { ...core, keep });
+    assert.equal(completeSceneObject(candidate, "length"), null);
+    assert.equal(completeSceneObject(candidate.slice(0, -1) + ',"commands":[]}', "stop"), null);
+    assert.equal(completeSceneObject(candidate.slice(0, -1), "stop"), null);
+  }
+  assert.equal(completeSceneObject(coreJson + '\n{"keep":[],"keep":[]}', "stop"), null);
   assert.equal(completeSceneObject(quoted, "length"), null);
   assert.equal(completeSceneObject(quoted.slice(0, -1) + ',"commands":[]}', "stop"), null);
   assert.equal(completeSceneObject(coreJson + ',"keep":[{"text":"first","text":"second"}]}', "stop"), null);
