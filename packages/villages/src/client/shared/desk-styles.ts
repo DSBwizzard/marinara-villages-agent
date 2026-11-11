@@ -1,29 +1,11 @@
 const P = "marinara-capability-villages";
 
-// Match the sky, hills and sprig in storybook-background-wide.webp so the scenery shows through the rail.
-const sidebarSky = encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1942 809">
-  <mask id="sky">
-    <path fill="white" d="M0 0H1942V722H972
-      L928 712 897 716 872 720 840 720 815 725 782 726 748 726 713 723 689 725 678 718 646 715 611 718
-      L612 722 610 722 608 720 604 720 604 710 601 699 599 697 594 710 594 720 589 721 585 716
-      Q573 712 560 713 Q531 708 511 709 T471 715 Q453 718 441 723 Q423 723 411 722
-      L404 715 400 704 385 704 376 690 369 687 361 688 354 680 346 677 337 679 329 674 321 670
-      Q317 665 312 669 L303 670 292 670 286 672 279 677 273 682 262 682 255 685 249 695 242 701
-      Q220 698 199 695 Q178 688 160 694 Q138 700 128 702 Q103 696 84 701 Q54 710 33 724 Q12 735 0 751Z"/>
-    <path fill="black" d="M0 742 Q9 719 22 703 Q29 694 32 685 L33 668
-      Q11 655 15 640 L19 622 Q24 629 34 635 Q45 646 35 665 L34 685 Q45 659 46 637
-      Q36 629 37 603 Q57 617 49 636 L46 658 L53 651 Q54 629 78 625 L92 622 Q84 646 57 651
-      Q44 661 33 690 L47 685 Q56 671 69 668 Q82 664 101 670 Q83 693 66 696 Q54 697 46 691
-      Q29 697 19 717 L28 714 Q38 704 51 711 Q44 724 29 725 L22 721 Q9 732 0 759Z"/>
-  </mask>
-  <path fill="white" d="M0 0H1942V809H0Z" mask="url(#sky)"/>
-</svg>`);
-
 export const DESK_STYLES = `
 .${P}-desk-container{height:100%;min-height:0;min-width:0;container:village-desk/inline-size}
 .${P}-desk-workspace{height:100%;min-height:0;display:flex;flex-direction:column;position:relative;isolation:isolate}
 .${P}-desk-workspace[data-desk]:not([data-desk="none"]){--background:#302d47;--foreground:#f0dfbc;--popover:#393047;--muted:#4f3c53;--muted-foreground:#d0c1b3;--border:#a39b8460;--primary:#969b7e;--primary-foreground:#292938;--secondary:#514157;--menu-font:"village-letter-crimson-pro",Georgia,serif;--menu-rose:#b97980;--menu-sage:#969b7e;--menu-rail-width:clamp(210px,20cqw,260px);--menu-art-placement:center bottom/cover no-repeat;display:grid;grid-template-columns:var(--menu-rail-width) minmax(0,1fr);color:var(--foreground);background:#302d47 var(--menu-art) var(--menu-art-placement);overflow:hidden;box-sizing:border-box;font:18px/1.45 var(--menu-font)}
-.${P}-desk-workspace[data-desk]:not([data-desk="none"])::before{content:"";position:absolute;inset:0;clip-path:inset(0 calc(100% - var(--menu-rail-width)) 0 0);background:#542d43b0;mask:url("data:image/svg+xml,${sidebarSky}") var(--menu-art-placement);pointer-events:none}
+.${P}-desk-workspace[data-desk]:not([data-desk="none"])::before{content:"";position:absolute;inset:0 auto 0 0;width:var(--menu-rail-width);z-index:-2;background:#542d43b0;pointer-events:none}
+.${P}-desk-workspace[data-desk]:not([data-desk="none"])::after{content:"";position:absolute;inset:0;z-index:-1;background:var(--menu-art) var(--menu-art-placement);mask:var(--menu-scenery-matte) var(--menu-art-placement);pointer-events:none}
 .${P}-desk-workspace[data-desk]:not([data-desk="none"]) *{box-sizing:border-box;scrollbar-width:thin;scrollbar-color:#a2859370 transparent}
 .${P}-desk-header{display:flex;flex-direction:column;align-items:stretch;align-self:start;height:85%;gap:18px;min-width:0;min-height:0;overflow:auto;padding:28px 14px 24px;position:relative;z-index:20}
 .${P}-desk-header[hidden]{display:none}
@@ -151,7 +133,7 @@ export const DESK_STYLES = `
 }
 @container village-desk (max-width:700px){
  .${P}-desk-workspace[data-desk]:not([data-desk="none"]){display:flex;font-size:17px;background-size:auto 100%;background-position:right bottom}
- .${P}-desk-workspace::before{display:none}
+ .${P}-desk-workspace::before,.${P}-desk-workspace::after{display:none}
  .${P}-desk-header{flex:none;display:grid;grid-template-columns:1fr auto;height:auto;align-self:stretch;gap:8px;padding:8px 8px 6px;background:#4e3044b0;overflow:visible}
  .${P}-menu-brand{font-size:24px;align-self:center;text-align:left;margin:0;padding-left:8px}.${P}-menu-brand>svg{display:none}
  .${P}-desk-nav{grid-column:1/-1;grid-row:2;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:2px;order:3}

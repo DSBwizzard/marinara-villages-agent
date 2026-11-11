@@ -2,15 +2,24 @@ import type { CSSProperties } from "react";
 import type { DeskDestination } from "./DeskWorkspace.js";
 import { loadLetterFont } from "./letter-font-css.js";
 
-let background: { image: HTMLImageElement; promise: Promise<void> } | undefined;
+type ArtworkLayer = {
+  file: string;
+  property: string;
+  loaded?: { image: HTMLImageElement; ready: Promise<void> };
+};
 
-// Only the fixed menu background is retained; player media keeps its existing lifetime.
-export async function prepareDeskArtwork(menu: DeskDestination): Promise<void> {
-  if (!background) {
+// The foreground matte uses the same pixel coordinates as the backdrop.
+const artwork: ArtworkLayer[] = [
+  { file: "storybook-background-wide.webp", property: "--menu-art" },
+  { file: "storybook-scenery-matte.webp", property: "--menu-scenery-matte" },
+];
+
+async function prepareLayer(layer: ArtworkLayer): Promise<void> {
+  if (!layer.loaded) {
     const image = new Image();
     let url: string | undefined;
-    const promise = (async () => {
-      const response = await fetch("/api/capability-packages/villages/assets/storybook-background-wide.webp", {
+    const ready = (async () => {
+      const response = await fetch(`/api/capability-packages/villages/assets/${layer.file}`, {
         signal: AbortSignal.timeout(15_000),
       });
       if (!response.ok) throw new Error("Artwork unavailable");
@@ -18,18 +27,30 @@ export async function prepareDeskArtwork(menu: DeskDestination): Promise<void> {
       image.src = url;
       await image.decode();
     })().catch((error: unknown) => {
-      background = undefined;
+      layer.loaded = undefined;
       if (url) URL.revokeObjectURL(url);
       throw error;
     });
-    background = { image, promise };
+    layer.loaded = { image, ready };
   }
-  await Promise.all([background.promise, loadLetterFont(menu === "people" ? "lora" : "crimson-pro").catch(() => {})]);
-  await background.image.decode();
+  const { image, ready } = layer.loaded;
+  await ready;
+  await image.decode();
+}
+
+export async function prepareDeskArtwork(menu: DeskDestination): Promise<void> {
+  await Promise.all([
+    ...artwork.map(prepareLayer),
+    loadLetterFont(menu === "people" ? "lora" : "crimson-pro").catch(() => {}),
+  ]);
 }
 
 export function deskArtworkStyle(menu: DeskDestination | null): CSSProperties {
-  return {
-    "--menu-art": menu && background?.image.complete ? `url("${background.image.src}")` : undefined,
-  } as CSSProperties;
+  if (!menu) return {};
+  return Object.fromEntries(
+    artwork.map(({ property, loaded }) => [
+      property,
+      loaded?.image.complete ? `url("${loaded.image.src}")` : undefined,
+    ]),
+  ) as CSSProperties;
 }

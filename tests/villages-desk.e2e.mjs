@@ -146,7 +146,7 @@ async function run() {
     const waitingArt = new Promise((resolve) => {
       releaseArt = resolve;
     });
-    await slow.route("**/storybook-background-wide.webp", async (route) => {
+    await slow.route("**/storybook-scenery-matte.webp", async (route) => {
       artRequests++;
       await waitingArt;
       await route.fallback();
@@ -161,7 +161,7 @@ async function run() {
     assert.equal(
       await slow.getByRole("button", { name: "Open People", exact: true }).isVisible(),
       true,
-      "The current view stays visible while the shared artwork loads",
+      "The current view stays visible while the foreground layer loads",
     );
     releaseArt();
     await slow.waitForFunction(() => document.querySelector("[data-desk]").dataset.desk === "people");
@@ -172,6 +172,12 @@ async function run() {
         .evaluate((node) => getComputedStyle(node).backgroundImage);
     const desktopArt = await art();
     assert(desktopArt.includes("blob:"), "Menu paints retained image bytes rather than a no-store asset URL");
+    const matte = () =>
+      slow
+        .locator(".marinara-capability-villages-desk-workspace")
+        .evaluate((node) => getComputedStyle(node, "::after").maskImage);
+    const desktopMatte = await matte();
+    assert(desktopMatte.includes("blob:"), "Foreground uses the preloaded matte");
     const cdp = await slow.context().newCDPSession(slow);
     await cdp.send("Network.clearBrowserCache");
     await cdp.send("Memory.simulatePressureNotification", { level: "critical" });
@@ -179,7 +185,8 @@ async function run() {
     await slow.waitForFunction(() => document.querySelector("[data-desk]").dataset.desk === "projects");
     await settle(slow);
     assert.equal(await art(), desktopArt, "Inactive artwork survives HTTP cache eviction and memory pressure");
-    assert.equal(artRequests, 1, "Returning to the menu never re-downloads its artwork");
+    assert.equal(await matte(), desktopMatte, "The foreground stays ready between menus");
+    assert.equal(artRequests, 1, "Returning to the menu never re-downloads the foreground matte");
     await slow.setViewportSize({ width: 390, height: 844 });
     assert(
       (await art()).includes("blob:") && (await art()) === desktopArt,
