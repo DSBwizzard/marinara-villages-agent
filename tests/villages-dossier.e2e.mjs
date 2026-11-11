@@ -693,7 +693,6 @@ await withBrowser(browser, async () => {
     await expect(fivePages.getByRole("status")).toHaveText("1 / 2");
     await closePeople();
     village.villagers = originalRoster;
-    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     if (width === 1440 || (width === 390 && height === 844)) {
       const savedVillagers = village.villagers;
       village.villagers = [
@@ -742,6 +741,8 @@ await withBrowser(browser, async () => {
       await expect(pages).toHaveCount(0);
       await expect(selector.getByRole("button", { name: /^Open .* profile$/ })).toHaveCount(2);
       await closePeople();
+    } else {
+      await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     }
     await page.getByRole("button", { name: "More", exact: true }).click();
     const menu = page.getByRole("navigation", { name: "Settings sections" });
