@@ -152,6 +152,10 @@
       "bodyLimit": 8065536
     },
     {
+      "method": "get",
+      "path": "/artwork/:size/:id/:extension"
+    },
+    {
       "method": "patch",
       "path": "/villagers/:characterId/description"
     },
