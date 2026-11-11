@@ -20,6 +20,7 @@ export function useSceneChangesPolling(ports: {
   dismissedRoomEventIdsRef: React.RefObject<Set<string>>;
   receiveRoomRecordEvents: (events: readonly import("../../../shared/contracts/village.js").RoomRecordEvent[]) => void;
   room: import("../../../shared/contracts/village.js").SceneView;
+  roomNotices: readonly RoomRecordEvent[];
   setRoomChangeStatus: React.Dispatch<React.SetStateAction<{ pending: number; failed: number; rejected: number }>>;
   setRoomNotices: React.Dispatch<
     React.SetStateAction<import("../../../shared/contracts/village.js").RoomRecordEvent[]>
@@ -35,6 +36,11 @@ export function useSceneChangesPolling(ports: {
     setRoomUnresolvedChanges,
   } = ports;
   const cursorRef = useRef({ sceneId: "", cursor: "" });
+  const shownWishIds = useEffectEvent(() =>
+    ports.roomNotices
+      .filter((event) => event.kind === "wish" && /^notice:[a-f0-9]{64}$/u.test(event.id))
+      .map((event) => event.id),
+  );
   const focusRevision = useFocusRevision(ports.visible && ports.viewing);
   const sceneChanges = ports.snapshot?.sceneChanges;
   const revision = room?.id && sceneChanges?.sceneId === room.id ? sceneChanges.revision : "";
@@ -50,27 +56,43 @@ export function useSceneChangesPolling(ports: {
     let stopped = false,
       timer: ReturnType<typeof setTimeout>;
     let cursor = cursorRef.current.cursor;
+    const knownWishes = shownWishIds();
+    let reconcileWishes = true;
+    const readPage = (limit: number, wishes: string[]) => {
+      const query = new URLSearchParams({ cursor, limit: String(limit) });
+      if (wishes.length) query.set("shownWishes", wishes.join(","));
+      return request<{
+        activeRequest?: { status?: string };
+        changes: { notices: RoomRecordEvent[] }[];
+        notices: RoomRecordEvent[];
+        dismissedNoticeIds: string[];
+        hiddenWishNoticeIds?: string[];
+        processingSummary: { pending: number; failed: number; rejected: number };
+        nextCursor: string;
+        hasMore: boolean;
+        unresolved: SceneChangeIssue[];
+      }>(`/rooms/${encodeURIComponent(room.id)}/changes?${query}`, { signal: controller.signal });
+    };
     const poll = async () => {
       try {
-        const answer = await request<{
-          activeRequest?: { status?: string };
-          changes: { notices: RoomRecordEvent[] }[];
-          notices: RoomRecordEvent[];
-          dismissedNoticeIds: string[];
-          processingSummary: { pending: number; failed: number; rejected: number };
-          nextCursor: string;
-          hasMore: boolean;
-          unresolved: SceneChangeIssue[];
-        }>(`/rooms/${encodeURIComponent(room.id)}/changes?cursor=${encodeURIComponent(cursor)}&limit=20`, {
-          signal: controller.signal,
-        });
+        const wishes = reconcileWishes ? knownWishes : [];
+        const answer = await readPage(20, wishes.slice(0, 50));
+        const hiddenWishes = new Set(answer.hiddenWishNoticeIds ?? []);
+        for (let offset = 50; offset < wishes.length; offset += 50) {
+          const result = await readPage(1, wishes.slice(offset, offset + 50));
+          for (const id of result.hiddenWishNoticeIds ?? []) hiddenWishes.add(id);
+        }
         if (stopped) return;
+        reconcileWishes = false;
         for (const id of answer.dismissedNoticeIds ?? []) dismissedRoomEventIdsRef.current.add(id);
-        setRoomNotices((current) => current.filter((event) => !dismissedRoomEventIdsRef.current.has(event.id)));
-        receiveRoomRecordEvents([
-          ...(answer.notices ?? []),
-          ...(answer.changes ?? []).flatMap((change) => change.notices ?? []),
-        ]);
+        setRoomNotices((current) =>
+          current.filter((event) => !dismissedRoomEventIdsRef.current.has(event.id) && !hiddenWishes.has(event.id)),
+        );
+        receiveRoomRecordEvents(
+          [...(answer.notices ?? []), ...(answer.changes ?? []).flatMap((change) => change.notices ?? [])].filter(
+            (event) => !hiddenWishes.has(event.id),
+          ),
+        );
         setRoomChangeStatus(answer.processingSummary ?? { pending: 0, failed: 0, rejected: 0 });
         setRoomUnresolvedChanges(answer.unresolved ?? []);
         cursor = answer.nextCursor ?? cursor;

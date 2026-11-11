@@ -164,6 +164,7 @@ for (const count of [1000, 10_000, 25_000]) {
     });
     const commands = createSceneCommands({
       readSession: async () => acknowledged,
+      readVillageState: async () => ({ ...defaultVillageState(), seed: acknowledged.villageSeed }),
     } as any);
     const closed = await commands.closeVenueSessionWithReceipts(id);
     assert.deepEqual(closed.recordEvents, [

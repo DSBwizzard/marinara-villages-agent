@@ -72,6 +72,7 @@ import {
 
 import { createDocumentMutator, mutateDocument } from "../adapters/storage/document-store.js";
 import { repairGate, withRepairWork } from "../adapters/storage/repair-gate.js";
+import { visibleSceneNotices } from "../domain/rules/narration-notices.js";
 import { createSceneRepository } from "../adapters/storage/scene-repository.js";
 import {
   changeSession,
@@ -573,7 +574,12 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       onRecoveryFinished: scheduleRetirementScan,
       assertVenueOwnership: operations.assertVenueOwnership,
       readSession,
-      readVillageAuthority: () => villageRepository.readAuthority({ memories: true }),
+      withCommittedVillageAuthority: (work) =>
+        withRepairWork(() =>
+          villageRepository.withAuthorityLock(async () =>
+            work(await villageRepository.readAuthority({ memories: true })),
+          ),
+        ),
       mutateVillageState: mutateVillageMemoryState,
       changeSession,
       measurePipeline,
@@ -585,7 +591,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     createSceneChanges({
       withSceneWork: backendWork.sceneFence.run,
       readSession,
-      readVillageState: () => villageRepository.readAuthority(),
+      readVillageState: (options) => villageRepository.readAuthority(options),
       mutateVillageState: mutateVillageMemoryState,
       processSavedExchange,
       readTerminal: sceneTerminals.read,
@@ -806,13 +812,16 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       runtimeDebug,
       readTerminal: async (id) => {
         const receipt = await sceneTerminals.read(id);
-        const state = await readVillageAuthority();
-        if (!receipt || receipt.villageSeed !== state.seed) return null;
+        if (!receipt) return null;
+        const state = await readVillageAuthority({
+          memories: receipt.recordEvents.some((event) => event.kind === "wish"),
+        });
+        if (receipt.villageSeed !== state.seed) return null;
         return {
           ...receipt,
-          recordEvents: [...new Map(receipt.recordEvents.map((event) => [event.id, event])).values()].filter(
-            (event) => !state.dismissedNoticeIds.includes(event.id),
-          ),
+          recordEvents: visibleSceneNotices(state, [
+            ...new Map(receipt.recordEvents.map((event) => [event.id, event])).values(),
+          ]),
         };
       },
     }),

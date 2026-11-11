@@ -115,7 +115,7 @@ export function acceptNarrationContinuity(
     return {
       held: false as const,
       episode: prior,
-      rejected: [] as { id: string; reason: string }[],
+      rejected: prior.rejectedEffects ?? [],
       acceptedIds: [] as string[],
       replayed: true,
     };
@@ -550,6 +550,7 @@ export function acceptNarrationContinuity(
     segments: source.lines,
     grounding: [...grounding.values()],
     continuityVersionIds: versions.map((row) => row.id),
+    ...(selection.rejected.length ? { rejectedEffects: selection.rejected } : {}),
     offered: [
       ...readset.offered,
       ...readset.npcCandidates

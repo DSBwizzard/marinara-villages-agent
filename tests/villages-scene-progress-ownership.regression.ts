@@ -1,4 +1,4 @@
-// Test cases: scene-narration/outbox, scene-narration/held, scene-narration/lost-ack, scene-narration/write-failure, scene-narration/startup-hold, scene-narration/activation-owner, scene-narration/private-projection, scene-narration/validation-hold, scene-narration/cancellation, scene-narration/connected-turn, scene-narration/saved-changes, scene-narration/coordinator-startup-hold, scene-narration/abandon, scene-narration/abandon-lost-ack, scene-narration/abandon-committed, scene-narration/abandon-fence, scene-narration/startup-no-write, scene-narration/replace-committed, scene-narration/retirement, scene-narration/skip-ownership, scene-narration/input-playback, scene-narration/native-close, scene-narration/native-close-recovery, scene-narration/native-contact-end, scene-narration/native-close-authority, scene-narration/native-delta-fence, scene-narration/native-delta-integrity, scene-narration/native-movement, scene-narration/native-movement-recovery, scene-narration/native-departure, scene-narration/native-npc, scene-narration/native-circumstance
+// Test cases: scene-narration/outbox, scene-narration/held, scene-narration/lost-ack, scene-narration/accepted-notices, scene-narration/write-failure, scene-narration/startup-hold, scene-narration/activation-owner, scene-narration/private-projection, scene-narration/validation-hold, scene-narration/cancellation, scene-narration/connected-turn, scene-narration/saved-changes, scene-narration/coordinator-startup-hold, scene-narration/abandon, scene-narration/abandon-lost-ack, scene-narration/abandon-committed, scene-narration/abandon-fence, scene-narration/startup-no-write, scene-narration/replace-committed, scene-narration/retirement, scene-narration/skip-ownership, scene-narration/input-playback, scene-narration/native-close, scene-narration/native-close-recovery, scene-narration/native-contact-end, scene-narration/native-close-authority, scene-narration/native-delta-fence, scene-narration/native-delta-integrity, scene-narration/native-movement, scene-narration/native-movement-recovery, scene-narration/native-departure, scene-narration/native-npc, scene-narration/native-circumstance
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -42,6 +42,7 @@ import { createSceneQueryService } from "../packages/villages/src/server/feature
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { actorEpisodeView } from "../packages/villages/src/server/domain/rules/episodes.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
+import { continuityHolderKey, protectContinuity } from "../packages/villages/src/server/domain/rules/continuity.js";
 import { readAcceptedEpisode } from "../packages/villages/src/server/domain/decoding/episode-codec.js";
 import { scenePlaybackSteps } from "../packages/villages/src/client/features/scenes/scene-playback.js";
 import { readNpc } from "../packages/villages/src/server/domain/rules/places.js";
@@ -188,7 +189,7 @@ function fixture(seed = "world") {
       await note("read:" + id);
       return structuredClone(scenes.get(id)!);
     },
-    readVillageAuthority: async () => structuredClone(world),
+    withCommittedVillageAuthority: (work) => work(structuredClone(world)),
     async mutateVillageState(change) {
       await note("world");
       if (failWorld) {
@@ -719,6 +720,13 @@ await runCase("scene-narration/abandon", async () => {
   const f = fixture(),
     publication = structuredClone(f.turn().narration!);
   f.turn().acceptance.status = "held";
+  const copied = { ...structuredClone(f.scenes.get("scene")!), id: "other" };
+  f.scenes.set(copied.id, copied);
+  await assert.rejects(
+    f.service.abandonSavedExchange(copied, publication.readset.source.operationId),
+    /identity changed/,
+  );
+  assert(!narrationIsAbandoned(f.world, publication, "turn"));
   assert.equal(
     await f.service.abandonSavedExchange(
       structuredClone(f.scenes.get("scene")!),
@@ -848,7 +856,7 @@ await runCase("scene-narration/startup-no-write", async () => {
     f.turn().acceptance.status = "held";
     const service = createSceneProgress({
       ...f.ports,
-      readVillageAuthority: () => repository.readAuthority({ memories: true }),
+      withCommittedVillageAuthority: (work) => stateService.withVillageSceneAcceptance(work, { memories: true }),
       mutateVillageState: stateService.mutateVillageState,
     });
     const before = memoryHash([...storage.rows]);
@@ -1087,6 +1095,113 @@ await runCase("scene-narration/lost-ack", async () => {
   assert.equal(f.world.episodes.records.length, 1);
   assert.equal(f.world.continuity.versions.length, 1);
   assert.equal(f.scenes.get("scene")!.lines.length, 2);
+});
+
+await runCase("scene-narration/accepted-notices", async () => {
+  for (const preference of ["follow", "unfollow", "forget"] as const) {
+    const f = fixture();
+    const text = "I want a quiet studio of my own.";
+    const raw = {
+      segments: [{ kind: "dialogue", id: "wish", speakerId: f.actorId, text }],
+      keep: [
+        {
+          id: "desire",
+          class: "desire",
+          owner: f.actorId,
+          for: [f.actorId, "player"],
+          text,
+          source: [{ segment: "wish" }],
+        },
+        {
+          id: "private",
+          class: "desire",
+          owner: f.actorId,
+          for: [f.actorId],
+          text: "I also want to move away.",
+          source: ["self"],
+        },
+        {
+          id: "optional",
+          class: "invalid",
+          for: ["player"],
+          text: "Invalid optional note.",
+          source: [{ segment: "wish" }],
+          independent: true,
+        },
+      ],
+    };
+    Object.assign(f.turn().narration!, { raw, responseDigest: memoryHash(raw) });
+    const unpublished = structuredClone(f.scenes.get("scene")!);
+    f.failScene();
+    await assert.rejects(f.service.processSavedExchange("scene", "turn"), (error) => error === f.exact);
+    assert.equal(f.turn().recordEvents, undefined);
+    const player = continuityActor(f.world, "player")!;
+    const key = continuityHolderKey(player);
+    const wish = f.world.continuity.records.find((record) => record.owner?.id === f.actorId && record.heads[key]);
+    assert(wish);
+    assert(f.world.continuity.records.some((record) => record.owner?.id === f.actorId && !record.heads[key]));
+    if (preference === "unfollow") f.world.wishFollowing = { [f.actorId + ":" + wish.id]: false };
+    if (preference === "forget")
+      f.world.continuity = protectContinuity(
+        f.world.continuity,
+        { id: wish.id, recordRevision: wish.revision, heads: { [key]: wish.heads[key].revision } },
+        [player],
+        "forget",
+        at,
+        {},
+      );
+
+    await f.service.processSavedExchange("scene", "turn");
+    const reloaded = coerceSession(JSON.parse(JSON.stringify(f.scenes.get("scene"))));
+    const turn = reloaded.submissions[0];
+    assert.deepEqual(
+      turn.acceptance.rejected.map((row) => row.id),
+      ["optional"],
+    );
+    if (preference === "follow") {
+      assert.equal(turn.recordEvents?.length, 1);
+      assert.deepEqual(turn.recordEvents?.[0].wishUpdate, { actorId: f.actorId, wishId: wish.id, state: "revealed" });
+      assert.equal(turn.recordEvents?.[0].text, "Wish shared");
+      const feed = createSceneChanges({
+        readSession: f.ports.readSession,
+        readVillageState: async () => f.world,
+        mutateVillageState: f.ports.mutateVillageState,
+        processSavedExchange: f.service.processSavedExchange,
+      });
+      const beforeForget = await feed.readSceneChanges("scene");
+      const noticeId = turn.recordEvents![0].id;
+      assert.deepEqual(beforeForget.notices, turn.recordEvents);
+      assert.deepEqual(
+        (await feed.readSceneChanges("scene", beforeForget.nextCursor, 20, noticeId)).hiddenWishNoticeIds,
+        [],
+      );
+      f.world.continuity = protectContinuity(
+        f.world.continuity,
+        { id: wish.id, recordRevision: wish.revision, heads: { [key]: wish.heads[key].revision } },
+        [player],
+        "forget",
+        at,
+        {},
+      );
+      assert.deepEqual((await feed.readSceneChanges("scene")).notices, []);
+      assert.deepEqual(
+        (await feed.readSceneChanges("scene", beforeForget.nextCursor, 20, noticeId)).hiddenWishNoticeIds,
+        [noticeId],
+      );
+      await assert.rejects(feed.dismissSceneNotice("scene", noticeId), /unavailable/);
+      const malformed = structuredClone(reloaded);
+      Object.assign(malformed.submissions[0].recordEvents![0], { source: text });
+      assert.throws(() => coerceSession(malformed));
+      unpublished.id = "other";
+      unpublished.submissions[0].acceptance.status = "held";
+      f.scenes.set(unpublished.id, unpublished);
+      await assert.rejects(f.service.processSavedExchange(unpublished.id, "turn", true), /identity changed/);
+      assert.deepEqual(f.scenes.get(unpublished.id)!.lines, unpublished.lines);
+    } else assert.equal(turn.recordEvents, undefined);
+    await f.service.processSavedExchange("scene", "turn");
+    assert.deepEqual(f.turn().recordEvents, turn.recordEvents);
+    assert.equal(f.world.episodes.records.length, 1);
+  }
 });
 await runCase("scene-narration/write-failure", async () => {
   const f = fixture();

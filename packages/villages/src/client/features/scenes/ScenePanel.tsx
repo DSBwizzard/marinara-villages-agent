@@ -1027,7 +1027,7 @@ export function RoomPanel({
                       notice.kind === "wish" ||
                       notice.kind === "relationship-up" ||
                       notice.kind === "relationship-down") &&
-                    notice.detail ? (
+                    (notice.detail || (notice.wishUpdate?.actorId && onOpenWish)) ? (
                       <button
                         type="button"
                         className={`${ELEMENT_TAG}-room-star-detail`}

@@ -7,16 +7,18 @@ import {
   narrationIsAbandoned,
 } from "../../domain/rules/narration-acceptance.js";
 import { acceptNarration } from "../../domain/rules/narration-native.js";
+import { narrationSceneNotices } from "../../domain/rules/narration-notices.js";
 import { mutableSceneSubmission } from "../../domain/rules/scene-submissions.js";
 import { memoryHash, memoryRequire } from "../../domain/rules/memory-integrity.js";
-import type { VenueScene } from "../../domain/models/scene-model.js";
+import type { VenueRecordEvent, VenueScene, VenueSubmission } from "../../domain/models/scene-model.js";
+import type { VillageState } from "../../domain/models/world.js";
 
 export interface SceneProgressPorts {
   withSceneWork?<T>(id: string, work: () => Promise<T>): Promise<T>;
   onSettled?(id: string): void;
   onRecoveryFinished?(): void;
   readSession: typeof import("../../adapters/storage/scene-store.js").readSession;
-  readVillageAuthority(): Promise<import("../../domain/models/world.js").VillageState>;
+  withCommittedVillageAuthority<T>(work: (state: VillageState) => Promise<T>): Promise<T>;
   mutateVillageState: typeof import("../world/village-store.js").mutateVillageState;
   changeSession: typeof import("../../adapters/storage/scene-store.js").changeSession;
   measurePipeline: typeof import("../../adapters/observability/pipeline-metrics.js").measurePipeline;
@@ -25,13 +27,20 @@ export interface SceneProgressPorts {
   villagesLogger: typeof import("../../adapters/engine/runtime-host.js").villagesLogger;
 }
 
+function matchesSceneRequest(scene: VenueScene, turn: VenueSubmission) {
+  const source = turn.narration?.readset.source;
+  return (
+    source?.scene.id === scene.id && source.scene.villageSeed === scene.villageSeed && source.input === turn.message
+  );
+}
+
 /** The Scene is the existing replay outbox; one Village CAS accepts native effects and common continuity. */
 export function createSceneProgress({
   withSceneWork,
   onSettled,
   onRecoveryFinished,
   readSession,
-  readVillageAuthority,
+  withCommittedVillageAuthority,
   mutateVillageState,
   changeSession,
   measurePipeline,
@@ -45,12 +54,17 @@ export function createSceneProgress({
     const publication = turn.narration;
     memoryRequire(publication, "saved narration purchase is missing");
     const identity = memoryHash(publication);
+    const matchesScene = matchesSceneRequest(scene, turn);
     let result: ReturnType<typeof acceptNarration> | undefined;
     let abandoned = false;
     let validationFailure: unknown;
     try {
+      if (!matchesScene) {
+        validationFailure = new Error("Memory: saved narration request identity changed");
+        throw validationFailure;
+      }
       if (startup && turn.acceptance.status === "held") {
-        const state = await readVillageAuthority();
+        const state = await withCommittedVillageAuthority(async (current) => current);
         if (acceptedNarrationEpisode(state, publication, turn.id))
           result = acceptNarration(state, publication, turn.id, publication.readset.capturedAt);
         else abandoned = narrationIsAbandoned(state, publication, turn.id);
@@ -60,12 +74,6 @@ export function createSceneProgress({
         await mutateVillageState(
           (state) => {
             try {
-              memoryRequire(
-                publication.readset.source.scene.id === scene.id &&
-                  publication.readset.source.scene.villageSeed === scene.villageSeed &&
-                  publication.readset.source.input === turn.message,
-                "saved narration request identity changed",
-              );
               if (!acceptedNarrationEpisode(state, publication, turn.id)) {
                 abandoned = narrationIsAbandoned(state, publication, turn.id);
                 if (abandoned) return;
@@ -96,63 +104,89 @@ export function createSceneProgress({
         );
       memoryRequire(result || abandoned, "narration acceptance returned no result");
       const accepted = result;
-      await changeSession(scene.id, (saved) => {
-        const entry = mutableSceneSubmission(saved, turn.id);
-        memoryRequire(
-          entry && (entry.acceptance.status === "applied" || memoryHash(entry.narration) === identity),
-          "saved narration changed during publication",
-        );
-        if (entry.acceptance.status === "applied") return;
-        appendSceneInput(saved, entry);
-        if (abandoned) {
-          entry.acceptance = { ...entry.acceptance, status: "abandoned" };
-          return;
-        }
-        memoryRequire(accepted, "narration acceptance returned no result");
-        if (accepted.held) {
-          entry.acceptance = { status: "held", rejected: accepted.rejected };
-          entry.progressError = accepted.rejected
-            .map((row) => row.reason)
-            .join("; ")
-            .slice(0, 300);
-          return;
-        }
-        const episode = accepted.episode!;
-        applyAcceptedSceneDelta(saved, episode);
-        for (const line of episode.segments) {
-          const prior = saved.lines.find((row) => row.id === line.id);
-          memoryRequire(!prior || memoryHash(prior) === memoryHash(line), "published Scene line identity changed");
-          if (!prior) saved.lines.push(structuredClone(line));
-        }
-        entry.replyLineIds = episode.segments.map((line) => line.id);
-        entry.episodeId = episode.id;
-        entry.acceptance = { status: "applied", rejected: accepted.rejected };
-        entry.progressProcessedAt = episode.acceptedAt;
-        entry.progressError = "";
-        delete entry.narration;
-        saved.lastActivityAt = episode.acceptedAt;
-        const operation = saved.operation;
-        if (
-          operation?.id === publication.readset.source.operationId &&
-          operation.status === "interrupted" &&
-          !Object.values(operation.attempts).some((attempt) => attempt.status === "dispatching") &&
-          !Object.keys(operation.checkpointClaims ?? {}).length
-        ) {
-          operation.status = "complete";
-          operation.stage = "complete";
-          operation.error = "";
-          delete operation.failure;
-          operation.snapshot = null;
-          operation.checkpoints = {};
-          operation.attempts = {};
-        }
-      });
+      const episode = accepted?.episode;
+      const publish = (notices: VenueRecordEvent[]) =>
+        changeSession(scene.id, (saved) => {
+          const entry = mutableSceneSubmission(saved, turn.id);
+          memoryRequire(
+            entry && (entry.acceptance.status === "applied" || memoryHash(entry.narration) === identity),
+            "saved narration changed during publication",
+          );
+          if (entry.acceptance.status === "applied") return;
+          appendSceneInput(saved, entry);
+          if (abandoned) {
+            entry.acceptance = { ...entry.acceptance, status: "abandoned" };
+            return;
+          }
+          memoryRequire(accepted, "narration acceptance returned no result");
+          if (accepted.held) {
+            entry.acceptance = { status: "held", rejected: accepted.rejected };
+            entry.progressError = accepted.rejected
+              .map((row) => row.reason)
+              .join("; ")
+              .slice(0, 300);
+            return;
+          }
+          memoryRequire(episode, "narration acceptance returned no episode");
+          applyAcceptedSceneDelta(saved, episode);
+          for (const line of episode.segments) {
+            const prior = saved.lines.find((row) => row.id === line.id);
+            memoryRequire(!prior || memoryHash(prior) === memoryHash(line), "published Scene line identity changed");
+            if (!prior) saved.lines.push(structuredClone(line));
+          }
+          entry.replyLineIds = episode.segments.map((line) => line.id);
+          entry.episodeId = episode.id;
+          if (notices.length) entry.recordEvents = notices;
+          else delete entry.recordEvents;
+          entry.acceptance = { status: "applied", rejected: accepted.rejected };
+          entry.progressProcessedAt = episode.acceptedAt;
+          entry.progressError = "";
+          delete entry.narration;
+          saved.lastActivityAt = episode.acceptedAt;
+          const operation = saved.operation;
+          if (
+            operation?.id === publication.readset.source.operationId &&
+            operation.status === "interrupted" &&
+            !Object.values(operation.attempts).some((attempt) => attempt.status === "dispatching") &&
+            !Object.keys(operation.checkpointClaims ?? {}).length
+          ) {
+            operation.status = "complete";
+            operation.stage = "complete";
+            operation.error = "";
+            delete operation.failure;
+            operation.snapshot = null;
+            operation.checkpoints = {};
+            operation.attempts = {};
+          }
+        });
+      if (!episode) await publish([]);
+      else
+        await withCommittedVillageAuthority(async (state) => {
+          const committed = acceptedNarrationEpisode(state, publication, turn.id);
+          memoryRequire(
+            state.seed === scene.villageSeed &&
+              state.setupAt === publication.readset.setupAt &&
+              committed?.id === episode.id &&
+              committed.sceneId === scene.id &&
+              committed.acceptedAt === episode.acceptedAt,
+            "the committed narration changed before Scene publication",
+          );
+          return publish(
+            committed.continuityVersionIds.length || committed.commandReceipts.length
+              ? narrationSceneNotices(state, committed)
+              : [],
+          );
+        });
     } catch (error) {
       try {
         await changeSession(scene.id, (saved) => {
           const entry = mutableSceneSubmission(saved, turn.id);
-          if (entry && (entry.acceptance.status === "pending" || entry.acceptance.status === "held")) {
-            appendSceneInput(saved, entry);
+          if (
+            entry &&
+            (entry.acceptance.status === "pending" || entry.acceptance.status === "held") &&
+            memoryHash(entry.narration) === identity
+          ) {
+            if (matchesScene) appendSceneInput(saved, entry);
             entry.progressError = String(error).slice(0, 300);
             if (validationFailure === error)
               entry.acceptance = {
@@ -212,6 +246,7 @@ export function createSceneProgress({
       if (turn.acceptance.status === "applied" || turn.acceptance.status === "abandoned") return turn.acceptance.status;
       const publication = turn.narration;
       memoryRequire(publication, "saved narration purchase is missing");
+      memoryRequire(matchesSceneRequest(scene, turn), "saved narration request identity changed");
       const identity = memoryHash(publication);
       let accepted = false;
       await mutateVillageState(

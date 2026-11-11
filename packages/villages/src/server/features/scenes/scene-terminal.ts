@@ -3,8 +3,9 @@ import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 import type { DocumentSlot } from "../../adapters/storage/document-store.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
 import type { SceneTerminal } from "../../domain/models/scene-terminal-model.js";
+import { sceneNoticeSchema } from "../../domain/decoding/narration-submission.js";
 import { asRecord } from "../../domain/rules/coerce.js";
-import { scenePresenceNotices } from "../../domain/rules/scene-public.js";
+import { scenePresenceNotices, sceneTurnNotices } from "../../domain/rules/scene-public.js";
 
 export const SCENE_TERMINAL_KIND = "scene-terminal";
 export const SCENE_TERMINAL_PREFIX = "villages-scene-terminal-";
@@ -80,18 +81,7 @@ function slot(id: string): DocumentSlot<SceneTerminal> {
         })
       )
         throw new Error("Saved Scene receipt is invalid; Scene cleanup is deferred.");
-      if (
-        raw.recordEvents.some((value) => {
-          const row = asRecord(value);
-          return (
-            typeof row.id !== "string" ||
-            typeof row.text !== "string" ||
-            !["memory", "wish", "venue", "request", "project", "relationship-up", "relationship-down"].includes(
-              String(row.kind),
-            )
-          );
-        })
-      )
+      if (raw.recordEvents.some((value) => !sceneNoticeSchema.safeParse(value).success))
         throw new Error("Saved Scene receipt is invalid; Scene cleanup is deferred.");
       if (raw.operation !== undefined) {
         const operation = asRecord(raw.operation);
@@ -134,7 +124,7 @@ export function terminalForScene(scene: VenueScene, sourceRevision: number): Sce
     })),
     navigationReceipts: structuredClone(scene.navigationReceipts ?? []),
     generationReceipts: structuredClone(scene.generationReceipts ?? []),
-    recordEvents: [...scenePresenceNotices(scene), ...scene.submissions.flatMap((turn) => turn.recordEvents ?? [])],
+    recordEvents: [...scenePresenceNotices(scene), ...scene.submissions.flatMap(sceneTurnNotices)],
     ...(scene.operation?.status === "complete"
       ? {
           operation: {

@@ -150,7 +150,7 @@ function fixture(owner: string) {
   const f = fixture("seed");
   assert.deepEqual(f.calls, [], "Construction is inert");
   const [first, held] = f.scene.submissions;
-  first.recordEvents!.push({ id: "dismissed", kind: "wish", text: "Dismissed delivered notice" });
+  first.recordEvents!.push({ id: "dismissed", kind: "memory", text: "Dismissed delivered notice" });
   first.acceptance.rejected.push({ id: "optional", reason: "Independent optional update was rejected" });
   held.recordEvents = [{ id: "unpublished", kind: "memory", text: "Held notice" }];
   f.world.dismissedNoticeIds.push("dismissed");

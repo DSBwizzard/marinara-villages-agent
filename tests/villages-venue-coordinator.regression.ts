@@ -494,7 +494,7 @@ async function main() {
     const progress = createSceneProgress({
       readSession,
       changeSession,
-      readVillageAuthority: async () => world,
+      withCommittedVillageAuthority: (work) => work(world),
       mutateVillageState: async (change) => {
         const next = structuredClone(world);
         change(next);

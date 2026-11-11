@@ -1,4 +1,4 @@
-import type { VenueRecordEvent, VenueScene } from "../models/scene-model.js";
+import type { VenueRecordEvent, VenueScene, VenueSubmission } from "../models/scene-model.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { deriveVillageMoment } from "./village-clock.js";
 import { villageLighting } from "../../../shared/helpers/village-lighting.js";
@@ -27,6 +27,7 @@ export function publicSceneChanges(value: unknown) {
     }),
     notices: notices(row.notices),
     dismissedNoticeIds: row.dismissedNoticeIds,
+    hiddenWishNoticeIds: row.hiddenWishNoticeIds,
     unresolved: (Array.isArray(row.unresolved) ? row.unresolved : []).map((value) => {
       const issue = asRecord(value);
       return {
@@ -49,6 +50,9 @@ export function publicSceneChanges(value: unknown) {
 
 export function sceneTurnPublished(value: unknown) {
   return asRecord(asRecord(value).acceptance).status === "applied";
+}
+export function sceneTurnNotices(turn?: VenueSubmission): VenueRecordEvent[] {
+  return turn?.acceptance.status === "applied" ? (turn.recordEvents ?? []) : [];
 }
 function unpublishedLines(submissions: unknown[]) {
   return new Set(

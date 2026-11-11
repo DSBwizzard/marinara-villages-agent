@@ -2,9 +2,23 @@ import { z } from "zod";
 import type { VenueSubmission } from "../models/scene-model.js";
 import { memoryRequire } from "../rules/memory-integrity.js";
 import { readSceneCalendar } from "../rules/scene-calendar.js";
+import { MAX_SCENE_EFFECTS, MAX_SCENE_REJECTIONS } from "../rules/scene-acceptance.js";
 
 const id = z.string().min(1).max(200),
   at = z.string().refine((value) => Number.isFinite(Date.parse(value)));
+export const sceneNoticeSchema = z
+  .object({
+    id,
+    kind: z.enum(["memory", "wish", "venue", "request", "project", "relationship-up", "relationship-down"]),
+    text: z.string().min(1).max(4000),
+    detail: z.string().max(4000).optional(),
+    wishUpdate: z
+      .object({ actorId: id, wishId: id, state: z.enum(["revealed", "progress", "fulfilled"]) })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .refine((row) => (row.kind === "wish") === (row.wishUpdate !== undefined));
 const subjects = z
   .array(z.object({ id: z.string().min(1).max(160), incarnation: z.string().min(1).max(160) }).strict())
   .max(256)
@@ -35,7 +49,7 @@ const saved = z
     acceptance: z
       .object({
         status: z.enum(["pending", "held", "applied", "abandoned"]),
-        rejected: z.array(z.object({ id, reason: z.string().max(2000) }).strict()).max(64),
+        rejected: z.array(z.object({ id, reason: z.string().max(2000) }).strict()).max(MAX_SCENE_REJECTIONS),
       })
       .strict(),
     narration: z
@@ -97,7 +111,7 @@ const saved = z
     timing: z.unknown().optional(),
     responseDiagnostics: z.unknown().optional(),
     changeSequence: z.number().int().nonnegative().optional(),
-    recordEvents: z.array(z.unknown()).optional(),
+    recordEvents: z.array(sceneNoticeSchema).max(MAX_SCENE_EFFECTS).optional(),
   })
   .strict();
 

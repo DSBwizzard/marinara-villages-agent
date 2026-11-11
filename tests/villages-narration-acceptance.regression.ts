@@ -350,8 +350,14 @@ await runCase("narration-acceptance/independent-failure", () => {
 
 await runCase("narration-acceptance/lost-ack", () => {
   const f = fixture(),
-    publication = f.publication({ segments: f.response(["remember"]), keep: [f.keep] });
-  const first = acceptNarrationContinuity(f.state, publication, "submission", later).episode!;
+    publication = f.publication({
+      segments: f.response(["remember"]),
+      keep: [f.keep, { ...f.keep, id: "unrelated", class: "not-a-class", independent: true }],
+    });
+  const committed = acceptNarrationContinuity(f.state, publication, "submission", later);
+  const first = committed.episode!;
+  assert.equal(committed.rejected[0]?.id, "unrelated");
+  f.state.episodes.records[0] = readAcceptedEpisode(JSON.parse(JSON.stringify(first)), f.state.seed);
   const holder = continuityActor(f.state, f.id)!,
     root = f.state.continuity.records[0],
     key = continuityHolderKey(holder);
@@ -375,6 +381,7 @@ await runCase("narration-acceptance/lost-ack", () => {
   );
   const replay = acceptNarrationContinuity(f.state, publication, "submission", later);
   assert.deepEqual(replay.episode, first);
+  assert.deepEqual(replay.rejected, committed.rejected);
   assert.equal(f.state.episodes.records.length, 1);
   assert.equal(f.state.continuity.versions.length, 2, "replay never undoes the later correction");
   assert.throws(

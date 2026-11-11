@@ -75,7 +75,9 @@ const session = {
   ],
 };
 const notices = [],
-  dismissed = new Set();
+  dismissed = new Set(),
+  hiddenWishes = new Set();
+const progressId = "notice:" + "a".repeat(64);
 let pending = true,
   failed = false,
   polls = 0,
@@ -84,7 +86,8 @@ let pending = true,
   closingReviews = 0;
 let diagnosticReads = 0;
 const api = async (route) => {
-  const path = new URL(route.request().url()).pathname;
+  const url = new URL(route.request().url());
+  const path = url.pathname;
   let value = snapshot;
   if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity"))
     value = { session, debugDiscardEnabled: true };
@@ -95,8 +98,9 @@ const api = async (route) => {
   } else if (path.endsWith("/changes"))
     value = {
       changes: [],
-      notices: notices.filter((n) => !dismissed.has(n.id)),
+      notices: notices.filter((n) => !dismissed.has(n.id) && !hiddenWishes.has(n.id)),
       dismissedNoticeIds: [...dismissed],
+      hiddenWishNoticeIds: (url.searchParams.get("shownWishes") ?? "").split(",").filter((id) => hiddenWishes.has(id)),
       processingSummary: { pending: pending ? 1 : 0, failed: failed ? 1 : 0, rejected: 0 },
       unresolved: failed
         ? [
@@ -179,7 +183,7 @@ await withBrowser(browser, async () => {
   await expect(detail).toHaveCount(0);
   await expect(trigger).toBeFocused();
   notices.push({
-    id: "wish-progress",
+    id: progressId,
     kind: "wish",
     text: "Wish progressed · Bob",
     detail: "Plant a garden together. A planting day remains undecided.",
@@ -221,6 +225,10 @@ await withBrowser(browser, async () => {
   await refresh(second);
   await expect(second.locator("[aria-label='World changes']")).not.toContainText(fulfilled.text);
   await second.close();
+  hiddenWishes.add(progressId);
+  await refresh();
+  await expect(stack).not.toContainText("Wish progressed");
+  await expect(stack).toContainText("A memory was forged.");
   const arrival = {
     id: "attendance",
     role: "assistant",

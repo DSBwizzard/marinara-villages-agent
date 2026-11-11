@@ -14,6 +14,7 @@ import { immutableMemoryValue, isImmutableMemoryValue, memoryHash, memoryRequire
 import { readNpc } from "../rules/places.js";
 import type { NpcIdentity } from "../models/places.js";
 import { assertMailReceipt, assertMailHistory, mailEvidence, episodeMailEvidence } from "../rules/mail-evidence.js";
+import { MAX_SCENE_REJECTIONS } from "../rules/scene-acceptance.js";
 
 const id = z.string().min(1).max(160),
   ids = z.array(id).refine((rows) => new Set(rows).size === rows.length);
@@ -48,6 +49,12 @@ const episode = z
     segments: z.array(z.unknown()).max(24),
     grounding: z.array(continuityEvidenceSchema).max(1024),
     continuityVersionIds: ids,
+    rejectedEffects: z
+      .array(z.object({ id, reason: z.string().max(2000) }).strict())
+      .min(1)
+      .max(MAX_SCENE_REJECTIONS)
+      .refine((rows) => new Set(rows.map((row) => row.id)).size === rows.length)
+      .optional(),
     offered: z.array(z.object({ holder: continuityHolderSchema, ids }).strict()).max(32),
     commandReceipts: z
       .array(
@@ -180,6 +187,7 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
   if (raw && typeof raw === "object" && validated.has(raw) && validated.get(raw) === seed)
     return raw as AcceptedEpisode;
   const value = episode.parse(raw) as AcceptedEpisode;
+  memoryRequire(!value.rejectedEffects || value.sceneId, "only a Scene episode records rejected effects");
   memoryRequire(value.seed === seed && value.acceptedAt >= value.capturedAt, "invalid accepted episode world or time");
   const cast = new Map(value.actors.map((actor) => [actor.id, actor]));
   if (value.opportunity) {

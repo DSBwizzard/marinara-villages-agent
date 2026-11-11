@@ -247,7 +247,7 @@ async function main() {
         assert.equal(feed.nextCursor, "4");
         assert.equal(feed.hasMore, true);
       }
-      assert.deepEqual(reads, [["fixture", "1", 7]]);
+      assert.deepEqual(reads, [["fixture", "1", 7, undefined]]);
       for (const route of ["continue", "interpret"]) {
         const response = await app.inject({ method: "POST", url: "/rooms/fixture/changes/turn/" + route });
         assert.equal(response.statusCode, 404);

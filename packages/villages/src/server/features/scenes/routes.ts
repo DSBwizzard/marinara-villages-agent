@@ -153,7 +153,7 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
       return fail(reply, error, "discarding a debug Scene");
     }
   });
-  app.get<{ Params: { id: string }; Querystring: { cursor?: string; limit?: string } }>(
+  app.get<{ Params: { id: string }; Querystring: { cursor?: string; limit?: string; shownWishes?: string } }>(
     "/rooms/:id/changes",
     async (request, reply) => {
       try {
@@ -162,6 +162,7 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
             readChatId(request.params.id),
             request.query?.cursor,
             Number(request.query?.limit ?? 20),
+            request.query?.shownWishes,
           ),
         );
       } catch (error) {

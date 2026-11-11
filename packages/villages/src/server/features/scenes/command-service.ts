@@ -33,6 +33,8 @@ import { venueClasses } from "../../domain/rules/venue-model.js";
 import { defaultVenueZoneId, resolveVenueZone, zoneArea, zoneClosed } from "../../domain/rules/venue-zones.js";
 import { metadataFailure } from "../../domain/rules/work-failure.js";
 import { narrationBlocker } from "../../domain/rules/scene-submissions.js";
+import { sceneTurnNotices } from "../../domain/rules/scene-public.js";
+import { visibleSceneNotices } from "../../domain/rules/narration-notices.js";
 import { zoneEventScene } from "../../domain/rules/zone-events.js";
 export interface SceneCommandPorts {
   generate: typeof import("./writing.js").generate;
@@ -127,6 +129,13 @@ export function createSceneCommands({
     readVillageStateWithoutPlaces({ ...options, memories: true });
   const mutateVillageState: typeof mutateVillageStateWithoutPlaces = (change, options) =>
     mutateVillageStateWithoutPlaces(change, { ...options, memories: true });
+  async function visibleNoticeEvents(scene: VenueScene, events: ReturnType<typeof sceneTurnNotices>) {
+    if (!events.length) return events;
+    const state = await readVillageStateWithoutPlaces(
+      events.some((event) => event.kind === "wish") ? { memories: true } : {},
+    );
+    return state.seed === scene.villageSeed ? visibleSceneNotices(state, events) : [];
+  }
   const requestFingerprint = (input: Pick<VenueTurnInput, "mode" | "targetId" | "message" | "contact">) =>
     memoryHash([input.mode, input.targetId, input.contact ?? null, input.message]);
   async function publishNarration(
@@ -854,7 +863,11 @@ export function createSceneCommands({
       Math.round(performance.now() - started - farewellMs),
     );
     const byId = new Map([...result.recordEvents, ...ending.recordEvents].map((event) => [event.id, event] as const));
-    return { ...result, session: ending.session, recordEvents: [...byId.values()] };
+    return {
+      ...result,
+      session: ending.session,
+      recordEvents: await visibleNoticeEvents(ending.session, [...byId.values()]),
+    };
   }
   async function sendVenueTurnOnce(input: VenueTurnInput) {
     if (sceneWork().isMoving(input.sessionId)) throw conflict("Wait for Zone navigation to finish.");
@@ -906,7 +919,7 @@ export function createSceneCommands({
       venueOperationSignal(),
     );
     const turn = published.submissions.find((turn) => turn.id === input.submissionId)!;
-    return { session: published, recordEvents: turn.recordEvents ?? [] };
+    return { session: published, recordEvents: await visibleNoticeEvents(published, sceneTurnNotices(turn)) };
   }
   async function changeSceneVenues(scene: VenueScene, change: (state: VillageState) => void) {
     if (!scene.continuity) return;
@@ -934,7 +947,7 @@ export function createSceneCommands({
   /** Close the Scene and return its committed visible changes. */
   async function endVenueSessionWithReceipts(id: string, retryOfAttemptId?: string) {
     const session = await endVenueSession(id, retryOfAttemptId);
-    return { session, recordEvents: session.submissions.at(-1)?.recordEvents ?? [] };
+    return { session, recordEvents: await visibleNoticeEvents(session, sceneTurnNotices(session.submissions.at(-1))) };
   }
   /** Archive the Scene after recovering saved exchange work; no closing review. */
   async function closeVenueSession(
@@ -995,7 +1008,7 @@ export function createSceneCommands({
     abandonOperationId?: string,
   ) {
     const session = await closeVenueSession(id, expectedSceneRevision, retryOfAttemptId, abandonOperationId);
-    return { session, recordEvents: session.submissions.at(-1)?.recordEvents ?? [] };
+    return { session, recordEvents: await visibleNoticeEvents(session, sceneTurnNotices(session.submissions.at(-1))) };
   }
   async function closeLiveScene(session: VenueScene): Promise<VenueScene> {
     const closed = await changeSession(session.id, (state) => {

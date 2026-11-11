@@ -1,6 +1,10 @@
 import { memoryRequire, memoryString } from "./memory-integrity.js";
 import type { ContinuityEvidence } from "../models/continuity-model.js";
 
+export const MAX_SCENE_EFFECTS = 48;
+// Each effect can add a missing dependency, and an asserted dependency can fail separately.
+export const MAX_SCENE_REJECTIONS = MAX_SCENE_EFFECTS * 2 + 1;
+
 export type SceneEffectResult = {
   id: string;
   independent?: true;
@@ -57,7 +61,7 @@ export function resolveNarrationEffects<
 
 /** Select a coherent subset before the existing Village CAS; no domain is inherently optional. */
 export function selectSceneEffects(effects: SceneEffectResult[], assertedDependencies: string[]) {
-  memoryRequire(effects.length <= 48, "too many Scene effects");
+  memoryRequire(effects.length <= MAX_SCENE_EFFECTS, "too many Scene effects");
   const byId = new Map<string, SceneEffectResult>();
   for (const effect of effects) {
     memoryString(effect.id, 48);
