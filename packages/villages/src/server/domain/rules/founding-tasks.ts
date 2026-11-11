@@ -10,6 +10,7 @@ import { asRecord } from "./coerce.js";
 import { venueZones } from "./venue-zones.js";
 import { foundingIdentity } from "./founding-requests.js";
 import { readLoreUse } from "../../../shared/helpers/lore.js";
+import { continuityContextRevision } from "./continuity-library.js";
 
 export function foundingReadyForPlay(
   state: Pick<VillageState, "setupAt" | "venues" | "villagers" | "foundingPreparation">,
@@ -24,41 +25,28 @@ export function foundingReadyForPlay(
   );
 }
 
-export function foundingTaskRevision(
-  state: VillageState,
-  id: string,
-  kind: FoundingTaskKind,
-  capturedContext?: unknown,
-): string {
+export function foundingTaskRevision(state: VillageState, id: string, kind: FoundingTaskKind): string {
   const resident = state.villagers.find((row) => row.characterId === id);
-  const captured = asRecord(asRecord(capturedContext).circumstances);
   return backgroundRevision([
     1,
     state.seed,
+    resident?.incarnation,
     kind,
     kind === "routine" ? state.opening?.id : null,
     agendaRevision(state, id),
-    // Already admitted work retains its original source ingredient; new requests do not author it.
-    ...(Object.hasOwn(captured, "details") ? [captured.details] : []),
     state.worldRules,
     state.narrative?.situations,
     state.playerBackground,
     state.playerPersonaName,
     foundingIdentity({ ...resident?.cardSnapshot, admission: resident?.admission }),
     resident?.scheduleInfluence,
-    state.venues.map((venue) => [venue.id, venueZones(venue).map((zone) => [zone.id, zone.description, zone.state])]),
-    kind === "wish" ? resident?.wishes : null,
+    state.venues.map((venue) => [venue.id, venueZones(venue).map((zone) => [zone.id, zone.description])]),
+    resident ? continuityContextRevision(state, id) : null,
   ]);
 }
 export const foundingSlot = (kind: FoundingTaskKind, id: string) =>
   "villages-background-" + backgroundRevision([kind === "routine" ? "agenda" : "wish", id]);
-export function ownsFoundingTask(
-  state: VillageState,
-  id: string,
-  kind: FoundingTaskKind,
-  revision: string,
-  capturedContext?: unknown,
-): boolean {
+export function ownsFoundingTask(state: VillageState, id: string, kind: FoundingTaskKind, revision: string): boolean {
   const marker = state.foundingPreparation,
     task = marker?.tasks?.[id]?.[kind];
   return (
@@ -67,7 +55,7 @@ export function ownsFoundingTask(
     marker.status !== "ready" &&
     task.status !== "completed" &&
     task.revision === revision &&
-    foundingTaskRevision(state, id, kind, capturedContext) === revision
+    foundingTaskRevision(state, id, kind) === revision
   );
 }
 export function completeFoundingTask(state: VillageState, id: string, kind: FoundingTaskKind, revision: string): void {

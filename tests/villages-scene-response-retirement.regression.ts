@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
 import { createRepairService } from "../packages/villages/src/server/features/repair/repair-service.js";
@@ -13,7 +12,6 @@ import { collectRetainedStorage } from "../packages/villages/src/server/features
 import { createSceneTerminalStore } from "../packages/villages/src/server/features/scenes/scene-terminal.js";
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { initialOpening } from "../packages/villages/src/server/domain/rules/opening-project.js";
-import { releaseSceneMemories } from "../packages/villages/src/server/domain/rules/scene-memory-lifecycle.js";
 import {
   createRepairStorage,
   repairStorageId,
@@ -31,25 +29,26 @@ const owner = { id: "retired-response", villageSeed: "retired-response-world" },
 async function fixture() {
   const f = sceneHistoryFixture(),
     world = createVillageRepository(() => f.gate.documents);
-  await world.mutateAuthority((state) => {
-    Object.assign(state, defaultVillageState());
-    state.seed = owner.villageSeed;
-    state.setupAt = state.foundedAt = at;
-  });
+  await world.mutateAuthority(
+    (state) => {
+      state.seed = owner.villageSeed;
+      state.setupAt = state.foundedAt = at;
+    },
+    { memories: true },
+  );
   const repair = createRepairService({
     gate: f.gate,
     repository: world,
     resumeProject: async () => {},
     cancelProject: async () => {},
     replaySaved: async () => {},
-    continueSaved: async () => {},
   });
   const receipts = createSceneResponseReceipts(f.gate.documents),
     claim = (await receipts.begin(owner, signature, "attempt", false)).claim!,
     purchased = { content: "Exact purchased café 東京 🌼 ".repeat(1000), finishReason: "stop" },
     saved = (await receipts.retain(owner, signature, claim, purchased))!;
   async function createScene() {
-    const scene = coerceSession({ version: 4, ...owner, status: "active", startedAt: at });
+    const scene = coerceSession({ version: 5, ...owner, placeId: "place", status: "active", startedAt: at });
     await world.mutateAuthority(
       (state) => {
         scene.continuity = captureSceneContinuity(state, scene, Date.parse(at));
@@ -76,7 +75,6 @@ async function fixture() {
     }).save(closed, source.revision);
     await f.repository.clearActivePointer(owner.id);
     assert(await f.gate.work(() => f.gate.documents.remove("villages", sceneId, source.revision)));
-    await world.mutateAuthority((state) => releaseSceneMemories(state, closed), { memories: true });
   }
   return { ...f, world, repair, receipts, claim, purchased, saved, createScene, retireScene };
 }
@@ -390,7 +388,7 @@ for (const count of [1000, 10_000, 25_000]) {
       clone = structuredClone;
     let terminalWork = 0;
     globalThis.structuredClone = ((value: any, options?: StructuredSerializeOptions) => {
-      if (value?.version === 1 && value.sceneId === owner.id && Array.isArray(value.submissions))
+      if (value?.version === 2 && value.sceneId === owner.id && Array.isArray(value.submissions))
         terminalWork += value.submissions.length;
       return clone(value, options);
     }) as typeof structuredClone;

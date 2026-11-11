@@ -2,16 +2,21 @@ import assert from "node:assert/strict";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { BackgroundInput } from "../packages/villages/src/server/domain/models/background-model.js";
 import { connectionFailureKind } from "../packages/villages/src/server/domain/rules/connection-failure.js";
-import { localDateKey } from "../packages/villages/src/server/domain/rules/resident-planning.js";
+import {
+  buildResidentPlanningMessages,
+  localDateKey,
+} from "../packages/villages/src/server/domain/rules/resident-planning.js";
+import { captureContinuityContext } from "../packages/villages/src/server/domain/rules/continuity-context.js";
+import { captureReturnContext } from "../packages/villages/src/server/domain/rules/return-catchup-capture.js";
+import { returnCaptureRevision } from "../packages/villages/src/server/domain/rules/return-capture-revision.js";
+import { admitNarrative, ensureNarrative } from "../packages/villages/src/server/domain/rules/narrative-development.js";
 import { villageNow } from "../packages/villages/src/server/adapters/time/clock-gate.js";
-import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
 import {
   mutateVillageMemoryState,
   mutateVillageState,
   readVillageState,
-  readVillageAuthority,
 } from "../packages/villages/src/server/features/world/village-store.js";
 import {
   backgroundWorkSummaries,
@@ -25,10 +30,10 @@ import {
   startBackgroundWork,
   villageBackgroundPresence,
 } from "../packages/villages/src/server/jobs/background-work.js";
-import { buildResidentPlanningMessages } from "./fixtures/resident-planning.fixture.js";
+import { residentPlanningInput } from "./fixtures/resident-planning.fixture.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
-import { addMemory } from "./helpers/memories-fixture.js";
-import { mutateRelationships } from "../packages/villages/src/server/features/residents/relationship-store.js";
+import { retainAuthoredNote } from "./helpers/continuity.fixture.js";
+import { venueFixture } from "./helpers/venues.fixture.js";
 import { completionFailure, WorkFailureError } from "../packages/villages/src/server/domain/rules/work-failure.js";
 
 const rows = new Map<string, any>();
@@ -202,23 +207,6 @@ registerBackgroundHandler("agenda", {
     failedEffects.push(input.subject);
   },
 });
-registerBackgroundHandler("resident-planning", {
-  async generate(input) {
-    const opening = await completeWithRoom(model as any, buildResidentPlanningMessages(input.context), 100, {
-      temperature: 0,
-      debugMode: false,
-    });
-    await completeWithRoom(model as any, [{ role: "user", content: "story-followup" }], 100, {
-      temperature: 0,
-      debugMode: false,
-    });
-    return opening.content;
-  },
-  valid: () => true,
-  apply() {
-    effects.push("legacy-story");
-  },
-});
 const work = (subject: string, steps: string[], finite = true): BackgroundInput => ({
   kind: "agenda",
   subjectId: subject,
@@ -228,41 +216,69 @@ const work = (subject: string, steps: string[], finite = true): BackgroundInput 
   label: subject,
   input: { subject, steps, expectedName: "Willowbrook" },
 });
-function capturedInput(kind: "resident-planning" | "personal-mail" | "social-recovery", input: any = {}) {
-  const capturedAt = "2026-09-01T00:00:00.000Z";
-  const admitted = {
-    seed: "fixture",
-    setupAt: capturedAt,
-    villagers: [{ letterFontId: "caveat", characterId: "a", cardSnapshot: { name: "A", capturedAt }, wishes: [] }],
-  };
-  const opportunity = { actorIds: ["a"] };
-  if (kind === "personal-mail")
-    return { ...input, seed: "fixture", residentId: "a", incarnation: capturedAt, admitted };
-  if (kind === "social-recovery")
-    return { ...input, entry: { ...input.entry, seed: "fixture", admitted, opportunity } };
-  return {
-    ...input,
-    admitted,
-    opportunity,
-    actorIncarnations: { a: capturedAt },
-    context: {
-      ...input.context,
-      residents: [{ characterId: "a", capturedAt, wishes: [] }],
-      social: { state: undefined, candidates: [], relationships: [] },
-    },
-  };
+const capturedAt = "2026-09-01T00:00:00.000Z";
+const planningStep = (input: ReturnType<typeof residentPlanningInput>) => input.context.narration.opportunity.id;
+async function queueCatchupWork(subjectId: string) {
+  const state = await readVillageState({ memories: true });
+  const at = villageNow().toISOString();
+  const capture = captureReturnContext(state, new Date(at));
+  await queueBackgroundJob({
+    kind: "resident-planning",
+    subjectId,
+    seed: state.seed,
+    revision: subjectId,
+    finite: false,
+    label: "Catch-up",
+    automaticDate: localDateKey(villageNow()),
+    input: residentPlanningInput(state, "a", at, subjectId, {
+      batchId: "return-batch",
+      captureRevision: returnCaptureRevision(capture),
+      until: at,
+      world: capture.world,
+    }),
+  });
 }
-function capturedOutbox(state: ReturnType<typeof defaultVillageState>, id: string, catchupBatchId?: string) {
-  const entry = capturedInput("social-recovery").entry;
-  return {
-    ...entry,
-    id,
-    catchupBatchId,
-    at: state.setupAt,
-    candidates: [],
-    proposal: {},
-    admitted: { ...entry.admitted, setupAt: state.setupAt },
-  };
+async function queueWorldWork(subjectId: string, catchup = false) {
+  const state = await readVillageState({ memories: true });
+  const at = villageNow().toISOString(),
+    dateKey = localDateKey(villageNow());
+  state.venues = [venueFixture({ id: "common", name: "Commons", category: "public" })];
+  ensureNarrative(state, at);
+  const grant = admitNarrative(state, at, subjectId);
+  assert(grant);
+  const { venueId, zoneId } = grant.targets[0];
+  await queueBackgroundJob({
+    kind: "world-development",
+    subjectId,
+    seed: state.seed,
+    revision: subjectId,
+    finite: false,
+    label: "World activity",
+    automaticDate: dateKey,
+    input: {
+      version: 2,
+      grant,
+      dateKey,
+      ...(catchup
+        ? {
+            catchupBatchId: "return-batch",
+            context: { catchup: true },
+            captureRevision: returnCaptureRevision(captureReturnContext(state, new Date(at))),
+            returnUntil: at,
+            opportunity: {
+              id: subjectId,
+              kind: "world",
+              startsAt: at,
+              endsAt: at,
+              actorIds: [],
+              venueId,
+              zoneId,
+              facts: [],
+            },
+          }
+        : {}),
+    },
+  });
 }
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 async function until(predicate: () => boolean) {
@@ -295,6 +311,7 @@ async function reset() {
     Object.assign(state, defaultVillageState());
     state.name = "Willowbrook";
     state.seed = "fixture";
+    state.setupAt = state.foundedAt = capturedAt;
     state.villagers = [
       "same",
       "write-race",
@@ -321,6 +338,7 @@ async function reset() {
         ({
           letterFontId: "caveat",
           characterId: id,
+          incarnation: id + "-one",
           cardSnapshot: {
             id,
             revision: 1,
@@ -328,7 +346,6 @@ async function reset() {
             name: id,
             capturedAt: "2026-09-01T00:00:00.000Z",
           },
-          wishes: [],
           addedAt: "2026-09-01T00:00:00.000Z",
         }) as any,
     );
@@ -482,36 +499,18 @@ async function main() {
       assert.deepEqual(calls, ["held"], cause);
     }
     await reset();
-    const frozenStory = {
-      village: "Willowbrook",
-      setting: "Fields and trees. ".repeat(50) + "A flood is ongoing.",
-      moment: deriveVillageMoment({
-        seed: "fixture",
-        foundedAt: "2026-09-01T00:00:00Z",
-        now: new Date("2026-09-02T00:00:00Z"),
-      }),
-      residents: [],
-      recent: [],
-      venues: [],
-      opportunities: [],
-      lastSimulatedAt: "2026-09-01T00:00:00Z",
-      forced: false,
-    };
+    const storyWorld = await readVillageState({ memories: true });
+    storyWorld.setting = "Fields and trees. ".repeat(50) + "A flood is ongoing.";
+    const [opening] = buildResidentPlanningMessages(
+      residentPlanningInput(storyWorld, "a", capturedAt, "story").context,
+    );
     failStep = "story-followup";
     failure = "503 Service Unavailable";
-    await queueBackgroundJob({
-      kind: "resident-planning",
-      subjectId: "saved-story",
-      seed: "fixture",
-      revision: "legacy-story",
-      finite: true,
-      label: "Saved story",
-      input: capturedInput("resident-planning", { context: frozenStory }),
-    });
+    await queueBackgroundJob(work("a", [String(opening.content), "story-followup"]));
     await settleBackgroundWork();
-    const story = await summary("saved-story");
+    const story = await summary("a");
     assert.equal(calls.length, 2, story.error);
-    assert.equal(calls[0].includes(frozenStory.setting), true, "planning keeps complete authored context");
+    assert.equal(calls[0].includes(storyWorld.setting), true, "planning keeps complete authored context");
     stop();
     stop = startBackgroundWork({ now: () => now });
     await settleBackgroundWork();
@@ -519,14 +518,14 @@ async function main() {
     failStep = "";
     await retryBackgroundJob(
       story.id,
-      (await summary("saved-story")).attempt,
-      "resume-legacy-story",
-      (await summary("saved-story")).instanceId,
+      (await summary("a")).attempt,
+      "resume-saved-steps",
+      (await summary("a")).instanceId,
     );
     await settleBackgroundWork();
-    assert.equal((await summary("saved-story")).status, "completed");
+    assert.equal((await summary("a")).status, "completed");
     assert.equal(calls.length, 3, "the purchased first story response replays without another call");
-    assert.deepEqual(effects, ["legacy-story"]);
+    assert.deepEqual(effects, ["a"]);
     failure = "401 Invalid API key";
 
     await reset();
@@ -1002,6 +1001,7 @@ async function main() {
         {
           letterFontId: "caveat",
           characterId: "cycle",
+          incarnation: "cycle-one",
           cardSnapshot: {
             id: "cycle",
             revision: 1,
@@ -1009,7 +1009,7 @@ async function main() {
             name: "Cycle",
             capturedAt: new Date().toISOString(),
           },
-          wishes: [],
+          addedAt: capturedAt,
         } as any,
       ];
     });
@@ -1019,27 +1019,43 @@ async function main() {
     await queueBackgroundJob({ ...work("cycle", ["cycle-39"]), revision: "39" });
     await settleBackgroundWork();
     assert.equal(calls.length, beforePrune, "compact receipt protects a live subject after payload record pruning");
-    for (const kind of ["personal-mail", "social-recovery"] as const) {
+    const messageState = await readVillageState({ memories: true });
+    const text = "Could we talk tomorrow?";
+    const capture = captureContinuityContext(messageState, ["player", "cycle"], text, capturedAt);
+    const [from, to] = capture.actors;
+    for (const kind of ["personal-mail", "resident-planning"] as const) {
       registerBackgroundHandler(kind, {
         valid: () => true,
         generate: async () => {
-          throw Error("Retained social failure");
+          throw Error("Retained activity failure");
         },
         apply: () => {},
       });
       await queueBackgroundJob({
         kind,
         subjectId: kind + ":message-source",
-        seed: (await readVillageState()).seed,
+        seed: messageState.seed,
         revision: "source",
         finite: true,
-        label: "Social recovery",
-        input: capturedInput(kind),
+        label: "Retained activity",
+        input:
+          kind === "personal-mail"
+            ? {
+                seed: messageState.seed,
+                setupAt: messageState.setupAt,
+                residentId: to.id,
+                incarnation: to.incarnation,
+                residentName: "Cycle",
+                identity: "Cycle's captured card",
+                incoming: { id: "personal-mail:message-source", requestId: "request", at: capturedAt, from, to, text },
+                capture,
+              }
+            : residentPlanningInput(messageState, "cycle", capturedAt, "resident-source"),
       });
       await settleBackgroundWork();
       for (let read = 0; read < 2; read++) {
         const retained = (await backgroundWorkSummaries()).find((job) => job.kind === kind);
-        assert.equal(retained?.status, "failed", "A social message/encounter source is not a resident ID");
+        assert.equal(retained?.status, "failed", "Polling preserves failed activity keyed by its source");
         assert(rows.has(retained!.id), "Inspect polling preserves failed work for deliberate recovery");
       }
     }
@@ -1062,22 +1078,23 @@ async function main() {
     assert.equal(calls.includes("ordinary-during-return"), false, "The active return holds unrelated recurring work.");
     registerBackgroundHandler("resident-planning", {
       async generate(input) {
-        await completeWithRoom(model as any, [{ role: "user", content: input.step }], 100, { debugMode: false });
+        await completeWithRoom(model as any, [{ role: "user", content: planningStep(input) }], 100, {
+          debugMode: false,
+        });
         return {};
       },
       valid: () => true,
       apply(_state, input) {
-        effects.push(input.step);
+        effects.push(planningStep(input));
       },
     });
-    const currentDate = localDateKey(villageNow());
     registerBackgroundHandler("world-development", {
       authority: "raw",
       async generate(input) {
         const reply = await completeWithRoom(model as any, [{ role: "user", content: "world-gm" }], 100, {});
         const failure = completionFailure(reply, "world-development", 100);
         if (failure) throw new WorkFailureError(failure);
-        if (input.extraRequest)
+        if (input.grant.id === "principal-cap")
           await completeWithRoom(model as any, [{ role: "user", content: "extra-world-request" }], 100, {});
         return {};
       },
@@ -1102,16 +1119,7 @@ async function main() {
         { content: "", finishReason: "stop" },
         { content: "ready", finishReason: "stop" },
       ]);
-      await queueBackgroundJob({
-        kind: "world-development",
-        subjectId: failedStep,
-        seed: "fixture",
-        revision: failedStep,
-        finite: false,
-        label: "World catch-up",
-        automaticDate: currentDate,
-        input: { context: { catchup: true }, catchupBatchId: "return-batch" },
-      });
+      await queueWorldWork(failedStep, true);
       await settleBackgroundWork();
       assert.equal((await summary(failedStep)).status, "completed");
       assert.equal((await summary(failedStep)).requests, 2, "One extra principal request is accounted for.");
@@ -1139,16 +1147,7 @@ async function main() {
       { content: "", finishReason: "stop" },
       { content: "", finishReason: "stop" },
     ]);
-    await queueBackgroundJob({
-      kind: "world-development",
-      subjectId: "world-exhausted",
-      seed: "fixture",
-      revision: "world-exhausted",
-      finite: false,
-      label: "World catch-up",
-      automaticDate: currentDate,
-      input: { context: { catchup: true }, catchupBatchId: "return-batch" },
-    });
+    await queueWorldWork("world-exhausted", true);
     await settleBackgroundWork();
     assert.equal((await summary("world-exhausted")).status, "failed");
     assert.equal(calls.length, 2);
@@ -1162,16 +1161,7 @@ async function main() {
       state.backgroundPace = "balanced";
     });
     await villageBackgroundPresence("one-principal-request", true);
-    await queueBackgroundJob({
-      kind: "world-development",
-      subjectId: "principal-cap",
-      seed: "fixture",
-      revision: "principal-cap",
-      finite: false,
-      label: "World activity",
-      automaticDate: currentDate,
-      input: { extraRequest: true },
-    });
+    await queueWorldWork("principal-cap");
     await settleBackgroundWork();
     assert.equal((await summary("principal-cap")).status, "failed");
     assert.equal((await summary("principal-cap")).requests, 1);
@@ -1189,21 +1179,11 @@ async function main() {
       };
     });
     await villageBackgroundPresence("return-session", true);
-    const catchupWork = (subject: string, step: string): BackgroundInput => ({
-      kind: "resident-planning",
-      subjectId: subject,
-      seed: "fixture",
-      revision: subject,
-      finite: false,
-      label: "Catch-up",
-      automaticDate: currentDate,
-      input: capturedInput("resident-planning", { context: { catchup: true }, catchupBatchId: "return-batch", step }),
-    });
-    await queueBackgroundJob(catchupWork("return-one", "return-one"));
+    await queueCatchupWork("return-one");
     await settleBackgroundWork();
     assert.ok(effects.includes("return-one"), "Catch-up can run while ordinary work is held.");
     blockStep = "return-late";
-    await queueBackgroundJob(catchupWork("return-late", "return-late"));
+    await queueCatchupWork("return-late");
     await until(() => providerGate !== null);
     await cancelReturnCatchup("return-batch");
     providerGate!();
@@ -1222,7 +1202,7 @@ async function main() {
         },
       };
     });
-    await queueBackgroundJob(catchupWork("retry-before-dispatch", "retry-before-dispatch"));
+    await queueCatchupWork("retry-before-dispatch");
     await settleBackgroundWork();
     let pending = await summary("retry-before-dispatch");
     assert.equal(pending.status, "paused");
@@ -1231,7 +1211,7 @@ async function main() {
     assert.equal(calls.includes("retry-before-dispatch"), false, "An explicit retry cannot dispatch while hidden.");
     await villageBackgroundPresence("retry-session", true);
     await settleBackgroundWork();
-    assert.ok(calls.includes("retry-before-dispatch"));
+    assert.ok(calls.includes("retry-before-dispatch"), JSON.stringify(await summary("retry-before-dispatch")));
     assert.equal(
       (await readVillageState()).eventAttempts!.attempts.length,
       1,
@@ -1239,11 +1219,11 @@ async function main() {
     );
     await villageBackgroundPresence("retry-session", false);
     await villageBackgroundPresence("retry-session", true);
-    await queueBackgroundJob(catchupWork("quiet-second", "quiet-second"));
+    await queueCatchupWork("quiet-second");
     await settleBackgroundWork();
     assert.ok(calls.includes("quiet-second"), "Quiet permits a second review in its shared daily allowance.");
     await villageBackgroundPresence("retry-session", false);
-    await queueBackgroundJob(catchupWork("retry-over-budget", "retry-over-budget"));
+    await queueCatchupWork("retry-over-budget");
     await settleBackgroundWork();
     pending = await summary("retry-over-budget");
     await retryBackgroundJob(pending.id, pending.attempt, "retry-without-allowance", pending.instanceId);
@@ -1265,7 +1245,7 @@ async function main() {
     });
     await villageBackgroundPresence("admission-session", true);
     holdPendingTiming = true;
-    await queueBackgroundJob(catchupWork("cancel-before-dispatch", "cancel-before-dispatch"));
+    await queueCatchupWork("cancel-before-dispatch");
     await until(() => releasePendingTiming !== null);
     const cancelAdmission = cancelReturnCatchup("return-batch");
     await tick();
@@ -1310,7 +1290,7 @@ async function main() {
     });
     await villageBackgroundPresence("hide-before-admission", true);
     holdPendingTiming = true;
-    await queueBackgroundJob(catchupWork("hidden-before-dispatch", "hidden-before-dispatch"));
+    await queueCatchupWork("hidden-before-dispatch");
     await until(() => releasePendingTiming !== null);
     const hideAdmission = villageBackgroundPresence("hide-before-admission", false);
     await tick();
@@ -1347,7 +1327,7 @@ async function main() {
     });
     await villageBackgroundPresence("hide-during-count", true);
     holdRequestCount = true;
-    await queueBackgroundJob(catchupWork("hidden-during-count", "hidden-during-count"));
+    await queueCatchupWork("hidden-during-count");
     await until(() => releaseRequestCount !== null);
     await villageBackgroundPresence("hide-during-count", false);
     releaseRequestCount!();
@@ -1380,7 +1360,9 @@ async function main() {
     await villageBackgroundPresence("stale-saved-response", true);
     registerBackgroundHandler("resident-planning", {
       async generate(input) {
-        await completeWithRoom(model as any, [{ role: "user", content: input.step }], 100, { debugMode: false });
+        await completeWithRoom(model as any, [{ role: "user", content: planningStep(input) }], 100, {
+          debugMode: false,
+        });
         await mutateVillageState((state) => {
           state.setting = "Source changed after response storage";
         });
@@ -1391,7 +1373,7 @@ async function main() {
         throw new Error("An obsolete source cannot apply");
       },
     });
-    await queueBackgroundJob(catchupWork("stale-after-response", "stale-after-response"));
+    await queueCatchupWork("stale-after-response");
     await settleBackgroundWork();
     assert.equal(calls.filter((step) => step === "stale-after-response").length, 1);
     assert.equal(
@@ -1416,93 +1398,29 @@ async function main() {
           status: "running",
         },
       };
-      state.memories = addMemory(state.memories, { sourceId: "before-return" });
+      retainAuthoredNote(state, "before-return", "A kept the original map.", ["a"], capturedAt);
     });
     registerBackgroundHandler("resident-planning", {
       async generate(input) {
-        await completeWithRoom(model as any, [{ role: "user", content: input.step }], 100, { debugMode: false });
+        await completeWithRoom(model as any, [{ role: "user", content: planningStep(input) }], 100, {
+          debugMode: false,
+        });
         return {};
       },
-      valid: (state) => state.memories.revision > 0,
+      valid: (state) => state.continuity.revision > 0,
       apply(state, input) {
-        assert.ok(state.memories.revision > 0, "Application receives the committed Memory payload.");
-        effects.push(input.step);
+        assert(state.continuity.versions.some((version) => version.text === "A kept the original map."));
+        effects.push(planningStep(input));
       },
     });
     await villageBackgroundPresence("memory-session", true);
-    await queueBackgroundJob(catchupWork("loaded-memory", "loaded-memory"));
+    await queueCatchupWork("loaded-memory");
     await settleBackgroundWork();
     assert.ok(effects.includes("loaded-memory"), "Catch-up validates and applies with a real persisted Memory head.");
-    await reset();
     await mutateVillageMemoryState((state) => {
-      state.returnCatchup = {
-        batch: {
-          budgetDate: localDateKey(villageNow()),
-          opportunityLimit: 6,
-          id: "return-batch",
-          status: "recovering",
-        },
-      };
-      state.memories = addMemory(state.memories, { sourceId: "before-interpretation" });
-    });
-    registerBackgroundHandler("social-recovery", {
-      async generate(input) {
-        await completeWithRoom(model as any, [{ role: "user", content: input.step }], 100, { debugMode: false });
-        return {};
-      },
-      valid: (state) => state.memories.revision > 0,
-      apply(_state, input) {
-        effects.push(input.step);
-      },
-    });
-    const reinterpret = (step: string): BackgroundInput => ({
-      kind: "social-recovery",
-      subjectId: step,
-      seed: "fixture",
-      revision: step,
-      finite: true,
-      label: "Encounter meaning",
-      input: capturedInput("social-recovery", { entry: { catchupBatchId: "return-batch" }, step }),
-    });
-    await villageBackgroundPresence("interpretation-session", true);
-    holdPendingTiming = true;
-    await queueBackgroundJob(reinterpret("cancel-interpretation"));
-    await until(() => releasePendingTiming !== null);
-    const cancelInterpretation = cancelReturnCatchup("return-batch");
-    await tick();
-    releasePendingTiming!();
-    await cancelInterpretation;
-    await settleBackgroundWork();
-    assert.equal(calls.includes("cancel-interpretation"), false, "Cancelled interpretation does not dispatch.");
-    await reset();
-    await mutateVillageMemoryState((state) => {
-      state.returnCatchup = {
-        batch: {
-          budgetDate: localDateKey(villageNow()),
-          opportunityLimit: 6,
-          id: "return-batch",
-          status: "recovering",
-        },
-      };
-      state.memories = addMemory(state.memories, { sourceId: "before-interpretation" });
-    });
-    await villageBackgroundPresence("interpretation-hidden", true);
-    holdPendingTiming = true;
-    await queueBackgroundJob(reinterpret("hidden-interpretation"));
-    await until(() => releasePendingTiming !== null);
-    const hideInterpretation = villageBackgroundPresence("interpretation-hidden", false);
-    await tick();
-    releasePendingTiming!();
-    await hideInterpretation;
-    await settleBackgroundWork();
-    assert.equal(calls.includes("hidden-interpretation"), false, "Hidden interpretation does not dispatch.");
-    await villageBackgroundPresence("interpretation-hidden", true);
-    await settleBackgroundWork();
-    assert.ok(effects.includes("hidden-interpretation"), "Interpretation resumes with the persisted Memory payload.");
-    await reset();
-    await mutateVillageState((state) => {
       const instant = villageNow().toISOString();
       state.returnCatchup = {
+        capture: captureReturnContext(state, new Date(instant)),
         batch: {
           budgetDate: localDateKey(villageNow()),
           opportunityLimit: 6,
@@ -1510,49 +1428,31 @@ async function main() {
           status: "running",
           from: instant,
           until: instant,
-          opportunities: [
-            {
-              id: "safe",
-              kind: "routine",
-              startsAt: instant,
-              endsAt: instant,
-              actorIds: ["a"],
-              venueId: "",
-              facts: [],
-            },
+          opportunities: ["loaded-memory", "unfinished"].map((id) => ({
+            id,
+            kind: "routine",
+            startsAt: instant,
+            endsAt: instant,
+            actorIds: ["a"],
+            venueId: "",
+            facts: [],
+          })),
+          records: [
+            { opportunityId: "loaded-memory", status: "settled", outcome: {} },
+            { opportunityId: "unfinished", status: "queued" },
           ],
-          records: [{ opportunityId: "safe", status: "settling" }],
         },
       };
-      state.socialOutbox = [
-        capturedOutbox(state, "safe:social", "return-batch"),
-        capturedOutbox(state, "unrelated:social"),
-      ] as any;
     });
+    const beforeCancel = await readVillageState({ memories: true });
     await cancelReturnCatchup("return-batch");
-    const skipped = await readVillageAuthority();
-    assert.deepEqual(
-      skipped.socialOutbox?.map((row) => row.id),
-      ["unrelated:social"],
-      "Continue discards only the uncommitted return source.",
-    );
-    assert.equal(skipped.returnCatchup?.batch?.records?.[0]?.status, "rejected");
-    await reset();
-    await mutateRelationships("fixture", (state) => {
-      state.applied["partial:social"] = true;
-    });
-    await mutateVillageState((state) => {
-      state.returnCatchup = {
-        batch: {
-          budgetDate: localDateKey(villageNow()),
-          opportunityLimit: 6,
-          id: "return-batch",
-          status: "running",
-        },
-      };
-      state.socialOutbox = [capturedOutbox(state, "partial:social", "return-batch")] as any;
-    });
-    await assert.rejects(() => cancelReturnCatchup("return-batch"), /recovering the saved encounter/);
+    const skipped = await readVillageState({ memories: true });
+    assert.equal(skipped.returnCatchup?.batch?.status, "cancelled");
+    assert.equal(skipped.returnCatchup?.capture, undefined);
+    assert.deepEqual(skipped.returnCatchup?.batch?.records?.[0], beforeCancel.returnCatchup?.batch?.records?.[0]);
+    assert.equal(skipped.returnCatchup?.batch?.records?.[1]?.status, "rejected");
+    assert.deepEqual(skipped.continuity, beforeCancel.continuity);
+    assert.deepEqual(skipped.episodes, beforeCancel.episodes);
     console.log(
       "villages-background-work: concurrency, checkpoint retry, fairness, presence, recovery, stale results, bounded storage ok",
     );

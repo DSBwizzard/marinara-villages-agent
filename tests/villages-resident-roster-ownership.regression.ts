@@ -244,7 +244,6 @@ assert.deepEqual(vacant.preparation, { status: "ready" });
 assert.equal(vacant.seen, true);
 assert.equal(vacant.description, "Secret writing", "vacancy preserves established physical truth");
 assert.equal(vacant.image, null);
-assert.equal(vacant.state.recent, null);
 assert.deepEqual(vacant.access!.managerIds, null);
 assert.deepEqual(vacant.access!.inviterIds, []);
 assert.deepEqual(vacant.access!.memberIds, []);

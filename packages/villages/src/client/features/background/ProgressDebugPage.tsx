@@ -6,7 +6,6 @@ export function renderProgressDebugPage(ports: ProgressDebugPagePorts) {
   return (
     <div className={`${ELEMENT_TAG}-panel`}>
       <h2>DEBUG: Progress</h2>
-      <p>Engine version: {progressDebug?.engineVersion ?? "loading"}</p>
       <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => void loadProgressDebug()}>
         Refresh diagnostics
       </button>
@@ -19,8 +18,10 @@ export function renderProgressDebugPage(ports: ProgressDebugPagePorts) {
             </p>
           ))}
         </section>
-      ) : (
+      ) : progressDebug ? (
         <p>No saved turns await replay.</p>
+      ) : error ? null : (
+        <p>Loading diagnostics…</p>
       )}
       {progressDebug?.speechProofs?.length ? (
         <section>
@@ -38,85 +39,6 @@ export function renderProgressDebugPage(ports: ProgressDebugPagePorts) {
           ))}
         </section>
       ) : null}
-      {progressDebug?.tasks.map((task) => (
-        <details key={task.definition.id} open>
-          <summary>
-            {task.definition.owner.kind} {task.definition.owner.id} · revision {task.definition.revision} ·{" "}
-            {task.resolvedAt ? "resolved" : (task.definition.phases[task.phaseIndex]?.title ?? "complete")}
-          </summary>
-          <p>
-            Disclosed: {task.visibleAt || "hidden"}
-            {task.resolvedAt ? ` · Resolved: ${task.resolvedAt} · ${task.resolutionKey}` : ""}
-          </p>
-          {task.definition.phases.map((phase) => (
-            <section key={phase.id}>
-              <h3>{phase.title}</h3>
-              {phase.requirements.map((requirement) => {
-                const receipts = task.receipts.filter(
-                  (receipt) => receipt.phaseId === phase.id && receipt.requirementId === requirement.id,
-                );
-                return (
-                  <p key={requirement.id}>
-                    {requirement.title} · {task.requirementVisibleAt[requirement.id] || "hidden"} ·{" "}
-                    {receipts.length
-                      ? receipts
-                          .map(
-                            (receipt) =>
-                              `${receipt.routeId} [${receipt.evidence.grade ?? "typed"}]: ${receipt.evidence.sourceId} ${receipt.evidence.excerpt ?? ""} ${(receipt.evidence.citations ?? []).map((citation) => `${citation.lineId}: ${citation.quote}`).join("; ")}`,
-                          )
-                          .join("; ")
-                      : "pending"}
-                  </p>
-                );
-              })}
-            </section>
-          ))}
-          {task.attempts.length ? (
-            <section>
-              <h3>Rejected or unavailable</h3>
-              {task.attempts.map((attempt, index) => (
-                <p key={`${attempt.evidenceId}:${index}`}>
-                  {attempt.phaseId}/{attempt.requirementId} · {attempt.status}: {attempt.reason}
-                </p>
-              ))}
-            </section>
-          ) : null}
-          {task.transitions.length ? (
-            <section>
-              <h3>Transitions</h3>
-              {task.transitions.map((transition, index) => (
-                <p key={`${transition.phaseId}:${index}`}>
-                  {transition.phaseId} → {transition.at} · {transition.evidenceId}
-                </p>
-              ))}
-            </section>
-          ) : null}
-          {task.revisionHistory?.map((prior) => (
-            <details key={prior.definition.revision}>
-              <summary>
-                Earlier revision {prior.definition.revision} · {prior.receipts.length} accepted sources
-              </summary>
-              {prior.receipts.map((receipt) => (
-                <p key={`${receipt.requirementId}:${receipt.evidence.sourceId}`}>
-                  {receipt.requirementId} · {receipt.evidence.grade ?? "typed"} · {receipt.evidence.sourceId} ·{" "}
-                  {receipt.evidence.excerpt ?? ""}
-                  {receipt.evidence.citations?.map((citation) => (
-                    <span key={`${citation.lineId}:${citation.quote}`}>
-                      {" "}
-                      · {citation.lineId}: “{citation.quote}”
-                    </span>
-                  ))}
-                </p>
-              ))}
-              {prior.transitions.map((transition, index) => (
-                <p key={`${transition.phaseId}:${index}`}>
-                  {transition.phaseId} → {transition.at}
-                </p>
-              ))}
-            </details>
-          ))}
-        </details>
-      ))}
       {error ? (
         <p className={`${ELEMENT_TAG}-error`} role="alert">
           {error}

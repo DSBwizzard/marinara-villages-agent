@@ -7,13 +7,14 @@ import {
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { observableRoomDescription } from "../packages/villages/src/server/domain/rules/zone-picture.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { preparePrivateSpaces } from "../packages/villages/src/server/jobs/private-space-preparation.js";
 import {
   createPrivateSpacePreparation,
   type PrivateSpacePreparationPorts,
 } from "../packages/villages/src/server/jobs/private-space-service.js";
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { authorVillageFixture, storedVillage, villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 function deferred() {
   return Promise.withResolvers<void>();
@@ -66,23 +67,21 @@ function world(name: string) {
   });
 }
 function fixture(name: string) {
-  const rows = new Map<string, any>([
-    [
-      "villages-village",
-      {
-        id: "villages-village",
-        packageId: "villages",
-        data: world(name),
-        revision: 1,
-      },
-    ],
-  ]);
+  const rows = new Map<string, any>();
+  rows.set("villages-village", {
+    id: "villages-village",
+    packageId: "villages",
+    kind: "village",
+    data: authorVillageFixture(rows, world(name)),
+    revision: 1,
+  });
   const gate = deferred();
   const entered = deferred();
   const calls: { signal?: AbortSignal; claim: string }[] = [];
   const stages: string[] = [];
-  const state = () => rows.get("villages-village").data;
-  const privateZone = () => state().venues[0].zones[1];
+  const state = () => storedVillage(rows);
+  const privateZone = () => state().venues[0].zones![1];
+  const appearance = () => observableRoomDescription(state(), "same-venue", "same-zone", new Date().toISOString());
   let conflicts = 2;
   const documents = {
     getById: async (_package: string, id: string) => {
@@ -147,7 +146,7 @@ function fixture(name: string) {
       if (conflicts-- > 0) await mutator(structuredClone(state()));
       const next = structuredClone(state());
       await mutator(next);
-      rows.get("villages-village").data = next;
+      rows.get("villages-village").data = authorVillageFixture(rows, next);
       return structuredClone(next);
     },
     readVillageLore: async () => [],
@@ -181,7 +180,7 @@ function fixture(name: string) {
     persistence: { documents: villageFixtureDocuments(documents) },
     languageModels: { resolveForRequest: async () => model },
   } as any;
-  return { service, state, privateZone, gate, entered, calls, stages, host };
+  return { service, privateZone, appearance, gate, entered, calls, stages, host };
 }
 async function factoryIsolation() {
   const a = fixture("A"),
@@ -205,12 +204,12 @@ async function factoryIsolation() {
     b.gate.resolve();
     await pendingB;
     assert.equal(b.privateZone().preparation.status, "ready");
-    assert.equal(b.privateZone().description, "private-B");
+    assert.equal(b.appearance(), "private-B");
     assert.equal(a.privateZone().preparation.status, "pending");
     a.gate.resolve();
     assert.match((await outcomeA).message, /interrupted/);
     assert.equal(a.privateZone().preparation.status, "failed");
-    assert.equal(a.privateZone().description, "");
+    assert.equal(a.appearance(), "");
     await a.service.preparePrivateSpaces();
     assert.equal(a.calls.length, 1, "discovery never retries unknown paid outcomes");
     await a.service.retryPrivateSpaces();
@@ -252,8 +251,8 @@ async function scopedIsolation() {
     assert.equal(b.calls[0].signal?.aborted, false);
     b.gate.resolve();
     await pendingB;
-    assert.equal(b.privateZone().description, "private-scoped-B");
-    assert.equal(a.privateZone().description, "");
+    assert.equal(b.appearance(), "private-scoped-B");
+    assert.equal(a.appearance(), "");
     await ownerB.run(preparePrivateSpaces);
     assert.equal(b.calls.length, 1, "old cleanup leaves the newer owner usable");
   } finally {

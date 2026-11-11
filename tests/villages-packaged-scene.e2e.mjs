@@ -65,11 +65,7 @@ await withBrowser({ close: server.stop }, async () => {
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect.poll(() => turns.length).toBe(1);
     assert.equal(server.calls(), 1, "one combined GM response");
-    assert(
-      server
-        .scene()
-        .lines.some((line) => line.speakerId === "mara" && line.content === "I heard your browser message."),
-    );
+    assert(server.scene().lines.some((line) => line.speakerId === "mara" && line.content === "Hello there."));
     const saved = structuredClone(server.records.get("villages-venue-visit-browser"));
     const replay = await server.app.inject({
       method: "POST",
@@ -93,7 +89,7 @@ await withBrowser({ close: server.stop }, async () => {
         if ((await next.isVisible()) && (await next.isEnabled())) await next.click();
         return page.locator("marinara-capability-villages").textContent();
       })
-      .toContain("I heard your browser message.");
+      .toContain("Hello there.");
     assert.equal(server.calls(), 1, "reload restores saved output without dispatch");
   });
 });

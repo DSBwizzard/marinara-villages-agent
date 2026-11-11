@@ -5,11 +5,19 @@ import type { VillageCompletionOptions } from "../../domain/models/completion-mo
 import { retainPrivateDiagnostic } from "../../adapters/observability/private-diagnostics.js";
 
 type Response = { token: string; digest: string; result: Completion };
-const usageFields = ["promptTokens", "completionTokens", "completionReasoningTokens", "totalTokens"] as const;
+const usageFields = [
+  "promptTokens",
+  "completionTokens",
+  "completionReasoningTokens",
+  "totalTokens",
+  "cachedPromptTokens",
+  "cacheWritePromptTokens",
+] as const;
 type UsageField = (typeof usageFields)[number];
 type Receipt = {
-  format: 1;
+  format: 3;
   purpose: "standalone-generation";
+  requestId: string;
   fingerprint: string;
   dispatched: number;
   settled: number;
@@ -21,24 +29,18 @@ type Receipt = {
   candidate?: Response;
 };
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-const replayDigest = (result: Completion) =>
+const replayDigest = (requestId: string, result: Completion) =>
   digest([
+    requestId,
     result.content,
     result.finishReason,
     result.usage ? usageFields.map((field) => result.usage?.[field] ?? null) : null,
   ]);
 
-/** Only conclusively settled attempts lose their body; replay and uncertainty have no expiry. */
-export async function claimSavedResponse(
-  mutate: typeof mutateDocument,
-  request: NonNullable<VillageCompletionOptions["savedRequest"]>,
-  messages: unknown,
-  warn: () => void,
-) {
-  const id = "villages-generation-response-" + createHash("sha256").update(request.key).digest("hex");
-  const fingerprint = digest(messages);
-  const token = randomUUID();
-  const slot = {
+const responseId = (key: string) => "villages-generation-response-" + createHash("sha256").update(key).digest("hex");
+
+function responseSlot(requestId: string, fingerprint = "") {
+  return {
     kind: "generation-response",
     name: "Saved generation response",
     description: "Private replay response and unresolved dispatch identities",
@@ -46,8 +48,9 @@ export async function claimSavedResponse(
     coerce: (raw: unknown): Receipt => {
       if (raw === undefined)
         return {
-          format: 1,
+          format: 3,
           purpose: "standalone-generation",
+          requestId,
           fingerprint,
           dispatched: 0,
           settled: 0,
@@ -65,11 +68,12 @@ export async function claimSavedResponse(
           !!value.result &&
           (typeof value.result.content === "string" || value.result.content === null) &&
           typeof value.result.finishReason === "string" &&
-          replayDigest(value.result) === value.digest);
+          replayDigest(requestId, value.result) === value.digest);
       if (
         !row ||
-        row.format !== 1 ||
+        row.format !== 3 ||
         row.purpose !== "standalone-generation" ||
+        row.requestId !== requestId ||
         typeof row.fingerprint !== "string" ||
         !/^[a-f0-9]{64}$/.test(row.fingerprint) ||
         ![row.dispatched, row.settled, row.rejected].every((n) => Number.isSafeInteger(n) && n >= 0) ||
@@ -96,6 +100,32 @@ export async function claimSavedResponse(
       return row;
     },
   };
+}
+
+/** An exact authority key can reopen a validated result without resolving a provider. */
+export async function reopenSavedResponse(mutate: typeof mutateDocument, key: string): Promise<Completion | undefined> {
+  let cached: Completion | undefined;
+  const id = responseId(key);
+  await mutate(id, responseSlot(id), (receipt) => {
+    cached = structuredClone((receipt.selected ?? receipt.candidate)?.result);
+    if (!receipt.candidate) return false;
+    receipt.selected = receipt.candidate;
+    delete receipt.candidate;
+  });
+  return cached;
+}
+
+/** Only conclusively settled attempts lose their body; replay and uncertainty have no expiry. */
+export async function claimSavedResponse(
+  mutate: typeof mutateDocument,
+  request: NonNullable<VillageCompletionOptions["savedRequest"]>,
+  messages: unknown,
+  warn: () => void,
+) {
+  const id = responseId(request.key);
+  const fingerprint = digest(messages);
+  const token = randomUUID();
+  const slot = responseSlot(id, fingerprint);
   let cached: Completion | undefined;
   await mutate(id, slot, (receipt) => {
     cached = undefined;
@@ -154,9 +184,9 @@ export async function claimSavedResponse(
         rejected = true;
       } else if (!receipt.selected) {
         if (adopt) {
-          receipt.selected = { token, digest: replayDigest(replay), result: structuredClone(replay) };
+          receipt.selected = { token, digest: replayDigest(id, replay), result: structuredClone(replay) };
           delete receipt.candidate;
-        } else receipt.candidate ??= { token, digest: replayDigest(replay), result: structuredClone(replay) };
+        } else receipt.candidate ??= { token, digest: replayDigest(id, replay), result: structuredClone(replay) };
       }
       if (adopt && !receipt.selected && receipt.candidate) {
         receipt.selected = receipt.candidate;

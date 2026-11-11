@@ -20,6 +20,7 @@ export function useSceneChangesPolling(ports: {
   dismissedRoomEventIdsRef: React.RefObject<Set<string>>;
   receiveRoomRecordEvents: (events: readonly import("../../../shared/contracts/village.js").RoomRecordEvent[]) => void;
   room: import("../../../shared/contracts/village.js").SceneView;
+  roomNotices: readonly RoomRecordEvent[];
   setRoomChangeStatus: React.Dispatch<React.SetStateAction<{ pending: number; failed: number; rejected: number }>>;
   setRoomNotices: React.Dispatch<
     React.SetStateAction<import("../../../shared/contracts/village.js").RoomRecordEvent[]>
@@ -35,11 +36,16 @@ export function useSceneChangesPolling(ports: {
     setRoomUnresolvedChanges,
   } = ports;
   const cursorRef = useRef({ sceneId: "", cursor: "" });
+  const shownWishIds = useEffectEvent(() =>
+    ports.roomNotices
+      .filter((event) => event.kind === "wish" && /^notice:[a-f0-9]{64}$/u.test(event.id))
+      .map((event) => event.id),
+  );
   const focusRevision = useFocusRevision(ports.visible && ports.viewing);
   const sceneChanges = ports.snapshot?.sceneChanges;
   const revision = room?.id && sceneChanges?.sceneId === room.id ? sceneChanges.revision : "";
   useEffect(() => {
-    if (!room?.id || room.memoryMode !== "live" || !ports.visible || !ports.viewing || ports.busy) return;
+    if (!room?.id || !ports.visible || !ports.viewing || ports.busy) return;
     if (cursorRef.current.sceneId !== room.id) {
       cursorRef.current = { sceneId: room.id, cursor: "" };
       setRoomChangeStatus({ pending: 0, failed: 0, rejected: 0 });
@@ -47,49 +53,52 @@ export function useSceneChangesPolling(ports: {
     }
     const controller = new AbortController();
     let retries = 0;
-    let wasActive = false;
-    let settling = false;
     let stopped = false,
       timer: ReturnType<typeof setTimeout>;
     let cursor = cursorRef.current.cursor;
+    const knownWishes = shownWishIds();
+    let reconcileWishes = true;
+    const readPage = (limit: number, wishes: string[]) => {
+      const query = new URLSearchParams({ cursor, limit: String(limit) });
+      if (wishes.length) query.set("shownWishes", wishes.join(","));
+      return request<{
+        activeRequest?: { status?: string };
+        changes: { notices: RoomRecordEvent[] }[];
+        notices: RoomRecordEvent[];
+        dismissedNoticeIds: string[];
+        hiddenWishNoticeIds?: string[];
+        processingSummary: { pending: number; failed: number; rejected: number };
+        nextCursor: string;
+        hasMore: boolean;
+        unresolved: SceneChangeIssue[];
+      }>(`/rooms/${encodeURIComponent(room.id)}/changes?${query}`, { signal: controller.signal });
+    };
     const poll = async () => {
       try {
-        const answer = await request<{
-          activeRequest?: { status?: string };
-          backgroundChecks?: { status: string }[];
-          changes: { notices: RoomRecordEvent[] }[];
-          notices: RoomRecordEvent[];
-          dismissedNoticeIds: string[];
-          processingSummary: { pending: number; failed: number; rejected: number };
-          nextCursor: string;
-          hasMore: boolean;
-          unresolved: SceneChangeIssue[];
-        }>(`/rooms/${encodeURIComponent(room.id)}/changes?cursor=${encodeURIComponent(cursor)}&limit=20`, {
-          signal: controller.signal,
-        });
+        const wishes = reconcileWishes ? knownWishes : [];
+        const answer = await readPage(20, wishes.slice(0, 50));
+        const hiddenWishes = new Set(answer.hiddenWishNoticeIds ?? []);
+        for (let offset = 50; offset < wishes.length; offset += 50) {
+          const result = await readPage(1, wishes.slice(offset, offset + 50));
+          for (const id of result.hiddenWishNoticeIds ?? []) hiddenWishes.add(id);
+        }
         if (stopped) return;
+        reconcileWishes = false;
         for (const id of answer.dismissedNoticeIds ?? []) dismissedRoomEventIdsRef.current.add(id);
-        setRoomNotices((current) => current.filter((event) => !dismissedRoomEventIdsRef.current.has(event.id)));
-        receiveRoomRecordEvents([
-          ...(answer.notices ?? []),
-          ...(answer.changes ?? []).flatMap((change) => change.notices ?? []),
-        ]);
+        setRoomNotices((current) =>
+          current.filter((event) => !dismissedRoomEventIdsRef.current.has(event.id) && !hiddenWishes.has(event.id)),
+        );
+        receiveRoomRecordEvents(
+          [...(answer.notices ?? []), ...(answer.changes ?? []).flatMap((change) => change.notices ?? [])].filter(
+            (event) => !hiddenWishes.has(event.id),
+          ),
+        );
         setRoomChangeStatus(answer.processingSummary ?? { pending: 0, failed: 0, rejected: 0 });
         setRoomUnresolvedChanges(answer.unresolved ?? []);
         cursor = answer.nextCursor ?? cursor;
         cursorRef.current.cursor = cursor;
         retries = 0;
-        // The operation/recovery monitor owns a running turn. This loop owns only its asynchronous Wish checks.
-        const active = answer.backgroundChecks?.some((job) => ["queued", "running"].includes(job.status));
         if (answer.hasMore) timer = setTimeout(() => void poll(), 25);
-        else if (room.status !== "closed" && active) {
-          wasActive = true;
-          timer = setTimeout(() => void poll(), 1500);
-        } else if (room.status !== "closed" && wasActive && !settling) {
-          settling = true;
-          timer = setTimeout(() => void poll(), 1500);
-        }
-        // Late afterApply commits change the shared snapshot revision and reopen this read.
       } catch {
         if (!stopped && retries++ < 2) timer = setTimeout(() => void poll(), 3000);
       }
@@ -102,7 +111,6 @@ export function useSceneChangesPolling(ports: {
     };
   }, [
     room?.id,
-    room?.memoryMode,
     room?.status,
     room?.sceneRevision,
     room?.operation?.status,
@@ -208,7 +216,7 @@ export function useSceneSelectionReset(ports: {
     const onFocus = () => {
       if (!document.hidden) validate();
     };
-    if (room.liveSceneVersion === 1 && !document.hidden) validate();
+    if (!document.hidden) validate();
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);
     return () => {
@@ -220,7 +228,6 @@ export function useSceneSelectionReset(ports: {
     room?.id,
     room?.status,
     ports.snapshot?.village.instant,
-    room?.liveSceneVersion,
     screen,
     loadSnapshot,
     observedRoomIdRef,
@@ -316,7 +323,6 @@ export function useSceneInterruptedSubmission(ports: {
   setRoomContactBoundary: React.Dispatch<React.SetStateAction<string>>;
   setRoomContactKind: React.Dispatch<React.SetStateAction<"knock" | "call">>;
   setRoomDraft: React.Dispatch<React.SetStateAction<string>>;
-  setRoomMode: React.Dispatch<React.SetStateAction<import("../../shared/types.js").SceneComposerMode>>;
   setRoomMoveZoneId: React.Dispatch<React.SetStateAction<string>>;
   setRoomTargetId: React.Dispatch<React.SetStateAction<string>>;
 }) {
@@ -329,7 +335,6 @@ export function useSceneInterruptedSubmission(ports: {
     setRoomContactBoundary,
     setRoomContactKind,
     setRoomDraft,
-    setRoomMode,
     setRoomMoveZoneId,
     setRoomTargetId,
   } = ports;
@@ -352,7 +357,6 @@ export function useSceneInterruptedSubmission(ports: {
         if (operation.kind === "move" && operation.input.zoneId) {
           restoredSceneDraftRef.current = restoreKey;
           if (composerEditVersionRef.current === editVersion && editVersion === 0) {
-            setRoomMode("chat");
             setRoomMoveZoneId(operation.input.zoneId);
             roomMoveOperationIdRef.current = operation.id;
           }
@@ -365,9 +369,6 @@ export function useSceneInterruptedSubmission(ports: {
         restoredSceneDraftRef.current = restoreKey;
         if (composerEditVersionRef.current !== editVersion) return;
         setRoomDraft((current) => current || operation.input?.message || "");
-        if (editVersion !== 0) return;
-        if (operation.input.mode === "leave") setRoomMode("conclude");
-        else if (operation.input.mode === "chat") setRoomMode("chat");
       })
       .catch(() => {});
     return () => {
@@ -378,7 +379,6 @@ export function useSceneInterruptedSubmission(ports: {
     restoredSceneDraftRef,
     composerEditVersionRef,
     setRoomDraft,
-    setRoomMode,
     setRoomMoveZoneId,
     roomMoveOperationIdRef,
     setRoomTargetId,
@@ -398,7 +398,6 @@ export function useActiveSceneRestoration(ports: {
   setRoom: React.ActionDispatch<[next: React.SetStateAction<import("../../../shared/contracts/village.js").SceneView>]>;
   setRoomBusy: React.Dispatch<React.SetStateAction<boolean>>;
   setRoomGreetingError: React.Dispatch<React.SetStateAction<{ sessionId: string; message: string }>>;
-  setRoomMode: React.Dispatch<React.SetStateAction<import("../../shared/types.js").SceneComposerMode>>;
   setRoomOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setScreen: React.Dispatch<
     React.SetStateAction<"home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person">
@@ -414,7 +413,6 @@ export function useActiveSceneRestoration(ports: {
     setRoom,
     setRoomBusy,
     setRoomGreetingError,
-    setRoomMode,
     setRoomOpen,
     setScreen,
   } = ports;
@@ -456,7 +454,6 @@ export function useActiveSceneRestoration(ports: {
             const restored = currentRoom(session);
             if (!lifetime.handoff(owned, restored, roomEnded)) return;
             setRoom(restored);
-            setRoomMode("chat");
             setRoomOpen(true);
             setScreen("room");
             // A retry only checks saved state; opening generation remains an explicit action.

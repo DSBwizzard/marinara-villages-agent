@@ -1,79 +1,108 @@
-import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { NpcIdentity } from "../models/places.js";
 import type { VenueScene, VenueReplyLine } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
 import { badGateway } from "./errors.js";
-import { capturePlaceContext, findNpc, readNpc } from "./places.js";
+import { readNpc, findNpc } from "./places.js";
+import { memoryHash, memoryRequire } from "./memory-integrity.js";
 
-export type NpcAdmission = { npc: NpcIdentity; segment: number; zoneId: string; source: string };
-const introduction = z
-  .object({
-    ref: z.string().regex(/^new:[a-z0-9-]{1,60}$/),
-    existingId: z.string().max(200).optional(),
-    name: z.string().min(1).max(100),
-    label: z.string().max(100).default(""),
-    characterization: z.string().min(1).max(1000),
-    segment: z.number().int().nonnegative(),
-  })
-  .strict();
+export type NpcAdmission = { localKey: string; npc: NpcIdentity; segment: number; zoneId: string; source: string };
+export const npcAdmissionFields = {
+  localKey: z.string().regex(/^new:[a-z0-9-]{1,60}$/),
+  existingId: z.string().min(1).max(160).optional(),
+  name: z.string().min(1).max(100).optional(),
+  label: z.string().max(100).optional(),
+  characterization: z.string().min(1).max(1000).optional(),
+};
+export type NpcAdmissionRequest = {
+  localKey: string;
+  existingId?: string;
+  name?: string;
+  label?: string;
+  characterization?: string;
+};
 
-export const NPC_INTRODUCTION_WRITING = `Supporting characters may be introduced when grounded in this setting, including an otherwise empty Scene. Prefer a suitable known person, while respecting availability; an association alone does not place them here. For at most four observed arrivals/introductions return npcIntroductions:[{ref:"new:local-key",existingId?:"known NPC id",name,label,characterization,segment:zero-based narration index}]. Use that ref as speakerId in subsequent segments. The cited narration must visibly establish the person in the CURRENT Zone before their dialogue. Do not impersonate an absent Villager or reveal an unseen person. Background crowds remain narration. New arrivals cannot witness earlier speech, including the player's input. A supporting character may speak, act, refuse and remember, but receives no resident Agenda, Wishes or construction leadership. Never invent the player's past, consent, or relationship. Genuine pre-established history must be grounded in supplied authored context.`;
-
-/** Bind temporary writer references to server-owned identities and observed arrivals. */
-export function prepareNpcIntroductions(
-  raw: Record<string, unknown>,
+/** Metadata is provisional until its current observed introduction passes native acceptance. */
+export function prepareNpcAdmission(
   state: VillageState,
   scene: VenueScene,
-  requestKey: string,
-) {
-  if (raw.npcIntroductions === undefined) return { scene, admissions: [] as NpcAdmission[] };
-  const proposals = z.array(introduction).max(4).safeParse(raw.npcIntroductions);
-  if (!proposals.success || !Array.isArray(raw.segments))
-    throw badGateway("Invalid supporting character introduction.");
-  const admissions: NpcAdmission[] = [],
-    refs = new Map<string, string>();
-  for (const proposal of proposals.data) {
-    const source = raw.segments[proposal.segment] as Record<string, unknown> | undefined;
-    if (
-      !source ||
-      source.kind !== "narration" ||
-      typeof source.text !== "string" ||
-      !source.text.trim() ||
-      refs.has(proposal.ref)
-    )
-      throw badGateway("A supporting character needs an exact observed introduction.");
-    const previous = proposal.existingId ? findNpc(state, proposal.existingId) : undefined;
-    if (proposal.existingId && !previous) throw badGateway("Unknown or unavailable supporting character.");
-    const id =
-      previous?.id ?? "npc:" + createHash("sha256").update(`${scene.id}:${requestKey}:${proposal.ref}`).digest("hex");
-    if (
-      scene.activeIds.includes(id) ||
-      scene.sceneAttendance?.occupants.some((person) => person.characterId === id) ||
-      scene.participants.some((person) => person.characterId === id) ||
-      admissions.some((row) => row.npc.id === id)
-    )
-      throw badGateway("This person is already captured in the Scene. Use movement to change Zones.");
-    const npc =
-      previous ??
-      readNpc({
-        id,
-        revision: 1,
-        name: proposal.name,
-        label: proposal.label || proposal.name,
-        characterization: proposal.characterization,
-        facts: [],
-        associations: [],
-        availability: "",
-        disabled: false,
-        source: `scene:${scene.id}:${requestKey}:${proposal.segment}`,
-        updatedAt: scene.continuity?.capturedAt ?? scene.startedAt,
-      });
-    refs.set(proposal.ref, id);
-    admissions.push({ npc, segment: proposal.segment, zoneId: scene.zoneId ?? "exterior", source: source.text.trim() });
+  request: NpcAdmissionRequest,
+  operationId: string,
+  segment: number,
+  zoneId: string,
+  source: string,
+  captured?: NpcIdentity,
+): NpcAdmission {
+  memoryRequire(
+    scene.sceneAttendance?.layout?.some((zone) => zone.id === zoneId) && source.trim(),
+    "NPC admission needs its captured Zone and exact introduction",
+  );
+  let npc: NpcIdentity;
+  if (request.existingId) {
+    const current = findNpc(state, request.existingId);
+    memoryRequire(
+      current &&
+        captured &&
+        captured.id === current.id &&
+        memoryHash(captured) === memoryHash(current) &&
+        request.name === undefined &&
+        request.label === undefined &&
+        request.characterization === undefined,
+      "existing NPC admission needs its exact fitted identity",
+    );
+    npc = structuredClone(captured);
+  } else {
+    memoryRequire(
+      request.name?.trim() && request.characterization?.trim(),
+      "a new supporting person needs their complete identity",
+    );
+    const id = "npc:" + memoryHash([state.seed, scene.id, operationId, request.localKey]);
+    memoryRequire(
+      !state.worldPlaces.npcs[id],
+      "the supporting identity is already retained; replay its accepted Episode",
+    );
+    npc = readNpc({
+      id,
+      revision: 1,
+      name: request.name,
+      label: request.label || request.name,
+      characterization: request.characterization,
+      facts: [],
+      associations: [],
+      availability: "",
+      disabled: false,
+      source: "scene:" + scene.id + ":" + operationId + ":" + request.localKey,
+      updatedAt: scene.sceneAttendance!.capturedAt,
+    });
   }
+  memoryRequire(
+    !scene.participants.some((person) => person.characterId === npc.id) &&
+      !scene.sceneAttendance?.occupants.some((person) => person.characterId === npc.id),
+    "use movement for a person already captured in the Scene",
+  );
+  if (!npc.associations.some((row) => row.placeId === scene.placeId)) {
+    npc.associations = [...npc.associations.slice(-11), { placeId: scene.placeId, role: "Encountered here" }];
+    if (request.existingId) npc.revision++;
+  }
+  return { localKey: request.localKey, npc, segment, zoneId, source };
+}
+
+/** Translate structured character references on a clone; exact purchased text and citations stay untouched. */
+export function bindNpcReferences(
+  raw: Record<string, unknown>,
+  admissions: readonly NpcAdmission[],
+): Record<string, unknown> {
+  const refs = new Map(admissions.map((row) => [row.localKey, row.npc.id])),
+    bound = structuredClone(raw);
   const actorFields = new Set([
     "sourceId",
+    "by",
+    "who",
+    "owner",
+    "visitor",
+    "person",
+    "proposer",
+    "existingId",
     "speakerId",
     "targetId",
     "characterId",
@@ -85,7 +114,13 @@ export function prepareNpcIntroductions(
   ]);
   const actorLists = new Set([
     "heardBy",
-    "heardPlayerBy",
+    "by",
+    "to",
+    "for",
+    "about",
+    "knownBy",
+    "actors",
+    "controllers",
     "characterIds",
     "managerIds",
     "memberIds",
@@ -117,58 +152,11 @@ export function prepareNpcIntroductions(
       } else bind(field);
     }
   };
-  bind(raw);
-  const context = capturePlaceContext(state, scene.placeId, scene.activeIds);
-  for (const admission of admissions) context.npcs[admission.npc.id] = admission.npc;
-  const ids = admissions.map((row) => row.npc.id);
-  const projected: VenueScene = {
-    ...scene,
-    pendingNpcAdmissions: admissions,
-    activeIds: [...scene.activeIds, ...ids],
-    participants: [
-      ...scene.participants,
-      ...admissions.map(({ npc }) => ({
-        characterId: npc.id,
-        name: npc.label || npc.name,
-        doing: "Joining this Scene",
-      })),
-    ],
-    sceneAttendance: {
-      capturedAt: scene.sceneAttendance?.capturedAt ?? scene.startedAt,
-      ...scene.sceneAttendance,
-      occupants: [
-        ...(scene.sceneAttendance?.occupants ?? []),
-        ...admissions.map(({ npc, zoneId }) => ({
-          characterId: npc.id,
-          name: npc.label || npc.name,
-          doing: "Joining this Scene",
-          zoneId,
-        })),
-      ],
-    },
-    ...(scene.continuity
-      ? { continuity: { ...scene.continuity, facts: { ...scene.continuity.facts, worldPlaces: context } } }
-      : {}),
-    ...(scene.contactGeneration
-      ? {
-          contactGeneration: {
-            ...scene.contactGeneration,
-            localIds: [...scene.contactGeneration.localIds, ...ids],
-            actorIds: [...(scene.contactGeneration.actorIds ?? scene.activeIds), ...ids],
-          },
-        }
-      : {}),
-  };
-  return { scene: projected, admissions };
+  bind(bound);
+  return bound;
 }
 
-export function fenceIntroductionWitnesses(
-  lines: VenueReplyLine[],
-  heardPlayerBy: string[],
-  admissions: readonly NpcAdmission[],
-  localIds: readonly string[] = [],
-  emitBoundaries = true,
-) {
+export function fenceIntroductionWitnesses(lines: VenueReplyLine[], admissions: readonly NpcAdmission[]) {
   if (
     new Set(
       lines
@@ -199,26 +187,25 @@ export function fenceIntroductionWitnesses(
             ...(cue.look?.target === "villager" && cue.look.characterId === id ? { look: undefined } : {}),
           }));
     }
-    if (emitBoundaries) {
-      const boundary = lines[admission.segment];
-      const previous =
-        lines.slice(0, admission.segment + 1).findLast((line) => line.physicalIdsAfter)?.physicalIdsAfter ?? localIds;
-      const future = new Set(admissions.filter((row) => row.segment > admission.segment).map((row) => row.npc.id));
-      boundary.physicalIdsAfter = [
-        ...new Set([
-          ...previous,
-          ...admissions.filter((row) => row.segment === admission.segment).map((row) => row.npc.id),
-        ]),
-      ].filter((actor) => !future.has(actor));
-    }
-    const playerIndex = heardPlayerBy.indexOf(id);
-    if (playerIndex >= 0) heardPlayerBy.splice(playerIndex, 1);
   }
 }
 
-export function admitNpcParticipants(scene: VenueScene, admissions: readonly NpcAdmission[]) {
+export function admitNpcParticipants(scene: VenueScene, admissions: readonly Pick<NpcAdmission, "npc" | "zoneId">[]) {
   for (const { npc, zoneId } of admissions) {
-    if (scene.continuity?.facts.worldPlaces) scene.continuity.facts.worldPlaces.npcs[npc.id] = structuredClone(npc);
+    if (scene.continuity?.facts.worldPlaces) {
+      const context = scene.continuity,
+        places = context.facts.worldPlaces!;
+      scene.continuity = {
+        ...context,
+        facts: {
+          ...context.facts,
+          worldPlaces: {
+            ...places,
+            npcs: { ...places.npcs, [npc.id]: structuredClone(npc) },
+          },
+        },
+      };
+    }
     if (!scene.participants.some((person) => person.characterId === npc.id))
       scene.participants.push({ characterId: npc.id, name: npc.label || npc.name, doing: "Joining this Scene" });
     if (!scene.activeIds.includes(npc.id)) scene.activeIds.push(npc.id);

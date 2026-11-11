@@ -24,7 +24,15 @@ assert.equal(card.dialogueColor, "#abcdef");
 const adopted = snapshotFromCard(card, 1);
 const fresh = {
   ...defaultVillageState(),
-  villagers: [{ characterId: "resident", letterFontId: "caveat", cardSnapshot: adopted, addedAt: adopted.capturedAt }],
+  villagers: [
+    {
+      characterId: "resident",
+      incarnation: "resident:original",
+      letterFontId: "caveat",
+      cardSnapshot: adopted,
+      addedAt: adopted.capturedAt,
+    },
+  ],
 };
 const recovered = coerceVillageState(fresh);
 assert.equal(recovered.villagers[0].cardSnapshot.nameColor, card.nameColor);

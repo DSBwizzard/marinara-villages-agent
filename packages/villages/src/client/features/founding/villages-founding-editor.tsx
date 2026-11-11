@@ -80,6 +80,5 @@ export function personalSpaceDraft(): PrivateDraft {
     venueClass: "residence",
     description: "",
     image: null,
-    state: { revision: 0, updatedAt: "", recent: null },
   };
 }

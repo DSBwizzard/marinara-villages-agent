@@ -60,14 +60,11 @@ export type SceneScreenController = {
   readonly roomGreetingError: ScenesState["roomGreetingError"];
   readonly roomGreetingNotice: ScenesState["roomGreetingNotice"];
   readonly roomLeaveSubmissionIdRef: ScenesState["roomLeaveSubmissionIdRef"];
-  readonly roomMode: ScenesState["roomMode"];
   readonly contactRecovery: ScenesState["contactRecovery"];
   readonly setContactRecovery: ScenesState["setContactRecovery"];
   readonly roomMoveOperationIdRef: ScenesState["roomMoveOperationIdRef"];
-  readonly roomMoveZoneId: ScenesState["roomMoveZoneId"];
   readonly roomNotices: ScenesState["roomNotices"];
   readonly roomOpen: ScenesState["roomOpen"];
-  readonly roomRuling: ScenesState["roomRuling"];
   readonly roomSubmissionIdRef: ScenesState["roomSubmissionIdRef"];
   readonly roomTargetId: ScenesState["roomTargetId"];
   readonly roomUnresolvedChanges: ScenesState["roomUnresolvedChanges"];
@@ -83,10 +80,7 @@ export type SceneScreenController = {
   readonly setRoomContactBoundary: ScenesState["setRoomContactBoundary"];
   readonly setRoomContactKind: ScenesState["setRoomContactKind"];
   readonly setRoomDraft: ScenesState["setRoomDraft"];
-  readonly setRoomRuling: ScenesState["setRoomRuling"];
   readonly setRoomError: ScenesState["setRoomError"];
-  readonly setRoomMode: ScenesState["setRoomMode"];
-  readonly setRoomMoveZoneId: ScenesState["setRoomMoveZoneId"];
   readonly setRoomTargetId: ScenesState["setRoomTargetId"];
   readonly setScreen: React.Dispatch<
     React.SetStateAction<"room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person">

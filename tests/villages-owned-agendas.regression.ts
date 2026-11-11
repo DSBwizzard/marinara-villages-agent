@@ -24,6 +24,7 @@ import {
 } from "../packages/villages/src/server/features/residents/resident-agendas.js";
 import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { createScheduleInfluence } from "../packages/villages/src/server/features/residents/schedule-influence-service.js";
 
 import { readNativeScheduleSnapshot } from "../packages/villages/src/server/adapters/engine/native-schedules.js";
 import {
@@ -65,9 +66,7 @@ const palette = ["Tending herbs", "Reading", "Walking", "Painting", "Playing mus
 }));
 const payload = {
   routine: "Ada enjoys herbs, reading and music.",
-  wishes: [],
   palette,
-  days: Array.from({ length: 7 }, () => [0, 1, 2, 3, 4, 5, 0, 2]),
   rhythm: [],
 };
 const context = {
@@ -78,7 +77,6 @@ const context = {
   venues: [],
   lore: [],
   wishes: [],
-  activeWishes: [],
   schedule: null,
 };
 const block = {
@@ -92,8 +90,6 @@ const block = {
 const ownedWeek = Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, [block]]));
 const raw = {
   ...defaultVillageState(),
-  memories: { format: 1, revision: 0, records: [] },
-  memoryScenes: {},
 
   seed: "owned-test",
   setting: "Quiet valley",
@@ -104,10 +100,10 @@ const raw = {
     {
       letterFontId: "caveat",
       characterId: "a",
+      incarnation: "one",
       addedAt: "2026-09-01",
       scheduleInfluence: influenceSettings({ enabled: true }),
       cardSnapshot: { ...card, revision: 1, sourceStatus: "available", capturedAt: "2026-09-01T00:00:00.000Z" },
-      wishes: [],
       agenda: {
         generatedAt: "2026-09-01T00:00:00.000Z",
         routineSummary: "Existing life",
@@ -134,6 +130,72 @@ let source: any = {
   },
 };
 const records = new Map<string, any>();
+
+{
+  const world = coerceVillageState(raw),
+    resident = world.villagers[0]!,
+    agenda = resident.agenda!,
+    activeDay = structuredClone(agenda.activeDay);
+  const prepared = {
+    version: 1,
+    signature: "prepared",
+    available: true,
+    enabled: true,
+    rhythms: [{ weekday: "Monday", startMinute: 1320, endMinute: 360 }],
+    busy: [],
+    patterns: [],
+    interests: [],
+    entities: [],
+    adopted: [],
+    unresolved: [],
+  };
+  let job: any,
+    requests = 0;
+  const influence = createScheduleInfluence({
+    readVillageState: async () => world,
+    readNativeScheduleSnapshot: async () => ({ cardsReadable: true, schedules: [source] }),
+    queueBackgroundJob: async (value: unknown) => {
+      job = value;
+    },
+    villagesConnectionIdFor: async () => "fixture",
+    villagesLanguageModels: () => ({
+      resolveForRequest: async () => ({ fitContext: (messages: unknown) => ({ messages }) }),
+    }),
+    completeWithRoom: async () => {
+      requests++;
+      return { finishReason: "stop", content: JSON.stringify(prepared) };
+    },
+  } as any);
+  for (const hold of [{ personalizationPending: true }, { personalizationFailure: "Preparation failed" }]) {
+    Object.assign(agenda, hold);
+    await influence.queue("a");
+    assert.equal(job, undefined);
+    agenda.personalizationPending = false;
+    agenda.personalizationFailure = "";
+  }
+  await influence.queue("a");
+  assert.equal(job.kind, "schedule-influence");
+  assert.equal(job.finite, true);
+  assert.equal(requests, 0);
+  assert(influence.handler.valid(world, job.input));
+  agenda.personalizationPending = true;
+  assert.equal(influence.handler.valid(world, job.input), false);
+  agenda.personalizationPending = false;
+  const result = await influence.handler.generate(job.input);
+  influence.handler.apply(world, job.input, result, { retrying: false });
+  assert.deepEqual(deriveInfluence(source, resident).rhythms, prepared.rhythms);
+  assert.deepEqual(agenda.activeDay, activeDay);
+  assert.equal(requests, 1);
+  job = undefined;
+  await influence.queue("a");
+  assert.equal(job, undefined);
+  resident.scheduleInfluence!.categories.rhythm = false;
+  await influence.queue("a");
+  assert(job);
+  resident.scheduleInfluence!.categories.rhythm = true;
+  assert.equal(influence.handler.valid(world, job.input), false);
+}
+
 let calls = 0,
   fail = false,
   lastOptions: any;
@@ -412,6 +474,7 @@ async function main() {
 
   records.set("villages-village", {
     id: "villages-village",
+    packageId: "villages",
     kind: "village",
     data: coerceVillageState(raw),
     revision: 1,
@@ -491,13 +554,11 @@ async function main() {
       name: "Library",
       classes: ["other"],
       occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-      state: { revision: 0, updatedAt: "", recent: null },
       presentation: { image: null, x: 0.2, y: 0.2 },
     });
     const access = coerceVillageState({
       ...defaultVillageState(),
 
-      wishSystemVersion: 3,
       ...raw,
       venues: [safeVenue],
     });
@@ -519,7 +580,6 @@ async function main() {
     const crowd = coerceVillageState({
       ...defaultVillageState(),
 
-      wishSystemVersion: 3,
       ...raw,
       venues: [safeVenue],
       villagers: Array.from({ length: 6 }, (_, i) => ({

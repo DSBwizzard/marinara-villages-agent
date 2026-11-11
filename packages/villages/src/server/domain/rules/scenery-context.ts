@@ -1,10 +1,10 @@
-import { currentVillageCircumstances } from "./prompt-preset.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
 import { badRequest } from "./errors.js";
 import { MAX_IMAGE_PROMPT_LENGTH } from "./image-generation-rules.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
 import { RESIDENT_CONTINUITY_RULE } from "./resident-admission.js";
 import { resolveVenueZone } from "./venue-zones.js";
+import { observableRoomDescription } from "./zone-picture.js";
 
 export const DEFAULT_SCENERY_STYLE =
   "Painted storybook illustration, coherent brushwork, soft lighting, and a consistent color palette.";
@@ -83,7 +83,7 @@ export function sceneryCharacterContext(village: VillageState, venue: VillageVen
   );
 }
 
-export function sceneryImageKey(village: VillageState, venue: VillageVenue, zoneId = "exterior"): string {
+export function sceneryImageKey(village: VillageState, venue: VillageVenue, at: string, zoneId = "exterior"): string {
   const zone = resolveVenueZone(venue, zoneId);
   const ownerId = zone?.kind === "private-residence" ? zone.ownerId : "";
   const personality =
@@ -102,7 +102,6 @@ export function sceneryImageKey(village: VillageState, venue: VillageVenue, zone
     village.setting,
     village.worldRules,
     village.worldName,
-    currentVillageCircumstances(village, venue.id, zoneId),
     village.selectedLorebookIds,
     personality && ownerId === "player" ? [village.playerPersonaId, village.playerName, village.playerDescription] : [],
     personality
@@ -120,7 +119,16 @@ export function sceneryImageKey(village: VillageState, venue: VillageVenue, zone
     venue.residentIds,
     venue.workerIds,
     venue.imageContext,
-    zone ? [zone.name, zone.purpose, zone.roomSpecification, zone.description, zone.image] : null,
+    zoneId !== "exterior" ? resolveVenueZone(venue, "exterior")?.observed?.description : undefined,
+    zone
+      ? [
+          zone.name,
+          zone.purpose,
+          zone.roomSpecification,
+          observableRoomDescription(village, venue.id, zoneId, at),
+          zone.image,
+        ]
+      : null,
   ]);
 }
 

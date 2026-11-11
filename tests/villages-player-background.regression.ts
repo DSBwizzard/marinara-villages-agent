@@ -21,7 +21,6 @@ assert.equal(playerBackgroundForSetup("Before", "After", true), "After");
 const state = coerceVillageState({
   ...defaultVillageState(),
   playerBackground: "At founding I held the crown.",
-  worldFacts: ["The player later abdicated."],
 });
 assert.equal(state.playerBackground, "At founding I held the crown.");
 const context = renderPlayerBackgroundContext(state);
@@ -37,7 +36,7 @@ const prompt = await currentScenePrompt(
   "chat",
   "I have abdicated.",
 );
-assert.equal(scenePromptPacket(prompt).player.background, context);
+assert.equal(scenePromptPacket(prompt, "player").startingBackground, context);
 console.log(
   "Player background: bounded prose, current-state precedence and independent gameplay responsibilities passed.",
 );

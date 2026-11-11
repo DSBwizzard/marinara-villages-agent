@@ -100,7 +100,6 @@ export type BackgroundWork = {
     | "agenda"
     | "wish"
     | "personal-mail"
-    | "social-recovery"
     | "starting-ties"
     | "schedule-influence";
   subjectId: string;
@@ -125,13 +124,12 @@ export type BackgroundWork = {
 
 export type ReturnCatchupView = {
   id: string;
-  status: "queued" | "running" | "failed" | "recovering" | "completed" | "cancelled";
+  status: "queued" | "running" | "failed" | "completed" | "cancelled";
   from?: string;
   until?: string;
   completed: number;
   total: number;
-  settlementRequired: boolean;
-  issue: "preparation" | "generation" | "interpretation" | "settlement" | "authority" | null;
+  issue: "preparation" | "generation" | "authority" | null;
 };
 
 export type VillageSnapshot = {
@@ -174,13 +172,11 @@ export type VillageSnapshot = {
     completesAt?: string;
   }[];
   villagers: VillageVillagerView[];
-  relationshipStartingPending?: boolean;
   /**
    * Whether the village has been founded yet. Not part of the settings: it is a
    * fact about the village, not something the player can edit.
    */
   isFounded: boolean;
-  progressEngineVersion: 1;
   foundingPreparation: {
     canPlay: boolean;
     startingHistoryReady?: boolean;
@@ -216,6 +212,9 @@ export type VenueRequest = {
   proposedAt: string;
   venueDraft?: { name: string; classes: Array<"residence" | "workplace" | "community" | "other">; description: string };
 };
+
+export type ProjectRoomEdit = { zoneId: string; entryId?: string; text: string | null };
+export type ProjectRoomEntry = { id: string; version: string; text: string };
 
 export type BuildProject = {
   actorNames?: Record<string, string>;
@@ -255,7 +254,7 @@ export type BuildProject = {
     targetVenueId: string;
     change: {
       form?: string;
-      exteriorDescription?: string;
+      roomEdits?: ProjectRoomEdit[];
       classes?: VenueClass[];
       capacity?: number;
       zones?: VillageZoneDraft[];
@@ -278,50 +277,6 @@ export type BuildProject = {
 };
 
 export type ProgressDebugView = {
-  engineVersion: 0 | 1;
-  tasks: Array<{
-    definition: {
-      id: string;
-      revision: number;
-      owner: { kind: string; id: string };
-      phases: Array<{ id: string; title: string; requirements: Array<{ id: string; title: string }> }>;
-    };
-    revisionHistory: Array<{
-      definition: { revision: number; phases: Array<{ id: string; title: string }> };
-      receipts: Array<{
-        requirementId: string;
-        evidence: {
-          sourceId: string;
-          excerpt?: string;
-          grade?: string;
-          citations?: { lineId: string; quote: string }[];
-        };
-      }>;
-      transitions: Array<{ phaseId: string; at: string }>;
-    }>;
-    visibleAt: string;
-    requirementVisibleAt: Record<string, string>;
-    phaseIndex: number;
-    receipts: Array<{
-      id: string;
-      phaseId: string;
-      requirementId: string;
-      routeId: string;
-      definitionRevision: number;
-      evidence: {
-        sourceId: string;
-        lineId?: string;
-        excerpt?: string;
-        at: string;
-        grade?: string;
-        citations?: { lineId: string; quote: string }[];
-      };
-    }>;
-    attempts: Array<{ phaseId: string; requirementId: string; status: string; reason: string; evidenceId: string }>;
-    transitions: Array<{ phaseId: string; at: string; evidenceId: string }>;
-    resolvedAt: string;
-    resolutionKey: string;
-  }>;
   backlog: Array<{ sessionId: string; submissionId: string; at: string; error: string }>;
   speechProofs?: Array<{
     projectId: string;
@@ -382,7 +337,6 @@ export type VillageVenue = {
   pictureContext?: string;
   daylightReady?: boolean;
   dayNight?: boolean;
-  dayNightManual?: boolean;
   zoneLayout?: import("../helpers/zone-layout.js").ZoneLayout;
   venueType?: string;
   accessView?: import("../helpers/venue-access.js").VenueAccessView;
@@ -423,24 +377,22 @@ export type VillageVenue = {
     venueClass: "residence" | "workplace" | "community" | "other";
     description: string;
     dayNight?: boolean;
-    dayNightManual?: boolean;
     daylightReady?: boolean;
     nightImage?: VillageVenueImage;
     nightPending?: boolean;
     freezePicture?: boolean;
     pictureRetryAvailable?: boolean;
     pictureGenerateAvailable?: boolean;
+    pictureOutdated?: boolean;
     pictureReference?: VillageVenueImage;
     referenceAppliedId?: string;
     referencePending?: boolean;
     pictureProblem?: string;
     pictureUpdating?: boolean;
     image: VillageVenueImage | null;
-    state: import("./place-continuity.js").PlaceContinuity;
   }>;
   residenceCapacity?: number;
   residentIds?: string[];
-  exteriorState?: NonNullable<VillageVenue["spaces"]>[number]["state"];
   privateSpaces?: Array<
     NonNullable<VillageVenue["spaces"]>[number] & {
       ownerId: string;
@@ -470,7 +422,6 @@ export type VillageVenue = {
   };
   capabilities: string[];
   workerIds?: string[];
-  state: import("./place-continuity.js").PlaceContinuity;
 };
 
 /**
@@ -482,7 +433,7 @@ export type VillageVenue = {
 export type TownMapFit = "cover" | "stretch" | "contain";
 
 /** Reviewed zone terms; artwork and discovered state are not part of a layout draft. */
-export type VillageZoneDraft = { preserveDescription?: boolean } & Pick<
+export type VillageZoneDraft = Pick<
   NonNullable<VillageVenue["zones"]>[number],
   | "id"
   | "name"
@@ -553,7 +504,6 @@ export type VillageSettings = {
   communityVenueId: string;
   worldName: string | null;
   playerBackground: PlayerBackground | null;
-  circumstances: VillageCircumstance[];
   selectedLorebookIds: string[];
   sceneryArtStyle: string;
   sceneryStyleProfileId: string | null;
@@ -702,6 +652,7 @@ type VillagePlaceView = {
  * villager is gone from the village.
  */
 export type RoomLine = {
+  inputOf?: string;
   /** A character id, or `""` for the player's own line — the same rule `asTranscriptMessage` writes by. */
   speakerId: string;
   /** What to print over the paragraph. Empty on the player's own lines. */
@@ -715,7 +666,7 @@ export type RoomLine = {
   physicalIdsAfter?: string[];
   presenceChange?: true;
   /** The registers of this line's own paragraphs, on the same terms as a message's. */
-  kind?: "narration" | "dialogue" | "side" | "whisper";
+  kind?: "narration" | "dialogue" | "side" | "whisper" | "input";
   delivery?: SpeechDelivery;
   presentation?: SpeechPresentation;
   staging?: StagingCue[];
@@ -736,7 +687,6 @@ export type RoomOperation = {
   /** The Scene has ended and its completed transcript is no longer retained. */
   terminal?: boolean;
   recordEvents?: RoomRecordEvent[];
-  turnOutcome?: import("./scene-turn-outcome.js").SceneTurnOutcome;
   recoverable?: boolean;
   id: string;
   kind: string;
@@ -755,18 +705,14 @@ export type RoomOperation = {
 
 export type SceneChangeIssue = {
   diagnosticId?: string;
-  canContinue?: boolean;
-  continued?: boolean;
   submissionId: string;
-  domain: string;
-  status?: "pending" | "failed" | "rejected";
+  status: "pending" | "held";
   at?: string;
   reason?: string;
 };
 
 export type SceneView = {
   lore?: import("./lore.js").LoreUse[];
-  liveSceneVersion?: 1;
   currentTime?: string;
   lighting?: "day" | "night";
   capturedContext?: true;
@@ -774,7 +720,6 @@ export type SceneView = {
   /** An existing handoff needs return/recovery controls; private context stays server-side. */
   semanticVersion?: 2;
   connectionMap?: { id: string; connectedTo?: string[] }[];
-  memoryMode?: "live";
   version: 1;
   sceneRevision?: number;
   operation?: RoomOperation | null;
@@ -785,7 +730,6 @@ export type SceneView = {
   spaceClass?: VenueClass;
   zoneId?: string;
   doorwayContacts?: { characterId: string; playerZoneId: string }[];
-  entryOffers?: { zoneId: string; label: string; controllerId: string; accompanies: boolean }[];
   area?: "outside" | "shared" | "private" | "public";
   privateOwnerId?: string;
   privateAccessOwnerId?: string;
@@ -810,27 +754,12 @@ export type RoomRecordEvent = {
   detail?: string;
 };
 
-/**
- * What the village decided about a claim the player made.
- *
- * `fulfilled` is shown nowhere and is the flag the styling hangs off; `reason`
- * is the judge's own sentence and is the thing the player is actually owed,
- * because the villager's reply deliberately does not contain it. A player told
- * no with no reason would be told nothing at all.
- */
-export type WishVerdict = {
-  fulfilled: boolean;
-  reason: string;
-};
-
 export type MemoryPerson = { id: string; name: string };
 export type MemoryCursor = { revision: number; afterId: string };
 export type MemoryListEntry = {
   id: string;
-  rootId: string;
   revision: number;
-  rootRevision: number;
-  kind: "experience" | "information" | "open-matter";
+  kind: "experience" | "information" | "open-matter" | "perspective" | "desire" | "motivation" | "commitment";
   text: string;
   occurredAt: string;
   recordedAt: string;
@@ -854,23 +783,26 @@ export type MemoryInspection = {
   seed: string;
   revision: number;
   entry: MemoryListEntry;
+  target?: { id: string; recordRevision: number; heads: Record<string, number> };
   knowers: {
     person: MemoryPerson;
-    basis: "observation" | "report" | "interpretation" | "validated-event";
-    attributedTo?: string;
-    learnedAt: string;
-    reinforcedAt: string;
     forgotten: boolean;
     playerCorrection: boolean;
     text: string;
-    support: { sourceId: string; sceneId?: string; lineId: string; excerpt: string }[];
+    support: {
+      sourceId: string;
+      sceneId?: string;
+      lineId: string;
+      excerpt: string;
+      kind: string;
+      speaker?: MemoryPerson;
+    }[];
   }[];
 };
 export type MemoryForgetRequest = {
   operationId: string;
   seed: string;
-  expectedCollectionRevision: number;
-  target: { id: string; revision: number; rootRevision: number };
+  target: { id: string; recordRevision: number; heads: Record<string, number> };
   knowers: string[];
 };
 export type MemoryCorrectRequest = MemoryForgetRequest & { text: string };

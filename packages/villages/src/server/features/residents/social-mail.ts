@@ -7,6 +7,3 @@ export function configureSocialMail(service: SocialMailService): () => void {
 export function socialMail(): SocialMailService {
   return binding.get();
 }
-export function processPersonalMailOutbox(...args: Parameters<SocialMailService["processOutbox"]>) {
-  return binding.get().processOutbox(...args);
-}

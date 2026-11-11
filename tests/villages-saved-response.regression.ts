@@ -6,7 +6,10 @@ import {
   PRIVATE_DIAGNOSTICS_ID,
   readPrivateDiagnostics,
 } from "../packages/villages/src/server/adapters/observability/private-diagnostics.js";
-import { claimSavedResponse } from "../packages/villages/src/server/features/generation/saved-response.js";
+import {
+  claimSavedResponse,
+  reopenSavedResponse,
+} from "../packages/villages/src/server/features/generation/saved-response.js";
 import { createModelCompletions } from "../packages/villages/src/server/features/generation/completion-service.js";
 
 const rows = new Map<string, any>();
@@ -57,6 +60,29 @@ const receipt = (key: string): any =>
 const claim = (key: string, retry = true) =>
   claimSavedResponse(mutate, request(key, retry), ["exact inputs"], () => assert.fail("diagnostic failure"));
 
+const cachedUsage = { promptTokens: 10, completionTokens: 4, cachedPromptTokens: 90, cacheWritePromptTokens: 20 };
+const cachedAttempt = await claim("cache-usage");
+await cachedAttempt.retain(result("valid:cached", cachedUsage), true);
+assert.deepEqual((await claim("cache-usage", false)).cached?.usage, cachedUsage);
+assert.equal(receipt("cache-usage").usage.cachedPromptTokens.known, 90);
+assert.equal(receipt("cache-usage").usage.cacheWritePromptTokens.known, 20);
+const anotherKey = "new-room-scope";
+const anotherId = "villages-generation-response-" + createHash("sha256").update(anotherKey).digest("hex");
+assert.equal(await reopenSavedResponse(mutate, anotherKey), undefined);
+assert(!rows.has(anotherId), "Reopening an absent result does not claim a request");
+rows.set(anotherId, { data: structuredClone(receipt("cache-usage")), revision: 1 });
+await assert.rejects(reopenSavedResponse(mutate, anotherKey), /receipt is unreadable/);
+const marked = [{ role: "system", content: "stable rules", cacheBreakpoint: true }];
+const markedRequest = await claimSavedResponse(mutate, request("marked"), marked, () => assert.fail());
+await markedRequest.retain(result("valid:marked"), true);
+await assert.rejects(
+  claimSavedResponse(mutate, request("marked", false), [{ role: "system", content: "stable rules" }], () =>
+    assert.fail(),
+  ),
+  /inputs changed/u,
+  "Cache markers belong to the saved request fingerprint",
+);
+
 // Real document CAS: simultaneous claims and completions must choose the same durable response.
 const [a, b] = await Promise.all([claim("race"), claim("race")]);
 const chosen = await Promise.all([a.retain(result("valid:A"), true), b.retain(result("valid:B"), true)]);
@@ -70,7 +96,7 @@ const old = await claim("late-race"),
   newer = await claim("late-race");
 await old.retain(result("valid:old", { totalTokens: 23 }), false);
 assert.equal(receipt("late-race").selected, undefined);
-assert.equal((await claim("late-race", false)).cached?.content, "valid:old");
+assert.equal((await reopenSavedResponse(mutate, "late-race"))?.content, "valid:old");
 assert.equal((await newer.retain(result("valid:new", { totalTokens: 31 }), true)).content, "valid:old");
 assert.equal((await claim("late-race", false)).cached?.content, "valid:old");
 assert.equal(receipt("late-race").usage.totalTokens.known, 54);

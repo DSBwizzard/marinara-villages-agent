@@ -18,7 +18,7 @@ Once the package is installed:
 2. Open **Home → Villages**. Villages has its own Home tab; you play there.
 3. If the tab is missing, confirm that the package was installed on the server you are connected to and that the server restarted successfully.
 
-The current package requires **Engine 2.5.0 or later, before 4.0.0**, plus its declared Engine capabilities. An incompatible package needs a compatible Engine build before it can be installed.
+The current package requires **Engine 2.5.2 or later, before 4.0.0**, with Capability API **1.818**. An incompatible package needs a compatible Engine build before it can be installed.
 
 ### Prepare your library and connections
 
@@ -100,16 +100,11 @@ On a phone, use portrait orientation. Places opens as a drawer, and Venue editin
 
 ## Have a Scene
 
-Scenes use one GM response for dialogue and gameplay updates. This build requires fresh Scene format 4; retired formats are rejected without conversion. The GM still needs to follow the game rules, and code validates proposed changes before applying them; it no longer receives a mandatory second model review. Wishes, relationships and Memories still update during play, without a separate Scene-end request.
+Scenes use one GM response for dialogue and gameplay updates. This build requires fresh Scene format 5; retired formats are rejected without conversion or changes to their saved bytes. Ordinary conversation needs only narration and dialogue. Meaningful lasting developments use shared continuity; code validates native actions and retains witnessed access and circumstance outcomes. Wishes, relationships and Memories update during play without separate fictional lifecycle processors or a Scene-end model request.
 
 A Scene is an ongoing interaction within one Venue. It can continue as you move between that Venue's Zones.
 
-| Control      | Use it to…                                                               |
-| ------------ | ------------------------------------------------------------------------ |
-| **Say / Do** | Speak or attempt an action in your current Zone.                         |
-| **Move**     | Travel to a permitted Zone without requesting a generated arrival reply. |
-| **Contact**  | Knock, call, or speak toward an adjacent Zone.                           |
-| **Conclude** | End the Scene.                                                           |
+Write dialogue, actions, thoughts, or a mixture in the message box and choose **Send**. Open **Venue actions** for **Move** or **Conclude**. Move goes to a permitted Zone without a generated arrival reply. Conclude ends the Scene using your draft as an optional final message. You can knock, call, or speak toward an adjacent Zone in your own words.
 
 For a first visit, try a greeting and a small action, then ask about the resident's day. Residents can agree, refuse, or suggest something else. A request or a future plan is not automatically a completed change.
 
@@ -117,13 +112,13 @@ People hear what reaches them through the connected spaces. Addressing one perso
 
 Each Zone has room for four villagers; your Persona does not use a villager slot. If a requested change in occupancy cannot be completed, Villages keeps your input as an editable draft and shows a notice. The whole turn stays outside the Scene, including any other dialogue in that input. It will not reveal a private reason such as unseen occupants.
 
-If you see **HALT**, the proposed turn has not entered the story. Read the notice and rewrite your draft. Ordinary refusals can still happen within the story; HALT holds the entire turn for a boundary the game cannot safely resolve. If the generated reply introduces an unsupported outcome, Villages tries one replacement and checks it again. If that fails, your input stays saved for Retry. Character abilities remain part of their identity; their enacted consequences must fit what Villages can support.
+If you see **HALT**, the proposed turn has not entered the story. Read the notice and revise your draft. Ordinary refusals can still happen within the story. Villages holds unsupported required outcomes with your original input and the generated reply. Recovery offers local replay or an explicit Retry when applicable. Character abilities remain part of their identity, and enacted consequences must fit what Villages can support.
 
 ### Take breaks without losing your progress
 
 You can leave the page or refresh and return to your unfinished Scene, draft, and reading position. Scenes have no inactivity deadline.
 
-Once a Scene and its saved effects are settled, its transcript is removed. Relevant Project evidence and saved recovery work remain available where needed.
+Once a Scene and its saved effects are settled, its playback can retire. Accepted exchanges and relevant Project evidence remain available to continuity and recovery. Scene playback includes your original submissions, including private thoughts, for anyone with access to this Engine instance. Characters learn only what they actually heard or witnessed.
 
 New Scenes follow the Village's current time. Residents can leave for commitments and others can arrive while you stay in the Venue. Each exchange keeps the time, participants and witnesses admitted for that request; a scheduled departure waits for that exchange to settle. Accepted changes count as you play, before **Conclude**.
 
@@ -133,7 +128,7 @@ Saved and interrupted supported requests keep their admitted time, evidence, all
 
 ## Get to know the residents
 
-Profiles show what you have learned about a resident: relationships, shared Wishes, known routines, and discovered history. Returning to **People** keeps your directory page. **Inspect** reveals spoilers only when you deliberately open it; inspecting does not teach your Persona or the residents anything.
+Profiles show the relationships, shared Wishes, routines, history, motivations and commitments your Persona has learned. Statements retain their qualifications and full agreement terms. Returning to **People** keeps your directory page. **Inspect** opens private directional perspectives and their sources. Standing-invitation buttons reflect current access permissions.
 
 Each resident has their own perspective: their connection with you, expectations, concerns, and particular shared history. A boundary, a mutual agreement, and a concrete commitment mean different things. You author your Persona’s feelings. Serious choices can end a friendship or partnership; reconciliation is possible and never guaranteed. Time away creates no automatic penalty, and friendship grants neither access nor secrets.
 
@@ -151,7 +146,7 @@ Memories keep meaningful experiences, information, and open matters. Each belong
 
 The People overview and Venues page show each person's currently assigned home and workplaces. These public assignments update when they change; Memory corrections and Forget do not change them. Private Zones, current presence and schedules remain separate.
 
-The Memories page starts with your Persona and loads entries in batches. **Inspect** can show retained evidence and another person's memories. **Forget** suppresses a selected person's existing memory; **Correct** changes its wording for selected people who already know it. These actions do not change physical gameplay facts, teach new people, or rewrite admitted requests or earlier dialogue.
+The Memories page starts with your Persona and loads entries in batches. **Inspect** can show retained evidence and another person's continuity, including perspectives, Wishes, motivations and commitments. **Forget** suppresses a selected person's existing account; **Correct** changes its wording for selected people who already know it. These actions do not change physical gameplay facts or native permissions, teach new people, or rewrite admitted requests or earlier dialogue.
 
 ## Repair your world
 
@@ -172,8 +167,6 @@ Opening REPAIR and applying ordinary corrections preserve your unfinished Scene,
 **Wishes** are concrete personal social desires. They can arise through conversation, correspondence, resident encounters and occasional private reflection. Residents can act on them, reconsider an approach, keep them quietly in the background, fulfill them or withdraw them. Invitations and plans establish arrangements; the desired interaction must actually happen. NPCs can satisfy Wishes without player involvement.
 
 The Wishes notebook retains only what your Persona learned, with timestamps for its recorded entries. **Follow** controls Wish notices without changing what the resident wants. Inspect exposes private retained state separately. There are no hidden progress percentages, expiry rolls or active-Wish slot caps. Housing and other larger ambitions are deferred. See [Social Wishes](../../docs/wishes.md).
-
-This build requires a fresh format-16 Village. Older worlds and setup records remain stored and are rejected without conversion.
 
 **Projects** create new Venues or renovate existing ones. Use the Project board to review the design, Zones, people, site, and progress. You can keep up to six drafts while deciding which Projects to start. Saving a draft and starting work are separate steps:
 
@@ -197,7 +190,7 @@ A Venue supports up to six non-Entrance Zones, two Classes, and four occupants, 
 
 Scene navigation can open the map; **Return to Scene** restores your draft. Conclude the current Scene before starting another.
 
-Scenery styles apply to future pictures. During play, Places shows each Zone's Founding design or last observed appearance, including saved artwork before a first visit. Lasting changes wait for the player's next visit or settled action in that Zone; browsing never purchases artwork. **Dynamic Images** controls automatic updates, and **Prevent dynamic image updates for this Zone** preserves the current artwork. **Generate new**, failed-work **Retry**, **Upload reference** and **Remove** remain available before visiting, after leaving and during renovations. Manual generation uses the known appearance without newer unseen facts; it never records a visit or changes physical facts. Older worlds recover unvisited appearances from saved artwork descriptions; where no historical design survives, generation uses the public Zone name and known architecture until a visit supplies its appearance. **Upload reference** saves artistic guidance without replacing the backdrop or changing game facts. At the next eligible generation, the physical description controls the space and the reference can influence compatible style. **Remove** clears artwork and its reference. Founding and REPAIR remain explicit authoring tools.
+Scenery styles apply to future pictures. Places shows each Zone's Founding design or last observed appearance, including any saved artwork. Visits can refresh that appearance and show when an image is out of date. Ordinary Scene turns and browsing leave image generation idle. **Dynamic Images** controls eligible automatic work on entry, and **Prevent dynamic image updates for this Zone** preserves the current artwork. For a Zone with a saved design or observation, **Generate new** and **Retry** use that known appearance. **Upload reference** saves artistic guidance for the next eligible generation, and **Remove** clears artwork and its reference. Founding and REPAIR remain explicit authoring tools.
 
 Day/night imagery is standard, with one image reused for AI-known constant lighting. Existing description-writing requests make that decision without an extra classification call. Artwork uses stable daytime lighting independent of generation time, respecting established world rules; night is derived from that same base. Play follows Village time and timezone, including map tint; Founding stays daytime. There are no day/night or Refresh controls. Completed daytime artwork remains visible if night fails, and Retry resumes the failed stage. Each automatic image counts against six images per real hour; paired stages can run together, with five minutes between automatic updates of the same Zone. Undo/Restore preserves limits. Existing artwork is retained without bulk generation. Closed Scenes retain captured presentation. See [Zone pictures](../../docs/zone-pictures.md) for lifecycle and provider limits.
 
@@ -219,13 +212,13 @@ Time, schedules, construction, approved moves, and expiry can advance without mo
 
 Set **Pace → Off** to pause automatic resident and world reviews. Local time, construction, approved moves and established environmental expiry continue. Retained Wishes do not expire.
 
-Quiet, Average, and Busy permit at most 2, 6, and 12 shared automatic reviews per Village-local day, at least 60, 30, and 15 minutes apart respectively. Midnight resets the allowance without shortening spacing. New resident encounters and world developments use one principal model request; retained older jobs can use two. One eligible automatic retry may buy another response. Quiet outcomes, failures and unknown outcomes count. Completed replies are reused; unknown outcomes require deliberate recovery. Accepted due arrangements have priority; other resident and world reviews alternate. Residents may initiate private encounters or personal mail.
+Quiet, Average, and Busy permit at most 2, 6, and 12 shared automatic reviews per Village-local day, at least 60, 30, and 15 minutes apart respectively. Midnight resets the allowance without shortening spacing. Resident encounters and World developments each use one model request. One eligible automatic retry may buy another response. Quiet outcomes, failures and unknown outcomes count. Completed replies are reused. Unknown outcomes require deliberate recovery. Accepted due arrangements have priority. Other resident and World reviews alternate. Residents may initiate private encounters or personal mail.
 
 **Consequence → Gentle / Moderate / Dramatic** controls introduced circumstances and event-driven escalation. Gentle is the default. It does not restrict ordinary character behavior or replace HALT. Lowering it preserves established facts and constrains uncommitted developments. Discover circumstances through ordinary visits, conversations, activities and memories; player assertions do not independently create external facts. Situations can remain quiet, develop or resolve without player involvement.
 
 An eligible new Scene turn can introduce a local environmental development through its existing GM request. It shares the background allowance and cadence, uses the independently selected existing Zone, and yields to accepted arrangements. The captured Scene must still match the target circumstances. Quiet is valid. Consequences settle before display; a stale generated draft remains recoverable. Village-wide weather developments use the background timeline. Existing action evidence and authority rules remain.
 
-World reviews have one existing prepared Zone as their physical target, with a separate timed Village-wide weather authority. Enduring changes remain in the Zone description. Temporary conditions can restrict ordinary use while preserving authorized inspection, corrective work and egress. Supported repairs update physical prose and the matching condition together. An ended condition does not repair damage or clear another restriction. Deterministic weather remains the baseline; an accepted timed override takes precedence only during its established interval. Each admitted exchange retains its captured circumstances; live Scenes refresh between exchanges. Material physical changes use the existing Zone artwork lifecycle and spending limits.
+World reviews can update the observable Room entries of one prepared Zone. A saved review holds for recovery if the captured Room changes before the result applies. Conditions can restrict ordinary use while preserving authorized inspection, corrective work and egress. A completed repair in a Scene or World review updates the affected Room entries and their linked condition together. Scene repairs work with Pace Off. Accepted weather overrides use the Village’s weather descriptions and take precedence during their specified interval. Each admitted exchange retains its captured circumstances. Live Scenes refresh between exchanges. A material change can make existing artwork stale without generating a new image.
 
 After an absence of at least one hour, Villages may use the remaining return-day allowance for up to six grounded resident or world opportunities. These share the ordinary allowance without waiting between opportunities. A batch considers at most the latest seven days, never a review for every missed day. Its allowance date and maximum stay fixed: reserved work can finish after midnight, but unstarted opportunities cannot use the next day's allowance. Existing saved batches retain their admitted recovery behavior. The host and internet need not be available during the absence; requests run after Villages returns. A compact welcome-back card shows progress and recovery controls. Preparation failures retry once automatically only when no saved request exists; eligible failed replies use the worker's single automatic retry. Retry can make additional model requests. Continue skips only work that can safely be abandoned, while committed effects must finish recovering. The Debug section includes spoiler-bearing accounts for the current and up to 20 previous catch-up periods (fewer if accounts are large), and the development time control. Accounts already overwritten before history was introduced cannot be recovered.
 
@@ -258,6 +251,6 @@ In **General Settings**, choose your connections. **Writing Settings** control p
 
 **Send on Enter** defaults Off. Normally, Enter adds a newline. When enabled, Enter sends and Shift+Enter adds a newline.
 
-Progress saves as you play, and refresh restores it. The current test build uses **Village format 16** and **Scene format 4**. Older worlds, setup records, Scenes and checkpoints require their matching runtime. Arrange independent fresh test storage before trying an incompatible build. Installation does not reset existing storage or delete an incompatible world.
+Progress saves as you play, and refresh restores it. The current test build requires fresh storage and uses **Village format 18** and **Scene format 5**. The new reader rejects older worlds, setup records, Scenes and checkpoints and preserves their stored bytes. Those saves require their matching runtime in separate storage.
 
 Installed package files remain on the Marinara server, but model-driven play still needs a working connection to your configured provider. Before changing or removing a test installation, arrange a backup and confirm how to keep its world with the server operator. **Reset the village and start over** is a separate destructive action.

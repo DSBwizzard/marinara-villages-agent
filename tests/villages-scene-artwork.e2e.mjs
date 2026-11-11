@@ -74,6 +74,7 @@ await withBrowser(browser, async () => {
         connectedTo: ["exterior"],
       },
     ];
+    venue.zones.find((zone) => zone.id === targetId).pictureOutdated = true;
     Object.assign(venue, venueSnapshotFixture(venue));
     const scene = {
       id: "artwork-scene",
@@ -129,6 +130,7 @@ await withBrowser(browser, async () => {
           zone.pictureReference = undefined;
           zone.referencePending = false;
         }
+        if (req.method() === "POST") zone.pictureOutdated = false;
       } else if (req.method() !== "GET" && /\/rooms(?:\/|$)/.test(path))
         assert.fail("artwork must not mutate the Scene");
       await fulfill(route, { json: authorSceneResponse(value, snapshot.worldScope) });
@@ -153,6 +155,7 @@ await withBrowser(browser, async () => {
     const returnToScene = () => page.getByRole("button", { name: "Back to Scene", exact: true }).click();
     await openSettings();
     await expect(page.getByRole("button", { name: "Generate new picture", exact: true })).toBeEnabled();
+    await expect(page.getByText("Artwork is out of date.", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "About", exact: true }).click();
     const photo = page.locator(".marinara-capability-villages-venue-photo img");
     await expect(photo).toHaveAttribute("src", night);
@@ -170,6 +173,7 @@ await withBrowser(browser, async () => {
     await page.getByRole("button", { name: "Generate new picture", exact: true }).click();
     await expect.poll(() => mutations.length).toBe(1);
     await expect(page.getByRole("button", { name: "Picture", exact: true })).toBeVisible();
+    await expect(page.getByText("Artwork is out of date.", { exact: true })).toHaveCount(0);
     await returnToScene();
     await expect(backdrop).toHaveAttribute("src", generated);
     await expect(composer).toHaveValue("Keep this unsent Scene draft.");
@@ -196,8 +200,8 @@ await withBrowser(browser, async () => {
     assert.deepEqual(snapshot.sceneVenue, captured, "artwork does not replace captured source facts");
     assert.deepEqual(scene, originalScene, "no Scene state/positions/attendance changes");
     await expect(composer).toHaveValue("Keep this unsent Scene draft.");
-    await page.getByRole("button", { name: "Mode: Say / Do. Choose mode" }).click();
-    await page.getByRole("menuitemradio", { name: "Move", exact: true }).click();
+    await page.getByRole("button", { name: "Venue actions" }).click();
+    await page.getByRole("menuitem", { name: "Move", exact: true }).click();
     await expect(
       page
         .getByRole("combobox", { name: "Move to Zone" })

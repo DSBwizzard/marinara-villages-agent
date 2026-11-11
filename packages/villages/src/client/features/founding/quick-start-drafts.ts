@@ -49,7 +49,7 @@ export function replaceQuickStartVenue(venue: VillageVenue, proposal: StartingVe
     proposal.connections?.filter((edge) => edge.includes(id)).map((edge) => (edge[0] === id ? edge[1] : edge[0]));
   return {
     ...venue,
-    ...zoneDayNightDefault({}, proposal.dayNight),
+    ...zoneDayNightDefault(proposal.dayNight),
     name: proposal.name,
     venueType: proposal.venueType,
     form: proposal.form,
@@ -59,7 +59,7 @@ export function replaceQuickStartVenue(venue: VillageVenue, proposal: StartingVe
       ? [
           {
             ...startingZone(venue, false),
-            ...zoneDayNightDefault({}, proposal.commonDayNight),
+            ...zoneDayNightDefault(proposal.commonDayNight),
             name: proposal.commonName,
             purpose: proposal.commonPurpose || (residence ? "Everyday activities" : "Community gatherings"),
             description: proposal.commonDescription,
@@ -72,7 +72,7 @@ export function replaceQuickStartVenue(venue: VillageVenue, proposal: StartingVe
       ? [
           {
             ...startingZone(venue, true),
-            ...zoneDayNightDefault({}, proposal.privateDayNight),
+            ...zoneDayNightDefault(proposal.privateDayNight),
             name: proposal.privateName,
             purpose: proposal.privatePurpose,
             description: proposal.privateDescription ?? "",

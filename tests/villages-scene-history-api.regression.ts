@@ -5,6 +5,7 @@ import { coerceSession } from "../packages/villages/src/server/domain/decoding/s
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
+import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { villageWorldScope } from "../packages/villages/src/server/domain/rules/village-identity.js";
 import { sessionSlot } from "../packages/villages/src/server/adapters/storage/scene-slots.js";
 import { createSceneQueryService } from "../packages/villages/src/server/features/scenes/scene-query-service.js";
@@ -31,7 +32,7 @@ const line = (index: number) => ({
   name: "Narration",
   content: "Exact café 東京 paragraph " + index,
   at,
-  heardBy: [],
+  heardBy: ["player"],
   ...(index % 5 === 0 ? { contactHidden: true } : {}),
 });
 function deferred() {
@@ -42,12 +43,12 @@ for (const count of [1000, 10_000, 25_000]) {
   try {
     const world = defaultVillageState();
     world.seed = "history-api-world";
-    world.setupAt = count === 10_000 ? "" : at;
+    world.setupAt = at;
     world.foundedAt = at;
     const worlds = createVillageRepository(() => f.gate.documents);
-    await worlds.mutateAuthority((saved) => Object.assign(saved, world));
+    await worlds.mutateAuthority((saved) => Object.assign(saved, world), { memories: true });
     const scene = coerceSession({
-      version: 4,
+      version: 5,
       id,
       villageSeed: world.seed,
       status: "active",
@@ -144,6 +145,7 @@ for (const count of [1000, 10_000, 25_000]) {
     assert.equal(Object.hasOwn(response.playback, "lines"), false, "Playback metadata never duplicates response prose");
     assert(!JSON.stringify(response).includes("private authority sentinel"));
     assert(Buffer.byteLength(JSON.stringify(response)) < 128 * 1024, "Every ordinary Scene response is bounded");
+    const requestFingerprint = memoryHash(["chat", "", null, "Exact input"]);
     const acknowledged = coerceSession({
       ...scene,
       status: "closed",
@@ -153,15 +155,18 @@ for (const count of [1000, 10_000, 25_000]) {
         mode: "chat",
         targetId: "",
         message: "Exact input",
-        recordEvents: [
-          { id: "notice:" + index, kind: "memory", text: "Exact retained notice " + index },
-          { id: "dismissed", kind: "memory", text: "Dismissed notice" },
-        ],
+        requestFingerprint,
+        acceptance: { status: "applied", rejected: [] },
+        episodeId: "ack-episode:" + index,
+        progressProcessedAt: at,
+        recordEvents: [{ id: "notice:" + index, kind: "memory", text: "Exact retained notice " + index }],
       })),
     });
     const commands = createSceneCommands({
       readSession: async () => acknowledged,
-      readVillageSnapshot: async () => ({ dismissedNoticeIds: ["dismissed"] }),
+      readVillageState: async () => ({ ...defaultVillageState(), seed: acknowledged.villageSeed }),
+      clearActivePointer: async (sceneId: string, preservePlayback: boolean) =>
+        assert.deepEqual([sceneId, preservePlayback], [id, true]),
     } as any);
     const closed = await commands.closeVenueSessionWithReceipts(id);
     assert.deepEqual(closed.recordEvents, [
@@ -228,14 +233,20 @@ for (const count of [1000, 10_000, 25_000]) {
     assert(!f.rows.has(holdId), "The superseded root can retire after its reader drains");
     holdId = "";
     world.setupAt = "2026-10-31T01:00:00.000Z";
-    await worlds.mutateAuthority((saved) => {
-      saved.setupAt = world.setupAt;
-    });
+    await worlds.mutateAuthority(
+      (saved) => {
+        saved.setupAt = world.setupAt;
+      },
+      { memories: true },
+    );
     await assert.rejects(service.readHistoryPage(id, { scope: villageWorldScope(world) }), /Scene is no longer/);
     world.setupAt = at;
-    await worlds.mutateAuthority((saved) => {
-      saved.setupAt = world.setupAt;
-    });
+    await worlds.mutateAuthority(
+      (saved) => {
+        saved.setupAt = world.setupAt;
+      },
+      { memories: true },
+    );
     const rootId = f.rows.get(restored.id).data.publicHistory.positions.id;
     const root = f.rows.get(rootId);
     f.rows.delete(rootId);
@@ -285,9 +296,9 @@ for (const count of [1000, 10_000, 25_000]) {
   try {
     const world = { ...defaultVillageState(), seed: "closed-playback", setupAt: at, foundedAt: at };
     const worlds = createVillageRepository(() => f.gate.documents);
-    await worlds.mutateAuthority((saved) => Object.assign(saved, world));
+    await worlds.mutateAuthority((saved) => Object.assign(saved, world), { memories: true });
     const source = coerceSession({
-      version: 4,
+      version: 5,
       id,
       villageSeed: world.seed,
       status: "closed",
@@ -315,16 +326,8 @@ for (const count of [1000, 10_000, 25_000]) {
       villagesDocuments: () => f.gate.documents,
       readActive: repository.readActive,
       readVillageState: async () => world,
-      readVillageMemoryState: async () => world,
-      mutateVillageMemoryState: async (change) => {
-        change(world);
-        return world;
-      },
       hasVenueOperation: () => false,
-      saveProjectEvidence: async () => {},
       saveTerminal: async () => {},
-      readTerminal: async () => null,
-      removeInterpretationDiagnostics: async () => {},
       withRepairWork: (work) => f.gate.work(work),
       withSceneWork: fence.run,
       withLateResponseWork: fence.run,
@@ -363,7 +366,6 @@ for (const count of [1000, 10_000, 25_000]) {
       resumeProject: async () => {},
       cancelProject: async () => {},
       replaySaved: async () => {},
-      continueSaved: async () => {},
     });
     const checkpoint = await repair.createCheckpoint("Closed Scene", "closed-scene");
     const list = f.documents.list;

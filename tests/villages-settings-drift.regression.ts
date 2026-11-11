@@ -105,7 +105,6 @@ const publicFields = [
   "playerPersonaMissing",
   "playerPersonaName",
   "communityVenueId",
-  "circumstances",
   "sceneryArtStyle",
   "sceneryStyleProfileId",
   "selectedLorebookIds",
@@ -181,19 +180,12 @@ try {
   assert.equal(privateZone.image?.id, "hidden");
   assert.deepEqual(privateZone.state, hidden.state);
 
-  // Older stored data can lack these fields; explicit response fallbacks remain present.
-  scope.run(() => Reflect.deleteProperty(state, "worldName"));
   state.playerBackground = null;
-  scope.run(() => Reflect.deleteProperty(state, "sceneryStyleProfileId"));
-  scope.run(() => Reflect.deleteProperty(state, "automaticZonePictures"));
   state.playerPersonaMissing = true;
-  const legacy = await scope.run(() => request("GET"));
-  assert.equal(legacy.worldName, null);
-  assert.equal(legacy.playerBackground, null);
-  assert.equal(legacy.sceneryStyleProfileId, null);
-  assert.equal(legacy.automaticZonePictures, true);
-  assert.equal(legacy.playerPersonaName, "Robin Hale");
-  assert.equal(legacy.playerPersonaMissing, true);
+  const missingPersona = await scope.run(() => request("GET"));
+  assert.equal(missingPersona.playerBackground, null);
+  assert.equal(missingPersona.playerPersonaName, "Robin Hale");
+  assert.equal(missingPersona.playerPersonaMissing, true);
 
   state.playerBackground = "A cartographer";
   state.worldRules = "Standing rules";

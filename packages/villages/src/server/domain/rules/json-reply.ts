@@ -15,11 +15,6 @@ export const MODEL_JSON_MAX_CHARACTERS = 131_072;
 export const MODEL_JSON_MAX_EDITS = 8;
 export type ModelJsonReply = { value: Record<string, unknown> | null; repaired: boolean; edits: number };
 
-/** Strict extraction for diagnostics and saved data. Never repairs or selects nested rows. */
-export function extractJsonObject(content: string): Record<string, unknown> | null {
-  const candidate = objectCandidate(content);
-  return candidate ? parseSceneObject(candidate) : null;
-}
 export function modelJsonWithinBounds(content: string): boolean {
   if (content.length > MODEL_JSON_MAX_CHARACTERS) return false;
   let depth = 0,

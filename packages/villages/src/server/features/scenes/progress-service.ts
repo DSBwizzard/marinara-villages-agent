@@ -1,294 +1,281 @@
-import { mutableSceneSubmission, requireSceneExchange } from "../../domain/rules/scene-submissions.js";
-import { applyPlaceExchange } from "../../domain/rules/place-exchange.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
+import { appendSceneInput } from "../../domain/rules/scene-input.js";
+import { applyAcceptedSceneDelta } from "../../domain/rules/scene-delta.js";
+import {
+  acceptedNarrationEpisode,
+  abandonNarration,
+  narrationIsAbandoned,
+} from "../../domain/rules/narration-acceptance.js";
+import { acceptNarration } from "../../domain/rules/narration-native.js";
+import { narrationSceneNotices } from "../../domain/rules/narration-notices.js";
+import { mutableSceneSubmission } from "../../domain/rules/scene-submissions.js";
+import { memoryHash, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import type { VenueRecordEvent, VenueScene, VenueSubmission } from "../../domain/models/scene-model.js";
+import type { VillageState } from "../../domain/models/world.js";
 
-import { ingestSavedProgressEvent } from "../../domain/rules/progress-runtime.js";
-import { releaseSceneMemories } from "../../domain/rules/scene-memory-lifecycle.js";
-import { projectInterpretationNeedsRecovery, semanticContinued } from "../../domain/rules/semantic-continuity.js";
-import { physicalVenueEvents } from "../../domain/rules/venue-scene-state.js";
-import { WorkFailureError, metadataFailure } from "../../domain/rules/work-failure.js";
-export interface SceneReplayEffects {
-  applySavedAccessEvents(scene: VenueScene, turn: VenueSubmission): Promise<void>;
-  recordSpokenInvitation(scene: VenueScene, signal: NonNullable<VenueSubmission["invitationSignal"]>): Promise<void>;
-  applyVenueTurnChange(scene: VenueScene, turn: VenueSubmission): Promise<void>;
-  receiptForTurn(scene: VenueScene, turn: VenueSubmission, persist?: boolean): Promise<VenueRecordEvent[]>;
-}
 export interface SceneProgressPorts {
   withSceneWork?<T>(id: string, work: () => Promise<T>): Promise<T>;
   onSettled?(id: string): void;
   onRecoveryFinished?(): void;
-  readVillageState: typeof import("../world/village-store.js").readVillageState;
   readSession: typeof import("../../adapters/storage/scene-store.js").readSession;
-  processProjectSpeechTurn: typeof import("../projects/project-evidence.js").processProjectSpeechTurn;
+  withCommittedVillageAuthority<T>(work: (state: VillageState) => Promise<T>): Promise<T>;
   mutateVillageState: typeof import("../world/village-store.js").mutateVillageState;
   changeSession: typeof import("../../adapters/storage/scene-store.js").changeSession;
   measurePipeline: typeof import("../../adapters/observability/pipeline-metrics.js").measurePipeline;
-  applySavedAccessEvents: SceneReplayEffects["applySavedAccessEvents"];
-  recordSpokenInvitation: SceneReplayEffects["recordSpokenInvitation"];
-  createLiveEvidenceContext: typeof import("../../domain/rules/live-exchange.js").createLiveEvidenceContext;
-  applyVenueTurnChange: SceneReplayEffects["applyVenueTurnChange"];
-  processWishExchange: typeof import("../residents/wishes/service.js").processWishExchange;
-  processLiveMemories: typeof import("../residents/live-memory.js").processLiveMemories;
-  processLiveRelationships: typeof import("../residents/live-memory.js").processLiveRelationships;
-  runtimeDebug: typeof import("../../adapters/observability/runtime-debug.js").runtimeDebug;
-  receiptForTurn: SceneReplayEffects["receiptForTurn"];
-  dispatchExchange: typeof import("./exchange-processing.js").dispatchExchange;
+  assertVenueOwnership: typeof import("../../adapters/operations/operation-context.js").assertVenueOwnership;
   sceneQueries(): Pick<import("./services.js").SceneQueries, "progressBacklog">;
   villagesLogger: typeof import("../../adapters/engine/runtime-host.js").villagesLogger;
 }
-/** Inert saved-exchange replay and startup batching with explicit originating connections. */
+
+function matchesSceneRequest(scene: VenueScene, turn: VenueSubmission) {
+  const source = turn.narration?.readset.source;
+  return (
+    source?.scene.id === scene.id && source.scene.villageSeed === scene.villageSeed && source.input === turn.message
+  );
+}
+
+/** The Scene is the existing replay outbox; one Village CAS accepts native effects and common continuity. */
 export function createSceneProgress({
   withSceneWork,
   onSettled,
   onRecoveryFinished,
-  readVillageState,
   readSession,
-  processProjectSpeechTurn,
+  withCommittedVillageAuthority,
   mutateVillageState,
   changeSession,
   measurePipeline,
-  applySavedAccessEvents,
-  recordSpokenInvitation,
-  createLiveEvidenceContext,
-  applyVenueTurnChange,
-  processWishExchange,
-  processLiveMemories,
-  processLiveRelationships,
-  runtimeDebug,
-  receiptForTurn,
-  dispatchExchange,
+  assertVenueOwnership,
   sceneQueries,
   villagesLogger,
 }: SceneProgressPorts) {
-  /** The Scene document is the outbox. Village receipts are idempotent if the second write is interrupted. */
-  async function processSavedProgressSubmission(sessionId: string, submissionId: string): Promise<void> {
-    const work = () => applySavedProgressSubmission(sessionId, submissionId);
-    await (withSceneWork ? withSceneWork(sessionId, work) : work());
-    onSettled?.(sessionId);
-  }
-  async function applySavedProgressSubmission(sessionId: string, submissionId: string): Promise<void> {
-    const village = await readVillageState();
-
-    const session = await readSession(sessionId);
-    const submission = session.submissions.find((entry) => entry.id === submissionId);
-    if (
-      !submission ||
-      submission.progressProcessedAt ||
-      !submission.at ||
-      (village.foundedAt && Date.parse(submission.at) < Date.parse(village.foundedAt))
-    )
-      return;
+  async function applySavedExchange(scene: VenueScene, submissionId: string, startup: boolean) {
+    const turn = scene.submissions.find((row) => row.id === submissionId);
+    if (!turn || turn.acceptance.status === "applied" || turn.acceptance.status === "abandoned") return;
+    const publication = turn.narration;
+    memoryRequire(publication, "saved narration purchase is missing");
+    const identity = memoryHash(publication);
+    const matchesScene = matchesSceneRequest(scene, turn);
+    let result: ReturnType<typeof acceptNarration> | undefined;
+    let abandoned = false;
+    let validationFailure: unknown;
     try {
-      await processProjectSpeechTurn(sessionId, submissionId);
-      const hasAutomaticRoute = village.progressTasks.some((task) =>
-        task.definition.phases[task.phaseIndex]?.requirements.some((requirement) =>
-          requirement.routes.some(
-            (route) =>
-              route.automatic &&
-              route.evidenceKinds?.some(
-                (kind) => kind === "saved-resident-line" || (kind === "saved-venue-action" && !!submission.action),
-              ),
-          ),
-        ),
-      );
-      if (hasAutomaticRoute)
-        await mutateVillageState((state) => {
-          if (semanticContinued(state, sessionId, submissionId, "projects")) return;
-          if (state.seed !== village.seed) return;
-          for (const line of session.lines) {
-            if (
-              submission.replyLineIds?.includes(line.id) &&
-              !line.contactHidden &&
-              !line.contactReport &&
-              (submission.activeIdsAtTurn?.includes(line.speakerId) ||
-                submission.speechIdsAtTurn?.includes(line.speakerId)) &&
-              session.participants.some((person) => person.characterId === line.speakerId)
-            )
-              ingestSavedProgressEvent(state, {
-                id: `visit:${sessionId}:${submissionId}:${line.id}`,
-                kind: "saved-resident-line",
-                at: submission.at!,
-                sourceId: submissionId,
-                lineId: line.id,
-                speakerId: line.speakerId,
-                venueId: session.placeId,
-                area: submission.areaAtTurn,
-                excerpt: line.content,
-              });
+      if (!matchesScene) {
+        validationFailure = new Error("Memory: saved narration request identity changed");
+        throw validationFailure;
+      }
+      if (startup && turn.acceptance.status === "held") {
+        const state = await withCommittedVillageAuthority(async (current) => current);
+        if (acceptedNarrationEpisode(state, publication, turn.id))
+          result = acceptNarration(state, publication, turn.id, publication.readset.capturedAt);
+        else abandoned = narrationIsAbandoned(state, publication, turn.id);
+        if (!result && !abandoned) return;
+      }
+      if (!result && !abandoned)
+        await mutateVillageState(
+          (state) => {
+            try {
+              if (!acceptedNarrationEpisode(state, publication, turn.id)) {
+                abandoned = narrationIsAbandoned(state, publication, turn.id);
+                if (abandoned) return;
+                assertVenueOwnership(scene);
+                memoryRequire(
+                  !startup ||
+                    scene.operation?.id !== publication.readset.source.operationId ||
+                    scene.operation.status !== "complete",
+                  "cancelled narration requires explicit saved-result recovery",
+                );
+                memoryRequire(
+                  scene.sceneRevision === publication.readset.sceneRevision,
+                  "the admitted Scene changed before narration acceptance",
+                );
+              }
+              result = acceptNarration(
+                state,
+                publication,
+                turn.id,
+                villageNow(state.clock?.advanceMs ?? 0).toISOString(),
+              );
+            } catch (error) {
+              validationFailure = error;
+              throw error;
+            }
+          },
+          { memories: true },
+        );
+      memoryRequire(result || abandoned, "narration acceptance returned no result");
+      const accepted = result;
+      const episode = accepted?.episode;
+      const publish = (notices: VenueRecordEvent[]) =>
+        changeSession(scene.id, (saved) => {
+          const entry = mutableSceneSubmission(saved, turn.id);
+          memoryRequire(
+            entry && (entry.acceptance.status === "applied" || memoryHash(entry.narration) === identity),
+            "saved narration changed during publication",
+          );
+          if (entry.acceptance.status === "applied") return;
+          appendSceneInput(saved, entry);
+          if (abandoned) {
+            entry.acceptance = { ...entry.acceptance, status: "abandoned" };
+            return;
           }
-          if (submission.action)
-            ingestSavedProgressEvent(state, {
-              id: `visit-action:${sessionId}:${submissionId}`,
-              kind: "saved-venue-action",
-              at: submission.at!,
-              sourceId: submissionId,
-              venueId: session.placeId,
-              area: submission.areaAtTurn,
-              excerpt: submission.message,
-            });
+          memoryRequire(accepted, "narration acceptance returned no result");
+          if (accepted.held) {
+            entry.acceptance = { status: "held", rejected: accepted.rejected };
+            entry.progressError = accepted.rejected
+              .map((row) => row.reason)
+              .join("; ")
+              .slice(0, 300);
+            return;
+          }
+          memoryRequire(episode, "narration acceptance returned no episode");
+          applyAcceptedSceneDelta(saved, episode);
+          for (const line of episode.segments) {
+            const prior = saved.lines.find((row) => row.id === line.id);
+            memoryRequire(!prior || memoryHash(prior) === memoryHash(line), "published Scene line identity changed");
+            if (!prior) saved.lines.push(structuredClone(line));
+          }
+          entry.replyLineIds = episode.segments.map((line) => line.id);
+          entry.episodeId = episode.id;
+          if (notices.length) entry.recordEvents = notices;
+          else delete entry.recordEvents;
+          entry.acceptance = { status: "applied", rejected: accepted.rejected };
+          entry.progressProcessedAt = episode.acceptedAt;
+          entry.progressError = "";
+          delete entry.narration;
+          saved.lastActivityAt = episode.acceptedAt;
+          const operation = saved.operation;
+          if (
+            operation?.id === publication.readset.source.operationId &&
+            operation.status === "interrupted" &&
+            !Object.values(operation.attempts).some((attempt) => attempt.status === "dispatching") &&
+            !Object.keys(operation.checkpointClaims ?? {}).length
+          ) {
+            operation.status = "complete";
+            operation.stage = "complete";
+            operation.error = "";
+            delete operation.failure;
+            operation.snapshot = null;
+            operation.checkpoints = {};
+            operation.attempts = {};
+          }
         });
-      await changeSession(sessionId, (saved) => {
-        const turn = mutableSceneSubmission(saved, submissionId);
-        if (turn) {
-          turn.progressProcessedAt ||= villageNow().toISOString();
-          turn.progressError = "";
-        }
-      });
+      if (!episode) await publish([]);
+      else
+        await withCommittedVillageAuthority(async (state) => {
+          const committed = acceptedNarrationEpisode(state, publication, turn.id);
+          memoryRequire(
+            state.seed === scene.villageSeed &&
+              state.setupAt === publication.readset.setupAt &&
+              committed?.id === episode.id &&
+              committed.sceneId === scene.id &&
+              committed.acceptedAt === episode.acceptedAt,
+            "the committed narration changed before Scene publication",
+          );
+          return publish(
+            committed.continuityVersionIds.length || committed.commandReceipts.length
+              ? narrationSceneNotices(state, committed)
+              : [],
+          );
+        });
     } catch (error) {
-      await changeSession(sessionId, (saved) => {
-        const turn = mutableSceneSubmission(saved, submissionId);
-        if (turn && !turn.progressProcessedAt) turn.progressError = String(error).slice(0, 300);
-      });
+      try {
+        await changeSession(scene.id, (saved) => {
+          const entry = mutableSceneSubmission(saved, turn.id);
+          if (
+            entry &&
+            (entry.acceptance.status === "pending" || entry.acceptance.status === "held") &&
+            memoryHash(entry.narration) === identity
+          ) {
+            if (matchesScene) appendSceneInput(saved, entry);
+            entry.progressError = String(error).slice(0, 300);
+            if (validationFailure === error)
+              entry.acceptance = {
+                status: "held",
+                rejected: [{ id: "narration", reason: String(error).slice(0, 2000) }],
+              };
+          }
+        });
+      } catch (bookkeepingError) {
+        villagesLogger().warn(
+          "[villages] narration error receipt could not be saved for %s: %s",
+          turn.id,
+          String(bookkeepingError),
+        );
+      }
       throw error;
     }
   }
-
-  /** Replay only saved interpretations. Effects and duplicate receipts remain in their owning documents. */
-  async function processSavedExchange(sessionId: string, submissionId: string, startup = false): Promise<void> {
+  async function processSavedExchange(sessionId: string, submissionId: string, startup = false) {
     const work = async () => {
-      if (startup) {
-        const turn = (await readSession(sessionId)).submissions.find((entry) => entry.id === submissionId);
-        if (Object.values(turn?.processing?.domains ?? {}).some((domain) => domain.status === "failed")) return false;
-      }
-      await processSavedExchangeOnce(sessionId, submissionId);
-      return true;
-    };
-    if (await (withSceneWork ? withSceneWork(sessionId, work) : work())) onSettled?.(sessionId);
-  }
-  async function processSavedExchangeOnce(sessionId: string, submissionId: string): Promise<void> {
-    await measurePipeline("saved exchange", { sceneId: sessionId, submissionId }, () =>
-      applySavedExchange(sessionId, submissionId),
-    );
-    const settled = await readSession(sessionId);
-    if (settled.status === "closed")
-      await mutateVillageState((state) => {
-        releaseSceneMemories(state, settled);
-      });
-  }
-  async function applySavedExchange(sessionId: string, submissionId: string): Promise<void> {
-    const scene = await readSession(sessionId);
-    const turn = scene.submissions.find((entry) => entry.id === submissionId);
-    if (!turn) return;
-    const processing = structuredClone(requireSceneExchange(scene, turn));
-    if (turn && (turn.npcAdmissions?.length || turn.placeDiscoveries?.length || turn.establishmentProgress?.length))
-      await mutateVillageState((state) => applyPlaceExchange(state, scene, turn), { memories: true });
-    if (turn?.accessEvents?.length) await applySavedAccessEvents(scene, turn);
-    if (turn?.invitationSignal) await recordSpokenInvitation(scene, turn.invitationSignal);
-    const village = await readVillageState();
-    const evidenceContext = turn.liveProposals ? createLiveEvidenceContext(scene, turn.liveProposals) : undefined;
-    const exchangeLineIds = new Set(processing.lineIds);
-    const valid =
-      village.seed === processing.seed &&
-      scene.villageSeed === village.seed &&
-      processing.sceneId === scene.id &&
-      processing.submissionId === turn.id;
-    const checkFailure = (domain: keyof typeof processing.domains) => {
-      const failure = turn.effectFailures?.[domain];
-      if (failure)
-        throw new WorkFailureError(
-          failure.kind === "metadata"
-            ? metadataFailure(failure.message)
-            : { cause: "missing_result", stage: "interpretation", message: failure.message },
-        );
-    };
-    const applyProjects = async () => {
-      if (!valid)
-        return { status: "rejected" as const, reason: "Village identity changed; saved effects cannot apply" };
-      if (projectInterpretationNeedsRecovery(turn))
-        throw new WorkFailureError(
-          turn.processing!.domains.projects.failure ??
-            metadataFailure("Saved Project interpretation needs reassessment"),
-        );
-      await applyVenueTurnChange(scene, turn);
-      if (
-        turn.physicalOutcomeVersion &&
-        !physicalVenueEvents(await readVillageState()).some(
-          (event) => event.id === `venue-chat:${scene.id}:${turn.id}` && event.actionReceipt?.happened,
-        )
-      )
-        return {
-          status: "rejected" as const,
-          reason: "The physical outcome no longer meets current state restrictions",
-        };
-      checkFailure("projects");
-      await processSavedProgressSubmission(scene.id, turn.id);
-      const current = await readVillageState();
-      const receiptIds = current.progressTasks.flatMap((task) =>
-        task.receipts
-          .filter(
-            (receipt) => receipt.evidence.sourceId === turn.id || exchangeLineIds.has(receipt.evidence.lineId ?? ""),
-          )
-          .map((receipt) => receipt.id),
+      const scene = await readSession(sessionId),
+        turn = scene.submissions.find((row) => row.id === submissionId);
+      if (!turn) return;
+      await measurePipeline("saved narration", { sceneId: sessionId, submissionId }, () =>
+        applySavedExchange(scene, submissionId, startup),
       );
-      return { reason: "Physical effects and saved Project interpretations checked", receiptIds };
+      onSettled?.(sessionId);
     };
-    const updates = new Map<keyof typeof processing.domains, typeof processing.domains.projects>();
-    await dispatchExchange(
-      processing,
-      {
-        projects: applyProjects,
-        wishes: async () => {
-          checkFailure("wishes");
-          if (!valid) return { status: "rejected", reason: "Village identity changed" };
-          if (
-            turn.physicalOutcomeVersion &&
-            !physicalVenueEvents(await readVillageState()).some(
-              (event) => event.id === `venue-chat:${scene.id}:${turn.id}` && event.actionReceipt?.happened,
-            )
-          )
-            return updates.get("projects")?.status === "rejected"
-              ? { status: "rejected", reason: "Physical outcome rejected" }
-              : { status: "pending", reason: "Waiting for the physical effect and receipt to commit" };
-          return processWishExchange(scene, turn.id);
-        },
-        memories: async () => {
-          checkFailure("memories");
-          return valid
-            ? processLiveMemories(scene, turn.id, evidenceContext)
-            : { status: "rejected", reason: "Village identity changed" };
-        },
-        relationships: async () => {
-          checkFailure("relationships");
-          return valid
-            ? processLiveRelationships(scene, turn.id, evidenceContext)
-            : { status: "rejected", reason: "Village identity changed" };
-        },
-      },
-      async (domain, result) => {
-        updates.set(domain, result);
-        runtimeDebug("exchange processing", {
-          sceneId: sessionId,
-          submissionId,
-          domain,
-          interpretationVersion: processing.interpretationVersion,
-          ...result,
-        });
-      },
-    );
-    const recordEvents = await receiptForTurn(scene, turn, false);
-    if (updates.size)
-      await changeSession(scene.id, (saved) => {
-        const entry = mutableSceneSubmission(saved, turn.id);
-        if (entry?.processing?.seed !== processing.seed) return;
-        entry.recordEvents = recordEvents;
-        for (const [domain, result] of updates) {
-          const prior = entry.processing.domains[domain];
-          if (entry.semanticContinuedDomains?.includes(domain)) continue;
-          if (
-            (prior.status === "applied" || prior.status === "rejected") &&
-            (result.status === "pending" || result.status === "failed")
-          )
-            continue;
-          entry.processing.domains[domain] = result;
-        }
-      });
+    await (withSceneWork ? withSceneWork(sessionId, work) : work());
   }
-
-  /** One startup scan, then bounded asynchronous batches; never part of the minute snapshot. */
+  async function abandonSavedExchange(
+    expected: VenueScene,
+    operationId: string,
+  ): Promise<"absent" | "applied" | "abandoned"> {
+    const sessionId = expected.id;
+    const expectedTurn = expected.submissions.find(
+      (row) => row.id === operationId || row.narration?.readset.source.operationId === operationId,
+    );
+    const work = async () => {
+      const scene = await readSession(sessionId);
+      memoryRequire(
+        expected.operation?.id === operationId &&
+          scene.operation?.id === operationId &&
+          expected.operation.attemptId === scene.operation.attemptId &&
+          expected.operation.token === scene.operation.token &&
+          expected.sceneRevision === scene.sceneRevision,
+        "the failed request changed before abandonment",
+      );
+      const turn = scene.submissions.find(
+        (row) => row.id === operationId || row.narration?.readset.source.operationId === operationId,
+      );
+      memoryRequire(
+        !!turn === !!expectedTurn && (!turn || memoryHash(turn) === memoryHash(expectedTurn)),
+        "saved narration changed before abandonment",
+      );
+      if (!turn) return "absent" as const;
+      if (turn.acceptance.status === "applied" || turn.acceptance.status === "abandoned") return turn.acceptance.status;
+      const publication = turn.narration;
+      memoryRequire(publication, "saved narration purchase is missing");
+      memoryRequire(matchesSceneRequest(scene, turn), "saved narration request identity changed");
+      const identity = memoryHash(publication);
+      let accepted = false;
+      await mutateVillageState(
+        (state) => {
+          accepted = !!abandonNarration(state, publication, turn.id);
+        },
+        { memories: true },
+      );
+      if (accepted) {
+        await applySavedExchange(scene, turn.id, false);
+        return "applied" as const;
+      }
+      await changeSession(sessionId, (saved) => {
+        const entry = mutableSceneSubmission(saved, turn.id);
+        memoryRequire(
+          entry && memoryHash(entry.narration) === identity && entry.acceptance.status !== "applied",
+          "saved narration changed during abandonment",
+        );
+        entry.acceptance = { ...entry.acceptance, status: "abandoned" };
+        appendSceneInput(saved, entry);
+      });
+      onSettled?.(sessionId);
+      return "abandoned" as const;
+    };
+    return withSceneWork ? withSceneWork(sessionId, work) : work();
+  }
   function startProgressRecovery(): () => void {
-    let stopped = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    let stopped = false,
+      timer: ReturnType<typeof setTimeout> | undefined;
     const start = async () => {
       try {
         const queue = await sceneQueries().progressBacklog();
@@ -299,7 +286,11 @@ export function createSceneProgress({
               await processSavedExchange(turn.sessionId, turn.submissionId, true);
             } catch (error) {
               if (!stopped)
-                villagesLogger().warn("[villages] progress replay failed for %s: %s", turn.submissionId, String(error));
+                villagesLogger().warn(
+                  "[villages] narration replay failed for %s: %s",
+                  turn.submissionId,
+                  String(error),
+                );
             }
           }
           if (!stopped && queue.length) timer = setTimeout(() => void batch(), 25);
@@ -308,7 +299,7 @@ export function createSceneProgress({
         if (!stopped && queue.length) timer = setTimeout(() => void batch(), 0);
         else if (!stopped) onRecoveryFinished?.();
       } catch (error) {
-        if (!stopped) villagesLogger().warn("[villages] progress recovery could not read visits: %s", String(error));
+        if (!stopped) villagesLogger().warn("[villages] narration recovery could not read Scenes: %s", String(error));
       }
     };
     void start();
@@ -317,6 +308,6 @@ export function createSceneProgress({
       if (timer) clearTimeout(timer);
     };
   }
-  return { processSavedProgressSubmission, processSavedExchange, startProgressRecovery };
+  return { processSavedExchange, abandonSavedExchange, startProgressRecovery };
 }
 export type SceneProgress = ReturnType<typeof createSceneProgress>;

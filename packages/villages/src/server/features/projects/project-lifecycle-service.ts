@@ -4,28 +4,31 @@ import { asRecord, asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest, conflict } from "../../domain/rules/errors.js";
 
 import { readProjectPlan } from "../../domain/rules/project-completion.js";
+import { plannedVenue, readRenovationChange } from "../../domain/rules/project-design.js";
 import {
-  effectiveRenovationChange,
-  plannedVenue,
-  readRenovationChange,
-  validateRenovationDesign,
-} from "../../domain/rules/project-design.js";
-import {
-  PROJECT_DURATION_MS,
+  beginProject,
   finishConstruction,
   missingProjectAgreements,
   projectFor,
 } from "../../domain/rules/project-lifecycle-rules.js";
 import { changedZoneIds, venueDesignHash } from "../../domain/rules/project-structure.js";
-import { allocateProjectFocus, projectAgendaReservations, trimProjectFocus } from "../../domain/rules/project-focus.js";
-import { approvalScope, projectDesignKey, matchesProjectDesign } from "../../domain/rules/project-terms.js";
-import { assertCanAddVillageVenue } from "../../domain/rules/venue-capacity.js";
+import { projectAgendaReservations, trimProjectFocus } from "../../domain/rules/project-focus.js";
+import { approvalScope, matchesProjectDesign, projectAgreementCurrent } from "../../domain/rules/project-terms.js";
 import { validVenueClasses } from "../../domain/rules/venue-model.js";
 import { assertMapRevision, villageMap } from "../../domain/rules/village-maps.js";
 import { draftEstablishmentProject } from "./project-drafts.js";
 import { establishmentDraft, establishmentScope, establishmentChange } from "../../domain/rules/establishment.js";
 import { findLocation } from "../../domain/rules/places.js";
 import { completeProject } from "../../domain/rules/project-completion.js";
+import { removeNativeRoom } from "../../domain/rules/native-continuity.js";
+import { memoryHash } from "../../domain/rules/memory-integrity.js";
+
+function projectDraftRequest(value: unknown) {
+  const row = asRecord(value),
+    requestId = asTrimmedString(row.requestId);
+  if (!requestId || requestId.length > 200) throw badRequest("A request ID is required.");
+  return { row, requestId, projectId: "project:" + memoryHash(requestId).slice(0, 32) };
+}
 
 export interface ProjectLifecyclePorts {
   mutateVillageState: typeof import("../world/village-store.js").mutateVillageState;
@@ -52,14 +55,15 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
       (state) => {
         const project = projectFor(state, id),
           flow = project.lifecycle;
-        if (flow.commandReceipts[requestId]) {
+        if (Object.hasOwn(flow.commandReceipts, requestId)) {
           if (flow.commandReceipts[requestId] !== fingerprint) throw conflict("This request ID was already used.");
           return;
         }
         if (flow.revision !== row.expectedRevision)
           throw conflict("The Project design changed. Refresh and try again.");
         apply(state, project, row);
-        projectFor(state, id).lifecycle.commandReceipts[requestId] = fingerprint;
+        const current = projectFor(state, id).lifecycle;
+        current.commandReceipts = { ...current.commandReceipts, [requestId]: fingerprint };
       },
       { memories: true },
     );
@@ -75,62 +79,62 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
       flow.approvals = flow.approvals.filter(
         (row) =>
           flow.affectedIds.includes(row.residentId) &&
+          projectAgreementCurrent(state, row) &&
           row.scope ===
             (project.kind === "establishment"
               ? establishmentScope(project)
-              : approvalScope(venue, flow.change!, row.residentId, flow.changedZoneIds)),
+              : approvalScope(venue, flow.change!, row.residentId, flow.changedZoneIds, flow.roomBasis)),
       );
     }
-    flow.candidates = flow.candidates.filter((row) => matchesProjectDesign(row.scope, project));
+    flow.candidates = flow.candidates.filter(
+      (row) => projectAgreementCurrent(state, row) && matchesProjectDesign(row.scope, project),
+    );
     if (!flow.candidates.some((row) => row.residentId === flow.builderId)) flow.builderId = "";
   }
   async function createNewVenueProject(value: unknown) {
-    const row = asRecord(value),
-      requestId = asTrimmedString(row.requestId);
-    if (!requestId || requestId.length > 200) throw badRequest("A request ID is required.");
+    const { row, requestId, projectId } = projectDraftRequest(value);
     await mutateVillageState((state) => {
       const fingerprint = JSON.stringify(["create-new", row]),
-        prior = state.projects.find((project) => project.id === "project:" + requestId);
+        prior = state.projects.find((project) => project.id === projectId);
       if (prior) {
         if (prior.lifecycle?.commandReceipts[requestId] !== fingerprint)
           throw conflict("This request ID was already used.");
         return;
       }
-      const project = draftNewVenueProject(state, row, "", "project:" + requestId);
-      project.lifecycle!.commandReceipts[requestId] = fingerprint;
+      const project = draftNewVenueProject(state, row, "", projectId);
+      project.lifecycle!.commandReceipts = { [requestId]: fingerprint };
     });
   }
   async function createRenovationProject(venueId: string, value: unknown) {
-    const row = asRecord(value),
-      requestId = asTrimmedString(row.requestId);
-    if (!requestId || requestId.length > 200) throw badRequest("A request ID is required.");
-    await mutateVillageState((state) => {
-      const fingerprint = JSON.stringify(["create-renovation", venueId, row]),
-        prior = state.projects.find((project) => project.id === "project:" + requestId);
-      if (prior) {
-        if (prior.lifecycle?.commandReceipts[requestId] !== fingerprint)
-          throw conflict("This request ID was already used.");
-        return;
-      }
-      const project = draftRenovationProject(state, venueId, row, "project:" + requestId);
-      project.lifecycle!.commandReceipts[requestId] = fingerprint;
-    });
-  }
-  async function createEstablishmentProject(venueId: string, value: unknown) {
-    const row = asRecord(value),
-      requestId = asTrimmedString(row.requestId);
-    if (!requestId || requestId.length > 200) throw badRequest("A request ID is required.");
+    const { row, requestId, projectId } = projectDraftRequest(value);
     await mutateVillageState(
       (state) => {
-        const fingerprint = JSON.stringify(["create-establishment", venueId, row]);
-        const prior = state.projects.find((project) => project.id === "project:" + requestId);
+        const fingerprint = JSON.stringify(["create-renovation", venueId, row]),
+          prior = state.projects.find((project) => project.id === projectId);
         if (prior) {
           if (prior.lifecycle?.commandReceipts[requestId] !== fingerprint)
             throw conflict("This request ID was already used.");
           return;
         }
-        const project = draftEstablishmentProject(state, venueId, row, "project:" + requestId);
-        project.lifecycle!.commandReceipts[requestId] = fingerprint;
+        const project = draftRenovationProject(state, venueId, row, projectId);
+        project.lifecycle!.commandReceipts = { [requestId]: fingerprint };
+      },
+      { memories: true },
+    );
+  }
+  async function createEstablishmentProject(venueId: string, value: unknown) {
+    const { row, requestId, projectId } = projectDraftRequest(value);
+    await mutateVillageState(
+      (state) => {
+        const fingerprint = JSON.stringify(["create-establishment", venueId, row]);
+        const prior = state.projects.find((project) => project.id === projectId);
+        if (prior) {
+          if (prior.lifecycle?.commandReceipts[requestId] !== fingerprint)
+            throw conflict("This request ID was already used.");
+          return;
+        }
+        const project = draftEstablishmentProject(state, venueId, row, projectId);
+        project.lifecycle!.commandReceipts = { [requestId]: fingerprint };
       },
       { memories: true },
     );
@@ -195,10 +199,11 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
           row = { classes: row.classes ?? venue.classes, detail: project.establishment.goal };
         }
       }
-      project.lifecycle.change =
+      const design =
         project.kind === "establishment"
-          ? establishmentChange(state, venue, row, project.establishment!, villageNow())
-          : readRenovationChange(state, venue, row, villageNow());
+          ? establishmentChange(state, venue, row, project.establishment!, villageNow(), project.lifecycle)
+          : readRenovationChange(state, venue, row, villageNow(), project.lifecycle);
+      Object.assign(project.lifecycle, design);
       project.lifecycle.changedZoneIds =
         project.establishment && !project.establishment.physical ? [] : changedZoneIds(venue, project.lifecycle.change);
       project.lifecycle.baseDesignHash = venueDesignHash(
@@ -213,131 +218,26 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
     });
   }
   async function lockProjectBuilder(id: string, value: unknown) {
-    await command(id, value, "lead", (_state, project, row) => {
+    await command(id, value, "lead", (state, project, row) => {
       if (!["planning", "paused"].includes(project.status)) throw conflict("Choose a lead before Start or Resume.");
       const residentId = asTrimmedString(row.residentId);
       if (
         !project.lifecycle.candidates.some(
-          (candidate) => candidate.residentId === residentId && matchesProjectDesign(candidate.scope, project),
+          (candidate) =>
+            candidate.residentId === residentId &&
+            projectAgreementCurrent(state, candidate) &&
+            matchesProjectDesign(candidate.scope, project),
         )
       )
         throw conflict("Ask this resident to lead the current design.");
       project.lifecycle.builderId = residentId;
     });
   }
-  function begin(
-    state: VillageState,
-    project: ReturnType<typeof projectFor>,
-    row: Record<string, unknown>,
-    resume: boolean,
-    now: Date,
-  ) {
-    const flow = project.lifecycle;
-    if (project.status !== (resume ? "paused" : "planning"))
-      throw conflict(resume ? "This Project is not paused." : "This Project has already started.");
-    const lead = asTrimmedString(row.residentId) || flow.builderId;
-    const social = project.kind === "establishment" && !project.establishment?.physical;
-    if (
-      !social &&
-      (!state.villagers.some((resident) => resident.characterId === lead) ||
-        !flow.candidates.some(
-          (candidate) => candidate.residentId === lead && matchesProjectDesign(candidate.scope, project),
-        ))
-    )
-      throw conflict("Choose a willing resident lead for this design.");
-    const others = state.projects.filter(
-      (other) => other.id !== project.id && ["working", "paused"].includes(other.status),
-    );
-    if (!resume && others.length >= 2) throw conflict("Two Projects are already active.");
-    if (!social && others.some((other) => other.lifecycle?.builderId === lead))
-      throw conflict("This resident already leads an active Project.");
-    if (others.some((other) => other.venueId && other.venueId === project.venueId))
-      throw conflict("This Venue already has an active Project.");
-    if (missingProjectAgreements(state, project).length) throw conflict("Obtain the necessary agreements first.");
-    if (project.kind === "establishment") {
-      const place = state.worldPlaces.places[project.venueId];
-      if (!place || place.disabled || !place.prepared || place.report)
-        throw conflict("Visit and verify this Place first.");
-      if (place.location.presentation.x === null || place.location.presentation.y === null)
-        throw conflict("Choose a map position first.");
-      if (!resume) assertCanAddVillageVenue(state, flow.change?.classes, project.id);
-      if (social) {
-        project.status = flow.phase = "working";
-        project.updatedAt = now.toISOString();
-        return;
-      }
-      if (project.establishment!.objectives.some((row) => !row.met))
-        throw conflict("Resolve the establishment objectives before physical work.");
-    }
-    if (project.kind !== "new-venue") {
-      const venue = findLocation(state, project.venueId)!;
-      if (flow.baseDesignHash !== venueDesignHash(venue, flow.changedZoneIds, flow.change))
-        throw conflict(
-          resume
-            ? "The Venue design changed. Cancel this Project and plan the current layout."
-            : "The Venue design changed. Revise the draft.",
-        );
-      if (
-        !flow.changedZoneIds.length &&
-        JSON.stringify([...(flow.change!.classes ?? [])].sort()) ===
-          JSON.stringify([...(venue.classes ?? [])].sort()) &&
-        flow.change!.capacity === (venue.residenceCapacity ?? 1)
-      )
-        throw conflict("Choose a physical change before Start.");
-      validateRenovationDesign(state, venue, effectiveRenovationChange(venue, flow.change!, flow.changedZoneIds), now);
-    } else {
-      if (!project.plan) throw conflict("Save the physical design first.");
-      const position = project.venueDraft!.position;
-      if (position.x === null || position.y === null) throw conflict("Choose a map position first.");
-      villageMap(state, position.mapId);
-      const shell = plannedVenue(project);
-      readProjectPlan(project.plan, shell);
-      if (!resume) {
-        assertCanAddVillageVenue(state, project.venueDraft!.classes, project.id);
-        if (state.venues.some((venue) => venue.name.toLocaleLowerCase() === project.title.toLocaleLowerCase()))
-          throw conflict("That Venue name is already in use.");
-        if (
-          state.venues.some(
-            (venue) =>
-              venue.presentation.mapId === position.mapId &&
-              venue.presentation.x !== null &&
-              venue.presentation.y !== null &&
-              Math.abs(venue.presentation.x - position.x!) < 0.055 &&
-              Math.abs(venue.presentation.y - position.y!) < 0.055,
-          )
-        )
-          throw conflict("That spot overlaps a Venue.");
-        const agreed = flow.candidates.filter((candidate) => matchesProjectDesign(candidate.scope, project));
-        state.venues.push(shell);
-        project.venueId = shell.id;
-        flow.targetVenueId = shell.id;
-        // Assigning the live site is an implementation detail, not changed agreement terms.
-        for (const candidate of agreed) candidate.scope = projectDesignKey(project);
-      }
-    }
-    const at = now.toISOString(),
-      remaining = resume ? flow.workOrder!.remainingMs : PROJECT_DURATION_MS;
-    const previousFocus = flow.workOrder?.focus;
-    flow.builderId = lead;
-    flow.workOrder = {
-      startsAt: at,
-      completesAt: new Date(now.getTime() + remaining).toISOString(),
-      pausedAt: "",
-      remainingMs: remaining,
-      ...(previousFocus ? { focus: previousFocus } : {}),
-    };
-    project.status = flow.phase = "working";
-    flow.blockedReason = "";
-    project.updatedAt = at;
-    project.participantIds = [lead];
-    flow.workOrder.focus = allocateProjectFocus(state, project, now);
-    projectAgendaReservations(state);
-  }
   async function startProjectConstruction(id: string, value: unknown, now = villageNow()) {
-    await command(id, value, "start", (state, project, row) => begin(state, project, row, false, now));
+    await command(id, value, "start", (state, project, row) => beginProject(state, project, row, false, now));
   }
   async function resumeProject(id: string, value: unknown, now = villageNow()) {
-    await command(id, value, "resume", (state, project, row) => begin(state, project, row, true, now));
+    await command(id, value, "resume", (state, project, row) => beginProject(state, project, row, true, now));
   }
   async function cancelProject(id: string, value: unknown, now = villageNow()) {
     await command(id, value, "cancel", (state, project) => {
@@ -346,7 +246,13 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
       project.status = project.lifecycle.phase = "cancelled";
       project.updatedAt = now.toISOString();
       project.lifecycle.blockedReason = "";
-      if (project.kind === "new-venue") state.venues = state.venues.filter((venue) => venue.buildProjectId !== id);
+      if (project.kind === "new-venue") {
+        const site = state.venues.find((venue) => venue.buildProjectId === id);
+        if (site) {
+          for (const zone of site.zones ?? []) removeNativeRoom(state, site.id, zone.id, now.toISOString());
+          state.venues = state.venues.filter((venue) => venue !== site);
+        }
+      }
       projectAgendaReservations(state);
     });
   }

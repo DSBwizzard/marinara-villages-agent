@@ -24,7 +24,6 @@ export type VillageVenueDeletionDependencies = {
   workerCharacterIds: string[];
   pendingResidenceCharacterIds: string[];
   roomPresent: boolean;
-  eventCount: number;
 };
 
 /** Effectful reads remain explicit: Scene queries can reconcile an existing visit. */
@@ -58,40 +57,46 @@ export function createVenueCommands({
     fromObservation = false,
   ): Promise<VillageSnapshot> {
     await assertVenueImageAccess(venueId, zoneId, fromObservation);
-    await mutateVillageState((state) => {
-      const venue = state.venues.find((entry) => entry.id === venueId);
-      if (!venue) throw notFound("That place is no longer in the village.");
-      if (guard && !guard(state)) throw conflict("The scenery changed while its image was generated. Generate again.");
-      if (!fromObservation && expectedContext && expectedContext !== sceneryImageKey(state, venue, zoneId))
-        throw conflict("The scenery changed while its image was generated. Generate again.");
+    await mutateVillageState(
+      (state) => {
+        const at = villageNow().toISOString();
+        const venue = state.venues.find((entry) => entry.id === venueId);
+        if (!venue) throw notFound("That place is no longer in the village.");
+        if (guard && !guard(state))
+          throw conflict("The scenery changed while its image was generated. Generate again.");
+        if (!fromObservation && expectedContext && expectedContext !== sceneryImageKey(state, venue, at, zoneId))
+          throw conflict("The scenery changed while its image was generated. Generate again.");
 
-      const zone = resolveVenueZone(venue, zoneId);
-      if (!zone) throw notFound("That zone no longer exists.");
-      if (
-        fromObservation &&
-        (!zone.observed || (expectedContext && observedPictureKey(state, zone) !== expectedContext))
-      )
-        throw conflict("The remembered artwork changed. Generate again.");
-      const renderedContext = fromObservation ? zone.observed!.context : zonePictureContext(state, venue, zone);
-      if (onlyIfEmpty && (state.automaticZonePictures === false || zone.freezePicture || zone.picture?.removed)) return;
-      if (onlyIfEmpty && zone.image) return;
-      zone.image = image;
-      zone.pictureRevision = (zone.pictureRevision ?? 0) + 1;
-      zone.picture = {
-        reference: image ? zone.picture?.reference : undefined,
-        referenceAppliedId: image ? zone.picture?.reference?.id : undefined,
-        base: image,
-        daylight: !!image && daylight,
-        removed: !image,
-        baseline: image ? zonePictureBaseline(renderedContext) : undefined,
-        context: image ? renderedContext : undefined,
-        lastAutomaticAt: zone.picture?.lastAutomaticAt,
-        dirty: fromObservation && renderedContext !== zonePictureContext(state, venue, zone),
-      };
-      rememberZoneArtwork(zone, fromObservation);
-      if (!image) zone.initialImageAttemptedAt = new Date().toISOString();
-      if (zone.kind === "exterior") venue.presentation.image = image;
-    });
+        const zone = resolveVenueZone(venue, zoneId);
+        if (!zone) throw notFound("That zone no longer exists.");
+        if (
+          fromObservation &&
+          (!zone.observed || (expectedContext && observedPictureKey(state, zone) !== expectedContext))
+        )
+          throw conflict("The remembered artwork changed. Generate again.");
+        const renderedContext = fromObservation ? zone.observed!.context : zonePictureContext(state, venue, zone, at);
+        if (onlyIfEmpty && (state.automaticZonePictures === false || zone.freezePicture || zone.picture?.removed))
+          return;
+        if (onlyIfEmpty && zone.image) return;
+        zone.image = image;
+        zone.pictureRevision = (zone.pictureRevision ?? 0) + 1;
+        zone.picture = {
+          reference: image ? zone.picture?.reference : undefined,
+          referenceAppliedId: image ? zone.picture?.reference?.id : undefined,
+          base: image,
+          daylight: !!image && daylight,
+          removed: !image,
+          baseline: image ? zonePictureBaseline(renderedContext) : undefined,
+          context: image ? renderedContext : undefined,
+          lastAutomaticAt: zone.picture?.lastAutomaticAt,
+          dirty: fromObservation && renderedContext !== zonePictureContext(state, venue, zone, at),
+        };
+        rememberZoneArtwork(zone, fromObservation);
+        if (!image) zone.initialImageAttemptedAt = new Date().toISOString();
+        if (zone.kind === "exterior") venue.presentation.image = image;
+      },
+      { memories: true },
+    );
     return buildVillageSnapshot();
   }
 
@@ -129,7 +134,6 @@ export function createVenueCommands({
         .filter((residence) => residence.status === "pending" && residence.proposedVenueId === venueId)
         .map((residence) => residence.characterId),
       roomPresent: (await activeVisitAtVenue(venueId)) === true,
-      eventCount: village.venueEvents.filter((event) => event.venueId === venueId).length,
     };
   }
 

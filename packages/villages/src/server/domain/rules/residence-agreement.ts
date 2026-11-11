@@ -7,7 +7,7 @@ import { accessibleVenueRoute } from "./venue-path.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 
 export function accessibleSleepingRoute(
-  state: Pick<VillageState, "projects" | "narrative" | "relationshipContext">,
+  state: Pick<VillageState, "projects" | "narrative">,
   venue: VillageVenue,
   actor: string,
   sleepZoneId: string,

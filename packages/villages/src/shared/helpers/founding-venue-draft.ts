@@ -19,13 +19,12 @@ export function applyFoundingVenueDraft(venue: VillageVenue, plan: FoundingVenue
       ownerId: zone.ownerId,
       venueClass,
       image: null,
-      state: { revision: 0, updatedAt: "", recent: null },
       description: "",
       access: draftZonePolicy(venue, { ownerId: zone.ownerId, venueClass }, zone.private),
     };
     return {
       ...base,
-      ...(zone.description !== base.description ? zoneDayNightDefault(base, zone.dayNight) : {}),
+      ...(zone.description !== base.description ? zoneDayNightDefault(zone.dayNight) : {}),
       name: zone.name,
       purpose: zone.purpose,
       description: zone.description,
@@ -38,7 +37,7 @@ export function applyFoundingVenueDraft(venue: VillageVenue, plan: FoundingVenue
   const spaces = zones.filter((zone) => !plan.zones!.find((draft) => draft.id === zone.id)!.private);
   return {
     ...venue,
-    ...(plan.description !== venue.description ? zoneDayNightDefault(venue, plan.dayNight) : {}),
+    ...(plan.description !== venue.description ? zoneDayNightDefault(plan.dayNight) : {}),
     name: plan.name,
     venueType: plan.venueType,
     form: plan.form,

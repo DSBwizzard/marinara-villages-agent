@@ -4,8 +4,9 @@ import { withProviderDeadline } from "../packages/villages/src/server/adapters/m
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
-import { mutateRelationships } from "../packages/villages/src/server/features/residents/relationship-store.js";
 import { createStartingTies } from "../packages/villages/src/server/features/residents/starting-ties-service.js";
+import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
+import { continuityViews } from "../packages/villages/src/server/domain/rules/continuity.js";
 import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
 import {
   queueBackgroundJob,
@@ -14,7 +15,7 @@ import {
   retryBackgroundJob,
   settleBackgroundWork,
 } from "../packages/villages/src/server/jobs/background-work.js";
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { authorVillageFixture, villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 const records = new Map<string, any>();
 const documents = {
   getById: async (_p: string, id: string) => structuredClone(records.get(id) ?? null),
@@ -35,7 +36,14 @@ const documents = {
 };
 const world = defaultVillageState();
 world.seed = "late-background";
-records.set("villages-village", { id: "villages-village", data: world, revision: 1 });
+world.setupAt = new Date().toISOString();
+records.set("villages-village", {
+  id: "villages-village",
+  packageId: "villages",
+  kind: "village",
+  data: authorVillageFixture(records, world),
+  revision: 1,
+});
 const host = {
   persistence: { documents: villageFixtureDocuments(documents) },
   logger: { info() {}, debug() {}, warn() {}, error() {}, debugOverride() {} },
@@ -161,14 +169,17 @@ try {
   await settleBackgroundWork();
   assert.equal(calls, 3);
   assert.equal(applied, 2);
+  const authored = "A follows B's public work without having met them.";
   await mutateVillageState((state) => {
     state.villagers = ["a", "b"].map((characterId) => ({
       letterFontId: "caveat",
       characterId,
+      incarnation: "founding-" + characterId,
+      addedAt: world.setupAt,
       cardSnapshot: {
         id: characterId,
         name: characterId,
-        description: "Authored context",
+        description: characterId === "a" ? authored : "B publishes sketches.",
         revision: 1,
         sourceStatus: "available",
         capturedAt: new Date().toISOString(),
@@ -180,7 +191,6 @@ try {
   const starting = createStartingTies({
     readVillageState,
     mutateVillageState,
-    mutateRelationships,
     queueBackgroundJob,
     settleBackgroundWork,
     completeWithRoom,
@@ -195,8 +205,14 @@ try {
           return {
             finishReason: "stop",
             content: JSON.stringify({
-              ties: [
-                { fromId: "a", toId: "b", connection, stance: "Curious", expectations: [], concerns: [], history: [] },
+              notes: [
+                {
+                  for: ["a"],
+                  about: ["b"],
+                  text: connection,
+                  class: "perspective",
+                  citations: [{ sourceId: "card:a:description", quote: authored }],
+                },
               ],
               conflicts: [],
             }),
@@ -209,7 +225,7 @@ try {
     ...starting.handler,
     generate: async (input) => {
       await starting.handler.generate(input);
-      throw Error("Old validator rejected a connection longer than 120 characters");
+      throw Error("Synthetic rejection after retaining the authored history response");
     },
   });
   await starting.queue();
@@ -223,9 +239,12 @@ try {
   await settleBackgroundWork();
   assert.equal(records.get(history.id).data.status, "completed");
   assert.equal(calls, 4, "A newer history validator reuses the purchased response without another request");
-  const prepared = await readVillageState();
-  assert.deepEqual(prepared.relationshipContext?.reviewedActorIds, ["a", "b"]);
-  assert.equal(Object.values(prepared.relationshipContext!.edges)[0].connection, connection);
+  const prepared = await readVillageState({ memories: true });
+  assert.deepEqual(prepared.startingHistory.reviewed, { a: "founding-a", b: "founding-b" });
+  const views = (id: string) =>
+    continuityViews(prepared.continuity, continuityActor(prepared, id)!, world.setupAt, new Set());
+  assert.equal(views("a")[0].version.text, connection);
+  assert.deepEqual(views("b"), [], "B does not learn A's starting perspective");
   await retryBackgroundJob(history.id, history.data.attempt, "recover-purchased-history", history.data.instanceId);
   assert.equal(calls, 4, "Duplicate retry is idempotent");
   console.log(

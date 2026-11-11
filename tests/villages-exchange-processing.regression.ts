@@ -1,83 +1,141 @@
+// Test cases: native-exchange/before-world, native-exchange/after-world, native-exchange/before-scene, native-exchange/after-scene
 import assert from "node:assert/strict";
-import { dispatchExchange } from "../packages/villages/src/server/features/scenes/exchange-processing.js";
-import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
-import { coerceExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
-import { unfinishedExchange } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
-
-const exchange = () =>
-  createExchangeProcessing({
-    seed: "village",
-    sceneId: "scene",
-    submissionId: "turn",
-    order: 0,
-    lineIds: ["player", "reply"],
-    actionReceiptIds: [],
-  });
-async function main() {
-  // Faults before/after domain commits and before/after Scene bookkeeping must not block another domain.
-  for (const faultDomain of ["projects", "wishes", "memories", "relationships"])
-    for (const fault of ["before-effect", "after-effect", "before-status", "after-status", "none"]) {
-      let saved = exchange();
-      const receipts = new Set<string>();
-      const effects: string[] = [];
-      let failed = false;
-      const handlers = Object.fromEntries(
-        ["projects", "wishes", "memories", "relationships"].map((domain) => [
-          domain,
-          async () => {
-            if (domain === faultDomain && !failed && fault === "before-effect") {
-              failed = true;
-              throw new Error("required transfer receipt absent");
-            }
-            if (!receipts.has(domain)) {
-              receipts.add(domain);
-              effects.push(domain);
-            }
-            if (domain === faultDomain && !failed && fault === "after-effect") {
-              failed = true;
-              throw new Error("interrupted after commit");
-            }
-            return { receiptIds: [domain] };
-          },
-        ]),
-      );
-      const save = async (domain: string, result: any) => {
-        if (domain === faultDomain && !failed && fault === "before-status") {
-          failed = true;
-          throw new Error("status write interrupted");
-        }
-        saved.domains[domain] = structuredClone(result);
-        if (domain === faultDomain && !failed && fault === "after-status") {
-          failed = true;
-          throw new Error("acknowledgement lost");
-        }
+import { runCase } from "../scripts/test-cases.mjs";
+import { packagedSceneServer } from "./fixtures/packaged-scene-server.fixture.js";
+import { fixtureVillageState, fixtureSceneState } from "./helpers/village-storage.fixture.js";
+import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
+import { continuityViews } from "../packages/villages/src/server/domain/rules/continuity.js";
+for (const fault of ["before-world", "after-world", "before-scene", "after-scene"])
+  await runCase("native-exchange/" + fault, async () => {
+    const host = await packagedSceneServer({
+      configure(world) {
+        world.venues[0].access!.managerIds = ["mara"];
+      },
+    });
+    let calls = 0,
+      armed = false,
+      failed = false,
+      afterCommitFault = false;
+    host.model.chatComplete = async () => {
+      calls++;
+      armed = true;
+      return {
+        finishReason: "stop",
+        content: JSON.stringify({
+          segments: [
+            {
+              id: "said",
+              kind: "dialogue",
+              speakerId: "mara",
+              text: "You have standing permission to visit the Common room. I prefer ginger tea.",
+              requires: ["grant", "note"],
+            },
+          ],
+          commands: [
+            {
+              id: "grant",
+              type: "permission.grant",
+              by: "mara",
+              visitor: "player",
+              venue: "mill",
+              zone: "common",
+              at: "said",
+              source: ["said"],
+            },
+          ],
+          keep: [
+            {
+              id: "note",
+              for: ["mara", "player"],
+              class: "information",
+              text: "Mara prefers ginger tea.",
+              source: ["said"],
+            },
+          ],
+        }),
       };
-      await dispatchExchange(structuredClone(saved), handlers, save).catch(() => {});
-      for (const domain of ["projects", "wishes", "memories", "relationships"].filter(
-        (domain) => domain !== faultDomain,
-      ))
-        assert.ok(receipts.has(domain), `${faultDomain} ${fault}: independent ${domain} commit`);
-      if (fault === "before-effect" || fault === "after-effect") {
-        assert.equal(saved.domains[faultDomain].status, "failed");
-        assert.equal(saved.domains[faultDomain].failure.cause, "storage_application");
+    };
+    const update = host.documents.update;
+    host.documents.update = async (input: any) => {
+      let selected = false;
+      if (armed && !failed && input.id === "villages-village" && fault.endsWith("world"))
+        selected = JSON.stringify(input.data.memoryHead) !== JSON.stringify(host.records.get(input.id).data.memoryHead);
+      if (armed && !failed && input.id === "villages-venue-visit-browser" && fault.endsWith("scene"))
+        selected = fixtureSceneState(input.data, host.records).submissions.some(
+          (turn) => turn.acceptance.status === "applied",
+        );
+      if (selected) {
+        failed = true;
+        if (fault.startsWith("before")) throw Error("Synthetic publication interruption");
       }
-      saved = coerceExchangeProcessing(saved)!; // restart from stored data
-      await dispatchExchange(structuredClone(saved), handlers, save);
-      await dispatchExchange(structuredClone(saved), handlers, save); // duplicate submission/tab
-      assert.deepEqual(effects.sort(), ["memories", "projects", "relationships", "wishes"]);
-      assert.equal(unfinishedExchange(saved), false);
-      assert.equal(saved.domains[faultDomain].status, "applied");
+      const saved = await update(input);
+      if (selected && fault.startsWith("after")) {
+        assert(saved, "an after-commit interruption requires a successful CAS");
+        afterCommitFault = true;
+        throw Error("Synthetic lost publication acknowledgement");
+      }
+      return saved;
+    };
+    try {
+      const active = await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+      assert.equal(active.statusCode, 200, active.body);
+      const payload = {
+        sessionId: "browser",
+        submissionId: "a1111111-1111-4111-8111-111111111111",
+        message: "I ask about tea and permission.",
+        mode: "chat",
+        targetId: "",
+        expectedSceneRevision: host.scene().sceneRevision,
+      };
+      const first = await host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
+      assert(failed, "the requested native publication boundary was exercised");
+      if (fault.startsWith("after")) assert(afterCommitFault, "the lost acknowledgement followed a committed row");
+      assert.equal(calls, 1);
+      const pendingWorld = fixtureVillageState(host.records.get("villages-village").data, host.records);
+      const noteCount = pendingWorld.continuity.records.filter((record) =>
+        Object.values(record.heads).some((head) =>
+          pendingWorld.continuity.versions.some(
+            (version) => version.id === head.versionId && version.text === "Mara prefers ginger tea.",
+          ),
+        ),
+      ).length;
+      assert.equal(
+        pendingWorld.venues[0].access!.permissions.length,
+        noteCount,
+        "native permission and common meaning publish together despite lost acknowledgement",
+      );
+      if (first.statusCode !== 200)
+        assert.equal(
+          host.scene().submissions[0].message,
+          payload.message,
+          "the admitted original survives interrupted publication",
+        );
+      const retry = await host.app.inject({
+        method: "POST",
+        url: "/api/villages/rooms/turn",
+        payload: { ...payload, retryOfAttemptId: host.scene().operation?.attemptId },
+      });
+      assert.equal(retry.statusCode, 200, retry.body);
+      const scene = host.scene(),
+        world = fixtureVillageState(host.records.get("villages-village").data, host.records);
+      assert.equal(scene.submissions.length, 1);
+      assert.equal(scene.submissions[0].acceptance.status, "applied");
+      assert.equal(world.episodes.records.filter((episode) => episode.sceneId === "browser").length, 1);
+      assert.equal(
+        world.venues[0].access!.permissions.filter((permission) => permission.visitorId === "player").length,
+        1,
+      );
+      for (const id of ["mara", "player"])
+        assert.equal(
+          continuityViews(world.continuity, continuityActor(world, id)!, scene.startedAt, new Set()).filter(
+            (view) => view.version.text === "Mara prefers ginger tea.",
+          ).length,
+          1,
+        );
+      const replay = await host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
+      assert.equal(replay.statusCode, 200, replay.body);
+      assert.equal(calls, 1, "recovery never repurchases a saved valid reply");
+    } finally {
+      await host.stop();
     }
-  const rejected = exchange();
-  await dispatchExchange(
-    rejected,
-    { projects: async () => ({ status: "rejected", reason: "Village identity changed" }) },
-    async () => {},
-  );
-  assert.equal(rejected.domains.projects.status, "rejected");
-  assert.equal(coerceExchangeProcessing({ version: 99 }), undefined);
-  console.log(
-    "Saved exchange dispatcher: independent domains, commit/status interruption, restart and duplicates passed (no model requests).",
-  );
-}
-await main();
+  });

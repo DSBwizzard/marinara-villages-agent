@@ -29,7 +29,6 @@ const kinds: Record<Job["kind"], true> = {
   agenda: true,
   wish: true,
   "personal-mail": true,
-  "social-recovery": true,
 };
 export const isBackgroundKind = (value: unknown): value is Job["kind"] =>
   typeof value === "string" && Object.hasOwn(kinds, value);
@@ -111,6 +110,7 @@ export function backgroundRecoveryState(value: unknown): WorkRecoveryState {
 export function canAutomaticallyRetryBackgroundJob(job: Job): boolean {
   const failed = job.failedStep === null ? undefined : job.steps[job.failedStep];
   return (
+    job.kind !== "personal-mail" &&
     job.status === "failed" &&
     !job.automaticRetryUsed &&
     !job.connectionPaused &&

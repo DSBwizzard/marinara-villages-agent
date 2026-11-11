@@ -63,17 +63,16 @@ import {
   configureVenueOperationContext,
   outsideVenueOperation,
   venueDebugContext,
-  venueExplicitRetry,
   venueOperationId,
   venueOperationSignal,
   venueOperationSnapshot,
   venueRefusal,
   venueRequestMetrics,
 } from "../adapters/operations/operation-context.js";
-import { createCapturedAdmissions } from "../adapters/storage/captured-admission-store.js";
+
 import { createDocumentMutator, mutateDocument } from "../adapters/storage/document-store.js";
-import { relationshipPayloadStore } from "../adapters/storage/relationship-payload-store.js";
 import { repairGate, withRepairWork } from "../adapters/storage/repair-gate.js";
+import { visibleSceneNotices } from "../domain/rules/narration-notices.js";
 import { createSceneRepository } from "../adapters/storage/scene-repository.js";
 import {
   changeSession,
@@ -82,21 +81,14 @@ import {
   readActive,
   readSession,
 } from "../adapters/storage/scene-store.js";
-import { createSceneWishContexts } from "../adapters/storage/scene-wish-contexts.js";
 import { createSpriteFiles } from "../adapters/storage/sprite-files.js";
 import { createVillageRepository } from "../adapters/storage/village-repository.js";
-import { wishHistoryStore } from "../adapters/storage/wish-history.js";
 import { configureVillageClock, villageNow } from "../adapters/time/clock-gate.js";
 import { createVillageClock } from "../adapters/time/clock-service.js";
 import { parseCompactFoundingCompletion } from "../domain/rules/compact-founding-rules.js";
-import { createLiveEvidenceContext } from "../domain/rules/live-exchange.js";
 import { reconcileProjectLifecycles } from "../domain/rules/project-lifecycle-rules.js";
-import { filterRelationshipNotices } from "../domain/rules/relationship-presentation.js";
-import { reconcileRelationships } from "../domain/rules/relationship-rules.js";
-import { projectSocialActivities, reconcileSocialPlans } from "../domain/rules/social-rules.js";
-import { bindWishProposals, WISH_PROPOSAL_INSTRUCTION } from "../domain/rules/wish-progress-rules.js";
+
 import { createReturnCatchup } from "../features/background/return-catchup-service.js";
-import { createReturnCatchupSettlement } from "../features/background/return-catchup-settlement.js";
 import { advanceReturnCatchup, configureReturnCatchup } from "../features/background/return-catchup.js";
 import { createFoundingArtworkSources } from "../features/founding/founding-artwork.js";
 import { createCompactFounding } from "../features/founding/founding-compact-service.js";
@@ -117,14 +109,9 @@ import { configureFoundingSuggestions } from "../features/founding/founding-sugg
 import { createFoundingPreparation } from "../features/founding/preparation-service.js";
 import { configureFoundingPreparation, prepareFoundedVillage } from "../features/founding/preparation.js";
 import { createVillageBootstrap } from "../features/founding/village-bootstrap-service.js";
-import {
-  configureVillageBootstrap,
-  draftVillageVenueDescriptions,
-  interpretSocialSource,
-} from "../features/founding/village-bootstrap.js";
+import { configureVillageBootstrap, draftVillageVenueDescriptions } from "../features/founding/village-bootstrap.js";
 import { createModelCompletions } from "../features/generation/completion-service.js";
 import { completeWithRoom, configureModelCompletions } from "../features/generation/model-requests.js";
-import { createSemanticService } from "../features/generation/semantic-service.js";
 import { createImageGeneration } from "../features/media/image-generation-service.js";
 import {
   configureImageGeneration,
@@ -134,7 +121,7 @@ import {
 } from "../features/media/image-generation.js";
 import { decodeImageDataUrl } from "../features/media/location-image-codec.js";
 import { createLocationImages } from "../features/media/location-image-service.js";
-import { configureLocationImages, requestZonePicture } from "../features/media/location-image.js";
+import { configureLocationImages } from "../features/media/location-image.js";
 import { createSpriteImageDecoder } from "../features/media/sprite-image-codec.js";
 import { createSpriteManager } from "../features/media/sprite-manager-service.js";
 import { configureSpriteManager } from "../features/media/sprite-manager.js";
@@ -145,8 +132,6 @@ import { configureTownMapImage, generateVillageTownMap } from "../features/media
 import { createTownMapReview } from "../features/media/town-map-review-service.js";
 import { configureTownMapReview, prepareVillageMap } from "../features/media/town-map-review.js";
 import { createNarrative } from "../features/narrative/narrative-service.js";
-import { createProjectEvidence } from "../features/projects/project-evidence-service.js";
-import { configureProjectEvidence, processProjectSpeechTurn } from "../features/projects/project-evidence.js";
 import { createProjectLifecycle } from "../features/projects/project-lifecycle-service.js";
 import {
   cancelProject,
@@ -161,22 +146,9 @@ import {
   configureRetainedStorageCleanup,
   createRetainedStorageCleanup,
 } from "../features/repair/retained-storage-cleanup.js";
-import { createLiveMemory } from "../features/residents/live-memory-service.js";
-import {
-  configureLiveMemory,
-  processLiveMemories,
-  processLiveRelationships,
-} from "../features/residents/live-memory.js";
+
 import { createRelationships } from "../features/residents/relationship-service.js";
-import { createRelationshipSocial } from "../features/residents/relationship-social-service.js";
-import { configureRelationshipSocial, processSocialOutbox } from "../features/residents/relationship-social.js";
-import { createRelationshipStore } from "../features/residents/relationship-store-service.js";
-import {
-  configureRelationshipStore,
-  mutateRelationships,
-  persistRelationshipAuthority,
-  readRelationshipState,
-} from "../features/residents/relationship-store.js";
+
 import { configureRelationships } from "../features/residents/relationships.js";
 import { createResidentAgendas } from "../features/residents/resident-agenda-service.js";
 import {
@@ -199,23 +171,12 @@ import { prepareSignatureImage } from "../features/residents/signature-image.js"
 import { createSocialMail } from "../features/residents/social-mail-service.js";
 import { configureSocialMail } from "../features/residents/social-mail.js";
 import { createStartingTies } from "../features/residents/starting-ties-service.js";
-import {
-  configureWishes,
-  createWishes,
-  processWishExchange,
-  queueFoundingWish,
-} from "../features/residents/wishes/service.js";
+import { configureWishes, createWishes, queueFoundingWish } from "../features/residents/wishes/service.js";
 import { createSceneArchive } from "../features/scenes/archive-service.js";
 import { configureSceneArchive, listVenueVisits } from "../features/scenes/archive.js";
 import { createSceneChanges } from "../features/scenes/changes-service.js";
-import {
-  configureSceneChanges,
-  continueSceneChange,
-  readSceneChanges,
-  replaySceneChanges,
-} from "../features/scenes/changes.js";
+import { configureSceneChanges, replaySceneChanges } from "../features/scenes/changes.js";
 import { createSceneCommands } from "../features/scenes/command-service.js";
-import { dispatchExchange } from "../features/scenes/exchange-processing.js";
 import { createLiveScenes } from "../features/scenes/live-session-service.js";
 import {
   activeVenueSession,
@@ -225,18 +186,16 @@ import {
   requireLiveVenueSession,
 } from "../features/scenes/live-session.js";
 import { createSceneProgress } from "../features/scenes/progress-service.js";
-import { configureSceneProgress, processSavedExchange } from "../features/scenes/progress.js";
-import { createProjectEvidenceIndex } from "../features/scenes/project-evidence-index.js";
-import { createSceneNarrative } from "../features/scenes/scene-narrative-service.js";
+import { configureSceneProgress, processSavedExchange, abandonSavedExchange } from "../features/scenes/progress.js";
 import { createSceneQueryService } from "../features/scenes/scene-query-service.js";
 import { createSceneRetirement } from "../features/scenes/scene-retirement-service.js";
 import { createSceneTerminalStore } from "../features/scenes/scene-terminal.js";
 import { createSceneWork } from "../features/scenes/scene-work-service.js";
 import { configureSceneWork, sceneWork } from "../features/scenes/scene-work.js";
 import { configureSceneQueries, sceneQueries } from "../features/scenes/services.js";
-import { configureSceneCommands, finishSemanticScene, sceneReplayEffects } from "../features/scenes/venue-session.js";
+import { configureSceneCommands } from "../features/scenes/venue-session.js";
 import { createSceneWriting } from "../features/scenes/writing-service.js";
-import { configureSceneWriting, generate, VENUE_REPLY_MAX_TOKENS } from "../features/scenes/writing.js";
+import { configureSceneWriting, generate } from "../features/scenes/writing.js";
 import { createConnectionSettings } from "../features/settings/connection-service.js";
 import {
   configureConnectionSettings,
@@ -258,15 +217,10 @@ import { createVillageSettings } from "../features/settings/village-settings-ser
 import { configureVillageSettings } from "../features/settings/village-settings.js";
 import { createVillageWriting } from "../features/settings/writing-settings-service.js";
 import { createResidences } from "../features/venues/residence-service.js";
-import {
-  completeVillageResidence,
-  configureResidences,
-  decideVillageResidence,
-  proposeVillageResidence,
-} from "../features/venues/residences.js";
+import { completeVillageResidence, configureResidences } from "../features/venues/residences.js";
 import { assertVenueImageAccess, configureVenueCommands, setVillageVenueImage } from "../features/venues/services.js";
 import { createVenueRequests } from "../features/venues/venue-request-service.js";
-import { configureVenueRequests, queueVillageVenueRequest } from "../features/venues/venue-requests.js";
+import { configureVenueRequests } from "../features/venues/venue-requests.js";
 import { createVenueCommands } from "../features/venues/venue-service.js";
 import { createVillageSnapshot } from "../features/world/snapshot-service.js";
 import { buildVillageSnapshot, configureVillageSnapshot } from "../features/world/snapshot.js";
@@ -278,15 +232,13 @@ import {
   mutateVillageState,
   peekVillageAuthority,
   readVillageAuthority,
-  readVillageMemoryAuthority,
-  readVillageMemorySnapshot,
   readVillageMemoryState,
   readVillageSnapshot,
   readVillageState,
   withVillageSceneAcceptance,
 } from "../features/world/village-store.js";
 import { configureWorldCoordination } from "../features/world/village.js";
-import { configureWorldRelationships, worldRelationships } from "../features/world/world-relationships.js";
+
 import { createBackgroundWork } from "../jobs/background-service.js";
 import {
   backgroundJobSnapshot,
@@ -347,10 +299,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     villagesDocuments,
     mutateDocument: createDocumentMutator(villagesDocuments),
   });
-  const projectEvidenceIndex = createProjectEvidenceIndex({
-    villagesDocuments,
-    mutateDocument: createDocumentMutator(villagesDocuments),
-  });
   const retirementOwner = activationScope();
   const logRetirementFailure = (message: string, error: unknown) => {
     if (retirementOwner?.active === false) return;
@@ -364,13 +312,9 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     createSceneRetirement({
       villagesDocuments,
       readActive,
-      readVillageState: readVillageAuthority,
-      readVillageMemoryState: readVillageMemoryAuthority,
-      mutateVillageMemoryState,
+      readVillageState: () => villageRepository.readAuthority({ memories: true }),
       hasVenueOperation,
-      saveProjectEvidence: projectEvidenceIndex.save,
       saveTerminal: sceneTerminals.save,
-      readTerminal: sceneTerminals.read,
       withRepairWork,
       withSceneWork: backendWork.sceneFence.run,
       withLateResponseWork: backendWork.lateResponseFence.run,
@@ -382,20 +326,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       if (retirementOwner?.active === false) return;
       void retirement.retire(id).catch((error) => logRetirementFailure(`Scene cleanup deferred ${id}`, error));
     });
-  const onSceneSettled = (id: string) => {
-    scheduleRetirement(id);
-    void readSession(id)
-      .then((scene) => {
-        if (
-          scene.status === "active" &&
-          scene.operation?.status === "complete" &&
-          !scene.operation.error &&
-          !scene.operation.turnOutcome
-        )
-          return requestZonePicture(scene.placeId, scene.zoneId ?? "exterior");
-      })
-      .catch(() => {});
-  };
   const scheduleRetirementScan = () =>
     backendWork.sceneFence.defer(() => {
       if (retirementOwner?.active === false) return;
@@ -514,32 +444,10 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     }),
   );
   const releaseSceneWork = configureSceneWork(createSceneWork(backendWork.navigation));
-  const releaseRelationshipStore = configureRelationshipStore(
-    createRelationshipStore({
-      VILLAGES_PACKAGE_ID,
-      villagesDocuments,
-      mutateDocument: createDocumentMutator(villagesDocuments),
-    }),
-  );
-  const relationshipSocial = createRelationshipSocial({
-    withVillageSceneAcceptance: (work, options) => withRepairWork(() => withVillageSceneAcceptance(work, options)),
-    readSocialEntry: (value, seed) => createCapturedAdmissions(villagesDocuments()).readSocialEntry(value, seed),
-    socialIdentity: (value, scope) => createCapturedAdmissions(villagesDocuments()).socialIdentity(value, scope),
-    mutateVillageState,
-    mutateRelationships,
-    processLiveMemories,
-    readVillageSnapshot: readVillageMemorySnapshot,
-    queueBackgroundJob,
-    interpretSocialSource,
-    afterCatchup: advanceReturnCatchup,
-  });
-  const releaseRelationshipSocial = configureRelationshipSocial(relationshipSocial);
   const startingTies = createStartingTies({
-    withVillageSceneAcceptance,
     readVillageLore,
-    readVillageState,
+    readVillageState: readVillageMemoryState,
     mutateVillageState: mutateVillageMemoryState,
-    mutateRelationships,
     queueBackgroundJob,
     settleBackgroundWork,
     villagesLanguageModels,
@@ -547,14 +455,10 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     completeWithRoom,
   });
   const personalMail = createSocialMail({
-    readMailInput: (value, seed) => createCapturedAdmissions(villagesDocuments()).readMailInput(value, seed),
     withWork: withRepairWork,
-    processLiveMemories,
     withVillageSceneAcceptance,
     readVillageSnapshot,
     mutateVillageState: mutateVillageMemoryState,
-    mutateRelationships,
-    readRelationshipState,
     queueBackgroundJob,
     retryBackgroundJob,
     backgroundWorkSummaries,
@@ -565,37 +469,15 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releasePersonalMail = configureSocialMail(personalMail);
   const releaseRelationshipViews = configureRelationships(
     createRelationships({
-      readVillageLore,
       readVillageState: readVillageMemoryState,
-      mutateRelationships,
-      prepareStartingTies: startingTies.prepare,
+      now: villageNow,
       clarifyStartingTies: startingTies.clarify,
       backgroundWorkSummaries,
-      applySavedStartingTies: startingTies.applySaved,
     }),
   );
-  const releaseLiveMemory = configureLiveMemory(
-    createLiveMemory({
-      mutateVillageState: mutateVillageMemoryState,
-      readVillageAuthority: readVillageMemoryAuthority,
-      readVillageState: readVillageMemoryState,
-      mutateRelationships,
-    }),
-  );
-  const releaseRelationships = configureWorldRelationships({
-    readRelationshipState,
-    processPersonalMailOutbox: personalMail.processOutbox,
-    reconcileRelationships,
-    persistRelationshipAuthority,
-    processSocialOutbox,
-    projectSocialActivities,
-    reconcileSocialPlans,
-  });
   const villageRepository = createVillageRepository(villagesDocuments, (message) => villagesLogger().warn(message));
   const releaseClock = configureVillageClock(createVillageClock(villageRepository));
-  const releaseVillageState = configureVillageStateService(
-    createVillageStateService(villageRepository, worldRelationships),
-  );
+  const releaseVillageState = configureVillageStateService(createVillageStateService(villageRepository));
   const releaseFoundingProgress = configureFoundingProgress(
     createFoundingProgress({ readVillageState, mutateVillageState }),
   );
@@ -625,30 +507,20 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       changeSession,
       clearActivePointer,
       hasVenueOperation,
+      withSceneWork: backendWork.sceneFence.run,
+      withIdleSceneWork: (id, work) =>
+        backendWork.sceneFence.isBusy(id) ? Promise.resolve() : backendWork.sceneFence.run(id, work),
       readVillageState: readVillageMemoryState,
       mutateVillageState: mutateVillageMemoryState,
     }),
   );
-  const semantic = createSemanticService({ readVillageState: readVillageMemoryState, venueCheckpoint });
 
-  const sceneNarrative = createSceneNarrative({
-    read: readVillageSnapshot,
-    mutate: (work) => villageRepository.mutateAuthority(work),
-    relationships: readRelationshipState,
-    now: villageNow,
-  });
   const releaseSceneWriting = configureSceneWriting(
     createSceneWriting({
-      readCapturedWishContexts: (contexts, scene) => createSceneWishContexts(villagesDocuments()).read(contexts, scene),
-      sceneNarrative,
-      semantic,
       venueCheckpoint,
       venueSavedCheckpoint,
-      venueExplicitRetry,
-      refreshZoneParticipants,
       readEffectiveVillagerCard,
       readVillageLore,
-      villagesLogger,
       villagesLanguageModels,
       measurePipeline,
       runtimeDebug,
@@ -662,27 +534,20 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseSceneCommands = configureSceneCommands(
     createSceneCommands({
       selectActiveScene: sceneRepository.selectActiveScene,
-      readCapturedWishContexts: (contexts, scene) => createSceneWishContexts(villagesDocuments()).read(contexts, scene),
-      sceneNarrative,
-      applySavedStartingTies: startingTies.applySaved,
-      withVillageSceneAcceptance,
+      readTerminal: sceneTerminals.read,
+      withSceneWork: backendWork.sceneFence.run,
       generate,
-      VENUE_REPLY_MAX_TOKENS,
       loadPrivateSpaceImages: () => import("../features/media/location-image.js"),
-      readSceneChanges,
       processSavedExchange,
+      abandonSavedExchange,
       activeVenueSession,
       requireLiveVenueSession,
       refreshZoneParticipants,
-      decideVillageResidence,
-      proposeVillageResidence,
       activationScope,
-      bindReplayEffects: bindActivationService,
       sceneWork,
       villagesDebugAgentsEnabled,
       villagesDocuments,
       villagesLogger,
-      villagesLanguageModels,
       runtimeDebug,
       assertVenueOwnership,
       outsideVenueOperation,
@@ -700,54 +565,38 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       coordinateVenue,
       hasVenueOperation,
       recoverVenueOperations,
-      rejectVenueCompletion,
-      venueCheckpoint,
-      completeWithRoom,
       rollActiveAgendas,
-      bindWishProposals,
-      WISH_PROPOSAL_INSTRUCTION,
-      villagesConnectionIdFor,
       mutateVillageState: mutateVillageMemoryState,
-      readVillageSnapshot: readVillageMemorySnapshot,
       readVillageState: readVillageMemoryState,
-      queueVillageVenueRequest,
     }),
   );
   const releaseSceneProgress = configureSceneProgress(
     createSceneProgress({
       withSceneWork: backendWork.sceneFence.run,
-      onSettled: onSceneSettled,
+      onSettled: scheduleRetirement,
       onRecoveryFinished: scheduleRetirementScan,
-      readVillageState: readVillageMemoryState,
+      assertVenueOwnership: operations.assertVenueOwnership,
       readSession,
-      processProjectSpeechTurn,
+      withCommittedVillageAuthority: (work) =>
+        withRepairWork(() =>
+          villageRepository.withAuthorityLock(async () =>
+            work(await villageRepository.readAuthority({ memories: true })),
+          ),
+        ),
       mutateVillageState: mutateVillageMemoryState,
       changeSession,
       measurePipeline,
-      createLiveEvidenceContext,
-      processWishExchange,
-      processLiveMemories,
-      processLiveRelationships,
-      runtimeDebug,
-      dispatchExchange,
       sceneQueries,
       villagesLogger,
-      ...sceneReplayEffects(),
     }),
   );
   const releaseSceneChanges = configureSceneChanges(
     createSceneChanges({
       withSceneWork: backendWork.sceneFence.run,
-      finishSemanticScene,
-      mutateRelationships,
-      changeSession,
       readSession,
-      readVillageSnapshot: readVillageMemorySnapshot,
-      readVillageState: readVillageMemoryState,
+      readVillageState: (options) => villageRepository.readAuthority(options),
       mutateVillageState: mutateVillageMemoryState,
-      villagesDocuments,
       processSavedExchange,
-      venueRequestMetrics: operations.venueRequestMetrics,
       readTerminal: sceneTerminals.read,
     }),
   );
@@ -762,20 +611,11 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       readSession,
       readVillageState,
       villagesDocuments,
-      readRetiredProjectScenes: projectEvidenceIndex.read,
     }),
     activeVenueSession,
     listVenueVisits,
-    listRetiredProjectScenes: projectEvidenceIndex.read,
     processSavedExchange,
   });
-  const releaseProjectEvidence = configureProjectEvidence(
-    createProjectEvidence({
-      readVillageState: readVillageMemoryState,
-      mutateVillageState: mutateVillageMemoryState,
-      sceneQueries,
-    }),
-  );
   const releaseVillageSnapshot = configureVillageSnapshot(
     createVillageSnapshot({
       readVillageState,
@@ -827,7 +667,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     createResidentRoster({
       preparedSpriteManager,
       readVillageState,
-      mutateVillageState,
+      mutateVillageState: mutateVillageMemoryState,
       findVillagerCard,
       queueVillagerAgenda,
       queueStartingTies: startingTies.queue,
@@ -934,8 +774,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       resolveVillageImageConnectionId,
       readZonePictureReference,
       buildVillageSnapshot,
-      readVillageState,
-      mutateVillageState,
+      readVillageState: readVillageMemoryState,
+      mutateVillageState: mutateVillageMemoryState,
       assertVenueImageAccess,
       setVillageVenueImage,
       readVillageImageLore,
@@ -968,36 +808,31 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       sceneWorkBusy: backendWork.sceneFence.isBusy,
       withLateResponseWork: backendWork.lateResponseFence.run,
       withRepairWork,
-      onSettled: onSceneSettled,
+      onSettled: scheduleRetirement,
       operations,
       villagesDocuments,
       villagesLogger,
       runtimeDebug,
       readTerminal: async (id) => {
         const receipt = await sceneTerminals.read(id);
-        const state = await readVillageAuthority();
-        if (!receipt || receipt.villageSeed !== state.seed) return null;
+        if (!receipt) return null;
+        const state = await readVillageAuthority({
+          memories: receipt.recordEvents.some((event) => event.kind === "wish"),
+        });
+        if (receipt.villageSeed !== state.seed) return null;
         return {
           ...receipt,
-          recordEvents: filterRelationshipNotices([
+          recordEvents: visibleSceneNotices(state, [
             ...new Map(receipt.recordEvents.map((event) => [event.id, event])).values(),
-          ]).filter((event) => !state.dismissedNoticeIds.includes(event.id)),
+          ]),
         };
       },
     }),
   );
-  const relationshipIdentity: import("../domain/rules/return-capture-revision.js").RelationshipIdentity = (world) =>
-    relationshipPayloadStore(villagesDocuments()).fingerprint(world.relationshipContext, world);
-  const wishIdentity: import("../domain/rules/return-capture-revision.js").WishIdentity = (rows, scope) =>
-    wishHistoryStore(villagesDocuments()).fingerprint(rows, scope);
   const residentPlanning = createResidentPlanning({
     activeVenueSession,
-    relationshipIdentity,
-    wishIdentity,
     afterCatchup: advanceReturnCatchup,
     afterCatchupFailure: advanceReturnCatchup,
-    applySavedStartingTies: startingTies.applySaved,
-    automaticMail: personalMail.automaticOutbox,
     readVillageState,
     readEffectiveVillagerCard,
     queueBackgroundJob,
@@ -1007,8 +842,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     completeWithRoom,
   });
   const narrative = createNarrative({
-    relationshipIdentity,
-    wishIdentity,
     read: readVillageAuthority,
     mutate: (update) => villageRepository.mutateAuthority(update),
     socialSnapshot: readVillageSnapshot,
@@ -1048,7 +881,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       resumeProject,
       cancelProject,
       replaySaved: replaySceneChanges,
-      continueSaved: continueSceneChange,
     }),
   );
   const retainedCleanup = createRetainedStorageCleanup(
@@ -1066,7 +898,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       withRepairWork,
       withCurrentJobWrite: (work) => withRepairWork(() => villageRepository.withAuthorityLock(work)),
       activityChanged: requestVillageRefresh,
-      readVillageAuthority,
+      readVillageAuthority: (options) => villageRepository.readAuthority(options),
       mutateVillageAuthority: (update, options) => villageRepository.mutateAuthority(update, options),
       villagesDocuments,
       villagesLogger,
@@ -1081,25 +913,15 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
         ["schedule-influence", scheduleInfluence.handler],
         ["wish", wishService.handler],
         ["personal-mail", personalMail.handler],
-        ["social-recovery", relationshipSocial.handler],
         ["agenda", bindActivationService(residentAgendas.agendaBackgroundHandler)],
         ["resident-planning", bindActivationService(residentPlanning.handler)],
         ["world-development", bindActivationService(narrative.handler)],
       ],
     }),
   );
-  const returnSettlement = createReturnCatchupSettlement({
-    socialIdentity: (value, scope) => createCapturedAdmissions(villagesDocuments()).socialIdentity(value, scope),
-    relationshipIdentity,
-    wishIdentity,
-    gate: repairGate(),
-    readSnapshot: readVillageSnapshot,
-    mutate: mutateVillageMemoryState,
-    processSocialOutbox,
-  });
   const returnCatchup = createReturnCatchup({
-    readAuthority: () => villageRepository.readAuthority({ memories: true, wishes: true }),
-    mutateAuthority: (update) => villageRepository.mutateAuthority(update, { memories: true, wishes: true }),
+    readAuthority: () => villageRepository.readAuthority({ memories: true }),
+    mutateAuthority: (update) => villageRepository.mutateAuthority(update, { memories: true }),
     activityChanged: requestVillageRefresh,
     readSnapshot: readVillageSnapshot,
     mutate: mutateVillageMemoryState,
@@ -1110,8 +932,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     job: backgroundJobSnapshot,
     retryJob: retryBackgroundJob,
     cancel: cancelReturnCatchup,
-    settle: returnSettlement.settle,
-    reinterpret: relationshipSocial.recoverCatchup,
+
     hasPresence: hasVillagePresence,
     now: villageNow,
   });
@@ -1176,7 +997,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseSceneWriting();
     releaseSceneChanges();
     releaseSceneProgress();
-    releaseProjectEvidence();
     releaseVillageSnapshot();
     releaseResidentAgendas();
     releaseSceneArchive();
@@ -1184,7 +1004,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseVenueCommands();
     releaseQueries();
     releaseLiveScenes();
-    releaseLiveMemory();
     releaseRelationshipViews();
     releasePersonalMail();
     releaseWishes();
@@ -1192,9 +1011,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseWritingSettings();
     releaseVillageState();
     releaseClock();
-    releaseRelationships();
-    releaseRelationshipSocial();
-    releaseRelationshipStore();
     releaseSceneWork();
     releaseCompactFounding();
     releaseBootstrapRecipes();

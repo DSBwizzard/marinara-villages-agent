@@ -4,7 +4,6 @@ import { sceneMoveAccompanying } from "./venue-contact.js";
 import { zonePictureContext } from "./zone-picture.js";
 import { copyDate } from "../../../shared/helpers/zoned-date.js";
 import { residentSignature } from "../../../shared/helpers/resident-signature.js";
-import { recentPlaceText } from "../../../shared/helpers/place-continuity.js";
 import type {
   VillageMomentView,
   VillagePlaceView,
@@ -149,17 +148,7 @@ export function exactSnapshotTransition(village: VillageState, now: Date): strin
 export function villageSettings(
   village: VillageState,
   player: VillagePlayerIdentity,
-  residenceAccess: Pick<
-    VenueScene,
-    | "placeId"
-    | "area"
-    | "privateOwnerId"
-    | "zoneId"
-    | "entryOffers"
-    | "accompanying"
-    | "sceneAttendance"
-    | "departedIds"
-  > | null,
+  residenceAccess: VenueScene | null,
   accessContext?: import("../../domain/rules/venue-access.js").AccessContext,
   now = new Date(),
 ): VillageSettingsView {
@@ -171,11 +160,14 @@ export function villageSettings(
           entries: readLoreUse(village.foundingPreparation?.tasks?.[resident.characterId]?.[kind]?.lore),
         })),
       ),
-      { label: "Starting history", entries: readLoreUse(village.semanticStartingTies?.lore) },
+      { label: "Starting history", entries: readLoreUse(village.startingHistory.lore) },
       ...village.venues.flatMap((venue) =>
         (venue.zones ?? [])
-          .filter((zone) => zone.preparation?.status === "ready")
-          .map((zone) => ({ label: `${venue.name} · ${zone.name}`, entries: readLoreUse(zone.preparation?.lore) })),
+          .filter((zone) => zone.preparation?.status === "ready" && (!isVillageFounded(village) || !!zone.observed))
+          .map((zone) => ({
+            label: `${venue.name} · ${observedZone(zone, !isVillageFounded(village)).name}`,
+            entries: readLoreUse(zone.preparation?.lore),
+          })),
       ),
     ].filter((row) => row.entries.length),
     backgroundPace: village.backgroundPace,
@@ -198,7 +190,6 @@ export function villageSettings(
     communityVenueId: village.communityVenueId,
     worldName: village.worldName ?? null,
     playerBackground: village.playerBackground,
-    circumstances: structuredClone(village.narrative?.situations ?? []),
     selectedLorebookIds: village.selectedLorebookIds,
     sceneryArtStyle: village.sceneryArtStyle,
     sceneryStyleProfileId: village.sceneryStyleProfileId ?? null,
@@ -242,17 +233,21 @@ export function villageSettings(
         const present =
           residenceAccess?.placeId === venue.id &&
           residenceAccess?.zoneId === originalZone.id &&
-          originalZone.observed?.context === zonePictureContext(village, venue, originalZone);
+          originalZone.observed?.context === zonePictureContext(village, venue, originalZone, previewAt.toISOString());
         const zone = {
           ...visible,
           observed: undefined,
-          dayNightManual: undefined,
           picture: undefined,
           pictureReference: originalZone.picture?.reference,
           referencePending:
             !!originalZone.picture?.reference &&
             originalZone.picture.referenceAppliedId !== originalZone.picture.reference.id,
           pictureGenerateAvailable: authoring || !!originalZone.observed,
+          pictureOutdated: !!(
+            originalZone.observed?.image &&
+            originalZone.observed.pictureContext &&
+            originalZone.observed.pictureContext !== originalZone.observed.context
+          ),
           daylightReady: visible.picture?.daylight === true,
           nightImage:
             visible.dayNight && visible.image && visible.picture?.night?.sourceId === visible.image.id
@@ -268,8 +263,13 @@ export function villageSettings(
             originalZone.picture?.failed === true,
           pictureProblem: present ? originalZone.picture?.problem : undefined,
           pictureUpdating: present && !!originalZone.picture?.claim && originalZone.picture?.failed !== true,
-          preparation: visible.preparation
-            ? { status: visible.preparation.status, error: visible.preparation.error }
+          preparation: originalZone.preparation
+            ? {
+                status: originalZone.preparation.status,
+                error:
+                  visible.preparation?.error ||
+                  (originalZone.preparation.status === "failed" ? "Room preparation failed." : undefined),
+              }
             : undefined,
           access: undefined,
           controllerIds: undefined,
@@ -280,7 +280,7 @@ export function villageSettings(
                   positions: {
                     ...context?.positions,
                     ...Object.fromEntries(
-                      (sceneMoveAccompanying(residenceAccess, venue, originalZone) ?? [])
+                      (sceneMoveAccompanying(residenceAccess, venue, originalZone, village) ?? [])
                         .filter((entry) => !residenceAccess.departedIds?.includes(entry.characterId))
                         .map((entry) => [entry.characterId, entry.zoneId]),
                     ),
@@ -291,31 +291,25 @@ export function villageSettings(
             accepting: true,
             unavailable: zoneClosed(village, venue, originalZone),
             environment: village.narrative,
-            relationships: village.relationshipContext,
           }),
         };
         return {
           ...zone,
-          state: { ...zone.state, recent: recentPlaceText(zone.state, now.getTime()) ? zone.state.recent : null },
           closed: zoneClosed(village, venue, zone),
         };
       });
       const entrance = zones.find((zone) => zone.kind === "exterior");
-      const primary = zones.find((zone) => zone.kind !== "exterior" && zone.kind !== "private-residence");
       return {
         ...venue,
         dayNight: zones.find((zone) => zone.kind === "exterior")?.dayNight,
-        dayNightManual: undefined,
         description: entrance?.description ?? "",
         form: authoring ? venue.form : venue.zones?.find((zone) => zone.kind === "exterior")?.observed?.form,
         presentation: { ...venue.presentation, image: entrance?.image ?? null },
-        exteriorState: entrance?.state,
         access: undefined,
         accessView: projectVenueAccess(venue, "player", village.communityVenueId),
         zones,
         archivedZones: [],
         archivedPrivateSpaces: [],
-        state: primary?.state ?? { revision: 0, updatedAt: "", recent: null },
         spaces: zones.filter((zone) => zone.kind !== "exterior" && zone.kind !== "private-residence"),
         privateSpaces: zones
           .filter((zone) => zone.kind === "private-residence")

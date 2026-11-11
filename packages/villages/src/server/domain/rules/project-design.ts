@@ -7,6 +7,7 @@ import type {
   VillageVenue,
   VillageProject,
   VillageProjectChange,
+  VillageProjectLifecycle,
   VillageZoneDraft,
   VillageVenueClass,
 } from "../models/world.js";
@@ -18,23 +19,21 @@ import { validateLayoutZones } from "./venue-layout.js";
 import { readConnectionIds } from "./space-connections.js";
 import { boundText } from "./prompt-preset.js";
 import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
-import { readPlaceDescription } from "./zone-continuity.js";
 import { assertCommunityVenueUse } from "./community-venue.js";
+import { roomWasRemoved, WORKSITE_DESCRIPTION } from "./native-continuity.js";
+import { captureProjectRoomEdits } from "./project-room-edits.js";
 
 export function readRenovationChange(
   state: VillageState,
   venue: VillageVenue,
   value: unknown,
   at: Date,
-): VillageProjectChange {
+  prior?: VillageProjectLifecycle,
+) {
   const row = asRecord(value);
   if (row.form !== undefined && (typeof row.form !== "string" || row.form.length > MAX_PHYSICAL_DESIGN_LENGTH))
     throw badRequest("Physical form must be at most 2000 characters.");
   const form = typeof row.form === "string" ? row.form.trim() : undefined;
-  const exteriorDescription =
-    row.exteriorDescription === undefined ? undefined : readPlaceDescription(row.exteriorDescription).trim();
-  const entrance = venueZones(venue).find((zone) => zone.kind === "exterior")!;
-  if (exteriorDescription !== undefined && !exteriorDescription) throw badRequest("Describe the Entrance.");
   const classes = row.classes ?? venue.classes;
   const capacity = Number(row.capacity ?? venue.residenceCapacity ?? 1);
   if (!validVenueClasses(classes)) throw badRequest("Choose one or two Venue Classes.");
@@ -55,6 +54,7 @@ export function readRenovationChange(
       name = boundText(raw.name, 100).trim();
     if (
       !id ||
+      Buffer.byteLength(id) > 160 ||
       id === "exterior" ||
       !name ||
       !["public", "shared-residence", "private-residence", "staff", "restricted"].includes(kind)
@@ -62,7 +62,7 @@ export function readRenovationChange(
       throw badRequest("Give each Zone a unique ID, name and kind.");
     if (previous?.ownerId && (raw.ownerId !== previous.ownerId || kind !== previous.kind))
       throw conflict("Resident moves assign occupied rooms.");
-    const description = asTrimmedString(raw.description);
+    const description = previous ? "" : asTrimmedString(raw.description);
     const roomSpecification = asTrimmedString(raw.roomSpecification);
     if (roomSpecification.length > 4000) throw badRequest("Room specification must be at most 4000 characters.");
     if (description.length > 4000) throw badRequest("Zone description must be at most 4000 characters.");
@@ -72,7 +72,6 @@ export function readRenovationChange(
       kind: kind as VillageZoneDraft["kind"],
       venueClass: raw.venueClass as VillageVenueClass,
       description,
-      preserveDescription: !description && !!previous,
       purpose: boundText(raw.purpose, 240),
       ...(raw.roomSpecification !== undefined ? { roomSpecification } : {}),
       ownerId: asTrimmedString(raw.ownerId) || undefined,
@@ -88,13 +87,24 @@ export function readRenovationChange(
     zones,
     detail: boundText(row.detail, 2000).trim(),
     ...(form !== undefined && form !== (venue.form ?? "") ? { form } : {}),
-    ...(exteriorDescription !== undefined && exteriorDescription !== entrance.description
-      ? { exteriorDescription }
-      : {}),
   };
   if (!change.detail) throw badRequest("Describe the physical change.");
   validateRenovationDesign(state, venue, change, at);
-  return change;
+  const retainedZones = new Set(
+    venueZones(venue)
+      .filter((zone) => zone.kind === "exterior" || zones.some((draft) => draft.id === zone.id))
+      .map(({ id }) => id),
+  );
+  const { roomEdits, roomBasis } = captureProjectRoomEdits(
+    state,
+    venue,
+    retainedZones,
+    row.roomEdits,
+    at.toISOString(),
+    prior,
+  );
+  if (roomEdits) change.roomEdits = roomEdits;
+  return { change, roomBasis };
 }
 export function effectiveRenovationChange(
   venue: VillageVenue,
@@ -123,6 +133,9 @@ export function validateRenovationDesign(
   if (residents > (change.capacity ?? venue.residenceCapacity ?? 1))
     throw conflict("Keep room for the current residents.");
   const zones = change.zones ?? venueZones(venue).filter((zone) => zone.kind !== "exterior");
+  const liveZones = new Set(venueZones(venue).map((zone) => zone.id));
+  if (zones.some((zone) => !liveZones.has(zone.id) && roomWasRemoved(state, venue.id, zone.id)))
+    throw conflict("A removed Zone ID cannot be reused. Add a new Zone.");
   for (const old of venueZones(venue).filter((zone) => zone.kind === "private-residence" && zone.ownerId)) {
     if (!zones.some((zone) => zone.id === old.id && zone.kind === old.kind && zone.ownerId === old.ownerId))
       throw conflict("Move residents before removing or transferring their rooms.");
@@ -153,14 +166,7 @@ export function validateRenovationDesign(
         zone.kind === "exterior" ||
         zone.venueClass !== "residence" ||
         (zone.ownerId && zone.ownerId !== actor) ||
-        !accessibleVenueRoute(
-          { projects: [], relationshipContext: state.relationshipContext },
-          proposed,
-          actor,
-          zone.id,
-          new ZonedDate(at, state.timeZone),
-          true,
-        )
+        !accessibleVenueRoute({ projects: [] }, proposed, actor, zone.id, new ZonedDate(at, state.timeZone), true)
       )
         throw conflict(
           "Keep every household member's home and sleeping destination accessible. Choose another destination before removing or converting its Zone.",
@@ -171,7 +177,7 @@ export function validateRenovationDesign(
 export function plannedVenue(project: VillageProject): VillageVenue {
   const draft = project.venueDraft!;
   const entrance = {
-    ...defaultVenueSpace(draft.classes[0] ?? "other", project.plan?.exteriorDescription ?? ""),
+    ...defaultVenueSpace(draft.classes[0] ?? "other", WORKSITE_DESCRIPTION),
     id: "exterior",
     name: "Entrance",
     kind: "exterior" as const,
@@ -185,8 +191,7 @@ export function plannedVenue(project: VillageProject): VillageVenue {
     residenceCapacity: project.plan?.capacity ?? 1,
     buildProjectId: project.id,
     constructionStatus: "worksite",
-    form: project.plan?.form ?? draft.description,
-    description: project.plan?.exteriorDescription ?? "",
+    description: WORKSITE_DESCRIPTION,
     category: "",
     layoutVersion: 1,
     zones: [entrance],
@@ -197,12 +202,6 @@ export function plannedVenue(project: VillageProject): VillageVenue {
     presentation: { mapId: draft.position.mapId ?? "", image: null, x: draft.position.x, y: draft.position.y },
     occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
     capabilities: [],
-    exteriorState: entrance.state,
-    state: {
-      revision: 0,
-      recent: null,
-      updatedAt: project.updatedAt,
-    },
   };
   initializeVenueAccess(venue);
   return venue;

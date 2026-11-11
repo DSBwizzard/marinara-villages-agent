@@ -9,21 +9,32 @@ import {
 } from "../residents/resident-agendas.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
 import { readVillageState } from "../world/village-store.js";
-import { recoverSocialOutbox } from "./relationship-social.js";
 import { clarifyRelationships, readRelationshipsInspect, readRelationshipsView } from "./relationships.js";
 import { applyVillagerRefresh, previewVillagerRefresh } from "./resident-cards.js";
 import { addVillager, editIdentityDescription, removeVillager } from "./resident-roster.js";
 import { generateResidentSignature, readResidentSignature } from "./resident-signature.js";
 import { socialMail } from "./social-mail.js";
 import { wishes } from "./wishes/service.js";
+import { continuityWishes } from "../../domain/rules/continuity-library.js";
+import { villageNow } from "../../adapters/time/clock-gate.js";
 
 export function registerRelationshipRoutes(engine: FastifyInstance) {
+  engine.get<{ Params: { characterId: string } }>("/villagers/:characterId/wishes", async (request, reply) => {
+    try {
+      const state = await readVillageState({ memories: true });
+      if (!state.villagers.some((resident) => resident.characterId === request.params.characterId))
+        throw badRequest("Choose a resident.");
+      return { wishes: continuityWishes(state, request.params.characterId, false, villageNow().toISOString()) };
+    } catch (error) {
+      return fail(reply, error, "read known Wishes");
+    }
+  });
   engine.get<{ Params: { characterId: string } }>("/villagers/:characterId/wishes/inspect", async (request, reply) => {
     try {
-      const state = await readVillageState({ wishes: [request.params.characterId] });
+      const state = await readVillageState({ memories: true });
       const resident = state.villagers.find((r) => r.characterId === request.params.characterId);
       if (!resident) throw badRequest("Choose a resident.");
-      return { wishes: resident.wishes };
+      return { wishes: continuityWishes(state, resident.characterId, true, villageNow().toISOString()) };
     } catch (error) {
       return fail(reply, error, "inspect Wishes");
     }
@@ -38,7 +49,8 @@ export function registerRelationshipRoutes(engine: FastifyInstance) {
           request.params.wishId,
           request.body.followed,
         );
-        return await readRelationshipsView();
+        const state = await readVillageState({ memories: true });
+        return { wishes: continuityWishes(state, request.params.characterId, false, villageNow().toISOString()) };
       } catch (error) {
         return fail(reply, error, "following Wish");
       }
@@ -109,14 +121,6 @@ export function registerRelationshipRoutes(engine: FastifyInstance) {
       }
     },
   );
-  engine.post<{ Params: { id: string } }>("/relationships/outbox/:id/recovery", async (request, reply) => {
-    try {
-      await recoverSocialOutbox(request.params.id, request.body);
-      return readRelationshipsInspect();
-    } catch (error) {
-      return fail(reply, error, "recover encounter");
-    }
-  });
   engine.post("/relationships/clarifications", async (request, reply) => {
     try {
       return await clarifyRelationships(request.body);

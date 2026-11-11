@@ -56,14 +56,15 @@ assert.match(
   /"\/rooms\/end"[\s\S]*return await closeVenueSessionWithReceipts/u,
   "direct visit endings return durable-memory receipts",
 );
-assert.ok(ui.includes('"/rooms/turn"'), "one composer sends all visit modes");
+assert.ok(ui.includes('"/rooms/turn"'), "the freeform composer submits a Scene turn");
 assert.ok(ui.includes("function useReceiveRoomRecordEvents("), "all visit endings share receipt ingestion");
 assert.doesNotMatch(
   ui,
   /answer\.session\.status === "closed"\) \{\s*setRoomNotices\(\[\]\)/u,
   "natural endings do not erase their durable-memory receipts",
 );
-assert.match(ui, /className=\{`\$\{ELEMENT_TAG\}-room-mode-menu`\}/u, "visit modes have a visible menu");
+assert.match(ui, /aria-label="Venue actions"/u, "native Scene actions have a visible menu");
+assert.doesNotMatch(ui, /room-mode-menu/u);
 assert.match(ui, /View Mailbox/u, "the player can open Mailbox while visiting home");
 assert.match(ui, /Plan a renovation/u, "Venue structural changes use renovation Projects");
 assert.doesNotMatch(ui, /Search Venues/u, "Settings does not duplicate the Places directory");

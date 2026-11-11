@@ -1,0 +1,547 @@
+// Test cases: continuity-retrieval/large-room, continuity-retrieval/required-overflow, continuity-retrieval/fair-private-initiative, continuity-retrieval/minimum-initiative, continuity-retrieval/recent-offer, continuity-retrieval/new-arrival-fairness, continuity-retrieval/source-terms, continuity-retrieval/shared-budget
+import assert from "node:assert/strict";
+import { runCase } from "../scripts/test-cases.mjs";
+import type {
+  ContinuityAdmission,
+  ContinuityEvidence,
+  ContinuityHolder,
+} from "../packages/villages/src/server/domain/models/continuity-model.js";
+import type { AcceptedEpisode } from "../packages/villages/src/server/domain/models/episode-model.js";
+import {
+  applyContinuityWrite,
+  continuityHolderKey,
+  continuityProtectionUnits,
+  continuityViews,
+  emptyContinuity,
+  protectContinuity,
+} from "../packages/villages/src/server/domain/rules/continuity.js";
+import {
+  selectActorContinuity,
+  selectRoomContinuity,
+} from "../packages/villages/src/server/domain/rules/continuity-retrieval.js";
+import { appendEpisode, emptyEpisodes } from "../packages/villages/src/server/domain/rules/episodes.js";
+import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+
+const at = "2026-11-09T12:00:00.000Z";
+const room: Extract<ContinuityHolder, { kind: "room" }> = { kind: "room", placeId: "home", zoneId: "parlor" };
+const mara: Extract<ContinuityHolder, { kind: "actor" }> = { kind: "actor", id: "mara", incarnation: "one" };
+const leo: typeof mara = { ...mara, id: "leo" };
+const identity = (id: string) => [mara, leo, { id: "player", incarnation: "one" }].find((actor) => actor.id === id);
+const observed: ContinuityEvidence = {
+  id: "outcome",
+  seed: "world",
+  episodeId: "decorate",
+  unitId: "narration",
+  fingerprint: memoryHash("The room is decorated."),
+  excerpt: "The room is decorated.",
+  kind: "observation",
+  actorId: "player",
+  perceptions: [{ actorId: "mara", channel: "sight", text: "The room is decorated." }],
+};
+const context = (operationId: string): ContinuityAdmission => ({
+  seed: "world",
+  operationId,
+  episodeId: "decorate",
+  at,
+  actors: [{ id: "player", incarnation: "one" }, mara, leo],
+  room,
+  sources: [observed],
+  supplied: [],
+  protectedRoots: [],
+});
+const currentRoom = (state: ReturnType<typeof emptyContinuity>) =>
+  continuityViews(state, room, at, continuityProtectionUnits(state, room, new Map()));
+let decorated = emptyContinuity();
+for (let i = 0; i < 600; i++)
+  decorated = applyContinuityWrite(
+    decorated,
+    {
+      id: "decoration",
+      holders: [room],
+      text:
+        i === 0
+          ? "A quiet parlor with pale walls and wooden beams."
+          : i === 60
+            ? "A blue table stands beneath the east window with two chairs."
+            : `Decoration ${i}: an embroidered panel showing a different local flower in its own frame.`,
+      sourceIds: [observed.id],
+    },
+    context("decorate-" + i),
+  );
+
+await runCase("continuity-retrieval/large-room", () => {
+  const before = currentRoom(decorated),
+    table = before[60];
+  const selected = selectRoomContinuity(decorated, emptyEpisodes(), room, at, {
+    query: "Paint the blue table green",
+    bytes: 1600,
+    requiredIds: [],
+    wholeRoom: false,
+  });
+  assert.equal(selected.packet.partial, true);
+  assert.equal(selected.packet.total, 600);
+  assert.ok(selected.bytes <= 1600 && selected.packet.entries.some((row) => row.id === table.id));
+  assert.ok(
+    selected.packet.entries.every(
+      (row) => row.text.length > 0 && row.text === before.find((prior) => prior.id === row.id)?.version.text,
+    ),
+    "selected entries are complete, never truncated summaries",
+  );
+  let changed = decorated;
+  for (let i = 0; i < 80; i++) {
+    const packet = selectRoomContinuity(changed, emptyEpisodes(), room, at, {
+      query: "table",
+      bytes: 1600,
+      requiredIds: [table.id],
+      wholeRoom: false,
+    });
+    const target = packet.supplied.find((row) => row.id === table.id)!;
+    changed = applyContinuityWrite(
+      changed,
+      {
+        id: "paint",
+        holders: [room],
+        target,
+        text: `The table is green shade ${i}, beneath the east window with two chairs.`,
+        sourceIds: [observed.id],
+      },
+      { ...context("repaint-" + i), supplied: packet.supplied },
+    );
+  }
+  const after = currentRoom(changed);
+  assert.equal(
+    after.length,
+    600,
+    "repeated changes replace one current entry without piling up contradictory overlays",
+  );
+  assert.equal(
+    after.find((row) => row.id === table.id)?.version.text,
+    "The table is green shade 79, beneath the east window with two chairs.",
+  );
+  for (const row of before.filter((row) => row.id !== table.id))
+    assert.equal(
+      after.find((after) => after.id === row.id)?.version.id,
+      row.version.id,
+      "unrelated entries remain exact",
+    );
+  const unseen = before.find((row) => !selected.supplied.some((target) => target.id === row.id))!;
+  const unauthorized = {
+    id: unseen.id,
+    recordRevision: unseen.recordRevision,
+    heads: { [continuityHolderKey(room)]: unseen.headRevision },
+  };
+  assert.throws(
+    () =>
+      applyContinuityWrite(
+        decorated,
+        {
+          id: "unseen",
+          holders: [room],
+          target: unauthorized,
+          text: "Changed without being supplied.",
+          sourceIds: [observed.id],
+        },
+        { ...context("unseen"), supplied: selected.supplied },
+      ),
+    /not supplied/,
+  );
+  assert.throws(
+    () =>
+      applyContinuityWrite(
+        decorated,
+        {
+          id: "duplicate",
+          holders: [room],
+          target: selected.supplied.find((row) => row.id === table.id),
+          text: before[3].version.text,
+          sourceIds: [observed.id],
+        },
+        { ...context("duplicate"), supplied: selected.supplied },
+      ),
+    /duplicate current room/,
+  );
+});
+
+await runCase("continuity-retrieval/source-terms", () => {
+  const player = { ...mara, id: "player" };
+  const source: ContinuityEvidence = {
+    ...observed,
+    kind: "speech",
+    excerpt: "Please bring star chart on Saturday.",
+    perceptions: [
+      { actorId: "mara", channel: "words", text: "Please bring star chart on Saturday." },
+      { actorId: "player", channel: "words", text: "Please bring star chart on Saturday." },
+      { actorId: "leo", channel: "sound-only", text: "Indistinct voices outside." },
+    ],
+  };
+  const state = applyContinuityWrite(
+    emptyContinuity(),
+    {
+      id: "conversation",
+      holders: [mara, player, leo],
+      class: "experience",
+      current: false,
+      text: "We discussed our weekend plans.",
+      sourceIds: [source.id],
+    },
+    { ...context("conversation"), sources: [source] },
+  );
+  const select = (collection: typeof state, holder: typeof mara, query = "bring star chart") =>
+    selectActorContinuity(collection, emptyEpisodes(), [holder], at, { query, bytes: 2000, requiredIds: [], identity });
+  assert.deepEqual(select(state, mara, "").packet.entries, [], "ordinary old experiences are not automatic initiative");
+  assert.equal(
+    select(state, mara).packet.entries[0]?.id,
+    state.records[0].id,
+    "a retained supporting quote can recall an ordinary entry",
+  );
+  assert.equal(select(state, player).packet.entries.length, 1);
+  assert.deepEqual(select(state, leo).packet.entries, [], "sound-only recall cannot search the hidden full words");
+  assert.equal(select(state, leo, "indistinct voices").packet.entries.length, 1);
+  const root = state.records[0],
+    key = continuityHolderKey(mara),
+    target = { id: root.id, recordRevision: root.revision, heads: { [key]: root.heads[key].revision } };
+  for (const action of [{ text: "We discussed an ordinary visit." }, { forget: true }] as const) {
+    const protectedState = protectContinuity(state, target, [mara], "protect-" + Object.keys(action)[0], at, action);
+    assert.deepEqual(
+      select(protectedState, mara).packet.entries,
+      [],
+      "Correct and Forget mask the original source search too",
+    );
+    assert.equal(
+      select(protectedState, player).packet.entries.length,
+      1,
+      "another holder retains their own unchanged support",
+    );
+  }
+});
+
+await runCase("continuity-retrieval/required-overflow", () => {
+  let requests = 0;
+  assert.throws(() => {
+    selectRoomContinuity(decorated, emptyEpisodes(), room, at, {
+      query: "whole room",
+      bytes: 1600,
+      requiredIds: [],
+      wholeRoom: true,
+    });
+    requests++;
+  }, /does not fit before generation/);
+  assert.equal(requests, 0);
+  assert.equal(currentRoom(decorated).length, 600);
+});
+
+const accepted = (id: string, holders: (typeof mara)[], offered: AcceptedEpisode["offered"] = []): AcceptedEpisode => ({
+  format: 1,
+  id,
+  seed: "world",
+  submissionId: id,
+  operationId: "operation-" + id,
+  capturedAt: at,
+  acceptedAt: at,
+  responseDigest: memoryHash(id),
+  admittedContinuityRevision: 0,
+  privateInput: "Good morning.",
+  actors: holders.map(({ id, incarnation }) => ({ id, incarnation, zoneId: "parlor" })),
+  segments: [],
+  grounding: [],
+  continuityVersionIds: [],
+  commandReceipts: [],
+  dependencies: {},
+  offered,
+});
+let motives = emptyContinuity();
+for (let i = 0; i < 20; i++) {
+  const source: ContinuityEvidence = {
+    ...observed,
+    id: "wish-" + i,
+    kind: "self",
+    actorId: "mara",
+    perceptions: [],
+    excerpt: "A private desire " + i,
+  };
+  motives = applyContinuityWrite(
+    motives,
+    { id: "wish", holders: [mara], owner: mara, class: "desire", text: source.excerpt, sourceIds: [source.id] },
+    { ...context("wish-" + i), sources: [source] },
+  );
+}
+
+await runCase("continuity-retrieval/fair-private-initiative", () => {
+  const state = motives;
+  const seen = new Set<string>();
+  let history = emptyEpisodes();
+  for (let turn = 0; turn < 10; turn++) {
+    const packet = selectActorContinuity(state, history, [mara, leo], at, {
+      query: "",
+      bytes: 2000,
+      requiredIds: [],
+      identity,
+    });
+    assert.ok(packet.bytes <= 2000);
+    assert.equal(packet.packet.entries.length, 2);
+    assert.equal(
+      packet.packet.entries[0].for,
+      "mara",
+      "a fair initiative slot does not disclose Mara's private desire to Leo",
+    );
+    for (const entry of packet.packet.entries) seen.add(entry.id);
+    assert.deepEqual(
+      selectActorContinuity(state, history, [mara, leo], at, { query: "", bytes: 2000, requiredIds: [], identity })
+        .offered,
+      packet.offered,
+      "preparation alone does not advance accepted offers",
+    );
+    const own = accepted("mara-turn-" + turn, [mara], packet.offered);
+    history = appendEpisode(history, own, "world");
+    assert.strictEqual(appendEpisode(history, own, "world"), history);
+    for (let gap = 0; gap < 19; gap++)
+      history = appendEpisode(history, accepted("unrelated-" + turn + "-" + gap, [leo]), "world");
+  }
+  assert.equal(
+    seen.size,
+    20,
+    "twenty motives receive fair exposure within ten accepted Mara opportunities despite twenty global exchanges per visit",
+  );
+  assert.deepEqual(
+    selectActorContinuity(state, emptyEpisodes(), [leo], at, {
+      query: "private desire",
+      bytes: 2000,
+      requiredIds: [],
+      identity,
+    }).packet.entries,
+    [],
+  );
+});
+
+await runCase("continuity-retrieval/minimum-initiative", () => {
+  let state = emptyContinuity();
+  for (const [holder, length] of [
+    [mara, 1100],
+    [leo, 700],
+  ] as const) {
+    const source: ContinuityEvidence = {
+      ...observed,
+      id: "long-" + holder.id,
+      kind: "self",
+      actorId: holder.id,
+      perceptions: [],
+      excerpt: "A".repeat(length),
+    };
+    state = applyContinuityWrite(
+      state,
+      { id: "motive", holders: [holder], owner: holder, class: "desire", text: source.excerpt, sourceIds: [source.id] },
+      { ...context(holder.id), sources: [source] },
+    );
+  }
+  const packet = selectActorContinuity(state, emptyEpisodes(), [mara, leo], at, {
+    query: "",
+    bytes: 2400,
+    requiredIds: [],
+    identity,
+  });
+  assert.equal(packet.fair.length, 2);
+  assert.deepEqual(
+    packet.packet.entries.map((row) => row.for),
+    ["mara", "leo"],
+  );
+  assert.throws(
+    () =>
+      selectActorContinuity(state, emptyEpisodes(), [mara, leo], at, {
+        query: "",
+        bytes: 1900,
+        requiredIds: [],
+        identity,
+      }),
+    /minimum resident initiative does not fit before generation/,
+  );
+  let history = emptyEpisodes();
+  const seen = new Set<string>();
+  for (let turn = 0; turn < 20; turn++) {
+    const selected = selectActorContinuity(motives, history, [mara], at, {
+      query: "",
+      bytes: 240,
+      requiredIds: [],
+      identity,
+    });
+    assert.equal(selected.packet.entries.length, 1);
+    seen.add(selected.packet.entries[0].id);
+    history = appendEpisode(history, accepted("one-slot-" + turn, [mara], selected.offered), "world");
+  }
+  assert.equal(seen.size, 20, "one-slot fitting retains the N-opportunity fairness bound");
+});
+
+await runCase("continuity-retrieval/recent-offer", () => {
+  const player = { ...mara, id: "player" },
+    episode = accepted("offer", [mara, player]);
+  episode.privateInput = "Let's visit the fair Saturday, only if Delia comes and the north path is open.";
+  const source: ContinuityEvidence = {
+    id: "offer-source",
+    seed: "world",
+    episodeId: episode.id,
+    unitId: "input",
+    fingerprint: memoryHash(episode.privateInput),
+    excerpt: episode.privateInput,
+    range: { start: 0, end: episode.privateInput.length },
+    kind: "speech",
+    actorId: "player",
+    act: "offer",
+    perceptions: [{ actorId: "mara", channel: "words", text: episode.privateInput }],
+  };
+  const state = applyContinuityWrite(
+    motives,
+    {
+      id: "offer",
+      holders: [player, mara],
+      class: "commitment",
+      text: episode.privateInput,
+      sourceIds: [source.id],
+      offer: { proposer: "player", participants: ["player", "mara"] },
+    },
+    { ...context(episode.operationId), episodeId: episode.id, sources: [source] },
+  );
+  const root = state.records.at(-1)!;
+  episode.continuityVersionIds = Object.values(root.heads).map((head) => head.versionId);
+  episode.grounding = [source];
+  const history = appendEpisode(emptyEpisodes(), episode, "world");
+  const packet = selectActorContinuity(state, history, [player, mara], at, {
+    query: "Yes.",
+    bytes: 2800,
+    requiredIds: [],
+    identity,
+  });
+  const offer = packet.packet.entries.find((row) => row.id === root.id && row.for === "mara")!;
+  assert.equal(offer.text, episode.privateInput);
+  assert.equal(offer.offer?.contributions[0].by, "player");
+  assert.equal(offer.offer?.contributions[0].sources[0].excerpt, episode.privateInput);
+  assert.ok(
+    packet.supplied.some((target) => target.id === root.id),
+    "the recent shared offer is a supplied acceptance target without lexical overlap",
+  );
+  assert.ok(
+    packet.fair.some((target) => target.id !== root.id),
+    "a pending offer does not consume Mara's independent fair slot",
+  );
+});
+
+await runCase("continuity-retrieval/shared-budget", () => {
+  const holders = [
+    { ...mara, id: "player" },
+    mara,
+    leo,
+    ...Array.from({ length: 5 }, (_, i) => ({ ...mara, id: "guest-" + i })),
+  ];
+  const quotes = [
+    "Please bring the brass telescope and star chart. " + "Keep every lens safely wrapped. ".repeat(15),
+    "Only if everyone comes and the north path is open. " + "Wait for clear weather before leaving. ".repeat(15),
+  ];
+  const episode = accepted("large-shared-offer", holders);
+  episode.privateInput = quotes.join("\n");
+  const sources: ContinuityEvidence[] = quotes.map((excerpt, index) => {
+    const start = episode.privateInput.indexOf(excerpt);
+    return {
+      id: "shared-source-" + index,
+      seed: "world",
+      episodeId: episode.id,
+      unitId: "input",
+      fingerprint: memoryHash(episode.privateInput),
+      kind: "speech",
+      actorId: "player",
+      act: "offer",
+      excerpt,
+      range: { start, end: start + excerpt.length },
+      perceptions: holders.map((holder) => ({ actorId: holder.id, channel: "words", text: excerpt })),
+    };
+  });
+  const state = applyContinuityWrite(
+    emptyContinuity(),
+    {
+      id: "shared-offer",
+      holders,
+      class: "commitment",
+      text: episode.privateInput,
+      sourceIds: sources.map((source) => source.id),
+      offer: { proposer: "player", participants: holders.map((holder) => holder.id) },
+    },
+    { ...context(episode.operationId), actors: holders, episodeId: episode.id, sources },
+  );
+  const root = state.records[0];
+  episode.continuityVersionIds = state.versions.map((version) => version.id);
+  episode.grounding = sources;
+  const history = appendEpisode(emptyEpisodes(), episode, "world");
+  const select = (actors: typeof holders, bytes: number) =>
+    selectActorContinuity(state, history, actors, at, {
+      query: root.id,
+      bytes,
+      requiredIds: [root.id],
+      identity: (id) => holders.find((holder) => holder.id === id),
+    });
+  const complete = select([mara], 64000),
+    exact = select([mara], complete.bytes);
+  assert.deepEqual(exact, complete, "one complete holder slice fits its exact serialized budget");
+  const entry = exact.packet.entries[0];
+  assert.equal(entry.text, episode.privateInput);
+  assert.equal(entry.for, "mara");
+  assert.deepEqual(
+    entry.offer!.contributions[0].sources.map((source) => source.excerpt),
+    quotes,
+  );
+  assert(
+    entry.offer!.contributions[0].sources.every((source) => source.perceptions.every((row) => row.actorId === "mara")),
+  );
+  assert.equal(
+    Object.keys(exact.supplied[0].heads).length,
+    1,
+    "one fitted holder never authorizes the other seven heads",
+  );
+  assert.throws(() => select([mara], complete.bytes - 1), /required actor continuity does not fit/);
+  assert.throws(
+    () => select(holders, complete.bytes),
+    /required actor continuity does not fit/,
+    "an oversized required shared agreement is held, never sliced or truncated",
+  );
+});
+
+await runCase("continuity-retrieval/new-arrival-fairness", () => {
+  let state = emptyContinuity(),
+    history = emptyEpisodes(),
+    oldId = "",
+    oldOffers = 0;
+  function addMotive(id: string) {
+    const birth = accepted("birth-" + id, [mara]);
+    const source: ContinuityEvidence = {
+      ...observed,
+      id: "self-" + id,
+      actorId: "mara",
+      kind: "self",
+      perceptions: [],
+      excerpt: "Private motive " + id,
+    };
+    state = applyContinuityWrite(
+      state,
+      { id: "motive", holders: [mara], owner: mara, class: "desire", text: source.excerpt, sourceIds: [source.id] },
+      { ...context(birth.operationId), sources: [source] },
+    );
+    const record = state.records.at(-1)!;
+    birth.continuityVersionIds = Object.values(record.heads).map((head) => head.versionId);
+    history = appendEpisode(history, birth, "world");
+    return record.id;
+  }
+  oldId = addMotive("old");
+  for (let turn = 0; turn < 20; turn++) {
+    const packet = selectActorContinuity(state, history, [mara], at, {
+      query: "",
+      bytes: 2000,
+      requiredIds: [],
+      identity,
+    });
+    if (packet.offered.some((offer) => offer.ids.includes(oldId))) oldOffers++;
+    history = appendEpisode(history, accepted("opportunity-" + turn, [mara], packet.offered), "world");
+    addMotive("new-a-" + turn);
+    addMotive("new-b-" + turn);
+  }
+  assert.ok(oldOffers > 1, "continuous new arrivals cannot permanently outrank retained older motives");
+});
+
+console.log(
+  "Continuity retrieval: 600-entry rooms, repeated edits, supplied targets, preflight overflow and private fair initiative passed without providers.",
+);

@@ -82,7 +82,6 @@ assert.equal(
 // Later social opportunities cannot consume Project focus, even when their ordinary base is flexible.
 const social = coerceVillageState(f.state());
 social.backgroundPace = "average";
-social.relationshipContext = { applied: {}, socialPlans: [] } as any;
 for (const person of social.villagers) {
   for (const blocks of [
     ...Object.values(person.agenda!.week!),
@@ -94,7 +93,7 @@ for (const person of social.villagers) {
 }
 projectAgendaReservations(social);
 for (const plan of socialPlanCandidates(social, now))
-  if (plan.actorIds.includes("a"))
+  if (plan.actors.some((actor) => actor.id === "a"))
     assert.ok(plan.endMinute <= 840 || plan.startMinute >= 1020, "social opportunities respect booked focus");
 
 // Failed admission commits neither a site nor a timer.

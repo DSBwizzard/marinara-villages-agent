@@ -83,11 +83,9 @@ export function ReturnCatchup({ enabled, onSettled }: { enabled: boolean; onSett
           <p role="status">
             {!batch
               ? "Checking your Village…"
-              : batch.status === "recovering"
-                ? "Finishing a saved event…"
-                : batch.status === "failed"
-                  ? "Catch-up paused"
-                  : "Catching up with Village life…"}
+              : batch.status === "failed"
+                ? "Catch-up paused"
+                : "Catching up with Village life…"}
           </p>
           {batch ? (
             <>
@@ -103,12 +101,10 @@ export function ReturnCatchup({ enabled, onSettled }: { enabled: boolean; onSett
                       ? "Catch-up could not get started."
                       : batch.issue === "generation"
                         ? "An activity request could not finish."
-                        : batch.issue === "interpretation"
-                          ? "An encounter needs another interpretation."
-                          : "A saved encounter needs recovery."}
+                        : "An activity request could not finish."}
                 </p>
               ) : null}
-              {["generation", "interpretation"].includes(batch.issue ?? "") ? (
+              {batch.issue === "generation" ? (
                 <small>Retry may make an additional model request and incur a cost.</small>
               ) : null}
             </>
@@ -118,16 +114,14 @@ export function ReturnCatchup({ enabled, onSettled }: { enabled: boolean; onSett
           {error ? <p role="alert">{error}</p> : null}
           {batch ? (
             <div className="villages-zone-map-actions">
-              {(batch.status === "failed" || batch.status === "recovering") && batch.issue !== "authority" ? (
+              {batch.status === "failed" && batch.issue !== "authority" ? (
                 <button type="button" disabled={busy} onClick={() => void act("retry")}>
                   {busy ? "Retrying…" : "Retry"}
                 </button>
               ) : null}
-              {!batch.settlementRequired ? (
-                <button type="button" disabled={busy} onClick={() => void act("continue")}>
-                  Continue to Village
-                </button>
-              ) : null}
+              <button type="button" disabled={busy} onClick={() => void act("continue")}>
+                Continue to Village
+              </button>
             </div>
           ) : null}
         </ModalDialog>

@@ -5,14 +5,13 @@ import {
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { residentPlanningOpportunity } from "../packages/villages/src/server/domain/rules/resident-planning.js";
-import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
 import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import { returnCatchupOpportunities } from "../packages/villages/src/server/domain/rules/return-catchup-opportunities.js";
 import {
   captureReturnContext,
-  departureMemoriesAvailable,
+  departureContinuityAvailable,
 } from "../packages/villages/src/server/domain/rules/return-catchup-capture.js";
 import { createReturnCatchup } from "../packages/villages/src/server/features/background/return-catchup-service.js";
 import {
@@ -56,8 +55,7 @@ state.venues = [{ id: "commons", classes: ["workplace"], occupancy: {} }] as any
 assert.equal(opportunity(), null, "Weather alone does not admit paid resident activity");
 const capture = defaultVillageState();
 capture.seed = "captured";
-capture.relationshipContext = defaultRelationshipState(capture.seed);
-capture.foundedAt = now.toISOString();
+capture.setupAt = capture.foundedAt = now.toISOString();
 capture.timeZone = "UTC";
 const venue = venueDraft(
   { id: "commons", name: "Commons", form: "Hall", description: "A hall.", category: "public" },
@@ -72,8 +70,9 @@ capture.villagers = ["ada", "ben"].map((characterId) => {
   return {
     letterFontId: "caveat",
     characterId,
+    incarnation: characterId + "-one",
     addedAt: now.toISOString(),
-    cardSnapshot: { name: characterId, capturedAt: now.toISOString() },
+    cardSnapshot: { id: characterId, name: characterId, capturedAt: now.toISOString() },
     agenda,
     wishes: [],
   } as any;
@@ -88,7 +87,7 @@ assert.throws(
   () =>
     coerceVillageState({
       ...defaultVillageState(),
-      returnCatchup: { capture: { ...savedCapture, memoryRevision: -1 } },
+      returnCatchup: { capture: { ...savedCapture, continuityRevision: -1 } },
     }),
   /departure capture/,
 );
@@ -110,15 +109,15 @@ assert.throws(
 );
 capture.venues[0]!.name = "Renamed later";
 assert.equal(savedCapture.world.venues[0]!.name, "Commons", "Later changes cannot rewrite the departure capture.");
-assert.equal(savedCapture.memoryRevision, capture.memories.revision);
-assert.equal(Object.hasOwn(savedCapture.world, "memories"), false, "The capture does not duplicate the Memory ledger.");
-assert.equal(departureMemoriesAvailable(savedCapture, capture), true);
-const changedMemory = structuredClone(capture);
-changedMemory.memories.revision++;
+assert.equal(savedCapture.continuityRevision, capture.continuity.revision);
+assert.equal(Object.hasOwn(savedCapture.world, "continuity"), false, "The capture does not duplicate continuity.");
+assert.equal(departureContinuityAvailable(savedCapture, capture), true);
+const changedEpisode = structuredClone(capture);
+changedEpisode.episodes.revision++;
 assert.equal(
-  departureMemoriesAvailable(savedCapture, changedMemory),
+  departureContinuityAvailable(savedCapture, changedEpisode),
   false,
-  "Later Memory changes cannot be used as departure knowledge.",
+  "Later Episodes cannot be used as departure knowledge.",
 );
 const frozen = { ...defaultVillageState(), ...savedCapture.world };
 const planned = returnCatchupOpportunities(frozen, now, afterTwoHours, 3);
@@ -129,15 +128,6 @@ assert.ok(Date.parse(planned.opportunities[0]!.startsAt) > now.getTime());
 assert.deepEqual(returnCatchupOpportunities(capture, now, afterTwoHours, 0).opportunities, []);
 assert.deepEqual(returnCatchupOpportunities(capture, now, new Date(now.getTime() + 59 * 60_000), 3).opportunities, []);
 const tracking = { ...defaultVillageState(), ...structuredClone(savedCapture.world), setupAt: now.toISOString() };
-const unavailable = { ...tracking, relationshipContext: undefined };
-recordReturnVisibility(unavailable, now);
-discoverReturnBatch(unavailable, afterTwoHours, "unknown-context");
-assert.equal(unavailable.returnCatchup?.batch?.status, "completed");
-assert.equal(
-  unavailable.returnCatchup?.batch?.opportunities?.length,
-  0,
-  "Unavailable relationship context cannot authorize resident work even when both live and capture are unavailable",
-);
 discoverReturnBatch(tracking, afterTwoHours, "batch-before-first-visibility");
 assert.equal(tracking.returnCatchup, undefined, "Existing saves do not invent a pre-feature absence.");
 recordReturnVisibility(tracking, now);
@@ -251,10 +241,10 @@ const changedKnowledge = {
   setupAt: now.toISOString(),
 };
 recordReturnVisibility(changedKnowledge, now);
-changedKnowledge.memories.revision++;
+changedKnowledge.continuity = { ...changedKnowledge.continuity, revision: changedKnowledge.continuity.revision + 1 };
 discoverReturnBatch(changedKnowledge, afterTwoHours, "changed-memory-return");
 assert.equal(changedKnowledge.returnCatchup?.batch?.status, "completed");
-assert.match(changedKnowledge.returnCatchup?.batch?.reason ?? "", /memories changed/i);
+assert.match(changedKnowledge.returnCatchup?.batch?.reason ?? "", /continuity changed/i);
 let working = structuredClone(tracking);
 const dispatched: string[] = [];
 const coordinator = createReturnCatchup({
@@ -290,10 +280,10 @@ assert.equal(
 working = structuredClone(tracking);
 working.returnCatchup!.batch!.opportunities = [];
 working.returnCatchup!.batch!.records = [];
-working.relationshipContext = { ...working.relationshipContext, seed: "changed-relationship-authority" } as any;
+working.continuity.revision++;
 await coordinator.advance();
-assert.equal(working.returnCatchup!.batch!.status, "failed", "An empty selection cannot hide a relationship race.");
-assert.match(working.returnCatchup!.batch!.reason!, /relationships changed/i);
+assert.equal(working.returnCatchup!.batch!.status, "failed", "An empty selection cannot hide a continuity race.");
+assert.match(working.returnCatchup!.batch!.reason!, /continuity changed/i);
 working = structuredClone(tracking);
 working.returnCatchup!.batch!.status = "failed";
 working.returnCatchup!.batch!.records![0]!.status = "queued";

@@ -6,11 +6,16 @@ import {
 import { venueFixture } from "./helpers/venues.fixture.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { clientImplementation } from "./client-source.js";
-import { fixtureWish } from "./helpers/social-wishes-fixture.js";
+import { retainAuthoredNote } from "./helpers/continuity.fixture.js";
+import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
+import { continuityWishes } from "../packages/villages/src/server/domain/rules/continuity-library.js";
+import { emptyContinuity } from "../packages/villages/src/server/domain/rules/continuity.js";
+import { decideResidenceMove } from "../packages/villages/src/server/domain/rules/residence-move.js";
+import { initializeRoomContinuity } from "../packages/villages/src/server/domain/rules/native-continuity.js";
+import { observableRoomDescription } from "../packages/villages/src/server/domain/rules/zone-picture.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { villageRouteSource } from "./route-source.js";
-// Continuous Villages time: exact projection, migration, idempotent restart
-// reconciliation, model-independent progress, and the live unreferenced timer.
+// Exact clock projection, restart reconciliation, local progress and the live timer.
 import assert from "node:assert/strict";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -94,25 +99,6 @@ async function main() {
   );
   assert.ok(villageSchedulerDelayMs(at(9, 42, 59)) >= REFRESH_MIN_DELAY_MS);
   assert.ok(villageSchedulerDelayMs(at(9, 42, 0)) <= REFRESH_MAX_DELAY_MS);
-  const retainedDeadline = {
-    villagers: [
-      {
-        wishes: [{ size: "larger", learnedAt: at(9, 40).toISOString(), expiresAt: at(9, 43).toISOString() }],
-        agenda: agendaFixture({
-          day: [],
-        }),
-      },
-    ],
-    scheduledEvents: [],
-  } as any;
-  assert.equal(
-    villageSchedulerDelayMs(at(9, 42, 30), retainedDeadline),
-    villageSchedulerDelayMs(at(9, 42, 30), {
-      ...retainedDeadline,
-      villagers: retainedDeadline.villagers.map((resident: any) => ({ ...resident, wishes: [] })),
-    }),
-    "A retained discovered wish creates no expiry wake",
-  );
   assert.equal(villageSchedulerDelayMs(new Date("bad")), REFRESH_MAX_DELAY_MS);
 
   const current = coerceVillageState({
@@ -231,56 +217,71 @@ async function main() {
   await villageBackgroundPresence("visible-story-fixture", true);
   try {
     const start = new Date("2026-08-20T12:00:00.000Z");
-    await mutateVillageState((state) => {
-      state.setupAt = start.toISOString();
-      state.foundedAt = start.toISOString();
-      state.seed = "continuous-fixture";
-      state.backgroundPace = "off";
-      state.simulatedThrough = start.toISOString();
-      state.lastKnownTimeZone = "Etc/Old";
-      state.villagers = [
-        {
-          letterFontId: "caveat",
-          characterId: "retained",
-          cardSnapshot: {
-            id: "retained",
-            name: "Retained",
-            capturedAt: start.toISOString(),
-            revision: 1,
-            sourceStatus: "available",
+    await mutateVillageState(
+      (state) => {
+        state.setupAt = start.toISOString();
+        state.foundedAt = start.toISOString();
+        state.seed = "continuous-fixture";
+        state.backgroundPace = "off";
+        state.simulatedThrough = start.toISOString();
+        state.lastKnownTimeZone = "Etc/Old";
+        state.villagers = [
+          {
+            letterFontId: "caveat",
+            characterId: "retained",
+            incarnation: "retained-one",
+            addedAt: start.toISOString(),
+            cardSnapshot: {
+              id: "retained",
+              name: "Retained",
+              capturedAt: start.toISOString(),
+              revision: 1,
+              sourceStatus: "available",
+            },
+            agenda: agendaFixture({
+              day: [],
+              generatedAt: start.toISOString(),
+            }),
           },
-          wishes: [fixtureWish({ wish: "Share a conversation" }, "retained", start.toISOString())],
-          agenda: agendaFixture({
-            day: [],
-            generatedAt: start.toISOString(),
+        ] as any;
+        state.venues = [
+          venueFixture({
+            residentIds: [null].filter((id) => typeof id === "string" && !!id),
+            classes: false || null ? ["residence"] : ["other"],
+            id: "square",
+            name: "Village Square",
+            category: "public",
+            presentation: { image: null, x: null, y: null },
+            occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
+            capabilities: [],
+            state: { condition: "", furniture: [], publicFacts: [], updatedAt: "" },
           }),
-        },
-      ] as any;
-      state.venues = [
-        venueFixture({
-          residentIds: [null].filter((id) => typeof id === "string" && !!id),
-          classes: false || null ? ["residence"] : ["other"],
-          id: "square",
-          name: "Village Square",
-          category: "public",
-          presentation: { image: null, x: null, y: null },
-          occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-          capabilities: [],
-          state: { condition: "", furniture: [], publicFacts: [], updatedAt: "" },
-        }),
-      ];
-    });
+        ];
+        retainAuthoredNote(state, "retained", "Share a conversation", ["retained"], start.toISOString(), {
+          class: "desire",
+          owner: continuityActor(state, "retained")!,
+          current: true,
+        });
+      },
+      { memories: true },
+    );
 
     const later = new Date("2026-09-22T12:34:00.000Z");
     const quiet = await reconcileVillage({ now: later });
     assert.equal(modelCalls, 0, "story pace Off never blocks deterministic reconciliation and spends no model call");
     assert.equal((await readVillageState()).simulatedThrough, later.toISOString());
     assert.equal((await readVillageState()).lastKnownTimeZone, quiet.village.timeZone);
-    const retainedState = await readVillageState({ wishes: true });
+    const retainedState = await readVillageState({ memories: true });
     assert.equal(
-      retainedState.villagers[0].wishes[0].id,
-      "retained",
+      continuityWishes(retainedState, "retained", true, later.toISOString())[0].text,
+      "Share a conversation",
       "Restart catch-up retains desires independently of attention or player knowledge",
+    );
+    assert.deepEqual(continuityWishes(retainedState, "retained", false, later.toISOString()), []);
+    assert.equal(
+      villageSchedulerDelayMs(later, retainedState),
+      villageSchedulerDelayMs(later, { ...retainedState, continuity: emptyContinuity() }),
+      "A retained desire creates no expiry wake",
     );
     await mutateVillageState((state) => {
       state.villagers = [];
@@ -303,6 +304,7 @@ async function main() {
         {
           letterFontId: "caveat",
           characterId: "lina",
+          incarnation: "lina-one",
           cardSnapshot: {
             id: "lina",
             revision: 1,
@@ -311,7 +313,6 @@ async function main() {
             capturedAt: start.toISOString(),
           },
           addedAt: start.toISOString(),
-          wishes: [],
           scheduleInfluence: influenceSettings(null),
           agenda: {
             routineSummary: "",
@@ -371,86 +372,91 @@ async function main() {
     agendaMode = false;
 
     // Housing decisions preserve ownership until the full elapsed day passes.
-    await mutateVillageState((state) => {
-      state.villagers = [
-        {
-          letterFontId: "caveat",
-          characterId: "housing-resident",
-          wishes: [],
-          cardSnapshot: {
-            id: "housing-resident",
-            name: "Rosa",
-            revision: 1,
-            sourceStatus: "available",
-            capturedAt: start.toISOString(),
-          },
-          addedAt: start.toISOString(),
-          agenda: null,
-        } as never,
-      ];
-      state.residences = [];
-      state.venues = [
-        venueFixture({
-          ...state.venues[0]!,
-          id: "rosa-home",
-          classes: ["residence"],
-          baseClasses: ["residence"],
-          zones: undefined,
-          spaces: undefined,
-          residentIds: ["housing-resident"],
-          name: "Rosa home",
-          privateSpaces: [
-            {
-              id: "private:housing-resident",
-              venueClass: "residence",
-              ownerId: "housing-resident",
-              name: "Bedroom",
-              purpose: "Rest",
-              description: "An existing bedroom",
+    await mutateVillageState(
+      (state) => {
+        state.villagers = [
+          {
+            letterFontId: "caveat",
+            characterId: "housing-resident",
+            incarnation: "housing-resident-one",
+            cardSnapshot: {
+              id: "housing-resident",
+              name: "Rosa",
+              revision: 1,
+              sourceStatus: "available",
+              capturedAt: start.toISOString(),
             },
-          ],
-          description: "Rosa's little house.",
-          occupancy: { playerHome: false, residentCharacterId: "housing-resident", homeKind: "small-home" },
-          presentation: { image: null, x: 0.2, y: 0.2 },
-        }),
-        venueFixture({
-          ...state.venues[0]!,
-          id: "empty-venue",
-          classes: ["residence"],
-          baseClasses: ["residence"],
-          zones: undefined,
-          spaces: undefined,
-          residentIds: [],
-          name: "The bakery",
-          description: "A small bakery.",
-          occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-          presentation: { image: null, x: 0.6, y: 0.6 },
-        }),
-      ];
-    });
+            addedAt: start.toISOString(),
+            agenda: null,
+          } as never,
+        ];
+        state.residences = [];
+        state.venues = [
+          venueFixture({
+            ...state.venues[0]!,
+            id: "rosa-home",
+            classes: ["residence"],
+            baseClasses: ["residence"],
+            zones: undefined,
+            spaces: undefined,
+            residentIds: ["housing-resident"],
+            name: "Rosa home",
+            privateSpaces: [
+              {
+                id: "private:housing-resident",
+                venueClass: "residence",
+                ownerId: "housing-resident",
+                name: "Bedroom",
+                purpose: "Rest",
+                description: "Rosa's old nook. A letter lies on the desk.",
+              },
+            ],
+            description: "Rosa's little house.",
+            occupancy: { playerHome: false, residentCharacterId: "housing-resident", homeKind: "small-home" },
+            presentation: { image: null, x: 0.2, y: 0.2 },
+          }),
+          venueFixture({
+            ...state.venues[0]!,
+            id: "empty-venue",
+            classes: ["residence"],
+            baseClasses: ["residence"],
+            zones: undefined,
+            spaces: undefined,
+            residentIds: [],
+            name: "The bakery",
+            description: "A small bakery.",
+            occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
+            presentation: { image: null, x: 0.6, y: 0.6 },
+          }),
+        ];
+        const home = state.venues[0]!;
+        const nook = home.zones!.find((zone) => zone.ownerId === "housing-resident")!;
+        initializeRoomContinuity(state, home.id, nook.id, nook.description, "original-nook", start.toISOString());
+      },
+      { memories: true },
+    );
     await assert.rejects(
       () => updateVillageVenue("rosa-home", { presentation: { x: 0.8, y: 0.8 } }),
       /Project, natural gameplay, or REPAIR/u,
     );
+    const decideAsResident = (approved: boolean) =>
+      mutateVillageState((state) => {
+        const move = state.residences[0];
+        decideResidenceMove(
+          state,
+          move.characterId,
+          approved,
+          "villager",
+          move.characterId,
+          move.agreement!.scope,
+          new Date(),
+        );
+      });
     await proposeVillageResidence("housing-resident", "empty-venue");
-    await decideVillageResidence(
-      "housing-resident",
-      false,
-      "villager",
-      undefined,
-      undefined,
-      (await readVillageState()).residences[0].agreement!.scope,
-    );
+    await decideAsResident(false);
     assert.equal((await readVillageState()).residences.length, 0, "the villager can decline the player's request");
     await proposeVillageResidence("housing-resident", "empty-venue");
-    await decideVillageResidence(
-      "housing-resident",
-      true,
-      "villager",
-      undefined,
-      undefined,
-      (await readVillageState()).residences[0].agreement!.scope,
-    );
+    await decideAsResident(true);
     const moving = await readVillageState();
     assert.equal(moving.residences[0]?.status, "moving");
     assert.equal(moving.venues[0]?.occupancy.residentCharacterId, "housing-resident");
@@ -458,26 +464,14 @@ async function main() {
       Date.parse(moving.residences[0]!.completesAt!) - Date.parse(moving.residences[0]!.approvedAt!) >=
         24 * 60 * 60_000,
     );
-    await mutateVillageState((state) => {
-      const home = state.venues[0]!;
-      home.layoutVersion = 1;
-      const nook = home.zones!.find((zone) => zone.ownerId === "housing-resident")!;
-      nook.description = "Rosa's old nook. A letter lies on the desk.";
-      home.privateSpaces = home.zones!.filter((zone) => zone.kind === "private-residence");
-    });
     await completeVillageResidence("housing-resident", false, new Date());
     assert.equal((await readVillageState()).venues[0]?.occupancy.residentCharacterId, "housing-resident");
     await completeVillageResidence("housing-resident", true, new Date());
     assert.equal((await readVillageState()).venues[1]?.occupancy.residentCharacterId, "housing-resident");
-    const movedState = await readVillageState();
+    const movedState = await readVillageState({ memories: true });
     assert.match(
-      movedState.venues[0]?.archivedPrivateSpaces?.find((row) => row.space.description.includes("A letter lies"))?.space
-        .description ?? "",
-      /A letter lies on the desk/,
-    );
-    assert.match(
-      movedState.venues[0]?.zones?.find((zone) => zone.kind === "private-residence")?.description ?? "",
-      /Rosa's old nook/,
+      observableRoomDescription(movedState, "rosa-home", "private:housing-resident", new Date().toISOString()),
+      /Rosa's old nook\. A letter lies on the desk/,
     );
     assert.equal(
       movedState.venues[0]?.privateSpaces?.some((space) => space.ownerId === "housing-resident"),
@@ -495,14 +489,7 @@ async function main() {
       "a move into a public venue remains in the home projection",
     );
     await proposeVillageResidence("housing-resident", "rosa-home", "villager");
-    await decideVillageResidence(
-      "housing-resident",
-      true,
-      "player",
-      undefined,
-      undefined,
-      (await readVillageState()).residences[0].agreement!.scope,
-    );
+    await decideVillageResidence("housing-resident", true, (await readVillageState()).residences[0].agreement!.scope);
     const dueAt = Date.parse((await readVillageState()).residences[0]!.completesAt!);
     await reconcileVillage({ now: new Date(dueAt + 1_000) });
     assert.equal(
@@ -517,7 +504,7 @@ async function main() {
     release();
   }
 
-  console.log("Villages continuous time regression: exact time, migration, restart, idempotence, failure, timer ok");
+  console.log("Villages continuous time regression: exact time, restart, idempotence, failure and timer passed.");
 }
 
 await main().catch((error) => {

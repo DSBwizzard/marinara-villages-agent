@@ -1,277 +1,300 @@
-import { fixtureWish } from "./helpers/social-wishes-fixture.js";
-// Test cases: scene-halt/captured-calendar, scene-halt/calendar, scene-halt/evidence, scene-halt/world, scene-halt/authority-order
+// Test cases: scene-halt/captured-calendar, scene-halt/calendar, scene-halt/evidence, scene-halt/world, scene-halt/authority-order, scene-halt/explanation, scene-halt/protection-race
 import assert from "node:assert/strict";
-import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
-import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
-import { sceneHaltWorldConflict } from "../packages/villages/src/server/domain/rules/scene-halt-world.js";
+import { runCase } from "../scripts/test-cases.mjs";
 import {
   capturedSceneCalendar,
-  readSceneBoundary,
-  readSceneHalt,
-} from "../packages/villages/src/server/domain/rules/scene-halt.js";
-import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
-import { runCase } from "../scripts/test-cases.mjs";
-
-const choice = { chosenAt: "2026-10-15T20:00:00Z", timeZone: "America/Los_Angeles" };
-const clear = { reason: "none", quote: "", appointments: [] };
+  readSceneCalendar,
+  sceneAppointment,
+} from "../packages/villages/src/server/domain/rules/scene-calendar.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { establishPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
+import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
+import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
+import {
+  narrationContinuityContext,
+  fittedNarrationReadset,
+} from "../packages/villages/src/server/domain/rules/narration-context.js";
+import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
+import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import { retainNativeFact } from "../packages/villages/src/server/domain/rules/native-continuity.js";
+import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
+import { protectContinuity } from "../packages/villages/src/server/domain/rules/continuity.js";
+const at = "2026-10-15T20:00:00.000Z",
+  zone = "America/Los_Angeles";
+function fixture(when: object = { dayOffset: 1 }, minute: number | undefined = 15 * 60, capturedAt = at) {
+  const state = { ...defaultVillageState(), seed: "calendar-world", setupAt: at, foundedAt: at, timeZone: zone };
+  const place = establishPlace(
+    state,
+    {
+      name: "Cafe",
+      description: "A cafe.",
+      people: [{ ref: "mara", name: "Mara", characterization: "A host." }],
+      zones: [{ id: "parlor", name: "Parlor", kind: "public", description: "Tables." }],
+    },
+    "cafe",
+    "map",
+    "found",
+    at,
+    true,
+  );
+  const actor = Object.keys(state.worldPlaces.npcs)[0];
+  const scene = zoneEventScene(
+    coerceSession({
+      version: 5,
+      id: "calendar-scene",
+      placeId: place.id,
+      placeName: "Cafe",
+      villageSeed: state.seed,
+      zoneId: "parlor",
+      sceneRevision: 1,
+      status: "active",
+      startedAt: at,
+      lastActivityAt: at,
+      activeIds: [actor],
+      participants: [{ characterId: actor, name: "Mara", doing: "Talking" }],
+      sceneAttendance: {
+        capturedAt: at,
+        layout: captureSceneLayout(place.location),
+        occupants: [{ characterId: actor, name: "Mara", doing: "Talking", zoneId: "parlor" }],
+      },
+    }),
+    place.location,
+  );
+  const context = narrationContinuityContext(
+    state,
+    scene,
+    place.location,
+    "calendar-operation",
+    "I would like to meet.",
+    capturedAt,
+  );
+  const readset = fittedNarrationReadset(
+    state,
+    context,
+    context.parts.map((part) => part.block.evidenceId!),
+  );
+  const raw: any = {
+    segments: [
+      {
+        id: "promise",
+        kind: "dialogue",
+        speakerId: actor,
+        text: "I will meet you at the agreed time.",
+        requires: ["date"],
+      },
+    ],
+    commands: [
+      {
+        id: "date",
+        type: "appointment",
+        by: actor,
+        at: "promise",
+        when,
+        ...(minute === undefined ? {} : { minute }),
+        source: [{ segment: "promise" }],
+      },
+    ],
+  };
+  const publication = () => ({ raw, readset, responseDigest: memoryHash(raw) });
+  return {
+    state,
+    actor,
+    scene,
+    readset,
+    raw,
+    publication,
+    accept: (acceptedAt = capturedAt) => acceptNarration(state, publication(), "calendar-turn", acceptedAt),
+  };
+}
 await runCase("scene-halt/captured-calendar", () => {
-  const scene = coerceSession({
-    version: 4,
-    startedAt: "2026-10-19T14:00:00.000Z",
-    lines: [{ content: "Thursday. Early Thursday." }],
-  });
-  assert.deepEqual(capturedSceneCalendar(scene, "America/Los_Angeles"), {
-    instant: "2026-10-19T14:00:00.000Z",
+  const scene = { startedAt: "2026-10-19T14:00:00.000Z" };
+  assert.deepEqual(capturedSceneCalendar(scene, zone), {
+    instant: scene.startedAt,
     date: "2026-10-19",
     weekday: "Monday",
     time: "07:00",
-    timeZone: "America/Los_Angeles",
+    timeZone: zone,
   });
-  for (const at of ["2026-11-01T08:30:00.000Z", "2026-11-01T09:30:00.000Z"]) {
-    const calendar = capturedSceneCalendar({ ...scene, startedAt: at }, "America/Los_Angeles");
-    assert.equal(calendar.weekday, "Sunday");
-    assert.equal(calendar.date, "2026-11-01");
-    assert.equal(calendar.time, "01:30");
+  for (const instant of ["2026-11-01T08:30:00.000Z", "2026-11-01T09:30:00.000Z"]) {
+    const value = capturedSceneCalendar({ startedAt: instant }, zone);
+    assert.equal(value.time, "01:30");
+    assert.equal(value.weekday, "Sunday");
+    assert.deepEqual(readSceneCalendar(value), value);
   }
-  assert.equal(
-    capturedSceneCalendar({ ...scene, startedAt: "2027-01-01T07:30:00.000Z" }, "America/Los_Angeles").date,
-    "2026-12-31",
-  );
-  assert.throws(
-    () => capturedSceneCalendar({ ...scene, startedAt: "invalid" }, "America/Los_Angeles"),
-    /calendar is invalid/,
-  );
+  assert.equal(capturedSceneCalendar({ startedAt: "2027-01-01T07:30:00.000Z" }, zone).date, "2026-12-31");
+  assert.throws(() => capturedSceneCalendar({ startedAt: "invalid" }, zone), /calendar/);
+  const captured = capturedSceneCalendar(scene, zone);
+  assert.throws(() => readSceneCalendar({ ...captured, date: "2026-10-20" }), /identity/);
+  const f = fixture();
+  assert.deepEqual(f.readset.calendar, capturedSceneCalendar({ startedAt: at }, zone));
 });
 await runCase("scene-halt/calendar", () => {
-  const appointment = (date: string, minute: number | null) => ({
-    ...clear,
-    appointments: [{ date, minute, quote: "Lunch tomorrow" }],
-  });
-  assert.equal(readSceneHalt(appointment("2026-10-13", 780), choice, "Lunch tomorrow", []), "halt-appointment");
-  assert.equal(readSceneHalt(appointment("2026-10-16", 780), choice, "Lunch tomorrow", []), null);
-  assert.equal(readSceneHalt(appointment("2026-10-15", 780), choice, "Lunch tomorrow", []), "halt-appointment");
-  assert.equal(readSceneHalt(appointment("2026-10-15", null), choice, "Lunch tomorrow", []), null);
-  assert.equal(readSceneHalt(appointment("2026-10-15", 781), choice, "Lunch tomorrow", []), null);
-  // Real local day, not the UTC date. Midnight Pacific is still in the future.
+  for (const [when, date] of [
+    [{ dayOffset: 1 }, "2026-10-16"],
+    [{ weekday: "Thursday", afterToday: true }, "2026-10-22"],
+    [{ date: "2026-10-20" }, "2026-10-20"],
+  ] as const) {
+    const f = fixture(when),
+      before = memoryHash(f.state.clock),
+      result = f.accept();
+    assert.equal(result.held, false);
+    const receipt = result.episode!.commandReceipts[0];
+    assert.equal(receipt.kind, "appointment");
+    assert(receipt.text.includes(date + " 15:00"));
+    assert.equal(memoryHash(f.state.clock), before, "binding a date never advances Village time");
+  }
+  const dateOnly = fixture({ dayOffset: 0 }, undefined);
+  assert.equal(dateOnly.accept().held, false);
   assert.equal(
-    readSceneHalt(
-      appointment("2026-10-15", 0),
-      {
-        ...choice,
-        chosenAt: "2026-10-15T06:59:00Z",
-      },
-      "Lunch tomorrow",
-      [],
-    ),
-    null,
+    sceneAppointment({ when: { weekday: "Thursday" } }, capturedSceneCalendar({ startedAt: at }, zone)).date,
+    "2026-10-15",
   );
-  assert.throws(() => readSceneHalt(appointment("2026-02-30", null), choice, "Lunch tomorrow", []));
-  assert.throws(() => readSceneHalt(appointment("2026-10-16", 1440), choice, "Lunch tomorrow", []));
+  for (const [when, minute] of [
+    [{ dayOffset: -1 }, 900],
+    [{ dayOffset: 0 }, 12 * 60],
+    [{ date: "2026-02-30" }, 900],
+    [{ dayOffset: 1, date: "2026-10-20" }, 900],
+    [{ dayOffset: 1 }, 1440],
+  ] as const) {
+    const f = fixture(when, minute);
+    const before = memoryHash(f.state);
+    assert.equal(f.accept().held, true);
+    assert.equal(memoryHash(f.state), before);
+  }
 });
 await runCase("scene-halt/evidence", () => {
-  const lines = [{ content: "Aqua dies.", speakerId: "aqua" }];
-  const violation = { reason: "condition", source: "draft", quote: "Aqua dies.", appointments: [] };
-  assert.deepEqual(readSceneBoundary(violation, choice, "Hello", lines), { source: "draft", outcome: "halt-state" });
-  assert.throws(() => readSceneBoundary({ ...violation, source: "player" }, choice, "Hello", lines));
-  assert.throws(() => readSceneBoundary(violation, choice, "Aqua dies.", [{ ...lines[0], speakerId: "player" }]));
-  assert.throws(() => readSceneBoundary({ ...violation, source: undefined }, choice, "Hello", lines));
-  assert.throws(() => readSceneBoundary({ ...violation, appointments: undefined }, choice, "Hello", lines));
-  assert.equal(readSceneBoundary(clear, choice, "I could stop time", []), null);
-  const appointment = { source: "player", date: "2026-10-13", minute: 780, quote: "Lunch" };
-  assert.deepEqual(readSceneBoundary({ ...violation, appointments: [appointment] }, choice, "Lunch", lines), {
-    source: "player",
-    outcome: "halt-appointment",
-  });
-  assert.deepEqual(
-    readSceneBoundary({ ...clear, appointments: [{ ...appointment, source: "draft" }] }, choice, "Hello", [
-      { content: "Lunch", speakerId: "aqua" },
-    ]),
-    {
-      source: "draft",
-      outcome: "halt-appointment",
-    },
-  );
-  for (const [reason, outcome] of [
-    ["time", "halt-time"],
-    ["activity", "halt-time"],
-    ["condition", "halt-state"],
-    ["world", "halt-world"],
-  ]) {
-    assert.equal(readSceneHalt({ reason, quote: "two months" }, choice, "I sleep for two months", []), outcome);
-    assert.equal(
-      readSceneHalt({ reason, quote: "two months" }, choice, "Hello", [{ content: "You sleep for two months." }]),
-      outcome,
-    );
+  for (const source of [[{ input: "I would like to meet.", ground: { kind: "private" } }], ["self"], ["h:invented"]]) {
+    const f = fixture();
+    f.raw.commands[0].source = source;
+    assert.equal(f.accept().held, true);
+    assert.equal(f.state.episodes.records.length, 0);
   }
-  assert.throws(() => readSceneHalt({ reason: "time", quote: "not actually present" }, choice, "Hello", []));
-  assert.throws(() => readSceneHalt({}, choice, "Hello", []));
-  assert.throws(() => readSceneHalt({ reason: "none" }, choice, "Hello", []));
-  for (const message of [
-    "I hope we can have a sleepover",
-    '"I once slept for seven hours"',
-    "I try to pick up the mug",
-    "I think about time travel",
-  ]) {
-    assert.equal(readSceneHalt(clear, choice, message, [{ content: "Roxie listens." }]), null);
-  }
+  const other = fixture();
+  other.raw.commands[0].by = "player";
+  assert.equal(other.accept().held, true, "another speaker cannot bind the Player's appointment");
+  const f = fixture();
+  f.raw.commands[0].clock = { advanceMs: 1000 };
+  assert.equal(f.accept().held, true, "undeclared time mutation fields are rejected");
 });
-
 await runCase("scene-halt/world", () => {
-  const world = defaultVillageState();
-  world.seed = "synthetic-halt";
-  world.venues = [
-    {
-      id: "house",
-      name: "House",
-      classes: ["other"],
-      zones: [
-        {
-          ...defaultVenueSpace("other"),
-          id: "exterior",
-          name: "Porch",
-          kind: "exterior",
-        },
-      ],
-    },
-  ] as any;
-  world.venues[0].zones![0].description = "A folded cloth lies here.";
-  const scene = coerceSession({
-    version: 4,
-    id: "scene",
-    villageSeed: world.seed,
-    placeId: "house",
-    zoneId: "exterior",
-    startedAt: "2026-10-12T14:00:00Z",
-    status: "active",
-    participants: [],
-    lines: [],
-    submissions: [],
-  });
-  scene.continuity = captureSceneContinuity(world, scene, Date.parse(scene.startedAt));
-  const change = {
-    placeUpdate: {
-      narration: "You unfold the cloth.",
-      expectedRevision: 0,
-      edits: [{ before: "A folded cloth lies here.", after: "The cloth is unfolded." }],
-    },
-    physicalContext: {
-      zoneId: "exterior",
-      actorIds: ["player"],
-      witnessIds: [],
-      consentIds: [],
-      positions: { player: "exterior" },
-      segment: 0,
-    },
-  };
-  assert.equal(sceneHaltWorldConflict(scene, world, change), false);
-  const current = structuredClone(world);
-  current.name = "An unrelated change";
-  assert.equal(sceneHaltWorldConflict(scene, current, change), false);
-  current.venues[0].zones![0].description = "The cloth has been removed.";
-  current.venues[0].zones![0].state.revision++;
+  const gap = fixture({ date: "2027-03-14" }, 150);
+  assert.equal(gap.accept().held, true, "a skipped 02:30 cannot silently become 03:30");
+  const fold = fixture({ dayOffset: 0 }, 90, "2026-11-01T09:15:00.000Z");
+  const repeated = fold.accept();
+  assert.equal(repeated.held, false, "the second 01:30 is still in the future of the second 01:15");
+  assert(repeated.episode!.commandReceipts[0].text.includes("2026-11-01T09:30:00.000Z"));
+  const first = fixture({ dayOffset: 0 }, 90, "2026-11-01T08:15:00.000Z");
+  assert(first.accept().episode!.commandReceipts[0].text.includes("2026-11-01T08:30:00.000Z"));
+  const changed = fixture();
+  changed.state.timeZone = "UTC";
+  const shifted = changed.accept();
+  assert.equal(shifted.held, false);
+  assert(
+    shifted.episode!.commandReceipts[0].text.includes("America/Los_Angeles"),
+    "a settings change cannot reinterpret the admitted appointment timezone",
+  );
+  const late = fixture();
   assert.equal(
-    sceneHaltWorldConflict(scene, current, {}),
+    late.accept("2026-10-17T20:00:00.000Z").held,
     false,
-    "the old room remains available for ordinary conversation",
+    "delayed saved recovery retains the original Scene calendar without rescheduling or buying another interpretation",
   );
-  assert.equal(
-    sceneHaltWorldConflict(scene, current, change),
-    true,
-    "a new physical consequence cannot overwrite the affected fact",
-  );
-  const resident = {
-    characterId: "roxie",
-    wishes: [fixtureWish({ wish: "Discuss bikes", reason: "Grounded social fixture desire" }, "wish", scene.startedAt)],
-    agenda: {},
-  };
-  world.villagers = [resident] as any;
-  scene.continuity = captureSceneContinuity(world, scene, Date.parse(scene.startedAt));
-  const wish = { wishChanges: [{ actorId: "roxie", wishId: "wish", intent: "fulfilled" }] };
-  assert.equal(sceneHaltWorldConflict(scene, world, wish), false, "passing the expiry is not a new condition");
-  const fulfilled = structuredClone(world);
-  fulfilled.villagers[0].wishes = [];
-  assert.equal(sceneHaltWorldConflict(scene, fulfilled, wish), true);
-  assert.equal(
-    sceneHaltWorldConflict(scene, fulfilled, { wishChanges: [{ ...wish.wishChanges[0], intent: "reveal" }] }),
-    false,
-    "mentioning an old Wish does not revive it",
-  );
-  world.villagers[0].wishes[0].revision++;
-  assert.equal(sceneHaltWorldConflict(scene, world, wish), true, "new required conditions cannot be undone");
+  const changedActor = fixture();
+  changedActor.state.worldPlaces.npcs[changedActor.actor].disabled = true;
+  assert.throws(() => changedActor.accept(), /incarnation changed/);
+  assert.equal(changedActor.state.episodes.records.length, 0);
+});
+const haltMessage = "Village time cannot be skipped through narration.";
+const halt = (source: unknown[]) => ({ segments: [], halt: { reason: "time", message: haltMessage, source } });
+await runCase("scene-halt/explanation", () => {
+  const f = fixture(),
+    before = memoryHash(f.state);
+  f.raw.segments = [];
+  delete f.raw.commands;
+  f.raw.halt = halt([{ input: f.readset.source.input }]).halt;
+  for (let replay = 0; replay < 2; replay++)
+    assert.throws(
+      () => f.accept(),
+      (error) =>
+        error instanceof Error &&
+        error.message === haltMessage &&
+        (error as { statusCode?: number }).statusCode === 409,
+    );
+  assert.equal(memoryHash(f.state), before);
+  for (const source of ["h:missing", "native:missing", "self", { input: "Words never supplied in this request." }]) {
+    f.raw.halt.source = [source];
+    assert.throws(
+      () => f.accept(),
+      (error) => error instanceof Error && !error.message.includes(haltMessage),
+    );
+    assert.equal(memoryHash(f.state), before, "invalid halt evidence publishes no state or model explanation");
+  }
 });
 
-await runCase("scene-halt/authority-order", async () => {
-  const rows = new Map<string, any>();
-  const store: any = {
-    getById: async (_pkg: string, id: string) => structuredClone(rows.get(id) ?? null),
-    list: async (_pkg: string, kind: string) =>
-      [...rows.values()].filter((r) => r.kind === kind).map((r) => structuredClone(r)),
-    create: async (input: any) => {
-      const row = { ...structuredClone(input), revision: 1 };
-      rows.set(row.id, row);
-      return structuredClone(row);
-    },
-    update: async (input: any) => {
-      const old = rows.get(input.id);
-      if (old?.revision !== input.expectedRevision) return null;
-      const row = { ...old, ...structuredClone(input), revision: old.revision + 1 };
-      rows.set(row.id, row);
-      return structuredClone(row);
-    },
-    remove: async (_pkg: string, id: string) => rows.delete(id),
-  };
-  const repository = createVillageRepository(() => store);
-  await repository.mutateAuthority((state) => {
-    state.name = "Before";
-  });
-  const events: string[] = [];
-  const entered = Promise.withResolvers<void>(),
-    release = Promise.withResolvers<void>();
-  const acceptance = repository.withAuthorityLock!(async () => {
-    events.push((await repository.readAuthority()).name);
-    entered.resolve();
-    await release.promise;
-    events.push("accepted");
-  });
-  await entered.promise;
-  const later = repository.mutateAuthority((state) => {
-    events.push("later");
-    state.name = "Later";
-  });
-  await Promise.resolve();
-  assert.deepEqual(events, ["Before"]);
-  release.resolve();
-  await Promise.all([acceptance, later]);
-  assert.deepEqual(events, ["Before", "accepted", "later"]);
-  // Nested local writes work, but detached descendants lose reentrant ownership after release.
-  let detached!: Promise<void>;
-  const startDetached = Promise.withResolvers<void>();
-  await repository.withAuthorityLock!(async () => {
-    await repository.mutateAuthority((state) => {
-      state.name = "Nested";
-    });
-    detached = startDetached.promise.then(() =>
-      repository.mutateAuthority(() => {
-        events.push("detached");
-      }),
+await runCase("scene-halt/protection-race", () => {
+  for (const forget of [false, true]) {
+    const f = fixture(),
+      holder = continuityActor(f.state, f.actor)!;
+    retainNativeFact(
+      f.state,
+      {
+        id: "past",
+        kind: "initialization",
+        targetId: f.actor,
+        revision: 1,
+        text: "Mara remembers an earlier meeting.",
+        witnesses: [f.actor],
+      },
+      at,
+      { class: "information", current: true },
     );
-  });
-  const inside = Promise.withResolvers<void>(),
-    leave = Promise.withResolvers<void>();
-  const active = repository.withAuthorityLock!(async () => {
-    inside.resolve();
-    await leave.promise;
-    events.push("second accepted");
-  });
-  await inside.promise;
-  startDetached.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
-  assert(!events.includes("detached"));
-  leave.resolve();
-  await Promise.all([active, detached]);
-  assert.deepEqual(events.slice(-2), ["second accepted", "detached"]);
+    const location = f.state.worldPlaces.places.cafe.location,
+      context = narrationContinuityContext(f.state, f.scene, location, "halt-race", f.readset.source.input, at),
+      readset = fittedNarrationReadset(
+        f.state,
+        context,
+        context.parts.map((part) => part.block.evidenceId!),
+      ),
+      root = f.state.continuity.records[0],
+      target = readset.admission.supplied.find((row) => row.id === root.id);
+    assert(target, "the corrected meaning was actually fitted before the reply");
+    f.state.continuity = protectContinuity(
+      f.state.continuity,
+      target,
+      [holder],
+      "repair-race",
+      at,
+      forget ? { forget: true } : { text: "Mara remembers a different earlier meeting." },
+    );
+    const raw = halt([{ input: readset.source.input }]),
+      before = memoryHash(f.state);
+    assert.throws(
+      () => acceptNarration(f.state, { raw, readset, responseDigest: memoryHash(raw) }, "halt-race", at),
+      /protection changed/,
+    );
+    assert.equal(memoryHash(f.state), before);
+  }
 });
-console.log("Scene HALT: calendar, evidence, affected authority, Wish protection and acceptance ordering passed.");
+
+await runCase("scene-halt/authority-order", () => {
+  const f = fixture();
+  const accepted = f.accept();
+  assert.equal(accepted.held, false);
+  const before = memoryHash(f.state);
+  f.state.worldPlaces.npcs[f.actor].disabled = true;
+  f.state.timeZone = "UTC";
+  const changed = memoryHash(f.state),
+    replay = f.accept("2026-10-30T20:00:00.000Z");
+  assert.equal(replay.held, false);
+  assert.equal(memoryHash(f.state), changed);
+  assert.equal(f.state.episodes.records.length, 1);
+  assert.notEqual(before, changed);
+  const optional = fixture({ dayOffset: -1 });
+  optional.raw.commands[0].independent = true;
+  delete optional.raw.segments[0].requires;
+  const result = optional.accept();
+  assert.equal(result.held, false);
+  assert.equal(result.episode!.commandReceipts.length, 0);
+  assert.equal(result.episode!.segments.length, 1);
+});

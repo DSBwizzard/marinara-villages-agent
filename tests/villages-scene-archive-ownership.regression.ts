@@ -3,7 +3,11 @@ import { authorSceneFixture } from "./helpers/village-storage.fixture.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { createSceneArchive } from "../packages/villages/src/server/features/scenes/archive-service.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { SESSION_KIND, SESSION_PREFIX } from "../packages/villages/src/server/adapters/storage/scene-slots.js";
+import {
+  ACTIVE_ID,
+  SESSION_KIND,
+  SESSION_PREFIX,
+} from "../packages/villages/src/server/adapters/storage/scene-slots.js";
 
 type Document = Awaited<ReturnType<CapabilityDocumentStore["list"]>>[number];
 const documents = new Map<string, Document>();
@@ -21,12 +25,14 @@ function put(id: string, kind: string, data: unknown = {}) {
     updatedAt: stamp,
   });
 }
-const closed = coerceSession({ version: 4, id: "closed", status: "closed", startedAt: stamp });
-const active = coerceSession({ version: 4, id: "active", status: "active", startedAt: stamp });
+const identity = { version: 5, villageSeed: "archive-world", startedAt: stamp };
+const closed = coerceSession({ ...identity, id: "closed", status: "closed" });
+const active = coerceSession({ ...identity, id: "active", status: "active" });
 put(SESSION_PREFIX + closed.id, SESSION_KIND, closed);
 put(SESSION_PREFIX + active.id, SESSION_KIND, active);
 put("terminal", "scene-terminal");
-put("project-evidence", "project-scene-evidence");
+put(ACTIVE_ID, "venue-active");
+put("unrelated", "background-history");
 let activeId = "active";
 const readIds: string[] = [];
 const service = createSceneArchive({
@@ -51,10 +57,9 @@ const otherPages = new Map<string, Document>();
 documents.get(SESSION_PREFIX + "closed")!.data = authorSceneFixture(
   otherPages,
   coerceSession({
-    version: 4,
+    ...identity,
     id: "other",
     status: "closed",
-    startedAt: stamp,
     lines: [
       {
         id: "other-line",
@@ -63,7 +68,6 @@ documents.get(SESSION_PREFIX + "closed")!.data = authorSceneFixture(
         content: "Other Scene sentinel",
         at: stamp,
         heardBy: ["player"],
-        playerHeard: true,
       },
     ],
   }),
@@ -81,4 +85,8 @@ for (const id of otherPages.keys()) documents.delete(id);
 await assert.rejects(service.resetVenueSessions(), /active Scene/);
 activeId = "";
 await service.resetVenueSessions();
-assert.equal(documents.size, 0, "reset removes Scene receipts and Project evidence along with Scenes");
+assert.deepEqual(
+  [...documents.keys()],
+  ["unrelated"],
+  "Reset removes Scene records, terminal receipts and the pointer",
+);

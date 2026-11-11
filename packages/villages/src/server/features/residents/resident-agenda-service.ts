@@ -1,4 +1,5 @@
 import { venueResidentIds } from "../../domain/rules/venue-model.js";
+import { continuityPreparationContext, continuityContextRevision } from "../../domain/rules/continuity-library.js";
 import { admissionLoreContext } from "../../../shared/helpers/resident-admission.js";
 import { calendarDate, copyDate, ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { readEffectiveVillagerCard } from "../../adapters/engine/catalog.js";
@@ -28,7 +29,7 @@ import {
   influenceSettings,
   validateRoutineDay,
 } from "../../domain/rules/owned-routine.js";
-import { currentVillageCircumstances, routineVenues } from "../../domain/rules/prompt-preset.js";
+import { routineVenues } from "../../domain/rules/prompt-preset.js";
 import { activateVillagerDay, planRoutineDays } from "../../domain/rules/resident-agenda.js";
 import { projectAgendaReservations } from "../../domain/rules/project-focus.js";
 import { applyInitialIdentityDescription } from "../../domain/rules/resident-description.js";
@@ -93,7 +94,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     return changed;
   }
   async function readFoundingResidentContext(characterId: string) {
-    const village = await readVillageState({ wishes: [characterId] });
+    const village = await readVillageState({ memories: true });
     const villager = village.villagers.find((entry) => entry.characterId === characterId);
     if (!villager) return;
     await reportFoundingProgress(village.seed, { stage: "reading" }, characterId);
@@ -115,7 +116,14 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       ? await readNativeScheduleSnapshot(villageNow(), [characterId])
       : null;
     let loreInspection: LoreInspection | undefined;
+    const continuity = continuityPreparationContext(village, characterId, villageNow().toISOString());
     const context = {
+      continuity: {
+        fingerprint: continuity.fingerprint,
+        sources: continuity.sources,
+        protectionFingerprint: continuity.protectionFingerprint,
+        protections: continuity.protections,
+      },
       ...(villager.identityDescription && !villager.identityDescription.initialGenerationComplete
         ? { identityDescriptionRevision: villager.identityDescription.revision }
         : {}),
@@ -123,7 +131,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       characterId,
       sourceRevision: foundingTaskRevision(village, characterId, "routine"),
       circumstances: {
-        worldFacts: currentVillageCircumstances(village),
+        worldFacts: continuity.circumstances,
         worldRules: village.worldRules,
       },
       playerBackground: village.playerBackground,
@@ -137,9 +145,9 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         .join("\n"),
       home: (() => {
         const home = village.venues.find((venue) => venueResidentIds(venue).includes(characterId));
-        return home ? [home.name, home.form, home.description].filter(Boolean).join("; ") : "";
+        return home ? [home.name, home.form].filter(Boolean).join("; ") : "";
       })(),
-      wishes: villager.wishes,
+      wishes: continuity.wishes,
       lore: await readVillageLore(
         village.selectedLorebookIds,
         [
@@ -165,12 +173,12 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     return { ...context, loreUse: inspectedLoreUse(loreInspection, "Routine") };
   }
   async function queueVillagerAgenda(characterId: string, finite = true, origin?: "founding"): Promise<void> {
-    let village = await readVillageState();
+    let village = await readVillageState({ memories: true });
     const villager = village.villagers.find((row) => row.characterId === characterId);
     if (!villager) return;
     const context = await readFoundingResidentContext(characterId);
     if (!context) throw new Error("Character identity is unavailable.");
-    village = await readVillageState();
+    village = await readVillageState({ memories: true });
     if (context.sourceRevision !== foundingTaskRevision(village, characterId, "routine"))
       throw new Error("Resident context changed. Retry routine.");
     const founding = origin === "founding";
@@ -178,29 +186,32 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       ? foundingTaskRevision(village, characterId, "routine")
       : agendaRevision(village, characterId);
     if (founding)
-      await mutateVillageState((state) => {
-        const marker = state.foundingPreparation;
-        if (
-          state.seed !== village.seed ||
-          !marker ||
-          marker.tasksVersion !== 1 ||
-          marker.status !== "pending" ||
-          context.sourceRevision !== foundingTaskRevision(state, characterId, "routine")
-        )
-          throw new Error("Resident context changed. Retry routine.");
-        marker.tasks ??= {};
-        marker.tasks[characterId] ??= {};
-        const old = marker.tasks[characterId].routine;
-        if (old?.revision !== revision)
-          marker.tasks[characterId].routine = {
-            contract: 1,
-            revision,
-            jobId: foundingSlot("routine", characterId),
-            status: "pending",
-            attempt: 0,
-            error: "",
-          };
-      });
+      await mutateVillageState(
+        (state) => {
+          const marker = state.foundingPreparation;
+          if (
+            state.seed !== village.seed ||
+            !marker ||
+            marker.tasksVersion !== 1 ||
+            marker.status !== "pending" ||
+            context.sourceRevision !== foundingTaskRevision(state, characterId, "routine")
+          )
+            throw new Error("Resident context changed. Retry routine.");
+          marker.tasks ??= {};
+          marker.tasks[characterId] ??= {};
+          const old = marker.tasks[characterId].routine;
+          if (old?.revision !== revision)
+            marker.tasks[characterId].routine = {
+              contract: 1,
+              revision,
+              jobId: foundingSlot("routine", characterId),
+              status: "pending",
+              attempt: 0,
+              error: "",
+            };
+        },
+        { memories: true },
+      );
     await reportFoundingProgress(village.seed, { stage: "queued", loreEntryCount: context.lore.length }, characterId);
     await queueBackgroundJob({
       kind: "agenda",
@@ -241,8 +252,9 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     },
     valid: (state, input) =>
       state.villagers.some((resident) => resident.characterId === input.characterId) &&
+      input.context.continuity?.fingerprint === continuityContextRevision(state, input.characterId) &&
       (input.foundingContract === 1
-        ? ownsFoundingTask(state, input.characterId, "routine", input.revision, input.context)
+        ? ownsFoundingTask(state, input.characterId, "routine", input.revision)
         : agendaRevision(state, input.characterId) === input.revision),
     apply: (state, input, result) => {
       const task = state.foundingPreparation?.tasks?.[input.characterId]?.routine;
@@ -254,7 +266,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
           input.context.identityDescriptionRevision,
           result.identityDescription,
         );
-      applyAgenda(state, input.characterId, result.agenda ?? result);
+      applyAgenda(state, input.characterId, result.agenda);
       if (input.foundingContract === 1) completeFoundingTask(state, input.characterId, "routine", input.revision);
     },
   };
@@ -282,13 +294,11 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     villager.agenda = {
       ...agenda,
       plannedDays: Object.fromEntries(
-        Object.entries(previous?.plannedDays ?? {}).filter(
-          ([key]) =>
-            (previous?.socialActivities ?? []).some((entry) => entry.dateKey === key) ||
-            (previous?.reservations ?? []).some((entry) => entry.dateKey === key),
+        Object.entries(previous?.plannedDays ?? {}).filter(([key]) =>
+          (previous?.reservations ?? []).some((entry) => entry.dateKey === key),
         ),
       ),
-      socialActivities: previous?.socialActivities ?? [],
+      reservations: previous?.reservations ?? [],
       scheduleInfluenceSnapshot: previous?.scheduleInfluenceSnapshot,
       activeDay:
         previous?.activeDay?.dateKey === agendaDateKey(now)
@@ -333,8 +343,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
           for (const key of Object.keys(resident.agenda.plannedDays ?? {})) {
             if (
               key === resident.agenda.activeDay?.dateKey ||
-              (resident.agenda.reservations ?? []).some((activity) => activity.dateKey === key) ||
-              (resident.agenda.socialActivities ?? []).some((activity) => activity.dateKey === key)
+              (resident.agenda.reservations ?? []).some((activity) => activity.dateKey === key)
             )
               continue;
             delete resident.agenda.plannedDays![key];

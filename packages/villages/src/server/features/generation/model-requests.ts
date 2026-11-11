@@ -1,5 +1,6 @@
 import { bindActivationService, createActivationBinding } from "../../adapters/engine/activation-scope.js";
 import type { ModelCompletions } from "./completion-service.js";
+export { reopenSavedResponse } from "./saved-response.js";
 const binding = createActivationBinding<ModelCompletions>("Villages model completions are not configured.");
 export function configureModelCompletions(service: ModelCompletions): () => void {
   return binding.configure(bindActivationService(service));

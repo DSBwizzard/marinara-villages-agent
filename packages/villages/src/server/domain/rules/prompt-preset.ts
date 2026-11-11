@@ -3,6 +3,7 @@ import type { TownMapFit, VillageTownMapView, VillageVenue } from "../models/wor
 import { asTrimmedString } from "./coerce.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
 import { hasVenueClass } from "./venue-model.js";
+import { badGateway } from "./errors.js";
 /** Bound venue event text and decision titles. */
 export const MAX_EVENT_TEXT_LENGTH = 280;
 /** Bound saved requester names. */
@@ -11,8 +12,6 @@ export const MAX_REQUESTER_NAME_LENGTH = 60;
 /** Maximum narration length for a committed physical change. */
 export const MAX_PHYSICAL_NARRATION_LENGTH = 320;
 
-/** Recent physical changes; exchange receipts retain durable proof. */
-export const MAX_VENUE_EVENTS = 200;
 /** Matches the Engine generate schema's bounded submissionId field. */
 export const MAX_SUBMISSION_ID_LENGTH = 100;
 /** How long the village's fallback line about an ordinary day may be. */
@@ -48,6 +47,12 @@ export const MAX_VILLAGE_NAME_LENGTH = 60;
 export const MAX_VENUE_NAME_LENGTH = 60;
 export const MAX_VENUE_NOTE_LENGTH = 240;
 export const MAX_VENUE_DESCRIPTION_LENGTH = 4_000;
+export function readPlaceDescription(value: unknown): string {
+  if (value === undefined) return "";
+  if (typeof value !== "string" || value.length > MAX_VENUE_DESCRIPTION_LENGTH)
+    throw badGateway(`A Place description must be text of at most ${MAX_VENUE_DESCRIPTION_LENGTH} characters.`);
+  return value;
+}
 /** Maximum authored Places in a Village, including housing. */
 export const MAX_PLACES = 48;
 /** Routine destinations exclude worksites and residence-only Places. */
@@ -236,19 +241,15 @@ export function villageCurrentSetting(village: {
   narrative?: import("../models/narrative-model.js").NarrativeState;
   worldName?: string;
 }): string {
-  const facts = currentVillageCircumstances(village);
   return [
     village.setting.trim()
       ? `Local geography and boundary (not a Venue's current physical account): ${village.setting.trim()}`
       : "",
     village.worldRules?.trim() ? `Standing world rules: ${village.worldRules.trim()}` : "",
     VILLAGE_SHARED_SETTING_RULE,
-    "Current Venue and Zone records govern physical truth. Lore books are reference material; outdated descriptions cannot undo physical progress. Narrator context does not grant anyone knowledge, witnesses or consent.",
+    "Current Room entries govern the physical account. Native Venue and Zone records govern layout, purpose and access. Lore books supply background. Narrator context does not grant anyone knowledge, witnesses or consent.",
     RESIDENT_CONTINUITY_RULE,
     village.worldName ? `Village world: ${JSON.stringify(village.worldName)}` : "",
-    facts.length
-      ? `Active Village-wide circumstances (context, not automatic knowledge of later developments):\n${facts.map((fact) => `- ${fact}`).join("\n")}`
-      : "",
   ]
     .filter(Boolean)
     .join("\n");

@@ -1,43 +1,37 @@
 # Social Wishes
 
-Wishes are concrete personal desires that create opportunities for play. This prototype pass supports social conversations, relationships and shared experiences. Housing, construction, possessions and skill progression are outside this pass. The separate Pursuits prototype is removed.
+Wishes are retained personal desires that create opportunities for play. Ordinary wants qualify when the character and circumstances make them meaningful. Traits, hypothetical preferences and player suggestions alone need not become Wishes.
 
-## Desire and attention
+## One retained meaning
 
-A resident retains a desired outcome independently of their current attention and chosen approach. There is no active-Wish slot cap, intensity score, random size, expiry roll or automatic recurrence cooldown. A retained desire need not affect an unrelated conversation or prompt action. Sustained preoccupation is possible when the character and circumstances support it.
+A Wish is an actor-owned desire in common continuity. Its complete text contains the desired outcome and any material reasons, conditions or qualifications. Related attention and approach notes can refer to that same stable entry. Immutable versions preserve accepted changes and the exact supporting sources for each knower.
 
-Each Wish has an owner, stable identity, revision, desired outcome, grounded reason, origin, attention, optional approach, expressed essential conditions and a history of accepted changes. Its status is open, fulfilled or withdrawn. Ending an approach does not establish that its owner stopped wanting the outcome. Materially different desires receive separate identities.
+A completed or withdrawn desire retains its final meaning and closure state outside the standing lane. A resident can first express and fulfill a desire in one exchange: the GM retains one complete final meaning, with one final version for each actual knower. It does not create an invented earlier entry or purchase a second interpretation. Closing a desire does not create a replacement desire or award affection.
 
-Admission requires an actual resident-owned current want, a recognizable outcome, a reason to retain it and an outcome the supported social gameplay can establish. Small ordinary desires qualify. Traits, hypothetical preferences, polite agreement and player suggestions alone need not qualify. No repeated mention, obstacle, strong emotion or player participation is required.
+There is no separate Wish processor, active-Wish slot cap, intensity score, expiry roll or automatic recurrence cooldown. A change in approach does not by itself mean the resident stopped wanting the outcome. Materially different desires have separate identities.
 
 ## Sources and initiative
 
-Preparation can establish one initial grounded social desire or a quiet result. Later desires arise through accepted Scene exchanges, correspondence, resident encounters or occasional quiet reflection within the existing resident-activity allowance. There is no separate daily Wish generator, per-Wish model request or missed-day backlog.
+Preparation can establish one grounded initial desire or a quiet result. Later desires and changes arise through accepted narration in Scenes, correspondence, resident encounters or private reflection within the existing resident activity allowance.
 
-Resident activity considers ordinary life, complete character identity, relationships, available social opportunities and retained desires. A Wish never selects the cast merely because it exists. Residents may initiate contact, invite, ask, refuse, wait or reconsider. Other participants retain their own authority; an unchanged open desire does not justify repeatedly soliciting someone who declined.
+Current desires, complete authored identity, relationships and circumstances inform initiative. Residents may ask, invite, refuse, wait or reconsider. A retained desire does not select the cast or require action during an unrelated conversation. Following a Wish changes the player's notebook preference, not the resident's motivation or activity priority.
 
-An invitation, accepted plan, promise, claim, gratitude or elapsed time does not by itself establish the desired shared experience. Apologizing and being forgiven are different outcomes. An actual NPC-only interaction can satisfy a desire without the player participating or learning about it. Fulfillment does not automatically award affection or generate a replacement desire.
+An invitation, promise, claim, gratitude or elapsed time alone does not establish a desired shared experience. Apologizing and being forgiven are different outcomes. An actual resident-only interaction can satisfy a desire without the player participating or learning about it. Private reflection can establish the owner's internal perspective; it proves no shared interaction.
 
-## Authority and knowledge
+## Authority and individual knowledge
 
-The current Scene, correspondence or encounter GM response proposes source-bound changes; explicit saved-domain recovery uses its separate System task. Code verifies the owner incarnation, captured Wish revision, current source references and witnesses. Owner decisions require current owner speech; essential conditions use exact owner words. Quiet reflection can privately create a desire, reconsider attention, choose or stop an approach, or withdraw a desire the owner no longer wants. It leaves an owner-only memory, proves no interaction and cannot establish fulfillment.
+The same narration response supplies the fictional development and any retained meaning. Code binds proposed changes to actual supplied entries, owner incarnations, captured heads and exact source references. Replacement preserves unrelated meanings and never targets a new entry through an invented ID.
 
-Creation IDs and effect receipts are derived from immutable source identities. Replaying saved work does not create another desire, repeat a notice or purchase another interpretation. Existing Scene, encounter and mail outboxes retain their independent recovery boundaries. A stale source cannot revive a changed or withdrawn desire.
+Each holder retains only what their own evidence supports. Learning another person's desire does not make it the learner's desire. An owner can privately reconsider a desire without updating someone who learned an earlier version. Later disclosure can teach another knower without silently changing the absent owner. Player thoughts remain private input unless an exact communicated excerpt is grounded for its actual audience.
 
-Scene turns retain one compact application authority: owner incarnation, fingerprints of targeted Wishes, and a complete-array fingerprint only when proposing creation. Ordered accepted changes advance local guards without changing that saved baseline. Each turn separately retains its complete frozen Wish context for explicit System reinterpretation; application guards never replace the exact evidence or context needed to judge meaning. Mail replies bind the original admission plus their own committed source effects.
+The canonical Episode and its common versions publish together with native effects. Recovery reuses the saved response; exact replay produces no duplicate records or versions. Correct and Forget protections apply to Wishes through the same common continuity rules. Prompt selection and context fitting never prune saved history.
 
-Scenes retain their captured situation and receive immutable after-values from their own committed Wish changes, including newly created Wishes. Background changes cannot rewrite that encounter. Live authority governs subsequent world writes.
+## Books and prototype boundary
 
-New combined Scene interpretations retain every open Wish and its complete conditions/history. Closed Wishes are included when the current input, draft or bounded witnessed history references their ID or overlaps their retained text. This conservative local selection makes no additional model request and never prunes saved history. Code rejects a Wish section targeting an owner or existing Wish absent from the actual frozen System packet; the saved draft and independent effects survive under existing recovery. Explicit Wish reinterpretation still uses the complete captured context. Required oversized evidence still stops the request; open-Wish context is not capped or summarized.
+Known Wishes projects what the player has learned. Inspect's All Wishes includes eligible private and closed records for the resident. Status, complete text, related details and history derive from those same versions.
 
-Current GM packets retain eligible captured Wishes within the complete request and its model context fitting. They do not use the retired optional-prefix renderer or its separate allowance. Prompt fitting cannot prune saved Wish history or replace captured effect authority, explicit recovery or resident planning context. Required evidence must fit before provider dispatch; already purchased stages remain recoverable.
+Select a Wish to open its details in the profile reading area. Longer collections use list pages. Following changes the player's notebook and notices.
 
-The notebook projects independently eligible player memories. First disclosure requires the owner's exact communicated desire. Other changes cannot expose an unknown private goal. Later private motives, conditions and results do not fill gaps in the player's knowledge. Mail freezes eligible disclosure facts at delivery and publishes them locally on reading.
+The current build requires a fresh Village as described in [saved-state contracts](architecture-migration.md#saved-work-and-compatibility). There is no migration, old response adoption, compatibility reader or retained Wish/Pursuit implementation. Existing storage is left untouched.
 
-Each Wish is a compact selectable entry. Known Wishes contains only information the player has learned; Inspect's All Wishes includes the resident's private and closed records. Detail tabs separate the desired outcome, attention, approach, conditions and chronological history. The list uses pages for longer collections. Wish details scroll within the same reading area as the other profile sections. Entries and statements show timestamps. Following affects only the player's notebook and Wish notices; it changes neither resident motivation nor activity priority. Inspect retrieves private retained state through its separate endpoint.
-
-## Prototype boundary
-
-The current build requires a fresh Village as described in [saved-state contracts](architecture-migration.md#saved-work-and-compatibility). There is no conversion, adoption of legacy Wish responses, or retention of the old Wish/Pursuit implementation. This boundary does not authorize deletion or replacement of another running world's storage.
-
-Provider-free regressions establish source authority, privacy, replay, revision guards, retention and UI behavior. They do not establish live-model characterization or judgment quality; those require playtesting of the isolated preview.
+Provider-free tests cover retained meaning, individual knowledge, closure, replay and recovery. Actual model judgment and characterization still require playtesting of the isolated preview.

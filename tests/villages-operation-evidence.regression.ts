@@ -1,14 +1,11 @@
 import assert from "node:assert/strict";
 import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import type { VenueOperation } from "../packages/villages/src/server/domain/models/operation-model.js";
 import { applySceneMutation } from "../packages/villages/src/server/domain/rules/scene-mutation.js";
 import { createVenueCoordinator } from "../packages/villages/src/server/jobs/venue-coordinator-service.js";
 import { createVenueOperationContext } from "../packages/villages/src/server/adapters/operations/operation-context-service.js";
-import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
-import { createSceneWishContexts } from "../packages/villages/src/server/adapters/storage/scene-wish-contexts.js";
 import {
   createOperationEvidence,
   encodeOperationEvidence,
@@ -50,28 +47,16 @@ function operation(checkpoints: Record<string, unknown> = {}): VenueOperation {
   };
 }
 async function world(f: ReturnType<typeof sceneHistoryFixture>) {
-  const {
-    memories: _memories,
-    memoryScenes: _scenes,
-    memoryReceipts: _receipts,
-    worldPlaces: _places,
-    ...fields
-  } = defaultVillageState();
-  await f.documents.create({
-    id: "villages-village",
-    packageId: "villages",
-    kind: "village",
-    name: "World",
-    description: "",
-    data: {
-      ...fields,
-      seed: scope.villageSeed,
-      setupAt: at,
-      foundedAt: at,
-      memoryHead: null,
-      wishArchiveHead: { count: 0, root: null },
+  await createVillageRepository(() => f.gate.documents).mutateAuthority(
+    (state) => {
+      Object.assign(state, {
+        seed: scope.villageSeed,
+        setupAt: at,
+        foundedAt: at,
+      });
     },
-  });
+    { memories: true },
+  );
 }
 function coordinatorFor(f: ReturnType<typeof sceneHistoryFixture>) {
   const logger = { debug() {}, info() {}, warn() {}, error() {} };
@@ -89,24 +74,11 @@ for (const fault of ["before", "after"] as const) {
   const f = sceneHistoryFixture();
   try {
     await world(f);
-    const repository = createVillageRepository(() => f.gate.documents),
-      initial = wishWorld();
-    initial.seed = scope.villageSeed;
-    initial.setupAt = at;
-    initial.villagers[0].wishes = [fixtureWish({ wish: "Original World Wish" })];
-    await repository.mutateAuthority((state) => Object.assign(state, initial));
-    const baseline = await repository.readAuthority({ wishes: true });
-    const capturedScene = coerceSession({ version: 4, ...scope, status: "active", startedAt: at });
+    const repository = createVillageRepository(() => f.gate.documents);
+    const baseline = await repository.readAuthority({ memories: true });
+    const capturedScene = coerceSession({ version: 5, ...scope, status: "active", startedAt: at });
     capturedScene.continuity = captureSceneContinuity(baseline, capturedScene, Date.parse(at));
-    const capturedOwners = [
-      {
-        actorId: "a",
-        wishId: "",
-        fingerprint: "",
-        capturedAt: baseline.villagers[0].cardSnapshot.capturedAt,
-        wishes: [{ ...baseline.villagers[0].wishes[0], wish: "Exact unacknowledged capture café 東京" }],
-      },
-    ];
+    const capturedSources = [{ id: "fitted-source", text: "Exact unacknowledged capture café 東京", revision: 1 }];
     await f.mutateDocument("villages-venue-visit-" + scope.id, sessionSlot(f.gate.documents), (scene) =>
       Object.assign(scene, capturedScene),
     );
@@ -120,7 +92,7 @@ for (const fault of ["before", "after"] as const) {
       if (
         !publicationStarted ||
         !f.gate.isIdle() ||
-        ![...f.rows.values()].some((row) => row.kind === "memory-page" && !originalPages.has(row.id))
+        ![...f.rows.values()].some((row) => row.kind === OPERATION_EVIDENCE_KIND && !originalPages.has(row.id))
       )
         return;
       const operation = f.rows.get("villages-venue-visit-" + scope.id)?.data.operation;
@@ -141,7 +113,7 @@ for (const fault of ["before", "after"] as const) {
         first.venueCheckpoint("local-evidence", async () => {
           computations++;
           publicationStarted = true;
-          return { exact: "First accepted café 🌼 evidence", wishContexts: capturedOwners };
+          return { exact: "First accepted café 🌼 evidence", fittedSources: capturedSources };
         }),
       ),
       /acknowledgement/,
@@ -150,7 +122,7 @@ for (const fault of ["before", "after"] as const) {
     assert.equal(
       unsafePublicationGaps,
       0,
-      "Cleanup never sees idle storage between creating Wish pages and their published checkpoint owner",
+      "Cleanup never sees idle storage between creating evidence and its published checkpoint owner",
     );
     const retainedScene = f.rows.get("villages-venue-visit-" + scope.id).data;
     const publishedRef = retainedScene.operation.checkpoints["local-evidence"];
@@ -177,15 +149,6 @@ for (const fault of ["before", "after"] as const) {
     }
     await collectRetainedStorage(f.gate);
     assert(f.rows.has(expectedBody), "Collection preserves a prospective or published checkpoint value");
-    const packet = (operationEvidenceValue(f.rows.get(expectedBody).data) as any).wishContexts;
-    assert(!Array.isArray(packet));
-    const root = f.rows.get(packet.owners[0].head.root.id),
-      child = f.rows.get(root.data.node.content.id);
-    f.rows.delete(child.id);
-    const held = structuredClone(f.rows);
-    await assert.rejects(collectRetainedStorage(f.gate), /missing/);
-    assert.deepEqual(f.rows, held, "A missing Wish page in an unfinished checkpoint holds all cleanup deletion");
-    f.rows.set(child.id, child);
     if (pendingClaim) {
       const wrongStage = structuredClone(retainedScene.operation);
       wrongStage.checkpointClaims.other = wrongStage.checkpointClaims["local-evidence"];
@@ -212,9 +175,9 @@ for (const fault of ["before", "after"] as const) {
     assert.equal(computations, 1, "A durable but unacknowledged parsed checkpoint must not be recomputed");
     assert.equal(value.exact, "First accepted café 🌼 evidence");
     assert.deepEqual(
-      await createSceneWishContexts({ ...f.gate.documents }).read((value as any).wishContexts, capturedScene),
-      capturedOwners,
-      "Restart recovery reuses the exact captured library without recomputing the checkpoint",
+      (value as any).fittedSources,
+      capturedSources,
+      "Cold recovery retains the exact final fitted readset",
     );
   } finally {
     f.release();
@@ -286,7 +249,7 @@ for (const fault of ["before", "after"] as const) {
       response: { ...saved.ref, claim: saved.claim },
     };
     await f.mutateDocument("villages-venue-visit-" + scope.id, sessionSlot(f.gate.documents), (scene) =>
-      Object.assign(scene, coerceSession({ version: 4, ...scope, status: "active", startedAt: at, operation: op })),
+      Object.assign(scene, coerceSession({ version: 5, ...scope, status: "active", startedAt: at, operation: op })),
     );
     const native = f.rows.get("villages-venue-visit-" + scope.id).data;
     assert.equal(
@@ -364,13 +327,16 @@ for (const fault of ["before", "after"] as const) {
       resumeProject: async () => {},
       cancelProject: async () => {},
       replaySaved: async () => {},
-      continueSaved: async () => {},
     });
     const parsedId = native.operation.checkpoints.parsed.id;
+    const abandonedHead = structuredClone(native.operation);
     await f.repository.changeSession(scope.id, (scene) => {
       scene.status = "closed";
+      scene.abandonedOperations = [
+        { ...abandonedHead, status: "complete", snapshot: null } as unknown as VenueOperation,
+      ];
       scene.operation = {
-        ...operation({ "abandoned-request": { ...scene.operation!, snapshot: null } }),
+        ...operation(),
         id: "close",
         kind: "close",
         status: "complete",
@@ -379,14 +345,15 @@ for (const fault of ["before", "after"] as const) {
     const checkpoint = await repair.createCheckpoint("Exact operation evidence", "evidence-checkpoint");
     await f.repository.changeSession(scope.id, (scene) => {
       scene.operation = undefined;
+      scene.abandonedOperations = [];
     });
     await collectRetainedStorage(f.gate);
     assert(f.rows.has(parsedId), "A checkpoint owns its exact parsed value after the current operation releases it");
     const restoration = await repair.restore(checkpoint.id, "restore-operation-evidence");
     await repair.apply(restoration.id, restoration.token);
     assert.deepEqual(
-      ((await f.repository.readSession(scope.id)).operation!.checkpoints["abandoned-request"] as VenueOperation)
-        .checkpoints.parsed,
+      (await store.decode((await f.repository.readSession(scope.id)).abandonedOperations![0], scope))!.checkpoints
+        .parsed,
       {
         facts: ["Exact accepted evidence"],
         version: 1,
@@ -486,32 +453,13 @@ for (const fault of ["before", "after"] as const) {
 {
   const f = sceneHistoryFixture();
   try {
-    const state = wishWorld();
-    state.seed = scope.villageSeed;
-    state.villagers[0].wishes = Array.from({ length: 25_000 }, (_, index) =>
-      fixtureWish({ wish: "Exact retained wish " + index }, "wish:" + index, at),
-    );
-    const repository = createVillageRepository(() => f.gate.documents);
-    await repository.mutateAuthority((world) => Object.assign(world, state));
-    const captured = await repository.readAuthority({ wishes: true });
-    const scene = coerceSession({ version: 4, ...scope, status: "active", startedAt: at });
-    scene.continuity = captureSceneContinuity(captured, scene, Date.parse(at));
-    await f.mutateDocument("villages-venue-visit-" + scope.id, sessionSlot(f.gate.documents), (value) =>
-      Object.assign(value, scene),
-    );
     const rich = {
-      wishContexts: [
-        {
-          actorId: "a",
-          capturedAt: captured.villagers[0].cardSnapshot.capturedAt,
-          wishId: "",
-          fingerprint: "captured",
-          wishes: captured.villagers[0].wishes,
-        },
-      ],
+      fittedSources: Array.from({ length: 64 }, (_, index) => ({
+        id: "source-" + index,
+        text: "Complete fitted meaning " + index,
+      })),
     };
-    assert.throws(() => prepareOperationValue(rich, scope), /require canonical references/);
-    const saved = await f.gate.work(() => operationEvidenceStore(f.gate.documents).prepare(rich, scene));
+    const saved = prepareOperationValue(rich, scope);
     await f.gate.work(() => operationEvidenceStore(f.gate.documents).publish(new Map([[saved.ref.id, saved.data]])));
     let nodes = 0;
     const pending: unknown[] = [f.rows.get(saved.ref.id).data];
@@ -521,15 +469,10 @@ for (const fault of ["before", "after"] as const) {
       if (value && typeof value === "object") pending.push(...Object.values(value));
       else if (typeof value === "string") assert.equal(value.startsWith("global-gallery:"), false);
     }
-    assert(nodes < 32, "A 25k-Wish checkpoint stays opaque to Host native-reference traversal");
-    assert(saved.data.payload.length < 1024, "A full library is referenced once instead of copied into the checkpoint");
+    assert(nodes < 32, "Fitted continuity stays opaque to Host native-reference traversal");
     const cold = createOperationEvidence(f.documents);
     const restored = (await cold.read(saved.ref, scope, true)) as typeof rich;
-    assert.deepEqual(
-      await createSceneWishContexts(f.documents).read(restored.wishContexts, scene),
-      rich.wishContexts,
-      "The compact cold checkpoint explicitly resolves its exact captured library",
-    );
+    assert.deepEqual(restored, rich, "Cold recovery retains all and only the actual fitted evidence");
     for (const value of [undefined, null]) {
       const body = prepareOperationValue(value, scope);
       await f.gate.work(() => cold.publish(new Map([[body.ref.id, body.data]])));
@@ -539,42 +482,126 @@ for (const fault of ["before", "after"] as const) {
     f.release();
   }
 }
-console.log("Operation evidence publication, deduplication, restoration, rejection fencing and cleanup passed.");
-for (const durable of [false, true]) {
+{
   const f = sceneHistoryFixture();
   try {
     await world(f);
     await f.mutateDocument("villages-venue-visit-" + scope.id, sessionSlot(f.gate.documents), (scene) =>
-      Object.assign(scene, coerceSession({ version: 4, ...scope, status: "active", startedAt: at })),
+      Object.assign(scene, coerceSession({ version: 5, ...scope, status: "active", startedAt: at })),
     );
     const coordinator = coordinatorFor(f);
+    const retained = new Map<string, unknown>();
+    let prior: VenueOperation | undefined;
+    for (let index = 0; index < 4; index++) {
+      const id = "edited-" + index,
+        exact = { original: "Exact private draft " + index + " 🌼", fit: "x".repeat(20_000) };
+      await assert.rejects(
+        coordinator.coordinateVenue(
+          scope.id,
+          id,
+          "turn",
+          { message: exact.original },
+          0,
+          prior?.attemptId,
+          async () => {
+            const captured = await coordinator.venueCheckpoint("writing-request", async () => exact);
+            assert.deepEqual(captured, exact);
+            throw Error("Purchased response cannot publish");
+          },
+          prior ? { replaceOfOperationId: prior.id } : {},
+        ),
+        /cannot publish/,
+      );
+      const raw = f.rows.get("villages-venue-visit-" + scope.id).data;
+      assert.equal(raw.operation.status, "interrupted");
+      retained.set(raw.operation.checkpoints["writing-request"].id, exact);
+      prior = (await f.repository.readSession(scope.id)).operation;
+      assert.equal(raw.abandonedOperations?.length ?? 0, index);
+      assert(!raw.operation.snapshot.abandonedOperations, "admitted snapshots do not copy archival heads");
+    }
+    await coordinator.cancelVenueOperation(scope.id);
+    const cancelled = await f.repository.readSession(scope.id);
+    assert.equal(
+      cancelled.abandonedOperations?.length,
+      4,
+      "repeated replacements and final cancellation retain every exact purchase",
+    );
+    await collectRetainedStorage(f.gate);
+    const store = createOperationEvidence(f.documents);
+    for (const head of cancelled.abandonedOperations!) {
+      const ref = head.checkpoints["writing-request"] as { id: string };
+      assert(f.rows.has(ref.id));
+      assert.deepEqual((await store.decode(head, scope))!.checkpoints["writing-request"], retained.get(ref.id));
+    }
+    await f.repository.changeSession(scope.id, (scene) => {
+      scene.status = "closed";
+    });
+    await collectRetainedStorage(f.gate);
+    assert(
+      [...retained.keys()].every((id) => f.rows.has(id)),
+      "closing preserves archived purchase ownership",
+    );
+  } finally {
+    f.release();
+  }
+}
+{
+  const f = sceneHistoryFixture();
+  try {
+    await world(f);
+    await f.mutateDocument("villages-venue-visit-" + scope.id, sessionSlot(f.gate.documents), (scene) =>
+      Object.assign(scene, coerceSession({ version: 5, ...scope, status: "active", startedAt: at })),
+    );
+    const coordinator = coordinatorFor(f);
+    let localRuns = 0;
     await coordinator.coordinateVenue(scope.id, "refused", "turn", {}, 0, undefined, async () => {
       await assert.rejects(
         coordinator.venueCheckpoint("local-refusal", async () => {
+          localRuns++;
           throw Error("Known admission refusal");
         }),
         /Known admission refusal/,
       );
-      if (durable)
-        await f.repository.changeSession(scope.id, (scene) => {
-          scene.rejectedSubmissions = [
-            {
-              id: "refused",
-              inputHash: "exact-input",
-              sceneRevision: scene.sceneRevision,
-              turnOutcome: "occupancy-unavailable",
-            },
-          ];
-        });
-      return { turnOutcome: "occupancy-unavailable" as const };
+      return { finished: true };
     });
-    const saved = f.rows.get("villages-venue-visit-" + scope.id).data.operation;
+    const interrupted = (await f.repository.readSession(scope.id)).operation!;
     assert.equal(
-      saved.status,
-      durable ? "complete" : "interrupted",
-      "Only an exact durable terminal receipt resolves unfinished local checkpoint work",
+      interrupted.status,
+      "interrupted",
+      "returning from the caller cannot erase unfinished checkpoint work",
     );
-    assert.equal(Object.keys(saved.checkpointClaims ?? {}).length, durable ? 0 : 1);
+    assert.equal(Object.keys(interrupted.checkpointClaims ?? {}).length, 1);
+    await collectRetainedStorage(f.gate);
+    const retained = (await f.repository.readSession(scope.id)).operation!;
+    assert.deepEqual(retained.checkpointClaims, interrupted.checkpointClaims, "cleanup preserves the unresolved claim");
+
+    const recovered = await coordinator.coordinateVenue(
+      scope.id,
+      "refused",
+      "turn",
+      {},
+      0,
+      interrupted.attemptId,
+      async () => {
+        const result = await coordinator.venueCheckpoint("local-refusal", async () => {
+          localRuns++;
+          return { applied: "Exact recovered local result" };
+        });
+        const saved = (await f.repository.readSession(scope.id)).operation!;
+        assert.deepEqual(
+          saved.checkpoints["local-refusal"],
+          result,
+          "the local result is durable before the caller resumes",
+        );
+        assert.equal(Object.keys(saved.checkpointClaims ?? {}).length, 0);
+        return result;
+      },
+    );
+    assert.deepEqual(recovered, { applied: "Exact recovered local result" });
+    assert.equal(localRuns, 2, "only explicit saved-request retry reruns the unfinished local work");
+    const completed = (await f.repository.readSession(scope.id)).operation!;
+    assert.equal(completed.status, "complete");
+    assert.equal(Object.keys(completed.checkpointClaims ?? {}).length, 0);
   } finally {
     f.release();
   }
@@ -596,3 +623,7 @@ for (const durable of [false, true]) {
     f.release();
   }
 }
+
+console.log(
+  "Native operation evidence publication, recovery, ownership fencing, checkpoint claims and cleanup passed.",
+);

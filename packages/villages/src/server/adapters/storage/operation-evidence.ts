@@ -3,16 +3,6 @@ import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import type { VenueOperation } from "../../domain/models/operation-model.js";
 import { immutableMemoryValue, memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import { isRepairSimulation } from "./repair-gate.js";
-import {
-  createSceneWishContexts,
-  readCapturedWishSnapshot,
-  capturedWishSnapshotKey,
-  capturedWishReferences,
-  assertCapturedWishOwners,
-} from "./scene-wish-contexts.js";
-import type { VenueScene } from "../../domain/models/scene-model.js";
-import type { CapturedWishSnapshot } from "../../domain/models/wish-check-model.js";
-
 export const OPERATION_EVIDENCE_KIND = "operation-evidence";
 export type OperationEvidenceScope = { id: string; villageSeed?: string };
 export type OperationEvidenceReference = { id: string; digest: string };
@@ -29,7 +19,6 @@ const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(valu
 const scopeKey = (scope: OperationEvidenceScope) => JSON.stringify([scope.id, scope.villageSeed ?? ""]);
 const key = (ref: OperationEvidenceReference) => ref.id + ":" + ref.digest;
 const associations = new WeakMap<object, { scope: string; ref: OperationEvidenceReference; claim: string | null }>();
-const abandoned = "abandoned-request";
 const TEXT_PREFIX = "operation:";
 const decodedValues = new WeakMap<object, unknown>();
 const operationIdentity = (raw: VenueOperation, scope: OperationEvidenceScope) => [
@@ -73,32 +62,6 @@ export function operationEvidenceValue(data: OperationEvidenceData) {
   return value;
 }
 
-/** Only this typed packet field owns Wish pages; arbitrary reply prose remains opaque. */
-export function operationWishReferences(
-  data: OperationEvidenceData,
-  scene?: Pick<VenueScene, "id" | "villageSeed" | "continuity" | "operation">,
-) {
-  const value = operationEvidenceValue(data) as Record<string, any> | undefined;
-  const packet = value && typeof value === "object" && !Array.isArray(value) ? value.wishContexts : undefined;
-  if (packet === undefined || (Array.isArray(packet) && packet.length === 0)) return [];
-  memoryRequire(!Array.isArray(packet), "captured Wish packets require canonical references");
-  if (scene)
-    memoryRequire(
-      scene.continuity && scene.continuity.seed === scene.villageSeed,
-      "captured Wish owner has no frozen World scope",
-    );
-  const world = {
-    sceneId: data.sceneId,
-    seed: data.villageSeed,
-    setupAt: scene ? scene.continuity!.setupAt : packet.setupAt,
-  };
-  if (scene)
-    assertCapturedWishOwners(readCapturedWishSnapshot(packet, world), [
-      scene.continuity,
-      scene.operation?.snapshot?.continuity,
-    ]);
-  return capturedWishReferences(packet, world);
-}
 export function operationCheckpointClaims(raw: unknown, scope: OperationEvidenceScope) {
   if (!raw) return [];
   const claims = (raw as VenueOperation).checkpointClaims;
@@ -145,7 +108,6 @@ export function prepareOperationValue(value: unknown, scope: OperationEvidenceSc
   });
   const frozen = immutableMemoryValue(value);
   decodedValues.set(data, frozen);
-  operationWishReferences(data);
   const digest = hash(data),
     id = claim === null ? "villages-operation-evidence-" + digest : operationResponseBodyId(scope, claim);
   return { ref: { id, digest }, data, value: frozen };
@@ -191,22 +153,16 @@ export function validateOperationEvidence(
   );
   const frozen = immutableMemoryValue(data);
   memoryObject(JSON.parse(frozen.payload.slice(TEXT_PREFIX.length)), ["value"]);
-  operationWishReferences(frozen);
   return { ref: { id: row.id, digest }, data: frozen };
 }
 
-/** Only the explicitly retained abandoned operation can contain further operation references. */
-export function operationEvidenceReferences(
-  raw: unknown,
-  scope: OperationEvidenceScope,
-  nested = false,
-): OperationEvidenceReference[] {
+/** Every operation head owns its bound immutable checkpoint and response bodies. */
+export function operationEvidenceReferences(raw: unknown, scope: OperationEvidenceScope): OperationEvidenceReference[] {
   if (raw === undefined || raw === null) return [];
   memoryObject(raw);
   memoryRequire(raw.evidenceFormat === 1, "unsupported Scene operation evidence; start a fresh Village");
   memoryObject(raw.checkpoints);
   memoryObject(raw.attempts);
-  memoryRequire(!nested || !Object.hasOwn(raw.checkpoints, abandoned), "nested abandoned operation evidence");
   const refs = Object.entries(raw.checkpoints).map(([stage, value]) =>
     bound(value, raw as VenueOperation, scope, ["checkpoint", stage]),
   );
@@ -237,19 +193,9 @@ export async function traceOperationEvidence(
   scope: OperationEvidenceScope,
   read: (ref: OperationEvidenceReference, resolveValue: boolean) => Promise<unknown>,
   pending?: (operation: unknown) => Promise<void>,
-  nested = false,
 ) {
-  for (const ref of operationEvidenceReferences(raw, scope, nested)) await read(ref, false);
+  for (const ref of operationEvidenceReferences(raw, scope)) await read(ref, false);
   await pending?.(raw);
-  const ref = (raw as Record<string, any> | undefined)?.checkpoints?.[abandoned];
-  if (ref)
-    await traceOperationEvidence(
-      await read(bound(ref, raw as VenueOperation, scope, ["checkpoint", abandoned]), true),
-      scope,
-      read,
-      pending,
-      true,
-    );
 }
 
 /** Pure native encoding also lets fixtures author the actual supported contract. */
@@ -274,20 +220,14 @@ export function encodeOperationEvidence(
       associations.set(frozen, { scope: scopeKey(scope), ref: prepared.ref, claim: prepared.data.claim });
     return prepared.ref;
   }
-  function encode(value: VenueOperation | undefined, nested = false): Record<string, any> | undefined {
+  function encode(value: VenueOperation | undefined): Record<string, any> | undefined {
     if (!value) return undefined;
-    memoryRequire(!nested || !Object.hasOwn(value.checkpoints, abandoned), "nested abandoned operation");
     const { checkpoints, attempts, ...header } = value;
     const saved = {
       ...header,
       evidenceFormat: 1,
       checkpoints: Object.fromEntries(
         Object.entries(checkpoints).map(([stage, body]) => {
-          if (stage === abandoned) {
-            memoryObject(body);
-            memoryRequire(body.snapshot === null, "abandoned operation retained a Scene snapshot");
-            return [stage, bind(capture(encode(body as VenueOperation, true)), value, scope, ["checkpoint", stage])];
-          }
           value.checkpoints[stage] = immutableMemoryValue(body);
           return [stage, bind(capture(value.checkpoints[stage]), value, scope, ["checkpoint", stage])];
         }),
@@ -334,10 +274,9 @@ export function encodeOperationEvidence(
 function* decoder(
   raw: unknown,
   scope: OperationEvidenceScope,
-  nested = false,
 ): Generator<OperationEvidenceReference, VenueOperation | undefined, unknown> {
   if (raw === undefined || raw === null) return undefined;
-  operationEvidenceReferences(raw, scope, nested);
+  operationEvidenceReferences(raw, scope);
   operationCheckpointClaims(raw, scope);
   const { evidenceFormat: _format, checkpoints, attempts, ...header } = raw as Record<string, any>;
   const result = {
@@ -347,7 +286,7 @@ function* decoder(
   } as VenueOperation;
   for (const [stage, ref] of Object.entries(checkpoints)) {
     const body = yield bound(ref, raw as VenueOperation, scope, ["checkpoint", stage]);
-    result.checkpoints[stage] = stage === abandoned ? yield* decoder(body, scope, true) : body;
+    result.checkpoints[stage] = body;
   }
   for (const [stage, attempt] of Object.entries(attempts) as [string, Record<string, any>][]) {
     const { result: ref, ...metadata } = attempt;
@@ -373,7 +312,6 @@ export function decodeOperationEvidenceSync(
 
 /** These stage values own no media. Opaque prose keeps Host reference traversal bounded. */
 export function createOperationEvidence(documents: Pick<CapabilityDocumentStore, "getById" | "create">) {
-  const wishes = createSceneWishContexts(documents as CapabilityDocumentStore);
   const cached = new Map<string, { value: unknown; bytes: number }>();
   let cachedBytes = 0;
   const usable = () => !isRepairSimulation(documents as CapabilityDocumentStore);
@@ -457,75 +395,12 @@ export function createOperationEvidence(documents: Pick<CapabilityDocumentStore,
     while (step.done === false) step = source.next(await read(step.value, scope));
     return step.value;
   }
-  async function protectedWishes(previous: unknown, scope: OperationEvidenceScope) {
-    const snapshots = new Map<string, CapturedWishSnapshot>();
-    function add(data: OperationEvidenceData) {
-      const value = operationEvidenceValue(data) as Record<string, any> | undefined;
-      const packet = value?.wishContexts;
-      if (packet && !Array.isArray(packet)) {
-        const saved = readCapturedWishSnapshot(packet, {
-          sceneId: scope.id,
-          seed: scope.villageSeed ?? "",
-          setupAt: packet.setupAt,
-        });
-        snapshots.set(capturedWishSnapshotKey(saved), saved);
-      }
-    }
-    async function visit(operation: unknown, nested = false) {
-      for (const ref of operationEvidenceReferences(operation, scope, nested).reverse()) add(await inspect(ref, scope));
-      for (const claim of operationCheckpointClaims(operation, scope)) {
-        const saved = await pending(claim, scope);
-        if (saved) add(saved.data);
-      }
-      const ref = (operation as Record<string, any> | undefined)?.checkpoints?.[abandoned];
-      if (ref)
-        await visit(await read(readOperationEvidenceReference({ id: ref.id, digest: ref.digest }), scope, true), true);
-    }
-    await visit(previous);
-    return snapshots;
-  }
-  async function prepare(
-    value: unknown,
-    scope: OperationEvidenceScope,
-    claim: string | null = null,
-    previous?: unknown,
-  ) {
-    const protectedSnapshots =
-      value && typeof value === "object" && Object.hasOwn(value, "wishContexts")
-        ? await protectedWishes(previous, scope)
-        : new Map<string, CapturedWishSnapshot>();
-    return prepareOperationValue(await wishes.prepareValue(value, scope, protectedSnapshots), scope, claim);
-  }
   async function encode(operation: VenueOperation | undefined, scope: OperationEvidenceScope, previous?: unknown) {
-    async function canonicalize(current: VenueOperation | undefined, before: unknown, nested = false) {
-      if (!current) return;
-      const protectedRefs = new Set(operationEvidenceReferences(before, scope, nested).map(key)),
-        pendingIds = new Set(operationCheckpointClaims(before, scope).map((claim) => claim.bodyId));
-      let protectedSnapshots: Map<string, CapturedWishSnapshot> | undefined;
-      for (const [stage, value] of Object.entries(current.checkpoints)) {
-        if (stage === abandoned) {
-          memoryRequire(!nested, "nested abandoned operation");
-          const old = (before as Record<string, any> | undefined)?.checkpoints?.[abandoned];
-          const prior = old
-            ? await read(readOperationEvidenceReference({ id: old.id, digest: old.digest }), scope, true)
-            : undefined;
-          await canonicalize(value as VenueOperation, prior, true);
-          continue;
-        }
-        if (!value || typeof value !== "object" || !Object.hasOwn(value, "wishContexts")) continue;
-        const known = associations.get(value);
-        if (known?.scope === scopeKey(scope) && (protectedRefs.has(key(known.ref)) || pendingIds.has(known.ref.id)))
-          continue;
-        protectedSnapshots ??= await protectedWishes(before, scope);
-        current.checkpoints[stage] = await wishes.prepareValue(value, scope, protectedSnapshots);
-      }
-    }
-    await canonicalize(operation, previous);
     const result = encodeOperationEvidence(operation, scope, previous);
     await publish(result.values);
     return result.operation;
   }
-  return { read, inspect, publish, pending, prepare, decode, encode, protectedWishes };
+  return { read, inspect, publish, pending, prepare: prepareOperationValue, decode, encode };
 }
 const stores = new WeakMap<object, ReturnType<typeof createOperationEvidence>>();
 export function operationEvidenceStore(documents: CapabilityDocumentStore) {

@@ -48,6 +48,7 @@ function villager(id: string, venueId: string, zoneId: string, activity = "Visit
   return {
     letterFontId: "caveat",
     characterId: id,
+    incarnation: "one",
     cardSnapshot: {
       id,
       name: id,
@@ -66,7 +67,6 @@ function villager(id: string, venueId: string, zoneId: string, activity = "Visit
       exampleDialogue: "",
     },
     addedAt: stamp,
-    wishes: [],
     agenda: agendaFixture({
       routineSummary: "",
       day: [block],
@@ -81,7 +81,6 @@ function villager(id: string, venueId: string, zoneId: string, activity = "Visit
 const state = defaultVillageState();
 state.seed = "social-fixture";
 state.foundedAt = state.setupAt = stamp;
-state.visitMemoryBackfilled = true;
 let house = venue("house", ["residence", "workplace"]);
 house.residentIds = ["messenger", "alex"];
 house.residenceCapacity = 2;

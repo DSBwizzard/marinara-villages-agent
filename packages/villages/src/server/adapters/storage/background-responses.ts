@@ -4,7 +4,7 @@ import type { Job, Step } from "../../domain/models/background-model.js";
 import { immutableMemoryValue, memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import { isRepairSimulation, withRepairWork } from "./repair-gate.js";
 import { backgroundSlotId, isBackgroundInstance } from "../../domain/rules/background-revision.js";
-import { capturedJobOwners } from "./captured-admissions.js";
+import { assertCapturedJob } from "./captured-admissions.js";
 
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const prefix = "background:";
@@ -127,7 +127,7 @@ export function validateBackgroundJobRecord(row: Pick<Row, "id" | "kind" | "data
     "background job record identity changed",
   );
   backgroundResponseOwners(row.data);
-  capturedJobOwners(row.data);
+  assertCapturedJob(row.data);
   const job = row.data as Job;
   memoryRequire(
     typeof job.kind === "string" &&

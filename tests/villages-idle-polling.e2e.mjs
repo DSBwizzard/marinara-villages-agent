@@ -15,14 +15,14 @@ import {request} from './packages/villages/src/client/shared/api.js';
 function Harness(){
  const visible=useCapabilityVisibility(document.getElementById('root'));
  const {snapshot,setSnapshot,beginSnapshotRead}=useVillageSnapshot(window.initialSnapshot);
- const [room,setRoom]=useState({id:'scene',memoryMode:'live',status:'active',sceneRevision:1});
+ const [room,setRoom]=useState({id:'scene',status:'active',sceneRevision:1});
  const [viewing,setViewing]=useState(true),[busy,setBusy]=useState(false),[notices,setNotices]=useState([]),[summary,setSummary]=useState({});
  const [signatureArt,setSignatureArt]=useState(null),[signatureTools,setSignatureTools]=useState(null);
  const dismissed=useRef(new Set()),session=useRef('');
  const receive=useCallback(events=>setNotices(old=>[...old,...events.filter(event=>!old.some(saved=>saved.id===event.id))]),[]);
  const unresolved=useCallback(()=>{},[]);
  useVillagePresence({visible,presenceSession:session,beginSnapshotRead,snapshot});
- useSceneChangesPolling({visible,viewing,busy,room,snapshot,dismissedRoomEventIdsRef:dismissed,receiveRoomRecordEvents:receive,setRoomNotices:setNotices,setRoomChangeStatus:setSummary,setRoomUnresolvedChanges:unresolved});
+ useSceneChangesPolling({visible,viewing,busy,room,roomNotices:notices,snapshot,dismissedRoomEventIdsRef:dismissed,receiveRoomRecordEvents:receive,setRoomNotices:setNotices,setRoomChangeStatus:setSummary,setRoomUnresolvedChanges:unresolved});
  const load=useCallback(async ({signal}={})=>{const read=beginSnapshotRead();const next=await request('',{signal});if(!signal?.aborted)read.publish(next)},[beginSnapshotRead]);
  usePendingWorkPolling({visible,backgroundPending:snapshot.backgroundWork.some(job=>['queued','running'].includes(job.status)),loadSnapshot:load});
  window.h={snapshot:setSnapshot,room:setRoom,view:setViewing,busy:setBusy};
@@ -52,7 +52,6 @@ await withBrowser(browser, async () => {
     hasMore: false,
     processingSummary: { pending: 0, failed: 0, rejected: 0 },
     activeRequest: { status: "complete" },
-    backgroundChecks: [],
   };
   let signature = { status: "idle", attempt: 0 };
   let feedFailures = 0;
@@ -98,24 +97,22 @@ await withBrowser(browser, async () => {
   await page.clock.runFor(30_000);
   assert.equal(reads.feed, 2, "turn recovery owns operation monitoring; the feed does not duplicate it");
 
-  // An actual asynchronous job owns monitoring, including a final settling read.
-  feed = { ...feed, backgroundChecks: [{ status: "running" }] };
-  await page.evaluate(() => window.h.room((room) => ({ ...room, sceneRevision: 3 })));
-  await expect.poll(() => reads.feed).toBe(3);
+  // A published Scene revision delivers saved changes without a dedicated feed timer.
   feed = {
     ...feed,
-    backgroundChecks: [{ status: "completed" }],
+    activeRequest: { status: "complete" },
+    processingSummary: { pending: 0, failed: 0, rejected: 0 },
     notices: [{ id: "late", kind: "memory", text: "Saved" }],
   };
-  await page.clock.runFor(1600);
+  snapshot.sceneChanges.revision = "settled";
+  await page.evaluate((value) => window.h.snapshot(value), snapshot);
+  await expect.poll(() => reads.feed).toBe(3);
   await expect(page.locator("#state")).toContainText('"id":"late"');
-  await page.clock.runFor(1600);
-  await expect.poll(() => reads.feed).toBe(5);
   const settled = reads.feed;
   await page.clock.runFor(30_000);
   assert.equal(reads.feed, settled, "completion stops recurring feed reads");
 
-  // A delayed afterApply write changes the shared marker after the job is already completed.
+  // A later common publication advances the shared marker after the request settled.
   feed = {
     ...feed,
     processingSummary: { pending: 0, failed: 0, rejected: 0 },

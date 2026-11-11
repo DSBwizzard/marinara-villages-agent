@@ -6,7 +6,7 @@ import { invalidatesRead, VILLAGE_ACCESS_DENIED } from "../../shared/api.js";
 import { RetainedView } from "../../shared/RetainedView.js";
 import { VenuePolaroid } from "../exploration/villages-venue-polaroid.js";
 import { PeopleBook } from "./PeopleBook.js";
-import { type RelationshipView, VillagesRelationships } from "./villages-relationships.js";
+import { type RelationshipView, VillagesRelationships, RelationshipEntries } from "./villages-relationships.js";
 import { VillagerSignature } from "./villages-signature.js";
 import { VillagerWishJournal } from "./villages-wish-journal.js";
 import type { ResidentSprite } from "../../../shared/contracts/village.js";
@@ -410,19 +410,11 @@ export function VillagerDossier({
                                 : "Profile information is unavailable."}
                             </p>
                           ) : (
-                            <>
-                              <Sheet title="Agenda" icon="agenda">
-                                {profile?.routine?.length ? (
-                                  <ul>
-                                    {profile.routine.map((line, index) => (
-                                      <li key={index}>{line}</li>
-                                    ))}
-                                  </ul>
-                                ) : (
-                                  <p>No agenda shared yet.</p>
-                                )}
-                              </Sheet>
-                            </>
+                            <Sheet title="Agenda" icon="agenda">
+                              <RelationshipEntries
+                                entries={profile.entries.filter((entry) => entry.kind === "information")}
+                              />
+                            </Sheet>
                           )}
                           <div ref={setSignatureSurface} />
                           <Sheet title="Home and work" icon="venues">
@@ -454,7 +446,6 @@ export function VillagerDossier({
                           characterId={navigation.actorId}
                           inspect={inspectedSection("relationships")}
                           view={relationships}
-                          onView={setRelationships}
                         />
                       </RetainedView>
                     ) : null}
@@ -470,7 +461,6 @@ export function VillagerDossier({
                             characterId={navigation.actorId}
                             prefix={P}
                             focusWishId={navigation.wishId}
-                            wishes={relationships ? (profile?.knownWishes ?? []) : null}
                             onWishes={(knownWishes) => {
                               relationshipEpoch.current++;
                               setRelationships((current) =>
@@ -507,20 +497,12 @@ export function VillagerDossier({
                       <RetainedView active={section === "agenda"} label="Agenda content">
                         {inspectedSection("agenda") ? inspectors.agenda : null}
                         {!inspect ? (
-                          <Sheet title="Known routine" icon="agenda">
-                            {profile?.routine?.length ? (
-                              <>
-                                <p>Last shared information · {new Date(profile.knownAt).toLocaleString()}</p>
-                                <ul>
-                                  {profile.routine?.map((line, index) => (
-                                    <li key={index}>{line}</li>
-                                  ))}
-                                </ul>
-                                <p>{profile.interests || "No interests shared yet."}</p>
-                              </>
-                            ) : (
-                              <p>Their routine has not been shared yet.</p>
-                            )}
+                          <Sheet title="Known information" icon="agenda">
+                            <RelationshipEntries
+                              entries={(profile?.entries ?? []).filter((entry) =>
+                                ["information", "motivation", "commitment"].includes(entry.kind),
+                              )}
+                            />
                           </Sheet>
                         ) : null}
                       </RetainedView>

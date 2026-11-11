@@ -3,6 +3,10 @@
   "routes": [
     {
       "method": "get",
+      "path": "/villagers/:characterId/wishes"
+    },
+    {
+      "method": "get",
       "path": "/villagers/:characterId/wishes/inspect"
     },
     {
@@ -32,10 +36,6 @@
     {
       "method": "post",
       "path": "/mailbox/threads/:threadId/messages/:messageId/retry"
-    },
-    {
-      "method": "post",
-      "path": "/relationships/outbox/:id/recovery"
     },
     {
       "method": "post",
@@ -254,20 +254,7 @@
     },
     {
       "method": "post",
-      "path": "/rooms/:id/notices/:noticeId/dismiss"
-    },
-    {
-      "method": "post",
-      "path": "/rooms/:id/changes/:submissionId/continue",
-      "bodyLimit": 2048
-    },
-    {
-      "method": "post",
       "path": "/rooms/:id/changes/replay"
-    },
-    {
-      "method": "post",
-      "path": "/rooms/:id/changes/:submissionId/interpret"
     },
     {
       "method": "get",
@@ -463,12 +450,8 @@
       "path": "/projects/:projectId/renew-approvals"
     },
     {
-      "method": "post",
-      "path": "/projects/:projectId/record"
-    },
-    {
       "method": "get",
-      "path": "/projects/:projectId/evidence"
+      "path": "/projects/rooms/:placeId/:zoneId"
     },
     {
       "method": "get",

@@ -3,7 +3,7 @@ import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import type { VenueLine, VenueScene } from "../../domain/models/scene-model.js";
 import { memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import { isImmutableSceneLine } from "../../domain/rules/scene-transcript.js";
-import { publicSceneHistoryProjection, publicSceneResponse } from "../../domain/rules/scene-public.js";
+import { publicSceneHistoryPositions, publicSceneResponse } from "../../domain/rules/scene-public.js";
 import { isRepairSimulation } from "./repair-gate.js";
 import {
   createHistoryPageReader,
@@ -30,29 +30,21 @@ import {
 type Owner = Pick<VenueScene, "id" | "villageSeed" | "participants">;
 export type PublicScenePosition = { id: string; position: number; publicDigest: string };
 export type ScenePublicHistoryHead = {
-  format: 2;
+  format: 3;
   world: string;
   count: number;
   lineCount: number;
   positions: HistoryPageRef | null;
   source: string;
   publicVersion: string;
-  privateHearing: boolean;
   presentation: ScenePresentationHead;
 };
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const emptyVersion = hash("public-empty");
 const worldOf = (scene: Owner) =>
   hash(JSON.stringify([scene.id, scene.villageSeed ?? "", "public-history"])).slice(0, 32);
-const sourceOf = (
-  scene: Owner,
-  transcript: SceneTranscriptHead,
-  submissions: SceneSubmissionHead,
-  privateHearing: boolean,
-) =>
-  hash(
-    JSON.stringify([transcript, submissions, scene.participants.map((person) => person.characterId), privateHearing]),
-  );
+const sourceOf = (scene: Owner, transcript: SceneTranscriptHead, submissions: SceneSubmissionHead) =>
+  hash(JSON.stringify([transcript, submissions, scene.participants.map((person) => person.characterId)]));
 
 export function readScenePublicHistoryHead(
   value: unknown,
@@ -68,7 +60,6 @@ export function readScenePublicHistoryHead(
     "positions",
     "source",
     "publicVersion",
-    "privateHearing",
     "presentation",
   ]);
   memoryRequire(
@@ -77,17 +68,16 @@ export function readScenePublicHistoryHead(
     "invalid public Scene history source ownership",
   );
   memoryRequire(
-    value.format === 2 &&
+    value.format === 3 &&
       value.world === worldOf(scene) &&
       Number.isSafeInteger(value.count) &&
       value.count >= 0 &&
       value.count <= transcript.count &&
-      value.lineCount === transcript.count &&
-      typeof value.privateHearing === "boolean",
+      value.lineCount === transcript.count,
     "invalid public Scene history owner",
   );
   memoryRequire(
-    value.source === sourceOf(scene, transcript, submissions, value.privateHearing) &&
+    value.source === sourceOf(scene, transcript, submissions) &&
       typeof value.publicVersion === "string" &&
       /^[a-f0-9]{64}$/.test(value.publicVersion),
     "public Scene history source changed",
@@ -120,14 +110,14 @@ function readPosition(value: unknown, id: string, lineCount: number): PublicScen
   );
   return value as PublicScenePosition;
 }
-/** Only private timing changed; the caller preserves selection, prose, cast and hearing policy. */
+/** Only private timing changed; the caller preserves public selection, prose and cast. */
 export function rebindScenePublicHistory(
   head: ScenePublicHistoryHead,
   scene: Owner,
   transcript: SceneTranscriptHead,
   submissions: SceneSubmissionHead,
 ) {
-  const source = sourceOf(scene, transcript, submissions, head.privateHearing);
+  const source = sourceOf(scene, transcript, submissions);
   return readScenePublicHistoryHead(
     { ...head, source, presentation: { ...head.presentation, source } },
     scene,
@@ -135,8 +125,8 @@ export function rebindScenePublicHistory(
     submissions,
   );
 }
-function projectLine(line: VenueLine, cast: Set<string>, privateHearing: boolean): VenueLine {
-  const result = publicSceneResponse([line], cast, privateHearing);
+function projectLine(line: VenueLine, cast: Set<string>): VenueLine {
+  const result = publicSceneResponse([line], cast);
   memoryRequire(result.length === 1, "public Scene history points to unpublished content");
   return result[0];
 }
@@ -144,12 +134,11 @@ export function projectSceneHistoryPage(
   lines: VenueLine[],
   entries: PublicScenePosition[],
   participants: VenueScene["participants"],
-  privateHearing: boolean,
 ): VenueLine[] {
   memoryRequire(lines.length === entries.length, "public Scene history page count changed");
   const cast = new Set(participants.map((person) => person.characterId));
   return lines.map((line, index) => {
-    const projected = projectLine(line, cast, privateHearing);
+    const projected = projectLine(line, cast);
     memoryRequire(
       line.id === entries[index].id && hash(JSON.stringify(projected)) === entries[index].publicDigest,
       "public Scene history content changed",
@@ -157,18 +146,13 @@ export function projectSceneHistoryPage(
     return projected;
   });
 }
-const lineDigests = new WeakMap<VenueLine, { policy: string; digest: string }>();
-function lineDigest(line: VenueLine, cast: Set<string>, privateHearing: boolean) {
-  // Only membership that changes this line's public output invalidates its cached digest.
-  const policy = privateHearing
-    ? "private"
-    : line.contactHidden
-      ? "sound"
-      : "public:" + line.heardBy.map((id) => (cast.has(id) ? "1" : "0")).join("");
+const lineDigests = new WeakMap<VenueLine, string>();
+function lineDigest(line: VenueLine, cast: Set<string>) {
+  // Canonical transcript lines retain every staging dependency in the historical cast.
   const old = isImmutableSceneLine(line) ? lineDigests.get(line) : undefined;
-  if (old?.policy === policy) return old.digest;
-  const digest = hash(JSON.stringify(projectLine(line, cast, privateHearing)));
-  if (isImmutableSceneLine(line)) lineDigests.set(line, { policy, digest });
+  if (old) return old;
+  const digest = hash(JSON.stringify(projectLine(line, cast)));
+  if (isImmutableSceneLine(line)) lineDigests.set(line, digest);
   return digest;
 }
 // This public checksum excludes private positions and source heads, including when hidden-only content changes.
@@ -243,11 +227,11 @@ function encodePositions(
     transcript.count === scene.lines.length && submissions.count === scene.submissions.length,
     "public Scene history publication source changed",
   );
-  const projection = publicSceneHistoryProjection(scene),
+  const positions = publicSceneHistoryPositions(scene),
     cast = new Set(scene.participants.map((person) => person.characterId));
-  const rows = projection.positions.map((position, index) => {
+  const rows = positions.map((position, index) => {
     const line = scene.lines[position],
-      publicDigest = lineDigest(line, cast, projection.privateHearing),
+      publicDigest = lineDigest(line, cast),
       before = old?.rows[index];
     return before && before.id === line.id && before.position === position && before.publicDigest === publicDigest
       ? before
@@ -259,14 +243,13 @@ function encodePositions(
       old?.layout,
     );
   const head: Omit<ScenePublicHistoryHead, "presentation"> = {
-    format: 2,
+    format: 3,
     world: worldOf(scene),
     count: rows.length,
     lineCount: transcript.count,
     positions: layout.root ? Object.freeze({ ...layout.root }) : null,
-    source: sourceOf(scene, transcript, submissions, projection.privateHearing),
+    source: sourceOf(scene, transcript, submissions),
     publicVersion: publicVersion(layout, versions),
-    privateHearing: projection.privateHearing,
   };
   return { head, rows, layout, pages: writer.pages };
 }
@@ -276,7 +259,7 @@ export function encodeScenePublicHistory(
   submissions: SceneSubmissionHead,
 ) {
   const result = encodePositions(scene, transcript, submissions);
-  const presentation = encodeScenePresentations(scene, result.rows, result.head.privateHearing, result.head.source);
+  const presentation = encodeScenePresentations(scene, result.rows, result.head.source);
   return {
     ...result,
     head: { ...result.head, presentation: presentation.head },
@@ -334,13 +317,7 @@ export function createScenePublicHistory(documents: Pick<CapabilityDocumentStore
     const old = previous ? await read(previous, previous.lineCount) : undefined;
     const encoded = encodePositions(scene, transcript, submissions, old, versions);
     const { rows, layout, pages } = encoded;
-    const presentation = await presentations.prepare(
-      scene,
-      rows,
-      encoded.head.privateHearing,
-      encoded.head.source,
-      previous?.presentation,
-    );
+    const presentation = await presentations.prepare(scene, rows, encoded.head.source, previous?.presentation);
     const head = { ...encoded.head, presentation };
     const stamp = new Date().toISOString();
     for (const [id, data] of pages) {

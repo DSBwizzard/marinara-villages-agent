@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import type { MemoryPayload } from "./memory-payload-store.js";
 import { immutableMemoryValue, memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
 
 export const MEMORY_PAGE_KIND = "memory-page";
@@ -15,33 +14,9 @@ type Group = { entries: Entry[]; ref: Ref };
 type Tree = { groups: Group[]; levels: Ref[][]; root: Ref | null };
 export type HistoryPageTree = Tree;
 export type HistoryPageRef = Ref;
-type Scene = { header: unknown; before: Tree; effects: Tree };
-export type MemoryPageLayout = {
-  places: Tree;
-  npcs: Tree;
-  placeReceipts: Tree;
-  placeOperations: Tree;
-  records: Tree;
-  scenes: Tree;
-  receipts: Tree;
-  sceneValues: Map<string, Scene>;
-};
-export type MemoryPageManifest = {
-  places: Ref | null;
-  npcs: Ref | null;
-  placeReceipts: Ref | null;
-  placeOperations: Ref | null;
-  placeRevision: number;
-  format: 2;
-  revision: number;
-  records: Ref | null;
-  scenes: Ref | null;
-  receipts: Ref | null;
-};
 export type MemoryPageData = { format: 1; world: string; node: Page };
 export const pageDigest = (text: string) => createHash("sha256").update(text).digest("hex");
 const equalRefs = (a: Ref[], b?: Ref[]) => !!b && a.length === b.length && a.every((r, i) => r.id === b[i].id);
-const entries = (value: Record<string, unknown>): Entry[] => Object.entries(value);
 
 /** Shared private-history primitives; typed payload owners define their own manifests. */
 export function createHistoryPageWriter(world: string) {
@@ -117,52 +92,6 @@ export function createHistoryPageWriter(world: string) {
     get serializedBytes() {
       return serializedBytes;
     },
-  };
-}
-
-/** Memory-specific manifest and nested Scene preimages. */
-export function encodeMemoryPages(value: MemoryPayload, world: string, previous?: MemoryPageLayout) {
-  const writer = createHistoryPageWriter(world);
-  const { tree, pages } = writer;
-  const places = tree(entries(value.worldPlaces.places), previous?.places);
-  const npcs = tree(entries(value.worldPlaces.npcs), previous?.npcs);
-  const placeReceipts = tree(entries(value.worldPlaces.receipts), previous?.placeReceipts);
-  const placeOperations = tree(entries(value.worldPlaces.operations), previous?.placeOperations);
-  const records = tree(
-    value.memories.records.map((r) => [r.id, r]),
-    previous?.records,
-  );
-  const sceneValues = new Map<string, Scene>();
-  const sceneRows: Entry[] = Object.entries(value.memoryScenes).map(([id, scene]) => {
-    const prior = previous?.sceneValues.get(id);
-    const before = tree(entries(scene.snapshot.before), prior?.before),
-      effects = tree(entries(scene.effects), prior?.effects);
-    const header = { snapshot: { ...scene.snapshot, before: before.root }, effects: effects.root };
-    const old = prior?.header;
-    // Headers contain only bounded Scene metadata and two references, never preimage bodies.
-    const retained = old && JSON.stringify(header) === JSON.stringify(old) ? old : immutableMemoryValue(header);
-    sceneValues.set(id, { header: retained, before, effects });
-    return [id, retained];
-  });
-  const scenes = tree(sceneRows, previous?.scenes),
-    receipts = tree(entries(value.memoryReceipts), previous?.receipts);
-  const manifest: MemoryPageManifest = {
-    places: places.root,
-    npcs: npcs.root,
-    placeReceipts: placeReceipts.root,
-    placeOperations: placeOperations.root,
-    placeRevision: value.worldPlaces.revision,
-    format: 2,
-    revision: value.memories.revision,
-    records: records.root,
-    scenes: scenes.root,
-    receipts: receipts.root,
-  };
-  return {
-    manifest,
-    pages,
-    layout: { records, scenes, receipts, sceneValues, places, npcs, placeReceipts, placeOperations },
-    serializedBytes: writer.serializedBytes,
   };
 }
 
@@ -403,102 +332,13 @@ export function createHistoryPageReader(world: string) {
   };
 }
 
-function* memoryPageDecoder(raw: unknown, world: string) {
-  memoryObject(raw, [
-    "format",
-    "revision",
-    "records",
-    "scenes",
-    "receipts",
-    "places",
-    "npcs",
-    "placeReceipts",
-    "placeOperations",
-    "placeRevision",
-  ]);
-  memoryRequire(
-    raw.format === 2 && Number.isSafeInteger(raw.revision) && raw.revision >= 0,
-    "invalid history directory",
-  );
-  const reader = createHistoryPageReader(world);
-  const { tree, rows } = reader;
-  const places = yield* tree(raw.places),
-    npcs = yield* tree(raw.npcs),
-    placeReceipts = yield* tree(raw.placeReceipts);
-  const placeOperations = yield* tree(raw.placeOperations);
-  const records = yield* tree(raw.records),
-    scenes = yield* tree(raw.scenes),
-    receipts = yield* tree(raw.receipts);
-  const sceneValues = new Map<string, Scene>();
-  const memoryScenes: Record<string, unknown> = {};
-  for (const [id, header] of rows(scenes)) {
-    memoryObject(header, ["snapshot", "effects"]);
-    memoryObject(header.snapshot);
-    const before = yield* tree(header.snapshot.before),
-      effects = yield* tree(header.effects);
-    sceneValues.set(id, { header, before, effects });
-    memoryScenes[id] = {
-      snapshot: { ...header.snapshot, before: Object.fromEntries(rows(before)) },
-      effects: Object.fromEntries(rows(effects)),
-    };
-  }
-  const recordsRows = rows(records);
-  memoryRequire(
-    recordsRows.every(([id, value]) => !!value && (value as { id?: unknown }).id === id),
-    "history record identity changed",
-  );
-  return {
-    value: {
-      worldPlaces: {
-        revision: raw.placeRevision,
-        places: Object.fromEntries(rows(places)),
-        npcs: Object.fromEntries(rows(npcs)),
-        receipts: Object.fromEntries(rows(placeReceipts)),
-        operations: Object.fromEntries(rows(placeOperations)),
-      },
-      memories: { format: 1, revision: raw.revision, records: recordsRows.map(([, row]) => row) },
-      memoryScenes,
-      memoryReceipts: Object.fromEntries(rows(receipts)),
-    } as MemoryPayload,
-    layout: {
-      records,
-      scenes,
-      receipts,
-      sceneValues,
-      places,
-      npcs,
-      placeReceipts,
-      placeOperations,
-    } as MemoryPageLayout,
-    pageIds: reader.pageIds,
-  };
-}
-export async function decodeMemoryPages(
-  raw: unknown,
-  world: string,
-  get: (id: string) => Promise<MemoryPageData | null>,
-) {
-  const decoder = memoryPageDecoder(raw, world);
-  let step = decoder.next();
-  while (step.done === false) step = decoder.next(await get(step.value));
-  return step.value;
-}
-/** Fixture and offline checkpoint inspection use the same strict decoder as live storage. */
-export function decodeMemoryPagesSync(raw: unknown, world: string, get: (id: string) => MemoryPageData | null) {
-  const decoder = memoryPageDecoder(raw, world);
-  let step = decoder.next();
-  while (step.done === false) step = decoder.next(get(step.value));
-  return step.value;
-}
-
-/** A cleanup pass visits shared structural pages once, including links inside Scene headers.
+/** A cleanup pass visits shared structural pages once.
  * Keep a separate tracer for each proposed publication overlay; virtual data cannot prove
  * that a physically published owner has all of its dependencies.
  */
 export function createMemoryPageTracer(get: (id: string) => Promise<MemoryPageData | null>) {
   const nodes = new Map<string, Page>(),
     heights = new Map<string, number>(),
-    sceneTrees = new Set<string>(),
     contents = new Map<string, string>();
   async function walk(ref: Ref, world: string, kind: "block" | "text" = "block"): Promise<Page> {
     const prior = nodes.get(ref.id);
@@ -541,58 +381,6 @@ export function createMemoryPageTracer(get: (id: string) => Promise<MemoryPageDa
     contents.set(ref.id, value);
     return value;
   }
-  async function scenes(ref: Ref, world: string) {
-    const node = await walk(ref, world);
-    if (sceneTrees.has(ref.id)) return;
-    sceneTrees.add(ref.id);
-    memoryRequire(node.type !== "text", "invalid history Scene directory");
-    if (node.type === "branch") {
-      for (const child of node.children) await scenes(readRef(child, world)!, world);
-      return;
-    }
-    const rows = JSON.parse(await text(readRef(node.content, world)!, world));
-    memoryRequire(Array.isArray(rows) && rows.length > 0 && rows.length <= ITEMS, "invalid history Scene entries");
-    const ids = new Set<string>();
-    for (const row of rows) {
-      memoryRequire(
-        Array.isArray(row) && row.length === 2 && typeof row[0] === "string" && !ids.has(row[0]),
-        "invalid history Scene identity",
-      );
-      ids.add(row[0]);
-      const header = row[1];
-      memoryObject(header, ["snapshot", "effects"]);
-      memoryObject(header.snapshot);
-      for (const value of [header.snapshot.before, header.effects]) {
-        const dependency = readRef(value, world);
-        if (dependency) await walk(dependency, world);
-      }
-    }
-  }
-  async function trace(raw: unknown, world: string) {
-    memoryObject(raw, [
-      "format",
-      "revision",
-      "records",
-      "scenes",
-      "receipts",
-      "places",
-      "npcs",
-      "placeReceipts",
-      "placeOperations",
-      "placeRevision",
-    ]);
-    memoryRequire(
-      raw.format === 2 && Number.isSafeInteger(raw.revision) && raw.revision >= 0,
-      "invalid history directory",
-    );
-    for (const value of [raw.records, raw.receipts, raw.places, raw.npcs, raw.placeReceipts, raw.placeOperations]) {
-      const ref = readRef(value, world);
-      if (ref) await walk(ref, world);
-    }
-    const scene = readRef(raw.scenes, world);
-    if (scene) await scenes(scene, world);
-    return new Set(nodes.keys());
-  }
   async function traceTrees(values: unknown[], world: string) {
     for (const value of values) {
       const ref = readRef(value, world);
@@ -610,5 +398,5 @@ export function createMemoryPageTracer(get: (id: string) => Promise<MemoryPageDa
     memoryRequire(ref, "missing history content reference");
     return text(ref, world);
   }
-  return { trace, traceTrees, readNode, readText };
+  return { traceTrees, readNode, readText };
 }

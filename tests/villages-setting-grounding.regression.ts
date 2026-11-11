@@ -5,7 +5,18 @@ import { defaultVillageState } from "../packages/villages/src/server/domain/deco
 import { buildLocationPrompt } from "../packages/villages/src/server/domain/rules/location-image-rules.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "../packages/villages/src/server/domain/rules/narrative-grounding.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
-import { applyVenueSceneChange } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
+import {
+  initializeRoomContinuity,
+  retainNativeFact,
+} from "../packages/villages/src/server/domain/rules/native-continuity.js";
+import { continuityHolderKey } from "../packages/villages/src/server/domain/rules/continuity.js";
+import { currentRoomViews } from "../packages/villages/src/server/domain/rules/continuity-retrieval.js";
+import { observableRoomDescription } from "../packages/villages/src/server/domain/rules/zone-picture.js";
+import { continuityPreparationContext } from "../packages/villages/src/server/domain/rules/continuity-library.js";
+import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
+import { captureResidentNarration } from "../packages/villages/src/server/domain/rules/resident-narration.js";
+import { venueCardProfile } from "../packages/villages/src/server/domain/rules/venue-writing.js";
+import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import { venueInZone, venueZones } from "../packages/villages/src/server/domain/rules/venue-zones.js";
 import { proposeCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact.js";
 import { currentScenePrompt } from "./fixtures/villages-scene-writing.fixture.js";
@@ -18,7 +29,7 @@ import { sceneryPrompt } from "../packages/villages/src/server/domain/rules/scen
 import { buildTownMapPrompt } from "../packages/villages/src/server/domain/rules/town-map-image-rules.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import { buildResidentPlanningMessages } from "./fixtures/resident-planning.fixture.js";
+import { buildResidentPlanningMessages } from "../packages/villages/src/server/domain/rules/resident-planning.js";
 
 const scenarios = [
   [
@@ -70,6 +81,41 @@ async function main() {
     seed: "grounding",
     now: new Date("2026-10-02T12:00:00Z"),
   });
+  const eventsPrompt = (state: VillageState, setting: string) => {
+    const world = {
+      ...state,
+      villagers: [
+        {
+          characterId: card.id,
+          incarnation: "casey-one",
+          letterFontId: "caveat",
+          addedAt: moment.instant,
+          agenda: null,
+          cardSnapshot: snapshotFromCard(card, 1),
+        },
+      ],
+    };
+    return buildResidentPlanningMessages({
+      format: 1,
+      village: state.name,
+      setting,
+      moment,
+      plans: [],
+      housing: [],
+      residents: [{ characterId: card.id, name: card.name, profile: venueCardProfile(card) }],
+      narration: captureResidentNarration(world, {
+        id: "setting-routine",
+        kind: "routine",
+        actorIds: [card.id],
+        venueId: "",
+        startsAt: moment.instant,
+        endsAt: moment.instant,
+        facts: [],
+      }),
+    })
+      .map((message) => message.content)
+      .join("\n");
+  };
   const palette = ["Resting", "Reading", "Preparing a meal", "Maintaining equipment", "Talking", "Taking a break"].map(
     (activity) => ({ activity, venue: 0, flexible: true, essential: false, duration: 90, parts: [0, 1, 2, 3] }),
   );
@@ -119,10 +165,10 @@ async function main() {
       const state = coerceVillageState({
         ...defaultVillageState(),
 
-        wishSystemVersion: 3,
+        seed: "grounding-" + name,
         name,
         setting,
-        setupAt: "2026-10-01T12:00:00Z",
+        setupAt: "2026-10-01T12:00:00.000Z",
         playerBackground: DEFAULT_PLAYER_BACKGROUND,
       });
       const before = JSON.stringify(state);
@@ -137,27 +183,12 @@ async function main() {
       const dialogue = await currentScenePrompt(state, card, "chat", "Why are we here?");
       assert.ok(dialogue.includes(setting));
       assert.ok(dialogue.includes(VILLAGE_SHARED_SETTING_RULE));
-      const events = buildResidentPlanningMessages({
-        descriptionVersion: 1,
-        village: name,
-        setting: current,
-        moment,
-        residents: [],
-        recent: [],
-        venues: [],
-        opportunities: [],
-        lastSimulatedAt: state.setupAt,
-        forced: false,
-      })
-        .map((message) => message.content)
-        .join("\n");
+      const events = eventsPrompt(state, current);
       assert.ok(events.includes(setting));
       assert.ok(events.includes(VILLAGE_SHARED_SETTING_RULE));
       answer = {
         routine: "Casey tends to ordinary responsibilities here.",
-        wishes: [],
         palette,
-        days: Array.from({ length: 7 }, () => [0, 1, 2, 3, 4, 5, 0, 1]),
         rhythm: [],
       };
       const previousCalls = calls;
@@ -167,6 +198,7 @@ async function main() {
           setting: current,
           home,
           card,
+          continuity: continuityPreparationContext(state, card.id, moment.instant),
           venues: [],
           lore: [circumstances],
           wishes: [],
@@ -198,6 +230,7 @@ async function main() {
         setting: villageCurrentSetting(full),
         home: "Room",
         card,
+        continuity: continuityPreparationContext(defaultVillageState(), card.id, moment.instant),
         venues: [],
         lore: ["HISTORY_FROM_LOREBOOK"],
         wishes: [],
@@ -222,9 +255,8 @@ async function main() {
     const farm = coerceVillageState({
       ...defaultVillageState(),
 
-      wishSystemVersion: 3,
       seed: "farm-progress",
-      setupAt: "2026-10-01T12:00:00Z",
+      setupAt: "2026-10-01T12:00:00.000Z",
       setting: "An abandoned farm. " + "Fields and trees. ".repeat(40) + "The farmhouse roof leaks.",
       venues: [
         venueFixture({
@@ -241,26 +273,36 @@ async function main() {
     });
     const farmhouse = farm.venues[0]!;
     const zone = venueZones(farmhouse).find((row) => row.kind === "public")!;
-    applyVenueSceneChange(
+    const room = { kind: "room" as const, placeId: farmhouse.id, zoneId: zone.id };
+    initializeRoomContinuity(farm, farmhouse.id, zone.id, zone.description, "farm-room", moment.instant);
+    const target = currentRoomViews(farm.continuity, farm.episodes, room, moment.instant)[0];
+    retainNativeFact(
       farm,
-      farmhouse.id,
       {
-        narration: "The roof is repaired.",
-        expectedRevision: 0,
-        edits: [{ before: "The roof leaks", after: "The repaired roof is watertight" }],
+        id: "roof-repair",
+        kind: "room",
+        targetId: JSON.stringify([farmhouse.id, zone.id]),
+        revision: 1,
+        text: "A farmhouse kitchen. The repaired roof is watertight",
+        witnesses: [],
       },
-      "roof-repair",
-      "2026-10-02T12:00:00Z",
-      "community",
-      "public",
-      "",
-      zone.id,
-      { actorIds: ["player"], witnessIds: [], consentIds: [], positions: { player: zone.id } },
+      moment.instant,
+      {
+        room,
+        roomChange: {
+          target: {
+            id: target.id,
+            recordRevision: target.recordRevision,
+            heads: { [continuityHolderKey(room)]: target.headRevision },
+          },
+        },
+      },
     );
     const savedFarm = coerceVillageState(JSON.parse(JSON.stringify(farm)));
     const currentFarmhouse = savedFarm.venues[0]!;
     const currentZone = venueZones(currentFarmhouse).find((row) => row.kind === "public")!;
-    assert.match(currentZone.description, /The repaired roof is watertight/);
+    const currentAppearance = observableRoomDescription(savedFarm, currentFarmhouse.id, currentZone.id, moment.instant);
+    assert.match(currentAppearance, /The repaired roof is watertight/);
     const farmPrompt = await currentScenePrompt(savedFarm, card, "chat", "How is the farmhouse?", {
       zoneId: zone.id,
       area: "public",
@@ -268,54 +310,35 @@ async function main() {
     });
     assert.ok(farmPrompt.includes("The repaired roof is watertight"));
     assert.ok(farmPrompt.includes(savedFarm.setting), "the complete authored background remains intact");
-    const farmImage = buildLocationPrompt(savedFarm, venueInZone(currentFarmhouse, currentZone.id), "", "interior");
+    const farmImage = buildLocationPrompt(
+      savedFarm,
+      { ...venueInZone(currentFarmhouse, currentZone.id), description: currentAppearance },
+      "",
+      "interior",
+    );
     assert.ok(farmImage.includes("The repaired roof is watertight"));
     assert.ok(
       farmImage.includes(savedFarm.setting),
       "image context retains conditions beyond its former 400-character cut",
     );
-    const storyContext = {
-      village: "Farm",
-      setting: savedFarm.setting,
-      moment,
-      residents: [],
-      recent: [],
-      venues: [],
-      opportunities: [],
-      lastSimulatedAt: farm.setupAt,
-      forced: false,
-    };
-    const legacyStory = buildResidentPlanningMessages(storyContext)
-      .map((row) => row.content)
-      .join("\\n");
-    assert.equal(legacyStory.includes(savedFarm.setting), true, "resident planning keeps the complete setting");
-    const currentStory = buildResidentPlanningMessages({ ...storyContext, descriptionVersion: 1 })
-      .map((row) => row.content)
-      .join("\\n");
+    const currentStory = eventsPrompt(savedFarm, savedFarm.setting);
     assert.ok(currentStory.includes(savedFarm.setting), "new story jobs carry the complete description");
     assert.equal(savedFarm.setting, farm.setting, "recording a repair never rewrites authored background");
 
-    const legacy = coerceVillageState({
+    const authored = coerceVillageState({
       ...defaultVillageState(),
-
-      wishSystemVersion: 3,
-      setupAt: "2025-01-01T00:00:00Z",
-      setting: "Old harbor",
+      setupAt: "2026-10-01T12:00:00.000Z",
+      setting: "A harbor",
       playerBackground: "I arrived to help the harbor.",
     });
-    assert.equal(legacy.playerBackground, "I arrived to help the harbor.");
-    assert.equal(
-      coerceVillageState({ ...defaultVillageState(), wishSystemVersion: 3, setupAt: legacy.setupAt }).playerBackground,
-      "",
-    );
+    assert.equal(authored.playerBackground, "I arrived to help the harbor.");
+    assert.equal(coerceVillageState(defaultVillageState()).playerBackground, "");
     assert.equal(usageDocument.data.requests.length, calls, "every grounding request is accounted for");
     assert.ok(usageDocument.data.requests.every((request: any) => request.status === "complete"));
   } finally {
     release();
   }
-  console.log(
-    "Villages setting grounding: seven settings, founding/dialogue/Events/image prompts, ongoing refuge, and legacy compatibility passed.",
-  );
+  console.log("Villages setting grounding: seven settings, founding, narration, Events and image prompts passed.");
 }
 await main().catch((error) => {
   console.error(error);

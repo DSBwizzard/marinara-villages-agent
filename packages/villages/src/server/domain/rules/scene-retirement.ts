@@ -1,14 +1,13 @@
-import { unfinishedExchange } from "../decoding/exchange-codec.js";
+import { readNarrationSubmission } from "../decoding/narration-submission.js";
 import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
 import { pendingProgressTurns } from "./scene-record.js";
 import { asRecord } from "./coerce.js";
-import { EXCHANGE_DOMAINS } from "../models/exchange-model.js";
 
 /** Corrupt saved work cannot become a settled Scene. */
 export function sceneRetirementSourceIsValid(value: unknown): boolean {
   const raw = asRecord(value);
-  if (raw.version !== 4 || raw.status !== "closed" || typeof raw.id !== "string" || !raw.id) return false;
+  if (raw.version !== 5 || raw.status !== "closed" || typeof raw.id !== "string" || !raw.id) return false;
   if (
     typeof raw.villageSeed !== "string" ||
     !raw.villageSeed ||
@@ -33,7 +32,7 @@ export function sceneRetirementSourceIsValid(value: unknown): boolean {
     )
       return false;
     if (line.role !== "user" && line.role !== "assistant") return false;
-    if (line.kind !== undefined && !["narration", "dialogue", "side", "whisper"].includes(String(line.kind)))
+    if (line.kind !== undefined && !["narration", "dialogue", "side", "whisper", "input"].includes(String(line.kind)))
       return false;
     if (line.delivery !== undefined && !["ordinary", "whisper", "shout"].includes(String(line.delivery))) return false;
     if (
@@ -66,51 +65,10 @@ export function sceneRetirementSourceIsValid(value: unknown): boolean {
     if (typeof turn.id !== "string" || !turn.id || submissionIds.has(turn.id)) return false;
     submissionIds.add(turn.id);
     if (typeof turn.at !== "string" || !Number.isFinite(Date.parse(turn.at))) return false;
-    if (turn.processing !== undefined) {
-      const processing = asRecord(turn.processing);
-      const domains = asRecord(processing.domains);
-      if (
-        processing.version !== 1 ||
-        processing.sceneId !== raw.id ||
-        processing.submissionId !== turn.id ||
-        processing.seed !== raw.villageSeed
-      )
-        return false;
-      if (
-        EXCHANGE_DOMAINS.some(
-          (domain) => !["pending", "failed", "applied", "rejected"].includes(String(asRecord(domains[domain]).status)),
-        )
-      )
-        return false;
-    }
-    if (turn.semanticProvenance !== undefined && asRecord(turn.semanticProvenance).version !== 2) return false;
-    if (turn.projectSpeech !== undefined) {
-      if (!Array.isArray(turn.projectSpeech) || turn.projectSpeech.length > 12) return false;
-      for (const value of turn.projectSpeech) {
-        const proposal = asRecord(value);
-        if (
-          proposal.version !== 1 ||
-          typeof proposal.projectId !== "string" ||
-          typeof proposal.speakerId !== "string" ||
-          !Number.isSafeInteger(proposal.revision) ||
-          !["approval", "builder", "withdrawal"].includes(String(proposal.kind)) ||
-          !Array.isArray(proposal.citations) ||
-          proposal.citations.length > 12
-        )
-          return false;
-        if (
-          proposal.citations.some((value) => {
-            const citation = asRecord(value);
-            return (
-              typeof citation.lineId !== "string" ||
-              !lineIds.has(citation.lineId) ||
-              typeof citation.quote !== "string" ||
-              !citation.quote
-            );
-          })
-        )
-          return false;
-      }
+    try {
+      readNarrationSubmission(turn);
+    } catch {
+      return false;
     }
     return true;
   });
@@ -119,19 +77,31 @@ export function sceneRetirementSourceIsValid(value: unknown): boolean {
 /** A closed Scene remains an outbox until every saved effect and operation settles. */
 export function sceneReadyForRetirement(scene: VenueScene, village: VillageState, activeId: string): boolean {
   if (!scene.id || !scene.villageSeed || scene.villageSeed !== village.seed || scene.status !== "closed") return false;
-  if (scene.id === activeId) return false;
-  if (scene.operation && scene.operation.status !== "complete") return false;
+  // Recovery still needs this Scene to finish the Founding gathering.
   if (
-    Object.keys(scene.operation?.checkpoints ?? {}).some((key) => key !== "abandoned-request") ||
-    Object.keys(scene.operation?.attempts ?? {}).length
+    scene.id === activeId ||
+    (village.opening?.stage === "gathering" && village.opening.gatheringSceneId === scene.id)
   )
     return false;
-  if (scene.operation?.error) return false;
+  if (scene.operation && scene.operation.status !== "complete") return false;
+  if (
+    Object.keys(scene.operation?.checkpoints ?? {}).length ||
+    Object.keys(scene.operation?.attempts ?? {}).length ||
+    Object.keys(scene.operation?.checkpointClaims ?? {}).length
+  )
+    return false;
+  if (scene.operation?.error || scene.abandonedOperations?.length) return false;
   if (pendingProgressTurns(scene, village.foundedAt).length) return false;
-  return !scene.submissions.some(
-    (turn) =>
-      (turn.processing && unfinishedExchange(turn.processing)) ||
-      (turn.semanticProvenance?.version === 2 &&
-        (!turn.semanticReady || !village.socialPublications?.[scene.id + ":" + turn.id])),
-  );
+  // Abandoned purchases retain their exact outbox and opaque evidence in the closed Scene.
+  return scene.submissions.every((turn) => {
+    const episode = village.episodes.records.find((row) => row.id === turn.episodeId);
+    return (
+      turn.acceptance.status === "applied" &&
+      !turn.narration &&
+      episode?.sceneId === scene.id &&
+      episode.submissionId === turn.id &&
+      episode.privateInput === turn.message &&
+      JSON.stringify(episode.segments.map((row) => row.id)) === JSON.stringify(turn.replyLineIds ?? [])
+    );
+  });
 }

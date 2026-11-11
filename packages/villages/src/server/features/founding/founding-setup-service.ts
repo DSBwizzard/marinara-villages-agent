@@ -1,4 +1,6 @@
 import { chooseLetterFont } from "../../../shared/helpers/letter-font-selection.js";
+import { initializeRoomContinuity } from "../../domain/rules/native-continuity.js";
+import { randomVillageSeed } from "../../domain/rules/village-clock.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
 import { inspectedLoreUse } from "../../domain/rules/lore-context.js";
 import { randomUUID } from "node:crypto";
@@ -201,7 +203,6 @@ export function createFoundingSetup({
         workerIds: prior?.workerIds ?? [],
         playerSeenPublic: prior?.playerSeenPublic,
         playerSeenShared: prior?.playerSeenShared,
-        state: prior?.state ?? place.state,
         presentation: {
           ...place.presentation,
           image: place.presentation.image,
@@ -212,6 +213,7 @@ export function createFoundingSetup({
     const addedResidents: VillagerCard[] = [];
     await mutateVillageState((state) => {
       if (isVillageFounded(state)) throw conflict("The village changed during setup. Reload it before saving.");
+      state.seed ||= randomVillageSeed();
       state.playerBackground = playerBackground;
       state.name = name;
       state.setting = setting;
@@ -237,7 +239,16 @@ export function createFoundingSetup({
         state.personalizeVenueImagesByDefault = readBool(input.personalizeVenueImagesByDefault);
       state.homeBuildingNames = readHomeBuildingNames(input.homeBuildingNames ?? state.homeBuildingNames);
       state.setupAt ||= villageNow().toISOString();
-      state.progressEngineVersion = 1;
+      for (const venue of state.venues)
+        for (const zone of venue.zones ?? [])
+          initializeRoomContinuity(
+            state,
+            venue.id,
+            zone.id,
+            zone.description,
+            "founding:" + state.setupAt,
+            state.setupAt,
+          );
       state.opening = initialOpening([...assignedResidents], communityVenueId, randomUUID());
       state.foundingPreparation = {
         status: "pending",
@@ -251,6 +262,7 @@ export function createFoundingSetup({
       for (const card of initialResidents) {
         if (state.villagers.some((villager) => villager.characterId === card.id)) continue;
         state.villagers.push({
+          incarnation: randomUUID(),
           characterId: card.id,
           letterFontId:
             (state.formerLetterFonts && Object.hasOwn(state.formerLetterFonts, card.id)
@@ -264,7 +276,6 @@ export function createFoundingSetup({
           },
           addedAt: villageNow().toISOString(),
           agenda: unwrittenVillageAgenda(villageNow()),
-          wishes: [],
           scheduleInfluence: influenceSettings(null),
         });
         addedResidents.push(card);

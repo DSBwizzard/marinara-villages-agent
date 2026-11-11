@@ -1,4 +1,3 @@
-import { fixtureWishIdentity, fixtureRelationshipIdentity } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import {
   defaultVillageState,
@@ -26,9 +25,37 @@ import {
   ordinaryUseRestricted,
 } from "../packages/villages/src/server/domain/rules/narrative-environment.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
-import { applyVenueSceneChange } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
 import { contactCanEnter } from "../packages/villages/src/server/domain/rules/venue-contact.js";
-import { sceneHaltWorldConflict } from "../packages/villages/src/server/domain/rules/scene-halt-world.js";
+import { currentRoomViews } from "../packages/villages/src/server/domain/rules/continuity-retrieval.js";
+import {
+  initializeRoomContinuity,
+  retainNativeFact,
+} from "../packages/villages/src/server/domain/rules/native-continuity.js";
+import {
+  fittedNarrationReadset,
+  narrationContinuityContext,
+} from "../packages/villages/src/server/domain/rules/narration-context.js";
+import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
+import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
+import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import {
+  continuityConstraints,
+  continuityHolderKey,
+  continuityVersionUnit,
+  protectContinuity,
+} from "../packages/villages/src/server/domain/rules/continuity.js";
+import { readAcceptedEpisode } from "../packages/villages/src/server/domain/decoding/episode-codec.js";
+import { assertContinuityRetention } from "../packages/villages/src/server/domain/rules/continuity-retention.js";
+import { retainAdministrativeCircumstance } from "../packages/villages/src/server/domain/rules/repair-records.js";
+import { villageSettings } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
+import { worldNarrativeContext } from "../packages/villages/src/server/domain/rules/narrative-prompts.js";
+import { fitVenueWritingMessages } from "../packages/villages/src/server/domain/rules/venue-writing.js";
+import {
+  encodeContinuityPages,
+  decodeContinuityPagesSync,
+} from "../packages/villages/src/server/adapters/storage/continuity-pages.js";
 import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
 import { captureReturnContext } from "../packages/villages/src/server/domain/rules/return-catchup-capture.js";
 import { discoverReturnBatch } from "../packages/villages/src/server/domain/rules/return-catchup-state.js";
@@ -38,7 +65,6 @@ import { activityDate } from "../packages/villages/src/server/domain/rules/event
 import { preferredActivityLane } from "../packages/villages/src/server/domain/rules/activity-arbitration.js";
 import { arrangementActivityAt } from "../packages/villages/src/server/domain/rules/activity-arbitration.js";
 import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
-import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
 import { WorkFailureError } from "../packages/villages/src/server/domain/rules/work-failure.js";
 import {
@@ -67,6 +93,7 @@ function world() {
   initializeVenueAccess(venue);
   state.venues = [venue];
   const zone = venueZones(venue).find((row) => row.kind !== "exterior")!;
+  initializeRoomContinuity(state, venue.id, zone.id, zone.description, "founding", start);
   ensureNarrative(state, start);
   return { state, venue, zone };
 }
@@ -99,18 +126,11 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
       summary: "The sign needs securing.",
       status: "active",
     },
-    physical: [
-      {
-        venueId: target.venueId,
-        zoneId: target.zoneId,
-        update: {
-          narration: "The sign hangs loose.",
-          expectedRevision: target.state.revision,
-          appearanceChanged: true,
-          append: "The sign hangs from one loose bracket.",
-        },
-      },
-    ],
+    room: [{ text: "The sign hangs from one loose bracket.", replace: target.room[0]?.id }] as {
+      text: string | null;
+      replace?: string;
+      expiresInMinutes?: number;
+    }[],
     conditions: [
       {
         id: null,
@@ -126,6 +146,516 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
     ],
     weather: null,
   };
+}
+{
+  const fixture = world(),
+    { state, venue, zone } = fixture;
+  const grant = admitted(fixture, "world:scene-repair");
+  const damageProposal = proposal(grant);
+  damageProposal.room.push({ text: "A snapped rope lies beside the sign." });
+  const damage = applyNarrativeDevelopment(state, grant, damageProposal);
+  state.narrative!.claims = [];
+  state.backgroundPace = "off";
+  const condition = damage.after.conditions[0];
+  const scene = zoneEventScene(
+    coerceSession({
+      version: 5,
+      id: "ordinary-repair",
+      villageSeed: state.seed,
+      sceneRevision: 1,
+      placeId: venue.id,
+      placeName: venue.name,
+      zoneId: zone.id,
+      startedAt: at,
+      lastActivityAt: at,
+      status: "active",
+      activeIds: [],
+      participants: [],
+      sceneAttendance: { capturedAt: at, layout: captureSceneLayout(venue), occupants: [] },
+    }),
+    venue,
+  );
+  scene.continuity = captureSceneContinuity(state, scene, Date.parse(at));
+  const beforeObserver = structuredClone(state);
+  const repaired = "The wooden sign sits firmly on its bracket.";
+  const observedSign = narrationContinuityContext(state, scene, venue, "notice-damage", "I look at the sign.", at);
+  const observeReadset = fittedNarrationReadset(
+    state,
+    observedSign,
+    observedSign.parts.map((part) => part.block.evidenceId!),
+  );
+  const observation = {
+    segments: [{ id: "see", kind: "narration", text: "You see the loose sign." }],
+    keep: [
+      {
+        id: "learn",
+        for: "room",
+        replace: condition.repairEntries![0],
+        knownBy: ["player"],
+        source: [{ segment: "see", perceive: { kind: "seen", by: ["player"] } }],
+      },
+    ],
+  };
+  const learned = acceptNarration(
+    state,
+    { raw: observation, readset: observeReadset, responseDigest: memoryHash(observation) },
+    "see-damage",
+    at,
+  );
+  assert.equal(learned.held, false, JSON.stringify(learned.rejected));
+  const player = observeReadset.source.actors.find((actor) => actor.id === "player")!;
+  const record = state.continuity.records.find((row) => row.id === condition.repairEntries![0])!;
+  const playerKey = continuityHolderKey(player);
+  state.continuity = protectContinuity(
+    state.continuity,
+    { id: record.id, recordRevision: record.revision, heads: { [playerKey]: record.heads[playerKey].revision } },
+    [player],
+    "correct-observer",
+    at,
+    { text: repaired },
+  );
+  const context = narrationContinuityContext(
+    state,
+    scene,
+    venue,
+    "corrective-work",
+    "I secure the sign to its bracket.",
+    at,
+  );
+  assert.equal(context.circumstance, null);
+  assert.deepEqual(context.repairs, [
+    { id: condition.id, revision: condition.revision, entries: condition.repairEntries },
+  ]);
+  const readset = fittedNarrationReadset(
+    state,
+    context,
+    context.parts.map((part) => part.block.evidenceId!),
+  );
+  const droppedEntry = "room-context:" + condition.repairEntries![1];
+  const blocks = context.parts.map((part) => part.block);
+  const droppedText = blocks.find((block) => block.evidenceId === droppedEntry)!.text;
+  const fit = fitVenueWritingMessages(
+    {
+      fitContext(messages: any[]) {
+        return { messages: messages.some((message) => message.content.includes(droppedText)) ? [] : messages } as any;
+      },
+    },
+    blocks,
+    readset.source.input,
+    1000,
+  );
+  assert.ok(!fit.evidenceIds.includes("repair-context:" + condition.id));
+  assert.ok(fit.evidenceIds.includes("room-context:" + condition.repairEntries![0]));
+  assert.deepEqual(fittedNarrationReadset(state, context, fit.evidenceIds).repairs, []);
+  const observed = { segment: "work", perceive: { kind: "seen", by: ["player"] } };
+  const protection = { roots: [] as string[], disposition: "clear" };
+  const raw = {
+    segments: [
+      {
+        id: "work",
+        kind: "narration",
+        text: "You secure the sign with its original bracket and remove the snapped rope.",
+        requires: ["reopen"],
+      },
+      { id: "glance", kind: "narration", text: "Rain dots the floor." },
+    ],
+    keep: [
+      {
+        id: "repair-sign",
+        for: "room",
+        replace: condition.repairEntries![0],
+        text: repaired,
+        source: [observed],
+        protection,
+      },
+      {
+        id: "clear-rope",
+        for: "room",
+        replace: condition.repairEntries![1],
+        text: null,
+        source: [observed],
+        protection,
+      },
+    ],
+    commands: [
+      {
+        id: "reopen",
+        type: "circumstance",
+        at: "work",
+        source: [observed],
+        requires: ["repair-sign", "clear-rope"],
+        conditions: [{ id: condition.id, clear: true }],
+      },
+    ],
+  };
+  for (const variant of [
+    "stale",
+    "no-link",
+    "missing-entry",
+    "addition",
+    "same-text",
+    "concealed",
+    "separate-observation",
+    "unfitted",
+    "optional-bad-source",
+    "room-only",
+    "future-invitation",
+  ]) {
+    const live = structuredClone(state),
+      reply: any = structuredClone(raw),
+      fitted = structuredClone(readset);
+    if (variant === "stale") live.narrative!.conditions[0].revision++;
+    if (variant === "no-link") reply.commands[0].requires = [];
+    if (variant === "missing-entry") reply.keep.pop();
+    if (variant === "addition") delete reply.keep[0].replace;
+    if (variant === "same-text") reply.keep[0].text = "The sign hangs from one loose bracket.";
+    if (variant === "concealed") reply.keep[0].visibility = "concealed";
+    if (variant === "separate-observation") reply.keep[0].source[0].segment = "glance";
+    if (variant === "unfitted") fitted.repairs = [];
+    if (variant === "optional-bad-source") {
+      reply.commands[0].independent = true;
+      reply.commands[0].source[0].segment = "missing";
+      reply.segments[0].requires = [];
+      reply.keep.pop();
+    }
+    if (variant === "room-only") {
+      reply.commands = [];
+      reply.segments[0].requires = [];
+    }
+    if (variant === "future-invitation") {
+      const current = live.venues[0].zones!.find((row) => row.id === zone.id)!;
+      current.access!.managerIds = ["keeper"];
+      live.venues[0].access!.permissions.push({
+        id: "future-visit",
+        zoneId: zone.id,
+        visitorId: "player",
+        issuerId: "keeper",
+        duration: "visit",
+        sceneId: null,
+        accompaniedBy: null,
+        outsideHours: false,
+        revoked: false,
+        issuedAt: at,
+        sourceLineIds: [],
+      });
+    }
+    const before = memoryHash(live);
+    const result = acceptNarration(
+      live,
+      { raw: reply, readset: fitted, responseDigest: memoryHash(reply) },
+      "repair-turn",
+      at,
+    );
+    assert.equal(result.held, true, variant);
+    assert.equal(memoryHash(live), before, variant + " publishes neither Room nor condition");
+  }
+  const publication = { raw, readset, responseDigest: memoryHash(raw) };
+  const corrected = beforeObserver;
+  const roomKey = continuityHolderKey(context.room);
+  const linked = corrected.continuity.records.find((row) => row.id === condition.repairEntries![1])!;
+  corrected.continuity = protectContinuity(
+    corrected.continuity,
+    { id: linked.id, recordRevision: linked.revision, heads: { [roomKey]: linked.heads[roomKey].revision } },
+    [context.room],
+    "correct-room-record",
+    at,
+    { text: "A frayed rope lies next to the sign." },
+  );
+  const correctedContext = narrationContinuityContext(
+    corrected,
+    scene,
+    venue,
+    "corrective-work",
+    readset.source.input,
+    at,
+  );
+  const correctedReadset = fittedNarrationReadset(
+    corrected,
+    correctedContext,
+    correctedContext.parts.map((part) => part.block.evidenceId!),
+  );
+  const correctedRaw = structuredClone(raw);
+  correctedRaw.keep[1].protection = { ...protection, roots: [linked.id] };
+  correctedRaw.keep[1].text = "The floor beside the sign is clear.";
+  for (const scope of ["same-root", "different-root", "new-root"]) {
+    const resurrected: any = structuredClone(correctedRaw);
+    const text = "A snapped rope lies beside the sign.";
+    if (scope === "same-root") resurrected.keep[1].text = text;
+    if (scope === "different-root") resurrected.keep[0].text = text;
+    if (scope === "new-root") resurrected.keep.push({ id: "extra", for: "room", text, source: [observed], protection });
+    const refused = acceptNarration(
+      corrected,
+      { raw: resurrected, readset: correctedReadset, responseDigest: memoryHash(resurrected) },
+      "repair-turn",
+      at,
+    );
+    assert.equal(refused.held, true, scope + " cannot restore the exact protected text");
+    assert.ok(
+      refused.rejected.some((row) => row.reason.includes("protected Room text")),
+      JSON.stringify(refused.rejected),
+    );
+  }
+  const correctedResult = acceptNarration(
+    corrected,
+    { raw: correctedRaw, readset: correctedReadset, responseDigest: memoryHash(correctedRaw) },
+    "repair-turn",
+    at,
+  );
+  assert.equal(correctedResult.held, false, JSON.stringify(correctedResult.rejected));
+  const fresh = currentRoomViews(corrected.continuity, corrected.episodes, context.room, at).find(
+    (row) => row.id === linked.id,
+  )!;
+  assert.equal(fresh.repaired, false);
+  assert.equal(fresh.version.sources[0].episodeId, correctedResult.episode!.id);
+  const constraint = continuityConstraints(corrected.continuity, [context.room]).find((row) => row.id === linked.id)!;
+  assert.equal(constraint.corrected, undefined);
+  assert.ok(constraint.forbidden.includes("A snapped rope lies beside the sign."));
+  const bound = structuredClone(state);
+  const boundZone = bound.venues[0].zones!.find((row) => row.id === zone.id)!;
+  boundZone.access!.managerIds = ["keeper"];
+  boundZone.access!.visitorHours = [{ days: ["Thursday"], start: "08:00", end: "10:00" }];
+  bound.venues[0].access!.permissions.push({
+    id: "bound-visit",
+    zoneId: zone.id,
+    visitorId: "player",
+    issuerId: "keeper",
+    duration: "visit",
+    sceneId: scene.id,
+    accompaniedBy: null,
+    outsideHours: false,
+    revoked: false,
+    issuedAt: at,
+    sourceLineIds: [],
+  });
+  bound.timeZone = "America/Los_Angeles";
+  const boundResult = acceptNarration(bound, publication, "repair-turn", at);
+  assert.equal(boundResult.held, false, JSON.stringify(boundResult.rejected));
+  const result = acceptNarration(state, publication, "repair-turn", at);
+  assert.equal(result.held, false, JSON.stringify(result.rejected));
+  assert.equal(state.narrative!.conditions[0].clearedAt, at);
+  assert.equal(ordinaryUseRestricted(state.narrative, at, venue.id, zone.id), false);
+  assert.equal(state.eventAttempts?.attempts.length ?? 0, 0);
+  const holder = { kind: "room" as const, placeId: venue.id, zoneId: zone.id };
+  assert.equal(currentRoomViews(state.continuity, state.episodes, holder, at)[0].version.text, repaired);
+  assert.deepEqual(result.episode!.commandReceipts[0].repairEntries, condition.repairEntries);
+  const key = "a".repeat(32),
+    encoded = encodeContinuityPages(
+      {
+        continuity: state.continuity,
+        episodes: state.episodes,
+        worldPlaces: state.worldPlaces,
+        mailbox: state.mailbox,
+      },
+      key,
+    );
+  Object.assign(
+    state,
+    decodeContinuityPagesSync(encoded.manifest, key, state.seed, (id) => encoded.pages.get(id) ?? null).value,
+  );
+  const before = memoryHash(state);
+  assert.ok(acceptNarration(state, publication, "repair-turn", at).replayed);
+  assert.equal(memoryHash(state), before);
+}
+{
+  const fixture = world(),
+    { state, venue, zone } = fixture;
+  const scene = zoneEventScene(
+    coerceSession({
+      version: 5,
+      id: "conceal",
+      villageSeed: state.seed,
+      sceneRevision: 1,
+      placeId: venue.id,
+      placeName: venue.name,
+      zoneId: zone.id,
+      startedAt: at,
+      lastActivityAt: at,
+      status: "active",
+      activeIds: [],
+      participants: [],
+      sceneAttendance: { capturedAt: at, layout: captureSceneLayout(venue), occupants: [] },
+    }),
+    venue,
+  );
+  scene.continuity = captureSceneContinuity(state, scene, Date.parse(at));
+  const context = narrationContinuityContext(state, scene, venue, "conceal", "I tuck a letter under the rug.", at);
+  const readset = fittedNarrationReadset(
+    state,
+    context,
+    context.parts.map((part) => part.block.evidenceId!),
+  );
+  const secret = "A letter stamped Juniper lies beneath the rug.";
+  const raw = {
+    segments: [
+      {
+        id: "hide",
+        kind: "narration",
+        text: "You tuck a letter stamped Juniper beneath the rug.",
+        requires: ["hidden"],
+      },
+    ],
+    keep: [
+      {
+        id: "hidden",
+        for: "room",
+        text: secret,
+        visibility: "concealed",
+        knownBy: ["player"],
+        source: [{ segment: "hide", perceive: { kind: "seen", by: ["player"] } }],
+      },
+    ],
+  };
+  const accepted = acceptNarration(state, { raw, readset, responseDigest: memoryHash(raw) }, "concealed-turn", at);
+  assert.equal(accepted.held, false, JSON.stringify(accepted.rejected));
+  const holder = { kind: "room" as const, placeId: venue.id, zoneId: zone.id };
+  const entry = currentRoomViews(state.continuity, state.episodes, holder, at).find(
+    (row) => row.version.text === secret,
+  )!;
+  const grant = () => admitNarrative(state, at, "world:conceal", "world", { venueId: venue.id, zoneId: zone.id })!;
+  assert.ok(!JSON.stringify(worldNarrativeContext(grant())).includes("Juniper"));
+  state.continuity = protectContinuity(
+    state.continuity,
+    {
+      id: entry.id,
+      recordRevision: entry.recordRevision,
+      heads: { [continuityHolderKey(holder)]: entry.headRevision },
+    },
+    [holder],
+    "correct-hidden-room",
+    at,
+    { text: "A letter stamped Juniper has been sealed." },
+  );
+  const protectedGrant = grant();
+  assert.equal(protectedGrant.targets[0].roomWritable, false);
+  assert.ok(!JSON.stringify(worldNarrativeContext(protectedGrant)).includes("Juniper"));
+  assert.deepEqual(protectedGrant.targets[0].protections, []);
+}
+{
+  const fixture = world(),
+    { state, venue, zone } = fixture;
+  const room = { kind: "room" as const, placeId: venue.id, zoneId: zone.id };
+  for (let index = 0; index < 3; index++)
+    retainNativeFact(
+      state,
+      {
+        id: "decor-" + index,
+        kind: "structure",
+        targetId: JSON.stringify([venue.id, zone.id]),
+        revision: 1,
+        text: index + " " + "Detailed decorations. ".repeat(560),
+        witnesses: [],
+      },
+      start,
+      { room },
+    );
+  const grant = admitted(fixture, "world:large-room"),
+    raw = proposal(grant);
+  assert.equal(grant.targets[0].roomWritable, false);
+  assert.deepEqual(grant.targets[0].room, []);
+  assert.throws(() => applyNarrativeDevelopment(state, grant, raw), /finite grant/);
+  raw.room = [];
+  raw.conditions = [];
+  applyNarrativeDevelopment(state, grant, {
+    ...raw,
+    weather: { description: "drizzle", endsAt: "2026-10-29T10:00:00.000Z", supersedes: null },
+  });
+  assert.equal(currentRoomViews(state.continuity, state.episodes, room, at).length, 4);
+  assert.equal(state.narrative!.weather?.description, "drizzle");
+}
+{
+  const fixture = world(),
+    { state, venue, zone } = fixture;
+  const exterior = venueZones(venue).find((row) => row.kind === "exterior")!;
+  initializeRoomContinuity(state, venue.id, exterior.id, exterior.description, "founding-exterior", start);
+  const grant = admitted(fixture),
+    proposalValue = proposal(grant);
+  proposalValue.situation.scope = "village";
+  const receipt = applyNarrativeDevelopment(state, grant, proposalValue);
+  const circumstance = state.episodes.records.at(-1)!;
+  assert.throws(() => readAcceptedEpisode({ ...circumstance, grounding: [] }, state.seed), /standalone World Room/);
+  const [foreign] = currentRoomViews(
+    state.continuity,
+    state.episodes,
+    { kind: "room", placeId: venue.id, zoneId: exterior.id },
+    at,
+  );
+  const forged = structuredClone(state.episodes);
+  forged.records.at(-1)!.dependencies = {
+    [circumstance.grounding[0].unitId]: [continuityVersionUnit(foreign.version.id)],
+  };
+  assert.throws(() => assertContinuityRetention(state.continuity, forged), /admitted observable version/);
+  const player = { name: "Player", description: "", personaId: "", missing: false };
+  assert.ok(!JSON.stringify(villageSettings(state, player, null)).includes(proposalValue.situation.summary));
+  const situation = state.narrative!.situations.find((row) => row.id === receipt.after.situations[0].id)!;
+  situation.revision++;
+  retainAdministrativeCircumstance(state, situation.id, "metadata-only", at);
+  const scene = zoneEventScene(
+    coerceSession({
+      version: 5,
+      id: "another-room",
+      villageSeed: state.seed,
+      sceneRevision: 1,
+      placeId: venue.id,
+      placeName: venue.name,
+      zoneId: exterior.id,
+      startedAt: at,
+      lastActivityAt: at,
+      status: "active",
+      activeIds: [],
+      participants: [],
+      sceneAttendance: { capturedAt: at, layout: captureSceneLayout(venue), occupants: [] },
+    }),
+    venue,
+  );
+  scene.continuity = captureSceneContinuity(state, scene, Date.parse(at));
+  const context = narrationContinuityContext(state, scene, venue, "cross-room", "What happened?", at);
+  assert.ok(context.parts.some((part) => part.block.text.includes(proposalValue.situation.summary)));
+  const readset = fittedNarrationReadset(
+    state,
+    context,
+    context.parts.map((part) => part.block.evidenceId!),
+  );
+  const raw = { segments: [{ kind: "narration", text: "You notice the effects of the loose sign from here." }] };
+  assert.equal(
+    acceptNarration(state, { raw, readset, responseDigest: memoryHash(raw) }, "another-room-turn", at).held,
+    false,
+  );
+  const holder = { kind: "room" as const, placeId: venue.id, zoneId: zone.id };
+  const [entry] = currentRoomViews(state.continuity, state.episodes, holder, at);
+  state.continuity = protectContinuity(
+    state.continuity,
+    {
+      id: entry.id,
+      recordRevision: entry.recordRevision,
+      heads: { [continuityHolderKey(holder)]: entry.headRevision },
+    },
+    [holder],
+    "correct-world-origin",
+    at,
+    { text: "The bracket was made of brass." },
+  );
+  const key = "a".repeat(32),
+    encoded = encodeContinuityPages(
+      {
+        continuity: state.continuity,
+        episodes: state.episodes,
+        worldPlaces: state.worldPlaces,
+        mailbox: state.mailbox,
+      },
+      key,
+    );
+  Object.assign(
+    state,
+    decodeContinuityPagesSync(encoded.manifest, key, state.seed, (id) => encoded.pages.get(id) ?? null).value,
+  );
+  const after = narrationContinuityContext(state, scene, venue, "after-correction", "What happened?", at);
+  assert.ok(
+    after.parts.every(
+      (part) =>
+        !part.block.text.includes(proposalValue.situation.summary) && !part.block.text.includes(raw.segments[0].text),
+    ),
+  );
+  assert.ok(!JSON.stringify(villageSettings(state, player, null)).includes(proposalValue.situation.summary));
 }
 {
   const fixture = world(),
@@ -154,15 +684,20 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
     0,
     "A background publication cannot rewrite an active Scene snapshot.",
   );
-  assert.match(fixture.zone.description, /loose bracket/);
-  assert.equal(fixture.zone.picture?.dirty, true, "Material edits reuse the existing artwork lifecycle.");
+  const holder = { kind: "room" as const, placeId: fixture.venue.id, zoneId: fixture.zone.id };
+  const room = () => currentRoomViews(fixture.state.continuity, fixture.state.episodes, holder, at);
+  assert.equal(room()[0].version.text, "The sign hangs from one loose bracket.");
   assert.equal(fixture.zone.image, image, "The event does not replace artwork or request an image.");
   assert.equal(
     applyNarrativeDevelopment(fixture.state, grant, effect),
     receipt,
     "Exact source replay does not apply twice.",
   );
-  assert.equal(fixture.zone.state.revision, grant.targets[0]!.state.revision + 1);
+  assert.equal(room()[0].id, grant.targets[0]!.room[0].id);
+  assert.throws(
+    () => applyNarrativeDevelopment(fixture.state, grant, { ...effect, occurrence: "Another event." }),
+    /another result/,
+  );
   assert.equal(
     zoneClosed(fixture.state, fixture.venue, fixture.zone),
     false,
@@ -192,170 +727,66 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
     "Perception contains no raw source, hidden cause or global records.",
   );
   const condition = fixture.state.narrative!.conditions[0]!;
-  const beforeRepair = structuredClone(fixture.state);
-  const repairScene: any = { ...oldScene, id: "scene", submissions: [] };
-  repairScene.continuity = captureSceneContinuity(fixture.state, repairScene, Date.parse(at));
-  const update = {
-    narration: "You secure the sign with its existing fastening.",
-    expectedRevision: fixture.zone.state.revision,
-    appearanceChanged: true,
-    edits: [{ before: "The sign hangs from one loose bracket.", after: "The sign is secured firmly to its bracket." }],
-    conditionClears: [{ id: condition.id, expectedRevision: condition.revision }],
-  };
-  const evidence = {
-    actorIds: ["player"],
-    witnessIds: ["player"],
-    consentIds: [],
-    positions: { player: fixture.zone.id },
-  };
-  const beforeConflictCheck = JSON.stringify(fixture.state);
-  assert.equal(
-    sceneHaltWorldConflict(repairScene, fixture.state, {
-      placeUpdate: update,
-      physicalContext: { ...evidence, zoneId: fixture.zone.id },
-    }),
-    false,
-    "The Scene acceptance gate permits an evidenced matching repair.",
+  const nextScene = { ...oldScene, id: "after-world", continuity: undefined };
+  nextScene.continuity = captureSceneContinuity(fixture.state, nextScene, Date.parse(at));
+  const contextAfter = narrationContinuityContext(
+    fixture.state,
+    nextScene,
+    fixture.venue,
+    "after-world",
+    "What happened to the sign?",
+    at,
   );
-  assert.equal(JSON.stringify(fixture.state), beforeConflictCheck, "Preacceptance checking cannot publish a repair.");
+  assert.ok(contextAfter.parts.some((part) => part.block.text.includes("The sign needs securing.")));
+  assert.ok(contextAfter.parts.some((part) => part.block.text.includes("The sign hangs from one loose bracket.")));
+  assert.deepEqual(condition.repairEntries, [room()[0].id]);
+  fixture.state.narrative!.claims = [];
+  const repairGrant = admitted(fixture, "world:repair");
+  const repairProposal = proposal(repairGrant);
   assert.throws(
     () =>
-      applyVenueSceneChange(
-        structuredClone(beforeRepair),
-        fixture.venue.id,
-        { ...update, edits: undefined, recent: { text: "The sign was inspected." } },
-        "scene",
-        at,
-        undefined,
-        "public",
-        "",
-        fixture.zone.id,
-        evidence,
-        [condition],
-      ),
-    /enduring physical correction/,
-    "A recent observation alone cannot reopen a damaged space.",
+      applyNarrativeDevelopment(fixture.state, repairGrant, {
+        ...repairProposal,
+        room: [{ replace: condition.repairEntries![0], text: null }],
+        conditions: [],
+      }),
+    /remove an active restriction's repair target/,
   );
-  const worldRepair = structuredClone(beforeRepair);
-  worldRepair.narrative!.claims = [];
-  const repairGrant = admitted({ ...fixture, state: worldRepair }, "world:repair");
-  const repairProposal = proposal(repairGrant);
-  repairProposal.physical[0]!.update = {
-    narration: "The sign was inspected.",
-    expectedRevision: fixture.zone.state.revision,
-    appearanceChanged: false,
-    recent: { text: "The sign was inspected." },
-  } as any;
+  repairProposal.room = [{ text: "The sign was inspected.", expiresInMinutes: 15 }];
+  Object.assign(repairProposal.situation, {
+    id: receipt.after.situations[0].id,
+    expectedRevision: 1,
+    status: "resolved",
+  });
   Object.assign(repairProposal.conditions[0]!, { id: condition.id, expectedRevision: condition.revision, clear: true });
+  const beforeRepair = JSON.stringify(fixture.state);
   assert.throws(
-    () => applyNarrativeDevelopment(worldRepair, repairGrant, readNarrativeDevelopment(repairProposal, repairGrant)),
+    () => applyNarrativeDevelopment(fixture.state, repairGrant, repairProposal),
     /matching physical work/,
-    "Independent world developments cannot reopen damage through a recent observation either.",
+    "A temporary observation cannot reopen a repair-linked condition.",
   );
-  repairProposal.physical = [];
+  assert.equal(
+    JSON.stringify(fixture.state),
+    beforeRepair,
+    "A failed result publishes neither the proposed Room entry nor a condition.",
+  );
+  repairProposal.room = [];
   Object.assign(repairProposal.conditions[0]!, { clear: false, endsAt: "2026-10-29T10:00:00.000Z" });
   assert.throws(
-    () => applyNarrativeDevelopment(worldRepair, repairGrant, readNarrativeDevelopment(repairProposal, repairGrant)),
+    () => applyNarrativeDevelopment(fixture.state, repairGrant, repairProposal),
     /cannot expire/,
     "Continuing a damage-linked condition cannot add a timer that bypasses repair.",
   );
-  assert.throws(
-    () =>
-      applyVenueSceneChange(
-        structuredClone(beforeRepair),
-        fixture.venue.id,
-        update,
-        "scene",
-        at,
-        undefined,
-        "public",
-        "",
-        fixture.zone.id,
-        evidence,
-      ),
-    /captured source/,
-  );
-  assert.throws(
-    () =>
-      applyVenueSceneChange(
-        structuredClone(beforeRepair),
-        fixture.venue.id,
-        update,
-        "scene",
-        at,
-        undefined,
-        "public",
-        "",
-        fixture.zone.id,
-        { ...evidence, actorIds: ["outsider"] },
-        [condition],
-      ),
-    /actual local actors/,
-  );
-  applyVenueSceneChange(
-    fixture.state,
-    fixture.venue.id,
-    update,
-    "scene",
-    at,
-    undefined,
-    "public",
-    "",
-    fixture.zone.id,
-    evidence,
-    [condition],
-  );
+  repairProposal.room = [{ replace: condition.repairEntries![0], text: "The sign is secured firmly to its bracket." }];
+  Object.assign(repairProposal.conditions[0]!, { clear: true, endsAt: null });
+  applyNarrativeDevelopment(fixture.state, repairGrant, repairProposal);
   assert.equal(ordinaryUseRestricted(fixture.state.narrative, at, fixture.venue.id, fixture.zone.id), false);
   assert.equal(evaluateZoneAccess(fixture.venue, fixture.zone, "visitor", context).allowed, true);
-  assert.match(fixture.zone.description, /secured firmly/);
-  fixture.state.venueEvents.push({
-    id: "venue-chat:scene:repair",
-    venueId: fixture.venue.id,
-    zoneId: fixture.zone.id,
-    venueName: fixture.venue.name,
-    text: update.narration,
-    at,
-    actionReceipt: {
-      ...update,
-      happened: true,
-      submissionId: "repair",
-      witnessIds: ["player"],
-      after: { description: fixture.zone.description, state: structuredClone(fixture.zone.state) },
-    },
-  });
-  repairScene.submissions.push({ mode: "chat", id: "repair" });
-  fixture.state.exchangeReceipts["repair:physical"] = {
-    sceneId: repairScene.id,
-    submissionId: "repair",
-    domain: "physical",
-    status: "applied",
-    physicalOutcome: {
-      venueId: fixture.venue.id,
-      zoneId: fixture.zone.id,
-      actionReceipt: { after: { description: fixture.zone.description, state: structuredClone(fixture.zone.state) } },
-    },
-  } as any;
-  assert.equal(contactCanEnter(beforeRepair, fixture.venue, fixture.zone.id, "visitor", repairScene), false);
+  assert.equal(room()[0].version.text, "The sign is secured firmly to its bracket.");
   assert.equal(
-    contactCanEnter(fixture.state, fixture.venue, fixture.zone.id, "visitor", repairScene),
-    true,
-    "Contact routing extends captured restrictions through this Scene's accepted repair.",
-  );
-  assert.equal(
-    contactCanEnter(fixture.state, fixture.venue, fixture.zone.id, "visitor", oldScene),
-    true,
-    "An earlier Scene does not import a later restriction.",
-  );
-  delete fixture.state.exchangeReceipts["repair:physical"];
-  assert.equal(
-    ordinaryUseRestricted(
-      sceneContinuityView(fixture.state, repairScene).narrative,
-      at,
-      fixture.venue.id,
-      fixture.zone.id,
-    ),
+    contactCanEnter(fixture.state, fixture.venue, fixture.zone.id, "visitor", nextScene),
     false,
-    "This Scene extends only through its exact accepted repair after-values.",
+    "A saved Scene retains its admitted restriction.",
   );
   assert.deepEqual(
     coerceVillageState(fixture.state).narrative,
@@ -376,19 +807,19 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
   const grant = admitted(fixture),
     raw = proposal(grant);
   assert.equal(grant.targets[0]!.correctiveActorIds.length, 0);
-  raw.physical = [];
+  raw.room = [];
   assert.throws(() => readNarrativeDevelopment(raw, grant), /accessible corrective work/);
   raw.conditions[0]!.endsAt = "2026-10-29T10:00:00.000Z" as any;
   const temporary = readNarrativeDevelopment(raw, grant);
   applyNarrativeDevelopment(fixture.state, grant, temporary);
   assert.equal(
     contactCanEnter(fixture.state, fixture.venue, fixture.zone.id, "visitor", {
-      id: "legacy",
+      id: "new-contact",
       startedAt: at,
       zoneId: "exterior",
     } as any),
     false,
-    "Legacy public access obeys a current temporary closure.",
+    "Public contact obeys a current temporary restriction.",
   );
   const damaged = world(),
     damageGrant = admitted(damaged),
@@ -402,9 +833,14 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
 }
 {
   const fixture = world();
-  fixture.state.relationshipContext = {
-    socialPlans: [{ kind: "meeting", status: "planned", dateKey: "2026-10-30", startMinute: 10, endMinute: 20 }],
-  } as any;
+  fixture.state.residentPlans.plans.push({
+    kind: "meeting",
+    status: "planned",
+    dateKey: "2026-10-30",
+    startMinute: 10,
+    endMinute: 20,
+    actors: [],
+  } as any);
   assert.equal(
     arrangementActivityAt(fixture.state, new Date("2026-10-29T23:55:00.000Z")),
     Date.parse("2026-10-30T00:10:00.000Z"),
@@ -432,7 +868,7 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
     raw = proposal(grant);
   assert.throws(() => readNarrativeDevelopment({ ...raw, owners: ["player"] }, grant), /Unsupported/);
   assert.throws(
-    () => readNarrativeDevelopment({ ...raw, physical: [{ ...raw.physical[0], zoneId: "remote" }] }, grant),
+    () => readNarrativeDevelopment({ ...raw, room: [{ text: "Change elsewhere.", replace: "remote" }] }, grant),
     /not admitted/,
   );
   assert.throws(
@@ -452,7 +888,9 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
   fixture.state.narrativeConsequence = "moderate";
   const dramatic = readNarrativeDevelopment({ ...raw, severity: "dramatic" }, grant);
   assert.throws(() => applyNarrativeDevelopment(fixture.state, grant, dramatic), /Consequence was lowered/);
-  fixture.zone.state.revision++;
+  fixture.state.narrative!.claims = [];
+  const newer = admitted(fixture, "world:new-room-head");
+  applyNarrativeDevelopment(fixture.state, newer, proposal(newer));
   assert.throws(
     () => applyNarrativeDevelopment(fixture.state, grant, readNarrativeDevelopment(raw, grant)),
     /Zone changed/,
@@ -463,8 +901,13 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
     grant = admitted(fixture),
     raw = proposal(grant);
   raw.conditions = [];
-  raw.physical = [];
-  const weather = { description: "A brief hard rain.", endsAt: "2026-10-30T01:00:00.000Z", supersedes: null };
+  raw.room = [];
+  const weather = { description: "heavy rain", endsAt: "2026-10-30T01:00:00.000Z", supersedes: null };
+  assert.throws(
+    () =>
+      readNarrativeDevelopment({ ...raw, weather: { ...weather, description: "Rain on the hidden letter." } }, grant),
+    /supplied weather/,
+  );
   applyNarrativeDevelopment(fixture.state, grant, readNarrativeDevelopment({ ...raw, weather }, grant));
   const moment = (instant: string, environment = fixture.state.narrative) =>
     deriveVillageMoment({
@@ -504,7 +947,14 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
 {
   const fixture = world();
   fixture.state.returnCatchup = { capture: captureReturnContext(fixture.state, new Date(start)) };
-  fixture.state.memories.revision++;
+  const changed = structuredClone(fixture.state);
+  changed.continuity.revision++;
+  discoverReturnBatch(changed, new Date("2026-10-29T20:00:00.000Z"), "changed-absence");
+  assert.deepEqual(
+    changed.returnCatchup!.batch!.opportunities,
+    [],
+    "A changed Room collection cannot stand in for the departure snapshot.",
+  );
   discoverReturnBatch(fixture.state, new Date("2026-10-29T20:00:00.000Z"), "absence");
   const batch = fixture.state.returnCatchup!.batch!;
   assert.equal(batch.opportunities!.length, 6);
@@ -578,24 +1028,19 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
   try {
     const repository = createVillageRepository(() => f.documents),
       fixture = world();
-    fixture.state.villagers = wishWorld().villagers.slice(0, 1);
-    fixture.state.villagers[0].wishes = [fixtureWish({ wish: "Repair the harbor sign" })];
-    await repository.mutateAuthority((state) => Object.assign(state, fixture.state), { wishes: true, memories: true });
+    await repository.mutateAuthority((state) => Object.assign(state, fixture.state), { memories: true });
     await repository.mutateAuthority(
       (state) => {
         state.returnCatchup = { capture: captureReturnContext(state, new Date(start)) };
         discoverReturnBatch(state, new Date("2026-10-29T20:00:00.000Z"), "stored-absence");
         state.returnCatchup!.batch!.status = "running";
+        state.returnCatchup!.batch!.records![0].status = "queued";
       },
-      { wishes: true, memories: true },
+      { memories: true },
     );
-    const raw = await repository.readAuthority();
-    assert.throws(() => raw.returnCatchup!.capture!.world.villagers[0].wishes, /Wishes were not loaded/);
-    const loaded = await repository.readAuthority({ wishes: true });
+    const loaded = await repository.readAuthority({ memories: true });
     let queued: any;
     const service = createNarrative({
-      relationshipIdentity: fixtureRelationshipIdentity,
-      wishIdentity: fixtureWishIdentity,
       read: (options) => repository.readAuthority(options),
       mutate: (update) => repository.mutateAuthority(update),
       socialSnapshot: async () => {
@@ -603,7 +1048,7 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
       },
       resident: async () => {},
       queue: async (job) => {
-        queued = job;
+        queued = structuredClone(job);
       },
       job: async () => null,
       models: (() => {
@@ -621,8 +1066,11 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
     assert.equal(
       queued.kind,
       "world-development",
-      "Stored departure Wishes are loaded before validating world catch-up.",
+      "Stored departure Room continuity is loaded before validating World catch-up.",
     );
+    assert.equal(service.handler.valid(loaded, queued.input), true);
+    loaded.returnCatchup!.batch!.opportunities![0].facts.push("A different saved opportunity.");
+    assert.equal(service.handler.valid(loaded, queued.input), false);
   } finally {
     f.release();
     f.gate.dispose();
@@ -634,8 +1082,6 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
     residentReads = 0;
   let answers: unknown[] = [];
   const service = createNarrative({
-    relationshipIdentity: fixtureRelationshipIdentity,
-    wishIdentity: fixtureWishIdentity,
     read: async () => fixture.state,
     mutate: async (update) => {
       update(fixture.state);

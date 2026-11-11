@@ -32,11 +32,10 @@ export function sameSceneRoutine(village: VillageState, scene: VenueScene, actor
 
 /** Do not invent an NPC encounter in a resident's scheduled Zone while evidenced movement puts them elsewhere. */
 export function liveSceneEncounterConflicts(village: VillageState, scene: VenueScene | null, now: Date): Set<string> {
-  if (scene?.liveSceneVersion !== 1 || scene.status === "closed" || scene.villageSeed !== village.seed)
-    return new Set();
+  if (!scene || scene.status === "closed" || scene.villageSeed !== village.seed) return new Set();
   const at = new ZonedDate(now, village.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
   const scheduled = villagePresence(village, at.getHours() * 60 + at.getMinutes(), at);
-  const positions = sceneAccessContext(scene, village).positions ?? {};
+  const positions = sceneAccessContext(scene).positions ?? {};
   const moved = village.villagers
     .filter(
       (row) =>
@@ -80,7 +79,6 @@ export function captureSceneAttendance(
         resolveVenueZone(venue, position.zoneId ?? "") ??
         chooseAgendaZone(venue, villager.characterId, block?.activity, block?.zoneId, village, {
           at: now,
-          relationships: village.relationshipContext,
         });
       return [
         {
@@ -113,7 +111,7 @@ export function sceneZoneOccupants(session: VenueScene, venue: VillageVenue, zon
 export function accessExits(session: VenueScene, village: VillageState, venue: VillageVenue) {
   village = sceneAccessState(village, session);
   venue = sceneLayoutVenue(venue, session);
-  const context = sceneAccessContext(session, village),
+  const context = sceneAccessContext(session, undefined, village.timeZone),
     positions = { ...context.positions };
   const exits: { actor: string; from: string; to: string; destinationVenueId?: string }[] = [];
   const departures = new Map<string, number>();
@@ -149,7 +147,7 @@ export function accessExits(session: VenueScene, village: VillageState, venue: V
               unavailable: zoneClosed(village, venue, target),
               environment: village.narrative,
             }).allowed &&
-            !!contactPath(village, venue, from, target.id, actor, session),
+            !!contactPath(village, venue, from, target.id, actor, session, context.at),
         )?.id ?? "";
       if (!to && actor === "player") continue;
       let destinationVenueId: string | undefined;

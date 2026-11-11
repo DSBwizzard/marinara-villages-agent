@@ -155,8 +155,8 @@ async function checkMapPlacement(width, activeScene = false) {
     const composer = page.getByRole("textbox", { name: "Message at The Mill", exact: true });
     await expect(composer).toHaveValue("An unsent Scene draft.");
     assert(await composer.evaluate((node) => node === window.retainedComposer), "the original Scene stays mounted");
-    await page.getByRole("button", { name: "Mode: Say / Do. Choose mode" }).click();
-    await page.getByRole("menuitemradio", { name: "Move", exact: true }).click();
+    await page.getByRole("button", { name: "Venue actions" }).click();
+    await page.getByRole("menuitem", { name: "Move", exact: true }).click();
     await expect(page.getByRole("combobox", { name: "Move to Zone" }).locator('option[value="work"]')).toHaveText(
       "Captured workshop",
     );

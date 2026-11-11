@@ -736,11 +736,13 @@ export function ProjectsPanel({
                   selectedId={selectedZones[workspace.key] ?? "exterior"}
                   onSelect={(id) => setZones((current) => ({ ...current, [workspace.key]: id }))}
                   zones={draft.zones}
-                  renovation={project.kind === "renovation"}
+                  renovation={project.kind !== "new-venue"}
                   editable={editable}
                   busy={draft.busy}
                   onVenue={patchVenue}
                   onZones={workspace.field("zones")}
+                  roomEdits={draft.roomEdits}
+                  onRoomEdits={workspace.field("roomEdits")}
                   onUpload={(file, id) => void upload(file, id)}
                 />
               ) : null}
@@ -751,9 +753,9 @@ export function ProjectsPanel({
                     disabled={!editable || draft.busy}
                     pageSize={detailPageSize}
                     compact={mobile}
-                    editableIds={project.kind === "renovation" ? draft.zones.map((zone) => zone.id) : undefined}
+                    editableIds={project.kind !== "new-venue" ? draft.zones.map((zone) => zone.id) : undefined}
                     onChange={(rows) =>
-                      project.kind === "renovation"
+                      project.kind !== "new-venue"
                         ? workspace.field("zones")(
                             draft.zones.map((zone) => ({
                               ...zone,

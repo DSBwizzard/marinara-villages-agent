@@ -1,42 +1,22 @@
 import { useEffect, useId, useRef, useState } from "react";
-import type { KnownWish, SocialWish } from "../../../shared/contracts/wishes.js";
+import type { KnownWish } from "../../../shared/contracts/wishes.js";
 import { useVillageActivity } from "../../shared/activity.js";
 import { invalidatesRead, VILLAGE_ACCESS_DENIED } from "../../shared/api.js";
 import { WISH_JOURNAL_STYLES } from "./wish-journal-styles.js";
 export type { KnownWish } from "../../../shared/contracts/wishes.js";
-type View = { profiles: { characterId: string; knownWishes?: KnownWish[] }[] };
+type View = { wishes: KnownWish[] };
 type Request = <T>(path: string, options?: RequestInit) => Promise<T>;
 const timestamp = (at: string) => (
   <time dateTime={at}>{new Date(at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</time>
 );
-const statuses = { open: "Open", fulfilled: "Fulfilled", withdrawn: "Withdrawn" };
+const statuses = { open: "Open", fulfilled: "Fulfilled", withdrawn: "Withdrawn", ended: "Ended" };
 const WISHES_PER_PAGE = 6;
-const attentionLabels = { background: "In the background", foreground: "On their mind" };
 const sectionLabels: Record<string, string> = {
   wish: "Wish",
+  reason: "Why it matters",
   attention: "Attention",
   approach: "Approach",
-  conditions: "Conditions",
   history: "History",
-};
-const historyLabels: Record<string, string> = {
-  create: "Wish formed",
-  reveal: "Shared",
-  clarify: "Clarified",
-  approach: "Approach changed",
-  attention: "Attention changed",
-  progress: "Experience recorded",
-  fulfilled: "Fulfilled",
-  withdrawn: "Withdrawn",
-  reflection: "Reconsidered",
-  repair: "Corrected",
-};
-const origins = {
-  preparation: "At founding",
-  scene: "Conversation",
-  encounter: "Resident interaction",
-  mail: "Letter",
-  reflection: "Private reflection",
 };
 type Entry = {
   id: string;
@@ -44,73 +24,27 @@ type Entry = {
   at: string;
   status?: KnownWish["status"];
   known?: KnownWish;
-  privateWish?: SocialWish;
+  privateWish?: KnownWish;
 };
-function PrivateWishDetails({ wish, section }: { wish: SocialWish; section: string }) {
-  const history = [...(wish.history ?? [])];
-  if (!history.some((event) => event.kind === "create"))
-    history.unshift({
-      id: wish.id + ":formed",
-      at: wish.addedAt,
-      kind: "create",
-      text: wish.origin ? origins[wish.origin.kind] : "",
-      sourceId: "",
-      lineIds: [],
-    });
-  history.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+function WishDetails({ wish, section }: { wish: KnownWish; section: string }) {
+  const details = wish.details?.filter((detail) => detail.kind === section) ?? [];
   return (
-    <>
+    <section className="villages-wish-section" aria-label={sectionLabels[section] ?? section}>
       {section === "wish" ? (
-        <section className="villages-wish-section" aria-label="Wish summary">
-          <h4>Desired outcome</h4>
-          <p>{wish.wish}</p>
-          <h4>Why it matters</h4>
-          <p>{wish.reason}</p>
-        </section>
-      ) : section === "attention" ? (
-        <section className="villages-wish-section" aria-label="Attention">
-          <h4>Attention</h4>
-          <strong>{attentionLabels[wish.attention.state]}</strong>
-          <p>{wish.attention.reason}</p>
-        </section>
-      ) : section === "approach" ? (
-        <section className="villages-wish-section" aria-label="Approach">
-          <h4>Approach</h4>
-          <p>{wish.approach || "None chosen."}</p>
-        </section>
-      ) : section === "conditions" ? (
-        <section className="villages-wish-section" aria-label="Conditions">
-          <h4>Conditions</h4>
-          {wish.conditions?.length ? (
-            <ul>
-              {wish.conditions.map((condition) => (
-                <li key={condition.id}>
-                  <blockquote>{condition.quote}</blockquote>
-                  {timestamp(condition.at)}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p>None expressed.</p>
-          )}
-        </section>
+        <p>{wish.text}</p>
+      ) : section === "history" ? (
+        <ol className="villages-wish-timeline">
+          {wish.facts.map((fact) => (
+            <li key={fact.id}>
+              {timestamp(fact.at)}
+              <p>{fact.text}</p>
+            </li>
+          ))}
+        </ol>
       ) : (
-        <section className="villages-wish-section" aria-label="Wish history">
-          <h4>History</h4>
-          <ol className="villages-wish-timeline">
-            {history.map((event) => (
-              <li key={event.id}>
-                <div className="villages-wish-event">
-                  <strong>{historyLabels[event.kind] ?? "Recorded"}</strong>
-                  {timestamp(event.at)}
-                </div>
-                <p>{event.text}</p>
-              </li>
-            ))}
-          </ol>
-        </section>
+        details.map((detail) => <p key={detail.id}>{detail.text}</p>)
       )}
-    </>
+    </section>
   );
 }
 function WishDetail({
@@ -128,7 +62,11 @@ function WishDetail({
 }) {
   const [section, setSection] = useState("wish");
   const tabId = useId();
-  const sections = entry.privateWish ? ["wish", "attention", "approach", "conditions", "history"] : ["wish", "history"];
+  const sections = [
+    "wish",
+    ...new Set((entry.privateWish ?? entry.known)?.details?.map((detail) => detail.kind) ?? []),
+    "history",
+  ];
   return (
     <section className="villages-wish-detail" aria-label="Wish details" data-wish-id={entry.id} tabIndex={-1}>
       <div className="villages-wish-actions">
@@ -148,7 +86,7 @@ function WishDetail({
         ) : null}
       </div>
       <header>
-        <h3>{entry.title}</h3>
+        <h3>Wish</h3>
         <div className="villages-wish-meta">
           {entry.status ? <span className="villages-wish-status">{statuses[entry.status]}</span> : null}
           {timestamp(entry.at)}
@@ -182,7 +120,7 @@ function WishDetail({
               document.getElementById(`${tabId}-${sections[next]}`)?.focus({ preventScroll: true });
             }}
           >
-            {sectionLabels[name]}
+            {sectionLabels[name] ?? name}
           </button>
         ))}
       </div>
@@ -193,30 +131,7 @@ function WishDetail({
         aria-labelledby={`${tabId}-${section}`}
         tabIndex={0}
       >
-        {entry.privateWish ? (
-          <PrivateWishDetails wish={entry.privateWish} section={section} />
-        ) : section === "wish" ? (
-          <section className="villages-wish-section" aria-label="Wish summary">
-            <h4>Desired outcome</h4>
-            <p>{entry.title}</p>
-          </section>
-        ) : (
-          <section className="villages-wish-section" aria-label="Recorded statements">
-            <h4>History</h4>
-            {entry.known?.facts.length ? (
-              <ol className="villages-wish-timeline">
-                {entry.known.facts.map((fact) => (
-                  <li key={fact.id}>
-                    {timestamp(fact.at)}
-                    <blockquote>{fact.text}</blockquote>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <p>No further statements recorded.</p>
-            )}
-          </section>
-        )}
+        <WishDetails wish={(entry.privateWish ?? entry.known)!} section={section} />
       </div>
     </section>
   );
@@ -226,7 +141,6 @@ export function VillagerWishJournal({
   characterId,
   prefix,
   focusWishId = "",
-  wishes: suppliedWishes,
   onWishes,
   onFollowing,
   inspect = false,
@@ -235,7 +149,6 @@ export function VillagerWishJournal({
   characterId: string;
   prefix: string;
   focusWishId?: string;
-  wishes?: KnownWish[] | null;
   onWishes?: (wishes: KnownWish[]) => void;
   onFollowing?: () => void;
   inspect?: boolean;
@@ -243,9 +156,8 @@ export function VillagerWishJournal({
   const { visible, backgroundRevision, worldScope } = useVillageActivity();
   const identity = JSON.stringify([worldScope, characterId]);
   const [localResult, setWishes] = useState<{ identity: string; wishes: KnownWish[] } | null>(null);
-  const wishes =
-    suppliedWishes === undefined ? (localResult?.identity === identity ? localResult.wishes : null) : suppliedWishes;
-  const [privateResult, setPrivate] = useState<{ identity: string; wishes: SocialWish[] } | null>(null);
+  const wishes = localResult?.identity === identity ? localResult.wishes : null;
+  const [privateResult, setPrivate] = useState<{ identity: string; wishes: KnownWish[] } | null>(null);
   const privateWishes = privateResult?.identity === identity ? privateResult.wishes : null;
   const [selection, setSelection] = useState({ characterId, inspect, id: focusWishId });
   const selectedId = selection.characterId === characterId && selection.inspect === inspect ? selection.id : "";
@@ -269,14 +181,13 @@ export function VillagerWishJournal({
   const root = useRef<HTMLElement>(null);
   const [listPage, setListPage] = useState(0);
   useEffect(() => {
-    if (!visible || inspect || suppliedWishes !== undefined) return;
+    if (!visible || inspect) return;
     const controller = new AbortController();
     const epoch = readEpoch.current;
     setError("");
-    void request<View>("/relationships", { signal: controller.signal })
+    void request<View>(`/villagers/${encodeURIComponent(characterId)}/wishes`, { signal: controller.signal })
       .then((view) => {
-        if (!controller.signal.aborted && epoch === readEpoch.current)
-          setWishes({ identity, wishes: view.profiles.find((p) => p.characterId === characterId)?.knownWishes ?? [] });
+        if (!controller.signal.aborted && epoch === readEpoch.current) setWishes({ identity, wishes: view.wishes });
       })
       .catch((cause) => {
         if (!controller.signal.aborted && epoch === readEpoch.current) {
@@ -285,7 +196,7 @@ export function VillagerWishJournal({
         }
       });
     return () => controller.abort();
-  }, [request, characterId, suppliedWishes, visible, backgroundRevision, inspect, identity]);
+  }, [request, characterId, visible, backgroundRevision, inspect, identity]);
   useEffect(() => {
     if (!inspect) {
       setPrivate(null);
@@ -295,7 +206,7 @@ export function VillagerWishJournal({
     setError("");
     const controller = new AbortController();
     const epoch = readEpoch.current;
-    void request<{ wishes: SocialWish[] }>(`/villagers/${encodeURIComponent(characterId)}/wishes/inspect`, {
+    void request<{ wishes: KnownWish[] }>(`/villagers/${encodeURIComponent(characterId)}/wishes/inspect`, {
       signal: controller.signal,
     })
       .then((view) => {
@@ -354,7 +265,7 @@ export function VillagerWishJournal({
         },
       );
       if (currentIdentity.current !== identity || epoch !== readEpoch.current) return;
-      const next = view.profiles.find((p) => p.characterId === characterId)?.knownWishes ?? [];
+      const next = view.wishes;
       readEpoch.current++;
       setWishes({ identity, wishes: next });
       onWishes?.(next);
@@ -366,9 +277,9 @@ export function VillagerWishJournal({
   };
   const entries: Entry[] | null = inspect
     ? (privateWishes?.map((wish) => ({
-        id: wish.id,
-        title: wish.wish,
-        at: wish.changedAt || wish.addedAt,
+        id: wish.wishId,
+        title: wish.text,
+        at: wish.at,
         status: wish.status,
         privateWish: wish,
       })) ?? null)

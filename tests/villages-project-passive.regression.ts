@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
-import { fixture, renovation } from "./fixtures/villages-projects.fixture.js";
+import {
+  correctProjectFixtureRoom,
+  fixture,
+  renovation,
+  seedObservedProjectRoom,
+} from "./fixtures/villages-projects.fixture.js";
 import {
   reconcileProjectLifecycles,
   PROJECT_DURATION_MS,
@@ -7,6 +12,8 @@ import {
 } from "../packages/villages/src/server/domain/rules/project-lifecycle-rules.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { projectDesignKey } from "../packages/villages/src/server/domain/rules/project-terms.js";
+import { projectRoomEntries } from "../packages/villages/src/server/domain/rules/project-room-edits.js";
+import { observableRoomDescription } from "../packages/villages/src/server/domain/rules/zone-picture.js";
 const f = fixture(),
   now = new Date("2026-10-24T00:00:00Z"),
   id = await f.newProject();
@@ -27,18 +34,17 @@ await f.service.resumeProject(id, f.body(id), resumeAt);
 assert.equal(Date.parse(f.get(id).lifecycle!.workOrder!.completesAt) - resumeAt.getTime(), 18 * 60 * 60_000);
 await f.mutate((state) => reconcileProjectLifecycles(state, new Date(resumeAt.getTime() + 18 * 60 * 60_000)));
 assert.equal(f.get(id).status, "complete");
-const g = fixture(),
-  r = await renovation(g, {
-    zones: g
-      .state()
-      .venues[0].zones!.filter((zone) => zone.kind !== "exterior")
-      .map((zone) => ({ ...zone, description: "A new shared studio." })),
-  });
+const g = fixture();
+await g.mutate((state) => seedObservedProjectRoom(state, state.venues[0], "common", "A shared room."));
+const [common] = projectRoomEntries(g.state(), g.state().venues[0], "common", now.toISOString())!;
+const r = await renovation(g, {
+  roomEdits: [{ zoneId: "common", entryId: common.id, version: common.version, text: "A new shared studio." }],
+});
 await g.agree(r);
 await g.service.startProjectConstruction(r, g.body(r), now);
 const original = structuredClone(g.state().venues);
 await g.mutate((state) => {
-  state.venues[0].zones![1].description = "A newly authored room.";
+  correctProjectFixtureRoom(state, common.id, "A newly authored room.", now.toISOString());
 });
 await g.mutate((state) => reconcileProjectLifecycles(state, new Date(now.getTime() + PROJECT_DURATION_MS)));
 assert.equal(g.get(r).status, "paused");
@@ -48,8 +54,8 @@ assert.equal(
   original[0].residenceCapacity,
   "failed completion applies no partial capacity change",
 );
-assert.equal(g.state().venues[0].zones![1].description, "A newly authored room.");
-await assert.rejects(g.service.resumeProject(r, g.body(r), now), /design changed/);
+assert.equal(observableRoomDescription(g.state(), "cafe", "common", now.toISOString()), "A newly authored room.");
+await assert.rejects(g.service.resumeProject(r, g.body(r), now), /planned Room changed/);
 const h = fixture(),
   cancel = await h.newProject();
 await h.service.startProjectConstruction(cancel, h.body(cancel), now);

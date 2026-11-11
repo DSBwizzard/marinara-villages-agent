@@ -1,5 +1,17 @@
 import assert from "node:assert/strict";
-import { authorSceneFixture, fixtureSceneState } from "./helpers/village-storage.fixture.js";
+import {
+  encodeSceneTranscript,
+  decodeSceneTranscriptSync,
+  readSceneTranscriptHead,
+} from "../packages/villages/src/server/adapters/storage/scene-transcript-pages.js";
+import {
+  encodeSceneSubmissions,
+  decodeSceneSubmissionsSync,
+  readSceneSubmissionHead,
+} from "../packages/villages/src/server/adapters/storage/scene-submission-pages.js";
+import { encodeScenePublicHistory } from "../packages/villages/src/server/adapters/storage/scene-public-history.js";
+import { SCENE_STORAGE_FORMAT } from "../packages/villages/src/server/adapters/storage/scene-history.js";
+import { MEMORY_PAGE_KIND } from "../packages/villages/src/server/adapters/storage/memory-pages.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { createSceneRepository } from "../packages/villages/src/server/adapters/storage/scene-repository.js";
 import {
@@ -29,9 +41,49 @@ const logger = { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {
 function deferred() {
   return Promise.withResolvers<void>();
 }
+function authorSceneFixture(rows: Map<string, any>, scene: ReturnType<typeof coerceSession>) {
+  assert.equal(scene.version, 5);
+  assert.equal(scene.operation, undefined);
+  const transcript = encodeSceneTranscript(scene.lines, scene),
+    submissions = encodeSceneSubmissions(scene.submissions, scene);
+  const publicHistory = encodeScenePublicHistory(scene, transcript.head, submissions.head);
+  for (const [id, data] of [...transcript.pages, ...submissions.pages, ...publicHistory.pages])
+    rows.set(id, {
+      id,
+      packageId: "villages",
+      kind: MEMORY_PAGE_KIND,
+      revision: 1,
+      data,
+      name: "Fixture history",
+      description: "",
+      createdAt: scene.startedAt,
+      updatedAt: scene.startedAt,
+    });
+  const { lines: _lines, submissions: _submissions, ...facts } = scene;
+  return {
+    ...facts,
+    storageFormat: SCENE_STORAGE_FORMAT,
+    transcript: transcript.head,
+    submissionHistory: submissions.head,
+    publicHistory: publicHistory.head,
+  };
+}
+function fixtureSceneState(raw: any, rows: Map<string, any>) {
+  assert.equal(raw.storageFormat, SCENE_STORAGE_FORMAT);
+  const { storageFormat: _format, transcript, submissionHistory, publicHistory: _public, ...facts } = raw;
+  return coerceSession({
+    ...facts,
+    lines: decodeSceneTranscriptSync(readSceneTranscriptHead(transcript, raw), (id) => rows.get(id)?.data ?? null)
+      .lines,
+    submissions: decodeSceneSubmissionsSync(
+      readSceneSubmissionHead(submissionHistory, raw),
+      (id) => rows.get(id)?.data ?? null,
+    ).submissions,
+  });
+}
 function scene(id: string, name: string) {
   return coerceSession({
-    version: 4,
+    version: 5,
     id,
     placeId: "venue",
     placeName: name,

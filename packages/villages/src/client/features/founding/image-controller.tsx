@@ -244,12 +244,11 @@ export function createFoundingGenerateSetupImage(ports: {
         reference: row.pictureReference?.id,
         zone: [...(row.spaces ?? []), ...(row.privateSpaces ?? [])]
           .filter((zone) => zone.id === zoneId)
-          .map(({ id, name, purpose, description, state, pictureReference }) => ({
+          .map(({ id, name, purpose, description, pictureReference }) => ({
             id,
             name,
             purpose,
             description,
-            state,
             reference: pictureReference?.id,
           })),
       });

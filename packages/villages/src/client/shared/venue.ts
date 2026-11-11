@@ -22,7 +22,6 @@ export function venueSpaceFor(
       venueClass,
       description: place.description,
       image: place.presentation.image,
-      state: place.state,
     }
   );
 }

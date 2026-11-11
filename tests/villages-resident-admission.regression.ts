@@ -21,7 +21,7 @@ import { projectVillager } from "../packages/villages/src/server/domain/rules/wo
 import { createResidentCards } from "../packages/villages/src/server/features/residents/resident-card-service.js";
 import { createResidentRoster } from "../packages/villages/src/server/features/residents/resident-roster-service.js";
 import { registerResidentRoutes } from "../packages/villages/src/server/features/residents/routes.js";
-import { privatePreparationKey } from "../packages/villages/src/server/jobs/private-space-service.js";
+import { capturePrivateInterior } from "../packages/villages/src/server/domain/rules/private-interior.js";
 import {
   admissionLoreContext,
   EMPTY_RESIDENT_ADMISSION,
@@ -150,17 +150,17 @@ const zone = {
   state: { updatedAt: "now" },
   preparation: { mode: "initial" },
 } as any;
-const preparationKey = privatePreparationKey(venue, zone, state);
+const preparationKey = capturePrivateInterior(state, venue, zone, state.setupAt).basis;
 assert.ok(!preparationKey.includes("Settled here"), "private recovery keys never embed private notes");
 state.villagers[0].admission.startingSituation = "Owner's revised private context.";
 assert.notEqual(
-  privatePreparationKey(venue, zone, state),
+  capturePrivateInterior(state, venue, zone, state.setupAt).basis,
   preparationKey,
   "the actual room owner fences generation even with a different controller",
 );
-const visualKey = sceneryImageKey(state, venue);
+const visualKey = sceneryImageKey(state, venue, state.setupAt);
 state.worldName = "Another setting";
-assert.notEqual(sceneryImageKey(state, venue), visualKey);
+assert.notEqual(sceneryImageKey(state, venue, state.setupAt), visualKey);
 const requiredNote = "START " + "a".repeat(1200) + " END";
 assert.ok(
   sceneryPrompt(["A room", "A long description ".repeat(300)], ["optional ".repeat(300)], "", [requiredNote]).includes(

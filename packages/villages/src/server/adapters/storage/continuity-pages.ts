@@ -1,0 +1,168 @@
+import type { ContinuityCollection } from "../../domain/models/continuity-model.js";
+import type { EpisodeCollection } from "../../domain/models/episode-model.js";
+import type { PlaceRegistry } from "../../domain/models/places.js";
+import { readContinuity } from "../../domain/decoding/continuity-codec.js";
+import { readEpisodes } from "../../domain/decoding/episode-codec.js";
+import { memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
+import { readPlaceRegistry } from "../../domain/rules/places.js";
+import { assertContinuityRetention } from "../../domain/rules/continuity-retention.js";
+import type { MailboxState } from "../../domain/models/social-mail.js";
+import { readMailboxState, assertMailboxRetention } from "../../domain/decoding/mailbox-codec.js";
+import {
+  createHistoryPageWriter,
+  createHistoryPageReader,
+  type HistoryPageRef,
+  type HistoryPageTree,
+  type MemoryPageData,
+  type createMemoryPageTracer,
+} from "./memory-pages.js";
+
+export type ContinuityPayload = {
+  continuity: ContinuityCollection;
+  episodes: EpisodeCollection;
+  worldPlaces: PlaceRegistry;
+  mailbox: MailboxState;
+};
+const trees = [
+  "records",
+  "versions",
+  "receipts",
+  "episodes",
+  "places",
+  "npcs",
+  "placeReceipts",
+  "placeOperations",
+  "mail",
+] as const;
+type TreeName = (typeof trees)[number];
+export type ContinuityPageLayout = Record<TreeName, HistoryPageTree>;
+export type ContinuityPageManifest = Record<TreeName, HistoryPageRef | null> & {
+  format: 1;
+  revision: number;
+  episodeRevision: number;
+  placeRevision: number;
+  mailRevision: number;
+};
+
+/** The existing immutable history pages own bulk continuity; the Village root owns their one manifest. */
+export function encodeContinuityPages(value: ContinuityPayload, world: string, previous?: ContinuityPageLayout) {
+  const writer = createHistoryPageWriter(world),
+    places = value.worldPlaces;
+  const rows: Record<TreeName, [string, unknown][]> = {
+    records: value.continuity.records.map((row) => [row.id, row]),
+    versions: value.continuity.versions.map((row) => [row.id, row]),
+    receipts: Object.entries(value.continuity.receipts),
+    episodes: value.episodes.records.map((row) => [row.id, row]),
+    places: Object.entries(places.places),
+    npcs: Object.entries(places.npcs),
+    placeReceipts: Object.entries(places.receipts),
+    placeOperations: Object.entries(places.operations),
+    mail: Object.entries(value.mailbox.messages),
+  };
+  const layout = Object.fromEntries(
+    trees.map((key) => [key, writer.tree(rows[key], previous?.[key], key === "episodes" || key === "mail" ? 1 : 64)]),
+  ) as ContinuityPageLayout;
+  const manifest = {
+    format: 1,
+    revision: value.continuity.revision,
+    episodeRevision: value.episodes.revision,
+    placeRevision: places.revision,
+    mailRevision: value.mailbox.revision,
+    ...Object.fromEntries(trees.map((key) => [key, layout[key].root])),
+  } as ContinuityPageManifest;
+  return { manifest, layout, pages: writer.pages, serializedBytes: writer.serializedBytes };
+}
+
+export function readContinuityPageManifest(raw: unknown): ContinuityPageManifest {
+  memoryObject(raw, ["format", "revision", "episodeRevision", "placeRevision", "mailRevision", ...trees]);
+  memoryRequire(
+    raw.format === 1 &&
+      [raw.revision, raw.episodeRevision, raw.placeRevision, raw.mailRevision].every(
+        (value) => Number.isSafeInteger(value) && value >= 0,
+      ),
+    "unsupported continuity history directory",
+  );
+  return raw as ContinuityPageManifest;
+}
+
+export async function traceContinuityPages(
+  raw: unknown,
+  world: string,
+  tracer: ReturnType<typeof createMemoryPageTracer>,
+) {
+  const manifest = readContinuityPageManifest(raw);
+  return tracer.traceTrees(
+    trees.map((key) => manifest[key]),
+    world,
+  );
+}
+
+function* decoder(manifest: unknown, world: string, seed: string) {
+  const raw = readContinuityPageManifest(manifest);
+  const reader = createHistoryPageReader(world),
+    layout = {} as ContinuityPageLayout;
+  for (const key of trees)
+    layout[key] = yield* reader.tree(
+      raw[key],
+      key === "episodes" ? { count: raw.episodeRevision, items: 1 } : undefined,
+    );
+  const objects = (key: "records" | "versions" | "episodes") =>
+    reader.rows(layout[key]).map(([id, row]) => {
+      memoryRequire(
+        row && typeof row === "object" && (row as { id?: unknown }).id === id,
+        "continuity history identity changed",
+      );
+      return row;
+    });
+  const value: ContinuityPayload = {
+    continuity: readContinuity(
+      {
+        format: 1,
+        revision: raw.revision,
+        records: objects("records"),
+        versions: objects("versions"),
+        receipts: Object.fromEntries(reader.rows(layout.receipts)),
+      },
+      seed,
+    ),
+    episodes: readEpisodes({ format: 1, revision: raw.episodeRevision, records: objects("episodes") }, seed),
+    worldPlaces: readPlaceRegistry({
+      revision: raw.placeRevision,
+      places: Object.fromEntries(reader.rows(layout.places)),
+      npcs: Object.fromEntries(reader.rows(layout.npcs)),
+      receipts: Object.fromEntries(reader.rows(layout.placeReceipts)),
+      operations: Object.fromEntries(reader.rows(layout.placeOperations)),
+    }),
+    mailbox: readMailboxState(
+      { format: 1, revision: raw.mailRevision, messages: Object.fromEntries(reader.rows(layout.mail)) },
+      seed,
+    ),
+  };
+  assertContinuityRetention(value.continuity, value.episodes);
+  assertMailboxRetention(value.mailbox, value.episodes, seed);
+  return { value, layout, pageIds: reader.pageIds };
+}
+
+export async function decodeContinuityPages(
+  raw: unknown,
+  world: string,
+  seed: string,
+  get: (id: string) => Promise<MemoryPageData | null>,
+) {
+  const read = decoder(raw, world, seed);
+  let next = read.next();
+  while (next.done === false) next = read.next(await get(next.value));
+  return next.value;
+}
+
+export function decodeContinuityPagesSync(
+  raw: unknown,
+  world: string,
+  seed: string,
+  get: (id: string) => MemoryPageData | null,
+) {
+  const read = decoder(raw, world, seed);
+  let next = read.next();
+  while (next.done === false) next = read.next(get(next.value));
+  return next.value;
+}

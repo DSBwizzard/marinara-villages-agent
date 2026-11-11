@@ -2,12 +2,16 @@ import assert from "node:assert/strict";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { assertCurrentSceneGeneration } from "../packages/villages/src/server/domain/rules/scene-writing-contract.js";
 import { createSceneWriting } from "../packages/villages/src/server/features/scenes/writing-service.js";
+import { readMessage } from "../packages/villages/src/server/adapters/http/route-support.js";
+
+const original = "  *I privately wonder.* I ask, ‘Why?’\n  🪑  ";
+assert.equal(readMessage(original), original);
+for (const invalid of [null, undefined, 42, " \n\t ", "a".repeat(4001)]) assert.throws(() => readMessage(invalid));
 
 const scene = coerceSession({
-  version: 4,
+  version: 5,
   id: "current",
   villageSeed: "current-village",
-  semanticVersion: 2,
   status: "active",
   startedAt: "2026-11-01T12:00:00.000Z",
   participants: [],
@@ -15,12 +19,9 @@ const scene = coerceSession({
   submissions: [],
 });
 assertCurrentSceneGeneration(scene);
-for (const source of [
-  { ...scene, villageSeed: undefined },
-  { ...scene, semanticVersion: undefined },
-])
+for (const source of [{ ...scene, villageSeed: undefined }])
   assert.throws(() => assertCurrentSceneGeneration(source as any), /Unsupported Scene format/);
-for (const version of [undefined, 1, 2, 3, "4", 5]) {
+for (const version of [undefined, 1, 2, 3, 4, "5", 6]) {
   const source = { ...structuredClone(scene), version };
   const retained = { content: "Exact paid response", finishReason: "stop" };
   const before = JSON.stringify({ source, retained });
@@ -33,18 +34,13 @@ for (const version of [undefined, 1, 2, 3, "4", 5]) {
   const writer = createSceneWriting({
     venueSavedCheckpoint: () => retained,
     measurePipeline: async (_label: unknown, _metadata: unknown, work: () => unknown) => work(),
-    sceneNarrative: { retire: forbidden },
     rejectVenueCompletion: forbidden,
     readVillageState: forbidden,
     completeWithRoom: forbidden,
-    semantic: { exchange: forbidden },
   } as any);
+  await assert.rejects(writer.generate(source as any, "A reply", "chat"), (error: any) => error.statusCode === 409);
   await assert.rejects(
-    writer.generate(source as any, "A reply", "chat", "", null),
-    (error: any) => error.statusCode === 409,
-  );
-  await assert.rejects(
-    writer.prepareVenueTurnMessages(source as any, "A reply", "chat", "", null),
+    writer.prepareVenueTurnMessages(source as any, "A reply", "chat"),
     (error: any) => error.statusCode === 409,
   );
   assert.equal(hostWork, 0, "Unsupported Scenes cannot purchase or replace retained responses");

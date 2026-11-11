@@ -165,6 +165,15 @@ const WEATHER_BY_SEASON: Record<VillageSeason, readonly string[]> = {
   autumn: ["overcast", "drizzle", "cold fog", "windy", "clear"],
   winter: ["overcast", "snow", "sleet", "hard frost", "clear"],
 };
+export const WORLD_WEATHER = [
+  ...new Set(Object.values(WEATHER_BY_SEASON).flat()),
+  "heavy rain",
+  "thunderstorm",
+  "strong winds",
+  "hail",
+  "freezing rain",
+  "heavy snow",
+];
 
 const MS_PER_DAY = 86_400_000;
 

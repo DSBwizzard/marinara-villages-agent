@@ -5,7 +5,6 @@ export type SceneErrorReportItem = {
   id: string;
   title: string;
   message: string;
-  domain?: string;
   diagnosticId?: string;
   fields?: { label: string; value: string }[];
 };
@@ -25,7 +24,7 @@ export function sceneErrorReport(
     ...shared.map((field) => `${field.label}: ${field.value}`),
     ...items.map((item, index) =>
       [
-        `\n${index + 1}. ${sceneErrorMessage(item.message, item.domain)}`,
+        `\n${index + 1}. ${sceneErrorMessage(item.message)}`,
         `Source: ${item.title}`,
         `Original error: ${item.message}`,
         ...(item.fields ?? [])

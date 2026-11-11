@@ -78,17 +78,14 @@ const plan = parseFoundingVenueDraft({ venues: [raw] }, source, ["new-kitchen"],
 const drafted = applyFoundingVenueDraft(home, plan);
 assert.deepEqual(home, original);
 assert.equal(drafted.dayNight, true);
-assert.equal(drafted.dayNightManual, false);
 assert.equal(drafted.spaces!.at(-1)!.dayNight, false);
 const persisted = readFoundingVenueDraftSource(drafted);
-assert.equal(persisted.zones!.find((z) => z.id === "exterior")!.dayNightManual, false);
+assert.equal(persisted.zones!.find((z) => z.id === "exterior")!.dayNight, true);
 assert.equal(persisted.zones!.find((z) => z.id === "new-kitchen")!.dayNight, false);
-const manual = structuredClone(home);
-manual.dayNight = false;
-manual.dayNightManual = true;
-manual.spaces![0].dayNight = false;
-manual.spaces![0].dayNightManual = true;
-const held = applyFoundingVenueDraft(manual, plan);
+const previous = structuredClone(home);
+previous.dayNight = false;
+previous.spaces![0].dayNight = false;
+const held = applyFoundingVenueDraft(previous, plan);
 assert.equal(held.dayNight, true);
 assert.equal(held.spaces![0].dayNight, true);
 const same = applyFoundingVenueDraft(drafted, {

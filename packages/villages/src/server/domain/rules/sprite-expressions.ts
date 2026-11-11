@@ -1,14 +1,15 @@
 import {
   currentStaging,
-  readStagingCues,
+  lineStagingCues,
+  retainStagingAttention,
   stagingTranscriptEvents,
-  type StagingCue,
   type StagingLine,
   type StagingState,
 } from "../../../shared/helpers/scene-staging.js";
-import type { VenueScene } from "../models/scene-model.js";
+import type { VenueReplyLine, VenueScene } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
 import type { VillageResidentSprite } from "../models/world.js";
+import { memoryHash } from "./memory-integrity.js";
 
 type SpriteEntry = VillageResidentSprite["expressions"][number];
 type SpriteCatalog = {
@@ -20,68 +21,74 @@ export type SpriteSelectionContext = {
   variants: boolean;
   sprites: Record<string, SpriteCatalog>;
 };
-export type SceneSpritePresentation = { segment: number; staging: StagingCue[] }[];
-
-/** Freeze selection inputs with the existing System request, without artwork or descriptive notes. */
+/** Freeze selection inputs with the Narration request, without artwork or descriptive notes. */
 export function sceneSpriteSelection(scene: VenueScene, village: VillageState): SpriteSelectionContext {
   const ids = scene.activeIds;
+  const sprites = Object.fromEntries(
+    ids.flatMap((id) => {
+      const sprite = village.villagers.find((person) => person.characterId === id)?.sprite;
+      if (!sprite) return [];
+      const { defaultExpressionId, expressions } = sprite;
+      return [
+        [
+          id,
+          {
+            defaultExpressionId,
+            expressions: expressions.map(({ expressionId, name, spriteName, view }) => ({
+              expressionId,
+              name,
+              spriteName,
+              view,
+            })),
+          },
+        ] as const,
+      ];
+    }),
+  );
   return {
-    state: currentStaging(
-      ids,
-      stagingTranscriptEvents(
-        (scene.lines ?? []).filter((line) => !scene.zoneId || !line.zoneId || line.zoneId === scene.zoneId),
-        scene.submissions ?? [],
-      ),
-    ),
+    state: Object.keys(sprites).length
+      ? currentStaging(ids, [
+          ...stagingTranscriptEvents(
+            (scene.lines ?? []).filter(
+              (line) =>
+                !line.contactHidden &&
+                !line.contactReport &&
+                (!scene.zoneId || !line.zoneId || line.zoneId === scene.zoneId),
+            ),
+            scene.submissions ?? [],
+          ),
+          { afterIds: ids },
+        ])
+      : {},
     variants: village.spriteVariantsEnabled !== false,
-    sprites: Object.fromEntries(
-      ids.flatMap((id) => {
-        const sprite = village.villagers.find((person) => person.characterId === id)?.sprite;
-        return sprite
-          ? [
-              [
-                id,
-                {
-                  defaultExpressionId: sprite.defaultExpressionId,
-                  expressions: sprite.expressions.map(({ expressionId, name, spriteName, view }) => ({
-                    expressionId,
-                    name,
-                    spriteName,
-                    view,
-                  })),
-                },
-              ],
-            ]
-          : [];
-      }),
-    ),
+    sprites,
   };
 }
 
-/** Presentation is optional; malformed cues never invalidate purchased Scene prose. */
-export function readSceneSpritePresentation(
-  value: unknown,
-  context: SpriteSelectionContext,
-  segments: number,
-): SceneSpritePresentation {
-  if (!Array.isArray(value)) return [];
-  const rows = new Map<number, StagingCue[]>();
-  for (const row of value.slice(0, 24)) {
-    if (!row || !Number.isSafeInteger(row.segment) || row.segment < 0 || row.segment >= segments) continue;
-    const cues = readStagingCues(row.staging, Object.keys(context.state), (id, requested) =>
-      validateSpriteExpression(context.sprites[id], requested, context.variants),
-    ).flatMap(({ position: _position, ...cue }) => (cue.expression || cue.look ? [cue] : []));
-    rows.set(row.segment, readStagingCues([...(rows.get(row.segment) ?? []), ...cues], Object.keys(context.state)));
-  }
-  const ordered = [...rows].sort(([a], [b]) => a - b).map(([segment, staging]) => ({ segment, staging }));
+/** Only visible cues can change playback. The admitted Episode gives each choice a stable roll. */
+export function settleSceneSpriteCues(
+  lines: VenueReplyLine[],
+  context: SpriteSelectionContext | undefined,
+  episodeId: string,
+) {
+  const visible = lines.map((line) => {
+    if (line.contactHidden || line.contactReport) {
+      line.staging = [];
+      return { speakerId: "", physicalIdsAfter: line.physicalIdsAfter };
+    }
+    line.staging = (line.staging ?? []).flatMap(({ position: _position, ...cue }) =>
+      cue.expression || cue.look ? [cue] : [],
+    );
+    return line;
+  });
   resolveSceneSpriteExpressions(
-    ordered.map((row) => ({ speakerId: "", staging: row.staging })),
-    structuredClone(context.state),
-    (id) => context.sprites[id],
-    context.variants,
-    Math.random,
+    visible,
+    structuredClone(context?.state ?? {}),
+    (id) => (context && Object.hasOwn(context.sprites, id) ? context.sprites[id] : undefined),
+    context?.variants === true,
+    (index, id, expression) =>
+      Number.parseInt(memoryHash([episodeId, index, id, expression]).slice(0, 8), 16) / 0x1_0000_0000,
   );
-  return ordered.filter((row) => row.staging.length);
 }
 
 /** Engine convention: two or more suffixed names share the prefix before the first underscore.
@@ -168,16 +175,17 @@ export function validateSpriteExpression(
 
 /** Resolve new cues in playback order; the caller persists only concrete expression IDs. */
 export function resolveSceneSpriteExpressions(
-  lines: StagingLine[],
+  lines: (StagingLine & { physicalIdsAfter?: readonly string[] })[],
   currentStage: StagingState,
   spriteFor: (characterId: string) => SpriteCatalog | null | undefined,
   variants: boolean,
-  random: () => number,
+  random: (index: number, characterId: string, expression: string) => number,
 ) {
-  for (const line of lines) {
+  for (const [index, line] of lines.entries()) {
+    if (line.physicalIdsAfter) currentStage = retainStagingAttention(currentStage, line.physicalIdsAfter);
     const cues = line.staging ?? [];
-    for (const cue of cues)
-      if (cue.look && currentStage[cue.characterId]) currentStage[cue.characterId].look = cue.look;
+    for (const cue of lineStagingCues(line))
+      if (cue.look && Object.hasOwn(currentStage, cue.characterId)) currentStage[cue.characterId].look = cue.look;
     const choices = new Map<string, string>();
     const resolveExpression = (characterId: string, requested: string) => {
       const key = characterId + ":" + requested;
@@ -188,8 +196,8 @@ export function resolveSceneSpriteExpressions(
             spriteFor(characterId),
             requested,
             variants,
-            (currentStage[characterId]?.look.target ?? "player") === "player" ? "front" : "side",
-            random(),
+            (currentStage[characterId]?.look?.target ?? "player") === "player" ? "front" : "side",
+            random(index, characterId, requested),
           ),
         );
       return choices.get(key)!;

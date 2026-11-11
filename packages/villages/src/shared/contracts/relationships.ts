@@ -1,15 +1,19 @@
+import type { MemoryListEntry, MemoryPerson } from "./village.js";
+
+export type RelationshipEntry = MemoryListEntry & {
+  current: boolean;
+  owner?: MemoryPerson;
+  parentId?: string;
+  facet?: "reason" | "attention" | "approach" | "connection" | "stance" | "expectation" | "concern" | "boundary";
+  closed?: "fulfilled" | "withdrawn" | "ended";
+  offer?: { state: "offered" | "accepted" | "refused" | "withdrawn"; participants: MemoryPerson[] };
+};
 /** Ordinary notebook data contains only information available to the player. */
 export type RelationshipProfile = {
   characterId: string;
   name: string;
-  summary: string;
-  knownAt: string;
-  routine: string[];
-  knownPlaces?: { kind: "home" | "work"; text: string; at: string }[];
-  interests: string;
-  wishes: string[];
+  entries: RelationshipEntry[];
   knownWishes: import("./wishes.js").KnownWish[];
-  learned: { text: string; kind: string; at: string; aboutName: string }[];
   access: { venueId: string; zoneId: string; active: boolean; name: string }[];
 };
 export type RelationshipView = {
@@ -18,7 +22,6 @@ export type RelationshipView = {
 };
 /** Explicit Inspect response. Never combine this with the ordinary notebook endpoint. */
 export type RelationshipInspectView = {
-  recovery?: { id: string; message: string; reinterpretRequired: boolean; canSkip?: boolean }[];
   processing: {
     id: string;
     kind: string;
@@ -34,26 +37,7 @@ export type RelationshipInspectView = {
     characterId: string;
     name: string;
     initialized: boolean;
-    intentions: { text: string; reason: string; targets: string[]; status: string }[];
-    perspectives: {
-      aboutName: string;
-      connection: string;
-      stance: string;
-      expectations: string[];
-      concerns: string[];
-      updatedAt: string;
-      revision: number;
-      records: {
-        kind: string;
-        text: string;
-        status: string;
-        currentStatus?: string;
-        participants: string[];
-        dueAt?: string;
-      }[];
-      experiences: { reason: string; at: string; sourceId: string; evidence: { speaker: string; text: string }[] }[];
-      technical: { fromId: string; toId: string; receiptIds: string[] };
-    }[];
+    entries: (RelationshipEntry & { support: { id: string; text: string; speaker?: MemoryPerson }[] })[];
   }[];
   conflicts: { question: string; residents: string[]; sourceIds: string[]; actorIds: string[]; sourceHash: string }[];
 };

@@ -284,7 +284,6 @@ await withBrowser(browser, async () => {
     session = {
       version: 2,
       id: "scene-map",
-      memoryMode: "live",
       sceneRevision: 1,
       placeId: "mill",
       placeName: "Lobby",

@@ -1,7 +1,6 @@
-import { captureZoneObservation } from "../rules/zone-observation.js";
 import { readResidenceAgreement } from "../rules/residence-agreement.js";
 import { readLoreUse } from "../../../shared/helpers/lore.js";
-import { emptyPlaceRegistry, readPlaceRegistry } from "../rules/places.js";
+import { emptyPlaceRegistry, findLocation, readPlaceRegistry } from "../rules/places.js";
 import { MAX_IDENTITY_DESCRIPTION_LENGTH } from "../../../shared/contracts/resident-description.js";
 import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
 import {
@@ -13,7 +12,7 @@ import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
 import { readZoneLayout } from "../../../shared/helpers/zone-layout.js";
 import { validTimeZone } from "../../../shared/helpers/zoned-date.js";
 import { RETURN_CATCHUP_HISTORY_LIMIT } from "../models/world.js";
-import { cloneReturnCapture, copyExchangeReceipts } from "../rules/world-context-copy.js";
+import { cloneReturnCapture } from "../rules/world-context-copy.js";
 import { readEstablishment } from "../rules/establishment.js";
 import type {
   VillageAgenda,
@@ -25,7 +24,6 @@ import type {
   VillageTownMapView,
   VillageVenue,
   VillageVenueClass,
-  VillageVenueEvent,
   VillageVenueImage,
   VillageVenueZone,
   VillageVillager,
@@ -38,13 +36,17 @@ import { decodeVillageClock } from "../rules/clock-state.js";
 import { asFraction, asIsoString, asRecord, asString, asStringArray, asTrimmedString } from "../rules/coerce.js";
 import { coerceFoundingTasks } from "../rules/founding-tasks.js";
 import { coerceLoreTokenBudget, coerceSelectedLorebookIds, DEFAULT_LORE_TOKEN_BUDGET } from "../rules/lore-policy.js";
-import { memoryRequire, readMemoryCollection } from "../rules/memory-integrity.js";
-import { readPlaceContinuity, readPlaceDescription } from "../rules/zone-continuity.js";
+import { memoryRequire } from "../rules/memory-integrity.js";
+import { removedEpisodeRoom } from "../rules/episode-sources.js";
+import { projectRoomEditsSchema } from "../rules/project-room-edits.js";
+import { readContinuity } from "./continuity-codec.js";
+import { readEpisodes } from "./episode-codec.js";
+import { emptyContinuity } from "../rules/continuity.js";
+import { emptyEpisodes } from "../rules/episodes.js";
 import { coerceVillageNarrationStyle, defaultVillageNarrationStyle } from "../rules/narration-style.js";
 import { readOpening } from "../rules/opening-project.js";
 import { coerceRoutineProfile, influenceSettings } from "../rules/owned-routine.js";
 import { coercePlayerBackground } from "../rules/player-background.js";
-import { coerceProgressTasks } from "../rules/progress-engine.js";
 import { readProjectPlan } from "../rules/project-completion.js";
 import {
   boundText,
@@ -57,6 +59,7 @@ import {
   MAX_REQUESTER_NAME_LENGTH,
   MAX_EVENT_TEXT_LENGTH,
   MAX_PHYSICAL_NARRATION_LENGTH,
+  readPlaceDescription,
   MAX_PLACES,
   MAX_PLAYER_PERSONA_ID_LENGTH,
   MAX_PLAYER_PERSONA_IDENTITY_LENGTH,
@@ -64,8 +67,6 @@ import {
   MAX_AGENDA_ACTIVITY_LENGTH,
   MAX_ROUTINE_SUMMARY_LENGTH,
   MAX_SETTING_LENGTH,
-  MAX_VENUE_DESCRIPTION_LENGTH,
-  MAX_VENUE_EVENTS,
   MAX_VENUE_IMAGE_ID_LENGTH,
   MAX_VENUE_IMAGE_URL_LENGTH,
   MAX_VENUE_NAME_LENGTH,
@@ -76,30 +77,28 @@ import {
   TOWN_MAP_ZOOM_MIN,
 } from "../rules/prompt-preset.js";
 
-import { coerceSocialActivities } from "../rules/social-activity.js";
-import { copySocialWishes } from "../rules/social-wishes.js";
 import { coerceSpriteManager, managerResidentSprite } from "../rules/sprite-manager-model.js";
 import { readVenueAccess, readZonePolicy } from "../rules/venue-access.js";
 import { readNarrativeState } from "./narrative-codec.js";
 import { defaultVenueSpace, validVenueClasses, venueResidentIds } from "../rules/venue-model.js";
 import { chooseAgendaZone, synchronizeVenueZones, ZONE_KINDS } from "../rules/venue-zones.js";
-import { randomVillageSeed, VILLAGE_WEEKDAYS } from "../rules/village-clock.js";
-import { readMemorySceneStates, readMemoryReceipts } from "../rules/village-memories.js";
-import { zonePictureBaseline, zonePicturePhysicalRecord } from "../rules/zone-picture.js";
+import { VILLAGE_WEEKDAYS } from "../rules/village-clock.js";
+import { emptyStartingHistory } from "../rules/starting-history.js";
+import { readStartingHistory } from "./starting-history-codec.js";
+import { emptyMailbox, readMailboxState } from "./mailbox-codec.js";
+import { emptyResidentPlans, readResidentPlans } from "./resident-plans-codec.js";
 
 export function defaultVillageState(): VillageState {
   return {
     worldPlaces: emptyPlaceRegistry(),
-    version: 16,
-    memories: { format: 1, revision: 0, records: [] },
-    memoryScenes: {},
-    memoryReceipts: {},
+    version: 18,
+    continuity: emptyContinuity(),
+    episodes: emptyEpisodes(),
+    mailbox: emptyMailbox(),
+    residentPlans: emptyResidentPlans(),
+    startingHistory: emptyStartingHistory(),
     backgroundReceipts: {},
-    exchangeReceipts: {},
-    noticeSequence: 0,
     dismissedNoticeIds: [],
-    socialContractVersion: 2,
-    progressEngineVersion: 1,
     name: "",
     narrationStyle: defaultVillageNarrationStyle(),
     characterSpeechColors: true,
@@ -128,7 +127,6 @@ export function defaultVillageState(): VillageState {
       "large-home": HOME_BUILDINGS["large-home"].name,
       "huge-home": HOME_BUILDINGS["huge-home"].name,
     },
-    venueEvents: [],
     visitRetention: { mode: "forever", value: 0 },
     residences: [],
     // Empty means "not founded yet", which is what opens the setup wizard. It
@@ -150,7 +148,6 @@ export function defaultVillageState(): VillageState {
     planningUsage: { dateKey: "", count: 0 },
     processedActionIds: [],
     projects: [],
-    progressTasks: [],
     pendingDecisions: [],
     villagers: [],
     // Empty rather than the default text: the default lives in `prompt-preset.ts`
@@ -179,14 +176,18 @@ export function defaultVillageState(): VillageState {
 }
 function coerceVillager(value: unknown): VillageVillager | null {
   const raw = asRecord(value);
-  if (Object.hasOwn(raw, "wishHead")) throw new Error("Wish history was not loaded for this operation.");
   const characterId = asTrimmedString(raw.characterId);
   if (characterId.length === 0) return null;
+  memoryRequire(
+    typeof raw.incarnation === "string" && raw.incarnation.length > 0 && raw.incarnation.length <= 160,
+    "missing resident incarnation",
+  );
   const cardSnapshot = coerceVillagerCardSnapshot(raw.cardSnapshot);
   if (!cardSnapshot || cardSnapshot.id !== characterId) return null;
   if (typeof raw.letterFontId !== "string" || raw.letterFontId.length > 120)
     throw new Error("This saved resident needs a current writing-style assignment.");
   return {
+    incarnation: raw.incarnation,
     characterId,
     letterFontId: raw.letterFontId,
     agendaGeneration: asString(raw.agendaGeneration),
@@ -210,7 +211,6 @@ function coerceVillager(value: unknown): VillageVillager | null {
     // village write one. An empty agenda is a positive statement that asking
     // produced nothing, and it must only ever come from actually asking.
     agenda: coerceAgenda(raw.agenda),
-    wishes: copySocialWishes(raw.wishes),
     scheduleInfluence: influenceSettings(raw.scheduleInfluence),
   };
 }
@@ -249,7 +249,6 @@ function coerceAgenda(value: unknown): VillageAgenda | null {
   const raw = asRecord(value);
   if (Object.keys(raw).length === 0) return null;
   const agenda: VillageAgenda = {
-    socialActivities: coerceSocialActivities(raw.socialActivities),
     routineSummary: boundText(raw.routineSummary, MAX_ROUTINE_SUMMARY_LENGTH),
     day: Array.isArray(raw.day)
       ? raw.day.flatMap((entry) => {
@@ -391,7 +390,6 @@ function coerceVenue(value: unknown): VillageVenue | null {
     residentIds.length + Number(playerHome) > Number(raw.residenceCapacity)
   )
     throw new Error("Saved household membership must fit explicit residential capacity.");
-  const coerceSpaceState = readPlaceContinuity;
   const privateSpaceFor = (ownerId: string, value: unknown) => {
     const row = asRecord(value);
     return {
@@ -412,9 +410,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
         ? readPlaceDescription(row.description) || `A private space for this resident at ${name}.`
         : "",
       image: coerceVenueImage(row.image),
-      state: coerceSpaceState(row.state),
-      dayNight: row.dayNightManual === false ? row.dayNight !== false : true,
-      dayNightManual: false,
+      dayNight: row.dayNight !== false,
       freezePicture: row.freezePicture === true,
       pictureRevision: Number.isSafeInteger(row.pictureRevision) ? Number(row.pictureRevision) : 0,
       picture: {
@@ -438,8 +434,8 @@ function coerceVenue(value: unknown): VillageVenue | null {
               : ("update" as const),
         problem: boundText(asRecord(row.picture).problem, 300) || undefined,
         lastAutomaticAt: asIsoString(asRecord(row.picture).lastAutomaticAt) ?? undefined,
-        context: boundText(asRecord(row.picture).context, 24000) || undefined,
-        baseline: boundText(asRecord(row.picture).baseline, 24000) || undefined,
+        context: asString(asRecord(row.picture).context) || undefined,
+        baseline: asString(asRecord(row.picture).baseline) || undefined,
         attempted: boundText(asRecord(row.picture).attempted, 128) || undefined,
         claim: boundText(asRecord(row.picture).claim, 128) || undefined,
       },
@@ -488,7 +484,6 @@ function coerceVenue(value: unknown): VillageVenue | null {
         ? Number(raw.residenceCapacity)
         : 1,
     residentIds,
-    exteriorState: coerceSpaceState(raw.exteriorState),
     privateSpaces,
     playerSeenShared: raw.playerSeenShared === true,
     playerSeenPublic: raw.playerSeenPublic === true,
@@ -519,7 +514,6 @@ function coerceVenue(value: unknown): VillageVenue | null {
     },
     capabilities,
     workerIds: coerceVenueIds(raw.workerIds),
-    state: readPlaceContinuity(raw.state),
   };
   const readZone = (value: unknown, archived = false): VillageVenueZone | null => {
     const row = asRecord(value);
@@ -535,6 +529,27 @@ function coerceVenue(value: unknown): VillageVenue | null {
       !(residentIds.includes(ownerId) || (ownerId === "player" && playerHome))
     )
       return null;
+    const preparation = asRecord(row.preparation);
+    const { status, mode, claimId, basis, startedAt, attempt } = preparation;
+    if (
+      row.preparation !== undefined &&
+      ((status !== "pending" && status !== "failed" && status !== "ready") ||
+        (mode !== undefined && mode !== "renovation") ||
+        (basis !== undefined && (typeof basis !== "string" || !/^[a-f0-9]{64}$/u.test(basis))) ||
+        (attempt !== undefined && (typeof attempt !== "number" || !Number.isSafeInteger(attempt) || attempt < 0)) ||
+        (claimId !== undefined &&
+          (typeof claimId !== "string" ||
+            !claimId ||
+            claimId.trim() !== claimId ||
+            claimId.length > 100 ||
+            status === "ready" ||
+            !basis ||
+            !attempt ||
+            typeof startedAt !== "string" ||
+            !Number.isFinite(Date.parse(startedAt)))) ||
+        (startedAt !== undefined && claimId === undefined))
+    )
+      throw new Error("Invalid saved private Room preparation scope.");
     const zone: VillageVenueZone = {
       id,
       connectedTo: Array.isArray(row.connectedTo) ? (row.connectedTo as string[]) : undefined,
@@ -546,35 +561,26 @@ function coerceVenue(value: unknown): VillageVenue | null {
         ? { roomSpecification: readPlaceDescription(row.roomSpecification) }
         : {}),
       image: coerceVenueImage(row.image),
-      state: coerceSpaceState(row.state),
       ownerId: ownerId || undefined,
       purpose: boundText(row.purpose, 240),
       ...(row.access === undefined ? {} : { access: readZonePolicy(row.access) }),
       controllerIds: coerceVenueIds(row.controllerIds),
-      preparation: ["pending", "ready", "failed"].includes(String(asRecord(row.preparation).status))
-        ? {
-            status: asRecord(row.preparation).status as "pending" | "ready" | "failed",
-            ...(asRecord(row.preparation).lore !== undefined
-              ? { lore: readLoreUse(asRecord(row.preparation).lore) }
-              : {}),
-            ...(asRecord(row.preparation).mode === "renovation" ? { mode: "renovation" as const } : {}),
-            error: boundText(asRecord(row.preparation).error, 300),
-            ...(asTrimmedString(asRecord(row.preparation).claimId)
-              ? { claimId: asTrimmedString(asRecord(row.preparation).claimId).slice(0, 100) }
-              : {}),
-            ...(asIsoString(asRecord(row.preparation).startedAt)
-              ? { startedAt: asIsoString(asRecord(row.preparation).startedAt)! }
-              : {}),
-            ...(typeof asRecord(row.preparation).attempt === "number" &&
-            Number.isFinite(asRecord(row.preparation).attempt)
-              ? { attempt: Math.max(0, Math.floor(asRecord(row.preparation).attempt as number)) }
-              : {}),
-          }
-        : undefined,
+      preparation:
+        status === "pending" || status === "ready" || status === "failed"
+          ? {
+              status,
+              ...(preparation.lore !== undefined ? { lore: readLoreUse(preparation.lore) } : {}),
+              ...(mode === "renovation" ? { mode } : {}),
+              error: boundText(preparation.error, 300),
+              ...(typeof claimId === "string" ? { claimId } : {}),
+              ...(typeof basis === "string" ? { basis } : {}),
+              ...(typeof startedAt === "string" ? { startedAt } : {}),
+              ...(typeof attempt === "number" ? { attempt } : {}),
+            }
+          : undefined,
       seen: row.seen === true,
-      observed: readZoneObservation(row.observed, row.image, row.picture),
-      dayNight: row.dayNightManual === false ? row.dayNight !== false : true,
-      dayNightManual: false,
+      observed: readZoneObservation(row.observed),
+      dayNight: row.dayNight !== false,
       freezePicture: row.freezePicture === true,
       pictureRevision: Number.isSafeInteger(row.pictureRevision) ? Number(row.pictureRevision) : 0,
       picture: {
@@ -598,20 +604,13 @@ function coerceVenue(value: unknown): VillageVenue | null {
               : ("update" as const),
         problem: boundText(asRecord(row.picture).problem, 300) || undefined,
         lastAutomaticAt: asIsoString(asRecord(row.picture).lastAutomaticAt) ?? undefined,
-        context: boundText(asRecord(row.picture).context, 24000) || undefined,
-        baseline: boundText(asRecord(row.picture).baseline, 24000) || undefined,
+        context: asString(asRecord(row.picture).context) || undefined,
+        baseline: asString(asRecord(row.picture).baseline) || undefined,
         attempted: boundText(asRecord(row.picture).attempted, 128) || undefined,
         claim: boundText(asRecord(row.picture).claim, 128) || undefined,
       },
       initialImageAttemptedAt: asIsoString(row.initialImageAttemptedAt) ?? "",
     };
-    if (zone.image && !zone.picture?.baseline) {
-      zone.picture = {
-        ...zone.picture,
-        base: zone.picture?.base ?? zone.image,
-        baseline: zone.picture?.context ?? zonePictureBaseline(JSON.stringify(zonePicturePhysicalRecord(zone))),
-      };
-    }
     return zone;
   };
   if (Array.isArray(raw.zones)) {
@@ -622,48 +621,10 @@ function coerceVenue(value: unknown): VillageVenue | null {
       ids.add(zone.id);
       return [zone];
     });
-    for (const [index, zone] of venue.zones.entries()) {
-      if (zone.observed) continue;
-      if (!zone.seen) {
-        // Only persisted artwork context proves an older unvisited appearance; readZone may synthesize a live baseline.
-        const picture = asRecord(asRecord(raw.zones[index]).picture);
-        const baseline =
-          zonePictureBaseline(boundText(picture.context, 24000)) ||
-          zonePictureBaseline(boundText(picture.baseline, 24000));
-        const physical = baseline ? JSON.parse(baseline) : { description: "" };
-        const form = physical.form ?? venue.zones.find((row) => row.kind === "exterior")?.observed?.form;
-        zone.observed = readZoneObservation({
-          context: JSON.stringify({ description: physical.description, ...(form ? { form } : {}) }),
-          name: zone.name,
-          description: physical.description,
-          form,
-          image: baseline ? zone.image : null,
-          dayNight: true,
-          daylight: !!baseline && zone.picture?.daylight,
-          night: baseline ? zone.picture?.night : undefined,
-          pictureContext: baseline || undefined,
-        });
-        continue;
-      }
-      const observed = captureZoneObservation(venue, zone);
-      try {
-        const prior = JSON.parse(zone.picture?.context ?? zone.picture?.baseline ?? "{}");
-        if (typeof prior.description === "string") observed.description = prior.description;
-        if (typeof prior.form === "string") observed.form = prior.form;
-        observed.context = JSON.stringify({
-          description: observed.description,
-          ...(observed.form ? { form: observed.form } : {}),
-        });
-      } catch {
-        /* Unusable artwork context leaves the captured physical account intact. */
-      }
-      zone.observed = observed;
-    }
     if (!venue.zones.some((zone) => zone.id === "exterior" && zone.kind === "exterior"))
       throw new Error("A saved Venue needs its Entrance.");
     const exterior = venue.zones.find((zone) => zone.kind === "exterior");
     if (exterior) {
-      venue.exteriorState = exterior.state;
       venue.presentation.image = exterior.image;
       venue.description = exterior.description;
     }
@@ -707,9 +668,6 @@ function coerceZoneDrafts(value: unknown): VillageZoneDraft[] | undefined {
     if (
       !id ||
       !name ||
-      (!description &&
-        !row.preserveDescription &&
-        !["private-residence", "staff", "restricted"].includes(String(row.kind))) ||
       !["public", "shared-residence", "private-residence", "staff", "restricted"].includes(String(row.kind))
     )
       return [];
@@ -727,7 +685,6 @@ function coerceZoneDrafts(value: unknown): VillageZoneDraft[] | undefined {
         connectedTo: Array.isArray(row.connectedTo)
           ? row.connectedTo.filter((id): id is string => typeof id === "string")
           : undefined,
-        preserveDescription: row.preserveDescription === true,
         kind: row.kind as VillageZoneDraft["kind"],
         venueClass: validVenueClasses([row.venueClass]) ? (row.venueClass as VillageVenueClass) : "other",
       },
@@ -781,52 +738,6 @@ function coerceVenues(value: unknown): VillageVenue[] {
     venues.push(venue);
   }
   return venues;
-}
-function coerceVenueEvent(value: unknown): VillageVenueEvent | null {
-  const raw = asRecord(value),
-    receipt = asRecord(raw.actionReceipt),
-    after = asRecord(receipt.after);
-  const venueId = asTrimmedString(raw.venueId),
-    text = boundText(raw.text, MAX_EVENT_TEXT_LENGTH);
-  if (!venueId || !text) return null;
-  let actionReceipt: VillageVenueEvent["actionReceipt"];
-  if (raw.actionReceipt !== undefined) {
-    const state = readPlaceContinuity(after.state);
-    if (
-      typeof after.description !== "string" ||
-      after.description.length > MAX_VENUE_DESCRIPTION_LENGTH ||
-      !Number.isSafeInteger(receipt.expectedRevision) ||
-      Number(receipt.expectedRevision) < 0 ||
-      state.revision !== Number(receipt.expectedRevision) + 1 ||
-      receipt.happened !== true ||
-      !asTrimmedString(receipt.submissionId)
-    )
-      throw new Error("Invalid saved physical outcome; its bytes are preserved.");
-    actionReceipt = {
-      submissionId: asTrimmedString(receipt.submissionId),
-      happened: true,
-      expectedRevision: Number(receipt.expectedRevision),
-      narration: boundText(receipt.narration, MAX_PHYSICAL_NARRATION_LENGTH),
-      witnessIds: coerceVenueIds(receipt.witnessIds),
-      after: { description: after.description, state },
-    };
-  }
-  return {
-    id: asTrimmedString(raw.id) || randomVillageSeed(),
-    venueId,
-    text,
-    venueName: boundText(raw.venueName, MAX_VENUE_NAME_LENGTH),
-    zoneId: asTrimmedString(raw.zoneId) || undefined,
-    at: asIsoString(raw.at) ?? "",
-    ...(actionReceipt ? { actionReceipt } : {}),
-  };
-}
-function coerceVenueEvents(value: unknown): VillageVenueEvent[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map(coerceVenueEvent)
-    .filter((entry): entry is VillageVenueEvent => entry !== null)
-    .slice(0, MAX_VENUE_EVENTS);
 }
 function coerceResidence(value: unknown): VillageResidence | null {
   const raw = asRecord(value);
@@ -921,13 +832,16 @@ function coerceProjects(value: unknown): VillageProject[] {
       !Array.isArray(flow.evidenceIds)
     )
       throw new Error("Invalid Project record.");
-    const approvals = flow.approvals.filter((value) => asRecord(value).source !== "mailbox");
+    if (!!asTrimmedString(raw.requesterCharacterId) !== !!asTrimmedString(raw.requesterIncarnation))
+      throw new Error("Project requester identity is incomplete.");
+    const approvals = flow.approvals;
     const rows = [...approvals, ...flow.candidates];
     if (
       rows.some((value) => {
         const row = asRecord(value);
         return (
           !asTrimmedString(row.residentId) ||
+          !asTrimmedString(row.incarnation) ||
           !asTrimmedString(row.evidenceId) ||
           typeof row.scope !== "string" ||
           !asIsoString(row.at)
@@ -965,15 +879,30 @@ function coerceProjects(value: unknown): VillageProject[] {
     if (raw.kind === "new-venue" && (!validVenueClasses(draft.classes) || !asTrimmedString(draft.name)))
       throw new Error("Invalid Project Venue.");
     const change = asRecord(flow.change),
-      zones = flow.change === null ? undefined : coerceZoneDrafts(change.zones);
+      zones = flow.change === null ? undefined : coerceZoneDrafts(change.zones),
+      roomEdits = projectRoomEditsSchema.parse(change.roomEdits === undefined ? [] : change.roomEdits),
+      roomBasis = flow.roomBasis === undefined ? [] : flow.roomBasis;
+    const changedZones = asStringArray(flow.changedZoneIds);
+    const editTargets = roomEdits.flatMap(({ entryId }) => (entryId ? [entryId] : []));
+    if (
+      !Array.isArray(roomBasis) ||
+      roomBasis.length !== roomEdits.length ||
+      roomBasis.some((digest) => typeof digest !== "string" || !/^[a-f0-9]{64}$/u.test(digest)) ||
+      new Set(editTargets).size !== editTargets.length ||
+      roomEdits.some(
+        ({ zoneId, entryId, text }) =>
+          !changedZones.includes(zoneId) ||
+          (zoneId !== "exterior" && !zones?.some((zone) => zone.id === zoneId)) ||
+          (!entryId && text === null),
+      ) ||
+      (roomEdits.length &&
+        (raw.kind === "new-venue" || (raw.kind === "establishment" && asRecord(raw.establishment).physical !== true)))
+    )
+      throw new Error("Invalid Project Room basis.");
     if (
       ["renovation", "establishment"].includes(String(raw.kind)) &&
       (!validVenueClasses(change.classes) ||
         (change.form !== undefined && (typeof change.form !== "string" || change.form.length > 2000)) ||
-        (change.exteriorDescription !== undefined &&
-          (typeof change.exteriorDescription !== "string" ||
-            !change.exteriorDescription.trim() ||
-            change.exteriorDescription.length > 4000)) ||
         !Number.isInteger(change.capacity) ||
         Number(change.capacity) < 1 ||
         Number(change.capacity) > 4 ||
@@ -998,6 +927,7 @@ function coerceProjects(value: unknown): VillageProject[] {
       progress: raw.status === "complete" ? 100 : 0,
       updatedAt: asIsoString(raw.updatedAt) ?? "",
       requesterCharacterId: asTrimmedString(raw.requesterCharacterId),
+      ...(raw.requesterIncarnation ? { requesterIncarnation: asTrimmedString(raw.requesterIncarnation) } : {}),
       ...(raw.kind === "new-venue"
         ? {
             venueDraft: {
@@ -1042,15 +972,14 @@ function coerceProjects(value: unknown): VillageProject[] {
               ...(asRecord(flow.change).form !== undefined
                 ? { form: asTrimmedString(asRecord(flow.change).form) }
                 : {}),
-              ...(asRecord(flow.change).exteriorDescription !== undefined
-                ? { exteriorDescription: asTrimmedString(asRecord(flow.change).exteriorDescription) }
-                : {}),
+              ...(roomEdits.length ? { roomEdits } : {}),
             },
       affectedIds: asStringArray(flow.affectedIds),
       approvals: structuredClone(approvals) as NonNullable<VillageProject["lifecycle"]>["approvals"],
       candidates: structuredClone(flow.candidates) as NonNullable<VillageProject["lifecycle"]>["candidates"],
       baseDesignHash: asTrimmedString(flow.baseDesignHash),
-      changedZoneIds: asStringArray(flow.changedZoneIds),
+      ...(roomBasis.length ? { roomBasis } : {}),
+      changedZoneIds: changedZones,
       builderId: asTrimmedString(flow.builderId),
       spokenProofs: structuredClone(flow.spokenProofs) as NonNullable<VillageProject["lifecycle"]>["spokenProofs"],
       evidenceIds: asStringArray(flow.evidenceIds),
@@ -1105,6 +1034,11 @@ function coercePendingDecisions(value: unknown): VillagePendingDecision[] {
       const draft = asRecord(raw.venueDraft);
       const requestName = boundText(draft.name, MAX_VENUE_NAME_LENGTH);
       const requestClasses = validVenueClasses(draft.classes) ? draft.classes : [];
+      if (raw.kind === "venue")
+        memoryRequire(
+          asTrimmedString(raw.requesterCharacterId) && asTrimmedString(raw.requesterIncarnation),
+          "Venue request has no original requester identity",
+        );
       return [
         {
           id,
@@ -1129,11 +1063,11 @@ function coercePendingDecisions(value: unknown): VillagePendingDecision[] {
                   position: { x: null, y: null },
                   occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
                   capabilities: [],
-                  state: readPlaceContinuity(draft.state),
                 },
               }
             : {}),
           requesterCharacterId: asTrimmedString(raw.requesterCharacterId),
+          ...(raw.kind === "venue" ? { requesterIncarnation: asTrimmedString(raw.requesterIncarnation) } : {}),
           venueId: asTrimmedString(raw.venueId),
           requesterName: boundText(raw.requesterName, MAX_REQUESTER_NAME_LENGTH),
           requestQuote: boundText(raw.requestQuote, MAX_VENUE_NOTE_LENGTH),
@@ -1143,15 +1077,6 @@ function coercePendingDecisions(value: unknown): VillagePendingDecision[] {
       ];
     })
     .slice(-MAX_SIMULATION_RECORDS);
-}
-/** Native runtime values and their exact JSON storage representation share one strict schema. */
-function memoryField(value: unknown): unknown {
-  if (typeof value !== "string") return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    throw new Error("Invalid saved Memories JSON.");
-  }
 }
 function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
   if (value === undefined || value === null) return undefined;
@@ -1165,13 +1090,44 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
     if (!capture.world || typeof capture.world !== "object" || Array.isArray(capture.world))
       throw new Error("The saved Village departure capture could not be read.");
     const world = capture.world as Record<string, unknown>;
-    if (Object.hasOwn(world, "relationshipHead"))
-      throw new Error("Departure history was not loaded for this operation.");
+    readResidentPlans(world.residentPlans);
+    readPlaceRegistry(world.worldPlaces);
     if (
       typeof capture.at !== "string" ||
       !Number.isFinite(Date.parse(capture.at)) ||
-      !Number.isSafeInteger(capture.memoryRevision) ||
-      Number(capture.memoryRevision) < 0 ||
+      Object.keys(capture).some((key) => !["at", "continuityRevision", "episodeRevision", "world"].includes(key)) ||
+      Object.keys(world).some(
+        (key) =>
+          ![
+            "seed",
+            "setupAt",
+            "foundedAt",
+            "timeZone",
+            "name",
+            "setting",
+            "worldName",
+            "worldRules",
+            "narrative",
+            "narrativeConsequence",
+            "eventAttempts",
+            "playerBackground",
+            "playerPersonaId",
+            "playerPersonaName",
+            "playerPersonaIdentity",
+            "playerPersonaMissing",
+            "villagers",
+            "venues",
+            "residences",
+            "projects",
+            "residentPlans",
+            "worldPlaces",
+            "opening",
+          ].includes(key),
+      ) ||
+      !Number.isSafeInteger(capture.continuityRevision) ||
+      Number(capture.continuityRevision) < 0 ||
+      !Number.isSafeInteger(capture.episodeRevision) ||
+      Number(capture.episodeRevision) < 0 ||
       ![
         "seed",
         "setupAt",
@@ -1203,8 +1159,6 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
           typeof venue.id === "string" &&
           !!venue.occupancy &&
           typeof venue.occupancy === "object" &&
-          !!venue.state &&
-          typeof venue.state === "object" &&
           (venue.zones === undefined || Array.isArray(venue.zones))
         );
       }) ||
@@ -1224,7 +1178,7 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
     if (
       typeof batch.id !== "string" ||
       !/^[a-zA-Z0-9-]{1,100}$/.test(batch.id) ||
-      !["queued", "running", "failed", "recovering", "completed", "cancelled"].includes(String(batch.status))
+      !["queued", "running", "failed", "completed", "cancelled"].includes(String(batch.status))
     )
       throw new Error("The saved Village catch-up batch could not be read.");
     if (historical && !["completed", "cancelled"].includes(String(batch.status)))
@@ -1311,8 +1265,8 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
           typeof row.opportunityId !== "string" ||
           !ids.has(row.opportunityId) ||
           recorded.has(row.opportunityId) ||
-          !["pending", "queued", "settling", "settled", "rejected", "held"].includes(String(row.status)) ||
-          (row.heldStage !== undefined && !["queued", "settling"].includes(String(row.heldStage))) ||
+          !["pending", "queued", "settled", "rejected", "held"].includes(String(row.status)) ||
+          (row.heldStage !== undefined && row.heldStage !== "queued") ||
           (row.automaticRetryUsed !== undefined && row.automaticRetryUsed !== true) ||
           (row.error !== undefined && typeof row.error !== "string")
         )
@@ -1339,43 +1293,34 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
   if (capture) result.capture = cloneReturnCapture(capture as import("../models/world.js").ReturnCatchupCapture);
   return result;
 }
-function readZoneObservation(
-  value: unknown,
-  sourceImage?: unknown,
-  picture?: unknown,
-): import("../models/world.js").ZoneObservation | undefined {
+function readZoneObservation(value: unknown): import("../models/world.js").ZoneObservation | undefined {
   const row = asRecord(value);
   if (typeof row.context !== "string" || typeof row.description !== "string") return undefined;
   const night = asRecord(row.night),
     image = coerceVenueImage(night.image);
   return {
-    context: boundText(row.context, 24000),
+    context: row.context,
     name: boundText(row.name, 100),
-    description: readPlaceDescription(row.description),
+    description: row.description,
     purpose: boundText(row.purpose, 240),
     roomSpecification:
       typeof row.roomSpecification === "string" ? readPlaceDescription(row.roomSpecification) : undefined,
     form: typeof row.form === "string" ? boundText(row.form, 4000) : undefined,
-    state: readPlaceContinuity(row.state),
     image: coerceVenueImage(row.image),
     dayNight: row.dayNight !== false,
     daylight: row.daylight === true,
-    pictureContext:
-      boundText(row.pictureContext, 24000) ||
-      (coerceVenueImage(row.image)?.id && coerceVenueImage(row.image)?.id === coerceVenueImage(sourceImage)?.id
-        ? zonePictureBaseline(boundText(asRecord(picture).context || asRecord(picture).baseline, 24000)) || undefined
-        : undefined),
+    pictureContext: asString(row.pictureContext) || undefined,
     night: image && typeof night.sourceId === "string" ? { sourceId: night.sourceId, image } : undefined,
   };
 }
 
 export function coerceVillageState(value: unknown): VillageState {
   const raw = asRecord(value);
-  if (value != null && raw.version !== 16) throw new Error("Unsupported Village format. Start a fresh Village.");
-  if (value != null) memoryRequire(raw.memories && raw.memoryScenes, "current Village memory data is missing");
-  if (raw.foundedAt && raw.socialContractVersion !== 2)
-    throw new Error(
-      "This Village uses an unsupported relationship contract. Create an independent new Village; its saved data has not been changed.",
+  if (value != null && raw.version !== 18) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (value != null)
+    memoryRequire(
+      raw.continuity && raw.episodes && raw.startingHistory && raw.mailbox && raw.residentPlans,
+      "current Village continuity data is missing",
     );
   const fallback = defaultVillageState();
   const venues = coerceVenues(raw.venues);
@@ -1385,62 +1330,27 @@ export function coerceVillageState(value: unknown): VillageState {
   const seen = new Set<string>();
 
   const foundedAt = asIsoString(raw.foundedAt) ?? "";
-  const memories = readMemoryCollection(memoryField(raw.memories ?? fallback.memories));
-  const memoryReceipts = readMemoryReceipts(raw.memoryReceipts === undefined ? {} : memoryField(raw.memoryReceipts));
-  for (const id of Object.keys(memoryReceipts)) {
-    memoryRequire(!Object.hasOwn(asRecord(raw.exchangeReceipts), id), "duplicate memory receipt");
-  }
-  const exchangeReceipts = copyExchangeReceipts(asRecord(raw.exchangeReceipts) as VillageState["exchangeReceipts"]);
-  for (const [id, receipt] of Object.entries(exchangeReceipts)) {
-    if (receipt?.domain !== "physical") continue;
-    if (
-      receipt.id !== id ||
-      !receipt.sceneId ||
-      !receipt.submissionId ||
-      !["applied", "rejected"].includes(String(receipt.status)) ||
-      !asIsoString(receipt.at) ||
-      !asIsoString(receipt.committedAt)
-    )
-      throw new Error("Invalid saved physical receipt; its bytes are preserved.");
-    if (receipt.physicalOutcome !== undefined) {
-      if (receipt.status !== "applied")
-        throw new Error("Rejected physical outcome cannot carry applied proof; its bytes are preserved.");
-      const outcome = coerceVenueEvent(receipt.physicalOutcome);
-      if (!outcome?.actionReceipt || outcome.id !== id || outcome.actionReceipt.submissionId !== receipt.submissionId)
-        throw new Error("Invalid saved physical proof; its bytes are preserved.");
-      receipt.physicalOutcome = outcome;
-    }
-  }
+  const continuity = readContinuity(raw.continuity ?? fallback.continuity, asString(raw.seed));
+  const episodes = readEpisodes(raw.episodes ?? fallback.episodes, asString(raw.seed));
   const state: VillageState = {
     worldPlaces: readPlaceRegistry(raw.worldPlaces),
-    version: 16,
-    memories,
-    memoryScenes: readMemorySceneStates(memoryField(raw.memoryScenes ?? {}), memories),
+    version: 18,
+    continuity,
+    episodes,
+    mailbox: value == null ? fallback.mailbox : readMailboxState(raw.mailbox, asString(raw.seed)),
+    residentPlans: value == null ? fallback.residentPlans : readResidentPlans(raw.residentPlans),
+    startingHistory: value == null ? fallback.startingHistory : readStartingHistory(raw.startingHistory),
     backgroundReceipts: Object.fromEntries(
       Object.entries(asRecord(raw.backgroundReceipts)).filter(
         (entry): entry is [string, string] => typeof entry[1] === "string",
       ),
     ),
-    memoryReceipts,
-    exchangeReceipts,
-    noticeSequence: Math.max(0, Math.floor(Number(raw.noticeSequence) || 0)),
     dismissedNoticeIds: [...new Set(asStringArray(raw.dismissedNoticeIds))],
-    socialContractVersion: 2,
-    socialMailOutbox: Array.isArray(raw.socialMailOutbox)
-      ? (structuredClone(raw.socialMailOutbox) as VillageState["socialMailOutbox"])
-      : [],
-    socialClarifications: Array.isArray(raw.socialClarifications)
-      ? (raw.socialClarifications as VillageState["socialClarifications"])
-      : [],
-    socialPublications: raw.socialPublications
-      ? (structuredClone(raw.socialPublications) as VillageState["socialPublications"])
-      : {},
     eventAttempts: raw.eventAttempts
       ? (structuredClone(raw.eventAttempts) as VillageState["eventAttempts"])
       : undefined,
     returnCatchup: decodeReturnCatchup(raw.returnCatchup),
     narrative: readNarrativeState(raw.narrative),
-    progressEngineVersion: 1,
     name: asTrimmedString(raw.name) || fallback.name,
     narrationStyle: coerceVillageNarrationStyle(raw.narrationStyle),
     characterSpeechColors: raw.characterSpeechColors !== false,
@@ -1474,7 +1384,6 @@ export function coerceVillageState(value: unknown): VillageState {
         boundText(asRecord(raw.homeBuildingNames)[kind], 60) || building.name,
       ]),
     ) as VillageState["homeBuildingNames"],
-    venueEvents: coerceVenueEvents(raw.venueEvents),
     visitRetention: (() => {
       const retention = asRecord(raw.visitRetention);
       const value = Number(retention.value);
@@ -1562,35 +1471,10 @@ export function coerceVillageState(value: unknown): VillageState {
       .map((id) => id.trim())
       .filter(Boolean)
       .slice(-MAX_SIMULATION_RECORDS),
-    ...(raw.semanticRequestReceipts
-      ? {
-          semanticRequestReceipts: Object.fromEntries(
-            Object.entries(asRecord(raw.semanticRequestReceipts)).filter(([, value]) => typeof value === "string"),
-          ) as Record<string, string>,
-        }
-      : {}),
-    ...(asRecord(raw.semanticStartingTies).sourceHash
-      ? { semanticStartingTies: structuredClone(raw.semanticStartingTies) as VillageState["semanticStartingTies"] }
-      : {}),
-    ...(raw.semanticContinuations
-      ? {
-          semanticContinuations: Object.fromEntries(
-            Object.entries(asRecord(raw.semanticContinuations)).filter(
-              ([, value]) =>
-                Array.isArray(value) &&
-                value.every((domain) => ["memories", "relationships", "wishes", "projects"].includes(String(domain))),
-            ),
-          ) as VillageState["semanticContinuations"],
-        }
-      : {}),
-    socialOutbox: Array.isArray(raw.socialOutbox)
-      ? (structuredClone(raw.socialOutbox) as VillageState["socialOutbox"])
-      : [],
     projects: coerceProjects(raw.projects ?? []),
     wishFollowing: Object.fromEntries(
       Object.entries(asRecord(raw.wishFollowing)).filter(([, v]) => typeof v === "boolean"),
     ) as Record<string, boolean>,
-    progressTasks: coerceProgressTasks(raw.progressTasks),
     pendingDecisions: coercePendingDecisions(raw.pendingDecisions),
     ...(raw.formerLetterFonts
       ? {
@@ -1657,6 +1541,14 @@ export function coerceVillageState(value: unknown): VillageState {
         })
       : [],
   };
+  for (const episode of episodes.records) {
+    const removed = removedEpisodeRoom(episode);
+    if (removed)
+      memoryRequire(
+        !findLocation(state, removed.placeId)?.zones?.some((zone) => zone.id === removed.zoneId),
+        "removed Room is still in the live layout",
+      );
+  }
   for (const villager of state.villagers) {
     const agenda = villager.agenda;
     if (!agenda) continue;

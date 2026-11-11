@@ -24,6 +24,7 @@ export type RepairRecord = {
   token?: string;
   creating?: boolean;
   subjects?: string[];
+  target?: import("./village.js").MemoryInspection["target"];
 };
 export type RepairRequest = {
   operationId: string;

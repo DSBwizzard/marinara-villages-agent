@@ -1,4 +1,3 @@
-import { projectSpeakerAtTurn } from "../../domain/rules/project-scene-evidence.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { z } from "zod";
 import type { SceneHistoryPage } from "../../../shared/contracts/scene-history.js";
@@ -8,7 +7,6 @@ import { publicSceneAuthority } from "../../domain/rules/scene-public.js";
 import { operationSummary } from "../../adapters/operations/operation-context.js";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 import { SESSION_KIND } from "../../adapters/storage/scene-slots.js";
-import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
 import { readSceneIndex, readSceneWorkIndex } from "../../adapters/storage/scene-history.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
@@ -23,8 +21,6 @@ import {
   projectSceneHistoryPage,
 } from "../../adapters/storage/scene-public-history.js";
 import { asRecord } from "../../domain/rules/coerce.js";
-import { requireSceneExchange } from "../../domain/rules/scene-submissions.js";
-import { projectMetadataRejected } from "../../domain/rules/semantic-continuity.js";
 
 import { withRepairWork } from "../../adapters/storage/repair-gate.js";
 import { readVillageRoot } from "../../adapters/storage/village-repository.js";
@@ -33,7 +29,6 @@ export interface SceneQueryPorts {
   readSession: typeof import("../../adapters/storage/scene-store.js").readSession;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
   villagesDocuments(): Pick<CapabilityDocumentStore, "list" | "getById">;
-  readRetiredProjectScenes?(seed: string): Promise<import("../../domain/models/scene-model.js").VenueScene[]>;
 }
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
 const historyQuery = z.object({ scope: hash, cursor: z.string().min(1).max(4096).optional() }).strict();
@@ -63,13 +58,8 @@ const playbackCursor = z
     digest: hash,
   })
   .strict();
-/** Inert internal Scene evidence/backlog queries with explicit originating connections. */
-export function createSceneQueryService({
-  readSession,
-  readVillageState,
-  villagesDocuments,
-  readRetiredProjectScenes,
-}: SceneQueryPorts) {
+/** Inert Scene history and backlog queries with explicit originating connections. */
+export function createSceneQueryService({ readSession, readVillageState, villagesDocuments }: SceneQueryPorts) {
   async function readPublicOwner(id: string, requestedScope?: string) {
     const documents = villagesDocuments();
     const rawWorld = readVillageRoot(await documents.getById(VILLAGES_PACKAGE_ID, "villages-village"));
@@ -96,6 +86,7 @@ export function createSceneQueryService({
       continuity.setupAt !== world.setupAt
     )
       throw notFound("That Scene is no longer available.");
+    if (scene.pendingAccessClaim) throw conflict("That Scene is still settling its entry invitation.");
     const transcript = readSceneTranscriptHead(raw.transcript, scene),
       submissions = readSceneSubmissionHead(raw.submissionHistory, scene);
     const head = readScenePublicHistoryHead(raw.publicHistory, scene, transcript, submissions);
@@ -133,7 +124,7 @@ export function createSceneQueryService({
       scene,
       entries.map((entry) => entry.position),
     );
-    const projected = projectSceneHistoryPage(source, entries, scene.participants, head.privateHearing);
+    const projected = projectSceneHistoryPage(source, entries, scene.participants);
     let first = 0,
       last = projected.length,
       bytes = 0;
@@ -193,7 +184,7 @@ export function createSceneQueryService({
       lines,
       playback,
       participants: scene.participants.filter((person) => cast.has(person.characterId)),
-      operation: operationSummary(scene.operation, scene.rejectedSubmissions),
+      operation: operationSummary(scene.operation),
     };
   }
   async function playbackWindow(
@@ -237,7 +228,7 @@ export function createSceneQueryService({
       scene,
       positions.map((entry) => entry.position),
     );
-    const projected = projectSceneHistoryPage(lines, positions, scene.participants, head.privateHearing);
+    const projected = projectSceneHistoryPage(lines, positions, scene.participants);
     const byId = new Map(projected.map((line) => [line.id, line]));
     const cursor = (direction: "older" | "newer" | "around", index: number) => {
       const entry = entries[index - start];
@@ -312,89 +303,6 @@ export function createSceneQueryService({
       ...(newerCursor ? { newerCursor } : {}),
     };
   }
-  async function readProjectTurnEvidence(sessionId: string, submissionId: string) {
-    const session = await readSession(sessionId).catch(async (error: unknown) => {
-      if ((error as { statusCode?: number })?.statusCode !== 404 || !readRetiredProjectScenes) throw error;
-      const seed = (await readVillageState()).seed;
-      const saved = (await readRetiredProjectScenes(seed)).find((scene) => scene.id === sessionId);
-      if (!saved) throw error;
-      return saved;
-    });
-    const submission = session.submissions.find((entry) => entry.id === submissionId);
-    if (!submission) throw notFound("That roleplay turn was not recorded.");
-    const zoneId = submission.zoneIdAtTurn;
-    const playerSources = session.lines.filter(
-      (line) =>
-        line.role === "user" &&
-        (line.id === submission.liveProposals?.playerLineId ||
-          (line.attentionEvidence && submission.replyLineIds?.includes(line.id))),
-    );
-    const playerMessagesByActor = Object.fromEntries(
-      [...new Set(playerSources.flatMap((line) => line.heardBy))].map((actor) => [
-        actor,
-        playerSources
-          .filter((line) => line.heardBy.includes(actor))
-          .map((line) => line.content)
-          .join("\n"),
-      ]),
-    );
-    return {
-      sessionId,
-      villageSeed: session.villageSeed,
-      semanticVersion: submission.semanticProvenance?.version,
-      preservationVersion: submission.semanticProvenance?.preservationVersion,
-      occurrenceVersion: submission.semanticProvenance?.occurrenceVersion,
-      venueId: session.placeId,
-      zoneId,
-      submissionId,
-      mode: submission.mode,
-      message: submission.message,
-      ...(submission.zoneEventsVersion === 1 ? { playerMessagesByActor } : {}),
-      at: submission.at ?? "",
-      areaAtTurn: submission.areaAtTurn ?? session.area,
-      activeIdsAtTurn: [
-        ...new Set([
-          ...(submission.activeIdsAtTurn ?? session.participants.map((participant) => participant.characterId)),
-          ...(submission.speechIdsAtTurn ?? []),
-          ...(submission.npcAdmissions ?? []).map((arrival) => arrival.npc.id),
-        ]),
-      ],
-      action: submission.action ?? null,
-      projectContexts: submission.projectContexts ?? [],
-      projectSpeech: projectMetadataRejected(submission) ? [] : (submission.projectSpeech ?? []),
-      projectMetadataRejected: projectMetadataRejected(submission),
-      contextualInterpretation: submission.projectInterpretationVersion === 1,
-      contextLines: session.lines
-        .slice(
-          0,
-          Math.max(
-            0,
-            session.lines.findIndex((line) => submission.replyLineIds?.includes(line.id)),
-          ),
-        )
-        .filter(
-          (line) =>
-            (!line.contactHidden || line.attentionEvidence) &&
-            !line.contactReport &&
-            line.kind !== "side" &&
-            line.kind !== "whisper",
-        ),
-      lines: session.lines.filter((line) =>
-        submission.replyLineIds?.length
-          ? submission.replyLineIds.includes(line.id) &&
-            line.role === "assistant" &&
-            projectSpeakerAtTurn(submission, line) &&
-            !line.contactHidden &&
-            !line.contactReport
-          : line.at === submission.at &&
-            line.role === "assistant" &&
-            !line.contactHidden &&
-            !line.contactReport &&
-            session.participants.some((participant) => participant.characterId === line.speakerId),
-      ),
-    };
-  }
-
   async function progressBacklog() {
     const village = await readVillageState();
     const documents = villagesDocuments(),
@@ -407,10 +315,9 @@ export function createSceneQueryService({
       const eligible = session.submissions.filter(
         (turn) => turn.at && (!village.foundedAt || Date.parse(turn.at) >= Date.parse(village.foundedAt)),
       );
-      for (const turn of eligible) requireSceneExchange(session, turn);
       backlog.push(
         ...eligible
-          .filter((turn) => unfinishedExchange(turn.processing!))
+          .filter((turn) => turn.acceptance.status === "pending" || turn.acceptance.status === "held")
           .map((turn) => ({
             sessionId: session.id,
             submissionId: turn.id,
@@ -422,7 +329,6 @@ export function createSceneQueryService({
     return backlog;
   }
   return {
-    readProjectTurnEvidence,
     progressBacklog: () => withRepairWork(progressBacklog),
     readHistoryPage: (id: string, query: unknown) => withRepairWork(() => readHistoryPage(id, query)),
     readPlaybackPage: (id: string, query: unknown) => withRepairWork(() => readPlaybackPage(id, query)),

@@ -33,9 +33,9 @@ export function socialWorldFixture() {
       ({
         letterFontId: "caveat",
         characterId: id,
+        incarnation: "founding-" + id,
         addedAt: START,
         agenda: null,
-        wishes: [],
         cardSnapshot: {
           id,
           name,

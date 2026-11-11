@@ -30,6 +30,7 @@ import { reportFoundingProgress } from "../packages/villages/src/server/features
 import { draftVillageVenueDescriptions } from "../packages/villages/src/server/features/founding/village-bootstrap.js";
 import { EMPTY_RESIDENT_ADMISSION } from "../packages/villages/src/shared/helpers/resident-admission.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { continuityPreparationContext } from "../packages/villages/src/server/domain/rules/continuity-library.js";
 
 async function reviewNavigation() {
   const { createFoundingGotoSetupStep } =
@@ -612,6 +613,7 @@ async function foundingConnectionOwnership() {
       selectedLorebookIds: ["visual"],
     };
     const compactContext = {
+      continuity: continuityPreparationContext(defaultVillageState(), "equal-resident", "2026-11-10T12:00:00.000Z"),
       village: "Quiet harbor",
       setting: "Quiet harbor",
       home: "Room",

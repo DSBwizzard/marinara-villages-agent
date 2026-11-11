@@ -1,4 +1,6 @@
 import { findLocation, placeRegistry } from "../../domain/rules/places.js";
+import { projectAgreementCurrent } from "../../domain/rules/project-terms.js";
+import { continuityActor } from "../../domain/rules/continuity-actors.js";
 import { hasUnreadMail } from "../../domain/rules/mailbox-view.js";
 import { projectPlace } from "../../domain/rules/place-discovery.js";
 import { createHash } from "node:crypto";
@@ -7,7 +9,7 @@ import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.
 import type { VillageSnapshot } from "../../domain/models/world.js";
 import { foundingCompletedIds, foundingReadyForPlay } from "../../domain/rules/founding-tasks.js";
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
-import { startingRelationshipsReady } from "../../domain/rules/relationship-rules.js";
+import { startingHistoryReady } from "../../domain/rules/starting-history.js";
 import { openingView } from "../../domain/rules/opening-project.js";
 import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
 import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
@@ -42,11 +44,11 @@ export function createVillageSnapshot({
 }: VillageSnapshotPorts) {
   /** The village as the tab draws it: live library labels and adopted card colors. */
   async function buildVillageSnapshot(at?: Date): Promise<VillageSnapshot> {
-    let village = await readVillageState();
+    let village = await readVillageState({ memories: true });
     const clock = await observeVillageClock();
     let now = at ?? (clock?.instant ? new ZonedDate(clock.instant, clock.timeZone) : villageNow());
     if (clock) now = new ZonedDate(now, clock.timeZone);
-    if (await rollActiveAgendas(now, village, clock?.revision)) village = await readVillageState();
+    if (await rollActiveAgendas(now, village, clock?.revision)) village = await readVillageState({ memories: true });
     const residentIds = village.villagers.map((villager) => villager.characterId);
     const cards = await listVillagerCards(residentIds);
     const cardsById = new Map(cards.map((card) => [card.id, card]));
@@ -69,8 +71,16 @@ export function createVillageSnapshot({
     const { activeVenueSession } = sceneQueries();
     const residenceAccess = await activeVenueSession();
     if (residenceAccess) village = await readVillageState({ memories: true });
-    const sceneWorld = residenceAccess ? sceneContinuityView(village, residenceAccess, false) : village;
+    const sceneWorld = residenceAccess ? sceneContinuityView(village, residenceAccess) : village;
     const capturedVenue = residenceAccess && findLocation(sceneWorld, residenceAccess.placeId);
+    const liveVenue = residenceAccess && findLocation(village, residenceAccess.placeId);
+    const scenePresentation = capturedVenue && {
+      ...capturedVenue,
+      zones: capturedVenue.zones?.map((zone) => {
+        const observed = liveVenue && resolveVenueZone(liveVenue, zone.id)?.observed;
+        return observed ? { ...zone, observed } : zone;
+      }),
+    };
     // ONE schedule read for the whole village, so every villager's pin and their
     // own drawer's plate are resolved off the same answer. Null when the Engine
     // will not answer, which leaves every villager unplaced rather than failing
@@ -82,7 +92,7 @@ export function createVillageSnapshot({
       const companionVenue = companion && capturedVenue;
       const companionZone = companionVenue && resolveVenueZone(companionVenue, companion!.zoneId);
       if (residenceAccess?.sceneAttendance) {
-        const position = sceneAccessContext(residenceAccess, village).positions?.[villager.characterId];
+        const position = sceneAccessContext(residenceAccess).positions?.[villager.characterId];
         if (position && position !== residenceAccess.zoneId) destination = null;
         else if (position) {
           const sceneVenue = capturedVenue;
@@ -122,7 +132,7 @@ export function createVillageSnapshot({
         destination.zoneId !== "exterior" &&
         !(
           residenceAccess?.placeId === destinationVenue.id &&
-          sceneAccessContext(residenceAccess, village).positions?.[villager.characterId] === residenceAccess.zoneId
+          sceneAccessContext(residenceAccess).positions?.[villager.characterId] === residenceAccess.zoneId
         )
       )
         destination = {
@@ -143,15 +153,14 @@ export function createVillageSnapshot({
     });
     const snapshot: VillageSnapshot = {
       worldScope: villageWorldScope(village),
-      mailboxUnread: hasUnreadMail(village.relationshipContext),
+      mailboxUnread: hasUnreadMail(village.mailbox),
       status: "ready",
       clock,
-      progressEngineVersion: village.progressEngineVersion,
       foundingPreparation: village.foundingPreparation
         ? {
             ...village.foundingPreparation,
-            canPlay: foundingReadyForPlay(village) && (!!residenceAccess || startingRelationshipsReady(village)),
-            startingHistoryReady: startingRelationshipsReady(village),
+            canPlay: foundingReadyForPlay(village) && (!!residenceAccess || startingHistoryReady(village)),
+            startingHistoryReady: startingHistoryReady(village),
             completedIds: foundingCompletedIds(village),
             privateSpacesTotal: privatePreparationRooms(village).length,
             privateSpacesReady: privatePreparationRooms(village).filter(
@@ -160,14 +169,23 @@ export function createVillageSnapshot({
           }
         : null,
       village: villageMomentView(village, now, exactSnapshotTransition(village, now)),
-      venueRequests: village.pendingDecisions.filter(
-        (decision) =>
-          decision.kind === "venue" &&
-          decision.status !== "approved" &&
-          decision.status !== "denied" &&
-          decision.status !== "countered" &&
-          decision.venueDraft,
-      ),
+      venueRequests: village.pendingDecisions
+        .filter(
+          (decision) =>
+            decision.kind === "venue" &&
+            decision.status !== "approved" &&
+            decision.status !== "denied" &&
+            decision.status !== "countered" &&
+            decision.venueDraft,
+        )
+        .map(({ requesterIncarnation, ...decision }) => ({
+          ...decision,
+          requesterCharacterId:
+            decision.requesterCharacterId &&
+            continuityActor(village, decision.requesterCharacterId)?.incarnation === requesterIncarnation
+              ? decision.requesterCharacterId
+              : undefined,
+        })),
       opening: openingView(village),
       projects: village.projects.map((project) => ({
         id: project.id,
@@ -201,7 +219,11 @@ export function createVillageSnapshot({
         progress: project.progress,
         updatedAt: project.updatedAt,
         participantIds: project.participantIds,
-        requesterCharacterId: project.requesterCharacterId,
+        requesterCharacterId:
+          project.requesterCharacterId &&
+          continuityActor(village, project.requesterCharacterId)?.incarnation === project.requesterIncarnation
+            ? project.requesterCharacterId
+            : undefined,
         venueDraft: project.venueDraft,
         plan: project.plan,
         opening: project.opening ? { ...project.opening, provenance: "" } : undefined,
@@ -212,9 +234,17 @@ export function createVillageSnapshot({
               targetVenueId: project.lifecycle.targetVenueId,
               change: project.lifecycle.change,
               affectedIds: project.lifecycle.affectedIds,
-              approvals: project.lifecycle.approvals.map(({ residentId, source }) => ({ residentId, source })),
-              candidates: project.lifecycle.candidates.map(({ residentId }) => ({ residentId })),
-              builderId: project.lifecycle.builderId,
+              approvals: project.lifecycle.approvals
+                .filter((row) => projectAgreementCurrent(village, row))
+                .map(({ residentId, source }) => ({ residentId, source })),
+              candidates: project.lifecycle.candidates
+                .filter((row) => projectAgreementCurrent(village, row))
+                .map(({ residentId }) => ({ residentId })),
+              builderId: project.lifecycle.candidates.some(
+                (row) => row.residentId === project.lifecycle!.builderId && projectAgreementCurrent(village, row),
+              )
+                ? project.lifecycle.builderId
+                : "",
               workOrder: project.lifecycle.workOrder
                 ? {
                     startsAt: project.lifecycle.workOrder.startsAt,
@@ -241,31 +271,28 @@ export function createVillageSnapshot({
       })),
       residences: village.residences,
       villagers,
-      relationshipStartingPending: village.villagers.some(
-        (person) => !village.relationshipContext?.reviewedActorIds.includes(person.characterId),
-      ),
       isFounded: isVillageFounded(village),
       settings: villageSettings(
         village,
         player,
         residenceAccess,
-        residenceAccess ? sceneAccessContext(residenceAccess, village) : undefined,
+        residenceAccess ? sceneAccessContext(residenceAccess, undefined, village.timeZone) : undefined,
         now,
       ),
-      ...(residenceAccess && capturedVenue
+      ...(residenceAccess && scenePresentation
         ? {
             sceneVenue: {
               sceneId: residenceAccess.id,
               venue: villageSettings(
-                { ...sceneWorld, venues: [capturedVenue] },
+                { ...sceneWorld, venues: [scenePresentation] },
                 player,
                 residenceAccess,
-                sceneAccessContext(residenceAccess, sceneWorld),
+                sceneAccessContext(residenceAccess, undefined, sceneWorld.timeZone),
                 new ZonedDate(
                   residenceAccess.continuity?.capturedAt ?? residenceAccess.startedAt,
                   sceneWorld.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
                 ),
-              ).venues.find((venue) => venue.id === capturedVenue.id)!,
+              ).venues.find((venue) => venue.id === scenePresentation.id)!,
             },
           }
         : {}),
@@ -281,19 +308,11 @@ export function createVillageSnapshot({
                     residenceAccess.submissions.map((turn) => [
                       turn.id,
                       turn.changeSequence,
-                      turn.semanticReady,
-                      turn.processing,
+                      turn.acceptance,
+                      turn.episodeId,
+                      turn.progressError,
+                      turn.recordEvents,
                     ]),
-                    Object.values(village.exchangeReceipts)
-                      .filter((receipt) => receipt.sceneId === residenceAccess.id)
-                      .map((receipt) => [receipt.id, receipt.noticeSequence]),
-                    Object.values(village.relationshipContext?.receipts ?? {})
-                      .filter(
-                        (receipt) =>
-                          receipt.sceneId === residenceAccess.id ||
-                          (!receipt.sceneId && receipt.sourceId === residenceAccess.id),
-                      )
-                      .map((receipt) => [receipt.id, receipt.noticeSequence]),
                   ]),
                 )
                 .digest("hex"),

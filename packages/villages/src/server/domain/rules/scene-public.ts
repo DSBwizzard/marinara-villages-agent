@@ -1,8 +1,9 @@
-import type { VenueRecordEvent, VenueScene } from "../models/scene-model.js";
+import type { VenueRecordEvent, VenueScene, VenueSubmission } from "../models/scene-model.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { deriveVillageMoment } from "./village-clock.js";
 import { villageLighting } from "../../../shared/helpers/village-lighting.js";
 import { readLoreUse } from "../../../shared/helpers/lore.js";
+import { conflict } from "./errors.js";
 /** The ordinary change feed carries visible notices and recovery controls, never owner diagnostics. */
 export function publicSceneChanges(value: unknown) {
   const row = asRecord(value);
@@ -27,17 +28,15 @@ export function publicSceneChanges(value: unknown) {
     }),
     notices: notices(row.notices),
     dismissedNoticeIds: row.dismissedNoticeIds,
+    hiddenWishNoticeIds: row.hiddenWishNoticeIds,
     unresolved: (Array.isArray(row.unresolved) ? row.unresolved : []).map((value) => {
       const issue = asRecord(value);
       return {
         submissionId: issue.submissionId,
-        domain: issue.domain,
         status: issue.status,
         at: issue.at,
         diagnosticId: issue.diagnosticId,
         reason: issue.reason,
-        canContinue: issue.canContinue,
-        continued: issue.continued,
       };
     }),
     processingSummary: { pending: summary.pending, failed: summary.failed, rejected: summary.rejected },
@@ -51,295 +50,201 @@ export function publicSceneChanges(value: unknown) {
 }
 
 export function sceneTurnPublished(value: unknown) {
-  const turn = asRecord(value);
-  return asRecord(turn.semanticProvenance).version !== 2 || turn.semanticReady === true;
+  return asRecord(asRecord(value).acceptance).status === "applied";
+}
+export function sceneTurnNotices(turn?: VenueSubmission): VenueRecordEvent[] {
+  return turn?.acceptance.status === "applied" ? (turn.recordEvents ?? []) : [];
 }
 function unpublishedLines(submissions: unknown[]) {
   return new Set(
-    submissions.flatMap((entry) => {
-      const turn = asRecord(entry);
-      return !sceneTurnPublished(turn) ? ((asRecord(turn.processing).lineIds as string[]) ?? []) : [];
+    submissions.flatMap((value) => {
+      const turn = asRecord(value);
+      return !sceneTurnPublished(turn) && Array.isArray(turn.replyLineIds) ? (turn.replyLineIds as string[]) : [];
     }),
   );
 }
-/** Positions enumerate only content that the ordinary public projection can publish. */
-export function publicSceneHistoryProjection(scene: VenueScene) {
-  const hidden = unpublishedLines(scene.submissions);
+function publicLine(value: unknown, visible?: Set<string>) {
+  const line = asRecord(value),
+    sound = asRecord(line.soundOnly);
+  if (
+    line.role === "user" &&
+    line.kind === "input" &&
+    typeof line.inputOf === "string" &&
+    line.speakerId === "player" &&
+    Array.isArray(line.heardBy) &&
+    line.heardBy.length === 0
+  )
+    return {
+      id: line.id,
+      inputOf: line.inputOf,
+      at: line.at,
+      kind: "input",
+      role: "user",
+      speakerId: "player",
+      name: line.name,
+      content: line.content,
+    };
+  if (line.role !== "assistant") return undefined;
+  if (line.contactHidden === true || !Array.isArray(line.heardBy) || !line.heardBy.includes("player")) {
+    return sound.player === true && typeof sound.text === "string"
+      ? {
+          id: line.id,
+          at: line.at,
+          kind: "narration",
+          role: "assistant",
+          speakerId: "__venue_scene__",
+          name: "Narration",
+          content: sound.text,
+        }
+      : undefined;
+  }
+  const fields = [
+    "id",
+    "at",
+    "kind",
+    "role",
+    "speakerId",
+    "name",
+    "content",
+    "delivery",
+    "presentation",
+    "targetId",
+    "asideFor",
+    "viaDoorway",
+    "presenceChange",
+  ];
   return {
-    positions: scene.lines.flatMap((line, position) =>
-      !hidden.has(line.id) && (line.contactHidden !== true || line.soundOnly?.player === true) ? [position] : [],
-    ),
-    privateHearing: publicSceneHistoryHearing(scene),
+    ...Object.fromEntries(fields.filter((key) => line[key] !== undefined).map((key) => [key, line[key]])),
+    ...(Array.isArray(line.staging)
+      ? { staging: line.staging.filter((cue) => !visible || visible.has(asTrimmedString(asRecord(cue).characterId))) }
+      : {}),
   };
 }
+export function publicSceneHistoryPositions(scene: VenueScene) {
+  const hidden = unpublishedLines(scene.submissions);
+  return scene.lines.flatMap((line, position) => (!hidden.has(line.id) && publicLine(line) ? [position] : []));
+}
 export function scenePresenceNotices(scene: VenueScene): VenueRecordEvent[] {
-  return publicSceneHistoryProjection(scene).positions.flatMap((position) => {
-    const line = scene.lines[position];
-    return line.presenceChange && !line.contactHidden
-      ? [{ id: `presence:${scene.id}:${line.id}`, kind: "venue" as const, text: line.content }]
+  const unpublished = unpublishedLines(scene.submissions);
+  return scene.lines.flatMap((line) => {
+    if (!line.presenceChange || unpublished.has(line.id)) return [];
+    const projected = publicLine(line);
+    return projected && "presenceChange" in projected && projected.presenceChange === true
+      ? [{ id: "presence:" + scene.id + ":" + line.id, kind: "venue" as const, text: line.content }]
       : [];
   });
 }
-export function publicSceneHistoryHearing(value: unknown) {
-  const scene = asRecord(value);
-  return privateSceneHearing({
-    ...scene,
-    submissions: Array.isArray(scene.submissions) ? scene.submissions.filter(sceneTurnPublished) : [],
-  });
-}
 export function sameSceneHistoryTurnPolicy(before: unknown, after: unknown) {
-  const policy = (turn: unknown) => [
-    sceneTurnPublished(turn),
-    publicSceneHistoryHearing({ submissions: [turn] }),
-    [...unpublishedLines([turn])],
-    asRecord(turn).activeIdsAtTurn,
-    asRecord(turn).activeIdsAfterTurn,
-    asRecord(turn).replyLineIds,
-  ];
+  const policy = (value: unknown) => {
+    const turn = asRecord(value);
+    return [sceneTurnPublished(turn), turn.replyLineIds];
+  };
   return JSON.stringify(policy(before)) === JSON.stringify(policy(after));
 }
-function privateSceneHearing(value: unknown): boolean {
-  const row = asRecord(value);
-  return (
-    row.version === 4 ||
-    (Array.isArray(row.submissions) && row.submissions.some((turn) => asRecord(turn).zoneEventsVersion === 1)) ||
-    (asRecord(row.operation).input !== undefined &&
-      asRecord(asRecord(row.operation).input).interactionScopeVersion === 6) ||
-    asRecord(row.contactGeneration).zoneEvents === true
-  );
-}
 export function sceneProcessingSummary(scene: VenueScene) {
-  const domains = scene.submissions.flatMap((turn) => (turn.processing ? Object.values(turn.processing.domains) : []));
   return {
-    pending: domains.filter((domain) => domain.status === "pending").length,
-    failed: domains.filter((domain) => domain.status === "failed").length,
-    rejected: domains.filter((domain) => domain.status === "rejected").length,
+    pending: scene.submissions.filter((turn) => turn.acceptance.status === "pending").length,
+    failed: scene.submissions.filter((turn) => turn.acceptance.status === "held").length,
+    rejected: scene.submissions.reduce((count, turn) => count + turn.acceptance.rejected.length, 0),
   };
 }
-/** Current authority is explicit; immutable playback carries the separately paged prose. */
-export function publicSceneAuthority(scene: VenueScene) {
-  const fields = [
-    "id",
-    "placeId",
-    "placeName",
-    "spaceClass",
-    "zoneId",
-    "privateSpaceId",
-    "doorwayContacts",
-    "entryOffers",
-    "area",
-    "privateOwnerId",
-    "privateAccessOwnerId",
-    "startedAt",
-    "endedAt",
-    "lastActivityAt",
-    "endReason",
-    "status",
-    "activeIds",
-    "sceneRevision",
-    "memoryMode",
-    "semanticVersion",
-    "liveSceneVersion",
-  ] as const;
-  const selected = Object.fromEntries(fields.filter((key) => scene[key] !== undefined).map((key) => [key, scene[key]]));
-  const projected = publicSceneResponse(
-    {
-      ...selected,
-      lines: [],
-      submissions: [],
-      continuity: scene.continuity,
-      sceneAttendance: scene.sceneAttendance,
-    },
-    undefined,
-    true,
-  );
-  const last = scene.submissions.at(-1);
-  const { lines: _lines, submissions: _submissions, ...authority } = projected;
+const sceneFields = [
+  "id",
+  "placeId",
+  "placeName",
+  "spaceClass",
+  "zoneId",
+  "area",
+  "privateOwnerId",
+  "privateAccessOwnerId",
+  "startedAt",
+  "endedAt",
+  "lastActivityAt",
+  "endReason",
+  "status",
+  "sceneRevision",
+] as const;
+function authority(scene: VenueScene) {
+  if (scene.pendingAccessClaim) throw conflict("That Scene is still settling its entry invitation.");
+  const facts = scene.continuity?.facts;
+  const visible = new Set(scene.activeIds);
   return {
-    ...authority,
-    lore: readLoreUse(scene.submissions.filter(sceneTurnPublished).at(-1)?.lore),
-    ...(scene.liveSceneVersion === 1 && scene.continuity
+    ...Object.fromEntries(sceneFields.filter((key) => scene[key] !== undefined).map((key) => [key, scene[key]])),
+    version: 1 as const,
+    activeIds: [...scene.activeIds],
+    participants: scene.participants
+      .filter((person) => visible.has(person.characterId))
+      .map(({ characterId, name, doing }) => ({ characterId, name, doing })),
+    doorwayContacts: (scene.doorwayContacts ?? []).map(({ characterId, playerZoneId, delivery }) => ({
+      characterId,
+      playerZoneId,
+      delivery,
+    })),
+    ...(facts
       ? {
+          capturedContext: true,
+          playerName: facts.playerPersonaName || facts.playerName || "You",
           currentTime: (() => {
-            const facts = scene.continuity!.facts;
             const moment = deriveVillageMoment({
               foundedAt: facts.foundedAt,
               seed: facts.seed,
               timeZone: facts.timeZone || undefined,
               now: new Date(scene.continuity!.capturedAt),
             });
-            return `${moment.weekday}, ${moment.dateLabel} · ${moment.localTime}`;
+            return moment.weekday + ", " + moment.dateLabel + " · " + moment.localTime;
           })(),
-        }
-      : {}),
-    ...(scene.continuity
-      ? {
           lighting:
-            villageLighting(scene.continuity.capturedAt, scene.continuity.facts.timeZone || undefined) === "night"
-              ? ("night" as const)
-              : ("day" as const),
+            villageLighting(scene.continuity!.capturedAt, facts.timeZone || undefined) === "night" ? "night" : "day",
         }
       : {}),
-    version: 1 as const,
+    connectionMap: (scene.sceneAttendance?.layout ?? []).map(({ id, connectedTo }) => ({ id, connectedTo })),
     processingSummary: sceneProcessingSummary(scene),
-    ...(last ? { latestTurn: { id: last.id, at: last.at, published: sceneTurnPublished(last) } } : {}),
+    lore: readLoreUse(scene.submissions.filter(sceneTurnPublished).at(-1)?.lore),
+    ...(scene.submissions.length
+      ? {
+          latestTurn: {
+            id: scene.submissions.at(-1)!.id,
+            at: scene.submissions.at(-1)!.at,
+            published: sceneTurnPublished(scene.submissions.at(-1)),
+          },
+        }
+      : {}),
   };
 }
-export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, privateHearing = false): T {
+export function publicSceneAuthority(scene: VenueScene) {
+  return authority(scene);
+}
+
+/** Explicit public fields: the private fit, sources, native authority and purchased proposals never cross this boundary. */
+export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>): T {
   if (Array.isArray(value))
-    return value
-      .flatMap((entry) => {
-        if (!(entry && typeof entry === "object" && entry.contactHidden === true)) return [entry];
-        const sound = asRecord(entry.soundOnly);
-        return sound.player === true
-          ? [
-              {
-                id: entry.id,
-                at: entry.at,
-                kind: "narration",
-                role: "assistant",
-                speakerId: "__venue_scene__",
-                name: "Narration",
-                content: sound.text,
-                heardBy: [],
-              },
-            ]
-          : [];
-      })
-      .map((entry) => publicSceneResponse(entry, visibleIds, privateHearing)) as T;
-  if (!value || typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) return value;
-  const row = { ...value } as Record<string, unknown>;
+    return value.flatMap((line) => {
+      const view = publicLine(line, visibleIds);
+      return view ? [view] : [];
+    }) as T;
+  const row = asRecord(value);
   if (Array.isArray(row.lines) && Array.isArray(row.submissions)) {
-    const hidden = unpublishedLines(row.submissions);
-    row.lines = row.lines.filter((line) => !hidden.has(asRecord(line).id as string));
-    row.submissions = row.submissions.filter(sceneTurnPublished);
+    const scene = row as VenueScene,
+      hidden = unpublishedLines(scene.submissions),
+      visible = new Set(scene.activeIds ?? []);
+    return {
+      ...authority(scene),
+      lines: scene.lines
+        .filter((line) => !hidden.has(line.id))
+        .flatMap((line) => {
+          const view = publicLine(line, visible);
+          return view ? [view] : [];
+        }),
+      submissions: scene.submissions.map((turn) => ({
+        id: turn.id,
+        message: turn.message,
+        mode: turn.mode,
+        targetId: turn.targetId,
+        at: turn.at,
+        status: turn.acceptance.status,
+        ...(sceneTurnPublished(turn) ? { replyLineIds: turn.replyLineIds } : {}),
+      })),
+    } as T;
   }
-  privateHearing ||= privateSceneHearing(row);
-  const visible = Array.isArray(row.participants)
-    ? new Set(row.participants.map((entry) => asTrimmedString(asRecord(entry).characterId)))
-    : visibleIds;
-  return Object.fromEntries(
-    Object.entries(
-      Array.isArray(row.lines) && Array.isArray(row.submissions)
-        ? {
-            ...row,
-            processingSummary: sceneProcessingSummary(row as VenueScene),
-            ...(row.continuity
-              ? {
-                  capturedContext: true,
-                  playerName:
-                    asRecord(asRecord(row.continuity).facts).playerPersonaName ||
-                    asRecord(asRecord(row.continuity).facts).playerName ||
-                    "You",
-                }
-              : {}),
-            ...(Array.isArray(asRecord(row.sceneAttendance).layout)
-              ? {
-                  connectionMap: (asRecord(row.sceneAttendance).layout as Record<string, unknown>[]).map((zone) => ({
-                    id: zone.id,
-                    connectedTo: zone.connectedTo,
-                  })),
-                }
-              : {}),
-          }
-        : row,
-    )
-      .filter(
-        ([key]) =>
-          !(privateHearing && ["heardBy", "heardPlayerBy"].includes(key)) &&
-          ![
-            "developmentChanges",
-            "npcAdmissions",
-            "pendingNpcAdmissions",
-            "npcIntroductions",
-            "placeDiscoveries",
-            "establishmentProgress",
-            "worldPlaces",
-            "continuity",
-            "sceneFacts",
-            "semanticReady",
-            "semanticConclude",
-            "semanticPlayerMoves",
-            "physicalContext",
-            "narrativeSource",
-            "semanticContinuedDomains",
-            "semanticIntent",
-            "semanticProvenance",
-            "proposalFingerprint",
-            "semanticAccess",
-            "residentActionReceipt",
-            "residentActions",
-            "responseDiagnostics",
-            "effectFailures",
-            "speechSource",
-            "speechCapture",
-            "evidenceFingerprints",
-            "playerSpeechCapture",
-            "failure",
-            "sceneAttendance",
-            "rejectedSubmissions",
-            "navigationReceipts",
-            "spinoff",
-            "accompanying",
-            "departureDestinations",
-            "access",
-            "accessEvents",
-            "accessOperationId",
-            "accessPreviousZones",
-            "pendingAccessClaim",
-            "contactGeneration",
-            "contactEvidence",
-            "attention",
-            "attentionEvidence",
-            "pendingAttention",
-            "contactHidden",
-            "soundOnly",
-            "contactReport",
-            "contactMoves",
-            "contactRelay",
-            "characterZoneId",
-            "checkpoints",
-            "attempts",
-            "optionalAttempts",
-            "wishInterpretationProof",
-            "wishProposals",
-            "wishContexts",
-            "wishAuthority",
-            "liveProposals",
-            "interpretationHistory",
-            "requestMetrics",
-            "timing",
-            "memoryChanges",
-            "memories",
-            "memoryScenes",
-            "recollections",
-            "turnMemories",
-            "relationshipChanges",
-            "earlierLineIds",
-            "memoryContexts",
-            "sourceFingerprint",
-            "wishProposalError",
-            "wishChanges",
-            "snapshot",
-          ].includes(key),
-      )
-      .map(([key, entry]) => [
-        key,
-        key === "lore"
-          ? readLoreUse(entry)
-          : key === "processing" && entry
-            ? {
-                version: 1,
-                domains: Object.fromEntries(
-                  Object.entries(asRecord(asRecord(entry).domains)).map(([domain, result]) => [
-                    domain,
-                    { status: asRecord(result).status },
-                  ]),
-                ),
-              }
-            : visible && ["heardBy", "heardPlayerBy"].includes(key) && Array.isArray(entry)
-              ? entry.filter((id) => visible.has(id))
-              : publicSceneResponse(entry, visible, privateHearing),
-      ]),
-  ) as T;
+  return { ...(Object.hasOwn(row, "lore") ? { lore: readLoreUse(row.lore) } : {}) } as T;
 }

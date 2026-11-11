@@ -177,7 +177,7 @@ export function createVillageClock(
             committed = state.clock;
             advanced = true;
           },
-          effect ? { memories: true, wishes: true } : undefined,
+          effect ? { memories: true } : undefined,
         );
         if (committed) cached = committed;
         const result = await observeUnlocked();

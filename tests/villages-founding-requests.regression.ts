@@ -1,5 +1,6 @@
 import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
+import { continuityPreparationContext } from "../packages/villages/src/server/domain/rules/continuity-library.js";
 import {
   coerceVillageState,
   defaultVillageState,
@@ -36,6 +37,7 @@ const card = {
   },
 } as const;
 const context = {
+  continuity: continuityPreparationContext(defaultVillageState(), card.id, "2026-11-10T12:00:00.000Z"),
   village: "The place",
   setting: "A converted complex shared by residents.",
   home: "A small assigned room",
@@ -55,6 +57,24 @@ for (const task of ["routine", "wish"] as const) {
   assert((messages[0].content as string).toLowerCase().includes("json"));
   assert(messages.reduce((n, row) => n + (row.content as string).length, 0) <= (task === "routine" ? 6000 : 6500));
   assert.equal((JSON.stringify(messages).match(/AUTHOR-BACKSTORY/g) ?? []).length, 1, "identity is supplied once");
+}
+const scoped = {
+  ...context,
+  circumstances: {
+    worldFacts: ["The river is rising."],
+    worldRules: "No overnight ferries.",
+    details: "retired prose",
+  },
+  venues: [
+    venueFixture({ id: "station", name: "Station", form: "Station building", description: "retired Room prose" }),
+  ],
+};
+for (const task of ["routine", "wish"] as const) {
+  const content = String(foundingRequestMessages(scoped, task)[1].content),
+    data = JSON.parse(content);
+  assert.deepEqual(data.circumstances, { worldFacts: ["The river is rising."], worldRules: "No overnight ferries." });
+  assert.equal(data.places[0].form, "Station building");
+  assert.doesNotMatch(content, /retired.*prose/);
 }
 const long = foundingRequestMessages({ ...context, card: { ...card, description: "d".repeat(40000) } }, "routine");
 assert.equal(
@@ -105,6 +125,7 @@ const state = coerceVillageState({
     {
       letterFontId: "caveat",
       characterId: "a",
+      incarnation: "a:original",
       cardSnapshot: {
         id: "a",
         name: "A",

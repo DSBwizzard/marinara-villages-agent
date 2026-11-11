@@ -37,12 +37,11 @@ const village = (name: string) =>
 
     name,
     foundedAt: new Date().toISOString(),
-    wishSystemVersion: 3,
-    visitMemoryBackfilled: true,
     villagers: [
       {
         letterFontId: "caveat",
         characterId: "same",
+        incarnation: "same:original",
         addedAt: "2026-10-07T00:00:00.000Z",
         cardSnapshot: {
           id: "same",
@@ -198,7 +197,10 @@ await assert.rejects(
 
 function documents(name: string) {
   const rows = new Map<string, any>([
-    ["villages-village", { id: "villages-village", data: village(name), revision: 1 }],
+    [
+      "villages-village",
+      { id: "villages-village", packageId: "villages", kind: "village", data: village(name), revision: 1 },
+    ],
   ]);
   const api = {
     async getById(_pkg: string, id: string) {
