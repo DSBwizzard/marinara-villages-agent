@@ -165,6 +165,8 @@ for (const count of [1000, 10_000, 25_000]) {
     const commands = createSceneCommands({
       readSession: async () => acknowledged,
       readVillageState: async () => ({ ...defaultVillageState(), seed: acknowledged.villageSeed }),
+      clearActivePointer: async (sceneId: string, preservePlayback: boolean) =>
+        assert.deepEqual([sceneId, preservePlayback], [id, true]),
     } as any);
     const closed = await commands.closeVenueSessionWithReceipts(id);
     assert.deepEqual(closed.recordEvents, [

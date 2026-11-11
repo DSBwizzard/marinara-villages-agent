@@ -575,7 +575,11 @@ export function createSceneCommands({
           environment: state.narrative,
         });
         if (!checked.allowed) throw conflict(checked.explanation);
-        initialPermissionId = checked.permissionId;
+        initialPermissionId = current.access?.permissions.some(
+          (grant) => grant.id === checked.permissionId && grant.duration === "visit",
+        )
+          ? checked.permissionId
+          : undefined;
       });
     const participants = sceneAttendance.occupants
       .filter((person) => person.zoneId === zone.id)
@@ -606,9 +610,10 @@ export function createSceneCommands({
       lastActivityAt: villageNow().toISOString(),
       endReason: "",
       status: participants.length === 0 && !discovery ? "active" : "opening",
-      participants,
+      // Pending entry cannot put the private cast into the playback index.
+      participants: initialPermissionId ? [] : participants,
       sceneAttendance,
-      activeIds: participants.map((person) => person.characterId),
+      activeIds: initialPermissionId ? [] : participants.map((person) => person.characterId),
       lines: [],
       submissions: [],
       recap: "",
@@ -1015,6 +1020,7 @@ export function createSceneCommands({
     return { session, recordEvents: await visibleNoticeEvents(session, sceneTurnNotices(session.submissions.at(-1))) };
   }
   async function closeLiveScene(session: VenueScene): Promise<VenueScene> {
+    if (session.pendingAccessClaim) session = await requireLiveVenueSession(session.id);
     const closed = await changeSession(session.id, (state) => {
       state.status = "closed";
       state.endedAt ||= villageNow().toISOString();

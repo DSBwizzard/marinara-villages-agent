@@ -256,6 +256,7 @@ export type AccessContext = {
   positions?: Record<string, string>;
   /** Only deliberate entry may claim an invitation not yet bound to a Scene. */
   accepting?: boolean;
+  permissionId?: string;
   unavailable?: boolean;
 };
 /** Pure native access decision; invitations never mutate while evaluating. */
@@ -298,6 +299,7 @@ export function evaluateZoneAccess(
   const grants = ledger.permissions.filter(
     (grant) =>
       !grant.revoked &&
+      (!context.permissionId || grant.id === context.permissionId) &&
       grant.zoneId === zone.id &&
       grant.visitorId === actor &&
       mayInvite(venue, zone, grant.issuerId) &&

@@ -507,6 +507,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       changeSession,
       clearActivePointer,
       hasVenueOperation,
+      withSceneWork: backendWork.sceneFence.run,
       withIdleSceneWork: (id, work) =>
         backendWork.sceneFence.isBusy(id) ? Promise.resolve() : backendWork.sceneFence.run(id, work),
       readVillageState: readVillageMemoryState,

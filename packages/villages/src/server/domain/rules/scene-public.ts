@@ -3,6 +3,7 @@ import { asRecord, asTrimmedString } from "./coerce.js";
 import { deriveVillageMoment } from "./village-clock.js";
 import { villageLighting } from "../../../shared/helpers/village-lighting.js";
 import { readLoreUse } from "../../../shared/helpers/lore.js";
+import { conflict } from "./errors.js";
 /** The ordinary change feed carries visible notices and recovery controls, never owner diagnostics. */
 export function publicSceneChanges(value: unknown) {
   const row = asRecord(value);
@@ -164,6 +165,7 @@ const sceneFields = [
   "sceneRevision",
 ] as const;
 function authority(scene: VenueScene) {
+  if (scene.pendingAccessClaim) throw conflict("That Scene is still settling its entry invitation.");
   const facts = scene.continuity?.facts;
   const visible = new Set(scene.activeIds);
   return {

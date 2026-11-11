@@ -16,6 +16,7 @@ import { initializeRoomContinuity } from "../packages/villages/src/server/domain
 import { initialOpening } from "../packages/villages/src/server/domain/rules/opening-project.js";
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
+import { applyAccessCommand } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import {
   SCENE_TERMINAL_PREFIX,
@@ -627,6 +628,74 @@ try {
   assert.equal(founded.status, "opening");
   assert.equal(storedVillage(records).opening?.gatheringSceneId, founded.id);
   assert.equal((await request("/rooms/active")).session?.id, founded.id);
+  assert.equal(completions, beforeGathering);
+
+  const pendingEntry = clone(baseline);
+  const authority = storedVillage(pendingEntry);
+  const home = authority.venues[0];
+  const actorIds = ["player", ...people.map(({ characterId }) => characterId)];
+  for (const operationId of ["pending-entry", "other-invitation"])
+    applyAccessCommand(
+      home,
+      {
+        action: "invite",
+        operationId,
+        expectedRevision: home.access!.revision,
+        zoneId: "bedroom",
+        visitorId: "player",
+        duration: "visit",
+        accompanied: false,
+        outsideHours: true,
+      },
+      "distant",
+      at,
+      actorIds,
+    );
+  const pendingOwner = pendingEntry.get(sceneRecordId);
+  const pending = fixtureSceneState(pendingOwner.data, pendingEntry);
+  pending.zoneId = "bedroom";
+  pending.activeIds = [];
+  pending.participants = [];
+  pending.pendingAccessClaim = "pending-entry";
+  pending.continuity = captureSceneContinuity(authority, pending, Date.parse(at));
+  pendingOwner.data = authorSceneFixture(pendingEntry, pending, authority);
+  pendingEntry.get(villageRecordId).data = authorVillageFixture(pendingEntry, authority);
+  await restart(pendingEntry);
+  const admitted = (await request("/rooms/active")).session;
+  assert.equal(admitted.zoneId, "bedroom");
+  assert.deepEqual(admitted.activeIds, ["distant"]);
+  assert.equal(admitted.participants[0].name, "Distant Resident");
+  assert.deepEqual(
+    storedVillage(records).venues[0].access!.permissions.map((grant) => grant.sceneId),
+    [sceneId, null],
+  );
+  assert.equal(savedScene().pendingAccessClaim, undefined);
+
+  applyAccessCommand(
+    home,
+    {
+      action: "revoke",
+      operationId: "withdraw-before-entry",
+      expectedRevision: home.access!.revision,
+      zoneId: "bedroom",
+      permissionId: "pending-entry",
+    },
+    "distant",
+    at,
+    actorIds,
+  );
+  pendingEntry.get(villageRecordId).data = authorVillageFixture(pendingEntry, authority);
+  await restart(pendingEntry);
+  const hiddenHistory = await request(roomUrl + "/history?" + new URLSearchParams({ scope }), undefined, 409);
+  assert.doesNotMatch(JSON.stringify(hiddenHistory), /Distant Resident|UNSEEN BEDROOM FURNITURE/);
+  const closedDenied = await request("/rooms/end", {
+    sessionId: sceneId,
+    expectedSceneRevision: savedScene().sceneRevision,
+  });
+  assert.equal(closedDenied.session.zoneId, "exterior");
+  assert.deepEqual(closedDenied.session.participants, []);
+  assert.doesNotMatch(JSON.stringify(closedDenied), /Distant Resident|UNSEEN BEDROOM FURNITURE/);
+  assert(storedVillage(records).venues[0].access!.permissions.every((grant) => grant.sceneId === null));
   assert.equal(completions, beforeGathering);
 
   // Restore only the synthetic documents between independent failure scenarios.

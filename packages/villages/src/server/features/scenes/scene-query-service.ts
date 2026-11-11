@@ -86,6 +86,7 @@ export function createSceneQueryService({ readSession, readVillageState, village
       continuity.setupAt !== world.setupAt
     )
       throw notFound("That Scene is no longer available.");
+    if (scene.pendingAccessClaim) throw conflict("That Scene is still settling its entry invitation.");
     const transcript = readSceneTranscriptHead(raw.transcript, scene),
       submissions = readSceneSubmissionHead(raw.submissionHistory, scene);
     const head = readScenePublicHistoryHead(raw.publicHistory, scene, transcript, submissions);

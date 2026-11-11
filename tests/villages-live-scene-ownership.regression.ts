@@ -129,6 +129,7 @@ function fixture(name: string) {
   }
   const fence = createSceneWorkFence();
   const service = createLiveScenes({
+    withSceneWork: fence.run,
     withIdleSceneWork: (id, observe) => (fence.isBusy(id) ? Promise.resolve() : fence.run(id, observe)),
     async readActive() {
       note("active");
@@ -513,6 +514,11 @@ async function main() {
     sourceLineIds: [],
   });
   claim.saved.pendingAccessClaim = "permission";
+  claim.fail("change:same", Error("Scene acknowledgement unavailable"));
+  await assert.rejects(claim.service.refreshZoneParticipants(claim.saved, true), /acknowledgement unavailable/);
+  assert.equal(venue.access!.permissions[0]!.sceneId, "same");
+  assert.equal(claim.sessions.get("same")!.pendingAccessClaim, "permission");
+  claim.fail("", Error("unused"));
   const settled = await claim.service.refreshZoneParticipants(claim.saved, true);
   assert.equal(venue.access!.permissions[0]!.sceneId, "same");
   assert.equal(settled.pendingAccessClaim, undefined);
@@ -520,6 +526,31 @@ async function main() {
     claim.calls.indexOf("world-change") < claim.calls.indexOf("change:same"),
     "claim is committed before the Scene flag is cleared",
   );
+  const revoked = fixture("revoked-before-entry");
+  const revokedPlace = revoked.world.venues[0]!;
+  const revokedZone = resolveVenueZone(revokedPlace, "community")!;
+  revokedZone.access!.mode = "permission-required";
+  revokedPlace.access!.managerIds = ["mara"];
+  const pendingGrant = { ...venue.access!.permissions[0]!, sceneId: null };
+  revokedPlace.access!.permissions.push(pendingGrant);
+  revoked.saved.continuity = captureSceneContinuity(revoked.world, revoked.saved, Date.parse(revoked.saved.startedAt));
+  revoked.saved.pendingAccessClaim = pendingGrant.id;
+  pendingGrant.revoked = true;
+  revokedPlace.access!.permissions.push({ ...pendingGrant, id: "alternate-permission", revoked: false });
+  const denied = await revoked.service.refreshZoneParticipants(revoked.saved, true);
+  assert.equal(denied.zoneId, "exterior");
+  assert.equal(denied.pendingAccessClaim, undefined);
+  assert(revokedPlace.access!.permissions.every((grant) => grant.sceneId === null));
+  assert(!denied.continuity!.facts.venues[0].access!.permissions.some((grant) => grant.sceneId));
+  assert.equal(denied.lines.length, 0, "Unadmitted entry never publishes a departure from the private Zone");
+  const removed = fixture("zone-removed-before-entry");
+  removed.saved.pendingAccessClaim = "removed-permission";
+  removed.world.venues[0].zones = removed.world.venues[0].zones!.filter((zone) => zone.id !== "community");
+  for (const zone of removed.world.venues[0].zones)
+    zone.connectedTo = zone.connectedTo?.filter((id) => id !== "community");
+  const redirected = await removed.service.refreshZoneParticipants(removed.saved, true);
+  assert.equal(redirected.zoneId, "exterior");
+  assert.equal(redirected.pendingAccessClaim, undefined);
   const privateExit = fixture("private-exit"),
     privateVenue = privateExit.world.venues[0]!,
     privateZone = resolveVenueZone(privateVenue, "community")!;
