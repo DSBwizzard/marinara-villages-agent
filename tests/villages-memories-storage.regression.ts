@@ -1,4 +1,4 @@
-// Test cases: memories-storage/1000, memories-storage/10000, memories-storage/25000, memories-storage/conflict, memories-storage/interruptions, memories-storage/reader-retention, memories-storage/active-preparation, memories-storage/reset, memories-storage/malformed, memories-storage/late-payload, memories-storage/page-restart, memories-storage/simulation, memories-storage/missing-page, memories-storage/large-exact-entry, memories-storage/opaque-gallery-boundary, memories-storage/world-namespace
+// Test cases: memories-storage/1000, memories-storage/10000, memories-storage/25000, memories-storage/conflict, memories-storage/interruptions, memories-storage/reader-retention, memories-storage/active-preparation, memories-storage/reset, memories-storage/malformed, memories-storage/late-payload, memories-storage/page-restart, memories-storage/simulation, memories-storage/missing-page, memories-storage/large-exact-entry, memories-storage/opaque-gallery-boundary, memories-storage/world-namespace, memories-storage/backend-ownership
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -613,4 +613,16 @@ await runCase("memories-storage/world-namespace", async () => {
   assert.deepEqual(cold, warm);
   assert.deepEqual(cold.continuity, initial.continuity);
   assert.deepEqual(cold.episodes, initial.episodes);
+});
+
+await runCase("memories-storage/backend-ownership", async () => {
+  const original = fixture(),
+    alternate = fixture();
+  await seed(original);
+  let selections = 0;
+  const repository = createVillageRepository(() => (++selections === 1 ? original.store : alternate.store));
+  await repository.mutateAuthority(forgetFirst, { memories: true });
+  assert.equal(selections, 1, "History hydration, page writes and the root CAS use one captured backend");
+  assert.equal(alternate.records.size, 0);
+  assert(forgotten(await original.restart().readAuthority({ memories: true })));
 });

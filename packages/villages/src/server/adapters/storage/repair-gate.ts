@@ -60,8 +60,6 @@ export function createRepairGate(backing: CapabilityDocumentStore, admission = c
     "memory-page",
     "repair-snapshot",
     "repair-undo",
-    "relationship-payload",
-    "relationship-payload-intent",
     "operation-evidence",
     "sprite-file",
   ]);
