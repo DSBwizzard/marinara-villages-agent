@@ -61,6 +61,14 @@ await runCase("scene-json-hardening/syntax", () => {
 await runCase("scene-json-hardening/ambiguity", () => {
   const core = { segments: [{ kind: "narration", text: 'A {gate} bears "hello", [friend], and a backslash: \\.' }] };
   const coreJson = JSON.stringify(core);
+  const keep = [{ text: "A {gate} bears a sign.", source: ["answer"] }];
+  const split = coreJson + "\n,keep:" + JSON.stringify(keep) + "}";
+  assert.deepEqual(completeSceneObject(split, "stop"), { ...core, keep });
+  assert.equal(completeSceneObject(split, "length"), null);
+  assert.equal(completeSceneObject(split.slice(0, -1), "stop"), null);
+  assert.equal(completeSceneObject(coreJson + ',keep:[{"text":"first","text":"second"}]}', "stop"), null);
+  assert.equal(completeSceneObject(split.slice(0, -1) + ',"commands":[]}', "stop"), null);
+  assert.equal(completeSceneObject(" ".repeat(149), "stop"), null);
   for (const effects of [
     { keep: [{ text: "Only if Mara agrees; not a promise.", source: ["answer"], nested: { note: '} , "quoted"' } }] },
     { commands: [{ type: "scene.end", source: ["exit"] }], keep: [] },

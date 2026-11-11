@@ -331,6 +331,7 @@ export function selectEpisodeHistory(
   holders: Extract<ContinuityHolder, { kind: "actor" }>[],
   query: string,
   bytes: number,
+  sceneId?: string,
 ) {
   memoryRequire(Number.isSafeInteger(bytes) && bytes >= 0, "invalid episode context budget");
   const terms = new Set(
@@ -386,17 +387,24 @@ export function selectEpisodeHistory(
       .slice(0, -2)
       .filter((row) => row.score > 0)
       .sort((a, b) => b.score - a.score || b.index - a.index);
+  const current = sceneId ? candidates.filter((row) => row.episode.sceneId === sceneId) : [];
+  // Keep one completed group and the growing group, so each new turn can append until the next group starts.
+  const sceneWindow = new Set(current.slice(Math.max(0, current.length - (current.length % 4) - 4)));
   const selected: typeof candidates = [];
   let used = 0;
-  for (const row of [...shared, ...recent.toReversed(), ...rest])
+  for (const row of [...[...sceneWindow].reverse(), ...shared, ...recent.toReversed(), ...rest]) {
     if (!selected.includes(row) && used + row.bytes <= bytes) {
       selected.push(row);
       used += row.bytes;
     }
+  }
   return {
     partial: selected.length < candidates.length,
     omitted: candidates.length - selected.length,
     bytes: used,
-    episodes: selected.sort((a, b) => a.index - b.index).map((row) => row.view),
+    sceneWindow: new Set(selected.filter((row) => sceneWindow.has(row)).map((row) => row.view.id)),
+    episodes: selected
+      .sort((a, b) => Number(sceneWindow.has(b)) - Number(sceneWindow.has(a)) || a.index - b.index)
+      .map((row) => row.view),
   };
 }

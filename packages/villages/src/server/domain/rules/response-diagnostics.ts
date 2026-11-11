@@ -15,15 +15,20 @@ export function responseDiagnostics(
   model: { model: string; connectionId: string },
   completion: { content: string | null; finishReason?: string },
   requestedOutputTokens: number,
-  raw = readModelJsonObject(completion).value,
+  raw?: Record<string, unknown> | null,
 ): ResponseDiagnostics {
+  const parsed = readModelJsonObject(completion);
   return {
     model: asTrimmedString(model.model).slice(0, 160),
     connectionId: asTrimmedString(model.connectionId).slice(0, 160),
     finishReason: (completion.finishReason ?? "unknown").slice(0, 80),
     requestedOutputTokens,
     responseLength: (completion.content ?? "").trim().length,
-    parseStatus: raw ? (readModelJsonObject(completion).repaired ? "salvaged" : "complete") : "invalid",
+    parseStatus: (raw === undefined ? parsed.value : raw)
+      ? parsed.repaired || !parsed.value
+        ? "salvaged"
+        : "complete"
+      : "invalid",
   };
 }
 export function coerceResponseDiagnostics(value: unknown): ResponseDiagnostics | undefined {

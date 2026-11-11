@@ -2,7 +2,9 @@
 
 The narration-first architecture uses one GM response, `{segments, keep?, commands?, halt?}`, followed by provider-free validation and application. The exact original player submission stays in private GM chronology and Engine playback, with no automatic resident audience or whole-input speech classification. The model supplies narration, sparse lasting meaning and narrow native commands; code binds their actual sources, perceptions, identities, revisions and authority. Full authored identities remain intact. There are no separate fictional Memory, Wish, relationship or commitment processors.
 
-No paid provider comparison has measured this refactor. The engineering aim remains ordinary Scene costs close to Game Mode. The older implementation's latest three warm ordinary conversations averaged **1.65× Game Mode**, against an aim of 1.0–1.25×. Those small historical samples do not measure the narration-first implementation or establish parity.
+The engineering aim is ordinary Scene costs close to Game Mode. A matched DeepSeek Flash run on the earlier narration-first build `831e89a0` averaged **1.92× Game Mode** per attempt, versus **2.22×** for Git staging `8135aa88`. Five of 33 paid narration-first turns failed to publish. The selected history began changing near turn 15, when the history budget filled and ranked recall started displacing the start of the prompt.
+
+Current Scene history now keeps a small chronological window before variable recall and standing context. Replaying the accepted benchmark history without a provider reduced the late-turn context section from about 31.6 KB to 21.6 KB on average and increased its median unchanged prefix from 320 to 13,378 characters. A new window can still reset the prefix. Four saved failed responses publish through the revised package in a mocked runtime. The fifth contained only spaces, so the writer gives a concrete JSON example and preserves an explicit empty-output failure. Live cache hit rates and billed costs after these fixes remain unmeasured.
 
 ## Provider-free narration-first checks
 

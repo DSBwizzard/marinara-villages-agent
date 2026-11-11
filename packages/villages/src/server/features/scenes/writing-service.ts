@@ -32,6 +32,7 @@ import {
   type VenueWritingBlock,
 } from "../../domain/rules/venue-writing.js";
 import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
+import { completionFailure } from "../../domain/rules/work-failure.js";
 import { zoneEventHearingContext, zoneEventScene } from "../../domain/rules/zone-events.js";
 
 export interface SceneWritingPorts {
@@ -194,7 +195,7 @@ export function createSceneWriting({
       ]),
       conversation: [
         {
-          text: "Interaction history is private GM chronology. Only the explicit per-character perceptions/sources may establish a character's knowledge. A partial history or room view omits stored content; omission never means absence.",
+          text: "Interaction history is private GM context. Entries marked earlierRecall are recalled context after the current Scene history. Only explicit per-character perceptions/sources establish character knowledge. Omission never means absence.",
         },
         ...context.parts.map((part) => part.block),
         ...lore.map((text, index): VenueWritingBlock => ({
@@ -306,18 +307,15 @@ export function createSceneWriting({
         raw,
       );
       if (!raw) {
+        const failure = completionFailure(completion, "scene-response", diagnostics.requestedOutputTokens) ?? {
+          cause: "invalid_json",
+          stage: "scene-response",
+          message: "The Scene response was not complete JSON.",
+        };
         await rejectVenueCompletion({ ...request.model, reason: "invalid-gm-response" }, { stages: [completionStage] });
-        throw Object.assign(
-          badGateway("The Scene response was not complete JSON. Your input and purchased response are retained."),
-          {
-            failure: {
-              cause: "invalid_json",
-              stage: "scene-response",
-              message: "The Scene response was not complete JSON.",
-              responseDiagnostics: diagnostics,
-            },
-          },
-        );
+        throw Object.assign(badGateway(failure.message + " Your input and purchased response are retained."), {
+          failure: { ...failure, responseDiagnostics: diagnostics },
+        });
       }
       runtimeDebug("Scene writing contract", {
         sceneId: scene.id,

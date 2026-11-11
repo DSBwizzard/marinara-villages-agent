@@ -1,4 +1,4 @@
-// Test cases: narration-writing/single-request, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/required-evidence-bound, narration-writing/circumstance-provenance, narration-writing/learned-wish-initiative, narration-writing/subject-scope, narration-writing/activation-owner
+// Test cases: narration-writing/single-request, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/history-prefix, narration-writing/required-evidence-bound, narration-writing/circumstance-provenance, narration-writing/learned-wish-initiative, narration-writing/subject-scope, narration-writing/activation-owner
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -1015,6 +1015,71 @@ await runCase("narration-writing/long-followup", async () => {
     "recent history can borrow the unused older reserve while standing context remains supplied",
   );
   assert.equal(f.calls.purchases, 1);
+});
+
+await runCase("narration-writing/history-prefix", async () => {
+  const f = fixture();
+  const actors = [f.id, "player"].map((id) => ({
+    id,
+    incarnation: continuityActor(f.state, id)!.incarnation,
+    zoneId: "parlor",
+  }));
+  let previous: string[] = [];
+  for (let count = 1; count <= 17; count++) {
+    const id = "exchange-" + count;
+    const keyword = count % 2 ? "cedar" : "maple";
+    const segments: AcceptedEpisode["segments"] = [
+      {
+        id: id + "-answer",
+        role: "assistant",
+        kind: "dialogue",
+        speakerId: f.id,
+        name: "Mara",
+        at,
+        zoneId: "parlor",
+        heardBy: [f.id, "player"],
+        content: (keyword + " weathered wood catches the afternoon light. ").repeat(30),
+      },
+    ];
+    f.state.episodes = appendEpisode(
+      f.state.episodes,
+      {
+        format: 1,
+        id,
+        seed: f.state.seed,
+        sceneId: f.scene.id,
+        submissionId: id,
+        operationId: id,
+        capturedAt: at,
+        acceptedAt: at,
+        admittedContinuityRevision: 0,
+        privateInput: "What do you like about " + keyword + "?",
+        responseDigest: memoryHash(segments),
+        actors,
+        segments,
+        grounding: [],
+        continuityVersionIds: [],
+        offered: [],
+        commandReceipts: [],
+        dependencies: {},
+      },
+      f.state.seed,
+    );
+    if (count < 12) continue;
+    f.nextOperation("after-" + id);
+    const request = await f.writing.prepareVenueTurnMessages(f.scene, keyword, "chat");
+    const blocks = request.fitted.messages
+      .flatMap((row) => row.content.split("\n\n"))
+      .filter((row) => row.startsWith('{"interaction":'));
+    const active = blocks.filter((row) => !JSON.parse(row).earlierRecall);
+    assert.equal(JSON.parse(active.at(-1)!).interaction.id, id);
+    assert(active.length <= 7);
+    assert.deepEqual(blocks.slice(0, active.length), active);
+    if (count % 4 !== 0 && previous.length)
+      assert.deepEqual(active.slice(0, -1), previous, "new turns append to the byte-identical history prefix");
+    previous = active;
+  }
+  assert.equal(f.calls.purchases, 0);
 });
 
 await runCase("narration-writing/required-evidence-bound", async () => {

@@ -282,11 +282,14 @@ export function bindNarrationSegment(
   const sound = [...(line.soundOnly?.characterIds ?? []), ...(line.soundOnly?.player ? ["player"] : [])];
   const perceive = ref.perceive;
   if (line.kind !== "narration") {
+    const ownWords = perceive?.kind === "private";
     memoryRequire(
-      !perceive || ["heard", "sound-only"].includes(perceive.kind),
+      !perceive ||
+        ["heard", "words", "sound-only"].includes(perceive.kind) ||
+        (ownWords && perceive.by.length === 1 && perceive.by[0] === line.speakerId),
       "dialogue sources retain their actual communication channel",
     );
-    source.kind = "speech";
+    source.kind = ownWords ? "private" : "speech";
     source.actorId = line.speakerId;
     for (const actorId of perceive?.by ?? [...new Set([...full, ...sound])]) {
       memoryRequire(
@@ -295,18 +298,19 @@ export function bindNarrationSegment(
       );
       const words = full.includes(actorId) && perceive?.kind !== "sound-only";
       memoryRequire(
-        words || (line.soundOnly && (full.includes(actorId) || sound.includes(actorId))),
+        words || (perceive?.kind !== "words" && line.soundOnly && (full.includes(actorId) || sound.includes(actorId))),
         "segment recipient was not routed that source",
       );
       source.perceptions.push({
         actorId,
-        channel: words ? "words" : "sound-only",
+        channel: ownWords ? "private" : words ? "words" : "sound-only",
         text: words ? line.content : line.soundOnly!.text,
       });
     }
   } else if (!perceive && owner?.holder.kind === "room") {
     source.kind = "observation";
   } else if (perceive) {
+    memoryRequire(perceive.kind !== "words", "narration cannot grant heard words");
     source.kind = perceive.kind === "private" ? "private" : "observation";
     memoryRequire(
       perceive.kind !== "private" ||

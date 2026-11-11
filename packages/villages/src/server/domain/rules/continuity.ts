@@ -577,6 +577,8 @@ export function applyContinuityWrite(
       holder.kind === "room" || completeNativeMeaning ? ROOM_CONTINUITY_TEXT_BYTES : CONTINUITY_TEXT_BYTES,
     );
     memoryRequire(!prior?.closed || write.current !== true, "closed continuity cannot be reopened");
+    const parentId = write.parentId ?? prior?.parentId;
+    const facet = parentId ? (write.facet ?? prior?.facet) : undefined;
     const version: ContinuityVersion = {
       id: continuityVersionId(context.seed, operationId, holder),
       rootId,
@@ -584,8 +586,8 @@ export function applyContinuityWrite(
       text,
       class: room ? "information" : (write.class ?? prior?.class ?? "experience"),
       about: (write.about ?? prior?.about ?? []).map(({ id, incarnation }) => ({ id, incarnation })),
-      ...(write.parentId || prior?.parentId ? { parentId: write.parentId ?? prior!.parentId } : {}),
-      ...(write.facet || prior?.facet ? { facet: write.facet ?? prior!.facet } : {}),
+      ...(parentId ? { parentId } : {}),
+      ...(facet ? { facet } : {}),
       sources: sources.map((source) =>
         structuredClone(
           holder.kind === "actor" && source.kind === "native"

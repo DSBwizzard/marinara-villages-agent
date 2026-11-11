@@ -1,4 +1,4 @@
-// Test cases: gm-effects/npc, gm-effects/project-chat, gm-effects/project-leave, gm-effects/project-greet, gm-effects/wish, gm-effects/wish-new, gm-effects/relationship, gm-effects/capacity, gm-effects/empty-leave, gm-effects/past-appointment, gm-effects/circumstance, gm-effects/halt, gm-effects/room-appearance
+// Test cases: gm-effects/npc, gm-effects/project-chat, gm-effects/project-leave, gm-effects/project-greet, gm-effects/wish, gm-effects/wish-new, gm-effects/relationship, gm-effects/capacity, gm-effects/empty-leave, gm-effects/past-appointment, gm-effects/circumstance, gm-effects/halt, gm-effects/room-appearance, gm-effects/provider-reply
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { packagedSceneServer } from "./fixtures/packaged-scene-server.fixture.js";
@@ -43,6 +43,77 @@ const supplied = (messages: { content: string }[]) =>
     .flatMap((row) => row.content.split("\n"))
     .filter((row) => row.startsWith('{"privateContinuity":'))
     .flatMap((row) => JSON.parse(row).privateContinuity);
+
+await runCase("gm-effects/provider-reply", async () => {
+  const host = await packagedSceneServer();
+  const note = "Mara likes the morning light because it reveals hairline cracks.";
+  const segments = [
+    { ...said("I'll tell you why I prefer this spot."), id: "intro", requires: ["light"] },
+    { ...said(note), delivery: "ordinary", requires: ["light"] },
+  ];
+  const keep = [
+    {
+      id: "light",
+      for: ["mara"],
+      owner: "mara",
+      class: "perspective",
+      facet: "stance",
+      text: note,
+      source: [
+        { segment: "intro", perceive: { kind: "private", by: ["mara"] } },
+        { segment: "said", perceive: { kind: "words", by: ["mara"] } },
+      ],
+    },
+  ];
+  let calls = 0;
+  host.model.chatComplete = async () => ({
+    content: ++calls === 1 ? JSON.stringify({ segments }) + "\n,keep:" + JSON.stringify(keep) + "}" : " ".repeat(149),
+    finishReason: "stop",
+    usage: { inputTokens: 10, outputTokens: 10 },
+  });
+  const send = (submissionId: string) =>
+    host.app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/turn",
+      payload: {
+        sessionId: "browser",
+        submissionId,
+        message: "What do you like about the window?",
+        mode: "chat",
+        targetId: "",
+        expectedSceneRevision: host.scene().sceneRevision,
+      },
+    });
+  try {
+    const active = await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+    assert.equal(active.statusCode, 200, active.body);
+    const response = await send("provider-reply");
+    assert.equal(response.statusCode, 200, response.body);
+    assert.equal(host.scene().submissions.at(-1)?.acceptance.status, "applied");
+    const world = fixtureVillageState(host.records.get("villages-village").data, host.records);
+    const kept = views(world, "mara").find((row) => row.version.text === note)?.version;
+    assert(kept);
+    assert.equal(kept.facet, undefined);
+    assert.deepEqual(
+      kept.sources.flatMap((source) => source.perceptions.map((row) => [row.actorId, row.channel])),
+      [
+        ["mara", "private"],
+        ["mara", "words"],
+      ],
+    );
+    assert(!views(world, "player").some((row) => row.version.text === note));
+    assert.equal(calls, 1);
+
+    const empty = await send("provider-empty");
+    assert.equal(empty.statusCode, 502, empty.body);
+    assert.match(empty.json().error, /model returned no answer/iu);
+    const details = await host.app.inject({ method: "GET", url: "/api/villages/rooms/browser/error-details" });
+    assert(details.json().errors.some((row: { details: string }) => JSON.parse(row.details).cause === "empty_output"));
+    assert.equal(calls, 2);
+  } finally {
+    await host.stop();
+  }
+});
 
 for (const scenario of scenarios)
   await runCase("gm-effects/" + scenario, async () => {
