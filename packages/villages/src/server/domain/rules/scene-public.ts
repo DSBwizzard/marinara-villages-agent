@@ -120,9 +120,11 @@ export function publicSceneHistoryPositions(scene: VenueScene) {
   return scene.lines.flatMap((line, position) => (!hidden.has(line.id) && publicLine(line) ? [position] : []));
 }
 export function scenePresenceNotices(scene: VenueScene): VenueRecordEvent[] {
-  return publicSceneHistoryPositions(scene).flatMap((position) => {
-    const line = scene.lines[position];
-    return line.presenceChange
+  const unpublished = unpublishedLines(scene.submissions);
+  return scene.lines.flatMap((line) => {
+    if (!line.presenceChange || unpublished.has(line.id)) return [];
+    const projected = publicLine(line);
+    return projected && "presenceChange" in projected && projected.presenceChange === true
       ? [{ id: "presence:" + scene.id + ":" + line.id, kind: "venue" as const, text: line.content }]
       : [];
   });

@@ -85,7 +85,9 @@ export function createSceneChanges({
       "recordEvents" in scene
         ? scene.recordEvents.some((event) => event.id === noticeId)
         : scenePresenceNotices(scene).some((event) => event.id === noticeId) ||
-          scene.submissions.some((turn) => turn.recordEvents?.some((event) => event.id === noticeId));
+          scene.submissions.some(
+            (turn) => turn.acceptance.status === "applied" && turn.recordEvents?.some((event) => event.id === noticeId),
+          );
     if (!known) throw notFound("That saved notice is unavailable.");
     await mutateVillageState((state) => {
       if (state.seed !== village.seed) throw conflict("Village identity changed.");
