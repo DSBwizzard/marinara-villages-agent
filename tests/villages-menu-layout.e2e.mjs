@@ -1,5 +1,6 @@
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
+import { PNG } from "pngjs";
 import { join, resolve } from "node:path";
 import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
@@ -207,10 +208,11 @@ await withBrowser(browser, async () => {
     const root = page.locator(`.${tag}-sectioned-menu:visible`);
     await page.getByRole("button", { name: "More" }).click();
     await expect(root).toBeVisible();
-    await expect(root.getByRole("heading", { name: "General Preferences", level: 1 })).toBeVisible();
+    if (mobile) await expect(page.getByRole("combobox", { name: "Section" })).toHaveValue("general");
+    else await expect(root.getByRole("heading", { name: "General Preferences", level: 1 })).toBeVisible();
     await expect(root.getByRole("button", { name: "Events", exact: true })).toHaveCount(0);
     await expect(root.getByRole("button", { name: "Force Village Update", exact: true })).toHaveCount(0);
-    const nav = page.getByRole("navigation", { name: "More sections" });
+    const nav = page.getByRole("navigation", { name: "Settings sections" });
     const picker = page.getByRole("combobox", { name: "Section" });
     const selectSection = async (key) => {
       if (mobile) await picker.selectOption(key);
@@ -254,10 +256,7 @@ await withBrowser(browser, async () => {
           .click();
         await expect(worldName).toHaveValue("An unsaved world name");
         if (mobile) await expect(picker).toHaveValue("village");
-        await page
-          .getByRole("navigation", { name: "Village navigation" })
-          .getByRole("button", { name: "Map", exact: true })
-          .click();
+        await page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();
         await page
           .getByRole("dialog", { name: "Confirm", exact: true })
           .getByRole("button", { name: "Cancel", exact: true })
@@ -268,11 +267,7 @@ await withBrowser(browser, async () => {
         await expect.poll(() => !!heldWorldSave).toBe(true);
         if (mobile) await expect(picker).toBeDisabled();
         else await expect(nav.getByRole("button", { name: "Visual Settings", exact: true })).toBeDisabled();
-        await expect(
-          page
-            .getByRole("navigation", { name: "Village navigation" })
-            .getByRole("button", { name: "Map", exact: true }),
-        ).toBeDisabled();
+        await expect(page.getByRole("button", { name: /Return to village|← Village/, exact: true })).toBeDisabled();
         await fulfill(heldWorldSave, { json: snapshot });
         holdWorldSave = false;
         await expect(worldName).toBeEnabled();
@@ -331,8 +326,8 @@ await withBrowser(browser, async () => {
           .getByRole("button", { name: "Projects" })
           .click();
         await page
-          .getByRole("main", { name: "Projects" })
-          .getByRole("button", { name: /^Close/ })
+          .getByRole("navigation", { name: "Village navigation" })
+          .getByRole("button", { name: "Settings", exact: true })
           .click();
         await selectSection("progress");
         await expect(main.getByText("Engine version: loading", { exact: true })).toBeVisible();
@@ -347,36 +342,65 @@ await withBrowser(browser, async () => {
       assert.ok((await main.innerText()).trim().length > 10, `${key} has visible content`);
       if (mobile) await expect(picker).toHaveValue(key);
       else await expect(nav.getByRole("button", { name, exact: true })).toHaveAttribute("aria-current", "page");
-      const { contrast, area } = await main.evaluate((element) => {
+      const { ink, area } = await main.evaluate((element) => {
         const style = getComputedStyle(element);
         const rect = element.getBoundingClientRect();
-        const surface = getComputedStyle(element.closest(".marinara-capability-villages-sectioned-menu"));
-        const luminance = (value) =>
-          value
+        return {
+          ink: style.color
             .match(/[\d.]+/g)
             .slice(0, 3)
-            .map(Number)
-            .map((channel) => {
-              const v = channel / 255;
-              return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
-            })
-            .reduce((total, channel, i) => total + channel * [0.2126, 0.7152, 0.0722][i], 0);
-        const a = luminance(style.color),
-          b = luminance(surface.backgroundColor);
-        return {
-          contrast: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05),
+            .map(Number),
           area: rect.width * rect.height,
         };
       });
+      // Long phone pages extend beyond the clipped reading area; sample only its visible background.
+      const readingArea = await main.evaluate((node) => {
+        const bounds = node.getBoundingClientRect();
+        const stage = node.closest(".marinara-capability-villages-desk-stage").getBoundingClientRect();
+        const x = Math.max(0, bounds.left, stage.left);
+        const y = Math.max(0, bounds.top, stage.top);
+        return {
+          x,
+          y,
+          width: Math.min(innerWidth, bounds.right, stage.right) - x,
+          height: Math.min(innerHeight, bounds.bottom, stage.bottom) - y,
+        };
+      });
+      const opacity = await main.evaluate((node) => {
+        const previous = node.style.opacity;
+        node.style.opacity = "0";
+        return previous;
+      });
+      let paper;
+      try {
+        paper = PNG.sync.read(await page.screenshot({ clip: readingArea, animations: "disabled" }));
+      } finally {
+        await main.evaluate((node, value) => {
+          node.style.opacity = value;
+        }, opacity);
+      }
+      const luminance = (rgb) =>
+        rgb
+          .map((channel) => {
+            const value = channel / 255;
+            return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+          })
+          .reduce((total, channel, i) => total + channel * [0.2126, 0.7152, 0.0722][i], 0);
+      const pixel = (Math.floor(paper.height / 2) * paper.width + Math.floor(paper.width / 2)) * 4;
+      const a = luminance(ink),
+        b = luminance([...paper.data.slice(pixel, pixel + 3)]);
+      const contrast = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
       assert.ok(contrast >= 4.5, `${key} has readable menu text`);
       assert.ok(area > 1000, `${key} occupies a visible area`);
     }
     await selectSection("general");
-    await expect(root.getByRole("heading", { name: "General Preferences", level: 1 })).toBeVisible();
-    await page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "Map" }).click();
+    if (mobile) await expect(picker).toHaveValue("general");
+    else await expect(root.getByRole("heading", { name: "General Preferences", level: 1 })).toBeVisible();
+    await page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();
     await expect(page.getByRole("button", { name: /^Notices \(/ })).toHaveCount(0);
     await page.getByRole("button", { name: "More", exact: true }).click();
-    await expect(root.getByRole("heading", { name: "General Preferences", level: 1 })).toBeVisible();
+    if (mobile) await expect(picker).toHaveValue("general");
+    else await expect(root.getByRole("heading", { name: "General Preferences", level: 1 })).toBeVisible();
     assert.deepEqual(errors, [], `no browser errors at ${width}×${height}`);
     await page.close();
   }

@@ -331,10 +331,13 @@ await withBrowser(browser, async () => {
 
     await expect(page.getByRole("button", { name: /Notices \(/u })).toHaveCount(0);
     await page.getByRole("button", { name: "More", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "General Preferences", level: 1 })).toBeVisible();
+    if (mobile) {
+      await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+      await expect(page.getByRole("combobox", { name: "Section" })).toHaveValue("general");
+    } else await expect(page.getByRole("heading", { name: "General Preferences", level: 1 })).toBeVisible();
     await page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "People" }).click();
     await page.getByRole("button", { name: "Open Mara profile" }).click();
-    await page.getByText("Character tools", { exact: true }).click();
+    await page.getByRole("button", { name: "Character Tools", exact: true }).click();
     const managerButton = page.getByRole("button", { name: /Manage sprites ·/u }).first();
     await managerButton.focus();
     await page.keyboard.press("Enter");
@@ -342,8 +345,16 @@ await withBrowser(browser, async () => {
     await expect(page.getByRole("button", { name: "Upload images", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "← Back to profile" }).click();
     await expect(managerButton).toBeFocused();
-    await page.getByRole("button", { name: "← Back to Villagers" }).click();
-    await page.getByRole("button", { name: "Close ×" }).click();
+    await page
+      .getByRole("navigation", { name: "Village navigation", exact: true })
+      .getByRole("button", { name: "People", exact: true })
+      .click();
+    await expect(page.locator("[data-desk=people]")).toHaveAttribute("data-phase", "open");
+    await page
+      .getByRole("navigation", { name: "Village navigation", exact: true })
+      .getByRole("button", { name: "People", exact: true })
+      .focus();
+    await page.keyboard.press("Escape");
     const section = async (key, label) => {
       if (mobile) await page.getByRole("combobox", { name: "Section" }).selectOption(key);
       else await page.getByRole("button", { name: label, exact: true }).click();
@@ -352,7 +363,7 @@ await withBrowser(browser, async () => {
     await expect(page.getByRole("heading", { name: "Maps", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Edit map" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Scene History", exact: true })).toHaveCount(0);
-    await page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "Map" }).click();
+    await page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();
 
     await page
       .getByRole("navigation", { name: "Village exploration" })
@@ -443,8 +454,7 @@ await withBrowser(browser, async () => {
     await page.getByRole("button", { name: "Venue actions" }).click();
     await page.getByRole("menuitem", { name: "Projects", exact: true }).click();
     await expect(page.getByRole("main", { name: "Projects" })).toBeVisible();
-    await page.getByRole("button", { name: /^Close/ }).click();
-    await page.getByRole("button", { name: "Back to Scene", exact: true }).click();
+    await page.getByRole("button", { name: "Return to Scene", exact: true }).click();
     while (await page.getByRole("button", { name: "Next paragraph" }).isEnabled())
       await page.getByRole("button", { name: "Next paragraph" }).click();
     await expect(composer).toBeVisible();

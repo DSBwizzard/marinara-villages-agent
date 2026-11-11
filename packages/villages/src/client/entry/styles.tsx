@@ -1965,62 +1965,6 @@ ${ELEMENT_TAG} {
 .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-cast-person > img[data-framing="half"] { object-fit: cover; object-position: center top; }
 @media (prefers-reduced-motion: reduce) { .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person { transition: none; } }
 
-.${ELEMENT_TAG}-root.${ELEMENT_TAG}-sectioned-menu {
-  --background: #0b1938;
-  --foreground: #f3f4ff;
-  --popover: #142753;
-  --muted: #1d3567;
-  --muted-foreground: #c0c9ee;
-  --border: #38569a;
-  --primary: #ac90ff;
-  --primary-foreground: #fff;
-  --destructive: #ffb7c1;
-  box-sizing: border-box;
-  display: grid;
-  grid-template-columns: clamp(13rem, 20cqw, 17rem) minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 0;
-  overflow: hidden;
-  padding: 0;
-  background: radial-gradient(circle at 82% 20%, #1b346d 0, transparent 50%), linear-gradient(120deg, #09132f, #0e1e43);
-  color: var(--foreground);
-}
-.${ELEMENT_TAG}-sectioned-menu > .${ELEMENT_TAG}-header {
-  grid-column: 1 / -1; grid-row: 1; align-items: center; min-height: 4.5rem; padding: .8rem 1.25rem;
-  border-bottom: 1px solid #314782; background: #101f48e8;
-}
-.${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-title { font-size: clamp(1.3rem, 2.4cqw, 2rem); font-weight: 700; }
-.${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-subtitle { color: var(--muted-foreground); font-size: .82rem; }
-.${ELEMENT_TAG}-sectioned-menu > .${ELEMENT_TAG}-header > .${ELEMENT_TAG}-error { flex-basis: 100%; margin: 0; }
-.${ELEMENT_TAG}-menu-content {
-  grid-column: 2; grid-row: 2; box-sizing: border-box; min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto;
-  padding: clamp(.75rem, 2cqw, 1.5rem);
-}
-.${ELEMENT_TAG}-menu-content.${ELEMENT_TAG}-panel,
-.${ELEMENT_TAG}-menu-content > .${ELEMENT_TAG}-panel,
-.${ELEMENT_TAG}-menu-content .${ELEMENT_TAG}-overlay {
-  border: 1px solid var(--border); border-radius: .85rem;
-  background: linear-gradient(145deg, #172c5e, #101f45); color: var(--foreground);
-}
-.${ELEMENT_TAG}-menu-content .${ELEMENT_TAG}-panel-title { color: #c7d2ff; font-size: .74rem; }
-.${ELEMENT_TAG}-menu-content .${ELEMENT_TAG}-button { min-height: 2.35rem; background: #172d60; color: var(--foreground); font-size: .85rem; }
-.${ELEMENT_TAG}-menu-content .${ELEMENT_TAG}-button:hover { border-color: #aa92ff; background: #203774; color: white; }
-.${ELEMENT_TAG}-menu-content .${ELEMENT_TAG}-hint,
-.${ELEMENT_TAG}-menu-content .${ELEMENT_TAG}-empty,
-.${ELEMENT_TAG}-menu-content .${ELEMENT_TAG}-status { font-size: .82rem; line-height: 1.5; }
-.${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-button:focus-visible,
-.${ELEMENT_TAG}-sectioned-menu input:focus-visible,
-.${ELEMENT_TAG}-sectioned-menu select:focus-visible,
-.${ELEMENT_TAG}-sectioned-menu textarea:focus-visible { outline: 3px solid #b6a2ff; outline-offset: 2px; }
-.${ELEMENT_TAG}-menu-content input:not([type="checkbox"]):not([type="radio"]),
-.${ELEMENT_TAG}-menu-content select, .${ELEMENT_TAG}-menu-content textarea {
-  border-color: #5570b0; background: #0c1c42; color: var(--foreground); font-size: .85rem;
-}
-.${ELEMENT_TAG}-menu-content input::placeholder, .${ELEMENT_TAG}-menu-content textarea::placeholder { color: #aebce3; }
-.${ELEMENT_TAG}-menu-content .${ELEMENT_TAG}-notice-row { border-color: #526bb1; background: #1c3568; color: var(--foreground); }
-.${ELEMENT_TAG}-menu-content .${ELEMENT_TAG}-menu-body { gap: 1rem; }
-.${ELEMENT_TAG}-sectioned-menu > .${ELEMENT_TAG}-panel.${ELEMENT_TAG}-menu-content { margin: clamp(.75rem, 2cqw, 1.5rem); }
-
 .${ELEMENT_TAG}-setup-root { display: flex; flex-direction: column; gap: .65rem; padding: .75rem; height: 100%; overflow: hidden; }
 .${ELEMENT_TAG}-setup-heading h1 { margin: 0; font-size: 1.5rem; }
 .${ELEMENT_TAG}-setup-root > .${ELEMENT_TAG}-setup-body { display: grid; grid-template-columns: 10rem minmax(0, 1fr); flex: 1 1 auto; min-height: 0; overflow-y: auto; }

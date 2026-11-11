@@ -66,6 +66,7 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
   }
   await page.route("**/*", async (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path.startsWith("/api/capability-packages/villages/assets/")) return route.fallback();
     if (path === "/")
       return fulfill(route, {
         status: 200,

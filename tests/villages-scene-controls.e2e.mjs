@@ -220,8 +220,7 @@ await withBrowser(browser, async () => {
         await page.getByRole("menuitem", { name: menu, exact: true }).click();
         await expect(page.locator("." + tag + "-room-screen")).toBeHidden();
         await expect(page.locator("." + tag + "-home")).toHaveCount(0);
-        if (menu === "Projects") await page.getByRole("button", { name: /^Close/ }).click();
-        await page.getByRole("button", { name: "Back to Scene", exact: true }).click();
+        await page.getByRole("button", { name: "Return to Scene", exact: true }).click();
         await expect(composer).toHaveValue(draftBeforeVenue);
       }
 
@@ -235,8 +234,9 @@ await withBrowser(browser, async () => {
         await page.getByRole("menuitem", { name: "Proposals", exact: true }).click();
         if (mobile) await page.getByRole("combobox", { name: "Section" }).selectOption(key);
         else await page.getByRole("button", { name: label, exact: true }).click();
-        await expect(page.getByRole("heading", { name: label, level: 1 })).toBeVisible();
-        await page.getByRole("button", { name: "Back to Scene", exact: true }).click();
+        if (mobile && key === "general") await expect(page.getByRole("combobox", { name: "Section" })).toHaveValue(key);
+        else await expect(page.getByRole("heading", { name: label, level: 1 })).toBeVisible();
+        await page.getByRole("button", { name: "Return to Scene", exact: true }).click();
         await expect(composer).toHaveValue(draftBeforeVenue);
       }
 

@@ -1,3 +1,4 @@
+import { clickCharacterTool } from "./fixtures/browser-diagnostics.mjs";
 import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
 const { authorSceneResponse } = await scenePlaybackFixtures();
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
@@ -220,23 +221,29 @@ await withBrowser(browser, async () => {
       .getByRole("button", { name: "Projects", exact: true })
       .click();
     await expect(page.getByRole("main", { name: "Projects" })).toBeVisible();
-    await page.getByRole("main", { name: "Projects" }).getByRole("button", { name: "Close ×", exact: true }).click();
+    await page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();
     await page
-      .getByRole("navigation", { name: "Village navigation" })
-      .getByRole("button", { name: "Map", exact: true })
+      .getByRole("navigation", { name: "Village exploration" })
+      .getByRole("button", { name: "Places", exact: true })
       .click();
-    await page.getByRole("button", { name: "Places", exact: true }).click();
-    const openProfile = async () => {
+    const placesDirectory = page.getByRole("complementary", { name: "Places navigator" });
+    await placesDirectory.getByRole("button", { name: /^(Collapse|Close) places$/ }).click();
+    await expect(placesDirectory).toHaveCount(0);
+    await page
+      .getByRole("navigation", { name: "Village exploration" })
+      .getByRole("button", { name: "Places", exact: true })
+      .click();
+    await expect(placesDirectory.getByRole("searchbox", { name: "Search places", exact: true })).toBeFocused();
+    const openProfile = async (id = place.id) => {
       const navigator = page.getByRole("complementary", { name: "Places navigator" });
-      await navigator.locator(`[data-exploration-row="${place.id}"]`).click();
+      await navigator.locator(`[data-exploration-row="${id}"]`).click();
       await navigator.getByRole("button", { name: "View venue", exact: true }).click();
     };
     await openProfile();
     const profile = page.locator(`.${prefix}-venue-profile`);
     await expect(profile.getByRole("heading", { name: "Warehouse home", exact: true })).toBeVisible();
     const typeLines = await profile
-      .getByRole("region", { name: "Basic information" })
-      .locator("dd")
+      .locator(`.${prefix}-venue-metadata dd`)
       .first()
       .evaluate((entry) => {
         const range = document.createRange();
@@ -245,13 +252,48 @@ await withBrowser(browser, async () => {
         return range.getClientRects().length;
       });
     assert.equal(typeLines, 1, "Venue type words remain readable without splitting across lines");
+    const desk = page.locator(`.${prefix}-desk-workspace`);
+    const checkArtworkBottom = async () => {
+      const margin = await desk.evaluate((root) => {
+        const stage = root.querySelector(".marinara-capability-villages-desk-stage");
+        const paper = root.querySelector(".marinara-capability-villages-desk-document");
+        const bottom = paper.getBoundingClientRect().bottom;
+        return root.getBoundingClientRect().bottom + stage.scrollHeight - stage.clientHeight - stage.scrollTop - bottom;
+      });
+      assert(margin >= 6, "Menu content leaves the illustrated skyline visible");
+    };
+    await checkArtworkBottom();
+    assert(
+      await desk
+        .getByRole("navigation", { name: "Village navigation" })
+        .evaluate((nav) => getComputedStyle(nav.closest("[data-desk]")).backgroundImage.includes("blob:")),
+      "The first Places entry prepares the shared storybook background",
+    );
+    const deskNavigation = page.getByRole("navigation", { name: "Village navigation", exact: true });
+    await deskNavigation.getByRole("button", { name: "Settings", exact: true }).click();
+    await expect(desk).toHaveAttribute("data-desk", "settings");
+    await deskNavigation.getByRole("button", { name: "Places", exact: true }).click();
+    await expect(profile.getByRole("heading", { name: "Warehouse home", exact: true })).toBeVisible();
+    await profile.getByRole("button", { name: "← Back to map", exact: true }).click();
+    await expect(page.getByRole("complementary", { name: "Places navigator" })).toBeVisible();
+    await expect(desk).not.toHaveAttribute("data-venue", "true");
+    await checkArtworkBottom();
+    await openProfile();
+    let selectedVenue = place.id;
     const chooseVenue = async (id, name) => {
-      if (width < 700) await page.getByRole("combobox", { name: "Venue", exact: true }).selectOption(id);
-      else
+      if (width < 700) {
+        await profile.getByRole("button", { name: "← Back to map", exact: true }).click();
+        const row = page
+          .getByRole("complementary", { name: "Places navigator" })
+          .locator(`[data-exploration-row="${selectedVenue}"]`);
+        await expect(row).toBeFocused();
+        await openProfile(id);
+      } else
         await page
           .getByRole("group", { name: "Venues", exact: true })
           .getByRole("button", { name: new RegExp("^" + name) })
           .click();
+      selectedVenue = id;
     };
     await chooseVenue(otherId, "The Harbour");
     await expect(profile.getByRole("heading", { name: "The Harbour", exact: true })).toBeVisible();
@@ -277,7 +319,12 @@ await withBrowser(browser, async () => {
       .click();
     const peopleBook = page.getByRole("dialog", { name: "People", exact: true });
     await expect(peopleBook).toBeVisible();
-    await peopleBook.getByRole("button", { name: "Close ×", exact: true }).click();
+    await expect(page.locator("[data-desk=people]")).toHaveAttribute("data-phase", "open");
+    await page
+      .getByRole("navigation", { name: "Village navigation", exact: true })
+      .getByRole("button", { name: "People", exact: true })
+      .focus();
+    await page.keyboard.press("Escape");
     await expect(profile.getByRole("heading", { name: "Warehouse home", exact: true })).toBeVisible();
     await expect(profile.getByRole("button", { name: "Rename Workshop", exact: true })).toBeVisible();
     await layout.locator('[data-layout-zone="exterior"]').click();
@@ -476,13 +523,14 @@ await withBrowser(browser, async () => {
     await expect(profile.getByRole("button", { name: "Generate new picture" })).toHaveCount(0);
     const beforeName = writes.length;
     await profile.getByLabel("Venue name", { exact: true }).fill("Renamed warehouse");
-    await chooseVenue(otherId, "The Harbour");
+    if (width < 700) await profile.getByRole("button", { name: "← Back to map", exact: true }).click();
+    else await chooseVenue(otherId, "The Harbour");
     await page
       .getByRole("dialog", { name: "Confirm", exact: true })
       .getByRole("button", { name: "Cancel", exact: true })
       .click();
     await expect(profile.getByLabel("Venue name", { exact: true })).toHaveValue("Renamed warehouse");
-    if (width < 700) await expect(page.getByRole("combobox", { name: "Venue", exact: true })).toHaveValue(place.id);
+    await expect(profile.getByRole("heading", { name: "Warehouse home", exact: true })).toBeVisible();
     await profile.getByRole("button", { name: "Plan a renovation →", exact: true }).click();
     await page
       .getByRole("dialog", { name: "Confirm", exact: true })
@@ -498,9 +546,7 @@ await withBrowser(browser, async () => {
     holdVenueSave = true;
     await profile.getByRole("button", { name: "Save name", exact: true }).click();
     await expect.poll(() => !!heldVenueSave).toBe(true);
-    await expect(
-      page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "Map", exact: true }),
-    ).toBeDisabled();
+    await expect(page.getByRole("button", { name: /Return to village|← Village/, exact: true })).toBeDisabled();
     await expect(profile.getByRole("button", { name: "Plan a renovation →", exact: true })).toBeDisabled();
     await fulfill(heldVenueSave, { json: snapshot });
     holdVenueSave = false;
@@ -513,12 +559,11 @@ await withBrowser(browser, async () => {
     await expect(page.getByRole("heading", { name: "Renovation", exact: true })).toBeVisible();
     await expect(page.getByRole("combobox", { name: "Venue", exact: true })).toHaveValue(place.id);
     assert.equal(writes.length, beforeName + 1, "planning does not submit a Project");
-    await page.getByRole("button", { name: /^Close/, exact: false }).click();
+    await page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();
     await page
-      .getByRole("navigation", { name: "Village navigation" })
-      .getByRole("button", { name: "Map", exact: true })
+      .getByRole("navigation", { name: "Village exploration" })
+      .getByRole("button", { name: "Places", exact: true })
       .click();
-    await page.getByRole("button", { name: "Places", exact: true }).click();
     await openProfile();
     await tabs.getByRole("button", { name: "Manage", exact: true }).click();
     await profile.getByRole("button", { name: "View housing requests", exact: true }).click();
@@ -532,19 +577,12 @@ await withBrowser(browser, async () => {
         .click();
       await page.getByRole("button", { name: "Open Mara profile", exact: true }).click();
       const person = page.getByRole("region", { name: "Mara profile", exact: true });
-      await person
-        .getByRole("navigation", { name: "Villager profile sections" })
-        .getByRole("button", { name: "Venues", exact: true })
-        .click();
+      await clickCharacterTool(page, "Venue connections");
       await person.getByRole("button", { name: /Projects Open Projects/ }).click();
       await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
-      await page.getByRole("button", { name: /^Close/ }).click();
       await page.getByRole("button", { name: "People", exact: true }).click();
       await page.getByRole("button", { name: "Open Mara profile", exact: true }).click();
-      await person
-        .getByRole("navigation", { name: "Villager profile sections" })
-        .getByRole("button", { name: "Venues", exact: true })
-        .click();
+      await clickCharacterTool(page, "Venue connections");
       await person.getByRole("button", { name: /Venue Requests Open Venue Requests/ }).click();
       await expect(page.getByRole("button", { name: "Show all requests", exact: true })).toHaveCount(0);
       await expect(page.getByRole("main").locator('[data-villager-request="residence:eli"]')).toBeVisible();
@@ -580,7 +618,7 @@ await withBrowser(browser, async () => {
     }
     await page
       .getByRole("navigation", { name: "Village navigation" })
-      .getByRole("button", { name: "More", exact: true })
+      .getByRole("button", { name: "Settings", exact: true })
       .click();
     if (width <= 700) await page.getByRole("combobox", { name: "Section" }).selectOption("village");
     else await page.getByRole("button", { name: "World Configuration", exact: true }).click();
@@ -618,8 +656,7 @@ await withBrowser(browser, async () => {
       .getByRole("button", { name: "Projects", exact: true })
       .click();
     await expect(page.getByRole("main", { name: "Projects" })).toBeVisible();
-    await page.getByRole("main", { name: "Projects" }).getByRole("button", { name: "Close ×", exact: true }).click();
-    await page.getByRole("button", { name: "Back to Scene", exact: true }).click();
+    await page.getByRole("button", { name: "Return to Scene", exact: true }).click();
     await expect(composer).toHaveValue("An unsent Scene draft.");
     assert.deepEqual(
       writes.slice(beforeSceneBrowse).filter((write) => !write.path.endsWith("/rooms/activity")),

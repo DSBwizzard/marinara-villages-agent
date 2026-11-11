@@ -1,3 +1,4 @@
+import { clickCharacterTool } from "./fixtures/browser-diagnostics.mjs";
 import { mockEngineLookups, fulfill, abort } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
@@ -193,7 +194,7 @@ await withBrowser(browser, async () => {
   assert.equal(acceptedRetries, 1);
   await page.getByRole("button", { name: "People", exact: true }).click();
   await page.getByRole("button", { name: "Open Mara profile" }).click();
-  await page.getByRole("button", { name: "Inspect", exact: true }).click();
+  await clickCharacterTool(page, "Inspect");
   await expect(
     page.getByRole("region", { name: "Mara profile", exact: true }).getByText("Background work"),
   ).toHaveCount(0);

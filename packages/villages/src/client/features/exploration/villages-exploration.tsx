@@ -1,5 +1,7 @@
+import { VillageIcon } from "../../shared/VillageIcon.js";
+import { StorybookHeading, StorybookSearchIcon } from "../../shared/StorybookHeading.js";
 import type { MobileMapBox, MobileMapSize } from "./villages-mobile-map";
-import { type DOMAttributes, type ReactNode, useEffect, useLayoutEffect, useRef } from "react";
+import { type CSSProperties, type DOMAttributes, type ReactNode, useEffect, useLayoutEffect, useRef } from "react";
 
 const P = "marinara-capability-villages";
 
@@ -43,6 +45,7 @@ export function useExplorationViewport(host: HTMLElement, active: boolean): void
           ? Math.max(0, host.getBoundingClientRect().bottom - viewport.offsetTop - viewport.height)
           : 0;
       host.style.setProperty("--villages-exploration-inset", inset + "px");
+      if (inset > 0 && focused) document.activeElement?.scrollIntoView({ block: "nearest" });
     };
     const observer = new ResizeObserver(update);
     observer.observe(host);
@@ -63,28 +66,12 @@ export function useExplorationViewport(host: HTMLElement, active: boolean): void
 }
 
 export function MapIcon({ name }: { name: ExplorationTab | "close" | "visit" }) {
+  if (name === "people" || name === "projects" || name === "places") return <VillageIcon name={name} />;
   const paths: Record<typeof name, ReactNode> = {
     map: (
       <>
         <path d="m3 5 6-2 6 2 6-2v16l-6 2-6-2-6 2Z" />
         <path d="M9 3v16M15 5v16" />
-      </>
-    ),
-    places: (
-      <>
-        <path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0Z" />
-        <circle cx="12" cy="10" r="3" />
-      </>
-    ),
-    people: (
-      <>
-        <circle cx="9" cy="7" r="4" />
-        <path d="M2 21v-3a7 7 0 0 1 14 0v3ZM17 3a4 4 0 0 1 0 8M20 21v-3a7 7 0 0 0-3-6" />
-      </>
-    ),
-    projects: (
-      <>
-        <path d="m14 5 5 5M3 21l9-9m1-8 3-2 6 6-2 3-7-7ZM3 21l3-1-2-2-1 3Z" />
       </>
     ),
     more: (
@@ -139,7 +126,7 @@ export function ExplorationNavigation({
           aria-pressed={active === tab}
           onClick={(event) => onChoose(tab, event.currentTarget)}
         >
-          <MapIcon name={tab} />
+          {tab === "more" ? <VillageIcon name="settings" /> : <MapIcon name={tab} />}
           <span>{tab[0].toUpperCase() + tab.slice(1)}</span>
         </button>
       ))}
@@ -170,14 +157,19 @@ export function ExplorationMarkers({
           const left = picture.left + pin.x * picture.width;
           const top = picture.top + pin.y * picture.height;
           if (left < 0 || top < 0 || left > frame.width || top > frame.height) return null;
+          const pinLeft = left + (offset?.id === pin.id ? offset.x : 0);
           return (
             <span
               key={pin.id}
               className={P + "-explore-anchor"}
-              style={{
-                left: left + (offset?.id === pin.id ? offset.x : 0),
-                top: top + (offset?.id === pin.id ? offset.y : 0),
-              }}
+              style={
+                {
+                  left: pinLeft,
+                  top: top + (offset?.id === pin.id ? offset.y : 0),
+                  "--pin-left": `${pinLeft}px`,
+                  "--pin-right": `${frame.width - pinLeft}px`,
+                } as CSSProperties
+              }
             >
               <button
                 type="button"
@@ -244,7 +236,9 @@ export function LocationNavigator({
     if (focusSearch) searchRef.current?.focus({ preventScroll: true });
   }, [focusSearch]);
   useEffect(() => {
-    listRef.current?.querySelector('[data-selected="true"]')?.scrollIntoView({ block: "nearest" });
+    const list = listRef.current;
+    if (list && list.scrollHeight > list.clientHeight)
+      list.querySelector('[data-selected="true"]')?.scrollIntoView({ block: "nearest" });
   }, [selectedId]);
   const filtered = rows.filter((row) => row.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   return (
@@ -260,16 +254,14 @@ export function LocationNavigator({
       }}
     >
       <header>
-        <h2>Places</h2>
+        <StorybookHeading as="h2">Places</StorybookHeading>
         <button type="button" aria-label={mobile ? "Close places" : "Collapse places"} onClick={onClose}>
           <MapIcon name="close" />
         </button>
       </header>
-      <button type="button" className={P + "-discover-places"} disabled={disabled} onClick={onDiscover}>
-        Discover Places
-      </button>
       <label className={P + "-explore-search"}>
         <span className={P + "-sr-only"}>Search places</span>
+        <StorybookSearchIcon />
         <input
           ref={searchRef}
           autoComplete="off"
@@ -280,11 +272,15 @@ export function LocationNavigator({
         />
       </label>
       <div ref={listRef} className={P + "-explore-list"}>
+        <button type="button" className={P + "-discover-places"} disabled={disabled} onClick={onDiscover}>
+          Discover Places
+        </button>
         {filtered.map((row) => (
           <div key={row.id} className={P + "-navigator-place"} data-selected={row.selected ? "true" : "false"}>
             <button
               type="button"
               className={P + "-explore-row"}
+              aria-label={row.name + (row.detail ? " · " + row.detail : "")}
               data-exploration-row={row.id}
               aria-pressed={row.selected === true}
               disabled={disabled || !row.onSelect}
@@ -294,6 +290,9 @@ export function LocationNavigator({
               <span>
                 <strong>{row.name}</strong>
                 <small>{row.detail}</small>
+              </span>
+              <span className={P + "-place-chevron"} aria-hidden="true">
+                ›
               </span>
             </button>
             {row.selected ? (

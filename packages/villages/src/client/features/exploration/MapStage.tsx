@@ -177,6 +177,7 @@ export function MapStage({
   mobile,
   exploration = false,
   navigationControlsWhilePlacing = false,
+  navigationControlsOnMobile = false,
   navigationView,
   onNavigationView,
   onViewportBounds,
@@ -226,6 +227,7 @@ export function MapStage({
   mobile?: boolean;
   exploration?: boolean;
   navigationControlsWhilePlacing?: boolean;
+  navigationControlsOnMobile?: boolean;
   navigationView?: MobileMapView | null;
   onNavigationView?(next: MobileMapView | null): void;
   onViewportBounds?(bounds: string): void;
@@ -1035,7 +1037,7 @@ export function MapStage({
         : null}
 
       {exploration && (!placing || navigationControlsWhilePlacing) ? (
-        !mobile && (
+        (!mobile || navigationControlsOnMobile) && (
           <div className={`${ELEMENT_TAG}-zoom ${ELEMENT_TAG}-map-camera-controls`} aria-label="Map zoom">
             <button type="button" aria-label="Zoom out" onClick={() => changeNavigationZoom(1 / 1.25)}>
               −

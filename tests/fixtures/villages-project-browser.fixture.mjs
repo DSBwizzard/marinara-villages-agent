@@ -14,7 +14,7 @@ function Harness(){
  const controller=useProjectsController({snapshot,onSnapshot:setSnapshot,focusProjectId:"",focusProjectRequest:0});
  window.projectsHarness={replace:setSnapshot,unmount:()=>root.unmount()};
  return <div className="marinara-capability-villages-root marinara-capability-villages-project-root"><ProjectsPanel snapshot={snapshot} controller={controller} room={null} mobile={innerWidth<700} siteProjectId=""
-  debugEnabled onReturn={()=>{}} onMap={()=>{}} onVenue={id=>window.lastVisit=id}
+  debugEnabled onReturn={()=>{}} onVenue={id=>window.lastVisit=id}
   onPeople={()=>window.peopleOpened=true} onPlaceOnMap={id=>window.lastPlacement=id}/></div>;
 }
 const root=createRoot(document.getElementById("root"));root.render(<ConfirmationProvider><Harness/></ConfirmationProvider>);
@@ -139,7 +139,7 @@ export async function openProjectPage(browser, width, snapshot = projectSnapshot
     fulfill(route, {
       status: 200,
       contentType: "text/html",
-      body: '<style>:root{font-size:18px;--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}html,body{height:100%;margin:0;background:#101a30;color:#f4f0e8;font-family:Arial}marinara-capability-villages{display:block;height:100%}#root{height:100%}</style><marinara-capability-villages><div id="root"></div></marinara-capability-villages>',
+      body: '<style>:root{font-size:18px;--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}html,body{height:100%;margin:0;background:#101a30;color:#f4f0e8;font-family:Arial}marinara-capability-villages{display:block;height:100%}#root{height:100%;container:village-desk/inline-size}</style><marinara-capability-villages><div id="root"></div></marinara-capability-villages>',
     }),
   );
   await page.route("**/api/villages/**", async (route) => {

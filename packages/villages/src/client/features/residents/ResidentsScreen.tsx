@@ -8,17 +8,15 @@ import { AvatarFace } from "./ResidentPanels.js";
 import type { ResidentsScreenController } from "./screen-contracts.js";
 import { type DossierLink, type DossierVenue, VillagerDossier } from "./villages-dossier.js";
 import { SpriteManager } from "./villages-sprite-manager.js";
+import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
+import { useContext } from "react";
+import { DeskLeaveGuard } from "../../shared/DeskWorkspace.js";
 import { VillagerWishJournal } from "./villages-wish-journal.js";
 
-export function ResidentsScreen({
-  controller,
-  onDirectory,
-  onClose,
-}: {
-  controller: ResidentsScreenController;
-  onDirectory?: () => void;
-  onClose?: () => void;
-}) {
+export function ResidentsScreen({ controller }: { controller: ResidentsScreenController }) {
+  const navigationLifetime = useVillageMutationLifetime(controller.snapshot?.isFounded);
+  const documentGuard = useContext(DeskLeaveGuard);
+  const canLeaveDocument = async () => !documentGuard?.guard.current || (await documentGuard.guard.current());
   const {
     element,
     agendas,
@@ -34,20 +32,15 @@ export function ResidentsScreen({
     personProfile,
     portraits,
     previewVillagerRefresh,
-    profileOrigin,
     refreshBusyId,
     refreshPreviews,
     rewriteAgenda,
     screen,
     setScheduleInfluence,
-    setExploreSheet,
     setFocusedProjectId,
     setFocusedRequestId,
     setHousingVenueId,
-    setMenuPage,
-    setPersonProfile,
     setProfileInspection,
-    setScreen,
     setSiteProjectId,
     setSnapshot,
     setSpriteManagerId,
@@ -96,28 +89,25 @@ export function ResidentsScreen({
       };
     });
     const relatedLinks: DossierLink[] = [];
-    relatedLinks.push({
-      id: "personal-mail",
-      title: "Message",
-      detail: "Mailbox",
-      onOpen: () => controller.setMailboxOpen(true),
-    });
     relatedLinks.push(
       {
         id: "projects-all",
         title: "Projects",
         detail: "Open Projects",
         playerVisible: true,
-        onOpen: () => openMenu("projects"),
+        onOpen: async () => {
+          if (await canLeaveDocument()) await openMenu("projects");
+        },
       },
       {
         id: "requests-all",
         title: "Venue Requests",
         detail: "Open Venue Requests",
         playerVisible: true,
-        onOpen: () => {
+        onOpen: async () => {
+          if (!(await canLeaveDocument())) return;
           setHousingVenueId("");
-          openMenu("venueRequests");
+          await openMenu("venueRequests");
         },
       },
     );
@@ -135,8 +125,10 @@ export function ResidentsScreen({
         id: "project:" + project.id,
         title: project.title,
         detail: "Project · " + project.status,
-        onOpen: () => {
-          openMenu("projects");
+        onOpen: async () => {
+          if (!(await canLeaveDocument())) return;
+          await openMenu("projects");
+          if (!navigationLifetime.isCurrent()) return;
           setFocusedProjectId(project.id);
           setSiteProjectId(project.id);
         },
@@ -148,8 +140,10 @@ export function ResidentsScreen({
         id: "request:" + proposal.id,
         title: proposal.venueDraft.name,
         detail: "Venue Request",
-        onOpen: () => {
-          openMenu("venueRequests");
+        onOpen: async () => {
+          if (!(await canLeaveDocument())) return;
+          await openMenu("venueRequests");
+          if (!navigationLifetime.isCurrent()) return;
           setFocusedRequestId("request:" + proposal.id);
         },
       });
@@ -165,8 +159,10 @@ export function ResidentsScreen({
         id: "residence:" + residence.characterId,
         title: "Residence request",
         detail: "Pending Venue Request",
-        onOpen: () => {
-          openMenu("venueRequests");
+        onOpen: async () => {
+          if (!(await canLeaveDocument())) return;
+          await openMenu("venueRequests");
+          if (!navigationLifetime.isCurrent()) return;
           setFocusedRequestId("residence:" + residence.characterId);
         },
       });
@@ -336,27 +332,6 @@ export function ResidentsScreen({
         )}
       </div>
     );
-    const back = async () => {
-      if (spriteLeaveGuard.current && !(await spriteLeaveGuard.current())) return;
-      setSpriteManagerId(null);
-      setProfileInspection(null);
-      setPersonProfile(null);
-      setScreen(personProfile.returnTo);
-      if (personProfile.returnTo === "home") setExploreSheet({ tab: "people" });
-      if (personProfile.returnTo === "menu") {
-        setMenuPage("villagers");
-      }
-      requestAnimationFrame(() => {
-        for (const { selector, top } of profileOrigin.current.scroll) {
-          const target = element.querySelector<HTMLElement>(selector);
-          if (target) target.scrollTop = top;
-        }
-        const target = profileOrigin.current.selector
-          ? element.querySelector<HTMLElement>(profileOrigin.current.selector)
-          : element.querySelector<HTMLElement>(`textarea[aria-label]`);
-        target?.focus({ preventScroll: true });
-      });
-    };
     return (
       <>
         <VillagerDossier
@@ -375,9 +350,8 @@ export function ResidentsScreen({
           links={relatedLinks}
           error={error}
           onInspectSection={setProfileInspection}
-          onBack={onDirectory ?? back}
-          onClose={onClose}
-          onVenue={(id) => {
+          onVenue={async (id) => {
+            if (!(await canLeaveDocument())) return;
             const venue = snapshot?.settings.venues.find((entry) => entry.id === id);
             if (venue) {
               openVenue(venue);
@@ -431,10 +405,11 @@ export function ResidentsScreen({
                 type="button"
                 disabled={busy}
                 data-dossier-sprites="true"
-                onClick={(event) => {
+                onClick={async (event) => {
+                  event.currentTarget.blur();
+                  if (!(await canLeaveDocument())) return;
                   spriteProfileScroll.current =
                     element.querySelector<HTMLElement>(`.${ELEMENT_TAG}-dossier-root`)?.scrollTop ?? 0;
-                  event.currentTarget.blur();
                   setSpriteManagerId(personProfile.actorId);
                 }}
               >{`Manage sprites · ${person?.sprite?.images.length ?? 0} assigned`}</button>

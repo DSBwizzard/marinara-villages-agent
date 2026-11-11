@@ -1,3 +1,4 @@
+import { clickCharacterTool, openCharacterTools } from "./fixtures/browser-diagnostics.mjs";
 import { createBrowserMailbox } from "./fixtures/mailbox-browser.fixture.mjs";
 import { fixtureWish } from "./helpers/social-wishes-fixture.js";
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
@@ -17,6 +18,7 @@ mkdirSync(output, { recursive: true });
 let executedViewports = 0;
 await withBrowser(browser, async () => {
   for (const [width, height] of [
+    [2560, 1062],
     [1440, 900],
     [1366, 600],
     [977, 932],
@@ -38,6 +40,14 @@ await withBrowser(browser, async () => {
       writes = [],
       reads = [];
     page.on("pageerror", (error) => errors.push(error.message));
+    const closePeople = async () => {
+      await expect(page.locator("[data-desk=people]")).toHaveAttribute("data-phase", "open");
+      await page
+        .getByRole("navigation", { name: "Village navigation", exact: true })
+        .getByRole("button", { name: "People", exact: true })
+        .focus();
+      await page.keyboard.press("Escape");
+    };
     const village = structuredClone(base);
     village.villagers = village.villagers.slice(0, 2);
     village.villagers[0].letterFontId = "caveat";
@@ -49,10 +59,26 @@ await withBrowser(browser, async () => {
       }),
     );
     village.villagers[0].summary = "A curious explorer who enjoys meeting people and sharing stories.";
+    village.villagers[0].summary +=
+      " They collect old maps, study unfamiliar machinery and enjoy long walks by the river.";
     if (width === 390) village.villagers[0].summary = village.villagers[0].summary.repeat(12);
     village.villagers[0].identityDescription = { text: village.villagers[0].summary, revision: "description-1" };
     let failDescription = false;
     village.villagers[0].tags = ["explorer", "friendly"];
+    const neutralSprite =
+      "data:image/svg+xml," +
+      encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1536"><path fill="#98816e" d="M320 80h384v1370H320Z"/></svg>',
+      );
+    village.villagers[0].sprite = {
+      assetId: "resident-sprites",
+      expressions: [],
+      framing: { mode: "full" },
+      images: [
+        { label: "happy", view: "front", isDefault: true, url: mapImage },
+        { label: " Neutral ", view: width === 900 ? "side" : "front", url: neutralSprite },
+      ],
+    };
     const secondName = width <= 390 ? "Eli of the Very Long and Winding Riverside Road" : "Eli";
     village.villagers[1].name = secondName;
     village.villagers[1].summary = "";
@@ -560,21 +586,26 @@ await withBrowser(browser, async () => {
       .getByRole("button", { name: "People", exact: true });
     await people.click();
     const selector = page.getByRole("main", { name: "Villagers directory" });
-    await expect(page.locator(`.${P}-notebook-session`)).toHaveAttribute("data-phase", "open");
-    await expect(selector.locator(`.${P}-directory-page`)).toHaveCount(2);
-    const bookBox = await page.locator(`.${P}-dossier-book:visible`).boundingBox();
+    await expect(page.locator(`.${P}-desk-workspace`)).toHaveAttribute("data-phase", "open");
+    const bookBox = await page.locator(`.${P}-people-layout`).boundingBox();
     await page.screenshot({ path: resolve(output, `directory-${width}-${height}.png`) });
-    await expect(selector.getByRole("searchbox")).toHaveCount(0);
+    const search = selector.getByRole("searchbox", { name: "Find a person" });
+    await search.fill("Mara");
+    await expect(selector.getByRole("button", { name: /^Open .* profile$/ })).toHaveCount(1);
+    await search.fill("");
     await selector.getByRole("button", { name: "Open Mara profile" }).click();
     assert.deepEqual(
-      await page.locator(`.${P}-dossier-book:visible`).boundingBox(),
+      await page.locator(`.${P}-people-layout`).boundingBox(),
       bookBox,
-      "Directory and profile share the same book dimensions",
+      "Opening a profile keeps the People workspace in place",
     );
-    await page.getByRole("button", { name: "← Back to Villagers" }).click();
+    await page
+      .getByRole("navigation", { name: "Village navigation", exact: true })
+      .getByRole("button", { name: "People", exact: true })
+      .click();
     await selector.getByRole("button", { name: `Open ${secondName} profile` }).click();
     if (width === 390 && height === 844) await page.setViewportSize({ width: 1440, height: 900 });
-    await page.getByRole("button", { name: "Close ×" }).click();
+    await closePeople();
     await expect(people).toBeFocused();
     if (width === 390 && height === 844) await page.setViewportSize({ width, height });
     assert.equal(
@@ -582,6 +613,86 @@ await withBrowser(browser, async () => {
       true,
       "Map stays mounted throughout notebook browsing",
     );
+    const originalRoster = village.villagers;
+    village.villagers = [
+      ...originalRoster,
+      ...Array.from({ length: 2 }, (_, index) => ({
+        ...originalRoster[1],
+        characterId: `four-${index}`,
+        name: index === 0 ? "Feddy Fastbayer" : "Ella",
+      })),
+    ];
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await people.click();
+    const tiles = selector.getByRole("button", { name: /^Open .* profile$/ });
+    await expect(tiles).toHaveCount(4);
+    await expect(selector.getByRole("navigation", { name: "People pages" })).toHaveCount(0);
+    const checkFourTiles = async () => {
+      for (const tile of await tiles.all()) await expect(tile).toBeInViewport({ ratio: 0.99 });
+      assert.ok(
+        await selector.locator(`.${P}-directory-reading`).evaluate((node) => {
+          const bounds = node.getBoundingClientRect();
+          return (
+            node.scrollHeight <= node.clientHeight + 1 &&
+            [...node.querySelectorAll("button")].every((tile) => {
+              const rect = tile.getBoundingClientRect();
+              const portrait = tile.querySelector(".marinara-capability-villages-avatar").getBoundingClientRect();
+              return (
+                rect.top >= bounds.top &&
+                rect.bottom <= bounds.bottom + 1 &&
+                Math.abs(portrait.width - portrait.height) < 1 &&
+                portrait.width >= 32
+              );
+            })
+          );
+        }),
+        "Four complete tiles and square portraits fit without scrolling",
+      );
+    };
+    await checkFourTiles();
+    await page.screenshot({ path: resolve(output, `four-tiles-${width}-${height}.png`) });
+    const tileSizes = await tiles.evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const rect = node.querySelector(".marinara-capability-villages-avatar").getBoundingClientRect();
+        return [rect.width, rect.height];
+      }),
+    );
+    await selector.getByRole("button", { name: "Open Mara profile" }).click();
+    if (width > 700)
+      assert.deepEqual(
+        await tiles.evaluateAll((nodes) =>
+          nodes.map((node) => {
+            const rect = node.querySelector(".marinara-capability-villages-avatar").getBoundingClientRect();
+            return [rect.width, rect.height];
+          }),
+        ),
+        tileSizes,
+        "Four-tile portraits retain their size beside a profile",
+      );
+    await page
+      .getByRole("navigation", { name: "Village navigation", exact: true })
+      .getByRole("button", { name: "People", exact: true })
+      .click();
+    await checkFourTiles();
+    village.villagers.push({ ...originalRoster[1], characterId: "fifth", name: "Fifth neighbor" });
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    const fivePages = selector.getByRole("navigation", { name: "People pages" });
+    await expect(fivePages.getByRole("status")).toHaveText("1 / 2");
+    await expect(tiles).toHaveCount(4);
+    for (const tile of await tiles.all()) await expect(tile).toBeInViewport({ ratio: 0.99 });
+    await fivePages.getByRole("button", { name: "Next people page" }).click();
+    await expect(tiles).toHaveCount(1);
+    await expect(tiles).toHaveAccessibleName("Open Fifth neighbor profile");
+    await expect(fivePages.getByRole("button", { name: "Next people page" })).toBeDisabled();
+    await fivePages.getByRole("button", { name: "Previous people page" }).click();
+    await expect(tiles).toHaveCount(4);
+    await search.fill("No resident has this name");
+    await expect(selector.getByText("No matching villagers.", { exact: true })).toBeVisible();
+    await expect(fivePages).toHaveCount(0);
+    await search.fill("");
+    await expect(fivePages.getByRole("status")).toHaveText("1 / 2");
+    await closePeople();
+    village.villagers = originalRoster;
     if (width === 1440 || (width === 390 && height === 844)) {
       const savedVillagers = village.villagers;
       village.villagers = [
@@ -596,55 +707,111 @@ await withBrowser(browser, async () => {
       ];
       await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
       await people.click();
-      await expect(selector.getByRole("button", { name: /^Open .* profile$/ })).toHaveCount(42);
+      await expect(selector.getByRole("button", { name: /^Open .* profile$/ })).toHaveCount(4);
       const list = selector.locator(`.${P}-directory-reading`);
-      const position = await list.evaluate((node) => {
-        node.scrollTop = node.scrollHeight;
-        return node.scrollTop;
-      });
-      assert.ok(position > 0, "Large rosters scroll inside the book");
-      await selector.getByRole("button", { name: `Open ${secondName} profile` }).click();
-      await page.getByRole("button", { name: "← Back to Villagers" }).click();
-      assert.equal(
-        await list.evaluate((node) => node.scrollTop),
-        position,
-        "Directory reading position survives profile browsing",
+      const pages = selector.getByRole("navigation", { name: "People pages" });
+      await expect(pages.getByRole("status")).toHaveText("1 / 11");
+      await expect(pages.getByRole("button", { name: "Previous people page" })).toBeDisabled();
+      for (let index = 0; index < 10; index++) await pages.getByRole("button", { name: "Next people page" }).click();
+      await expect(pages.getByRole("status")).toHaveText("11 / 11");
+      await expect(pages.getByRole("button", { name: "Next people page" })).toBeDisabled();
+      await expect(selector.getByRole("button", { name: /^Open .* profile$/ })).toHaveCount(2);
+      assert.ok(
+        await list.evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
+        "Pagination replaces roster scrolling",
       );
-      await page.getByRole("button", { name: "Close ×" }).click();
+      await selector.getByRole("button", { name: `Open ${secondName} profile` }).click();
+      await page
+        .getByRole("navigation", { name: "Village navigation", exact: true })
+        .getByRole("button", { name: "People", exact: true })
+        .click();
+      await expect(pages.getByRole("status")).toHaveText("11 / 11");
+      await search.fill("Mara");
+      await expect(selector.getByRole("button", { name: "Open Mara profile" })).toBeVisible();
+      await expect(pages).toHaveCount(0);
+      await search.fill("");
+      await expect(pages.getByRole("status")).toHaveText("1 / 11");
+      await pages.getByRole("button", { name: "Next people page" }).click();
+      await closePeople();
       await expect(people).toBeFocused();
+      await people.click();
+      await expect(pages.getByRole("status")).toHaveText("2 / 11");
       village.villagers = savedVillagers;
+      await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+      await expect(pages).toHaveCount(0);
+      await expect(selector.getByRole("button", { name: /^Open .* profile$/ })).toHaveCount(2);
+      await closePeople();
+    } else {
       await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     }
     await page.getByRole("button", { name: "More", exact: true }).click();
-    const menu = page.getByRole("navigation", { name: "More sections" });
+    const menu = page.getByRole("navigation", { name: "Settings sections" });
     for (const name of ["Relationships", "Memories", "Villager Agendas", "DEBUG: Villager Wishes"])
       await expect(menu.getByRole("button", { name, exact: true })).toHaveCount(0);
     await page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "People" }).click();
     const directory = page.getByRole("main", { name: "Villagers directory" });
-    await expect(page.locator(`.${P}-notebook-session`)).toHaveAttribute("data-phase", "open");
+    await expect(page.locator(`.${P}-desk-workspace`)).toHaveAttribute("data-phase", "open");
     await expect(menu).toHaveCount(0);
     await expect(directory.getByRole("searchbox", { name: "Search villagers" })).toHaveCount(0);
     await expect(directory.getByRole("button", { name: "Add a villager" })).toHaveCount(0);
     await expect(directory.getByText("explorer", { exact: true })).toHaveCount(0);
     await expect(directory.getByRole("button", { name: /^Open .* profile$/ })).toHaveCount(2);
+    const galleryPortraits = directory.locator(`.${P}-avatar`);
+    const portraitSizes = await galleryPortraits.evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const { width, height } = node.getBoundingClientRect();
+        return { width, height };
+      }),
+    );
     await directory.getByRole("button", { name: "Open Mara profile" }).click();
     const profile = page.getByRole("region", { name: "Mara profile", exact: true });
+    await expect(profile.getByRole("button", { name: "Message", exact: true })).toHaveCount(0);
     const tabs = page.getByRole("navigation", { name: "Villager profile sections" });
-    const settleTurn = () =>
-      profile
-        .locator(`.${P}-dossier-turn`)
-        .evaluateAll((nodes) =>
-          Promise.all(
-            nodes.flatMap((node) => node.getAnimations().map((animation) => animation.finished.catch(() => {}))),
-          ),
-        );
+    const chooseSection = async (label) => {
+      if (["Agenda", "Venues"].includes(label))
+        return clickCharacterTool(page, label === "Agenda" ? "Agenda records" : "Venue connections");
+      return width <= 700
+        ? page.getByRole("combobox", { name: "Section" }).selectOption({ label })
+        : tabs.getByRole("button", { name: label, exact: true }).click();
+    };
     await expect(profile).toBeVisible();
+    const neutralArtwork = page.getByRole("img", { name: "Mara — neutral sprite", exact: true });
+    await expect(neutralArtwork.locator("image")).toHaveAttribute("href", neutralSprite);
+    const [inkX, inkY, inkWidth, inkHeight] = (await neutralArtwork.getAttribute("viewBox")).split(" ").map(Number);
+    assert(
+      inkX <= 320 && inkY <= 80 && inkX + inkWidth >= 704 && inkY + inkHeight >= 1450,
+      "Visible-art framing keeps the complete source character",
+    );
+    assert(inkWidth < 410 && inkHeight < 1400, "Transparent canvas padding does not shrink the sprite");
+    if (width > 700)
+      assert.deepEqual(
+        await galleryPortraits.evaluateAll((nodes) =>
+          nodes.map((node) => {
+            const { width, height } = node.getBoundingClientRect();
+            return { width, height };
+          }),
+        ),
+        portraitSizes,
+        "Selecting a resident preserves portrait dimensions",
+      );
+    assert(
+      await profile.locator(`.${P}-dossier-biography`).evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
+      "Biography has no clipped or separately scrolling text",
+    );
+    await expect(tabs.getByRole("button", { name: "Agenda", exact: true })).toHaveCount(0);
+    await expect(tabs.getByRole("button", { name: "Venues", exact: true })).toHaveCount(0);
+    await expect(profile.getByRole("button", { name: "Inspect", exact: true })).toHaveCount(0);
     await expect(profile.getByRole("heading", { name: "Mara", exact: true })).toHaveCount(1);
     await expect(profile.getByRole("heading", { name: "Mara", exact: true })).toBeInViewport({ ratio: 1 });
     const overview = profile.getByRole("region", { name: "Overview content" });
-    await expect(overview.getByText("Mara has expressed an interest in talking again.")).toBeVisible();
-    await expect(overview.getByText("Mara and Eli are friends")).toBeVisible();
-    await expect(overview.getByText("Learn to swim")).toBeVisible();
+    await expect(profile.getByRole("button", { name: "← Back to Villagers", exact: true })).toHaveCount(0);
+    await expect(profile.getByRole("button", { name: "Close ×", exact: true })).toHaveCount(0);
+    await expect(selector.getByText(/^[0-9]+ villagers$/)).toHaveCount(0);
+    await expect(overview.getByRole("heading", { name: "Relationships", exact: true })).toHaveCount(0);
+    await expect(overview.getByRole("heading", { name: "Wishes", exact: true })).toHaveCount(0);
+    await expect(overview.getByText("Mara has expressed an interest in talking again.")).toHaveCount(0);
+    await expect(overview.getByText("Mara and Eli are friends")).toHaveCount(0);
+    await expect(overview.getByText("Learn to swim")).toHaveCount(0);
     await expect(overview.getByText("Often reads at the Mill")).toBeVisible();
     await expect(overview.getByText("Home · The Mill", { exact: true })).toBeVisible();
     await expect(overview.getByText("Work · The Harbour", { exact: true })).toBeVisible();
@@ -677,16 +844,16 @@ await withBrowser(browser, async () => {
     relationships.profiles = savedProfiles;
     relationships.starting.pending = false;
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-    await expect(overview.getByText("Mara and Eli are friends")).toBeVisible();
+    await expect(overview.getByText("Mara and Eli are friends")).toHaveCount(0);
     assert.equal(reads.filter((path) => path.endsWith("/memories/inspect") || path.endsWith("/agendas")).length, 0);
-    await tabs.getByRole("button", { name: "Venues", exact: true }).click();
+    await chooseSection("Venues");
     await expect(profile.getByRole("heading", { name: "The Mill", exact: true })).toBeVisible();
     await expect(profile.getByRole("heading", { name: "The Harbour", exact: true })).toBeVisible();
     await expect(profile.getByText("Mara's workshop", { exact: true })).toHaveCount(0);
     await expect(profile.getByText("Unseen private place", { exact: true })).toHaveCount(0);
     await expect(profile.getByRole("button", { name: /Projects Open Projects/ })).toBeVisible();
     await expect(profile.getByRole("button", { name: /Venue Requests Open Venue Requests/ })).toBeVisible();
-    await tabs.getByRole("button", { name: "Inspect", exact: true }).click();
+    await clickCharacterTool(page, "Inspect");
     await expect(profile.getByText("Mara's workshop", { exact: true })).toBeVisible();
     await expect(profile.getByRole("heading", { name: "Unseen private place", exact: true })).toBeVisible();
     await expect(profile.getByText("Other person's request", { exact: true })).toHaveCount(0);
@@ -695,13 +862,21 @@ await withBrowser(browser, async () => {
     await page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "People" }).click();
     await directory.getByRole("button", { name: "Open Mara profile" }).click();
     assert.equal(writes.length, 0, JSON.stringify(writes));
-    await tabs.getByRole("button", { name: "Overview", exact: true }).click();
-    const signature = profile.getByRole("img", { name: "Mara's signature", exact: true });
+    await chooseSection("Overview");
+    const signature = profile.getByRole("img", { name: "Mara's signature", exact: true, includeHidden: true });
     await expect(signature).toBeVisible();
     await expect(signature.locator('[data-hand="lively"]')).toHaveText("Mara");
+    const tools = await openCharacterTools(page);
+    await expect(tools.getByRole("heading", { name: "Character Tools", exact: true })).toBeVisible();
+    await expect(overview).toHaveCount(0);
+    await expect(tabs.getByRole("button", { name: "Character Tools", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     await profile.getByRole("button", { name: "Generate signature", exact: true }).click();
     await expect(profile.getByRole("button", { name: "Regenerate signature", exact: true })).toBeVisible();
     await expect(signature.locator("img")).toHaveAttribute("src", signatureUrl);
+    await chooseSection("Overview");
     assert.equal(writes.at(-1).path.endsWith("/villagers/mara/signature"), true);
     // Old saved derivatives may contain both enclosed white fills and matte edges.
     // Verify the actual notebook pixels, rather than only checking the CSS rule.
@@ -727,7 +902,10 @@ await withBrowser(browser, async () => {
     await oldArt.evaluate((element) => {
       element.style.opacity = "";
     });
-    const sample = (png, x, y) => Array.from(png.data.slice((y * png.width + x) * 4, (y * png.width + x) * 4 + 3));
+    const sample = (png, x, y) => {
+      const offset = (Math.floor((y / 120) * png.height) * png.width + Math.floor((x / 180) * png.width)) * 4;
+      return Array.from(png.data.slice(offset, offset + 3));
+    };
     // Separate browser composites can differ by a few 8-bit levels at subpixel
     // positions. Opaque white paper differs by dozens of levels on this notebook.
     const pixelTolerance = 4;
@@ -783,12 +961,14 @@ await withBrowser(browser, async () => {
     if (exerciseActions) {
       assert.equal(writes.at(-1).body.expectedAttempt, 0);
       failSignature = true;
+      await openCharacterTools(page);
       await profile.getByRole("button", { name: "Regenerate signature", exact: true }).click();
       await expect(profile.getByRole("alert")).toContainText("Signature provider unavailable");
       await expect(signature.locator("img")).toHaveAttribute("src", signatureUrl);
       failSignature = false;
       await profile.getByRole("button", { name: "Retry signature", exact: true }).click();
       await expect(profile.getByRole("alert")).toHaveCount(0);
+      await chooseSection("Overview");
     }
     await page.screenshot({ path: resolve(output, `overview-${width}-${height}.png`) });
     await expect.poll(() => page.evaluate(() => document.fonts.check('17px "Villages Notebook"'))).toBe(true);
@@ -797,34 +977,50 @@ await withBrowser(browser, async () => {
       false,
       "Profile fits viewport",
     );
-    if (width === 390)
-      assert.ok(
-        await profile.locator(`.${P}-dossier-biography`).evaluate((node) => {
-          node.scrollTop = node.scrollHeight;
-          return node.scrollTop > 0;
-        }),
-        "Long summaries remain readable in their own scroll area",
+    if (width <= 700) {
+      const paper = profile.locator(`xpath=ancestor::*[contains(@class,'${P}-dossier-root')]`);
+      await tabs.getByRole("button", { name: "Character Tools", exact: true }).scrollIntoViewIfNeeded();
+      const position = await paper.evaluate((node) => {
+        node.scrollTop += 60;
+        return node.scrollTop;
+      });
+      assert(position > 0, "Long mobile profiles scroll as one paper sheet");
+      await expect(tabs.getByRole("button", { name: "Character Tools", exact: true })).toBeInViewport({ ratio: 0.99 });
+      await chooseSection("Agenda");
+      assert.equal(await paper.evaluate((node) => node.scrollTop), 0, "A new section starts at the top");
+      await chooseSection("Overview");
+      assert.equal(
+        await paper.evaluate((node) => node.scrollTop),
+        position,
+        "Returning restores the section reading position",
       );
-    await tabs.getByRole("button", { name: "Overview", exact: true }).focus();
-    await page.keyboard.press("Tab");
-    const relationshipTab = tabs.getByRole("button", { name: "Relationships", exact: true });
-    await expect(relationshipTab).toBeFocused();
-    assert.ok(
-      await relationshipTab.evaluate((node) => parseFloat(getComputedStyle(node).outlineWidth) >= 3),
-      "Keyboard focus is visible",
-    );
+      await paper.evaluate((node) => {
+        node.scrollTop = 0;
+      });
+    }
+    if (width > 700) {
+      await tabs.getByRole("button", { name: "Overview", exact: true }).focus();
+      await page.keyboard.press("Tab");
+      const relationshipTab = tabs.getByRole("button", { name: "Relationships", exact: true });
+      await expect(relationshipTab).toBeFocused();
+      assert.ok(
+        await relationshipTab.evaluate((node) => parseFloat(getComputedStyle(node).outlineWidth) >= 3),
+        "Keyboard focus is visible",
+      );
+    } else {
+      await profile.getByRole("combobox", { name: "Section" }).focus();
+      await expect(profile.getByRole("combobox", { name: "Section" })).toBeFocused();
+    }
     for (const label of ["Relationships", "Wishes", "Memories", "Agenda", "Venues"]) {
-      await tabs.getByRole("button", { name: label, exact: true }).click();
+      await chooseSection(label);
       await expect(profile.getByRole("heading", { name: "Mara", exact: true, level: 1 })).toBeVisible();
       await expect(profile.getByText(/PRIVATE/)).toHaveCount(0);
       await expect(profile.getByRole("checkbox")).toHaveCount(0);
     }
     await expect(profile.getByText(/Harbour · Standing access/)).toBeVisible();
     await expect(profile.getByText("Agenda destination", { exact: true })).toHaveCount(0);
-    await tabs.getByRole("button", { name: "Wishes", exact: true }).click();
+    await chooseSection("Wishes");
     await expect(profile.getByText("Learn to swim", { exact: true }).filter({ visible: true }).first()).toBeVisible();
-    const tabBefore = await tabs.boundingBox();
-    const reading = profile.locator(`.${P}-dossier-content`);
     let wishPages = 0;
     while (
       !(await profile.getByText("Shared wish 12", { exact: true }).filter({ visible: true }).first().isVisible())
@@ -832,20 +1028,13 @@ await withBrowser(browser, async () => {
       await profile.getByRole("button", { name: "Next Wishes page", exact: true }).click();
       assert(++wishPages < 20);
     }
-    assert.ok(
-      await reading.evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
-      "Wishes use bounded pages instead of scrolling",
-    );
-    const tabAfter = await tabs.boundingBox();
-    assert.equal(tabAfter.y, tabBefore.y, "Sticky notes stay fixed while changing Wish pages");
-    assert.equal(tabAfter.x, tabBefore.x);
     await expect(profile.getByText("Shared wish 12", { exact: true }).filter({ visible: true }).first()).toBeVisible();
-    await settleTurn();
+    await expect(profile.locator(`.${P}-dossier-turn`)).toHaveCount(0);
     await page.screenshot({ path: resolve(output, `wishes-${width}-${height}.png`) });
-    await tabs.getByRole("button", { name: "Inspect", exact: true }).click();
+    await clickCharacterTool(page, "Inspect");
     await expect(profile.getByText("PRIVATE MARA WISH", { exact: true })).toBeVisible();
     await expect(profile.getByText("PRIVATE ELI WISH", { exact: true })).toHaveCount(0);
-    await tabs.getByRole("button", { name: "Agenda", exact: true }).click();
+    await chooseSection("Agenda");
     await expect(profile.getByText("PRIVATE ROUTINE", { exact: true })).toBeVisible();
     await profile.getByRole("checkbox", { name: "Schedule influence" }).click();
     await expect(profile.getByRole("checkbox", { name: "Schedule influence" })).toBeChecked();
@@ -865,9 +1054,9 @@ await withBrowser(browser, async () => {
       );
       throw cause;
     }
-    await tabs.getByRole("button", { name: "Venues", exact: true }).click();
+    await chooseSection("Venues");
     await expect(profile.getByText(/Agenda destination/)).toBeVisible();
-    await tabs.getByRole("button", { name: "Relationships", exact: true }).click();
+    await chooseSection("Relationships");
     await expect(profile.getByText("PRIVATE MARA STANCE", { exact: true })).toBeVisible();
     await expect(profile.getByText("Starting history returned an invalid connection.", { exact: false })).toBeVisible();
     await profile.getByRole("button", { name: "Retry unfinished work", exact: true }).click();
@@ -878,30 +1067,34 @@ await withBrowser(browser, async () => {
     await expect(profile.getByRole("spinbutton")).toHaveCount(0);
     await page.screenshot({ path: resolve(output, `relationships-${width}-${height}.png`) });
     if (exerciseActions) {
-      await tabs.getByRole("button", { name: "Agenda", exact: true }).click();
+      await chooseSection("Agenda");
       const pendingAgenda = hold(() => true);
       heldAgenda = pendingAgenda;
       await profile.getByRole("checkbox", { name: "Schedule influence" }).click();
       await expect.poll(() => pendingAgenda.started).toBe(1);
-      await tabs.getByRole("button", { name: "Overview", exact: true }).click();
-      await profile.getByText("Character tools", { exact: true }).click();
+      await chooseSection("Overview");
+      await openCharacterTools(page);
       const compare = profile.getByRole("button", { name: "Compare card", exact: true });
       await expect(compare).toBeDisabled();
       denyRelationshipRead = true;
       await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-      await expect(tabs.getByRole("button", { name: "Inspect", exact: true })).toBeVisible();
+      await expect(
+        page
+          .getByRole("group", { name: "Profile actions", exact: true, includeHidden: true })
+          .getByRole("button", { name: "Inspect", exact: true, includeHidden: true }),
+      ).toBeVisible();
       await expect(compare).toBeEnabled();
       const finishedAgenda = page.waitForResponse((response) => response.url().endsWith("/agendas/mara/influence"));
       pendingAgenda.release();
       heldAgenda = null;
       await (await finishedAgenda).finished();
       await expect(compare).toBeEnabled();
-      await profile.getByText("Character tools", { exact: true }).click();
+      await chooseSection("Overview");
       await page.evaluate(() => window.dispatchEvent(new Event("focus")));
       await expect(profile.getByRole("alert")).toHaveCount(0);
-      await tabs.getByRole("button", { name: "Inspect", exact: true }).click();
+      await clickCharacterTool(page, "Inspect");
     }
-    await tabs.getByRole("button", { name: "Overview", exact: true }).click();
+    await chooseSection("Overview");
     await page.evaluate((tag) => {
       const game = document.querySelector(tag);
       game.style.height = "calc(100vh - 80px)";
@@ -915,11 +1108,17 @@ await withBrowser(browser, async () => {
       });
       document.body.append(control);
     }, P);
-    await profile.getByText("Message", { exact: true }).click();
+    const mailboxTab = page
+      .getByRole("navigation", { name: "Village navigation" })
+      .getByRole("button", { name: "Mailbox", exact: true });
+    await mailboxTab.click();
     const mail = page.getByRole("dialog", { name: "Mailbox", exact: true });
+    await expect(mail).toBeVisible();
+    await expect(page.locator(`.${P}-desk-workspace`)).toHaveAttribute("data-phase", "open");
     const reopenLetter = async (folder) => {
       await mail.getByRole("button", { name: "Close Mailbox", exact: true }).click();
-      await profile.getByText("Message", { exact: true }).click();
+      await mailboxTab.click();
+      await expect(mail).toBeVisible();
       const back = mail.getByRole("button", { name: "Back to letters" });
       if (await back.isVisible()) await back.click();
       await mail.getByRole("button", { name: folder, exact: true }).click();
@@ -962,13 +1161,14 @@ await withBrowser(browser, async () => {
     );
     await page.locator("#engine-control").click();
     await expect(page.locator("#engine-control")).toHaveAttribute("data-clicked", "true");
-    await expect(mail.getByLabel("Recipient")).toHaveValue("mara");
+    await mail.getByRole("button", { name: "Write a letter", exact: true }).click();
+    await mail.getByLabel("Recipient").selectOption("mara");
     const draft = mail.getByRole("textbox", { name: "Personal message" });
     const exactMessage = "Let's talk later.\n  Exact text";
     await draft.fill(exactMessage);
     await mail.getByRole("button", { name: "Close Mailbox" }).click();
-    await expect(profile.getByRole("button", { name: "Message", exact: true })).toBeFocused();
-    await profile.getByText("Message", { exact: true }).click();
+    await expect(page.locator(`.${P}-desk-workspace :focus`)).toBeVisible();
+    await mailboxTab.click();
     await expect(draft).toHaveValue(exactMessage);
     await mail.getByRole("button", { name: "Send letter", exact: true }).click();
     await expect(mail.getByLabel("Personal mail").getByText(exactMessage, { exact: true })).toBeVisible();
@@ -1326,13 +1526,13 @@ await withBrowser(browser, async () => {
       await expect(mail.locator(".villages-letter-text").first()).toContainText("A page of words from Mara");
 
       await mail.getByRole("button", { name: "Close Mailbox", exact: true }).click();
-      await page.getByRole("button", { name: "Close ×", exact: true }).click();
+      await closePeople();
       await expect(profile).not.toBeVisible();
-      const mapButton = page
-        .getByRole("navigation", { name: "Village navigation" })
-        .getByRole("button", { name: "Map", exact: true });
+      await expect(page.locator(`[data-desk]`)).toHaveAttribute("data-phase", "open");
+      const mapButton = page.getByRole("button", { name: /Return to village|← Village/, exact: true });
       if (await mapButton.isVisible()) await mapButton.click();
-      await page.getByRole("button", { name: "Mailbox", exact: true }).click();
+      await expect(page.locator(`[data-desk]`)).toHaveAttribute("data-desk", "none");
+      await page.getByRole("button", { name: /^Mailbox(?: · Unread mail)?$/, exact: true }).click();
       await expect(paperPages.locator("span")).toHaveText(position);
       reopenProfileAfterMail = true;
 
@@ -1364,9 +1564,16 @@ await withBrowser(browser, async () => {
     if (reopenProfileAfterMail) {
       await people.click();
       await directory.getByRole("button", { name: "Open Mara profile", exact: true }).click();
-      await tabs.getByRole("button", { name: "Inspect", exact: true }).click();
+      await clickCharacterTool(page, "Inspect");
     }
-    await tabs.getByRole("button", { name: "Memories", exact: true }).click();
+    if (
+      (await page
+        .getByRole("group", { name: "Profile actions", exact: true, includeHidden: true })
+        .getByRole("button", { name: /^(?:Leave )?Inspect$/, exact: true, includeHidden: true })
+        .getAttribute("aria-pressed")) === "false"
+    )
+      await clickCharacterTool(page, "Inspect");
+    await chooseSection("Memories");
     await expect(profile.getByText("PRIVATE MARA MEMORY", { exact: true })).toBeVisible();
     await expect(profile.getByText("PRIVATE ELI MEMORY", { exact: true })).toHaveCount(0);
     if (width === 390) {
@@ -1381,7 +1588,6 @@ await withBrowser(browser, async () => {
     }
     await profile.getByRole("button", { name: "Inspect", exact: true }).last().click();
     await expect(profile.getByText("SOURCE EVIDENCE", { exact: false })).toBeVisible();
-    await settleTurn();
     await page.screenshot({ path: resolve(output, `inspect-${width}-${height}.png`) });
     if (exerciseActions) {
       await profile.getByRole("button", { name: "Correct", exact: true }).click();
@@ -1400,7 +1606,6 @@ await withBrowser(browser, async () => {
       assert.equal(corrections.length, 0, "Cancel makes no write.");
       await profile.getByRole("button", { name: "Correct", exact: true }).click();
       await correction.getByRole("textbox").fill("PRIVATE corrected wording");
-      await settleTurn();
       await page.screenshot({ path: resolve(output, `correct-${width}-${height}.png`) });
       await correction.getByRole("button", { name: "Save correction" }).click();
       await expect(correction.getByRole("alert")).toContainText("Saved response unavailable");
@@ -1425,13 +1630,13 @@ await withBrowser(browser, async () => {
       await correction.getByRole("button", { name: "Save correction" }).click();
       await expect.poll(() => !!releaseCorrection).toBe(true);
       await expect(correction.getByRole("textbox")).toBeDisabled();
-      await tabs.getByRole("button", { name: "Overview", exact: true }).click();
-      await tabs.getByRole("button", { name: "Memories", exact: true }).click();
+      await chooseSection("Overview");
+      await chooseSection("Memories");
       await expect(profile.getByText("PRIVATE corrected wording", { exact: true })).toBeVisible();
       await expect(correction.getByRole("textbox")).toHaveValue("Deferred correction");
       await expect(correction.getByRole("textbox")).toBeDisabled();
-      await tabs.getByRole("button", { name: "Leave Inspect", exact: true }).click();
-      await tabs.getByRole("button", { name: "Inspect", exact: true }).click();
+      await clickCharacterTool(page, "Leave Inspect");
+      await clickCharacterTool(page, "Inspect");
       await profile.getByRole("combobox", { name: "Memory knower" }).selectOption("eli");
       await expect(profile.getByText("PRIVATE ELI MEMORY", { exact: true })).toBeVisible();
       const readsBeforeRelease = reads.filter((path) => path.endsWith("/memories/inspect")).length;
@@ -1450,9 +1655,9 @@ await withBrowser(browser, async () => {
       await profile.getByRole("button", { name: "Forget", exact: true }).click();
       await expect(profile.getByRole("button", { name: "Forget", exact: true })).toBeDisabled();
       await expect(profile.getByText("Forgotten", { exact: true }).first()).toBeVisible();
-      await tabs.getByRole("button", { name: "Overview", exact: true }).click();
+      await chooseSection("Overview");
       await expect(profile.getByText("Home · The Mill", { exact: true })).toBeVisible();
-      await tabs.getByRole("button", { name: "Memories", exact: true }).click();
+      await chooseSection("Memories");
       failMemories = true;
       await profile.getByRole("button", { name: "Refresh", exact: true }).click();
       await expect(profile.getByRole("alert")).toContainText("Memory service unavailable");
@@ -1460,13 +1665,20 @@ await withBrowser(browser, async () => {
       await profile.getByRole("button", { name: "Refresh", exact: true }).click();
       await expect(profile.getByRole("alert")).toHaveCount(0);
     }
-    await profile.getByRole("button", { name: "← Back to Villagers", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Village navigation", exact: true })
+      .getByRole("button", { name: "People", exact: true })
+      .click();
     await expect(directory.getByRole("searchbox", { name: "Search villagers" })).toHaveCount(0);
     await expect(directory.getByRole("button", { name: "Open Mara profile" })).toBeFocused();
-    await expect(page.locator(`.${P}-notebook-session`)).toHaveAttribute("data-phase", "open");
+    await expect(page.locator(`.${P}-desk-workspace`)).toHaveAttribute("data-phase", "open");
     await directory.getByRole("button", { name: `Open ${secondName} profile` }).click();
     await expect(page.getByText("No home or workplace assigned.", { exact: true })).toBeVisible();
-    await expect(tabs.getByRole("button", { name: "Inspect", exact: true })).toHaveAttribute("aria-pressed", "false");
+    await expect(
+      page
+        .getByRole("group", { name: "Profile actions", exact: true, includeHidden: true })
+        .getByRole("button", { name: "Inspect", exact: true, includeHidden: true }),
+    ).toHaveAttribute("aria-pressed", "false");
     await expect(page.getByText(/PRIVATE/)).toHaveCount(0);
     await expect(page.getByText("No character summary recorded.", { exact: true })).toHaveCount(0);
     await expect(page.getByText(/Card missing · saved character remains available/)).toBeVisible();
@@ -1480,25 +1692,40 @@ await withBrowser(browser, async () => {
       "Long-name profile fits viewport",
     );
     if (width <= 390) await page.screenshot({ path: resolve(output, `long-name-${width}.png`) });
-    await page.getByRole("button", { name: "← Back to Villagers", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Village navigation", exact: true })
+      .getByRole("button", { name: "People", exact: true })
+      .click();
     await directory.getByRole("button", { name: "Open Mara profile" }).click();
     await expect(profile.getByRole("img", { name: "Mara's signature", exact: true }).locator("img")).toHaveAttribute(
       "src",
       signatureUrl,
     );
-    await profile.getByText("Character tools", { exact: true }).click();
+    await openCharacterTools(page);
 
     await profile.getByRole("button", { name: "Edit description", exact: true }).click();
     const description = profile.getByRole("textbox", { name: "Description", exact: true });
     const initialDescription = village.villagers[0].summary;
     await description.fill("A reserved explorer with an interest in old machinery.");
-    await profile.getByText("Character tools", { exact: true }).click();
-    await tabs.getByRole("button", { name: "Agenda", exact: true }).click();
-    await profile.getByText("Character tools", { exact: true }).click();
+    await profile.getByRole("button", { name: /^Manage sprites/ }).click();
+    const spriteDiscard = page.getByRole("dialog", { name: "Confirm", exact: true });
+    await expect(spriteDiscard).toContainText("Discard unsaved description?");
+    await spriteDiscard.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect(description).toHaveValue("A reserved explorer with an interest in old machinery.");
-    await profile.getByText("Character tools", { exact: true }).click();
-    await tabs.getByRole("button", { name: "Overview", exact: true }).click();
-    await profile.getByText("Character tools", { exact: true }).click();
+
+    if (width > 700) {
+      await directory.getByRole("button", { name: `Open ${secondName} profile`, exact: true }).click();
+      const discard = page.getByRole("dialog", { name: "Confirm", exact: true });
+      await expect(discard).toContainText("Discard unsaved description?");
+      await discard.getByRole("button", { name: "Cancel", exact: true }).click();
+      await expect(description).toHaveValue("A reserved explorer with an interest in old machinery.");
+    }
+
+    await chooseSection("Agenda");
+    await openCharacterTools(page);
+    await expect(description).toHaveValue("A reserved explorer with an interest in old machinery.");
+    await chooseSection("Overview");
+    await openCharacterTools(page);
     await profile.getByRole("button", { name: "Cancel", exact: true }).click();
     assert.equal(village.villagers[0].summary, initialDescription);
     await profile.getByRole("button", { name: "Edit description", exact: true }).click();
@@ -1527,20 +1754,21 @@ await withBrowser(browser, async () => {
     await expect(profile.getByRole("button", { name: "Apply refresh", exact: true })).toBeVisible();
     await profile.getByRole("button", { name: "Apply refresh", exact: true }).click();
     await expect(profile.getByRole("button", { name: "Move out", exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: "← Back to Villagers", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Village navigation", exact: true })
+      .getByRole("button", { name: "People", exact: true })
+      .click();
     await expect(directory.getByRole("button", { name: "Open Mara profile" })).toBeVisible();
-    await page.getByRole("button", { name: "Close ×", exact: true }).click();
+    await closePeople();
+    await expect(page.locator(`[data-desk]`)).not.toHaveAttribute("data-desk", "people");
+    await expect(page.locator(`[data-desk]`)).toHaveAttribute("data-phase", "open");
     await page.getByRole("button", { name: "People", exact: true }).click();
-    await expect(page.locator(`.${P}-notebook-session`)).toHaveAttribute("data-phase", "open");
+    await expect(page.locator(`.${P}-desk-workspace`)).toHaveAttribute("data-phase", "open");
     await page.emulateMedia({ reducedMotion: "reduce" });
-    assert.equal(
-      await page.locator(`.${P}-notebook-motion`).evaluate((node) => getComputedStyle(node).animationName),
-      "none",
-      "Reduced motion disables the notebook transition",
-    );
+
     await directory.getByRole("button", { name: `Open ${secondName} profile` }).click();
-    await tabs.getByRole("button", { name: "Wishes", exact: true }).click();
-    await expect(page.locator(`.${P}-dossier-turn`)).toBeHidden();
+    await chooseSection("Wishes");
+    await expect(page.locator(`.${P}-dossier-turn`)).toHaveCount(0);
     assert.equal(
       await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1),
       false,

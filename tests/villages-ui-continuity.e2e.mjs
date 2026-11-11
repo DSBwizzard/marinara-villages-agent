@@ -1,3 +1,4 @@
+import { clickCharacterTool, openCharacterTools } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { build } from "../scripts/esbuild.mjs";
 import { chromium, expect, fulfill, withBrowser } from "./fixtures/browser-diagnostics.mjs";
@@ -11,6 +12,7 @@ import {VillageActivity,useCapabilityVisibility} from './packages/villages/src/c
 import {RetainedView} from './packages/villages/src/client/shared/RetainedView.js';
 import {request} from './packages/villages/src/client/shared/api.js';
 import {VillagerDossier} from './packages/villages/src/client/features/residents/villages-dossier.js';
+import {DOSSIER_STYLES} from './packages/villages/src/client/features/residents/villages-dossier-styles.js';
 import {VillagerWishJournal} from './packages/villages/src/client/features/residents/villages-wish-journal.js';
 import {VillagerMemoriesPanel} from './packages/villages/src/client/features/residents/MemoriesPanel.js';
 import {useLoadMemoryLibrary,useLoadAgendas,useSetScheduleInfluence} from './packages/villages/src/client/features/residents/actions.js';
@@ -34,10 +36,10 @@ function Harness(){
  const noChange=useCallback(()=>{},[]);
  useSceneSelectionReset({snapshot:{village:{instant:'same'}},loadSnapshot:noChange,observedRoomIdRef:observed,room:validating?{id:'saved-scene',status:'active',liveSceneVersion:1}:null,roomCompletionRef:completion,roomMoveOperationIdRef:movement,screen:'room',seenRoomEventIdsRef:seen,setLastSceneEnding:noChange,setRoom:noChange,setRoomContactBoundary:noChange,setRoomMoveZoneId:noChange,setRoomNotices:noChange,setRoomOpen:noChange,setRoomTargetId:noChange,setScreen:noChange});
  window.h={scope:setScope,actor:setActor,refresh:()=>setRevision(value=>String(Number(value)+1)),active:setActive,hidden:setHidden,visible,sprites:setSprites,loadAgendas,influence,agendas,validate:setValidating,navigateWish:()=>setNavigation({actorId:actor,returnTo:'home',wishId:actor+'-wish'})};
- return <VillageActivity value={{visible,backgroundRevision:revision,worldScope:scope}}>
+ return <VillageActivity value={{visible,backgroundRevision:revision,worldScope:scope}}><style>{DOSSIER_STYLES}</style>
  <RetainedView active={active}><VillagerDossier key={scope+actor} navigation={personProfile} villager={{characterId:actor,name:actor,summary:'A villager',missing:false}}
  portrait={null} request={request} venues={[]} links={[]} controls={<input aria-label='Identity draft'/>} spriteManager={sprites?<button onClick={()=>setSprites(false)}>Back to profile</button>:undefined}
- onInspectSection={setInspection} onBack={()=>setActive(false)} onVenue={()=>{}} inspectors={{
+ onInspectSection={setInspection} onVenue={()=>{}} inspectors={{
  wishes:<VillagerWishJournal request={request} characterId={actor} prefix='v' inspect/>,
  memories:<VillagerMemoriesPanel characterId={actor} library={library} busy={false} onQuery={(query,signal)=>loadMemory(signal,query)} onForget={()=>{}}/>,
  agenda:<pre>{JSON.stringify(agendas)}</pre>
@@ -55,7 +57,11 @@ function Harness(){
 
 const browser = await chromium.launch({ headless: process.env.VILLAGES_HEADED !== "1" });
 await withBrowser(browser, async () => {
-  for (const width of [1280, 390]) {
+  for (const [width, panelWidth] of [
+    [1280, 1280],
+    [390, 390],
+    [1440, 480],
+  ]) {
     const context = await browser.newContext({ viewport: { width, height: 844 } });
     const page = await context.newPage();
     const reads = [];
@@ -74,7 +80,7 @@ await withBrowser(browser, async () => {
         name: characterId,
         summary,
         knownAt: "2026-11-05T00:00:00Z",
-        routine: [],
+        routine: [summary],
         interests: "",
         ties: [],
         learned: [],
@@ -92,7 +98,7 @@ await withBrowser(browser, async () => {
     await page.route("http://continuity.test/", (route) =>
       fulfill(route, {
         contentType: "text/html",
-        body: '<style>[hidden]{display:none!important}.marinara-capability-villages-dossier-content{height:180px;overflow:auto}input{max-width:90%}</style><div id="root"></div>',
+        body: `<style>html,body,#root{height:100%;margin:0}#root{container:village-desk/inline-size;width:${panelWidth}px}[hidden]{display:none!important}input{max-width:90%}</style><div id="root"></div>`,
       }),
     );
     await page.route("**/api/villages**", async (route) => {
@@ -158,20 +164,45 @@ await withBrowser(browser, async () => {
     await page.goto("http://continuity.test/");
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
     const tabs = page.getByRole("navigation", { name: "Villager profile sections" });
+    const chooseSection = async (label) => {
+      if (["Agenda", "Venues"].includes(label))
+        return clickCharacterTool(page, label === "Agenda" ? "Agenda records" : "Venue connections");
+      return panelWidth <= 700
+        ? page.getByRole("combobox", { name: "Section" }).selectOption({ label })
+        : tabs.getByRole("button", { name: label, exact: true }).click();
+    };
+    const overviewControl =
+      panelWidth <= 700
+        ? page.getByRole("combobox", { name: "Section" })
+        : tabs.getByRole("button", { name: "Overview", exact: true });
     const overview = page.getByRole("region", { name: "Overview content" });
     await expect(overview.getByText(summary)).toBeVisible();
 
-    const scroller = page.locator(".marinara-capability-villages-dossier-content");
+    const scroller = page.locator(
+      panelWidth <= 700 ? ".marinara-capability-villages-dossier-root" : ".marinara-capability-villages-dossier-book",
+    );
     const position = await scroller.evaluate((element) => {
-      element.style.height = "80px";
+      element.style.height = "320px";
+      element.style.maxHeight = "320px";
       element.scrollTop = 60;
       return element.scrollTop;
     });
-    assert.ok(position > 0);
-    await tabs.getByRole("button", { name: "Agenda", exact: true }).click();
-    await tabs.getByRole("button", { name: "Overview", exact: true }).click();
-    assert.equal(await scroller.evaluate((element) => element.scrollTop), position);
-    await page.getByText("Character tools", { exact: true }).click();
+    assert.ok(
+      position > 0,
+      JSON.stringify({
+        width,
+        position,
+        layout: await scroller.evaluate((node) => ({
+          height: node.clientHeight,
+          scroll: node.scrollHeight,
+          overflow: getComputedStyle(node).overflowY,
+        })),
+      }),
+    );
+    await chooseSection("Agenda");
+    await chooseSection("Overview");
+    await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBe(position);
+    await openCharacterTools(page);
     const draft = page.getByRole("textbox", { name: "Identity draft" });
     await draft.fill("Unfinished identity");
     const draftNode = await draft.elementHandle();
@@ -184,18 +215,19 @@ await withBrowser(browser, async () => {
     await page.evaluate(() => window.h.active(true));
     await expect(draft).toHaveValue("Unfinished identity");
     await expect(draft).toBeFocused();
-    await page.getByText("Character tools", { exact: true }).click();
+    await chooseSection("Overview");
     await scroller.evaluate((element) => {
       element.style.height = "620px";
+      element.style.maxHeight = "620px";
     });
     const node = await overview.getByText(summary).elementHandle();
-    await tabs.getByRole("button", { name: "Overview", exact: true }).focus();
+    await overviewControl.focus();
     const pending = pause("/api/villages/relationships");
     await page.evaluate(() => window.h.refresh());
     await expect.poll(() => pending.started).toBeGreaterThan(0);
     await expect(overview.getByText(summary)).toBeVisible();
     assert.equal(await node.evaluate((element) => element.isConnected), true);
-    await expect(tabs.getByRole("button", { name: "Overview", exact: true })).toBeFocused();
+    await expect(overviewControl).toBeFocused();
     pending.gate.resolve();
     hold = null;
     summary = "Updated relationship";
@@ -218,7 +250,7 @@ await withBrowser(browser, async () => {
     await page.evaluate(() => window.h.refresh());
     await expect(overview.getByText(summary)).toBeVisible();
 
-    await tabs.getByRole("button", { name: "Wishes", exact: true }).click();
+    await chooseSection("Wishes");
     await page.getByRole("button", { name: "Open Wish: mara shared Wish" }).click();
     const beforeFollow = pause("/api/villages/relationships");
     await page.evaluate(() => window.h.refresh());
@@ -233,16 +265,18 @@ await withBrowser(browser, async () => {
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     hold = null;
     await expect(page.getByRole("button", { name: "Following", exact: true })).toHaveAttribute("aria-pressed", "true");
-    await tabs.getByRole("button", { name: "Overview", exact: true }).click();
-    await tabs.getByRole("button", { name: "Wishes", exact: true }).click();
+    await chooseSection("Overview");
+    await chooseSection("Wishes");
     await expect(page.getByRole("button", { name: "← Wishes", exact: true })).toBeVisible();
     for (let attempt = 0; attempt < 2; attempt++) {
-      await tabs.getByRole("button", { name: "Overview", exact: true }).click();
+      await chooseSection("Overview");
       await page.evaluate(() => window.h.navigateWish());
-      await expect(tabs.getByRole("button", { name: "Wishes", exact: true })).toHaveAttribute("aria-pressed", "true");
+      if (panelWidth <= 700) await expect(page.getByRole("combobox", { name: "Section" })).toHaveValue("wishes");
+      else
+        await expect(tabs.getByRole("button", { name: "Wishes", exact: true })).toHaveAttribute("aria-pressed", "true");
       await expect(page.getByRole("button", { name: "← Wishes", exact: true })).toBeVisible();
     }
-    await tabs.getByRole("button", { name: "Inspect", exact: true }).click();
+    await clickCharacterTool(page, "Inspect");
     await page.getByRole("button", { name: "Open Wish: Private Wish" }).click();
     const privateNode = await page.getByText("Private reason", { exact: true }).elementHandle();
     const privateRead = pause(
@@ -273,7 +307,7 @@ await withBrowser(browser, async () => {
     assert.equal(await privateNode.evaluate((element) => element.isConnected), true);
     privateRead.gate.resolve();
     hold = null;
-    await tabs.getByRole("button", { name: "Agenda", exact: true }).click();
+    await chooseSection("Agenda");
     await expect.poll(() => page.evaluate(() => window.h.agendas?.[0]?.name)).toBe("Current agenda");
     agendaName = "Returned agenda";
     const resumedAgenda = pause("/api/villages/agendas");
@@ -288,11 +322,11 @@ await withBrowser(browser, async () => {
     agendaName = "Focused agenda";
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect.poll(() => page.evaluate(() => window.h.agendas?.[0]?.name)).toBe("Focused agenda");
-    await tabs.getByRole("button", { name: "Memories", exact: true }).click();
+    await chooseSection("Memories");
     await expect(page.getByText("Saved memory")).toBeVisible();
     await page.getByRole("searchbox", { name: "Search memories" }).fill("unfinished query");
-    await tabs.getByRole("button", { name: "Agenda", exact: true }).click();
-    await tabs.getByRole("button", { name: "Memories", exact: true }).click();
+    await chooseSection("Agenda");
+    await chooseSection("Memories");
     await expect(page.getByRole("searchbox", { name: "Search memories" })).toHaveValue("unfinished query");
     const memoryRead = pause("/api/villages/memories/inspect");
     await page.getByRole("searchbox", { name: "Search memories" }).fill("");
@@ -301,19 +335,24 @@ await withBrowser(browser, async () => {
     await expect(page.getByText("Saved memory")).toBeVisible();
     memoryRead.gate.resolve();
     hold = null;
-    await tabs.getByRole("button", { name: "Leave Inspect", exact: true }).click();
+    await clickCharacterTool(page, "Leave Inspect");
     await expect(page.getByText("Private reason", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Saved memory")).toHaveCount(0);
 
-    await tabs.getByRole("button", { name: "Wishes", exact: true }).click();
-    await tabs.getByRole("button", { name: "Inspect", exact: true }).click();
+    await chooseSection("Wishes");
+    await clickCharacterTool(page, "Inspect");
     await page.getByRole("button", { name: "Open Wish: Private Wish" }).click();
     const siblingDenied = pause("/api/villages/memories/inspect", 403);
-    await tabs.getByRole("button", { name: "Memories", exact: true }).click();
+    await chooseSection("Memories");
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
     await expect.poll(() => siblingDenied.started).toBeGreaterThan(0);
     siblingDenied.gate.resolve();
-    await expect(tabs.getByRole("button", { name: "Inspect", exact: true })).toBeVisible();
+    await openCharacterTools(page);
+    await expect(
+      page
+        .getByRole("group", { name: "Profile actions", exact: true, includeHidden: true })
+        .getByRole("button", { name: "Inspect", exact: true, includeHidden: true }),
+    ).toBeVisible();
     await expect(page.getByText("Private reason", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Saved memory")).toHaveCount(0);
     hold = null;
@@ -350,7 +389,7 @@ await withBrowser(browser, async () => {
     oldAgenda.gate.resolve();
     oldMutation.gate.resolve();
     hold = null;
-    await tabs.getByRole("button", { name: "Wishes", exact: true }).click();
+    await chooseSection("Wishes");
     await expect(page.getByRole("button", { name: "Open Wish: eli shared Wish" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Open Wish: mara shared Wish" })).toHaveCount(0);
     await expect(page.getByText("Saved memory")).toHaveCount(0);
