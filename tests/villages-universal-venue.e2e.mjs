@@ -222,11 +222,17 @@ await withBrowser(browser, async () => {
       .getByRole("button", { name: "Places", exact: true });
     await placesButton.click();
     const placesDirectory = page.getByRole("complementary", { name: "Places navigator" });
+    const placesSearch = placesDirectory.getByRole("searchbox", { name: "Search places", exact: true });
+    await expect(placesSearch).toBeFocused();
     await placesDirectory.getByRole("button", { name: /^(Collapse|Close) places$/ }).click();
     await expect(placesDirectory).toHaveCount(0);
     await expect(placesButton).toBeFocused();
     await placesButton.click();
-    await expect(placesDirectory.getByRole("searchbox", { name: "Search places", exact: true })).toBeFocused();
+    await expect(placesSearch).toBeFocused();
+    await placesSearch.press("Escape");
+    await expect(placesButton).toBeFocused();
+    await placesButton.press("Enter");
+    await expect(placesSearch).toBeFocused();
     const openProfile = async (id = place.id) => {
       const navigator = page.getByRole("complementary", { name: "Places navigator" });
       await navigator.locator(`[data-exploration-row="${id}"]`).click();

@@ -111,6 +111,11 @@ function VillagesContent({ element }: { element: HTMLElement }) {
     return () => animation.cancel();
   }, [active, element, controller.snapshot?.worldScope]);
   useLayoutEffect(() => {
+    if (phase === "opening" && active === "places" && controller.screen === "home") {
+      documentRef.current
+        ?.querySelector<HTMLInputElement>(`.${ELEMENT_TAG}-location-navigator input[type="search"]`)
+        ?.focus({ preventScroll: true });
+    }
     if (phase !== "open" || !returnFocus.current) return;
     const origin = returnFocus.current;
     const tab = origin.dataset.exploreTab;
