@@ -199,7 +199,7 @@ export function createSceneWriting({
       ]),
       conversation: [
         {
-          text: "The transcript and earlierRecall are private GM context. In perceivedBy, each row gives [actor, channel, optional sources]. In letters, knownBy gives [actor, optional sources]. A source is a historical reference or [reference, act]. In privateContinuity a shared entry lists each knower and their own source under knownBy. Only explicit per-character perceptions establish character knowledge. Omission never means absence.",
+          text: "The transcript and earlierRecall are private GM context. In perceivedBy, each row gives [actor, channel, optional sources]. In letters, readBy gives [actor, optional sources]. A source is a historical reference or [reference, act]. In privateContinuity a shared entry lists its holders and each holder's own source. Cite the exact source in keeps. Only explicit per-character perceptions establish character knowledge. Omission never means absence.",
         },
         ...context.parts.filter((part) => !part.block.transcript).map((part) => part.block),
         ...lore.map((text, index): VenueWritingBlock => ({

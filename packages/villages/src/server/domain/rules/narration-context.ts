@@ -415,7 +415,7 @@ export function narrationContinuityContext(
       });
     }
   }
-  const sharedPrivate = new Map<string, { part: Part; knownBy: { for: string; source: string }[] }>();
+  const sharedPrivate = new Map<string, { part: Part; holders: { for: string; source: string }[] }>();
   for (const entry of actorSelection.packet.entries) {
     if (circumstanceRoots.has(entry.id)) continue;
     const holder = holders.find((row) => row.id === entry.for)!,
@@ -466,8 +466,8 @@ export function narrationContinuityContext(
       const knower = { for: actor, source };
       const prior = sharedPrivate.get(meaningKey);
       if (prior) {
-        prior.knownBy.push(knower);
-        prior.part.block.text = JSON.stringify({ privateContinuity: [{ ...meaning, knownBy: prior.knownBy }] });
+        prior.holders.push(knower);
+        prior.part.block.text = JSON.stringify({ privateContinuity: [{ ...meaning, holders: prior.holders }] });
         prior.part.sources[source] = part.sources[source];
         prior.part.provenance[key] = part.provenance[key];
         prior.part.targets.push(...part.targets);
@@ -475,7 +475,7 @@ export function narrationContinuityContext(
         prior.part.episodeIds.push(...part.episodeIds);
         continue;
       }
-      sharedPrivate.set(meaningKey, { part: packet, knownBy: [knower] });
+      sharedPrivate.set(meaningKey, { part: packet, holders: [knower] });
     }
     parts.push(packet);
   }

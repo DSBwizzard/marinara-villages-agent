@@ -200,7 +200,7 @@ export function compactSceneExchange(
       ? {
           letters: letters.map(({ id: _id, knownBy, ...row }) => ({
             ...row,
-            knownBy: Object.entries<{ source: { ref: string }[] }>(knownBy).map(([actor, { source }]) => [
+            readBy: Object.entries<{ source: { ref: string }[] }>(knownBy).map(([actor, { source }]) => [
               actor,
               ...(source.length ? [source.map(({ ref }) => citation(ref))] : []),
             ]),

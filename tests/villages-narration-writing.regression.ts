@@ -1017,9 +1017,9 @@ await runCase("narration-writing/long-followup", async () => {
     .filter((row) => row.startsWith('{"privateContinuity":'))
     .flatMap((row) => JSON.parse(row).privateContinuity);
   assert(memory.length < 4, "routine standing context has a separate budget");
-  const shared = memory.find((row) => row.knownBy?.length === 2);
+  const shared = memory.find((row) => row.holders?.length === 2);
   assert(shared, "identical meanings retain each holder's own citation");
-  for (const knower of shared.knownBy) assert.equal(reply.readset.source.historical[knower.source].actorId, knower.for);
+  for (const knower of shared.holders) assert.equal(reply.readset.source.historical[knower.source].actorId, knower.for);
   assert.equal(f.calls.purchases, 1);
 
   const saved = f.state.episodes.records.find((row) => row.id === "prior-exchange")!;
