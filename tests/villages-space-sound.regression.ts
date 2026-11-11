@@ -96,7 +96,6 @@ world.venues = [
     improvements: [null, null],
     residenceCapacity: 1,
     capabilities: [],
-    state: { revision: 0, updatedAt: "", recent: null },
     occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
     presentation: { image: null, x: 0, y: 0 },
     zones: layout,

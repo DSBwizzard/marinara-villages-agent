@@ -130,9 +130,6 @@ function advanceRestoredRevisions(prior: VillageState, current: VillageState) {
         zone.picture.claim = undefined;
         zone.picture.lastAutomaticAt = currentZone?.picture?.lastAutomaticAt;
       }
-      const savedRevision = zone.state.revision;
-      zone.state.revision =
-        Math.max(savedRevision, currentVenue?.zones?.find((z) => z.id === zone.id)?.state.revision ?? 0) + 1;
     }
     if (venue.access)
       venue.access.revision =

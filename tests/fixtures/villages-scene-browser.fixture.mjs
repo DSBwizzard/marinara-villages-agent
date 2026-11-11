@@ -41,7 +41,6 @@ const place = (id, x, y) =>
       y,
     },
     occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-    state: { revision: 0, recent: null, updatedAt: now },
   });
 export function venueSnapshotFixture(input) {
   const venue = venueFixture(input);

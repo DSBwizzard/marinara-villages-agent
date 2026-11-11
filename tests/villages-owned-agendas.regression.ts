@@ -487,7 +487,6 @@ async function main() {
       name: "Library",
       classes: ["other"],
       occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-      state: { revision: 0, updatedAt: "", recent: null },
       presentation: { image: null, x: 0.2, y: 0.2 },
     });
     const access = coerceVillageState({

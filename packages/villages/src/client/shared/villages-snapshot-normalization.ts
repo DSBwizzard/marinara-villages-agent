@@ -31,29 +31,19 @@ function isVillageVenue(value: unknown): boolean {
     typeof value.category !== "string" ||
     !isStringArray(value.capabilities) ||
     !isRecord(value.presentation) ||
-    !isRecord(value.occupancy) ||
-    !isRecord(value.state)
+    !isRecord(value.occupancy)
   ) {
     return false;
   }
 
-  const { presentation, occupancy, state } = value;
+  const { presentation, occupancy } = value;
   return (
     isVenueImage(presentation.image) &&
     isNullableFiniteNumber(presentation.x) &&
     isNullableFiniteNumber(presentation.y) &&
     typeof occupancy.playerHome === "boolean" &&
     isNullableString(occupancy.residentCharacterId) &&
-    isNullableString(occupancy.homeKind) &&
-    Number.isSafeInteger(state.revision) &&
-    Number(state.revision) >= 0 &&
-    (state.recent === null ||
-      (isRecord(state.recent) &&
-        typeof state.recent.text === "string" &&
-        state.recent.text.length <= 600 &&
-        typeof state.recent.occurredAt === "string" &&
-        typeof state.recent.expiresAt === "string")) &&
-    typeof state.updatedAt === "string"
+    isNullableString(occupancy.homeKind)
   );
 }
 

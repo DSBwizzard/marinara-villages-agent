@@ -3,6 +3,7 @@ import type { TownMapFit, VillageTownMapView, VillageVenue } from "../models/wor
 import { asTrimmedString } from "./coerce.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
 import { hasVenueClass } from "./venue-model.js";
+import { badGateway } from "./errors.js";
 /** Bound venue event text and decision titles. */
 export const MAX_EVENT_TEXT_LENGTH = 280;
 /** Bound saved requester names. */
@@ -11,8 +12,6 @@ export const MAX_REQUESTER_NAME_LENGTH = 60;
 /** Maximum narration length for a committed physical change. */
 export const MAX_PHYSICAL_NARRATION_LENGTH = 320;
 
-/** Recent physical changes; exchange receipts retain durable proof. */
-export const MAX_VENUE_EVENTS = 200;
 /** Matches the Engine generate schema's bounded submissionId field. */
 export const MAX_SUBMISSION_ID_LENGTH = 100;
 /** How long the village's fallback line about an ordinary day may be. */
@@ -48,6 +47,12 @@ export const MAX_VILLAGE_NAME_LENGTH = 60;
 export const MAX_VENUE_NAME_LENGTH = 60;
 export const MAX_VENUE_NOTE_LENGTH = 240;
 export const MAX_VENUE_DESCRIPTION_LENGTH = 4_000;
+export function readPlaceDescription(value: unknown): string {
+  if (value === undefined) return "";
+  if (typeof value !== "string" || value.length > MAX_VENUE_DESCRIPTION_LENGTH)
+    throw badGateway(`A Place description must be text of at most ${MAX_VENUE_DESCRIPTION_LENGTH} characters.`);
+  return value;
+}
 /** Maximum authored Places in a Village, including housing. */
 export const MAX_PLACES = 48;
 /** Routine destinations exclude worksites and residence-only Places. */

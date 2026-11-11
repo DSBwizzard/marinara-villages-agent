@@ -827,7 +827,8 @@ console.log(
   await f.service.debugCompleteProjectConstruction(id, f.body(id));
   const restarted = coerceVillageState(JSON.parse(JSON.stringify(f.state())));
   const restored = restarted.venues.find((v) => v.id === mall.id)!;
-  const appearance = observableRoomDescription(restarted, restored.id, "common", restored.state.updatedAt);
+  const completedAt = restarted.projects.find((project) => project.id === id)!.lifecycle!.completedAt!;
+  const appearance = observableRoomDescription(restarted, restored.id, "common", completedAt);
   assert.match(appearance, /floor is repaired; shopfronts remain boarded/);
   assert.match(restored.description, /boarded entrance/);
   assert.equal(restarted.venues.find((v) => v.id === "second-mall")!.description, "An operating mall with glass doors");

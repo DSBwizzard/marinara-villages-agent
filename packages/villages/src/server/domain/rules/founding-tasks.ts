@@ -40,7 +40,7 @@ export function foundingTaskRevision(state: VillageState, id: string, kind: Foun
     state.playerPersonaName,
     foundingIdentity({ ...resident?.cardSnapshot, admission: resident?.admission }),
     resident?.scheduleInfluence,
-    state.venues.map((venue) => [venue.id, venueZones(venue).map((zone) => [zone.id, zone.description, zone.state])]),
+    state.venues.map((venue) => [venue.id, venueZones(venue).map((zone) => [zone.id, zone.description])]),
     resident ? continuityContextRevision(state, id) : null,
   ]);
 }

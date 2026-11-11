@@ -203,7 +203,6 @@ export function createFoundingSetup({
         workerIds: prior?.workerIds ?? [],
         playerSeenPublic: prior?.playerSeenPublic,
         playerSeenShared: prior?.playerSeenShared,
-        state: prior?.state ?? place.state,
         presentation: {
           ...place.presentation,
           image: place.presentation.image,

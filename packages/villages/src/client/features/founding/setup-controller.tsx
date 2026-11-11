@@ -225,8 +225,7 @@ export function createFoundingSuggestSetupVenues(ports: {
           for (const key of ["name", "venueType", "form", "description"] as const)
             if ((options.venueId || !setupAuthoredFieldsRef.current[row.id]?.includes(key)) && row[key] === before[key])
               changed[key] = proposal[key] ?? row[key];
-          if (changed.description !== row.description)
-            Object.assign(changed, zoneDayNightDefault(row, proposal.dayNight));
+          if (changed.description !== row.description) Object.assign(changed, zoneDayNightDefault(proposal.dayNight));
           return changed;
         }),
       );

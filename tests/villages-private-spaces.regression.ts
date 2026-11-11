@@ -499,7 +499,6 @@ async function privateInteriorLifecycle() {
   const bedroom = resolveVenueZone(home, "bedroom")!;
   assert.equal(bedroom.preparation?.status, "ready");
   assert.equal(bedroom.dayNight, true, "normal room preparation includes its daylight decision");
-  assert.equal(bedroom.dayNightManual, false);
   assert.equal(bedroom.roomSpecification, "A small room with a garden-facing window");
   const player = { name: "Player", description: "", personaId: "" } as any;
   let view = villageSettings(village, player);

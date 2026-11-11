@@ -202,12 +202,6 @@ export function plannedVenue(project: VillageProject): VillageVenue {
     presentation: { mapId: draft.position.mapId ?? "", image: null, x: draft.position.x, y: draft.position.y },
     occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
     capabilities: [],
-    exteriorState: entrance.state,
-    state: {
-      revision: 0,
-      recent: null,
-      updatedAt: project.updatedAt,
-    },
   };
   initializeVenueAccess(venue);
   return venue;

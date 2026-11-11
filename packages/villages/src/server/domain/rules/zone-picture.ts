@@ -4,7 +4,7 @@ import { currentRoomViews, roomParagraphs } from "./continuity-retrieval.js";
 
 export function applyZoneDayNightDefault(zone: VillageVenueZone, inferred: boolean | undefined): void {
   const before = zone.dayNight === true;
-  Object.assign(zone, zoneDayNightDefault(zone, inferred));
+  Object.assign(zone, zoneDayNightDefault(inferred));
   if ((zone.dayNight === true) !== before) {
     zone.pictureRevision = (zone.pictureRevision ?? 0) + 1;
     if (zone.picture) zone.picture.claim = undefined;

@@ -46,7 +46,6 @@ await withBrowser(browser, async () => {
     place.residentIds = ["mara"];
     place.form = "A converted warehouse";
     place.description = "A home beside the village mill.";
-    const state = { revision: 0, recent: null, updatedAt: "" };
     const access = (allowed, mode = "permission-required") => ({
       decision: {
         allowed,
@@ -68,7 +67,6 @@ await withBrowser(browser, async () => {
         seen: true,
         description: "A sheltered approach.",
         image: null,
-        state,
       },
       {
         id: "bay",
@@ -80,7 +78,6 @@ await withBrowser(browser, async () => {
         pictureGenerateAvailable: true,
         description: "An open living area.",
         image: null,
-        state,
         accessView: access(false),
       },
       {
@@ -93,7 +90,6 @@ await withBrowser(browser, async () => {
         pictureGenerateAvailable: false,
         description: "A private sleeping alcove with a blue blanket.",
         image: { id: "alcove-art", ref: "global-gallery:alcove-art", url: mapImage },
-        state,
         accessView: access(false),
       },
       {
@@ -105,7 +101,6 @@ await withBrowser(browser, async () => {
         seen: true,
         description: "A bright bench.",
         image: null,
-        state,
         accessView: access(true, "public"),
       },
     ];

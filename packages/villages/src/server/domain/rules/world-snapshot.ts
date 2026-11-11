@@ -4,7 +4,6 @@ import { sceneMoveAccompanying } from "./venue-contact.js";
 import { zonePictureContext } from "./zone-picture.js";
 import { copyDate } from "../../../shared/helpers/zoned-date.js";
 import { residentSignature } from "../../../shared/helpers/resident-signature.js";
-import { recentPlaceText } from "../../../shared/helpers/place-continuity.js";
 import type {
   VillageMomentView,
   VillagePlaceView,
@@ -238,7 +237,6 @@ export function villageSettings(
         const zone = {
           ...visible,
           observed: undefined,
-          dayNightManual: undefined,
           picture: undefined,
           pictureReference: originalZone.picture?.reference,
           referencePending:
@@ -297,26 +295,21 @@ export function villageSettings(
         };
         return {
           ...zone,
-          state: { ...zone.state, recent: recentPlaceText(zone.state, now.getTime()) ? zone.state.recent : null },
           closed: zoneClosed(village, venue, zone),
         };
       });
       const entrance = zones.find((zone) => zone.kind === "exterior");
-      const primary = zones.find((zone) => zone.kind !== "exterior" && zone.kind !== "private-residence");
       return {
         ...venue,
         dayNight: zones.find((zone) => zone.kind === "exterior")?.dayNight,
-        dayNightManual: undefined,
         description: entrance?.description ?? "",
         form: authoring ? venue.form : venue.zones?.find((zone) => zone.kind === "exterior")?.observed?.form,
         presentation: { ...venue.presentation, image: entrance?.image ?? null },
-        exteriorState: entrance?.state,
         access: undefined,
         accessView: projectVenueAccess(venue, "player", village.communityVenueId),
         zones,
         archivedZones: [],
         archivedPrivateSpaces: [],
-        state: primary?.state ?? { revision: 0, updatedAt: "", recent: null },
         spaces: zones.filter((zone) => zone.kind !== "exterior" && zone.kind !== "private-residence"),
         privateSpaces: zones
           .filter((zone) => zone.kind === "private-residence")

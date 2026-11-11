@@ -48,7 +48,6 @@ await withBrowser(browser, async () => {
             name: "Signal Loft",
             kind: "private-residence",
             description: "",
-            state: { revision: 0, recent: null, updatedAt: "" },
           },
         ],
       },

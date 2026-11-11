@@ -21,7 +21,6 @@ function draftVenue(name: string, classes: VenueClass[], physicalDesign: string)
     residenceCapacity: 1,
     spaces: [],
     privateSpaces: [],
-    state: { revision: 0, updatedAt: "", recent: null },
   };
 }
 export function useProjectsController({

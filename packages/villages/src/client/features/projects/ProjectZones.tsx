@@ -131,7 +131,6 @@ export function ProjectZones({
           mode: personal || role === "residence" ? ("permission-required" as const) : ("public" as const),
         },
         image: null,
-        state: { revision: 0, updatedAt: "", recent: null },
       };
       setNewRows(
         personal ? (venue.spaces ?? []) : [...(venue.spaces ?? []), area],

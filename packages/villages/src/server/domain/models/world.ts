@@ -202,7 +202,6 @@ export type ZonePicture = {
 export type VillageVenueSpace = {
   picture?: ZonePicture;
   dayNight?: boolean;
-  dayNightManual?: boolean;
   freezePicture?: boolean;
   pictureRevision?: number;
   connectedTo?: string[];
@@ -212,7 +211,6 @@ export type VillageVenueSpace = {
   roomSpecification?: string;
   description: string;
   image: VillageVenueImage | null;
-  state: import("../../../shared/contracts/place-continuity.js").PlaceContinuity;
 };
 
 export type VillageZoneKind = "exterior" | "public" | "shared-residence" | "private-residence" | "staff" | "restricted";
@@ -250,7 +248,6 @@ export type ZoneObservation = {
   purpose?: string;
   roomSpecification?: string;
   form?: string;
-  state: VillageVenueSpace["state"];
   image: VillageVenueImage | null;
   dayNight?: boolean;
   daylight?: boolean;
@@ -306,8 +303,6 @@ export type VillageVenue = {
   residenceCapacity?: number;
   /** The complete resident roster. The older occupancy field remains a read projection. */
   residentIds?: string[];
-  /** The approach is distinct from both shared and private Residence state. */
-  exteriorState?: VillageVenueSpace["state"];
   privateSpaces?: VillagePrivateSpace[];
   playerSeenShared?: boolean;
   playerSeenPublic?: boolean;
@@ -333,11 +328,8 @@ export type VillageVenue = {
   capabilities: string[];
   /** Assigned workers retain their existing access and activity roles. */
   workerIds?: string[];
-  /** Durable physical state visible to the village by default. */
-  state: import("../../../shared/contracts/place-continuity.js").PlaceContinuity;
 };
 
-/** A committed physical change and its evidence, attached to a Venue. */
 /** Coordinates remain fractions of the town map, never pixels. */
 export type VillageVenuePosition = {
   x: number | null;
@@ -346,7 +338,7 @@ export type VillageVenuePosition = {
 
 /**
  * The old flat fields intentionally do not exist here. Callers must choose the
- * explicit presentation, occupancy, capability, or state boundary they need.
+ * explicit presentation, occupancy, or capability boundary they need.
  */
 export type VillageVenueDraft = {
   name: string;
@@ -356,7 +348,6 @@ export type VillageVenueDraft = {
   position: VillageVenuePosition & { mapId?: string };
   occupancy: VillageVenue["occupancy"];
   capabilities: string[];
-  state: VillageVenue["state"];
 };
 
 /** A home is now an occupancy fact on a venue, never a second place system. */

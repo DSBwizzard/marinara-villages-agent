@@ -106,8 +106,7 @@ export function establishPlace(
     {
       ...defaultVenueSpace("other", prior?.location.description ?? draft.description),
       dayNight: priorEntrance?.dayNight,
-      dayNightManual: priorEntrance?.dayNightManual,
-      ...zoneDayNightDefault(priorEntrance ?? {}, draft.dayNight),
+      ...zoneDayNightDefault(draft.dayNight),
       id: "exterior",
       name: "Entrance",
       kind: "exterior",
@@ -115,7 +114,7 @@ export function establishPlace(
     },
     ...draft.zones.map((zone) => ({
       ...defaultVenueSpace("other", zone.description),
-      ...zoneDayNightDefault({}, zone.dayNight),
+      ...zoneDayNightDefault(zone.dayNight),
       id: zone.id,
       name: zone.name,
       kind: zone.kind,
@@ -143,7 +142,6 @@ export function establishPlace(
     workerIds: [],
     capabilities: [],
     residenceCapacity: 1,
-    state: defaultVenueSpace("other").state,
   };
   const entrance = connected.find((zone) => zone.id === "exterior")!;
   entrance.observed = priorEntrance
@@ -181,7 +179,6 @@ export function projectPlace(state: VillageState, place: WorldPlace): VillageVen
       seen: zone.seen,
       description: zone.seen ? zone.description : "",
       image: zone.seen ? zone.image : null,
-      state: zone.seen ? zone.state : defaultVenueSpace("other").state,
       accessView: projectZoneAccess(location, zone, "player", { at: new Date(), accepting: true }),
     };
   });
@@ -191,8 +188,6 @@ export function projectPlace(state: VillageState, place: WorldPlace): VillageVen
     description: entrance?.description ?? "",
     form: location.zones?.find((zone) => zone.kind === "exterior")?.observed?.form,
     presentation: { ...location.presentation, image: entrance?.image ?? null },
-    exteriorState: entrance?.state,
-    state: zones.find((zone) => zone.kind === "public")?.state ?? defaultVenueSpace("other").state,
     access: undefined,
     accessView: projectVenueAccess(location, "player"),
     zones,

@@ -102,11 +102,8 @@ export function readBaseVenueLayout(
   const daylight = (value: Record<string, unknown>) => {
     if (value.dayNight !== undefined && typeof value.dayNight !== "boolean")
       throw badRequest("Day & night must be on or off.");
-    if (value.dayNightManual !== undefined && typeof value.dayNightManual !== "boolean")
-      throw badRequest("Check the artwork preference.");
     return {
       dayNight: value.dayNight !== false,
-      dayNightManual: false,
     };
   };
   const picture = (area: Record<string, unknown>, existing: VillageVenueImage | null) => {

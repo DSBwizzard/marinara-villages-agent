@@ -1,6 +1,5 @@
 import type { VillageState, VillageVenue, VillageVenueZone, ZoneObservation } from "../models/world.js";
 import { zoneAppearanceContext } from "./zone-picture.js";
-import { emptyPlaceContinuity } from "../../../shared/helpers/place-continuity.js";
 
 /** Known presentation from authoring or a settled visit; never physical or access authority. */
 export function captureZoneObservation(
@@ -15,7 +14,6 @@ export function captureZoneObservation(
     purpose: zone.purpose,
     roomSpecification: zone.roomSpecification,
     form: venue.form,
-    state: emptyPlaceContinuity(),
     image: zone.image,
     dayNight: zone.dayNight !== false,
     daylight: zone.picture?.daylight,
@@ -52,7 +50,6 @@ export function observedZone(zone: VillageVenueZone, authoring: boolean): Villag
         description: observed?.description ?? "",
         purpose: observed?.purpose ?? "",
         roomSpecification: observed?.roomSpecification,
-        state: observed?.state ?? { revision: 0, updatedAt: "", recent: null },
         image: observed?.image ?? null,
         dayNight: observed?.dayNight,
         preparation: undefined,
@@ -69,7 +66,6 @@ export function zoneObservationKey(observed: ZoneObservation): string {
     observed.purpose,
     observed.roomSpecification,
     observed.form,
-    observed.state,
     observed.dayNight,
   ]);
 }

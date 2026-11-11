@@ -12,6 +12,7 @@ import {
 import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { establishPlace, projectPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
+import { readPlaceRegistry } from "../packages/villages/src/server/domain/rules/places.js";
 import { draftEstablishmentProject } from "../packages/villages/src/server/features/projects/project-drafts.js";
 import { continuityViews } from "../packages/villages/src/server/domain/rules/continuity.js";
 import { currentRoomViews } from "../packages/villages/src/server/domain/rules/continuity-retrieval.js";
@@ -129,6 +130,15 @@ await runCase("narration-place/discovery", () => {
     "",
     "unvisited remote room contents stay private",
   );
+  const stored = JSON.parse(JSON.stringify(f.state.worldPlaces));
+  assert.deepEqual(readPlaceRegistry(stored).places[place.id], stored.places[place.id]);
+  for (const field of ["state", "exteriorState", "zone"]) {
+    const malformed = structuredClone(stored);
+    const location = malformed.places[place.id].location;
+    if (field === "zone") location.zones[1].state = { recent: { text: "PRIVATE" } };
+    else location[field] = { recent: { text: "PRIVATE" } };
+    assert.throws(() => readPlaceRegistry(malformed), /Invalid saved Place/);
+  }
 });
 await runCase("narration-place/existing", () => {
   const f = fixture(),

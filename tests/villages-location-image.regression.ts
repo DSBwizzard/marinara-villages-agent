@@ -38,6 +38,7 @@ import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 //     and watching the picture land anyway.
 import type { CapabilityDocumentStore, CapabilityRuntimeHost } from "@marinara-engine/shared";
 import assert from "node:assert/strict";
+import { observableRoomDescription } from "../packages/villages/src/server/domain/rules/zone-picture.js";
 import { readFile, readdir } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -293,8 +294,6 @@ async function main() {
           form: "a stone watermill",
           description:
             "A stone mill beside shallow water with a new roof. Weathered but sound, with an oak workbench; the wheel turns east.",
-          exteriorState: { revision: 0, updatedAt: "", recent: null },
-          state: { revision: 0, updatedAt: "", recent: null },
           spaces: [
             {
               id: "common",
@@ -302,7 +301,6 @@ async function main() {
               venueClass: "community",
               description: "A private interior repair. A hidden cabinet. A Private Space fact.",
               image: null,
-              state: { revision: 0, updatedAt: "", recent: null },
             },
           ],
         }),
@@ -334,7 +332,6 @@ async function main() {
           classes: ["residence"],
           residentIds: ["bob"],
           description: "a brick porch beneath ivy",
-          state: { revision: 0, updatedAt: "", recent: null },
           privateSpaces: [
             {
               id: "private:bob",
@@ -342,7 +339,6 @@ async function main() {
               venueClass: "residence",
               description: "A secret interior leak. A hidden room chest. Private Space fact.",
               image: null,
-              state: { revision: 0, updatedAt: "", recent: null },
             },
           ],
         }),
@@ -838,9 +834,11 @@ async function main() {
       ],
     });
     assert.equal(founded.statusCode, 200, founded.body);
+    const foundedWorld = await readVillageState({ memories: true });
+    const square = foundedWorld.venues.find((venue) => venue.classes?.includes("community"))!;
     assert.equal(
-      (await readVillageState()).venues[0]?.state.recent,
-      null,
+      observableRoomDescription(foundedWorld, square.id, "exterior", foundedWorld.setupAt),
+      "A public square where neighbours meet.",
       "Founding preserves reviewed physical details",
     );
     assert.equal(
@@ -975,7 +973,6 @@ async function main() {
       for (const venue of state.venues)
         for (const zone of venue.zones ?? []) {
           zone.dayNight = false;
-          zone.dayNightManual = false;
           if (venue.id === "mill" && zone.picture) zone.picture.reference = undefined;
         }
     });
@@ -1563,7 +1560,6 @@ async function mediaConnectionOwnership() {
       for (const venue of state.venues)
         for (const zone of venue.zones ?? []) {
           zone.dayNight = false;
-          zone.dayNightManual = false;
           if (zone.seen) zone.observed = captureZoneObservation(venue, zone, zone.description);
         }
       records.get("villages-village")!.data = structuredClone(state);

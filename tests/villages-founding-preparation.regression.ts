@@ -425,7 +425,6 @@ async function main() {
       const description = observableRoomDescription(state, venue.id, zone.id, new Date().toISOString());
       assert(description.includes("PRIVATE CONTENT MUST STAY HIDDEN") && description.length <= 4000);
       assert.equal(zone.description, "");
-      assert.equal(zone.state.recent, null);
     }
 
     install();

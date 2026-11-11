@@ -383,7 +383,6 @@ export type VillageVenue = {
   pictureContext?: string;
   daylightReady?: boolean;
   dayNight?: boolean;
-  dayNightManual?: boolean;
   zoneLayout?: import("../helpers/zone-layout.js").ZoneLayout;
   venueType?: string;
   accessView?: import("../helpers/venue-access.js").VenueAccessView;
@@ -424,7 +423,6 @@ export type VillageVenue = {
     venueClass: "residence" | "workplace" | "community" | "other";
     description: string;
     dayNight?: boolean;
-    dayNightManual?: boolean;
     daylightReady?: boolean;
     nightImage?: VillageVenueImage;
     nightPending?: boolean;
@@ -438,11 +436,9 @@ export type VillageVenue = {
     pictureProblem?: string;
     pictureUpdating?: boolean;
     image: VillageVenueImage | null;
-    state: import("./place-continuity.js").PlaceContinuity;
   }>;
   residenceCapacity?: number;
   residentIds?: string[];
-  exteriorState?: NonNullable<VillageVenue["spaces"]>[number]["state"];
   privateSpaces?: Array<
     NonNullable<VillageVenue["spaces"]>[number] & {
       ownerId: string;
@@ -472,7 +468,6 @@ export type VillageVenue = {
   };
   capabilities: string[];
   workerIds?: string[];
-  state: import("./place-continuity.js").PlaceContinuity;
 };
 
 /**

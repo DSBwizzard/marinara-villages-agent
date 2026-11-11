@@ -13,7 +13,16 @@ import {
   captureZoneObservation,
   zoneObservationKey,
 } from "../packages/villages/src/server/domain/rules/zone-observation.js";
-import { applyZoneDayNightDefault } from "../packages/villages/src/server/domain/rules/zone-picture.js";
+import {
+  applyZoneDayNightDefault,
+  observableRoomDescription,
+} from "../packages/villages/src/server/domain/rules/zone-picture.js";
+import {
+  initializeRoomContinuity,
+  retainNativeFact,
+} from "../packages/villages/src/server/domain/rules/native-continuity.js";
+import { continuityHolderKey } from "../packages/villages/src/server/domain/rules/continuity.js";
+import { currentRoomViews } from "../packages/villages/src/server/domain/rules/continuity-retrieval.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import {
@@ -22,7 +31,14 @@ import {
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { imageEditSupport } from "../packages/villages/src/server/domain/rules/image-edit-support.js";
-import { applyVenueSceneChange } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
+import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
+import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
+import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
+import {
+  narrationContinuityContext,
+  fittedNarrationReadset,
+} from "../packages/villages/src/server/domain/rules/narration-context.js";
 import {
   createLocationImages,
   type LocationImagePorts,
@@ -30,12 +46,11 @@ import {
 import { createVenueCommands } from "../packages/villages/src/server/features/venues/venue-service.js";
 import { villageSettings } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
 const image = (id: string) => ({ id, ref: "global-gallery:" + id, url: "/api/global-gallery/file/" + id + ".png" });
-function fixture() {
+function fixture(seed = "pictures") {
   let state = coerceVillageState({
     ...defaultVillageState(),
 
-    wishSystemVersion: 3,
-    seed: "pictures",
+    seed,
     setupAt: "2026-10-29T10:00:00Z",
     foundedAt: "2026-10-29T10:00:00Z",
     venues: [
@@ -53,7 +68,6 @@ function fixture() {
             kind: "public",
             seen: true,
             dayNight: false,
-            dayNightManual: false,
             image: image("original"),
           },
         ],
@@ -67,6 +81,46 @@ function fixture() {
   let present = true;
   const calls: Record<string, unknown>[] = [];
   const zone = (id = "living") => state.venues[0].zones!.find((row) => row.id === id)!;
+  const at = () => new Date(stamp).toISOString();
+  const description = (id = "living") => observableRoomDescription(state, "home", id, at());
+  const observe = (id = "living") => {
+    zone(id).observed = captureZoneObservation(state.venues[0], zone(id), description(id));
+  };
+  for (const room of state.venues[0].zones!) {
+    initializeRoomContinuity(state, "home", room.id, room.description, "authored", at());
+    observe(room.id);
+  }
+  let edit = 0;
+  const change = (text: string, id = "living", replace = false) => {
+    const room = { kind: "room" as const, placeId: "home", zoneId: id };
+    const current = replace ? currentRoomViews(state.continuity, state.episodes, room, at())[0] : undefined;
+    retainNativeFact(
+      state,
+      {
+        id: "room-edit-" + ++edit,
+        kind: "structure",
+        targetId: JSON.stringify([room.placeId, room.zoneId]),
+        revision: 1,
+        text,
+        witnesses: [],
+      },
+      at(),
+      {
+        room,
+        ...(current
+          ? {
+              roomChange: {
+                target: {
+                  id: current.id,
+                  recordRevision: current.recordRevision,
+                  heads: { [continuityHolderKey(room)]: current.headRevision },
+                },
+              },
+            }
+          : {}),
+      },
+    );
+  };
   const ports = {
     canGenerateZonePicture: async (
       _venueId: string,
@@ -123,6 +177,10 @@ function fixture() {
     calls,
     service,
     ports,
+    at,
+    description,
+    change,
+    observe,
     world: () => state,
     present: (value: boolean) => {
       present = value;
@@ -140,13 +198,12 @@ function fixture() {
       during = work;
     },
     dirty: (text: string, id = "living") => {
-      zone(id).description += "\n" + text;
+      change(text, id);
       zone(id).picture!.dirty = true;
-      if (present) zone(id).observed = captureZoneObservation(state.venues[0], zone(id), zone(id).description);
+      if (present) observe(id);
     },
     enter: (id = "living") => {
-      if (present && zone(id).seen)
-        zone(id).observed = captureZoneObservation(state.venues[0], zone(id), zone(id).description);
+      if (present && zone(id).seen) observe(id);
       return service.requestZonePicture("home", id);
     },
   };
@@ -290,60 +347,76 @@ assert.equal(
 {
   const f = fixture();
   await f.enter();
-  f.zone().description = "The same white walls and rust sofa, described differently.";
+  f.change("The same white walls and rust sofa, described differently.", "living", true);
   f.world().sceneryArtStyle = "New style";
   f.world().personalizeVenueImagesByDefault = true;
   await f.enter();
   assert.equal(
     f.calls.length,
     0,
-    "legacy artwork, prose edits and style/personality settings do not trigger automatic spending",
+    "Existing artwork, prose edits and style/personality settings do not trigger automatic spending",
   );
-  f.zone().state.recent = {
-    text: "Cups after tea",
-    occurredAt: "2026-10-29T12:00:00Z",
-    expiresAt: "2026-10-30T12:00:00Z",
-  };
   await f.enter();
   assert.equal(f.calls.length, 0);
   await f.service.updateZonePicture("home", "living");
   assert.equal(f.calls.length, 1, "manual Update can apply a deliberate correction");
-  assert.doesNotMatch(String(f.calls[0].prompt), /Cups after tea|New style/);
+  assert.doesNotMatch(String(f.calls[0].prompt), /New style/);
   assert.deepEqual(f.calls[0].referenceImages, ["reference:original"]);
   await f.enter();
   assert.equal(f.calls.length, 1);
 }
 {
   const f = fixture();
-  const act = (text: string, appearanceChanged: boolean) =>
-    applyVenueSceneChange(
-      f.world(),
-      "home",
-      { narration: "The work is done.", expectedRevision: f.zone().state.revision, append: text, appearanceChanged },
-      "scene",
-      "2026-10-29T12:00:00Z",
-      "community",
-      "public",
-      "",
-      "living",
-      { actorIds: ["player"], witnessIds: [], consentIds: [], positions: { player: "living" } },
-    );
-  act("A small incidental scratch.", false);
+  const world = f.world(),
+    venue = world.venues[0],
+    at = f.at();
+  venue.access!.managerIds = ["player"];
+  const scene = zoneEventScene(
+    coerceSession({
+      version: 5,
+      id: "artwork",
+      villageSeed: world.seed,
+      placeId: venue.id,
+      zoneId: "living",
+      status: "active",
+      startedAt: at,
+      sceneAttendance: { capturedAt: at, layout: captureSceneLayout(venue), occupants: [] },
+    }),
+    venue,
+  );
+  f.zone().picture!.context = f.zone().observed!.context;
+  f.observe();
+  const context = narrationContinuityContext(world, scene, venue, "bookcase", "I install an oak bookcase.", at);
+  const source = [{ segment: "installation", perceive: { kind: "seen", by: ["player"] } }];
+  const raw = {
+    segments: [{ id: "installation", kind: "narration", text: "You install the oak bookcase.", requires: ["room"] }],
+    keep: [{ id: "room", for: "room", text: "An oak bookcase is installed.", source }],
+  };
+  const result = acceptNarration(
+    world,
+    {
+      raw,
+      responseDigest: memoryHash(raw),
+      readset: fittedNarrationReadset(
+        world,
+        context,
+        context.parts.flatMap(({ block }) => block.evidenceId ?? []),
+      ),
+    },
+    "bookcase",
+    at,
+  );
+  assert(!result.held, JSON.stringify(result.rejected));
+  assert.match(f.description(), /oak bookcase/);
+  assert.equal(f.zone().dayNight, false, "Scene room text leaves the native lighting mode alone");
   await f.enter();
-  assert.equal(f.calls.length, 0);
-  act("An oak bookcase is installed.", true);
-  await f.enter();
+  assert.equal(f.calls.length, 0, "An observable room edit alone never purchases artwork");
+  const shown = (await f.ports.buildVillageSnapshot!()).settings.venues[0].zones!.find((zone) => zone.id === "living")!;
+  assert.equal(shown.pictureOutdated, true);
+  await f.service.updateZonePicture("home", "living");
   assert.equal(f.calls.length, 1);
   assert.match(String(f.calls[0].prompt), /oak bookcase/);
   assert.equal(f.zone().picture?.dirty, false);
-  f.dirty("The wall is now blue.");
-  await f.enter();
-  assert.equal(f.calls.length, 1, "same-Scene actions retain pending work during the per-Zone pause");
-  assert.match(f.zone().picture!.problem!, /limit/);
-  f.advance(5 * 60_000);
-  await f.enter();
-  assert.equal(f.calls.length, 2);
-  assert.deepEqual(f.calls[1].referenceImages, ["reference:render-1", "reference:original"]);
 }
 {
   const f = fixture();
@@ -392,7 +465,7 @@ assert.equal(
   assert.equal(f.zone().freezePicture, true);
   f.zone().picture!.claim = "interrupted";
   f.zone().picture!.dirty = true;
-  f.zone().description += " A chair.";
+  f.change("A chair.");
   f.zone().freezePicture = false;
   f.world().automaticZonePictures = true;
   await f.enter();
@@ -439,7 +512,7 @@ assert.equal(
 {
   const f = fixture();
   f.zone().picture!.context = JSON.stringify({ description: "a".repeat(4000) });
-  f.zone().description = "b".repeat(4000);
+  f.change("b".repeat(4000), "living", true);
   f.zone().picture!.dirty = true;
   await f.enter();
   assert.equal(f.calls.length, 0);
@@ -499,7 +572,7 @@ assert.equal(
       const result = await mutate(change);
       if (!reset && f.zone().picture?.claim) {
         reset = true;
-        f.world().seed = "replacement-world";
+        Object.assign(f.world(), fixture("replacement-world").world());
         f.world().zonePictureEpoch = 20;
         f.zone().picture = { base: f.zone().image, problem: "New world marker" };
       }
@@ -669,61 +742,15 @@ console.log(
 
 {
   const f = fixture();
-  f.zone().dayNight = false;
-  f.zone().dayNightManual = false;
-  const update = (dayNight: boolean, append = "A new skylight admits daylight.") =>
-    applyVenueSceneChange(
-      f.world(),
-      "home",
-      {
-        narration: "The supported work is complete.",
-        expectedRevision: f.zone().state.revision,
-        append,
-        appearanceChanged: true,
-        dayNight,
-      },
-      "scene",
-      "2026-10-29T12:00:00Z",
-      "community",
-      "public",
-      "",
-      "living",
-      { actorIds: ["player"], witnessIds: [], consentIds: [], positions: { player: "living" } },
-    );
-  update(true);
-  assert.equal(
-    f.zone().dayNight,
-    true,
-    "existing physical update carries its daylight decision without another request",
-  );
-  assert.equal(f.zone().dayNightManual, false);
-  assert.equal(f.calls.length, 0, "classification itself never buys artwork");
-  assert.equal(coerceVillageState(f.world()).venues[0].zones!.find((z) => z.id === "living")!.dayNightManual, false);
-  f.zone().dayNight = true;
-  f.zone().observed!.dayNight = true;
-  assert.equal(f.zone().dayNightManual, false, "lighting has no manual override");
-  update(false, "The skylight is covered permanently.");
-  assert.equal(f.zone().dayNight, false, "lighting follows the complete revised physical account");
-  assert.throws(() => update("yes" as unknown as boolean), /physical change could not be recorded/);
-}
-{
-  const f = fixture();
-  f.zone().dayNightManual = false;
   f.zone().picture!.claim = "old-in-flight-image";
   const revision = f.zone().pictureRevision ?? 0;
   applyZoneDayNightDefault(f.zone(), true);
   assert.equal(f.zone().picture!.claim, undefined);
   assert.equal(f.zone().pictureRevision, revision + 1, "an inferred mode change fences outstanding artwork");
-  for (const dayNight of [false, true]) {
-    const saved = structuredClone(f.world());
-    const old = saved.venues[0].zones!.find((z) => z.id === "living")!;
-    old.dayNight = dayNight;
-    delete old.dayNightManual;
-    const restored = coerceVillageState(saved).venues[0].zones!.find((z) => z.id === "living")!;
-    applyZoneDayNightDefault(restored, !dayNight);
-    assert.equal(restored.dayNight, !dayNight, "old manual preferences no longer pin lighting");
-    assert.equal(restored.dayNightManual, false);
-  }
+  applyZoneDayNightDefault(f.zone(), false);
+  const restored = coerceVillageState(f.world()).venues[0].zones!.find((z) => z.id === "living")!;
+  assert.equal(restored.dayNight, false);
+  assert.equal(f.calls.length, 0, "An authored lighting classification makes no image request");
 }
 {
   const f = fixture();
@@ -797,7 +824,6 @@ console.log(
   f.zone().description = "UNSEEN_SECRET furniture";
   f.zone().roomSpecification = "UNSEEN_SECRET room";
   f.zone().purpose = "UNSEEN_SECRET purpose";
-  f.zone().state = { revision: 9, updatedAt: "2026-11-05T00:00:00Z", recent: null };
   f.zone().picture!.dirty = true;
   const entrance = f.zone("exterior");
   entrance.description = "UNSEEN_SECRET entrance";
@@ -818,7 +844,7 @@ console.log(
 {
   const f = fixture();
   const scene = coerceSession({
-    version: 4,
+    version: 5,
     id: "visit",
     villageSeed: f.world().seed,
     placeId: "home",
@@ -838,9 +864,8 @@ console.log(
     },
   } as LiveScenePorts);
   assert.equal(await live.canGenerateZonePicture("home", "living"), true);
-  const entrance = f.zone("exterior"),
-    ledger = f.world().venues[0].access;
-  entrance.observed = captureZoneObservation(f.world().venues[0], entrance, entrance.description);
+  const ledger = f.world().venues[0].access;
+  f.observe("exterior");
   scene.zoneId = "exterior";
   assert.equal(await live.canGenerateZonePicture("home", "exterior"), true);
   delete f.world().venues[0].access;
@@ -886,13 +911,13 @@ console.log(
   assert.equal(await live.canGenerateZonePicture("home", "living", () => false, true), false);
   f.zone().seen = true;
   scene.status = "active";
-  f.zone().description += " Unobserved physical change.";
+  f.change("Unobserved physical change.");
   assert.equal(
     await live.canGenerateZonePicture("home", "living"),
     false,
     "a held observation cannot buy current hidden facts",
   );
-  f.zone().observed = captureZoneObservation(f.world().venues[0], f.zone(), f.zone().description);
+  f.observe();
   const clockFailure = new Error("Clock authority could not be read");
   const release = configureVillageClock({
     observe: async () => {
@@ -914,11 +939,10 @@ console.log(
 {
   const f = fixture();
   f.zone().dayNight = false;
-  f.zone().dayNightManual = true;
   f.zone().picture!.night = { sourceId: f.zone().image!.id, image: image("old-night") };
-  delete f.zone().observed;
+  f.observe();
   const scene = coerceSession({
-    version: 4,
+    version: 5,
     id: "archived",
     villageSeed: f.world().seed,
     placeId: "home",
@@ -929,12 +953,12 @@ console.log(
   scene.continuity = captureSceneContinuity(f.world(), scene, Date.parse(scene.startedAt));
   const restored = coerceSession(JSON.parse(JSON.stringify(scene)));
   const captured = restored.continuity!.facts.venues[0].zones!.find((zone) => zone.id === "living")!;
-  assert.equal(captured.dayNight, false, "closed Scene lighting retains its captured manual-Off contract");
+  assert.equal(captured.dayNight, false, "Closed Scene lighting retains its captured authoring");
   assert.equal(captured.observed?.dayNight, false);
   assert.equal(
     coerceVillageState(f.world()).venues[0].zones!.find((zone) => zone.id === "living")!.dayNight,
-    true,
-    "only the live world adopts standard pairing",
+    false,
+    "The live world retains its current inferred lighting",
   );
 }
 
@@ -957,6 +981,7 @@ console.log(
     preparation: { status: "failed" },
     image: image("SECRET_NEW_PHOTO"),
   });
+  f.change("SECRET_NEW_FURNITURE", "living", true);
   venue.form = "SECRET_NEW_ARCHITECTURE";
   venue.description = "SECRET_NEW_APPROACH";
   venue.venueType = "SECRET_NEW_TYPE";
@@ -1105,28 +1130,14 @@ console.log(
   zone.description = "SECRET new couch";
   zone.purpose = "SECRET purpose";
   zone.roomSpecification = "SECRET room specification";
-  zone.state = { revision: 3, updatedAt: "2026-11-05T12:00:00Z", recent: null };
   const restored = coerceVillageState(raw);
-  const known = restored.venues[0].zones!.find((z) => z.id === "living")!;
-  assert.equal(known.observed!.description, "Original Founding sofa.");
-  assert.equal(known.observed!.form, "Original house.");
-  assert.equal(known.observed!.image?.id, "original");
-  assert.equal(known.seen, false);
-  assert.doesNotMatch(JSON.stringify(known.observed), /SECRET/);
-  assert.deepEqual(
-    coerceVillageState(restored).venues[0].zones!.find((z) => z.id === "living")!.observed,
-    known.observed,
-  );
-  delete zone.picture;
-  const unknown = coerceVillageState(raw).venues[0].zones!.find((z) => z.id === "living")!;
-  assert.equal(unknown.observed!.description, "", "a synthesized live baseline cannot establish known facts");
-  assert.equal(unknown.observed!.image, null);
-  assert.doesNotMatch(JSON.stringify(unknown.observed), /SECRET/);
+  const unknown = restored.venues[0].zones!.find((z) => z.id === "living")!;
+  assert.equal(unknown.observed, undefined, "Artwork metadata cannot establish observed room facts");
+  assert.equal(unknown.seen, false);
   await f.ports.mutateVillageState((state) => Object.assign(state, coerceVillageState(raw)));
   f.present(false);
-  await f.service.generateVillageLocationImage("home", "living", undefined);
-  assert.ok(f.calls.length > 0, "public Zone identity permits manual artwork without a historical account");
-  assert.doesNotMatch(JSON.stringify(f.calls), /SECRET/);
+  await assert.rejects(f.service.generateVillageLocationImage("home", "living", undefined), /Reload this Zone/);
+  assert.equal(f.calls.length, 0);
   assert.equal(f.zone().seen, false);
 }
 
@@ -1198,7 +1209,7 @@ for (const failed of [false, true]) {
   f.present(false);
   f.zone().observed!.dayNight = true;
   f.zone().observed!.daylight = true;
-  delete f.zone().observed!.pictureContext;
+  f.zone().observed!.pictureContext = f.zone().observed!.context;
   f.zone().picture = {
     base: f.zone().image,
     context: f.zone().observed!.context,
@@ -1210,10 +1221,10 @@ for (const failed of [false, true]) {
   assert.equal(
     f.zone().observed!.pictureContext,
     f.zone().picture?.context,
-    "legacy context is recovered only for the same saved image",
+    "The observed picture basis survives reload",
   );
   await f.service.retryZonePicture("home", "living");
-  assert.equal(f.calls.length, 1, "a retained legacy failed-night save does not buy another day");
+  assert.equal(f.calls.length, 1, "A saved failed-night request retries only the unfinished night");
   assert.deepEqual(f.calls[0].referenceImages, ["reference:original"]);
 }
 

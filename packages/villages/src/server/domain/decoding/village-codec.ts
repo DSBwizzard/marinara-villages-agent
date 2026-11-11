@@ -43,7 +43,6 @@ import { readContinuity } from "./continuity-codec.js";
 import { readEpisodes } from "./episode-codec.js";
 import { emptyContinuity } from "../rules/continuity.js";
 import { emptyEpisodes } from "../rules/episodes.js";
-import { readPlaceContinuity, readPlaceDescription } from "../rules/zone-continuity.js";
 import { coerceVillageNarrationStyle, defaultVillageNarrationStyle } from "../rules/narration-style.js";
 import { readOpening } from "../rules/opening-project.js";
 import { coerceRoutineProfile, influenceSettings } from "../rules/owned-routine.js";
@@ -61,6 +60,7 @@ import {
   MAX_REQUESTER_NAME_LENGTH,
   MAX_EVENT_TEXT_LENGTH,
   MAX_PHYSICAL_NARRATION_LENGTH,
+  readPlaceDescription,
   MAX_PLACES,
   MAX_PLAYER_PERSONA_ID_LENGTH,
   MAX_PLAYER_PERSONA_IDENTITY_LENGTH,
@@ -394,7 +394,6 @@ function coerceVenue(value: unknown): VillageVenue | null {
     residentIds.length + Number(playerHome) > Number(raw.residenceCapacity)
   )
     throw new Error("Saved household membership must fit explicit residential capacity.");
-  const coerceSpaceState = readPlaceContinuity;
   const privateSpaceFor = (ownerId: string, value: unknown) => {
     const row = asRecord(value);
     return {
@@ -415,9 +414,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
         ? readPlaceDescription(row.description) || `A private space for this resident at ${name}.`
         : "",
       image: coerceVenueImage(row.image),
-      state: coerceSpaceState(row.state),
-      dayNight: row.dayNightManual === false ? row.dayNight !== false : true,
-      dayNightManual: false,
+      dayNight: row.dayNight !== false,
       freezePicture: row.freezePicture === true,
       pictureRevision: Number.isSafeInteger(row.pictureRevision) ? Number(row.pictureRevision) : 0,
       picture: {
@@ -491,7 +488,6 @@ function coerceVenue(value: unknown): VillageVenue | null {
         ? Number(raw.residenceCapacity)
         : 1,
     residentIds,
-    exteriorState: coerceSpaceState(raw.exteriorState),
     privateSpaces,
     playerSeenShared: raw.playerSeenShared === true,
     playerSeenPublic: raw.playerSeenPublic === true,
@@ -522,7 +518,6 @@ function coerceVenue(value: unknown): VillageVenue | null {
     },
     capabilities,
     workerIds: coerceVenueIds(raw.workerIds),
-    state: readPlaceContinuity(raw.state),
   };
   const readZone = (value: unknown, archived = false): VillageVenueZone | null => {
     const row = asRecord(value);
@@ -570,7 +565,6 @@ function coerceVenue(value: unknown): VillageVenue | null {
         ? { roomSpecification: readPlaceDescription(row.roomSpecification) }
         : {}),
       image: coerceVenueImage(row.image),
-      state: coerceSpaceState(row.state),
       ownerId: ownerId || undefined,
       purpose: boundText(row.purpose, 240),
       ...(row.access === undefined ? {} : { access: readZonePolicy(row.access) }),
@@ -590,8 +584,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
           : undefined,
       seen: row.seen === true,
       observed: readZoneObservation(row.observed),
-      dayNight: row.dayNightManual === false ? row.dayNight !== false : true,
-      dayNightManual: false,
+      dayNight: row.dayNight !== false,
       freezePicture: row.freezePicture === true,
       pictureRevision: Number.isSafeInteger(row.pictureRevision) ? Number(row.pictureRevision) : 0,
       picture: {
@@ -636,7 +629,6 @@ function coerceVenue(value: unknown): VillageVenue | null {
       throw new Error("A saved Venue needs its Entrance.");
     const exterior = venue.zones.find((zone) => zone.kind === "exterior");
     if (exterior) {
-      venue.exteriorState = exterior.state;
       venue.presentation.image = exterior.image;
       venue.description = exterior.description;
     }
@@ -1075,7 +1067,6 @@ function coercePendingDecisions(value: unknown): VillagePendingDecision[] {
                   position: { x: null, y: null },
                   occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
                   capabilities: [],
-                  state: readPlaceContinuity(draft.state),
                 },
               }
             : {}),
@@ -1319,7 +1310,6 @@ function readZoneObservation(value: unknown): import("../models/world.js").ZoneO
     roomSpecification:
       typeof row.roomSpecification === "string" ? readPlaceDescription(row.roomSpecification) : undefined,
     form: typeof row.form === "string" ? boundText(row.form, 4000) : undefined,
-    state: readPlaceContinuity(row.state),
     image: coerceVenueImage(row.image),
     dayNight: row.dayNight !== false,
     daylight: row.daylight === true,

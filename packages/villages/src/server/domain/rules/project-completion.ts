@@ -1,7 +1,7 @@
 import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
 import { applyConnectionEdits } from "../../../shared/helpers/zone-contact.js";
 import type { VillageProject, VillageState, VillageVenue, VillageVenueZone } from "../models/world.js";
-import { readPlaceDescription } from "./zone-continuity.js";
+import { readPlaceDescription } from "./prompt-preset.js";
 import { asRecord } from "./coerce.js";
 import {
   completeWorksiteEntrance,
@@ -55,7 +55,6 @@ export function completeProject(state: VillageState, project: VillageProject, at
       zones[0].image = oldEntrance.image;
       zones[0].picture = oldEntrance.picture && { ...oldEntrance.picture, claim: undefined, dirty: false };
       zones[0].dayNight = oldEntrance.dayNight;
-      zones[0].dayNightManual = oldEntrance.dayNightManual;
       zones[0].freezePicture = oldEntrance.freezePicture;
     }
     zones[0].pictureRevision = (oldEntrance?.pictureRevision ?? 0) + 1;
@@ -126,7 +125,6 @@ export function completeProject(state: VillageState, project: VillageProject, at
   venue.privateSpaces = venue
     .zones!.filter((zone) => zone.kind === "private-residence")
     .map((zone) => ({ ...zone, ownerId: zone.ownerId ?? "" }));
-  venue.state.updatedAt = at;
   if (project.kind === "establishment") promotePlace(state, project, controllers);
   flow.phase = "complete";
   flow.completedAt = at;

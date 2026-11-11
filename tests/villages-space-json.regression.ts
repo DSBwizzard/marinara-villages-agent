@@ -118,7 +118,6 @@ async function main() {
     await service.preparePrivateSpaces();
     assert.equal(calls, before + 1, "Read/activation never retries failed provider work");
     assert.equal(zone.description, original.description);
-    assert.deepEqual(zone.state, original.state);
     assert.deepEqual([world.continuity, world.episodes], originalHistory);
     const record = records.get("villages-private-diagnostics");
     assert.equal(record.kind, "private-diagnostics");
@@ -163,7 +162,6 @@ async function main() {
     "Syntax repair still goes through normal room validation and application",
   );
   assert.equal(zone.description, original.description);
-  assert.equal(zone.state.recent, null);
   const beforeReady = calls;
   await service.preparePrivateSpaces();
   assert.equal(calls, beforeReady);

@@ -61,6 +61,8 @@ const savedPlace = z
         id: z.string().min(1).max(200),
         name: z.string().min(1).max(100),
         description: z.string().max(4000),
+        state: z.never().optional(),
+        exteriorState: z.never().optional(),
         presentation: z
           .object({
             mapId: z.string().min(1).max(200),
@@ -85,9 +87,8 @@ const savedPlace = z
                 kind: z.enum(["exterior", "public", "shared-residence", "private-residence", "staff", "restricted"]),
                 venueClass: z.enum(["other", "workplace", "community", "residence"]),
                 description: z.string().max(4000),
-                state: z
-                  .object({ revision: z.number().int().nonnegative(), updatedAt: z.string(), recent: z.unknown() })
-                  .strict(),
+                state: z.never().optional(),
+                image: z.unknown(),
                 connectedTo: z.array(z.string()).optional(),
               })
               .passthrough(),

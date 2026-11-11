@@ -18,7 +18,7 @@ export function sceneFingerprint(session: VenueScene) {
           zone.name,
           zone.kind,
           zone.connectedTo,
-          zone.id === session.zoneId ? [zone.description, zone.state] : undefined,
+          zone.id === session.zoneId ? zone.description : undefined,
         ]),
     ]),
     session.lines.filter((line) => line.kind !== "input").map((line) => line.id),
