@@ -4,6 +4,7 @@ import { venueFixture } from "./helpers/venues.fixture.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { MAX_LOCATION_IMAGE_BASE64_LENGTH } from "../packages/villages/src/server/domain/rules/image-limits.js";
 import { sceneryPrompt } from "../packages/villages/src/server/domain/rules/scenery-context.js";
+import { captureZoneObservation } from "../packages/villages/src/server/domain/rules/zone-observation.js";
 import { clientImplementation } from "./client-source.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 // Villages — proof for the pictures a place can have.
@@ -883,22 +884,24 @@ async function main() {
     });
     assert.equal(added.statusCode, 400, "finished buildings must use Projects");
     await mutateVillageState((state) => {
-      state.venues.push(
-        ...placesOf([
-          venueFixture({
-            id: "mill",
-            name: "the mill pond",
-            form: "where the grain is ground",
-            description: "A stone mill beside shallow water.",
-          }),
-          venueFixture({
-            id: "ridge",
-            name: "the ridge path",
-            form: "A path along the ridge",
-            description: "A narrow path over the ridge.",
-          }),
-        ]),
-      );
+      const observedPlaces = placesOf([
+        venueFixture({
+          id: "mill",
+          name: "the mill pond",
+          form: "where the grain is ground",
+          description: "A stone mill beside shallow water.",
+        }),
+        venueFixture({
+          id: "ridge",
+          name: "the ridge path",
+          form: "A path along the ridge",
+          description: "A narrow path over the ridge.",
+        }),
+      ]);
+      for (const venue of observedPlaces)
+        for (const zone of venue.zones ?? [])
+          if (zone.seen) zone.observed = captureZoneObservation(venue, zone, zone.description);
+      state.venues.push(...observedPlaces);
     });
     const addedSnapshot = (await import(moduleUrl(`${services}/features/world/snapshot.ts`))).buildVillageSnapshot;
     assert.deepEqual(
@@ -1561,6 +1564,7 @@ async function mediaConnectionOwnership() {
         for (const zone of venue.zones ?? []) {
           zone.dayNight = false;
           zone.dayNightManual = false;
+          if (zone.seen) zone.observed = captureZoneObservation(venue, zone, zone.description);
         }
       records.get("villages-village")!.data = structuredClone(state);
       return {
