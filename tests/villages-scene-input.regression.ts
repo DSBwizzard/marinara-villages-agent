@@ -1,34 +1,88 @@
 import assert from "node:assert/strict";
-import { materializeGmReply } from "../packages/villages/src/server/domain/rules/scene-gm.js";
 import { exactInputSpan } from "../packages/villages/src/server/domain/rules/source-span.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { readNarrationReply } from "../packages/villages/src/server/domain/rules/narration-contract.js";
+import { narrationLines } from "../packages/villages/src/server/domain/rules/narration-lines.js";
+import {
+  bindNarrationSource,
+  assertNarrationSourceOrder,
+  type NarrationSourceContext,
+} from "../packages/villages/src/server/domain/rules/narration-sources.js";
+import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
+import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
+import { venueFixture } from "./helpers/venues.fixture.js";
 
-const reply = (input: unknown[], text: string, extra = {}) =>
-  materializeGmReply(
-    { input, segments: [{ kind: "dialogue", speakerId: "resident", text: "input:0" }], ...extra },
-    text,
-  );
-for (const [text, selected] of [
-  ["*I wave.* “Hello.” I think about leaving.", [{ text: "Hello." }]],
-  ["I imagine saying “yes”; I do not say it.", []],
-  ["No, I will not go.", [{ text: "No, I will not go." }]],
-  ["I think “hello” but say “hello”.", [{ text: "hello", occurrence: 2 }]],
-  ["💬 “café 👩‍🚀” *I smile.*", [{ text: "café 👩‍🚀" }]],
+const at = "2026-11-10T12:00:00.000Z";
+const venue = venueFixture({ id: "cafe", name: "Cafe", classes: ["community"] });
+const actor = { characterId: "resident", name: "Mara", doing: "Reading" };
+const scene = zoneEventScene(
+  coerceSession({
+    version: 5,
+    id: "scene",
+    villageSeed: "world",
+    placeId: venue.id,
+    zoneId: "exterior",
+    activeIds: ["resident"],
+    participants: [actor],
+    sceneAttendance: {
+      capturedAt: at,
+      layout: captureSceneLayout(venue),
+      occupants: [{ ...actor, zoneId: "exterior" }],
+    },
+  }),
+  venue,
+);
+const reply = readNarrationReply(
+  {
+    segments: [
+      { id: "answer", kind: "dialogue", speakerId: "resident", text: "input:0" },
+      { id: "crossing", kind: "narration", text: "Mara steps into the café." },
+    ],
+  },
+  ["resident"],
+);
+const context = (input: string): NarrationSourceContext => ({
+  seed: "world",
+  operationId: "operation",
+  episodeId: "episode",
+  input,
+  scene,
+  venue,
+  actors: ["player", "resident"].map((id) => ({ kind: "actor", id, incarnation: id + "-one" })),
+  ...narrationLines(reply, scene, "episode", at, [], []),
+  historical: {},
+  native: {},
+  moves: [],
+});
+
+for (const [input, quote, occurrence] of [
+  ["*I wave.* “Hello.” I think about leaving.", "Hello.", undefined],
+  ["No, I will not go.", "No, I will not go.", undefined],
+  ["I think “hello” but say “hello”.", "hello", 2],
+  ["💬 “café 👩‍🚀” *I smile.*", "café 👩‍🚀", undefined],
 ] as const) {
-  const result = reply([...selected], text);
-  const timeline = (result.intent as any).timeline;
-  assert.equal(timeline.map((span: any) => span.text).join(""), text);
+  const captured = context(input);
+  const ordinary = bindNarrationSource({ input }, captured);
+  assert.equal(ordinary.excerpt, input);
+  assert.deepEqual(ordinary.perceptions, [], "The complete mixed submission has no implicit resident audience");
+  const spoken = bindNarrationSource(
+    { input: quote, occurrence, ground: { kind: "spoken", to: ["resident"] } },
+    captured,
+  );
+  assert.equal(input.slice(spoken.range!.start, spoken.range!.end), quote);
   assert.deepEqual(
-    timeline.filter((span: any) => span.kind === "speech").map((span: any) => span.text),
-    selected.map((span) => span.text),
+    spoken.perceptions.map((row) => row.actorId),
+    ["resident"],
   );
-  for (const span of timeline) assert.equal(text.slice(span.start, span.end), span.text);
-  assert.equal(
-    (result.segments as any[]).at(-1).text,
-    "input:0",
-    "Narrative leaf text is never mistaken for a citation",
-  );
+  assert.equal(captured.lines[0].content, "input:0", "Literal response prose is never a citation");
 }
-assert.throws(() => reply([{ text: "hello" }], "I think “hello” but say “hello”."), /ambiguous/u);
+
+const thought = context("I imagine saying “yes”; I do not say it.");
+assert.deepEqual(
+  bindNarrationSource({ input: "yes", ground: { kind: "private" } }, thought).perceptions.map((row) => row.actorId),
+  ["player"],
+);
+assert.throws(() => exactInputSpan({ text: "hello" }, "I think “hello” but say “hello”."), /ambiguous/u);
 assert.equal(exactInputSpan({ text: "hello", occurrence: 2 }, "hello hello").start, 6);
 assert.throws(() => exactInputSpan({ text: "ana" }, "banana"), /ambiguous/);
 assert.equal(exactInputSpan({ text: "ana", occurrence: 2 }, "banana").start, 3);
@@ -38,41 +92,33 @@ for (const [text, fragment] of [
   ["👩‍🚀", "👩"],
 ])
   assert.throws(() => exactInputSpan({ text: fragment }, text), /invalid player source/u);
-assert.throws(() => reply([{ text: "now", kind: "thought" }], "now"), /invalid source spans/u);
-assert.throws(() => reply([{ text: "now", delivery: "invalid" }], "now"), /invalid source spans/u);
+
+const movement = context("Quiet thought. *I point inside.* Join me. Stay safe.");
+movement.moves = [
+  { characterId: "resident", segment: 1, zoneId: venue.zones!.find((zone) => zone.kind === "public")!.id },
+];
+const indicated = bindNarrationSource(
+  { input: "*I point inside.*", ground: { kind: "visible-action", to: ["resident"], at: { before: "crossing" } } },
+  movement,
+);
+const spoken = bindNarrationSource(
+  { input: "Join me.", ground: { kind: "spoken", to: ["resident"], at: { before: "crossing" } } },
+  movement,
+);
+assert.equal(indicated.perceptions[0].channel, "sight");
+assert.equal(spoken.perceptions[0].channel, "words");
+assert.equal(spoken.range!.start, movement.input.indexOf("Join me."));
 assert.throws(
   () =>
-    reply(
-      [
-        { text: "hello", occurrence: 2 },
-        { text: "hello", occurrence: 1 },
-      ],
-      "hello hello",
+    bindNarrationSource(
+      { input: "Stay safe.", ground: { kind: "spoken", to: ["resident"], at: { after: "crossing" } } },
+      movement,
     ),
-  /invalid source spans/u,
+  /cannot perceive/,
 );
-const request = reply(
-  [{ kind: "action", text: "*I point outside.*" }, { text: "Join me." }],
-  "Quiet thought. *I point outside.* Join me.",
-  {
-    immediateResidentMoves: [{ characterIds: ["resident"], zoneId: "exterior", source: "input:1" }],
-    memoryChanges: [{ learners: { resident: { support: [{ lineId: "input:1" }] } } }],
-  },
+const lateThought = bindNarrationSource(
+  { input: "Quiet thought.", ground: { kind: "private", at: { after: "crossing" } } },
+  movement,
 );
-assert.equal(
-  (request.immediateResidentMoves as any[])[0].source,
-  3,
-  "Movement source points to the canonical input timeline, including non-audible gaps",
-);
-assert.equal(
-  (request.memoryChanges as any[])[0].learners.resident.support[0].lineId,
-  0,
-  "Only exact audible input becomes a citable player line",
-);
-assert.throws(
-  () => reply([{ kind: "action", text: "I wait." }], "I wait.", { access: [{ evidence: ["input:0"] }] }),
-  /non-audible/u,
-);
-console.log(
-  "Sparse player capture preserves exact full source, explicit speech, occurrence, Unicode and movement references without making gaps audible.",
-);
+assert.throws(() => assertNarrationSourceOrder([lateThought, spoken]), /input order/);
+assert.throws(() => readNarrationReply({ input: [{ text: "now" }], segments: reply.segments }, ["resident"]));

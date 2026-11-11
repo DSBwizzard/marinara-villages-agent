@@ -620,22 +620,12 @@ export type VillageState = {
   personalizeVenueImagesByDefault: boolean;
   useVisualLoreByDefault: boolean;
   loreTokenBudget: number;
-  /**
-   * Every place the village has: the houses people live in, the player's own
-   * home, and everywhere anyone goes.
-   *
-   * One list rather than two. There used to be a `homes` array beside this one,
-   * and the two were the same thing with different fields — which is what made
-   * "can I walk into it?" a question with two answers. A house answers yes, and
-   * so does a mill.
-   */
+  /** Established village venues, including homes. */
   venues: VillageVenue[];
   /** Stable building kinds have labels the player can adapt to the village's world. */
   homeBuildingNames: Record<HomeBuildingKind, string>;
-  /** Physical-change receipts retain the Venue name even after deletion. */
-  /** Exact completed visit transcript retention. Missing older settings mean forever. */
+  /** Retention for completed visit transcripts. */
   visitRetention: { mode: "forever" | "count" | "days"; value: number };
-  /** One-time archive migration marker, so a player-deleted memory stays deleted. */
   /** A pending residence move is explicit and requires player approval. */
   residences: VillageResidence[];
   /**

@@ -1,28 +1,29 @@
-import { runCase } from "../scripts/test-cases.mjs";
 // Test cases: scene-json-hardening/syntax, scene-json-hardening/ambiguity
 import assert from "node:assert/strict";
+import { runCase } from "../scripts/test-cases.mjs";
+import { completeSceneObject } from "../packages/villages/src/server/domain/rules/scene-writing-contract.js";
 import {
-  completeSceneObject,
-  isolateSceneEffects,
-} from "../packages/villages/src/server/domain/rules/scene-writing-contract.js";
-import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
+  readContinuityProposal,
+  readNarrationReply,
+} from "../packages/villages/src/server/domain/rules/narration-contract.js";
+
 const scene = {
-  heardPlayerBy: ["a"],
-  segments: [{ kind: "dialogue", speakerId: "a", text: 'A {gate}: "hello", [friend].', heardBy: ["a"] }],
-  wishChanges: [],
-  memoryChanges: [],
-  relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+  segments: [{ id: "answer", kind: "dialogue", speakerId: "a", text: 'A {gate}: "hello", [friend].' }],
+  keep: [{ id: "note", for: ["a"], text: "An observation.", source: ["answer"] }],
+  commands: [],
 };
 const json = JSON.stringify(scene);
-await runCase("scene-json-hardening/syntax", async () => {
+
+await runCase("scene-json-hardening/syntax", () => {
   for (const input of [
     json,
-    "\u0060\u0060\u0060json\n" + json + "\n\u0060\u0060\u0060",
+    "```json\n" + json + "\n```",
     json.slice(0, -1) + ",}",
-    json.replace('"heardPlayerBy":["a"]', '"heardPlayerBy":["a",]'),
+    json.replace('"answer"]}],', '"answer"]},],'),
   ]) {
-    assert.deepEqual(completeSceneObject(input, "stop"), scene);
-    assert.equal(parseVenueReply(completeSceneObject(input, "stop"), ["a"]).lines[0]?.content, scene.segments[0]!.text);
+    const parsed = completeSceneObject(input, "stop");
+    assert.deepEqual(parsed, scene);
+    assert.equal(readNarrationReply(parsed, ["a"]).segments[0].text, scene.segments[0].text);
   }
   const multiline = JSON.stringify({ ...scene, segments: [{ ...scene.segments[0], text: "one\ntwo\r\nthree\tfour" }] });
   assert.deepEqual(completeSceneObject(multiline, "stop"), JSON.parse(multiline));
@@ -33,119 +34,78 @@ await runCase("scene-json-hardening/syntax", async () => {
   for (const input of [
     json + json,
     "Here is the reply:\n" + json + "\nDone.",
-    '{"heardPlayerBy":[],"segments":[],"\\q":{',
-    '{"heardPlayerBy":[],"segments":[],"segments":[{"text":"cut',
-    '{"heardPlayerBy":[],"segments":[],"heardPlayerBy":["cut',
-    '{"heardPlayerBy":[,],"segments":[]}',
-    '{"heardPlayerBy":[],"segments":[,]}',
-    '{"heardPlayerBy":[],"segments":[],"metadata":{,}}',
+    '{"segments":[],"\\q":{',
+    '{"segments":[],"segments":[{"text":"cut',
+    '{"segments":[],"keep":["cut',
+    '{"segments":[,],"keep":[]}',
+    '{"segments":[],"keep":[,]}',
+    '{"segments":[],"commands":{,}}',
     "[" + json + "]",
     '{"a":1,"a":2,}',
     '{"a":1,"\\u0061":2,}',
-    '{"heardPlayerBy":[],"segments":[{"text":"cut',
-    '{"heardPlayerBy":[],"segments":[1,,]}',
-    '{"heardPlayerBy":[],"segments":["unescaped "quote""]}',
+    '{"segments":[{"text":"cut',
+    '{"segments":[1,,]}',
+    '{"segments":["unescaped "quote""]}',
     "No usable reply",
   ])
     assert.equal(completeSceneObject(input, "stop"), null, input);
-  assert.throws(() => parseVenueReply(completeSceneObject('{"heardPlayerBy":[],"segments":[1,}', "stop"), ["a"]));
-  // Repaired syntax is not permission to admit invalid Scene structure.
-  assert.throws(() =>
-    parseVenueReply(
-      completeSceneObject(
-        '{"heardPlayerBy":[],"segments":[{"kind":"dialogue","speakerId":"stranger","text":"x","heardBy":[]},],}',
-        "stop",
-      ),
-      ["a"],
-    ),
+  assert.throws(() => readNarrationReply(completeSceneObject('{"segments":[1,}', "stop"), ["a"]));
+  const stranger = completeSceneObject(
+    '{"segments":[{"kind":"dialogue","speakerId":"stranger","text":"x"},],}',
+    "stop",
   );
-  console.log("scene-json-hardening: syntax-only recovery, value fidelity and ambiguity refusals passed");
+  assert(stranger);
+  assert.throws(() => readNarrationReply(stranger, ["a"]), /actor's words/);
 });
 
-await runCase("scene-json-hardening/ambiguity", async () => {
-  // A finished object followed by effect members is an ambiguous response, never a current GM object.
-  const core = {
-    playerSpeechCapture: { status: "silent", utterances: [] },
-    segments: [{ kind: "narration", text: 'A {gate} bears "hello", [friend], and a backslash: \\.' }],
-  };
+await runCase("scene-json-hardening/ambiguity", () => {
+  const core = { segments: [{ kind: "narration", text: 'A {gate} bears "hello", [friend], and a backslash: \\.' }] };
   const coreJson = JSON.stringify(core);
   for (const effects of [
-    {
-      memoryChanges: [{ text: "Only if Mara agrees; not a promise.", evidence: [0], nested: { note: '} , "quoted"' } }],
-    },
-    {
-      relationshipChanges: { changes: [], disclosures: [{ source: 0, text: "No." }], permissions: [] },
-      memoryChanges: [],
-    },
-    { wishChanges: [], projectSpeech: [], interpretationRouting: [] },
-    { residentActions: [] },
-    { residentActions: [{ id: "invite", source: { speakerId: "host", quote: "Come in." } }] },
-    { residentActions: { malformed: "must remain supplied and fail action validation" } },
-    { memoryChanges: { malformed: "must remain a failed domain, not discarded" } },
-  ]) {
+    { keep: [{ text: "Only if Mara agrees; not a promise.", source: ["answer"], nested: { note: '} , "quoted"' } }] },
+    { commands: [{ type: "scene.end", source: ["exit"] }], keep: [] },
+    { commands: [] },
+    { commands: { malformed: "must remain supplied and fail validation" } },
+    { keep: { malformed: "must fail as an invalid response shape" } },
+    { invitation: [], additionalSpeech: [] },
+  ])
     for (const boundary of [",", "],"]) {
       const appended = coreJson + boundary + JSON.stringify(effects).slice(1);
       assert.equal(completeSceneObject(appended, "stop"), null);
       assert.equal(completeSceneObject("```json\n" + appended + "\n```", "end_turn"), null);
       for (const finish of ["length", "unknown", undefined]) assert.equal(completeSceneObject(appended, finish), null);
-      assert.equal(completeSceneObject(appended.slice(0, -1), "stop"), null, "no missing closer is invented");
+      assert.equal(completeSceneObject(appended.slice(0, -1), "stop"), null);
       assert.equal(completeSceneObject(appended + " prose", "stop"), null);
       assert.equal(completeSceneObject(appended + "{}", "stop"), null);
     }
-  }
-  const malformedEffect = completeSceneObject(JSON.stringify({ ...core, memoryChanges: { bad: true } }), "stop")!;
-  const isolated = isolateSceneEffects(malformedEffect);
-  assert.deepEqual(isolated.raw.segments, core.segments);
-  assert.deepEqual((isolated.failures.memories!.proposal as any).memoryChanges, { bad: true });
-  for (const key of [
-    "sceneChange",
-    "contactMoves",
-    "departures",
-    "sceneEnded",
-    "invitation",
-    "additionalSpeech",
-    "unknown",
-  ]) {
-    for (const boundary of [",", "],"])
-      assert.equal(
-        completeSceneObject(coreJson + boundary + JSON.stringify({ [key]: [] }).slice(1), "stop"),
-        null,
-        "critical and unknown suffix members are never folded into a core",
-      );
-  }
+  const malformed = { id: "note", independent: true, text: "Malformed independent proposal", source: [] };
+  const extracted = completeSceneObject(JSON.stringify({ ...core, keep: [malformed] }), "stop");
+  const reply = readNarrationReply(extracted, ["a"]);
+  assert.equal(reply.segments[0].text, core.segments[0].text);
+  assert.deepEqual(
+    reply.keep,
+    [malformed],
+    "Optional failures reach effect validation without discarding the proposal",
+  );
+  assert.throws(() => readContinuityProposal(reply.keep[0]));
+  assert.throws(() =>
+    readNarrationReply(completeSceneObject(JSON.stringify({ ...core, keep: { malformed: true } }), "stop"), ["a"]),
+  );
+  assert.throws(() => readNarrationReply({ ...core, heardPlayerBy: ["a"] }, ["a"]));
+  const partial = coreJson.slice(0, -1);
   for (const invalid of [
-    coreJson + ',"memoryChanges":[],"memoryChanges":[]}',
-    coreJson + ',"memoryChanges":[],"\\u006demoryChanges":[]}',
-    coreJson + ',"relationshipChanges":{"changes":[],"changes":[]}}',
-    coreJson + ',"residentActions":[],"residentActions":[]}',
-    coreJson + '],"residentActions":[],"residentActions":[]}',
-    coreJson + '],"residentActions":[],"segments":[]}',
-    coreJson + ']],"residentActions":[]}',
-    coreJson + ',"residentActions":[],"unknown":[]}',
-    coreJson + ',"segments":[]}',
-    coreJson + ',"playerSpeechCapture":{}}',
-    coreJson + ',{"memoryChanges":[]}',
-    coreJson + '},"memoryChanges":[]}',
-    coreJson + ',"memoryChanges":[,]}',
-    coreJson + ',"memoryChanges":[]',
+    partial + ',"keep":[],"keep":[]}',
+    partial + ',"keep":[],"\\u006beep":[]}',
+    partial + ',"commands":[{"type":"move","type":"depart"}]}',
+    partial + ',"commands":[],"commands":[]}',
+    partial + ',"segments":[]}',
+    partial + ',"keep":[],"segments":[]}',
+    partial + ',"keep":[,]}',
+    partial + ',"keep":[]',
+    coreJson + ',{"keep":[]}',
+    coreJson + '} ,"keep":[]}',
     coreJson + "{}",
-    coreJson.slice(0, -1) + ',"unknown":true},"memoryChanges":[]}',
-    '{"playerSpeechCapture":{},"playerSpeechCapture":{},"segments":[]},"memoryChanges":[]}',
-    '{"playerSpeechCapture":{"status":"silent","status":"captured"},"segments":[]},"memoryChanges":[]}',
+    coreJson + "\nWait, let me correct that.<｜end▁of▁thinking｜>" + JSON.stringify(scene),
   ])
     assert.equal(completeSceneObject(invalid, "stop"), null, invalid);
-  assert.equal(
-    completeSceneObject(
-      coreJson +
-        "\nWait, let me correct that.<｜end▁of▁thinking｜>" +
-        JSON.stringify({
-          ...core,
-          segments: [{ text: "A different answer." }],
-          residentActions: [],
-        }),
-      "stop",
-    ),
-    null,
-    "competing answers are never selected by a provider-specific thinking marker",
-  );
 });
