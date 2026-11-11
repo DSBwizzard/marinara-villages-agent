@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { ArtworkImage } from "../../shared/ArtworkImage.js";
 
 const P = "marinara-capability-villages";
 /** Shared public Venue photograph, including the deliberately plain empty state. */
@@ -16,11 +17,7 @@ export function VenuePolaroid({
   return (
     <span className={P + "-pin-photo-card " + className} style={style}>
       <span className={P + "-pin-photo"} aria-hidden="true">
-        {image ? (
-          <img src={image} alt="" loading="lazy" draggable={false} />
-        ) : (
-          <span className={P + "-pin-photo-empty"} />
-        )}
+        {image ? <ArtworkImage src={image} alt="" tile /> : <span className={P + "-pin-photo-empty"} />}
       </span>
       <span className={P + "-pin-name"}>{name}</span>
     </span>

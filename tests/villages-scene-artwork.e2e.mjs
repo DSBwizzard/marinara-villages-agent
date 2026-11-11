@@ -14,10 +14,19 @@ const bundle = await build({
     contents: `
 import {installFeature} from './tests/fixtures/feature-root.js';
 import {useState} from 'react';
+import {createRoot} from 'react-dom/client';
+import {ArtworkImage} from './packages/villages/src/client/shared/ArtworkImage.js';
 import {SceneScreen} from './packages/villages/src/client/features/scenes/SceneScreen.js';
 import {VenueScreen} from './packages/villages/src/client/features/venues/VenueScreen.js';
 import {venuePictureOf} from './packages/villages/src/client/shared/presentation.js';
 window.pictureFor=venuePictureOf;
+window.mountArtworkTest=() => {
+  const host=document.createElement("div");
+  host.style.cssText="width:100vw;height:220px";
+  document.body.replaceChildren(host);
+  const root=createRoot(host);
+  window.setArtwork=(id) => root.render(<ArtworkImage alt={id} src={"/api/global-gallery/file/"+id+".png"}/>);
+};
 function VenueHarness({c}) { const [founded,setFounded]=useState(true); window.setBackdropFounded=setFounded; return <VenueScreen controller={{...c,snapshot:{...c.snapshot,isFounded:founded}}}/>; }
 installFeature(c=>c.screen==='venue'?<VenueHarness c={c}/>:<SceneScreen controller={c}/>);
 `,
@@ -221,6 +230,39 @@ await withBrowser(browser, async () => {
       "old Entrance records keep Venue artwork fallback",
     );
     assert.deepEqual(errors, []);
+    await page.close();
+  }
+  for (const [width, prefix] of [
+    [390, "/api/villages/artwork/1024/"],
+    [1600, "/api/global-gallery/file/"],
+  ]) {
+    const page = await browser.newPage({ viewport: { width, height: 900 } });
+    const url = (id) => prefix + id + (width === 390 ? "/png" : ".png");
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="320"><rect width="640" height="320"/></svg>';
+    await page.route("http://artwork.test/", (route) => fulfill(route, { contentType: "text/html", body: "<body>" }));
+    const slow = Promise.withResolvers();
+    const arrived = Promise.withResolvers();
+    await page.route("**" + url("slow"), async (route) => {
+      arrived.resolve();
+      await slow.promise;
+      await fulfill(route, { contentType: "image/svg+xml", body: svg });
+    });
+    await page.route("**" + url("fast"), (route) => fulfill(route, { contentType: "image/svg+xml", body: svg }));
+    await page.goto("http://artwork.test/");
+    await page.addScriptTag({ content: bundle.outputFiles[0].text });
+    await page.evaluate(() => {
+      window.mountArtworkTest();
+      window.setArtwork("slow");
+    });
+    const picture = page.locator("img");
+    await arrived.promise;
+    assert.equal(await picture.evaluate((image) => getComputedStyle(image).opacity), "0");
+    await page.evaluate(() => window.setArtwork("fast"));
+    await expect(picture).toHaveAttribute("src", url("fast"));
+    await expect.poll(() => picture.evaluate((image) => getComputedStyle(image).opacity)).toBe("1");
+    slow.resolve();
+    await expect(picture).toHaveAttribute("alt", "fast");
     await page.close();
   }
   console.log(
