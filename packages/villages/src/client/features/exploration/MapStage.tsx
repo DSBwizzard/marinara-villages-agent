@@ -187,6 +187,7 @@ export function MapStage({
   onNudgePin,
   keyboardPlacementId,
   placementCursor,
+  inert,
   children,
   lighting = "day",
 }: {
@@ -244,6 +245,7 @@ export function MapStage({
   onNudgePin?(id: string, dx: number, dy: number): void;
   keyboardPlacementId?: string;
   placementCursor?: { x: number; y: number };
+  inert?: boolean;
   /**
    * Anything that belongs on the picture rather than beside it. Drawn inside the
    * frame, which is the picture's box and the only box whose corner is also the
@@ -745,6 +747,7 @@ export function MapStage({
   return (
     <div
       ref={stageRef}
+      inert={inert}
       className={`${ELEMENT_TAG}-stage${compact ? ` ${ELEMENT_TAG}-stage-compact` : ""}`}
       style={style}
       data-shaped={shape ? "true" : "false"}

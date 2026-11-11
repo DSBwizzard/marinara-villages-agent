@@ -247,6 +247,7 @@ await withBrowser(browser, async () => {
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     const home = page.locator("." + P + "-home-full");
+    const street = page.getByRole("region", { name: "Street view" });
     const nav = page.getByRole("navigation", { name: "Village exploration" });
     const navigator = page.getByRole("complementary", { name: "Places navigator" });
     const canvas = home.getByRole("group", { name: "Map navigation" });
@@ -385,8 +386,17 @@ await withBrowser(browser, async () => {
     await settleLayout();
     const beforeMarker = await cameraGeometry();
     await marker.press("Enter");
-    await expect(page.getByRole("heading", { name: "Village Market", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();
+    await expect(street.getByRole("heading", { name: "Village Market", exact: true })).toBeFocused();
+    await expect(street.locator("img")).toHaveAttribute("src", fixture.settings.venues[0].presentation.image.url);
+    await street
+      .getByRole("navigation", { name: "Paths" })
+      .getByRole("button", { name: /A nearby venue with a very long readable name/ })
+      .click();
+    await expect(street.getByRole("heading", { name: "A nearby venue with a very long readable name" })).toBeFocused();
+    await screenshot("street");
+    await page.keyboard.press("Escape");
+    await expect(home.locator('[data-pin-id="crowded"]')).toBeFocused();
+    await expect(home.locator('[data-pin-id="crowded"]')).toHaveAttribute("data-selected", "true");
     await expect.poll(cameraGeometry).toEqual(beforeMarker);
     for (const [id, name] of [
       ["edge", "Edge Venue"],
@@ -403,9 +413,9 @@ await withBrowser(browser, async () => {
         .locator('[data-pin-id="' + id + '"]')
         .locator("." + P + "-map-point")
         .click();
-      await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+      await expect(street.getByRole("heading", { name, exact: true })).toBeVisible();
       await expect(page.getByRole("dialog")).toHaveCount(0);
-      await page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();
+      await street.getByRole("button", { name: "Back to map" }).click();
       await expect.poll(cameraGeometry).toEqual(beforeTap);
     }
     assert.equal(sceneRequests.length, 0, "map and keyboard selections remain free of Scene requests");
@@ -520,10 +530,20 @@ await withBrowser(browser, async () => {
     await page.keyboard.press("Escape");
     await showPlaces();
     await select("Village Market");
+    await closePlaces();
+    await settleLayout();
     await marker.locator("." + P + "-map-point").click();
+    await street
+      .getByRole("navigation", { name: "Paths" })
+      .getByRole("button", { name: /A nearby venue/ })
+      .click();
+    await street
+      .getByRole("navigation", { name: "Paths" })
+      .getByRole("button", { name: /Village Market/ })
+      .click();
     await screenshot("visit");
     assert.equal(sceneRequests.length, 0, "search, selection, pan, zoom and People remain free of Scene requests");
-    await page.getByRole("button", { name: "Visit venue", exact: true }).click();
+    await street.getByRole("button", { name: "Visit", exact: true }).click();
     await expect.poll(() => sceneRequests.length).toBe(1);
     assert.equal(sceneRequests[0].venueId, "market");
     await expect(page.getByRole("textbox", { name: "Message at Village Market" })).toBeVisible();
@@ -531,6 +551,7 @@ await withBrowser(browser, async () => {
     await page.getByRole("menuitem", { name: "End Scene now", exact: true }).click();
     await page.getByRole("button", { name: "Return to map", exact: true }).click();
     await expect(home).toBeVisible();
+    await expect(street.getByRole("heading", { name: "Village Market", exact: true })).toBeVisible();
     assert.deepEqual(errors, []);
     if (client) await client.detach();
     await page.close();

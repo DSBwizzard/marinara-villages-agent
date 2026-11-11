@@ -75,7 +75,7 @@ In **DEBUG Settings**, enabling **Verbose runtime logging** also enables **Loreb
 
 ## Find your way around
 
-- **Map:** Pan, zoom, or select a labeled Venue marker to open its page.
+- **Map:** Pan and zoom, or select a Venue marker to see its Entrance at street level. Follow a path to one of the nearest placed Venues on that map. Choose **Visit** to enter a Scene, **View venue** for the Venue page, or **Map** to return to the same map view.
 - **Places:** Search the current map. Selecting a result centers the map; **Visit** starts entry into that place.
 - **People:** Browse residents and open their profiles.
 - **More:** Open the Village's other pages and settings.
