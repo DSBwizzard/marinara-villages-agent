@@ -17,6 +17,10 @@ import { assertMailReceipt, assertMailHistory, mailEvidence, episodeMailEvidence
 
 const id = z.string().min(1).max(160),
   ids = z.array(id).refine((rows) => new Set(rows).size === rows.length);
+const repairRoots = ids
+  .min(1)
+  .max(4)
+  .refine((entries) => entries.every((entry) => /^continuity-[a-f0-9]{32}$/u.test(entry)));
 // A Room receipt can encode two maximum-size IDs containing escaped ASCII.
 const receiptTarget = z
   .string()
@@ -113,15 +117,20 @@ const episode = z
               .object({ summary: z.string().min(1).max(1200), status: z.enum(["active", "resolved"]) })
               .strict()
               .optional(),
-            repairEntries: ids
+            conditionDamage: z
+              .array(z.object({ conditionId: z.string().min(1).max(600), entries: repairRoots }).strict())
               .min(1)
               .max(4)
-              .refine(
-                (entries) =>
-                  entries.every((entry) => /^continuity-[a-f0-9]{32}$/u.test(entry)) &&
-                  new Set(entries).size === entries.length,
-              )
+              .refine((links) => {
+                const entries = links.flatMap((link) => link.entries);
+                return (
+                  new Set(links.map((link) => link.conditionId)).size === links.length &&
+                  entries.length <= 4 &&
+                  new Set(entries).size === entries.length
+                );
+              })
               .optional(),
+            repairEntries: repairRoots.optional(),
             mail: z
               .object({
                 id: z.string().min(1).max(512),
@@ -292,6 +301,39 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
       );
     } else
       memoryRequire(!(value.sceneId && receipt.kind === "circumstance"), "Scene circumstance lost its native meaning");
+    if (receipt.conditionDamage) {
+      const proof = value.dependencies["native:" + receipt.id];
+      const observed = value.grounding.find(
+        (source) =>
+          source.kind === "observation" &&
+          continuitySourceUnit(source) === proof?.[0] &&
+          source.perceptions.some((row) => row.actorId === "player" && row.channel === "sight"),
+      );
+      const conditions = receipt.circumstance && JSON.parse(receipt.text)?.conditions;
+      memoryRequire(
+        value.sceneId &&
+          value.room &&
+          receipt.kind === "circumstance" &&
+          receipt.observedBy?.includes("player") &&
+          receipt.witnesses.includes("player") &&
+          proof?.length === 1 &&
+          observed &&
+          value.segments.some(
+            (line) => line.id === observed.unitId && line.kind === "narration" && line.zoneId === value.room!.zoneId,
+          ) &&
+          Array.isArray(conditions) &&
+          receipt.conditionDamage.every(({ conditionId }) => {
+            const condition = conditions.find((row) => row?.id === conditionId);
+            return (
+              condition?.revision === 1 &&
+              condition.restriction === "ordinary-use" &&
+              condition.endsAt === null &&
+              condition.clear === false
+            );
+          }),
+        "Scene damage lost its local Player-seen condition proof",
+      );
+    }
     if (receipt.kind === "condition-repair") {
       const proof = value.dependencies["native:" + receipt.id];
       const observed = value.grounding.find(

@@ -109,6 +109,8 @@ export const continuitySourceUnit = (source: ContinuityEvidence) =>
       ]);
 const unit = continuitySourceUnit;
 const same = (a: unknown, b: unknown) => memoryHash(a) === memoryHash(b);
+export const continuityRootId = (seed: string, operationId: string) =>
+  "continuity-" + memoryHash([seed, operationId]).slice(0, 32);
 export const continuityVersionId = (seed: string, operationId: string, holder: ContinuityHolder) =>
   "continuity-version-" + memoryHash([seed, operationId, continuityHolderKey(holder)]).slice(0, 32);
 
@@ -428,7 +430,7 @@ export function applyContinuityWrite(
     "initial closure needs complete actor meaning and cannot remain current",
   );
   memoryRequire(!(write.accept || write.closeOffer) || original?.offer, "decision needs a supplied offer");
-  const rootId = original?.id ?? "continuity-" + memoryHash([context.seed, operationId]).slice(0, 32);
+  const rootId = original?.id ?? continuityRootId(context.seed, operationId);
   const record: ContinuityRecord = original
     ? structuredClone(original)
     : { id: rootId, revision: 0, heads: {}, protection: {} };

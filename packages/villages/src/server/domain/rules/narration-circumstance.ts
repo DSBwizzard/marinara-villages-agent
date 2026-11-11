@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import type { VillageState } from "../models/world.js";
 import type { NarrationReadset } from "../models/narration-model.js";
+import type { NarrativeCondition } from "../models/narrative-model.js";
 import type { ContinuityEvidence, ContinuityHolder } from "../models/continuity-model.js";
 import type { AcceptedEpisode } from "../models/episode-model.js";
 import type { VenueScene } from "../models/scene-model.js";
@@ -12,12 +13,40 @@ import { narrationPositions, narrationWitnesses, type NarrationSourceContext } f
 import { activeNarrativeConditions } from "./narrative-environment.js";
 import { sceneContinuityView } from "./scene-continuity.js";
 import { currentRoomViews } from "./continuity-retrieval.js";
+import { continuityRootId } from "./continuity.js";
+import { readContinuityProposal } from "./narration-contract.js";
+import { asRecord } from "./coerce.js";
 import { findLocation } from "./places.js";
 import { venueZones, zoneClosed } from "./venue-zones.js";
 import { evaluateZoneAccess } from "./venue-access.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 
 type Command = z.infer<z.ZodObject<typeof narrationCircumstanceFields>>;
+
+function retainedRepairEntries(state: VillageState, condition: NarrativeCondition) {
+  for (const origin of state.narrative?.receipts ?? []) {
+    const saved = origin.after.conditions.find((row) => row.id === condition.id && row.repairEntries?.length);
+    if (!saved) continue;
+    if (
+      origin.rejected ||
+      saved.venueId !== condition.venueId ||
+      saved.zoneId !== condition.zoneId ||
+      memoryHash(saved.repairEntries) !== memoryHash(condition.repairEntries)
+    )
+      return false;
+    const proof = state.episodes.records
+      .flatMap((episode) =>
+        episode.room?.placeId === condition.venueId && episode.room.zoneId === condition.zoneId
+          ? episode.commandReceipts.flatMap((receipt) => receipt.conditionDamage ?? [])
+          : [],
+      )
+      .find((link) => link.conditionId === condition.id);
+    return origin.source === "world"
+      ? !proof
+      : !!proof && memoryHash(proof.entries) === memoryHash(condition.repairEntries);
+  }
+  return false;
+}
 
 export function sceneRepairOffers(
   state: VillageState,
@@ -39,7 +68,7 @@ export function sceneRepairOffers(
       .map((row) => row.id),
   );
   return local.flatMap((row) =>
-    row.repairEntries!.every((id) => observable.has(id))
+    row.repairEntries!.every((id) => observable.has(id)) && retainedRepairEntries(state, row)
       ? [{ id: row.id, revision: row.revision, entries: [...row.repairEntries!] }]
       : [],
   );
@@ -86,7 +115,8 @@ export function applyNarrationRepair(
       condition.restriction === "ordinary-use" &&
       condition.venueId === room.placeId &&
       condition.zoneId === room.zoneId &&
-      memoryHash(condition.repairEntries) === memoryHash(offer.entries),
+      memoryHash(condition.repairEntries) === memoryHash(offer.entries) &&
+      retainedRepairEntries(state, condition),
     "the admitted repair condition changed",
   );
   const venue = findLocation(state, room.placeId),
@@ -127,6 +157,12 @@ export function narrationCircumstancePrompt(grant: NarrationReadset["circumstanc
         id: grant.id,
         consequence: grant.consequence,
         zoneId: grant.targets[0]!.zoneId,
+        ...(!grant.targets[0]!.exterior && grant.targets[0]!.correctiveActorIds.length
+          ? {
+              roomDamage:
+                "For a new enduring ordinary-use restriction caused by physical damage, add roomKeeps:[same-reply keep labels] to its condition. Link at most four distinct observable enduring Room adds or replacements across the occurrence, each to one condition. Cite the same Player-seen narration on each keep. The narration requires the circumstance, and the restriction and Room changes are one required outcome.",
+            }
+          : {}),
         situations: grant.situations.map(({ id, status, scope }) => ({ id, status, scope })),
         conditions: grant.conditions.map(({ id, restriction, endsAt, clearedAt }) => ({
           id,
@@ -147,6 +183,7 @@ export function applyNarrationCircumstance(
   receiptId: string,
   segment: number,
   at: string,
+  keeps: unknown[],
 ) {
   const grant = readset.circumstance,
     situationRequest = command.situation,
@@ -165,6 +202,26 @@ export function applyNarrationCircumstance(
       ),
     "circumstance needs its finite local grant and actual Player-seen introduction",
   );
+  const links = (command.conditions ?? []).map((condition) =>
+    (condition.roomKeeps ?? []).map((id) => {
+      const proposed = keeps.filter((keep) => asRecord(keep).id === id);
+      memoryRequire(proposed.length === 1, "Room damage needs its exact same-reply keep label");
+      const keep = readContinuityProposal(proposed[0]);
+      memoryRequire(keep.for === "room", "Room damage cannot link an actor keep");
+      return { id, root: keep.replace ?? continuityRootId(state.seed, readset.source.operationId + ":" + id) };
+    }),
+  );
+  const damage = links.flat();
+  if (damage.length) {
+    const room = readset.admission.room;
+    memoryRequire(
+      sources.length === 1 &&
+        room?.placeId === grant.targets[0]!.venueId &&
+        room.zoneId === line.zoneId &&
+        new Set(damage.map(({ root }) => root)).size === damage.length,
+      "Room damage needs one actual observation in the admitted local Room",
+    );
+  }
   memoryRequire(
     reserveSceneNarrative(state, readset.source.scene, grant, new Date(at), readset.source.operationId),
     "the shared world opportunity changed or is unavailable",
@@ -204,7 +261,12 @@ export function applyNarrationCircumstance(
     },
     grant,
   );
-  const result = applyNarrativeDevelopment(state, grant, development),
+  const result = applyNarrativeDevelopment(
+      state,
+      grant,
+      development,
+      damage.length ? links.map((rows) => rows.map(({ root }) => root)) : [],
+    ),
     situation = result.after.situations[0]!;
   state.narrative!.claims = state.narrative!.claims?.filter((row) => row.id !== grant.id);
   const receipt: AcceptedEpisode["commandReceipts"][number] = {
@@ -230,8 +292,22 @@ export function applyNarrationCircumstance(
       }),
     }),
     circumstance: { summary: situation.summary, status: situation.status },
+    ...(damage.length
+      ? {
+          conditionDamage: links.flatMap((rows, index) =>
+            rows.length
+              ? [
+                  {
+                    conditionId: result.after.conditions[index].id,
+                    entries: rows.map(({ root }) => root),
+                  },
+                ]
+              : [],
+          ),
+        }
+      : {}),
     witnesses: narrationWitnesses(sources),
     observedBy: narrationWitnesses(sources, ["sight"]),
   };
-  return receipt;
+  return { receipt, damage };
 }

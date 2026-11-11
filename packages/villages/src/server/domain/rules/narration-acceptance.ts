@@ -44,6 +44,7 @@ export type NarrationPublication = {
     admissions: NpcAdmission[];
     sceneEffects?: { effectId: string; contactEndedIds: string[]; closed?: true }[];
     movementDependencies?: string[];
+    damage?: Record<string, { id: string; root: string }[]>;
   };
 };
 
@@ -300,7 +301,46 @@ export function acceptNarrationContinuity(
     }
     effects.push(effect);
   }
+  const damageRoots = new Map<string, string>();
   for (const effect of effects) {
+    const damage = native.damage?.[effect.id];
+    if (damage) {
+      const room = admission.room!,
+        roomKey = continuityHolderKey(room);
+      const unit = native.sources[effect.id][0].unitId;
+      for (const { id, root } of damage) {
+        const keep = prepared.get(id),
+          write = keep?.write;
+        const head =
+          write?.target && state.continuity.records.find((row) => row.id === write.target!.id)?.heads[roomKey];
+        const before = head && state.continuity.versions.find((row) => row.id === head.versionId);
+        if (
+          !write?.text ||
+          write.retire ||
+          write.room?.expiresInMinutes ||
+          write.room?.visibility === "concealed" ||
+          !write.holders.some((holder) => continuityHolderKey(holder) === roomKey) ||
+          (write.target &&
+            (!head?.current ||
+              before?.room?.visibility !== "observable" ||
+              before.room.expiresAt ||
+              before.closed ||
+              before.text.trim() === write.text.trim())) ||
+          !keep.sources.some(
+            (proof) =>
+              proof.kind === "observation" &&
+              proof.episodeId === source.episodeId &&
+              proof.unitId === unit &&
+              proof.perceptions.some((row) => row.actorId === "player" && row.channel === "sight"),
+          )
+        ) {
+          effect.failure =
+            "The local restriction needs changed enduring observable Room entries from the same Player-seen event.";
+          break;
+        }
+        damageRoots.set(id, root);
+      }
+    }
     const repair = native.receipts[effect.id];
     if (repair?.kind !== "condition-repair") continue;
     const room = admission.room!,
@@ -355,8 +395,9 @@ export function acceptNarrationContinuity(
     ]);
     for (const id of essential)
       for (const required of effects.find((effect) => effect.id === id)?.requires ?? []) essential.add(required);
+    const ordered = selection.acceptedIds.toSorted((a, b) => Number(essential.has(b)) - Number(essential.has(a)));
     const checked: ContinuityEvidence[] = [];
-    for (const id of selection.acceptedIds.toSorted((a, b) => Number(essential.has(b)) - Number(essential.has(a)))) {
+    for (const id of ordered) {
       const sources = [...(prepared.get(id)?.sources ?? []), ...(native.sources[id] ?? [])];
       try {
         assertNarrationSourceOrder([...checked, ...sources]);
@@ -368,10 +409,28 @@ export function acceptNarrationContinuity(
       }
     }
     if (failed) continue;
-    for (const id of selection.acceptedIds) {
+    for (const id of ordered) {
       const keep = prepared.get(id);
       try {
-        if (keep) continuity = applyContinuityWrite(continuity, keep.write, keep.admission);
+        if (keep) {
+          const next = applyContinuityWrite(continuity, keep.write, keep.admission);
+          const root = damageRoots.get(id);
+          if (root) {
+            const saved = next.receipts[keep.admission.operationId + ":" + id];
+            const head = next.records.find((row) => row.id === root)?.heads[continuityHolderKey(admission.room!)];
+            const version = next.versions.find((row) => row.id === head?.versionId);
+            memoryRequire(
+              saved?.roots[0] === root &&
+                head?.current &&
+                saved.versions.includes(head.versionId) &&
+                version?.room?.visibility === "observable" &&
+                !version.room.expiresAt &&
+                !version.closed,
+              "the selected Room damage lost its exact enduring Room entry",
+            );
+          }
+          continuity = next;
+        }
         const receipt = native.receipts[id];
         if (receipt && ["circumstance", "access"].includes(receipt.kind) && receipt.witnesses.length) {
           const evidence = bindNarrationSource("native:" + id, source);

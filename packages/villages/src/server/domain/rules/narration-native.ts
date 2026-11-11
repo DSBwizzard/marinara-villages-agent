@@ -31,6 +31,7 @@ import { applyNarrationCircumstance, applyNarrationRepair } from "./narration-ci
 import { nativeCommand, readNarrationNativeCommand } from "./narration-command-contract.js";
 import { projectSpeechContext } from "./project-interpretation.js";
 import { applyNarrationAccess, assertNarrationDecision, narrationAccessScopes } from "./narration-access.js";
+import { asRecord } from "./coerce.js";
 
 /** Fixed native validators prepare a detached candidate inside the existing Village CAS. */
 export function prepareNarrationNative(
@@ -126,21 +127,34 @@ export function prepareNarrationNative(
     playerMoves: [],
     admissions: [],
     sceneEffects: [],
+    damage: {},
   };
   const commands = reply.commands
     .map((raw, index) => {
       const header = readNarrationEffectHeader(raw, "command-" + index);
       const effect = { ...header, failure: excluded.get(header.id) };
-      const proposed = raw as { type?: unknown; situation?: unknown };
-      if (proposed.type === "circumstance" && !proposed.situation && effect.independent) {
+      const proposed = asRecord(raw);
+      if (
+        proposed.type === "circumstance" &&
+        effect.independent &&
+        (!proposed.situation ||
+          (Array.isArray(proposed.conditions) &&
+            proposed.conditions.some((row) => Object.hasOwn(asRecord(row), "roomKeeps"))))
+      ) {
         delete effect.independent;
-        effect.failure = "The completed repair and its native condition are one outcome.";
+        effect.failure = "The observed Room work and its native condition are one outcome.";
       }
       native.effects.push(effect);
       try {
         const command = readNarrationNativeCommand(raw);
         const segment = reply.segments.findIndex((line) => line.id === command.at);
         memoryRequire(segment >= 0, "native command needs its actual supplied segment");
+        if (command.type === "circumstance" && command.situation) {
+          const damage = new Set(command.conditions?.flatMap((row) => row.roomKeeps ?? []));
+          const required = [...new Set([...effect.requires, ...damage])];
+          memoryRequire(damage.size <= 4 && required.length <= 8, "too many Room damage dependencies");
+          effect.requires = required;
+        }
         return { command, effect, segment, index };
       } catch (error) {
         effect.failure = String(error).slice(0, 2000);
@@ -228,9 +242,10 @@ export function prepareNarrationNative(
         receiptId,
         row.segment,
         at,
+        reply.keep,
       );
       return {
-        receipt: result,
+        ...result,
         sources,
       };
     }
@@ -396,6 +411,7 @@ export function prepareNarrationNative(
       candidate = next;
       native.receipts[row.effect.id] = result.receipt;
       native.sources[row.effect.id] = result.sources;
+      if ("damage" in result && result.damage.length) native.damage![row.effect.id] = result.damage;
       if ("admission" in result) {
         native.admissions.push(result.admission);
         native.sceneEffects!.push({ effectId: row.effect.id, contactEndedIds: [] });

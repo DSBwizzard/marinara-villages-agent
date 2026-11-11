@@ -1,8 +1,9 @@
-// Test cases: narration-circumstance/native, narration-circumstance/finite-authority, narration-circumstance/consequence, narration-circumstance/race, narration-circumstance/recovery, narration-circumstance/context, narration-circumstance/strict-boundary, narration-circumstance/request-clock, narration-circumstance/protected-update, narration-circumstance/inherited-knowers, narration-circumstance/sibling-condition, narration-circumstance/corrected-active-condition
+// Test cases: narration-circumstance/native, narration-circumstance/finite-authority, narration-circumstance/consequence, narration-circumstance/race, narration-circumstance/recovery, narration-circumstance/context, narration-circumstance/strict-boundary, narration-circumstance/request-clock, narration-circumstance/protected-update, narration-circumstance/inherited-knowers, narration-circumstance/sibling-condition, narration-circumstance/corrected-active-condition, narration-circumstance/room-damage, narration-circumstance/room-damage-holds
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { readNarrativeState } from "../packages/villages/src/server/domain/decoding/narrative-codec.js";
 import { ensureNarrative, admitNarrative } from "../packages/villages/src/server/domain/rules/narrative-development.js";
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
@@ -13,7 +14,12 @@ import {
   narrationContinuityContext,
   fittedNarrationReadset,
 } from "../packages/villages/src/server/domain/rules/narration-context.js";
-import { narrationCircumstancePrompt } from "../packages/villages/src/server/domain/rules/narration-circumstance.js";
+import {
+  narrationCircumstancePrompt,
+  sceneRepairOffers,
+} from "../packages/villages/src/server/domain/rules/narration-circumstance.js";
+import { currentRoomViews } from "../packages/villages/src/server/domain/rules/continuity-retrieval.js";
+import { assertContinuityRetention } from "../packages/villages/src/server/domain/rules/continuity-retention.js";
 import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { activityDate, reserveEventAttempt } from "../packages/villages/src/server/domain/rules/event-attempts.js";
@@ -28,7 +34,10 @@ import {
   decodeContinuityPagesSync,
 } from "../packages/villages/src/server/adapters/storage/continuity-pages.js";
 import { readAcceptedEpisode } from "../packages/villages/src/server/domain/decoding/episode-codec.js";
-import { initializeRoomContinuity } from "../packages/villages/src/server/domain/rules/native-continuity.js";
+import {
+  initializeRoomContinuity,
+  retainNativeFact,
+} from "../packages/villages/src/server/domain/rules/native-continuity.js";
 import { venueDraftFixture } from "./helpers/venues.fixture.js";
 import { fixture as projectFixture } from "./fixtures/villages-projects.fixture.js";
 import {
@@ -36,8 +45,14 @@ import {
   continuityPreparationContext,
 } from "../packages/villages/src/server/domain/rules/continuity-library.js";
 const at = "2026-11-10T12:00:00.000Z";
-function fixture() {
-  const state = { ...defaultVillageState(), seed: "circumstance-world", setupAt: at, foundedAt: at, timeZone: "UTC" },
+function fixture(interior = false) {
+  const state = {
+      ...defaultVillageState(),
+      seed: "circumstance-world",
+      setupAt: at,
+      foundedAt: at,
+      timeZone: "UTC",
+    },
     venue = venueDraftFixture(
       { id: "hall", name: "Hall", description: "A quiet hall with a wooden sign.", category: "public" },
       null,
@@ -46,25 +61,32 @@ function fixture() {
   initializeVenueAccess(venue);
   state.venues = [venue];
   ensureNarrative(state, at);
-  const target = admitNarrative(state, at, "selection")!.targets[0]!,
-    scene = zoneEventScene(
-      coerceSession({
-        version: 5,
-        id: "circumstance-scene",
-        villageSeed: state.seed,
-        sceneRevision: 1,
-        placeId: venue.id,
-        placeName: venue.name,
-        zoneId: target.zoneId,
-        status: "active",
-        startedAt: at,
-        lastActivityAt: at,
-        activeIds: [],
-        participants: [],
-        sceneAttendance: { capturedAt: at, layout: captureSceneLayout(venue), occupants: [] },
-      }),
-      venue,
-    );
+  if (interior && admitNarrative(state, at, "selection")!.targets[0]!.exterior) state.seed += "a";
+  const target = admitNarrative(state, at, "selection")!.targets[0]!;
+  if (interior) {
+    assert(!target.exterior);
+    const room = venue.zones!.find((zone) => zone.id === target.zoneId)!;
+    room.description = "An intact window.\n\nA woven rug.";
+    initializeRoomContinuity(state, venue.id, room.id, room.description, "authored-room", at);
+  }
+  const scene = zoneEventScene(
+    coerceSession({
+      version: 5,
+      id: "circumstance-scene",
+      villageSeed: state.seed,
+      sceneRevision: 1,
+      placeId: venue.id,
+      placeName: venue.name,
+      zoneId: target.zoneId,
+      status: "active",
+      startedAt: at,
+      lastActivityAt: at,
+      activeIds: [],
+      participants: [],
+      sceneAttendance: { capturedAt: at, layout: captureSceneLayout(venue), occupants: [] },
+    }),
+    venue,
+  );
   scene.continuity = captureSceneContinuity(state, scene, Date.parse(at));
   const context = narrationContinuityContext(state, scene, venue, "circumstance-operation", "What happens?", at),
     readset = fittedNarrationReadset(
@@ -97,6 +119,249 @@ function fixture() {
     accept = (acceptedAt = at) => acceptNarration(state, publication(), "circumstance-turn", acceptedAt);
   return { state, venue, scene, context, readset, raw, publication, accept };
 }
+
+function roomDamage() {
+  const f = fixture(true);
+  const room = f.readset.admission.room!;
+  const [window, rug] = currentRoomViews(f.state.continuity, f.state.episodes, room, at);
+  f.raw.segments[0].text =
+    "A falling branch cracks the window and leaves glass across the floor. The room closes for repairs.";
+  f.raw.commands[0].situation = { title: "Broken window", summary: "Glass must be cleared and the window repaired." };
+  f.raw.commands[0].conditions = [
+    {
+      observation: "The window is cracked and glass litters the floor.",
+      restriction: "ordinary-use",
+      remedy: "Repair the window and clear the glass.",
+      roomKeeps: ["window", "glass"],
+    },
+  ];
+  f.raw.keep = [
+    { id: "window", for: "room", replace: window.id, text: "A cracked window.", source: f.raw.commands[0].source },
+    { id: "glass", for: "room", text: "Glass shards litter the floor.", source: f.raw.commands[0].source },
+  ];
+  return { ...f, room, window, rug };
+}
+
+await runCase("narration-circumstance/room-damage", () => {
+  for (const first of [true, false]) {
+    const competing = roomDamage();
+    const optional = { ...competing.raw.keep[0], id: "optional", text: "A newly painted window.", independent: true };
+    competing.raw.keep.splice(first ? 0 : competing.raw.keep.length, 0, optional);
+    const result = competing.accept();
+    assert.equal(result.held, false, JSON.stringify(result.rejected));
+    assert.deepEqual(
+      result.rejected.map((row) => row.id),
+      ["optional"],
+    );
+    assert(
+      currentRoomViews(competing.state.continuity, competing.state.episodes, competing.room, at).some(
+        (row) => row.version.text === "A cracked window.",
+      ),
+    );
+  }
+  const f = roomDamage();
+  assert.match(narrationCircumstancePrompt(f.readset.circumstance)?.roomDamage ?? "", /roomKeeps/);
+  assert.equal(narrationCircumstancePrompt(null), null);
+  f.raw.keep.push({
+    id: "unrelated",
+    for: ["missing"],
+    text: "An unrelated detail",
+    independent: true,
+    source: f.raw.commands[0].source,
+  });
+  const result = f.accept();
+  assert.equal(result.held, false, JSON.stringify(result.rejected));
+  assert.deepEqual(
+    result.rejected.map((row) => row.id),
+    ["unrelated"],
+  );
+  const conditions = f.state.narrative!.conditions;
+  const views = () => currentRoomViews(f.state.continuity, f.state.episodes, f.room, at);
+  const glass = views().find((row) => row.version.text === "Glass shards litter the floor.")!;
+  assert.deepEqual(conditions[0].repairEntries, [f.window.id, glass.id]);
+  assert.deepEqual(result.episode!.commandReceipts[0].conditionDamage, [
+    { conditionId: conditions[0].id, entries: conditions[0].repairEntries },
+  ]);
+  assert(!result.episode!.commandReceipts[0].text.includes(glass.id), "repair links are outside the witnessed prose");
+  assert.equal(views().find((row) => row.id === f.rug.id)?.version.id, f.rug.version.id);
+  const before = memoryHash(f.state);
+  assert(f.accept().replayed);
+  assert.equal(memoryHash(f.state), before);
+
+  const badHistory = structuredClone(f.state.episodes);
+  badHistory.records.at(-1)!.commandReceipts[0].conditionDamage![0].entries[0] = f.rug.id;
+  assert.throws(() => assertContinuityRetention(f.state.continuity, badHistory), /lost its exact enduring Room entry/);
+  const unchanged = structuredClone(f.state.continuity);
+  unchanged.versions.find((row) => row.rootId === f.window.id && row.id !== f.window.version.id)!.text =
+    f.window.version.text;
+  assert.throws(
+    () => assertContinuityRetention(unchanged, f.state.episodes),
+    /did not change its exact prior Room meaning/,
+  );
+  const encoded = encodeContinuityPages(
+    {
+      continuity: f.state.continuity,
+      episodes: f.state.episodes,
+      worldPlaces: f.state.worldPlaces,
+      mailbox: f.state.mailbox,
+    },
+    "a".repeat(32),
+  );
+  Object.assign(
+    f.state,
+    decodeContinuityPagesSync(encoded.manifest, "a".repeat(32), f.state.seed, (id) => encoded.pages.get(id) ?? null)
+      .value,
+  );
+  assert(f.accept().replayed);
+
+  const repairAt = "2026-11-10T12:06:00.000Z";
+  const venue = f.state.venues[0];
+  const repairScene = zoneEventScene(
+    coerceSession({ ...structuredClone(f.scene), id: "repair-scene", startedAt: repairAt, lastActivityAt: repairAt }),
+    venue,
+  );
+  repairScene.continuity = captureSceneContinuity(f.state, repairScene, Date.parse(repairAt));
+  const context = narrationContinuityContext(
+    f.state,
+    repairScene,
+    venue,
+    "repair",
+    "I fix the window and clear the floor.",
+    repairAt,
+  );
+  const readset = fittedNarrationReadset(
+    f.state,
+    context,
+    context.parts.map((part) => part.block.evidenceId!),
+  );
+  assert.deepEqual(readset.repairs[0].entries, conditions[0].repairEntries);
+  const source = [{ segment: "work", perceive: { kind: "seen", by: ["player"] } }];
+  const raw = {
+    segments: [
+      {
+        id: "work",
+        kind: "narration",
+        text: "You replace the glass and sweep away every shard. The room can reopen.",
+        requires: ["repair"],
+      },
+    ],
+    commands: [
+      {
+        id: "repair",
+        type: "circumstance",
+        at: "work",
+        source,
+        requires: ["window", "glass"],
+        conditions: [{ id: conditions[0].id, clear: true }],
+      },
+    ],
+    keep: [
+      { id: "window", for: "room", replace: f.window.id, text: "An intact window fitted with a new pane.", source },
+      { id: "glass", for: "room", replace: glass.id, text: null, source },
+    ],
+  };
+  const repair = () =>
+    acceptNarration(f.state, { raw, readset, responseDigest: memoryHash(raw) }, "repair-turn", repairAt);
+  const entries = conditions[0].repairEntries!;
+  conditions[0].repairEntries = [f.rug.id];
+  assert.equal(
+    sceneRepairOffers(f.state, repairScene, f.room, repairAt).length,
+    1,
+    "the retained Scene snapshot still offers its exact original roots",
+  );
+  const fresh = { ...repairScene, continuity: captureSceneContinuity(f.state, repairScene, Date.parse(repairAt)) };
+  assert.deepEqual(
+    sceneRepairOffers(f.state, fresh, f.room, repairAt),
+    [],
+    "wrong live roots cannot become a new offer",
+  );
+  assert(repair().held, "live altered roots cannot authorize repair from a previously fitted offer");
+  conditions[0].repairEntries = entries;
+  const authority = f.state.narrative!;
+  for (const variant of ["missing", "changed"] as const) {
+    const damaged = structuredClone(authority);
+    if (variant === "missing") damaged.receipts = [];
+    else damaged.receipts[0].after.conditions[0].repairEntries = [f.rug.id];
+    f.state.narrative = readNarrativeState(damaged);
+    assert.deepEqual(sceneRepairOffers(f.state, repairScene, f.room, repairAt), [], variant);
+    assert(repair().held, variant);
+  }
+  f.state.narrative = authority;
+  const missing = raw.keep.pop()!;
+  assert(repair().held, "repair cannot reopen while one linked entry remains unresolved");
+  raw.keep.push(missing);
+  const repaired = repair();
+  assert.equal(repaired.held, false, JSON.stringify(repaired.rejected));
+  assert.equal(f.state.narrative!.conditions[0].clearedAt, repairAt);
+  assert.equal(f.state.eventAttempts.attempts.length, 1, "repair consumes no new circumstance opportunity");
+  assert.deepEqual(
+    views().map(({ version }) => version.text),
+    ["An intact window fitted with a new pane.", "A woven rug."],
+  );
+  assert(repair().replayed);
+});
+
+await runCase("narration-circumstance/room-damage-holds", () => {
+  for (const variant of [
+    "missing",
+    "timed",
+    "concealed",
+    "expires",
+    "unrelated-segment",
+    "unchanged",
+    "retired",
+    "independent",
+    "shared",
+    "stale",
+  ] as const) {
+    const f = roomDamage(),
+      command = f.raw.commands[0],
+      [window, glass] = f.raw.keep;
+    if (variant === "missing") f.raw.keep.pop();
+    if (variant === "timed") command.conditions[0].durationMinutes = 60;
+    if (variant === "concealed") glass.visibility = "concealed";
+    if (variant === "expires") glass.expiresInMinutes = 10;
+    if (variant === "unrelated-segment") {
+      f.raw.segments.push({ id: "different", kind: "narration", text: "The rug lies quietly." });
+      glass.source = [{ segment: "different", perceive: { kind: "seen", by: ["player"] } }];
+    }
+    if (variant === "unchanged") window.text = f.window.version.text;
+    if (variant === "retired") window.text = null;
+    if (variant === "independent") {
+      f.raw.segments[0].requires = [];
+      command.independent = true;
+    }
+    if (variant === "shared") command.conditions.push({ ...command.conditions[0], roomKeeps: ["window"] });
+    if (variant === "stale") {
+      const key = continuityHolderKey(f.room);
+      retainNativeFact(
+        f.state,
+        {
+          id: "changed-window",
+          kind: "room",
+          targetId: JSON.stringify([f.room.placeId, f.room.zoneId]),
+          revision: 1,
+          text: "An open window.",
+          witnesses: [],
+        },
+        at,
+        {
+          room: f.room,
+          roomChange: {
+            target: {
+              id: f.window.id,
+              recordRevision: f.window.recordRevision,
+              heads: { [key]: f.window.headRevision },
+            },
+          },
+        },
+      );
+    }
+    const before = memoryHash(f.state);
+    assert(f.accept().held, variant);
+    assert.equal(memoryHash(f.state), before, variant);
+  }
+});
 await runCase("narration-circumstance/native", () => {
   const f = fixture(),
     before = memoryHash(f.venue),

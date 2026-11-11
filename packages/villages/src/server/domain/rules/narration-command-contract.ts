@@ -6,6 +6,8 @@ import { CONSEQUENCES } from "./narrative-development.js";
 import { MAX_VENUE_NAME_LENGTH } from "./prompt-preset.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 
+const id = z.string().min(1).max(160),
+  label = z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,47}$/);
 export const narrationCircumstanceFields = {
   severity: z.enum(CONSEQUENCES).optional(),
   occurrence: z.string().min(1).max(1200).optional(),
@@ -28,14 +30,18 @@ export const narrationCircumstanceFields = {
           remedy: z.string().max(600).optional(),
           durationMinutes: z.number().int().min(1).max(10080).optional(),
           clear: z.boolean().optional(),
+          roomKeeps: z
+            .array(label)
+            .min(1)
+            .max(4)
+            .refine((labels) => new Set(labels).size === labels.length)
+            .optional(),
         })
         .strict(),
     )
     .max(4)
     .optional(),
 };
-const id = z.string().min(1).max(160),
-  label = z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,47}$/);
 const base = {
   id: label.optional(),
   at: label,

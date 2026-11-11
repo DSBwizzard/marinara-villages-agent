@@ -2,6 +2,7 @@ import type { ContinuityCollection, ContinuityEvidence, ContinuityVersion } from
 import type { AcceptedEpisode, EpisodeCollection } from "../models/episode-model.js";
 import {
   continuityHolderKey,
+  continuityRootId,
   continuityVersionId,
   assertContinuityKnowledge,
   continuitySourceUnit,
@@ -44,6 +45,7 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
   const births = new Map<string, number>(),
     roots = new Map(continuity.records.map((row) => [row.id, row]));
   const repairs = new Map<string, { room: string; admitted: number; proofs: string[] }>();
+  const damage = new Map<string, number>();
   const removedRooms = new Set<string>();
   for (const [sequence, episode] of episodes.records.entries()) {
     const removed = removedEpisodeRoom(episode);
@@ -78,6 +80,32 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
       );
       owners.set(id, episode.id);
       if (!births.has(version.rootId)) births.set(version.rootId, sequence);
+    }
+    for (const receipt of episode.commandReceipts) {
+      if (!receipt.conditionDamage) continue;
+      const room = episode.room,
+        proof = episode.dependencies["native:" + receipt.id]?.[0];
+      memoryRequire(room && proof, "Scene damage lost its local Room proof");
+      for (const root of receipt.conditionDamage.flatMap((link) => link.entries)) {
+        const writes = episode.continuityVersionIds
+          .map((id) => versions.get(id)!)
+          .filter((row) => row.rootId === root && row.id === continuityVersionId(episode.seed, row.operationId, room));
+        const version = writes[0];
+        memoryRequire(
+          writes.length === 1 &&
+            version.room?.visibility === "observable" &&
+            !version.room.expiresAt &&
+            !version.closed &&
+            version.sources.some(
+              (source) =>
+                source.kind === "observation" &&
+                continuitySourceUnit(source) === proof &&
+                source.perceptions.some((row) => row.actorId === "player" && row.channel === "sight"),
+            ),
+          "Scene damage lost its exact enduring Room entry and observed source",
+        );
+        damage.set(version.id, episode.admittedContinuityRevision);
+      }
     }
     for (const receipt of episode.commandReceipts.filter((row) => row.kind === "condition-repair")) {
       const room = episode.room,
@@ -352,6 +380,18 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
         assertContinuitySoundIdentity(version, holder, roots.get(version.rootId)!.owner, previous.get(key));
       const repair = repairs.get(version.id),
         before = previous.get(key);
+      const damagedAt = damage.get(version.id);
+      if (damagedAt !== undefined)
+        memoryRequire(
+          before
+            ? before.createdRevision <= damagedAt &&
+                before.room?.visibility === "observable" &&
+                !before.room.expiresAt &&
+                !before.closed &&
+                before.text.trim() !== version.text.trim()
+            : version.rootId === continuityRootId(byEpisode.get(owners.get(version.id)!)!.seed, version.operationId),
+          "Scene damage did not change its exact prior Room meaning",
+        );
       if (repair)
         memoryRequire(
           holder.kind === "room" &&

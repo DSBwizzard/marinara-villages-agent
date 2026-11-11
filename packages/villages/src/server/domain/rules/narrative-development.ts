@@ -387,12 +387,15 @@ export function applyNarrativeDevelopment(
   state: VillageState,
   grant: NarrativeAdmission,
   saved: unknown,
+  sceneDamage: readonly string[][] = [],
 ): NarrativeReceipt {
   const narrative = state.narrative!;
   const previous = narrative?.receipts.find((row) => row.id === grant.id);
   if (previous?.rejected) throw conflict("This saved environmental proposal was explicitly rejected.");
   const development = readNarrativeDevelopment(saved, grant);
-  const resultFingerprint = memoryHash([grant, development]);
+  if (sceneDamage.length && (grant.source !== "scene" || sceneDamage.length !== development.conditions.length))
+    throw badGateway("Room damage must match its exact local conditions.");
+  const resultFingerprint = memoryHash([grant, development, ...(sceneDamage.length ? [sceneDamage] : [])]);
   if (previous) {
     if (previous.resultFingerprint !== resultFingerprint)
       throw conflict("The environmental receipt belongs to another result.");
@@ -493,9 +496,23 @@ export function applyNarrativeDevelopment(
   }
   const conditions: NarrativeCondition[] = development.conditions.map((change, index) => {
     const old = narrative.conditions.find((row) => row.id === change.id);
+    const sceneEntries = sceneDamage[index];
     if ((change.id !== null && !old) || (old?.revision ?? 0) !== change.expectedRevision)
       throw conflict("The condition changed. The saved result is retained.");
     if (change.clear && !old) throw badGateway("Only an admitted condition can be cleared.");
+    if (
+      sceneEntries?.length &&
+      (old ||
+        change.restriction !== "ordinary-use" ||
+        change.endsAt !== null ||
+        change.clear ||
+        activeNarrativeConditions(narrative, grant.at).some(
+          (condition) =>
+            condition.restriction === "ordinary-use" &&
+            condition.repairEntries?.some((id) => sceneEntries.includes(id)),
+        ))
+    )
+      throw badGateway("Room damage must support a new enduring local restriction.");
     if (
       old?.repairEntries?.length &&
       (change.clear || (old.restriction === "ordinary-use" && change.restriction === "none")) &&
@@ -503,7 +520,12 @@ export function applyNarrativeDevelopment(
     )
       throw badGateway("Reopening this repair-linked condition needs matching physical work.");
     const repairEntries =
-      old?.repairEntries ?? (enduring && change.restriction === "ordinary-use" ? currentEffects : undefined);
+      old?.repairEntries ??
+      (sceneEntries?.length
+        ? sceneEntries
+        : enduring && change.restriction === "ordinary-use"
+          ? currentEffects
+          : undefined);
     if (
       change.restriction === "ordinary-use" &&
       repairEntries &&
