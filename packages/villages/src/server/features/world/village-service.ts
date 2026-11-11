@@ -133,7 +133,7 @@ export function createWorldCoordination({
     for (const residence of recorded.residences) {
       if (residence.status !== "moving" || Date.parse(residence.completesAt ?? "") > now.getTime()) continue;
       try {
-        await completeVillageResidence(residence.characterId, false, now, false);
+        await completeVillageResidence(residence.characterId, false, now);
         completedMove = true;
       } catch (error) {
         villagesLogger().warn("[villages] pending move could not complete: %s", String(error));

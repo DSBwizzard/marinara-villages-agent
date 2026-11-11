@@ -55,11 +55,9 @@ export function createResidences(ports: ResidencePorts) {
     characterValue: unknown,
     force = false,
     now = villageNow(),
-    _queueAdaptation = true,
   ): Promise<VillageSnapshot> {
     const characterId = residenceCharacterId(characterValue);
     await mutateVillageState((state) => {
-      // Only the winning mutation attempt can authorize post-save preparation.
       completeResidenceMove(state, characterId, force, now);
     });
     return buildVillageSnapshot(now);

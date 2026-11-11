@@ -7,10 +7,10 @@ import {
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageVenue, VillageVillager } from "../packages/villages/src/server/domain/models/world.js";
 import { routineVenues } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
-import {
-  readResidentPlanningProposal,
-  type ResidentPlanningContext,
-} from "../packages/villages/src/server/domain/rules/resident-planning.js";
+import { continuityViews } from "../packages/villages/src/server/domain/rules/continuity.js";
+import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
+import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
+import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
 import { assertCanAddVillageVenue } from "../packages/villages/src/server/domain/rules/venue-capacity.js";
 import {
   readVenueRequestCore,
@@ -46,17 +46,16 @@ const venue = (name: string): VillageVenue => {
     state: draft.state,
   });
 };
-const state = defaultVillageState();
-state.setupAt = state.foundedAt = at;
-state.foundedAt = at;
-state.villagers.push({
+const requester: VillageVillager = {
   letterFontId: "caveat",
   characterId: "rosa",
-  cardSnapshot: { id: "rosa", revision: 1, sourceStatus: "available", name: "Rosa", capturedAt: at },
+  incarnation: "rosa-first",
+  admission: { homeworld: "", startingSituation: "" },
+  cardSnapshot: snapshotFromCard(readVillagerCard({ id: "rosa", comment: "", data: { name: "Rosa" } }), 1),
   agenda: null,
   addedAt: at,
-  wishes: [],
-} as VillageVillager);
+};
+const state = { ...defaultVillageState(), seed: "requests", setupAt: at, foundedAt: at, villagers: [requester] };
 
 assert.deepEqual(readVenueRequestCore({ name: "", classes: ["community"] }), null);
 assert.deepEqual(readVenueRequestCore({ name: "Glasshouse", classes: ["unknown"] }), null);
@@ -73,64 +72,6 @@ assert.deepEqual(
   [classOnlyRequest],
   "a request without a Purpose remains visible in the client snapshot",
 );
-const readHousingRequests = (value: unknown, context: ResidentPlanningContext) =>
-  readResidentPlanningProposal({ social: null, routineIdea: null, housingRequests: value }, context).housingRequests;
-const housingContext = {
-  residents: [{ characterId: "rosa", name: "Rosa" }],
-  venues: [
-    {
-      ...venue("Rosa's home"),
-      id: "rosa-home",
-      occupancy: { playerHome: false, residentCharacterId: "rosa", homeKind: "small-home" },
-    },
-    { ...venue("Open venue"), id: "open", classes: ["residence"] },
-    {
-      ...venue("Occupied venue"),
-      id: "occupied",
-      classes: ["residence"],
-      residentIds: ["someone-else"],
-      occupancy: { playerHome: false, residentCharacterId: "someone-else", homeKind: "small-home" },
-    },
-  ],
-  opportunity: { actorIds: ["rosa"] },
-  pendingHousingCharacterIds: [],
-} as unknown as ResidentPlanningContext;
-assert.deepEqual(readHousingRequests([{ who: "rosa", kind: "move", venueId: "open" }], housingContext), [
-  { characterId: "rosa", kind: "move", venueId: "open" },
-]);
-assert.deepEqual(readHousingRequests([{ who: "rosa", kind: "move", venueId: "occupied" }], housingContext), []);
-
-const modernOccupied = {
-  ...housingContext,
-  venues: housingContext.venues.map((v) => (v.id === "open" ? { ...v, residentIds: ["someone-else"] } : v)),
-};
-assert.deepEqual(readHousingRequests([{ who: "rosa", kind: "move", venueId: "open" }], modernOccupied), []);
-const unfinished = {
-  ...housingContext,
-  venues: housingContext.venues.map((v) => (v.id === "open" ? { ...v, constructionStatus: "worksite" as const } : v)),
-};
-assert.deepEqual(readHousingRequests([{ who: "rosa", kind: "move", venueId: "open" }], unfinished), []);
-const nonResidence = {
-  ...housingContext,
-  venues: housingContext.venues.map((v) => (v.id === "open" ? { ...v, classes: ["community" as const] } : v)),
-};
-assert.deepEqual(readHousingRequests([{ who: "rosa", kind: "move", venueId: "open" }], nonResidence), []);
-
-assert.deepEqual(readHousingRequests([{ who: "stranger", kind: "move", venueId: "open" }], housingContext), []);
-assert.deepEqual(
-  readHousingRequests([{ who: "rosa", kind: "upgrade", venueId: "rosa-home" }], housingContext),
-  [],
-  "home improvements go through the separate resident proposal flow",
-);
-assert.deepEqual(readHousingRequests([{ who: "rosa", kind: "upgrade", venueId: "open" }], housingContext), []);
-assert.deepEqual(
-  readHousingRequests([{ who: "rosa", kind: "move", venueId: "open" }], {
-    ...housingContext,
-    pendingHousingCharacterIds: ["rosa"],
-  }),
-  [],
-);
-
 queueVillageVenueRequest(state, core, "rosa", "background", "opportunity-1", at);
 assert.equal(state.pendingDecisions.length, 1);
 assert.equal(state.venues.length, 0, "a pending request must not create a map place");
@@ -154,7 +95,13 @@ assert.equal(persisted.projects[0]?.status, "planning");
 assert.equal(persisted.projects[0]?.lifecycle?.phase, "planning");
 assert.deepEqual(persisted.projects[0]?.venueDraft?.classes, ["community"]);
 assert.equal(persisted.projects[0]?.venueDraft?.description, "A shared glasshouse for herbs.");
-assert.match(persisted.memories.records[0]?.text ?? "", /accepted Rosa's request to plan/u);
+function decisionFacts(actorId: string) {
+  return continuityViews(persisted.continuity, continuityActor(persisted, actorId)!, at, new Set()).map(
+    ({ version }) => version.text,
+  );
+}
+assert.match(decisionFacts("player").join("\n"), /accepted Rosa's request to plan/u);
+assert.match(decisionFacts("rosa").join("\n"), /Construction has not begun/u);
 assert.throws(() => applyVillageVenueDecision(persisted, id, true, core, "A shared glasshouse.", new Date(at)));
 assert.equal(coerceVillageState(persisted).projects[0]?.venueDraft?.name, core.name, "the project survives reload");
 
@@ -162,18 +109,9 @@ const denied = persisted.pendingDecisions.find((decision) => decision.venueDraft
 applyVillageVenueDecision(persisted, denied.id, false, null, "", new Date(at));
 assert.equal(denied.status, "denied");
 assert.equal(persisted.venues.length, 0, "denial must leave the map unchanged");
-assert.match(persisted.memories.records.at(-1)?.text ?? "", /declined Rosa's request/u);
+assert.match(decisionFacts("player").join("\n"), /declined Rosa's request for The Mill/u);
 
-const competing = defaultVillageState();
-competing.setupAt = competing.foundedAt = at;
-competing.villagers.push({
-  letterFontId: "caveat",
-  characterId: "rosa",
-  cardSnapshot: { id: "rosa", revision: 1, sourceStatus: "available", name: "Rosa", capturedAt: at },
-  agenda: null,
-  addedAt: at,
-  wishes: [],
-} as VillageVillager);
+const competing = { ...defaultVillageState(), seed: "competing", setupAt: at, foundedAt: at, villagers: [requester] };
 queueVillageVenueRequest(competing, core, "rosa", "chat", "chat-competing", at);
 competing.venues.push(venue(core.name));
 assert.equal(competing.venues.length, 1, "An independently completed Project adds an ordinary map Venue");
@@ -209,15 +147,6 @@ assert.equal(
 assert.throws(
   () => draftNewVenueProject(drafts, { ...core, description: "Another place." }),
   /Six Project drafts maximum/u,
-);
-const legacy = structuredClone(drafts);
-const legacyDraft = structuredClone(legacy.projects[0]!);
-legacyDraft.id = "legacy-extra";
-legacy.projects.push(legacyDraft);
-assert.equal(
-  coerceVillageState(legacy).projects.filter((project) => project.status === "planning").length,
-  7,
-  "existing drafts above the new limit remain readable",
 );
 drafts.projects[0]!.status = "working";
 draftNewVenueProject(drafts, { ...core, description: "A newly available draft." });

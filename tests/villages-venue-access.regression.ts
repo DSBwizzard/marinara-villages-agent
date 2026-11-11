@@ -1951,7 +1951,7 @@ async function main() {
     moveWorld.residences = [{ ...proposedMove, status: "moving", completesAt: stamp }];
     records.delete("villages-active-venue");
     records.set("villages-village", { id: "villages-village", kind: "village", data: moveWorld, revision: 200 });
-    await completeVillageResidence("jim", true, new Date(), false);
+    await completeVillageResidence("jim", true, new Date());
     const moved = await readVillageState({ memories: true }),
       priorHome = moved.venues.find((venue) => venue.id === "home")!,
       newHome = moved.venues.find((venue) => venue.id === "new-home")!;

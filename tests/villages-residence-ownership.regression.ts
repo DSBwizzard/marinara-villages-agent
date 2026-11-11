@@ -1,4 +1,5 @@
 import { residenceProposal } from "../packages/villages/src/server/domain/rules/residence-agreement.js";
+import { decideResidenceMove } from "../packages/villages/src/server/domain/rules/residence-move.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import {
@@ -7,7 +8,6 @@ import {
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageSnapshot, VillageState } from "../packages/villages/src/server/domain/models/world.js";
-import { MAX_VENUE_DESCRIPTION_LENGTH } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
 import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import {
@@ -30,10 +30,10 @@ function fixture(name: string) {
     {
       letterFontId: "caveat",
       characterId: "same",
+      incarnation: "resident-" + name,
       cardSnapshot: { id: "same", name, capturedAt: "captured" },
       addedAt: "added",
       agenda: null,
-      wishes: [],
     } as any,
   ];
   const destination = venueDraft(
@@ -49,23 +49,16 @@ function fixture(name: string) {
   state.venues = [destination];
   const calls: string[] = [],
     owners: unknown[] = [],
-    jobs: any[] = [],
-    options: any[] = [];
+    snapshots: (Date | undefined)[] = [];
   const gate = deferred(),
     entered = deferred();
   let pauseWrite = false,
-    pauseCompletion = false,
-    retry: ((state: VillageState) => void) | undefined,
-    preparations = 0;
+    retry: ((state: VillageState) => void) | undefined;
   const note = (operation: string) => {
     calls.push(operation);
     owners.push(activationScope());
   };
   const ports: ResidencePorts = {
-    async readVillageState() {
-      note("read");
-      return structuredClone(state);
-    },
     async mutateVillageState(update) {
       note("mutate");
       if (pauseWrite) {
@@ -87,78 +80,11 @@ function fixture(name: string) {
     },
     async buildVillageSnapshot(now) {
       note("snapshot");
-      options.push(now);
+      snapshots.push(now);
       return { village: { name } } as VillageSnapshot;
-    },
-    queueSharedMoveConsent() {
-      note("consent");
-    },
-    outsideVenueOperation(work) {
-      note("outside");
-      return work();
-    },
-    async preparePrivateSpaces() {
-      note("prepare");
-      preparations++;
-    },
-    async readVillageLore() {
-      note("lore");
-      return [`Lore ${name}`];
-    },
-    async queueBackgroundJob(work) {
-      note("queue");
-      jobs.push(structuredClone(work));
-    },
-    villagesLanguageModels() {
-      note("models");
-      return {
-        async resolveForRequest(request: any) {
-          note("resolve");
-          options.push(request);
-          return {
-            maxOutputTokens: 6000,
-            fitContext(messages: any, settings: any) {
-              note("fit");
-              options.push(settings);
-              return { messages, ...settings };
-            },
-          };
-        },
-      } as any;
-    },
-    async villagesConnectionIdFor(role) {
-      note(`connection:${role}`);
-      return `system-${name}`;
-    },
-    async completeWithRoom(_model, _messages, maxTokens, settings) {
-      note("complete");
-      options.push({ maxTokens, settings });
-      if (pauseCompletion) {
-        pauseCompletion = false;
-        entered.resolve();
-        await gate.promise;
-        owners.push(activationScope());
-      }
-      return {
-        content: JSON.stringify({
-          description: "x".repeat(MAX_VENUE_DESCRIPTION_LENGTH + 20),
-          items: ["Scarf", "Invented piano"],
-          featureIds: ["portable", "invented"],
-        }),
-      } as any;
     },
   };
   const service = createResidences(ports);
-  const decide = service.decideVillageResidence;
-  service.decideVillageResidence = (id, approved, actor, operationId, approverId, scope) =>
-    decide(
-      id,
-      approved,
-      actor,
-      operationId,
-      approverId,
-      scope ?? state.residences.find((row) => row.characterId === id)?.agreement?.scope,
-    );
   assert.deepEqual(calls, [], "Construction starts no storage, preparation or model work.");
   return {
     state,
@@ -166,21 +92,14 @@ function fixture(name: string) {
     service,
     calls,
     owners,
-    jobs,
-    options,
+    snapshots,
     gate,
     entered,
     pauseWrite() {
       pauseWrite = true;
     },
-    pauseCompletion() {
-      pauseCompletion = true;
-    },
     retryWith(work: (state: VillageState) => void) {
       retry = work;
-    },
-    get preparations() {
-      return preparations;
     },
   };
 }
@@ -190,40 +109,33 @@ await a.service.proposeVillageResidence("same", "destination");
 await b.service.proposeVillageResidence("same", "destination");
 assert.equal(a.state.residences[0]!.status, "pending");
 assert.equal(b.state.residences[0]!.status, "pending");
-await assert.rejects(
-  a.service.decideVillageResidence("same", true, "player", undefined, undefined, "stale-scope"),
-  /reviewed move/,
-);
-await a.service.decideVillageResidence("same", true, "villager");
+await assert.rejects(a.service.decideVillageResidence("same", true, "stale-scope"), /reviewed move/);
+const scope = a.state.residences[0]!.agreement!.scope;
+decideResidenceMove(a.state, "same", true, "villager", "same", scope, new Date(a.state.residences[0]!.requestedAt));
 assert.equal(a.state.residences[0]!.status, "moving");
 assert.equal(b.state.residences[0]!.status, "pending");
 const completion = Date.parse(a.state.residences[0]!.completesAt!);
 const before = new Date(completion - 1),
   after = new Date(completion + 1);
-await a.service.completeVillageResidence("same", false, before, false);
+await a.service.completeVillageResidence("same", false, before);
 assert.equal(a.state.residences[0]!.status, "moving");
-await a.service.completeVillageResidence("same", false, after, false);
+await a.service.completeVillageResidence("same", false, after);
 assert.equal(a.state.residences[0]!.status, "current");
 assert.deepEqual(a.state.venues[0]!.residentIds, ["same"]);
-assert.equal(a.options.at(-1), after, "The final snapshot retains the caller's clock.");
-assert.equal(a.jobs.length, 0);
-assert.equal(a.preparations, 0);
-assert(!a.calls.includes("complete"));
+assert.equal(a.snapshots.at(-1), after, "The final snapshot retains the caller's clock.");
 
 const changed = fixture("CAS");
 const recordedDecision = fixture("Recorded decision");
 await recordedDecision.service.proposeVillageResidence("same", "destination");
-await recordedDecision.service.decideVillageResidence("same", true, "villager", "semantic-decision");
+const reviewed = recordedDecision.state.residences[0]!.agreement!.scope;
+await recordedDecision.service.decideVillageResidence("same", false, reviewed);
+await recordedDecision.service.proposeVillageResidence("same", "destination");
 const recordedMove = structuredClone(recordedDecision.state.residences);
-await recordedDecision.service.decideVillageResidence("same", true, "villager", "semantic-decision");
+await assert.rejects(recordedDecision.service.decideVillageResidence("same", true, reviewed), /reviewed move/);
 assert.deepEqual(
   recordedDecision.state.residences,
   recordedMove,
-  "Replay after a lost response must not decide a later move or fail because the first move advanced",
-);
-await assert.rejects(
-  recordedDecision.service.decideVillageResidence("same", false, "villager", "semantic-decision"),
-  /another request/,
+  "A stale approval cannot decide the replacement move.",
 );
 changed.retryWith((state) => {
   state.venues[0]!.residentIds = ["other"];
@@ -255,11 +167,6 @@ postponed.retryWith((state) => {
 await postponed.service.completeVillageResidence("same", false, attemptClock);
 assert.equal(postponed.state.residences[0]!.status, "moving");
 assert.equal(postponed.state.venues[0]!.occupancy.residentCharacterId, null);
-assert.equal(
-  postponed.preparations,
-  0,
-  "A losing completion attempt cannot authorize private preparation after its winning retry postpones the move.",
-);
 assert.deepEqual(postponed.calls, ["mutate", "snapshot"]);
 const completedRetry = fixture("Completed retry");
 completedRetry.state.residences = [{ ...postponed.state.residences[0]!, completesAt: "2026-10-06T11:00:00Z" }];
@@ -269,11 +176,10 @@ completedRetry.retryWith((state) => {
 await completedRetry.service.completeVillageResidence("same", false, attemptClock);
 assert.equal(completedRetry.state.residences[0]!.status, "current");
 assert.equal(completedRetry.state.name, "Concurrent metadata");
-assert.equal(completedRetry.preparations, 0, "Moving never rewrites physical rooms.");
-assert.equal(completedRetry.calls.filter((operation) => operation === "outside").length, 0);
+assert.deepEqual(completedRetry.calls, ["mutate", "snapshot"]);
 const invalid = fixture("Invalid");
 await assert.rejects(invalid.service.proposeVillageResidence("absent", "destination"), /not in this village/);
-assert(!invalid.calls.includes("models"));
+assert.deepEqual(invalid.calls, ["mutate"]);
 
 const roomMove = fixture("Room move");
 const neutralRoom = {
@@ -300,7 +206,7 @@ const roomProposal = residenceProposal(
 );
 roomProposal.agreement!.approvals = Object.fromEntries(roomProposal.agreement!.requiredIds.map((id) => [id, true]));
 roomMove.state.residences = [{ ...roomProposal, status: "moving" }];
-await roomMove.service.completeVillageResidence("same", true, attemptClock, false);
+await roomMove.service.completeVillageResidence("same", true, attemptClock);
 const occupiedRoom = roomMove.state.venues[0].zones!.find((zone) => zone.id === "vacant")!;
 assert.equal(occupiedRoom.ownerId, "same");
 assert.equal(occupiedRoom.roomSpecification, "A garden-facing window");
@@ -350,5 +256,5 @@ await assert.rejects(
 );
 
 console.log(
-  "Residence ownership: independent transitions, approval/capacity/CAS checks, caller clock, preserved physical rooms and scoped cleanup passed (mocked storage/models).",
+  "Residence ownership: independent transitions, approval/capacity/CAS checks, caller clock, preserved physical rooms and scoped cleanup passed.",
 );

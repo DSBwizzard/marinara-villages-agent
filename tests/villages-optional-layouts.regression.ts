@@ -348,7 +348,7 @@ async function main() {
   try {
     await proposeVillageResidence("b", vacant.id, "player", "", "personal");
     await residentAcceptsMove("b");
-    await completeVillageResidence("b", true, new Date(), false);
+    await completeVillageResidence("b", true, new Date());
     let current = await readVillageState({ memories: true });
     let destination = current.venues.find((venue) => venue.id === vacant.id)!;
     assert.equal(destination.zones!.find((zone) => zone.id === "personal")!.ownerId, "b");
@@ -361,7 +361,7 @@ async function main() {
     await mutateVillageState((state) => state.venues.push(nextHome));
     await proposeVillageResidence("a", nextHome.id, "player", "", "");
     await residentAcceptsMove("a");
-    await completeVillageResidence("a", true, new Date(), false);
+    await completeVillageResidence("a", true, new Date());
     current = await readVillageState({ memories: true });
     const old = current.venues.find((venue) => venue.id === privateOnly.id)!;
     assert.equal(old.zones!.find((zone) => zone.id === "personal")!.ownerId, undefined);
@@ -471,7 +471,7 @@ async function main() {
     });
     await proposeVillageResidence("a", outside.id, "player", "", "private:nook");
     await residentAcceptsMove("a");
-    await completeVillageResidence("a", true, new Date(), false);
+    await completeVillageResidence("a", true, new Date());
 
     current = await readVillageState({ memories: true });
     assert.equal(

@@ -1,4 +1,4 @@
-// Test cases: resident-planning/one-gm, resident-planning/reflection, resident-planning/mail, resident-planning/pre-spend, resident-planning/paid-hold, resident-planning/independent, resident-planning/catchup, resident-planning/strict-input, resident-planning/protected-context, resident-planning/live-scene, resident-planning/mail-initiative, resident-planning/delayed-meeting, resident-planning/background-recovery
+// Test cases: resident-planning/one-gm, resident-planning/housing, resident-planning/reflection, resident-planning/mail, resident-planning/pre-spend, resident-planning/paid-hold, resident-planning/independent, resident-planning/catchup, resident-planning/strict-input, resident-planning/protected-context, resident-planning/live-scene, resident-planning/mail-initiative, resident-planning/delayed-meeting, resident-planning/background-recovery
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -12,7 +12,10 @@ import {
 import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
 import { createResidentPlanning } from "../packages/villages/src/server/features/residents/resident-planning-service.js";
 import { captureReturnContext } from "../packages/villages/src/server/domain/rules/return-catchup-capture.js";
-import { readResidentPlanningInput } from "../packages/villages/src/server/domain/rules/resident-planning.js";
+import {
+  readResidentPlanningInput,
+  readResidentPlanningProposal,
+} from "../packages/villages/src/server/domain/rules/resident-planning.js";
 import { retainNativeFact } from "../packages/villages/src/server/domain/rules/native-continuity.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
 import {
@@ -193,6 +196,49 @@ await runCase("resident-planning/one-gm", async () => {
   assert.equal(f.state.planningUsage.count, 1);
   assert.equal(f.calls.length, 1);
 });
+
+await runCase("resident-planning/housing", async () => {
+  const f = fixture();
+  const open = homeFixture("open", "residence");
+  open.residentIds = [];
+  open.access!.managerIds = [];
+  const occupied = homeFixture("occupied", "residence");
+  occupied.residentIds = ["leo"];
+  const unfinished = { ...structuredClone(open), id: "unfinished", constructionStatus: "worksite" as const };
+  const reserved = { ...structuredClone(open), id: "reserved" };
+  f.state.venues.push(open, occupied, unfinished, reserved);
+  requestResidenceMove(f.state, "leo", "reserved", "player", "", "leo-reservation", f.now);
+
+  await f.service.reconcile(f.now);
+  const input = readResidentPlanningInput(f.queued[0].input);
+  assert.deepEqual(input.context.housing, [{ characterId: "mara", destinations: [{ id: "open", name: "open" }] }]);
+  const housingRequests = [{ characterId: "mara", venueId: "open" }];
+  for (const venueId of ["occupied", "unfinished", "reserved", "square"]) {
+    assert.throws(
+      () => readResidentPlanningProposal({ housingRequests: [{ characterId: "mara", venueId }] }, input.context),
+      /housing choice was not offered/,
+    );
+  }
+  for (const characterId of ["leo", "stranger"]) {
+    assert.throws(
+      () => readResidentPlanningProposal({ housingRequests: [{ characterId, venueId: "open" }] }, input.context),
+      /housing choice was not offered/,
+    );
+  }
+  f.payload({ housingRequests });
+  const result = await f.service.handler.generate(input);
+  const occupiedAfterPurchase = structuredClone(f.state);
+  occupiedAfterPurchase.venues.find((venue) => venue.id === "open")!.residentIds = ["leo"];
+  assert.throws(
+    () => f.service.handler.apply(occupiedAfterPurchase, input, result, { retrying: false }),
+    /housing destination changed/,
+  );
+  assert(!occupiedAfterPurchase.residences.some((row) => row.characterId === "mara"));
+  f.service.handler.apply(f.state, input, result, { retrying: false });
+  assert.equal(f.state.residences.find((row) => row.characterId === "mara")?.status, "pending");
+  assert.deepEqual(open.residentIds, []);
+});
+
 await runCase("resident-planning/reflection", async () => {
   const f = fixture();
   await f.service.reconcile(f.now);
