@@ -81,14 +81,23 @@ The builder owns generated bundles, manifests, locales and ZIPs. Commit maintain
 
 `npm run verify:build` builds twice, compares archive hashes and checks that tracked source bytes are unchanged. The latest build receipt is `.build-tmp/package-build.json`; exact retained archives are under `artifacts/<version>/<source-content-hash>/<archive-sha256>.zip`. Version equality alone does not establish package identity.
 
-For an explicitly authorized release:
+### Publish to staging
+
+1. If the package changed, choose a higher Villages version in the staging PR. A matching ZIP digest can reuse the current catalog entry.
+2. Merge through the staging turn and required checks. Run the full `ci.yml` workflow by manual dispatch on `staging` and verify its exact final staging revision, successful required jobs, Linux and Windows artifact digests, and matching inner ZIP hashes and build receipts. Verify the exact package on a compatible Engine.
+3. Upload that ZIP to the `agent-catalog-artifacts` prerelease as `villages-<version>-<first-16-hex-of-sha256>.zip`. Give each digest a new asset name. Update `catalog.json` on `agent-catalog` with the manifest, HTTPS asset URL, byte count and full SHA-256. Set `provenance.kind` to `custom` and `provenance.url` to the successful staging workflow run. Verify the published catalog and downloadable ZIP before reporting publication.
+4. Report the staging merge and catalog publication. The owner selects the update in 8500 Agent Organizer, which checks and activates the chosen package. A catalog publication alone leaves the running instance available for play.
+
+### Numbered releases
+
+For an explicitly authorized numbered release:
 
 1. Choose the deliberate release version once in the package definition. Do not bump it for each development edit. Preserve published numbered bytes.
 2. Open the staging-to-main PR. Obtain all required checks for its current merge candidate. Record the successful Actions run URL, tested Git SHA/tree, package artifact and SHA256. Download the artifact from that successful run; verify its hash and the Linux/Windows parity job. If a merge changes executable source, validate the new candidate.
 3. Rehearse the exact ZIP with guarded provider-free packaged verification and, when needed, a checkpointed copy of an existing world. Preserve rollback and review meaningful saved-data compatibility changes.
 4. Obtain explicit authorization for main promotion and numbered publication. Publish the verified immutable artifact, not an unverified rebuild. Record the version, commit, run URL and archive hash in the normal release description.
 
-Never substitute a local success, identical bytes alone, or stale PR approval for required current checks. No publication occurs merely because staging merged.
+Required checks must pass for the current candidate. A staging merge alone does not publish a package.
 
 ## Product contracts
 
