@@ -27,10 +27,12 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
   let nextFailure = "";
   let changeAttemptOnRead = false;
   let succeedNextGreeting = false;
+  let activeReads = 0;
+  const initialValidation = Promise.withResolvers();
   const archived = new Map();
   function opening(id) {
     return {
-      version: 2,
+      version: 5,
       sceneRevision: 0,
       id,
       placeId: "mill",
@@ -60,6 +62,7 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
           name: "Mara",
           content: "The saved greeting.",
           at: now,
+          heardBy: ["player", "mara"],
         },
       ],
     };
@@ -80,6 +83,7 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
         complete();
         return fulfill(route, { json: authorSceneResponse({ session }, snapshot.worldScope) });
       }
+      if (recovery === "delayed" && greetingCalls === 1) await initialValidation.promise;
       recoveryPending = true;
       if (recovery === "immediate") complete();
       if (nextFailure)
@@ -89,6 +93,12 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
           body: JSON.stringify({ error: nextFailure }),
         });
       return abort(route, "failed");
+    }
+    if (path.endsWith("/rooms/active") && ++activeReads === 2 && recovery === "delayed") {
+      // Hold the recovery read, after the normal selection validation has completed.
+      await fulfill(route, { json: authorSceneResponse({ session }, snapshot.worldScope) });
+      initialValidation.resolve();
+      return;
     }
     if (path.endsWith("/rooms/active") && recoveryPending) {
       recoveryPending = false;

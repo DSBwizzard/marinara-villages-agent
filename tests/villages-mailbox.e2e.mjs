@@ -6,7 +6,7 @@ import { build } from "../scripts/esbuild.mjs";
 import { runCase } from "../scripts/test-cases.mjs";
 import { chromium, expect, fulfill, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { captureMailContext } from "../packages/villages/src/server/domain/rules/mail-context.js";
+import { captureContinuityContext } from "../packages/villages/src/server/domain/rules/continuity-context.js";
 import {
   acceptResidentLetter,
   readDeliveredLetter,
@@ -45,7 +45,7 @@ await withBrowser(browser, async () => {
         player = continuityActor(state, "player");
       acceptResidentLetter(
         state,
-        captureMailContext(state, "mara", "garden", at),
+        captureContinuityContext(state, ["mara", "player"], "garden", at),
         { id: "letter", at, from: mara, to: player },
         "I planted the café garden. 🌼",
         "request",

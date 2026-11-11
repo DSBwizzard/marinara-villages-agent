@@ -1,7 +1,7 @@
 import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
 const { authorSceneResponse } = await scenePlaybackFixtures();
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
-import { openSceneErrors, closeSceneErrors } from "./fixtures/villages-scene-errors.fixture.mjs";
+import { openSceneErrors } from "./fixtures/villages-scene-errors.fixture.mjs";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -19,16 +19,7 @@ await withBrowser(browser, async () => {
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     const snapshot = structuredClone(fixture);
-    let issues = [
-      {
-        submissionId: "join",
-        domain: "memories",
-        status: "rejected",
-        at: now,
-        reason:
-          "The proposed memory cited words that were not witnessed by everyone. It wasn’t saved; the conversation remains in the transcript.",
-      },
-    ];
+    let issues = [];
     let summary = { pending: 0, failed: 0, rejected: 1 };
     let mutatingRequests = 0;
     const line = (id, kind, speakerId, content, extra = {}) => ({
@@ -102,7 +93,7 @@ await withBrowser(browser, async () => {
                 dismissedNoticeIds: [],
                 processingSummary: summary,
                 unresolved: issues,
-                nextCursor: "0:0",
+                nextCursor: "0",
                 hasMore: false,
               }
             : path.endsWith("/town-map")
@@ -121,15 +112,7 @@ await withBrowser(browser, async () => {
       .then(async (response) => assert.equal(await response.finished(), null));
     await Promise.all([page.addScriptTag({ path: resolve("packages/villages/client.js") }), initialSceneRead]);
     const chip = page.getByRole("button", { name: "1 Scene error", exact: true });
-    await expect(chip).toBeVisible();
-    await expect(page.getByText("not witnessed by everyone", { exact: false })).toHaveCount(0);
-    let status = await openSceneErrors(page);
-    await expect(status.getByRole("group", { name: "World change not saved · memories", exact: true })).toBeVisible();
-    await expect(status).toContainText("The AI based a memory on words a resident didn’t hear.");
-    await expect(status).not.toContainText(/transcript|Scene ID/);
-    await expect(status.getByRole("button", { name: /Retry|Replay/ })).toHaveCount(0);
-    await page.screenshot({ path: `.build-tmp/doorway-continuity/errors-${width}.png` });
-    await closeSceneErrors(page);
+    await expect(chip).toHaveCount(0);
     const next = page.getByRole("button", { name: "Next paragraph", exact: true });
     const previous = page.getByRole("button", { name: "Previous paragraph", exact: true });
     while (await previous.isEnabled()) await previous.click();
@@ -152,36 +135,31 @@ await withBrowser(browser, async () => {
     issues = [
       {
         submissionId: "later",
-        domain: "relationships",
-        status: "failed",
+        status: "held",
         at: now,
-        reason: "Saved changes could not be applied. Replay saved work first.",
+        reason: "The saved reply needs review.",
       },
-      ...issues,
       {
-        submissionId: "later",
-        domain: "wishes",
+        submissionId: "pending",
         status: "pending",
         at: now,
-        reason: "This proposed update is still being checked.",
+        reason: "Applying the saved reply.",
       },
     ];
     summary = { pending: 1, failed: 1, rejected: 1 };
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-    await expect(page.getByRole("button", { name: "2 Scene errors", exact: true })).toBeVisible();
-    status = await openSceneErrors(page);
-    await expect(status.getByRole("group", { name: "World change failed · relationships", exact: true })).toBeVisible();
-    await expect(status.getByRole("group", { name: "World change failed · wishes", exact: true })).toHaveCount(0);
-    await expect(status.getByRole("button", { name: /Retry relationships/ })).toBeVisible();
-    await expect(status.getByRole("button", { name: /Retry memories/ })).toHaveCount(0);
-    await expect(status.getByRole("button", { name: /Retry wishes/ })).toHaveCount(0);
+    await expect(chip).toBeVisible();
+    const status = await openSceneErrors(page);
+    await expect(status.getByRole("group", { name: "Saved reply needs review", exact: true })).toBeVisible();
+    await expect(status).not.toContainText(/Applying the saved reply|Scene ID/);
+    await expect(status.getByRole("button", { name: "Replay", exact: true })).toBeEnabled();
+    await expect(status.getByRole("button", { name: /Retry/ })).toHaveCount(0);
+    await page.screenshot({ path: `.build-tmp/doorway-continuity/errors-${width}.png` });
     issues = [];
     summary = { pending: 0, failed: 0, rejected: 1 };
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-    await closeSceneErrors(page);
-    status = await openSceneErrors(page);
-    await expect(status).toContainText("The game couldn’t apply some updates.");
-    assert.equal(mutatingRequests, 0, "reading feedback never retries interpretation or replays saved work");
+    await expect(chip).toHaveCount(0);
+    assert.equal(mutatingRequests, 0, "Reading feedback never replays saved work or generates a response");
     assert.deepEqual(errors, []);
     await page.close();
   }

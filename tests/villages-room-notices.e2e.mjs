@@ -82,8 +82,6 @@ let pending = true,
   interpretations = 0,
   replays = 0,
   closingReviews = 0;
-let failedDomain = "memories";
-const interpretedDomains = [];
 let diagnosticReads = 0;
 const api = async (route) => {
   const path = new URL(route.request().url()).pathname;
@@ -93,7 +91,7 @@ const api = async (route) => {
   else if (path.endsWith("/changes/diagnostics")) {
     diagnosticReads++;
     assert.equal(route.request().method(), "GET");
-    value = { nextCursor: "1:2:3", hasMore: false, ownerEvidence: "PRIVATE_OWNER_DIAGNOSTIC" };
+    value = { nextCursor: "1", hasMore: false, ownerEvidence: "PRIVATE_OWNER_DIAGNOSTIC" };
   } else if (path.endsWith("/changes"))
     value = {
       changes: [],
@@ -104,13 +102,13 @@ const api = async (route) => {
         ? [
             {
               submissionId: "turn",
-              domain: failedDomain,
-              status: "failed",
-              reason: "A citation is unavailable or was not witnessed by every affected resident.",
+              status: "held",
+              at: now,
+              reason: "The saved reply needs review.",
             },
           ]
         : [],
-      nextCursor: String(++polls) + ":0:0",
+      nextCursor: String(++polls),
       hasMore: false,
     };
   else if (path.endsWith("/dismiss")) {
@@ -120,11 +118,10 @@ const api = async (route) => {
     value = { dismissed: true };
   } else if (path.endsWith("/interpret")) {
     interpretations++;
-    interpretedDomains.push(route.request().postDataJSON().domain);
-    failed = false;
-    value = {};
+    return fulfill(route, { status: 404, contentType: "application/json", body: '{"error":"Retired Scene route"}' });
   } else if (path.endsWith("/changes/replay")) {
     replays++;
+    failed = false;
     value = {};
   } else if (path.endsWith("/retry-memory") || path.endsWith("/leave-pending")) {
     closingReviews++;
@@ -299,8 +296,8 @@ await withBrowser(browser, async () => {
   const chip = page.getByRole("button", { name: /^\d+ Scene errors?$/ });
   await chip.click();
   const status = page.getByRole("region", { name: "Scene errors" });
-  await expect(status).toContainText("The AI based a memory on words a resident didn’t hear.");
-  await expect(status.getByRole("button", { name: "Retry memories" })).toBeVisible();
+  await expect(status.getByRole("group", { name: "Saved reply needs review", exact: true })).toBeVisible();
+  await expect(status.getByRole("button", { name: /Retry/ })).toHaveCount(0);
   await page.setViewportSize({ width: 375, height: 740 });
   await page.screenshot({ path: "artifacts/memory-cause-phone.png" });
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -308,20 +305,8 @@ await withBrowser(browser, async () => {
   await status.getByRole("button", { name: "Replay" }).click();
   await expect.poll(() => replays).toBe(1);
   assert.equal(interpretations, 0);
-  await status.getByRole("button", { name: "Retry memories" }).click();
-  await expect.poll(() => interpretations).toBe(1);
-  failedDomain = "projects";
-  failed = true;
   await refresh();
-  await expect(chip).toBeVisible();
-  if ((await chip.getAttribute("aria-expanded")) !== "true") await chip.click();
-  await page.setViewportSize({ width: 375, height: 740 });
-  await page.screenshot({ path: "artifacts/project-recovery-phone.png" });
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await page.screenshot({ path: "artifacts/project-recovery-desktop.png" });
-  await status.getByRole("button", { name: "Retry projects" }).click();
-  await expect.poll(() => interpretations).toBe(2);
-  assert.deepEqual(interpretedDomains, ["memories", "projects"]);
+  await expect(chip).toHaveCount(0);
   assert.equal(diagnosticReads, 0, "Ordinary feed polling never requests owner diagnostics");
   for (const width of [375, 1280]) {
     await page.setViewportSize({ width, height: 900 });
