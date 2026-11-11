@@ -9,6 +9,8 @@ import {
 import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { rememberDomainFact } from "../packages/villages/src/server/domain/rules/domain-memories.js";
+import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { bindLiveProposals } from "../packages/villages/src/server/domain/rules/live-exchange.js";
 import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import { WISH_PROPOSAL_INSTRUCTION } from "../packages/villages/src/server/domain/rules/wish-progress-rules.js";
@@ -304,6 +306,68 @@ function commandFixture(
     const committed = structuredClone(physical.world);
     await effects.applyVenueTurnChange(physical.scene, turn);
     assert.deepEqual(physical.world, committed, "Committed receipt replay never reinterprets missing source data");
+    assert.equal(physical.modelAccess, 0);
+  } finally {
+    physical.owner.dispose();
+  }
+}
+
+for (const sourceVersion of [undefined, 2] as const) {
+  const physical = commandFixture("Delayed physical Memory", ({ scene, world, stamp }) => {
+    const place = venueDraft({ name: "Hall", description: "A hall.", classes: ["other"] }, null);
+    place.id = scene.placeId;
+    initializeVenueAccess(place);
+    place.access!.managerIds = ["player"];
+    world.venues = [place];
+    scene.zoneId = "exterior";
+    rememberDomainFact(world, {
+      id: "earlier",
+      at: stamp,
+      recordedAt: stamp,
+      text: "An unrelated established fact.",
+      knowers: ["player"],
+      subjects: [],
+    });
+    return {
+      mutateVillageState: async (change, options) => {
+        assert.equal(options?.memories, true);
+        const draft = structuredClone(world);
+        await change(draft);
+        Object.assign(world, draft);
+        return world;
+      },
+    };
+  });
+  try {
+    const turn = physical.scene.submissions[0]!;
+    Object.assign(turn, {
+      ...(sourceVersion ? { sceneHearingVersion: sourceVersion } : {}),
+      placeUpdate: { narration: "Paint was applied.", expectedRevision: 0, append: "Blue paint on the wall." },
+      areaAtTurn: "outside",
+      privateOwnerIdAtTurn: "",
+      semanticProvenance: { version: 2 },
+      physicalOutcomeVersion: 1,
+      physicalContext: {
+        zoneId: "exterior",
+        actorIds: ["player"],
+        witnessIds: [],
+        consentIds: [],
+        positions: { player: "exterior" },
+      },
+    });
+    const restored = coerceSession(structuredClone(physical.scene));
+    restored.operation = { id: "another-turn", input: { ...(sourceVersion ? {} : { sceneHearingVersion: 2 }) } } as any;
+    const effects = physical.owner.run(() => physical.service.sceneReplayEffects());
+    await effects.applyVenueTurnChange(restored, restored.submissions[0]!);
+    const memories = physical.world.memories.records.length;
+    assert.equal(
+      memories,
+      sourceVersion ? 2 : 1,
+      "Delayed work uses its saved source version, never another operation's version",
+    );
+    assert.equal(physical.world.exchangeReceipts[`venue-chat:${restored.id}:${turn.id}`]?.status, "applied");
+    await effects.applyVenueTurnChange(restored, restored.submissions[0]!);
+    assert.equal(physical.world.memories.records.length, memories, "Mechanical Memory replay is idempotent");
     assert.equal(physical.modelAccess, 0);
   } finally {
     physical.owner.dispose();
@@ -1218,6 +1282,111 @@ console.log(
   }
 }
 
+for (const variant of [
+  "speech",
+  "private-speech",
+  "action",
+  "missing-speech",
+  "prior-speech",
+  "wrong-text",
+  "wrong-offset",
+  "assistant-source",
+  "raw-draft",
+  "thought",
+  "prior-outcome",
+] as const) {
+  const message = "As manager, I permit ordinary visitors at any hour.";
+  const pending = commandFixture("Player access " + variant, ({ scene, world, stamp }) => {
+    const venue = venueDraft({ name: "Inn", description: "A shared inn", classes: ["other"] }, null);
+    venue.id = scene.placeId;
+    venue.access!.managerIds = ["player"];
+    venue.access!.visitorHours = [{ days: ["Wednesday"], start: "08:00", end: "18:00" }];
+    world.venues = [venue];
+    const speech: any = {
+      id: "player-speech",
+      speakerId: "",
+      role: "user",
+      kind: variant === "private-speech" ? "whisper" : "dialogue",
+      content: message,
+      at: stamp,
+      heardBy: ["ada"],
+      ...(variant === "private-speech" ? { targetId: "ada", delivery: "whisper" } : {}),
+      speechSource: { version: 3, spans: [{ start: 0, end: message.length, text: message, occurrence: 1 }] },
+    };
+    if (variant === "wrong-text") speech.speechSource.spans[0].text = message.replace("permit", "forbid");
+    if (variant === "wrong-offset") speech.speechSource.spans[0].start = 1;
+    if (variant === "assistant-source") {
+      speech.role = "assistant";
+      speech.speakerId = "ada";
+    }
+    if (variant === "raw-draft") {
+      delete speech.kind;
+      delete speech.speechSource;
+    }
+    scene.lines = [
+      ...(variant === "missing-speech" || variant === "action" ? [] : [speech]),
+      {
+        id: "policy-outcome",
+        speakerId: "__venue_scene__",
+        role: "assistant",
+        kind: "narration",
+        content: "The manager changes ordinary visitor hours to all hours.",
+        at: stamp,
+        heardBy: ["ada"],
+      },
+    ];
+    scene.submissions[0].message = message;
+    scene.submissions[0].replyLineIds = scene.lines
+      .filter((line) => !(variant === "prior-speech" && line.id === speech.id))
+      .map((line) => line.id);
+    if (variant === "prior-outcome") scene.submissions[0].replyLineIds = [speech.id];
+    scene.submissions[0].accessEvents = [
+      {
+        id: "player-policy",
+        interpretationVersion: 1,
+        facts: {
+          actorId: "player",
+          venueId: venue.id,
+          zoneId: null,
+          accessRevision: 0,
+          semanticVersion: 2,
+          playerInputSource: {
+            inputSpan: 0,
+            kind: variant === "action" ? "action" : variant === "thought" ? ("thought" as any) : "speech",
+            start: 0,
+            end: message.length,
+            text: message,
+          },
+          accessCommand: {
+            action: "venue-policy",
+            operationId: "player-policy",
+            expectedRevision: 0,
+            zoneId: null,
+            managerIds: ["player"],
+            visitorHours: null,
+          },
+        },
+        outcome: "access-management",
+        evidenceIds: ["policy-outcome"],
+      },
+    ];
+    return { mutateVillageState: async (change) => (await change(world), world) };
+  });
+  try {
+    const turn = pending.scene.submissions[0];
+    await pending.owner.run(() => pending.service.sceneReplayEffects()).applySavedAccessEvents(pending.scene, turn);
+    const allowed = ["speech", "private-speech", "action"].includes(variant);
+    const access = pending.world.venues[0].access!;
+    assert.equal(access.visitorHours === null, allowed, variant);
+    assert.equal(access.receipts["player-policy"].outcome === "rejected", !allowed, variant);
+    assert.equal(access.revision, allowed ? 1 : 0, variant);
+    assert.equal(pending.modelAccess, 0);
+    assert.deepEqual(pending.unexpected, []);
+  } finally {
+    pending.owner.dispose();
+  }
+}
+
 // Greeting admission is observed and cancellable before storage reads settle.
 const originalGreetingTimeout = AbortSignal.timeout;
 const greetingUnhandled: unknown[] = [];
@@ -1469,6 +1638,7 @@ try {
     (error) => error === terminal,
   );
   assert.deepEqual(admitted, {
+    sceneHearingVersion: 2,
     message: "Good night.",
     mode: "leave",
     targetId: "",

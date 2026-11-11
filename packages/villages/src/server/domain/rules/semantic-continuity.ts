@@ -120,31 +120,3 @@ export function projectMetadataRejected(turn: VenueSubmission): boolean {
     );
   });
 }
-
-export function rejectProjectMetadata(turn: VenueSubmission, reason: string, at: string): void {
-  if (projectMetadataRejected(turn)) return;
-  if (!projectInterpretationNeedsRecovery(turn))
-    throw conflict("This Project update cannot be rejected as nonphysical metadata.");
-  const rejectedProposals = (turn.projectSpeech ?? []).map((row, index) => ({ kind: row.kind, index, reason }));
-  turn.interpretationHistory ||= [];
-  turn.interpretationHistory.push({
-    at,
-    domain: "projects",
-    source: "Project recovery rejected",
-    proposals: {
-      submissionId: turn.id,
-      sourceHash: turn.semanticProvenance?.sourceHash,
-      originalProposals: structuredClone(turn.projectSpeech ?? []),
-      rejectedProposals,
-    },
-  });
-  turn.processing!.domains.projects = {
-    ...turn.processing!.domains.projects,
-    status: "rejected",
-    reason,
-    rejectedProposals,
-    updatedAt: at,
-  };
-  turn.progressProcessedAt = at;
-  turn.progressError = "";
-}

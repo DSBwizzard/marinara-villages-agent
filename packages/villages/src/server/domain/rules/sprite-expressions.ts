@@ -110,29 +110,32 @@ function expressionChoices(sprite: SpriteCatalog | null | undefined, variants: b
 }
 
 export function describeSpriteExpressions(sprite: SpriteCatalog | null | undefined, variants = false): string {
+  return spriteExpressionData(sprite, variants)
+    .map((row) => JSON.stringify(row))
+    .join("; ");
+}
+export function spriteExpressionData(sprite: SpriteCatalog | null | undefined, variants = false) {
   const seen = new Set<string>();
   const defaultEntry = sprite?.expressions[0];
   const defaultId = sprite?.defaultExpressionId ?? defaultEntry?.expressionId;
-  return expressionChoices(sprite, variants)
-    .flatMap(({ id, name, members }) => {
-      if (seen.has(id)) return [];
-      seen.add(id);
-      return [
-        JSON.stringify({
-          id,
-          name,
-          views: [
-            ...new Set(
-              (sprite?.expressions ?? [])
-                .filter((item) => members.some((member) => member.expressionId === item.expressionId))
-                .map((item) => item.view),
-            ),
-          ],
-          isDefault: members.some((member) => member.expressionId === defaultId),
-        }),
-      ];
-    })
-    .join("; ");
+  return expressionChoices(sprite, variants).flatMap(({ id, name, members }) => {
+    if (seen.has(id)) return [];
+    seen.add(id);
+    return [
+      {
+        id,
+        name,
+        views: [
+          ...new Set(
+            (sprite?.expressions ?? [])
+              .filter((item) => members.some((member) => member.expressionId === item.expressionId))
+              .map((item) => item.view),
+          ),
+        ],
+        isDefault: members.some((member) => member.expressionId === defaultId),
+      },
+    ];
+  });
 }
 
 /** Resolve a model-visible group once to a concrete saved ID. Existing concrete IDs never reroll. */

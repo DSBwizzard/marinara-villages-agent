@@ -1,6 +1,23 @@
 import { asRecord } from "./coerce.js";
 import { badGateway } from "./errors.js";
+import { MAX_SCENE_REPLY_LINES } from "./scene-reply.js";
+import type { VenueLine } from "../models/scene-model.js";
 export type SpeechSource = { start: number; end: number; text: string; occurrence: number };
+/** A raw player draft is not an utterance; only server-bound speech can issue a spoken action. */
+export function capturedPlayerSpeechMatches(
+  line: Pick<Partial<VenueLine>, "role" | "speakerId" | "kind" | "speechSource">,
+  source: { start?: unknown; end?: unknown; text?: unknown },
+) {
+  return (
+    line.role !== "assistant" &&
+    (line.speakerId === "player" || (line.role === "user" && !line.speakerId)) &&
+    ["dialogue", "side", "whisper"].includes(String(line.kind)) &&
+    line.speechSource?.version === 3 &&
+    line.speechSource.spans.some(
+      (span) => span.start === source.start && span.end === source.end && span.text === source.text,
+    )
+  );
+}
 /** Resolve exact source occurrences; never derive hearing from punctuation or reactions. */
 export function playerSpeechCapture(raw: Record<string, unknown>, input: string, opening = false) {
   const capture = asRecord(raw.playerSpeechCapture);
@@ -74,7 +91,7 @@ export function materializePlayerSpeech(raw: Record<string, unknown>, input: str
     !["captured", "silent"].includes(String(capture.status)) ||
     !Array.isArray(capture.utterances) ||
     capture.utterances.length > 24 ||
-    raw.segments.length + capture.utterances.length > 24 ||
+    raw.segments.length + capture.utterances.length > MAX_SCENE_REPLY_LINES ||
     (capture.status === "silent") !== (capture.utterances.length === 0) ||
     raw.segments.some((value) => asRecord(value).speakerId === "player")
   )

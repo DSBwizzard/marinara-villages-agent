@@ -639,7 +639,17 @@ async function main() {
     [{ duration: "standing" }, /standing grant contract/],
   ] as const)
     await assert.rejects(run("", response("", { access: [{ ...row, ...changes }] }), [accessLine]), error);
-  await assert.rejects(run("", response("", { access: [row] }), [{ ...accessLine, heardBy: [] }]), /not witnessed/);
+  assert.equal(
+    (await run("", response("", { access: [row] }), [{ ...accessLine, heardBy: [] }])).access?.checks.length,
+    1,
+    "The issuer's own speech does not require a duplicate listener entry",
+  );
+  await assert.rejects(
+    run("", response("", { access: [row] }), [
+      { ...accessLine, kind: "narration", speakerId: "__venue_scene__", heardBy: [] },
+    ]),
+    /not witnessed/,
+  );
   const command = {
     action: "invite",
     zoneId: "room",

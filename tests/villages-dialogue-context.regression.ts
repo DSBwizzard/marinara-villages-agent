@@ -1,5 +1,6 @@
 import { agendaFixture } from "./helpers/agenda.fixture.js";
 import assert from "node:assert/strict";
+import { mapScenePeople } from "../packages/villages/src/server/domain/rules/scene-prompt-references.js";
 import { context } from "../packages/villages/src/server/adapters/operations/operation-context.js";
 import { addMemory } from "./helpers/memories-fixture.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
@@ -15,6 +16,7 @@ import {
 } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { prepareVenueTurnMessages } from "../packages/villages/src/server/features/scenes/writing.js";
+import { scenePromptHistory, scenePromptPacket } from "./fixtures/villages-scene-writing.fixture.js";
 
 const stamp = new Date().toISOString();
 const state = defaultVillageState();
@@ -227,10 +229,57 @@ async function run() {
         .map((entry) => entry.content)
         .join("\n"),
     );
+    const changing = await prepareVenueTurnMessages(
+      {
+        ...scene,
+        startedAt: new Date(Date.parse(stamp) + 60_000).toISOString(),
+        sceneRevision: 99,
+        participants: [...scene.participants].reverse(),
+        activeIds: [...scene.activeIds].reverse(),
+        lines: [...scene.lines, { ...scene.lines[0], id: "another-source", content: "A newly witnessed fact." }],
+      },
+      "A new input.",
+      "chat",
+      "",
+      null,
+    );
+    const original = await prepareVenueTurnMessages(scene, "What about Alex’s violin music?", "chat", "outgoing", null);
+    const originalSystem = original.fitted.messages[0];
+    assert.deepEqual(
+      changing.fitted.messages[0],
+      originalSystem,
+      "The entire system message is stable, not merely its opening prefix",
+    );
+    assert.equal(changing.fitted.messages[1].role, "user");
+    assert.ok(changing.fitted.messages[1].content.includes("A newly witnessed fact."));
+    assert.ok(Object.values(changing.historyContract!.references).includes("another-source"));
+    assert.ok(originalSystem.content.includes("## World and player context"));
+    assert.ok(!originalSystem.content.includes("earlier-spoken"));
+    assert.ok(!originalSystem.content.includes('"calendar":'));
+    assert.equal(changing.gmContext.revision, 99);
+    assert.deepEqual(changing.fitted.messages.at(-1), { role: "user", content: "A new input." });
+    const changedPrompt = changing.fitted.messages.map((entry) => entry.content).join("\n");
+    assert.deepEqual(
+      scenePromptPacket(changedPrompt).scene,
+      scenePromptPacket(prompt).scene,
+      "Clock, query and actor ordering leave reusable Scene facts unchanged",
+    );
+    for (const row of scenePromptHistory(prompt))
+      assert.deepEqual(
+        scenePromptHistory(changedPrompt).find((next) => next.id === row.id),
+        row,
+        "Appending history cannot rewrite prior evidence records",
+      );
+    assert.equal(
+      scenePromptPacket(changedPrompt).context.revision,
+      undefined,
+      "Global CAS revision stays in captured authority, not model data",
+    );
     const positions = [
       "## Writing direction",
       "## Complete authored character identity",
       "## Witnessed conversation",
+      "## Current Scene facts",
       "## Current Scene circumstances",
       "## Authored post-history direction",
     ].map((heading) => prompt.indexOf(heading));
@@ -238,14 +287,29 @@ async function run() {
     for (const person of state.villagers)
       for (const suffix of ["DESCRIPTION TAIL", "APPEARANCE", "BACKSTORY", "VOICE EXAMPLE", "AUTHORED INSTRUCTION"])
         assert.ok(prompt.includes(person.characterId + " " + suffix), suffix);
-    assert.ok(prompt.indexOf('"id":"earlier-spoken"') < prompt.indexOf("outgoing AUTHORED INSTRUCTION"));
+    const historyAt = prompt.indexOf("I prefer an early start.");
+    assert.ok(historyAt >= 0 && historyAt < prompt.indexOf("outgoing AUTHORED INSTRUCTION"));
     assert.ok(prompt.includes("where compatible with character identity"));
     assert.ok(prompt.includes("Preserve complete authored identity"));
     assert.ok(!prompt.includes("LEGACY TELL SECRET"));
     assert.ok(prompt.includes(state.memories.records[0].text), "Relevant native memory is recalled");
     assert.ok(prompt.includes(state.memories.records[2].text), "Contextual memory is recalled");
-    assert.ok(prompt.includes('"audience":["reserved"]'));
-    assert.ok(prompt.includes('"rootRevision":'));
+    const recalled = prompt
+      .split("\n")
+      .filter((line) => line.startsWith("Recalled Memory: "))
+      .map(
+        (line) =>
+          mapScenePeople(JSON.parse(line.slice("Recalled Memory: ".length)), original.historyContract!.people!) as any,
+      );
+    assert(
+      recalled.some((row) => JSON.stringify(Object.keys(row.knowers)) === '["reserved"]'),
+      "Read DTO preserves the private Memory's exact knower scope",
+    );
+    assert.ok(!prompt.includes('"rootRevision":'));
+    assert.ok(
+      original.gmContext._memoryWrite.recall.candidates.some((row) => typeof row.rootRevision === "number"),
+      "Captured Memory revisions remain available for stale-write validation",
+    );
     assert.ok(!prompt.includes("ABSENT PERSON SECRET"));
     assert.ok(!prompt.includes("Pending exact Residence edit proposals:"));
     assert.ok(!prompt.includes("Pending player requests to move:"));
@@ -276,7 +340,7 @@ async function run() {
         .map((entry) => entry.content)
         .join("\n"),
     );
-    assert.match(controlled, /Optional access:/);
+    assert.match(controlled, /access:\[\{actorId,venueId,zoneId,outcome:/);
     scene.area = "outside";
     scene.activeIds = ["reserved"];
     const one = String(

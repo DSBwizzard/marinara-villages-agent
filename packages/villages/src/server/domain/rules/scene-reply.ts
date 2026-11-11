@@ -2,6 +2,8 @@ import { isSceneAside } from "../../../shared/helpers/scene-speech.js";
 import type { InterpretationBatch } from "../models/interpretation-model.js";
 import type { SavedAccessEvent, VenueReplyLine } from "../models/scene-model.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
+// The output token limit bounds spending; paragraph-rich valid replies should not require a paid retry.
+export const MAX_SCENE_REPLY_LINES = 64;
 
 export function parseVenueReply(
   raw: Record<string, unknown> | null,
@@ -22,7 +24,8 @@ export function parseVenueReply(
     Array.isArray(value)
       ? [...new Set(value.filter((id): id is string => typeof id === "string" && allowed.has(id)))]
       : [];
-  if (segments.length > 24) throw new Error("segments must contain at most 24 lines.");
+  if (segments.length > MAX_SCENE_REPLY_LINES)
+    throw new Error(`segments must contain at most ${MAX_SCENE_REPLY_LINES} lines.`);
   const lines: VenueReplyLine[] = segments.map((value, index): VenueReplyLine => {
     const row = asRecord(value);
     if (row.kind !== "narration" && row.kind !== "dialogue" && row.kind !== "side" && row.kind !== "whisper")
@@ -91,12 +94,7 @@ export function savedAccessEvents(batch?: InterpretationBatch | null): SavedAcce
     ? batch.checks.flatMap((check, index) => {
         const facts = asRecord(check.facts),
           result = batch.results[index];
-        if (
-          !result ||
-          (!facts.accessCommand &&
-            !["refuse", "dismiss", "ban-zone", "ban-venue", "invite-outside-hours"].includes(result.outcome))
-        )
-          return [];
+        if (!result || !facts.accessCommand) return [];
         return [
           {
             id: check.id,
@@ -110,6 +108,13 @@ export function savedAccessEvents(batch?: InterpretationBatch | null): SavedAcce
               accompanies: facts.accompanies === true,
               ...(facts.accessCommand
                 ? { accessCommand: structuredClone(facts.accessCommand) as SavedAccessEvent["facts"]["accessCommand"] }
+                : {}),
+              ...(facts.playerInputSource
+                ? {
+                    playerInputSource: structuredClone(
+                      facts.playerInputSource,
+                    ) as SavedAccessEvent["facts"]["playerInputSource"],
+                  }
                 : {}),
             },
             outcome: result.outcome,

@@ -9,6 +9,8 @@ import { sceneReadyForRetirement, sceneRetirementSourceIsValid } from "../../dom
 import { SCENE_TERMINAL_KIND } from "./scene-terminal.js";
 import { createHash } from "node:crypto";
 import { releasePhysicalOutcomes } from "../../domain/rules/venue-scene-state.js";
+import { createSceneEncounters } from "../../adapters/storage/scene-encounters.js";
+import { rememberSceneEncounter } from "../../domain/rules/scene-encounters.js";
 
 export interface SceneRetirementPorts {
   villagesDocuments(): CapabilityDocumentStore;
@@ -62,6 +64,10 @@ export function createSceneRetirement(ports: SceneRetirementPorts) {
             return false;
         }
         await ports.saveProjectEvidence(scene, saved.revision);
+        await createSceneEncounters(documents).save(scene, saved);
+        await ports.mutateVillageMemoryState((state) => {
+          if (state.seed === scene.villageSeed) rememberSceneEncounter(state, scene);
+        });
         await ports.saveTerminal(scene, saved.revision);
         const currentPointer = await ports.readActive();
         if (ports.hasVenueOperation(id) || currentPointer.sessionId === id || currentPointer.playbackSceneId === id)

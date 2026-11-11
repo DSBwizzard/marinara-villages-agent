@@ -8,6 +8,7 @@ import {
 import { bindLiveProposals, liveEvidence } from "../packages/villages/src/server/domain/rules/live-exchange.js";
 import { applyResidentMovementTimeline } from "../packages/villages/src/server/domain/rules/resident-movement.js";
 import { sceneEvidencePerception } from "../packages/villages/src/server/domain/rules/scene-evidence-perception.js";
+import { materializeGmReply } from "../packages/villages/src/server/domain/rules/scene-gm.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import { appendLine, heardLines } from "../packages/villages/src/server/domain/rules/scene-record.js";
@@ -16,6 +17,7 @@ import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/
 import {
   routeZoneEvents,
   zoneEventHearingContext,
+  zoneEventHearingGroups,
   zoneEventReply,
   zoneEventScene,
 } from "../packages/villages/src/server/domain/rules/zone-events.js";
@@ -80,6 +82,170 @@ const base = coerceSession({
   submissions: [],
 });
 const scene = zoneEventScene(base, venue);
+
+{
+  const admitted = structuredClone(base);
+  admitted.operation = { input: { sceneHearingVersion: 2 } } as any;
+  const local = zoneEventScene(admitted, venue, { message: "I remember near." });
+  assert.ok(!local.contactGeneration?.actorIds?.includes("far"), "Unrelated offstage people are not offered");
+  const calling = zoneEventScene(admitted, venue, { message: "I call to near through the doorway." });
+  assert.ok(calling.contactGeneration?.actorIds?.includes("near"));
+  assert.ok(!calling.contactGeneration?.actorIds?.includes("far"));
+  const ordinaryRaw = { segments: [{ kind: "dialogue", speakerId: "local", text: "Local words." }] };
+  const ordinary = parseVenueReply(zoneEventReply(ordinaryRaw, ""), ["local"]);
+  routeZoneEvents(ordinaryRaw, local, ordinary, []);
+  assert.deepEqual(ordinary.lines[0]!.heardBy, ["local"]);
+  assert.equal(ordinary.lines[0]!.soundOnly, undefined, "New local chat generates no offstage murmurs");
+  const shoutRaw = { segments: [{ kind: "dialogue", speakerId: "local", text: "A call!", delivery: "shout" }] };
+  const shout = parseVenueReply(zoneEventReply(shoutRaw, ""), ["local"]);
+  routeZoneEvents(shoutRaw, calling, shout, []);
+  assert.deepEqual(shout.lines[0]!.heardBy, ["local", "near"]);
+  assert.equal(shout.lines[0]!.soundOnly, undefined, "New calls do not create two-hop alerts");
+  assert.equal(base.operation?.input.sceneHearingVersion, undefined, "Old captured routing stays unchanged");
+  for (const message of ["Do not call near.", "If near calls tomorrow.", "I remember near shouting."]) {
+    const context = zoneEventScene(admitted, venue, { message });
+    const raw = {
+      segments: [
+        { kind: "dialogue", speakerId: "player", text: message },
+        { kind: "dialogue", speakerId: "near", text: "An unsolicited response!", delivery: "shout" },
+      ],
+    };
+    const reply = parseVenueReply(zoneEventReply(raw, message), ["player", "near"]);
+    assert.throws(() => routeZoneEvents(raw, context, reply, []), /actual current communication/);
+  }
+  const actualCall = {
+    segments: [
+      { kind: "dialogue", speakerId: "player", text: "Near, hello!", delivery: "shout" },
+      { kind: "dialogue", speakerId: "near", text: "Hello!", delivery: "shout" },
+    ],
+  };
+  const answered = parseVenueReply(zoneEventReply(actualCall, "Near, hello!"), ["player", "near"]);
+  routeZoneEvents(actualCall, calling, answered, []);
+  assert.equal(answered.lines[1]!.contactHidden, false);
+  const delegatedCall = {
+    segments: [
+      { kind: "dialogue", speakerId: "local", text: "Near, come talk!", delivery: "shout", targetId: "near" },
+      { kind: "dialogue", speakerId: "near", text: "Coming!", delivery: "shout" },
+    ],
+  };
+  const delegated = parseVenueReply(zoneEventReply(delegatedCall, ""), ["local", "near"]);
+  routeZoneEvents(delegatedCall, calling, delegated, []);
+  assert.equal(delegated.lines[1]!.contactHidden, false, "Onstage people can call on the player's behalf");
+  const selfCall = structuredClone(delegatedCall);
+  selfCall.segments[0]!.speakerId = "near";
+  const selfCalled = parseVenueReply(zoneEventReply(selfCall, ""), ["local", "near"]);
+  assert.throws(() => routeZoneEvents(selfCall, calling, selfCalled, []), /actual current communication/);
+  assert.deepEqual(
+    answered.lines[1]!.heardBy,
+    ["local", "near", "far"],
+    "A hall shout reaches its directly connected Zones",
+  );
+  const silentReply = structuredClone(actualCall);
+  silentReply.segments[1]!.delivery = "ordinary";
+  const silent = parseVenueReply(zoneEventReply(silentReply, "Near, hello!"), ["player", "near"]);
+  assert.throws(() => routeZoneEvents(silentReply, calling, silent, []), /must be audible/);
+  const five = structuredClone(admitted);
+  five.activeIds = ["one", "two", "three", "four", "fifth-npc"];
+  five.participants = five.activeIds.map((characterId) => ({ characterId, name: characterId, doing: "Talking" }));
+  five.sceneAttendance!.occupants = five.participants.map((row) => ({ ...row, zoneId: "exterior" }));
+  const selected = zoneEventScene(five, venue, { targetId: "fifth-npc", message: "one two three four fifth-npc" });
+  assert.equal(selected.contactGeneration?.actorIds?.length, 5);
+  assert.equal(
+    selected.contactGeneration?.actorIds?.[0],
+    "fifth-npc",
+    "Explicit fifth local target remains addressable",
+  );
+  const natural = zoneEventScene(five, venue, { message: "fifth-npc, welcome. one two three four, say hello." });
+  assert(
+    natural.contactGeneration?.actorIds?.includes("fifth-npc"),
+    "A present guest remains eligible without a target button",
+  );
+  const linked = structuredClone(admitted);
+  linked.doorwayContacts = [
+    { characterId: "near", playerZoneId: "exterior", characterZoneId: "hall", delivery: "voice" },
+  ];
+  const linkedScene = zoneEventScene(linked, venue);
+  assertHearingGroups(linkedScene, venue);
+  const linkedRaw = { segments: [{ kind: "dialogue", speakerId: "near", text: "A doorway reply." }] };
+  const linkedReply = parseVenueReply(zoneEventReply(linkedRaw, ""), ["near"]);
+  routeZoneEvents(linkedRaw, linkedScene, linkedReply, []);
+  assert.equal(linkedReply.lines[0]!.contactHidden, false);
+  const wrongWhisper = {
+    segments: [
+      { kind: "dialogue", speakerId: "near", text: "A private word.", delivery: "whisper", targetId: "player" },
+    ],
+  };
+  const whispered = parseVenueReply(zoneEventReply(wrongWhisper, ""), ["near"]);
+  assert.throws(() => routeZoneEvents(wrongWhisper, linkedScene, whispered, []), /same Zone/);
+  const fakeKnock = {
+    input: [{ kind: "action", text: "I sip my tea." }],
+    segments: [
+      { kind: "narration", text: "An invented knock.", sound: { sourceId: "player", text: "A knock." } },
+      { kind: "dialogue", speakerId: "near", text: "An unsolicited reply!", delivery: "shout" },
+    ],
+  };
+  const fakeReply = parseVenueReply(zoneEventReply(fakeKnock, "I sip my tea."), ["near"]);
+  assert.throws(() => routeZoneEvents(fakeKnock, calling, fakeReply, []), /actual current communication/);
+  const knockInput = '"Hello." *I knock on the hall door.*';
+  const knock = materializeGmReply(
+    {
+      input: [
+        { kind: "speech", text: "Hello." },
+        { kind: "action", text: "*I knock on the hall door.*" },
+      ],
+      contactAttempt: { kind: "knock", inputSpan: 1, segment: 0, zoneId: "hall" },
+      segments: [
+        { kind: "narration", text: "A knock sounds.", sound: { sourceId: "player", text: "A knock." } },
+        { kind: "dialogue", speakerId: "near", text: "Who is there?", delivery: "shout" },
+      ],
+    },
+    knockInput,
+  );
+  assert.equal((knock.contactAttempt as any).segment, 1, "Knock narration follows inserted actual speech");
+  assert.equal((knock.contactAttempt as any).inputSpan, 1, "Input coordinates do not shift with reply segments");
+  const knocked = parseVenueReply(zoneEventReply(knock, knockInput), ["player", "near"]);
+  routeZoneEvents(knock, calling, knocked, []);
+  assert.equal(knocked.lines.at(-1)!.contactHidden, false);
+  for (const patch of [{ inputSpan: 0 }, { zoneId: "bedroom" }, { segment: 0 }]) {
+    const invalid = structuredClone(knock);
+    Object.assign(invalid.contactAttempt as object, patch);
+    const rejected = parseVenueReply(zoneEventReply(invalid, knockInput), ["player", "near"]);
+    assert.throws(() => routeZoneEvents(invalid, calling, rejected, []), /actual current communication/);
+  }
+}
+
+function assertHearingGroups(context: typeof scene, layout: typeof venue) {
+  const original = JSON.parse(
+    zoneEventHearingContext(context, layout).slice("Hearing relationships (not shared character knowledge): ".length),
+  );
+  const groups = zoneEventHearingGroups(context, layout);
+  const expanded = groups.flatMap(({ sources, ...ranges }) =>
+    sources.map((source) => ({
+      source,
+      ...ranges,
+      whisperTargets: (ranges.localReach ?? ranges.wordsReach).filter((id) => id !== source),
+    })),
+  );
+  const normalize = (rows: any[]) =>
+    rows
+      .map((row) =>
+        Object.fromEntries(
+          Object.entries(row).map(([key, value]) => [key, Array.isArray(value) ? value.toSorted() : value]),
+        ),
+      )
+      .sort((a, b) => String(a.source).localeCompare(String(b.source)));
+  assert.deepEqual(
+    normalize(expanded),
+    normalize(original),
+    "Grouped ranges preserve every server audience, including whisper exclusions",
+  );
+  assert.deepEqual(
+    zoneEventHearingGroups({ ...context, participants: [...context.participants].reverse() }, layout),
+    groups,
+    "Participant ordering cannot invalidate hearing groups",
+  );
+}
+assertHearingGroups(scene, venue);
 
 // New connection sound rules apply only to new admissions. Retained work keeps its purchased contract.
 {
@@ -157,6 +323,7 @@ const scene = zoneEventScene(base, venue);
     /outside hearing range/,
   );
   const relationships = JSON.parse(zoneEventHearingContext(marked, chain).split(": ").slice(1).join(": "));
+  assertHearingGroups(marked, chain);
   assert.deepEqual(relationships.find((row: any) => row.source === "player").alertOnly, ["far"]);
 }
 const message = 'I privately think SECRET. "Aqua, help!" I turn around.';

@@ -1683,6 +1683,13 @@ async function main() {
         venueId: "home",
         zoneId: null,
         accessRevision: banWorld.venues[0].access!.revision,
+        accessCommand: readAccessCommand({
+          action: "ban",
+          zoneId: null,
+          visitorId: "player",
+          operationId: "saved-ban",
+          expectedRevision: banWorld.venues[0].access!.revision,
+        }),
       },
       outcomes: [{ id: "ban-venue", statement: "Jim bans the player from the Venue." }],
       evidence: [{ id: "draft:0", speakerId: "jim", name: "Jim", content: savedDraft[0].content, current: true }],

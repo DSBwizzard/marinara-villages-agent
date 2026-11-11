@@ -2,6 +2,7 @@ import type { InterpretationBatch } from "../../domain/models/interpretation-mod
 import type { NarrativeAdmission } from "../../domain/models/narrative-model.js";
 import type { VenueReplyLine, VenueScene } from "../../domain/models/scene-model.js";
 import type { SemanticExchange, SemanticIntent } from "../../domain/models/semantic-model.js";
+import type { VillageVenue } from "../../domain/models/world.js";
 import { asRecord } from "../../domain/rules/coerce.js";
 import {
   badGateway,
@@ -10,7 +11,7 @@ import {
   UnsupportedScenePerception,
   VillagesRequestError,
 } from "../../domain/rules/errors.js";
-import { findLocation } from "../../domain/rules/places.js";
+import { findLocation, sceneActorIds } from "../../domain/rules/places.js";
 import { normalizeGmEffects } from "../../domain/rules/scene-gm.js";
 import { readSceneNarrativeReview } from "../../domain/rules/scene-narrative-effects.js";
 
@@ -31,12 +32,14 @@ import {
 import { semanticPlayerMoves } from "../../domain/rules/semantic-timeline.js";
 import { wishHistoryLoaded } from "../../domain/rules/social-wishes.js";
 import { readSceneSpritePresentation, type SpriteSelectionContext } from "../../domain/rules/sprite-expressions.js";
-import { managesAccess, readAccessCommand } from "../../domain/rules/venue-access.js";
+import { applyAccessCommand, managesAccess, readAccessCommand } from "../../domain/rules/venue-access.js";
 import { readContactMoves } from "../../domain/rules/venue-contact.js";
 import { venueInArea } from "../../domain/rules/venue-model.js";
 import { readVenueSceneChange } from "../../domain/rules/venue-scene-state.js";
 import { canInviteToZone, resolveVenueZone, venueInZone } from "../../domain/rules/venue-zones.js";
 import { routeZoneEvents } from "../../domain/rules/zone-events.js";
+import { accessIssuerWitnessed, accessOutcomeActions } from "../../domain/rules/access-speech.js";
+import { capturedPlayerSpeechMatches } from "../../domain/rules/player-speech-capture.js";
 
 export interface SemanticPorts {
   readVillageState: typeof import("../world/village-store.js").readVillageState;
@@ -48,6 +51,7 @@ function semanticCheckpointKey(stage: string, identity: Record<string, unknown>)
     1,
     identity.message,
     identity.evidence,
+    ...(Object.hasOwn(identity, "earlierEvidence") ? [identity.earlierEvidence] : []),
     ...(identity.zoneEventSource ? [identity.zoneEventSource] : []),
     ...(Object.hasOwn(identity, "narrativeGrant") ? [identity.narrativeGrant] : []),
   ])}`;
@@ -229,6 +233,7 @@ export function createSemanticService(ports: SemanticPorts) {
       raw: Record<string, unknown>;
       context: ReturnType<typeof semanticContext>;
       presentation: SpriteSelectionContext;
+      earlierEvidence?: import("../../domain/models/scene-model.js").VenueLine[];
     },
     narrativeGrant?: NarrativeAdmission | null,
     zoneEventSource?: Record<string, unknown>,
@@ -245,11 +250,13 @@ export function createSemanticService(ports: SemanticPorts) {
         evidence,
         ...(zoneEventSource ? { zoneEventSource } : {}),
         context,
+        ...(gm.earlierEvidence !== undefined ? { earlierEvidence: gm.earlierEvidence } : {}),
         ...(narrativeGrant !== undefined ? { narrativeGrant } : {}),
       },
       normalizeGmEffects(gm.raw, context),
       (raw, hash, savedInput): SemanticExchange => {
         raw = { ...raw, sourceHash: hash };
+        const earlierHistory = savedInput.earlierEvidence ?? savedInput.context.history;
         if (savedInput.context.preservation) {
           const finding = readSceneBoundary(
             raw.halt,
@@ -359,11 +366,16 @@ export function createSemanticService(ports: SemanticPorts) {
         semanticPlayerMoves(asRecord(raw.events).playerMoves, { ...scene, semanticIntent: interpretedIntent }, lines);
         const effects = readSemanticEffects(raw, hash);
         if (effects.relationshipChanges !== undefined) {
-          const earlier = savedInput.context.history.map((line) => ({
-            ...line,
-            speakerId: line.role === "user" ? "player" : line.speakerId,
-            playerHeard: sceneEvidencePerception(line).playerPerception === "full",
-          }));
+          const actors = new Set(savedInput.context.actors.map((actor) => actor.id));
+          const earlier = earlierHistory
+            .filter((line) => savedInput.earlierEvidence === undefined || line.heardBy.some((id) => actors.has(id)))
+            .map((line) => ({
+              ...line,
+              heardBy:
+                savedInput.earlierEvidence === undefined ? line.heardBy : line.heardBy.filter((id) => actors.has(id)),
+              speakerId: line.role === "user" ? "player" : line.speakerId,
+              playerHeard: sceneEvidencePerception(line).playerPerception === "full",
+            }));
           const { rejections } = parseRelationshipProposals(
             effects.relationshipChanges,
             scene.id + ":" + scene.operation?.id,
@@ -425,13 +437,14 @@ export function createSemanticService(ports: SemanticPorts) {
         effects.memoryContexts = {
           [savedInput.context._memoryWrite.protection.fingerprint]: savedInput.context._memoryWrite,
         };
-        effects.earlierLineIds = savedInput.context.history.map((row) => row.id);
+        effects.earlierLineIds = earlierHistory.map((row) => row.id);
         const access: InterpretationBatch = {
           checks: [],
           results: [],
         };
         if (!Array.isArray(raw.access) || raw.access.length > 16)
           throw badGateway("System access interpretation is incomplete.");
+        const accessPreviews = new Map<string, VillageVenue>();
         for (const value of raw.access) {
           const row = asRecord(value);
           if (
@@ -471,6 +484,27 @@ export function createSemanticService(ports: SemanticPorts) {
             throw badGateway("Standing permission must use the standing grant contract.");
           const zone = typeof row.zoneId === "string" ? resolveVenueZone(venue, row.zoneId) : undefined;
           if (
+            (row.outcome === "ban-zone" && (!zone || zone.kind === "exterior")) ||
+            (row.outcome === "ban-venue" && row.zoneId !== null)
+          )
+            throw badGateway("The access ban must identify its exact Zone or whole-Venue scope.");
+          const sourceIndexes = interpretedIntent.timeline.flatMap((step, index) =>
+            step.kind === "action" || step.kind === "speech" ? [index] : [],
+          );
+          const inputSpan =
+            row.inputSpan === undefined && sourceIndexes.length === 1 ? sourceIndexes[0] : row.inputSpan;
+          const source =
+            row.actorId === "player" && Number.isInteger(inputSpan)
+              ? interpretedIntent.timeline[Number(inputSpan)]
+              : undefined;
+          const playerInput = source?.kind === "action" || source?.kind === "speech" ? source : undefined;
+          if (row.inputSpan !== undefined && !playerInput)
+            throw badGateway("The access change cited an invalid player input span.");
+          if (row.actorId === "player" && row.outcome !== "unresolved" && !playerInput)
+            throw badGateway("The access change needs a current authored player action or statement.");
+          if (playerInput?.kind === "speech" && !lines.some((line) => capturedPlayerSpeechMatches(line, playerInput)))
+            throw badGateway("The access statement was not captured as current player speech.");
+          if (
             row.outcome !== "unresolved" &&
             (row.outcome === "ban-venue" || row.outcome === "ban-zone" || row.outcome === "access-management"
               ? !managesAccess(venue, typeof row.zoneId === "string" ? row.zoneId : null, row.actorId)
@@ -478,13 +512,13 @@ export function createSemanticService(ports: SemanticPorts) {
           )
             throw badGateway("System access issuer or scope lacks current authority. The draft is preserved.");
           if (
-            cited.some((line) => !line.heardBy.includes(row.actorId as string)) ||
+            cited.some((line) => !accessIssuerWitnessed(line, row.actorId as string)) ||
             !cited.some((line) => line.speakerId === row.actorId || line.kind === "narration")
           )
             throw badGateway("System access evidence was not witnessed by its issuer.");
           const id = `semantic:${hash}:access:${access.checks.length}`;
           const visit =
-            venue.access && ["invite-now", "invite-later"].includes(String(row.outcome))
+            venue.access && accessOutcomeActions.get(String(row.outcome)) === "invite"
               ? readAccessCommand({
                   action: "invite",
                   operationId: id,
@@ -493,16 +527,37 @@ export function createSemanticService(ports: SemanticPorts) {
                   visitorId: "player",
                   duration: "visit",
                   accompanied: row.accompanies || row.conditions.includes("accompanied"),
-                  outsideHours: false,
-                  ...(row.outcome === "invite-now" && venue.id === scene.placeId ? { sceneId: scene.id } : {}),
+                  outsideHours: row.outcome === "invite-outside-hours",
+                  ...(row.outcome !== "invite-later" && venue.id === scene.placeId ? { sceneId: scene.id } : {}),
                 })
               : null;
           let management;
           if (row.command !== undefined) {
             if (row.outcome !== "access-management")
               throw badGateway("An access command requires an exact management event.");
+            let fields = asRecord(row.command);
+            const baseline = accessPreviews.get(venue.id) ?? venue;
+            if (fields.action === "venue-policy" && baseline.access) {
+              if (!Object.hasOwn(fields, "managerIds") && !Object.hasOwn(fields, "visitorHours"))
+                throw badGateway("The Venue policy patch has no changed fields.");
+              fields = {
+                managerIds: baseline.access.managerIds,
+                visitorHours: baseline.access.visitorHours,
+                ...fields,
+              };
+            } else if (
+              fields.action === "zone-policy" &&
+              fields.policy &&
+              typeof fields.policy === "object" &&
+              !Array.isArray(fields.policy)
+            ) {
+              if (!Object.keys(fields.policy).length) throw badGateway("The Zone policy patch has no changed fields.");
+              const currentZone = typeof row.zoneId === "string" ? resolveVenueZone(baseline, row.zoneId) : undefined;
+              if (currentZone?.access)
+                fields = { ...fields, policy: { ...currentZone.access, ...asRecord(fields.policy) } };
+            }
             management = readAccessCommand({
-              ...asRecord(row.command),
+              ...fields,
               operationId: id,
               expectedRevision: venue.access?.revision,
             });
@@ -519,14 +574,56 @@ export function createSemanticService(ports: SemanticPorts) {
               throw badGateway("The access command does not match the interpreted scope and conditions.");
           } else if (row.outcome === "access-management")
             throw badGateway("The access management event is missing its exact command.");
+          const action = accessOutcomeActions.get(String(row.outcome));
+          const inferred =
+            !management && !visit && action && (action === "ban" || venue.id === scene.placeId)
+              ? readAccessCommand({
+                  operationId: id,
+                  expectedRevision: venue.access?.revision,
+                  zoneId: row.outcome === "ban-venue" ? null : (row.zoneId ?? null),
+                  action,
+                  visitorId: "player",
+                  ...(action !== "ban" ? { sceneId: scene.id } : {}),
+                })
+              : undefined;
+          const command = management ?? visit ?? inferred;
+          if (command) {
+            const preview = accessPreviews.get(venue.id) ?? structuredClone(venue);
+            try {
+              applyAccessCommand(
+                preview,
+                { ...command, expectedRevision: preview.access!.revision },
+                row.actorId,
+                savedInput.context.preservation.chosenAt,
+                ["player", ...sceneActorIds(sceneState), ...admissions.map(({ npc }) => npc.id)],
+                [],
+                sceneState.communityVenueId,
+              );
+            } catch (error) {
+              if (error instanceof VillagesRequestError) throw badGateway(error.message);
+              throw error;
+            }
+            accessPreviews.set(venue.id, preview);
+          }
           const facts = {
             actorId: row.actorId,
             venueId: venue.id,
-            zoneId: row.zoneId ?? null,
+            zoneId: command ? command.zoneId : (row.zoneId ?? null),
             accessRevision: venue.access?.revision,
             semanticVersion: 2,
             accompanies: row.accompanies || row.conditions.includes("accompanied"),
-            ...(visit ? { accessCommand: visit } : management ? { accessCommand: management } : {}),
+            ...(playerInput
+              ? {
+                  playerInputSource: {
+                    inputSpan: Number(inputSpan),
+                    kind: playerInput.kind,
+                    start: playerInput.start,
+                    end: playerInput.end,
+                    text: playerInput.text,
+                  },
+                }
+              : {}),
+            ...(command ? { accessCommand: command } : {}),
           };
           access.checks.push({
             id,

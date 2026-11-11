@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { scenePersonReferences } from "../packages/villages/src/server/domain/rules/scene-prompt-references.js";
 import { randomUUID } from "node:crypto";
 import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -6,7 +7,7 @@ import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { materializeGmReply } from "../packages/villages/src/server/domain/rules/scene-gm.js";
+import { materializeGmReply, normalizeGmEffects } from "../packages/villages/src/server/domain/rules/scene-gm.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { semanticContext } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
 import {
@@ -116,6 +117,25 @@ Object.assign(world, { setupAt: scene.startedAt, foundedAt: scene.startedAt, tim
 world.venues = [
   venueDraftFixture({ id: "studio", name: "Studio", description: "A quiet studio.", category: "public" }, null),
 ];
+const selectedRemote = await currentScenePrompt(
+  world,
+  { id: "a", name: "A", description: "A quiet resident." } as any,
+  "chat",
+  "Hello.",
+  {
+    ...scene,
+    contactGeneration: { actorIds: ["b"], localIds: ["a"], remoteIds: ["b"] } as any,
+  },
+);
+const remotePacket = scenePromptPacket(selectedRemote);
+assert.ok(!remotePacket.context.actors.some((actor: any) => actor.id === "a"));
+assert.ok(
+  remotePacket.presentationOnly
+    .find((actor: any) => actor.actorId === "a")
+    .expressions.some((expression: any) => expression.name === "special-sprite-label"),
+);
+assert.equal(remotePacket.presentationOnly[0].doing, undefined);
+assert.equal(remotePacket.presentationOnly[0].wishes, undefined);
 const checkpoints = new Map<string, unknown>();
 let calls = 0;
 const model = {
@@ -180,6 +200,31 @@ assert.equal(calls, 0);
 assert.equal(JSON.stringify(lines), original, "Presentation cannot rewrite speech or witnesses");
 world.villagers[0].sprite = sprite as any;
 const context = sceneSpriteSelection(scene, world);
+const alias = [{ segment: 0, staging: [{ characterId: "a", expression: "e-first" }] }];
+const normalizedAlias = normalizeGmEffects({ presencePresentation: alias }, gmContext);
+for (const fingerprint of [undefined, "forged"])
+  assert.equal(
+    normalizeGmEffects({ memoryChanges: [{ screening: { disposition: "clear", fingerprint } }] }, gmContext)
+      .memoryChanges[0].screening.fingerprint,
+    gmContext._memoryWrite.protection.fingerprint,
+    "Scene Memory screening always binds the captured server fingerprint",
+  );
+assert.deepEqual(normalizedAlias.presentation, alias);
+assert.equal(normalizedAlias.presencePresentation, undefined);
+assert.deepEqual(
+  readSceneSpritePresentation(normalizedAlias.presentation, context, lines.length),
+  readSceneSpritePresentation(alias, context, lines.length),
+  "The observed alias uses exactly the normal cosmetic cue validation",
+);
+assert.deepEqual(normalizeGmEffects({ presentation: [], presencePresentation: alias }, gmContext).presentation, []);
+assert.deepEqual(
+  readSceneSpritePresentation(
+    normalizeGmEffects({ presencePresentation: "invalid" }, gmContext).presentation,
+    context,
+    lines.length,
+  ),
+  [],
+);
 assert.deepEqual(readSceneSpritePresentation(undefined, context, lines.length), []);
 assert.deepEqual(readSceneSpritePresentation([{ segment: 99, staging: [] }, null], context, lines.length), []);
 assert.deepEqual(
@@ -266,31 +311,32 @@ for (const failure of ["none", "validation-input", "presentation-publish", "inva
     },
     completeWithRoom: async (_model: unknown, messages: { content: string }[]) => {
       paid++;
-      const catalog = scenePromptPacket(messages.map((message) => message.content).join("\n")).presentation;
-      assert.match(catalog.sprites[0].expressions, /g-e-first/);
+      const catalog = scenePromptPacket(
+        messages.map((message) => message.content).join("\n"),
+        scenePersonReferences(["a", "b"]),
+      ).context.actors;
+      assert.ok(
+        catalog
+          .find((actor: any) => actor.id === "a")
+          .expressions.some((expression: any) => expression.id === "g-e-first"),
+      );
       assert.doesNotMatch(JSON.stringify(catalog), /happy_01|happy_blush|"expressionId"/);
       return {
         finishReason: "stop",
-        content: JSON.stringify({
-          input: [],
-          segments: [
-            {
-              kind: "dialogue",
-              speakerId: "a",
-              text: "Hello.",
-              expression: "forged-inline-cue",
-              staging: [{ characterId: "a", expression: "forged-inline-cue" }],
-            },
-          ],
-          presentation: [
-            { segment: 0, staging: [{ characterId: "a", expression: "g-e-first", look: { target: "player" } }] },
-          ],
-          ...(failure === "invalid-response" && paid === 1
-            ? {
-                access: [{ actorId: "a", venueId: "missing", zoneId: "missing", outcome: "invite-now", evidence: [0] }],
-              }
-            : {}),
-        }),
+        content:
+          "INPUT []\n[a] Hello.\nCHANGES\n" +
+          JSON.stringify({
+            presentation: [
+              { segment: 0, staging: [{ characterId: "a", expression: "g-e-first", look: { target: "player" } }] },
+            ],
+            ...(failure === "invalid-response" && paid === 1
+              ? {
+                  access: [
+                    { actorId: "a", venueId: "missing", zoneId: "missing", outcome: "invite-now", evidence: [0] },
+                  ],
+                }
+              : {}),
+          }),
       };
     },
   };

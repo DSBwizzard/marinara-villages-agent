@@ -63,7 +63,6 @@ import {
   configureVenueOperationContext,
   outsideVenueOperation,
   venueDebugContext,
-  venueExplicitRetry,
   venueOperationId,
   venueOperationSignal,
   venueOperationSnapshot,
@@ -230,6 +229,7 @@ import { createProjectEvidenceIndex } from "../features/scenes/project-evidence-
 import { createSceneNarrative } from "../features/scenes/scene-narrative-service.js";
 import { createSceneQueryService } from "../features/scenes/scene-query-service.js";
 import { createSceneRetirement } from "../features/scenes/scene-retirement-service.js";
+import { createSceneEncounters } from "../adapters/storage/scene-encounters.js";
 import { createSceneTerminalStore } from "../features/scenes/scene-terminal.js";
 import { createSceneWork } from "../features/scenes/scene-work-service.js";
 import { configureSceneWork, sceneWork } from "../features/scenes/scene-work.js";
@@ -639,12 +639,12 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   });
   const releaseSceneWriting = configureSceneWriting(
     createSceneWriting({
+      readSceneEncounters: (...args) => createSceneEncounters(villagesDocuments()).recall(...args),
       readCapturedWishContexts: (contexts, scene) => createSceneWishContexts(villagesDocuments()).read(contexts, scene),
       sceneNarrative,
       semantic,
       venueCheckpoint,
       venueSavedCheckpoint,
-      venueExplicitRetry,
       refreshZoneParticipants,
       readEffectiveVillagerCard,
       readVillageLore,

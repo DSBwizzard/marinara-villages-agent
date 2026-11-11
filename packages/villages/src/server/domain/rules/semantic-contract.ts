@@ -11,7 +11,7 @@ import { environmentCircumstances, environmentObservations } from "./narrative-e
 import { findLocation, findNpc, npcProfile } from "./places.js";
 import { currentVillageCircumstances } from "./prompt-preset.js";
 
-import { projectSpeechContexts, projectSpeechPrompt } from "./project-interpretation.js";
+import { projectSpeechContexts, relevantProjectSpeechContexts, projectSpeechData } from "./project-interpretation.js";
 import { capturedSceneCalendar } from "./scene-halt.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
 import { sceneMemoryContext } from "./scene-memories.js";
@@ -20,6 +20,7 @@ import { socialContextState } from "./social-context.js";
 import { readSocialWishChanges } from "./social-wishes.js";
 import { venueZones, zoneControllerIds } from "./venue-zones.js";
 import { zoneEventHearingContext } from "./zone-events.js";
+import { sceneEvidencePerception } from "./scene-evidence-perception.js";
 export const SEMANTIC_OPERATION_BUDGET = {
   version: 1,
   requests: 12,
@@ -214,12 +215,20 @@ export function semanticContext(
               : {}),
           }))
       : [],
-    access: compact && venue?.access ? accessRules : venue?.access,
-    accessManagement: accessManagementPrompt(
-      state,
-      actors,
-      state.venues.some((venue) => venue.id === scene.placeId) ? undefined : scene.placeId,
-    ),
+    access: venue?.access
+      ? {
+          ...(compact ? accessRules : venue.access),
+          ...(venue.id === state.communityVenueId ? { neutralCommunity: true } : {}),
+        }
+      : undefined,
+    accessManagement: [
+      ...accessManagementPrompt(
+        state,
+        actors,
+        state.venues.some((venue) => venue.id === scene.placeId) ? undefined : scene.placeId,
+      ),
+      ...accessManagementPrompt(state, ["player"], scene.placeId),
+    ],
     referenceActors: state.villagers.map(({ characterId, cardSnapshot }) => ({
       id: characterId,
       name: cardSnapshot.name,
@@ -240,7 +249,12 @@ export function semanticContext(
         }))
       : [],
 
-    projects: projectSpeechPrompt(state, projectSpeechContexts(state, actors, "", query, scene.placeId)),
+    projects: projectSpeechData(state, relevantProjectSpeechContexts(state, actors, "", query, scene.placeId)),
+    projectIndex: projectSpeechContexts(state, actors, "", query, scene.placeId).map((context) => ({
+      projectId: context.projectId,
+      phase: context.phase,
+      title: state.projects.find((project) => project.id === context.projectId)!.title,
+    })),
     requests: {
       venues: state.venues.map((row) => ({
         id: row.id,
@@ -249,7 +263,50 @@ export function semanticContext(
         occupancy: row.occupancy,
         constructionStatus: row.constructionStatus,
       })),
-      residences: state.residences.filter((row) => row.status === "pending"),
+      residences: state.residences
+        .filter(
+          (row) =>
+            row.status !== "current" &&
+            (actors.includes(row.characterId) || (row.agreement?.requiredIds ?? []).some((id) => actors.includes(id))),
+        )
+        .map(
+          ({
+            characterId,
+            venueId,
+            proposedVenueId,
+            proposedPrivateZoneId,
+            status,
+            requestedBy,
+            villagerDecision,
+            holdReason,
+            completesAt,
+            requestedAt,
+            approvedAt,
+            agreement,
+          }) => ({
+            characterId,
+            venueId,
+            proposedVenueId,
+            proposedPrivateZoneId,
+            status,
+            requestedBy,
+            villagerDecision,
+            holdReason,
+            completesAt,
+            requestedAt,
+            approvedAt,
+            ...(agreement
+              ? {
+                  agreement: {
+                    requiredIds: agreement.requiredIds,
+                    householdIds: agreement.householdIds,
+                    sleepZoneId: agreement.sleepZoneId,
+                    approvals: agreement.approvals,
+                  },
+                }
+              : {}),
+          }),
+        ),
     },
   };
 }
@@ -315,7 +372,7 @@ export function semanticEvidence(lines: readonly VenueReplyLine[]) {
     speechSource: line.speechSource,
     soundOnly: line.soundOnly,
     heardBy: line.heardBy,
-    playerHeard: !line.contactHidden && (line.kind !== "whisper" || line.targetId === "player"),
+    playerHeard: sceneEvidencePerception(line).playerPerception === "full",
     current: true,
   }));
 }
