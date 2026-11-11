@@ -1,47 +1,57 @@
-import { fixtureWishIdentity, fixtureRelationshipIdentity } from "../helpers/village-storage.fixture.js";
 import { readEffectiveVillagerCard } from "../../packages/villages/src/server/adapters/engine/catalog.js";
-import { villagesLanguageModels } from "../../packages/villages/src/server/adapters/models/language-models.js";
+import type { VillageState } from "../../packages/villages/src/server/domain/models/world.js";
+import { villageCurrentSetting } from "../../packages/villages/src/server/domain/rules/prompt-preset.js";
+import { captureResidentNarration } from "../../packages/villages/src/server/domain/rules/resident-narration.js";
 import {
-  buildResidentPlanningMessages as buildMessages,
-  type ResidentPlanningContext,
+  localDateKey,
+  type ResidentPlanningInput,
 } from "../../packages/villages/src/server/domain/rules/resident-planning.js";
-import { completeWithRoom } from "../../packages/villages/src/server/features/generation/model-requests.js";
-import { createResidentPlanning } from "../../packages/villages/src/server/features/residents/resident-planning-service.js";
-import { villagesConnectionIdFor } from "../../packages/villages/src/server/features/settings/connections.js";
-import { readVillageState } from "../../packages/villages/src/server/features/world/village-store.js";
-import { backgroundJobSnapshot, queueBackgroundJob } from "../../packages/villages/src/server/jobs/background-work.js";
-export function planningContext(input: any): ResidentPlanningContext {
-  const context = {
-    version: 1,
-    worldFacts: [],
-    pendingHousingCharacterIds: [],
-    social: { candidates: [], relationships: [] },
-    ...input,
+import { venueCardProfile } from "../../packages/villages/src/server/domain/rules/venue-writing.js";
+import { deriveVillageMoment } from "../../packages/villages/src/server/domain/rules/village-clock.js";
+import { ZonedDate } from "../../packages/villages/src/shared/helpers/zoned-date.js";
+
+export function residentPlanningInput(
+  state: VillageState,
+  characterId: string,
+  at: string,
+  opportunityId: string,
+  catchup?: ResidentPlanningInput["catchup"],
+): ResidentPlanningInput {
+  const now = new ZonedDate(at, state.timeZone || "UTC"),
+    moment = deriveVillageMoment({
+      foundedAt: state.foundedAt,
+      environment: state.narrative,
+      seed: state.seed,
+      timeZone: state.timeZone || "UTC",
+      now,
+    }),
+    card = readEffectiveVillagerCard(state.villagers.find((resident) => resident.characterId === characterId)!);
+  return {
+    format: 1,
+    dateKey: localDateKey(now),
+    ...(catchup ? { catchup } : {}),
+    context: {
+      format: 1,
+      ...(catchup ? { catchup: true as const } : {}),
+      village: state.name,
+      setting: villageCurrentSetting(state),
+      moment,
+      residents: [{ characterId, name: card.name, profile: venueCardProfile(card) }],
+      housing: [],
+      plans: [],
+      narration: captureResidentNarration(
+        state,
+        {
+          id: opportunityId,
+          kind: "routine",
+          actorIds: [characterId],
+          venueId: "",
+          startsAt: at,
+          endsAt: at,
+          facts: ["A quiet morning"],
+        },
+        !!catchup,
+      ),
+    },
   };
-  context.opportunity = input.opportunity ??
-    input.opportunities?.[0] ?? { id: "quiet", kind: "routine", actorIds: [], venueId: "", facts: [] };
-  context.residents = (context.residents ?? []).map((r: any) => ({
-    ...r,
-    wishes: r.wishes ?? r.agenda?.wishes ?? [],
-    profile: r.profile ?? r.summary ?? r.name,
-    agenda: r.agenda ?? null,
-  }));
-  return context;
-}
-export function buildResidentPlanningMessages(input: any) {
-  return buildMessages(planningContext(input));
-}
-export function proposeResidentChoices(input: any) {
-  return createResidentPlanning({
-    activeVenueSession: async () => null,
-    relationshipIdentity: fixtureRelationshipIdentity,
-    wishIdentity: fixtureWishIdentity,
-    readVillageState,
-    readEffectiveVillagerCard,
-    queueBackgroundJob,
-    backgroundJobSnapshot,
-    villagesLanguageModels,
-    villagesConnectionIdFor,
-    completeWithRoom,
-  }).handler.generate({ context: planningContext(input) });
 }

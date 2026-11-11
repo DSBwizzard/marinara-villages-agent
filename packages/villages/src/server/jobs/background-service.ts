@@ -791,17 +791,28 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       return;
     }
     if (job.owner !== runOwner && job.steps.some((step) => step.status === "running")) {
-      await updateJob((current) => ({
-        ...current!,
-        status: "interrupted",
-        error: "Generation was interrupted. This request may already have incurred costs.",
-        failure: {
-          cause: "unknown_request",
-          stage: "recovery",
-          message: "Generation was interrupted. This request may already have incurred costs.",
-        },
-        owner: runOwner,
-      }));
+      const prior = job;
+      await updateJob((current) => {
+        if (
+          stopped ||
+          owner !== runOwner ||
+          current?.status !== prior.status ||
+          current.owner !== prior.owner ||
+          !current.steps.some((step) => step.status === "running")
+        )
+          throw new Obsolete("Pending work changed before recovery.");
+        return {
+          ...current,
+          status: "interrupted",
+          error: "Generation was interrupted. This request may already have incurred costs.",
+          failure: {
+            cause: "unknown_request",
+            stage: "recovery",
+            message: "Generation was interrupted. This request may already have incurred costs.",
+          },
+          owner: runOwner,
+        };
+      });
       return;
     }
     try {
@@ -826,6 +837,40 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         };
       });
       return;
+    }
+    if (job.status === "paused" || job.owner !== runOwner) {
+      const prior = job;
+      try {
+        // Village writes accept only active source jobs, including before provider dispatch.
+        job = await updateJob((current) => {
+          if (
+            stopped ||
+            owner !== runOwner ||
+            superseded.has(prior.instanceId) ||
+            current?.status !== prior.status ||
+            current.owner !== prior.owner ||
+            current.replacement ||
+            current.steps.some((step) => step.status === "running")
+          )
+            throw new Obsolete("Saved work changed before resuming.");
+          return { ...current, owner: runOwner, status: current.status === "paused" ? "queued" : current.status };
+        });
+      } catch (error) {
+        if (!(error instanceof Obsolete)) throw error;
+        if (stopped || owner !== runOwner) return;
+        await reserving.get(id);
+        const latest = await readJob(id, documents);
+        if (
+          latest?.status === prior.status &&
+          latest.instanceId === prior.instanceId &&
+          latest.attempt === prior.attempt &&
+          latest.owner === prior.owner &&
+          latest.replacement &&
+          (uncertainAttempt(latest) || (await promoteReplacement(id, latest, documents, runOwner)))
+        )
+          relaunch.add(id);
+        return;
+      }
     }
     const controller = new AbortController();
     const runJobId = job.id;
@@ -894,6 +939,9 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           if (!job!.retrying && job!.requests >= 1 + Number(!!job!.automaticRetryUsed))
             throw new Error("Automatic resident activity exhausted its principal request allowance.");
           await mutateForJob(job!, (state) => {
+            if (stopped || owner !== runOwner || controller.signal.aborted)
+              throw new Paused("Background generation stopped.");
+            if (superseded.has(runInstanceId)) throw new Obsolete("This job was replaced.");
             if (state.seed !== job!.seed) throw new Obsolete("Village identity changed.");
             const actual = new ZonedDate(
               villageNow().toISOString(),
@@ -1370,53 +1418,48 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     const records = await documents.list(VILLAGES_PACKAGE_ID, KIND);
     for (const record of records) {
       if (stopped || owner !== recoveryOwner) return;
+      if (running.has(record.id)) continue;
       validateBackgroundJobRecord(record);
       const original = await responses.decode(record.data);
-      const interruptedDispatch = original.owner !== owner && original.steps.some((step) => step.status === "running");
       const job = await adoptLateResponses(record.id, original, documents);
-      const recovering = (current: Job | null) => {
-        if (
-          stopped ||
-          owner !== recoveryOwner ||
-          !current ||
-          current.id !== job.id ||
-          current.instanceId !== job.instanceId ||
-          current.attempt !== job.attempt ||
-          (current.owner !== job.owner && current.owner !== recoveryOwner)
-        )
-          throw new Obsolete("Background recovery ownership changed.");
-        return current;
-      };
+      if (stopped || owner !== recoveryOwner) return;
       if (job.connectionPaused) pausedConnections.add(job.connectionId);
-      if (interruptedDispatch && !["completed", "obsolete"].includes(job.status)) {
-        await changeJob(
-          record.id,
-          (current) => ({
-            ...recovering(current),
-            status: "interrupted",
-            owner,
-            error: "Generation was interrupted. This request may already have incurred costs.",
-            failure: {
-              cause: "unknown_request",
-              stage: "recovery",
-              message: "Generation was interrupted. This request may already have incurred costs.",
-            },
-          }),
-          documents,
-        );
-      } else if (
+      const unknownRequest =
+        original.owner !== recoveryOwner &&
+        job.owner !== recoveryOwner &&
+        original.steps.some((step) => step.status === "running") &&
+        !["completed", "obsolete"].includes(job.status);
+      const interruptedPreparation =
+        job.owner !== recoveryOwner &&
         asRecord(job.input).foundingContract === 1 &&
         !job.hasResult &&
-        ["queued", "paused", "running"].includes(job.status)
-      ) {
+        ["queued", "paused", "running"].includes(job.status);
+      if (unknownRequest || interruptedPreparation) {
+        const snapshot = backgroundRevision(nativeBackgroundJob(job));
+        const message = unknownRequest
+          ? "Generation was interrupted. This request may already have incurred costs."
+          : "Preparation interrupted. Retry deliberately.";
         await changeJob(
           record.id,
-          (current) => ({
-            ...recovering(current),
-            status: "interrupted",
-            owner,
-            error: "Preparation interrupted. Retry deliberately.",
-          }),
+          (current) => {
+            if (
+              stopped ||
+              owner !== recoveryOwner ||
+              !current ||
+              current.id !== job.id ||
+              current.instanceId !== job.instanceId ||
+              current.attempt !== job.attempt
+            )
+              throw new Obsolete("Background recovery ownership changed.");
+            if (running.has(record.id) || backgroundRevision(nativeBackgroundJob(current)) !== snapshot) return current;
+            return {
+              ...current,
+              status: "interrupted",
+              owner,
+              error: message,
+              ...(unknownRequest ? { failure: { cause: "unknown_request", stage: "recovery", message } } : {}),
+            };
+          },
           documents,
         );
       } else if (["queued", "paused", "running"].includes(job.status) || job.replacement) launch(record.id, documents);

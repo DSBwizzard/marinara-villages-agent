@@ -729,9 +729,67 @@ async function reusedNativeRevisions() {
     }
   }
 }
+async function resumeCannotOverwriteTerminalWork() {
+  for (const status of ["paused", "queued", "running"] as const) {
+    const f = fixture("lost-resume-" + status);
+    f.gate.resolve();
+    const stop = f.service.startBackgroundWork();
+    try {
+      await f.service.queueBackgroundJob({ ...input(), initialError: "Hold without a provider request" });
+      await f.service.settleBackgroundWork();
+      const prior = [...f.records.values()].find((row) => row.kind === "background-work")!;
+      Object.assign(prior.data, { status, owner: "previous-activation" });
+      if (status === "running") {
+        prior.data.steps = [{ status: "running", fingerprint: "unresolved-request" }];
+        prior.data.steps[0].responseClaim = backgroundResponseClaim(prior.data, 0);
+      }
+      let terminal: unknown;
+      f.beforeCurrentWrite(async () => {
+        terminal = await f.documents.update({
+          id: prior.id,
+          packageId: "villages",
+          expectedRevision: prior.revision,
+          data: { ...prior.data, status: "failed", steps: [], error: "Original owner held this work" },
+        });
+      });
+      await f.service.recoverBackgroundWork();
+      await f.service.settleBackgroundWork();
+      assert(terminal, "Another owner wrote a terminal status before the resume CAS");
+      assert.deepEqual(f.records.get(prior.id), terminal);
+      assert.deepEqual(f.calls, []);
+      assert.equal(f.world().setting, "");
+    } finally {
+      stop();
+      await f.service.settleBackgroundWork();
+    }
+  }
+}
+async function heartbeatKeepsLiveFoundingWork() {
+  const f = fixture("live-founding");
+  const stop = f.service.startBackgroundWork();
+  try {
+    await f.service.villageBackgroundPresence("founding-session", true);
+    const work = input();
+    await f.service.queueBackgroundJob({ ...work, input: { ...(work.input as object), foundingContract: 1 } });
+    await until(() => f.calls.length === 1);
+    await f.service.villageBackgroundPresence("founding-session", true);
+    assert.equal((await f.service.backgroundWorkSummaries())[0].status, "running");
+    f.gate.resolve();
+    await f.service.settleBackgroundWork();
+    assert.equal((await f.service.backgroundWorkSummaries())[0].status, "completed");
+    assert.deepEqual(f.calls, ["same"]);
+    assert.equal(f.world().setting, "live-founding:same");
+  } finally {
+    f.gate.resolve();
+    stop();
+    await f.service.settleBackgroundWork();
+  }
+}
 async function main() {
   await replacedInstanceCallbacks();
   await reusedNativeRevisions();
+  await resumeCannotOverwriteTerminalWork();
+  await heartbeatKeepsLiveFoundingWork();
   const admittedRetry = fixture("explicit-admission-replay");
   admittedRetry.fail(true);
   admittedRetry.gate.resolve();
