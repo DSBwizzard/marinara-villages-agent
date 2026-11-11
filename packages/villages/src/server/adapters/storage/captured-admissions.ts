@@ -28,7 +28,7 @@ export function assertCapturedJob(raw: unknown): void {
     raw.responseStorage === 4 && typeof raw.seed === "string" && isBackgroundKind(raw.kind),
     "unsupported captured background format",
   );
-  if (raw.input === null && ["resident-planning", "personal-mail"].includes(raw.kind)) {
+  if (raw.input === null && ["resident-planning", "personal-mail", "world-development"].includes(raw.kind)) {
     memoryRequire(
       ["completed", "obsolete"].includes(raw.status) &&
         Array.isArray(raw.steps) &&

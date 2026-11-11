@@ -7,7 +7,6 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import Fastify from "fastify";
 import AdmZip from "adm-zip";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 // Test cases: village-clock
 // Actual builder output and HTTP routes; synthetic persistence and zero provider calls.
 await runCase("village-clock", async () => {
@@ -23,28 +22,25 @@ await runCase("village-clock", async () => {
     paid = 0;
   Date.now = () => wall;
   const records = new Map();
-  const seed = defaultVillageState();
-  Object.assign(seed, {
-    seed: "clock-packaged",
-    setupAt: new Date(wall).toISOString(),
-    foundedAt: new Date(wall).toISOString(),
-    timeZone: "America/Los_Angeles",
-    backgroundPace: "off",
-    visitMemoryBackfilled: true,
+  const at = new Date(wall).toISOString();
+  const projectFixture = fixture();
+  await projectFixture.mutate((state) => {
+    Object.assign(state, {
+      seed: "clock-packaged",
+      setupAt: at,
+      foundedAt: at,
+      timeZone: "America/Los_Angeles",
+      backgroundPace: "off",
+      clock: { revision: 2, trustedAt: at, replayUntilDate: "" },
+    });
+    for (const resident of state.villagers) {
+      resident.addedAt = resident.cardSnapshot.capturedAt = at;
+      if (resident.agenda) resident.agenda.personalizationPending = false;
+    }
   });
-  Object.assign(seed, { noticeboard: ["Old note"] });
-  seed.clock = {
-    revision: 2,
-    trustedAt: new Date(wall).toISOString(),
-    replayUntilDate: "",
-  };
-  const projectFixture = fixture(),
-    projectId = await projectFixture.newProject();
+  const projectId = await projectFixture.newProject();
   await projectFixture.service.startProjectConstruction(projectId, projectFixture.body(projectId), new Date(wall));
-  seed.projects = structuredClone(projectFixture.state().projects);
-  seed.venues = structuredClone(projectFixture.state().venues);
-  seed.villagers = structuredClone(projectFixture.state().villagers);
-  for (const resident of seed.villagers) if (resident.agenda) resident.agenda.personalizationPending = false;
+  const seed = structuredClone(projectFixture.state());
   records.set("villages-village", {
     id: "villages-village",
     packageId: "villages",
