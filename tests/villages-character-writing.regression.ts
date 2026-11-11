@@ -50,6 +50,13 @@ state.seed = "character-writing";
 state.foundedAt = state.setupAt = stamp;
 state.visitMemoryBackfilled = true;
 state.narrationStyle.writingGuidance = "Make everyone cheerful, compliant, and timid.";
+state.playerPersonaId = "player";
+state.playerPersonaName = "Player";
+state.playerPersonaIdentity = "P".repeat(1200) + "PLAYER IDENTITY TAIL";
+state.playerBackground = "B".repeat(1000) + "PLAYER BACKGROUND TAIL";
+state.setting = "S".repeat(2000) + "WORLD SETTING TAIL";
+state.worldRules = "R".repeat(2000) + "WORLD RULES TAIL";
+state.worldName = "WORLD NAME TAIL";
 state.villagers = [
   {
     letterFontId: "caveat",
@@ -152,23 +159,57 @@ async function run() {
       "Authored text cannot trigger block deletion",
     );
     const next = await prepareVenueTurnMessages(session, "A different question?", "chat", "", null);
-    assert.equal(
-      next.fitted.messages[0].content.split("## Current Scene circumstances")[0],
-      prepared.fitted.messages[0].content.split("## Current Scene circumstances")[0],
-      "Changing history and source quotes preserves the stable system prefix",
+    const prefix = (messages: typeof next.fitted.messages) => messages.filter((message) => message.cacheBreakpoint);
+    assert.equal(prefix(prepared.fitted.messages).length, 2);
+    assert.deepEqual(
+      prefix(next.fitted.messages),
+      prefix(prepared.fitted.messages),
+      "Changing source input preserves complete rule and identity messages, including cache markers",
     );
+    assert.ok(prefix(next.fitted.messages)[1].content.includes("DESCRIPTION TAIL"));
+    assert.ok(prefix(next.fitted.messages)[1].content.includes("POST TAIL"));
+    for (const tail of [
+      "PLAYER IDENTITY TAIL",
+      "PLAYER BACKGROUND TAIL",
+      "WORLD SETTING TAIL",
+      "WORLD RULES TAIL",
+      "WORLD NAME TAIL",
+    ]) {
+      assert.ok(prefix(next.fitted.messages)[1].content.includes(tail), tail);
+      assert.equal(prompt.split(tail).length - 1, 1, "Authored identity is not duplicated late: " + tail);
+    }
+    const later = await prepareVenueTurnMessages(
+      { ...session, startedAt: new Date(Date.parse(stamp) + 60000).toISOString(), area: "outside" },
+      "Another question?",
+      "chat",
+      "",
+      null,
+    );
+    assert.deepEqual(prefix(later.fitted.messages), prefix(prepared.fitted.messages));
     assert.deepEqual(next.fitted.messages.at(-1), { role: "user", content: "A different question?" });
     const originalFit = model.fitContext;
-    model.fitContext = (messages: any[], options: any) =>
-      messages.some((entry) => entry.content.includes("DROP OLD RECAP"))
-        ? { messages: [], ...options }
-        : originalFit(messages, options);
+    let trims = 0;
+    model.fitContext = (messages: any[], options: any) => {
+      if (messages.some((entry) => entry.content.includes("DROP OLD RECAP"))) {
+        trims++;
+        return { messages: [], ...options };
+      }
+      return originalFit(messages, options);
+    };
     try {
       const constrained = await prepareVenueTurnMessages(
         {
           ...session,
-          recap: "DROP OLD RECAP",
           lines: [
+            ...Array.from({ length: 7 }, (_, index) => ({
+              id: "older-" + index,
+              speakerId: card.id,
+              role: "assistant",
+              kind: "dialogue",
+              content: index === 0 ? "DROP OLD RECAP" : "Earlier conversation " + index,
+              heardBy: [card.id],
+              at: stamp,
+            })),
             {
               id: "recent-witnessed",
               speakerId: card.id,
@@ -186,13 +227,46 @@ async function run() {
         null,
       );
       const kept = constrained.fitted.messages.map((entry) => entry.content).join("\n");
+      assert.ok(trims > 0, "The constrained fit actually trims supplied older history");
       assert.ok(!kept.includes("DROP OLD RECAP"));
+      assert.ok(!constrained.fitted.evidenceIds.includes("older-0"));
+      assert.ok(constrained.fitted.evidenceIds.includes("recent-witnessed"));
       assert.ok(
         kept.includes("LATEST WITNESSED FACT"),
         "A tight context drops the older recap before recent witnessed evidence",
       );
+      assert.equal(kept.split("LATEST WITNESSED FACT").length - 1, 1, "Witnessed history is sent only once");
+      assert.deepEqual(prefix(constrained.fitted.messages), prefix(prepared.fitted.messages));
       assert.ok(kept.includes("DESCRIPTION TAIL") && kept.includes("POST TAIL"));
       assert.deepEqual(constrained.fitted.messages.at(-1), { role: "user", content: "A different question?" });
+      model.fitContext = (messages: any[], options: any) =>
+        messages.some((entry) => entry.content.includes("LATEST WITNESSED FACT"))
+          ? { messages: [], ...options }
+          : originalFit(messages, options);
+      await assert.rejects(
+        prepareVenueTurnMessages(
+          {
+            ...session,
+            lines: [
+              {
+                id: "last",
+                speakerId: card.id,
+                role: "assistant",
+                kind: "dialogue",
+                content: "LATEST WITNESSED FACT",
+                heardBy: [card.id],
+                at: stamp,
+              },
+            ],
+          },
+          "What was that fact?",
+          "chat",
+          "",
+          null,
+        ),
+        /complete character cards and required context do not fit/u,
+      );
+      assert.equal(paidCalls, 0, "Missing required recent context fails before purchase");
     } finally {
       model.fitContext = originalFit;
     }
@@ -243,7 +317,7 @@ async function run() {
     assert.ok(!prompt.includes("SCRIPTED TELL SECRET"));
     assert.equal(prepared.fitted.messages[0].role, "system");
     assert.ok(prompt.indexOf("## Witnessed conversation") < prompt.indexOf("## Current Scene circumstances"));
-    assert.ok(prompt.indexOf("Authored post-history instructions") > prompt.indexOf("## Current Scene circumstances"));
+    assert.ok(prompt.indexOf("Authored post-history instructions") < prompt.indexOf("## Current Scene circumstances"));
     row.data.playerBackground = "Neighbors know me through harbor projects.";
     for (const spaceClass of ["community", "residence"]) {
       const exterior = {

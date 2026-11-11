@@ -2,6 +2,7 @@ import type { GenerationParameterSendMap } from "./prompt.js";
 import type { ImageGenerationQuality } from "./connection.js";
 import type { ImageGenerationDefaultsProfile, ComfyUiLoraSetting, NovelAiDefaults } from "./image-generation-defaults.js";
 import type { SceneIllustrationCharacterPrompt } from "./sidecar.js";
+import type { HapticDeviceCommand, HapticStatus } from "./haptic.js";
 
 export interface ChatMessage {
     role: "system" | "user" | "assistant" | "tool";
@@ -24,6 +25,11 @@ export interface ChatMessage {
     media?: ChatMediaAttachment[];
     /** Provider-specific metadata (e.g. Gemini parts with thought signatures) */
     providerMetadata?: Record<string, unknown>;
+    /**
+     * Cache the prompt up to and including this message (Capability API 1.814). Anthropic puts a cache breakpoint
+     * here whether or not `enableCaching` is on, keeping the last four, and then adds none of its own.
+     */
+    cacheBreakpoint?: boolean;
 }
 
 export interface ChatMediaAttachment {
@@ -40,6 +46,10 @@ export interface LLMToolCall {
         name: string;
         arguments: string;
     };
+    /** Provider-native fields the call came with, sent back with it unchanged on the next tool round:
+     *  Gemini's OpenAI-compatible endpoint puts the call's thought signature in
+     *  `extra_content.google.thought_signature`, and refuses the round without it. */
+    extra_content?: Record<string, unknown>;
 }
 
 export interface LLMToolDefinition {
@@ -82,6 +92,11 @@ export interface ChatOptions {
     captureReasoning?: boolean;
     /** Callback for streaming text tokens as they arrive (used in tool path) */
     onToken?: (chunk: string) => void | Promise<void>;
+    /**
+     * onToken only shows the call is alive and the caller reads the reply from the result, so a fallback connection may
+     * still answer after the primary streamed text and failed.
+     */
+    onTokenKeepaliveOnly?: boolean;
     /** Enable extended thinking (reasoning models) */
     enableThinking?: boolean;
     /**
@@ -169,13 +184,35 @@ export interface ChatCompletionResult {
     providerMetadata?: Record<string, unknown>;
 }
 
-export type GenerationFallbackCategory = "main" | "agents" | "illustrator" | "video";
+export type GenerationFallbackCategory = "main" | "agents" | "illustrator" | "video" | "feature";
+
+/** Why the chat's own Model did not answer, so the fallback did. */
+export type GenerationFallbackUnavailableReason = "off" | "needs_key" | "review" | "deleted";
+
+/** Why the chosen connection failed before the fallback answered. */
+export type GenerationFallbackReason = "rate_limit" | "auth" | "not_found" | "timeout" | "network" | "server" | "empty" | "error";
 
 export type GenerationFallbackNotice = {
     category: GenerationFallbackCategory;
+    /** The fallback Model that answered. */
     connectionId: string;
     connectionName: string;
     model: string;
+    /** Set when the chat's own Model was unavailable and never tried; absent after a failed request. */
+    reason?: GenerationFallbackUnavailableReason;
+    /** The Model that could not answer, and its Connection (where "Fix" goes). */
+    unavailableConnectionId?: string;
+    unavailableName?: string;
+    unavailableAccountId?: string;
+    /** The connection that failed first, such as the random pool's pick (#7697). */
+    failed?: {
+        connectionId: string;
+        connectionName?: string;
+        model?: string;
+        reason: GenerationFallbackReason;
+        /** The HTTP status the failure came with, when it had one. */
+        status?: number;
+    };
 };
 
 export type GenerationFallbackNotifier = (notice: GenerationFallbackNotice) => void | Promise<void>;
@@ -199,6 +236,12 @@ export type ConnectionAdmissionMode = {
     kind: "none";
 };
 
+/** A looping GIF's timing. The Engine clamps it to 2..12 frames of 20..2000 ms (see resolveOpenAIGifAnimation). */
+export interface ImageAnimation {
+    frameCount?: number;
+    frameDurationMs?: number;
+}
+
 export interface ImageGenRequest {
     prompt: string;
     /** OpenAI GPT Image generation quality. Ignored by unsupported services and models. */
@@ -221,10 +264,21 @@ export interface ImageGenRequest {
     referenceImage?: string;
     /** Optional array of base64-encoded reference images (avatars). Providers that support multiple refs use all; others use the first. */
     referenceImages?: string[];
+    /** The reference image already is the requested canvas (an in-place edit such as a blink picture), so
+     *  providers must keep its framing rather than compose a new picture around it. */
+    referenceIsCanvas?: boolean;
     /** Optional structured per-character prompts. NovelAI V4/V4.5 maps these to native character captions. */
     characterPrompts?: SceneIllustrationCharacterPrompt[];
+    /**
+     * Return one looping GIF (image/gif) instead of a still; `{}` uses the Engine defaults (9 frames, 200 ms).
+     * Only GPT Image 2.6 on an OpenAI connection makes one. The prompt is the only input: a request that also
+     * carries a reference picture, or a connection that can't make GIFs, is refused before any paid call.
+     */
+    animation?: ImageAnimation;
     /** Request a transparent image background when the provider/model supports it. */
     transparentBackground?: boolean;
+    /** Keep uncompressed provider output for sprite/portrait processing that requires its original pixels and format. */
+    preserveProviderOutput?: boolean;
     /** Optional caller-owned abort signal for cancelling long image requests. */
     signal?: AbortSignal;
     /** Emit the final provider request even when the global log level is above debug. */
@@ -313,7 +367,7 @@ export interface VideoGenerationRequest {
     model?: string;
     durationSeconds: number;
     aspectRatio: "16:9" | "9:16";
-    resolution?: "480p" | "720p" | "1080p";
+    resolution?: "480p" | "720p" | "768p" | "1080p";
     referenceImage?: VideoReferenceImage | null;
     /** API-format workflow JSON for local ComfyUI video generation. */
     comfyWorkflow?: string;
@@ -321,6 +375,11 @@ export interface VideoGenerationRequest {
     ltxDirectorPrompt?: LtxDirectorPromptInput;
     /** Up to five connection-scoped LoRAs for custom ComfyUI workflow placeholders. */
     comfyLoras?: ComfyUiLoraSetting[];
+    /**
+     * Non-secret extra HTTP headers for local-backend requests (ComfyUI, SwarmUI).
+     * Authentication stays host-managed: use the connection's API key field for that.
+     */
+    customHeaders?: Record<string, string>;
     /** Model-specific Atlas Cloud inputs saved on the connection for the selected model. */
     atlasModelOptions?: Record<string, unknown>;
     /** ComfyUI workflow frame rate exposed through %fps% and used by the legacy %length% macro. */
@@ -347,6 +406,8 @@ export interface VideoGenerationRequest {
         model: string;
         comfyWorkflow?: string;
         comfyLoras?: ComfyUiLoraSetting[];
+        /** Non-secret extra HTTP headers for the fallback connection's local-backend requests. */
+        customHeaders?: Record<string, string>;
         atlasModelOptions?: Record<string, unknown>;
         fps?: number;
     };
@@ -356,6 +417,18 @@ export interface VideoGenerationResult {
     base64: string;
     mimeType: "video/mp4";
     ext: "mp4";
+}
+
+export interface CapabilityGalleryImageAnimationInput {
+    connectionId: string;
+    galleryImageId: string;
+    prompt: string;
+    durationSeconds?: number;
+    aspectRatio?: "16:9" | "9:16";
+    /** Use the illustration as both endpoints where the selected provider supports it. */
+    loop?: boolean;
+    debugMode?: boolean;
+    signal?: AbortSignal;
 }
 
 export type FallbackConnection = {
@@ -397,9 +470,11 @@ export interface CapabilityIntegrationProvider {
 export interface CapabilityConnectionFallbackOptions {
     primary: CapabilityIntegrationProvider;
     primaryConnectionId: string;
+    /** Names the primary in the fallback notice; without it the notice names only its model. */
+    primaryConnectionName?: string | null;
     fallbackConnection: FallbackConnection | null | undefined;
     fallbackBaseUrl: string;
-    category: "main" | "agents";
+    category: "main" | "agents" | "feature";
     onFallback?: GenerationFallbackNotifier;
     onProviderUsed?: (origin: GenerationProviderOrigin) => void;
     admissionMode?: ConnectionAdmissionMode;
@@ -424,8 +499,23 @@ export interface CapabilityIntegrationHost {
             width: number;
             height: number;
         };
+        /** Capability API 1.341. Lists a saved image in the chat's gallery. Requires `storage`. */
+        addToChatGallery?(input: CapabilityChatGalleryImageInput): Promise<{
+            id: string;
+        }>;
+        /**
+         * Capability API 1.341. Lists a saved image in the galleries of the characters and personas it shows, as
+         * Engine-generated images are. Requires `storage`.
+         */
+        persistToEntityGalleries?(input: CapabilityEntityGalleryImageInput): Promise<{
+            characterCount: number;
+            personaCount: number;
+        }>;
     };
     videos: {
+        /** Capability API 1.384. Animate a saved Global Gallery image using a saved video connection.
+         *  Requires `network` and `storage`; credentials stay in the host. The package owns the returned video. */
+        animateGalleryImage?(input: CapabilityGalleryImageAnimationInput): Promise<VideoGenerationResult>;
         generate(source: string, baseUrl: string, apiKey: string, serviceHint: string, request: VideoGenerationRequest): Promise<VideoGenerationResult>;
         save(chatId: string, base64: string): Promise<string>;
         remove(filePath: string): Promise<void>;
@@ -442,7 +532,83 @@ export interface CapabilityIntegrationHost {
     speech?: {
         /** Transcribe recorded audio. Resolves null while no server is turned on, so the caller keeps its own path. */
         transcribe(audio: Uint8Array, options?: CapabilitySpeechTranscribeOptions): Promise<string | null>;
+        /**
+         * Capability API 1.341. Transcribe a PCM WAV recording with the Local Whisper model downloaded in Connections.
+         * Rejects with the Engine's message when Local Whisper is not downloaded.
+         */
+        transcribeLocal?(wav: Uint8Array): Promise<string>;
     };
+    /** Capability API 1.341. The Engine's connection admission: background work waits for the user's own requests. */
+    admission?: {
+        /** Wraps a provider this host created so each request takes a slot on the connection. */
+        withProvider(provider: CapabilityIntegrationProvider, connectionId: string, mode?: ConnectionAdmissionMode): CapabilityIntegrationProvider;
+        /** Runs one attempt on the connection under the Engine's admission rules. */
+        run<T>(connectionId: string, mode: ConnectionAdmissionMode, operation: () => Promise<T>): Promise<T>;
+        /** Takes the background slot when the connection is idle; call `release` when the work ends. */
+        tryBackground(connectionId: string, at?: Date): {
+            acquired: false;
+        } | {
+            acquired: true;
+            release(outcome?: ConnectionAttemptOutcome): void;
+        };
+        /** True for the Engine's own admission errors (busy connection, rejected or unfinished attempt). */
+        isFailure(error: unknown): boolean;
+    };
+    /** Capability API 1.341. The Engine's one Intiface Central connection. Requires `network`. */
+    haptics?: {
+        status(): HapticStatus;
+        /** Connects when not connected yet. Without a URL it uses the last one or the Engine's default. */
+        connect(url?: string): Promise<void>;
+        executeCommand(command: HapticDeviceCommand): Promise<void>;
+    };
+    /** Capability API 1.341. The Music DJ agent's Spotify account. Requires `network`. */
+    spotify?: {
+        /** True when Spotify is connected with the playback scope. Resolves false on any failure. */
+        commandsAvailable(): Promise<boolean>;
+        /**
+         * Finds and plays a song. Rejects with the Engine's `ConversationSpotifyCommandError` (`name`
+         * "ConversationSpotifyCommandError", `status`, `code`); the codes "spotify_unavailable" and
+         * "missing_playback_scope" mean Spotify is not set up, so callers drop the command quietly.
+         */
+        playSong(input: {
+            title: string;
+            artist: string;
+        }): Promise<{
+            track: {
+                name: string;
+                artist: string;
+            };
+        }>;
+    };
+}
+
+/** A saved image to list in a chat's gallery (capability API 1.341). */
+export interface CapabilityChatGalleryImageInput {
+    chatId: string;
+    /** The path `images.save` returned. */
+    filePath: string;
+    prompt: string;
+    provider: string;
+    model: string;
+    width: number;
+    height: number;
+}
+
+/** A saved image to list in character and persona galleries (capability API 1.341). */
+export interface CapabilityEntityGalleryImageInput {
+    /** The path `images.save` returned. */
+    sourceFilePath: string;
+    sourceChatImageId?: string | null;
+    characterIds?: string[];
+    personaIds?: string[];
+    prompt: string;
+    provider: string;
+    model: string;
+    width: number;
+    height: number;
+    signal?: AbortSignal;
+    /** false lists it nowhere, as when automatic gallery saving is off. */
+    enabled?: boolean;
 }
 
 export interface CapabilitySpeechTranscribeOptions {

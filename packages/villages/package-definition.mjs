@@ -7,7 +7,7 @@ const menuArtAssets = ["storybook-background-wide.webp", "storybook-scenery-matt
 export const villagesDefinition = {
   id: "villages",
   version: "0.8.1",
-  minEngineVersion: "2.5.0",
+  minEngineVersion: "2.5.2",
   maxEngineExclusive: "4.0.0",
   name: "Villages",
   description:
@@ -29,7 +29,7 @@ export const villagesDefinition = {
   boundaryDisplayName: "Villages",
   capabilityApi: {
     major: 1,
-    minor: 66,
+    minor: 818,
   },
   contributions: {
     slots: ["home-browser-tab"],

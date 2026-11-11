@@ -40,7 +40,6 @@ import {
 } from "../../domain/rules/project-interpretation.js";
 import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
 import { privateRejectedText, rejectedSyntaxError } from "../../domain/rules/rejected-response.js";
-import { renderResidentAdmission } from "../../domain/rules/resident-admission.js";
 import {
   applyResidentMovementTimeline,
   residentLocalIdsAt,
@@ -192,7 +191,7 @@ export function createSceneWriting({
   ) {
     assertCurrentSceneGeneration(session);
 
-    const writingVersion = 4;
+    const writingVersion = 5;
     const requestKey = writingRequestKey(session, message, mode);
     const captured = venueSavedCheckpoint?.<{
       fitted: ReturnType<typeof fitVenueWritingMessages>;
@@ -244,8 +243,9 @@ export function createSceneWriting({
           line.soundOnly?.characterIds.some((id) => audibleIds.includes(id))),
     );
     const history = sceneWritingHistory(session, eligibleEarlierEvidence, message, audibleIds);
-    const earlierEvidence = history?.evidence ?? eligibleEarlierEvidence.slice(-18);
-    const profiles = active.map((person) => {
+    const earlierEvidence = history.evidence;
+    const authoredCast = active.toSorted((a, b) => a.characterId.localeCompare(b.characterId, "en"));
+    const profiles = authoredCast.map((person) => {
       const resident = village.villagers.find((entry) => entry.characterId === person.characterId);
       if (!resident) {
         const npc = findNpc(village, person.characterId);
@@ -317,45 +317,30 @@ export function createSceneWriting({
       message,
       session.placeId,
     );
-    const earlierContext =
-      history?.context ??
-      "Earlier evidence: " +
-        JSON.stringify(
-          earlierEvidence.map((line) => ({
-            id: line.id,
-            speakerId: line.role === "user" ? "player" : line.speakerId,
-            kind: line.kind,
-            ...(line.soundOnly ? { soundOnly: line.soundOnly } : {}),
-            heardBy: line.heardBy,
-            text: line.content.slice(0, 500),
-          })),
-        );
     const blocksFor = (parts: (string | VenueWritingBlock)[]): VenueWritingBlock[] =>
       parts.map((part) =>
         typeof part !== "string"
           ? part
           : {
               text: part,
-              optional:
-                (part === earlierContext ? "history" : undefined) ??
-                (/^(Recent scene history:|Earlier Scene recap:)/u.test(part)
-                  ? "history"
-                  : /^(Shared village memories:|Only .* knows:)/u.test(part)
-                    ? "memory"
-                    : part.startsWith("Relevant world lore:")
-                      ? "lore"
-                      : undefined),
+              optional: /^(Recent scene history:|Earlier Scene recap:)/u.test(part)
+                ? "history"
+                : /^(Shared village memories:|Only .* knows:)/u.test(part)
+                  ? "memory"
+                  : part.startsWith("Relevant world lore:")
+                    ? "lore"
+                    : undefined,
             },
       );
     const input = message;
     const maxTokens = Math.min(model.maxOutputTokens ?? VENUE_REPLY_MAX_TOKENS, VENUE_REPLY_MAX_TOKENS);
     const fitStarted = performance.now();
     const authoredInstructions = blocksFor(
-      active.map((person) => {
+      authoredCast.map((person) => {
         const resident = village.villagers.find((entry) => entry.characterId === person.characterId);
         const card = resident ? readEffectiveVillagerCard(resident) : null;
         return card?.postHistoryInstructions
-          ? `Authored post-history instructions for ${card.name}:\n${card.postHistoryInstructions.replace(/\{\{char\}\}/gi, card.name).replace(/\{\{user\}\}/gi, player.name)}\n${renderResidentAdmission(card.name, card.admission, false)}`
+          ? `Authored post-history instructions for ${card.name}:\n${card.postHistoryInstructions.replace(/\{\{char\}\}/gi, card.name).replace(/\{\{user\}\}/gi, player.name)}`
           : "";
       }),
     );
@@ -388,17 +373,20 @@ export function createSceneWriting({
           SCENE_GM_DIRECTION,
           venueWritingDirection(village.narrationStyle, player.name),
           venueAdditionalWritingGuidance(village.narrationStyle),
-          mode === "greet"
-            ? "Opening: the player's presence is established, never their voluntary speech or actions. input:[]."
-            : "",
-          mode === "leave"
-            ? "Conclude: interpret the ENTIRE authored input, then close naturally; do not invent a player goodbye. Empty input means input:[]."
-            : "",
-          openingSceneDirection(village, session),
         ]),
-        identity: blocksFor(profiles),
+        identity: blocksFor([
+          ...profiles,
+          JSON.stringify({
+            player: {
+              name: player.name,
+              description: player.description,
+              background: renderPlayerBackgroundContext(village),
+            },
+            setting: villageCurrentSetting({ ...village, narrative: undefined }),
+          }),
+        ]),
         conversation: blocksFor([
-          earlierContext,
+          ...history.blocks,
           ...lore.map((text, index) => ({
             text: "Relevant world lore: " + text,
             optional: "lore" as const,
@@ -406,14 +394,18 @@ export function createSceneWriting({
           })),
         ]),
         circumstances: [
+          ...blocksFor([
+            mode === "greet"
+              ? "Opening: the player's presence is established, never their voluntary speech or actions. input:[]."
+              : "",
+            mode === "leave"
+              ? "Conclude: interpret the ENTIRE authored input, then close naturally; do not invent a player goodbye. Empty input means input:[]."
+              : "",
+            openingSceneDirection(village, session),
+          ]),
           {
             text: JSON.stringify({
               context: sceneGmContext(gmContext),
-              player: {
-                name: player.name,
-                description: player.description,
-                background: renderPlayerBackgroundContext(village),
-              },
               residentActivity: active.map((person) => ({
                 characterId: person.characterId,
                 doing:
@@ -428,7 +420,6 @@ export function createSceneWriting({
               pendingRoomQuestions: session.pendingRoomQuestions,
               pendingMoves,
               residentRequestLocalIds: residentLocalIdsAt(session, [], 0),
-              setting: villageCurrentSetting(village),
               weather: moment.weather,
               positions: storedPlace ? sceneLocationContext(session, storedPlace, audience) : undefined,
               environment: village.narrative
@@ -454,17 +445,11 @@ export function createSceneWriting({
           SCENE_GM_SOCIAL,
           SCENE_GM_WISHES,
           SCENE_MEMORY_INSTRUCTION,
-          projectContexts.length ? SCENE_GM_PROJECTS : "",
+          SCENE_GM_PROJECTS,
           PLACE_UPDATE_INSTRUCTION.replace("placeUpdate:", "action:"),
           'Physical action needs happened:true and its exact narration segment. Omit action when nothing changes. Memory screening uses the captured administrative rules; code binds the context fingerprint. Newly introduced narrative circumstances use narrativeIntroduction:{status:"introduced",segment,quote,development}; only an admitted grant permits it. Omit it when quiet. Optional presentation:[{segment,staging:[{characterId,expression?,look?:{target:"player"}|{target:"villager",characterId}|{target:"direction",direction:"left|right"}}]}] selects only supplied expression IDs; omit uncertain cues. Cues never establish actions, hearing, consent or positions.',
+          'Return one complete JSON object with BOTH required keys: {"input":[...],"segments":[...],...optional effects}. Always classify the entire exact original input, even when returning effects or a halt. Empty input means input:[]. Every current explicit access choice and Project approval, builder commitment or withdrawal needs its matching cited effect; include each separately.',
         ]),
-      });
-      const contractAt = blocks.findIndex((block) => block.text === "## Response format and evidence metadata");
-      const contract = blocks.splice(contractAt).slice(1);
-      const identityAt = blocks.findIndex((block) => block.text === "## Complete authored character identity");
-      blocks.splice(identityAt < 0 ? blocks.length : identityAt, 0, ...contract);
-      blocks.push({
-        text: 'Return one complete JSON object with BOTH required keys: {"input":[...],"segments":[...],...optional effects}. Always classify the entire exact original input, even when returning effects or a halt. Empty input means input:[]. Every current explicit access choice and Project approval, builder commitment or withdrawal needs its matching cited effect; include each separately.',
       });
     }
     const ordinary = captured
@@ -552,9 +537,7 @@ export function createSceneWriting({
           : undefined;
       })(),
       projectContexts,
-      earlierEvidence: fitted.messages.some((message) => message.content.includes(earlierContext))
-        ? earlierEvidence
-        : [],
+      earlierEvidence,
     };
   }
   type BoundaryReplacement = {
@@ -682,8 +665,10 @@ export function createSceneWriting({
           throw badGateway("The replacement context does not fit. Your input is saved.");
         return correction;
       });
-      fitted = { ...corrected, loreEntries: fitted.loreEntries, lore: fitted.lore };
+      fitted = { ...corrected, evidenceIds: fitted.evidenceIds, loreEntries: fitted.loreEntries, lore: fitted.lore };
     }
+    earlierEvidence = earlierEvidence.filter((line) => fitted.evidenceIds.includes(line.id));
+    gmContext = { ...gmContext, history: earlierEvidence };
     if (loreInspection) runtimeDebug("lore inspection", loreInspection);
     {
       if (!semantic) throw conflict("System interpretation is not configured.");

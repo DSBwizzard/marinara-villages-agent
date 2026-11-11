@@ -57,6 +57,23 @@ const receipt = (key: string): any =>
 const claim = (key: string, retry = true) =>
   claimSavedResponse(mutate, request(key, retry), ["exact inputs"], () => assert.fail("diagnostic failure"));
 
+const cachedUsage = { promptTokens: 10, completionTokens: 4, cachedPromptTokens: 90, cacheWritePromptTokens: 20 };
+const cachedAttempt = await claim("cache-usage");
+await cachedAttempt.retain(result("valid:cached", cachedUsage), true);
+assert.deepEqual((await claim("cache-usage", false)).cached?.usage, cachedUsage);
+assert.equal(receipt("cache-usage").usage.cachedPromptTokens.known, 90);
+assert.equal(receipt("cache-usage").usage.cacheWritePromptTokens.known, 20);
+const marked = [{ role: "system", content: "stable rules", cacheBreakpoint: true }];
+const markedRequest = await claimSavedResponse(mutate, request("marked"), marked, () => assert.fail());
+await markedRequest.retain(result("valid:marked"), true);
+await assert.rejects(
+  claimSavedResponse(mutate, request("marked", false), [{ role: "system", content: "stable rules" }], () =>
+    assert.fail(),
+  ),
+  /inputs changed/u,
+  "Cache markers belong to the saved request fingerprint",
+);
+
 // Real document CAS: simultaneous claims and completions must choose the same durable response.
 const [a, b] = await Promise.all([claim("race"), claim("race")]);
 const chosen = await Promise.all([a.retain(result("valid:A"), true), b.retain(result("valid:B"), true)]);

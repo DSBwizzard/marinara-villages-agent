@@ -63,7 +63,7 @@ export function sceneWritingHistory(
       citable,
       text,
     };
-    return [{ line, index, row, terms: tokens(text), cost: JSON.stringify(row).length + 1 }];
+    return [{ line, index, row, terms: tokens(text), cost: JSON.stringify(row).length + 2 }];
   });
   const currentExchanges = (scene.submissions ?? []).slice(-2);
   const latestIds = new Set(currentExchanges.flatMap((turn) => turn.replyLineIds ?? []));
@@ -115,6 +115,13 @@ export function sceneWritingHistory(
   const overhead = HISTORY_PREFIX.length + HISTORY_SUFFIX.length + 2;
   const capacity = 12000 - overhead;
   let used = 0;
+  const exchangeRows = rows.filter((row) => latestIds.has(row.line.id));
+  const required = new Set((exchangeRows.length ? exchangeRows : rows.slice(-6)).map((row) => row.line.id));
+  for (const row of rows) {
+    if (!required.has(row.line.id)) continue;
+    selected.set(row.line.id, row);
+    used += row.cost;
+  }
   const take = (candidates: typeof rows, allowance: number) => {
     let spent = 0;
     for (const row of candidates) {
@@ -136,6 +143,15 @@ export function sceneWritingHistory(
       ordered.map(({ line }) => [line.id, createHash("sha256").update(JSON.stringify(line)).digest("hex")]),
     ),
     partial: ordered.length < rows.length,
-    context: ordered.length ? HISTORY_PREFIX + JSON.stringify(ordered.map((item) => item.row)) + HISTORY_SUFFIX : "",
+    blocks: ordered.length
+      ? [
+          { text: HISTORY_PREFIX + HISTORY_SUFFIX },
+          ...ordered.map((item) => ({
+            text: JSON.stringify(item.row),
+            ...(item.row.citable ? { evidenceId: item.line.id } : {}),
+            ...(required.has(item.line.id) ? {} : { optional: "history" as const }),
+          })),
+        ]
+      : [],
   };
 }

@@ -197,19 +197,25 @@ const whisper = {
 };
 const history = sceneWritingHistory({ lines: [narration, whisper] } as any, [narration, whisper] as any, "", ["rosa"]);
 assert.equal(
-  history.context.split("The door opened.").length - 1,
+  history.blocks
+    .map((block) => block.text)
+    .join("\n\n")
+    .split("The door opened.").length - 1,
   1,
   "narrator continuity and evidence share one full line",
 );
-assert(history.context.includes("ONLY IF MARA AGREES."), "evidence conditions after 500 characters remain intact");
-assert(history.context.includes('"visibleToPlayer":false'));
+assert(
+  history.blocks.some((block) => block.text.includes("ONLY IF MARA AGREES.")),
+  "evidence conditions after 500 characters remain intact",
+);
+assert(history.blocks.some((block) => block.text.includes('"visibleToPlayer":false')));
 assert.deepEqual(
   history.evidence.map((row) => row.id),
   ["n", "w"],
 );
 const continuityOnly = sceneWritingHistory({ lines: [narration] } as any, [], "", ["rosa"]);
 assert.deepEqual(continuityOnly.evidence, [], "narrator visibility never becomes resident evidence");
-assert(continuityOnly.context.includes('"citable":false'));
+assert(continuityOnly.blocks.some((block) => block.text.includes('"citable":false')));
 
 const explicitAside = normalizeSparseSceneReply({
   segments: [
@@ -322,11 +328,11 @@ for (const supplied of [
     "Which tea flavour did I dislike?",
     ["rosa"],
   );
-  assert(selected.context.length <= 12000);
+  assert(selected.blocks.map((block) => block.text).join("\n\n").length <= 12000);
   assert(selected.evidence.some((row) => row.id === "tea"));
-  assert(selected.context.includes(preference.content));
+  assert(selected.blocks.some((block) => block.text.includes(preference.content)));
   assert.equal(new Set(selected.evidence.map((row) => row.id)).size, selected.evidence.length);
-  assert(selected.context.includes("omission never proves historical absence"));
+  assert(selected.blocks.some((block) => block.text.includes("omission never proves historical absence")));
   const flooded = Array.from({ length: 70 }, (_, i) =>
     line(
       "topic-" + i,
@@ -352,7 +358,7 @@ for (const supplied of [
     focused.evidence.some((row) => row.id === "tea"),
     "current question outranks unrelated recent topic flood",
   );
-  assert(focused.context.length <= 12000);
+  assert(focused.blocks.map((block) => block.text).join("\n\n").length <= 12000);
   const contextual = line("older-detail", "The larch workshop uses the scarlet dovetail pattern.");
   const contextScene = {
     lines: [contextual, ...filler, line("followup", "The scarlet dovetail pattern.")],
@@ -365,8 +371,8 @@ for (const supplied of [
   );
   const huge = line("oversized", "cinnamon ".repeat(2000));
   const skip = sceneWritingHistory(
-    { lines: [preference, huge], submissions: [] } as any,
-    [preference, huge] as any,
+    { lines: [preference, huge, ...filler.slice(0, 6)], submissions: [] } as any,
+    [preference, huge, ...filler.slice(0, 6)] as any,
     "cinnamon",
     ["rosa"],
   );
@@ -384,9 +390,9 @@ for (const supplied of [
     "cinnamon",
     ["rosa"],
   );
-  assert(!privacy.context.includes(privateLine.content));
-  assert(!privacy.context.includes(sound.content));
-  assert(privacy.context.includes("An indistinct voice."));
+  assert(!privacy.blocks.some((block) => block.text.includes(privateLine.content)));
+  assert(!privacy.blocks.some((block) => block.text.includes(sound.content)));
+  assert(privacy.blocks.some((block) => block.text.includes("An indistinct voice.")));
   assert.deepEqual(sceneWritingHistory({ lines: [], submissions: [] } as any, [], "tea", ["rosa"]).evidence, []);
 }
 

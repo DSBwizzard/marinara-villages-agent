@@ -155,3 +155,9 @@ export function scenePromptPacket(prompt: string): any {
   assert(packet, "The GM receives a structured current Scene context");
   return JSON.parse(packet);
 }
+
+export function sceneIdentityPacket(prompt: string): any {
+  const packet = prompt.split("\n").find((line) => line.startsWith('{"player":'));
+  assert(packet, "The GM receives complete authored player and world identity");
+  return JSON.parse(packet);
+}
