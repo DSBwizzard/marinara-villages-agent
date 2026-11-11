@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
-import { fixture, renovation } from "./fixtures/villages-projects.fixture.js";
+import {
+  correctProjectFixtureRoom,
+  fixture,
+  renovation,
+  seedObservedProjectRoom,
+} from "./fixtures/villages-projects.fixture.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { zoneClosed } from "../packages/villages/src/server/domain/rules/venue-zones.js";
 import {
@@ -11,6 +16,10 @@ import {
   captureSceneContinuity,
   sceneContinuityView,
 } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { projectRoomEntries } from "../packages/villages/src/server/domain/rules/project-room-edits.js";
+import { captureZoneObservation } from "../packages/villages/src/server/domain/rules/zone-observation.js";
+import { observableRoomDescription } from "../packages/villages/src/server/domain/rules/zone-picture.js";
 const f = fixture(),
   now = new Date("2026-10-24T00:00:00Z");
 await f.mutate((state) => {
@@ -31,24 +40,27 @@ await f.mutate((state) => {
       accompanied: false,
     },
   });
+  seedObservedProjectRoom(state, state.venues[0], "common", "A shared room.");
+  seedObservedProjectRoom(state, state.venues[0], "spare", "A quiet side room.");
 });
-const scene: any = {
-  version: 2,
+const scene = coerceSession({
+  version: 5,
   id: "scene",
   villageSeed: f.state().seed,
   placeId: "cafe",
   zoneId: "spare",
+  startedAt: now.toISOString(),
   activeIds: ["a"],
   participants: [],
   lines: [],
   submissions: [],
-};
+});
 scene.continuity = captureSceneContinuity(f.state(), scene, now.getTime());
-const zones = f
-  .state()
-  .venues[0].zones!.filter((zone) => zone.kind !== "exterior")
-  .map((zone) => (zone.id === "common" ? { ...zone, description: "A bright art room." } : zone));
-const id = await renovation(f, { zones });
+const [common] = projectRoomEntries(f.state(), f.state().venues[0], "common", now.toISOString())!;
+const [spare] = projectRoomEntries(f.state(), f.state().venues[0], "spare", now.toISOString())!;
+const id = await renovation(f, {
+  roomEdits: [{ zoneId: "common", entryId: common.id, version: common.version, text: "A bright art room." }],
+});
 await f.agree(id);
 assert.equal(
   zoneClosed(f.state(), f.state().venues[0], f.state().venues[0].zones![1]),
@@ -74,19 +86,26 @@ assert.equal(
   false,
 );
 await f.mutate((state) => {
-  state.venues[0].zones!.find((zone) => zone.id === "spare")!.description = "A new unrelated description.";
+  const venue = state.venues[0],
+    zone = venue.zones!.find((row) => row.id === "spare")!;
+  correctProjectFixtureRoom(state, spare.id, "A new unrelated description.", now.toISOString());
+  zone.observed = captureZoneObservation(
+    venue,
+    zone,
+    observableRoomDescription(state, "cafe", "spare", now.toISOString()),
+  );
 });
 await f.mutate((state) => reconcileProjectLifecycles(state, new Date(now.getTime() + PROJECT_DURATION_MS)));
 target = f.state().venues[0];
 assert.equal(f.get(id).status, "complete");
-assert.equal(target.zones!.find((zone) => zone.id === "common")!.description, "A bright art room.");
+assert.equal(observableRoomDescription(f.state(), "cafe", "common", now.toISOString()), "A bright art room.");
 assert.equal(
-  target.zones!.find((zone) => zone.id === "spare")!.description,
+  observableRoomDescription(f.state(), "cafe", "spare", now.toISOString()),
   "A new unrelated description.",
   "completion preserves untouched live rooms",
 );
 assert.equal(
-  sceneContinuityView(f.state(), scene).venues[0].zones!.find((zone) => zone.id === "spare")!.description,
+  sceneContinuityView(f.state(), scene).venues[0].zones!.find((zone) => zone.id === "spare")!.observed?.description,
   "A quiet side room.",
   "active Scene retains its captured context",
 );

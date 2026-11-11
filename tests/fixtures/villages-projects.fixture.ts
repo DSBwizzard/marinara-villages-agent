@@ -21,6 +21,11 @@ import { createProjectLifecycle } from "../../packages/villages/src/server/featu
 import { initializeRoomContinuity } from "../../packages/villages/src/server/domain/rules/native-continuity.js";
 import { captureZoneObservation } from "../../packages/villages/src/server/domain/rules/zone-observation.js";
 import { projectRoomEntries } from "../../packages/villages/src/server/domain/rules/project-room-edits.js";
+import {
+  applyWorldRepair,
+  repairId,
+  worldRepairRecords,
+} from "../../packages/villages/src/server/domain/rules/repair-records.js";
 
 export function seedObservedProjectRoom(state: VillageState, venue: VillageVenue, zoneId: string, text: string) {
   const zone = venue.zones!.find((row) => row.id === zoneId)!;
@@ -28,6 +33,24 @@ export function seedObservedProjectRoom(state: VillageState, venue: VillageVenue
   initializeRoomContinuity(state, venue.id, zoneId, text, "project-fixture", state.setupAt);
   zone.observed = captureZoneObservation(venue, zone, text);
   return projectRoomEntries(state, venue, zoneId, state.setupAt)!;
+}
+
+export function correctProjectFixtureRoom(state: VillageState, entryId: string, text: string, at: string) {
+  const recordId = repairId("room", entryId);
+  const record = worldRepairRecords(state, false).find((row) => row.id === recordId)!;
+  applyWorldRepair(
+    state,
+    record,
+    {
+      operationId: "correct-" + entryId,
+      recordId,
+      action: "correct",
+      values: { text },
+      knowers: [],
+      expectedRecord: "",
+    },
+    at,
+  );
 }
 
 export function venue(id = "cafe", role: "community" | "residence" = "community"): VillageVenue {
