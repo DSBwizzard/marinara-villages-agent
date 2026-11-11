@@ -1079,8 +1079,16 @@ await runCase("narration-writing/history-prefix", async () => {
     assert.deepEqual(blocks.slice(0, active.length), active);
     const cacheBoundary = request.fitted.messages.findLast((row) => row.cacheBreakpoint);
     assert(cacheBoundary?.content.endsWith(active.at(-1)!));
+    assert.equal(cacheBoundary.role, "user");
+    assert(
+      request.fitted.messages
+        .filter((row) => row.role === "system")
+        .every((row) => !row.content.includes('{"interaction":')),
+    );
     const tail = request.fitted.messages.slice(request.fitted.messages.indexOf(cacheBoundary!) + 1);
-    assert(tail.some((row) => row.content.includes("## Current Scene circumstances")));
+    assert(tail.some((row) => row.role === "user" && row.content.includes("## Current Scene circumstances")));
+    assert.equal(tail.at(-2)?.content, "## Current player submission");
+    assert.equal(tail.at(-1)?.content, keyword);
     if (count <= 12) assert.equal(active.length, count, "short exchanges can append past four and eight turns");
     if (previous.length && active[0] === previous[0])
       assert.deepEqual(active.slice(0, -1), previous, "new turns append to the byte-identical history prefix");

@@ -78,24 +78,33 @@ assert.equal(fitted.messages.at(-1)?.content, input);
 assert.deepEqual(blocks, frozen, "Fitting leaves saved source blocks intact");
 
 const transcript = { ...shared, evidenceId: "transcript", transcript: true as const };
-const constrained = fitVenueWritingMessages(
-  {
-    fitContext(messages, options) {
-      const size = messages.reduce((sum, row) => sum + row.content.length, 0);
-      const limit = [required.text, transcript.text].join("\n\n").length + input.length;
-      return {
-        ...options,
-        messages: size <= limit ? messages : [],
-        trimmed: size > limit,
-        estimatedTokensBefore: Math.ceil(size / 4),
-        estimatedTokensAfter: Math.ceil(Math.min(size, limit) / 4),
-      };
+const transcriptLimit = [required.text, transcript.text].join("\n\n").length + input.length;
+const constrainedFit = (limit: number) =>
+  fitVenueWritingMessages(
+    {
+      fitContext(messages, options) {
+        const size = messages.reduce((sum, row) => sum + row.content.length, 0);
+        return {
+          ...options,
+          messages: size <= limit ? messages : [],
+          trimmed: size > limit,
+          estimatedTokensBefore: Math.ceil(size / 4),
+          estimatedTokensAfter: Math.ceil(Math.min(size, limit) / 4),
+        };
+      },
     },
-  },
-  [required, transcript, ...history.slice(0, 2), memory],
-  input,
-  4096,
-);
+    [required, transcript, ...history.slice(0, 2), memory],
+    input,
+    4096,
+  );
+const constrained = constrainedFit(transcriptLimit + 1);
 assert.deepEqual(constrained.evidenceIds, ["required", "transcript"]);
 assert.equal(constrained.messages.findLast((row) => row.cacheBreakpoint)?.content.endsWith(transcript.text), true);
+assert.equal(constrained.messages.length, 2, "the fit probe never enters the admitted request");
+assert.equal(constrained.messages.at(-1)?.content, input);
+assert.deepEqual(
+  constrainedFit(transcriptLimit).evidenceIds,
+  ["required"],
+  "JSON format headroom is reserved before admission",
+);
 console.log("Sparse narration parsing and bounded exact prompt fitting passed.");

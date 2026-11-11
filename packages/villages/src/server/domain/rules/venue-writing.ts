@@ -36,6 +36,7 @@ export function venueCardProfile(
 
 export type VenueWritingBlock = {
   text: string;
+  role?: "user";
   cacheBreakpoint?: true;
   transcript?: true;
   evidenceId?: string;
@@ -80,7 +81,11 @@ export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWrit
       section ===
         (sections.authoredInstructions.some((block) => block.text.trim()) ? "authoredInstructions" : "identity");
     if (breakpoint && blocks.length) blocks[blocks.length - 1] = { ...blocks.at(-1)!, cacheBreakpoint: true };
-    return blocks.length ? [{ text: `## ${headings[section]}` }, ...blocks] : [];
+    if (!blocks.length) return [];
+    const titled = [{ text: `## ${headings[section]}` }, ...blocks];
+    return ["transcript", "conversation", "circumstances"].includes(section)
+      ? titled.map((block) => ({ ...block, role: "user" as const }))
+      : titled;
   });
 }
 
@@ -90,12 +95,19 @@ export function assembleVenueWritingMessages(blocks: readonly VenueWritingBlock[
   const transcriptEnd = blocks.findLast((block) => block.transcript);
   const messages: CapabilityLanguageModelMessage[] = [];
   let text: string[] = [];
+  let role: "system" | "user" = "system";
   for (const block of blocks) {
     if (block.optional === "lore") continue;
+    const blockRole = block.role ?? "system";
+    if (blockRole !== role && text.length) {
+      messages.push({ role, content: text.join("\n\n") });
+      text = [];
+    }
+    role = blockRole;
     if (block.text) text.push(block.text);
     if ((block.cacheBreakpoint || block.transcript) && text.length) {
       messages.push({
-        role: "system",
+        role,
         content: text.join("\n\n"),
         ...(block.cacheBreakpoint || block === transcriptEnd ? { cacheBreakpoint: true } : {}),
       });
@@ -103,7 +115,7 @@ export function assembleVenueWritingMessages(blocks: readonly VenueWritingBlock[
     }
   }
   if (lore.length) text.push(LORE_REFERENCE_RULE);
-  if (text.length) messages.push({ role: "system", content: text.join("\n\n") });
+  if (text.length) messages.push({ role, content: text.join("\n\n") });
   return [
     ...messages,
     ...(lore.length
@@ -116,6 +128,7 @@ export function assembleVenueWritingMessages(blocks: readonly VenueWritingBlock[
           },
         ]
       : []),
+    ...(role === "user" ? [{ role: "user" as const, content: "## Current player submission" }] : []),
     { role: "user", content: input },
   ] satisfies CapabilityLanguageModelMessage[];
 }
@@ -134,15 +147,23 @@ export function fitVenueWritingMessages(
     const evidence = new Set(kept.map((block) => block.evidenceId));
     kept = kept.filter((block) => hasWritingEvidence(block, evidence));
     const messages = assembleVenueWritingMessages(kept, input);
-    const fitted = model.fitContext(messages, { maxTokens });
-    if (JSON.stringify(fitted.messages) === JSON.stringify(messages))
+    // shortcut: reserve JSON object headroom with a fit-only message until the public fitter accepts responseFormat.
+    const probe = messages.slice();
+    probe.splice(-1, 0, { role: "user", content: "." });
+    const fitted = model.fitContext(probe, { maxTokens });
+    if (JSON.stringify(fitted.messages) === JSON.stringify(probe)) {
+      const measured = model.fitContext(messages, { maxTokens: fitted.maxTokens ?? maxTokens });
       return {
         ...fitted,
+        messages,
+        estimatedTokensBefore: measured.estimatedTokensBefore,
+        estimatedTokensAfter: measured.estimatedTokensAfter,
         trimmed: fitted.trimmed || kept.length < blocks.length,
         evidenceIds: kept.flatMap((block) => (block.evidenceId ? [block.evidenceId] : [])),
         loreEntries: kept.filter((block) => block.optional === "lore").map((block) => block.text),
         lore: mergeLoreUse(kept.flatMap((block) => (block.lore ? [block.lore] : []))),
       };
+    }
     const optional =
       ["history", "memory", "lore", "transcript"]
         .map((kind) =>
