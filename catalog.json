@@ -1,0 +1,1208 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-11-11T19:38:43.923Z",
+  "packages": [
+    {
+      "manifest": {
+        "schemaVersion": 2,
+        "capabilityApi": {
+          "major": 1,
+          "minor": 818
+        },
+        "builtAgainst": {
+          "engineVersion": "2.5.2",
+          "engineCommit": "73441f9a620dfdd94a28b94b68aa8f8b8ef1321c"
+        },
+        "id": "villages",
+        "name": "Villages",
+        "version": "0.8.1",
+        "description": "A text-first shared-life sim in any setting that reconstructs elapsed life when you return. Install the package, restart Marinara Engine when prompted, then open Villages from Home. Add characters from your library, then talk to them in the village tab.",
+        "engine": {
+          "min": "2.5.2",
+          "maxExclusive": "4.0.0"
+        },
+        "kind": [
+          "agent"
+        ],
+        "entrypoints": {
+          "agents": "agents.json",
+          "server": "server.mjs",
+          "client": "client.js"
+        },
+        "contributions": {
+          "slots": [
+            "home-browser-tab"
+          ],
+          "homeBrowserTab": {
+            "label": "Villages",
+            "ariaLabel": "Open Villages",
+            "iconPaths": [
+              "villages-icon.png"
+            ]
+          },
+          "assets": {
+            "paths": [
+              "letter-fonts/alegreya.json",
+              "letter-fonts/amatic-sc.json",
+              "letter-fonts/annie-use-your-telescope.json",
+              "letter-fonts/anonymous-pro.json",
+              "letter-fonts/architects-daughter.json",
+              "letter-fonts/arizonia.json",
+              "letter-fonts/assistant.json",
+              "letter-fonts/bad-script.json",
+              "letter-fonts/beth-ellen.json",
+              "letter-fonts/bitter.json",
+              "letter-fonts/bree-serif.json",
+              "letter-fonts/calligraffitti.json",
+              "letter-fonts/carter-one.json",
+              "letter-fonts/caveat-brush.json",
+              "letter-fonts/caveat.json",
+              "letter-fonts/charm.json",
+              "letter-fonts/comic-neue.json",
+              "letter-fonts/coming-soon.json",
+              "letter-fonts/cormorant-garamond.json",
+              "letter-fonts/courgette.json",
+              "letter-fonts/courier-prime.json",
+              "letter-fonts/covered-by-your-grace.json",
+              "letter-fonts/crafty-girls.json",
+              "letter-fonts/crimson-pro.json",
+              "letter-fonts/crimson-text.json",
+              "letter-fonts/cutive-mono.json",
+              "letter-fonts/dancing-script.json",
+              "letter-fonts/delius-swash-caps.json",
+              "letter-fonts/delius.json",
+              "letter-fonts/dm-mono.json",
+              "letter-fonts/eb-garamond.json",
+              "letter-fonts/edu-nsw-act-foundation.json",
+              "letter-fonts/edu-sa-beginner.json",
+              "letter-fonts/fira-mono.json",
+              "letter-fonts/fredericka-the-great.json",
+              "letter-fonts/gaegu.json",
+              "letter-fonts/gentium-book-plus.json",
+              "letter-fonts/give-you-glory.json",
+              "letter-fonts/gloria-hallelujah.json",
+              "letter-fonts/gochi-hand.json",
+              "letter-fonts/grand-hotel.json",
+              "letter-fonts/great-vibes.json",
+              "letter-fonts/grenze.json",
+              "letter-fonts/handlee.json",
+              "letter-fonts/homemade-apple.json",
+              "letter-fonts/ibm-plex-mono.json",
+              "letter-fonts/im-fell-english.json",
+              "letter-fonts/indie-flower.json",
+              "letter-fonts/inknut-antiqua.json",
+              "letter-fonts/itim.json",
+              "letter-fonts/josefin-slab.json",
+              "letter-fonts/julee.json",
+              "letter-fonts/just-another-hand.json",
+              "letter-fonts/kalam.json",
+              "letter-fonts/kaushan-script.json",
+              "letter-fonts/klee-one.json",
+              "letter-fonts/kristi.json",
+              "letter-fonts/la-belle-aurore.json",
+              "letter-fonts/lekton.json",
+              "letter-fonts/libre-baskerville.json",
+              "letter-fonts/libre-caslon-text.json",
+              "letter-fonts/lora.json",
+              "letter-fonts/loved-by-the-king.json",
+              "letter-fonts/mali.json",
+              "letter-fonts/mansalva.json",
+              "letter-fonts/marck-script.json",
+              "letter-fonts/medievalsharp.json",
+              "letter-fonts/merriweather.json",
+              "letter-fonts/nanum-brush-script.json",
+              "letter-fonts/nanum-pen-script.json",
+              "letter-fonts/neucha.json",
+              "letter-fonts/nixie-one.json",
+              "letter-fonts/nothing-you-could-do.json",
+              "letter-fonts/over-the-rainbow.json",
+              "letter-fonts/overpass-mono.json",
+              "letter-fonts/patrick-hand.json",
+              "letter-fonts/permanent-marker.json",
+              "letter-fonts/petit-formal-script.json",
+              "letter-fonts/pinyon-script.json",
+              "letter-fonts/playfair-display.json",
+              "letter-fonts/poor-story.json",
+              "letter-fonts/press-start-2p.json",
+              "letter-fonts/reenie-beanie.json",
+              "letter-fonts/sacramento.json",
+              "letter-fonts/satisfy.json",
+              "letter-fonts/schoolbell.json",
+              "letter-fonts/shadows-into-light-two.json",
+              "letter-fonts/shadows-into-light.json",
+              "letter-fonts/shantell-sans.json",
+              "letter-fonts/source-code-pro.json",
+              "letter-fonts/source-serif-4.json",
+              "letter-fonts/space-mono.json",
+              "letter-fonts/special-elite.json",
+              "letter-fonts/spectral.json",
+              "letter-fonts/the-girl-next-door.json",
+              "letter-fonts/tillana.json",
+              "letter-fonts/vt323.json",
+              "letter-fonts/waiting-for-the-sunrise.json",
+              "letter-fonts/walter-turncoat.json",
+              "letter-fonts/yomogi.json",
+              "storybook-background-wide.webp",
+              "storybook-scenery-matte.webp"
+            ]
+          }
+        },
+        "files": [
+          {
+            "path": "agents.json",
+            "sha256": "c1f83e4a32a12151216624789f1f5f6bd0dfa905606c15ea693f7de00a90611a",
+            "bytes": 510
+          },
+          {
+            "path": "server.mjs",
+            "sha256": "a70929b358ffa95b815ddd17cca452ff7b1bbccf6a5dcdde06f4f1245a2addb3",
+            "bytes": 1768894
+          },
+          {
+            "path": "client.js",
+            "sha256": "035b066f3d4c2ee603e947ada32f49289728d1ce0687de3fd5d0fac12c86e41d",
+            "bytes": 1828252
+          },
+          {
+            "path": "letter-fonts/PROVENANCE.txt",
+            "sha256": "582f52f8b7c4af3c1a258491a1db7edcd9090746c063d728743dde6f22b5198b",
+            "bytes": 135
+          },
+          {
+            "path": "letter-fonts/alegreya.json",
+            "sha256": "9ea5dc6a2529535d051f5494b9ff096dacb31f08d0a484a99316c121799151b7",
+            "bytes": 116907
+          },
+          {
+            "path": "letter-fonts/alegreya.license.txt",
+            "sha256": "a616403914fd16d254244f482b348af457a54f7e79a7919daec24129c1bd3571",
+            "bytes": 4513
+          },
+          {
+            "path": "letter-fonts/amatic-sc.json",
+            "sha256": "a1fdea35cf4e9b70999ccc703095345d789a715311a5fb5b4f4c62b44c64e7f6",
+            "bytes": 111009
+          },
+          {
+            "path": "letter-fonts/amatic-sc.license.txt",
+            "sha256": "7ae6d8e98e84ecb99fdec0c36485d1b0c5f61202613f4250b1449c4320bd071c",
+            "bytes": 4495
+          },
+          {
+            "path": "letter-fonts/annie-use-your-telescope.json",
+            "sha256": "76947fafdc0882c69373f366c60b9720a7a1b1e17397407dafa17db2012f9b09",
+            "bytes": 32055
+          },
+          {
+            "path": "letter-fonts/annie-use-your-telescope.license.txt",
+            "sha256": "1d3dfa53acd63b2e501101356107b0f996877b678e2dba800918a6887afc4c88",
+            "bytes": 4361
+          },
+          {
+            "path": "letter-fonts/anonymous-pro.json",
+            "sha256": "6117f3213327f579726d99418aea5389e8c6d4050897f7a71379f8177798b86e",
+            "bytes": 62760
+          },
+          {
+            "path": "letter-fonts/anonymous-pro.license.txt",
+            "sha256": "62919ec5b957b41f35415896c5c4f8973c433c1fcee024cad939db8d60af33ee",
+            "bytes": 4619
+          },
+          {
+            "path": "letter-fonts/architects-daughter.json",
+            "sha256": "27c5b026f5922ee7a21067eab1de064fb65290d96ab79f64476d1404fc829203",
+            "bytes": 27017
+          },
+          {
+            "path": "letter-fonts/architects-daughter.license.txt",
+            "sha256": "1d3dfa53acd63b2e501101356107b0f996877b678e2dba800918a6887afc4c88",
+            "bytes": 4361
+          },
+          {
+            "path": "letter-fonts/arizonia.json",
+            "sha256": "c384e36d5ebc05baa40423efd0fc9df84759af3eabdfbaeb2454f6d9dcf29978",
+            "bytes": 91949
+          },
+          {
+            "path": "letter-fonts/arizonia.license.txt",
+            "sha256": "dad510846f5fc9e6b18daacfd51dfbc13d632bc170247557c029e47e4a0f995f",
+            "bytes": 4393
+          },
+          {
+            "path": "letter-fonts/assistant.json",
+            "sha256": "e9a3a2476bd11adca4ebcff80194a6410f43e88a746710bcc21713c3d0df0e4a",
+            "bytes": 25121
+          },
+          {
+            "path": "letter-fonts/assistant.license.txt",
+            "sha256": "ecb04f53902c0169b0c462c57899fbfc145c665beffef9535419594938fa8d31",
+            "bytes": 4612
+          },
+          {
+            "path": "letter-fonts/bad-script.json",
+            "sha256": "e89ee85a3eb5ee4ed19b9d733efe9b096d915b0d75f77337f5d6633c23bef4e0",
+            "bytes": 158651
+          },
+          {
+            "path": "letter-fonts/bad-script.license.txt",
+            "sha256": "ad19cc739a964170765a3f27612b625339996ed6aa0a8ffce3a18f3938914e3b",
+            "bytes": 4388
+          },
+          {
+            "path": "letter-fonts/beth-ellen.json",
+            "sha256": "a5f25863b95eb2c7f81b3c1795f5a16d792b70ca8577405c06b305cff751c5e9",
+            "bytes": 54352
+          },
+          {
+            "path": "letter-fonts/beth-ellen.license.txt",
+            "sha256": "dfe40d5087342bd6de1e6c55a155429695250a13708e4261b1a80edb0ae512a7",
+            "bytes": 4391
+          },
+          {
+            "path": "letter-fonts/bitter.json",
+            "sha256": "84b72e924b0b8975ff36cf4e8fbb6f73c4a7c0cb71a83fc15ab93fd55624c706",
+            "bytes": 88359
+          },
+          {
+            "path": "letter-fonts/bitter.license.txt",
+            "sha256": "b91c95cc26646b272255eb5a195f71fa369d96232754afdfe4e8e4f74eef427b",
+            "bytes": 4491
+          },
+          {
+            "path": "letter-fonts/bree-serif.json",
+            "sha256": "895adff1d9885b5bf1cd32babae70f64f7c882db53aed96f0313cf30adfb2b28",
+            "bytes": 22615
+          },
+          {
+            "path": "letter-fonts/bree-serif.license.txt",
+            "sha256": "bf5b6d583386c0344cc8fe1197e59174a738bd75e7ffa576df46ccf4745fdbfb",
+            "bytes": 4409
+          },
+          {
+            "path": "letter-fonts/calligraffitti.json",
+            "sha256": "702310b43f258cb49e105e55f38a52eb71b262ed049a0ab5dbfea66d97c76076",
+            "bytes": 39868
+          },
+          {
+            "path": "letter-fonts/calligraffitti.license.txt",
+            "sha256": "e5bf31ed42f180dd50a7ed983b19c7970c14f3618c9ef0739af2106505c79757",
+            "bytes": 11369
+          },
+          {
+            "path": "letter-fonts/carter-one.json",
+            "sha256": "68b106bec871ae22ee1b2b869d21d2d23a1d9b99d98e802ac74602d231cbf9cd",
+            "bytes": 37560
+          },
+          {
+            "path": "letter-fonts/carter-one.license.txt",
+            "sha256": "dcb1f15a20975dfcf39ede11c2c3ed577f7782f456d57cdd132231eda43b57d2",
+            "bytes": 4359
+          },
+          {
+            "path": "letter-fonts/caveat-brush.json",
+            "sha256": "b58ac510e365a088f17af867edb8f16c879afc5941fac22d8cd780b91b237408",
+            "bytes": 131731
+          },
+          {
+            "path": "letter-fonts/caveat-brush.license.txt",
+            "sha256": "d7746b9695f8d4676eeab5ab3c512aef85a2c66bd6230f54c15ea2c8ee67fd12",
+            "bytes": 4350
+          },
+          {
+            "path": "letter-fonts/caveat.json",
+            "sha256": "f534692c84df49afcdd31faa22d868fe29ad87c07fa5c4af281c5ada54b1c192",
+            "bytes": 182531
+          },
+          {
+            "path": "letter-fonts/caveat.license.txt",
+            "sha256": "163a2b400e16916ad3196296c946c526d0efce6baf22a2164269ffc62fb9f671",
+            "bytes": 4384
+          },
+          {
+            "path": "letter-fonts/charm.json",
+            "sha256": "544198aeab45859ac6b0a6e4ba726fd37d6515d3eabc4bdb4d6c0cd3830c4f2c",
+            "bytes": 56288
+          },
+          {
+            "path": "letter-fonts/charm.license.txt",
+            "sha256": "9b1fcfd07796171562b0560857368b895f410a82e7ecd9036d7989885e41f97c",
+            "bytes": 4478
+          },
+          {
+            "path": "letter-fonts/comic-neue.json",
+            "sha256": "76fcf44d95016f3ebe153f36f0c5dee449953257cc49383cae1917ef98af4c8b",
+            "bytes": 26136
+          },
+          {
+            "path": "letter-fonts/comic-neue.license.txt",
+            "sha256": "b726facc10345ba22b2e4531984186f2334f55540aacef3e7e1c785e19f581fd",
+            "bytes": 4942
+          },
+          {
+            "path": "letter-fonts/coming-soon.json",
+            "sha256": "3ebcdbcfa0d8f1e9489ee300ec48c36124b44730dc4455ecc940fb6c6a38d92a",
+            "bytes": 28617
+          },
+          {
+            "path": "letter-fonts/coming-soon.license.txt",
+            "sha256": "e5bf31ed42f180dd50a7ed983b19c7970c14f3618c9ef0739af2106505c79757",
+            "bytes": 11369
+          },
+          {
+            "path": "letter-fonts/cormorant-garamond.json",
+            "sha256": "bc22e6d89df596a3557df77f6db1303f5368170f1a14b54188452f059a876b2a",
+            "bytes": 101867
+          },
+          {
+            "path": "letter-fonts/cormorant-garamond.license.txt",
+            "sha256": "732f37009943e7f4378cf37113c9bcc4716af002a8583511aa91ed5d37683e73",
+            "bytes": 4504
+          },
+          {
+            "path": "letter-fonts/courgette.json",
+            "sha256": "3d127e5824e3d3b837e8028a2251196fb3574fe60d3804fb3ee0dd09ed0c03f1",
+            "bytes": 57569
+          },
+          {
+            "path": "letter-fonts/courgette.license.txt",
+            "sha256": "36a16817537dc209c0267c4f27473007a0ed48f9e3faefbcaab30968c51e5200",
+            "bytes": 4413
+          },
+          {
+            "path": "letter-fonts/courier-prime.json",
+            "sha256": "065ef61097b47453e0b44f7ef24542f5ff40542b6e3320fa7ef386444092df88",
+            "bytes": 41929
+          },
+          {
+            "path": "letter-fonts/courier-prime.license.txt",
+            "sha256": "195bfcfb42f32343efc8475e902c3c4936cda7a9c435c39634e03c1e85fa862b",
+            "bytes": 4783
+          },
+          {
+            "path": "letter-fonts/covered-by-your-grace.json",
+            "sha256": "3bef1a1ce1d47ac30631bca2267472cf575048a19e7601ad52965f45460fdf2e",
+            "bytes": 34085
+          },
+          {
+            "path": "letter-fonts/covered-by-your-grace.license.txt",
+            "sha256": "1d3dfa53acd63b2e501101356107b0f996877b678e2dba800918a6887afc4c88",
+            "bytes": 4361
+          },
+          {
+            "path": "letter-fonts/crafty-girls.json",
+            "sha256": "f8f642dde9c9d1c269a02bc61dfe877e2332cbec37118721326d33a69e283e86",
+            "bytes": 49602
+          },
+          {
+            "path": "letter-fonts/crafty-girls.license.txt",
+            "sha256": "3fda4cd12a62601f4c8533e65298f4437c26fe3f80e9727750e59612268728a2",
+            "bytes": 11391
+          },
+          {
+            "path": "letter-fonts/crimson-pro.json",
+            "sha256": "05a9a092245fcf5829edbac3fa6cccd32ae0d2db1e4bbb954f9b42117740ebcd",
+            "bytes": 52538
+          },
+          {
+            "path": "letter-fonts/crimson-pro.license.txt",
+            "sha256": "a36998c273ee904e6303921fce9da2fe49c96b42cfb0bc1b70de9c3b58546a41",
+            "bytes": 4511
+          },
+          {
+            "path": "letter-fonts/crimson-text.json",
+            "sha256": "a600378dee552718506aadb0364399285ec440e83b28817b59793f1342f3d81f",
+            "bytes": 72377
+          },
+          {
+            "path": "letter-fonts/crimson-text.license.txt",
+            "sha256": "b00e2c48903dfe35fed22f2049285c36c22cf5e6e8727f17968af3dbb5c4f966",
+            "bytes": 4968
+          },
+          {
+            "path": "letter-fonts/cutive-mono.json",
+            "sha256": "f56e916dedcfa1e07ba985aaba76681bfc81e8bf0bedf8237259d46f7457dcfd",
+            "bytes": 51965
+          },
+          {
+            "path": "letter-fonts/cutive-mono.license.txt",
+            "sha256": "e754f49f329686044ba2bedea5fce5dd436ae78f49a0038a9e08ce9d079617e6",
+            "bytes": 4388
+          },
+          {
+            "path": "letter-fonts/dancing-script.json",
+            "sha256": "cefbceb807adbac72708ed686c002ff656a904fc489365d9973a0b9d40d1b821",
+            "bytes": 56571
+          },
+          {
+            "path": "letter-fonts/dancing-script.license.txt",
+            "sha256": "c02c0002d3bbd41a16933c162888c400469c7029f1362ca9d60d5ed20ea7d157",
+            "bytes": 4442
+          },
+          {
+            "path": "letter-fonts/delius-swash-caps.json",
+            "sha256": "d5bd058d02c73b11f50e9eb30e0d3ac45d07a92cf9e3ae0d098683f7ee712773",
+            "bytes": 25223
+          },
+          {
+            "path": "letter-fonts/delius-swash-caps.license.txt",
+            "sha256": "8d293fa39a8f47028245e0a742169678005ad37b0cd95e0481aee6ab4e7c1df8",
+            "bytes": 4435
+          },
+          {
+            "path": "letter-fonts/delius.json",
+            "sha256": "6fba868b6b585bf272676849c65d457d0c84f958c1dad5a0888a6b0cc7ebb2ee",
+            "bytes": 22464
+          },
+          {
+            "path": "letter-fonts/delius.license.txt",
+            "sha256": "125890be563129103e9043f40fc967d688dc186ec7d05ce8b1ff0c1d6436e0e0",
+            "bytes": 4381
+          },
+          {
+            "path": "letter-fonts/dm-mono.json",
+            "sha256": "18322c377fe09be2563fe3d7caf67c211c1ddd31c7f16f58a5f9e2afe2652504",
+            "bytes": 32573
+          },
+          {
+            "path": "letter-fonts/dm-mono.license.txt",
+            "sha256": "d2766c396a8534cba53340f8af2037749b6a0a1dd3587348c917a70e779d2e32",
+            "bytes": 4937
+          },
+          {
+            "path": "letter-fonts/eb-garamond.json",
+            "sha256": "68aef8703ac8935b44089d87ff3ad19d32f8c3651bdf0e3768cdb93b501efbe5",
+            "bytes": 179332
+          },
+          {
+            "path": "letter-fonts/eb-garamond.license.txt",
+            "sha256": "f03c8eda63076cd52317dcd40aa04db8472d4cb592dfaafa385129dfdafc7f9c",
+            "bytes": 4519
+          },
+          {
+            "path": "letter-fonts/edu-nsw-act-foundation.json",
+            "sha256": "a981f72dbe5e303ecc371639f2da848b263d0b13e17a9e398dcba0eea0690a1e",
+            "bytes": 13828
+          },
+          {
+            "path": "letter-fonts/edu-nsw-act-foundation.license.txt",
+            "sha256": "75b8600de3b3997f68ccb3e3d2452a9ab28d7e2955b549006800ebc9cd980d42",
+            "bytes": 4424
+          },
+          {
+            "path": "letter-fonts/edu-sa-beginner.json",
+            "sha256": "b1d9c1ea2451fa1e92cad0d9b2bbc2c227068c3d41b3a6f7f28b5107376d1f59",
+            "bytes": 12365
+          },
+          {
+            "path": "letter-fonts/edu-sa-beginner.license.txt",
+            "sha256": "75b8600de3b3997f68ccb3e3d2452a9ab28d7e2955b549006800ebc9cd980d42",
+            "bytes": 4424
+          },
+          {
+            "path": "letter-fonts/fira-mono.json",
+            "sha256": "a79282cfb9df9fd72770b534bad6206321f6bfe8394f84fa045ee969ecd47c6f",
+            "bytes": 95943
+          },
+          {
+            "path": "letter-fonts/fira-mono.license.txt",
+            "sha256": "18aabf190848725e2576eefb5c29ba06aac1029d02132252a7f312eac2e50cf3",
+            "bytes": 4314
+          },
+          {
+            "path": "letter-fonts/fredericka-the-great.json",
+            "sha256": "b443299ee8cc8d36d606bbacc799c6897e0876f96a8b45326dcd7b0567198431",
+            "bytes": 290083
+          },
+          {
+            "path": "letter-fonts/fredericka-the-great.license.txt",
+            "sha256": "d460169408ecf33347bf73b89907e5ff3a835767c0cad22b44bec942719b93f2",
+            "bytes": 4426
+          },
+          {
+            "path": "letter-fonts/gaegu.json",
+            "sha256": "929651e21ce945e04ccdc36d8b68bfc2f74489c16893a209c897d92be2143b46",
+            "bytes": 23087
+          },
+          {
+            "path": "letter-fonts/gaegu.license.txt",
+            "sha256": "0dd655c75c261429916cd55b8cedffb0f54cb022fd50193bda73062e330edad9",
+            "bytes": 4460
+          },
+          {
+            "path": "letter-fonts/gentium-book-plus.json",
+            "sha256": "bce80c5267190d5b4eefa57dbf859b4d69071a0ff455bdbe6257a0bf5e0d4c1f",
+            "bytes": 209558
+          },
+          {
+            "path": "letter-fonts/gentium-book-plus.license.txt",
+            "sha256": "c73576b5865082d9675c5362b37f42b3b3fd92e403dd92c32775e8d74a9a9cf0",
+            "bytes": 4556
+          },
+          {
+            "path": "letter-fonts/give-you-glory.json",
+            "sha256": "7ff2898898edc34b1591fd78482eecd7daae8ae06faf81add87b27a7483500dd",
+            "bytes": 38763
+          },
+          {
+            "path": "letter-fonts/give-you-glory.license.txt",
+            "sha256": "a8075afbaa433bc32fa710e195b518112babb066ee1e7d55e5c06dc6bba9347a",
+            "bytes": 4507
+          },
+          {
+            "path": "letter-fonts/gloria-hallelujah.json",
+            "sha256": "bc8797282fc113547b111a0c29ffc6db12fe5354efa44f030533ba10f55ecd7f",
+            "bytes": 39661
+          },
+          {
+            "path": "letter-fonts/gloria-hallelujah.license.txt",
+            "sha256": "974d229d083921c6ed420026a45857eb3d2277f2656b156e0d233f175b382d60",
+            "bytes": 4387
+          },
+          {
+            "path": "letter-fonts/gochi-hand.json",
+            "sha256": "7f500d9efdfb2e0d0e491b37ee4fd9ba740d529086a10e2d6b2f9bd65374b97d",
+            "bytes": 26584
+          },
+          {
+            "path": "letter-fonts/gochi-hand.license.txt",
+            "sha256": "9f11d6fbbdd628f8d27e94b53f6bf3e7087f66fc4c020925997bbef208bc3edf",
+            "bytes": 4417
+          },
+          {
+            "path": "letter-fonts/grand-hotel.json",
+            "sha256": "82786720567fcffd24a80c0b1bd189ed0c9a9ee1c1c0930f3d0a43440b7465ac",
+            "bytes": 40589
+          },
+          {
+            "path": "letter-fonts/grand-hotel.license.txt",
+            "sha256": "d511310385f41a988fe9a6269904b12c6f5fa9854323611ef755303ccb4a9478",
+            "bytes": 4432
+          },
+          {
+            "path": "letter-fonts/great-vibes.json",
+            "sha256": "ae79f41ed2c6f89e9370d10c511100dcee2438d167ee8280f7cd1db04222df2e",
+            "bytes": 232184
+          },
+          {
+            "path": "letter-fonts/great-vibes.license.txt",
+            "sha256": "75368fe8ff3eafefaf6d086a8b6c47c5d561bf029c34e2b089607820fc68fead",
+            "bytes": 4398
+          },
+          {
+            "path": "letter-fonts/grenze.json",
+            "sha256": "fc6bd28e4f19bbe7a0ef817dc88b12b40b22b9cec6d0b3637141b081857a5102",
+            "bytes": 42439
+          },
+          {
+            "path": "letter-fonts/grenze.license.txt",
+            "sha256": "1160154960f3a132f0d014459f93e9b120b79784fe07a4c4ab7e9edb9e9cf62b",
+            "bytes": 4495
+          },
+          {
+            "path": "letter-fonts/handlee.json",
+            "sha256": "df3fee23d4452a0f47b745366a2dbf3327c659ce1bbd33707af6e04a5d0396e8",
+            "bytes": 21569
+          },
+          {
+            "path": "letter-fonts/handlee.license.txt",
+            "sha256": "8ed970d7831958cd20c6504aa5e09280dc7e548c7978df262fbc3d0ef0b566f9",
+            "bytes": 4420
+          },
+          {
+            "path": "letter-fonts/homemade-apple.json",
+            "sha256": "3285b369ad16bd1aa9a3f29d129f99e87f14013b139e34e341fa020092278d6a",
+            "bytes": 64504
+          },
+          {
+            "path": "letter-fonts/homemade-apple.license.txt",
+            "sha256": "044195cfd809d76ea2aaf1c8e3dd80b9fd9447227efc05e51fc906c4a451d451",
+            "bytes": 11373
+          },
+          {
+            "path": "letter-fonts/ibm-plex-mono.json",
+            "sha256": "fa21291cffe5fe951957a8ffcbae644c08269f53c749a86c05cdc5ab8121b0f1",
+            "bytes": 65826
+          },
+          {
+            "path": "letter-fonts/ibm-plex-mono.license.txt",
+            "sha256": "23b0a9d0c6d3f140a0b77e483c5cfa6bba574325ef5cb189ed9f2fec4884533f",
+            "bytes": 5299
+          },
+          {
+            "path": "letter-fonts/im-fell-english.json",
+            "sha256": "7160ca864c6ea2f4d8cb59a502f7086f79c804a935588ef2cb2592d3a98e580f",
+            "bytes": 79885
+          },
+          {
+            "path": "letter-fonts/im-fell-english.license.txt",
+            "sha256": "18aabf190848725e2576eefb5c29ba06aac1029d02132252a7f312eac2e50cf3",
+            "bytes": 4314
+          },
+          {
+            "path": "letter-fonts/indie-flower.json",
+            "sha256": "ab2370347658cbf8d68092233893d2ec9f2b721ca44face1bc5b772eb7f35c2a",
+            "bytes": 40443
+          },
+          {
+            "path": "letter-fonts/indie-flower.license.txt",
+            "sha256": "0195774c0deaaf2da57fe0b57444e9f33da639b95610c2fabfe14f721e355613",
+            "bytes": 4364
+          },
+          {
+            "path": "letter-fonts/inknut-antiqua.json",
+            "sha256": "ae0e835f7e322c2508a8e28fe52eca3827c1f971475857da3c27979241cf05b9",
+            "bytes": 148147
+          },
+          {
+            "path": "letter-fonts/inknut-antiqua.license.txt",
+            "sha256": "801845c92b9d33739297e29da7828be3ceb0e9d6ac33c7d85d61784d167c0d3a",
+            "bytes": 4923
+          },
+          {
+            "path": "letter-fonts/itim.json",
+            "sha256": "874d678a3881bb5028fb345b1a15febf8008b7e1c3197aa35765f5a88e264818",
+            "bytes": 132073
+          },
+          {
+            "path": "letter-fonts/itim.license.txt",
+            "sha256": "a30d9716e7d743774d5e84a94674b4f7d62aaf101d59c833b4799a4327d5b275",
+            "bytes": 4435
+          },
+          {
+            "path": "letter-fonts/josefin-slab.json",
+            "sha256": "d12d128acca7a37d9f751f6337d83793cd4e707644771f5c617de294349352be",
+            "bytes": 15814
+          },
+          {
+            "path": "letter-fonts/josefin-slab.license.txt",
+            "sha256": "9cb2377ed32f0d2ae48db0b4353df3e548d70e0bdd5dc9ecba546565eac2ad2c",
+            "bytes": 4588
+          },
+          {
+            "path": "letter-fonts/julee.json",
+            "sha256": "927633fb16a126a5c42b91c3436f1586812589a6dc96798025fcebc858b8e9da",
+            "bytes": 48385
+          },
+          {
+            "path": "letter-fonts/julee.license.txt",
+            "sha256": "b86618969d47a6b6c0fd5a75a04dc719fc6bac91d6fcdbfe23e2c6303c74a658",
+            "bytes": 4412
+          },
+          {
+            "path": "letter-fonts/just-another-hand.json",
+            "sha256": "cad644397048088b639b7ac37c8f9a72aee0b5148a002fbbceb63030fdc992b9",
+            "bytes": 74033
+          },
+          {
+            "path": "letter-fonts/just-another-hand.license.txt",
+            "sha256": "537aa64935057b48bf55502bb5662230aa2914fc8fd1d5955a786a3bb2056894",
+            "bytes": 11489
+          },
+          {
+            "path": "letter-fonts/kalam.json",
+            "sha256": "4d1b3d48846dfc1a58c2abfd138426855549cff91a8885710e8d4f5cef77049b",
+            "bytes": 191844
+          },
+          {
+            "path": "letter-fonts/kalam.license.txt",
+            "sha256": "b2028be7f17101212ece61b1204058e720514dadfec4d271c54503619a51fcf3",
+            "bytes": 4541
+          },
+          {
+            "path": "letter-fonts/kaushan-script.json",
+            "sha256": "aeada569a6dbe6629c9ec92653f19373fe7614e9973565949928eb3f4685ab79",
+            "bytes": 75527
+          },
+          {
+            "path": "letter-fonts/kaushan-script.license.txt",
+            "sha256": "ae018242e581cd9d21e40d19f62642fd15c82dc22ac3f523a6db93590f0e33e7",
+            "bytes": 4491
+          },
+          {
+            "path": "letter-fonts/klee-one.json",
+            "sha256": "6f36e258014497bf50520fa6fd2a274b606a259ba91a3e98f144463b41df9cb8",
+            "bytes": 73576
+          },
+          {
+            "path": "letter-fonts/klee-one.license.txt",
+            "sha256": "ef40a5fcb36a0639be2676228803b957b5279ce95b992323dcb3ea724cf344b3",
+            "bytes": 4488
+          },
+          {
+            "path": "letter-fonts/kristi.json",
+            "sha256": "9e84eedeea17759a072bdb1b7d5bb181d9a6e6591622ba2ec951a0c3062635ee",
+            "bytes": 34204
+          },
+          {
+            "path": "letter-fonts/kristi.license.txt",
+            "sha256": "4225cb29a515e2200f8438b357566b29e5ae9b4a3c6a9c4a81d095725b33e1ad",
+            "bytes": 4407
+          },
+          {
+            "path": "letter-fonts/la-belle-aurore.json",
+            "sha256": "2b889044726242c0db79977217157b5d64e62fafdeb67d675e59e66633f9f250",
+            "bytes": 38621
+          },
+          {
+            "path": "letter-fonts/la-belle-aurore.license.txt",
+            "sha256": "974d229d083921c6ed420026a45857eb3d2277f2656b156e0d233f175b382d60",
+            "bytes": 4387
+          },
+          {
+            "path": "letter-fonts/lekton.json",
+            "sha256": "d656a4c14901a4b5efe9e7d41134974ac28434880acbb2261054a74929bf9565",
+            "bytes": 19671
+          },
+          {
+            "path": "letter-fonts/lekton.license.txt",
+            "sha256": "624af70fe6222dcaf681927fd991c7719fb745592936c9dd148a2f93b62e34a4",
+            "bytes": 4800
+          },
+          {
+            "path": "letter-fonts/libre-baskerville.json",
+            "sha256": "c986e67d0db0bbd6ccba64a538dcc5f518023239fb5340ce0f9657f79593b120",
+            "bytes": 55273
+          },
+          {
+            "path": "letter-fonts/libre-baskerville.license.txt",
+            "sha256": "8490e863633e537100d6d18755d994ea30b0b44741876a17809d28becf45ce11",
+            "bytes": 4541
+          },
+          {
+            "path": "letter-fonts/libre-caslon-text.json",
+            "sha256": "826ae37fe5d5c97a41bd9b62ad5021df21126039f20e36756bfb3203806f3e5a",
+            "bytes": 52473
+          },
+          {
+            "path": "letter-fonts/libre-caslon-text.license.txt",
+            "sha256": "f655e804b05a2ed71ec88ef3006394e51972ec20546d4a14328a43c53ccd2607",
+            "bytes": 4662
+          },
+          {
+            "path": "letter-fonts/lora.json",
+            "sha256": "cb70691f51ea2d64a0d154a642ed67c77762d7b224cc374e83ac26289fe355b8",
+            "bytes": 83477
+          },
+          {
+            "path": "letter-fonts/lora.license.txt",
+            "sha256": "948aed765160f7b974105606c21994715a171f89fca48e57bf1e0a23aca0bef1",
+            "bytes": 4563
+          },
+          {
+            "path": "letter-fonts/loved-by-the-king.json",
+            "sha256": "be5461067d54716ebc3aa777485fce3ea2c0239a291e35aa4124913cbba65678",
+            "bytes": 23825
+          },
+          {
+            "path": "letter-fonts/loved-by-the-king.license.txt",
+            "sha256": "b83841556bde98f79f6220097e3388fe4e78dbd6f41614324f73f03a404ad2c5",
+            "bytes": 4391
+          },
+          {
+            "path": "letter-fonts/mali.json",
+            "sha256": "0b2435541c6a6a892b24c850fe016f7e77948e0be861057bbd83dd2dfef207e9",
+            "bytes": 51689
+          },
+          {
+            "path": "letter-fonts/mali.license.txt",
+            "sha256": "60145643c5699ef9b83a8779e668c0024ec87d4cb7d06eecd58df94f9141dd91",
+            "bytes": 5458
+          },
+          {
+            "path": "letter-fonts/mansalva.json",
+            "sha256": "a4549e81e206c49594d27cc9f4e9f3629522f229ce1d701e7d7cad06eb769b85",
+            "bytes": 196326
+          },
+          {
+            "path": "letter-fonts/mansalva.license.txt",
+            "sha256": "35f79975dcbac65d1b5d666d40dd4185b694c6415a075871d31dfc1a600be37f",
+            "bytes": 4390
+          },
+          {
+            "path": "letter-fonts/marck-script.json",
+            "sha256": "0f7367e24aa74fe44b5632d6dfdc348106a8c2ae6fc52a0e00b2758d0d145b2a",
+            "bytes": 43631
+          },
+          {
+            "path": "letter-fonts/marck-script.license.txt",
+            "sha256": "bc79b2867a4357a57c3aaf112545723516083d022d2675d5af22b3e06090b07c",
+            "bytes": 4419
+          },
+          {
+            "path": "letter-fonts/medievalsharp.json",
+            "sha256": "e6ff67ff1d59ce36f7a0ae08f66f844ab2d741457346d4bbde8b5a47a4dba36c",
+            "bytes": 81737
+          },
+          {
+            "path": "letter-fonts/medievalsharp.license.txt",
+            "sha256": "e1db30b4d20891cfd7dd5bfd33429352eae9faa67f8320abd0aed265d7d05a9b",
+            "bytes": 4364
+          },
+          {
+            "path": "letter-fonts/merriweather.json",
+            "sha256": "d95993d43a0c284408fd18bd7a1d809fc73d5784df067a2b595ad756dd52cd7a",
+            "bytes": 190725
+          },
+          {
+            "path": "letter-fonts/merriweather.license.txt",
+            "sha256": "aa677c3f7682d9c4f7aa48fae3f3b9d0f8d70ac6ab47b9bc20a9cc2879e15af0",
+            "bytes": 4611
+          },
+          {
+            "path": "letter-fonts/nanum-brush-script.json",
+            "sha256": "7c6df5639308c6dd5c2f49a9dbf1c3cee09b4e45c9ae73170be6bbdcbf0f961e",
+            "bytes": 24592
+          },
+          {
+            "path": "letter-fonts/nanum-brush-script.license.txt",
+            "sha256": "1dd95eaa65cececb5f3051339367509e7df84987f943c47c1335557889627f4a",
+            "bytes": 4403
+          },
+          {
+            "path": "letter-fonts/nanum-pen-script.json",
+            "sha256": "b366a7a9aa19a676859a199b1f3c1f7ef0da3a753b9fbc0996a98e42d49b3811",
+            "bytes": 20010
+          },
+          {
+            "path": "letter-fonts/nanum-pen-script.license.txt",
+            "sha256": "1dd95eaa65cececb5f3051339367509e7df84987f943c47c1335557889627f4a",
+            "bytes": 4403
+          },
+          {
+            "path": "letter-fonts/neucha.json",
+            "sha256": "e1625f0e6e724eda8b70def5c5828befe322f6ac215d8a30c8a0dc331dc0a6d9",
+            "bytes": 59654
+          },
+          {
+            "path": "letter-fonts/neucha.license.txt",
+            "sha256": "11bfa7e3ef2f0dc6dedfd34f1eb03f60a8aa9c29205bf3f209d31468350d3108",
+            "bytes": 4388
+          },
+          {
+            "path": "letter-fonts/nixie-one.json",
+            "sha256": "86aee418fa91f14cd95f552cddad7031ba788ef155a64fcfb4fee3a00c664455",
+            "bytes": 20963
+          },
+          {
+            "path": "letter-fonts/nixie-one.license.txt",
+            "sha256": "0387b20c850fa1e46f9c50a35ab23af7951b1c3c7a6217b392d4363fb1fb5bb2",
+            "bytes": 4392
+          },
+          {
+            "path": "letter-fonts/nothing-you-could-do.json",
+            "sha256": "79d11cbd82f6ad95116f2c982a882f8fbfa763a5afded24591ad65552f15af28",
+            "bytes": 21514
+          },
+          {
+            "path": "letter-fonts/nothing-you-could-do.license.txt",
+            "sha256": "ac3fd812996304dbb5b5f5f723329fb2a589f1309c56457f7dc329dbdf21e8f0",
+            "bytes": 4530
+          },
+          {
+            "path": "letter-fonts/over-the-rainbow.json",
+            "sha256": "469f308837a963026032fde8e8366f333e5ad4e6ca9f60379ec359dc4c675203",
+            "bytes": 39803
+          },
+          {
+            "path": "letter-fonts/over-the-rainbow.license.txt",
+            "sha256": "974d229d083921c6ed420026a45857eb3d2277f2656b156e0d233f175b382d60",
+            "bytes": 4387
+          },
+          {
+            "path": "letter-fonts/overpass-mono.json",
+            "sha256": "cdef98557b377909f9916001440e5d12abf605d96780aa401f77366a40a96c3c",
+            "bytes": 69218
+          },
+          {
+            "path": "letter-fonts/overpass-mono.license.txt",
+            "sha256": "a5ee96d5e287afc15cf4343be02e93cf678c285e52367658781cb5ab198ffd13",
+            "bytes": 4391
+          },
+          {
+            "path": "letter-fonts/patrick-hand.json",
+            "sha256": "8296672e83871a6e4c063c77b0e145dfbdd8d9ba05269b06998e89e914a05710",
+            "bytes": 74309
+          },
+          {
+            "path": "letter-fonts/patrick-hand.license.txt",
+            "sha256": "dbf0df430d5997121cc569dbe4f9198f76cf393114438f1f6c80a49f06f029d6",
+            "bytes": 4375
+          },
+          {
+            "path": "letter-fonts/permanent-marker.json",
+            "sha256": "0210dfcd34ff7c0c34e077790fc61d14753ac66035383a0e7ce1c076a390e48a",
+            "bytes": 39466
+          },
+          {
+            "path": "letter-fonts/permanent-marker.license.txt",
+            "sha256": "044195cfd809d76ea2aaf1c8e3dd80b9fd9447227efc05e51fc906c4a451d451",
+            "bytes": 11373
+          },
+          {
+            "path": "letter-fonts/petit-formal-script.json",
+            "sha256": "fac1b7c00be7294f62e7f6e20c9e8fecc19c46fc196aec12f83a6bcdcc5eaed8",
+            "bytes": 68889
+          },
+          {
+            "path": "letter-fonts/petit-formal-script.license.txt",
+            "sha256": "380ee711461dc0e82f2d38c43cf8bbf9bccd2a703d1b916c6354d67f35ae349f",
+            "bytes": 4569
+          },
+          {
+            "path": "letter-fonts/pinyon-script.json",
+            "sha256": "17f4d4e889a5eaaeafe3d48f77257e399967d3a2a7ac8bffbf216b7f6727bed0",
+            "bytes": 114668
+          },
+          {
+            "path": "letter-fonts/pinyon-script.license.txt",
+            "sha256": "29f8e1ec512ca39afb6adc6e9d84e831b2e9a968ca5120c6d4f4b6e7b0141c71",
+            "bytes": 4389
+          },
+          {
+            "path": "letter-fonts/playfair-display.json",
+            "sha256": "429d3cb960275a31212b90229a1bdfd7299c9d26229017f7c14813b0f159aa91",
+            "bytes": 68493
+          },
+          {
+            "path": "letter-fonts/playfair-display.license.txt",
+            "sha256": "c052aafd2a71e90bcee6e69f475029d430a10d548c08ffcae350171f0e9668b1",
+            "bytes": 4630
+          },
+          {
+            "path": "letter-fonts/poor-story.json",
+            "sha256": "09cf04a0638a1af8e32a6c75c19492d3418334c155e4acb2083d0d3994b77a99",
+            "bytes": 15224
+          },
+          {
+            "path": "letter-fonts/poor-story.license.txt",
+            "sha256": "ed80f0ffdf9088b38cc85305b0122e43e0192bf6f4bbb71d6ce59ffd93c7a265",
+            "bytes": 4353
+          },
+          {
+            "path": "letter-fonts/press-start-2p.json",
+            "sha256": "702469dd8bcf5a016f2650c04f7201df9cf8870283956372f1c8708fbb1ec98b",
+            "bytes": 56942
+          },
+          {
+            "path": "letter-fonts/press-start-2p.license.txt",
+            "sha256": "98e451fe911e5ee4a1a45359535dc30ea7df28b8d9a9cd1f741778efab1387ee",
+            "bytes": 4412
+          },
+          {
+            "path": "letter-fonts/reenie-beanie.json",
+            "sha256": "a230a2df24670778256e89cce3b3aa8d3db71ff85b5359b002bf07bb2272856c",
+            "bytes": 38059
+          },
+          {
+            "path": "letter-fonts/reenie-beanie.license.txt",
+            "sha256": "e9250f36f6e77d626c0d142de7f075f6223343f681ef4192856331b0145dcd5c",
+            "bytes": 4369
+          },
+          {
+            "path": "letter-fonts/sacramento.json",
+            "sha256": "6cafdb29c67f82b735f7642dfe3ee3216c955ac7f181de7c9884a08fd35ea172",
+            "bytes": 50831
+          },
+          {
+            "path": "letter-fonts/sacramento.license.txt",
+            "sha256": "bdc5980c99813eeb5e0e8188d41b191378dd6fecdd84aeb3a49872ea9f913889",
+            "bytes": 4431
+          },
+          {
+            "path": "letter-fonts/satisfy.json",
+            "sha256": "e203b361c22c7c6e0a54ab5f3b96e84fd65640dfc447bcb3e55a2be101283238",
+            "bytes": 30337
+          },
+          {
+            "path": "letter-fonts/satisfy.license.txt",
+            "sha256": "8c6fc21d7d28d656edfb1051afbd0b5c7577456c8d474d7b1da3233ba3b49fa5",
+            "bytes": 11373
+          },
+          {
+            "path": "letter-fonts/schoolbell.json",
+            "sha256": "91cc90aaf0e8bd7e40b4a0e9711ff0bf6ee24d75ebe7c7a989271e59505d00fb",
+            "bytes": 28584
+          },
+          {
+            "path": "letter-fonts/schoolbell.license.txt",
+            "sha256": "044195cfd809d76ea2aaf1c8e3dd80b9fd9447227efc05e51fc906c4a451d451",
+            "bytes": 11373
+          },
+          {
+            "path": "letter-fonts/shadows-into-light-two.json",
+            "sha256": "5ba51bc69047a35a98968cf7682bd90a043c02bb4fc4a0bc8e14f2b396231b37",
+            "bytes": 32671
+          },
+          {
+            "path": "letter-fonts/shadows-into-light-two.license.txt",
+            "sha256": "201e55244b2c98007d008d2362c7a422a4dcf2bd396bcc8b47ae2eef4e043077",
+            "bytes": 4368
+          },
+          {
+            "path": "letter-fonts/shadows-into-light.json",
+            "sha256": "d836cb581a6c7f002e50825deade9a8a16cd071c6c6096c66278cb12761cf273",
+            "bytes": 34347
+          },
+          {
+            "path": "letter-fonts/shadows-into-light.license.txt",
+            "sha256": "974d229d083921c6ed420026a45857eb3d2277f2656b156e0d233f175b382d60",
+            "bytes": 4387
+          },
+          {
+            "path": "letter-fonts/shantell-sans.json",
+            "sha256": "e0b1fd59298d5e99f001571a26621b02b4425b423a384a33d5f3752967e149ec",
+            "bytes": 169474
+          },
+          {
+            "path": "letter-fonts/shantell-sans.license.txt",
+            "sha256": "cde8ad5bfbaa0f4b916daff2b107d45dd7a84706c627fd3f669f6cc2af563843",
+            "bytes": 4536
+          },
+          {
+            "path": "letter-fonts/source-code-pro.json",
+            "sha256": "1c1f484b3919fe7f9fbe0e2bde6ce63ed6e4345eb48e1b32f6bf0025ab297499",
+            "bytes": 70796
+          },
+          {
+            "path": "letter-fonts/source-code-pro.license.txt",
+            "sha256": "18aabf190848725e2576eefb5c29ba06aac1029d02132252a7f312eac2e50cf3",
+            "bytes": 4314
+          },
+          {
+            "path": "letter-fonts/source-serif-4.json",
+            "sha256": "04f257a59751b328d96505c0161abf1aa852ceae7665d2f468cdad7f7d7d58f3",
+            "bytes": 98246
+          },
+          {
+            "path": "letter-fonts/source-serif-4.license.txt",
+            "sha256": "18aabf190848725e2576eefb5c29ba06aac1029d02132252a7f312eac2e50cf3",
+            "bytes": 4314
+          },
+          {
+            "path": "letter-fonts/space-mono.json",
+            "sha256": "448bf69603e721bcbf305f6485c5abff61d310523e13d26b2f1f484afd5dff6e",
+            "bytes": 52963
+          },
+          {
+            "path": "letter-fonts/space-mono.license.txt",
+            "sha256": "761663b7fb7667764f42243f9b1b2bcfccf41b158a7ab508bed4961dcf377eab",
+            "bytes": 4726
+          },
+          {
+            "path": "letter-fonts/special-elite.json",
+            "sha256": "08602a880923b9b466bc022b2c1d09a76c21c67feaba9b7047ec9b2c91747345",
+            "bytes": 104749
+          },
+          {
+            "path": "letter-fonts/special-elite.license.txt",
+            "sha256": "537aa64935057b48bf55502bb5662230aa2914fc8fd1d5955a786a3bb2056894",
+            "bytes": 11489
+          },
+          {
+            "path": "letter-fonts/spectral.json",
+            "sha256": "d9430d46f5b19a64d248160c1d1c0f5a4958ff8d7411561568d3f5003458158b",
+            "bytes": 95549
+          },
+          {
+            "path": "letter-fonts/spectral.license.txt",
+            "sha256": "22ca006c8a0edb513ee188722d72e9f65cbb19f07abb71bd7a898bc926503609",
+            "bytes": 5866
+          },
+          {
+            "path": "letter-fonts/the-girl-next-door.json",
+            "sha256": "d6d370e2538b280ba3b9dd7501fe3825389d07a1430b69b35b3070782fcf84e9",
+            "bytes": 46275
+          },
+          {
+            "path": "letter-fonts/the-girl-next-door.license.txt",
+            "sha256": "974d229d083921c6ed420026a45857eb3d2277f2656b156e0d233f175b382d60",
+            "bytes": 4387
+          },
+          {
+            "path": "letter-fonts/tillana.json",
+            "sha256": "b9a8abb1319d5d1082e448542b78a7376acc5f86ef64af0cf703dd85beb6ad87",
+            "bytes": 137506
+          },
+          {
+            "path": "letter-fonts/tillana.license.txt",
+            "sha256": "123341eb5fd12387617c72bbf5954d6d73c7c7e00c966d333880d740f7bccb0f",
+            "bytes": 4725
+          },
+          {
+            "path": "letter-fonts/vt323.json",
+            "sha256": "d0181265dc052fea73b2d6a8923b915172f56584eab68747b680880da8662a7f",
+            "bytes": 56436
+          },
+          {
+            "path": "letter-fonts/vt323.license.txt",
+            "sha256": "27d9af34210253e7ca1251fbace86c6f65b40031d6ce1a75493a1b2093631298",
+            "bytes": 4367
+          },
+          {
+            "path": "letter-fonts/waiting-for-the-sunrise.json",
+            "sha256": "4acce3d041a3ebe191dcba1eec04419f53015a144ed1dd22d7735410ce74cd57",
+            "bytes": 37545
+          },
+          {
+            "path": "letter-fonts/waiting-for-the-sunrise.license.txt",
+            "sha256": "974d229d083921c6ed420026a45857eb3d2277f2656b156e0d233f175b382d60",
+            "bytes": 4387
+          },
+          {
+            "path": "letter-fonts/walter-turncoat.json",
+            "sha256": "69397728e9b7e6d21d7896d0c9ddeddeca0127cc9c1c67c228468cc3d109839d",
+            "bytes": 80437
+          },
+          {
+            "path": "letter-fonts/walter-turncoat.license.txt",
+            "sha256": "2416f549b276f76a16a10e98695a74f48129cd3b62c9280b33e8b8ac2d7b663f",
+            "bytes": 11386
+          },
+          {
+            "path": "letter-fonts/yomogi.json",
+            "sha256": "549a9c551b0776e1dcac313eafa820322670b1392cbb1d844bf21da997963054",
+            "bytes": 66229
+          },
+          {
+            "path": "letter-fonts/yomogi.license.txt",
+            "sha256": "4321b60bd92b7e7f1c41529d281229ea242e1761c147b8def920c6477be8f798",
+            "bytes": 4408
+          },
+          {
+            "path": "villages-icon.png",
+            "sha256": "e45351b98093012f0932fe265d0c6943043bdeb89240d46657bf01d52a4a1cc4",
+            "bytes": 4383
+          },
+          {
+            "path": "icon-licenses.txt",
+            "sha256": "3a224dafa9fff7f016b1ff32ac95d7caadda3d0630a0c4a0cca1d99d8124fad9",
+            "bytes": 12470
+          },
+          {
+            "path": "storybook-background-wide.webp",
+            "sha256": "ebe721a5b5a4cbe5be56c65c74ddea0337a2142f2daa0751e5f5c25151b1af70",
+            "bytes": 65050
+          },
+          {
+            "path": "storybook-scenery-matte.webp",
+            "sha256": "c07233acb7cfab9d6d62d171999b56ef9bb23e4c6f847f46bb2f252a34f0be70",
+            "bytes": 7348
+          }
+        ],
+        "permissions": [
+          "network",
+          "routes",
+          "storage",
+          "ui"
+        ],
+        "restartRequired": true
+      },
+      "category": "misc",
+      "artifact": {
+        "url": "https://github.com/DSBwizzard/marinara-villages-agent/releases/download/agent-catalog-artifacts/villages-0.8.1-89af00da46b16d57.zip",
+        "sha256": "89af00da46b16d577ce2b8a8c0ebd47f2fc010e8b55558fafd9817203654aabd",
+        "bytes": 11241865
+      }
+    }
+  ]
+}
