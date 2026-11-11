@@ -6,6 +6,7 @@ import { defaultVillageState } from "../packages/villages/src/server/domain/deco
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
 import { createVillageStateService } from "../packages/villages/src/server/features/world/village-state-service.js";
 import { runCase } from "../scripts/test-cases.mjs";
+import { authorVillageFixture } from "./helpers/village-storage.fixture.js";
 
 await runCase("state-service/read-only", async () => {
   const state = { ...defaultVillageState(), seed: "world" },
@@ -59,11 +60,7 @@ await runCase("state-service/storage-capture", async () => {
     packageId: "villages",
     kind: "village",
     revision: 1,
-    data: Object.fromEntries(
-      Object.entries({ ...defaultVillageState(), seed, memoryHead: null }).filter(
-        ([key]) => !["continuity", "episodes", "worldPlaces"].includes(key),
-      ),
-    ),
+    data: authorVillageFixture(new Map(), { ...defaultVillageState(), seed }),
   });
   const first = root("first"),
     second = root("second");

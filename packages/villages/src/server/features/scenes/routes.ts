@@ -204,16 +204,6 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
       }
     },
   );
-  app.post<{ Params: { id: string; noticeId: string } }>(
-    "/rooms/:id/notices/:noticeId/dismiss",
-    async (request, reply) => {
-      try {
-        return await dismissSceneNotice(readChatId(request.params.id), readChatId(request.params.noticeId));
-      } catch (error) {
-        return fail(reply, error, "saving notice dismissal");
-      }
-    },
-  );
   app.post<{ Params: { id: string } }>("/rooms/:id/changes/replay", async (request, reply) => {
     try {
       return publicSceneChanges(await replaySceneChanges(readChatId(request.params.id)));
