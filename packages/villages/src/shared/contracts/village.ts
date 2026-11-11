@@ -172,13 +172,11 @@ export type VillageSnapshot = {
     completesAt?: string;
   }[];
   villagers: VillageVillagerView[];
-  relationshipStartingPending?: boolean;
   /**
    * Whether the village has been founded yet. Not part of the settings: it is a
    * fact about the village, not something the player can edit.
    */
   isFounded: boolean;
-  progressEngineVersion: 1;
   foundingPreparation: {
     canPlay: boolean;
     startingHistoryReady?: boolean;
@@ -279,50 +277,6 @@ export type BuildProject = {
 };
 
 export type ProgressDebugView = {
-  engineVersion: 0 | 1;
-  tasks: Array<{
-    definition: {
-      id: string;
-      revision: number;
-      owner: { kind: string; id: string };
-      phases: Array<{ id: string; title: string; requirements: Array<{ id: string; title: string }> }>;
-    };
-    revisionHistory: Array<{
-      definition: { revision: number; phases: Array<{ id: string; title: string }> };
-      receipts: Array<{
-        requirementId: string;
-        evidence: {
-          sourceId: string;
-          excerpt?: string;
-          grade?: string;
-          citations?: { lineId: string; quote: string }[];
-        };
-      }>;
-      transitions: Array<{ phaseId: string; at: string }>;
-    }>;
-    visibleAt: string;
-    requirementVisibleAt: Record<string, string>;
-    phaseIndex: number;
-    receipts: Array<{
-      id: string;
-      phaseId: string;
-      requirementId: string;
-      routeId: string;
-      definitionRevision: number;
-      evidence: {
-        sourceId: string;
-        lineId?: string;
-        excerpt?: string;
-        at: string;
-        grade?: string;
-        citations?: { lineId: string; quote: string }[];
-      };
-    }>;
-    attempts: Array<{ phaseId: string; requirementId: string; status: string; reason: string; evidenceId: string }>;
-    transitions: Array<{ phaseId: string; at: string; evidenceId: string }>;
-    resolvedAt: string;
-    resolutionKey: string;
-  }>;
   backlog: Array<{ sessionId: string; submissionId: string; at: string; error: string }>;
   speechProofs?: Array<{
     projectId: string;

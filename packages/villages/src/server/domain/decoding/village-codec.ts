@@ -47,7 +47,6 @@ import { coerceVillageNarrationStyle, defaultVillageNarrationStyle } from "../ru
 import { readOpening } from "../rules/opening-project.js";
 import { coerceRoutineProfile, influenceSettings } from "../rules/owned-routine.js";
 import { coercePlayerBackground } from "../rules/player-background.js";
-import { coerceProgressTasks } from "../rules/progress-engine.js";
 import { readProjectPlan } from "../rules/project-completion.js";
 import {
   boundText,
@@ -100,8 +99,6 @@ export function defaultVillageState(): VillageState {
     startingHistory: emptyStartingHistory(),
     backgroundReceipts: {},
     dismissedNoticeIds: [],
-    socialContractVersion: 2,
-    progressEngineVersion: 1,
     name: "",
     narrationStyle: defaultVillageNarrationStyle(),
     characterSpeechColors: true,
@@ -151,7 +148,6 @@ export function defaultVillageState(): VillageState {
     planningUsage: { dateKey: "", count: 0 },
     processedActionIds: [],
     projects: [],
-    progressTasks: [],
     pendingDecisions: [],
     villagers: [],
     // Empty rather than the default text: the default lives in `prompt-preset.ts`
@@ -1350,16 +1346,11 @@ export function coerceVillageState(value: unknown): VillageState {
       ),
     ),
     dismissedNoticeIds: [...new Set(asStringArray(raw.dismissedNoticeIds))],
-    socialContractVersion: 2,
-    socialPublications: raw.socialPublications
-      ? (structuredClone(raw.socialPublications) as VillageState["socialPublications"])
-      : {},
     eventAttempts: raw.eventAttempts
       ? (structuredClone(raw.eventAttempts) as VillageState["eventAttempts"])
       : undefined,
     returnCatchup: decodeReturnCatchup(raw.returnCatchup),
     narrative: readNarrativeState(raw.narrative),
-    progressEngineVersion: 1,
     name: asTrimmedString(raw.name) || fallback.name,
     narrationStyle: coerceVillageNarrationStyle(raw.narrationStyle),
     characterSpeechColors: raw.characterSpeechColors !== false,
@@ -1484,7 +1475,6 @@ export function coerceVillageState(value: unknown): VillageState {
     wishFollowing: Object.fromEntries(
       Object.entries(asRecord(raw.wishFollowing)).filter(([, v]) => typeof v === "boolean"),
     ) as Record<string, boolean>,
-    progressTasks: coerceProgressTasks(raw.progressTasks),
     pendingDecisions: coercePendingDecisions(raw.pendingDecisions),
     ...(raw.formerLetterFonts
       ? {

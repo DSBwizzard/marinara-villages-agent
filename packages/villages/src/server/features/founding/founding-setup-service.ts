@@ -249,7 +249,6 @@ export function createFoundingSetup({
             "founding:" + state.setupAt,
             state.setupAt,
           );
-      state.progressEngineVersion = 1;
       state.opening = initialOpening([...assignedResidents], communityVenueId, randomUUID());
       state.foundingPreparation = {
         status: "pending",

@@ -140,10 +140,8 @@ await withBrowser(browser, async () => {
             progressFails
               ? { error: "Diagnostics are offline." }
               : {
-                  engineVersion: `synthetic-${progressReads}`,
-                  backlog: [],
+                  backlog: [{ sessionId: "scene", submissionId: `synthetic-${progressReads}`, at: "Now", error: "" }],
                   speechProofs: [],
-                  tasks: [],
                 },
           ),
         });
@@ -305,19 +303,19 @@ await withBrowser(browser, async () => {
         await expect(mapName).toHaveCount(0);
       }
       if (key === "progress") {
-        await expect(main.getByText("Engine version: synthetic-1", { exact: true })).toBeVisible();
+        await expect(main.getByText(/scene\/synthetic-1/)).toBeVisible();
         assert.equal(progressReads, 1, "opening diagnostics starts one read");
         await main.getByRole("button", { name: "Refresh diagnostics", exact: true }).click();
-        await expect(main.getByText("Engine version: synthetic-2", { exact: true })).toBeVisible();
+        await expect(main.getByText(/scene\/synthetic-2/)).toBeVisible();
         assert.equal(progressReads, 2, "refresh starts one independent read");
         progressFails = true;
         await main.getByRole("button", { name: "Refresh diagnostics", exact: true }).click();
         await expect(main.getByRole("alert")).toHaveText("Diagnostics are offline.");
-        await expect(main.getByText("Engine version: loading", { exact: true })).toBeVisible();
+        await expect(main.getByRole("heading", { name: "Unprocessed saved turns" })).toHaveCount(0);
         assert.equal(progressReads, 3, "failed refresh is not automatically retried");
         progressFails = false;
         await main.getByRole("button", { name: "Refresh diagnostics", exact: true }).click();
-        await expect(main.getByText("Engine version: synthetic-4", { exact: true })).toBeVisible();
+        await expect(main.getByText(/scene\/synthetic-4/)).toBeVisible();
         assert.equal(progressReads, 4, "explicit refresh recovers with one read");
         await expect(main.getByRole("alert")).toHaveText("Diagnostics are offline.");
         progressFails = true;
@@ -330,7 +328,7 @@ await withBrowser(browser, async () => {
           .getByRole("button", { name: "Settings", exact: true })
           .click();
         await selectSection("progress");
-        await expect(main.getByText("Engine version: loading", { exact: true })).toBeVisible();
+        await expect(main.getByRole("heading", { name: "Unprocessed saved turns" })).toHaveCount(0);
         await expect(main.getByRole("alert")).toHaveText("Diagnostics are offline.");
         assert.equal(progressReads, 5, "navigation retains its single-read error policy");
       }

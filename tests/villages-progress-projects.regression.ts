@@ -36,7 +36,6 @@ assert.equal(f.get(first).status, "complete", "ordinary schedule changes cannot 
 assert.equal(f.get(second).status, "complete");
 await f.mutate((state) => reconcileProjectLifecycles(state, new Date(now.getTime() + PROJECT_DURATION_MS * 2)));
 assert.equal(f.state().projects.filter((p) => p.status === "complete").length, 2, "completion is exactly once");
-assert.equal(f.state().progressTasks.length, 0, "Projects do not create old progress tasks");
 const r = await renovation(f),
   r2 = await renovation(f, { capacity: 4 });
 await f.agree(r);

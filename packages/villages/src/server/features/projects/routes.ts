@@ -76,15 +76,13 @@ export function registerProjectRoutes(engine: FastifyInstance) {
       if (!villagesDebugAgentsEnabled()) throw notFound("Progress debugging is unavailable.");
       const village = await readVillageState();
       return {
-        engineVersion: village.progressEngineVersion,
-        tasks: village.progressTasks,
         speechProofs: village.projects.flatMap((project) =>
           (project.lifecycle?.spokenProofs ?? []).map((proof) => ({ projectId: project.id, ...proof })),
         ),
         backlog: await sceneQueries().progressBacklog(),
       };
     } catch (error) {
-      return fail(reply, error, "reading Progress Engine diagnostics");
+      return fail(reply, error, "reading progress diagnostics");
     }
   });
   app.post<{ Params: { placeId: string }; Body: unknown }>(

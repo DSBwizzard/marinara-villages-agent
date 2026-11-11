@@ -96,7 +96,7 @@ export function SceneErrorChip({ items, open, onOpen, loadDetails }: SceneChipPr
                 <span className={`${tag}-scene-error-icon`} aria-hidden="true">
                   !
                 </span>
-                <span>{sceneErrorMessage(item.message, item.domain)}</span>
+                <span>{sceneErrorMessage(item.message)}</span>
               </div>
               {item.actions ? (
                 <div className={`${tag}-scene-error-detail ${tag}-scene-error-actions`}>{item.actions}</div>

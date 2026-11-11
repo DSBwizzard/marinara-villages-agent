@@ -352,7 +352,6 @@ assert.equal(direct.state.maps[0].name, "Direct", "Older setup callers retain th
 assert.equal(direct.state.playerPersonaIdentity, "Private Persona Direct");
 assert.equal(direct.state.villagers[0]!.cardSnapshot.description, "Private card Direct");
 assert.equal(direct.state.villagers[0]!.agenda!.personalizationPending, true);
-assert.equal(direct.state.progressEngineVersion, 1);
 assert.equal(direct.state.foundingPreparation!.status, "pending");
 assert.equal(direct.state.venues.length, 3);
 assert.equal(observableRoomDescription(direct.state, "same", "private:same", direct.state.setupAt), "A narrow oak bed");

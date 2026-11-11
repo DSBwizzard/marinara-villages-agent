@@ -1,7 +1,6 @@
 import type { SpriteManagerState } from "../../../shared/contracts/sprites.js";
 import type { ProjectRoomEdit, VillageSettings } from "../../../shared/contracts/village.js";
 import type { VillageNarrationStyle } from "../rules/narration-style.js";
-import type { ProgressTask } from "../rules/progress-engine.js";
 import type { HomeBuildingKind } from "../rules/prompt-preset.js";
 
 /** Owned routines and dated commitments. */
@@ -566,8 +565,6 @@ export type VillageState = {
   mailbox: import("./social-mail.js").MailboxState;
   residentPlans: import("./resident-plans.js").ResidentPlans;
   startingHistory: import("./starting-history-model.js").StartingHistoryState;
-  socialContractVersion: 2;
-  socialPublications?: Record<string, true>;
   eventAttempts?: import("../rules/event-attempts.js").EventAttemptLedger;
   /** Current work remains separate from the recent, terminal debug history. */
   returnCatchup?: {
@@ -578,10 +575,7 @@ export type VillageState = {
   opening?: import("../rules/opening-project.js").OpeningRecord;
   dismissedNoticeIds: string[];
   backgroundReceipts: Record<string, string>;
-  /** Private expiry holds owned by unfinished Scenes or their retained final effects. */
   version: 18;
-  /** Shared evidence engine used by Wishes. */
-  progressEngineVersion: 1;
   name: string;
   /** Per-village writing choices for live Scenes. */
   narrationStyle: VillageNarrationStyle;
@@ -675,7 +669,6 @@ export type VillageState = {
   projects: VillageProject[];
   /** Versioned evidence-backed task records; empty for villages that have not adopted the Progress Engine. */
   wishFollowing?: Record<string, boolean>;
-  progressTasks: ProgressTask[];
   pendingDecisions: VillagePendingDecision[];
   villagers: VillageVillager[];
   /** Writing styles retained when residents leave, keyed by character ID. */
@@ -973,10 +966,8 @@ export type VillageSnapshot = ClientVisibleSnapshot<{
   sceneVenue?: { sceneId: string; venue: VillageSettingsView["venues"][number] };
   opening?: import("../../../shared/contracts/opening.js").OpeningView;
   clock?: import("../../../shared/contracts/clock.js").VillageClockView;
-  relationshipStartingPending?: boolean;
   backgroundWork: import("./background-model.js").BackgroundSummary[];
   status: "ready";
-  progressEngineVersion: 1;
   foundingPreparation:
     (NonNullable<VillageState["foundingPreparation"]> & { canPlay: boolean; startingHistoryReady: boolean }) | null;
   village: VillageMomentView;

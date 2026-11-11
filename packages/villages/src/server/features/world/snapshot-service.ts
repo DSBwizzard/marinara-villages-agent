@@ -156,7 +156,6 @@ export function createVillageSnapshot({
       mailboxUnread: hasUnreadMail(village.mailbox),
       status: "ready",
       clock,
-      progressEngineVersion: village.progressEngineVersion,
       foundingPreparation: village.foundingPreparation
         ? {
             ...village.foundingPreparation,
@@ -272,7 +271,6 @@ export function createVillageSnapshot({
       })),
       residences: village.residences,
       villagers,
-      relationshipStartingPending: !startingHistoryReady(village),
       isFounded: isVillageFounded(village),
       settings: villageSettings(
         village,
