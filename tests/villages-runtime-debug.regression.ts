@@ -24,6 +24,17 @@ import { createImageGeneration } from "../packages/villages/src/server/features/
 
 const records = new Map<string, any>();
 const logs: string[] = [];
+function setVillage(seed: string, selectedLorebookIds: string[] = []) {
+  records.set("villages-village", {
+    id: "villages-village",
+    packageId: "villages",
+    kind: "village",
+    name: "Village",
+    description: "",
+    revision: 1,
+    data: { ...defaultVillageState(), seed, setupAt: "2026-11-09T12:00:00Z", selectedLorebookIds },
+  });
+}
 let engineEnabled = false,
   throwLogger = false,
   paidCalls = 0;
@@ -257,12 +268,12 @@ async function main() {
       assert.equal((await readLoreActivity(true)).revision, beforeArtwork + 1);
       assert.equal(imageDispatches, 1, "Validated artwork records inclusion at its single dispatch");
       const previousWorld = records.get("villages-village");
-      records.set("villages-village", { data: { seed: "world-one" } });
+      setVillage("world-one");
       const bound = await readLoreActivity(true);
       const scopedId = (await rememberLoreInspection({ ...selected, scope: bound.scope }))!;
       await recordLoreUse(inspectedLoreUse({ ...selected, inspectionId: scopedId }, "Image"), "Map artwork");
       const worldOne = await readLoreActivity();
-      records.set("villages-village", { data: { seed: "world-two" } });
+      setVillage("world-two");
       const worldTwo = await readLoreActivity();
       assert.notEqual(worldTwo.scope, worldOne.scope);
       assert.equal(worldTwo.records.length, 0);
@@ -277,7 +288,7 @@ async function main() {
         undefined,
         "A lookup returning after a world change cannot enter the new scope",
       );
-      records.set("villages-village", { data: { seed: "world-one" } });
+      setVillage("world-one");
       assert.deepEqual(await readLoreActivity(), worldOne, "Returning to a retained Village restores its own history");
       if (previousWorld) records.set("villages-village", previousWorld);
       else records.delete("villages-village");
@@ -309,11 +320,7 @@ async function main() {
       const lookupWait = new Promise<void>((resolve) => {
         finishLookup = resolve;
       });
-      records.set("villages-village", {
-        id: "villages-village",
-        revision: 1,
-        data: { ...defaultVillageState(), selectedLorebookIds: ["private"] },
-      });
+      setVillage("lore-race", ["private"]);
       globalThis.fetch = async (input) => {
         const path = new URL(String(input)).pathname;
         if (path === "/api/lorebooks") {
@@ -340,7 +347,10 @@ async function main() {
       try {
         const pending = server.inject({ method: "POST", url: "/debug/lore", payload: { query: "harbor" } });
         const response = Promise.resolve(pending);
-        await lookupStarted;
+        await Promise.race([
+          lookupStarted,
+          response.then(({ statusCode, body }) => assert.fail(`Lore lookup ended early (${statusCode}): ${body}`)),
+        ]);
         await saveRuntimeDebug(false);
         finishLookup();
         const stopped = await response;
