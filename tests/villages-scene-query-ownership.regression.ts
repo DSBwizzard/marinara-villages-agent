@@ -1,147 +1,128 @@
-import { venueFixture } from "./helpers/venues.fixture.js";
-import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import assert from "node:assert/strict";
-import { authorSceneFixture } from "./helpers/village-storage.fixture.js";
+import type { CapabilityDocumentStore } from "@marinara-engine/shared";
+import { authorSceneFixture, authorVillageFixture } from "./helpers/village-storage.fixture.js";
+import { pendingSceneSubmission } from "./helpers/narration-submission.fixture.js";
 import {
-  createActivationScope,
   activationScope,
+  createActivationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { SESSION_KIND, SESSION_PREFIX } from "../packages/villages/src/server/adapters/storage/scene-slots.js";
-import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import {
-  coerceVillageState,
-  defaultVillageState,
-} from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import type {
-  VenueLine,
-  VenueScene,
-  VenueSubmission,
-} from "../packages/villages/src/server/domain/models/scene-model.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import type { VenueLine, VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
+import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { villageWorldScope } from "../packages/villages/src/server/domain/rules/village-identity.js";
 import { createSceneQueryService } from "../packages/villages/src/server/features/scenes/scene-query-service.js";
 import {
   configureSceneQueries,
   sceneQueries,
   type SceneQueries,
 } from "../packages/villages/src/server/features/scenes/services.js";
+
 type Document = Awaited<ReturnType<CapabilityDocumentStore["list"]>>[number];
 const stamp = "2026-10-07T12:00:00.000Z";
-function deferred() {
-  return Promise.withResolvers<void>();
-}
-function line(id: string, extra: Partial<VenueLine> = {}): VenueLine {
+
+function line(id: string, content: string): VenueLine {
   return {
     id,
     speakerId: "mara",
     name: "Mara",
     role: "assistant",
-    content: id,
+    kind: "dialogue",
+    content,
     at: stamp,
-    heardBy: ["mara"],
-    ...extra,
+    heardBy: ["player", "mara"],
   };
 }
-function turn(id: string, extra: Partial<VenueSubmission> = {}): VenueSubmission {
-  return {
+function ownedScene(owner: string, id = "same") {
+  const message = owner + " exact input (private thought)";
+  const scene = coerceSession({
+    version: 5,
     id,
-    message: "Please help.",
-    mode: "chat",
-    targetId: "",
-    verdict: null,
-    wishId: "",
-    wishMemory: "",
-    at: stamp,
-    ...extra,
-  };
-}
-function scene(id = "same", name = "A Venue"): VenueScene {
-  return coerceSession({
-    version: 4,
-    id,
-    placeId: "venue",
-    placeName: name,
+    villageSeed: owner,
+    placeId: "venue-" + owner,
+    placeName: owner + " Venue",
+    zoneId: "exterior",
     status: "active",
+    sceneRevision: 2,
     startedAt: stamp,
-    lines: [],
-    submissions: [],
     participants: [{ characterId: "mara", name: "Mara", doing: "listening" }],
-  });
-}
-function ownedScene(owner: string): VenueScene {
-  const saved = scene("same", owner + " Venue");
-  saved.placeId = "venue-" + owner;
-  saved.villageSeed = owner;
-  saved.lines = [line("reply", { content: owner + " reply" })];
-  saved.submissions = [
-    turn("proof", {
-      message: owner + " message",
-      zoneIdAtTurn: "zone-" + owner,
-      activeIdsAtTurn: ["mara"],
-      replyLineIds: ["reply"],
-      progressError: owner + " pending",
-      processing: createExchangeProcessing({
-        seed: owner,
-        sceneId: saved.id,
-        submissionId: "proof",
-        order: 0,
-        lineIds: ["reply"],
-        actionReceiptIds: [],
-      }),
-    }),
-  ];
-  return saved;
-}
-function fixture(name: string) {
-  const world = coerceVillageState({
-    ...defaultVillageState(),
-    seed: name,
-    foundedAt: stamp,
-    venues: [
-      venueFixture({
-        id: "venue",
-        name,
-        classes: ["residence"],
-        occupancy: 1,
-        residentIds: ["mara"],
-        description: "A residence.",
-      }),
+    activeIds: ["mara"],
+    lines: [
+      line("spoken", owner + " exact dialogue"),
+      { ...line("private", owner + " hidden speech"), heardBy: ["mara"] },
+      {
+        id: "input",
+        inputOf: "proof",
+        speakerId: "player",
+        name: "Player",
+        role: "user",
+        kind: "input",
+        content: message,
+        at: stamp,
+        heardBy: [],
+      },
+      line("draft", owner + " held reply"),
     ],
   });
-  const sessions = new Map<string, VenueScene>(),
-    pages = new Map<string, any>(),
-    records: Document[] = [],
-    calls: string[] = [],
-    owners: unknown[] = [];
-  let paused: "world" | "session" | undefined, failWorld: Error | undefined, failList: Error | undefined;
-  const entered = deferred(),
-    gate = deferred();
-  const note = (call: string) => {
+  scene.submissions.push({
+    ...pendingSceneSubmission(scene, "proof", message, "draft"),
+    acceptance: { status: "held", rejected: [] },
+    progressError: owner + " held",
+  });
+  return scene;
+}
+
+function fixture(seed: string) {
+  const world = { ...defaultVillageState(), seed, name: seed, setupAt: stamp, foundedAt: stamp };
+  const scope = villageWorldScope(world);
+  const pages = new Map<string, Document>();
+  const records: Document[] = [];
+  const sessions = new Map<string, VenueScene>();
+  const calls: string[] = [];
+  const owners: unknown[] = [];
+  let paused: "world" | "session" | undefined;
+  let worldFault: Error | undefined, listFault: Error | undefined;
+  const entered = Promise.withResolvers<void>(),
+    gate = Promise.withResolvers<void>();
+  function row(id: string, kind: string, data: Document["data"]): Document {
+    return {
+      id,
+      packageId: "villages",
+      kind,
+      name: id,
+      description: "",
+      data,
+      revision: 1,
+      createdAt: stamp,
+      updatedAt: stamp,
+    };
+  }
+  pages.set("villages-village", row("villages-village", "village", authorVillageFixture(pages, world)));
+  function note(call: string) {
     calls.push(call);
     owners.push(activationScope());
     if (activationScope()?.active === false) throw Error("Original query connection unavailable.");
-  };
+  }
+  async function pauseAt(target: "world" | "session") {
+    if (paused !== target) return;
+    paused = undefined;
+    entered.resolve();
+    await gate.promise;
+    note(target + "-resumed");
+  }
   const service = createSceneQueryService({
     async readSession(id) {
       note("session:" + id);
-      if (paused === "session") {
-        paused = undefined;
-        entered.resolve();
-        await gate.promise;
-        note("session-resumed");
-      }
-      const found = sessions.get(id);
-      if (!found) throw Error("Missing Scene");
-      return structuredClone(found);
+      await pauseAt("session");
+      const session = sessions.get(id);
+      assert(session, "A current Scene must exist");
+      return structuredClone(session);
     },
     async readVillageState() {
       note("world");
-      if (paused === "world") {
-        paused = undefined;
-        entered.resolve();
-        await gate.promise;
-        note("world-resumed");
-      }
-      if (failWorld) throw failWorld;
+      await pauseAt("world");
+      if (worldFault) throw worldFault;
       return structuredClone(world);
     },
     villagesDocuments() {
@@ -156,7 +137,7 @@ function fixture(name: string) {
           note("list");
           assert.equal(packageId, "villages");
           assert.equal(kind, SESSION_KIND);
-          if (failList) throw failList;
+          if (listFault) throw listFault;
           return structuredClone(records);
         },
       };
@@ -166,290 +147,204 @@ function fixture(name: string) {
     ...service,
     activeVenueSession: async () => null,
     listVenueVisits: async () => [],
-    processSavedExchange: async () => {
-      throw Error("Read must not replay an exchange");
-    },
+    processSavedExchange: async () => assert.fail("Scene queries cannot replay saved work"),
   };
-  const add = (session: VenueScene) => {
-    sessions.set(session.id, session);
-    records.push({
-      id: SESSION_PREFIX + session.id,
-      packageId: "villages",
-      kind: SESSION_KIND,
-      name,
-      description: name,
-      data: authorSceneFixture(pages, structuredClone(session)),
-      revision: 1,
-      createdAt: stamp,
-      updatedAt: stamp,
-    });
-  };
+  function add(scene: VenueScene) {
+    scene.continuity = captureSceneContinuity({ ...world, seed: scene.villageSeed! }, scene, Date.parse(stamp));
+    sessions.set(scene.id, scene);
+    const id = SESSION_PREFIX + scene.id;
+    const record = row(id, SESSION_KIND, authorSceneFixture(pages, scene));
+    records.push(record);
+    pages.set(id, record);
+    return record;
+  }
   return {
-    world,
-    sessions,
-    records,
+    scope,
     calls,
     owners,
+    records,
+    pages,
     service,
     queries,
     add,
     entered,
     gate,
-    pause(target: "world" | "session" = "world") {
+    pause(target: "world" | "session") {
       paused = target;
     },
     failWorld(error: Error) {
-      failWorld = error;
+      worldFault = error;
     },
     failList(error: Error) {
-      failList = error;
+      listFault = error;
     },
   };
 }
 
-async function main() {
-  const f = fixture("A");
-  assert.deepEqual(f.calls, [], "construction is inert");
-  const saved = scene();
-  saved.zoneId = "current-zone";
-  saved.submissions = [
-    turn("proof", {
-      zoneIdAtTurn: "historic-zone",
-      activeIdsAtTurn: ["mara", "mara"],
-      speechIdsAtTurn: ["visitor", "mara"],
-      replyLineIds: [
-        "reply-mara",
-        "reply-visitor",
-        "reply-side",
-        "reply-unknown",
-        "reply-hidden",
-        "reply-report",
-        "reply-user",
-      ],
-      projectInterpretationVersion: 1,
-    }),
-  ];
-  saved.lines = [
-    line("before"),
-    line("side", { kind: "side" }),
-    line("whisper", { kind: "whisper" }),
-    line("hidden", { contactHidden: true }),
-    line("report", { contactReport: true }),
-    line("reply-mara"),
-    line("reply-visitor", { speakerId: "visitor" }),
-    line("reply-side", { kind: "side" }),
-    line("reply-unknown", { speakerId: "unknown" }),
-    line("reply-hidden", { contactHidden: true }),
-    line("reply-report", { contactReport: true }),
-    line("reply-user", { role: "user" }),
-  ];
-  f.add(saved);
-  await assert.rejects(f.service.readProjectTurnEvidence("same", "missing"), /not recorded/);
-  assert.deepEqual(f.calls, ["session:same"], "missing submission rejects before world read");
-  f.calls.length = 0;
-  const evidence = await f.service.readProjectTurnEvidence("same", "proof");
-  assert.deepEqual(f.calls, ["session:same"], "captured evidence needs no later World lookup");
-  assert.equal(evidence.zoneId, "historic-zone");
-  assert.deepEqual(evidence.activeIdsAtTurn, ["mara", "visitor"]);
-  assert.equal(evidence.contextualInterpretation, true);
-  assert.deepEqual(
-    evidence.contextLines.map((l) => l.id),
-    ["before"],
-  );
-  assert.deepEqual(
-    evidence.lines.map((l) => l.id),
-    ["reply-mara", "reply-visitor", "reply-side"],
-    "reply evidence keeps its distinct existing filters",
-  );
-  const fallback = scene("fallback");
-  fallback.submissions = [turn("fallback")];
-  fallback.lines = [
-    line("fallback-visible"),
-    line("fallback-hidden", { contactHidden: true }),
-    line("fallback-report", { contactReport: true }),
-    line("fallback-other", { speakerId: "unknown" }),
-    line("fallback-wrong-time", { at: "2026-10-07T11:00:00.000Z" }),
-  ];
-  f.add(fallback);
-  const oldShape = await f.service.readProjectTurnEvidence("fallback", "fallback");
-  assert.deepEqual(oldShape.activeIdsAtTurn, ["mara"]);
-  assert.equal(oldShape.zoneId, undefined, "missing source Zone is never reconstructed from the later Scene");
-  assert.deepEqual(
-    oldShape.lines.map((l) => l.id),
-    ["fallback-visible"],
-  );
-  const worldFault = Error("Exact world read failure"),
-    fault = fixture("fault");
-  fault.add(saved);
-  fault.failWorld(worldFault);
-  assert.equal((await fault.service.readProjectTurnEvidence("same", "proof")).zoneId, "historic-zone");
-  await assert.rejects(fault.service.progressBacklog(), (cause) => cause === worldFault);
-  assert(!fault.calls.includes("documents"), "failed world read does not open documents");
+const ownerReads = ["documents", "get:villages-village", "get:" + SESSION_PREFIX + "same"];
+const backlogRow = (owner: string) => ({
+  sessionId: "same",
+  submissionId: "proof",
+  at: stamp,
+  error: owner + " held",
+});
 
-  const backlog = fixture("seed");
-  const current = scene("current");
-  current.villageSeed = "seed";
-  const pending = createExchangeProcessing({
-    seed: "seed",
-    sceneId: current.id,
-    submissionId: "pending",
-    order: 0,
-    lineIds: [],
-    actionReceiptIds: [],
-  });
-  const complete = structuredClone(pending);
-  for (const domain of Object.values(complete.domains)) domain.status = "applied";
-  complete.submissionId = "complete";
-  const failed = structuredClone(complete);
-  failed.submissionId = "failed";
-  failed.domains.memories.status = "failed";
-  current.submissions = [
-    turn("pending", { processing: pending, progressError: "Still pending" }),
-    turn("complete", { processing: complete }),
-    turn("failed", { processing: failed }),
-    turn("processed", {
+{
+  const f = fixture("current");
+  assert.deepEqual(f.calls, [], "Construction is inert");
+  const scene = ownedScene("current");
+  const pending = pendingSceneSubmission(scene, "pending", "Still in the outbox", "next");
+  scene.submissions.push(
+    pending,
+    {
+      ...pendingSceneSubmission(scene, "applied", "An accepted turn", "accepted-reply"),
+      narration: undefined,
+      acceptance: { status: "applied", rejected: [] },
+      episodeId: "done",
       progressProcessedAt: stamp,
-      processing: { ...structuredClone(complete), submissionId: "processed" },
-    }),
-    turn("before-founding", { at: "2026-10-06T12:00:00.000Z" }),
-  ];
-  current.navigationReceipts = [{ id: "move", originZoneId: "a", destinationZoneId: "b", at: stamp }];
-  backlog.add(current);
-  const foreign = structuredClone(current);
-  foreign.id = "foreign";
-  foreign.villageSeed = "other";
-  backlog.add(foreign);
-  const originalRecords = structuredClone(backlog.records);
-  assert.deepEqual(
-    await backlog.service.progressBacklog(),
-    ["pending", "failed"].map((submissionId) => ({
-      sessionId: "current",
-      submissionId,
-      at: stamp,
-      error: submissionId === "pending" ? "Still pending" : "",
-    })),
+    },
+    {
+      ...pendingSceneSubmission(scene, "abandoned", "A deliberately abandoned response", "abandoned-reply"),
+      acceptance: { status: "abandoned", rejected: [] },
+    },
+    {
+      ...pendingSceneSubmission(scene, "before-founding", "Work from before founding", "early-reply"),
+      at: "2026-10-06T12:00:00.000Z",
+    },
   );
+  const owner = f.add(scene);
+  const foreign = f.add(ownedScene("other", "foreign"));
+  const before = structuredClone(f.records);
+  await assert.rejects(f.service.readHistoryPage("same", { scope: "f".repeat(64) }), /Village changed/);
+  assert.deepEqual(f.calls, ownerReads.slice(0, 2), "Foreign World scope reads no Scene owner or prose");
+  f.calls.length = 0;
+  await assert.rejects(f.service.readHistoryPage("foreign", { scope: f.scope }), /no longer available/);
+  assert.deepEqual(f.calls, ["documents", "get:villages-village", "get:" + foreign.id]);
+  f.calls.length = 0;
+  const history = await f.service.readHistoryPage("same", { scope: f.scope });
   assert.deepEqual(
-    backlog.calls.slice(0, 3),
-    ["world", "documents", "list"],
-    "world precedes lazy listing, with no prune/replay calls",
+    history.lines.map((entry) => entry.content),
+    ["current exact dialogue", scene.submissions[0].message],
   );
+  assert(history.lines.every((entry) => !Object.hasOwn(entry, "heardBy")));
+  assert.deepEqual(f.calls.slice(0, 3), ownerReads);
   assert(
-    backlog.calls.slice(3).every((call) => call.startsWith("get:villages-memory-page-")),
-    "Backlog explicitly reads its saved turn pages",
+    f.calls.slice(3).every((call) => call.startsWith("get:villages-memory-page-")),
+    "History reads only admitted pages",
   );
-  assert.deepEqual(backlog.records, originalRecords, "backlog is not a storage mutation");
-  const malformed = fixture("malformed"),
-    malformedScene = scene("malformed");
-  malformedScene.villageSeed = "malformed";
-  malformedScene.submissions = [turn("missing-processing")];
-  malformed.add(malformedScene);
-  const malformedBefore = structuredClone(malformed.records);
-  await assert.rejects(malformed.service.progressBacklog(), /processing metadata/);
-  assert.deepEqual(malformed.records, malformedBefore, "backlog refuses missing saved processing without rewriting it");
-  const listFault = Error("Exact document list failure"),
-    broken = fixture("list-fault");
-  broken.failList(listFault);
-  await assert.rejects(broken.service.progressBacklog(), (cause) => cause === listFault);
-  assert.deepEqual(broken.calls, ["world", "documents", "list"]);
+  assert.deepEqual(f.records, before, "History reads never publish a change");
 
+  f.calls.length = 0;
+  assert.deepEqual(await f.service.progressBacklog(), [
+    backlogRow("current"),
+    { sessionId: "same", submissionId: "pending", at: stamp, error: "" },
+  ]);
+  assert.deepEqual(f.calls.slice(0, 3), ["world", "documents", "list"]);
+  const { transcript, submissionHistory } = owner.data as {
+    transcript: { world: string };
+    submissionHistory: { submissions: { id: string } };
+  };
+  assert(f.calls.slice(3).every((call) => call.startsWith("get:villages-memory-page-")));
+  assert(!f.calls.some((call) => call.startsWith("get:villages-memory-page-" + transcript.world + "-")));
+  assert.deepEqual(f.records, before, "Backlog reads never replay or prune saved work");
+
+  f.pages.delete(submissionHistory.submissions.id);
+  const beforeMissing = structuredClone(f.pages);
+  await assert.rejects(f.service.progressBacklog(), /submissions page is missing or changed/);
+  assert.deepEqual(f.pages, beforeMissing, "Corrupt saved work remains untouched");
+}
+
+{
+  const worldFailure = Error("Exact World read failure");
+  const world = fixture("broken-world");
+  world.failWorld(worldFailure);
+  await assert.rejects(world.service.progressBacklog(), (cause) => cause === worldFailure);
+  assert.deepEqual(world.calls, ["world"]);
+  const listFailure = Error("Exact document list failure");
+  const documents = fixture("broken-documents");
+  documents.failList(listFailure);
+  await assert.rejects(documents.service.progressBacklog(), (cause) => cause === listFailure);
+  assert.deepEqual(documents.calls, ["world", "documents", "list"]);
+}
+
+{
   const a = createActivationScope(),
-    b = createActivationScope(),
-    first = fixture("A"),
+    b = createActivationScope();
+  const first = fixture("A"),
     second = fixture("B");
   first.add(ownedScene("A"));
   second.add(ownedScene("B"));
   const releaseA = a.run(() => configureSceneQueries(first.queries));
-  first.pause();
+  first.pause("world");
   const inFlight = a.run(() => sceneQueries().progressBacklog());
   await first.entered.promise;
   const releaseB = a.run(() => b.run(() => configureSceneQueries(second.queries)));
-  const bEvidence = await b.run(() => sceneQueries().readProjectTurnEvidence("same", "proof"));
-  assert.equal(bEvidence.venueId, "venue-B");
-  assert.equal(bEvidence.zoneId, "zone-B");
-  assert.equal(bEvidence.message, "B message");
-  assert.equal(bEvidence.lines[0]?.content, "B reply");
-  assert.equal(second.calls[0], "session:same");
+  const bHistory = await b.run(() => sceneQueries().readHistoryPage("same", { scope: second.scope }));
+  assert.deepEqual(
+    bHistory.lines.map((entry) => entry.content),
+    ["B exact dialogue", "B exact input (private thought)"],
+  );
   first.gate.resolve();
-  assert.deepEqual(await inFlight, [{ sessionId: "same", submissionId: "proof", at: stamp, error: "A pending" }]);
+  assert.deepEqual(await inFlight, [backlogRow("A")]);
   assert.deepEqual(first.calls.slice(0, 4), ["world", "world-resumed", "documents", "list"]);
-  b.run(() => assert(first.calls.slice(4).every((call) => call.startsWith("get:villages-memory-page-"))));
   assert(first.owners.every((owner) => owner === a));
   assert(second.owners.every((owner) => owner === b));
   b.run(() => a.run(releaseA));
   a.dispose();
-
-  await b.run(async () =>
-    assert.deepEqual(await sceneQueries().progressBacklog(), [
-      { sessionId: "same", submissionId: "proof", at: stamp, error: "B pending" },
-    ]),
-  );
-  assert(second.calls.includes("list"), "older cleanup retains B dispatch");
-  await b.run(() =>
-    assert.rejects(
-      a.run(async () => sceneQueries().progressBacklog()),
-      /not configured/,
-    ),
-  );
-  const missing = createActivationScope();
-  await b.run(() =>
-    assert.rejects(
-      missing.run(async () => sceneQueries().readProjectTurnEvidence("same", "proof")),
-      /not configured/,
-    ),
-  );
-  missing.dispose();
-  b.run(() => b.run(releaseB));
+  assert.deepEqual(await b.run(() => sceneQueries().progressBacklog()), [backlogRow("B")]);
+  assert.throws(() => a.run(() => sceneQueries()), /not configured/);
+  b.run(releaseB);
   b.dispose();
+}
 
-  assert.throws(() => sceneQueries(), /not configured/);
+{
   const retired = createActivationScope(),
-    old = fixture("retired");
-  old.add(scene());
-  retired.run(() => configureSceneQueries(old.queries));
-
-  old.pause();
+    original = fixture("retired");
+  original.add(ownedScene("retired"));
+  retired.run(() => configureSceneQueries(original.queries));
+  original.pause("world");
   const abandoned = retired.run(() => sceneQueries().progressBacklog());
-  await old.entered.promise;
+  await original.entered.promise;
   retired.dispose();
-  old.gate.resolve();
+  original.gate.resolve();
   await assert.rejects(abandoned, /Original query connection unavailable/);
-  assert(!old.calls.includes("documents"), "retired world connection does not borrow another document store");
+  assert(!original.calls.includes("documents"), "A disposed activation cannot borrow another document store");
+}
 
+{
   const c = createActivationScope(),
-    d = createActivationScope(),
-    older = fixture("C"),
+    d = createActivationScope();
+  const older = fixture("C"),
     newer = fixture("D");
-  older.add(ownedScene("C"));
-  newer.add(ownedScene("D"));
+  const cScene = ownedScene("C"),
+    dScene = ownedScene("D");
+  older.add(cScene);
+  newer.add(dScene);
   const releaseC = c.run(() => configureSceneQueries(older.queries));
   older.pause("session");
-  const heldEvidence = c.run(() => sceneQueries().readProjectTurnEvidence("same", "proof"));
+  const heldProjection = c.run(() => sceneQueries().projectSceneResponse({ ...cScene, sceneRevision: 1 }));
   await older.entered.promise;
   const releaseD = c.run(() => d.run(() => configureSceneQueries(newer.queries)));
-  await d.run(async () =>
-    assert.equal((await sceneQueries().readProjectTurnEvidence("same", "proof")).message, "D message"),
-  );
+  const dResponse = await d.run(() => sceneQueries().projectSceneResponse(dScene));
+  assert.equal(dResponse.lines[0].content, "D exact dialogue");
   older.gate.resolve();
-  const cEvidence = await heldEvidence;
-  assert.equal(cEvidence.venueId, "venue-C");
-  assert.equal(cEvidence.zoneId, "zone-C");
-  assert.equal(cEvidence.message, "C message");
-  assert.equal(cEvidence.lines[0]?.content, "C reply");
-  assert.deepEqual(older.calls, ["session:same", "session-resumed"]);
+  const cResponse = await heldProjection;
+  assert.equal(cResponse.placeId, "venue-C");
+  assert.equal(cResponse.sceneRevision, 2);
+  assert.deepEqual(
+    cResponse.lines.map((entry) => entry.content),
+    ["C exact dialogue", "C exact input (private thought)"],
+  );
+  assert.deepEqual(cResponse.latestTurn, { id: "proof", at: stamp, published: false });
+  assert.deepEqual(older.calls.slice(0, 5), [...ownerReads, "session:same", "session-resumed"]);
   assert(older.owners.every((owner) => owner === c));
   assert(newer.owners.every((owner) => owner === d));
   d.run(() => c.run(releaseC));
   c.dispose();
-
-  d.run(() => d.run(releaseD));
+  d.run(releaseD);
   d.dispose();
-
-  console.log(
-    "Scene evidence/backlog inertness, historical witness/privacy filters, authoritative progress gates and activation-bound lazy query connections passed without providers.",
-  );
 }
-await main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+assert.throws(() => sceneQueries(), /not configured/);
+console.log(
+  "Scene history and backlog remain read-only, bounded by native ownership, and bound to their originating activation.",
+);
