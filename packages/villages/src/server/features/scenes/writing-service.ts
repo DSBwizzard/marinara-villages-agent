@@ -104,7 +104,8 @@ export function createSceneWriting({
       ? original
       : zoneEventScene(original, venue, { message: input });
     memoryRequire(scene.contactGeneration?.venue?.id === scene.placeId, "admitted writing location changed");
-    const selectedIds = scene.contactGeneration!.actorIds!,
+    // Selection can favor the last speaker. Serialize the resulting cast in a stable order.
+    const selectedIds = scene.contactGeneration!.actorIds!.toSorted(),
       player = readPlayerIdentity(village);
     const cast = scene.participants
       .filter((row) => selectedIds.includes(row.characterId))
@@ -191,7 +192,7 @@ export function createSceneWriting({
           movements: residentMovementOptions(village, venue, scene, selectedIds),
           doorwayContacts: scene.doorwayContacts?.map((contact) => contact.characterId) ?? [],
         }),
-        zoneEventHearingContext(scene, venue),
+        zoneEventHearingContext({ ...scene, participants: cast }, venue),
       ]),
       conversation: [
         {

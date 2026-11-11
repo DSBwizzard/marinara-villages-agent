@@ -161,6 +161,43 @@ await runCase("scene-prefix/current-native-context", async () => {
     assert.notDeepEqual(prefixes[3], prefixes[0], "actual Zone movement changes the Scene reference frame");
     assert.deepEqual(prefixes[4], prefixes[1], "native Forget protection stays outside the cached Scene frame");
     assert.deepEqual(prefixes[5], prefixes[1], "native Project authority stays outside the cached Scene frame");
+
+    const group = await packagedSceneServer({
+      configure(world, now) {
+        configureSceneCostWorld(world, now, "multi-resident");
+      },
+    });
+    const groupPrefixes: { content: string }[][] = [];
+    group.model.chatComplete = async (messages: any[]) => {
+      groupPrefixes.push(messages.filter((row) => row.cacheBreakpoint));
+      return {
+        content: JSON.stringify({ segments: [{ kind: "dialogue", speakerId: "bryn", text: "Morning." }] }),
+        finishReason: "stop",
+      };
+    };
+    try {
+      for (const submissionId of ["f2222222-2222-4222-8222-222222222222", "f3333333-3333-4333-8333-333333333333"]) {
+        const active = await group.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+        assert.equal(active.statusCode, 200, active.body);
+        const answer = await group.app.inject({
+          method: "POST",
+          url: "/api/villages/rooms/turn",
+          payload: {
+            sessionId: "browser",
+            submissionId,
+            message: "Hello.",
+            mode: "chat",
+            targetId: "",
+            expectedSceneRevision: group.scene().sceneRevision,
+          },
+        });
+        assert.equal(answer.statusCode, 200, answer.body);
+      }
+      assert.equal(groupPrefixes.length, 2);
+      assert.deepEqual(groupPrefixes[1], groupPrefixes[0], "a new speaker cannot reorder the same cached cast");
+    } finally {
+      await group.stop();
+    }
   } finally {
     mock.timers.reset();
   }
