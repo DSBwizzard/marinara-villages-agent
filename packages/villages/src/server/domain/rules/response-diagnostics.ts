@@ -1,8 +1,6 @@
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { readModelJsonObject } from "./json-reply.js";
 
-export { extractJsonObject } from "./json-reply.js";
-
 /** Bounded metadata only; response text and private evidence remain in privileged saved records. */
 export type ResponseDiagnostics = {
   model: string;
@@ -11,24 +9,13 @@ export type ResponseDiagnostics = {
   requestedOutputTokens: number;
   responseLength: number;
   parseStatus: "complete" | "salvaged" | "invalid";
-  missingFields: string[];
 };
 
-export function sceneMissingFields(raw: Record<string, unknown> | null): string[] {
-  return [
-    ...["wishChanges", "memoryChanges"].filter((key) => !Array.isArray(raw?.[key])),
-    ...["changes", "permissions", "disclosures"]
-      .filter((key) => !Array.isArray(asRecord(raw?.relationshipChanges)[key]))
-      .map((key) => "relationshipChanges." + key),
-  ];
-}
 export function responseDiagnostics(
   model: { model: string; connectionId: string },
   completion: { content: string | null; finishReason?: string },
   requestedOutputTokens: number,
   raw = readModelJsonObject(completion).value,
-  salvaged = false,
-  missingFields: string[] = [],
 ): ResponseDiagnostics {
   return {
     model: asTrimmedString(model.model).slice(0, 160),
@@ -36,8 +23,7 @@ export function responseDiagnostics(
     finishReason: (completion.finishReason ?? "unknown").slice(0, 80),
     requestedOutputTokens,
     responseLength: (completion.content ?? "").trim().length,
-    parseStatus: raw ? (salvaged || readModelJsonObject(completion).repaired ? "salvaged" : "complete") : "invalid",
-    missingFields: missingFields.slice(0, 16),
+    parseStatus: raw ? (readModelJsonObject(completion).repaired ? "salvaged" : "complete") : "invalid",
   };
 }
 export function coerceResponseDiagnostics(value: unknown): ResponseDiagnostics | undefined {
@@ -50,11 +36,5 @@ export function coerceResponseDiagnostics(value: unknown): ResponseDiagnostics |
     requestedOutputTokens: Math.max(0, Math.floor(Number(raw.requestedOutputTokens) || 0)),
     responseLength: Math.max(0, Math.floor(Number(raw.responseLength) || 0)),
     parseStatus: raw.parseStatus as ResponseDiagnostics["parseStatus"],
-    missingFields: Array.isArray(raw.missingFields)
-      ? raw.missingFields
-          .filter((key): key is string => typeof key === "string")
-          .slice(0, 16)
-          .map((key) => key.slice(0, 80))
-      : [],
   };
 }

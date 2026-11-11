@@ -11,10 +11,7 @@ import {
   privateRejectedText,
   REJECTED_RESPONSE_TEXT_LIMIT,
 } from "../packages/villages/src/server/domain/rules/rejected-response.js";
-import {
-  responseDiagnostics,
-  sceneMissingFields,
-} from "../packages/villages/src/server/domain/rules/response-diagnostics.js";
+import { responseDiagnostics } from "../packages/villages/src/server/domain/rules/response-diagnostics.js";
 import { completeSceneObject } from "../packages/villages/src/server/domain/rules/scene-writing-contract.js";
 import { buildResidentPlanningMessages } from "../packages/villages/src/server/domain/rules/resident-planning.js";
 import { WorkFailureError } from "../packages/villages/src/server/domain/rules/work-failure.js";
@@ -135,14 +132,7 @@ async function main() {
   const truncated = '{"segments":[{"kind":"narration","text":"The gate creaks."}],"keep":[{"text":"cut';
   assert.equal(completeSceneObject(truncated, "length"), null);
   assert.equal(
-    responseDiagnostics(
-      model,
-      { content: truncated, finishReason: "length" },
-      1600,
-      null,
-      false,
-      sceneMissingFields(null),
-    ).parseStatus,
+    responseDiagnostics(model, { content: truncated, finishReason: "length" }, 1600, null).parseStatus,
     "invalid",
   );
   const prompt = buildResidentPlanningMessages(planningInput.context);
