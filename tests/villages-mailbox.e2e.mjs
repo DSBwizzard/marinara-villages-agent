@@ -91,12 +91,13 @@ await withBrowser(browser, async () => {
           body: '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="40"><text x="0" y="30">Mara signature</text></svg>',
         }),
       );
-      await page.route("**/assets/letter-fonts/caveat.json", (route) =>
-        fulfill(route, {
-          contentType: "application/json",
-          body: readFileSync("packages/villages/letter-fonts/caveat.json", "utf8"),
-        }),
-      );
+      for (const font of ["caveat", "lora"])
+        await page.route(`**/assets/letter-fonts/${font}.json`, (route) =>
+          fulfill(route, {
+            contentType: "application/json",
+            body: readFileSync(`packages/villages/letter-fonts/${font}.json`, "utf8"),
+          }),
+        );
       await page.route("**/api/villages/**", async (route) => {
         const request = route.request(),
           url = new URL(request.url()),

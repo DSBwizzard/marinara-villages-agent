@@ -22,7 +22,7 @@ function Harness(){
  const receive=useCallback(events=>setNotices(old=>[...old,...events.filter(event=>!old.some(saved=>saved.id===event.id))]),[]);
  const unresolved=useCallback(()=>{},[]);
  useVillagePresence({visible,presenceSession:session,beginSnapshotRead,snapshot});
- useSceneChangesPolling({visible,viewing,busy,room,snapshot,dismissedRoomEventIdsRef:dismissed,receiveRoomRecordEvents:receive,setRoomNotices:setNotices,setRoomChangeStatus:setSummary,setRoomUnresolvedChanges:unresolved});
+ useSceneChangesPolling({visible,viewing,busy,room,roomNotices:notices,snapshot,dismissedRoomEventIdsRef:dismissed,receiveRoomRecordEvents:receive,setRoomNotices:setNotices,setRoomChangeStatus:setSummary,setRoomUnresolvedChanges:unresolved});
  const load=useCallback(async ({signal}={})=>{const read=beginSnapshotRead();const next=await request('',{signal});if(!signal?.aborted)read.publish(next)},[beginSnapshotRead]);
  usePendingWorkPolling({visible,backgroundPending:snapshot.backgroundWork.some(job=>['queued','running'].includes(job.status)),loadSnapshot:load});
  window.h={snapshot:setSnapshot,room:setRoom,view:setViewing,busy:setBusy};

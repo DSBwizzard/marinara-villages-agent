@@ -222,17 +222,15 @@ await withBrowser(browser, async () => {
       .click();
     await expect(page.getByRole("main", { name: "Projects" })).toBeVisible();
     await page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();
-    await page
+    const placesButton = page
       .getByRole("navigation", { name: "Village exploration" })
-      .getByRole("button", { name: "Places", exact: true })
-      .click();
+      .getByRole("button", { name: "Places", exact: true });
+    await placesButton.click();
     const placesDirectory = page.getByRole("complementary", { name: "Places navigator" });
     await placesDirectory.getByRole("button", { name: /^(Collapse|Close) places$/ }).click();
     await expect(placesDirectory).toHaveCount(0);
-    await page
-      .getByRole("navigation", { name: "Village exploration" })
-      .getByRole("button", { name: "Places", exact: true })
-      .click();
+    await expect(placesButton).toBeFocused();
+    await placesButton.click();
     await expect(placesDirectory.getByRole("searchbox", { name: "Search places", exact: true })).toBeFocused();
     const openProfile = async (id = place.id) => {
       const navigator = page.getByRole("complementary", { name: "Places navigator" });
