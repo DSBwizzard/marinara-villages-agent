@@ -24,6 +24,19 @@ export function readOpening(value: unknown): OpeningRecord | undefined {
 export function openingView(state: VillageState): OpeningView | undefined {
   return state.opening ? structuredClone(state.opening) : undefined;
 }
+export function matchesOpeningGathering(state: VillageState, scene: VenueScene): boolean {
+  const opening = state.opening;
+  return (
+    opening?.stage === "gathering" &&
+    opening.id === scene.openingGatheringId &&
+    opening.gatheringSceneId === scene.id &&
+    opening.communityVenueId === scene.placeId &&
+    state.seed === scene.villageSeed
+  );
+}
+export function completeOpeningGathering(state: VillageState, scene: VenueScene): void {
+  if (matchesOpeningGathering(state, scene)) state.opening!.stage = "complete";
+}
 export function openingSceneDirection(state: VillageState, scene: VenueScene): string {
   if (state.opening?.stage !== "gathering" || scene.id !== state.opening.gatheringSceneId || scene.status !== "opening")
     return "";

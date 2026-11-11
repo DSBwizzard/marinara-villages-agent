@@ -73,7 +73,7 @@ assert.equal(lines[0].viaDoorway, true);
 assert.deepEqual(lines[1].physicalIdsAfter, ["a"]);
 assert.deepEqual(lines[1].heardBy, ["a", "player"], "arrival at the narration segment determines its witnesses");
 assert(!lines[2].viaDoorway);
-assert.equal(lines[2].staging?.length, 1);
+assert.equal(lines[2].staging?.length ?? 0, 0, "A resident without sprites has no concrete cue");
 const reloaded = coerceSession({ ...base, lines });
 assert.deepEqual(reloaded.lines[1].physicalIdsAfter, ["a"], "paragraph timing survives reload");
 const frames = replayStaging(

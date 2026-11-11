@@ -533,6 +533,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseSceneCommands = configureSceneCommands(
     createSceneCommands({
       selectActiveScene: sceneRepository.selectActiveScene,
+      readTerminal: sceneTerminals.read,
+      withSceneWork: backendWork.sceneFence.run,
       generate,
       loadPrivateSpaceImages: () => import("../features/media/location-image.js"),
       processSavedExchange,

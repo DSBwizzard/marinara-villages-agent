@@ -630,6 +630,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
             prior?.id === id &&
             (prior.status !== "complete" || rejectedTerminal) &&
             prior.sceneRevision !== sceneRevision(data) &&
+            !(kind === "close" && data.status === "closed") &&
             !submissions.some((turn) => turn.id === id) &&
             !(data.navigationReceipts as { id: string }[] | undefined)?.some((receipt) => receipt.id === id)
           )
@@ -765,6 +766,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
                   Object.keys(operation.checkpointClaims ?? {}).length > 0 ||
                   Object.values(operation.attempts).some((attempt) => attempt.status === "complete") ||
                   Object.keys(operation.checkpoints).length > 0 ||
+                  (operation.kind === "close" && data.status === "closed") ||
                   submissions.some((entry) => entry.id === operation.id) ||
                   (data.navigationReceipts as { id: string }[] | undefined)?.some((entry) => entry.id === operation.id)
                     ? "interrupted"

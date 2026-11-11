@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
 import { conflict } from "../../domain/rules/errors.js";
+import { completeOpeningGathering } from "../../domain/rules/opening-project.js";
 
 import {
   accessExits,
@@ -48,18 +49,6 @@ export function createLiveScenes({
     readVillageStateWithoutPlaces({ ...options, memories: true });
   const mutateVillageState: typeof mutateVillageStateWithoutPlaces = (change, options) =>
     mutateVillageStateWithoutPlaces(change, { ...options, memories: true });
-  async function completeGathering(session: VenueScene): Promise<void> {
-    if (!session.openingGatheringId) return;
-    await mutateVillageState((state) => {
-      if (
-        state.seed === session.villageSeed &&
-        state.opening?.stage === "gathering" &&
-        state.opening.gatheringSceneId === session.id &&
-        state.opening.id === session.openingGatheringId
-      )
-        state.opening.stage = "complete";
-    });
-  }
   async function canGenerateZonePicture(
     venueId: string,
     zoneId: string,
@@ -123,7 +112,7 @@ export function createLiveScenes({
     const session = await readSession(active.sessionId);
     await observeVillageClock();
     if (session.status === "closed") {
-      await completeGathering(session);
+      if (session.openingGatheringId) await mutateVillageState((state) => completeOpeningGathering(state, session));
       await clearActivePointer(session.id, true);
       return null;
     }

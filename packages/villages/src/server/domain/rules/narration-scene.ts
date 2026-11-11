@@ -6,6 +6,7 @@ import type { NarrationSourceContext } from "./narration-sources.js";
 import { narrationPositions, narrationWitnesses, narrationCommunication } from "./narration-sources.js";
 import { assertNarrationDecision } from "./narration-access.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
+import { completeOpeningGathering } from "./opening-project.js";
 
 export function assertNarrationPlayerIntent(context: NarrationSourceContext, sources: ContinuityEvidence[]) {
   memoryRequire(
@@ -51,14 +52,7 @@ export function applyNarrationScene(
   } else {
     memoryRequire(segment === context.lines.length - 1, "Scene closure must follow all accepted local actions");
     closed = true;
-    const opening = state.opening;
-    if (
-      opening?.version === 3 &&
-      opening.stage === "gathering" &&
-      opening.gatheringSceneId === context.scene.id &&
-      opening.id === readset.source.scene.openingGatheringId
-    )
-      opening.stage = "complete";
+    completeOpeningGathering(state, readset.source.scene);
   }
   const observedBy = narrationWitnesses(sources, ["sight"]);
   const receipt: AcceptedEpisode["commandReceipts"][number] = {

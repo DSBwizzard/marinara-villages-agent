@@ -31,7 +31,6 @@ type Actor = Extract<ContinuityHolder, { kind: "actor" }>;
 export type NarrationSourceContext = {
   seed: string;
   episodeId: string;
-  operationId: string;
   input: string;
   actors: Actor[];
   subjects?: { id: string; incarnation: string }[];
@@ -142,7 +141,8 @@ export function bindNarrationSource(
           ["perspective", "desire", "motivation", "commitment"].includes(owner.class),
         "self belongs only to an admitted non-player's private perspective",
       );
-      return continuitySelfSource(context, owner);
+      const { seed, episodeId } = context;
+      return continuitySelfSource({ seed, episodeId, operationId: episodeId }, owner);
     }
     if (Object.hasOwn(context.historical, ref)) {
       memoryRequire(

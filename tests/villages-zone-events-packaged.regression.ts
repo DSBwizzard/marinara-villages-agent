@@ -13,9 +13,14 @@ import {
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
 import { continuityViews } from "../packages/villages/src/server/domain/rules/continuity.js";
 import { initializeRoomContinuity } from "../packages/villages/src/server/domain/rules/native-continuity.js";
+import { initialOpening } from "../packages/villages/src/server/domain/rules/opening-project.js";
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import {
+  SCENE_TERMINAL_PREFIX,
+  terminalForScene,
+} from "../packages/villages/src/server/features/scenes/scene-terminal.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import { agendaFixture } from "./helpers/agenda.fixture.js";
 import {
@@ -182,6 +187,7 @@ const episodeOf = (id: string) =>
   storedVillage(records).episodes.records.find((episode) => episode.submissionId === id);
 type Fault = { id: string; owner: "outbox" | "world"; time: "before" | "after" };
 let fault: Fault | undefined;
+let failGatheringCompletion = false;
 const clone = structuredClone;
 const documents = {
   getById: async (_package: string, id: string) => clone(records.get(id) ?? null),
@@ -197,6 +203,10 @@ const documents = {
     const prior = records.get(input.id);
     if (!prior || prior.revision !== input.expectedRevision) return null;
     const row = { ...prior, data: clone(input.data), revision: prior.revision + 1 };
+    if (failGatheringCompletion && input.id === villageRecordId && row.data.opening?.stage === "complete") {
+      failGatheringCompletion = false;
+      throw Error("Injected failure before gathering completion");
+    }
     let injected: Fault | undefined;
     if (fault) {
       const outbox =
@@ -391,6 +401,11 @@ try {
     assert.doesNotMatch(JSON.stringify(response), /"readset"|"grounding"|"checkpoints"|"attempts"/);
   }
   await request("/rooms/turn", { ...submit("mixed"), message: original + " changed" }, 409);
+  const gathering = clone(records);
+  const openingRecord = initialOpening(["aqua", "feddy"], placeId, "founding");
+  openingRecord.gatheringSceneId = sceneId;
+  gathering.get(villageRecordId).data.opening = openingRecord;
+  gathering.get(sceneRecordId).data.openingGatheringId = openingRecord.id;
 
   const beforeContact = completions;
   provide({ segments: [{ kind: "dialogue", speakerId: "aqua", text: "I am here." }] });
@@ -540,6 +555,79 @@ try {
   assert.equal(turnOf(held.submissionId)?.acceptance.status, "abandoned");
   assert.equal(episodeOf(held.submissionId), undefined);
   assert.equal(episodeOf(replacement.submissionId)?.privateInput, replacement.message);
+
+  const beforeGathering = completions;
+  const activeRecordId = "villages-active-venue";
+  for (const state of ["active", "closed-with-pointer", "closed-without-pointer"] as const) {
+    const interrupted = clone(gathering);
+    const interruptedScene = interrupted.get(sceneRecordId).data;
+    if (state !== "active") Object.assign(interruptedScene, { status: "closed", endedAt: at, endReason: "player" });
+    if (state !== "closed-with-pointer") interrupted.delete(activeRecordId);
+    await restart(interrupted);
+    if (state === "closed-with-pointer") {
+      assert.equal((await request("/rooms/active")).session, null);
+    } else {
+      const recovered = (await request("/rooms", { venueId: placeId, zoneId: "terrace" })).session;
+      assert.equal(recovered.id, sceneId);
+      assert.equal(recovered.status, state === "active" ? "active" : "closed");
+    }
+    assert.equal((await request("/rooms/active")).session?.id, state === "active" ? sceneId : undefined);
+    assert.equal(storedVillage(records).opening?.stage, state === "active" ? "gathering" : "complete");
+    assert.equal(savedScene().lines.find((line) => line.kind === "input")?.content, original);
+    assert.equal(completions, beforeGathering, "Gathering recovery cannot dispatch new narration");
+  }
+
+  const wrongGathering = clone(gathering);
+  wrongGathering.get(sceneRecordId).data.openingGatheringId = "different-founding";
+  wrongGathering.delete(activeRecordId);
+  await restart(wrongGathering);
+  await request("/rooms", { venueId: placeId, zoneId: "terrace" }, 409);
+  assert.equal((await request("/rooms/active")).session, null);
+  assert.equal(storedVillage(records).opening?.stage, "gathering");
+  assert.equal(completions, beforeGathering);
+
+  await restart(gathering);
+  failGatheringCompletion = true;
+  await request("/rooms/end", { sessionId: sceneId, expectedSceneRevision: savedScene().sceneRevision }, 500);
+  assert.equal(failGatheringCompletion, false);
+  assert.equal(savedScene().status, "closed");
+  assert.equal(savedScene().operation?.status, "interrupted");
+  assert.equal(storedVillage(records).opening?.stage, "gathering");
+  const failedClose = clone(records);
+  await request("/rooms/end", {
+    sessionId: sceneId,
+    expectedSceneRevision: savedScene().sceneRevision,
+    retryOfAttemptId: savedScene().operation?.attemptId,
+  });
+  assert.equal(storedVillage(records).opening?.stage, "complete");
+  assert.equal(savedScene().operation?.status, "complete");
+  assert.equal((await request("/rooms/active")).session, null);
+  await restart(failedClose);
+  assert.equal(storedVillage(records).opening?.stage, "complete", "Startup settles the marker from the saved close");
+  assert.equal(savedScene().operation?.status, "complete");
+  assert.equal(completions, beforeGathering);
+
+  const retiredGathering = clone(gathering);
+  retiredGathering.delete(activeRecordId);
+  retiredGathering.delete(sceneRecordId);
+  const terminalId = SCENE_TERMINAL_PREFIX + sceneId;
+  const terminal = terminalForScene(savedScene(), records.get(sceneRecordId).revision);
+  retiredGathering.set(terminalId, { id: terminalId, kind: "scene-terminal", packageId: "villages", data: terminal });
+  await restart(retiredGathering);
+  await request("/rooms", { venueId: placeId, zoneId: "terrace" }, 409);
+  assert(!records.has(sceneRecordId), "A terminal receipt rules out reusing a retired Scene identity");
+  assert.equal(completions, beforeGathering);
+
+  const freshGathering = clone(baseline);
+  freshGathering.delete(activeRecordId);
+  freshGathering.delete(sceneRecordId);
+  freshGathering.get(villageRecordId).data.opening = initialOpening(["aqua", "feddy"], placeId, "fresh-founding");
+  await restart(freshGathering);
+  const founded = (await request("/rooms", { venueId: placeId, zoneId: "terrace" })).session;
+  assert.equal(founded.status, "opening");
+  assert.equal(storedVillage(records).opening?.gatheringSceneId, founded.id);
+  assert.equal((await request("/rooms/active")).session?.id, founded.id);
+  assert.equal(completions, beforeGathering);
 
   // Restore only the synthetic documents between independent failure scenarios.
   for (const owner of ["outbox", "world"] as const) {

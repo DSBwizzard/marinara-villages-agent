@@ -77,7 +77,12 @@ export function sceneRetirementSourceIsValid(value: unknown): boolean {
 /** A closed Scene remains an outbox until every saved effect and operation settles. */
 export function sceneReadyForRetirement(scene: VenueScene, village: VillageState, activeId: string): boolean {
   if (!scene.id || !scene.villageSeed || scene.villageSeed !== village.seed || scene.status !== "closed") return false;
-  if (scene.id === activeId) return false;
+  // Recovery still needs this Scene to finish the Founding gathering.
+  if (
+    scene.id === activeId ||
+    (village.opening?.stage === "gathering" && village.opening.gatheringSceneId === scene.id)
+  )
+    return false;
   if (scene.operation && scene.operation.status !== "complete") return false;
   if (
     Object.keys(scene.operation?.checkpoints ?? {}).length ||

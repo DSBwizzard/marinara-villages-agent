@@ -97,7 +97,6 @@ const line = (id: string, text: string, kind: VenueLine["kind"] = "dialogue"): V
 const context = (input = "Good morning."): NarrationSourceContext => ({
   seed: "world",
   episodeId: "episode",
-  operationId: "operation",
   input,
   actors: [player, mara, leo, actor("delia")],
   scene,
@@ -140,7 +139,7 @@ await runCase("narration-sources/native-combination", () => {
     state.continuity,
     {
       seed: "world",
-      operationId: captured.operationId,
+      operationId: captured.episodeId,
       episodeId: captured.episodeId,
       at,
       actors: captured.actors,
@@ -176,7 +175,7 @@ function keep(
     {
       seed: "world",
       episodeId: "episode",
-      operationId: "operation",
+      operationId: "episode",
       at,
       actors: [player, mara, leo, actor("delia")],
       sources: [source],
@@ -372,7 +371,7 @@ await runCase("narration-sources/own-perspective", () => {
       {
         seed: "world",
         episodeId: captured.episodeId,
-        operationId: captured.operationId,
+        operationId: captured.episodeId,
         at,
         actors: captured.actors,
         sources: [self],
@@ -428,7 +427,7 @@ await runCase("narration-sources/fitted-aliases", () => {
       seed: captured.seed,
       sceneId: scene.id,
       submissionId: "turn",
-      operationId: captured.operationId,
+      operationId: captured.episodeId,
       capturedAt: at,
       acceptedAt: at,
       responseDigest: memoryHash("response"),
@@ -463,7 +462,7 @@ const episodeFrom = (
   seed: captured.seed,
   sceneId: captured.scene.id,
   submissionId: captured.episodeId,
-  operationId: captured.operationId,
+  operationId: captured.episodeId,
   capturedAt: at,
   acceptedAt: at,
   responseDigest: memoryHash(captured.lines),
@@ -503,7 +502,7 @@ await runCase("narration-sources/room-without-knowers", async () => {
     {
       seed: captured.seed,
       episodeId: captured.episodeId,
-      operationId: captured.operationId,
+      operationId: captured.episodeId,
       at,
       actors: captured.actors,
       room,
@@ -563,7 +562,7 @@ await runCase("narration-sources/sound-metadata", () => {
       collection,
       {
         seed: captured.seed,
-        operationId: captured.operationId,
+        operationId: captured.episodeId,
         episodeId: captured.episodeId,
         at,
         actors: captured.actors,
@@ -595,7 +594,7 @@ await runCase("narration-sources/sound-metadata", () => {
     root = known.records[0],
     key = continuityHolderKey(leo),
     target = { id: root.id, recordRevision: root.revision, heads: { [key]: root.heads[key].revision } };
-  captured.operationId = "later-operation";
+  captured.episodeId = "later-operation";
   assert.equal(
     write({ ...note, replace: root.id, about: ["mara"] }, known, [target]).versions.at(-1)!.about[0].id,
     "mara",
@@ -621,7 +620,7 @@ await runCase("narration-sources/sound-metadata", () => {
       recordRevision: otherRoot.revision,
       heads: { [maraKey]: otherRoot.heads[maraKey].revision },
     };
-  captured.operationId = "new-learner";
+  captured.episodeId = "new-learner";
   assert.throws(() => write({ ...note, replace: otherRoot.id }, otherKnower, [otherTarget]), /anonymous sound/);
   const historical = bindNarrationSource({ segment: "reply", perceive: { kind: "sound-only", by: ["leo"] } }, captured);
   captured.historical = { "h:sound": historical };
@@ -644,7 +643,6 @@ await runCase("narration-sources/sound-alias-retention", async () => {
   const later = {
     ...context("What was that?"),
     episodeId: "later",
-    operationId: "later-operation",
     historical: { "h:voice": projected },
     lines: [line("later-reply", "Some voices carried through the doorway.")],
   };
@@ -664,7 +662,7 @@ await runCase("narration-sources/sound-alias-retention", async () => {
     },
     {
       seed: later.seed,
-      operationId: later.operationId,
+      operationId: later.episodeId,
       episodeId: later.episodeId,
       at,
       actors: later.actors,
@@ -693,7 +691,7 @@ await runCase("narration-sources/sound-alias-retention", async () => {
   assert.equal(source.excerpt, captured.lines[0].soundOnly.text);
   assert.equal(source.act, undefined);
   assert.equal(source.actorId, undefined);
-  const replay = { ...later, operationId: "after-cold", historical: { "h:voice": source } };
+  const replay = { ...later, episodeId: "after-cold", historical: { "h:voice": source } };
   const identifying = prepareNarrationKeep(
     {
       for: ["leo"],
@@ -705,7 +703,7 @@ await runCase("narration-sources/sound-alias-retention", async () => {
     cold.value.continuity,
     {
       seed: replay.seed,
-      operationId: replay.operationId,
+      operationId: replay.episodeId,
       episodeId: replay.episodeId,
       at,
       actors: replay.actors,
@@ -751,7 +749,7 @@ await runCase("narration-sources/keep-binding", async () => {
   const captured = context("I worry she will leave. My father Rowan taught me chair repair.");
   const admission = {
     seed: captured.seed,
-    operationId: captured.operationId,
+    operationId: captured.episodeId,
     episodeId: captured.episodeId,
     at,
     actors: captured.actors,
@@ -822,7 +820,7 @@ await runCase("narration-sources/subject-identity", async () => {
     },
     admission = {
       seed: captured.seed,
-      operationId: captured.operationId,
+      operationId: captured.episodeId,
       episodeId: captured.episodeId,
       at,
       actors: captured.actors,
@@ -895,14 +893,13 @@ await runCase("narration-sources/subject-identity", async () => {
     const later = {
         ...captured,
         episodeId: "later-" + repeat,
-        operationId: "later-" + repeat,
         subjects: [{ id: "leo", incarnation: "new-leo" }],
       },
       target = { id: root.id, recordRevision: root.revision, heads: { [playerKey]: root.heads[playerKey].revision } },
       nextAdmission = {
         ...admission,
         episodeId: later.episodeId,
-        operationId: later.operationId,
+        operationId: later.episodeId,
         subjects: later.subjects,
         supplied: [target],
       },
@@ -938,7 +935,6 @@ await runCase("narration-sources/subject-identity", async () => {
   assert.throws(() => readContinuity(oldShape, captured.seed), /expected object/);
   const mixedContext = {
       ...captured,
-      operationId: "mixed",
       episodeId: "mixed",
       subjects: [{ id: "leo", incarnation: "new-leo" }],
     },
@@ -980,7 +976,7 @@ await runCase("narration-sources/subject-identity", async () => {
           },
           {
             ...admission,
-            operationId: mixedContext.operationId,
+            operationId: mixedContext.episodeId,
             episodeId: mixedContext.episodeId,
             subjects: mixedContext.subjects,
             sources: [mixedSource],
@@ -1001,14 +997,13 @@ await runCase("narration-sources/subject-identity", async () => {
   const mixedRoot = mixed.records[0],
     nextContext = {
       ...mixedContext,
-      operationId: "ambiguous",
       episodeId: "ambiguous",
       actors: [...captured.actors, actor("delia")],
     },
     mixedAdmission = {
       ...admission,
       actors: nextContext.actors,
-      operationId: nextContext.operationId,
+      operationId: nextContext.episodeId,
       episodeId: nextContext.episodeId,
       subjects: nextContext.subjects,
       supplied: [
@@ -1051,7 +1046,7 @@ await runCase("narration-sources/absent-owner-disclosure", async () => {
   };
   const initialAdmission = {
     seed: original.seed,
-    operationId: original.operationId,
+    operationId: original.episodeId,
     episodeId: original.episodeId,
     at,
     actors: original.actors,
@@ -1081,7 +1076,6 @@ await runCase("narration-sources/absent-owner-disclosure", async () => {
   const later = {
     ...context("Mara wants to sail a boat of her own."),
     episodeId: "disclosure",
-    operationId: "tell-leo",
     actors: [player, leo],
     lines: [],
     labels: {},
@@ -1093,7 +1087,7 @@ await runCase("narration-sources/absent-owner-disclosure", async () => {
     .map((row) => ({ ...row, zoneId: "parlor" }));
   const admission = {
     ...initialAdmission,
-    operationId: later.operationId,
+    operationId: later.episodeId,
     episodeId: later.episodeId,
     actors: later.actors,
     supplied: [fitted],
@@ -1142,11 +1136,11 @@ await runCase("narration-sources/absent-owner-disclosure", async () => {
     async (id) => packet.pages.get(id) ?? null,
   );
   assert.deepEqual(continuityViews(cold.value.continuity, leo, at, new Set())[0].owner, mara);
-  const closureContext = { ...original, episodeId: "fulfilled-privately", operationId: "private-fulfillment" };
+  const closureContext = { ...original, episodeId: "fulfilled-privately" };
   const closureAdmission = {
     ...initialAdmission,
     episodeId: closureContext.episodeId,
-    operationId: closureContext.operationId,
+    operationId: closureContext.episodeId,
     supplied: [
       {
         id: root.id,
@@ -1225,13 +1219,12 @@ await runCase("narration-sources/first-disclosure", async () => {
   const later = {
     ...context(original.input),
     episodeId: "disclosure",
-    operationId: "disclosure-operation",
     lines: [line("disclosure-reply", "I would like to go.")],
   };
   later.labels = { reply: "disclosure-reply" };
   const admission = {
     seed: later.seed,
-    operationId: later.operationId,
+    operationId: later.episodeId,
     episodeId: later.episodeId,
     at,
     actors: later.actors,

@@ -11,7 +11,7 @@ export type NarrationReadset = {
   sceneRevision: number;
   continuityRevision: number;
   presentation: import("../rules/sprite-expressions.js").SpriteSelectionContext;
-  source: Omit<NarrationSourceContext, "lines" | "labels" | "native" | "moves">;
+  source: Omit<NarrationSourceContext, "lines" | "labels" | "native" | "moves"> & { operationId: string };
   admission: Omit<ContinuityAdmission, "sources" | "blockedSources">;
   offered: AcceptedEpisode["offered"];
   npcCandidates: { npc: import("./places.js").NpcIdentity; incarnation: string; offered: string[] }[];

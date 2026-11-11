@@ -43,7 +43,6 @@ const reply = readNarrationReply(
 );
 const context = (input: string): NarrationSourceContext => ({
   seed: "world",
-  operationId: "operation",
   episodeId: "episode",
   input,
   scene,

@@ -14,6 +14,7 @@ import type { GreetingTrace, VenueScene } from "../../domain/models/scene-model.
 import type { VillageState } from "../../domain/models/world.js";
 import { badRequest, conflict, notFound, VillagesRequestError } from "../../domain/rules/errors.js";
 import { startingHistoryReady } from "../../domain/rules/starting-history.js";
+import { completeOpeningGathering, matchesOpeningGathering } from "../../domain/rules/opening-project.js";
 import { captureSceneAttendance, sceneZoneOccupants } from "../../domain/rules/scene-attendance.js";
 import { movedAttentionContacts } from "../../domain/rules/scene-attention.js";
 import { sceneContinuityView, cloneSceneFacts } from "../../domain/rules/scene-continuity.js";
@@ -81,6 +82,8 @@ export interface SceneCommandPorts {
   selectActiveScene: typeof import("../../adapters/storage/scene-store.js").selectActiveScene;
   readActive: typeof import("../../adapters/storage/scene-store.js").readActive;
   readSession: typeof import("../../adapters/storage/scene-store.js").readSession;
+  readTerminal: ReturnType<typeof import("./scene-terminal.js").createSceneTerminalStore>["read"];
+  withSceneWork<T>(id: string, work: () => Promise<T>): Promise<T>;
   cancelVenueOperation: typeof import("../../jobs/venue-coordinator.js").cancelVenueOperation;
   coordinateVenue: typeof import("../../jobs/venue-coordinator.js").coordinateVenue;
   hasVenueOperation: typeof import("../../jobs/venue-coordinator.js").hasVenueOperation;
@@ -117,6 +120,8 @@ export function createSceneCommands({
   selectActiveScene,
   readActive,
   readSession,
+  readTerminal,
+  withSceneWork,
   cancelVenueOperation,
   coordinateVenue,
   hasVenueOperation,
@@ -495,35 +500,35 @@ export function createSceneCommands({
     }
     const gathering = village.opening?.stage === "gathering" && village.opening.communityVenueId === placeId;
     const id = gathering && village.opening!.gatheringSceneId ? village.opening!.gatheringSceneId : randomUUID();
-    if (gathering)
-      await mutateVillageState((state) => {
-        if (state.seed !== village.seed || state.opening?.stage !== "gathering")
-          throw conflict("The opening changed. Refresh the Village.");
-        state.opening.gatheringSceneId ||= id;
-        if (state.opening.gatheringSceneId !== id) throw conflict("The gathering is already starting.");
-      });
     if (gathering) {
-      const prior = await readSession(id).catch((error) => {
-        if (error instanceof VillagesRequestError && error.statusCode === 404) return null;
-        throw error;
-      });
-      if (prior) {
-        if (prior.villageSeed !== village.seed || prior.placeId !== placeId)
-          throw conflict("The saved gathering belongs to another Village.");
-        if (prior.status === "closed" || prior.endedAt) {
-          await mutateVillageState((state) => {
-            if (
-              state.seed === village.seed &&
-              state.opening?.gatheringSceneId === id &&
-              state.opening.stage === "gathering"
-            )
-              state.opening.stage = "complete";
-          });
-          return prior;
-        }
+      const existingGathering = await withSceneWork(id, async () => {
+        const current = await mutateVillageState((state) => {
+          if (
+            state.seed !== village.seed ||
+            state.setupAt !== village.setupAt ||
+            state.opening?.stage !== "gathering" ||
+            state.opening.id !== village.opening!.id ||
+            state.opening.communityVenueId !== placeId
+          )
+            throw conflict("The opening changed. Refresh the Village.");
+          state.opening.gatheringSceneId ||= id;
+          if (state.opening.gatheringSceneId !== id) throw conflict("The gathering is already starting.");
+        });
+        const prior = await readSession(id).catch((error) => {
+          if (error instanceof VillagesRequestError && error.statusCode === 404) return null;
+          throw error;
+        });
+        if (!prior) return null;
+        if (!matchesOpeningGathering(current, prior))
+          throw conflict("The saved Scene does not belong to this opening gathering.");
+        if (prior.status === "closed" || prior.endedAt) return finishClosedScene(prior);
         await selectActiveScene(id, placeId);
-        return refreshZoneParticipants(prior);
-      }
+        return prior;
+      });
+      if (existingGathering)
+        return existingGathering.status === "closed" || existingGathering.endedAt
+          ? existingGathering
+          : refreshZoneParticipants(existingGathering);
     }
     const sceneAttendance = captureSceneAttendance(village, placeId, villageNow());
     if (gathering)
@@ -608,11 +613,18 @@ export function createSceneCommands({
       submissions: [],
       recap: "",
     };
-    await mutateDocument(`${SESSION_PREFIX}${id}`, sessionSlot, (value) => {
-      if (gathering && value.id) return;
-      Object.assign(value, session);
-    });
-    await selectActiveScene(id, placeId);
+    const create = async () => {
+      await mutateDocument(`${SESSION_PREFIX}${id}`, sessionSlot, async (value) => {
+        if (gathering) {
+          if (value.id || (await readTerminal(id)) || !matchesOpeningGathering(await readVillageState(), session))
+            throw conflict("The opening changed. Refresh the Village.");
+        }
+        Object.assign(value, session);
+      });
+      await selectActiveScene(id, placeId);
+    };
+    if (gathering) await withSceneWork(id, create);
+    else await create();
     const settled = await refreshZoneParticipants(session);
     await queueZonePicture(settled);
     return settled;
@@ -957,7 +969,8 @@ export function createSceneCommands({
     abandonOperationId?: string,
   ): Promise<VenueScene> {
     const scene = await readSession(id);
-    if (scene.status === "closed") return scene;
+    if (scene.status === "closed" && (scene.operation?.id !== "close" || scene.operation.status === "complete"))
+      return finishClosedScene(scene);
     const resumingAbandon =
       scene.operation?.id === "close" && typeof scene.operation.input.abandonOperationId === "string";
     if (abandonOperationId && !resumingAbandon)
@@ -990,16 +1003,7 @@ export function createSceneCommands({
     const recovered = await readSession(id);
     const blocker = narrationBlocker(recovered);
     if (blocker) throw conflict(blocker);
-    const closed = await closeLiveScene(recovered);
-    await mutateVillageState((state) => {
-      if (
-        state.seed === closed.villageSeed &&
-        state.opening?.stage === "gathering" &&
-        state.opening.gatheringSceneId === id
-      )
-        state.opening.stage = "complete";
-    });
-    return closed;
+    return closeLiveScene(recovered);
   }
   async function closeVenueSessionWithReceipts(
     id: string,
@@ -1016,17 +1020,11 @@ export function createSceneCommands({
       state.endedAt ||= villageNow().toISOString();
       state.endReason ||= "player";
     });
-    await mutateVillageState((state) => {
-      if (
-        state.seed === closed.villageSeed &&
-        state.opening?.version === 3 &&
-        state.opening.stage === "gathering" &&
-        state.opening.gatheringSceneId === closed.id &&
-        state.opening.id === closed.openingGatheringId
-      )
-        state.opening.stage = "complete";
-    });
-    await clearActivePointer(session.id, true);
+    return finishClosedScene(closed);
+  }
+  async function finishClosedScene(closed: VenueScene): Promise<VenueScene> {
+    if (closed.openingGatheringId) await mutateVillageState((state) => completeOpeningGathering(state, closed));
+    await clearActivePointer(closed.id, true);
     return closed;
   }
   async function settleScene(id: string): Promise<void> {

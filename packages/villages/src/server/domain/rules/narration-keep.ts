@@ -53,7 +53,8 @@ export function prepareContinuityKeep(
   ordinal: number,
   collection: ContinuityCollection,
   admission: ContinuityAdmission,
-  sourceContext: Pick<NarrationSourceContext, "seed" | "episodeId" | "operationId" | "actors" | "subjects"> & {
+  sourceContext: Pick<NarrationSourceContext, "seed" | "episodeId" | "actors" | "subjects"> & {
+    operationId: string;
     bindSource(ref: unknown, owner: NarrationSourceOwner): ContinuityEvidence;
   },
 ) {
