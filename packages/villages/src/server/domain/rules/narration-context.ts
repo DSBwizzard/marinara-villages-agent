@@ -30,7 +30,12 @@ import { projectSpeechContexts, projectSpeechPrompt } from "./project-interpreta
 import { sceneContinuityView } from "./scene-continuity.js";
 import { narrationAccessScopes } from "./narration-access.js";
 import { capturedSceneCalendar } from "./scene-calendar.js";
-import { circumstanceRoomOrigins, episodeContextActors, episodeContextRooms } from "./episode-sources.js";
+import {
+  circumstanceRoomOrigins,
+  episodeContextActors,
+  episodeContextRooms,
+  sceneEpisodeId,
+} from "./episode-sources.js";
 import { capturePlaceContext, npcProfile } from "./places.js";
 import { offerSceneNarrative } from "./scene-narrative.js";
 import { nativeCircumstanceRoots } from "./native-continuity.js";
@@ -140,7 +145,7 @@ export function narrationContinuityContext(
   at: string,
 ) {
   memoryRequire(state.seed === scene.villageSeed && scene.zoneId, "Scene continuity scope changed");
-  const episodeId = "episode-" + memoryHash([state.seed, scene.id, operationId]).slice(0, 32);
+  const episodeId = sceneEpisodeId(state.seed, scene.id, operationId);
   const actors = [
     ...new Set([
       "player",
@@ -644,7 +649,8 @@ export function fittedNarrationReadset(
     source: { ...context.source, historical, subjects },
     admission: {
       seed: state.seed,
-      operationId: context.source.operationId,
+      // The Scene request ID is local to one visit. Common continuity uses its Episode identity.
+      operationId: context.episodeId,
       episodeId: context.episodeId,
       at: context.at,
       actors: context.actors.map(({ id, incarnation }) => ({ id, incarnation })),

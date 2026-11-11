@@ -5,6 +5,8 @@ import { continuityHolderKey, continuitySourceUnit } from "./continuity.js";
 
 export const nativeEpisodeId = (seed: string, receiptId: string) =>
   "native-" + memoryHash([seed, receiptId]).slice(0, 32);
+export const sceneEpisodeId = (seed: string, sceneId: string, operationId: string) =>
+  "episode-" + memoryHash([seed, sceneId, operationId]).slice(0, 32);
 
 export function roomRemovalReceipt(placeId: string, zoneId: string): AcceptedEpisode["commandReceipts"][number] {
   return {

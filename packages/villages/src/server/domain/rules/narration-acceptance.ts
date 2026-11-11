@@ -27,7 +27,7 @@ import { venueDesignHash } from "./project-structure.js";
 import { resolveVenueZone, zoneClosed } from "./venue-zones.js";
 import type { ContactMove } from "./venue-contact.js";
 import { contactPosition } from "./venue-contact.js";
-import { episodeContextActors, episodeContextRooms } from "./episode-sources.js";
+import { episodeContextActors, episodeContextRooms, sceneEpisodeId } from "./episode-sources.js";
 import { activeNarrativeConditions } from "./narrative-environment.js";
 
 export type NarrationPublication = {
@@ -55,15 +55,21 @@ const abandonmentFingerprint = (publication: SavedNarration, submissionId: strin
 
 /** The caller checks this before preparing native effects on a recovered request. */
 export function acceptedNarrationEpisode(state: VillageState, publication: SavedNarration, submissionId: string) {
-  const prior = state.episodes.records.find(
-    (row) =>
-      row.id === publication.readset.source.episodeId || row.operationId === publication.readset.source.operationId,
+  const { source, admission } = publication.readset;
+  memoryRequire(
+    source.episodeId === sceneEpisodeId(source.seed, source.scene.id, source.operationId) &&
+      admission.operationId === source.episodeId &&
+      admission.episodeId === source.episodeId,
+    "narration episode identity changed",
   );
+  const prior = state.episodes.records.find((row) => row.id === source.episodeId);
   if (prior)
     memoryRequire(
-      prior.responseDigest === memoryHash([publication.responseDigest, publication.raw, publication.readset]) &&
+      prior.sceneId === source.scene.id &&
+        prior.operationId === source.episodeId &&
+        prior.responseDigest === memoryHash([publication.responseDigest, publication.raw, publication.readset]) &&
         prior.submissionId === submissionId &&
-        prior.privateInput === publication.readset.source.input,
+        prior.privateInput === source.input,
       "accepted narration identity reused",
     );
   return prior;
@@ -543,7 +549,7 @@ export function acceptNarrationContinuity(
     seed: state.seed,
     sceneId: source.scene.id,
     submissionId,
-    operationId: source.operationId,
+    operationId: source.episodeId,
     capturedAt: readset.capturedAt,
     acceptedAt,
     responseDigest: digest,

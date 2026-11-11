@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { VenueSubmission } from "../models/scene-model.js";
 import { memoryRequire } from "../rules/memory-integrity.js";
+import { sceneEpisodeId } from "../rules/episode-sources.js";
 import { readSceneCalendar } from "../rules/scene-calendar.js";
 import { MAX_SCENE_EFFECTS, MAX_SCENE_REJECTIONS } from "../rules/scene-acceptance.js";
 
@@ -126,7 +127,8 @@ const saved = z
             typeof row.source.seed === "string" &&
             typeof row.source.input === "string" &&
             typeof row.source.operationId === "string" &&
-            typeof row.source.episodeId === "string" &&
+            typeof row.source.scene.id === "string" &&
+            row.source.episodeId === sceneEpisodeId(row.source.seed, row.source.scene.id, row.source.operationId) &&
             Array.isArray(row.source.actors) &&
             row.source.actors.length <= 32 &&
             subjects.safeParse(row.source.subjects).success &&
@@ -134,7 +136,7 @@ const saved = z
             row.source.historical &&
             row.admission?.seed === row.source.seed &&
             row.admission.episodeId === row.source.episodeId &&
-            row.admission.operationId === row.source.operationId &&
+            row.admission.operationId === row.source.episodeId &&
             Array.isArray(row.admission.supplied)
           );
         }),

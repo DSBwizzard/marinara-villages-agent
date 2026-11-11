@@ -208,7 +208,7 @@ export function applyNarrationCircumstance(
       memoryRequire(proposed.length === 1, "Room damage needs its exact same-reply keep label");
       const keep = readContinuityProposal(proposed[0]);
       memoryRequire(keep.for === "room", "Room damage cannot link an actor keep");
-      return { id, root: keep.replace ?? continuityRootId(state.seed, readset.source.operationId + ":" + id) };
+      return { id, root: keep.replace ?? continuityRootId(state.seed, readset.admission.operationId + ":" + id) };
     }),
   );
   const damage = links.flat();

@@ -263,6 +263,7 @@ export function prepareNarrationKeep(
 ) {
   return prepareContinuityKeep(raw, ordinal, collection, admission, {
     ...sourceContext,
+    operationId: sourceContext.episodeId,
     bindSource: (ref, owner) => bindNarrationSource(ref, sourceContext, owner),
   });
 }
