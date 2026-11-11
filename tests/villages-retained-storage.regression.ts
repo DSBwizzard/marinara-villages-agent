@@ -1,22 +1,13 @@
-// Test cases: retained-storage/checkpoint-owners, retained-storage/virtual-review, retained-storage/partial-preparation, retained-storage/shared-pages, retained-storage/foreign-owner, retained-storage/allocation-budget, retained-storage/frozen-scene, retained-storage/repeated-head, retained-storage/checkpoint-integrity, retained-storage/growth, retained-storage/payload-identity, retained-storage/relationship-owners, retained-storage/relationship-publication, retained-storage/sprite-owners, retained-storage/sprite-upload-holds, retained-storage/sprite-startup-retry, retained-storage/background-sprite-retirement
+// Test cases: retained-storage/checkpoint-owners, retained-storage/virtual-review, retained-storage/partial-preparation, retained-storage/shared-pages, retained-storage/foreign-owner, retained-storage/allocation-budget, retained-storage/frozen-scene, retained-storage/repeated-head, retained-storage/checkpoint-integrity, retained-storage/growth, retained-storage/payload-identity, retained-storage/continuity-owners, retained-storage/continuity-publication, retained-storage/sprite-owners, retained-storage/sprite-upload-holds, retained-storage/sprite-startup-retry, retained-storage/background-sprite-retirement
 import assert from "node:assert/strict";
 import { VillagesRequestError } from "../packages/villages/src/server/domain/rules/errors.js";
-import { authorSceneFixture } from "./helpers/village-storage.fixture.js";
+import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
+import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
+import { authorSceneFixture, fixtureSceneState } from "./helpers/village-storage.fixture.js";
 import { randomUUID } from "node:crypto";
 import { runCase } from "../scripts/test-cases.mjs";
 import { createRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
-import { createDocumentMutator } from "../packages/villages/src/server/adapters/storage/document-store.js";
-import { createRelationshipStore } from "../packages/villages/src/server/features/residents/relationship-store-service.js";
-import {
-  createRelationshipPayloadStore,
-  relationshipDocumentId,
-  readRelationshipRoot,
-} from "../packages/villages/src/server/adapters/storage/relationship-payload-store.js";
-import {
-  neutralRelationship,
-  relationshipKey,
-} from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { createRepairService } from "../packages/villages/src/server/features/repair/repair-service.js";
 import {
   collectRetainedStorage,
@@ -24,20 +15,34 @@ import {
 } from "../packages/villages/src/server/features/repair/retained-storage-cleanup.js";
 import { createRepairSnapshots } from "../packages/villages/src/server/adapters/storage/repair-snapshot-store.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { memoryDigest } from "../packages/villages/src/server/adapters/storage/memory-payload-store.js";
 import {
-  createMemoryPageTracer,
-  encodeMemoryPages,
-} from "../packages/villages/src/server/adapters/storage/memory-pages.js";
+  memoryDigest,
+  memoryPayload,
+  emptyMemoryPayload,
+} from "../packages/villages/src/server/adapters/storage/memory-payload-store.js";
+import { createMemoryPageTracer } from "../packages/villages/src/server/adapters/storage/memory-pages.js";
+import {
+  encodeContinuityPages,
+  traceContinuityPages,
+} from "../packages/villages/src/server/adapters/storage/continuity-pages.js";
 import { repairId } from "../packages/villages/src/server/domain/rules/repair-records.js";
-import { addMemory, memoryTime, realisticMemoryHistory, memoryRepair } from "./helpers/memories-fixture.js";
+import { nativeHistoryFixture, retainAuthoredNote } from "./helpers/continuity.fixture.js";
+import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
+import { protectContinuity, continuityHolderKey } from "../packages/villages/src/server/domain/rules/continuity.js";
 import {
-  reserveMemoryScene,
-  forgetVillageMemory,
-  sceneMemories,
-} from "../packages/villages/src/server/domain/rules/village-memories.js";
+  continuityMemoryLibrary,
+  inspectContinuityRelationships,
+} from "../packages/villages/src/server/domain/rules/continuity-library.js";
 import { venue } from "./fixtures/villages-projects.fixture.js";
-import { projectMemories } from "../packages/villages/src/server/domain/rules/memory-views.js";
+import {
+  captureSceneContinuity,
+  sceneContinuityView,
+} from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { captureReturnContext } from "../packages/villages/src/server/domain/rules/return-catchup-capture.js";
+import { returnCaptureRevision } from "../packages/villages/src/server/domain/rules/return-capture-revision.js";
+import { residentPlanningInput } from "./fixtures/resident-planning.fixture.js";
+import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import {
   createSpriteFiles,
   spriteFileId,
@@ -52,6 +57,32 @@ import {
 } from "../packages/villages/src/server/adapters/storage/background-responses.js";
 import { backgroundSlotId } from "../packages/villages/src/server/domain/rules/background-revision.js";
 import { backgroundCompletionId } from "../packages/villages/src/server/adapters/storage/background-completions.js";
+
+const memoryTime = (hours = 0) => new Date(Date.UTC(2025, 0, 1) + hours * 3600000).toISOString();
+const resident = (id: string) => ({
+  characterId: id,
+  incarnation: id + "-one",
+  letterFontId: "caveat" as const,
+  addedAt: memoryTime(),
+  cardSnapshot: {
+    ...snapshotFromCard(readVillagerCard({ id, comment: "", data: { name: id } }), 1),
+    capturedAt: memoryTime(),
+  },
+  agenda: null,
+});
+function forget(state: VillageState, id: string, operationId: string, at: string) {
+  const holder = continuityActor(state, "player")!,
+    key = continuityHolderKey(holder);
+  const record = state.continuity.records.find((row) => row.id === id)!;
+  state.continuity = protectContinuity(
+    state.continuity,
+    { id, recordRevision: record.revision, heads: { [key]: record.heads[key].revision } },
+    [holder],
+    operationId,
+    at,
+    { forget: true },
+  );
+}
 
 async function fixture() {
   const rows = new Map<string, any>(),
@@ -92,16 +123,16 @@ async function fixture() {
     resumeProject: async () => {},
     cancelProject: async () => {},
     replaySaved: async () => {},
-    continueSaved: async () => {},
   });
   await repo.mutateAuthority(
     (state) => {
       Object.assign(state, defaultVillageState());
       state.seed = "retained-storage";
+      state.name = "Retained storage";
       state.setupAt = memoryTime();
       state.foundedAt = memoryTime();
       state.venues = [venue()];
-      state.memories = addMemory(state.memories, { audience: ["player"], sourceId: "first" });
+      retainAuthoredNote(state, "first", "The player left a telescope by the window.", ["player"], memoryTime());
     },
     { memories: true },
   );
@@ -152,16 +183,7 @@ await runCase("retained-storage/sprite-owners", async () => {
       warnings: [],
     });
     await f.repo.mutateAuthority((world) => {
-      world.villagers = [
-        {
-          letterFontId: "caveat",
-          characterId: "mara",
-          addedAt: memoryTime(),
-          cardSnapshot: { id: "mara", name: "Mara", capturedAt: memoryTime(), revision: 1, sourceStatus: "available" },
-          wishes: [],
-          spriteManager: manager,
-        } as any,
-      ];
+      world.villagers = [{ ...resident("mara"), spriteManager: manager }];
     });
   });
   const cp = await f.api.createCheckpoint("Original artwork", "sprite-original");
@@ -343,189 +365,160 @@ await runCase("retained-storage/sprite-startup-retry", async () => {
     cleanup.dispose();
   }
 });
-function relationshipStore(gate: ReturnType<typeof createRepairGate>) {
-  return createRelationshipStore({
-    VILLAGES_PACKAGE_ID: "villages",
-    villagesDocuments: () => gate.documents,
-    mutateDocument: createDocumentMutator(() => gate.documents),
-  });
-}
-await runCase("retained-storage/relationship-owners", async () => {
-  const f = await fixture(),
-    api = relationshipStore(f.gate),
-    scope = await f.repo.readAuthority(),
-    id = relationshipDocumentId(scope.seed),
-    key = relationshipKey("aqua", "player");
-  const head = () => readRelationshipRoot(f.rows.get(id).data, scope).head;
-  await f.gate.work(() =>
-    api.mutateRelationships(scope.seed, (state) => {
-      state.edges[key] = { ...neutralRelationship("aqua", "player"), connection: "Original" };
-      state.mailThreads.personal = {
-        id: "personal",
-        participantIds: ["aqua", "player"],
-        revision: 1,
-        messages: [
-          {
-            id: "letter",
-            requestId: "letter",
-            fromId: "aqua",
-            toId: "player",
-            text: "Exact private evidence",
-            status: "delivered",
-            at: memoryTime(),
-          },
-        ],
-      };
-    }),
+await runCase("retained-storage/continuity-owners", async () => {
+  const f = await fixture();
+  let id = "";
+  const initial = "Aqua trusts the player to return borrowed books.";
+  const privateText = "Aqua keeps an exact private recollection of their first meeting.";
+  await f.repo.mutateAuthority(
+    (state) => {
+      state.villagers.push(resident("aqua"));
+      id = retainAuthoredNote(state, "original-perspective", initial, ["aqua"], memoryTime(), {
+        class: "perspective",
+        owner: continuityActor(state, "aqua")!,
+        about: ["player"],
+        current: true,
+      });
+      retainAuthoredNote(state, "private-recollection", privateText, ["aqua"], memoryTime());
+    },
+    { memories: true },
   );
-  const first = head(),
-    cp = await f.api.createCheckpoint("Relationship owner", "relationship-owner");
-  await f.gate.work(() =>
-    api.mutateRelationships(scope.seed, (state) => {
-      state.edges[key].connection = "Later";
-      state.edges[key].revision++;
-    }),
+  const first = f.head();
+  const checkpoint = await f.api.createCheckpoint("Private continuity owner", "continuity-owner");
+  await f.repo.mutateAuthority(
+    (state) => {
+      retainAuthoredNote(state, "later", "Later the player bought a notebook.", ["player"], memoryTime(1));
+    },
+    { memories: true },
   );
-  const beforeRepair = head(),
-    record = await f.api.inspect(repairId("relationship", "aqua", "player"));
+  const beforeRepair = f.head();
+  const record = await f.api.inspect(repairId("memory", id));
   const review = await f.api.prepare({
-    operationId: "paged-relationship-repair",
+    operationId: "correct-perspective",
     recordId: record.id,
     expectedRecord: record.token!,
     action: "correct",
-    knowers: [],
-    values: { connection: "Repaired", stance: "", expectations: "", concerns: "" },
+    knowers: ["aqua"],
+    values: { text: "Aqua only trusts the player with common books." },
   });
+  const cold = () => createVillageRepository(() => f.gate.documents).readAuthority({ memories: true });
+  const perspective = async () => inspectContinuityRelationships(await cold(), "aqua", memoryTime(2))[0];
   await collectRetainedStorage(f.gate);
-  assert(f.rows.has(first.id), "A manual checkpoint owns an older relationship head");
+  assert(f.rows.has(first.id), "A manual checkpoint protects the older shared history head");
   await f.api.apply(review.id, review.token);
-  await collectRetainedStorage(f.gate);
-  assert(f.rows.has(beforeRepair.id), "Available Undo protects the previous ledger");
-  const undo = await f.api.undo(review.id, "undo-paged-relationship");
+  assert.equal((await perspective()).text, "Aqua only trusts the player with common books.");
+  const undo = await f.api.undo(review.id, "undo-perspective");
   await f.api.apply(undo.id, undo.token);
-  assert.equal((await api.readRelationshipState(scope.seed)).edges[key].connection, "Later");
-  const restore = await f.api.restore(cp.id, "restore-paged-relationship");
+  assert.equal((await perspective()).text, initial);
+  const restore = await f.api.restore(checkpoint.id, "restore-perspective");
   await f.api.apply(restore.id, restore.token);
-  const restored = await createRelationshipPayloadStore(f.gate.documents).read(head(), scope);
-  assert.equal(restored.edges[key].connection, "Original");
-  assert.equal(restored.mailThreads.personal.messages[0].text, "Exact private evidence");
-  f.rows.get(id).kind = "unknown";
-  const invalidOwner = structuredClone(f.rows);
-  await assert.rejects(api.readRelationshipState(scope.seed), /owner identity/);
-  await assert.rejects(f.api.inspect(repairId("relationship", "aqua", "player")), /owner identity/);
-  await assert.rejects(f.api.createCheckpoint("Invalid owner", "invalid-owner"), /owner identity/);
+  const restored = await cold();
+  assert.equal((await perspective()).text, initial);
+  assert(
+    continuityMemoryLibrary(restored, { inspection: true, characterId: "aqua" }, memoryTime(2)).entries.some(
+      (entry) => entry.text === privateText,
+    ),
+  );
+  assert.equal(continuityMemoryLibrary(restored, { query: "private recollection" }, memoryTime(2)).total, 0);
+  assert.equal(continuityMemoryLibrary(restored, { query: "notebook" }, memoryTime(2)).total, 0);
+  const root = f.rows.get("villages-village");
+  root.kind = "unknown";
+  const malformed = structuredClone(f.rows);
+  await assert.rejects(cold, /Village.*identity/);
+  await assert.rejects(f.api.inspect(repairId("memory", id)), /Village.*identity/);
+  await assert.rejects(f.api.createCheckpoint("Invalid owner", "invalid-owner"), /Village.*identity/);
   await assert.rejects(
-    api.mutateRelationships(scope.seed, (state) => {
-      state.noticeSequence++;
+    f.repo.mutateAuthority((state) => {
+      state.name = "Unsafe publication";
     }),
-    /owner identity/,
+    /Village.*identity/,
   );
-  await assert.rejects(collectRetainedStorage(f.gate), /owner identity/);
-  assert.deepEqual(
-    f.rows,
-    invalidOwner,
-    "A wrong-kind current owner must prevent publication and every cleanup deletion",
-  );
-  f.rows.get(id).kind = "relationships";
-  await f.api.deleteCheckpoint(cp.id, cp.token);
-  await collectRetainedStorage(f.gate);
-  assert.equal(
-    f.rows.has(first.id),
-    false,
-    "A restored ledger is republished with fresh revision fences; deleting the last old owner releases its head",
-  );
-  const old = structuredClone(f.rows.get(id).data);
-  f.rows.get(id).data.head = beforeRepair;
+  await assert.rejects(collectRetainedStorage(f.gate), /Village.*identity/);
+  assert.deepEqual(f.rows, malformed, "A wrong-kind current owner cannot publish or release anything");
+  root.kind = "village";
+  const saved = root.data.memoryHead;
+  root.data.memoryHead = beforeRepair;
   f.rows.delete(beforeRepair.id);
-  const snapshot = structuredClone(f.rows);
+  const missing = structuredClone(f.rows);
   await assert.rejects(collectRetainedStorage(f.gate), /missing/);
-  assert.deepEqual(f.rows, snapshot, "Missing relationship ownership prevents every deletion");
-  f.rows.get(id).data = old;
+  assert.deepEqual(f.rows, missing, "Missing current history prevents every deletion");
+  root.data.memoryHead = saved;
 });
-await runCase("retained-storage/relationship-publication", async () => {
-  const f = await fixture(),
-    api = relationshipStore(f.gate),
-    scope = await f.repo.readAuthority();
-  await f.gate.work(() => api.mutateRelationships(scope.seed, () => {}));
+
+await runCase("retained-storage/continuity-publication", async () => {
+  const f = await fixture();
+  const head = f.head();
   const create = f.store.create;
   let createdPages = 0;
   f.store.create = async (input: any) => {
-    if (input.kind === "memory-page" && ++createdPages === 2) throw Error("Interrupted relationship publication");
+    if (input.kind === "memory-page" && ++createdPages === 2) throw Error("Interrupted continuity publication");
     return create(input);
   };
   await assert.rejects(
     f.gate.work(() =>
-      api.mutateRelationships(scope.seed, (state) => {
-        state.mailThreads.personal = {
-          id: "personal",
-          participantIds: ["aqua", "player"],
-          revision: 300,
-          messages: Array.from({ length: 300 }, (_, i) => ({
-            id: "letter-" + i,
-            requestId: "letter-" + i,
-            fromId: "aqua",
-            toId: "player",
-            text: "Retained " + i,
-            at: memoryTime(),
-            status: "delivered",
-          })),
-        };
-      }),
+      f.repo.mutateAuthority((state) => Object.assign(state, nativeHistoryFixture(state, 40)), { memories: true }),
     ),
-    /Interrupted/,
+    /Interrupted continuity publication/,
   );
   f.store.create = create;
   f.gate.dispose();
-  const restarted = createRepairGate(f.store),
-    cold = relationshipStore(restarted);
+  const restarted = createRepairGate(f.store);
+  const cold = createVillageRepository(() => restarted.documents);
   await collectRetainedStorage(restarted);
-  assert.equal([...f.rows.values()].filter((row) => row.kind === "relationship-payload-intent").length, 0);
-  assert.equal([...f.rows.values()].filter((row) => row.kind === "relationship-payload").length, 1);
-  assert.equal(Object.keys((await cold.readRelationshipState(scope.seed)).mailThreads).length, 0);
+  assert.equal([...f.rows.values()].filter((row) => row.kind === "memory-payload-intent").length, 0);
+  assert.equal([...f.rows.values()].filter((row) => row.kind === "memory-payload").length, 1);
+  assert.deepEqual(f.head(), head);
+  assert.equal((await cold.readAuthority({ memories: true })).continuity.records.length, 1);
   let entered!: () => void, release!: () => void;
-  const atWrite = new Promise<void>((r) => {
-      entered = r;
-    }),
-    continueWrite = new Promise<void>((r) => {
-      release = r;
-    });
+  const atWrite = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const continueWrite = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   f.store.create = async (input: any) => {
-    if (input.kind === "relationship-payload") {
+    if (input.kind === "memory-payload") {
       entered();
       await continueWrite;
     }
     return create(input);
   };
   const writer = restarted.work(() =>
-    cold.mutateRelationships(scope.seed, (state) => {
-      state.noticeSequence++;
-    }),
+    cold.mutateAuthority(
+      (state) => {
+        retainAuthoredNote(state, "later", "The telescope was returned.", ["player"], memoryTime(1));
+      },
+      { memories: true },
+    ),
   );
   await atWrite;
-  const before = structuredClone(f.rows);
-  await assert.rejects(collectRetainedStorage(restarted), /work is active/);
-  assert.deepEqual(f.rows, before, "Cleanup cannot remove a preparation while its writer can still publish");
-  release();
-  await writer;
-  f.store.create = create;
+  try {
+    const before = structuredClone(f.rows);
+    await assert.rejects(collectRetainedStorage(restarted), /work is active/);
+    assert.deepEqual(f.rows, before, "Cleanup cannot release a preparation while its writer can publish");
+  } finally {
+    release();
+    await writer;
+    f.store.create = create;
+  }
   await collectRetainedStorage(restarted);
-  assert.equal((await cold.readRelationshipState(scope.seed)).noticeSequence, 1);
-  restarted.dispose();
+  assert.equal((await cold.readAuthority({ memories: true })).continuity.records.length, 2);
 });
+
 await runCase("retained-storage/checkpoint-owners", async () => {
   const f = await fixture(),
     checkpoint = await f.api.createCheckpoint("Keep old history", "manual-history");
   const old = f.head();
   await f.repo.mutateAuthority(
     (state) => {
-      state.memories = addMemory(state.memories, { sourceId: "later", audience: ["player"] });
+      retainAuthoredNote(state, "later", "The player brought the telescope outside.", ["player"], memoryTime(1));
     },
     { memories: true },
   );
   for (let i = 0; i < 11; i++) {
-    const record = await f.api.inspect(repairId("zone", "cafe", "common"));
+    const record = await f.api.inspect(repairId("world"));
     const values = Object.fromEntries(record.fields.map((field) => [field.key, field.value]));
-    values.description = `Retained physical account ${i}`;
+    values.setting = `Retained physical account ${i}`;
     const review = await f.api.prepare({
       operationId: `change-${i}`,
       recordId: record.id,
@@ -549,13 +542,13 @@ await runCase("retained-storage/checkpoint-owners", async () => {
   await collectRetainedStorage(f.gate);
   assert.equal([...f.rows.values()].filter((row) => row.kind === "repair-undo").length, 9);
   assert.equal((await f.api.index()).history.length, 12);
-  assert.equal((await f.repo.readAuthority({ memories: true })).memories.records.length, 2);
+  assert.equal((await f.repo.readAuthority({ memories: true })).continuity.records.length, 2);
   assert.equal((await collectRetainedStorage(f.gate)).removed, 0, "Repeated cleanup is idempotent.");
 });
 await runCase("retained-storage/virtual-review", async () => {
   const f = await fixture();
   const state = await f.repo.readAuthority({ memories: true }),
-    record = await f.api.inspect(repairId("memory", state.memories.records[0].id));
+    record = await f.api.inspect(repairId("memory", state.continuity.records[0].id));
   const review = await f.api.prepare({
     operationId: "virtual-forget",
     recordId: record.id,
@@ -583,25 +576,23 @@ await runCase("retained-storage/virtual-review", async () => {
   await collectRetainedStorage(f.gate);
   await f.api.apply(review.id, review.token);
   const repaired = await f.repo.readAuthority({ memories: true });
-  assert.equal(repaired.memories.records[0].knowers.player.forgotten?.operationId, "virtual-forget");
+  const key = continuityHolderKey(continuityActor(repaired, "player")!);
+  assert.equal(repaired.continuity.records[0].protection[key].operationId, "virtual-forget");
+  assert.equal(continuityMemoryLibrary(repaired, {}, memoryTime(100)).total, 0);
 });
 await runCase("retained-storage/partial-preparation", async () => {
   const f = await fixture(),
     root = f.rows.get("villages-village"),
     world = memoryDigest(JSON.stringify([root.data.seed, root.data.setupAt])).slice(0, 32);
-  const value = {
-    memories: realisticMemoryHistory(100),
-    memoryScenes: {},
-    memoryReceipts: {},
-    worldPlaces: defaultVillageState().worldPlaces,
-  };
-  const encoded = encodeMemoryPages(value, world),
+  const state = await f.repo.readAuthority({ memories: true });
+  const value = { ...emptyMemoryPayload(), ...nativeHistoryFixture(state, 100) };
+  const encoded = encodeContinuityPages(value, world),
     candidate = {
       id: `villages-memory-${world}-${randomUUID()}`,
       digest: memoryDigest(JSON.stringify(encoded.manifest)),
-      revision: value.memories.revision,
+      revision: value.continuity.revision + value.episodes.revision,
     };
-  await f.insert(candidate.id, "memory-payload", { format: 2, world, payload: JSON.stringify(encoded.manifest) });
+  await f.insert(candidate.id, "memory-payload", { format: 3, world, payload: JSON.stringify(encoded.manifest) });
   const [page, data] = [...encoded.pages][0];
   await f.insert(page, "memory-page", data);
   const intent = `villages-memory-intent-${randomUUID()}`;
@@ -618,7 +609,7 @@ await runCase("retained-storage/partial-preparation", async () => {
   assert.equal(f.rows.has(page), false);
   assert.equal(f.rows.has(intent), false, "A stopped partial preparation is not a permanent recovery hold.");
   const read = await createVillageRepository(() => restarted.documents).readAuthority({ memories: true });
-  assert.equal(read.memories.records.length, 1);
+  assert.equal(read.continuity.records.length, 1);
   await f.insert(`villages-memory-intent-${randomUUID()}`, "memory-payload-intent", { candidate: false });
   const before = structuredClone(f.rows);
   await assert.rejects(collectRetainedStorage(restarted));
@@ -628,26 +619,22 @@ await runCase("retained-storage/shared-pages", async () => {
   const world = "a".repeat(32),
     pages = new Map<string, any>(),
     manifests: unknown[] = [];
-  let value = {
-    memories: realisticMemoryHistory(1000),
-    memoryScenes: {},
-    memoryReceipts: {},
-    worldPlaces: defaultVillageState().worldPlaces,
-  };
+  const state = { ...defaultVillageState(), seed: "shared-pages", setupAt: memoryTime() };
+  Object.assign(state, nativeHistoryFixture(state, 1000));
   let layout;
   for (let i = 0; i < 40; i++) {
-    const encoded = encodeMemoryPages(value, world, layout);
+    const encoded = encodeContinuityPages(memoryPayload(state), world, layout);
     layout = encoded.layout;
     for (const row of encoded.pages) pages.set(...row);
     manifests.push(encoded.manifest);
-    value = { ...value, memories: addMemory(value.memories, { sourceId: `append-${i}`, audience: ["player"] }) };
+    retainAuthoredNote(state, `append-${i}`, `New retained account ${i}`, ["player"], memoryTime(50 + i));
   }
   const reads = new Map<string, number>();
   const tracer = createMemoryPageTracer(async (id) => {
     reads.set(id, (reads.get(id) ?? 0) + 1);
     return pages.get(id) ?? null;
   });
-  for (const manifest of manifests) await tracer.trace(manifest, world);
+  for (const manifest of manifests) await traceContinuityPages(manifest, world, tracer);
   assert.ok(reads.size > 50);
   assert.ok(
     [...reads.values()].every((count) => count === 1),
@@ -662,6 +649,7 @@ await runCase("retained-storage/foreign-owner", async () => {
     (state) => {
       state.seed = "replacement-world";
       state.setupAt = memoryTime(10);
+      Object.assign(state, emptyMemoryPayload());
     },
     { memories: true },
   );
@@ -699,18 +687,18 @@ await runCase("retained-storage/allocation-budget", async () => {
     assert.equal(passes(), 2, "Allocated bytes schedule a coalesced follow-up sweep.");
     assert.equal(f.rows.has(artifact.body), false);
     assert.deepEqual(failures, []);
-    const social = relationshipStore(f.gate),
-      seed = (await f.repo.readAuthority()).seed;
+    const state = await f.repo.readAuthority({ memories: true });
+    const original = memoryPayload(state);
+    retainAuthoredNote(state, "alternate", "The window was open.", ["player"], memoryTime(1));
+    const alternate = memoryPayload(state);
     for (let i = 0; i < 3000; i++) {
       await f.gate.work(() =>
-        social.mutateRelationships(seed, (state) => {
-          state.noticeSequence = i % 2;
-        }),
+        f.repo.mutateAuthority((draft) => Object.assign(draft, i % 2 ? original : alternate), { memories: true }),
       );
       await cleanup.request();
     }
     assert.ok(passes() >= 3, "Cycling existing content-addressable heads must still allocate toward cleanup");
-    const intents = [...f.rows.values()].filter((row) => row.kind === "relationship-payload-intent");
+    const intents = [...f.rows.values()].filter((row) => row.kind === "memory-payload-intent");
     assert.ok(
       intents.reduce((sum, row) => sum + Buffer.byteLength(JSON.stringify(row.data)), 0) < 1024 * 1024,
       "Publication-intent overhead is bounded even when no new history body or page is allocated",
@@ -723,37 +711,43 @@ await runCase("retained-storage/allocation-budget", async () => {
 });
 await runCase("retained-storage/frozen-scene", async () => {
   const f = await fixture();
+  let id = "";
   await f.repo.mutateAuthority(
     (state) => {
-      state.memories = realisticMemoryHistory(200);
-      reserveMemoryScene(state, "held", memoryTime());
-      const ownEffect = {
-        ...state.memories.records[2],
-        knowers: Object.fromEntries(
-          Object.entries(state.memories.records[2].knowers).filter(([id]) => id === "player"),
-        ),
-      };
-      state.memoryScenes.held.effects[ownEffect.id] = ownEffect;
+      state.setting = "The earlier Village description.";
+      Object.assign(state, nativeHistoryFixture(state, 200));
+      id = retainAuthoredNote(state, "unique", "A single plum lantern was left here.", ["player"], memoryTime(4));
     },
     { memories: true },
   );
-  const original = sceneMemories(await f.repo.readAuthority({ memories: true }), "held");
+  const original = await f.repo.readAuthority({ memories: true });
+  const scene = coerceSession({
+    version: 5,
+    id: "held",
+    villageSeed: original.seed,
+    placeId: "cafe",
+    zoneId: "common",
+    status: "active",
+    startedAt: memoryTime(4),
+  });
+  scene.continuity = captureSceneContinuity(original, scene, Date.parse(memoryTime(4)));
+  await f.insert("villages-venue-visit-held", "venue-visit", scene);
+  assert.equal(continuityMemoryLibrary(original, { query: "plum lantern" }, memoryTime(4)).total, 1);
   await f.repo.mutateAuthority(
     (state) => {
-      forgetVillageMemory(state, memoryRepair(state.memories, "forget", ["player"]), memoryTime(20));
+      state.setting = "The current Village description.";
+      forget(state, id, "forget-lantern", memoryTime(20));
     },
     { memories: true },
   );
-  const preserved = await f.repo.readAuthority({ memories: true });
   await collectRetainedStorage(f.gate);
   const cold = await createVillageRepository(() => f.gate.documents).readAuthority({ memories: true });
-  assert.deepEqual(
-    projectMemories(sceneMemories(cold, "held"), ["player"]),
-    projectMemories(original, ["player"]),
-    "Serialized Scene headers retain sparse preimages and own effects.",
-  );
-  assert.deepEqual(cold.memoryScenes.held, preserved.memoryScenes.held);
-  assert.ok(cold.memories.records[0].knowers.player.forgotten);
+  const saved = fixtureSceneState(f.rows.get("villages-venue-visit-held").data, f.rows);
+  const replay = sceneContinuityView(cold, saved);
+  assert.equal(replay.setting, original.setting);
+  assert.equal(cold.setting, "The current Village description.");
+  assert.equal(continuityMemoryLibrary(replay, { query: "plum lantern" }, memoryTime(20)).total, 0);
+  assert.deepEqual(cold.episodes, original.episodes, "Forgetting keeps the source receipt intact after cleanup");
 });
 await runCase("retained-storage/repeated-head", async () => {
   const f = await fixture();
@@ -801,24 +795,19 @@ await runCase("retained-storage/growth", async () => {
     const f = await fixture();
     await f.repo.mutateAuthority(
       (state) => {
-        state.memories = realisticMemoryHistory(count);
-        reserveMemoryScene(state, "large-frozen", memoryTime());
+        Object.assign(state, nativeHistoryFixture(state, count));
       },
       { memories: true },
     );
+    await f.api.createCheckpoint("Original retained history", "growth-checkpoint");
     const initial = await collectRetainedStorage(f.gate);
-    const targets = (await f.repo.readAuthority({ memories: true })).memories.records
-      .filter((row) => row.knowers.player && !row.knowers.player.forgotten)
+    const targets = (await f.repo.readAuthority({ memories: true })).continuity.records
       .slice(0, 20)
       .map((row) => row.id);
     for (let i = 0; i < 20; i++) {
       await f.repo.mutateAuthority(
         (state) => {
-          forgetVillageMemory(
-            state,
-            memoryRepair(state.memories, "forget", ["player"], undefined, targets[i]),
-            memoryTime(20 + i),
-          );
+          forget(state, targets[i], `forget-${i}`, memoryTime(500 + i));
         },
         { memories: true },
       );
@@ -828,13 +817,13 @@ await runCase("retained-storage/growth", async () => {
     const result = await collectRetainedStorage(f.gate);
     assert.equal(f.lists.filter((kind) => kind === "memory-page").length - pageLists, 1);
     const cold = await createVillageRepository(() => f.gate.documents).readAuthority({ memories: true });
-    assert.deepEqual(cold.memories, preserved.memories);
-    assert.deepEqual(cold.memoryScenes, preserved.memoryScenes);
-    assert.equal(cold.memories.records.length, count);
+    assert.deepEqual(cold.continuity, preserved.continuity);
+    assert.deepEqual(cold.episodes, preserved.episodes);
+    assert.equal(cold.continuity.records.length, count);
     assert.ok(result.removedBytes > 0);
     assert.ok(
       result.retainedBytes < initial.retainedBytes * 1.1 + 256 * 1024,
-      "Twenty corrections retain shared current/frozen history rather than twenty whole-history copies.",
+      "Current and checkpoint history share immutable pages across twenty corrections.",
     );
     console.log(
       JSON.stringify({
@@ -850,7 +839,7 @@ await runCase("retained-storage/growth", async () => {
 });
 await runCase("retained-storage/payload-identity", async () => {
   const f = await fixture();
-  await f.insert("not-a-memory-id", "memory-payload", { format: 2, payload: "{}" });
+  await f.insert("not-a-memory-id", "memory-payload", { format: 3, payload: "{}" });
   const before = structuredClone(f.rows);
   await assert.rejects(collectRetainedStorage(f.gate), /invalid retained history identity/);
   assert.deepEqual(
@@ -862,7 +851,7 @@ await runCase("retained-storage/payload-identity", async () => {
 
 await runCase("retained-storage/background-sprite-retirement", async () => {
   const f = await fixture(),
-    world = await f.repo.readAuthority();
+    world = await f.repo.readAuthority({ memories: true });
   const assetId = "villages-" + randomUUID();
   const source = await f.gate.work(() =>
     createSpriteFiles(f.gate.documents)(assetId, "original", "data:image/png;base64,UE5H", async () => ({
@@ -882,6 +871,8 @@ await runCase("retained-storage/background-sprite-retirement", async () => {
     warnings: [],
   });
   const stamp = memoryTime();
+  world.villagers.push({ ...resident("mara"), spriteManager: manager });
+  const departure = captureReturnContext(world, new Date(stamp));
   const job = {
     instanceId: randomUUID(),
     id: "closed-sprite-job",
@@ -895,25 +886,12 @@ await runCase("retained-storage/background-sprite-retirement", async () => {
     hasResult: true,
     result: {},
     steps: [],
-    input: {
-      admitted: {
-        admissionFormat: 1,
-        seed: world.seed,
-        setupAt: world.setupAt,
-        villagers: [
-          {
-            letterFontId: "caveat",
-            characterId: "mara",
-            wishHead: null,
-            cardSnapshot: { name: "Mara", capturedAt: stamp },
-            spriteManager: manager,
-          },
-        ],
-      },
-      opportunity: { actorIds: ["mara"] },
-      actorIncarnations: { mara: stamp },
-      context: { residents: [{ characterId: "mara", capturedAt: stamp }], social: { head: null } },
-    },
+    input: residentPlanningInput(world, "mara", stamp, "captured-sprite", {
+      batchId: "historical-sprite-batch",
+      captureRevision: returnCaptureRevision(departure),
+      until: stamp,
+      world: departure.world,
+    }),
   } as Job;
   const native = nativeBackgroundJob(job),
     rootId = backgroundHistoryId(native),

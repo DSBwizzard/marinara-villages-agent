@@ -7,17 +7,12 @@ import type { AcceptedEpisode } from "../packages/villages/src/server/domain/mod
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
 import { createRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
 import { MEMORY_PAGE_BYTES } from "../packages/villages/src/server/adapters/storage/memory-pages.js";
-import {
-  emptyContinuity,
-  protectContinuity,
-  continuityHolderKey,
-} from "../packages/villages/src/server/domain/rules/continuity.js";
-import { emptyEpisodes, appendEpisode } from "../packages/villages/src/server/domain/rules/episodes.js";
-import { retainNativeFact } from "../packages/villages/src/server/domain/rules/native-continuity.js";
+import { protectContinuity, continuityHolderKey } from "../packages/villages/src/server/domain/rules/continuity.js";
+import { appendEpisode } from "../packages/villages/src/server/domain/rules/episodes.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
-import { assertContinuityRetention } from "../packages/villages/src/server/domain/rules/continuity-retention.js";
 import { readAcceptedEpisode } from "../packages/villages/src/server/domain/decoding/episode-codec.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import { nativeHistoryFixture } from "./helpers/continuity.fixture.js";
 
 const at = "2026-11-09T12:00:00.000Z";
 function fixture() {
@@ -95,42 +90,14 @@ function fixture() {
   };
 }
 
-function nativeHistory(count: number) {
-  const state = { ...defaultVillageState(), seed: "storage-scale", setupAt: at };
-  const continuity = emptyContinuity(),
-    episodes = emptyEpisodes();
-  // Independent native facts need no earlier context; author each once, then validate the combined closure.
-  for (let i = 0; i < count; i++) {
-    state.continuity = { ...emptyContinuity(), revision: i };
-    state.episodes = { ...emptyEpisodes(), revision: i };
-    retainNativeFact(
-      state,
-      {
-        id: "history-" + i,
-        kind: "initialization",
-        targetId: "history-" + i,
-        revision: 1,
-        text: "Retained native account " + i + ": a brass telescope, a star chart, café 🌼 and a quiet visit.",
-        witnesses: ["player"],
-      },
-      new Date(Date.parse(at) + i * 60000).toISOString(),
-    );
-    continuity.records.push(...state.continuity.records);
-    continuity.versions.push(...state.continuity.versions);
-    Object.assign(continuity.receipts, state.continuity.receipts);
-    episodes.records.push(...state.episodes.records);
-  }
-  continuity.revision = count;
-  episodes.revision = count;
-  state.continuity = continuity;
-  state.episodes = episodes;
-  assertContinuityRetention(continuity, episodes);
-  return state;
-}
 async function seed(f: ReturnType<typeof fixture>, count = 1) {
   const state = nativeHistory(count);
   await f.repository.mutateAuthority((draft) => Object.assign(draft, state), { memories: true });
   return state;
+}
+function nativeHistory(count: number) {
+  const state = { ...defaultVillageState(), seed: "storage-scale", setupAt: at };
+  return { ...state, ...nativeHistoryFixture(state, count) };
 }
 function forgetFirst(state: VillageState) {
   const holder = continuityActor(state, "player")!,
