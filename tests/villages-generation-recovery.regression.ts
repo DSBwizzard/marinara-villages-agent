@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { proposeCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { continuityPreparationContext } from "../packages/villages/src/server/domain/rules/continuity-library.js";
 let mode = "truncated",
   ceiling = 900,
   calls = 0;
@@ -22,7 +24,7 @@ const release = configureVillagesRuntime({
         },
         async chatComplete(_messages: any[], options: any) {
           calls++;
-          assert.ok(options.maxTokens <= 4000);
+          assert.ok(options.maxTokens <= 2048);
           assert.equal(options.reasoningEffort, "none");
           return {
             finishReason: mode === "truncated" ? "length" : "stop",
@@ -32,13 +34,11 @@ const release = configureVillagesRuntime({
               palette: Array.from({ length: 6 }, (_, i) => ({
                 activity: "Reading " + i,
                 venue: 0,
-                status: "idle",
                 flexible: true,
                 essential: false,
                 duration: 180,
                 parts: [0, 1, 2, 3],
               })),
-              days: Array.from({ length: 7 }, () => [0, 1, 2, 3, 4, 5, 0, 1]),
               rhythm: [],
             }),
           };
@@ -50,6 +50,7 @@ const release = configureVillagesRuntime({
 async function main() {
   try {
     const context = {
+      continuity: continuityPreparationContext(defaultVillageState(), "a", "2026-11-10T12:00:00.000Z"),
       village: "Willow",
       setting: "Quiet",
       venues: [],
