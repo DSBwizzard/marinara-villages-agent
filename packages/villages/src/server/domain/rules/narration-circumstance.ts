@@ -151,13 +151,13 @@ export function applyNarrationRepair(
 }
 
 /** Only finite native circumstance metadata: appearance remains common room continuity. */
-export function narrationCircumstancePrompt(grant: NarrationReadset["circumstance"]) {
+export function narrationCircumstancePrompt(grant: NarrationReadset["circumstance"], includeRoomDamage = true) {
   return grant
     ? {
         id: grant.id,
         consequence: grant.consequence,
         zoneId: grant.targets[0]!.zoneId,
-        ...(!grant.targets[0]!.exterior && grant.targets[0]!.correctiveActorIds.length
+        ...(includeRoomDamage && !grant.targets[0]!.exterior && grant.targets[0]!.correctiveActorIds.length
           ? {
               roomDamage:
                 "For a new enduring ordinary-use restriction caused by physical damage, add roomKeeps:[same-reply keep labels] to its condition. Link at most four distinct observable enduring Room adds or replacements across the occurrence, each to one condition. Cite the same Player-seen narration on each keep. The narration requires the circumstance, and the restriction and Room changes are one required outcome.",
