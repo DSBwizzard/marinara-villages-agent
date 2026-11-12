@@ -466,13 +466,15 @@ await withBrowser(browser, async () => {
       await lastZone.click();
       await expect(lastZone).toHaveAttribute("aria-pressed", "true");
       await tabs.getByRole("button", { name: "Manage", exact: true }).click();
-      await venue.getByRole("button", { name: "Edit room details", exact: true }).click();
+      const editRoomDetails = venue.getByRole("button", { name: "Edit room details", exact: true });
+      await editRoomDetails.click();
       const rooms = venue.getByRole("group", { name: "Rooms", exact: true });
       await expect(rooms.getByRole("button")).toHaveCount(6);
       const selectedRoom = rooms.getByRole("button", { name: "Room 5", exact: true });
       await expect(selectedRoom).toHaveAttribute("aria-pressed", "true");
       await expect(selectedRoom).toBeInViewport({ ratio: 0.99 });
       await venue.getByRole("button", { name: "← Manage", exact: true }).click();
+      await expect(editRoomDetails).toBeFocused();
     }
     await screenshot("arrival");
     await page.keyboard.press("Escape");
