@@ -14,7 +14,9 @@ import { memoryHash, memoryKnowerId, memoryRequire, memoryString, memoryTimestam
 
 export const CONTINUITY_TEXT_BYTES = 2400;
 export const ROOM_CONTINUITY_TEXT_BYTES = 16000;
+export const RELATIONSHIP_ANSWER_WORD_LIMIT = 15;
 const relationshipSentence = new Intl.Segmenter("en", { granularity: "sentence" });
+const relationshipWords = new Intl.Segmenter("en", { granularity: "word" });
 export const RELATIONSHIP_IMPACTS = {
   "small-positive": 3,
   "meaningful-positive": 6,
@@ -648,9 +650,19 @@ export function applyContinuityWrite(
         /(\.["'”’)]*\s+)(\p{Ll})/gu,
         (_, end, letter: string) => end + letter.toUpperCase(),
       );
-      if (!/[\r\n\u0085\u2028\u2029]/u.test(answer) && [...relationshipSentence.segment(sentence)].length === 1)
+      const words = [...relationshipWords.segment(answer)].filter((word) => word.isWordLike).length;
+      if (
+        words > 0 &&
+        words <= RELATIONSHIP_ANSWER_WORD_LIMIT &&
+        !/[\r\n\u0085\u2028\u2029]/u.test(answer) &&
+        [...relationshipSentence.segment(sentence)].length === 1
+      )
         relationshipAnswer = answer;
-      else memoryRequire(write.relationship.impact, "relationship answer must be one sentence");
+      else
+        memoryRequire(
+          write.relationship.impact,
+          `relationship answer must be one sentence of at most ${RELATIONSHIP_ANSWER_WORD_LIMIT} words`,
+        );
     }
     if (write.relationship.impact) {
       const impact = write.relationship.impact;

@@ -312,18 +312,30 @@ await runCase("relationships/scoring", () => {
   });
   assert.equal(score().score, 6);
   assert.equal(score().answer, "I think you brighten my day.");
-  assert.throws(
-    () =>
-      f.keep({
-        ...directed,
-        id: "invalid-answer",
-        holders: [mara],
-        text: "You brighten my day. come back soon.",
-        relationship: { answer: "You brighten my day. come back soon." },
-      }),
-    /relationship answer must be one sentence/,
-  );
+  const fifteenWords = "You make the garden feel a little more like home whenever you stop by, star.";
+  for (const answer of ["You brighten my day. come back soon.", fifteenWords.replace("star.", "dear star.")]) {
+    assert.throws(
+      () =>
+        f.keep({
+          ...directed,
+          id: "invalid-answer",
+          holders: [mara],
+          text: answer,
+          relationship: { answer },
+        }),
+      /relationship answer must be one sentence of at most 15 words/,
+    );
+  }
   assert.equal(score().answer, "I think you brighten my day.");
+  f.keep({
+    ...directed,
+    id: "fifteen-words",
+    holders: [mara],
+    text: fifteenWords,
+    relationship: { answer: fifteenWords },
+  });
+  f.cold();
+  assert.equal(score().answer, fifteenWords);
   assert.equal(f.profiles()[0].scores.find((row) => row.person.id === "leo")?.score, 0);
 });
 

@@ -121,7 +121,7 @@ await runCase("gm-effects/relationship-answer", async () => {
     const native = variant !== "conclude";
     const invalid = variant === "invalid";
     const answer = invalid
-      ? "Honestly? I like your curiosity. come by again."
+      ? "I like the way your curiosity makes me notice the little things I usually walk past."
       : "I enjoy how curious you are when we talk.";
     const departure = "I leave now.";
     let calls = 0;
