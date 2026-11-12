@@ -70,8 +70,8 @@ export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWrit
     metadata: "Response format and evidence metadata",
     identity: "Complete authored character identity",
     authoredInstructions: "Authored post-history direction",
-    frame: "Current Scene reference",
     transcript: "Witnessed Scene transcript",
+    frame: "Current Scene reference",
     conversation: "Witnessed conversation and recalled memories",
     circumstances: "Current Scene circumstances",
   };
@@ -79,13 +79,12 @@ export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWrit
     const blocks = (sections[section] ?? []).filter((block) => block.text.trim());
     const breakpoint =
       section === "metadata" ||
-      section === "frame" ||
       section ===
         (sections.authoredInstructions.some((block) => block.text.trim()) ? "authoredInstructions" : "identity");
     if (breakpoint && blocks.length) blocks[blocks.length - 1] = { ...blocks.at(-1)!, cacheBreakpoint: true };
     if (!blocks.length) return [];
     const titled = [{ text: `## ${headings[section]}` }, ...blocks];
-    return ["transcript", "conversation", "circumstances"].includes(section)
+    return ["transcript", "frame", "conversation", "circumstances"].includes(section)
       ? titled.map((block) => ({ ...block, role: "user" as const }))
       : titled;
   });

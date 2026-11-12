@@ -22,6 +22,48 @@ export class InvalidNarratedSound extends VillagesRequestError {
   }
 }
 
+const words = (text: string) =>
+  " " +
+  text
+    .normalize("NFKC")
+    .toLocaleLowerCase("en-US")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim() +
+  " ";
+
+export function addressedSceneResidents<T extends { name: string; characterId: string }>(
+  message: string,
+  candidates: readonly T[],
+  occupants: readonly { name: string }[],
+  targetId?: string,
+) {
+  const speech = message.normalize("NFKC").toLocaleLowerCase("en-US");
+  const literalName = (name: string) =>
+    name
+      .normalize("NFKC")
+      .toLocaleLowerCase("en-US")
+      .replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  const addresses = (name: string, surname = "") => {
+    const literal = literalName(name);
+    const fullNameFollows = surname ? `(?!\\s+${literalName(surname)}(?=[\\s’'.,!?]|$))` : "";
+    return new RegExp(
+      `(?:^|[.!?\\n“"‘'])\\s*(?:(?:(?:hey|hello|hi),?\\s+)?${literal}(?=\\s*[,.:!?]|\\s*$)|(?:i\\s+)?(?:ask|tell|say to|speak to|call(?: out)?(?: to| for)?|shout(?: to| at)?|yell(?: to| at)?)\\s+${literal}(?![\\p{L}\\p{N}’'])${fullNameFollows})`,
+      "u",
+    ).test(speech);
+  };
+  return candidates.filter((person) => {
+    const first = person.name.split(/\s+/u)[0];
+    const uniqueFirst =
+      first.length >= 3 &&
+      occupants.filter((other) => words(other.name.split(/\s+/u)[0]) === words(first)).length === 1;
+    return (
+      person.characterId === targetId ||
+      addresses(person.name) ||
+      (uniqueFirst && addresses(first, person.name.slice(first.length).trim()))
+    );
+  });
+}
+
 /** One Scene writer resolves events. Code owns their sources and audiences. */
 export function zoneEventScene(
   scene: VenueScene,
@@ -43,14 +85,6 @@ export function zoneEventScene(
       .slice(-2)
       .map((line) => line.speakerId),
   );
-  const words = (text: string) =>
-    " " +
-    text
-      .normalize("NFKC")
-      .toLocaleLowerCase("en-US")
-      .replace(/[^\p{L}\p{N}]+/gu, " ")
-      .trim() +
-    " ";
   const input = words(intent.message ?? "");
   const crossZones = /\b(?:go|head|step|walk|move|cross|enter|into|through)\b/u.test(input)
     ? venueZones(sceneLayoutVenue(venue, scene))
@@ -58,31 +92,7 @@ export function zoneEventScene(
         .map((zone) => zone.id)
     : [];
   const calling = /\b(?:shout|yell|call out)\b/u.test(input);
-  const speech = (intent.message ?? "").normalize("NFKC").toLocaleLowerCase("en-US");
-  const literalName = (name: string) =>
-    name
-      .normalize("NFKC")
-      .toLocaleLowerCase("en-US")
-      .replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-  const addresses = (name: string, surname = "") => {
-    const literal = literalName(name);
-    const fullNameFollows = surname ? `(?!\\s+${literalName(surname)}(?=[\\s’'.,!?]|$))` : "";
-    return new RegExp(
-      `(?:^|[.!?\\n“"‘'])\\s*(?:(?:(?:hey|hello|hi),?\\s+)?${literal}(?=\\s*[,.:!?]|\\s*$)|(?:i\\s+)?(?:ask|tell|say to|speak to|call(?: out)?(?: to| for)?|shout(?: to| at)?|yell(?: to| at)?)\\s+${literal}(?![\\p{L}\\p{N}’'])${fullNameFollows})`,
-      "u",
-    ).test(speech);
-  };
-  const named = near.filter((person) => {
-    const first = person.name.split(/\s+/u)[0];
-    const uniqueFirst =
-      first.length >= 3 &&
-      occupants.filter((other) => words(other.name.split(/\s+/u)[0]) === words(first)).length === 1;
-    return (
-      person.characterId === intent.targetId ||
-      addresses(person.name) ||
-      (uniqueFirst && addresses(first, person.name.slice(first.length).trim()))
-    );
-  });
+  const named = addressedSceneResidents(intent.message ?? "", near, occupants, intent.targetId);
   const candidates = [
     ...named.filter((person) => person.characterId === intent.targetId),
     ...named,

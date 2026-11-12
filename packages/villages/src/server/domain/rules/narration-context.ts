@@ -29,6 +29,7 @@ import {
   asksForRecallQuote,
   estimatedTextTokens,
   recallTerms,
+  requestsMemoryChange,
   sceneQuoteScore,
   sceneQuoteTerms,
 } from "./text-recall.js";
@@ -192,8 +193,6 @@ export function narrationContinuityContext(
   at: string,
   separateRecallFromEvidence = false,
 ) {
-  const readOnlyRecall =
-    separateRecallFromEvidence && !/\b(?:remember|forget|correct|change|update|replace|record)\b/iu.test(input);
   memoryRequire(state.seed === scene.villageSeed && scene.zoneId, "Scene continuity scope changed");
   const episodeId = sceneEpisodeId(state.seed, scene.id, operationId);
   const actors = [
@@ -285,7 +284,14 @@ export function narrationContinuityContext(
   const circumstanceRoots = new Set(circumstances.flatMap(({ roots }) => roots));
   const requiredRoots = nativeCircumstanceRoots(state, at, views, { placeId: scene.placeId, zoneId: scene.zoneId });
   const comma = input.indexOf(",");
-  const address = comma > 0 ? input.slice(0, comma).trim().toLocaleLowerCase("en-US") : "";
+  const address =
+    comma > 0
+      ? input
+          .slice(0, comma)
+          .trim()
+          .replace(/^["“]\s*/u, "")
+          .toLocaleLowerCase("en-US")
+      : "";
   const recallQuery =
     address &&
     scene.participants.some(({ name }) => {
@@ -294,6 +300,8 @@ export function narrationContinuityContext(
     })
       ? input.slice(comma + 1)
       : input;
+  const memoryChange = requestsMemoryChange(recallQuery);
+  const readOnlyRecall = separateRecallFromEvidence && !memoryChange;
   const opening = scene.status === "opening";
   const actorSelection = selectActorContinuity(state.continuity, state.episodes, holders, at, {
     query: recallQuery,
@@ -683,7 +691,9 @@ export function narrationContinuityContext(
     ),
   );
   const asksForQuote = asksForRecallQuote(recallQuery);
-  const editingMemory = /\b(?:forget|correct|change|update|replace)\b/iu.test(input);
+  const editingMemory = separateRecallFromEvidence
+    ? memoryChange
+    : /\b(?:forget|correct|change|update|replace)\b/iu.test(input);
   const facts = optional.filter(
     (part) =>
       actorFact(part) &&

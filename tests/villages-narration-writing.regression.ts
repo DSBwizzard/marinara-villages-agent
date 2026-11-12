@@ -344,8 +344,19 @@ await runCase("narration-writing/single-request", async () => {
     .filter((row) => row.role === "system")
     .map((row) => row.content)
     .join("\n");
+  const frame = f.messages().find((row) => row.content.includes("## Current Scene reference"));
+  assert.equal(frame.role, "user");
   assert(
-    system.includes(`"dialogueSpeakers":${JSON.stringify(reply.readset.source.scene.contactGeneration?.actorIds)}`),
+    frame.content.includes(
+      `"dialogueSpeakers":${JSON.stringify(reply.readset.source.scene.contactGeneration?.actorIds)}`,
+    ),
+  );
+  assert(!frame.content.includes('"leadSpeakerId"'));
+  const addressed = await f.writing.prepareVenueTurnMessages(f.scene, "Mara, what do you think?", "chat");
+  assert(
+    addressed.fitted.messages.some(
+      ({ role, content }) => role === "user" && content.includes(`"leadSpeakerId":${JSON.stringify(f.id)}`),
+    ),
   );
   assert.match(system, /Omit delivery and targetId for ordinary speech/u);
   assert.doesNotMatch(system, /"whisper\|shout"/u);
@@ -1168,13 +1179,32 @@ await runCase("narration-writing/long-followup", async () => {
   assert.deepEqual(Object.keys(shared).sort(), ["class", "knownBy", "text"]);
   assert(!Object.values(reply.readset.source.historical).some((source) => source.excerpt === shared.text));
   assert(reply.readset.readOnlyKnowledge?.some((source) => source.excerpt === shared.text));
-  const memoryEdit = await f.writing.prepareVenueTurnMessages(f.scene, "Remember that weaving memory?", "chat");
+  for (const callback of [
+    "Mara, I remember you mentioned the weaving memory. Does that change how you think about it?",
+    "Remember the weaving memory?",
+  ]) {
+    const read = await f.writing.prepareVenueTurnMessages(f.scene, callback, "chat");
+    assert(read.readset.readOnlyKnowledge?.some((source) => source.excerpt === shared.text));
+    assert(!Object.values(read.readset.source.historical).some((source) => source.excerpt === shared.text));
+  }
+  const memoryEdit = await f.writing.prepareVenueTurnMessages(
+    f.scene,
+    "“Mara, please remember that weaving memory.”",
+    "chat",
+  );
   const historical = Object.entries(memoryEdit.readset.source.historical);
   const [alias, reference] = historical.find(
     ([, source]) => source.kind === "knowledge" && source.actorId === "player",
   )!;
   const citedRoot = f.state.continuity.versions.find((version) => version.id === reference.unitId)!.rootId;
   assert(!reply.readset.admission.supplied.some((target) => target.id === citedRoot));
+  for (const change of [
+    "Remember that weaving memory. How was your day?",
+    "Please correct what I told you about the weaving memory.",
+  ]) {
+    const write = await f.writing.prepareVenueTurnMessages(f.scene, change, "chat");
+    assert(write.readset.admission.supplied.some((target) => target.id === citedRoot));
+  }
   assert(
     historical.some(
       ([, source]) => source.kind === "knowledge" && source.actorId === f.id && source.excerpt === reference.excerpt,
@@ -1382,6 +1412,7 @@ await runCase("narration-writing/history-prefix", async () => {
         .every((row) => !row.content.includes('{"interaction":')),
     );
     const tail = request.fitted.messages.slice(request.fitted.messages.indexOf(cacheBoundary!) + 1);
+    assert(tail.some((row) => row.role === "user" && row.content.includes("## Current Scene reference")));
     assert(tail.some((row) => row.role === "user" && row.content.includes("## Current Scene circumstances")));
     assert.equal(tail.at(-2)?.content, "## Current player submission");
     assert.equal(tail.at(-1)?.content, keyword);

@@ -14,6 +14,21 @@ export const estimatedTextTokens = (text: string) => Math.ceil(Buffer.byteLength
 export const asksForRecallQuote = (text: string) =>
   /\b(?:quote|verbatim|exact (?:words|wording)|what (?:exactly )?did [^.!?]{0,80}\bsay)\b/iu.test(text);
 export const asksForPastExchange = (text: string) => /\b(?:which|what) [^?!.]{0,80}\bdid (?:i|we|you)\b/iu.test(text);
+
+export function requestsMemoryChange(text: string) {
+  const request = text.trim().replace(/^["“]\s*/u, "");
+  const polite = /^(?:(?:can|could|would|will) you\s+(?:please\s+)?|please\s+|i (?:want|need) you to\s+)/iu.exec(
+    request,
+  );
+  const body = request.slice(polite?.[0].length ?? 0);
+  if (!polite && /^[^.!?\r\n]*\?/u.test(body)) return false;
+  return (
+    /^(?:remember|forget|don['’]t forget)\s+\S/iu.test(body) ||
+    /^(?:correct|change|update|replace|record)\s+(?:(?:(?:the|this|that|my|our|your)\s+)?(?:memory|memories|record|notes?)|what (?:i|we|you) (?:said|told|remember|recorded)|the way you remember)\b/iu.test(
+      body,
+    )
+  );
+}
 export const sceneQuoteTerms = (text: string) => [
   ...new Set(recallTerms(text.replace(/\b(?:quote|verbatim|exact(?:ly)?|wording|words|line|say)\b/giu, " "))),
 ];
