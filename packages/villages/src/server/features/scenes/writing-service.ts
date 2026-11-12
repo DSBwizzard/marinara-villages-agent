@@ -8,7 +8,13 @@ import type { GreetingTrace, VenueScene } from "../../domain/models/scene-model.
 import { badGateway, conflict } from "../../domain/rules/errors.js";
 import { inspectedLoreUse, villageLoreContext } from "../../domain/rules/lore-context.js";
 import { memoryHash, memoryRequire } from "../../domain/rules/memory-integrity.js";
-import { NARRATION_DIRECTION, NARRATION_KEEP, NARRATION_RESPONSE } from "../../domain/rules/narration-contract.js";
+import {
+  NARRATION_DIRECTION,
+  NARRATION_KEEP,
+  NARRATION_RESPONSE,
+  RELATIONSHIP_ANSWER,
+  RELATIONSHIP_KEEP,
+} from "../../domain/rules/narration-contract.js";
 import { fittedNarrationReadset, narrationContinuityContext } from "../../domain/rules/narration-context.js";
 import { narrationCircumstancePrompt } from "../../domain/rules/narration-circumstance.js";
 import { venueAdditionalWritingGuidance, venueWritingDirection } from "../../domain/rules/narration-style.js";
@@ -169,7 +175,13 @@ export function createSceneWriting({
         venueWritingDirection(village.narrationStyle, player.name),
         venueAdditionalWritingGuidance(village.narrationStyle),
       ]),
-      metadata: blocksFor([NARRATION_RESPONSE, NARRATION_KEEP, NARRATION_NATIVE]),
+      metadata: blocksFor([
+        NARRATION_RESPONSE,
+        NARRATION_KEEP,
+        RELATIONSHIP_KEEP,
+        RELATIONSHIP_ANSWER,
+        NARRATION_NATIVE,
+      ]),
       identity: blocksFor([
         ...profiles,
         JSON.stringify({

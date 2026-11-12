@@ -8,11 +8,39 @@ import type {
   ContinuityVersion,
   ContinuityView,
   ContinuityWrite,
+  RelationshipImpact,
 } from "../models/continuity-model.js";
 import { memoryHash, memoryKnowerId, memoryRequire, memoryString, memoryTimestamp } from "./memory-integrity.js";
 
 export const CONTINUITY_TEXT_BYTES = 2400;
 export const ROOM_CONTINUITY_TEXT_BYTES = 16000;
+export const RELATIONSHIP_IMPACTS = {
+  "small-positive": 3,
+  "meaningful-positive": 10,
+  "turning-positive": 25,
+  "small-negative": -3,
+  "meaningful-negative": -10,
+  "turning-negative": -25,
+} satisfies Record<RelationshipImpact, number>;
+
+type ActorIdentity = { id: string; incarnation: string };
+export const relationshipKey = (owner: ActorIdentity, subject: ActorIdentity) =>
+  JSON.stringify([owner.id, owner.incarnation, subject.id, subject.incarnation]);
+
+export function latestRelationshipScores(collection: ContinuityCollection) {
+  const owners = new Map(collection.records.map((record) => [record.id, record.owner]));
+  const latest = new Map<string, ContinuityVersion & { relationshipScore: number }>();
+  for (const version of collection.versions) {
+    if (version.relationshipScore === undefined) continue;
+    const owner = owners.get(version.rootId);
+    if (!owner || !version.about[0]) continue;
+    const key = relationshipKey(owner, version.about[0]);
+    if ((latest.get(key)?.createdRevision ?? 0) < version.createdRevision)
+      latest.set(key, { ...version, relationshipScore: version.relationshipScore });
+  }
+  return latest;
+}
+
 export const ownedContinuityClass = (value: string) =>
   ["perspective", "desire", "motivation", "commitment"].includes(value);
 export function continuitySelfSource(
@@ -569,6 +597,63 @@ export function applyContinuityWrite(
       .flatMap((version) => version.about.map((subject) => [subject.id, subject.incarnation] as const)),
   );
   const created: ContinuityVersion[] = [];
+  let relationshipScore: number | undefined;
+  if (write.relationship) {
+    const ownerBefore = before.find(({ holder }) => owner && same(holder, owner));
+    const about = write.about ?? [];
+    const subject = about[0];
+    const active = (actor: ActorIdentity) =>
+      context.relationshipActors?.some((row) => row.id === actor.id && row.incarnation === actor.incarnation);
+    memoryRequire(
+      owner &&
+        owner.id !== "player" &&
+        ownerBefore &&
+        active(owner) &&
+        about.length === 1 &&
+        subject.id !== owner.id &&
+        active(subject) &&
+        write.class === "perspective" &&
+        !write.parentId &&
+        !ownerBefore.version?.parentId &&
+        !write.retire &&
+        !ownerBefore.version?.closed &&
+        !write.offer &&
+        !record.offer &&
+        write.current === true,
+      "relationship change needs a current villager-owned perspective about one person",
+    );
+    memoryRequire(
+      sources.some(
+        (source) =>
+          source.episodeId === context.episodeId &&
+          ["speech", "written", "observation", "native"].includes(source.kind),
+      ),
+      "relationship change needs a current experienced event",
+    );
+    memoryRequire(write.relationship.impact || write.relationship.answer, "empty relationship update");
+    if (write.relationship.impact) {
+      const delta = RELATIONSHIP_IMPACTS[write.relationship.impact];
+      memoryRequire(Number.isInteger(delta), "invalid relationship impact");
+      const latest = latestRelationshipScores(collection).get(relationshipKey(owner, subject));
+      memoryRequire(
+        context.continuityRevision !== undefined && (!latest || latest.createdRevision <= context.continuityRevision),
+        "relationship changed since admission or already changed in this exchange",
+      );
+      relationshipScore = Math.max(-100, Math.min(100, (latest?.relationshipScore ?? 0) + delta));
+    }
+    if (write.relationship.answer !== undefined) {
+      memoryString(write.relationship.answer, 320);
+      memoryRequire(
+        !/[\r\n]/.test(write.relationship.answer) &&
+          before.some(({ holder }) => holder.kind === "actor" && holder.id === "player") &&
+          sources.some(
+            (source) =>
+              source.episodeId === context.episodeId && source.actorId === owner.id && heardWords(source, "player"),
+          ),
+        "relationship answer needs the villager's words heard or read by the player",
+      );
+    }
+  }
   for (const { key, holder, head, version: prior } of before) {
     const text = write.text ?? prior?.text;
     const completeNativeMeaning = sources.length === 1 && sources[0].kind === "native" && sources[0].excerpt === text;
@@ -585,6 +670,10 @@ export function applyContinuityWrite(
       createdRevision: collection.revision + 1,
       text,
       class: room ? "information" : (write.class ?? prior?.class ?? "experience"),
+      ...(relationshipScore !== undefined && owner && same(holder, owner) ? { relationshipScore } : {}),
+      ...(holder.kind === "actor" && holder.id === "player" && write.relationship?.answer
+        ? { relationshipAnswer: write.relationship.answer }
+        : {}),
       about: (write.about ?? prior?.about ?? []).map(({ id, incarnation }) => ({ id, incarnation })),
       ...(parentId ? { parentId } : {}),
       ...(facet ? { facet } : {}),
@@ -927,6 +1016,8 @@ export function protectContinuity(
         administrative: { holder: structuredClone(holder), at },
       };
       if (!restored) delete version.offerEvents;
+      delete version.relationshipScore;
+      delete version.relationshipAnswer;
       created.push(version);
       head.versionId = version.id;
       head.revision++;

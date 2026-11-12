@@ -1,14 +1,15 @@
-// Test cases: relationships/player-snapshot, relationships/shared-terms, relationships/common-protection, relationships/identity-labels, relationships/native-access, relationships/access-calendar, relationships/pure-reads
+// Test cases: relationships/player-snapshot, relationships/scoring, relationships/shared-terms, relationships/common-protection, relationships/identity-labels, relationships/native-access, relationships/access-calendar, relationships/pure-reads
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import type { ContinuityWrite } from "../packages/villages/src/server/domain/models/continuity-model.js";
 import type { AcceptedEpisode } from "../packages/villages/src/server/domain/models/episode-model.js";
-import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
+import { continuityActor, relationshipActors } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
 import { applyContinuityWrite, continuityHolderKey } from "../packages/villages/src/server/domain/rules/continuity.js";
 import { appendEpisode } from "../packages/villages/src/server/domain/rules/episodes.js";
 import { episodeSpeechEvidence } from "../packages/villages/src/server/domain/rules/episode-sources.js";
+import { prepareContinuityKeep } from "../packages/villages/src/server/domain/rules/narration-keep.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import {
   continuityRelationships,
@@ -34,7 +35,12 @@ function fixture() {
     cardSnapshot: { name: id === "mara" ? "Mara" : "Leo" },
   })) as VillageState["villagers"];
   const actor = (id: string) => continuityActor(state, id)!;
-  function keep(write: Omit<ContinuityWrite, "sourceIds">, speaker = "mara", act?: "offer" | "accept") {
+  function keep(
+    write: Omit<ContinuityWrite, "sourceIds">,
+    speaker = "mara",
+    act?: "offer" | "accept",
+    admittedRevision = state.continuity.revision,
+  ) {
     const id = write.id,
       content = write.text ?? "I agree to those exact terms.",
       before = state.continuity;
@@ -56,7 +62,7 @@ function fixture() {
       capturedAt: at,
       acceptedAt: at,
       responseDigest: memoryHash(id),
-      admittedContinuityRevision: before.revision,
+      admittedContinuityRevision: admittedRevision,
       privateInput: "",
       actors: actors.map(({ id, incarnation }) => ({ id, incarnation, zoneId: "parlor" })),
       segments: [
@@ -80,30 +86,52 @@ function fixture() {
     };
     const source = { ...episodeSpeechEvidence(episode, episode.segments[0].id)!, ...(act ? { act } : {}) };
     episode.grounding = [source];
+    const admission = {
+      seed: state.seed,
+      operationId: id,
+      episodeId: id,
+      at,
+      actors: episode.actors,
+      relationshipActors: relationshipActors(state),
+      continuityRevision: admittedRevision,
+      subjects: [actor("player"), ...state.villagers.map((person) => actor(person.characterId))],
+      sources: [source],
+      supplied: [
+        ...(write.target ? [write.target] : []),
+        ...(write.parentId
+          ? [
+              target(
+                write.parentId,
+                write.holders.filter((holder) => holder.kind === "actor").map((holder) => holder.id),
+              ),
+            ]
+          : []),
+      ],
+      protectedRoots: [],
+    };
+    const prepared =
+      write.relationship &&
+      prepareContinuityKeep(
+        {
+          id: write.id,
+          class: write.class,
+          owner: write.owner?.id,
+          for: write.holders.map((holder) => (holder.kind === "actor" ? holder.id : "room")),
+          text: write.text,
+          about: write.about?.map((subject) => subject.id),
+          current: write.current,
+          relationship: write.relationship,
+          source: ["reply"],
+        },
+        0,
+        before,
+        admission,
+        { ...admission, actors, bindSource: () => source },
+      );
     state.continuity = applyContinuityWrite(
       before,
-      { ...write, sourceIds: [source.id] },
-      {
-        seed: state.seed,
-        operationId: id,
-        episodeId: id,
-        at,
-        actors: episode.actors,
-        subjects: [actor("player"), ...state.villagers.map((person) => actor(person.characterId))],
-        sources: [source],
-        supplied: [
-          ...(write.target ? [write.target] : []),
-          ...(write.parentId
-            ? [
-                target(
-                  write.parentId,
-                  write.holders.filter((holder) => holder.kind === "actor").map((holder) => holder.id),
-                ),
-              ]
-            : []),
-        ],
-        protectedRoots: [],
-      },
+      prepared ? prepared.write : { ...write, sourceIds: [source.id] },
+      prepared ? prepared.admission : admission,
     );
     episode.continuityVersionIds = state.continuity.versions.slice(before.versions.length).map((version) => version.id);
     state.episodes = appendEpisode(state.episodes, episode, state.seed);
@@ -167,6 +195,72 @@ await runCase("relationships/player-snapshot", () => {
     ["player"],
   );
 });
+await runCase("relationships/scoring", () => {
+  const f = fixture();
+  const mara = f.actor("mara");
+  const player = f.actor("player");
+  const directed = { owner: mara, about: [player], class: "perspective" as const, current: true };
+  const score = () => f.profiles()[0].scores.find((row) => row.person.id === "player")!;
+  assert.equal(score().score, 0);
+  const before = f.state.continuity.revision;
+  f.keep({
+    ...directed,
+    id: "flower",
+    holders: [mara],
+    text: "PRIVATE: Mara feels a little warmer after the flower.",
+    relationship: { impact: "small-positive" },
+  });
+  assert.equal(score().score, 3);
+  assert(!JSON.stringify(f.profiles()).includes("PRIVATE"));
+  assert.throws(
+    () =>
+      f.keep(
+        {
+          ...directed,
+          id: "stale",
+          holders: [mara],
+          text: "A second stale claim.",
+          relationship: { impact: "turning-negative" },
+        },
+        "mara",
+        undefined,
+        before,
+      ),
+    /relationship changed since admission/,
+  );
+  assert.throws(
+    () =>
+      f.keep({
+        ...directed,
+        id: "unshared",
+        holders: [mara],
+        text: "PRIVATE: Mara feels more guarded.",
+        relationship: { impact: "small-negative", answer: "I feel more guarded." },
+      }),
+    /answer needs/,
+  );
+  f.keep({
+    ...directed,
+    id: "shared-change",
+    holders: [mara, player],
+    text: "Mara says she looks forward to your visits.",
+    relationship: { impact: "meaningful-positive", answer: "I look forward to your visits." },
+  });
+  f.cold();
+  assert.equal(score().score, 13);
+  assert.equal(score().answer, "I look forward to your visits.");
+  f.keep({
+    ...directed,
+    id: "disclosure",
+    holders: [mara, player],
+    text: "Mara says your visits brighten her day.",
+    relationship: { answer: "I think you brighten my day." },
+  });
+  assert.equal(score().score, 13);
+  assert.equal(score().answer, "I think you brighten my day.");
+  assert.equal(f.profiles()[0].scores.find((row) => row.person.id === "leo")?.score, 0);
+});
+
 await runCase("relationships/shared-terms", () => {
   const f = fixture(),
     terms =

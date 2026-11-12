@@ -3,7 +3,7 @@ import type { AcceptedEpisode } from "../models/episode-model.js";
 import type { NarrationReadset } from "../models/narration-model.js";
 import type { VillageState } from "../models/world.js";
 import { episodeSourceGraph } from "../decoding/episode-codec.js";
-import { continuityActor } from "./continuity-actors.js";
+import { continuityActor, relationshipActors } from "./continuity-actors.js";
 import {
   applyContinuityWrite,
   assertContinuityProvenance,
@@ -249,7 +249,13 @@ export function acceptNarrationContinuity(
     for (const ref of reply.halt.source) bindNarrationSource(ref, source);
     throw conflict(reply.halt.message);
   }
-  const admission = { ...readset.admission, actors: source.actors, blockedSources: blocked, sources: [] };
+  const admission = {
+    ...readset.admission,
+    actors: source.actors,
+    relationshipActors: relationshipActors(state),
+    blockedSources: blocked,
+    sources: [],
+  };
   const effects = native.effects.map((effect) => ({ ...effect, requires: [...effect.requires] }));
   memoryRequire(effects.length === reply.commands.length, "native validation did not cover every proposed command");
   for (const [index, command] of reply.commands.entries()) {

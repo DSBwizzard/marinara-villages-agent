@@ -9,7 +9,7 @@ import type { AcceptedEpisode } from "../models/episode-model.js";
 import type { ResidentNarration, ResidentNarrationCapture } from "../models/resident-narration.js";
 import type { ResidentPlanningOpportunity, VillageState } from "../models/world.js";
 import { episodeSourceGraph } from "../decoding/episode-codec.js";
-import { continuityActor } from "./continuity-actors.js";
+import { continuityActor, relationshipActors } from "./continuity-actors.js";
 import { captureContinuityContext } from "./continuity-context.js";
 import { episodeContextRooms } from "./episode-sources.js";
 import { selectRoomContinuity } from "./continuity-retrieval.js";
@@ -389,6 +389,7 @@ function prepareResidentNarration(
     operationId: episodeId,
     at: capture.context.at,
     actors,
+    relationshipActors: relationshipActors(state),
     subjects: capture.context.subjects,
     continuityRevision: capture.context.continuityRevision,
     sources: [],

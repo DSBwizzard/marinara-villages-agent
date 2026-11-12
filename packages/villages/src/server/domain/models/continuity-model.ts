@@ -4,6 +4,8 @@ export type ContinuityHolder =
 export type ContinuityClass =
   "experience" | "information" | "perspective" | "desire" | "motivation" | "commitment" | "open-matter";
 
+export type RelationshipImpact = `${"small" | "meaningful" | "turning"}-${"positive" | "negative"}`;
+
 /** A source is supplied by code after exact-source and perception binding. */
 export type ContinuityEvidence = {
   id: string;
@@ -28,6 +30,8 @@ export type ContinuityVersion = {
   createdRevision: number;
   text: string;
   class: ContinuityClass;
+  relationshipScore?: number;
+  relationshipAnswer?: string;
   about: { id: string; incarnation: string }[];
   parentId?: string;
   facet?: "reason" | "attention" | "approach" | "connection" | "stance" | "expectation" | "concern" | "boundary";
@@ -107,6 +111,7 @@ export type ContinuityWrite = {
   text?: string;
   class?: ContinuityClass;
   current?: boolean;
+  relationship?: { impact?: RelationshipImpact; answer?: string };
   about?: { id: string; incarnation: string }[];
   parentId?: string;
   facet?: ContinuityVersion["facet"];
@@ -124,6 +129,7 @@ export type ContinuityAdmission = {
   episodeId: string;
   at: string;
   actors: { id: string; incarnation: string }[];
+  relationshipActors?: { id: string; incarnation: string }[];
   subjects?: { id: string; incarnation: string }[];
   continuityRevision?: number;
   /** Canonical rosters of the historical source episodes actually fitted in this request. */

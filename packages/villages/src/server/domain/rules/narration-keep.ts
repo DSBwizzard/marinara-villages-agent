@@ -203,6 +203,7 @@ export function prepareContinuityKeep(
     holders,
     ...(owner ? { owner } : {}),
     sourceIds: sources.map((source) => source.id),
+    ...(proposal.relationship ? { relationship: proposal.relationship } : {}),
     ...(target ? { target } : {}),
     ...(typeof proposal.text === "string" ? { text: proposal.text } : learning ? { text } : {}),
     ...(proposal.class ? { class: proposal.class } : learning ? { class: description!.class } : {}),

@@ -16,3 +16,10 @@ export function continuityActor(
   // Registry NPC identities are never reused or deleted within a world.
   if (findNpc(state, id)) return { kind: "actor", id, incarnation: memoryHash([state.seed, state.setupAt, id]) };
 }
+
+export function relationshipActors(state: VillageState) {
+  return [
+    continuityActor(state, "player")!,
+    ...state.villagers.map(({ characterId: id, incarnation }) => ({ id, incarnation })),
+  ];
+}

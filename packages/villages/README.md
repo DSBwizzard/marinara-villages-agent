@@ -128,7 +128,7 @@ Saved and interrupted supported requests keep their admitted time, evidence, all
 
 ## Get to know the residents
 
-Profiles show the relationships, shared Wishes, routines, history, motivations and commitments your Persona has learned. Statements retain their qualifications and full agreement terms. Returning to **People** keeps your directory page. **Inspect** opens private directional perspectives and their sources. Standing-invitation buttons reflect current access permissions.
+Profiles show each villager’s current attitude toward you and other villagers as a center-out relationship bar. The score starts at neutral and moves when the model identifies a lasting change supported by an accepted event. Code applies the change once and keeps the score between −100 and +100. The bar reflects private shifts as well. A villager’s one-sentence answer, shared Wishes, routines, history, motivations and commitments follow what your Persona has learned. Statements retain their qualifications and full agreement terms. Returning to **People** keeps your directory page. **Inspect** opens private directional perspectives and their sources. Standing-invitation buttons reflect current access permissions.
 
 Each resident has their own perspective: their connection with you, expectations, concerns, and particular shared history. A boundary, a mutual agreement, and a concrete commitment mean different things. You author your Persona’s feelings. Serious choices can end a friendship or partnership; reconciliation is possible and never guaranteed. Time away creates no automatic penalty, and friendship grants neither access nor secrets.
 

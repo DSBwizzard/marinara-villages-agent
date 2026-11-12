@@ -9,10 +9,12 @@ import type { VillageState } from "../models/world.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { ContinuityHolder, ContinuityEvidence } from "../models/continuity-model.js";
 import { episodeSourceGraph } from "../decoding/episode-codec.js";
-import { continuityActor } from "./continuity-actors.js";
+import { continuityActor, relationshipActors } from "./continuity-actors.js";
 import {
   actorContinuityEvidence,
   continuityHolderKey,
+  latestRelationshipScores,
+  relationshipKey,
   continuityProtectionUnits,
   continuityViews,
   continuityVersionId,
@@ -221,6 +223,15 @@ function sourceSpeaker(state: VillageState, source: ContinuityEvidence) {
 export function continuityRelationships(state: VillageState, at: string): RelationshipProfile[] {
   const holder = continuityActor(state, "player"),
     rows = holder ? projections(state, holder, false, at) : [];
+  const scores = latestRelationshipScores(state.continuity);
+  const actors = relationshipActors(state);
+  const answers = new Map<string, { text: string; revision: number }>();
+  for (const { record, version, head } of rows) {
+    if (!head.current || !record.owner || !version.relationshipAnswer) continue;
+    const key = relationshipKey(record.owner, version.about[0]);
+    if ((answers.get(key)?.revision ?? 0) < version.createdRevision)
+      answers.set(key, { text: version.relationshipAnswer, revision: version.createdRevision });
+  }
   const visibleRoots = new Set(rows.map((row) => row.record.id));
   const learnedReceipts = new Set(
     state.continuity.versions
@@ -252,6 +263,17 @@ export function continuityRelationships(state: VillageState, at: string): Relati
     return {
       characterId: actor.id,
       name: resident.cardSnapshot.name,
+      scores: actors
+        .filter((other) => other.id !== actor.id)
+        .map((other) => {
+          const key = relationshipKey(actor, other);
+          const answer = answers.get(key)?.text;
+          return {
+            person: person(state, other.id),
+            score: scores.get(key)?.relationshipScore ?? 0,
+            ...(answer ? { answer } : {}),
+          };
+        }),
       entries: rows
         .filter(
           ({ record, version }) =>

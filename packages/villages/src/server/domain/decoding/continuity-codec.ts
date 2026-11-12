@@ -84,6 +84,10 @@ const version = z
     createdRevision: revision.min(1),
     text: text(ROOM_CONTINUITY_TEXT_BYTES),
     class: z.enum(["experience", "information", "perspective", "desire", "motivation", "commitment", "open-matter"]),
+    relationshipScore: z.number().int().min(-100).max(100).optional(),
+    relationshipAnswer: text(320)
+      .refine((value) => !/[\r\n]/.test(value))
+      .optional(),
     about: z
       .array(actorReference)
       .max(32)
@@ -208,6 +212,44 @@ export function readContinuity(raw: unknown, seed?: string): ContinuityCollectio
     }
     subjectsByRoot.set(entry.rootId, subjects);
     memoryRequire(!ownedContinuityClass(entry.class) || root.owner || root.offer, "saved private state has no owner");
+    if (entry.relationshipScore !== undefined || entry.relationshipAnswer !== undefined) {
+      const owner = root.owner;
+      const evidenceSeed = entry.sources[0]?.seed;
+      memoryRequire(
+        owner &&
+          owner.id !== "player" &&
+          evidenceSeed &&
+          entry.class === "perspective" &&
+          !entry.administrative &&
+          !entry.parentId &&
+          !entry.closed &&
+          !entry.room &&
+          entry.about.length === 1 &&
+          entry.about[0].id !== owner.id,
+        "invalid saved relationship update",
+      );
+      if (entry.relationshipScore !== undefined)
+        memoryRequire(
+          entry.id === continuityVersionId(evidenceSeed, entry.operationId, owner),
+          "relationship score belongs to its owner",
+        );
+      if (entry.relationshipAnswer !== undefined)
+        memoryRequire(
+          Object.values(root.heads).some(
+            ({ holder }) =>
+              holder.kind === "actor" &&
+              holder.id === "player" &&
+              entry.id === continuityVersionId(evidenceSeed, entry.operationId, holder),
+          ) &&
+            entry.sources.some(
+              (source) =>
+                source.actorId === owner.id &&
+                ["speech", "written"].includes(source.kind) &&
+                source.perceptions.some((row) => row.actorId === "player" && row.channel === "words"),
+            ),
+          "saved relationship answer belongs to the player who received it",
+        );
+    }
     if (entry.administrative) {
       const key = continuityHolderKey(entry.administrative.holder),
         receipt = value.receipts[entry.operationId];
