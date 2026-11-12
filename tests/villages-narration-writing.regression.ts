@@ -9,6 +9,7 @@ import { defaultVillageState } from "../packages/villages/src/server/domain/deco
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
   episodeSourceGraph,
+  episodeUnit,
   readAcceptedEpisode,
 } from "../packages/villages/src/server/domain/decoding/episode-codec.js";
 import type { AcceptedEpisode } from "../packages/villages/src/server/domain/models/episode-model.js";
@@ -1063,6 +1064,53 @@ await runCase("narration-writing/long-followup", async () => {
   );
   const ordinary = await f.writing.prepareVenueTurnMessages(f.scene, "Look around the room.", "chat");
   assert(ordinary.fitted.messages.every((row) => !row.content.includes("brass astrolabe")));
+
+  const curtain = {
+    ...saved,
+    id: "curtain-callback",
+    sceneId: "older-scene",
+    operationId: "curtain-callback",
+    submissionId: "curtain-callback",
+    privateInput: "What did you see on the curtain?",
+    segments: [
+      { ...segments[0], content: "The clock will need oil next week." },
+      { ...segments[1], content: "The curtain has a seam under the patch." },
+      { ...segments[2], content: "The curtain patch is paler on the back." },
+      { ...segments[3], content: "The copper kettle is cold." },
+    ],
+  };
+  curtain.responseDigest = memoryHash(curtain.segments);
+  f.state.episodes = appendEpisode(f.state.episodes, curtain, f.state.seed);
+  const excerpt = await f.writing.prepareVenueTurnMessages(f.scene, "Remember the curtain patch?", "chat");
+  const callbackBlock = excerpt.fitted.messages
+    .flatMap((row) => row.content.split("\n\n"))
+    .filter((row) => row.startsWith('{"interaction":'))
+    .map((row) => JSON.parse(row))
+    .find((row) => row.excerpt);
+  assert(callbackBlock);
+  assert.deepEqual(
+    callbackBlock.interaction.historyLines.map((line: { text: string }) => line.text),
+    curtain.segments.slice(1, 3).map((line) => line.content),
+  );
+  assert.deepEqual(
+    [
+      ...new Set(
+        Object.values(excerpt.readset.source.historical)
+          .filter((source) => source.episodeId === curtain.id)
+          .map((source) => source.unitId),
+      ),
+    ].sort(),
+    curtain.segments
+      .slice(1, 3)
+      .map((line) => line.id)
+      .sort(),
+  );
+  const units = Object.values(excerpt.readset.admission.provenance ?? {}).flat();
+  assert(units.includes(episodeUnit(curtain, "input")));
+  assert.deepEqual(
+    curtain.segments.map((line) => units.includes(episodeUnit(curtain, line.id))),
+    [false, true, true, false],
+  );
 });
 
 await runCase("narration-writing/history-prefix", async () => {
@@ -1078,7 +1126,7 @@ await runCase("narration-writing/history-prefix", async () => {
     const id = "exchange-" + count;
     const keyword = count % 2 ? "cedar" : "maple";
     const longExchange = count === 13;
-    const segments: AcceptedEpisode["segments"] = Array.from({ length: longExchange ? 14 : 1 }, (_, index) => ({
+    const segments: AcceptedEpisode["segments"] = Array.from({ length: longExchange ? 24 : 1 }, (_, index) => ({
       id: id + "-answer-" + index,
       role: "assistant",
       kind: "dialogue",
@@ -1087,10 +1135,20 @@ await runCase("narration-writing/history-prefix", async () => {
       at,
       zoneId: "parlor",
       heardBy: [f.id, "player"],
-      content: (keyword + " weathered wood catches the afternoon light. ").repeat(
-        longExchange ? 38 : count > 12 ? 28 : 7,
-      ),
+      content: (keyword + " weathered wood catches the afternoon light. ")
+        .repeat(longExchange ? 60 : count > 12 ? 28 : 7)
+        .slice(0, 1999),
     }));
+    if (count === 2)
+      segments.unshift({
+        ...segments[0],
+        id: "gm-only",
+        kind: "narration",
+        speakerId: "__venue_scene__",
+        name: "Narration",
+        content: "Rain taps the window.",
+        heardBy: ["player"],
+      });
     f.state.episodes = appendEpisode(
       f.state.episodes,
       {
@@ -1121,7 +1179,7 @@ await runCase("narration-writing/history-prefix", async () => {
       .flatMap((row) => row.content.split("\n\n"))
       .filter((row) => row.startsWith('{"interaction":'));
     const active = blocks.filter((row) => !JSON.parse(row).earlierRecall);
-    assert.equal(JSON.parse(active.at(-1)!).interaction.pastExchange, "e" + count);
+    assert.equal(JSON.parse(active.at(-1)!).interaction.pastExchange, "e" + (count === 13 ? 12 : count));
     assert.deepEqual(blocks.slice(0, active.length), active);
     const cacheBoundary = request.fitted.messages.findLast((row) => row.cacheBreakpoint);
     assert(cacheBoundary?.content.endsWith(active.at(-1)!));
@@ -1135,8 +1193,15 @@ await runCase("narration-writing/history-prefix", async () => {
     assert(tail.some((row) => row.role === "user" && row.content.includes("## Current Scene circumstances")));
     assert.equal(tail.at(-2)?.content, "## Current player submission");
     assert.equal(tail.at(-1)?.content, keyword);
-    if (count <= 50) assert.equal(active.length, count, "a substantial transcript fits without a rebase");
-    if (previous.length && active[0] === previous[0])
+    if (count <= 12) assert.equal(active.length, count, "ordinary growth retains the stable transcript");
+    if (count === 2) {
+      const [narration, dialogue] = JSON.parse(active.at(-1)!).interaction.historyLines;
+      assert.equal(narration.gmOnlyText, "Rain taps the window.");
+      assert.equal(narration.witnessedWords, undefined);
+      assert(dialogue.witnessedWords.ref && !dialogue.witnessedWords.by);
+    }
+    if (count === 13) assert.deepEqual(active, previous, "an oversized exchange leaves the previous window available");
+    else if (previous.length && active[0] === previous[0])
       assert.deepEqual(active.slice(0, -1), previous, "new turns append to the byte-identical history prefix");
     else if (previous.length) resets++;
     previous = active;

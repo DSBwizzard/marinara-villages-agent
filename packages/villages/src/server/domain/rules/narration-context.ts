@@ -24,7 +24,7 @@ import {
 import { selectActorContinuity, selectRoomContinuity } from "./continuity-retrieval.js";
 import { appendHistoryWithin, selectEpisodeHistory } from "./episodes.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
-import { estimatedTextTokens } from "./text-recall.js";
+import { estimatedTextTokens, recallTerms } from "./text-recall.js";
 import { hasWritingEvidence, type VenueWritingBlock } from "./venue-writing.js";
 import { projectSpeechContexts, projectSpeechPrompt } from "./project-interpretation.js";
 import { sceneContinuityView } from "./scene-continuity.js";
@@ -83,6 +83,34 @@ function sharedLoreWords(
         : [],
     ),
   ];
+}
+
+/** An ordinary callback can show the matching words. Native decisions and grounded inputs keep their full context. */
+function callbackView(
+  episode: AcceptedEpisode,
+  view: ReturnType<typeof selectEpisodeHistory>["episodes"][number],
+  input: string,
+) {
+  if (
+    episode.commandReceipts.length ||
+    episode.grounding.length ||
+    episode.continuityVersionIds.length ||
+    view.letters?.length ||
+    view.segments.some((line) => line.projections.length)
+  )
+    return view;
+  const terms = [...new Set(recallTerms(input))];
+  const lines = view.segments.filter((line) => "text" in line).filter((line) => line.kind === "dialogue" && line.text);
+  if (lines.length <= 2) return view;
+  const scores = lines.map((line) => {
+    const words = new Set(recallTerms(line.text));
+    return terms.filter((term) => words.has(term)).length;
+  });
+  const strongest = Math.max(...scores);
+  if (!strongest) return view;
+  const index = scores.indexOf(strongest);
+  const start = index === 0 || (scores[index + 1] ?? -1) >= scores[index - 1] ? index : index - 1;
+  return { ...view, segments: lines.slice(start, start + 2) };
 }
 
 export function narrationProtectionFingerprint(state: VillageState, holders: ContinuityHolder[]) {
@@ -262,7 +290,7 @@ export function narrationContinuityContext(
   });
   // Raw witness views are larger than the rendered transcript. Fit the model-facing
   // transcript below, with a separate ceiling on raw projection work.
-  const transcriptBudget = 32_000;
+  const transcriptBudget = 12_000;
   const recallBudget = 750;
   const history = selectEpisodeHistory(state.episodes, state.continuity, holders, input, 256_000, scene.id);
   const episodeOrder = new Map(state.episodes.records.map((row, index) => [row.id, index]));
@@ -273,25 +301,28 @@ export function narrationContinuityContext(
     let localAlias = 0;
     const exchangeNumber = episodeOrder.get(view.id)! + 1,
       episode = state.episodes.records[exchangeNumber - 1],
+      offeredView = transcript ? view : callbackView(episode, view, input),
       { interaction, ...recall } = projectEpisodeRecall(
         state,
         episode,
-        view,
+        offeredView,
         holders,
         actors,
         transcript ? contextScopes : new Map(contextScopes),
         () => `h:${exchangeNumber}.${++localAlias}`,
+        offeredView === view ? undefined : new Set(offeredView.segments.map((line) => line.id)),
       ),
       compact = compactSceneExchange(interaction, recall.sources, exchangeNumber, transcript);
     const text = JSON.stringify({
       interaction: transcript ? compact.exchange : { ...compact.exchange, at: interaction.at },
       ...(transcript ? {} : { earlierRecall: true }),
+      ...(offeredView === view ? {} : { excerpt: true }),
     });
     return {
       ...emptyPart(),
       ...recall,
       sources: compact.sources,
-      sharedLoreWords: sharedLoreWords(episode, view, loreAudience),
+      sharedLoreWords: sharedLoreWords(episode, offeredView, loreAudience),
       block: {
         text,
         evidenceId: "episode-context:" + view.id,

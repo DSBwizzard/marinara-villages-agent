@@ -18,6 +18,7 @@ export function projectEpisodeRecall(
   actors: Actor[],
   contextScopes: Map<string, string>,
   sourceAlias: () => string,
+  suppliedLines?: ReadonlySet<string>,
 ) {
   const part = {
     sources: {} as Record<string, ContinuityEvidence>,
@@ -28,13 +29,14 @@ export function projectEpisodeRecall(
   for (const holder of holders) {
     const own = actorEpisodeView(episode, state.continuity, holder, state.episodes);
     if (!own) continue;
+    const witnessedLines = suppliedLines ? own.segments.filter((line) => suppliedLines.has(line.id)) : own.segments;
     const eligible = episode.grounding.flatMap((source) => {
       try {
         const projected = actorContinuityEvidence(source, holder.id);
         return own.input.some((row) => row.id === source.id) ||
           (source.kind === "written" &&
             own.letters.some((row) => row.id === source.unitId && row.text === projected.excerpt)) ||
-          own.segments.some(
+          witnessedLines.some(
             (row) =>
               row.id === source.unitId &&
               row.text === projected.excerpt &&
@@ -46,7 +48,7 @@ export function projectEpisodeRecall(
         return [];
       }
     });
-    for (const segment of own.segments)
+    for (const segment of witnessedLines)
       if (!eligible.some((source) => source.unitId === segment.id)) {
         const source = recallEpisodeSpeech(episode, segment.id, state.continuity, holder, state.episodes);
         if (source) eligible.push(source);
@@ -60,7 +62,7 @@ export function projectEpisodeRecall(
     part.provenance[key] = [
       ...new Set([
         ...eligible.map(continuitySourceUnit),
-        ...own.segments
+        ...witnessedLines
           .filter(
             (row) =>
               row.channel !== "sound-only" &&
@@ -210,11 +212,10 @@ export function compactSceneExchange(
       projections,
     };
   });
-  const common = segmentsWithAudience[0]?.shared?.actors;
+  const sharedLines = segmentsWithAudience.flatMap((row) => (row.shared ? [row.shared] : []));
+  const common = sharedLines[0]?.actors;
   const audience =
-    transcript &&
-    common &&
-    segmentsWithAudience.every((row) => row.shared && JSON.stringify(row.shared.actors) === JSON.stringify(common))
+    transcript && common && sharedLines.every((row) => JSON.stringify(row.actors) === JSON.stringify(common))
       ? common
       : undefined;
   const exchange = {
