@@ -24,18 +24,14 @@ export const letterFontSources = {
     "letter-fonts/caveat-latin-ext-400-normal.woff2",
   ],
   "letter-fonts/comic-neue.json": ["letter-fonts/comic-neue-latin-400-normal.woff2"],
-  "letter-fonts/fira-mono.json": [
-    "letter-fonts/fira-mono-cyrillic-400-normal.woff2",
-    "letter-fonts/fira-mono-cyrillic-ext-400-normal.woff2",
-    "letter-fonts/fira-mono-greek-400-normal.woff2",
-    "letter-fonts/fira-mono-greek-ext-400-normal.woff2",
-    "letter-fonts/fira-mono-latin-400-normal.woff2",
-    "letter-fonts/fira-mono-latin-ext-400-normal.woff2",
-  ],
   "letter-fonts/kalam.json": [
     "letter-fonts/kalam-devanagari-400-normal.woff2",
     "letter-fonts/kalam-latin-400-normal.woff2",
     "letter-fonts/kalam-latin-ext-400-normal.woff2",
+  ],
+  "letter-fonts/lekton.json": [
+    "letter-fonts/lekton-latin-400-normal.woff2",
+    "letter-fonts/lekton-latin-ext-400-normal.woff2",
   ],
   "letter-fonts/lora.json": [
     "letter-fonts/lora-cyrillic-400-normal.woff2",
