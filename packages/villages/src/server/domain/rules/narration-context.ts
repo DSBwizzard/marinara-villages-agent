@@ -805,7 +805,7 @@ export function fittedNarrationReadset(
     ...state.villagers.map((row) => row.characterId),
     ...context.actors.map((row) => row.id),
     ...context.npcCandidates.map((row) => row.npc.id),
-    ...parts.flatMap((part) =>
+    ...citable.flatMap((part) =>
       part.targets.flatMap((target) =>
         Object.keys(target.heads).flatMap((key) => {
           const record = state.continuity.records.find((row) => row.id === target.id)!,

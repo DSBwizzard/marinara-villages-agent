@@ -504,9 +504,18 @@ export function acceptNarrationContinuity(
     ),
     "Scene effect lost its native command",
   );
+  const readOnlyKnowledge = readset.readOnlyKnowledge ?? [];
+  memoryRequire(
+    Array.isArray(readOnlyKnowledge) &&
+      readOnlyKnowledge.length <= 1024 &&
+      readOnlyKnowledge.every(
+        (proof) => proof?.kind === "knowledge" && proof.seed === source.seed && proof.episodeId === source.episodeId,
+      ),
+    "invalid saved read-only knowledge proofs",
+  );
   const currentSources = [
     ...Object.values(source.historical).filter((row) => row.kind === "knowledge"),
-    ...(readset.readOnlyKnowledge ?? []),
+    ...readOnlyKnowledge,
     ...acceptedKeeps.flatMap((keep) => keep.sources),
     ...selection.acceptedIds.flatMap((id) => native.sources[id] ?? []),
     ...selection.acceptedIds
