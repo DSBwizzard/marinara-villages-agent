@@ -97,6 +97,21 @@ function fixture(name: string) {
 async function main() {
   const a = fixture("A"),
     b = fixture("B");
+  const paused = fixture("Paused");
+  paused.state.returnCatchup = {
+    batch: { id: "paused-return", status: "failed", opportunityLimit: 1, budgetDate: "2026-11-12" },
+  };
+  let schedulerWakes = 0;
+  const pace = createVillageSettings({ ...paused.ports, activityChanged: () => schedulerWakes++ });
+  await pace.setVillageBackgroundPace("quiet");
+  assert.equal(schedulerWakes, 0, "changing Pace while paused does not wake the scheduler");
+  paused.retryWith((state) => {
+    state.returnCatchup!.batch!.status = "running";
+  });
+  await assert.rejects(pace.setVillageBackgroundPace("off"), /Wait for Village catch-up/);
+  assert.equal(paused.state.backgroundPace, "quiet", "a concurrent Retry keeps its admitted Pace");
+  assert.equal(schedulerWakes, 0);
+
   await a.service.setVillageName("  New name  ");
   await a.service.setVillageLoreSettings([" book ", "book"], 800);
   await a.service.setVillageBackgroundPace("quiet");

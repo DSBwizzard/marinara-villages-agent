@@ -1,7 +1,7 @@
 import { readWorldName } from "../../../shared/helpers/resident-admission.js";
 import { readSceneryStyleProfileId } from "../../domain/rules/image-style-profiles.js";
 import type { VillageSnapshot, VillageState, VillageBackgroundPace } from "../../domain/models/world.js";
-import { badRequest } from "../../domain/rules/errors.js";
+import { badRequest, conflict } from "../../domain/rules/errors.js";
 import { readLoreTokenBudget, readSelectedLorebookIds } from "../../domain/rules/lore-policy.js";
 import { readSceneryStyle } from "../../domain/rules/scenery-context.js";
 import { readBool } from "../../domain/rules/village-projections.js";
@@ -37,10 +37,13 @@ export function createVillageSettings({
     if (typeof value !== "string" || !paces.includes(value as VillageBackgroundPace)) {
       throw badRequest("Choose Off, Quiet, Average or Busy for Pace.");
     }
-    await mutateVillageState((state) => {
+    const state = await mutateVillageState((state) => {
+      const catchup = state.returnCatchup?.batch?.status;
+      if (catchup === "queued" || catchup === "running")
+        throw conflict("Wait for Village catch-up before changing Pace.");
       state.backgroundPace = value as VillageBackgroundPace;
     });
-    activityChanged?.();
+    if (state.returnCatchup?.batch?.status !== "failed") activityChanged?.();
     return buildVillageSnapshot();
   }
 
