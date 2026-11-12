@@ -472,11 +472,7 @@ export async function runSceneCostFixtures(selected: readonly SceneCostCase[] = 
             .filter((line: string) => line.startsWith('{"privateContinuity":'))
             .flatMap((line: string) => JSON.parse(line).privateContinuity);
           const desires = entries.filter((row: any) => row.current && row.class === "desire");
-          assert(
-            desires.length > 0 && desires.length < 40,
-            "bounded keyword-independent initiative offers a current desire without injecting all40",
-          );
-          assert(desires.every((row: any) => row.text.startsWith("I want to share an afternoon discussing craft ")));
+          assert(desires.length === 0, "active Scenes leave unrelated standing desires in memory");
           assert(bytes < 200000, "rich continuity is selected rather than serializing its entire history");
         }
         return { content, finishReason: "stop" };

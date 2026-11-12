@@ -267,6 +267,13 @@ await runCase("narration-writing/learned-wish-initiative", () => {
     { class: "desire", owner: continuityActor(f.state, "player")!, current: true, about: ["player"] },
   );
   const root = f.state.continuity.records.at(-1)!.id;
+  const ownWish = "I want to repair the broken astrolabe.";
+  retainNativeFact(
+    f.state,
+    { id: "resident-wish", kind: "initialization", targetId: f.id, revision: 1, text: ownWish, witnesses: [f.id] },
+    at,
+    { class: "desire", owner: continuityActor(f.state, f.id)!, current: true },
+  );
   const context = narrationContinuityContext(f.state, f.scene, f.venue, "new-turn", "Ask about sailing", at),
     fitted = fittedNarrationReadset(
       f.state,
@@ -280,6 +287,12 @@ await runCase("narration-writing/learned-wish-initiative", () => {
   assert(
     !fitted.offered.some((offer) => offer.holder.id === f.id && offer.ids.includes(root)),
     "the final fitted request cannot count learned wishes as the hearer's own initiative",
+  );
+  assert(context.parts.every((part) => !part.block.text.includes(ownWish)));
+  const opening = narrationContinuityContext(f.state, { ...f.scene, status: "opening" }, f.venue, "opening", "", at);
+  assert(
+    opening.parts.some((part) => part.block.text.includes(ownWish)),
+    "opening can still use a resident goal",
   );
 });
 await runCase("narration-writing/single-request", async () => {
@@ -504,7 +517,11 @@ await runCase("narration-writing/fitted-evidence", () => {
     context.parts.map((part) => part.block.evidenceId!),
   );
   assert(Object.keys(all.source.historical).length > Object.keys(fitted.source.historical).length);
-  assert(all.admission.supplied.length > fitted.admission.supplied.length);
+  assert.equal(
+    all.admission.supplied.length - fitted.admission.supplied.length,
+    2,
+    "ordinary recall fits up to two facts",
+  );
   assert.equal(Object.keys(fitted.admission.sourceActors ?? {}).length, 0);
   assert.deepEqual(fitted.offered, [], "unsupplied history is never counted as an initiative offer");
   for (const source of Object.values(fitted.source.historical)) assert.equal(source.kind, "knowledge");
@@ -924,7 +941,15 @@ await runCase("narration-writing/optional-facets", () => {
   );
   const context = narrationContinuityContext(f.state, f.scene, f.venue, "next", "Detail marquetry", at);
   assert(context.parts.some((part) => part.block.optional === "memory"));
-  const required = context.parts.filter((part) => !part.block.optional);
+  const opening = narrationContinuityContext(
+    f.state,
+    { ...f.scene, status: "opening" },
+    f.venue,
+    "opening",
+    "Detail marquetry",
+    at,
+  );
+  const required = opening.parts.filter((part) => !part.block.optional);
   assert(
     required.reduce((sum, part) => sum + part.block.text.length, 0) < 1000,
     "optional sibling facets never become part of the required initiative block",
@@ -936,11 +961,11 @@ await runCase("narration-writing/optional-facets", () => {
         return { messages: fits ? messages : [], maxTokens: options?.maxTokens ?? 512, trimmed: !fits } as any;
       },
     },
-    context.parts.map((part) => part.block),
+    opening.parts.map((part) => part.block),
     "Detail marquetry",
     512,
   );
-  const captured = fittedNarrationReadset(f.state, context, fitted.evidenceIds);
+  const captured = fittedNarrationReadset(f.state, opening, fitted.evidenceIds);
   assert(captured.admission.supplied.some((row) => row.id === root.id));
   assert.equal(captured.offered[0].ids[0], root.id);
 });
@@ -1065,6 +1090,20 @@ await runCase("narration-writing/long-followup", async () => {
   );
   const ordinary = await f.writing.prepareVenueTurnMessages(f.scene, "Look around the room.", "chat");
   assert(ordinary.fitted.messages.every((row) => !row.content.includes("brass astrolabe")));
+  const summary = "The ferryman uses his astrolabe to navigate on cloudy days.";
+  retainNativeFact(
+    f.state,
+    { id: "astrolabe-summary", kind: "initialization", targetId: f.id, revision: 1, text: summary, witnesses: [f.id] },
+    at,
+  );
+  f.nextOperation("astrolabe-summary");
+  const fact = await f.writing.prepareVenueTurnMessages(f.scene, "Tell me about the astrolabe.", "chat");
+  assert(fact.fitted.messages.some((row) => row.content.includes(summary)));
+  assert(fact.fitted.messages.every((row) => !row.content.includes('"earlierRecall":true')));
+  f.nextOperation("astrolabe-exact-words");
+  const quote = await f.writing.prepareVenueTurnMessages(f.scene, "Quote the astrolabe line.", "chat");
+  assert(quote.fitted.messages.some((row) => row.content.includes("The brass astrolabe belongs to the ferryman.")));
+  assert(quote.fitted.messages.every((row) => !row.content.includes(summary)));
 
   const curtain = {
     ...saved,

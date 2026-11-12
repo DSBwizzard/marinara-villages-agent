@@ -9,7 +9,7 @@ import {
 } from "./continuity.js";
 import { episodeSpeechEvidence, episodeContextActors, episodeContextRooms } from "./episode-sources.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
-import { recallTerms } from "./text-recall.js";
+import { asksForRecallQuote, recallTerms, sceneQuoteScore, sceneQuoteTerms } from "./text-recall.js";
 import { assertMailHistory, episodeMailEvidence } from "./mail-evidence.js";
 
 export const emptyEpisodes = (): EpisodeCollection => ({ format: 1, revision: 0, records: [] });
@@ -407,12 +407,30 @@ export function selectEpisodeHistory(
     const sceneIds = new Set(sceneWindow.map((row) => row.view.id));
     const cue =
       /(?:^\s*about\b|\b(?:remember|earlier|before|yesterday|last time|previously|promis(?:e|ed)|(?:you|we) (?:said|talked|agreed)|told me)\b)/giu;
-    const explicit = new RegExp(cue.source, "iu").test(query);
-    const queryTerms = [...new Set(recallTerms(query.replace(cue, " ")))].filter((term) => term.length >= 3);
+    const quote = asksForRecallQuote(query);
+    const explicit = quote || new RegExp(cue.source, "iu").test(query);
+    const queryTerms = quote
+      ? sceneQuoteTerms(query)
+      : [...new Set(recallTerms(query.replace(cue, " ")))].filter((term) => term.length >= 3);
     // shortcut: match eligible prose locally; add semantic recall only if players miss specific callbacks.
     const recalled = candidates
       .map((row) => {
         const { gmPrivateInput, groundedInput, segments, letters } = row.view;
+        if (quote)
+          return {
+            row,
+            matches: Math.max(
+              0,
+              ...groundedInput.flatMap((row) =>
+                row.channel === "words" ? [sceneQuoteScore(queryTerms, "player", row.text)] : [],
+              ),
+              ...segments.flatMap((line) => {
+                if (!("text" in line) || line.perceivedBy.player !== "words") return [];
+                const speaker = row.episode.segments.find((saved) => saved.id === line.id)?.name ?? line.speakerId;
+                return [sceneQuoteScore(queryTerms, speaker, line.text)];
+              }),
+            ),
+          };
         const prose = [
           "text" in gmPrivateInput ? gmPrivateInput.text : "",
           ...groundedInput.map((source) => source.text),

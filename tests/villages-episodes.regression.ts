@@ -733,7 +733,7 @@ await runCase("episodes/independent-spans", async () => {
         scene,
         venue,
         "learn-other-span",
-        "What do you remember about " + clean.excerpt,
+        "Quote what I said so I can correct the note about " + clean.excerpt,
         at,
       ),
       readset = fittedNarrationReadset(

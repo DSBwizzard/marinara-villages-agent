@@ -164,6 +164,7 @@ export function selectActorContinuity(
     bytes: number;
     requiredIds: string[];
     identity: (id: string) => { incarnation: string } | undefined;
+    initiative?: boolean;
   },
 ) {
   memoryRequire(Number.isSafeInteger(request.bytes) && request.bytes > 0, "invalid actor context budget");
@@ -231,9 +232,10 @@ export function selectActorContinuity(
     }
   };
   const lastOffered = new Map<string, number>();
+  const initiativeHolders = request.initiative === false ? [] : holders.filter((holder) => holder.id !== "player");
   const created = new Map<string, number>(),
     versions = new Map(collection.versions.map((version) => [version.id, version]));
-  episodes.records.forEach((episode, sequence) => {
+  (initiativeHolders.length ? episodes.records : []).forEach((episode, sequence) => {
     for (const id of episode.continuityVersionIds) {
       const rootId = versions.get(id)?.rootId;
       if (rootId && !created.has(rootId)) created.set(rootId, sequence + 1);
@@ -244,7 +246,7 @@ export function selectActorContinuity(
   });
   const fair: ContinuityView[] = [],
     surplus: ContinuityView[] = [];
-  for (const holder of holders.filter((holder) => holder.id !== "player")) {
+  for (const holder of initiativeHolders) {
     const key = continuityHolderKey(holder);
     const current = all
       .filter((row) => continuityHolderKey(row.holder) === key && row.current && continuityGuidesHolder(row))
@@ -261,7 +263,7 @@ export function selectActorContinuity(
     }
     if (available[1]) surplus.push(available[1]);
   }
-  for (const holder of holders.filter((holder) => holder.id !== "player")) {
+  for (const holder of initiativeHolders) {
     const foreground = all.find(
       (row) =>
         continuityHolderKey(row.holder) === continuityHolderKey(holder) &&
@@ -275,6 +277,9 @@ export function selectActorContinuity(
   for (const { row, score } of rank(all, request.query, (row) =>
     [
       row.version.text,
+      ...(request.initiative === false && row.current && row.version.class === "commitment"
+        ? ["promise promised"]
+        : []),
       ...row.version.about.map((subject) => subject.id),
       ...row.version.sources.map((source) => source.excerpt),
     ].join(" "),

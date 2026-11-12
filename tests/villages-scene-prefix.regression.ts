@@ -21,10 +21,11 @@ await runCase("scene-prefix/current-native-context", async () => {
       ["The mist has lifted.", "movement"],
       ["The mist has lifted.", "protected"],
       ["The mist has lifted.", "project"],
+      ["The mist has lifted.", "project-idle"],
     ]) {
       const host = await packagedSceneServer({
         configure(world, now) {
-          configureSceneCostWorld(world, now, change === "project" ? "project-discussion" : "ordinary");
+          configureSceneCostWorld(world, now, change.startsWith("project") ? "project-discussion" : "ordinary");
           world.setting = "AUTHORED RIVERSIDE SETTING";
           world.worldRules = "AUTHORED WORLD RULE";
           world.playerBackground = "AUTHORED PRIVATE BACKSTORY";
@@ -141,7 +142,7 @@ await runCase("scene-prefix/current-native-context", async () => {
           payload: {
             sessionId: "browser",
             submissionId: "f1111111-1111-4111-8111-111111111111",
-            message: "Hello.",
+            message: change === "project" ? "What do you think of the Larger Common room design?" : "Hello.",
             mode: "chat",
             targetId: "",
             expectedSceneRevision: host.scene().sceneRevision,
