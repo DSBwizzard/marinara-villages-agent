@@ -218,7 +218,7 @@ export function compactSceneExchange(
       ? common
       : undefined;
   const exchange = {
-    id: "e" + exchangeNumber,
+    pastExchange: "e" + exchangeNumber,
     ...("text" in gmPrivateInput ? { gmPrivateInput: gmPrivateInput.text } : { inputWithheld: true }),
     ...(formerActors?.length ? { formerActors } : {}),
     ...(groundedInput.length
@@ -240,36 +240,40 @@ export function compactSceneExchange(
           })),
         }
       : {}),
-    segments: segmentsWithAudience.map(({ segment, shared, audiences, projections }) => {
-      return {
-        ...segment,
-        ...(shared
-          ? {
-              heard: {
-                ...(audience ? {} : { by: shared.actors }),
-                ref: shared.ref,
-                ...(shared.act ? { act: shared.act } : {}),
-              },
-            }
-          : audiences.length
+    historyLines: segmentsWithAudience.map(
+      ({ segment: { speakerId, kind, ...text }, shared, audiences, projections }) => {
+        return {
+          pastSpeaker: speakerId,
+          pastKind: kind,
+          ...text,
+          ...(shared
             ? {
-                perceivedBy: audiences.map(([actor, { channel, source }]) => [
-                  actor,
-                  channel,
-                  ...(source.length ? [source.map(({ ref }) => citation(ref))] : []),
-                ]),
+                witnessedWords: {
+                  ...(audience ? {} : { by: shared.actors }),
+                  ref: shared.ref,
+                  ...(shared.act ? { act: shared.act } : {}),
+                },
+              }
+            : audiences.length
+              ? {
+                  perceivedBy: audiences.map(([actor, { channel, source }]) => [
+                    actor,
+                    channel,
+                    ...(source.length ? [source.map(({ ref }) => citation(ref))] : []),
+                  ]),
+                }
+              : {}),
+          ...(projections.length
+            ? {
+                projections: projections.map(({ source, ...row }) => ({
+                  ...row,
+                  source: source.map(({ ref }) => citation(ref)),
+                })),
               }
             : {}),
-        ...(projections.length
-          ? {
-              projections: projections.map(({ source, ...row }) => ({
-                ...row,
-                source: source.map(({ ref }) => citation(ref)),
-              })),
-            }
-          : {}),
-      };
-    }),
+        };
+      },
+    ),
   };
   return { exchange, sources: visible, audience };
 }

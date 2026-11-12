@@ -907,7 +907,7 @@ await runCase("mail-continuity/scene-context", () => {
   const oldTalk = speechContext.parts
     .map((part) => JSON.parse(part.block.text))
     .find((part) =>
-      part.interaction?.segments.some((line: { text?: string }) => line.text === spoken.segments[0].content),
+      part.interaction?.historyLines.some((line: { text?: string }) => line.text === spoken.segments[0].content),
     );
   assert.deepEqual(
     oldTalk.interaction.formerActors,

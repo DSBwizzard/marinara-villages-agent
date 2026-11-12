@@ -211,7 +211,7 @@ export function createSceneWriting({
       ]),
       conversation: [
         {
-          text: "History is private GM context. A heard line gives a shared citation and its exact audience in by, or the most recent audience header for the Scene transcript. Timestamp headers carry forward. Other perceptions are [actor, channel, optional sources]. Letter readBy rows give [actor, optional sources]. In privateContinuity shared entries list each holder and source. Cite the supplied reference and respect each character's actual knowledge. Omission never means absence.",
+          text: "History is private GM context. witnessedWords gives a shared citation and its exact audience in by, or the most recent audience header for the Scene transcript. Timestamp headers carry forward. Other perceptions are [actor, channel, optional sources]. Letter readBy rows give [actor, optional sources]. In privateContinuity shared entries list each holder and source. Cite the supplied reference and respect each character's actual knowledge. Omission never means absence.",
         },
         ...context.parts.filter((part) => !part.block.transcript).map((part) => part.block),
         ...lore.map((text, index): VenueWritingBlock => ({
