@@ -4,12 +4,13 @@ import type { ResidentPlanningOpportunity } from "./world.js";
 export type ResidentNarrationCapture = {
   format: 1;
   context: ContinuityCapture;
-  opportunity: Omit<ResidentPlanningOpportunity, "kind"> & { kind: "encounter" | "routine" };
+  opportunity: Omit<ResidentPlanningOpportunity, "kind"> & { kind: "encounter" | "routine" | "relationship" };
   actors: { id: string; incarnation: string; zoneId: string }[];
   nativeFingerprint: string;
   protectionFingerprint: string;
   historical?: true;
   calendar: ReturnType<typeof import("../rules/scene-calendar.js").capturedSceneCalendar>;
+  relationshipAnswerIds?: string[];
   access: ReturnType<typeof import("../rules/narration-access.js").narrationAccessScopes>;
   residence: ReturnType<typeof import("../rules/narration-residence.js").narrationResidenceContext>;
   room?: {

@@ -1,4 +1,4 @@
-// Test cases: native-plans/admission, native-plans/attendance, native-plans/epochs, native-plans/stale, native-plans/availability, native-plans/project-priority, native-plans/round-trip, native-plans/continuity, native-plans/planner-publication
+// Test cases: native-plans/admission, native-plans/relationship-priority, native-plans/attendance, native-plans/epochs, native-plans/stale, native-plans/availability, native-plans/project-priority, native-plans/round-trip, native-plans/continuity, native-plans/planner-publication
 import assert from "node:assert/strict";
 import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
@@ -123,6 +123,44 @@ await runCase("native-plans/admission", () => {
   assert.deepEqual(f.state, before, "exact acceptance replay does not revive cancelled native authority");
   f.state.residentPlans.selectedDate = "2026-11-11";
   assert.equal(socialPlanCandidates(f.state, now).length, 0, "an older date cannot regain a consumed plan allowance");
+});
+
+await runCase("native-plans/relationship-priority", () => {
+  const { state } = fixture();
+  for (let i = 0; i < 10; i++)
+    state.venues.push(venueFixture({ id: "park-" + i, name: "Park " + i, category: "public" }));
+  const count = () => {
+    const candidates = socialPlanCandidates(state, now);
+    assert.equal(candidates.length, 6);
+    assert(candidates.every((plan) => socialPlanValid(state, plan, now)));
+    return candidates.filter((plan) => plan.kind === "meeting").length;
+  };
+  const neutral = count();
+  const seedAttitude = (owner: string, subject: string, score: number) => {
+    retainNativeFact(
+      state,
+      {
+        id: "relationship-" + owner,
+        kind: "initialization",
+        targetId: owner,
+        revision: 1,
+        text: "An established attitude.",
+        witnesses: [owner],
+      },
+      at,
+      { class: "perspective", owner: continuityActor(state, owner), about: [subject], current: true },
+    );
+    const version = state.continuity.versions.at(-1)!;
+    version.relationshipScore = score;
+    return version;
+  };
+  seedAttitude("a", "b", 100);
+  assert.equal(count(), neutral, "one resident's warmth is insufficient to favor a shared meetup");
+  const reverse = seedAttitude("b", "a", 100);
+  assert(count() > neutral, "mutual warmth makes more feasible meetups available to the planner");
+  reverse.relationshipScore = -100;
+  assert(count() < neutral, "one resident's reluctance deprioritizes their meetups");
+  assert.deepEqual(state.residentPlans.plans, [], "candidate preference never books time on its own");
 });
 
 await runCase("native-plans/attendance", () => {

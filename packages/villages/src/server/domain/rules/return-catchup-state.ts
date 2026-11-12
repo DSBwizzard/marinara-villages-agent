@@ -2,9 +2,11 @@ import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { defaultVillageState } from "../decoding/village-codec.js";
 import { RETURN_CATCHUP_HISTORY_LIMIT, type ReturnCatchupBatch, type VillageState } from "../models/world.js";
 import { calendarReplay } from "./clock-state.js";
+import { dueRelationshipAnswers } from "./continuity-library.js";
 import { captureReturnContext, departureContinuityAvailable } from "./return-catchup-capture.js";
 import { returnCatchupOpportunities } from "./return-catchup-opportunities.js";
 import { localDateKey, planningAllowance } from "./resident-planning.js";
+import { capturedSceneCalendar } from "./scene-calendar.js";
 
 /** Retain recent finished accounts without copying departure snapshots or active work. */
 const HISTORY_BYTES = 512 * 1024;
@@ -27,6 +29,43 @@ export function recordReturnVisibility(state: VillageState, now: Date): void {
   state.returnCatchup.capture = captureReturnContext(state, now);
 }
 
+function dueOnReturn(state: VillageState, at: string) {
+  return dueRelationshipAnswers(
+    state,
+    capturedSceneCalendar({ startedAt: at }, state.timeZone),
+    state.villagers
+      .filter((resident) => resident.relationshipScene && resident.relationshipScene.endedAt <= at)
+      .map((resident) => resident.characterId),
+  ).owners.slice(0, 4);
+}
+
+/** Append once after historical outcomes settle, under the batch's original allowance. */
+export function appendReturnRelationshipRefresh(state: VillageState, batch: ReturnCatchupBatch): boolean {
+  if (!batch.relationshipRefresh) return false;
+  delete batch.relationshipRefresh;
+  const { until, records, opportunities, budgetDate } = batch;
+  const used = state.eventAttempts?.attempts.filter((row) => row.date === budgetDate).length ?? 0;
+  if (
+    !until ||
+    !records ||
+    !opportunities ||
+    opportunities.length >= batch.opportunityLimit ||
+    records.some((row) => row.status !== "settled" && row.status !== "rejected") ||
+    planningAllowance(state.backgroundPace, state.seed, budgetDate) <= used
+  )
+    return false;
+  const actorIds = dueOnReturn(state, until).map(({ id }) => id);
+  if (!actorIds.length) return false;
+  const id = "relationship-" + budgetDate;
+  opportunities.push({ id, kind: "relationship", startsAt: until, endsAt: until, actorIds, venueId: "", facts: [] });
+  records.push({ opportunityId: id, status: "pending" });
+  if (batch.labels)
+    for (const resident of state.villagers)
+      if (actorIds.includes(resident.characterId))
+        batch.labels.residents[resident.characterId] = resident.cardSnapshot.name;
+  return true;
+}
+
 /** Discover a fixed return interval locally, before background work is admitted. */
 export function discoverReturnBatch(state: VillageState, now: Date, id: string): void {
   const tracking = state.returnCatchup;
@@ -41,19 +80,37 @@ export function discoverReturnBatch(state: VillageState, now: Date, id: string):
   const date = localDateKey(localNow);
   const used = state.eventAttempts?.attempts.filter((row) => row.date === date).length ?? 0;
   const remaining = Math.max(0, planningAllowance(state.backgroundPace, state.seed, date) - used);
+  const opportunityLimit = Math.min(6, remaining);
   let opportunities: NonNullable<NonNullable<VillageState["returnCatchup"]>["batch"]>["opportunities"] = [];
   let reason = "";
+  let relationshipRefresh = false,
+    reservedBlurb = false;
   if (calendarReplay(state, localNow)) reason = "The calendar is replaying a previously visited date.";
   else {
+    const at = now.toISOString();
+    const refreshedToday = [prior, ...(tracking.history ?? [])].some(
+      (batch) => batch?.budgetDate === date && batch.opportunities?.some((row) => row.kind === "relationship"),
+    );
+    relationshipRefresh =
+      opportunityLimit > 0 &&
+      !refreshedToday &&
+      state.villagers.some((resident) => resident.relationshipScene && resident.relationshipScene.endedAt <= at);
+    reservedBlurb = relationshipRefresh && dueOnReturn(state, at).length > 0;
     const residentEligible = departureContinuityAvailable(capture, state);
     const historical = {
       ...defaultVillageState(),
       ...capture.world,
       ...(residentEligible ? { continuity: state.continuity, episodes: state.episodes } : {}),
     };
-    const selected = returnCatchupOpportunities(historical, new Date(capture.at), now, remaining, residentEligible);
+    const selected = returnCatchupOpportunities(
+      historical,
+      new Date(capture.at),
+      now,
+      opportunityLimit - Number(reservedBlurb),
+      residentEligible,
+    );
     opportunities = selected.opportunities;
-    reason = selected.reason;
+    reason = reservedBlurb && !opportunities.length ? "Relationship blurbs are due on return." : selected.reason;
     if (!residentEligible) reason += " Continuity changed after departure.";
   }
   if (prior?.id === id || tracking.history?.some((row) => row.id === id)) return;
@@ -83,11 +140,12 @@ export function discoverReturnBatch(state: VillageState, now: Date, id: string):
   tracking.batch = {
     id,
     budgetDate: date,
-    opportunityLimit: Math.min(6, remaining),
-    status: opportunities.length ? "queued" : "completed",
+    opportunityLimit,
+    status: opportunities.length || reservedBlurb ? "queued" : "completed",
     from: capture.at,
     until: now.toISOString(),
     reason,
+    ...(relationshipRefresh && (opportunities.length || reservedBlurb) ? { relationshipRefresh: true } : {}),
     labels: { residents, venues, zones },
     opportunities,
     records: opportunities.map((opportunity) => ({ opportunityId: opportunity.id, status: "pending" })),

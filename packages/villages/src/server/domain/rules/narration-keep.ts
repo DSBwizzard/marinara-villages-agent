@@ -198,11 +198,24 @@ export function prepareContinuityKeep(
       proposal.protection.roots.every((id) => admission.protectedRoots.includes(id)),
       "protection root was not fitted",
     );
+  let relationship = proposal.relationship;
+  const answerOffered =
+    about?.length === 1 &&
+    about[0].id === "player" &&
+    admission.relationshipAnswers?.owners.some(
+      (actor) => actor.id === owner?.id && actor.incarnation === owner.incarnation,
+    );
+  if (relationship?.answer && !answerOffered && (relationship.impact || holders.length > 1)) {
+    // Scene recovery still needs to recognize older mixed private/shared proposals.
+    if (!(relationship.impact && holders.length > 1 && sources.some((source) => source.kind === "self")))
+      relationship = relationship.impact ? { impact: relationship.impact } : undefined;
+  }
   const write: ContinuityWrite = {
     id: header.id,
     holders,
     ...(owner ? { owner } : {}),
     sourceIds: sources.map((source) => source.id),
+    ...(relationship ? { relationship } : {}),
     ...(target ? { target } : {}),
     ...(typeof proposal.text === "string" ? { text: proposal.text } : learning ? { text } : {}),
     ...(proposal.class ? { class: proposal.class } : learning ? { class: description!.class } : {}),

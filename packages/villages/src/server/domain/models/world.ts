@@ -52,6 +52,7 @@ export type VillageDayView = {
 /** One library card the village has adopted. */
 export type VillageVillager = {
   incarnation: string;
+  relationshipScene?: { id: string; endedAt: string; answerSceneId?: string };
   letterFontId: string;
   identityDescription?: import("../../../shared/contracts/resident-description.js").ResidentIdentityDescription & {
     initialGenerationComplete: boolean;
@@ -380,7 +381,7 @@ export type VillageBackgroundPace = "off" | "quiet" | "balanced" | "lively";
 
 export type ResidentPlanningOpportunity = {
   id: string;
-  kind: "encounter" | "routine" | "world";
+  kind: "encounter" | "routine" | "world" | "relationship";
   startsAt: string;
   endsAt: string;
   actorIds: string[];
@@ -512,6 +513,7 @@ export type ReturnCatchupBatch = {
   from?: string;
   until?: string;
   reason?: string;
+  relationshipRefresh?: true;
   opportunities?: ResidentPlanningOpportunity[];
   records?: {
     opportunityId: string;

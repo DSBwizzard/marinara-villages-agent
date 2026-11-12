@@ -8,7 +8,13 @@ import type { GreetingTrace, VenueScene } from "../../domain/models/scene-model.
 import { badGateway, conflict } from "../../domain/rules/errors.js";
 import { inspectedLoreUse, villageLoreContext } from "../../domain/rules/lore-context.js";
 import { memoryHash, memoryRequire } from "../../domain/rules/memory-integrity.js";
-import { NARRATION_DIRECTION, NARRATION_KEEP, NARRATION_RESPONSE } from "../../domain/rules/narration-contract.js";
+import {
+  NARRATION_DIRECTION,
+  NARRATION_KEEP,
+  NARRATION_RESPONSE,
+  RELATIONSHIP_KEEP,
+  RELATIONSHIP_DIRECTION,
+} from "../../domain/rules/narration-contract.js";
 import { fittedNarrationReadset, narrationContinuityContext } from "../../domain/rules/narration-context.js";
 import { narrationCircumstancePrompt } from "../../domain/rules/narration-circumstance.js";
 import { venueAdditionalWritingGuidance, venueWritingDirection } from "../../domain/rules/narration-style.js";
@@ -166,10 +172,11 @@ export function createSceneWriting({
     const blocks = buildVenueSceneBlocks({
       direction: blocksFor([
         NARRATION_DIRECTION,
+        RELATIONSHIP_DIRECTION,
         venueWritingDirection(village.narrationStyle, player.name),
         venueAdditionalWritingGuidance(village.narrationStyle),
       ]),
-      metadata: blocksFor([NARRATION_RESPONSE, NARRATION_KEEP, NARRATION_NATIVE]),
+      metadata: blocksFor([NARRATION_RESPONSE, NARRATION_KEEP, RELATIONSHIP_KEEP, NARRATION_NATIVE]),
       identity: blocksFor([
         ...profiles,
         JSON.stringify({
@@ -261,9 +268,10 @@ export function createSceneWriting({
         }),
       });
     }
+    const readset = fittedNarrationReadset(authority, context, fitted.evidenceIds);
     const request: Request = {
       fitted,
-      readset: fittedNarrationReadset(authority, context, fitted.evidenceIds),
+      readset,
       model: { model: model.model, connectionId: model.connectionId },
     };
     const retained = await venueCheckpoint("writing-request:" + key, async () => request);

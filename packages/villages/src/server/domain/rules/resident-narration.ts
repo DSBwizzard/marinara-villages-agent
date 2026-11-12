@@ -9,7 +9,8 @@ import type { AcceptedEpisode } from "../models/episode-model.js";
 import type { ResidentNarration, ResidentNarrationCapture } from "../models/resident-narration.js";
 import type { ResidentPlanningOpportunity, VillageState } from "../models/world.js";
 import { episodeSourceGraph } from "../decoding/episode-codec.js";
-import { continuityActor } from "./continuity-actors.js";
+import { continuityActor, relationshipActors, relationshipCalendar } from "./continuity-actors.js";
+import { dueRelationshipAnswers } from "./continuity-library.js";
 import { captureContinuityContext } from "./continuity-context.js";
 import { episodeContextRooms } from "./episode-sources.js";
 import { selectRoomContinuity } from "./continuity-retrieval.js";
@@ -33,6 +34,7 @@ import {
   readNarrationEffectHeader,
   readNarrationReply,
   narrationSourceSchema,
+  residentReflectionSchema,
 } from "./narration-contract.js";
 import { prepareContinuityKeep } from "./narration-keep.js";
 import { bindNarrationSegment, bindNarrationReceipt, type NarrationCommunication } from "./narration-sources.js";
@@ -70,11 +72,13 @@ const encounter = z
       .max(8),
   })
   .strict();
-const reflection = z.object({ actorId: id, text: z.string().min(1).max(600) }).strict();
+const relationshipBlurb = z
+  .object({ owner: id, answer: z.array(z.unknown()).min(1).max(3), protection: z.unknown().optional() })
+  .strict();
 const output = z
   .object({
     encounter: encounter.optional(),
-    reflection: reflection.optional(),
+    reflection: residentReflectionSchema.optional(),
     keep: z.array(z.unknown()).max(32),
     requires: z.array(label).max(48),
     commands: z.array(z.unknown()).max(16).default([]),
@@ -84,6 +88,15 @@ const localDate = (state: VillageState, at: string) =>
   new ZonedDate(at, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
 
 function nativeFingerprint(state: VillageState, opportunity: ResidentPlanningOpportunity) {
+  if (opportunity.kind === "relationship")
+    return memoryHash([
+      state.seed,
+      state.setupAt,
+      opportunity.actorIds.map((id) => {
+        const resident = state.villagers.find((row) => row.characterId === id);
+        return resident && [resident.incarnation, resident.cardSnapshot, resident.identityDescription];
+      }),
+    ]);
   const venue = findLocation(state, opportunity.venueId);
   return memoryHash({
     seed: state.seed,
@@ -134,10 +147,7 @@ export function captureResidentNarration(
   opportunity: ResidentPlanningOpportunity,
   historical = false,
 ): ResidentNarrationCapture {
-  memoryRequire(
-    opportunity.kind === "encounter" || opportunity.kind === "routine",
-    "resident narration cannot admit a world development opportunity",
-  );
+  memoryRequire(opportunity.kind !== "world", "resident narration cannot admit a world development opportunity");
   memoryRequire(
     opportunity.actorIds.length > 0 &&
       opportunity.actorIds.length <= 4 &&
@@ -172,7 +182,7 @@ export function captureResidentNarration(
   const context = captureContinuityContext(
     state,
     ["player", ...opportunity.actorIds],
-    opportunity.facts.join(" "),
+    opportunity.kind === "relationship" ? "player" : opportunity.facts.join(" "),
     at,
     opportunity.venueId ? { placeId: opportunity.venueId, zoneId: opportunity.zoneId! } : undefined,
   );
@@ -214,6 +224,10 @@ export function captureResidentNarration(
     residence: narrationResidenceContext(state, opportunity.actorIds),
     ...(room ? { room } : {}),
   };
+  if (opportunity.kind === "relationship") {
+    const due = dueRelationshipAnswers(state, capture.calendar, opportunity.actorIds);
+    if (due.owners.length) capture.relationshipAnswerIds = due.owners.map(({ id }) => id);
+  }
   capture.protectionFingerprint = continuityProtectionFingerprint(state.continuity, contextHolders(capture));
   memoryRequire(
     Buffer.byteLength(JSON.stringify(capture)) <= 192000,
@@ -308,6 +322,12 @@ function prepareResidentNarration(
   excluded: Map<string, string>,
 ) {
   const value = output.parse(raw);
+  const relationship = capture.opportunity.kind === "relationship";
+  if (relationship)
+    memoryRequire(
+      !value.encounter && !value.reflection && !value.commands.length && !value.requires.length,
+      "relationship catch-up accepts only private blurbs",
+    );
   memoryRequire(!(value.encounter && value.reflection), "choose an encounter or private reflection");
   const actorIds = capture.actors.map((actor) => actor.id),
     reflector = value.reflection?.actorId;
@@ -318,7 +338,10 @@ function prepareResidentNarration(
     );
   if (reflector) memoryRequire(actorIds.includes(reflector), "private reflection actor was not offered");
   memoryRequire(
-    value.encounter || value.reflection || (!value.keep.length && !value.requires.length && !value.commands.length),
+    relationship ||
+      value.encounter ||
+      value.reflection ||
+      (!value.keep.length && !value.requires.length && !value.commands.length),
     "lasting resident meaning needs its actual encounter or reflection",
   );
   const segments =
@@ -389,6 +412,19 @@ function prepareResidentNarration(
     operationId: episodeId,
     at: capture.context.at,
     actors,
+    relationshipActors: relationshipActors(state),
+    relationshipCalendar: relationshipCalendar(state, capture.calendar, historical),
+    ...(capture.relationshipAnswerIds?.length
+      ? {
+          relationshipAnswers: dueRelationshipAnswers(
+            state,
+            capture.calendar,
+            capture.relationshipAnswerIds.filter((id) => actors.some((actor) => actor.id === id)),
+            undefined,
+            capture.context.continuityRevision,
+          ),
+        }
+      : {}),
     subjects: capture.context.subjects,
     continuityRevision: capture.context.continuityRevision,
     sources: [],
@@ -402,7 +438,11 @@ function prepareResidentNarration(
     provenance,
     ...(capture.room ? { room: capture.room.holder } : {}),
   };
-  const fitted = lines.length ? Object.values(historical).filter((source) => source.kind === "knowledge") : [];
+  const fitted = Object.values(historical).filter(
+    (source) =>
+      source.kind === "knowledge" &&
+      (lines.length > 0 || (relationship && actors.some((actor) => actor.id === source.actorId))),
+  );
   for (const source of fitted)
     assertContinuityKnowledge(
       state.continuity,
@@ -543,7 +583,24 @@ function prepareResidentNarration(
   const provisional = effects
     .filter((effect) => receipts[effect.id])
     .map((effect) => ({ effect, sources: proofs[effect.id] }));
-  for (const [ordinal, row] of value.keep.entries()) {
+  for (const [ordinal, raw] of value.keep.entries()) {
+    let row = raw;
+    if (relationship) {
+      const blurb = relationshipBlurb.safeParse(raw);
+      if (!blurb.success || !admission.relationshipAnswers?.owners.some(({ id }) => id === blurb.data.owner)) continue;
+      const { owner, answer, protection } = blurb.data;
+      row = {
+        for: [owner],
+        owner,
+        about: ["player"],
+        current: true,
+        class: "perspective",
+        source: ["self"],
+        independent: true,
+        relationship: { answer },
+        ...(protection ? { protection } : {}),
+      };
+    }
     let header: ReturnType<typeof readNarrationEffectHeader>;
     try {
       header = readNarrationEffectHeader(row, "keep-" + ordinal);
@@ -740,7 +797,7 @@ function prepareResidentNarration(
     segments: lines,
     grounding: [...grounding.values()],
     continuityVersionIds: versions.map((version) => version.id),
-    offered: capture.context.offered.filter((row) => actorIds.includes(row.holder.id)),
+    offered: relationship ? [] : capture.context.offered.filter((row) => actorIds.includes(row.holder.id)),
     commandReceipts: selection.acceptedIds.flatMap((id) => (receipts[id] ? [receipts[id]] : [])),
     dependencies: Object.fromEntries(
       selection.acceptedIds

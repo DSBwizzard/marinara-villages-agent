@@ -11,6 +11,7 @@ import { resolveVenueZone, venueZones, zoneClosed } from "./venue-zones.js";
 import { routineRevision, routineRevisionMatches } from "./wish-policy.js";
 import { projectAgendaReservations } from "./project-focus.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
+import { latestRelationshipScores, relationshipKey } from "./continuity.js";
 const localDate = (state: VillageState, at: Date) =>
   new ZonedDate(at, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
 
@@ -178,9 +179,17 @@ export function socialPlanCandidates(village: VillageState, now = new Date()): S
           }
       }
   }
-  // Rotate bounded coverage without interpreting scores or choosing a preferred destination.
+  const scores = latestRelationshipScores(village.continuity);
+  const priority = (plan: SocialPlan) => {
+    const [first, second] = plan.actors;
+    if (plan.kind !== "meeting" || !first || !second) return hashString(plan.id);
+    const forward = scores.get(relationshipKey(first, second))?.relationshipScore ?? 0;
+    const reverse = scores.get(relationshipKey(second, first))?.relationshipScore ?? 0;
+    // Either resident's reluctance matters; rotation can still outweigh even the strongest attitude.
+    return hashString(plan.id) - (Math.min(forward, reverse) / 100) * 2 ** 30;
+  };
   return [...new Map(result.map((plan) => [plan.id, plan])).values()]
-    .sort((a, b) => hashString(a.id) - hashString(b.id))
+    .sort((a, b) => priority(a) - priority(b))
     .slice(0, 6);
 }
 export function reconcileSocialPlans(village: VillageState, now = new Date()): boolean {

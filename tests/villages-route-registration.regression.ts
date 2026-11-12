@@ -9,6 +9,7 @@ import { configureVillagesRuntime } from "../packages/villages/src/server/entry/
 import type { ResidentAgendas } from "../packages/villages/src/server/features/residents/resident-agenda-service.js";
 import { configureResidentAgendas } from "../packages/villages/src/server/features/residents/resident-agendas.js";
 import { registerAgendaRoutes } from "../packages/villages/src/server/features/residents/routes.js";
+import { mutateVillageState } from "../packages/villages/src/server/features/world/village-store.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 async function agendaHttpAdmission() {
@@ -225,6 +226,39 @@ async function currentSceneAndWritingHttp() {
       assert.deepEqual(read.json(), desired);
       assert.strictEqual(records.get(key("villages", obsolete.id)), obsolete, "retired settings remain untouched");
       assert.equal(accesses.includes(obsolete.id), false, "current writing never reads or writes the retired document");
+      if (reload) {
+        const at = "2026-11-12T08:17:00.000Z";
+        await mutateVillageState((state) => {
+          state.returnCatchup = {
+            batch: {
+              id: "paused-return",
+              from: at,
+              until: at,
+              budgetDate: "2026-11-12",
+              status: "failed",
+              opportunityLimit: 1,
+              opportunities: [],
+              records: [],
+            },
+          };
+          state.backgroundPace = "off";
+        });
+        const settings = (payload: Record<string, unknown>) =>
+          app.inject({ method: "PATCH", url: "/settings", payload });
+        assert.equal((await settings({})).statusCode, 200, "a settings access check works during a paused return");
+        assert.equal((await app.inject({ method: "PATCH", url: "/settings", payload: [] })).statusCode, 409);
+        assert.equal((await settings({ backgroundPace: "quiet", name: "Changed" })).statusCode, 409);
+        assert.equal((await settings({ name: "Changed" })).statusCode, 409);
+        const pace = await settings({ backgroundPace: "quiet" });
+        assert.equal(pace.statusCode, 200, pace.body);
+        assert.equal(pace.json().settings.backgroundPace, "quiet");
+        const held = await app.inject({ method: "GET", url: "/debug/return-catchup" });
+        assert.equal(held.json().status, "failed", "a Pace change does not resume a paused return");
+        await mutateVillageState((state) => {
+          state.returnCatchup!.batch!.status = "running";
+        });
+        assert.equal((await settings({ backgroundPace: "off" })).statusCode, 409);
+      }
     } finally {
       await app.close();
       release();

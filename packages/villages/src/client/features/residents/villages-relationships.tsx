@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import type {
   RelationshipEntry,
   RelationshipInspectView,
+  RelationshipScore,
   RelationshipView,
 } from "../../../shared/contracts/relationships.js";
 export type { RelationshipProfile, RelationshipView } from "../../../shared/contracts/relationships.js";
@@ -31,9 +32,11 @@ export function RelationshipEntries({
   `}</style>
       {entries.map((entry) => (
         <article key={entry.id}>
-          <strong className="villages-relationship-entry-label">
-            {(entry.facet ?? entry.kind).replaceAll("-", " ")}
-          </strong>
+          {entry.facet || entry.kind !== "perspective" ? (
+            <strong className="villages-relationship-entry-label">
+              {(entry.facet ?? entry.kind).replaceAll("-", " ")}
+            </strong>
+          ) : null}
           {entry.forgotten ? (
             <small> · Forgotten</small>
           ) : entry.playerCorrection ? (
@@ -67,6 +70,56 @@ export function RelationshipEntries({
     </div>
   ) : (
     <p>{empty}</p>
+  );
+}
+
+function RelationshipBar({ score, label }: { score: number; label: string }) {
+  return (
+    <div
+      className="villages-relationship-bar"
+      role="meter"
+      aria-label={label}
+      aria-valuemin={-100}
+      aria-valuemax={100}
+      aria-valuenow={score}
+    >
+      <span
+        data-negative={score < 0}
+        style={{ left: 50 + Math.min(0, score) / 2 + "%", width: Math.abs(score) / 2 + "%" }}
+      />
+    </div>
+  );
+}
+
+function RelationshipScores({ scores }: { scores: RelationshipScore[] }) {
+  const player = scores.find(({ person }) => person.id === "player");
+  const others = scores.filter(({ person }) => person.id !== "player");
+  return (
+    <div className="villages-relationship-scores">
+      {player ? (
+        <article>
+          <h4>Toward you</h4>
+          <RelationshipBar score={player.score} label="Toward you" />
+          {player.answer ? <p>{player.answer}</p> : null}
+        </article>
+      ) : null}
+      {others.length ? (
+        <article>
+          <h4>Toward other villagers</h4>
+          <ul>
+            {others.map(({ person, score, answer }) => (
+              <li key={person.id}>
+                <div>
+                  <span>{person.name}</span>
+                  <RelationshipBar score={score} label={"Toward " + person.name} />
+                </div>
+                {answer ? <p>{answer}</p> : null}
+              </li>
+            ))}
+          </ul>
+        </article>
+      ) : null}
+    </div>
   );
 }
 
@@ -137,6 +190,16 @@ export function VillagesRelationships({
       .villages-relationships blockquote {margin:.5rem 0;padding-left:.75rem;border-left:2px solid #8c90b0;white-space:pre-wrap}
       .villages-relationships details {margin:.75rem 0}
       .villages-relationships summary {cursor:pointer}
+      .villages-relationship-scores {display:grid;gap:.75rem;margin-bottom:1rem}
+      .villages-relationship-scores h4 {margin:0 0 .5rem}
+      .villages-relationship-scores p {margin:.5rem 0 0;font-style:italic}
+      .villages-relationship-scores ul {margin:0;padding:0;list-style:none}
+      .villages-relationship-scores li {padding:.4rem 0;border-top:1px solid #a39b8460}
+      .villages-relationship-scores li > div {display:grid;grid-template-columns:minmax(4rem,1fr) 2fr;gap:.65rem;align-items:center}
+      .villages-relationship-bar {position:relative;height:.5rem;background:#1c192b;border-radius:3px}
+      .villages-relationship-bar > span {position:absolute;inset-block:0;background:#9ea680;border-radius:2px}
+      .villages-relationship-bar > span[data-negative=true] {background:#c38887}
+      .villages-relationship-bar::after {content:"";position:absolute;left:50%;inset-block:-2px;width:1px;background:#f0dfbc}
     `}</style>
       {error ? <p role="alert">{error}</p> : null}
       {view?.starting.pending ? <p role="status">Starting history is not ready.</p> : null}
@@ -147,8 +210,9 @@ export function VillagesRelationships({
           .filter((person) => !characterId || person.characterId === characterId)
           .map((person) => (
             <section key={person.characterId}>
-              <h3>{person.name}</h3>
-              <RelationshipEntries entries={person.entries} />
+              {!characterId ? <h3>{person.name}</h3> : null}
+              {person.scores?.length ? <RelationshipScores scores={person.scores} /> : null}
+              {person.entries.length ? <RelationshipEntries entries={person.entries} /> : null}
               {person.access.map((access) => (
                 <button
                   key={access.venueId + ":" + access.zoneId}

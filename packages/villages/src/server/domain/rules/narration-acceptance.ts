@@ -3,7 +3,7 @@ import type { AcceptedEpisode } from "../models/episode-model.js";
 import type { NarrationReadset } from "../models/narration-model.js";
 import type { VillageState } from "../models/world.js";
 import { episodeSourceGraph } from "../decoding/episode-codec.js";
-import { continuityActor } from "./continuity-actors.js";
+import { continuityActor, relationshipActors, relationshipCalendar } from "./continuity-actors.js";
 import {
   applyContinuityWrite,
   assertContinuityProvenance,
@@ -12,8 +12,10 @@ import {
   continuitySourceUnit,
 } from "./continuity.js";
 import { assertContinuityRetention } from "./continuity-retention.js";
+import { dueRelationshipAnswers } from "./continuity-library.js";
 import { appendEpisode } from "./episodes.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
+import { asRecord } from "./coerce.js";
 import { conflict } from "./errors.js";
 import { narrationProtectionFingerprint } from "./narration-context.js";
 import { readNarrationEffectHeader, readNarrationReply } from "./narration-contract.js";
@@ -249,7 +251,37 @@ export function acceptNarrationContinuity(
     for (const ref of reply.halt.source) bindNarrationSource(ref, source);
     throw conflict(reply.halt.message);
   }
-  const admission = { ...readset.admission, actors: source.actors, blockedSources: blocked, sources: [] };
+  const offeredAnswers = readset.admission.relationshipAnswers;
+  const closingEffect = offeredAnswers?.onSceneEnd && native.sceneEffects?.find((effect) => effect.closed)?.effectId;
+  const dueAnswers =
+    offeredAnswers?.sceneId === scene.id && (!offeredAnswers.onSceneEnd || closingEffect)
+      ? dueRelationshipAnswers(
+          state,
+          readset.calendar,
+          offeredAnswers.owners.map(({ id }) => id),
+          scene.id,
+          readset.continuityRevision,
+          source.input.trim()
+            ? source.actors.filter((actor) =>
+                source.lines.some((line) => line.speakerId === actor.id && line.heardBy?.includes("player")),
+              )
+            : [],
+        )
+      : undefined;
+  const admission = {
+    ...readset.admission,
+    actors: source.actors,
+    relationshipActors: relationshipActors(state),
+    relationshipCalendar: relationshipCalendar(state, readset.calendar, source.historical),
+    relationshipAnswers: dueAnswers && {
+      ...dueAnswers,
+      owners: dueAnswers.owners.filter((actor) =>
+        offeredAnswers!.owners.some((row) => row.id === actor.id && row.incarnation === actor.incarnation),
+      ),
+    },
+    blockedSources: blocked,
+    sources: [],
+  };
   const effects = native.effects.map((effect) => ({ ...effect, requires: [...effect.requires] }));
   memoryRequire(effects.length === reply.commands.length, "native validation did not cover every proposed command");
   for (const [index, command] of reply.commands.entries()) {
@@ -265,7 +297,32 @@ export function acceptNarrationContinuity(
       effects.push({ id: "keep-" + index, requires: [], failure: String(error).slice(0, 2000) });
       continue;
     }
-    const effect: SceneEffectResult = { ...header };
+    const note = asRecord(raw);
+    const optionalNote =
+      Array.isArray(note.for) &&
+      typeof note.text === "string" &&
+      (note.class === "experience" || note.class === "information") &&
+      Object.keys(note).every((key) => ["for", "text", "class", "source"].includes(key));
+    const optionalAnswer =
+      note.class === "perspective" &&
+      typeof asRecord(note.relationship).answer === "string" &&
+      asRecord(note.relationship).impact === undefined &&
+      Object.keys(note).every((key) =>
+        [
+          "id",
+          "for",
+          "owner",
+          "class",
+          "current",
+          "about",
+          "text",
+          "source",
+          "relationship",
+          "independent",
+          "requires",
+        ].includes(key),
+      );
+    const effect: SceneEffectResult = { ...header, independent: optionalNote || optionalAnswer || header.independent };
     try {
       const keep = prepareNarrationKeep(raw, index, state.continuity, admission, source);
       for (const holder of keep.write.holders.filter((holder) => holder.kind === "room")) {
@@ -392,6 +449,7 @@ export function acceptNarrationContinuity(
   }
   let continuity: ContinuityCollection = state.continuity;
   let selection: ReturnType<typeof selectSceneEffects>;
+  const referenced = new Set([...reply.assertedDependencies, ...effects.flatMap((effect) => effect.requires)]);
   for (;;) {
     selection = selectSceneEffects(effects, [
       ...reply.assertedDependencies,
@@ -427,7 +485,26 @@ export function acceptNarrationContinuity(
       const keep = prepared.get(id);
       try {
         if (keep) {
-          const next = applyContinuityWrite(continuity, keep.write, keep.admission);
+          let write = keep.write;
+          const owner = write.owner;
+          const impact = write.relationship?.impact;
+          // A private score and a shared answer may be proposed together even though self cannot support disclosure.
+          const privateScoreOnly =
+            owner &&
+            impact &&
+            write.relationship?.answer &&
+            !write.target &&
+            !referenced.has(id) &&
+            write.holders.length === 2 &&
+            write.holders.some((holder) => holder.kind === "actor" && holder.id === owner.id) &&
+            write.holders.some((holder) => holder.kind === "actor" && holder.id === "player") &&
+            keep.sources.some((proof) => proof.kind === "self" && proof.actorId === owner.id);
+          if (privateScoreOnly) write = { ...write, holders: [owner], relationship: { impact } };
+          if (write.relationship?.answer && closingEffect && !selection.acceptedIds.includes(closingEffect)) {
+            memoryRequire(impact, "relationship answer needs the accepted Scene ending");
+            write = { ...write, relationship: { impact } };
+          }
+          const next = applyContinuityWrite(continuity, write, keep.admission);
           const root = damageRoots.get(id);
           if (root) {
             const saved = next.receipts[keep.admission.operationId + ":" + id];

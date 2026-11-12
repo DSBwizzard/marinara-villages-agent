@@ -4,7 +4,8 @@ import type { VillageState } from "../models/world.js";
 import type { MailContinuityPlan } from "../models/social-mail.js";
 import { episodeSourceGraph } from "../decoding/episode-codec.js";
 import { readMailboxState, assertMailboxRetention } from "../decoding/mailbox-codec.js";
-import { continuityActor } from "./continuity-actors.js";
+import { continuityActor, relationshipActors, relationshipCalendar } from "./continuity-actors.js";
+import { capturedSceneCalendar } from "./scene-calendar.js";
 import {
   applyContinuityWrite,
   assertContinuityProvenance,
@@ -187,10 +188,17 @@ export function acceptMailContinuity(state: VillageState, publication: MailPubli
       publication.admission.provenance?.[continuityHolderKey(actor)] ?? [],
       new Set(blocked[continuityHolderKey(actor)]),
     );
+  const relationshipAt = phase === "read" && reading ? acceptedAt : publication.admission.at;
   const admission = {
       ...publication.admission,
-      at: phase === "read" && reading ? acceptedAt : publication.admission.at,
+      at: relationshipAt,
       actors: parties.map(({ id, incarnation }) => ({ id, incarnation })),
+      relationshipActors: relationshipActors(state),
+      relationshipCalendar: relationshipCalendar(
+        state,
+        capturedSceneCalendar({ startedAt: relationshipAt }, state.timeZone),
+        publication.historical,
+      ),
       blockedSources: blocked,
     },
     effects: SceneEffectResult[] = [],
