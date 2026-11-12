@@ -1,4 +1,4 @@
-// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context, narration-acceptance/inherited-room-context, narration-acceptance/anonymous-metadata
+// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/private-relationship-replay, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context, narration-acceptance/inherited-room-context, narration-acceptance/anonymous-metadata
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -346,6 +346,48 @@ await runCase("narration-acceptance/independent-failure", () => {
   assert.equal(result.rejected[0].id, "unrelated");
   assert.equal(f.state.continuity.versions.length, 1);
   assert.equal(f.state.episodes.records[0].segments.length, 1);
+});
+
+await runCase("narration-acceptance/private-relationship-replay", () => {
+  for (const required of [false, true]) {
+    const f = fixture();
+    f.state.villagers = [
+      { characterId: f.id, incarnation: "one", cardSnapshot: { name: "Mara" } },
+    ] as typeof f.state.villagers;
+    const publication = f.publication({
+      segments: [{ ...f.response(required ? ["attitude"] : [])[0], text: "Weaving takes real patience." }],
+      keep: [
+        {
+          id: "attitude",
+          for: [f.id, "player"],
+          owner: f.id,
+          about: ["player"],
+          class: "perspective",
+          current: true,
+          text: "I feel closer to the player after that story.",
+          relationship: { impact: "small-positive", answer: "I feel closer to you now." },
+          source: [...f.keep.source, "self"],
+        },
+      ],
+    });
+    const before = structuredClone(f.state);
+    const result = acceptNarrationContinuity(f.state, publication, "submission", later);
+    assert.equal(result.held, required, JSON.stringify(result.rejected));
+    if (required) {
+      assert.deepEqual(f.state, before);
+      continue;
+    }
+    assert.equal(result.episode!.segments[0].content, "Weaving takes real patience.");
+    const [version] = f.state.continuity.versions;
+    assert.equal(f.state.continuity.versions.length, 1);
+    assert.deepEqual(Object.keys(f.state.continuity.records[0].heads), [
+      continuityHolderKey(continuityActor(f.state, f.id)!),
+    ]);
+    assert.equal(version.relationshipScore, 3);
+    assert.equal(version.relationshipAnswer, undefined);
+    assert.equal(acceptNarrationContinuity(f.state, publication, "submission", later).replayed, true);
+    assert.equal(f.state.continuity.versions.length, 1);
+  }
 });
 
 await runCase("narration-acceptance/lost-ack", () => {

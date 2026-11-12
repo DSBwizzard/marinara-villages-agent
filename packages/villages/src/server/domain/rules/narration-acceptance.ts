@@ -398,6 +398,7 @@ export function acceptNarrationContinuity(
   }
   let continuity: ContinuityCollection = state.continuity;
   let selection: ReturnType<typeof selectSceneEffects>;
+  const referenced = new Set([...reply.assertedDependencies, ...effects.flatMap((effect) => effect.requires)]);
   for (;;) {
     selection = selectSceneEffects(effects, [
       ...reply.assertedDependencies,
@@ -433,7 +434,25 @@ export function acceptNarrationContinuity(
       const keep = prepared.get(id);
       try {
         if (keep) {
-          const next = applyContinuityWrite(continuity, keep.write, keep.admission);
+          const write = keep.write;
+          const owner = write.owner;
+          const impact = write.relationship?.impact;
+          // A private score and a shared answer may be proposed together even though self cannot support disclosure.
+          const privateScoreOnly =
+            owner &&
+            impact &&
+            write.relationship?.answer &&
+            !write.target &&
+            !referenced.has(id) &&
+            write.holders.length === 2 &&
+            write.holders.some((holder) => holder.kind === "actor" && holder.id === owner.id) &&
+            write.holders.some((holder) => holder.kind === "actor" && holder.id === "player") &&
+            keep.sources.some((proof) => proof.kind === "self" && proof.actorId === owner.id);
+          const next = applyContinuityWrite(
+            continuity,
+            privateScoreOnly ? { ...write, holders: [owner], relationship: { impact } } : write,
+            keep.admission,
+          );
           const root = damageRoots.get(id);
           if (root) {
             const saved = next.receipts[keep.admission.operationId + ":" + id];
