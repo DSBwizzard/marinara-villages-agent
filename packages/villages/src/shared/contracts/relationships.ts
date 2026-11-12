@@ -8,7 +8,7 @@ export type RelationshipEntry = MemoryListEntry & {
   closed?: "fulfilled" | "withdrawn" | "ended";
   offer?: { state: "offered" | "accepted" | "refused" | "withdrawn"; participants: MemoryPerson[] };
 };
-export type RelationshipScore = { person: MemoryPerson; score: number; answer?: string };
+export type RelationshipScore = { person: MemoryPerson; score: number; romanticInterest: number; answer?: string };
 
 /** Scores show the actual attitude. Notes and answers follow the player's knowledge. */
 export type RelationshipProfile = {

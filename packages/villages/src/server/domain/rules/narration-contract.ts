@@ -163,6 +163,7 @@ const proposal = z
     relationship: z
       .object({
         impact: z.enum(Object.keys(RELATIONSHIP_IMPACTS) as (keyof typeof RELATIONSHIP_IMPACTS)[]).optional(),
+        romance: z.enum(["grows", "fades", "drops"]).optional(),
         answer: z
           .union([
             z
@@ -175,7 +176,7 @@ const proposal = z
           .optional(),
       })
       .strict()
-      .refine((value) => value.impact !== undefined || value.answer !== undefined)
+      .refine((value) => value.impact !== undefined || value.romance !== undefined || value.answer !== undefined)
       .optional(),
     parent: id.optional(),
     facet: z
@@ -216,10 +217,13 @@ export function readNarrationEffectHeader(raw: unknown, fallbackId: string) {
 /** Parse each effect separately so an independent malformed proposal can retain precise diagnostics. */
 export function readContinuityProposal(raw: unknown) {
   const { relationship, ...value } = proposal.parse(raw);
-  const { answer: proposedAnswer, impact } = relationship ?? {};
+  const { answer: proposedAnswer, impact, romance } = relationship ?? {};
   const answer = Array.isArray(proposedAnswer) ? proposedAnswer.find(isRelationshipAnswer)?.trim() : proposedAnswer;
-  memoryRequire(!Array.isArray(proposedAnswer) || answer || impact, "no valid relationship answer candidate");
-  const text = Array.isArray(proposedAnswer) && !impact && value.text !== null ? answer : value.text;
+  memoryRequire(
+    !Array.isArray(proposedAnswer) || answer || impact || romance,
+    "no valid relationship answer candidate",
+  );
+  const text = Array.isArray(proposedAnswer) && !impact && !romance && value.text !== null ? answer : value.text;
   memoryRequire(
     value.for === "room" || !value.text || Buffer.byteLength(value.text) <= CONTINUITY_TEXT_BYTES,
     "actor continuity text exceeds its bound",
@@ -248,16 +252,24 @@ export function readContinuityProposal(raw: unknown) {
   return {
     ...value,
     ...(text !== undefined ? { text } : {}),
-    ...(relationship ? { relationship: { ...(impact ? { impact } : {}), ...(answer ? { answer } : {}) } } : {}),
+    ...(relationship
+      ? {
+          relationship: {
+            ...(impact ? { impact } : {}),
+            ...(romance ? { romance } : {}),
+            ...(answer ? { answer } : {}),
+          },
+        }
+      : {}),
   };
 }
 
 export const NARRATION_DIRECTION =
   "You are the GM of Villages, a persistent character-driven life game. Portray complete authored identities faithfully. Interpret freeform dialogue, actions, thoughts and narration naturally. Give the player room to answer; a short beat can be enough. Preserve resident initiative, agency, refusal and uncertainty. Never invent the player's words, thoughts, feelings, decisions, consent or travel. Private input is GM context, not a transcript that every character heard. Narration and presence alone are not evidence of character knowledge. New arrivals cannot hear earlier dialogue. A report establishes what was said, not objective truth. A promise is not completion. Meaningful lasting developments use keep; native mechanics use supplied commands and code-owned authority. Code retains witnessed access and circumstance outcomes; keep only further personal meaning. Ordinary conversation needs only segments. Never promise durable retention without its required keep or automatically retained native outcome. Do not announce a native success without the required command. Give each required keep or command an explicit id and list it in the consequential segment's requires. An anonymous actor experience or information keep containing only for, text, class and source is optional. For other optional effects unrelated to successful fiction, use independent:true. Missing recalled context never proves historical absence.";
 export const RELATIONSHIP_DIRECTION =
-  "In relationships, score is how warmly or negatively 'for' currently feels about 'about', from -100 to +100. Small scores color the interaction lightly; strong scores materially affect who the owner seeks out, how much they confide, and whether they offer help, keep distance, or try to repair things. Use the owner's known history, motives, and boundaries to decide which behavior fits. Warmth can be platonic; closeness gives no consent or access. A missing score leaves authored and played history to guide you. Treat scores as private GM context for the owner only. Never state the number or give another character knowledge of that feeling without evidence.";
+  "In relationships, score is how warmly or negatively 'for' currently feels about 'about', from -100 to +100. Small scores color the interaction lightly; strong scores materially affect who the owner seeks out, how much they confide, and whether they offer help, keep distance, or try to repair things. Use the owner's known history, motives, and boundaries to decide which behavior fits. Warmth can be platonic; closeness gives no consent or access. romanticInterest is the owner's separate 0–20 attraction. A little can color banter or curiosity. Strong interest can motivate flirting, private time, a more personal letter or a date invitation when it fits their identity and history. Treat a person's answer and boundaries as binding on advances, even when feelings persist. Let the player express their own interest. When mutual interest is expressed, an ordinary meetup can become romantic. Give each Villager their own response to one-sided attraction. Each knows only what the other person has expressed or shown. A missing score leaves authored and played history to guide you. Treat scores as private GM context for the owner only. Never state the number or give another character knowledge of that feeling without evidence.";
 export const RELATIONSHIP_KEEP =
-  'For each exchange, compare each involved Villager’s attitude before and after the event. A real shift goes in one current perspective keep per direction with relationship:{impact}, owner, class:"perspective", current:true, and one about ID. Set for to [owner]. Cite the new witnessed action or words and optionally self for their private reaction. First clear reciprocation of flirting or a new willingness to seek someone out counts as "small-positive"; repeating established warmth, gifts, or compliments earns no impact. Use "meaningful-positive" when demonstrated help or follow-through changes what the owner is willing to do or rely on. Use "turning-positive" for a change in what they fundamentally trust the person with, citing both today’s event and a distinct witnessed event from an earlier Village day via a fitted h:N alias. Use "small-negative" for a new step away, "meaningful-negative" for a concrete loss of willingness or trust, and "turning-negative" for a serious breach such as a credible threat, deliberate humiliation, or betrayal. Consider the owner’s actual reaction and the context. Code sets the points and daily limits. Omit impact when the exchange reinforces the existing attitude.';
+  'For each exchange, compare each involved Villager’s attitude before and after the event. A real shift goes in one current perspective keep per direction with relationship:{impact}, owner, class:"perspective", current:true, and one about ID. Set for to [owner]. Cite the new witnessed action or words and optionally self for their private reaction. Clear reciprocation or a new willingness to seek someone out can count as "small-positive" when it changes warmth; repeating established warmth, gifts, or compliments earns no impact. Use "meaningful-positive" when demonstrated help or follow-through changes what the owner is willing to do or rely on. Use "turning-positive" for a change in what they fundamentally trust the person with, citing both today’s event and a distinct witnessed event from an earlier Village day via a fitted h:N alias. Use "small-negative" for a new step away, "meaningful-negative" for a concrete loss of willingness or trust, and "turning-negative" for a serious breach such as a credible threat, deliberate humiliation, or betrayal. Consider the owner’s actual reaction and the context. Code sets the points and daily limits. Omit impact when the exchange reinforces the existing attitude. In the same private keep, use relationship.romance only when witnessed interaction changes the owner\'s romantic attraction: "grows" for new or deeper attraction, "fades" for a real cooling, or "drops" for a marked loss. Warmth and attraction can change independently. Cite the subject\'s current words or an action the owner actually saw, plus self for the owner\'s private reaction. Ordinary friendliness, repeated flirting, and a boundary by itself do not establish a change in attraction.';
 export const RELATIONSHIP_ANSWER_STYLE = `Each line answers “What do you think of me?” directly in that Villager’s voice. Give each line one thought about the player in one sentence. Aim for 6–12 words, with a hard maximum of ${RELATIONSHIP_ANSWER_WORD_LIMIT}. Check each line on its own. This is for the Relationships view. Leave out unrelated private facts.`;
 export const RELATIONSHIP_ANSWER = `For each Villager listed in relationshipAnswersDue whom you portray, put three alternative lines in relationship.answer as an array of strings. The game will show one. ${RELATIONSHIP_ANSWER_STYLE} Use class:"perspective", current:true, owner, for:[owner], about:["player"], source:["self"], independent:true. For an answer alone, the game uses the chosen line as text. If the same exchange changes the owner’s attitude, combine answer and impact in that keep, provide text describing the change, and cite the current witnessed source. Keep the answer outside dialogue. Omit relationship.answer for unlisted Villagers.`;
 export const NARRATION_KEEP =

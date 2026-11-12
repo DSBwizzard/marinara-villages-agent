@@ -14,6 +14,7 @@ import {
   actorContinuityEvidence,
   continuityHolderKey,
   latestRelationshipScores,
+  latestRomanticInterests,
   relationshipKey,
   continuityProtectionUnits,
   continuityViews,
@@ -343,6 +344,7 @@ export function continuityRelationships(state: VillageState, at: string): Relati
   const holder = continuityActor(state, "player"),
     rows = holder ? projections(state, holder, false, at) : [];
   const scores = latestRelationshipScores(state.continuity);
+  const interests = latestRomanticInterests(state.continuity);
   const actors = relationshipActors(state);
   const answers = relationshipAnswers(state);
   const visibleRoots = new Set(rows.map((row) => row.record.id));
@@ -384,6 +386,7 @@ export function continuityRelationships(state: VillageState, at: string): Relati
           return {
             person: person(state, other.id),
             score: scores.get(key)?.relationshipScore ?? 0,
+            romanticInterest: interests.get(key)?.romanticInterest ?? 0,
             ...(answer ? { answer } : {}),
           };
         }),
