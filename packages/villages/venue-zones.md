@@ -16,7 +16,7 @@ During play, **Manage → Zone connections** shows a diagram and lets the manage
 
 Each Zone shows the player's current admission status separately from its policy: Open to you when admitted, Permission needed when permission is required, and Private independently for personal Zones. A permission-controlled Zone keeps Permission needed below Open to you when the player is admitted. Hours, bans, temporary invitations and relationship access still use the authoritative evaluator. Access options stay with the selected Zone; concealed ledgers and attendance remain concealed.
 
-**Zone settings** in the connection editor keeps name and artwork controls for the selected Zone. Manage also offers a Venue name field and **Plan a renovation**. The renovation action opens the Project workflow with this Venue selected, or the existing active renovation. Physical form, Zone additions/removals, capabilities, capacity and substantial renovations go through Projects. Smaller supported actions update a Zone's long-term details through witnessed gameplay. Administrative corrections use REPAIR.
+**Edit room details** in Manage offers a room picker, name field and artwork controls. Manage also offers a Venue name field and **Plan a renovation**. The renovation action opens the Project workflow with this Venue selected, or the existing active renovation. Physical form, Zone additions/removals, capabilities, capacity and substantial renovations go through Projects. Smaller supported actions update a Zone's long-term details through witnessed gameplay. Administrative corrections use REPAIR.
 
 ## Authority and admission
 

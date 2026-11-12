@@ -379,9 +379,8 @@ await withBrowser(browser, async () => {
     await sections.getByRole("button", { name: "Zones", exact: true }).click();
     await expect(doors.getByRole("region", { name: "Zones", exact: true })).toBeVisible();
     await sections.getByRole("button", { name: "Manage", exact: true }).click();
-    await doors.getByRole("button", { name: "Zone connections", exact: true }).click();
-    await doors.getByText("Zone settings", { exact: true }).click();
-    await expect(doors.getByRole("checkbox", { name: "Prevent dynamic image updates for this Zone" })).toBeVisible();
+    await doors.getByRole("button", { name: "Edit room details", exact: true }).click();
+    await expect(doors.getByRole("switch", { name: "Automatic artwork updates" })).toBeVisible();
     await doors.getByRole("button", { name: "← Manage", exact: true }).click();
     await expect(doors.getByRole("button", { name: "Plan a renovation" })).toBeVisible();
     await sections.getByRole("button", { name: "About", exact: true }).click();

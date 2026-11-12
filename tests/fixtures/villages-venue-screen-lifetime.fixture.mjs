@@ -303,47 +303,45 @@ export async function verifyVenueScreenLifetimes(browser) {
       .toBe(true);
     return outcome;
   }
-  async function openZoneSettings(f) {
-    await f.page.getByRole("button", { name: "Zone connections", exact: true }).click();
-    await f.page.getByText("Zone settings", { exact: true }).click();
+  async function openRoomDetails(f) {
+    await f.page.getByRole("button", { name: "Edit room details", exact: true }).click();
+    return f.page.getByLabel("Room name", { exact: true });
   }
   // State-only lifetime scenarios need one width; responsive UI lives in universal-venue coverage.
   for (const width of [390])
     for (const strict of [true]) {
       {
         const f = await mount(strict, width, { cleanName: true });
-        await openZoneSettings(f);
-        await f.page.getByRole("button", { name: /^Rename / }).click();
-        await f.page.getByLabel("Zone name", { exact: true }).fill("Retained name");
-        await f.page.getByLabel("Zone name", { exact: true }).press("Tab");
+        const name = await openRoomDetails(f);
+        await name.fill("Retained name");
+        await f.page.getByRole("button", { name: "← Manage", exact: true }).focus();
         await expect.poll(() => f.requests.length).toBe(1);
         await f.reply(0, { fail: true });
-        await expect(f.page.getByLabel("Zone name", { exact: true })).toHaveValue("Retained name");
+        await expect(name).toHaveValue("Retained name");
         await expect(f.page.getByRole("alert").filter({ hasText: "The Zone name could not be saved" })).toBeVisible();
-        await f.page.getByLabel("Zone name", { exact: true }).press("Enter");
+        await f.page.getByRole("button", { name: "Save room name", exact: true }).click();
         await expect.poll(() => f.requests.length).toBe(2);
         await f.reply(1);
-        await expect(f.page.getByRole("button", { name: /^Rename / })).toBeFocused();
+        await expect(f.page.getByRole("button", { name: "Save room name", exact: true })).toBeDisabled();
         await f.finish();
       }
       {
         const f = await mount(strict, width, { cleanName: true });
-        await openZoneSettings(f);
-        await f.page.getByRole("button", { name: /^Rename / }).click();
-        await f.page.getByLabel("Zone name", { exact: true }).fill("Renamed Zone");
-        await f.page.getByLabel("Zone name", { exact: true }).press("Enter");
+        const name = await openRoomDetails(f);
+        await name.fill("Renamed Zone");
+        await name.press("Enter");
         await expect.poll(() => f.requests.length).toBe(1);
         await f.page.evaluate(() => {
           window.h.reset();
           window.h.refound();
         });
-        await expect(f.page.getByLabel("Zone name", { exact: true })).toBeEnabled();
-        await f.page.getByLabel("Zone name", { exact: true }).press("Enter");
+        await expect(name).toBeEnabled();
+        await name.press("Enter");
         await expect.poll(() => f.requests.length).toBe(2);
         await f.reply(0);
-        await expect(f.page.getByLabel("Zone name", { exact: true })).toBeDisabled();
+        await expect(name).toBeDisabled();
         await f.reply(1);
-        await expect(f.page.getByRole("button", { name: /^Rename / })).toBeVisible();
+        await expect(f.page.getByRole("button", { name: "Save room name", exact: true })).toBeDisabled();
         await f.finish();
       }
       for (const kind of kinds)

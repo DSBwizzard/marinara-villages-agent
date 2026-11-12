@@ -119,8 +119,10 @@ export const DESK_STYLES = `
 .${P}-venue-people{font-size:16px;line-height:1.35}
 .${P}-venue-people h2{font:600 18px/1.3 var(--menu-font);margin:0 0 4px}
 .${P}-venue-people p{margin:0}
-.${P}-venue-people .${P}-venue-assignments li{padding:5px 0;border:0}
-.${P}-venue-connections-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.${P}-venue-people .${P}-venue-assignments li{justify-content:flex-start;align-items:baseline;gap:4px 12px;padding:5px 0;border:0}
+.${P}-venue-manage-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.${P}-venue-manage-heading h2{margin:0}
+.${P}-workspace-content .${P}-venue-room-picker [aria-pressed="true"]{background:var(--menu-selected);border-color:var(--menu-tab-line)}
 .${P}-venue-connections .villages-zone-map-canvas{height:var(--venue-diagram-height);min-height:0;border:0;background:transparent}
 .${P}-venue-connections .villages-zone-map-canvas>svg{top:calc(22px - var(--venue-diagram-height)*.07)}
 .${P}-venue-connections .villages-zone-map-canvas button.villages-zone-map-tile{min-height:44px;border:1px solid #a39b84;background:#514157;color:#f0dfbc;font-size:clamp(12px,1.6cqw,17px);overflow-wrap:anywhere}
@@ -130,10 +132,6 @@ export const DESK_STYLES = `
 .${P}-venue-connection-choices legend{padding:0}
 .${P}-venue-connection-choices label{display:flex;align-items:center;gap:8px;min-height:44px;overflow-wrap:anywhere}
 .${P}-venue-connection-choices input{flex:none;margin:0;accent-color:#969b7e}
-.${P}-venue-zone-settings{margin-top:16px;border-top:1px solid var(--border)}
-.${P}-venue-zone-settings summary{padding:10px 0;min-height:44px;cursor:pointer}
-.${P}-workspace-content .${P}-picture-menu :is(summary,div){background:var(--secondary);border-color:var(--menu-field-border)}
-.${P}-workspace-content .${P}-picture-menu summary:focus-visible{outline-color:#dca5ab}
 .${P}-workspace-content .${P}-zone-artwork-frame{border-radius:8px}
 .${P}-workspace-content .${P}-zone-artwork-frame>.${P}-venue-image-empty{background:var(--menu-field);color:var(--muted-foreground);border-color:var(--border)}
 .${P}-workspace-content .villages-zone-map-tile[aria-pressed="true"]{background:var(--menu-selected);border-color:var(--menu-tab-line);box-shadow:none}
