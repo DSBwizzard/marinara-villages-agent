@@ -22,7 +22,10 @@ import {
   continuityVersionUnit,
   protectContinuity,
 } from "../packages/villages/src/server/domain/rules/continuity.js";
-import { bindNarrationSource } from "../packages/villages/src/server/domain/rules/narration-sources.js";
+import {
+  bindNarrationSource,
+  readSceneNarrationReply,
+} from "../packages/villages/src/server/domain/rules/narration-sources.js";
 import { routeZoneEvents, zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
 import { fitVenueWritingMessages } from "../packages/villages/src/server/domain/rules/venue-writing.js";
 import type { VenueReplyLine } from "../packages/villages/src/server/domain/models/scene-model.js";
@@ -237,6 +240,19 @@ await runCase("narration-writing/subject-scope", async () => {
       cardSnapshot: { name: "Offstage", description: "PRIVATE_SUBJECT_PROFILE" },
     },
   ] as never;
+  retainNativeFact(
+    f.state,
+    {
+      id: "offstage-fact",
+      kind: "initialization",
+      targetId: f.id,
+      revision: 1,
+      text: "Offstage once owned the blue lantern.",
+      witnesses: [f.id],
+    },
+    at,
+    { about: ["offstage"] },
+  );
   const generated = await f.writing.generate(f.scene, "Tell me about Offstage.", "chat");
   assert(generated.readset.source.subjects!.some((row) => row.id === "offstage" && row.incarnation === "original"));
   assert(!generated.readset.source.actors.some((row) => row.id === "offstage"));
@@ -246,6 +262,20 @@ await runCase("narration-writing/subject-scope", async () => {
     "A Scene with no sprites omits the catalog and staging instructions",
   );
   f.state.villagers[0].incarnation = "replacement";
+  const recalled = narrationContinuityContext(
+    f.state,
+    zoneEventScene(f.scene, f.venue),
+    f.venue,
+    "recycled-subject",
+    "Tell me about Offstage's lantern.",
+    at,
+    true,
+  );
+  assert(
+    recalled.parts.some(
+      ({ block }) => block.text.startsWith('{"recalledFacts":') && block.text.includes('"pastSubjects":["offstage"]'),
+    ),
+  );
   f.disable();
   const replay = await f.writing.generate(f.scene, "Tell me about Offstage.", "chat");
   assert.deepEqual(replay.readset.source.subjects, generated.readset.source.subjects);
@@ -1130,13 +1160,44 @@ await runCase("narration-writing/long-followup", async () => {
   const memory = f
     .messages()
     .flatMap((row) => row.content.split("\n\n"))
-    .filter((row) => row.startsWith('{"privateContinuity":'))
-    .flatMap((row) => JSON.parse(row).privateContinuity);
+    .filter((row) => row.startsWith('{"recalledFacts":'))
+    .flatMap((row) => JSON.parse(row).recalledFacts);
   assert(memory.length < 4, "routine standing context has a separate budget");
-  const shared = memory.find((row) => row.holders?.length === 2);
-  assert(shared, "identical meanings retain each holder's own citation");
-  assert.equal(shared.id, shared.holders[0].source);
-  for (const knower of shared.holders) assert.equal(reply.readset.source.historical[knower.source].actorId, knower.for);
+  const shared = memory.find((row) => row.knownBy?.length === 2);
+  assert(shared, "ordinary recall names the people who know the fact");
+  assert.deepEqual(Object.keys(shared).sort(), ["class", "knownBy", "text"]);
+  assert(!Object.values(reply.readset.source.historical).some((source) => source.excerpt === shared.text));
+  const memoryEdit = await f.writing.prepareVenueTurnMessages(f.scene, "Remember that weaving memory?", "chat");
+  const historical = Object.entries(memoryEdit.readset.source.historical);
+  const [alias, reference] = historical.find(
+    ([, source]) => source.kind === "knowledge" && source.actorId === "player",
+  )!;
+  const citedRoot = f.state.continuity.versions.find((version) => version.id === reference.unitId)!.rootId;
+  assert(!reply.readset.admission.supplied.some((target) => target.id === citedRoot));
+  assert(
+    historical.some(
+      ([, source]) => source.kind === "knowledge" && source.actorId === f.id && source.excerpt === reference.excerpt,
+    ),
+  );
+  const annotated = { segments: [{ kind: "dialogue", speakerId: f.id, text: "I remember.", source: [alias] }] };
+  const normalized = readSceneNarrationReply(annotated, [f.id], memoryEdit.readset, f.state.continuity);
+  assert.equal(normalized.segments[0].text, "I remember.");
+  assert(!Object.hasOwn(normalized.segments[0], "source"));
+  assert.deepEqual(annotated.segments[0].source, [alias], "recovery keeps the exact purchased reply");
+  assert.throws(
+    () =>
+      readSceneNarrationReply(
+        { segments: [{ ...annotated.segments[0], speakerId: "bram" }] },
+        [f.id, "bram"],
+        memoryEdit.readset,
+        f.state.continuity,
+      ),
+    /Unrecognized key/,
+  );
+  assert.throws(
+    () => readSceneNarrationReply(annotated, [f.id], reply.readset, f.state.continuity),
+    /Unrecognized key/,
+  );
   assert.equal(f.calls.purchases, 1);
 
   const saved = f.state.episodes.records.find((row) => row.id === "prior-exchange")!;

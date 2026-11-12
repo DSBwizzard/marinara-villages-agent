@@ -58,6 +58,20 @@ export function zoneEventScene(
         .map((zone) => zone.id)
     : [];
   const calling = /\b(?:shout|yell|call out)\b/u.test(input);
+  const speech = (intent.message ?? "").normalize("NFKC").toLocaleLowerCase("en-US");
+  const literalName = (name: string) =>
+    name
+      .normalize("NFKC")
+      .toLocaleLowerCase("en-US")
+      .replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  const addresses = (name: string, surname = "") => {
+    const literal = literalName(name);
+    const fullNameFollows = surname ? `(?!\\s+${literalName(surname)}(?=[\\s’'.,!?]|$))` : "";
+    return new RegExp(
+      `(?:^|[.!?\\n“"‘'])\\s*(?:(?:(?:hey|hello|hi),?\\s+)?${literal}(?=\\s*[,.:!?]|\\s*$)|(?:i\\s+)?(?:ask|tell|say to|speak to|call(?: out)?(?: to| for)?|shout(?: to| at)?|yell(?: to| at)?)\\s+${literal}(?![\\p{L}\\p{N}’'])${fullNameFollows})`,
+      "u",
+    ).test(speech);
+  };
   const named = near.filter((person) => {
     const first = person.name.split(/\s+/u)[0];
     const uniqueFirst =
@@ -65,8 +79,8 @@ export function zoneEventScene(
       occupants.filter((other) => words(other.name.split(/\s+/u)[0]) === words(first)).length === 1;
     return (
       person.characterId === intent.targetId ||
-      input.includes(words(person.name)) ||
-      (uniqueFirst && input.includes(words(first)))
+      addresses(person.name) ||
+      (uniqueFirst && addresses(first, person.name.slice(first.length).trim()))
     );
   });
   const candidates = [

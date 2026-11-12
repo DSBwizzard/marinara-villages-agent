@@ -134,6 +134,7 @@ export function createSceneWriting({
       if (!npc) throw conflict("A captured character's authored identity is unavailable.");
       return npcProfile(npc);
     });
+    const nativeCommands = mode !== "chat" || !!scene.contactGeneration?.instruction;
     const context = narrationContinuityContext(
       authority,
       scene,
@@ -141,6 +142,7 @@ export function createSceneWriting({
       venueOperationId(),
       input,
       villageNow(authority.clock?.advanceMs ?? 0).toISOString(),
+      !nativeCommands,
     );
     let loreInspection: LoreInspection | undefined;
     let loreRequirements: number[][][] = [];
@@ -176,7 +178,6 @@ export function createSceneWriting({
       sprites = Object.entries(presentation.sprites),
       loreUses = inspectedLoreUse(loreInspection, "GM");
     const blocksFor = (texts: string[]): VenueWritingBlock[] => texts.filter(Boolean).map((text) => ({ text }));
-    const nativeCommands = mode !== "chat" || !!scene.contactGeneration?.instruction;
     const plainJson =
       !nativeCommands &&
       ["deepseek-flash", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"].includes(model.model.toLowerCase());
@@ -215,6 +216,9 @@ export function createSceneWriting({
           ? "The single message after the Current player submission heading is the player's exact contribution. The separate Scene reply reminder after it comes from the server."
           : "",
         "Ordinary words stay in the same Zone. A whisper goes to one named local recipient. An explicit shout reaches a directly connected Zone. Hearing groups show local and across listeners. Code routes each line. Use prose for local ambience.",
+        !nativeCommands
+          ? "Recalled facts belong to their listed knowers. Other residents learn them through witnessed exchanges."
+          : "",
         "The witnessed transcript is read-only GM context with a different format from your reply. Use h: citations only as evidence. Historical witnessedWords lists its audience in by or inherits the last audience header. Timestamps carry forward. Other perceptions are [actor, channel, optional sources]. Letters give their readers. A privateContinuity ID cites one knower; for shared entries use that holder's source. Respect actual character knowledge. Omission never means absence. Code enforces access." +
           (nativeCommands ? " Change it only with a supplied access command." : ""),
         venueWritingDirection(village.narrationStyle, player.name),
@@ -309,7 +313,7 @@ export function createSceneWriting({
       Math.min(model.maxOutputTokens ?? VENUE_REPLY_MAX_TOKENS, VENUE_REPLY_MAX_TOKENS),
       "Narration",
       plainJson
-        ? '## Scene reply reminder\nBegin with {"segments":[ and return one complete JSON object. Put every line of prose inside segment text strings. History fields such as witnessedWords are input data. Finish the JSON object after the last segment or effect.'
+        ? '## Scene reply reminder\nBegin with {"segments":[ and return one complete JSON object. Put all prose in segment text. Use the listed dialogue and narration fields. History and recalled facts are input. Put source citations only on keeps or a halt. Finish the JSON object after the last segment or effect.'
         : undefined,
     );
     if (loreInspection) {

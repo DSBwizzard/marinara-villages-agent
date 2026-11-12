@@ -16,9 +16,14 @@ import { appendEpisode } from "./episodes.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { conflict } from "./errors.js";
 import { narrationProtectionFingerprint } from "./narration-context.js";
-import { readNarrationEffectHeader, readNarrationReply } from "./narration-contract.js";
+import { readNarrationEffectHeader } from "./narration-contract.js";
 import { prepareNarrationKeep } from "./narration-keep.js";
-import { assertNarrationSourceOrder, bindNarrationSource, type NarrationSourceContext } from "./narration-sources.js";
+import {
+  assertNarrationSourceOrder,
+  bindNarrationSource,
+  readSceneNarrationReply,
+  type NarrationSourceContext,
+} from "./narration-sources.js";
 import { selectSceneEffects, type SceneEffectResult } from "./scene-acceptance.js";
 import { narrationLines } from "./narration-lines.js";
 import { admitNpcParticipants, bindNpcReferences, type NpcAdmission } from "./npc-participation.js";
@@ -157,9 +162,11 @@ export function acceptNarrationContinuity(
         ...native.admissions.map((row) => row.npc.id),
       ]),
     ];
-  const reply = readNarrationReply(
+  const reply = readSceneNarrationReply(
     bindNpcReferences(publication.raw, native.admissions),
     scene.contactGeneration?.actorIds ?? scene.activeIds,
+    readset,
+    state.continuity,
   );
   const movementDependencies = [
     ...new Set([

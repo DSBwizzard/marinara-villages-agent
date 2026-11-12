@@ -189,7 +189,10 @@ export function narrationContinuityContext(
   operationId: string,
   input: string,
   at: string,
+  separateRecallFromEvidence = false,
 ) {
+  const readOnlyRecall =
+    separateRecallFromEvidence && !/\b(?:remember|forget|correct|change|update|replace|record)\b/iu.test(input);
   memoryRequire(state.seed === scene.villageSeed && scene.zoneId, "Scene continuity scope changed");
   const episodeId = sceneEpisodeId(state.seed, scene.id, operationId);
   const actors = [
@@ -521,10 +524,8 @@ export function narrationContinuityContext(
         });
     if (!entries.length) continue;
     const required = part.targets.some((target) => requiredKey(target, key));
-    const packet: Part = {
-      ...part,
-      ...(entries.some((row) => row.offer && !row.closed) ? { openOffer: true } : {}),
-      ...(!required &&
+    const plainRecall =
+      !required &&
       entries.every(
         (row) =>
           (row.class === "experience" || row.class === "information") &&
@@ -533,11 +534,22 @@ export function narrationContinuityContext(
           !row.parent &&
           !row.offer &&
           !row.closed,
-      )
-        ? { plainRecall: true as const }
-        : {}),
+      );
+    const packet: Part = {
+      ...part,
+      ...(entries.some((row) => row.offer && !row.closed) ? { openOffer: true } : {}),
+      ...(plainRecall ? { plainRecall: true as const } : {}),
       block: {
-        text: JSON.stringify({ privateContinuity: entries }),
+        text: JSON.stringify(
+          readOnlyRecall && plainRecall
+            ? {
+                recalledFacts: entries.map(({ id: _alias, for: actor, ...meaning }) => ({
+                  ...meaning,
+                  knownBy: [actor],
+                })),
+              }
+            : { privateContinuity: entries },
+        ),
         evidenceId: "actor-context:" + parts.length,
         ...(!required ? { optional: "memory" as const } : {}),
       },
@@ -549,9 +561,11 @@ export function narrationContinuityContext(
       const prior = sharedPrivate.get(meaningKey);
       if (prior) {
         prior.holders.push(knower);
-        prior.part.block.text = JSON.stringify({
-          privateContinuity: [{ id: prior.holders[0].source, ...meaning, holders: prior.holders }],
-        });
+        prior.part.block.text = JSON.stringify(
+          readOnlyRecall && prior.part.plainRecall
+            ? { recalledFacts: [{ ...meaning, knownBy: prior.holders.map(({ for: actor }) => actor) }] }
+            : { privateContinuity: [{ id: prior.holders[0].source, ...meaning, holders: prior.holders }] },
+        );
         prior.part.sources[source] = part.sources[source];
         prior.part.provenance[key] = part.provenance[key];
         prior.part.targets.push(...part.targets);
@@ -696,7 +710,9 @@ export function narrationContinuityContext(
     if (!opening && !asksForQuote && (!count || asksForPastExchange(recallQuery))) tryOlder();
   }
   const evidenceIds = new Set([...retained].map((part) => part.block.evidenceId));
-  const bounded = parts.filter((part) => retained.has(part) && hasWritingEvidence(part.block, evidenceIds));
+  const bounded = parts
+    .filter((part) => retained.has(part) && hasWritingEvidence(part.block, evidenceIds))
+    .map((part) => (readOnlyRecall && part.plainRecall ? { ...part, sources: {}, targets: [] } : part));
   const references = episodeContextActors({ actors, room }, [
     ...new Set(bounded.flatMap((part) => Object.keys(part.provenance))),
   ]);

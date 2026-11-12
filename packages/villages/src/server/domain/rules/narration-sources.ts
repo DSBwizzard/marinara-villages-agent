@@ -1,10 +1,17 @@
-import type { ContinuityClass, ContinuityEvidence, ContinuityHolder } from "../models/continuity-model.js";
+import type {
+  ContinuityClass,
+  ContinuityCollection,
+  ContinuityEvidence,
+  ContinuityHolder,
+} from "../models/continuity-model.js";
 import type { AcceptedEpisode } from "../models/episode-model.js";
+import type { NarrationReadset } from "../models/narration-model.js";
 import type { VenueLine, VenueScene } from "../models/scene-model.js";
 import type { VillageVenue } from "../models/world.js";
-import { continuityHolderKey, continuitySelfSource } from "./continuity.js";
+import { assertContinuityKnowledge, continuityHolderKey, continuitySelfSource } from "./continuity.js";
+import { asRecord } from "./coerce.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
-import { narrationSourceSchema, type NarrationSource } from "./narration-contract.js";
+import { narrationSourceSchema, readNarrationReply, type NarrationSource } from "./narration-contract.js";
 import { exactInputSpan } from "./source-span.js";
 import { contactNeighbors, contactPosition, type ContactMove } from "./venue-contact.js";
 import { nativeReceiptSupportsRoom } from "./episode-sources.js";
@@ -43,6 +50,64 @@ export type NarrationSourceContext = {
   moves: Pick<ContactMove, "characterId" | "zoneId" | "segment">[];
 };
 export type NarrationSourceOwner = { holder: ContinuityHolder; writeId: string; text: string; class: ContinuityClass };
+
+/** Discard a redundant dialogue citation only with the speaker's own fitted proof of the same saved meaning. */
+export function readSceneNarrationReply(
+  raw: Record<string, unknown>,
+  speakers: string[],
+  readset: NarrationReadset,
+  continuity: ContinuityCollection,
+) {
+  if (Object.keys(raw).length !== 1 || !Array.isArray(raw.segments)) return readNarrationReply(raw, speakers);
+  const {
+    source: { historical, seed },
+    admission,
+  } = readset;
+  const segments = raw.segments.map((value: unknown) => {
+    const line = asRecord(value),
+      source = line.source;
+    if (line.kind !== "dialogue" || line.requires !== undefined || !Array.isArray(source) || source.length !== 1)
+      return value;
+    const [alias] = source;
+    if (typeof alias !== "string" || !alias.startsWith("h:") || !Object.hasOwn(historical, alias)) return value;
+    const cited = historical[alias];
+    if (cited.kind !== "knowledge" || cited.seed !== seed) return value;
+    const version = continuity.versions.find(({ id }) => id === cited.unitId);
+    if (
+      !version ||
+      (version.class !== "experience" && version.class !== "information") ||
+      version.parentId ||
+      version.closed
+    )
+      return value;
+    const owned = Object.values(historical).find((proof) => {
+      if (
+        proof.kind !== "knowledge" ||
+        proof.seed !== seed ||
+        proof.actorId !== line.speakerId ||
+        proof.excerpt !== cited.excerpt
+      )
+        return false;
+      const ownVersion = continuity.versions.find(({ id }) => id === proof.unitId);
+      return (
+        ownVersion?.rootId === version.rootId &&
+        ownVersion.class === version.class &&
+        memoryHash(ownVersion.about) === memoryHash(version.about)
+      );
+    });
+    if (!owned) return value;
+    assertContinuityKnowledge(
+      continuity,
+      owned,
+      admission.actors,
+      admission.continuityRevision,
+      admission.sourceActors,
+    );
+    const { source: _citation, ...prose } = line;
+    return prose;
+  });
+  return readNarrationReply({ segments }, speakers);
+}
 export type NarrationCommunication = Pick<
   NarrationSourceContext,
   "seed" | "episodeId" | "input" | "actors" | "lines"

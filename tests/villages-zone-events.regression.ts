@@ -109,6 +109,22 @@ assert.equal(
 const called = zoneEventScene(base, venue, { targetId: "near" });
 assert.deepEqual(direct.contactGeneration!.actorIds, ["local"], "Ordinary turns only offer the local cast");
 assert.deepEqual(called.contactGeneration!.remoteIds, ["near"], "Direct contact admits the neighboring actor");
+assert.deepEqual(
+  zoneEventScene(base, venue, { message: "Local, you said Near was cooking." }).contactGeneration!.actorIds,
+  ["local"],
+);
+for (const message of [
+  "Near, what is cooking?",
+  "Hello, Near!",
+  "I ask Near what is cooking.",
+  "I call out to Near.",
+]) {
+  assert.deepEqual(zoneEventScene(base, venue, { message }).contactGeneration!.remoteIds, ["near"]);
+}
+assert.deepEqual(
+  zoneEventScene(base, venue, { message: "I tell Near's sister about the soup." }).contactGeneration!.remoteIds,
+  [],
+);
 assert.deepEqual(zoneEventScene(base, venue, { message: "I shout, ‘Help!’" }).contactGeneration!.remoteIds, ["near"]);
 assert.deepEqual(zoneEventScene(extended, chain, { targetId: "veryFar" }).contactGeneration!.remoteIds, []);
 const quiet = routed([{ kind: "dialogue", speakerId: "local", text: "Private local words." }], direct).lines[0];
