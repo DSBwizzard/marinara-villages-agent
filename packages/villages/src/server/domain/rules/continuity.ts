@@ -720,11 +720,10 @@ export function applyContinuityWrite(
           experienced.some(
             (source) =>
               source.episodeId === context.episodeId &&
+              source.actorId === subject.id &&
               ((source.kind === "observation" &&
-                (!source.actorId || source.actorId === subject.id) &&
                 source.perceptions.some((row) => row.actorId === owner.id && row.channel === "sight")) ||
                 ((source.kind === "speech" || source.kind === "written") &&
-                  source.actorId === subject.id &&
                   source.perceptions.some((row) => row.actorId === owner.id && row.channel === "words"))),
           ),
         "romantic interest needs the owner to witness this interaction",

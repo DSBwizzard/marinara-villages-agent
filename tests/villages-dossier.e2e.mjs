@@ -1078,6 +1078,9 @@ await withBrowser(browser, async () => {
       ),
     );
     await expect(profile.getByText("I enjoy when you visit.", { exact: true })).toBeVisible();
+    await profile
+      .locator(".villages-relationship-scores")
+      .screenshot({ path: resolve(output, "relationship-meters-" + width + "-" + height + ".png") });
     await expect(profile.getByText("PRIVATE MARA STANCE", { exact: true })).toBeVisible();
     await expect(profile.getByText("Starting history returned an invalid connection.", { exact: false })).toBeVisible();
     await profile.getByRole("button", { name: "Retry unfinished work", exact: true }).click();

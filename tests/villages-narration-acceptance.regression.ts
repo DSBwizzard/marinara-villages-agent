@@ -468,6 +468,29 @@ await runCase("narration-acceptance/romantic-interest", () => {
   assert.equal(score.answer, undefined);
   assert(acceptNarrationContinuity(f.state, publication, "submission", later).replayed);
   assert.equal(f.state.continuity.versions.length, 1);
+  const unrelated = f.publication(
+    {
+      segments: [{ id: "candle", kind: "narration", text: "The candle flickers." }],
+      keep: [
+        {
+          id: "cooling",
+          for: [f.id],
+          owner: f.id,
+          about: ["player"],
+          class: "perspective",
+          current: true,
+          text: "Mara feels less attracted.",
+          relationship: { romance: "fades" },
+          independent: true,
+          source: [{ segment: "candle", perceive: { kind: "seen", by: [f.id] } }, "self"],
+        },
+      ],
+    },
+    "unrelated",
+  );
+  const rejected = acceptNarrationContinuity(f.state, unrelated, "submission-unrelated", later);
+  assert.match(rejected.rejected[0].reason, /witness this interaction/);
+  assert.equal(continuityRelationships(f.state, later)[0].scores[0].romanticInterest, 1);
 });
 
 await runCase("narration-acceptance/unspoken-relationship-answer", () => {
