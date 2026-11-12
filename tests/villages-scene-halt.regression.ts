@@ -250,7 +250,14 @@ await runCase("scene-halt/protection-race", () => {
       { class: "information", current: true },
     );
     const location = f.state.worldPlaces.places.cafe.location,
-      context = narrationContinuityContext(f.state, f.scene, location, "halt-race", f.readset.source.input, at),
+      context = narrationContinuityContext(
+        f.state,
+        f.scene,
+        location,
+        "halt-race",
+        "Tell me about the earlier meeting.",
+        at,
+      ),
       readset = fittedNarrationReadset(
         f.state,
         context,
