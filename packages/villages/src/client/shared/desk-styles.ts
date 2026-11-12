@@ -246,15 +246,13 @@ export const DESK_STYLES = `
  .${P}-workspace-content .${P}-venue-sections{gap:clamp(10px,4cqw,18px)}
  .${P}-workspace-content .${P}-venue-sections button{flex:none;min-width:44px;padding:6px 0;font-size:clamp(16px,4.5cqw,19px);text-align:left}
  .${P}-workspace-content .${P}-venue-profile-body{padding-top:8px}
- .${P}-venue-profile::before{background:linear-gradient(90deg,#262134b0,transparent),linear-gradient(180deg,#26213455 0%,#262134dd min(45cqh,320px),#262134f5 100%)}
+ .${P}-venue-profile::before{background:linear-gradient(180deg,#26213480,#262134b8 145px,#262134a6 320px,#26213485)}
+ .${P}-venue-profile .${P}-venue-photo{bottom:auto;height:100cqh}
  .${P}-venue-profile .${P}-venue-navigation{margin-bottom:4px}
  .${P}-venue-profile :is(.${P}-workspace-venue-header,.${P}-venue-sections,.${P}-venue-profile-body){width:min(100%,30rem)}
- .${P}-workspace-content .${P}-venue-profile:not([data-venue-section="about"]){background:#3e2639}
- .${P}-venue-profile:not([data-venue-section="about"])::before{content:none}
- .${P}-venue-profile:not([data-venue-section="about"]) .${P}-venue-photo{display:none}
  .${P}-venue-zone-picker{max-width:none}
- .${P}-venue-zone-picker button{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;min-height:68px;padding:5px 8px}
- .${P}-venue-zone-picker button[aria-pressed="true"]{background:#5c394e}
+ .${P}-venue-zone-picker button{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;min-height:68px;padding:5px 8px;background:#32273b66}
+ .${P}-venue-zone-picker button[aria-pressed="true"]{background:#5c394ed9}
  .${P}-venue-zone-thumb{display:grid;place-items:center;width:clamp(80px,27cqw,118px);height:56px;overflow:hidden;border-radius:5px;background:#51374c;color:#d0c1b3}
  .${P}-venue-zone-thumb img{display:block;width:100%;height:100%;object-fit:cover}
  .${P}-venue-zone-thumb svg{width:24px;height:24px}

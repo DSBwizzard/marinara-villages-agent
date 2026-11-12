@@ -21,6 +21,7 @@ export type VenueScreenController = {
   readonly homeBuildings: readonly import("../../../shared/contracts/village").VillageBuildingOption[];
   readonly keepPlaceImage: (venueId: string, zoneId: string, file: File | undefined) => Promise<void>;
   readonly leaveVenue: ReturnType<typeof useLeaveVenue>;
+  readonly mobile: boolean;
   readonly movePrivateZoneId: VenuesState["movePrivateZoneId"];
   readonly moveTargetId: VenuesState["moveTargetId"];
   readonly nameOfCharacter: (characterId: string | null) => string;

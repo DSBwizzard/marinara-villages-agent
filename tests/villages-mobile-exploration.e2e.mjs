@@ -164,6 +164,7 @@ await withBrowser(browser, async () => {
     page.on("pageerror", (error) => errors.push(error.message));
     let fixture = structuredClone(snapshot);
     const market = place("market", 0.5, 0.5);
+    const roomImage = { ...market.presentation.image, url: image("#a77a54") };
     fixture.settings.venues = [
       {
         ...market,
@@ -176,7 +177,7 @@ await withBrowser(browser, async () => {
               id: `room-${index + 1}`,
               name: `Room ${index + 1}`,
               kind: "public",
-              image: index === 4 ? null : market.presentation.image,
+              image: index === 4 ? null : roomImage,
             })),
           ],
         }),
@@ -410,6 +411,7 @@ await withBrowser(browser, async () => {
     await expect(venue.getByRole("button", { name: "View venue", exact: true })).toHaveCount(0);
     await expect(venue.getByRole("group", { name: "Venues", exact: true })).toHaveCount(0);
     const tabs = venue.getByRole("navigation", { name: "Venue sections" });
+    const backdrop = venue.locator("." + P + "-venue-photo img");
     const client = mobile ? await page.context().newCDPSession(page) : null;
     const touch = (type, points) =>
       client.send("Input.dispatchTouchEvent", {
@@ -424,17 +426,15 @@ await withBrowser(browser, async () => {
     const aboutPosition = await headerPosition();
     for (const section of ["Zones", "Manage", "About"]) {
       await tabs.getByRole("button", { name: section, exact: true }).click();
-      if (mobile) assert.deepEqual(await headerPosition(), aboutPosition);
+      if (mobile) {
+        assert.deepEqual(await headerPosition(), aboutPosition);
+        await expect(backdrop).toBeVisible();
+        await expect(backdrop).toHaveAttribute("src", market.presentation.image.url);
+      }
       if (section === "Zones") {
         const thumb = venue.locator("." + P + "-venue-zone-thumb").first();
-        const backdrop = venue.locator("." + P + "-venue-photo");
-        if (mobile) {
-          await expect(thumb.locator("img")).toBeVisible();
-          await expect(backdrop).toBeHidden();
-        } else {
-          await expect(thumb).toBeHidden();
-          await expect(backdrop).toBeVisible();
-        }
+        if (mobile) await expect(thumb.locator("img")).toBeVisible();
+        else await expect(thumb).toBeHidden();
       }
       if (section === "Manage") {
         await expect(venue.getByRole("button", { name: "Plan a renovation" })).toBeVisible();
@@ -448,6 +448,11 @@ await withBrowser(browser, async () => {
       await tabs.getByRole("button", { name: "Zones", exact: true }).click();
       const list = venue.getByRole("region", { name: "Zones", exact: true });
       await expect(list.getByRole("button")).toHaveCount(6);
+      const roomWithArtwork = list.getByRole("button", { name: "Room 1", exact: true });
+      await roomWithArtwork.click();
+      await expect(roomWithArtwork).toHaveAttribute("aria-pressed", "true");
+      await expect(roomWithArtwork.locator("img")).toHaveAttribute("src", roomImage.url);
+      await expect(backdrop).toHaveAttribute("src", market.presentation.image.url);
       const lastZone = list.getByRole("button", { name: /^Room 5/ });
       const arrival = home.locator("[data-arrival]");
       const frame = await arrival.boundingBox();
@@ -468,6 +473,7 @@ await withBrowser(browser, async () => {
       await tabs.getByRole("button", { name: "Manage", exact: true }).click();
       const editRoomDetails = venue.getByRole("button", { name: "Edit room details", exact: true });
       await editRoomDetails.click();
+      await expect(backdrop).toHaveAttribute("src", market.presentation.image.url);
       const rooms = venue.getByRole("group", { name: "Rooms", exact: true });
       await expect(rooms.getByRole("button")).toHaveCount(6);
       const selectedRoom = rooms.getByRole("button", { name: "Room 5", exact: true });

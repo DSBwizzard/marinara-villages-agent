@@ -326,6 +326,7 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
   useLetterFont(fromMap ? "lora" : undefined);
   const {
     snapshot,
+    mobile,
     venueId,
     leaveVenue,
     venueSection,
@@ -442,7 +443,8 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
       : ((snapshot.isFounded && lighting === "night" && zone.dayNight ? zone.nightImage : null) ?? zone.image);
   const zoneArt = selected ? roomArtwork(selected) : null;
   const browsing = venueSection === "zones";
-  const backdrop = (browsing ? zoneArt : null) ?? entranceArt;
+  const zoneBackdrop = !mobile && browsing ? zoneArt : null;
+  const backdrop = zoneBackdrop ?? entranceArt;
   const map = snapshot.settings.maps?.find((entry) => entry.id === place.presentation.mapId);
   const visit = () =>
     activeScene && room.placeId === place.id ? setScreen("room") : void openRoom(place, exterior?.id);
@@ -465,7 +467,6 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
       <section
         ref={profile}
         className={`${ELEMENT_TAG}-venue-profile`}
-        data-venue-section={venueSection}
         aria-label="Venue"
         onKeyDown={(event) => {
           if (
@@ -483,7 +484,7 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
       >
         {backdrop ? (
           <figure className={ELEMENT_TAG + "-venue-photo"}>
-            <ArtworkImage src={backdrop.url} alt={browsing && zoneArt ? selected.name : place.name} />
+            <ArtworkImage src={backdrop.url} alt={zoneBackdrop ? selected.name : place.name} />
           </figure>
         ) : null}
         <div className={`${ELEMENT_TAG}-venue-navigation`}>
