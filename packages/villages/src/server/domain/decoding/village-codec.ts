@@ -186,8 +186,21 @@ function coerceVillager(value: unknown): VillageVillager | null {
   if (!cardSnapshot || cardSnapshot.id !== characterId) return null;
   if (typeof raw.letterFontId !== "string" || raw.letterFontId.length > 120)
     throw new Error("This saved resident needs a current writing-style assignment.");
+  const relationshipScene = asRecord(raw.relationshipScene);
+  const relationshipSceneEndedAt = asIsoString(relationshipScene.endedAt);
   return {
     incarnation: raw.incarnation,
+    ...(relationshipSceneEndedAt && typeof relationshipScene.id === "string" && relationshipScene.id.length <= 180
+      ? {
+          relationshipScene: {
+            id: relationshipScene.id,
+            endedAt: relationshipSceneEndedAt,
+            ...(typeof relationshipScene.answerSceneId === "string" && relationshipScene.answerSceneId.length <= 180
+              ? { answerSceneId: relationshipScene.answerSceneId }
+              : {}),
+          },
+        }
+      : {}),
     characterId,
     letterFontId: raw.letterFontId,
     agendaGeneration: asString(raw.agendaGeneration),

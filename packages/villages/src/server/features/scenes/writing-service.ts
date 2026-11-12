@@ -5,6 +5,7 @@ import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { NarrationReadset } from "../../domain/models/narration-model.js";
 import type { GreetingTrace, VenueScene } from "../../domain/models/scene-model.js";
+import { dueRelationshipAnswers } from "../../domain/rules/continuity-library.js";
 import { badGateway, conflict } from "../../domain/rules/errors.js";
 import { inspectedLoreUse, villageLoreContext } from "../../domain/rules/lore-context.js";
 import { memoryHash, memoryRequire } from "../../domain/rules/memory-integrity.js";
@@ -165,6 +166,8 @@ export function createSceneWriting({
     ]);
     signal?.throwIfAborted();
     const calendar = context.calendar;
+    const relationshipAnswers =
+      mode === "leave" ? dueRelationshipAnswers(authority, calendar, selectedIds, scene.id) : undefined;
     const presentation = context.presentation,
       sprites = Object.entries(presentation.sprites),
       loreUses = inspectedLoreUse(loreInspection, "GM");
@@ -179,13 +182,16 @@ export function createSceneWriting({
         NARRATION_RESPONSE,
         NARRATION_KEEP,
         RELATIONSHIP_KEEP,
-        RELATIONSHIP_ANSWER,
+        relationshipAnswers?.owners.length ? RELATIONSHIP_ANSWER : "",
         NARRATION_NATIVE,
       ]),
       identity: blocksFor([
         ...profiles,
         JSON.stringify({
           player: { name: player.name, description: player.description },
+          ...(relationshipAnswers?.owners.length
+            ? { relationshipAnswersDue: relationshipAnswers.owners.map(({ id }) => id) }
+            : {}),
           startingBackground: renderPlayerBackgroundContext(village),
           setting: villageCurrentSetting({ ...village, narrative: undefined }),
         }),
@@ -273,9 +279,11 @@ export function createSceneWriting({
         }),
       });
     }
+    const readset = fittedNarrationReadset(authority, context, fitted.evidenceIds);
+    if (relationshipAnswers?.owners.length) readset.admission.relationshipAnswers = relationshipAnswers;
     const request: Request = {
       fitted,
-      readset: fittedNarrationReadset(authority, context, fitted.evidenceIds),
+      readset,
       model: { model: model.model, connectionId: model.connectionId },
     };
     const retained = await venueCheckpoint("writing-request:" + key, async () => request);

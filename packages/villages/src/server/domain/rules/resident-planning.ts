@@ -4,7 +4,7 @@ import { z } from "zod";
 import { readResidentNarrationCapture } from "../decoding/resident-narration-codec.js";
 import { socialPlanSchema } from "../decoding/resident-plans-codec.js";
 import type { ResidentNarrationCapture } from "../models/resident-narration.js";
-import { NARRATION_KEEP, RELATIONSHIP_KEEP } from "./narration-contract.js";
+import { NARRATION_KEEP, RELATIONSHIP_ANSWER, RELATIONSHIP_KEEP } from "./narration-contract.js";
 import { memoryRequire } from "./memory-integrity.js";
 import { readNarrationNativeCommand } from "./narration-command-contract.js";
 import { narrationAccessPrompt } from "./narration-access.js";
@@ -179,6 +179,13 @@ export function buildResidentPlanningMessages(context: ResidentPlanningContext):
     PERSONAL_LETTER_INSTRUCTION,
     NARRATION_KEEP,
     RELATIONSHIP_KEEP,
+    ...(capture.relationshipAnswerIds?.length
+      ? [
+          "Relationship answers can accompany an encounter or private reflection.",
+          RELATIONSHIP_ANSWER,
+          JSON.stringify({ relationshipAnswersDue: capture.relationshipAnswerIds }),
+        ]
+      : []),
     "Only an actual encounter may use commands:[{id?:label,at:line label,source:[current spoken line labels],requires?:[effect IDs],independent?:true,...}]. Each deciding actor must speak its complete decision now, to an actual participant. Supported: permission.grant or permission.revoke with by,visitor,venue,zone; access.decide with by,venue,zone,decision (invite-later,invite-outside-hours,ban-zone,ban-venue with visitor and optional accompanies; or access-management with the existing supplied management action); residence.request with by,venue; residence.decide with by,person,venue,approved; appointment with by,when:{dayOffset}|{weekday,afterToday?}|{date},minute?. No current-visit action or Scene ID. Use native:effect ID as a keep source for its actual result. Native authority and required household approvals remain mandatory; no immediate relocation. Reflections and letters perform no native commands.",
     "Use keep and requires in this same object for consequential lasting meaning; no meaning object, separate Wish/relationship review or full input classification. requires lists effects necessary to the source's successful fiction. Only independent:true permits an unrelated optional effect to drop. Historical aliases remain scoped; self is only the portrayed non-player's own internal state. Native mechanics cannot be obtained through keep.",
     context.catchup

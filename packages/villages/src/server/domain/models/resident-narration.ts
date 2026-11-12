@@ -10,6 +10,7 @@ export type ResidentNarrationCapture = {
   protectionFingerprint: string;
   historical?: true;
   calendar: ReturnType<typeof import("../rules/scene-calendar.js").capturedSceneCalendar>;
+  relationshipAnswerIds?: string[];
   access: ReturnType<typeof import("../rules/narration-access.js").narrationAccessScopes>;
   residence: ReturnType<typeof import("../rules/narration-residence.js").narrationResidenceContext>;
   room?: {

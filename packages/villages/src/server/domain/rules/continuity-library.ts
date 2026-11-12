@@ -7,7 +7,7 @@ import type {
 } from "../../../shared/contracts/village.js";
 import type { VillageState } from "../models/world.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
-import type { ContinuityHolder, ContinuityEvidence } from "../models/continuity-model.js";
+import type { ContinuityHolder, ContinuityEvidence, ContinuityVersion } from "../models/continuity-model.js";
 import { episodeSourceGraph } from "../decoding/episode-codec.js";
 import { continuityActor, relationshipActors } from "./continuity-actors.js";
 import {
@@ -18,6 +18,7 @@ import {
   continuityProtectionUnits,
   continuityViews,
   continuityVersionId,
+  continuityVersionUnit,
   continuityProtectionFingerprint,
   continuityConstraints,
   continuitySourceUnit,
@@ -37,6 +38,7 @@ import type {
 } from "../../../shared/contracts/relationships.js";
 import { evaluateZoneAccess, mayInvite } from "./venue-access.js";
 import { zoneClosed } from "./venue-zones.js";
+import { capturedSceneCalendar } from "./scene-calendar.js";
 
 export function continuityContextRevision(state: VillageState, actorId: string) {
   const holder = continuityActor(state, actorId),
@@ -220,18 +222,127 @@ function sourceSpeaker(state: VillageState, source: ContinuityEvidence) {
     : { id: source.actorId!, name: "Former resident" };
 }
 
+function relationshipAnswers(state: VillageState, residentIds?: readonly string[], includePending = false) {
+  const answers = new Map<string, ContinuityVersion>();
+  const roots = new Map(state.continuity.records.map((record) => [record.id, record]));
+  const player = continuityActor(state, "player")!;
+  const blockedByHolder = new Map<string, ReadonlySet<string>>();
+  for (const version of state.continuity.versions) {
+    if (!version.relationshipAnswer) continue;
+    const record = roots.get(version.rootId);
+    if (!record?.owner || (residentIds && !residentIds.includes(record.owner.id))) continue;
+    const owner = record.owner;
+    const holder = version.id === continuityVersionId(state.seed, version.operationId, owner) ? owner : player;
+    const holderKey = continuityHolderKey(holder);
+    if (!record.heads[holderKey]?.current || record.protection[holderKey]) continue;
+    const concluded = state.villagers.find(
+      ({ characterId, incarnation }) => characterId === owner.id && incarnation === owner.incarnation,
+    )?.relationshipScene;
+    if (
+      !(includePending && version.relationshipAnswerScene) &&
+      (!concluded || (version.relationshipAnswerScene && concluded.answerSceneId !== version.relationshipAnswerScene))
+    )
+      continue;
+    let blocked = blockedByHolder.get(holderKey);
+    if (!blocked) {
+      blocked = continuityProtectionUnits(state.continuity, holder, episodeSourceGraph(state.episodes.records, holder));
+      blockedByHolder.set(holderKey, blocked);
+    }
+    if (
+      blocked.has(continuityVersionUnit(version.id)) ||
+      version.sources.some((source) => blocked.has(continuitySourceUnit(source)))
+    )
+      continue;
+    const key = relationshipKey(owner, version.about[0]);
+    if ((answers.get(key)?.createdRevision ?? 0) < version.createdRevision) answers.set(key, version);
+  }
+  return answers;
+}
+
+function relationshipSceneParticipants(state: VillageState, sceneId: string) {
+  return new Set(
+    state.episodes.records
+      .filter((episode) => episode.sceneId === sceneId && episode.privateInput.trim())
+      .flatMap((episode) =>
+        episode.actors
+          .filter((actor) =>
+            episode.segments.some((line) => line.speakerId === actor.id && line.heardBy?.includes("player")),
+          )
+          .map((actor) => continuityHolderKey({ kind: "actor", ...actor })),
+      ),
+  );
+}
+
+export function recordClosedRelationshipScene(state: VillageState, scene: { id: string; endedAt: string }) {
+  const participants = relationshipSceneParticipants(state, scene.id);
+  if (!participants.size) return;
+  const roots = new Map(state.continuity.records.map(({ id, owner }) => [id, owner]));
+  const answerOwners = new Set(
+    state.continuity.versions.flatMap((version) => {
+      const owner = roots.get(version.rootId);
+      return version.relationshipAnswerScene === scene.id && owner ? [continuityHolderKey(owner)] : [];
+    }),
+  );
+  for (const resident of state.villagers) {
+    const key = continuityHolderKey({ kind: "actor", id: resident.characterId, incarnation: resident.incarnation });
+    if (!participants.has(key) || (resident.relationshipScene && resident.relationshipScene.endedAt >= scene.endedAt))
+      continue;
+    const answerSceneId = answerOwners.has(key) ? scene.id : resident.relationshipScene?.answerSceneId;
+    resident.relationshipScene = { id: scene.id, endedAt: scene.endedAt, ...(answerSceneId ? { answerSceneId } : {}) };
+  }
+}
+
+export function dueRelationshipAnswers(
+  state: VillageState,
+  calendar: { date: string; timeZone: string; instant: string },
+  residentIds: readonly string[],
+  sceneId?: string,
+  admittedRevision = state.continuity.revision,
+) {
+  const participants = sceneId ? relationshipSceneParticipants(state, sceneId) : undefined;
+  const answers = relationshipAnswers(state, residentIds, true);
+  const scores = latestRelationshipScores(state.continuity);
+  const player = continuityActor(state, "player")!;
+  const owners = state.villagers.flatMap((resident) => {
+    const actor = { id: resident.characterId, incarnation: resident.incarnation };
+    if (
+      !residentIds.includes(actor.id) ||
+      (participants ? !participants.has(continuityHolderKey({ kind: "actor", ...actor })) : !resident.relationshipScene)
+    )
+      return [];
+    const key = relationshipKey(actor, player);
+    const answer = answers.get(key);
+    const score = scores.get(key);
+    if ((answer?.createdRevision ?? 0) > admittedRevision || (score?.createdRevision ?? 0) > admittedRevision)
+      return [];
+    if (!answer) return [actor];
+    const roots = new Set(
+      state.continuity.records
+        .filter((record) => record.owner?.id === actor.id && record.owner.incarnation === actor.incarnation)
+        .map((record) => record.id),
+    );
+    const milestone = state.continuity.versions.some(
+      (version) =>
+        version.relationshipMilestone &&
+        version.createdRevision > answer.createdRevision &&
+        roots.has(version.rootId) &&
+        version.about[0]?.id === player.id &&
+        version.about[0].incarnation === player.incarnation,
+    );
+    const priorDay = capturedSceneCalendar({ startedAt: answer.at }, calendar.timeZone).date;
+    const days = (Date.parse(calendar.date) - Date.parse(priorDay)) / 86_400_000;
+    const change = Math.abs((score?.relationshipScore ?? 0) - (answer.relationshipAnswerScore ?? 0));
+    return milestone || (days >= 2 && change >= 12) ? [actor] : [];
+  });
+  return { owners, ...(sceneId ? { sceneId } : {}) };
+}
+
 export function continuityRelationships(state: VillageState, at: string): RelationshipProfile[] {
   const holder = continuityActor(state, "player"),
     rows = holder ? projections(state, holder, false, at) : [];
   const scores = latestRelationshipScores(state.continuity);
   const actors = relationshipActors(state);
-  const answers = new Map<string, { text: string; revision: number }>();
-  for (const { record, version, head } of rows) {
-    if (!head.current || !record.owner || !version.relationshipAnswer) continue;
-    const key = relationshipKey(record.owner, version.about[0]);
-    if ((answers.get(key)?.revision ?? 0) < version.createdRevision)
-      answers.set(key, { text: version.relationshipAnswer, revision: version.createdRevision });
-  }
+  const answers = relationshipAnswers(state);
   const visibleRoots = new Set(rows.map((row) => row.record.id));
   const learnedReceipts = new Set(
     state.continuity.versions
@@ -267,7 +378,7 @@ export function continuityRelationships(state: VillageState, at: string): Relati
         .filter((other) => other.id !== actor.id)
         .map((other) => {
           const key = relationshipKey(actor, other);
-          const answer = answers.get(key)?.text;
+          const answer = answers.get(key)?.relationshipAnswer;
           return {
             person: person(state, other.id),
             score: scores.get(key)?.relationshipScore ?? 0,

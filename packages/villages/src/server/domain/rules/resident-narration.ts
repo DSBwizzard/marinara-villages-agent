@@ -9,7 +9,8 @@ import type { AcceptedEpisode } from "../models/episode-model.js";
 import type { ResidentNarration, ResidentNarrationCapture } from "../models/resident-narration.js";
 import type { ResidentPlanningOpportunity, VillageState } from "../models/world.js";
 import { episodeSourceGraph } from "../decoding/episode-codec.js";
-import { continuityActor, relationshipActors } from "./continuity-actors.js";
+import { continuityActor, relationshipActors, relationshipCalendar } from "./continuity-actors.js";
+import { dueRelationshipAnswers } from "./continuity-library.js";
 import { captureContinuityContext } from "./continuity-context.js";
 import { episodeContextRooms } from "./episode-sources.js";
 import { selectRoomContinuity } from "./continuity-retrieval.js";
@@ -214,6 +215,10 @@ export function captureResidentNarration(
     residence: narrationResidenceContext(state, opportunity.actorIds),
     ...(room ? { room } : {}),
   };
+  if (!historical) {
+    const due = dueRelationshipAnswers(state, capture.calendar, opportunity.actorIds);
+    if (due.owners.length) capture.relationshipAnswerIds = due.owners.map(({ id }) => id);
+  }
   capture.protectionFingerprint = continuityProtectionFingerprint(state.continuity, contextHolders(capture));
   memoryRequire(
     Buffer.byteLength(JSON.stringify(capture)) <= 192000,
@@ -390,6 +395,18 @@ function prepareResidentNarration(
     at: capture.context.at,
     actors,
     relationshipActors: relationshipActors(state),
+    relationshipCalendar: relationshipCalendar(state, capture.calendar, historical),
+    ...(capture.relationshipAnswerIds?.length
+      ? {
+          relationshipAnswers: dueRelationshipAnswers(
+            state,
+            capture.calendar,
+            capture.relationshipAnswerIds.filter((id) => actors.some((actor) => actor.id === id)),
+            undefined,
+            capture.context.continuityRevision,
+          ),
+        }
+      : {}),
     subjects: capture.context.subjects,
     continuityRevision: capture.context.continuityRevision,
     sources: [],

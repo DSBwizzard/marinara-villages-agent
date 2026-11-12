@@ -3,7 +3,7 @@ import type { AcceptedEpisode } from "../models/episode-model.js";
 import type { NarrationReadset } from "../models/narration-model.js";
 import type { VillageState } from "../models/world.js";
 import { episodeSourceGraph } from "../decoding/episode-codec.js";
-import { continuityActor, relationshipActors } from "./continuity-actors.js";
+import { continuityActor, relationshipActors, relationshipCalendar } from "./continuity-actors.js";
 import {
   applyContinuityWrite,
   assertContinuityProvenance,
@@ -12,6 +12,7 @@ import {
   continuitySourceUnit,
 } from "./continuity.js";
 import { assertContinuityRetention } from "./continuity-retention.js";
+import { dueRelationshipAnswers } from "./continuity-library.js";
 import { appendEpisode } from "./episodes.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { asRecord } from "./coerce.js";
@@ -250,10 +251,28 @@ export function acceptNarrationContinuity(
     for (const ref of reply.halt.source) bindNarrationSource(ref, source);
     throw conflict(reply.halt.message);
   }
+  const offeredAnswers = readset.admission.relationshipAnswers;
+  const dueAnswers =
+    offeredAnswers?.sceneId === scene.id
+      ? dueRelationshipAnswers(
+          state,
+          readset.calendar,
+          offeredAnswers.owners.map(({ id }) => id),
+          scene.id,
+          readset.continuityRevision,
+        )
+      : undefined;
   const admission = {
     ...readset.admission,
     actors: source.actors,
     relationshipActors: relationshipActors(state),
+    relationshipCalendar: relationshipCalendar(state, readset.calendar, source.historical),
+    relationshipAnswers: dueAnswers && {
+      ...dueAnswers,
+      owners: dueAnswers.owners.filter((actor) =>
+        offeredAnswers!.owners.some((row) => row.id === actor.id && row.incarnation === actor.incarnation),
+      ),
+    },
     blockedSources: blocked,
     sources: [],
   };

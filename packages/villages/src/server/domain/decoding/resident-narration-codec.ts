@@ -33,6 +33,7 @@ const capture = z
     nativeFingerprint: digest,
     protectionFingerprint: digest,
     historical: z.literal(true).optional(),
+    relationshipAnswerIds: z.array(id).max(4).optional(),
     calendar: z.custom<ResidentNarrationCapture["calendar"]>((value) => {
       try {
         readSceneCalendar(value);

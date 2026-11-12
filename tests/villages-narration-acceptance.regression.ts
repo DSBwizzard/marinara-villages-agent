@@ -1,4 +1,4 @@
-// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/anonymous-experience, narration-acceptance/private-relationship-replay, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context, narration-acceptance/inherited-room-context, narration-acceptance/anonymous-metadata
+// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/anonymous-experience, narration-acceptance/private-relationship-replay, narration-acceptance/unspoken-relationship-answer, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context, narration-acceptance/inherited-room-context, narration-acceptance/anonymous-metadata
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -41,6 +41,11 @@ import { gmEpisodeView, actorEpisodeView } from "../packages/villages/src/server
 import { assertContinuityRetention } from "../packages/villages/src/server/domain/rules/continuity-retention.js";
 import { captureContinuityContext } from "../packages/villages/src/server/domain/rules/continuity-context.js";
 import { acceptResidentLetter } from "../packages/villages/src/server/domain/rules/mail-delivery.js";
+import {
+  continuityRelationships,
+  dueRelationshipAnswers,
+  recordClosedRelationshipScene,
+} from "../packages/villages/src/server/domain/rules/continuity-library.js";
 
 const at = "2026-11-09T12:00:00.000Z",
   later = "2026-11-09T12:01:00.000Z";
@@ -91,8 +96,8 @@ function fixture(input = "I think privately that I am nervous. I say, “My moth
     text: "The player said their mother taught them weaving.",
     source: [source],
   };
-  function publication(raw: Record<string, unknown>): NarrationPublication {
-    const context = narrationContinuityContext(state, scene, place.location, "operation", input, at);
+  function publication(raw: Record<string, unknown>, operation = "operation"): NarrationPublication {
+    const context = narrationContinuityContext(state, scene, place.location, operation, input, at);
     const readset = fittedNarrationReadset(
       state,
       context,
@@ -428,6 +433,69 @@ await runCase("narration-acceptance/private-relationship-replay", () => {
     assert.equal(acceptNarrationContinuity(f.state, publication, "submission", later).replayed, true);
     assert.equal(f.state.continuity.versions.length, 1);
   }
+});
+
+await runCase("narration-acceptance/unspoken-relationship-answer", () => {
+  const f = fixture("Would you like to sit here?");
+  f.state.villagers = [
+    { characterId: f.id, incarnation: "one", cardSnapshot: { name: "Mara" } },
+  ] as typeof f.state.villagers;
+  const answer = "I’m comfortable around you, and I’m curious to see where this goes.";
+  const first = f.publication(
+    { segments: [{ ...f.response()[0], text: "Sure, there's a seat by the window." }] },
+    "first",
+  );
+  assert.equal(acceptNarrationContinuity(f.state, first, "first", at).held, false);
+  assert.deepEqual(dueRelationshipAnswers(f.state, first.readset.calendar, [f.id]).owners, []);
+  const publication = f.publication({
+    segments: [{ ...f.response()[0], text: "Sure, there's a seat by the window." }],
+    keep: [
+      {
+        for: [f.id],
+        owner: f.id,
+        about: ["player"],
+        class: "perspective",
+        current: true,
+        text: "PRIVATE: Mara feels increasingly comfortable around the player.",
+        source: ["self"],
+        relationship: { answer },
+        independent: true,
+      },
+    ],
+  });
+  publication.readset.admission.relationshipAnswers = dueRelationshipAnswers(
+    f.state,
+    publication.readset.calendar,
+    [f.id],
+    f.scene.id,
+  );
+  const result = acceptNarrationContinuity(f.state, publication, "submission", later);
+  assert.equal(result.held, false);
+  assert.equal(result.episode!.segments[0].content, "Sure, there's a seat by the window.");
+  assert.equal(continuityRelationships(f.state, later)[0].scores[0].answer, undefined);
+  recordClosedRelationshipScene(f.state, { id: f.scene.id, endedAt: later });
+  const profile = continuityRelationships(f.state, later)[0];
+  assert.deepEqual(profile.entries, []);
+  assert.deepEqual(
+    profile.scores.map(({ score, answer }) => ({ score, answer })),
+    [{ score: 0, answer }],
+  );
+  const encoded = encodeContinuityPages(
+    {
+      continuity: f.state.continuity,
+      episodes: f.state.episodes,
+      worldPlaces: f.state.worldPlaces,
+      mailbox: f.state.mailbox,
+    },
+    "a".repeat(32),
+  );
+  const decoded = decodeContinuityPagesSync(
+    encoded.manifest,
+    "a".repeat(32),
+    f.state.seed,
+    (id) => encoded.pages.get(id) ?? null,
+  );
+  assert.equal(decoded.value.continuity.versions.at(-1)?.relationshipAnswer, answer);
 });
 
 await runCase("narration-acceptance/lost-ack", () => {

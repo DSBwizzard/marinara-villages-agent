@@ -31,7 +31,17 @@ export type ContinuityVersion = {
   text: string;
   class: ContinuityClass;
   relationshipScore?: number;
+  relationshipDay?: {
+    date: string;
+    start: number;
+    gained: number;
+    lost: number;
+    breach: number;
+  };
   relationshipAnswer?: string;
+  relationshipAnswerScore?: number;
+  relationshipAnswerScene?: string;
+  relationshipMilestone?: true;
   about: { id: string; incarnation: string }[];
   parentId?: string;
   facet?: "reason" | "attention" | "approach" | "connection" | "stance" | "expectation" | "concern" | "boundary";
@@ -130,6 +140,8 @@ export type ContinuityAdmission = {
   at: string;
   actors: { id: string; incarnation: string }[];
   relationshipActors?: { id: string; incarnation: string }[];
+  relationshipCalendar?: { date: string; historical: Record<string, string> };
+  relationshipAnswers?: { owners: { id: string; incarnation: string }[]; sceneId?: string };
   subjects?: { id: string; incarnation: string }[];
   continuityRevision?: number;
   /** Canonical rosters of the historical source episodes actually fitted in this request. */

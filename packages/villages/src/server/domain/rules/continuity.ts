@@ -16,11 +16,11 @@ export const CONTINUITY_TEXT_BYTES = 2400;
 export const ROOM_CONTINUITY_TEXT_BYTES = 16000;
 export const RELATIONSHIP_IMPACTS = {
   "small-positive": 3,
-  "meaningful-positive": 10,
-  "turning-positive": 25,
+  "meaningful-positive": 6,
+  "turning-positive": 10,
   "small-negative": -3,
-  "meaningful-negative": -10,
-  "turning-negative": -25,
+  "meaningful-negative": -6,
+  "turning-negative": -10,
 } satisfies Record<RelationshipImpact, number>;
 
 type ActorIdentity = { id: string; incarnation: string };
@@ -598,6 +598,10 @@ export function applyContinuityWrite(
   );
   const created: ContinuityVersion[] = [];
   let relationshipScore: number | undefined;
+  let relationshipDay: ContinuityVersion["relationshipDay"];
+  let relationshipMilestone: true | undefined;
+  let relationshipAnswerScore: number | undefined;
+  let ownerAnswer = false;
   if (write.relationship) {
     const ownerBefore = before.find(({ holder }) => owner && same(holder, owner));
     const about = write.about ?? [];
@@ -622,34 +626,98 @@ export function applyContinuityWrite(
         write.current === true,
       "relationship change needs a current villager-owned perspective about one person",
     );
+    const experienced = sources.filter((source) =>
+      ["speech", "written", "observation", "native"].includes(source.kind),
+    );
+    ownerAnswer = write.holders.length === 1;
     memoryRequire(
-      sources.some(
-        (source) =>
-          source.episodeId === context.episodeId &&
-          ["speech", "written", "observation", "native"].includes(source.kind),
-      ),
+      experienced.some((source) => source.episodeId === context.episodeId) ||
+        (!write.relationship.impact &&
+          ownerAnswer &&
+          sources.some((source) => source.episodeId === context.episodeId && source.kind === "self")),
       "relationship change needs a current experienced event",
     );
     memoryRequire(write.relationship.impact || write.relationship.answer, "empty relationship update");
     if (write.relationship.impact) {
-      const delta = RELATIONSHIP_IMPACTS[write.relationship.impact];
-      memoryRequire(Number.isInteger(delta), "invalid relationship impact");
+      const impact = write.relationship.impact;
+      memoryRequire(Number.isInteger(RELATIONSHIP_IMPACTS[impact]), "invalid relationship impact");
       const latest = latestRelationshipScores(collection).get(relationshipKey(owner, subject));
       memoryRequire(
         context.continuityRevision !== undefined && (!latest || latest.createdRevision <= context.continuityRevision),
         "relationship changed since admission or already changed in this exchange",
       );
-      relationshipScore = Math.max(-100, Math.min(100, (latest?.relationshipScore ?? 0) + delta));
+      const calendar = context.relationshipCalendar;
+      memoryRequire(
+        calendar && /^\d{4}-\d{2}-\d{2}$/.test(calendar.date),
+        "relationship scoring needs the Village day",
+      );
+      const score = latest?.relationshipScore ?? 0;
+      const previous = latest?.relationshipDay;
+      relationshipDay =
+        previous && previous.date >= calendar.date
+          ? { ...previous }
+          : { date: calendar.date, start: score, gained: 0, lost: 0, breach: 0 };
+      const turningPoint =
+        impact === "turning-positive" &&
+        experienced.some((source) => {
+          const date = calendar.historical[source.episodeId];
+          return source.episodeId !== context.episodeId && date && date < calendar.date;
+        });
+      const delta =
+        impact === "turning-positive" && !turningPoint
+          ? RELATIONSHIP_IMPACTS["meaningful-positive"]
+          : RELATIONSHIP_IMPACTS[impact];
+      if (delta > 0) {
+        const base = turningPoint ? 10 : 6;
+        const limit = Math.ceil((base * (100 - Math.max(0, relationshipDay.start))) / 100);
+        const gained = Math.max(0, Math.min(delta, limit - relationshipDay.gained, 100 - score));
+        relationshipDay.gained += gained;
+        relationshipScore = score + gained;
+      } else {
+        const budget = impact === "turning-negative" ? "breach" : "lost";
+        const limit = budget === "breach" ? 10 : 6;
+        const lost = Math.min(-delta, limit - relationshipDay[budget], score + 100);
+        relationshipDay[budget] += lost;
+        relationshipScore = score - lost;
+      }
+      if (relationshipScore !== score && (turningPoint || impact === "turning-negative")) relationshipMilestone = true;
     }
     if (write.relationship.answer !== undefined) {
       memoryString(write.relationship.answer, 320);
       memoryRequire(
-        !/[\r\n]/.test(write.relationship.answer) &&
-          before.some(({ holder }) => holder.kind === "actor" && holder.id === "player") &&
-          sources.some(
-            (source) =>
-              source.episodeId === context.episodeId && source.actorId === owner.id && heardWords(source, "player"),
+        subject.id === "player" &&
+          context.relationshipAnswers?.owners.some(
+            (actor) => actor.id === owner.id && actor.incarnation === owner.incarnation,
           ),
+        "relationship answer is not due for this villager",
+      );
+      const ownedRoots = new Set(
+        collection.records.filter((root) => root.owner && same(root.owner, owner)).map((root) => root.id),
+      );
+      memoryRequire(
+        context.continuityRevision !== undefined &&
+          !collection.versions.some(
+            (version) =>
+              version.relationshipAnswer &&
+              version.createdRevision > context.continuityRevision! &&
+              ownedRoots.has(version.rootId) &&
+              version.about[0]?.id === subject.id &&
+              version.about[0]?.incarnation === subject.incarnation,
+          ),
+        "relationship answer already refreshed",
+      );
+      relationshipAnswerScore =
+        relationshipScore ??
+        latestRelationshipScores(collection).get(relationshipKey(owner, subject))?.relationshipScore ??
+        0;
+      memoryRequire(
+        !/[\r\n]/.test(write.relationship.answer) &&
+          (ownerAnswer ||
+            (before.some(({ holder }) => holder.kind === "actor" && holder.id === "player") &&
+              sources.some(
+                (source) =>
+                  source.episodeId === context.episodeId && source.actorId === owner.id && heardWords(source, "player"),
+              ))),
         "relationship answer needs the villager's words heard or read by the player",
       );
     }
@@ -670,9 +738,19 @@ export function applyContinuityWrite(
       createdRevision: collection.revision + 1,
       text,
       class: room ? "information" : (write.class ?? prior?.class ?? "experience"),
-      ...(relationshipScore !== undefined && owner && same(holder, owner) ? { relationshipScore } : {}),
-      ...(holder.kind === "actor" && holder.id === "player" && write.relationship?.answer
-        ? { relationshipAnswer: write.relationship.answer }
+      ...(relationshipScore !== undefined && owner && same(holder, owner)
+        ? { relationshipScore, relationshipDay, ...(relationshipMilestone ? { relationshipMilestone } : {}) }
+        : {}),
+      ...(holder.kind === "actor" &&
+      (ownerAnswer ? holder.id === owner?.id : holder.id === "player") &&
+      write.relationship?.answer
+        ? {
+            relationshipAnswer: write.relationship.answer,
+            relationshipAnswerScore,
+            ...(context.relationshipAnswers?.sceneId
+              ? { relationshipAnswerScene: context.relationshipAnswers.sceneId }
+              : {}),
+          }
         : {}),
       about: (write.about ?? prior?.about ?? []).map(({ id, incarnation }) => ({ id, incarnation })),
       ...(parentId ? { parentId } : {}),
@@ -1017,7 +1095,11 @@ export function protectContinuity(
       };
       if (!restored) delete version.offerEvents;
       delete version.relationshipScore;
+      delete version.relationshipDay;
       delete version.relationshipAnswer;
+      delete version.relationshipAnswerScore;
+      delete version.relationshipAnswerScene;
+      delete version.relationshipMilestone;
       created.push(version);
       head.versionId = version.id;
       head.revision++;
