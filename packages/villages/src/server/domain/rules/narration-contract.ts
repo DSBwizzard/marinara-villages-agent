@@ -56,12 +56,15 @@ export const narrationSourceSchema = z.union([
 ]);
 const sources = z.array(narrationSourceSchema).min(1).max(8);
 export type NarrationSource = z.infer<typeof narrationSourceSchema>;
+export const NARRATION_SEGMENT_CHARACTERS = 2000;
+const segmentText = z.string().min(1).max(NARRATION_SEGMENT_CHARACTERS);
+export const residentReflectionSchema = z.object({ actorId: id, text: segmentText }).strict();
 const segment = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("dialogue"),
       speakerId: id,
-      text: z.string().min(1).max(2000),
+      text: segmentText,
       id: label.optional(),
       delivery: z
         .enum(["ordinary", "whisper", "shout"])
@@ -76,7 +79,7 @@ const segment = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("narration"),
-      text: z.string().min(1).max(2000),
+      text: segmentText,
       id: label.optional(),
       sound: z
         .object({ sourceId: id, text: z.string().min(1).max(300), loud: z.literal(true).optional() })

@@ -14,6 +14,8 @@ import {
   departureContinuityAvailable,
 } from "../packages/villages/src/server/domain/rules/return-catchup-capture.js";
 import { createReturnCatchup } from "../packages/villages/src/server/features/background/return-catchup-service.js";
+import { backgroundSlotId } from "../packages/villages/src/server/domain/rules/background-revision.js";
+import { returnCatchupSubject } from "../packages/villages/src/server/domain/rules/return-catchup-authority.js";
 import {
   discoverReturnBatch,
   recordReturnVisibility,
@@ -311,6 +313,12 @@ working = structuredClone(tracking);
 working.returnCatchup!.batch!.status = "failed";
 working.returnCatchup!.batch!.records![0]!.status = "queued";
 let releaseRetry: (() => void) | undefined;
+const retryInstance = "12345678-1234-4abc-8def-123456789abc";
+const retryOpportunity = working.returnCatchup!.batch!.opportunities![0]!;
+const retrySlot = backgroundSlotId({
+  kind: "resident-planning",
+  subjectId: returnCatchupSubject("grounded-return", retryOpportunity.id),
+});
 const retryCoordinator = createReturnCatchup({
   readSnapshot: async () => structuredClone(working),
   mutate: async (change: any) => {
@@ -318,11 +326,13 @@ const retryCoordinator = createReturnCatchup({
     return structuredClone(working);
   },
   queue: async () => {},
-  job: async () => ({ id: "job", status: "failed", attempt: 1, error: "failed" }),
-  retryJob: async () =>
-    new Promise<void>((resolve) => {
+  job: async () => ({ id: "1".repeat(64), instanceId: retryInstance, status: "failed", attempt: 1 }),
+  retryJob: async (...args: unknown[]) => {
+    assert.deepEqual(args, [retrySlot, 1, "retry-action", retryInstance]);
+    return new Promise<void>((resolve) => {
       releaseRetry = resolve;
-    }),
+    });
+  },
   cancel: async () => {},
   settle: async () => "settled",
   hasPresence: () => true,

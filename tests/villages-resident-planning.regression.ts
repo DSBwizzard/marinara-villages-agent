@@ -251,8 +251,11 @@ await runCase("resident-planning/reflection", async () => {
   const f = fixture();
   await f.service.reconcile(f.now);
   const input = f.queued[0].input;
+  const reflection =
+    "She turns over the afternoon's noise and what it meant for her music. ".repeat(9) +
+    "Mara privately decides she wants a quieter studio.";
   f.payload({
-    reflection: { actorId: "mara", text: "Mara privately decides she wants a quieter studio." },
+    reflection: { actorId: "mara", text: reflection },
     keep: [
       {
         id: "wish",
@@ -266,11 +269,14 @@ await runCase("resident-planning/reflection", async () => {
     requires: ["wish"],
   });
   const result = await f.service.handler.generate(input);
-  f.service.handler.apply(f.state, input, result, { retrying: false });
+  f.service.handler.apply(f.state, input, structuredClone(result), { retrying: true });
+  assert.equal(f.state.episodes.records.at(-1)?.segments[0]?.content, reflection);
   assert(f.views("mara").some((row) => row.version.class === "desire"));
   assert.equal(f.views("leo").length, 0);
   assert.equal(f.views("player").length, 0);
   assert.equal(f.calls.length, 1);
+  f.payload({ reflection: { actorId: "mara", text: "x".repeat(2001) } });
+  await assert.rejects(f.service.handler.generate(input), /at most 2000|<=2000/);
 });
 await runCase("resident-planning/mail", async () => {
   const f = fixture();

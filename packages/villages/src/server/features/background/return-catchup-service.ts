@@ -6,6 +6,7 @@ import {
   recordReturnVisibility,
 } from "../../domain/rules/return-catchup-state.js";
 import { conflict } from "../../domain/rules/errors.js";
+import { backgroundSlotId } from "../../domain/rules/background-revision.js";
 import { activityDate } from "../../domain/rules/event-attempts.js";
 import { departureContinuityAvailable } from "../../domain/rules/return-catchup-capture.js";
 
@@ -228,10 +229,9 @@ export function createReturnCatchup(ports: Ports) {
       if (!record) throw conflict("There is no unfinished catch-up work.");
       if (batch.status !== "failed") throw conflict("Catch-up does not need a retry.");
       const opportunity = batch.opportunities?.find((row) => row.id === record.opportunityId);
-      const job = await ports.job(
-        opportunity?.kind === "world" ? "world-development" : "resident-planning",
-        returnCatchupSubject(batch.id, record.opportunityId),
-      );
+      const kind = opportunity?.kind === "world" ? "world-development" : "resident-planning";
+      const subjectId = returnCatchupSubject(batch.id, record.opportunityId);
+      const job = await ports.job(kind, subjectId);
       await update(batch.id, (world) => {
         world.returnCatchup!.batch!.status = "running";
         if (record.status === "held")
@@ -240,7 +240,7 @@ export function createReturnCatchup(ports: Ports) {
       });
       try {
         if (job && ["failed", "interrupted", "paused"].includes(job.status))
-          await ports.retryJob(job.id, job.attempt, actionId, job.instanceId);
+          await ports.retryJob(backgroundSlotId({ kind, subjectId }), job.attempt, actionId, job.instanceId);
         // With no saved job, the next poll will admit the original opportunity.
       } catch (error) {
         await update(batch.id, (world) => {

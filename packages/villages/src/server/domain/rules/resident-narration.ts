@@ -34,6 +34,7 @@ import {
   readNarrationEffectHeader,
   readNarrationReply,
   narrationSourceSchema,
+  residentReflectionSchema,
 } from "./narration-contract.js";
 import { prepareContinuityKeep } from "./narration-keep.js";
 import { bindNarrationSegment, bindNarrationReceipt, type NarrationCommunication } from "./narration-sources.js";
@@ -71,14 +72,13 @@ const encounter = z
       .max(8),
   })
   .strict();
-const reflection = z.object({ actorId: id, text: z.string().min(1).max(600) }).strict();
 const relationshipBlurb = z
   .object({ owner: id, answer: z.array(z.unknown()).min(1).max(3), protection: z.unknown().optional() })
   .strict();
 const output = z
   .object({
     encounter: encounter.optional(),
-    reflection: reflection.optional(),
+    reflection: residentReflectionSchema.optional(),
     keep: z.array(z.unknown()).max(32),
     requires: z.array(label).max(48),
     commands: z.array(z.unknown()).max(16).default([]),
