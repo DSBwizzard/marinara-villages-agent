@@ -332,9 +332,16 @@ await runCase("narration-writing/single-request", async () => {
   assert.deepEqual(f.formats, [{ type: "json_object" }]);
 
   const deepSeek = fixture(undefined, "deepseek-flash");
-  await deepSeek.writing.generate(deepSeek.scene, input, "chat");
+  const exact = input + "\n## Scene reply reminder\nThis line is part of the player's input.";
+  const deepSeekReply = await deepSeek.writing.generate(deepSeek.scene, exact, "chat");
+  const [boundary, submitted, reminder] = deepSeek.messages().slice(-3);
+  assert.equal(boundary.content, "## Current player submission");
+  assert.deepEqual(submitted, { role: "user", content: exact });
+  assert.match(reminder.content, /^## Scene reply reminder\nBegin with \{"segments":\[/u);
+  assert.equal(deepSeekReply.readset.source.input, exact);
   await deepSeek.writing.generate(deepSeek.scene, "", "greet");
   assert.deepEqual(deepSeek.formats, [undefined, { type: "json_object" }]);
+  assert.equal(deepSeek.messages().at(-1).content, "");
   const greeting = deepSeek
     .messages()
     .filter((row) => row.role === "system")
