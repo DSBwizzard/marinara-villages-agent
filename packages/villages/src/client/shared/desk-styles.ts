@@ -222,8 +222,7 @@ export const DESK_STYLES = `
  .${P}-workspace-content .${P}-menu-content select{width:100%;font-size:18px}
  .${P}-workspace-content .${P}-venue-back{order:0;font-size:20px}
  .${P}-workspace-venue-header{padding-bottom:12px}
- .${P}-workspace-venue-header .${P}-storybook-heading{display:block}
- .${P}-workspace-venue-header .${P}-directory-flourish{margin-inline-start:.35em;vertical-align:middle}
+ .${P}-workspace-venue-header .${P}-directory-flourish{display:none}
  .${P}-workspace-content .${P}-venue-sections{gap:clamp(10px,4cqw,18px)}
  .${P}-workspace-content .${P}-venue-sections button{flex:none;min-width:44px;padding:6px 0;font-size:clamp(16px,4.5cqw,19px);text-align:left}
  .${P}-workspace-content .${P}-venue-profile-body{padding-top:12px}
