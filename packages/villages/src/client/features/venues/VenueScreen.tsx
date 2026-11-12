@@ -16,7 +16,6 @@ import { useLetterFont } from "../../shared/letter-font-css.js";
 import type { VenueScreenController } from "./screen-contracts.js";
 import { venueDisplayZones, type VenueDisplayZone } from "./venue-view.js";
 import { VenueLayoutEditor } from "./VenueLayoutEditor.js";
-import { ZoneAccessLabels } from "./ZoneAccessLabels.js";
 import { VillageIcon } from "../../shared/VillageIcon.js";
 
 function VenueName({ place, controller }: { place: VillageVenue; controller: VenueScreenController }) {
@@ -639,7 +638,7 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
                       </span>
                       <span className={`${ELEMENT_TAG}-venue-zone-caption`}>
                         <span>{zone.name}</span>
-                        <ZoneAccessLabels zone={zone} hideOpen />
+                        {zone.accessLabel !== "Open to you" ? <small>{zone.accessLabel}</small> : null}
                       </span>
                       <span className={`${ELEMENT_TAG}-venue-zone-chevron`} aria-hidden="true">
                         ›

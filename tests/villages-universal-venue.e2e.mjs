@@ -315,7 +315,12 @@ await withBrowser(browser, async () => {
     await tabs.getByRole("button", { name: "Zones", exact: true }).click();
     const picker = profile.getByRole("region", { name: "Zones", exact: true });
     await expect(picker.getByRole("button")).toHaveCount(4);
-    await picker.getByRole("button", { name: /^Sleeping Alcove/ }).click();
+    const alcove = picker.getByRole("button", { name: /^Sleeping Alcove/ });
+    await expect(alcove.locator("small")).toHaveText(["Permission required"]);
+    await expect(picker.getByRole("button", { name: /^Main Bay/ }).locator("small")).toHaveText([
+      "Permission required",
+    ]);
+    await alcove.click();
     const roomBackdrop = profile.locator(`.${prefix}-venue-zone-photo`);
     await expect(roomBackdrop).toHaveAttribute("src", mapImage);
     await expect(profile.locator(".villages-zone-map")).toHaveCount(0);
@@ -366,7 +371,7 @@ await withBrowser(browser, async () => {
     await chooseRoom("Sleeping Alcove");
     const detail = editor.locator(`.${prefix}-venue-zone-details`);
     await expect(detail.getByText("Private", { exact: true })).toHaveCount(0);
-    await expect(detail.getByText("Permission needed", { exact: true })).toHaveCount(0);
+    await expect(detail.getByText("Permission required", { exact: true })).toHaveCount(0);
     await expect(detail.getByText("Private details have not been shared with you.")).toHaveCount(0);
     const generate = detail.getByRole("button", { name: "Generate artwork", exact: true });
     await expect(generate).toBeDisabled();
