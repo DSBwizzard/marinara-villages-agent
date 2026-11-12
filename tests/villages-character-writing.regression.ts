@@ -80,7 +80,7 @@ state.villagers.push(absent);
 retainAuthoredNote(state, "absent-secret", "UNRELATED SECRET FROM AN ABSENT RESIDENT", ["absent"], at);
 retainAuthoredNote(state, "scripted-secret", "SCRIPTED TELL SECRET", ["absent"], at);
 const scene = { placeId: venue.id, zoneId: "exterior", startedAt: at };
-const prepared = await prepareScenePrompt(state, card, "chat", "What is your vision for our future?", scene);
+const prepared = await prepareScenePrompt(state, card, "chat", "Would you like to see a concert?", scene);
 const next = await prepareScenePrompt(state, card, "chat", "A different question?", {
   ...scene,
   startedAt: "2026-10-07T12:01:00.000Z",

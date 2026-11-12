@@ -274,9 +274,16 @@ export function selectActorContinuity(
     if (foreground) take(foreground);
   }
   for (const row of surplus) take(row);
-  for (const { row, score } of rank(all, request.query, (row) =>
+  const asksAboutWishes =
+    request.initiative === false &&
+    /\b(?:what (?:do|would) you (?:want|hope|wish)|your (?:goals?|wishes?))\b/iu.test(request.query);
+  const query = asksAboutWishes ? request.query + " wishes" : request.query;
+  for (const { row, score } of rank(all, query, (row) =>
     [
       row.version.text,
+      ...(asksAboutWishes && row.current && row.version.class === "desire" && continuityGuidesHolder(row)
+        ? ["wishes"]
+        : []),
       ...(request.initiative === false && row.current && row.version.class === "commitment"
         ? ["promise promised"]
         : []),

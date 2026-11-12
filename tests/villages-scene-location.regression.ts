@@ -249,7 +249,10 @@ console.log(
   const accepted = acceptNarration(world, { raw, readset, responseDigest: memoryHash(raw) }, "earlier-submission", at);
   assert.equal(accepted.held, false, JSON.stringify(accepted.rejected));
   const before = memoryHash(world.episodes);
-  const prompt = await currentScenePrompt(world, card, "chat", "Which moonflower tea did I dislike?", scene);
+  const fact = await currentScenePrompt(world, card, "chat", "Which moonflower tea did I dislike?", scene);
+  assert(fact.includes("The player says moonflower tea tastes bitter."));
+  assert(!fact.includes(submitted));
+  const prompt = await currentScenePrompt(world, card, "chat", "Quote what I said about moonflower tea.", scene);
   const interaction = scenePromptPacket(prompt, "interaction").interaction;
   assert.equal(interaction.gmPrivateInput, submitted);
   assert.deepEqual(
