@@ -274,8 +274,9 @@ export const DESK_STYLES = `
  .${P}-venue-profile .${P}-venue-photo{bottom:auto;height:100cqh}
  .${P}-venue-profile .${P}-venue-navigation{margin-bottom:4px}
  .${P}-venue-profile :is(.${P}-workspace-venue-header,.${P}-venue-sections,.${P}-venue-profile-body){width:min(100%,30rem)}
+ .${P}-venue-profile:has(.${P}-venue-zone-picker:not([inert])){padding-block-end:4px}
  .${P}-venue-zone-picker{max-width:none;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
- .${P}-venue-zone-picker button{display:grid;grid-template-columns:clamp(38px,12cqw,56px) minmax(0,1fr);gap:6px;min-height:53px;padding:4px 14px 4px 5px;border:1px solid #c2a6a550;border-inline-start:3px solid transparent;border-radius:6px;background:#32273b88}
+ .${P}-venue-zone-picker button{display:grid;grid-template-columns:clamp(38px,12cqw,56px) minmax(0,1fr);gap:6px;min-height:50px;padding:4px 14px 4px 5px;border:1px solid #c2a6a550;border-inline-start:3px solid transparent;border-radius:6px;background:#32273b88}
  .${P}-venue-zone-picker button[aria-current="true"]{background:#5c394ed9}
  .${P}-venue-zone-thumb{display:grid;place-items:center;width:100%;height:39px;overflow:hidden;border-radius:4px;background:#51374c;color:#d0c1b3}
  .${P}-venue-zone-thumb img{display:block;width:100%;height:100%;object-fit:cover}
