@@ -393,8 +393,11 @@ await withBrowser(browser, async () => {
     await expect(page.locator("[data-desk]")).toHaveAttribute("data-desk", "none");
     await settleLayout();
     const beforeMarker = await cameraGeometry();
+    const statusBar = home.locator("." + P + "-home-bar");
+    await expect(statusBar).toBeVisible();
     await marker.press("Enter");
     await expect(venue.getByRole("heading", { name: "Village Market", exact: true })).toBeFocused();
+    await expect(statusBar).toBeHidden();
     await expect(venue.locator("img")).toHaveAttribute("src", fixture.settings.venues[0].presentation.image.url);
     await expect(venue.getByRole("button", { name: "View venue", exact: true })).toHaveCount(0);
     await expect(venue.getByRole("group", { name: "Venues", exact: true })).toHaveCount(0);
@@ -413,7 +416,7 @@ await withBrowser(browser, async () => {
       const visit = venue.getByRole("button", { name: "Visit venue", exact: true });
       const arrival = home.locator("[data-arrival]");
       const frame = await arrival.boundingBox();
-      await expect(visit).not.toBeInViewport();
+      await expect(visit).not.toBeInViewport({ ratio: 1 });
       const x = frame.x + frame.width * 0.5;
       const start = frame.y + frame.height * 0.85;
       for (let swipe = 0; swipe < 2; swipe++) {
@@ -428,6 +431,7 @@ await withBrowser(browser, async () => {
     await screenshot("arrival");
     await page.keyboard.press("Escape");
     await expect(marker).toBeFocused();
+    await expect(statusBar).toBeVisible();
     await expect.poll(cameraGeometry).toEqual(beforeMarker);
     for (const [id, name] of [
       ["edge", "Edge Venue"],

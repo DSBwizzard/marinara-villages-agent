@@ -114,13 +114,6 @@ export const DESK_STYLES = `
 .${P}-venue-occupants h2{font:700 25px/1.2 var(--menu-font);margin:0 0 8px}.${P}-venue-occupants p{margin:0}
 .${P}-workspace-content .${P}-venue-primary{display:inline-block;margin-top:8px;padding:8px 24px;font:600 clamp(18px,2.1cqw,28px)/1.3 var(--menu-font);min-height:44px;background:#a5ac8b;color:#292938;border:1px solid #a5ac8b;border-radius:6px;cursor:pointer}
 .${P}-workspace-content .${P}-venue-primary:disabled{opacity:.65;cursor:default}
-@container village-desk (max-width:700px){
- .${P}-venue-profile[data-about]::before{background:linear-gradient(0deg,#262134 0%,#262134e8 30%,#26213422 74%,#26213466 100%)}
- .${P}-venue-profile[data-about] :is(.${P}-workspace-venue-header,.${P}-venue-sections,.${P}-venue-profile-body){width:100%}
- .${P}-venue-profile[data-about]:has(.${P}-venue-photo) .${P}-venue-navigation{align-items:start;min-height:min(30cqh,220px)}
- .${P}-venue-profile[data-about] .${P}-venue-profile-body{margin-bottom:0}
- .${P}-venue-profile[data-about] .${P}-venue-primary{width:100%}
-}
 .${P}-workspace-content .${P}-picture-menu :is(summary,div){background:var(--secondary);border-color:var(--menu-field-border)}
 .${P}-workspace-content .${P}-picture-menu summary:focus-visible{outline-color:#dca5ab}
 .${P}-workspace-content .${P}-zone-artwork-frame{border-radius:8px}
@@ -228,8 +221,17 @@ export const DESK_STYLES = `
  .${P}-workspace-content .${P}-menu-content .${P}-label{font-size:19px}
  .${P}-workspace-content .${P}-menu-content select{width:100%;font-size:18px}
  .${P}-workspace-content .${P}-venue-back{order:0;font-size:20px}
- .${P}-workspace-content .${P}-venue-sections{gap:0}
- .${P}-workspace-content .${P}-venue-sections button{flex:1;padding:8px 6px;font-size:19px}
+ .${P}-workspace-venue-header{padding-bottom:12px}
+ .${P}-workspace-venue-header .${P}-storybook-heading{display:block}
+ .${P}-workspace-venue-header .${P}-directory-flourish{margin-inline-start:.35em;vertical-align:middle}
+ .${P}-workspace-content .${P}-venue-sections{gap:clamp(10px,4cqw,18px)}
+ .${P}-workspace-content .${P}-venue-sections button{flex:none;min-width:44px;padding:6px 0;font-size:clamp(16px,4.5cqw,19px);text-align:left}
+ .${P}-workspace-content .${P}-venue-profile-body{padding-top:12px}
+ .${P}-venue-profile[data-about]::before{background:linear-gradient(90deg,#262134a8,transparent),linear-gradient(0deg,#262134 0%,#262134d9 56%,#26213436 100%)}
+ .${P}-venue-profile[data-about] .${P}-venue-navigation{margin-bottom:0;padding-bottom:12px}
+ .${P}-venue-profile[data-about]:has(.${P}-venue-photo) .${P}-venue-navigation{align-items:start;min-height:clamp(54px,17cqh,128px)}
+ .${P}-venue-profile[data-about] :is(.${P}-workspace-venue-header,.${P}-venue-sections,.${P}-venue-profile-body){width:min(100%,30rem)}
+ .${P}-venue-profile[data-about] .${P}-venue-primary{width:auto;min-width:8rem}
  .${P}-desk-workspace[data-venue="true"] .${P}-workspace-sidebar{display:none}
  .${P}-desk-workspace[data-desk="places"] .${P}-home{height:auto;min-height:0;display:block}
  .${P}-desk-workspace[data-desk="places"] .${P}-home>.${P}-room{display:flex;flex-direction:column;height:auto;gap:14px;overflow:visible;padding:0}

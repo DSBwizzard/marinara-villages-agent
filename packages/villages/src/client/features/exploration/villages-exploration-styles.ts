@@ -14,6 +14,7 @@ export const EXPLORATION_STYLES = `
 }
 .${P}-sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
 .${P}-home-full .${P}-home-bar { min-height:48px; padding:4px 12px; gap:10px; border-bottom:1px solid var(--explore-border); background:var(--explore-background); }
+.${P}-home-full .${P}-home-bar[hidden] { display:none; }
 .${P}-map-identity { display:flex; align-items:center; gap:12px; min-width:0; max-width:42%; }
 .${P}-map-identity>strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14px; }
 .${P}-home-full .${P}-mobile-datetime { border:0; background:transparent; color:var(--explore-muted); padding:0; gap:5px; }

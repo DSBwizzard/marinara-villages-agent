@@ -219,7 +219,8 @@ export function ExplorationScreen({
   const navigatorOpen = !placingProjectId && exploreSheet?.tab === "places";
   const mapViewport = useRef<HTMLDivElement>(null);
   const arriveAtVenue = (place: VillageVenue) => {
-    const frame = mapViewport.current?.getBoundingClientRect();
+    // The arrival viewport starts above the map's status bar.
+    const frame = mapViewport.current?.closest(`.${ELEMENT_TAG}-home-full`)?.getBoundingClientRect();
     const pin = mapViewport.current
       ?.querySelector(`button[data-pin-id="${CSS.escape(place.id)}"]`)
       ?.getBoundingClientRect();
@@ -308,7 +309,7 @@ export function ExplorationScreen({
       className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-home ${ELEMENT_TAG}-home-full`}
       data-mobile={mobile ? "true" : "false"}
     >
-      <div className={`${ELEMENT_TAG}-home-bar`} inert={!!arrival}>
+      <div className={`${ELEMENT_TAG}-home-bar`} hidden={!!arrival}>
         <span className={`${ELEMENT_TAG}-map-identity`}>
           <strong>{snapshot?.village.name}</strong>
           <HomeDateWeather weather={snapshot?.village.weather ?? ""} village={snapshot?.village} />
