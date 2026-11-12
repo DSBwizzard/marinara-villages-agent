@@ -10,6 +10,7 @@ import { playerDisplayName } from "../../shared/presentation.js";
 import { venueAssignedCountFor, venueCapacityFor, venueClassesFor } from "../../shared/venue.js";
 import { WorkspaceShell } from "../../shared/WorkspaceShell.js";
 import { StorybookHeading } from "../../shared/StorybookHeading.js";
+import { useLetterFont } from "../../shared/letter-font-css.js";
 import type { VenueScreenController } from "./screen-contracts.js";
 import { venueDisplayZones, type VenueDisplayZone } from "./venue-view.js";
 import { VenueLayoutEditor } from "./VenueLayoutEditor.js";
@@ -473,11 +474,13 @@ function AssignedVillagers({
   );
 }
 
-export function VenueScreen({ controller }: { controller: VenueScreenController }) {
+export function VenueScreen({ controller, fromMap = false }: { controller: VenueScreenController; fromMap?: boolean }) {
   const confirmVillages = useConfirmation();
   const [zoneNameDirty, setZoneNameDirty] = useState(false);
   const [zoneEditorKey, setZoneEditorKey] = useState(0);
   const zoneNameEditor = useRef<{ save(): Promise<boolean> }>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  useLetterFont(fromMap ? "lora" : undefined);
   const {
     snapshot,
     venueId,
@@ -499,6 +502,9 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
   } = controller;
   const lighting = useVillageLighting(snapshot?.village);
   const place = snapshot?.settings.venues.find((venue) => venue.id === venueId);
+  useLayoutEffect(() => {
+    if (fromMap) heading.current?.focus({ preventScroll: true });
+  }, [fromMap, place?.id]);
   const navigationSelection = useMemo(
     () => ({ venueId, venueZoneKey, venueSection }),
     [venueId, venueZoneKey, venueSection],
@@ -578,105 +584,81 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
     place.residentIds ?? (place.occupancy.residentCharacterId ? [place.occupancy.residentCharacterId] : []);
   const entrance = place.zones?.find((zone) => zone.kind === "exterior");
   const backdrop =
-    snapshot.isFounded && lighting === "night" && entrance?.dayNight && entrance.nightImage
-      ? entrance.nightImage
-      : place.presentation.image;
+    (snapshot.isFounded && lighting === "night" && entrance?.dayNight ? entrance.nightImage : null) ??
+    entrance?.image ??
+    place.presentation.image;
   const map = snapshot.settings.maps?.find((entry) => entry.id === place.presentation.mapId);
   const visit = () =>
     activeScene && room.placeId === place.id ? setScreen("room") : void openRoom(place, exterior?.id);
-  const selectPlace = async (id: string) => {
-    if (id === place.id) return true;
-    if (!(await canLeave())) return false;
-    const next = snapshot.settings.venues.find((venue) => venue.id === id);
-    if (!next) return false;
-    setZoneNameDirty(false);
-    controller.openPlace(next);
-    return true;
+  const about = venueSection === "about";
+  const returnToMap = async () => {
+    if (await canLeave()) leaveVenue(fromMap ? undefined : "map");
   };
-  const sidebar = (
-    <>
-      <StorybookHeading as="h2">Places</StorybookHeading>
-      <label className={`${ELEMENT_TAG}-workspace-venue-picker`}>
-        Venue
-        <select
-          disabled={navigationBusy}
-          value={place.id}
-          onChange={async (event) => {
-            const select = event.currentTarget;
-            if (!(await selectPlace(select.value))) select.value = place.id;
-          }}
-        >
-          {snapshot.settings.venues.map((entry) => (
-            <option key={entry.id} value={entry.id}>
-              {entry.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <div className={`${ELEMENT_TAG}-workspace-venues`} role="group" aria-label="Venues">
-        {snapshot.settings.venues.map((entry) => (
-          <button
-            key={entry.id}
-            type="button"
-            disabled={navigationBusy}
-            aria-pressed={entry.id === place.id}
-            onClick={() => selectPlace(entry.id)}
-          >
-            <span>
-              <strong>{entry.name}</strong>
-            </span>
-            <span aria-hidden="true">›</span>
-          </button>
-        ))}
-      </div>
-    </>
-  );
   return (
-    <WorkspaceShell sidebar={sidebar} beforeLeave={canLeave} disabled={navigationBusy}>
-      <div className={`${ELEMENT_TAG}-venue-profile`}>
-        <header className={`${ELEMENT_TAG}-header ${ELEMENT_TAG}-workspace-venue-header`}>
+    <WorkspaceShell beforeLeave={canLeave} disabled={navigationBusy}>
+      <section
+        className={`${ELEMENT_TAG}-venue-profile`}
+        aria-label="Venue"
+        data-about={about || undefined}
+        onKeyDown={(event) => {
+          if (
+            !fromMap ||
+            event.key !== "Escape" ||
+            event.defaultPrevented ||
+            (event.target instanceof Element && event.target.closest("dialog[open], details[open]"))
+          )
+            return;
+          event.preventDefault();
+          event.stopPropagation();
+          void returnToMap();
+        }}
+      >
+        <div className={`${ELEMENT_TAG}-venue-navigation`}>
           <button
             type="button"
             className={`${ELEMENT_TAG}-venue-back`}
+            aria-label={fromMap ? "Back to map" : undefined}
             disabled={navigationBusy}
-            onClick={async () => {
-              if (await canLeave()) leaveVenue("map");
-            }}
+            onClick={returnToMap}
           >
-            ← Back to map
+            {fromMap ? "← Map" : "← Back to map"}
           </button>
-          <div>
-            <h1 className={`${ELEMENT_TAG}-title`}>{place.name}</h1>
-            <dl className={`${ELEMENT_TAG}-venue-metadata`} aria-label="Venue details">
-              <div>
-                <dt>Type</dt>
-                <dd>{place.venueType || venueClassesFor(place).join(" · ") || "Venue"}</dd>
-              </div>
-              {map ? (
-                <div>
-                  <dt>Map</dt>
-                  <dd>{map.name}</dd>
-                </div>
-              ) : null}
-              {snapshot.settings.communityVenueId === place.id ? (
-                <div>
-                  <dt>Use</dt>
-                  <dd>Community Venue</dd>
-                </div>
-              ) : null}
-              {place.constructionStatus === "worksite" ? (
-                <div>
-                  <dt>Status</dt>
-                  <dd>Worksite</dd>
-                </div>
-              ) : null}
-            </dl>
-          </div>
           {activeScene ? (
             <button type="button" className={`${ELEMENT_TAG}-venue-back`} disabled={navigationBusy} onClick={back}>
               Back to Scene
             </button>
           ) : null}
+        </div>
+        <header className={`${ELEMENT_TAG}-workspace-venue-header`}>
+          <StorybookHeading ref={heading} tabIndex={fromMap ? -1 : undefined}>
+            {place.name}
+          </StorybookHeading>
+          <dl className={`${ELEMENT_TAG}-venue-metadata`} aria-label="Venue details">
+            {!fromMap || !about ? (
+              <div>
+                <dt>Type</dt>
+                <dd>{place.venueType || venueClassesFor(place).join(" · ") || "Venue"}</dd>
+              </div>
+            ) : null}
+            {map ? (
+              <div>
+                <dt>Map</dt>
+                <dd>{map.name}</dd>
+              </div>
+            ) : null}
+            {snapshot.settings.communityVenueId === place.id ? (
+              <div>
+                <dt>Use</dt>
+                <dd>Community Venue</dd>
+              </div>
+            ) : null}
+            {place.constructionStatus === "worksite" ? (
+              <div>
+                <dt>Status</dt>
+                <dd>Worksite</dd>
+              </div>
+            ) : null}
+          </dl>
         </header>
         <nav className={`${ELEMENT_TAG}-venue-sections`} aria-label="Venue sections">
           {(["about", "zones", "manage"] as const).map((section) => (
@@ -697,8 +679,8 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
         </nav>
         <main className={`${ELEMENT_TAG}-venue-profile-body`}>
           {navigationBusy ? <p role="status">Saving…</p> : null}
-          {venueSection === "about" ? (
-            <section className={`${ELEMENT_TAG}-workspace-about`} data-photo={!!backdrop} aria-label="About this venue">
+          {about ? (
+            <section className={`${ELEMENT_TAG}-workspace-about`} aria-label="About this venue">
               {backdrop ? (
                 <figure className={`${ELEMENT_TAG}-venue-photo`}>
                   <img src={backdrop.url} alt={place.name} />
@@ -741,6 +723,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
                   <button
                     type="button"
                     className={`${ELEMENT_TAG}-venue-primary`}
+                    aria-label={!roomBusy && (!activeScene || room.placeId !== place.id) ? "Visit venue" : undefined}
                     disabled={
                       roomBusy ||
                       (!!activeScene && room.placeId !== place.id) ||
@@ -752,7 +735,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
                       ? "Opening Scene…"
                       : activeScene && room.placeId === place.id
                         ? "Return to Scene"
-                        : "Visit venue"}
+                        : "Visit"}
                   </button>
                 )}
               </div>
@@ -854,7 +837,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
           {venueEditError ? <p role="alert">{venueEditError}</p> : null}
           {venueEditNotice ? <p role="status">{venueEditNotice}</p> : null}
         </main>
-      </div>
+      </section>
     </WorkspaceShell>
   );
 }

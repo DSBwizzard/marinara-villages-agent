@@ -280,24 +280,18 @@ await withBrowser(browser, async () => {
     await checkArtworkBottom();
     await openProfile();
     let selectedVenue = place.id;
-    const chooseVenue = async (id, name) => {
-      if (width < 700) {
-        await profile.getByRole("button", { name: "← Back to map", exact: true }).click();
-        const row = page
-          .getByRole("complementary", { name: "Places navigator" })
-          .locator(`[data-exploration-row="${selectedVenue}"]`);
-        await expect(row).toBeFocused();
-        await openProfile(id);
-      } else
-        await page
-          .getByRole("group", { name: "Venues", exact: true })
-          .getByRole("button", { name: new RegExp("^" + name) })
-          .click();
+    const chooseVenue = async (id) => {
+      await profile.getByRole("button", { name: "← Back to map", exact: true }).click();
+      const row = page
+        .getByRole("complementary", { name: "Places navigator" })
+        .locator(`[data-exploration-row="${selectedVenue}"]`);
+      await expect(row).toBeFocused();
+      await openProfile(id);
       selectedVenue = id;
     };
-    await chooseVenue(otherId, "The Harbour");
+    await chooseVenue(otherId);
     await expect(profile.getByRole("heading", { name: "The Harbour", exact: true })).toBeVisible();
-    await chooseVenue(place.id, "Warehouse home");
+    await chooseVenue(place.id);
     await expect(profile.getByRole("heading", { name: "Warehouse home", exact: true })).toBeVisible();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     const tabs = profile.getByRole("navigation", { name: "Venue sections" });
@@ -523,8 +517,7 @@ await withBrowser(browser, async () => {
     await expect(profile.getByRole("button", { name: "Generate new picture" })).toHaveCount(0);
     const beforeName = writes.length;
     await profile.getByLabel("Venue name", { exact: true }).fill("Renamed warehouse");
-    if (width < 700) await profile.getByRole("button", { name: "← Back to map", exact: true }).click();
-    else await chooseVenue(otherId, "The Harbour");
+    await profile.getByRole("button", { name: "← Back to map", exact: true }).click();
     await page
       .getByRole("dialog", { name: "Confirm", exact: true })
       .getByRole("button", { name: "Cancel", exact: true })

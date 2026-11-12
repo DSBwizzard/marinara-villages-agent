@@ -9,9 +9,8 @@ import { StorybookHeading } from "../../shared/StorybookHeading.js";
 import { HomeDateWeather, placeSpot } from "../../shared/presentation.js";
 import { useVillageLighting } from "../../shared/useVillageLighting.js";
 import type { ExplorationScreenController } from "./screen-contracts.js";
-import { type CSSProperties, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
 import { PlacesDirectory } from "./PlacesDirectory.js";
-import { StreetView } from "./StreetView.js";
 import type { PlaceDetail, PlaceDirectory, PlaceSummary } from "../../../shared/contracts/places.js";
 
 type MarkerDraft = {
@@ -22,7 +21,15 @@ type MarkerDraft = {
   selected: string;
 };
 
-export function ExplorationScreen({ controller }: { controller: ExplorationScreenController }) {
+export function ExplorationScreen({
+  controller,
+  openMapVenue,
+  arrival,
+}: {
+  controller: ExplorationScreenController;
+  openMapVenue: (place: VillageVenue, origin: string) => void;
+  arrival?: { origin: string; content: ReactNode };
+}) {
   const lighting = useVillageLighting(controller.snapshot?.village);
   const { visible } = useVillageActivity();
   const {
@@ -210,46 +217,16 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
     }
   };
   const navigatorOpen = !placingProjectId && exploreSheet?.tab === "places";
-  const [street, setStreet] = useState<{ id: string; worldScope: string; origin: string } | null>(null);
   const mapViewport = useRef<HTMLDivElement>(null);
-  const mapFocus = useRef("");
-  const streetPlace =
-    street?.worldScope === snapshot?.worldScope &&
-    !navigatorOpen &&
-    !showAllMaps &&
-    !markerDraft &&
-    !placingPlace &&
-    !placingProjectId
-      ? places.find((place) => place.id === street?.id)
-      : undefined;
-  const mapPin = useCallback(
-    (id: string) => mapViewport.current?.querySelector<HTMLButtonElement>(`button[data-pin-id="${CSS.escape(id)}"]`),
-    [],
-  );
-  const openStreet = (place: VillageVenue) => {
+  const arriveAtVenue = (place: VillageVenue) => {
     const frame = mapViewport.current?.getBoundingClientRect();
-    const pin = mapPin(place.id)?.getBoundingClientRect();
+    const pin = mapViewport.current
+      ?.querySelector(`button[data-pin-id="${CSS.escape(place.id)}"]`)
+      ?.getBoundingClientRect();
     const origin =
-      streetPlace && street
-        ? street.origin
-        : frame && pin
-          ? `${pin.x + pin.width / 2 - frame.x}px ${pin.y + pin.height / 2 - frame.y}px`
-          : "center";
-    setStreet({ id: place.id, worldScope: snapshot.worldScope, origin });
-    setOpenPlaceId(place.id);
+      frame && pin ? `${pin.x + pin.width / 2 - frame.x}px ${pin.y + pin.height / 2 - frame.y}px` : "center";
+    openMapVenue(place, origin);
   };
-  const returnToMap = () => {
-    if (streetPlace) {
-      mapFocus.current = streetPlace.id;
-      setOpenPlaceId(streetPlace.id);
-    }
-    setStreet(null);
-  };
-  useLayoutEffect(() => {
-    if (streetPlace || !mapFocus.current) return;
-    mapPin(mapFocus.current)?.focus({ preventScroll: true });
-    mapFocus.current = "";
-  }, [mapPin, streetPlace]);
   const selectPlace = (place: VillageVenue) => {
     setFocusSearch(false);
     explorationOrigin.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -302,23 +279,21 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
             selected: pin.id === openPlaceId,
             onSelect:
               place && !busy && !placingProjectId && !placingPlace
-                ? () => (navigatorOpen ? openPlace(place) : openStreet(place))
+                ? () => (navigatorOpen ? openPlace(place) : arriveAtVenue(place))
                 : undefined,
           };
         });
   const navigation = (
     <ExplorationNavigation
       active={mobile ? (exploreSheet?.tab ?? "map") : "map"}
-      disabled={!snapshot || busy}
+      disabled={!snapshot || busy || !!arrival}
       onChoose={(tab, button) => {
         explorationOrigin.current = button;
         explorationReturnTab.current = tab;
         if (tab === "map") {
-          if (streetPlace) returnToMap();
-          else closeExploration();
+          closeExploration();
           setShowAllMaps(false);
         } else if (tab === "places") {
-          setStreet(null);
           setFocusSearch(true);
           setExploreSheet({ tab: "places" });
         } else {
@@ -333,7 +308,7 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
       className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-home ${ELEMENT_TAG}-home-full`}
       data-mobile={mobile ? "true" : "false"}
     >
-      <div className={`${ELEMENT_TAG}-home-bar`}>
+      <div className={`${ELEMENT_TAG}-home-bar`} inert={!!arrival}>
         <span className={`${ELEMENT_TAG}-map-identity`}>
           <strong>{snapshot?.village.name}</strong>
           <HomeDateWeather weather={snapshot?.village.weather ?? ""} village={snapshot?.village} />
@@ -479,7 +454,7 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
               <div className={`${ELEMENT_TAG}-places-title`}>
                 <StorybookHeading>Places</StorybookHeading>
               </div>
-              {!placingProjectId && !markerDraft && !streetPlace ? (
+              {!placingProjectId && !markerDraft && !arrival ? (
                 <div className={`${ELEMENT_TAG}-map-tools`}>
                   <button
                     type="button"
@@ -530,11 +505,11 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
               <div
                 className={`${ELEMENT_TAG}-home-map-viewport`}
                 ref={mapViewport}
-                data-street={streetPlace ? true : undefined}
-                style={streetPlace ? ({ "--street-origin": street?.origin } as CSSProperties) : undefined}
+                data-arrival={!!arrival || undefined}
+                style={arrival ? ({ "--arrival-origin": arrival.origin } as CSSProperties) : undefined}
               >
                 <MapStage
-                  inert={!!streetPlace}
+                  inert={!!arrival}
                   navigationControlsOnMobile={navigatorOpen}
                   key={selectedMap?.id}
                   lighting={lighting}
@@ -664,21 +639,7 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
                     <div className={ELEMENT_TAG + "-maps-empty"}>No Venues on this map.</div>
                   ) : null}
                 </MapStage>
-                {streetPlace ? (
-                  <StreetView
-                    place={streetPlace}
-                    places={places}
-                    lighting={lighting}
-                    busy={busy}
-                    error={error}
-                    ending={lastSceneEnding}
-                    actions={venueExplorationActions(streetPlace).filter(
-                      (action) => action.label !== "Visit" || !room || room.status === "closed",
-                    )}
-                    onPath={openStreet}
-                    onMap={returnToMap}
-                  />
-                ) : null}
+                {arrival ? <div className={ELEMENT_TAG + "-venue-arrival"}>{arrival.content}</div> : null}
               </div>
             </div>
           </>

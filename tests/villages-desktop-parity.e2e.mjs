@@ -586,7 +586,6 @@ await withBrowser(browser, async () => {
     if (width === 1440) {
       await page.getByRole("button", { name: "Return to map" }).first().click();
       await home.locator('[data-pin-id="home"]').click();
-      await page.getByRole("region", { name: "Street view" }).getByRole("button", { name: "View venue" }).click();
       await expect(page.getByRole("heading", { name: "Mara's home", exact: true })).toBeVisible();
       await page
         .getByRole("navigation", { name: "Venue sections" })
