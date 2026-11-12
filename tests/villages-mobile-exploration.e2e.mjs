@@ -447,12 +447,18 @@ await withBrowser(browser, async () => {
     if (mobile && height === 500) {
       await tabs.getByRole("button", { name: "Zones", exact: true }).click();
       const list = venue.getByRole("region", { name: "Zones", exact: true });
+      const editor = venue.getByRole("region", { name: "Edit room details", exact: true });
+      const backToZones = editor.getByRole("button", { name: "← Zones", exact: true });
       await expect(list.getByRole("button")).toHaveCount(6);
       const roomWithArtwork = list.getByRole("button", { name: /^Room 1\b/ });
-      await roomWithArtwork.click();
-      await expect(roomWithArtwork).toHaveAttribute("aria-pressed", "true");
       await expect(roomWithArtwork.locator("img")).toHaveAttribute("src", roomImage.url);
+      await expect(venue.locator("." + P + "-venue-zone-editor")).toHaveCSS("translate", "100%");
+      await roomWithArtwork.click();
+      await expect(backToZones).toBeFocused();
+      await expect(editor.getByRole("heading", { name: "Room 1", exact: true })).toBeVisible();
       await expect(backdrop).toHaveAttribute("src", market.presentation.image.url);
+      await backToZones.click();
+      await expect(roomWithArtwork).toBeFocused();
       const lastZone = list.getByRole("button", { name: /^Room 5/ });
       const arrival = home.locator("[data-arrival]");
       const frame = await arrival.boundingBox();
@@ -468,19 +474,18 @@ await withBrowser(browser, async () => {
       }
       await expect(lastZone).toBeInViewport({ ratio: 1 });
       await expect(lastZone.locator("." + P + "-venue-zone-thumb svg")).toBeVisible();
+      const scroller = arrival.locator("." + P + "-workspace-content");
+      const listScroll = await scroller.evaluate((node) => node.scrollTop);
       await lastZone.click();
-      await expect(lastZone).toHaveAttribute("aria-pressed", "true");
-      await tabs.getByRole("button", { name: "Manage", exact: true }).click();
-      const editRoomDetails = venue.getByRole("button", { name: "Edit room details", exact: true });
-      await editRoomDetails.click();
+      await expect(backToZones).toBeFocused();
+      await expect(list).toHaveCount(0);
+      await expect(venue.locator("." + P + "-venue-zone-picker")).toHaveCSS("translate", "-100%");
+      await expect(editor.getByRole("textbox", { name: "Room name" })).toHaveValue("Room 5");
       await expect(backdrop).toHaveAttribute("src", market.presentation.image.url);
-      const rooms = venue.getByRole("group", { name: "Rooms", exact: true });
-      await expect(rooms.getByRole("button")).toHaveCount(6);
-      const selectedRoom = rooms.getByRole("button", { name: "Room 5", exact: true });
-      await expect(selectedRoom).toHaveAttribute("aria-pressed", "true");
-      await expect(selectedRoom).toBeInViewport({ ratio: 0.99 });
-      await venue.getByRole("button", { name: "← Manage", exact: true }).click();
-      await expect(editRoomDetails).toBeFocused();
+      await backToZones.press("Escape");
+      await expect(lastZone).toBeFocused();
+      await expect(lastZone).toHaveAttribute("aria-current", "true");
+      await expect.poll(() => scroller.evaluate((node) => node.scrollTop)).toBe(listScroll);
     }
     await screenshot("arrival");
     await page.keyboard.press("Escape");

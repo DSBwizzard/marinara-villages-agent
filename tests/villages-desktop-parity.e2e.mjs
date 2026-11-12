@@ -377,11 +377,11 @@ await withBrowser(browser, async () => {
     assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width, "venue profile stays on screen");
     const sections = doors.getByRole("navigation", { name: "Venue sections" });
     await sections.getByRole("button", { name: "Zones", exact: true }).click();
-    await expect(doors.getByRole("region", { name: "Zones", exact: true })).toBeVisible();
-    await sections.getByRole("button", { name: "Manage", exact: true }).click();
-    await doors.getByRole("button", { name: "Edit room details", exact: true }).click();
+    const zones = doors.getByRole("region", { name: "Zones", exact: true });
+    await zones.getByRole("button", { name: /^Entrance\b/ }).click();
     await expect(doors.getByRole("switch", { name: "Automatic artwork updates" })).toBeVisible();
-    await doors.getByRole("button", { name: "← Manage", exact: true }).click();
+    await doors.getByRole("button", { name: "← Zones", exact: true }).click();
+    await sections.getByRole("button", { name: "Manage", exact: true }).click();
     await expect(doors.getByRole("button", { name: "Plan a renovation" })).toBeVisible();
     await sections.getByRole("button", { name: "About", exact: true }).click();
     if (process.env.VILLAGES_VISUAL_OUTPUT)

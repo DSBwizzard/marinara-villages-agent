@@ -106,9 +106,17 @@ export const DESK_STYLES = `
 .${P}-workspace-content .${P}-venue-primary{display:inline-block;width:auto;margin:8px 0 0;padding:8px 24px;font:600 clamp(17px,1.7cqw,23px)/1.3 var(--menu-font);min-height:44px;background:#a5ac8b;color:#292938;border:1px solid #a5ac8b;border-radius:6px;cursor:pointer}
 .${P}-workspace-content .${P}-venue-primary:disabled{opacity:.65;cursor:default}
 .${P}-venue-arrival .${P}-venue-photo{bottom:auto;height:100cqh}
+.${P}-venue-zone-navigation{display:grid;grid-template-columns:minmax(0,1fr);overflow:clip;overflow-clip-margin:4px}
+.${P}-venue-zone-navigation>section{grid-area:1/1;min-width:0;align-self:start;transition:translate .22s ease}
+.${P}-venue-zone-navigation>section[inert]{height:0;visibility:hidden;transition:translate .22s ease,visibility 0s .22s}
+.${P}-venue-zone-picker[inert]{translate:-100%}
+.${P}-venue-zone-editor[inert]{translate:100%}
+@media(prefers-reduced-motion:reduce){.${P}-venue-zone-navigation>section,.${P}-venue-zone-navigation>section[inert]{transition:none}}
 .${P}-venue-zone-picker{display:grid;max-width:22rem}
-.${P}-venue-zone-picker button{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:2px 12px;min-height:44px;padding:8px 12px;border:0;border-bottom:1px solid var(--border);border-inline-start:3px solid transparent;border-radius:0;background:transparent;color:inherit;font:inherit;text-align:left;overflow-wrap:anywhere;cursor:pointer}
-.${P}-venue-zone-picker button[aria-pressed="true"]{border-inline-start-color:#d29399;background:#514157aa}
+.${P}-venue-zone-picker button{position:relative;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:2px 12px;min-height:44px;padding:8px 34px 8px 12px;border:0;border-bottom:1px solid var(--border);border-inline-start:3px solid transparent;border-radius:0;background:transparent;color:inherit;font:inherit;text-align:left;overflow-wrap:anywhere;cursor:pointer}
+.${P}-venue-zone-picker button[aria-current="true"]{border-inline-start-color:#d29399;background:#514157aa}
+.${P}-venue-zone-chevron{position:absolute;inset-inline-end:10px;top:50%;translate:0 -50%;font-size:1.3em}
+.${P}-venue-zone-editor .${P}-venue-manage-heading{display:grid;justify-items:start;gap:0;margin-bottom:12px;overflow-wrap:anywhere}
 .${P}-venue-zone-thumb{display:none}
 .${P}-venue-zone-caption{display:contents}
 .${P}-venue-zone-picker small,.${P}-venue-assignments small{color:#ded0c2}
@@ -124,7 +132,6 @@ export const DESK_STYLES = `
 .${P}-venue-people .${P}-venue-assignments li{justify-content:flex-start;align-items:baseline;gap:4px 12px;padding:5px 0;border:0}
 .${P}-venue-manage-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
 .${P}-venue-manage-heading h2{margin:0}
-.${P}-workspace-content .${P}-venue-room-picker [aria-pressed="true"]{background:var(--menu-selected);border-color:var(--menu-tab-line)}
 .${P}-venue-connections .villages-zone-map-canvas{height:var(--venue-diagram-height);min-height:0;border:0;background:transparent}
 .${P}-venue-connections .villages-zone-map-canvas>svg{top:calc(22px - var(--venue-diagram-height)*.07)}
 .${P}-venue-connections .villages-zone-map-canvas button.villages-zone-map-tile{min-height:44px;border:1px solid #a39b84;background:#514157;color:#f0dfbc;font-size:clamp(12px,1.6cqw,17px);overflow-wrap:anywhere}
@@ -251,8 +258,8 @@ export const DESK_STYLES = `
  .${P}-venue-profile .${P}-venue-navigation{margin-bottom:4px}
  .${P}-venue-profile :is(.${P}-workspace-venue-header,.${P}-venue-sections,.${P}-venue-profile-body){width:min(100%,30rem)}
  .${P}-venue-zone-picker{max-width:none}
- .${P}-venue-zone-picker button{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;min-height:68px;padding:5px 8px;background:#32273b66}
- .${P}-venue-zone-picker button[aria-pressed="true"]{background:#5c394ed9}
+ .${P}-venue-zone-picker button{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;min-height:68px;padding:5px 32px 5px 8px;background:#32273b66}
+ .${P}-venue-zone-picker button[aria-current="true"]{background:#5c394ed9}
  .${P}-venue-zone-thumb{display:grid;place-items:center;width:clamp(80px,27cqw,118px);height:56px;overflow:hidden;border-radius:5px;background:#51374c;color:#d0c1b3}
  .${P}-venue-zone-thumb img{display:block;width:100%;height:100%;object-fit:cover}
  .${P}-venue-zone-thumb svg{width:24px;height:24px}
@@ -261,8 +268,6 @@ export const DESK_STYLES = `
  .${P}-venue-zone-caption small{font-size:13px}
  .${P}-venue-manage-heading h2{font-size:19px}
  .${P}-workspace-content .${P}-venue-manage-heading .${P}-venue-back{font-size:16px}
- .${P}-venue-room-picker{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin;margin:2px 0 10px}
- .${P}-venue-room-picker button{flex:none;max-width:100%;white-space:normal;overflow-wrap:anywhere;padding-inline:9px;font-size:15px}
  .${P}-venue-zone-details{gap:8px}
  .${P}-venue-summary .${P}-venue-primary{min-width:8rem}
  .${P}-desk-workspace[data-venue="true"] .${P}-workspace-sidebar{display:none}

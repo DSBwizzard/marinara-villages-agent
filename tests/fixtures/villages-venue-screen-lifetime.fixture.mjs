@@ -41,7 +41,7 @@ removeVenue:()=>rawSnapshot(current=>({...current,settings:{...current.settings,
 revision:()=>rawSnapshot(current=>({...current,settings:{...current.settings,venues:current.settings.venues.map(v=>v.id===venueId?{...v,accessView:{...v.accessView,revision:v.accessView.revision+1}}:v)}})),
 read:()=>({setting:snapshot.settings.setting,founded:snapshot.isFounded,screen,venueId,venuePage,venueZoneKey,busy,settingsError,venueEditBusy,venueEditError,venueEditNotice,venueEditDraft,venueProposalDraft,placeProblem})};
 return <><pre id='state'>{JSON.stringify(window.h.read())}</pre>{window.meetingPlace?<PublicMeetingPlace snapshot={snapshot} onSnapshot={setSnapshot}/>:<VenueScreen controller={{...ports,...ui,busy,settingsError,venueEditBusy,venueEditError,venueEditNotice,venueEditDraft,venueProposalDraft,placeProblem,
-homeBuildings:[],room:null,roomBusy:false,drawPlaceImage:async()=>{},dropPlaceImage:async()=>{},keepPlaceImage:async()=>{},leaveVenue:()=>jump({id:null,active:false}),openRoom:async()=>{},retryWork:async()=>{},
+homeBuildings:[],mobile:true,room:null,roomBusy:false,drawPlaceImage:async()=>{},dropPlaceImage:async()=>{},keepPlaceImage:async()=>{},leaveVenue:()=>jump({id:null,active:false}),openRoom:async()=>{},retryWork:async()=>{},
 moveTargetId:'target / B',movePrivateZoneId:' private / target ',playerMovePrivateZoneId:' private / target ',setMoveTargetId:()=>{},setMovePrivateZoneId:()=>{},setPlayerMovePrivateZoneId:()=>{},
 placeBusyId:'',nameOfCharacter:id=>id??'',standingAt:()=>[],setScreen,setVenuePage,setVenueZoneKey,
 venueSection:venuePage==='view'?'zones':'manage',setVenueSection:value=>setVenuePage(value==='zones'?'view':'edit'),planVenueRenovation:()=>{},openVenueRequests:()=>{}}}/>}
@@ -304,7 +304,12 @@ export async function verifyVenueScreenLifetimes(browser) {
     return outcome;
   }
   async function openRoomDetails(f) {
-    await f.page.getByRole("button", { name: "Edit room details", exact: true }).click();
+    await f.page.getByRole("button", { name: "Zones", exact: true }).click();
+    await f.page
+      .getByRole("region", { name: "Zones", exact: true })
+      .getByRole("button", { name: /^A Zone/ })
+      .first()
+      .click();
     return f.page.getByLabel("Room name", { exact: true });
   }
   // State-only lifetime scenarios need one width; responsive UI lives in universal-venue coverage.
@@ -314,7 +319,7 @@ export async function verifyVenueScreenLifetimes(browser) {
         const f = await mount(strict, width, { cleanName: true });
         const name = await openRoomDetails(f);
         await name.fill("Retained name");
-        await f.page.getByRole("button", { name: "← Manage", exact: true }).focus();
+        await f.page.getByRole("button", { name: "← Zones", exact: true }).focus();
         await expect.poll(() => f.requests.length).toBe(1);
         await f.reply(0, { fail: true });
         await expect(name).toHaveValue("Retained name");

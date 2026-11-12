@@ -2038,7 +2038,6 @@ ${VILLAGES_FORGING_STYLES}
 .${ELEMENT_TAG}-venue-zones-layout { min-width:0; }
 .${ELEMENT_TAG}-venue-zones-layout .villages-zone-map { margin:0; }
 .${ELEMENT_TAG}-venue-zones-layout .villages-zone-map-toolbar { margin-top:0; }
-.${ELEMENT_TAG}-venue-room-picker { display:flex; flex-wrap:wrap; gap:.5rem; margin:.5rem 0 1rem; }
 .${ELEMENT_TAG}-venue-zone-details { min-width:0; display:grid; gap:.75rem; }
 .${ELEMENT_TAG}-venue-zone-details h3 { margin:0 0 .5rem; font:inherit; }
 .${ELEMENT_TAG}-venue-room-artwork { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr); gap:.75rem; align-items:start; }

@@ -154,10 +154,12 @@ await withBrowser(browser, async () => {
     const openZonePicture = async () => {
       const editor = page.getByRole("region", { name: "Edit room details", exact: true });
       if (!(await editor.isVisible())) {
-        await page.getByRole("button", { name: "Manage", exact: true }).click();
-        await page.getByRole("button", { name: "Edit room details", exact: true }).click();
+        await page.getByRole("button", { name: "Zones", exact: true }).click();
+        await page
+          .getByRole("region", { name: "Zones", exact: true })
+          .getByRole("button", { name: new RegExp(`^${targetName}\\b`) })
+          .click();
       }
-      await editor.getByRole("group", { name: "Rooms" }).getByRole("button", { name: targetName, exact: true }).click();
     };
     const openSettings = async () => {
       await page.getByRole("button", { name: "Venue actions", exact: true }).click();
