@@ -185,8 +185,8 @@ export function socialPlanCandidates(village: VillageState, now = new Date()): S
     if (plan.kind !== "meeting" || !first || !second) return hashString(plan.id);
     const forward = scores.get(relationshipKey(first, second))?.relationshipScore ?? 0;
     const reverse = scores.get(relationshipKey(second, first))?.relationshipScore ?? 0;
-    // Either resident's reluctance matters; rotation can still outweigh even the strongest attitude.
-    return hashString(plan.id) - (Math.min(forward, reverse) / 100) * 2 ** 30;
+    const warmth = 0.75 * Math.min(forward, reverse) + 0.25 * Math.max(forward, reverse);
+    return hashString(plan.id) - (warmth / 100) * 2 ** 30;
   };
   return [...new Map(result.map((plan) => [plan.id, plan])).values()]
     .sort((a, b) => priority(a) - priority(b))

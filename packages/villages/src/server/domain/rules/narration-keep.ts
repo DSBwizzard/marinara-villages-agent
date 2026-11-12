@@ -205,10 +205,17 @@ export function prepareContinuityKeep(
     admission.relationshipAnswers?.owners.some(
       (actor) => actor.id === owner?.id && actor.incarnation === owner.incarnation,
     );
-  if (relationship?.answer && !answerOffered && (relationship.impact || holders.length > 1)) {
+  if (relationship?.answer && !answerOffered && (relationship.impact || relationship.romance || holders.length > 1)) {
     // Scene recovery still needs to recognize older mixed private/shared proposals.
-    if (!(relationship.impact && holders.length > 1 && sources.some((source) => source.kind === "self")))
-      relationship = relationship.impact ? { impact: relationship.impact } : undefined;
+    if (!(
+      relationship.impact &&
+      !relationship.romance &&
+      holders.length > 1 &&
+      sources.some((source) => source.kind === "self")
+    )) {
+      const { answer: _answer, ...changes } = relationship;
+      relationship = changes.impact || changes.romance ? changes : undefined;
+    }
   }
   const write: ContinuityWrite = {
     id: header.id,

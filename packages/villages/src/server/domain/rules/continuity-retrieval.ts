@@ -12,6 +12,7 @@ import {
   continuityProtectionUnits,
   continuityViews,
   latestRelationshipScores,
+  latestRomanticInterests,
   relationshipKey,
 } from "./continuity.js";
 import { memoryRequire } from "./memory-integrity.js";
@@ -24,18 +25,32 @@ export function relationshipAttitudes(
   actors: Extract<ContinuityHolder, { kind: "actor" }>[],
 ) {
   const scores = latestRelationshipScores(collection);
-  if (!scores.size) return [];
+  const interests = latestRomanticInterests(collection);
+  if (!scores.size && !interests.size) return [];
   return actors
     .filter((owner) => owner.id !== "player")
     .flatMap((owner) =>
       actors.flatMap((subject) => {
         if (owner.id === subject.id) return [];
-        const score = scores.get(relationshipKey(owner, subject))?.relationshipScore;
-        return score === undefined ? [] : [{ for: owner.id, about: subject.id, score }];
+        const key = relationshipKey(owner, subject);
+        const score = scores.get(key)?.relationshipScore;
+        const romanticInterest = interests.get(key)?.romanticInterest;
+        if (score === undefined && romanticInterest === undefined) return [];
+        return [
+          {
+            for: owner.id,
+            about: subject.id,
+            ...(score !== undefined ? { score } : {}),
+            ...(romanticInterest !== undefined ? { romanticInterest } : {}),
+          },
+        ];
       }),
     )
     .sort(
-      (a, b) => Number(b.about === "player") - Number(a.about === "player") || Math.abs(b.score) - Math.abs(a.score),
+      (a, b) =>
+        Number(b.about === "player") - Number(a.about === "player") ||
+        Math.max(Math.abs(b.score ?? 0), (b.romanticInterest ?? 0) * 5) -
+          Math.max(Math.abs(a.score ?? 0), (a.romanticInterest ?? 0) * 5),
     )
     .slice(0, 16);
 }

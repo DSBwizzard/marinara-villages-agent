@@ -307,6 +307,7 @@ export function acceptNarrationContinuity(
       note.class === "perspective" &&
       typeof asRecord(note.relationship).answer === "string" &&
       asRecord(note.relationship).impact === undefined &&
+      asRecord(note.relationship).romance === undefined &&
       Object.keys(note).every((key) =>
         [
           "id",
@@ -487,22 +488,23 @@ export function acceptNarrationContinuity(
         if (keep) {
           let write = keep.write;
           const owner = write.owner;
-          const impact = write.relationship?.impact;
+          const { answer, ...changes } = write.relationship ?? {};
           // A private score and a shared answer may be proposed together even though self cannot support disclosure.
           const privateScoreOnly =
             owner &&
-            impact &&
-            write.relationship?.answer &&
+            changes.impact &&
+            !changes.romance &&
+            answer &&
             !write.target &&
             !referenced.has(id) &&
             write.holders.length === 2 &&
             write.holders.some((holder) => holder.kind === "actor" && holder.id === owner.id) &&
             write.holders.some((holder) => holder.kind === "actor" && holder.id === "player") &&
             keep.sources.some((proof) => proof.kind === "self" && proof.actorId === owner.id);
-          if (privateScoreOnly) write = { ...write, holders: [owner], relationship: { impact } };
+          if (privateScoreOnly) write = { ...write, holders: [owner], relationship: changes };
           if (write.relationship?.answer && closingEffect && !selection.acceptedIds.includes(closingEffect)) {
-            memoryRequire(impact, "relationship answer needs the accepted Scene ending");
-            write = { ...write, relationship: { impact } };
+            memoryRequire(changes.impact || changes.romance, "relationship answer needs the accepted Scene ending");
+            write = { ...write, relationship: changes };
           }
           const next = applyContinuityWrite(continuity, write, keep.admission);
           const root = damageRoots.get(id);

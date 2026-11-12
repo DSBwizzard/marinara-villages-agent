@@ -1,4 +1,4 @@
-// Test cases: relationships/player-snapshot, relationships/scoring, relationships/daily-pacing, relationships/answer-cadence, relationships/behavior-context, relationships/shared-terms, relationships/common-protection, relationships/identity-labels, relationships/native-access, relationships/access-calendar, relationships/pure-reads
+// Test cases: relationships/player-snapshot, relationships/scoring, relationships/daily-pacing, relationships/romantic-interest, relationships/answer-cadence, relationships/behavior-context, relationships/shared-terms, relationships/common-protection, relationships/identity-labels, relationships/native-access, relationships/access-calendar, relationships/pure-reads
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -13,7 +13,11 @@ import {
 import { capturedSceneCalendar } from "../packages/villages/src/server/domain/rules/scene-calendar.js";
 import { captureContinuityContext } from "../packages/villages/src/server/domain/rules/continuity-context.js";
 import { continuityCaptureSchema } from "../packages/villages/src/server/domain/decoding/continuity-context-codec.js";
-import { applyContinuityWrite, continuityHolderKey } from "../packages/villages/src/server/domain/rules/continuity.js";
+import {
+  applyContinuityWrite,
+  continuityHolderKey,
+  continuitySelfSource,
+} from "../packages/villages/src/server/domain/rules/continuity.js";
 import { appendEpisode } from "../packages/villages/src/server/domain/rules/episodes.js";
 import { episodeSpeechEvidence } from "../packages/villages/src/server/domain/rules/episode-sources.js";
 import { prepareContinuityKeep } from "../packages/villages/src/server/domain/rules/narration-keep.js";
@@ -97,7 +101,19 @@ function fixture() {
     const source = { ...episodeSpeechEvidence(episode, episode.segments[0].id)!, ...(act ? { act } : {}) };
     const earlier = earlierId ? state.episodes.records.find((episode) => episode.id === earlierId)! : undefined;
     const historical = earlier ? { prior: earlier.grounding[0] } : {};
-    episode.grounding = [source];
+    const self =
+      write.relationship?.romance && write.owner && write.holders.length === 1
+        ? continuitySelfSource(
+            { seed: state.seed, episodeId: id, operationId: id },
+            {
+              holder: write.owner,
+              writeId: write.id,
+              text: content,
+              class: "perspective",
+            },
+          )
+        : undefined;
+    episode.grounding = self ? [source, self] : [source];
     const admission = {
       seed: state.seed,
       operationId: id,
@@ -140,12 +156,16 @@ function fixture() {
           about: write.about?.map((subject) => subject.id),
           current: write.current,
           relationship: write.relationship,
-          source: earlier ? ["reply", "h:1"] : ["reply"],
+          source: self ? ["reply", "self"] : earlier ? ["reply", "h:1"] : ["reply"],
         },
         0,
         before,
         admission,
-        { ...admission, actors, bindSource: (ref) => (ref === "h:1" ? historical.prior! : source) },
+        {
+          ...admission,
+          actors,
+          bindSource: (ref) => (ref === "self" ? self! : ref === "h:1" ? historical.prior! : source),
+        },
       );
     state.continuity = applyContinuityWrite(
       before,
@@ -384,6 +404,66 @@ await runCase("relationships/daily-pacing", () => {
   assert.equal(score(), 0, "a witnessed earlier day qualifies for the new day's turning point");
   for (let day = 11; day <= 20; day++) shift("earned-" + day, "turning-positive", day, "new-warmth");
   assert.equal(score(), 68, "ten maximum positive days from neutral follow the shrinking allowance");
+});
+
+await runCase("relationships/romantic-interest", () => {
+  const f = fixture();
+  const mara = f.actor("mara"),
+    leo = f.actor("leo");
+  const towards = (owner: string, subject: string) =>
+    f
+      .profiles()
+      .find((row) => row.characterId === owner)!
+      .scores.find((row) => row.person.id === subject)!;
+  const privateWrite = {
+    holders: [mara],
+    owner: mara,
+    about: [leo],
+    class: "perspective" as const,
+    current: true,
+    text: "PRIVATE: this changed Mara’s attraction.",
+  };
+  const change = (
+    id: string,
+    relationship: ContinuityWrite["relationship"],
+    day = at,
+    speaker = "leo",
+    revision?: number,
+  ) => f.keep({ ...privateWrite, id, relationship }, speaker, undefined, revision, day);
+  assert.equal(towards("mara", "leo").romanticInterest, 0);
+  const revision = f.state.continuity.revision;
+  change("spark", { impact: "small-positive", romance: "grows" });
+  assert.equal(towards("mara", "leo").score, 3);
+  assert.equal(towards("mara", "leo").romanticInterest, 1);
+  assert.equal(towards("leo", "mara").romanticInterest, 0);
+  assert.throws(() => change("stale", { romance: "drops" }, at, "leo", revision), /romantic interest changed/);
+  assert.throws(() => change("no-subject", { romance: "grows" }, at, "mara"), /witness this interaction/);
+  assert.throws(
+    () =>
+      f.keep(
+        { ...privateWrite, holders: [mara, leo], id: "shared-romance", relationship: { romance: "grows" } },
+        "mara",
+      ),
+    /witness this interaction/,
+  );
+  change("repeat", { romance: "grows" });
+  assert.equal(towards("mara", "leo").romanticInterest, 1);
+  change("cooling", { romance: "fades" });
+  assert.equal(towards("mara", "leo").romanticInterest, 0);
+  change("same-day", { romance: "grows" });
+  assert.equal(towards("mara", "leo").romanticInterest, 0);
+  change("next-day", { romance: "grows" }, "2026-11-10T12:00:00.000Z");
+  change("warmth-only", { impact: "meaningful-positive" }, "2026-11-10T12:01:00.000Z", "mara");
+  f.cold();
+  assert.equal(towards("mara", "leo").score, 9);
+  assert.equal(towards("mara", "leo").romanticInterest, 1);
+  assert(!JSON.stringify(f.profiles()).includes("PRIVATE"));
+  const scoped = continuityCaptureSchema.parse(captureContinuityContext(f.state, ["mara", "leo"], "", at));
+  assert.deepEqual(scoped.prompt.relationships, [{ for: "mara", about: "leo", score: 9, romanticInterest: 1 }]);
+  const unrelated = captureContinuityContext(f.state, ["player", "leo"], "", at);
+  assert.equal(unrelated.prompt.relationships, undefined);
+  f.state.villagers[0].incarnation = "replacement";
+  assert.equal(towards("mara", "leo").romanticInterest, 0);
 });
 
 await runCase("relationships/answer-cadence", () => {
