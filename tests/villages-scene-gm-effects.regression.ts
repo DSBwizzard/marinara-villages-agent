@@ -116,82 +116,87 @@ await runCase("gm-effects/provider-reply", async () => {
 });
 
 await runCase("gm-effects/relationship-answer", async () => {
-  const host = await packagedSceneServer();
-  const answer = "I enjoy how curious you are when we talk.";
-  let calls = 0;
-  host.model.chatComplete = async (messages: { content: string }[]) => {
-    const concluding = ++calls === 2;
-    const fit = messages.map(({ content }) => content).join("\n");
-    const world = fixtureVillageState(host.records.get("villages-village").data, host.records);
-    assert.equal(
-      fit.includes('"relationshipAnswersDue":["mara"]'),
-      concluding,
-      JSON.stringify({
-        hint: fit.match(/.{0,15}relationshipAnswersDue.{0,65}/g),
-        episodes: world.episodes.records.map((ep) => ({
-          scene: ep.sceneId,
-          authored: !!ep.privateInput,
-          actors: ep.actors,
-          lines: ep.segments.map(({ speakerId, heardBy }) => ({ speakerId, heardBy })),
-        })),
-      }),
-    );
-    return {
-      content: JSON.stringify({
-        segments: [said(concluding ? "See you around." : "It's good to talk.")],
-        ...(concluding
-          ? {
-              keep: [
-                {
-                  for: ["mara"],
-                  owner: "mara",
-                  about: ["player"],
-                  class: "perspective",
-                  current: true,
-                  independent: true,
-                  text: answer,
-                  source: ["self"],
-                  relationship: { answer },
-                },
-              ],
-            }
-          : {}),
-      }),
-      finishReason: "stop",
-      usage: { inputTokens: 10, outputTokens: 10 },
+  for (const native of [false, true]) {
+    const host = await packagedSceneServer();
+    const answer = "I enjoy how curious you are when we talk.";
+    const departure = "I leave now.";
+    let calls = 0;
+    host.model.chatComplete = async (messages: { content: string }[]) => {
+      const ending = ++calls === 2;
+      const fit = messages.map(({ content }) => content).join("\n");
+      assert(fit.includes('"relationshipAnswersDue":["mara"]'));
+      assert.equal(fit.includes("only if this reply uses scene.end"), !ending || native);
+      return {
+        content: JSON.stringify({
+          segments: [
+            said(ending ? "See you around." : "It's good to talk."),
+            ...(ending && native
+              ? [{ id: "exit", kind: "narration", text: "You head out.", requires: ["close"] }]
+              : []),
+          ],
+          ...(ending && native
+            ? {
+                commands: [
+                  {
+                    id: "close",
+                    type: "scene.end",
+                    at: "exit",
+                    source: [{ input: departure, ground: { kind: "visible-action", to: ["mara"] } }],
+                  },
+                ],
+              }
+            : {}),
+          keep: [
+            {
+              for: ["mara"],
+              owner: "mara",
+              about: ["player"],
+              class: "perspective",
+              current: true,
+              text: answer,
+              source: ["self"],
+              relationship: { answer },
+            },
+          ],
+        }),
+        finishReason: "stop",
+        usage: { inputTokens: 10, outputTokens: 10 },
+      };
     };
-  };
-  const send = (ending: boolean) =>
-    host.app.inject({
-      method: "POST",
-      url: "/api/villages/rooms/" + (ending ? "leave" : "turn"),
-      payload: {
-        sessionId: "browser",
-        submissionId: ending ? "finish-meeting" : "first-meeting",
-        message: ending ? "" : "I'd like to hear about your work.",
-        mode: ending ? "leave" : "chat",
-        targetId: "",
-        expectedSceneRevision: host.scene().sceneRevision,
-      },
-    });
-  const edge = async () => {
-    const response = await host.app.inject({ method: "GET", url: "/api/villages/relationships" });
-    assert.equal(response.statusCode, 200, response.body);
-    return response.json().profiles.find((row: { characterId: string }) => row.characterId === "mara").scores[0];
-  };
-  try {
-    assert.equal((await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" })).statusCode, 200);
-    const turn = await send(false);
-    assert.equal(turn.statusCode, 200, turn.body);
-    assert.equal((await edge()).answer, undefined);
-    const ending = await send(true);
-    assert.equal(ending.statusCode, 200, ending.body);
-    assert.equal(host.scene().status, "closed");
-    assert.equal((await edge()).answer, answer);
-    assert.equal(calls, 2);
-    assert(!host.scene().lines.some((line) => line.content.includes(answer)));
-  } finally {
-    await host.stop();
+    const send = (ending: boolean) => {
+      const conclude = ending && !native;
+      return host.app.inject({
+        method: "POST",
+        url: "/api/villages/rooms/" + (conclude ? "leave" : "turn"),
+        payload: {
+          sessionId: "browser",
+          submissionId: ending ? "finish-meeting" : "first-meeting",
+          message: conclude ? "" : ending ? departure : "I'd like to hear about your work.",
+          mode: conclude ? "leave" : "chat",
+          targetId: "",
+          expectedSceneRevision: host.scene().sceneRevision,
+        },
+      });
+    };
+    const edge = async () => {
+      const response = await host.app.inject({ method: "GET", url: "/api/villages/relationships" });
+      assert.equal(response.statusCode, 200, response.body);
+      return response.json().profiles.find((row: { characterId: string }) => row.characterId === "mara").scores[0];
+    };
+    try {
+      assert.equal((await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" })).statusCode, 200);
+      const turn = await send(false);
+      assert.equal(turn.statusCode, 200, turn.body);
+      assert.equal((await edge()).answer, undefined);
+      const ending = await send(true);
+      assert.equal(ending.statusCode, 200, ending.body);
+      assert.equal(host.scene().status, "closed");
+      assert.equal((await edge()).answer, answer);
+      assert.equal(calls, 2);
+      assert(!host.scene().lines.some((line) => line.content.includes(answer)));
+    } finally {
+      await host.stop();
+    }
   }
 });
 

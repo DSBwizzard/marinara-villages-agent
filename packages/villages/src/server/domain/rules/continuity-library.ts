@@ -298,8 +298,10 @@ export function dueRelationshipAnswers(
   residentIds: readonly string[],
   sceneId?: string,
   admittedRevision = state.continuity.revision,
+  currentParticipants: readonly { id: string; incarnation: string }[] = [],
 ) {
   const participants = sceneId ? relationshipSceneParticipants(state, sceneId) : undefined;
+  for (const actor of currentParticipants) participants?.add(continuityHolderKey({ kind: "actor", ...actor }));
   const answers = relationshipAnswers(state, residentIds, true);
   const scores = latestRelationshipScores(state.continuity);
   const player = continuityActor(state, "player")!;

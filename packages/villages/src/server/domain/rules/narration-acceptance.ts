@@ -252,14 +252,20 @@ export function acceptNarrationContinuity(
     throw conflict(reply.halt.message);
   }
   const offeredAnswers = readset.admission.relationshipAnswers;
+  const closingEffect = offeredAnswers?.onSceneEnd && native.sceneEffects?.find((effect) => effect.closed)?.effectId;
   const dueAnswers =
-    offeredAnswers?.sceneId === scene.id
+    offeredAnswers?.sceneId === scene.id && (!offeredAnswers.onSceneEnd || closingEffect)
       ? dueRelationshipAnswers(
           state,
           readset.calendar,
           offeredAnswers.owners.map(({ id }) => id),
           scene.id,
           readset.continuityRevision,
+          source.input.trim()
+            ? source.actors.filter((actor) =>
+                source.lines.some((line) => line.speakerId === actor.id && line.heardBy?.includes("player")),
+              )
+            : [],
         )
       : undefined;
   const admission = {
@@ -297,7 +303,26 @@ export function acceptNarrationContinuity(
       typeof note.text === "string" &&
       (note.class === "experience" || note.class === "information") &&
       Object.keys(note).every((key) => ["for", "text", "class", "source"].includes(key));
-    const effect: SceneEffectResult = { ...header, independent: optionalNote || header.independent };
+    const optionalAnswer =
+      note.class === "perspective" &&
+      typeof asRecord(note.relationship).answer === "string" &&
+      asRecord(note.relationship).impact === undefined &&
+      Object.keys(note).every((key) =>
+        [
+          "id",
+          "for",
+          "owner",
+          "class",
+          "current",
+          "about",
+          "text",
+          "source",
+          "relationship",
+          "independent",
+          "requires",
+        ].includes(key),
+      );
+    const effect: SceneEffectResult = { ...header, independent: optionalNote || optionalAnswer || header.independent };
     try {
       const keep = prepareNarrationKeep(raw, index, state.continuity, admission, source);
       for (const holder of keep.write.holders.filter((holder) => holder.kind === "room")) {
@@ -460,7 +485,7 @@ export function acceptNarrationContinuity(
       const keep = prepared.get(id);
       try {
         if (keep) {
-          const write = keep.write;
+          let write = keep.write;
           const owner = write.owner;
           const impact = write.relationship?.impact;
           // A private score and a shared answer may be proposed together even though self cannot support disclosure.
@@ -474,11 +499,12 @@ export function acceptNarrationContinuity(
             write.holders.some((holder) => holder.kind === "actor" && holder.id === owner.id) &&
             write.holders.some((holder) => holder.kind === "actor" && holder.id === "player") &&
             keep.sources.some((proof) => proof.kind === "self" && proof.actorId === owner.id);
-          const next = applyContinuityWrite(
-            continuity,
-            privateScoreOnly ? { ...write, holders: [owner], relationship: { impact } } : write,
-            keep.admission,
-          );
+          if (privateScoreOnly) write = { ...write, holders: [owner], relationship: { impact } };
+          if (write.relationship?.answer && closingEffect && !selection.acceptedIds.includes(closingEffect)) {
+            memoryRequire(impact, "relationship answer needs the accepted Scene ending");
+            write = { ...write, relationship: { impact } };
+          }
+          const next = applyContinuityWrite(continuity, write, keep.admission);
           const root = damageRoots.get(id);
           if (root) {
             const saved = next.receipts[keep.admission.operationId + ":" + id];

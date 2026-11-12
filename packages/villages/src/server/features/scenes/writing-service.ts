@@ -167,7 +167,16 @@ export function createSceneWriting({
     signal?.throwIfAborted();
     const calendar = context.calendar;
     const relationshipAnswers =
-      mode === "leave" ? dueRelationshipAnswers(authority, calendar, selectedIds, scene.id) : undefined;
+      mode === "greet"
+        ? undefined
+        : dueRelationshipAnswers(
+            authority,
+            calendar,
+            selectedIds,
+            scene.id,
+            undefined,
+            input.trim() ? context.source.actors : [],
+          );
     const presentation = context.presentation,
       sprites = Object.entries(presentation.sprites),
       loreUses = inspectedLoreUse(loreInspection, "GM");
@@ -182,7 +191,12 @@ export function createSceneWriting({
         NARRATION_RESPONSE,
         NARRATION_KEEP,
         RELATIONSHIP_KEEP,
-        relationshipAnswers?.owners.length ? RELATIONSHIP_ANSWER : "",
+        relationshipAnswers?.owners.length
+          ? mode === "chat"
+            ? "Write the following answers only if this reply uses scene.end to conclude the Scene. Otherwise omit relationship.answer. " +
+              RELATIONSHIP_ANSWER
+            : RELATIONSHIP_ANSWER
+          : "",
         NARRATION_NATIVE,
       ]),
       identity: blocksFor([
@@ -280,7 +294,11 @@ export function createSceneWriting({
       });
     }
     const readset = fittedNarrationReadset(authority, context, fitted.evidenceIds);
-    if (relationshipAnswers?.owners.length) readset.admission.relationshipAnswers = relationshipAnswers;
+    if (relationshipAnswers?.owners.length)
+      readset.admission.relationshipAnswers = {
+        ...relationshipAnswers,
+        ...(mode === "chat" ? { onSceneEnd: true as const } : {}),
+      };
     const request: Request = {
       fitted,
       readset,

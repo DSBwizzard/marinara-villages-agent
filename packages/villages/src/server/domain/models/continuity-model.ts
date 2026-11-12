@@ -141,7 +141,7 @@ export type ContinuityAdmission = {
   actors: { id: string; incarnation: string }[];
   relationshipActors?: { id: string; incarnation: string }[];
   relationshipCalendar?: { date: string; historical: Record<string, string> };
-  relationshipAnswers?: { owners: { id: string; incarnation: string }[]; sceneId?: string };
+  relationshipAnswers?: { owners: { id: string; incarnation: string }[]; sceneId?: string; onSceneEnd?: true };
   subjects?: { id: string; incarnation: string }[];
   continuityRevision?: number;
   /** Canonical rosters of the historical source episodes actually fitted in this request. */
