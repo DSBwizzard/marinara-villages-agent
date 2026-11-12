@@ -484,6 +484,16 @@ await withBrowser(browser, async () => {
       const viewer = page.getByRole("dialog", { name: "Room 1", exact: true });
       await expect(viewer.getByRole("img")).toHaveAttribute("src", roomImage.url);
       await expect(viewer.getByRole("img")).toHaveCSS("object-fit", "contain");
+      const viewerBox = await viewer.boundingBox();
+      const closeImage = viewer.getByRole("button", { name: "Close Room 1" });
+      const closeBox = await closeImage.boundingBox();
+      assert.ok(viewerBox.width <= width - 32 && viewerBox.height <= height * 0.75);
+      assert.ok(closeBox.width >= 44 && closeBox.height >= 44);
+      assert.ok(closeBox.x + closeBox.width >= viewerBox.x + viewerBox.width - 16);
+      await closeImage.tap();
+      await expect(viewer).toHaveCount(0);
+      await expect(viewFullImage).toBeFocused();
+      await viewFullImage.tap();
       await page.keyboard.press("Escape");
       await expect(viewer).toHaveCount(0);
       await expect(viewFullImage).toBeFocused();

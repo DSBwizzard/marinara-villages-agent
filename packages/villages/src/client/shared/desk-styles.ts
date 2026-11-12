@@ -150,12 +150,14 @@ export const DESK_STYLES = `
 .${P}-workspace-content .${P}-zone-artwork-actions .${P}-button{flex:1 1 auto;padding:4px 8px;font:400 15px/1.2 var(--menu-font,Georgia,serif);text-align:center}
 .${P}-workspace-content .${P}-zone-artwork-actions .${P}-zone-view-image{background:#a5ac8b;color:#292938;border-color:#bdc2a8}
 .${P}-workspace-content .${P}-zone-artwork-actions .${P}-zone-view-image:hover{background:#b9bf9e}
-.villages-founding-dialog.${P}-zone-image-viewer[open]{position:fixed;inset:0;display:grid;grid-template-rows:auto minmax(0,1fr);width:100%;height:100dvh;max-width:none;max-height:none;margin:0;padding:0;border:0;border-radius:0;background:#211524;color:#f0dfbc;font-family:var(--menu-font,"village-letter-lora",Georgia,serif)}
-.${P}-zone-image-viewer[open]>header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:max(12px,env(safe-area-inset-top)) 16px 6px;background:transparent}
-.${P}-zone-image-viewer>header h3{margin:0;font:600 clamp(20px,5vw,28px)/1.2 var(--menu-font,"village-letter-lora",Georgia,serif);overflow-wrap:anywhere}
-.${P}-zone-image-viewer>header button{flex:0 0 44px;padding:0;border:0;background:transparent;color:inherit;font-size:28px;line-height:1}
-.${P}-zone-image-viewer-art{min-height:0;padding:8px 8px max(8px,env(safe-area-inset-bottom))}
-.${P}-zone-image-viewer-art img{display:block;width:100%;height:100%;object-fit:contain}
+.villages-founding-dialog.${P}-zone-image-viewer[open]{position:fixed;inset:0;display:block;width:min(44rem,calc(100vw - 2rem));height:fit-content;max-height:calc(100dvh - 2rem);margin:auto;padding:0;border:1px solid #8a7084;border-radius:14px;background:#2d2235;color:#f0dfbc;box-shadow:0 12px 36px #160e22a6;font-family:var(--menu-font,"village-letter-lora",Georgia,serif)}
+.${P}-zone-image-viewer::backdrop{background:#17111c66}
+.${P}-zone-image-viewer[open]>header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0;padding:8px 10px 6px 14px;background:transparent}
+.${P}-zone-image-viewer>header h3{margin:0;font:600 clamp(17px,4vw,22px)/1.2 var(--menu-font,"village-letter-lora",Georgia,serif);overflow-wrap:anywhere}
+.${P}-zone-image-viewer>header button{flex:0 0 44px;min-height:44px;padding:0;border:1px solid #8a7084;border-radius:50%;background:#4e3b56;color:inherit;font-size:26px;line-height:1;cursor:pointer}
+.${P}-zone-image-viewer>header button:hover{background:#654a66}
+.${P}-zone-image-viewer-art{padding:0 8px 8px}
+.${P}-zone-image-viewer-art img{display:block;width:100%;height:auto;max-height:min(52dvh,30rem);object-fit:contain;border-radius:8px}
 .${P}-zone-artwork-footer{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px}
 .${P}-zone-artwork-footer>p{max-width:45%;margin:0;font-size:14px;line-height:1.3;text-align:end;overflow-wrap:anywhere}
 .${P}-zone-artwork-footer .${P}-zone-picture-freeze{margin-bottom:0}
