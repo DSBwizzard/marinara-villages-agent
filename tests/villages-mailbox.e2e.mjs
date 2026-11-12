@@ -154,7 +154,7 @@ await withBrowser(browser, async () => {
       );
       await page.screenshot({ path: resolve(output, name + ".png") });
       state.villagers[0].incarnation = "replacement";
-      state.formerLetterFonts = { mara: "caveat" };
+      state.formerLetterFonts = { mara: "great-vibes" };
       snapshot.villagers[0].name = "Replacement Mara";
       await show();
       const row = mail.locator(".villages-letter-row").first();

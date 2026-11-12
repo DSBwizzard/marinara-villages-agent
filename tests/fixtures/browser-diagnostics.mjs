@@ -20,7 +20,6 @@ const deskAssets = {
   "storybook-background-wide.webp": "image/webp",
   "storybook-scenery-matte.webp": "image/webp",
   "letter-fonts/assistant.json": "application/json",
-  "letter-fonts/crimson-pro.json": "application/json",
   "letter-fonts/lora.json": "application/json",
 };
 const mockDeskAsset = async (context) => {
