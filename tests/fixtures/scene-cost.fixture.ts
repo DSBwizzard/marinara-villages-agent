@@ -409,17 +409,19 @@ export async function runSceneCostFixtures(selected: readonly SceneCostCase[] = 
             ? ""
             : id === "mixed-input"
               ? '  I privately think "hidden key", then say "Good morning." *waves*\n  '
-              : ["physical", "movement-privacy"].includes(id)
-                ? "*I wait.*"
-                : id === "long-history"
-                  ? "Which tea did you prefer?"
-                  : id === "rich-resident"
-                    ? "How is the greenhouse repair going?"
-                    : id.startsWith("project-")
-                      ? "What do you think of the Larger Common room design?"
-                      : id.startsWith("wish-")
-                        ? "Would you share your recipe?"
-                        : "How are you today?";
+              : id === "movement-privacy"
+                ? "Bryn, could you come into the Common room?"
+                : id === "physical"
+                  ? "*I wait.*"
+                  : id === "long-history"
+                    ? "Which tea did you prefer?"
+                    : id === "rich-resident"
+                      ? "How is the greenhouse repair going?"
+                      : id.startsWith("project-")
+                        ? "What do you think of the Larger Common room design?"
+                        : id.startsWith("wish-")
+                          ? "Would you share your recipe?"
+                          : "How are you today?";
       const calls: {
         inputCharacters: number;
         inputBytes: number;
