@@ -11,10 +11,34 @@ import {
   continuityGuidesHolder,
   continuityProtectionUnits,
   continuityViews,
+  latestRelationshipScores,
+  relationshipKey,
 } from "./continuity.js";
 import { memoryRequire } from "./memory-integrity.js";
 import { recallTerms } from "./text-recall.js";
 import { recentSharedEpisodes } from "./episodes.js";
+
+/** Current attitude is private GM context for its owner, not a source of in-world knowledge. */
+export function relationshipAttitudes(
+  collection: ContinuityCollection,
+  actors: Extract<ContinuityHolder, { kind: "actor" }>[],
+) {
+  const scores = latestRelationshipScores(collection);
+  if (!scores.size) return [];
+  return actors
+    .filter((owner) => owner.id !== "player")
+    .flatMap((owner) =>
+      actors.flatMap((subject) => {
+        if (owner.id === subject.id) return [];
+        const score = scores.get(relationshipKey(owner, subject))?.relationshipScore;
+        return score === undefined ? [] : [{ for: owner.id, about: subject.id, score }];
+      }),
+    )
+    .sort(
+      (a, b) => Number(b.about === "player") - Number(a.about === "player") || Math.abs(b.score) - Math.abs(a.score),
+    )
+    .slice(0, 16);
+}
 
 function rank<T>(rows: T[], query: string, prose: (row: T) => string) {
   const terms = new Set(recallTerms(query)),

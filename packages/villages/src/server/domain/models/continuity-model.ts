@@ -4,6 +4,8 @@ export type ContinuityHolder =
 export type ContinuityClass =
   "experience" | "information" | "perspective" | "desire" | "motivation" | "commitment" | "open-matter";
 
+export type RelationshipImpact = `${"small" | "meaningful" | "turning"}-${"positive" | "negative"}`;
+
 /** A source is supplied by code after exact-source and perception binding. */
 export type ContinuityEvidence = {
   id: string;
@@ -28,6 +30,18 @@ export type ContinuityVersion = {
   createdRevision: number;
   text: string;
   class: ContinuityClass;
+  relationshipScore?: number;
+  relationshipDay?: {
+    date: string;
+    start: number;
+    gained: number;
+    lost: number;
+    breach: number;
+  };
+  relationshipAnswer?: string;
+  relationshipAnswerScore?: number;
+  relationshipAnswerScene?: string;
+  relationshipMilestone?: true;
   about: { id: string; incarnation: string }[];
   parentId?: string;
   facet?: "reason" | "attention" | "approach" | "connection" | "stance" | "expectation" | "concern" | "boundary";
@@ -94,6 +108,7 @@ export type ContinuityCapture = {
   offered: { holder: Extract<ContinuityHolder, { kind: "actor" }>; ids: string[] }[];
   prompt: {
     entries: Record<string, unknown>[];
+    relationships?: ReturnType<typeof import("../rules/continuity-retrieval.js").relationshipAttitudes>;
     history: unknown;
     protections: ReturnType<typeof import("../rules/continuity.js").continuityConstraints>;
   };
@@ -107,6 +122,7 @@ export type ContinuityWrite = {
   text?: string;
   class?: ContinuityClass;
   current?: boolean;
+  relationship?: { impact?: RelationshipImpact; answer?: string };
   about?: { id: string; incarnation: string }[];
   parentId?: string;
   facet?: ContinuityVersion["facet"];
@@ -124,6 +140,9 @@ export type ContinuityAdmission = {
   episodeId: string;
   at: string;
   actors: { id: string; incarnation: string }[];
+  relationshipActors?: { id: string; incarnation: string }[];
+  relationshipCalendar?: { date: string; historical: Record<string, string> };
+  relationshipAnswers?: { owners: { id: string; incarnation: string }[]; sceneId?: string; onSceneEnd?: true };
   subjects?: { id: string; incarnation: string }[];
   continuityRevision?: number;
   /** Canonical rosters of the historical source episodes actually fitted in this request. */
