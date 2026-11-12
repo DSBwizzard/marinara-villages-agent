@@ -466,9 +466,20 @@ await withBrowser(browser, async () => {
       await expect
         .poll(() => scroller.evaluate((node) => node.scrollHeight - node.clientHeight))
         .toBeLessThanOrEqual(1);
-      await expect(backdrop).toHaveAttribute("src", market.presentation.image.url);
+      const roomBackdrop = venue.locator("." + P + "-venue-zone-photo");
+      await expect(roomBackdrop).toHaveAttribute("src", roomImage.url);
+      await expect(editor.locator("img")).toHaveCount(0);
+      const viewFullImage = editor.getByRole("button", { name: "View full image" });
+      await viewFullImage.tap();
+      const viewer = page.getByRole("dialog", { name: "Room 1", exact: true });
+      await expect(viewer.getByRole("img")).toHaveAttribute("src", roomImage.url);
+      await expect(viewer.getByRole("img")).toHaveCSS("object-fit", "contain");
+      await page.keyboard.press("Escape");
+      await expect(viewer).toHaveCount(0);
+      await expect(viewFullImage).toBeFocused();
       await backToZones.click();
       await expect(roomWithArtwork).toBeFocused();
+      await expect(backdrop).toHaveAttribute("src", market.presentation.image.url);
       const lastZone = list.getByRole("button", { name: /^Room 5/ });
       const frame = await arrival.boundingBox();
       await expect(lastZone).not.toBeInViewport({ ratio: 1 });
@@ -490,6 +501,7 @@ await withBrowser(browser, async () => {
       await expect(venue.locator("." + P + "-venue-zone-picker")).toHaveCSS("translate", "-100%");
       await expect(editor.getByRole("textbox", { name: "Room name" })).toHaveValue("Room 5");
       await expect(backdrop).toHaveAttribute("src", market.presentation.image.url);
+      await expect(viewFullImage).toHaveCount(0);
       await backToZones.press("Escape");
       await expect(lastZone).toBeFocused();
       await expect(lastZone).toHaveAttribute("aria-current", "true");

@@ -2,10 +2,10 @@ import { useVillageLighting } from "../../shared/useVillageLighting.js";
 import { useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react";
 import { useConfirmation } from "../../shared/confirmation.js";
 import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
-import { galleryArtworkVariant } from "../../../shared/helpers/gallery-artwork.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { ArtworkImage } from "../../shared/ArtworkImage.js";
+import { ModalDialog } from "../../shared/ModalDialog.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import { playerDisplayName } from "../../shared/presentation.js";
 import { venueClassesFor } from "../../shared/venue.js";
@@ -176,98 +176,86 @@ function ZoneArtwork({
   place,
   zone,
   controller,
-  night,
+  artworkUrl,
 }: {
-  night: boolean;
+  artworkUrl?: string;
   place: VillageVenue;
   zone: VenueDisplayZone;
   controller: VenueScreenController;
 }) {
   const { busy, placeBusyId, drawPlaceImage, keepPlaceImage, dropPlaceImage } = controller;
   const upload = useRef<HTMLInputElement>(null);
-  const artwork = zone.dayNight && zone.nightImage && night ? zone.nightImage : zone.image;
+  const [fullImage, setFullImage] = useState<string | null>(null);
   const disabled = busy || !!placeBusyId;
   return (
     <section className={`${ELEMENT_TAG}-zone-artwork`} aria-label="Artwork">
-      <div className={`${ELEMENT_TAG}-venue-room-artwork`}>
-        <div className={`${ELEMENT_TAG}-zone-artwork-frame`}>
-          {artwork ? (
-            <ArtworkImage
-              className={`${ELEMENT_TAG}-venue-profile-image`}
-              src={artwork.url}
-              alt={`${zone.name} at ${place.name}`}
-            />
-          ) : (
-            <div className={`${ELEMENT_TAG}-venue-image-empty`}>No artwork yet</div>
-          )}
-          {artwork && galleryArtworkVariant(artwork.url, 1024) ? (
-            <a
-              className={`${ELEMENT_TAG}-zone-artwork-full-size`}
-              href={artwork.url}
-              target="_blank"
-              rel="noreferrer"
-              aria-label="Open full size"
-            >
-              <span aria-hidden="true">↗</span>
-            </a>
-          ) : null}
-        </div>
-        <div className={`${ELEMENT_TAG}-zone-artwork-actions`}>
-          {zone.pictureRetryAvailable ? (
-            <button
-              type="button"
-              className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-zone-artwork-retry`}
-              aria-label="Retry artwork"
-              disabled={disabled}
-              onClick={() => void controller.retryZonePicture(place, zone.id)}
-            >
-              Retry
-            </button>
-          ) : null}
+      <div className={`${ELEMENT_TAG}-zone-artwork-actions`}>
+        {artworkUrl ? (
           <button
             type="button"
-            className={`${ELEMENT_TAG}-button`}
-            aria-label="Generate artwork"
-            disabled={disabled || zone.pictureGenerateAvailable === false}
-            onClick={() => void drawPlaceImage(place.id, zone.id)}
-          >
-            Generate
-          </button>
-          <button
-            type="button"
-            className={`${ELEMENT_TAG}-button`}
-            aria-label="Upload reference"
-            disabled={disabled}
-            onClick={() => upload.current?.click()}
-          >
-            Upload
-          </button>
-          <input
-            autoComplete="off"
-            ref={upload}
-            hidden
-            type="file"
-            accept="image/*"
-            aria-label={`Upload ${zone.name} reference`}
-            disabled={disabled}
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              event.target.value = "";
-              void keepPlaceImage(place.id, zone.id, file);
+            className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-zone-view-image`}
+            onClick={(event) => {
+              event.currentTarget.focus();
+              setFullImage(artworkUrl);
             }}
-          />
-          {zone.image || zone.pictureReference ? (
-            <button
-              type="button"
-              className={`${ELEMENT_TAG}-button`}
-              aria-label="Remove artwork"
-              disabled={disabled}
-              onClick={() => void dropPlaceImage(place.id, zone.id)}
-            >
-              Remove
-            </button>
-          ) : null}
-        </div>
+          >
+            <span aria-hidden="true">⤢</span> View full image
+          </button>
+        ) : null}
+        {zone.pictureRetryAvailable ? (
+          <button
+            type="button"
+            className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-zone-artwork-retry`}
+            aria-label="Retry artwork"
+            disabled={disabled}
+            onClick={() => void controller.retryZonePicture(place, zone.id)}
+          >
+            Retry
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className={`${ELEMENT_TAG}-button`}
+          aria-label="Generate artwork"
+          disabled={disabled || zone.pictureGenerateAvailable === false}
+          onClick={() => void drawPlaceImage(place.id, zone.id)}
+        >
+          Generate
+        </button>
+        <button
+          type="button"
+          className={`${ELEMENT_TAG}-button`}
+          aria-label="Upload reference"
+          disabled={disabled}
+          onClick={() => upload.current?.click()}
+        >
+          Upload
+        </button>
+        <input
+          autoComplete="off"
+          ref={upload}
+          hidden
+          type="file"
+          accept="image/*"
+          aria-label={`Upload ${zone.name} reference`}
+          disabled={disabled}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            void keepPlaceImage(place.id, zone.id, file);
+          }}
+        />
+        {zone.image || zone.pictureReference ? (
+          <button
+            type="button"
+            className={`${ELEMENT_TAG}-button`}
+            aria-label="Remove artwork"
+            disabled={disabled}
+            onClick={() => void dropPlaceImage(place.id, zone.id)}
+          >
+            Remove
+          </button>
+        ) : null}
       </div>
       <div className={`${ELEMENT_TAG}-zone-artwork-footer`}>
         <label className={`${ELEMENT_TAG}-zone-picture-freeze`}>
@@ -296,8 +284,21 @@ function ZoneArtwork({
                     ? "Artwork is out of date."
                     : "Artwork pending")}
           </p>
+        ) : !artworkUrl ? (
+          <p>No artwork yet</p>
         ) : null}
       </div>
+      {fullImage ? (
+        <ModalDialog
+          title={zone.name}
+          className={`${ELEMENT_TAG}-zone-image-viewer`}
+          onClose={() => setFullImage(null)}
+        >
+          <div className={`${ELEMENT_TAG}-zone-image-viewer-art`}>
+            <img src={fullImage} alt={`${zone.name} at ${place.name}`} />
+          </div>
+        </ModalDialog>
+      ) : null}
     </section>
   );
 }
@@ -457,8 +458,7 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
       : ((snapshot.isFounded && lighting === "night" && zone.dayNight ? zone.nightImage : null) ?? zone.image);
   const zoneArt = selected ? roomArtwork(selected) : null;
   const browsing = venueSection === "zones";
-  const zoneBackdrop = !mobile && browsing ? zoneArt : null;
-  const backdrop = zoneBackdrop ?? entranceArt;
+  const zoneBackdrop = browsing && (!mobile || zoneDetailsOpen) && zoneArt?.url !== entranceArt?.url ? zoneArt : null;
   const map = snapshot.settings.maps?.find((entry) => entry.id === place.presentation.mapId);
   const visit = () =>
     activeScene && room.placeId === place.id ? setScreen("room") : void openRoom(place, exterior?.id);
@@ -489,6 +489,7 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
       <section
         ref={profile}
         className={`${ELEMENT_TAG}-venue-profile`}
+        data-room-backdrop={zoneDetailsOpen && !!zoneArt ? "true" : undefined}
         aria-label="Venue"
         onKeyDown={(event) => {
           if (
@@ -505,9 +506,12 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
           else void returnToMap();
         }}
       >
-        {backdrop ? (
+        {entranceArt || zoneBackdrop ? (
           <figure className={ELEMENT_TAG + "-venue-photo"}>
-            <ArtworkImage src={backdrop.url} alt={zoneBackdrop ? selected.name : place.name} />
+            {entranceArt ? <ArtworkImage src={entranceArt.url} alt={zoneBackdrop ? "" : place.name} /> : null}
+            {zoneBackdrop ? (
+              <ArtworkImage className={`${ELEMENT_TAG}-venue-zone-photo`} src={zoneBackdrop.url} alt={selected.name} />
+            ) : null}
           </figure>
         ) : null}
         <div className={`${ELEMENT_TAG}-venue-navigation`}>
@@ -674,7 +678,7 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
                       place={place}
                       zone={selected}
                       controller={controller}
-                      night={snapshot.isFounded && lighting === "night"}
+                      artworkUrl={zoneArt?.url}
                     />
                     {selected.preparation?.status === "failed" ? (
                       <button

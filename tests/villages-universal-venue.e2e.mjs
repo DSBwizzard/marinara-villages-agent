@@ -316,10 +316,8 @@ await withBrowser(browser, async () => {
     const picker = profile.getByRole("region", { name: "Zones", exact: true });
     await expect(picker.getByRole("button")).toHaveCount(4);
     await picker.getByRole("button", { name: /^Sleeping Alcove/ }).click();
-    await expect(profile.locator(`.${prefix}-venue-photo img`)).toHaveAttribute(
-      "src",
-      width <= 704 ? place.presentation.image.url : mapImage,
-    );
+    const roomBackdrop = profile.locator(`.${prefix}-venue-zone-photo`);
+    await expect(roomBackdrop).toHaveAttribute("src", mapImage);
     await expect(profile.locator(".villages-zone-map")).toHaveCount(0);
     assert.equal(writes.length, 0, "browsing known Zone art never starts a Scene or saves a change");
     await tabs.getByRole("button", { name: "Manage", exact: true }).click();
@@ -372,10 +370,7 @@ await withBrowser(browser, async () => {
     await expect(detail.getByText("Private details have not been shared with you.")).toHaveCount(0);
     const generate = detail.getByRole("button", { name: "Generate artwork", exact: true });
     await expect(generate).toBeDisabled();
-    await expect(detail.getByRole("img", { name: "Sleeping Alcove at " + place.name })).toHaveAttribute(
-      "src",
-      mapImage,
-    );
+    await expect(roomBackdrop).toHaveAttribute("src", mapImage);
     if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS) {
       await mkdir(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, { recursive: true });
       await detail.screenshot({
@@ -408,10 +403,10 @@ await withBrowser(browser, async () => {
         path: join(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `zone-picture-freeze-${width}.png`),
       });
     }
-    const emptyFrame = await detail.locator(`.${prefix}-zone-artwork-frame`).boundingBox();
+    const viewFullImage = detail.getByRole("button", { name: "View full image" });
+    await expect(viewFullImage).toHaveCount(0);
     await generate.click();
     await expect(generate).toBeEnabled();
-    assert.equal((await detail.locator(`.${prefix}-zone-artwork-frame`).boundingBox()).height, emptyFrame.height);
     assert.deepEqual(writes.at(-1), {
       path: "/api/villages/locations/venue/image",
       body: { venueId: place.id, zoneId: "bay" },
@@ -433,11 +428,12 @@ await withBrowser(browser, async () => {
     });
     await expect.poll(() => writes.at(-1)?.body.image?.startsWith("data:image/png")).toBe(true);
     assert.equal(writes.at(-1).body.zoneId, "bay");
-    await expect(detail.locator("img")).toHaveAttribute("src", mapImage + (night ? "#night" : ""));
+    const artworkUrl = mapImage + (night ? "#night" : "");
+    await expect(roomBackdrop).toHaveAttribute("src", artworkUrl);
     await expect(detail.getByRole("status")).toHaveText("Reference saved for your next visit.");
     await expect(detail.getByRole("button", { name: "Remove artwork", exact: true })).toBeEnabled();
     const actionBoxes = await Promise.all(
-      ["Generate artwork", "Upload reference", "Remove artwork"].map((name) =>
+      ["View full image", "Generate artwork", "Upload reference", "Remove artwork"].map((name) =>
         detail.getByRole("button", { name, exact: true }).boundingBox(),
       ),
     );
@@ -445,11 +441,6 @@ await withBrowser(browser, async () => {
       assert.ok(
         actionBoxes.every((box) => box.height === 44 && box.y === actionBoxes[0].y),
         "Artwork actions fit on one touch-sized row on mobile",
-      );
-    } else {
-      assert.ok(
-        actionBoxes.every((box) => box.width <= emptyFrame.width),
-        "Artwork actions fit beside the image",
       );
     }
     const actions = detail.locator(`.${prefix}-zone-artwork-actions`);
@@ -464,11 +455,17 @@ await withBrowser(browser, async () => {
         path: join(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `zone-artwork-actions-${width}.png`),
       });
     await expect(detail.getByText("An open living area.", { exact: true })).toHaveCount(0);
+    await viewFullImage.click();
+    const viewer = page.getByRole("dialog", { name: "Main Bay", exact: true });
+    const fullArtwork = viewer.getByRole("img", { name: `Main Bay at ${place.name}` });
+    await expect(fullArtwork).toHaveAttribute("src", artworkUrl);
+    await expect(fullArtwork).toHaveCSS("object-fit", "contain");
+    const frame = await fullArtwork.boundingBox();
     for (const [w, h] of [
       [120, 600],
       [1600, 200],
     ]) {
-      await detail.locator("img").evaluate(
+      await fullArtwork.evaluate(
         async (img, { w, h }) => {
           img.src =
             "data:image/svg+xml," +
@@ -479,17 +476,11 @@ await withBrowser(browser, async () => {
         },
         { w, h },
       );
-      assert.equal(
-        (await detail.locator(`.${prefix}-zone-artwork-frame`).boundingBox()).height,
-        emptyFrame.height,
-        "portrait and wide artwork keep the frame height",
-      );
-      assert.equal(
-        (await detail.locator(`.${prefix}-zone-artwork-frame`).boundingBox()).width,
-        emptyFrame.width,
-        "portrait and wide artwork keep the frame width",
-      );
+      assert.deepEqual(await fullArtwork.boundingBox(), frame, "Portrait and wide artwork fit the same viewer");
     }
+    await viewer.getByRole("button", { name: "Close Main Bay" }).click();
+    await expect(viewer).toHaveCount(0);
+    await expect(viewFullImage).toBeFocused();
     await detail.getByRole("button", { name: "Remove artwork", exact: true }).click();
     await expect(detail.getByRole("button", { name: "Remove artwork", exact: true })).toHaveCount(0);
     assert.equal(writes.at(-1).body.zoneId, "bay");

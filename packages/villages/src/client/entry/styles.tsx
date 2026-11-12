@@ -2028,7 +2028,6 @@ ${VILLAGES_FORGING_STYLES}
 .${ELEMENT_TAG}-venue-sections button { min-height: 2.75rem; border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--muted-foreground); font: inherit; cursor: pointer; }
 .${ELEMENT_TAG}-venue-sections button[aria-pressed="true"] { border-bottom-color: var(--primary); color: var(--foreground); }
 .${ELEMENT_TAG}-venue-profile-body { width: 100%; max-width: 44rem; margin-inline: auto; }
-.${ELEMENT_TAG}-venue-profile-image { display:block; width:100%; max-height:26rem; object-fit:contain; border-radius:.6rem; margin-bottom:1rem; }
 .${ELEMENT_TAG}-venue-primary { display:block; width:100%; padding:.8rem; margin:.75rem 0; border:1px solid var(--border); border-radius:.6rem; background:var(--primary); color:var(--primary-foreground,var(--background)); font:inherit; cursor:pointer; }
 .${ELEMENT_TAG}-venue-section { display:flex; flex-direction:column; align-items:flex-start; gap:.6rem; padding:1rem 0; border-bottom:1px solid var(--border); }
 .${ELEMENT_TAG}-venue-section p { margin:.25rem 0; }
@@ -2039,11 +2038,7 @@ ${VILLAGES_FORGING_STYLES}
 .${ELEMENT_TAG}-venue-zones-layout .villages-zone-map { margin:0; }
 .${ELEMENT_TAG}-venue-zones-layout .villages-zone-map-toolbar { margin-top:0; }
 .${ELEMENT_TAG}-venue-zone-details { min-width:0; display:grid; gap:.75rem; }
-.${ELEMENT_TAG}-venue-room-artwork { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr); gap:.75rem; align-items:start; }
-.${ELEMENT_TAG}-zone-artwork-frame { position:relative; width:100%; aspect-ratio:16/9; overflow:hidden; }
-.${ELEMENT_TAG}-zone-artwork-frame .${ELEMENT_TAG}-venue-profile-image { position:absolute; inset:0; height:100%; width:100%; max-height:none; object-fit:contain; margin:0; }
-.${ELEMENT_TAG}-zone-artwork-frame .${ELEMENT_TAG}-venue-image-empty { width:100%; height:100%; min-height:0; margin:0; box-sizing:border-box; }
-.${ELEMENT_TAG}-zone-artwork-actions { display:grid; min-width:0; gap:.4rem; }
+.${ELEMENT_TAG}-zone-artwork-actions { display:flex; flex-wrap:wrap; min-width:0; gap:.4rem; }
 .${ELEMENT_TAG}-zone-artwork-actions > button { min-width:0; margin:0; overflow-wrap:anywhere; }
 .${ELEMENT_TAG}-visual-setting { margin:.75rem 0; }
 .${ELEMENT_TAG}-visual-setting > label { margin-bottom:.15rem; }
