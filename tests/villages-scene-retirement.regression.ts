@@ -1,562 +1,465 @@
-// Test cases: scene-retirement/eligibility, scene-retirement/project-evidence, scene-retirement/project-citations, scene-retirement/evidence-window, scene-retirement/terminal, scene-retirement/operation-status, scene-retirement/notice-dismissal, scene-retirement/publication, scene-retirement/restart-cleanup, scene-retirement/fence
+// Test cases: scene-retirement/eligibility, scene-retirement/terminal, scene-retirement/operation-status, scene-retirement/notice-dismissal, scene-retirement/publication, scene-retirement/restart-cleanup, scene-retirement/fence
 import assert from "node:assert/strict";
-import { authorSceneFixture } from "./helpers/village-storage.fixture.js";
-import { createHash } from "node:crypto";
 import { runCase } from "../scripts/test-cases.mjs";
+import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
+import { venueFixture } from "./helpers/venues.fixture.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
+import { readNarrationSubmission } from "../packages/villages/src/server/domain/decoding/narration-submission.js";
+import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
+import type { VenueOperation } from "../packages/villages/src/server/domain/models/operation-model.js";
 import {
   sceneReadyForRetirement,
   sceneRetirementSourceIsValid,
 } from "../packages/villages/src/server/domain/rules/scene-retirement.js";
-import type { VenueSubmission } from "../packages/villages/src/server/domain/models/scene-model.js";
-import { projectSceneEvidence } from "../packages/villages/src/server/domain/rules/project-scene-evidence.js";
-import { createProjectEvidenceIndex } from "../packages/villages/src/server/features/scenes/project-evidence-index.js";
-import { terminalForScene } from "../packages/villages/src/server/features/scenes/scene-terminal.js";
-import { createSceneRetirement } from "../packages/villages/src/server/features/scenes/scene-retirement-service.js";
+import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
+import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
+import {
+  narrationContinuityContext,
+  fittedNarrationReadset,
+} from "../packages/villages/src/server/domain/rules/narration-context.js";
+import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
+import { applyAcceptedSceneDelta } from "../packages/villages/src/server/domain/rules/scene-delta.js";
+import { appendSceneInput } from "../packages/villages/src/server/domain/rules/scene-input.js";
+import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
+import {
+  sessionSlot,
+  activeSlot,
+  ACTIVE_ID,
+  SESSION_PREFIX,
+} from "../packages/villages/src/server/adapters/storage/scene-slots.js";
+import {
+  terminalForScene,
+  readSceneTerminal,
+  createSceneTerminalStore,
+} from "../packages/villages/src/server/features/scenes/scene-terminal.js";
+import {
+  createSceneRetirement,
+  type SceneRetirementPorts,
+} from "../packages/villages/src/server/features/scenes/scene-retirement-service.js";
 import { createVenueCoordinator } from "../packages/villages/src/server/jobs/venue-coordinator-service.js";
 import { createSceneChanges } from "../packages/villages/src/server/features/scenes/changes-service.js";
 import { notFound } from "../packages/villages/src/server/domain/rules/errors.js";
 import { createSceneWorkFence } from "../packages/villages/src/server/jobs/scene-work-fence.js";
-import { validateProjectSpeech } from "../packages/villages/src/server/domain/rules/project-interpretation.js";
+
+const at = "2026-11-09T12:00:00.000Z";
+function worldFixture() {
+  return Object.assign(defaultVillageState(), {
+    seed: "retirement",
+    setupAt: at,
+    foundedAt: at,
+    timeZone: "UTC",
+    venues: [venueFixture({ id: "hall", name: "Hall", description: "A quiet hall." })],
+  });
+}
+function sceneFixture(
+  id = "scene",
+  world: VillageState = worldFixture(),
+  status: "applied" | "held" | "abandoned" = "applied",
+) {
+  const venue = world.venues[0],
+    message = "PRIVATE_INPUT_SENTINEL café 東京.\n*An unspoken thought.*",
+    submissionId = "turn-" + id,
+    scene = zoneEventScene(
+      coerceSession({
+        version: 5,
+        id,
+        villageSeed: world.seed,
+        placeId: venue.id,
+        placeName: venue.name,
+        zoneId: "exterior",
+        status: "active",
+        startedAt: at,
+        lastActivityAt: at,
+        sceneAttendance: { capturedAt: at, layout: captureSceneLayout(venue), occupants: [] },
+      }),
+      venue,
+    );
+  scene.continuity = captureSceneContinuity(world, scene, Date.parse(at));
+  const context = narrationContinuityContext(world, scene, venue, submissionId, message, at),
+    readset = fittedNarrationReadset(
+      world,
+      context,
+      context.parts.flatMap((part) => (part.block.evidenceId ? [part.block.evidenceId] : [])),
+    ),
+    raw = { segments: [{ id: "reply", kind: "narration", text: "PRIVATE_PROSE_SENTINEL: the hall stays quiet." }] },
+    publication = { raw, readset, responseDigest: memoryHash(raw) },
+    base = {
+      id: submissionId,
+      message,
+      mode: "chat",
+      targetId: "",
+      at,
+      requestFingerprint: memoryHash(["chat", "", null, message]),
+      acceptance: { status, rejected: [] },
+    };
+  if (status === "applied") {
+    const accepted = acceptNarration(world, publication, submissionId, at);
+    assert(!accepted.held && accepted.episode);
+    const episode = accepted.episode;
+    applyAcceptedSceneDelta(scene, episode);
+    scene.submissions = [
+      readNarrationSubmission({
+        ...base,
+        episodeId: episode.id,
+        replyLineIds: episode.segments.map((line) => line.id),
+        progressProcessedAt: episode.acceptedAt,
+      }),
+    ];
+    appendSceneInput(scene, scene.submissions[0]);
+    scene.lines.push(...structuredClone(episode.segments));
+  } else {
+    scene.submissions = [readNarrationSubmission({ ...base, narration: publication })];
+    appendSceneInput(scene, scene.submissions[0]);
+  }
+  scene.status = "closed";
+  scene.endedAt = at;
+  scene.endReason = "player";
+  return { world, scene, publication };
+}
+function operation(): VenueOperation {
+  return {
+    id: "close",
+    kind: "close",
+    input: {},
+    token: "owner",
+    attemptId: "close-attempt",
+    status: "complete",
+    stage: "complete",
+    startedAt: at,
+    sceneRevision: 0,
+    snapshot: null,
+    checkpoints: {},
+    attempts: {},
+    error: "",
+  };
+}
+async function storedFixture() {
+  const f = sceneHistoryFixture(),
+    world = createVillageRepository(() => f.gate.documents),
+    terminal = createSceneTerminalStore({
+      villagesDocuments: () => f.gate.documents,
+      mutateDocument: f.mutateDocument,
+    }),
+    fence = createSceneWorkFence();
+  await world.mutateAuthority((state) => Object.assign(state, worldFixture()), { memories: true });
+  async function add(id: string, status: "applied" | "held" | "abandoned" = "applied", missingProof = false) {
+    const state = await world.readAuthority({ memories: true }),
+      built = sceneFixture(id, state, status);
+    if (!missingProof) await world.mutateAuthority((saved) => Object.assign(saved, state), { memories: true });
+    await f.mutateDocument(SESSION_PREFIX + id, sessionSlot(f.gate.documents), (saved) =>
+      Object.assign(saved, built.scene),
+    );
+    return built;
+  }
+  await add("scene");
+  const ports: SceneRetirementPorts = {
+    villagesDocuments: () => f.gate.documents,
+    readActive: () => f.repository.readActive(),
+    readVillageState: () => world.readAuthority({ memories: true }),
+    hasVenueOperation: () => false,
+    saveTerminal: (scene, revision) => terminal.save(scene, revision),
+    withRepairWork: (work) => f.gate.work(work),
+    withSceneWork: (id, work) => fence.run(id, work),
+    withLateResponseWork: (id, work) => fence.run(id, work),
+  };
+  return { ...f, world, terminal, ports, add, service: createSceneRetirement(ports) };
+}
 
 await runCase("scene-retirement/eligibility", () => {
-  const world = defaultVillageState();
-  world.seed = "test-village";
-  const closed = coerceSession({ version: 4, id: "scene", villageSeed: world.seed, status: "closed" });
-  assert.equal(sceneRetirementSourceIsValid(closed), true);
-  assert.equal(
-    sceneRetirementSourceIsValid({
-      ...closed,
-      submissions: [{ mode: "chat", id: "turn", processing: { version: 99 } }],
-    }),
-    false,
-  );
-  assert.equal(sceneRetirementSourceIsValid({ ...closed, lines: null }), false);
-  assert.equal(sceneRetirementSourceIsValid({ ...closed, lines: [{ id: "line" }] }), false);
+  const { world, scene, publication } = sceneFixture(),
+    turn = scene.submissions[0];
+  assert.equal(sceneRetirementSourceIsValid(scene), true);
+  assert.equal(sceneReadyForRetirement(scene, world, ""), true);
+  for (const bad of [
+    { version: 4 },
+    { lines: null },
+    { lines: [{ id: "line" }] },
+    { submissions: [{ ...turn, at: "invalid" }] },
+    { submissions: [turn, turn] },
+    { submissions: [{ ...turn, progressProcessedAt: undefined }] },
+  ])
+    assert.equal(sceneRetirementSourceIsValid({ ...scene, ...bad }), false);
   for (const bad of [
     { delivery: "unknown" },
     { contactHidden: "yes" },
     { soundOnly: { player: true } },
     { targetId: 42 },
+    { heardBy: [42] },
   ])
     assert.equal(
       sceneRetirementSourceIsValid({
-        ...closed,
-        lines: [{ id: "line", content: "private", role: "assistant", ...bad }],
+        ...scene,
+        lines: [{ ...scene.lines.at(-1)!, ...bad }],
       }),
       false,
     );
-  assert.equal(
-    sceneRetirementSourceIsValid({ ...closed, submissions: [{ mode: "chat", id: "t", at: "invalid" }] }),
-    false,
-  );
-  assert.equal(
-    sceneRetirementSourceIsValid({
-      ...closed,
-      submissions: [
-        { mode: "chat", id: "t", at: "2026-01-01" },
-        { mode: "chat", id: "t", at: "2026-01-01" },
-      ],
-    }),
-    false,
-  );
-  assert.equal(sceneReadyForRetirement(closed, world, ""), true);
-  assert.equal(sceneReadyForRetirement(closed, world, closed.id), false);
-  assert.equal(sceneReadyForRetirement({ ...closed, status: "active" }, world, ""), false);
-  assert.equal(sceneReadyForRetirement({ ...closed, villageSeed: "other" }, world, ""), false);
-  const processing = createExchangeProcessing({
-    seed: world.seed,
-    sceneId: closed.id,
-    submissionId: "turn",
-    order: 0,
-    lineIds: [],
-    actionReceiptIds: [],
-  });
-  const turn: VenueSubmission = {
-    id: "turn",
-    message: "saved",
-    mode: "chat",
-    targetId: "",
-    verdict: null,
-    wishId: "",
-    wishMemory: "",
-    at: "2026-10-27T12:00:00.000Z",
-    processing,
-  };
-  assert.equal(sceneReadyForRetirement({ ...closed, submissions: [turn] }, world, ""), false);
-  for (const domain of Object.values(processing.domains)) domain.status = "applied";
-  assert.equal(sceneReadyForRetirement({ ...closed, submissions: [turn] }, world, ""), false);
-  turn.progressProcessedAt = "2026-10-27T12:00:01.000Z";
-  assert.equal(sceneReadyForRetirement({ ...closed, submissions: [turn] }, world, ""), true);
-});
-
-await runCase("scene-retirement/project-evidence", () => {
-  const stamp = "2026-10-27T12:00:00.000Z";
-  const scene = coerceSession({
-    version: 4,
-    id: "scene",
-    villageSeed: "world",
-    status: "closed",
-    startedAt: stamp,
-    participants: [{ characterId: "resident", name: "Resident", doing: "Talking" }],
-    lines: [
-      {
-        id: "public",
-        speakerId: "resident",
-        name: "Resident",
-        role: "assistant",
-        kind: "dialogue",
-        at: stamp,
-        content: "I will lead the work.",
-        heardBy: ["player"],
-      },
-      {
-        id: "private",
-        speakerId: "resident",
-        name: "Resident",
-        role: "assistant",
-        kind: "dialogue",
-        at: stamp,
-        content: "Secret words",
-        contactHidden: true,
-        heardBy: ["resident"],
-      },
-      {
-        id: "narration",
-        speakerId: "narrator",
-        role: "assistant",
-        kind: "narration",
-        at: stamp,
-        content: "The entire transcript is not evidence.",
-      },
-    ],
-    submissions: [
-      {
-        id: "turn",
-        mode: "chat",
-        at: stamp,
-        message: "Player's private input",
-        activeIdsAtTurn: ["resident"],
-        replyLineIds: ["public", "private", "narration"],
-        projectContexts: [{ projectId: "p", revision: 1, phase: "planning" }],
-        projectSpeech: [
-          {
-            version: 1,
-            projectId: "p",
-            revision: 1,
-            phase: "planning",
-            kind: "builder",
-            speakerId: "resident",
-            citations: [{ lineId: "public", quote: "I will lead" }],
-          },
-        ],
-      },
-    ],
-  });
-  const result = projectSceneEvidence(scene);
-  assert.deepEqual(
-    result.lines.map((line) => line.id),
-    ["public"],
-  );
-  assert.equal(result.submissions[0].projectSpeech?.[0].citations[0].quote, "I will lead");
-  assert.ok(!JSON.stringify(result).includes("Player's private input"));
-  assert.ok(!JSON.stringify(result).includes("Secret words"));
-  assert.ok(!JSON.stringify(result).includes("entire transcript"));
-});
-
-await runCase("scene-retirement/project-citations", () => {
-  const stamp = "2026-10-27T12:00:00.000Z";
-  const lines = Array.from({ length: 81 }, (_, i) => ({
-    id: `line-${i}`,
-    role: "assistant",
-    kind: "dialogue",
-    speakerId: "resident",
-    name: "Resident",
-    at: stamp,
-    content: i === 80 ? "I’ll lead the work and I agree to the plan." : `Line ${i}`,
-  }));
-  const scene = coerceSession({
-    version: 4,
-    id: "scene",
-    villageSeed: "world",
-    status: "closed",
-    startedAt: stamp,
-    participants: [{ characterId: "resident", name: "Resident", doing: "Talking" }],
-    lines,
-    submissions: [
-      {
-        id: "turn",
-        mode: "chat",
-        at: stamp,
-        activeIdsAtTurn: ["resident"],
-        replyLineIds: lines.map((line) => line.id),
-        projectContexts: [{ projectId: "p", revision: 1, phase: "planning" }],
-        projectSpeech: [
-          {
-            version: 1,
-            projectId: "p",
-            revision: 1,
-            phase: "planning",
-            kind: "builder",
-            speakerId: "resident",
-            citations: [{ lineId: "line-80", quote: "I'LL LEAD THE WORK" }],
-          },
-          {
-            version: 1,
-            projectId: "p",
-            revision: 1,
-            phase: "planning",
-            kind: "approval",
-            speakerId: "resident",
-            citations: [{ lineId: "line-80", quote: "agree to the plan" }],
-            contextual: { version: 1, source: "system", checkId: "check" },
-          },
-        ],
-      },
-    ],
-  });
-  const saved = projectSceneEvidence(scene);
-  assert.equal(saved.lines.length, 81);
-  for (const proposal of saved.submissions[0].projectSpeech ?? [])
-    assert.equal(validateProjectSpeech(proposal, saved.lines), "");
-  assert.equal(saved.lines.find((line) => line.id === "line-80")?.content, lines[80].content);
-});
-
-await runCase("scene-retirement/evidence-window", async () => {
-  let data: unknown;
-  const index = createProjectEvidenceIndex({
-    villagesDocuments: () => ({ getById: async () => (data ? ({ data } as never) : null) }),
-    mutateDocument: async (_id, slot, mutate) => {
-      const current = slot.coerce(data);
-      await mutate(current);
-      data = structuredClone(current);
-    },
-  });
-  for (let i = 0; i < 25; i++) {
-    const stamp = new Date(Date.UTC(2026, 9, 1 + i)).toISOString();
-    await index.save(
-      coerceSession({ version: 4, id: `s${i}`, villageSeed: "world", status: "closed", startedAt: stamp }),
-      1,
-    );
+  assert.equal(sceneReadyForRetirement(scene, world, scene.id), false);
+  assert.equal(sceneReadyForRetirement({ ...scene, status: "active" }, world, ""), false);
+  assert.equal(sceneReadyForRetirement({ ...scene, villageSeed: "other" }, world, ""), false);
+  for (const status of ["pending", "held", "abandoned"] as const) {
+    const entry = readNarrationSubmission({
+      ...turn,
+      acceptance: { status, rejected: [] },
+      narration: publication,
+    });
+    assert.equal(sceneRetirementSourceIsValid({ ...scene, submissions: [entry] }), true);
+    assert.equal(sceneReadyForRetirement({ ...scene, submissions: [entry] }, world, ""), false);
   }
-  const scenes = await index.read("world");
-  assert.equal(scenes.length, 20);
-  assert.equal(scenes[0].id, "s24");
-  assert.equal(scenes.at(-1)?.id, "s5");
-  await index.save(
-    coerceSession({ version: 4, id: "s24", villageSeed: "world", status: "closed", startedAt: scenes[0].startedAt }),
-    3,
-  );
-  await assert.rejects(() => index.save(scenes[0], 2), /source changed/);
-  assert.equal((await index.read("world"))[0].id, "s24");
-  assert.deepEqual(await index.read("another-world"), []);
-  await assert.rejects(
-    () => index.save(coerceSession({ version: 4, id: "other", villageSeed: "another-world", status: "closed" }), 1),
-    /Village changed/,
-  );
-  const corrupted = data as { scenes: { scene: { placeName: string } }[] };
-  corrupted.scenes[0].scene.placeName = "corrupt";
-  await assert.rejects(() => index.read("world"), /invalid/);
-  await assert.rejects(() => index.save(scenes[1], 4), /invalid/);
+  for (const patch of [
+    { status: "running" },
+    { status: "interrupted" },
+    { checkpoints: { unfinished: "saved" } },
+    { attempts: { reply: { status: "dispatching" } } },
+    { checkpointClaims: { reply: { token: "claim", bodyId: "reserved-body" } } },
+    { error: "Unresolved storage failure" },
+  ])
+    assert.equal(
+      sceneReadyForRetirement({ ...scene, operation: { ...operation(), ...patch } as VenueOperation }, world, ""),
+      false,
+    );
+  assert.equal(sceneReadyForRetirement({ ...scene, operation: operation() }, world, ""), true);
+  assert.equal(sceneReadyForRetirement({ ...scene, abandonedOperations: [operation()] }, world, ""), false);
+  for (const patch of [
+    { episodeId: "missing" },
+    { id: "different" },
+    { message: "changed private input" },
+    { replyLineIds: ["different"] },
+  ])
+    assert.equal(sceneReadyForRetirement({ ...scene, submissions: [{ ...turn, ...patch }] }, world, ""), false);
+  const changed = structuredClone(world);
+  changed.episodes.records[0].sceneId = "other-scene";
+  assert.equal(sceneReadyForRetirement(scene, changed, ""), false);
 });
 
 await runCase("scene-retirement/terminal", () => {
-  const scene = coerceSession({
-    version: 4,
-    id: "scene",
-    villageSeed: "world",
-    status: "closed",
-    sceneRevision: 7,
-    lines: [{ id: "a", content: "A private generated reply", role: "assistant" }],
-    submissions: [{ id: "turn", mode: "chat", message: "A private player message", targetId: "person" }],
-  });
-  const receipt = terminalForScene(scene, 1);
-  assert.deepEqual(
-    receipt.submissions.map((turn) => turn.id),
-    ["turn"],
-  );
-  assert.match(receipt.submissions[0].inputHash, /^[a-f0-9]{64}$/u);
-  assert.ok(!JSON.stringify(receipt).includes("private"));
-  const operation = {
-    id: "close",
-    kind: "close",
-    input: {},
-    token: "token",
-    attemptId: "close-attempt",
-    status: "complete" as const,
-    stage: "complete",
-    startedAt: "",
-    sceneRevision: 7,
-    snapshot: null,
-    checkpoints: {
-      "abandoned-request": { id: "old", kind: "turn", attemptId: "old-attempt", input: { message: "private" } },
-    },
-    attempts: {},
-    error: "",
+  const { scene, publication } = sceneFixture();
+  scene.sceneRevision = 7;
+  scene.navigationReceipts = [{ id: "move", originZoneId: "hall", destinationZoneId: "exterior", at }];
+  scene.generationReceipts = [
+    { operationId: "unknown", attemptId: "paid-attempt", stages: ["reply"], outcome: "unknown", acknowledgedAt: at },
+  ];
+  scene.submissions[0].recordEvents = [{ id: "notice", kind: "project", text: "Project recorded" }];
+  scene.operation = {
+    ...operation(),
+    input: { message: "PRIVATE_OPERATION_SENTINEL" },
+    checkpoints: { purchased: "PRIVATE_PURCHASE_SENTINEL" },
   };
-  const world = defaultVillageState();
-  world.seed = "world";
-  assert.equal(sceneReadyForRetirement({ ...scene, operation }, world, ""), true);
-  const terminal = terminalForScene({ ...scene, operation }, 2);
-  assert.deepEqual(terminal.abandonedRequest, { id: "old", kind: "turn", attemptId: "old-attempt" });
-  assert.ok(!JSON.stringify(terminal).includes("private"));
+  const receipt = terminalForScene(scene, 2),
+    text = JSON.stringify(receipt);
+  assert.deepEqual(readSceneTerminal(receipt, scene.id), receipt);
+  assert.equal(receipt.version, 2);
+  assert.equal(receipt.submissions[0].inputHash, scene.submissions[0].requestFingerprint);
+  assert.deepEqual(receipt.navigationReceipts, scene.navigationReceipts);
+  assert.deepEqual(receipt.generationReceipts, scene.generationReceipts);
+  assert.deepEqual(receipt.recordEvents, scene.submissions[0].recordEvents);
+  assert.deepEqual(receipt.operation, { id: "close", kind: "close", attemptId: "close-attempt", status: "complete" });
+  assert(!text.includes("PRIVATE_"), "Terminal metadata contains neither original input, prose nor operation bodies");
   assert.throws(() => terminalForScene({ ...scene, status: "active" }, 1), /not ready/);
+  assert.throws(
+    () => terminalForScene({ ...scene, abandonedOperations: [operation()] }, 1),
+    /still own retained evidence/,
+  );
+  for (const status of ["pending", "held", "abandoned"] as const)
+    assert.throws(
+      () =>
+        terminalForScene(
+          {
+            ...scene,
+            submissions: [
+              {
+                ...scene.submissions[0],
+                acceptance: { status, rejected: [] },
+                narration: publication,
+              },
+            ],
+          },
+          1,
+        ),
+      /still own retained evidence/,
+    );
   for (const mode of ["chat", "leave", "contact"] as const) {
-    const turn = {
+    const entry = {
       ...scene.submissions[0],
-      id: mode,
       mode,
+      targetId: "target",
+      requestFingerprint: memoryHash([
+        mode,
+        "target",
+        { originalContact: "retained only in the request fingerprint" },
+        scene.submissions[0].message,
+      ]),
     };
-    const hash = terminalForScene({ ...scene, submissions: [turn] }, 1).submissions[0].inputHash;
     assert.equal(
-      hash,
-      createHash("sha256")
-        .update(JSON.stringify([mode, turn.message, turn.targetId, turn.contact ?? null]))
-        .digest("hex"),
+      terminalForScene({ ...scene, submissions: [entry] }, 1).submissions[0].inputHash,
+      entry.requestFingerprint,
+      "Terminal preserves the admitted fingerprint without reconstructing lost request fields",
     );
   }
 });
 
 await runCase("scene-retirement/operation-status", async () => {
-  const scene = coerceSession({
-    version: 4,
-    id: "scene",
-    villageSeed: "world",
-    status: "closed",
-    submissions: [{ id: "turn", mode: "chat", message: "hello" }],
-  });
-  const terminal = terminalForScene(scene, 1);
+  const { scene } = sceneFixture(),
+    turn = scene.submissions[0],
+    terminal = terminalForScene(scene, 1);
   const coordinator = createVenueCoordinator({
     operations: { context: { getStore: () => undefined } },
     villagesDocuments: () => ({ getById: async () => null }),
     readTerminal: async () => terminal,
   } as never);
-  assert.deepEqual(await coordinator.readVenueOperation("scene", "turn"), {
-    id: "turn",
+  assert.deepEqual(await coordinator.readVenueOperation(scene.id, turn.id), {
+    id: turn.id,
     status: "complete",
     kind: "turn",
     attemptId: "",
     terminal: true,
     recordEvents: [],
   });
-  const unknown = await coordinator.readVenueOperation("scene", "missing");
+  const unknown = await coordinator.readVenueOperation(scene.id, "missing");
   assert.equal(unknown?.status, "interrupted");
   assert.equal(unknown?.terminal, true);
 });
 
 await runCase("scene-retirement/notice-dismissal", async () => {
-  const world = defaultVillageState();
-  world.seed = "world";
-  const scene = coerceSession({
-    version: 4,
-    id: "scene",
-    villageSeed: "world",
-    status: "closed",
-    submissions: [
-      { id: "turn", mode: "chat", message: "", recordEvents: [{ id: "notice", kind: "project", text: "Saved" }] },
-    ],
-  });
-  const terminal = terminalForScene(scene, 1);
+  const { world, scene } = sceneFixture();
+  scene.submissions[0].recordEvents = [{ id: "notice", kind: "project", text: "Saved" }];
+  const terminal = terminalForScene(scene, 1),
+    providerFree = () => assert.fail("Notice dismissal cannot execute gameplay");
   const service = createSceneChanges({
     readSession: async () => {
       throw notFound("Scene removed");
     },
     readTerminal: async () => terminal,
     readVillageState: async () => world,
-    mutateVillageState: async (update) => {
-      update(world);
+    mutateVillageState: async (change) => {
+      change(world);
       return world;
     },
-  } as never);
-  assert.deepEqual(await service.dismissSceneNotice("scene", "notice"), { dismissed: true });
+    processSavedExchange: providerFree,
+  });
+  for (let retry = 0; retry < 2; retry++)
+    assert.deepEqual(await service.dismissSceneNotice(scene.id, "notice"), { dismissed: true });
   assert.deepEqual(world.dismissedNoticeIds, ["notice"]);
-  await assert.rejects(() => service.dismissSceneNotice("scene", "other"), /unavailable/);
-  world.seed = "other";
-  await assert.rejects(() => service.dismissSceneNotice("scene", "notice"), /identity changed/i);
+  await assert.rejects(service.dismissSceneNotice(scene.id, "other"), /unavailable/);
+  world.seed = "another-world";
+  await assert.rejects(service.dismissSceneNotice(scene.id, "notice"), /identity changed/i);
 });
 
 await runCase("scene-retirement/publication", async () => {
-  const world = defaultVillageState();
-  world.seed = "world";
-  const scene = coerceSession({ version: 4, id: "scene", villageSeed: "world", status: "closed" });
-  const revision = 1;
-  world.exchangeReceipts["venue-chat:scene:turn"] = {
-    id: "venue-chat:scene:turn",
-    sceneId: "scene",
-    submissionId: "turn",
-    domain: "physical",
-    at: "2026-10-28T12:00:00.000Z",
-    status: "applied",
-    evidenceIds: [],
-    reason: "Saved",
-    physicalOutcome: {
-      id: "venue-chat:scene:turn",
-      venueId: "cafe",
-      venueName: "Cafe",
-      text: "Shelves installed",
-      at: "2026-10-28T12:00:00.000Z",
-    },
-  };
-  const proof = () => world.exchangeReceipts["venue-chat:scene:turn"];
-  let present = true;
-  let failEvidence = false;
-  let active = "";
-  let playback = "";
-  let responsePresent = true;
-  let sceneConflict = false;
-  const calls: string[] = [];
-  const service = createSceneRetirement({
-    villagesDocuments: () => ({
-      getById: async (_package, id) =>
-        present && id === "villages-venue-visit-scene"
-          ? ({ id, data: authorSceneFixture(new Map(), scene, world), revision } as never)
-          : null,
-      list: async (_package, kind) =>
-        kind === "generation-response" && responsePresent
-          ? [
-              {
-                id: "late",
-                revision: 4,
-                data: { signature: JSON.stringify(["scene", "turn", 1, { message: "private" }, "reply"]) },
-              } as never,
-            ]
-          : [],
-      update: async () => null,
-      remove: async (_package, id, expected) => {
-        if (id === "late") {
-          calls.push("remove-late");
-          if (expected !== 4) return false;
-          responsePresent = false;
-          return true;
-        }
-        calls.push("remove");
-        if (sceneConflict || revision !== expected) return false;
-        present = false;
-        return true;
-      },
-    }),
-    readActive: async () => ({ sessionId: active, placeId: "", playbackSceneId: playback }),
-    readVillageState: async () => world,
-    readVillageMemoryState: async () => world,
-    mutateVillageMemoryState: async (update) => {
-      update(world);
-      return world;
-    },
-    hasVenueOperation: () => false,
-    saveProjectEvidence: async () => {
-      calls.push("evidence");
-      if (failEvidence) throw new Error("storage");
-    },
-    saveTerminal: async () => {
-      calls.push("receipt");
-    },
-    readTerminal: async () => null,
-    withRepairWork: async (work) => work(),
-    withSceneWork: async (_id, work) => work(),
-    withLateResponseWork: async (_id, work) => work(),
-  });
-  active = "scene";
-  assert.equal(await service.retire("scene"), false);
-  assert.deepEqual(calls, []);
-  active = "";
-  playback = "scene";
-  assert.equal(await service.retire("scene"), false, "The displayed closed Scene remains a live prose owner");
-  assert.deepEqual(calls, []);
-  playback = "";
-  failEvidence = true;
-  await assert.rejects(() => service.retire("scene"), /storage/);
-  assert.equal(present, true);
-  failEvidence = false;
-  calls.length = 0;
-  sceneConflict = true;
-  assert.equal(await service.retire("scene"), false);
-  assert.equal(present, true, "a Scene revision conflict keeps the Scene");
-  assert.ok(proof().physicalOutcome, "failed retirement retains frozen Scene replay proof");
-  assert.equal(responsePresent, true, "the purchased late response remains recoverable");
-  sceneConflict = false;
-  calls.length = 0;
-  assert.equal(await service.retire("scene"), true);
-  assert.deepEqual(calls, ["evidence", "receipt", "remove"]);
-  assert.equal(
-    responsePresent,
-    true,
-    "Retirement preserves replay responses for checkpoints preceding their publication",
-  );
-  assert.equal(present, false);
-  assert.equal(proof().physicalOutcome, undefined, "actual retirement releases full physical payload");
-  assert.equal(proof().status, "applied", "replay protection survives retirement");
+  for (const ownership of ["active", "playback", "running"] as const) {
+    const f = await storedFixture();
+    try {
+      if (ownership === "running") f.ports.hasVenueOperation = () => true;
+      else
+        await f.mutateDocument(ACTIVE_ID, activeSlot, (pointer) => {
+          pointer.placeId = "hall";
+          if (ownership === "active") pointer.sessionId = "scene";
+          else pointer.playbackSceneId = "scene";
+        });
+      assert.equal(await f.service.retire("scene"), false);
+      assert(f.rows.has(SESSION_PREFIX + "scene"));
+      assert.equal(await f.terminal.read("scene"), null);
+    } finally {
+      f.release();
+    }
+  }
+  for (const fault of [
+    "before-save",
+    "after-save",
+    "revision",
+    "active",
+    "playback",
+    "running",
+    "canonical-proof",
+  ] as const) {
+    const f = await storedFixture();
+    try {
+      const before = await f.world.readAuthority({ memories: true }),
+        save = f.ports.saveTerminal;
+      f.ports.saveTerminal = async (scene, revision) => {
+        if (fault === "before-save") throw Error("Terminal publication failed");
+        await save(scene, revision);
+        if (fault === "after-save") throw Error("Terminal acknowledgement lost");
+        if (fault === "revision") f.rows.get(SESSION_PREFIX + scene.id).revision++;
+        if (fault === "running") f.ports.hasVenueOperation = () => true;
+        if (fault === "active" || fault === "playback")
+          await f.mutateDocument(ACTIVE_ID, activeSlot, (pointer) => {
+            pointer.placeId = "hall";
+            if (fault === "active") pointer.sessionId = scene.id;
+            else pointer.playbackSceneId = scene.id;
+          });
+        if (fault === "canonical-proof") f.rows.get("villages-village").data.memoryHead = null;
+      };
+      if (fault === "before-save" || fault === "after-save")
+        await assert.rejects(f.service.retire("scene"), /Terminal/);
+      else assert.equal(await f.service.retire("scene"), false);
+      assert(f.rows.has(SESSION_PREFIX + "scene"), "An interrupted publication retains the complete Scene");
+      assert.equal(!!(await f.terminal.read("scene")), fault !== "before-save");
+      if (fault !== "canonical-proof")
+        assert.deepEqual((await f.world.readAuthority({ memories: true })).episodes, before.episodes);
+      if (["before-save", "after-save", "revision"].includes(fault)) {
+        const sourceRevision = f.rows.get(SESSION_PREFIX + "scene").revision;
+        f.ports.saveTerminal = save;
+        assert.equal(await f.service.retire("scene"), true, "The same Scene recovers after publication failure");
+        assert(!f.rows.has(SESSION_PREFIX + "scene"));
+        assert.equal((await f.terminal.read("scene"))!.sourceRevision, sourceRevision);
+        assert.deepEqual((await f.world.readAuthority({ memories: true })).episodes, before.episodes);
+      }
+    } finally {
+      f.release();
+    }
+  }
+  const f = await storedFixture();
+  try {
+    const before = await f.world.readAuthority({ memories: true });
+    assert.equal(await f.service.retire("scene"), true);
+    assert(!f.rows.has(SESSION_PREFIX + "scene"));
+    const terminal = (await f.terminal.read("scene"))!;
+    assert(terminal.submissions.length === 1);
+    assert.deepEqual(
+      (await f.world.readAuthority({ memories: true })).episodes,
+      before.episodes,
+      "Retiring transient prose preserves canonical history and its original private input",
+    );
+    assert.equal(await f.service.retire("scene"), false);
+    assert.deepEqual(await f.terminal.read("scene"), terminal);
+  } finally {
+    f.release();
+  }
 });
 
 await runCase("scene-retirement/restart-cleanup", async () => {
-  const world = defaultVillageState();
-  world.seed = "world";
-  const terminal = terminalForScene(
-    coerceSession({ version: 4, id: "scene", villageSeed: "world", status: "closed" }),
-    1,
-  );
-  world.exchangeReceipts["venue-chat:scene:turn"] = {
-    id: "venue-chat:scene:turn",
-    sceneId: "scene",
-    submissionId: "turn",
-    domain: "physical",
-    at: "2026-10-28T12:00:00.000Z",
-    status: "applied",
-    evidenceIds: [],
-    reason: "Saved",
-    physicalOutcome: {
-      id: "venue-chat:scene:turn",
-      venueId: "cafe",
-      venueName: "Cafe",
-      text: "Shelves installed",
-      at: "2026-10-28T12:00:00.000Z",
-    },
-  };
-  let responseExists = true;
-  const service = createSceneRetirement({
-    villagesDocuments: () => ({
-      getById: async () => null,
-      list: async (_pkg, kind) =>
-        kind === "scene-terminal"
-          ? [{ data: terminal } as never]
-          : kind === "generation-response" && responseExists
-            ? [
-                {
-                  id: "late",
-                  revision: 1,
-                  data: { signature: JSON.stringify(["scene", "turn", 1, {}, "reply"]) },
-                } as never,
-              ]
-            : [],
-      update: async () => null,
-      remove: async () => {
-        responseExists = false;
-        return true;
-      },
-    }),
-    readActive: async () => ({ sessionId: "", placeId: "" }),
-    readVillageState: async () => world,
-    readVillageMemoryState: async () => world,
-    mutateVillageMemoryState: async (update) => {
-      update(world);
-      return world;
-    },
-    hasVenueOperation: () => false,
-    saveProjectEvidence: async () => {},
-    saveTerminal: async () => {},
-    readTerminal: async () => terminal,
-    withRepairWork: async (work) => work(),
-    withSceneWork: async (_id, work) => work(),
-    withLateResponseWork: async (_id, work) => work(),
-  });
-  assert.equal(responseExists, true);
-  await service.retireSettled();
-  assert.equal(
-    world.exchangeReceipts["venue-chat:scene:turn"].physicalOutcome,
-    undefined,
-    "terminal cleanup releases physical proof even without a Memory reservation",
-  );
+  const f = await storedFixture();
+  try {
+    await f.add("held", "held");
+    await f.add("abandoned", "abandoned");
+    await f.add("missing-proof", "applied", true);
+    await f.add("save-fails");
+    await f.add("after-failure");
+    const failures: string[] = [],
+      save = f.ports.saveTerminal;
+    f.ports.onFailure = (id, error) => {
+      assert.match(String(error), /saved terminal failure/);
+      failures.push(id);
+    };
+    f.ports.saveTerminal = async (scene, revision) => {
+      if (scene.id === "save-fails") throw Error("saved terminal failure");
+      await save(scene, revision);
+    };
+    const before = await f.world.readAuthority({ memories: true });
+    await f.service.retireSettled();
+    for (const id of ["held", "abandoned", "missing-proof", "save-fails"]) assert(f.rows.has(SESSION_PREFIX + id), id);
+    for (const id of ["scene", "after-failure"]) {
+      assert(!f.rows.has(SESSION_PREFIX + id), id);
+      assert(await f.terminal.read(id));
+    }
+    assert.deepEqual(failures, ["save-fails"], "One failure cannot stop the remaining eligible Scenes");
+    assert.deepEqual((await f.world.readAuthority({ memories: true })).episodes, before.episodes);
+  } finally {
+    f.release();
+  }
 });
 
 await runCase("scene-retirement/fence", async () => {

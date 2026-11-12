@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { mock } from "node:test";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
 import { freezeSceneTranscript } from "../packages/villages/src/server/domain/rules/scene-transcript.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import {
@@ -16,6 +15,7 @@ import {
 } from "../packages/villages/src/server/adapters/storage/scene-public-history.js";
 import type { VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
 import type { HistoryPageTree, MemoryPageData } from "../packages/villages/src/server/adapters/storage/memory-pages.js";
+import { pendingSceneSubmission } from "./helpers/narration-submission.fixture.js";
 
 const at = "2026-10-31T00:00:00.000Z";
 const line = (id: string) => ({
@@ -26,7 +26,7 @@ const line = (id: string) => ({
   name: "Narration",
   content: "Exact café 東京 paragraph " + id,
   at,
-  heardBy: [],
+  heardBy: ["player"],
 });
 function fixture() {
   const rows = new Map<string, any>();
@@ -68,18 +68,12 @@ function source(scene: VenueScene, previous?: HistoryPageTree) {
 {
   const f = fixture(),
     store = createScenePublicHistory(f.documents);
-  const processing = createExchangeProcessing({
-    seed: "public-world",
-    sceneId: "privacy",
-    submissionId: "pending",
-    order: 1,
-    lineIds: ["pending-line"],
-    actionReceiptIds: [],
-  });
+  const exact = "Exact pending input. (My private thought.)";
   const scene = coerceSession({
-    version: 4,
+    version: 5,
     id: "privacy",
     villageSeed: "public-world",
+    startedAt: at,
     participants: [],
     lines: [
       line("first"),
@@ -90,23 +84,25 @@ function source(scene: VenueScene, previous?: HistoryPageTree) {
         contactHidden: true,
         soundOnly: { text: "A quiet knock.", player: true, characterIds: [] },
       },
+      {
+        id: "exact-input",
+        role: "user",
+        kind: "input",
+        speakerId: "player",
+        name: "Player",
+        content: exact,
+        inputOf: "pending",
+        at,
+        heardBy: [],
+      },
       line("pending-line"),
     ],
-    submissions: [
-      {
-        id: "pending",
-        message: "Exact pending input",
-        mode: "chat",
-        at,
-        targetId: "",
-        processing,
-        semanticProvenance: { version: 2 },
-      },
-    ],
+    submissions: [],
   });
+  scene.submissions.push(pendingSceneSubmission(scene, "pending", exact, "pending-line"));
   let native = source(scene),
     head = await store.prepare(scene, native.transcript.head, native.submissions.head);
-  assert.equal(head.count, 2);
+  assert.equal(head.count, 3);
   readScenePublicHistoryHead(head, scene, native.transcript.head, native.submissions.head);
   const publicVersion = head.publicVersion,
     privateRoot = head.positions?.id;
@@ -147,17 +143,23 @@ function source(scene: VenueScene, previous?: HistoryPageTree) {
     scene,
     entries.map((entry) => entry.position),
   );
-  const projected = projectSceneHistoryPage(selected, entries, scene.participants, head.privateHearing);
+  const projected = projectSceneHistoryPage(selected, entries, scene.participants);
   assert.deepEqual(projected, publicSceneResponse(scene).lines);
+  assert.equal(projected.find((row) => row.kind === "input")?.content, exact);
+  assert(
+    !Object.hasOwn(
+      projected.find((row) => row.kind === "input")!,
+      "heardBy",
+    ),
+  );
   assert(!JSON.stringify(projected).includes("Private cause sentinel"));
   assert(!JSON.stringify(projected).includes("pending-line"));
   assert.throws(
     () =>
       projectSceneHistoryPage(
-        [{ ...selected[0], content: "Changed public evidence" }, selected[1]],
+        [{ ...selected[0], content: "Changed public evidence" }, ...selected.slice(1)],
         entries,
         [],
-        head.privateHearing,
       ),
     /content changed/,
   );
@@ -177,10 +179,15 @@ function source(scene: VenueScene, previous?: HistoryPageTree) {
     /public Scene history/,
   );
   head = appended;
-  scene.submissions[0] = { ...scene.submissions[0], semanticReady: true };
+  scene.submissions[0] = {
+    ...scene.submissions[0],
+    acceptance: { status: "applied", rejected: [] },
+    episodeId: "accepted-reply",
+    progressProcessedAt: at,
+  };
   native = source(scene, native.transcript.layout);
   const published = await restarted.prepare(scene, native.transcript.head, native.submissions.head, head);
-  assert.equal(published.count, 3);
+  assert.equal(published.count, 4);
   assert.notEqual(published.publicVersion, publicVersion);
 }
 
@@ -188,15 +195,28 @@ function source(scene: VenueScene, previous?: HistoryPageTree) {
   const f = fixture(),
     store = createScenePublicHistory(f.documents);
   const scene = coerceSession({
-    version: 4,
+    version: 5,
     id: "hearing",
     villageSeed: "public-world",
+    startedAt: at,
     participants: [{ characterId: "visible", name: "Visible", doing: "Listening" }],
-    lines: [{ ...line("heard"), heardBy: ["visible", "later-known"] }],
+    lines: [
+      {
+        ...line("heard"),
+        heardBy: ["player", "visible", "later-known"],
+        staging: [{ characterId: "visible", position: "left" }],
+      },
+    ],
     submissions: [],
   });
   let native = source(scene);
   const before = await store.prepare(scene, native.transcript.head, native.submissions.head);
+  const beforeEntries = await store.readRange(before, native.transcript.head.count, 0, 1);
+  assert.throws(
+    () => readScenePublicHistoryHead({ ...before, format: 2 }, scene, native.transcript.head, native.submissions.head),
+    /owner/,
+    "A retired index format cannot be read or converted",
+  );
   scene.participants.push({ characterId: "later-known", name: "Known", doing: "Listening" });
   native = source(scene, native.transcript.layout);
   const after = await store.prepare(scene, native.transcript.head, native.submissions.head, before);
@@ -206,21 +226,22 @@ function source(scene: VenueScene, previous?: HistoryPageTree) {
     "Private hearing changes cannot invalidate the public content digest",
   );
   const entries = await store.readRange(after, native.transcript.head.count, 0, 1);
-  assert(
-    !Object.hasOwn(
-      projectSceneHistoryPage(scene.lines, entries, scene.participants, after.privateHearing)[0],
-      "heardBy",
-    ),
-  );
+  assert.equal(entries[0].publicDigest, beforeEntries[0].publicDigest);
+  const cold = createScenePublicHistory(f.documents);
+  const coldEntries = await cold.readRange(after, native.transcript.head.count, 0, 1);
+  const coldLine = projectSceneHistoryPage(scene.lines, coldEntries, scene.participants)[0];
+  assert.deepEqual(coldLine.staging, [{ characterId: "visible", position: "left" }]);
+  assert(!Object.hasOwn(coldLine, "heardBy"));
 }
 
 for (const count of [1000, 10_000, 25_000]) {
   const f = fixture(),
     store = createScenePublicHistory(f.documents);
   const scene = coerceSession({
-    version: 4,
+    version: 5,
     id: "growth:" + count,
     villageSeed: "public-growth",
+    startedAt: at,
     participants: [],
     lines: Array.from({ length: count }, (_, index) => line("line:" + index)),
     submissions: [],

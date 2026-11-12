@@ -96,7 +96,7 @@ export function chooseAgendaZone(
   actorId: string,
   activity = "",
   requestedId = "",
-  state?: Pick<VillageState, "projects" | "relationshipContext" | "narrative">,
+  state?: Pick<VillageState, "projects" | "narrative">,
   accessContext?: import("./venue-access.js").AccessContext,
 ): VillageVenueZone {
   const eligible = venueZones(venue).filter(
@@ -106,7 +106,6 @@ export function chooseAgendaZone(
       evaluateZoneAccess(venue, zone, actorId, {
         ...accessContext,
         unavailable: !!state && zoneClosed(state, venue, zone),
-        relationships: state?.relationshipContext,
       }).allowed &&
       (!state || !zoneClosed(state, venue, zone)),
   );
@@ -146,7 +145,6 @@ export function venueInZone(venue: VillageVenue, zoneId: string): VillageVenue {
     ...venue,
     description: zone.description,
     presentation: { ...venue.presentation, image: zone.image },
-    state: zone.state,
   };
 }
 /** Zones own physical truth; adapters below are derived views. */
@@ -179,7 +177,6 @@ export function synchronizeVenueZones(venue: VillageVenue, previous?: VillageVen
   venue.classes = effectiveVenueClasses(venue);
   const exterior = zones.find((zone) => zone.kind === "exterior");
   if (exterior) {
-    venue.exteriorState = exterior.state;
     venue.presentation.image = exterior.image;
     venue.description = exterior.description;
   }
@@ -187,8 +184,6 @@ export function synchronizeVenueZones(venue: VillageVenue, previous?: VillageVen
   venue.privateSpaces = zones
     .filter((zone) => zone.kind === "private-residence")
     .map((zone) => ({ ...zone, ownerId: zone.ownerId! }));
-  const primary = venue.spaces.find((zone) => zone.venueClass !== "residence") ?? venue.spaces[0];
-  venue.state = primary?.state ?? exterior?.state ?? { revision: 0, updatedAt: "", recent: null };
   venue.playerSeenShared = zones.some((zone) => zone.kind === "shared-residence" && zone.seen);
   venue.playerSeenPublic = zones.some((zone) => zone.kind === "public" && zone.seen);
   venue.playerSeenPrivateIds = zones

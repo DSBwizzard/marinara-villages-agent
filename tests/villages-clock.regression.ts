@@ -12,15 +12,21 @@ import {
 import type { VillageRepository } from "../packages/villages/src/server/domain/models/world-repository.js";
 import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import { calendarReplay } from "../packages/villages/src/server/domain/rules/clock-state.js";
-import { emptyRelationshipReview } from "../packages/villages/src/server/domain/rules/relationship-review.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
+import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
 import {
-  applyRelationshipReview,
-  defaultRelationshipState,
-  relationshipFor,
-} from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+  fittedNarrationReadset,
+  narrationContinuityContext,
+} from "../packages/villages/src/server/domain/rules/narration-context.js";
+import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
+import { inspectContinuityRelationships } from "../packages/villages/src/server/domain/rules/continuity-library.js";
+import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { ZonedDate, calendarDate } from "../packages/villages/src/shared/helpers/zoned-date.js";
 import { runCase } from "../scripts/test-cases.mjs";
+import { venueFixture } from "./helpers/venues.fixture.js";
 // Test cases: village-clock, village-time-advance, founding-timezone
 const DAY = 86_400_000;
 function fixture() {
@@ -169,48 +175,71 @@ async function main() {
   contactVillage.jump(30 * DAY);
   await contactVillage.clock.observe();
   contactVillage.jump(-30 * DAY);
-  contactVillage.state.villagers = [{ characterId: "mara" } as VillageState["villagers"][number]];
-  const feelings = defaultRelationshipState("fixture");
-  applyRelationshipReview(
-    feelings,
-    {
-      ...emptyRelationshipReview(),
-      changes: [
-        {
-          id: "fresh-contact",
-          fromId: "mara",
-          toId: "player",
-          expectedRevision: 0,
-          sceneAfter: {
-            connection: "Acquaintances",
-            stance: "Enjoyed the conversation",
-            expectations: [],
-            concerns: [],
-            records: [],
-          },
-          liveAfter: {
-            connection: "Acquaintances",
-            stance: "Enjoyed the conversation",
-            expectations: [],
-            concerns: [],
-            records: [],
-          },
-          evidence: [],
-          reason: "Fresh conversation",
-          lineIds: ["new-line"],
-          disclosed: false,
-          contact: true,
-        },
-      ],
-    },
-    contactVillage.state,
-    "scene",
-    new Date(contactVillage.wall).toISOString(),
-    contactVillage.wall,
+  await contactVillage.clock.observe();
+  const contact = contactVillage.state;
+  const contactAt = contactVillage.clock.now().toISOString();
+  assert(calendarReplay(contact, contactVillage.clock.now()));
+  contact.seed = "clock-contact";
+  contact.foundedAt = contact.setupAt;
+  contact.projects = [];
+  contact.villagers = coerceVillageState({
+    ...contact,
+    villagers: [
+      {
+        characterId: "mara",
+        incarnation: "mara-one",
+        letterFontId: "caveat",
+        addedAt: contact.setupAt,
+        cardSnapshot: { id: "mara", name: "Mara", revision: 1, sourceStatus: "available", capturedAt: contact.setupAt },
+      },
+    ],
+  }).villagers;
+  const venue = venueFixture({ id: "square", name: "Square", classes: ["community"] });
+  contact.venues = [venue];
+  const resident = { characterId: "mara", name: "Mara", doing: "Resting" };
+  const scene = zoneEventScene(
+    coerceSession({
+      version: 5,
+      id: "fresh-contact",
+      villageSeed: contact.seed,
+      placeId: venue.id,
+      zoneId: "exterior",
+      status: "active",
+      startedAt: contactAt,
+      participants: [resident],
+      activeIds: ["mara"],
+      sceneAttendance: {
+        capturedAt: contactAt,
+        layout: captureSceneLayout(venue),
+        occupants: [{ ...resident, zoneId: "exterior" }],
+      },
+    }),
+    venue,
   );
+  scene.continuity = captureSceneContinuity(contact, scene, Date.parse(contactAt));
+  const context = narrationContinuityContext(contact, scene, venue, "contact-reply", "How are you?", contactAt);
+  const readset = fittedNarrationReadset(
+    contact,
+    context,
+    context.parts.map((part) => part.block.evidenceId!),
+  );
+  const text = "Mara enjoyed her first conversation with the player.";
+  const raw = {
+    segments: [{ kind: "dialogue", speakerId: "mara", text: "I enjoyed talking with you." }],
+    keep: [
+      { for: ["mara"], owner: "mara", about: ["player"], class: "perspective", current: true, text, source: ["self"] },
+    ],
+  };
+  const accepted = acceptNarration(
+    contact,
+    { raw, readset, responseDigest: memoryHash(raw) },
+    "contact-reply",
+    contactAt,
+  );
+  assert.equal(accepted.held, false, JSON.stringify(accepted.rejected));
   assert.equal(
-    relationshipFor(feelings, "mara", "player").connection,
-    "Acquaintances",
+    inspectContinuityRelationships(contact, "mara", contactAt)[0]?.text,
+    text,
     "future calendar history cannot erase a fresh contact",
   );
 
@@ -404,7 +433,6 @@ async function verify() {
     assert.throws(
       () =>
         coerceVillageState({
-          version: 6,
           ...defaultVillageState(),
           clock: { revision: 1, trustedAt: "invalid", replayUntilDate: "" },
         }),
@@ -414,10 +442,8 @@ async function verify() {
     assert.equal(calendarDate(summer, 2026, 11, 1, 12).getHours(), 12);
     assert.equal(new ZonedDate("2026-11-01T08:30:00Z", "America/Los_Angeles").getHours(), 1);
     assert.equal(new ZonedDate("2026-11-01T09:30:00Z", "America/Los_Angeles").getHours(), 1);
-    assert.equal(
-      coerceVillageState({ version: 6, ...defaultVillageState(), clock: fixture().state.clock }).clock,
-      null,
-    );
+    assert.equal(coerceVillageState({ ...defaultVillageState(), clock: fixture().state.clock }).clock, null);
+    assert.throws(() => coerceVillageState({ ...defaultVillageState(), version: 17 }), /unsupported village format/i);
 
     for (const [before, after, firstHour, secondHour] of [
       ["2026-03-08T09:30:00Z", "2026-03-08T10:30:00Z", 1, 3],

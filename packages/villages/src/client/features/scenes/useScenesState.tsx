@@ -1,6 +1,5 @@
 import { useRef, useState } from "react";
 import type { RoomOperation, RoomRecordEvent, SceneChangeIssue } from "../../../shared/contracts/village.js";
-import type { SceneComposerMode } from "../../shared/types.js";
 import { useSceneReadingSession } from "./reading-session.js";
 
 export type ContactRecovery = { sceneId: string; operation: RoomOperation };
@@ -9,8 +8,6 @@ export type ContactRecovery = { sceneId: string; operation: RoomOperation };
 export function useScenesState(isFounded?: boolean) {
   const sceneReading = useSceneReadingSession(isFounded);
 
-  const [_endFailed, setEndFailed] = useState(false);
-
   const [mailboxOpen, setMailboxOpen] = useState(false);
 
   const [roomOpen, setRoomOpen] = useState(false);
@@ -18,7 +15,6 @@ export function useScenesState(isFounded?: boolean) {
   /** What has been typed into the room's box and not yet said. */
   const [roomDraft, setRoomDraft] = useState("");
 
-  const [roomMode, setRoomMode] = useState<SceneComposerMode>("chat");
   const [contactRecovery, setContactRecovery] = useState<ContactRecovery | null>(null);
 
   const [roomContactBoundary, setRoomContactBoundary] = useState("");
@@ -30,8 +26,6 @@ export function useScenesState(isFounded?: boolean) {
   const [roomMoveZoneId, setRoomMoveZoneId] = useState("");
 
   const roomMoveOperationIdRef = useRef<string | null>(null);
-
-  const [roomRuling, setRoomRuling] = useState("");
 
   const [roomNotices, setRoomNotices] = useState<RoomRecordEvent[]>([]);
 
@@ -49,14 +43,7 @@ export function useScenesState(isFounded?: boolean) {
 
   const [lastSceneEnding, setLastSceneEnding] = useState("");
 
-  /**
-   * The room's own busy flag, and not the tab's.
-   *
-   * For the reason `placeBusyId` and `spinOffBusyId` have their own: a turn in a
-   * room can be four model calls long, and the tab's shared `busy` greys out the
-   * settings panel, the map and every button in it while it is up. What has to be
-   * shut is the box the answer is coming to, and that is all that is shut.
-   */
+  // A pending Scene response leaves settings and exploration usable.
   const [roomBusy, setRoomBusy] = useState(false);
 
   const leavingRoomPendingRef = useRef(false);
@@ -97,16 +84,12 @@ export function useScenesState(isFounded?: boolean) {
    */
   return {
     sceneReading,
-    _endFailed,
-    setEndFailed,
     mailboxOpen,
     setMailboxOpen,
     roomOpen,
     setRoomOpen,
     roomDraft,
     setRoomDraft,
-    roomMode,
-    setRoomMode,
     contactRecovery,
     setContactRecovery,
     roomContactBoundary,
@@ -118,8 +101,6 @@ export function useScenesState(isFounded?: boolean) {
     roomMoveZoneId,
     setRoomMoveZoneId,
     roomMoveOperationIdRef,
-    roomRuling,
-    setRoomRuling,
     roomNotices,
     setRoomNotices,
     seenRoomEventIdsRef,

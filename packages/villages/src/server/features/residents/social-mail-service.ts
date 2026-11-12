@@ -1,81 +1,39 @@
-import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
 import { z } from "zod";
-import type { CapabilityLanguageModelMessage, CapabilityResolvedLanguageModel } from "@marinara-engine/shared";
+import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import type { MailboxView, PersonalLetter } from "../../../shared/contracts/mailbox.js";
-import { coerceSession } from "../../domain/decoding/scene-codec.js";
-import { defaultVillageState } from "../../domain/decoding/village-codec.js";
 import type { Handler } from "../../domain/models/background-model.js";
-import type { RelationshipEvidenceLine, RelationshipReview } from "../../domain/models/relationship-types.js";
-import type {
-  SocialMailInput,
-  SocialMailInterpretation,
-  SocialMailOutbox,
-  WorldSocialMailOutbox,
-} from "../../domain/models/social-mail.js";
-import type { VillageState } from "../../domain/models/world.js";
-import { asRecord } from "../../domain/rules/coerce.js";
-import { badRequest, conflict } from "../../domain/rules/errors.js";
-import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
-import { bindLiveProposals } from "../../domain/rules/live-exchange.js";
-import {
-  assertPersonalLetter,
-  hasPersonalLetterAction,
-  PERSONAL_LETTER_INSTRUCTION,
-  PersonalLetterActionError,
-} from "../../domain/rules/personal-letter.js";
+import type { PersonalMailInput, PersonalMailResult } from "../../domain/models/social-mail.js";
+import { readPersonalMailInput } from "../../domain/decoding/mailbox-codec.js";
+import { readEffectiveVillagerCard } from "../../adapters/engine/catalog.js";
+import { villageNow } from "../../adapters/time/clock-gate.js";
+import { continuityActor } from "../../domain/rules/continuity-actors.js";
+import { continuityProtectionFingerprint } from "../../domain/rules/continuity.js";
+import { captureContinuityContext, continuityContextScopeKey } from "../../domain/rules/continuity-context.js";
+import { episodeContextRooms } from "../../domain/rules/episode-sources.js";
+import { acceptMailExchange, readDeliveredLetter } from "../../domain/rules/mail-delivery.js";
+import { mailSourceHash } from "../../domain/rules/mail-evidence.js";
+import { queueMailboxLetter } from "../../domain/rules/social-mail.js";
 import {
   createMailboxPresentation,
   readMailboxQuery,
   mailboxLetterIdentity,
-  mailboxRecoveryIdentity,
+  mailboxThreadId,
 } from "../../domain/rules/mailbox-view.js";
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
-import { publishRelationshipDisclosures } from "../../domain/rules/relationship-memories.js";
-import { relationshipWritingPrompt } from "../../domain/rules/relationship-presentation.js";
-import {
-  emptyRelationshipReview,
-  parseRelationshipReview,
-  RELATIONSHIP_REVIEW_INSTRUCTION,
-} from "../../domain/rules/relationship-review.js";
-import {
-  applyRelationshipReview,
-  coerceRelationshipState,
-  defaultRelationshipState,
-  SocialRevisionConflict,
-} from "../../domain/rules/relationship-rules.js";
-import { SCENE_MEMORY_INSTRUCTION, sceneMemoryContext } from "../../domain/rules/scene-memories.js";
-import { semanticHash } from "../../domain/rules/semantic-contract.js";
-import { socialContextState } from "../../domain/rules/social-context.js";
-import { cloneWorldContext } from "../../domain/rules/world-context-copy.js";
-import {
-  beginMailDelivery,
-  completeMailDelivery,
-  personalThreadId,
-  queuePersonalMessage,
-  readPersonalThread,
-  requireMailSource,
-  mutablePersonalMessage,
-  withoutMailDisclosures,
-} from "../../domain/rules/social-mail.js";
-import {
-  applyWishSource,
-  captureWishAuthority,
-  publishWishDisclosure,
-  readSocialWishChanges,
-  SOCIAL_WISH_INSTRUCTION,
-  WishInterpretationError,
-  wishHistoryLoaded,
-} from "../../domain/rules/social-wishes.js";
+import { startingHistoryReady } from "../../domain/rules/starting-history.js";
+import { venueCardProfile } from "../../domain/rules/venue-writing.js";
+import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
+import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
+import { assertPersonalLetter, PERSONAL_LETTER_INSTRUCTION } from "../../domain/rules/personal-letter.js";
+import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
+import { badRequest, conflict } from "../../domain/rules/errors.js";
+import { memoryHash, memoryRequire } from "../../domain/rules/memory-integrity.js";
 
 export interface SocialMailPorts {
-  readMailInput: import("../../adapters/storage/captured-admission-store.js").CapturedAdmissionStore["readMailInput"];
   withWork: typeof import("../../adapters/storage/repair-gate.js").withRepairWork;
-  processLiveMemories?: typeof import("./live-memory.js").processLiveMemories;
   readVillageSnapshot: typeof import("../world/village-store.js").readVillageSnapshot;
   withVillageSceneAcceptance: typeof import("../world/village-store.js").withVillageSceneAcceptance;
   mutateVillageState: typeof import("../world/village-store.js").mutateVillageState;
-  mutateRelationships: typeof import("./relationship-store.js").mutateRelationships;
-  readRelationshipState: typeof import("./relationship-store.js").readRelationshipState;
   queueBackgroundJob: typeof import("../../jobs/background-work.js").queueBackgroundJob;
   retryBackgroundJob: typeof import("../../jobs/background-work.js").retryBackgroundJob;
   backgroundWorkSummaries: typeof import("../../jobs/background-work.js").backgroundWorkSummaries;
@@ -83,1266 +41,332 @@ export interface SocialMailPorts {
   villagesConnectionIdFor: typeof import("../settings/connections.js").villagesConnectionIdFor;
   completeWithRoom: typeof import("../generation/model-requests.js").completeWithRoom;
 }
-/** Letters can change perspectives, but cannot grant access or register actionable terms. */
-function mailReviewInput(value: unknown): Record<string, unknown> {
-  const raw = asRecord(value);
-  const projection = (value: unknown) => {
-    const row = asRecord(value);
-    return {
-      ...row,
-      records: Array.isArray(row.records)
-        ? row.records.filter((record) => !["agreement", "commitment"].includes(String(asRecord(record).kind)))
-        : row.records,
-    };
-  };
+const scopeId = z.string().regex(/^[a-f0-9]{64}$/),
+  meaning = z
+    .object({
+      keep: z.array(z.unknown()).max(32).optional(),
+      requires: z.array(z.string().min(1).max(48)).max(48).optional(),
+    })
+    .strict(),
+  replySchema = z
+    .object({ incoming: meaning.optional(), reply: meaning.extend({ text: z.string().max(2000) }).strict() })
+    .strict(),
+  resultSchema = z
+    .object({
+      replyText: z.string().max(2000),
+      incomingMeaning: meaning.required(),
+      replyMeaning: meaning.required(),
+      responseDigest: scopeId,
+    })
+    .strict();
+const MAIL_DIRECTION =
+  "You are the GM of Villages correspondence. Portray the complete authored resident faithfully. Return ONE JSON object {incoming?:{keep?:[],requires?:[]},reply:{text,keep?:[],requires?:[]}}. A natural decision not to reply uses empty text. Letters establish what their authors wrote, never verified meetings, physical work, access grants or native operations. Preserve refusal and resident initiative. Private GM chronology and entries marked for Player or other people never become this resident's knowledge. Only explicit sources/individual perceptions establish knowledge; formerActors are earlier identities, never replacements. Omitted history never proves absence. " +
+  PERSONAL_LETTER_INSTRUCTION +
+  ' Meaningful lasting developments use the common keep schema: {id?,for:[actor IDs],text?,source:["letter"|"self"|supplied h:N],replace?,class?:"experience|information|perspective|desire|motivation|commitment|open-matter",owner?,about?:[actor IDs],parent?,facet?:"reason|attention|approach|connection|stance|expectation|concern|boundary",current?,retire?:"fulfilled|withdrawn|ended"|null,offer?:{proposer,participants:[actor IDs]},accept?:actor ID,closeOffer?:{by,reason:"refused|withdrawn"},protection?:{roots:[supplied IDs],disposition:"clear|conflict|uncertain"},requires?:[effect IDs],independent?:true}. Labels are unique ASCII identifiers up to48 characters. One complete meaning/conditions/terms in text, max2400 UTF-8 bytes; do not repeat it in metadata. Desires, motives, perspectives and unilateral commitments belong to owner, initially among for. for lists actual knowers; learning another person\'s wish never makes it yours. Meaningful shared writing uses one keep for writer and reader. Reader learning happens only at reading. letter means the current corresponding incoming/reply text. self can establish only that portrayed non-player writer/reader\'s own private state, never Player decisions or another person\'s knowledge. Actual written offers/acceptance/refusal/withdrawal require the deciding author among for; silence/politeness is not consent. An unchanged valid offer can be accepted later; qualifications require a new offer. Native Projects remain outside this contract. Reply replace:"incoming:<keep label>" refers only to an accepted meaning from this same incoming letter. Otherwise replace only a supplied entry. Keep complete terms once; omit keep text when inheriting unchanged terms. Screen all consequential keeps against supplied protections; only clear may proceed. Never restore forgotten meaning or bypass corrections through paraphrase, self or an old letter. List every keep required by asserted successful fiction in the corresponding requires; only genuinely independent optional effects may use independent:true. Never promise lasting retention without its keep. Ordinary correspondence needs no keep.';
+
+function parseReply(
+  input: PersonalMailInput,
+  answer: Parameters<typeof extractModelJsonObject>[0],
+): PersonalMailResult {
+  if (answer.finishReason === "length")
+    throw new Error("Personal reply reached its output limit. The saved response is retained.");
+  const raw = replySchema.parse(extractModelJsonObject(answer));
+  assertPersonalLetter(raw.reply.text, input.residentName);
   return {
-    ...raw,
-    permissions: [],
-    changes: Array.isArray(raw.changes)
-      ? raw.changes.map((value) => {
-          const change = asRecord(value);
-          return { ...change, sceneAfter: projection(change.sceneAfter), liveAfter: projection(change.liveAfter) };
-        })
-      : raw.changes,
+    replyText: raw.reply.text,
+    incomingMeaning: { keep: raw.incoming?.keep ?? [], requires: raw.incoming?.requires ?? [] },
+    replyMeaning: { keep: raw.reply.keep ?? [], requires: raw.reply.requires ?? [] },
+    responseDigest: memoryHash(raw),
   };
 }
-function mailReview(review: RelationshipReview): RelationshipReview {
-  return {
-    ...review,
-    permissions: [],
-    changes: review.changes.map((change) => ({
-      ...change,
-      sceneAfter: {
-        ...change.sceneAfter,
-        records: change.sceneAfter.records.filter((row) => row.kind !== "agreement" && row.kind !== "commitment"),
-      },
-      liveAfter: {
-        ...change.liveAfter,
-        records: change.liveAfter.records.filter((row) => row.kind !== "agreement" && row.kind !== "commitment"),
-      },
-    })),
-  };
-}
-/** Retain only the authority needed to interpret this correspondence. Never a second transcript database. */
-function admission(village: VillageState, residentId: string): VillageState {
-  if (village.villagers.some((row) => !wishHistoryLoaded(row)))
-    throw new Error("Correspondence Wish authority was not loaded.");
-  const state = defaultVillageState(),
-    social =
-      socialContextState(village.relationshipContext, [residentId], "") ?? defaultRelationshipState(village.seed);
-  Object.assign(state, {
-    seed: village.seed,
-    setupAt: village.setupAt,
-    foundedAt: village.foundedAt,
-    timeZone: village.timeZone,
-    setting: village.setting,
-    worldName: village.worldName,
-    worldRules: village.worldRules,
-    narrative: village.narrative,
-    playerName: village.playerName,
-    playerPersonaName: village.playerPersonaName,
-    playerBackground: village.playerBackground,
-  });
-  state.villagers = village.villagers.map((row) => ({ ...row, agenda: undefined }));
-  state.venues = village.venues;
-  state.relationshipContext = social;
-  return cloneWorldContext(state);
-}
+
+/** The existing background job saves the one GM response before this service applies its native candidate. */
 export function createSocialMail(ports: SocialMailPorts) {
-  const running = new Map<string, Promise<void>>();
-  const resolveModel = async (role: "narration" | "system") =>
-    ports.villagesLanguageModels().resolveForRequest({ connectionId: await ports.villagesConnectionIdFor(role) });
-  function fitMailContext(
-    model: CapabilityResolvedLanguageModel,
-    messages: CapabilityLanguageModelMessage[],
-    maxTokens: number,
-    role: "narration" | "system",
-  ) {
-    const output = Math.min(maxTokens, model.maxOutputTokens ?? maxTokens),
-      fit = model.fitContext(messages, { maxTokens: output });
-    if (fit.trimmed || JSON.stringify(fit.messages) !== JSON.stringify(messages))
-      throw new Error("Personal mail context does not fit the configured " + role + " connection.");
-    return { messages, maxTokens: Math.min(output, fit.maxTokens ?? output) };
-  }
-  async function modelRequest(
-    role: "narration" | "system",
-    model: CapabilityResolvedLanguageModel,
-    messages: CapabilityLanguageModelMessage[],
-    key: string,
-    maxTokens: number,
-  ) {
-    let requestTokens = Math.min(maxTokens, model.maxOutputTokens ?? maxTokens);
-    const result = await ports.completeWithRoom(model, messages, requestTokens, {
-      responseFormat: { type: "json_object" },
-      debugMode: false,
-      checkpointId: key,
-      beforeBackgroundDispatch: async () => {
-        requestTokens = fitMailContext(model, messages, maxTokens, role).maxTokens;
-        return requestTokens;
-      },
-      temperature: role === "narration" ? 0.7 : 0.1,
-      ...(role === "system" ? { reasoningEffort: "low" as const } : {}),
-      usagePurpose: role === "system" ? "checks" : "background",
-    });
-    if (result.finishReason === "length")
-      throw new Error(
-        `${role === "system" ? "System mail" : "Personal reply"} reached its ${requestTokens.toLocaleString("en-US")} output-token limit${typeof result.usage?.completionReasoningTokens === "number" ? ` (${result.usage.completionReasoningTokens.toLocaleString("en-US")} reasoning tokens)` : ""}. Explicitly retry.`,
-      );
-    const parsed = extractModelJsonObject(result);
-    if (!parsed) throw new Error("Personal mail returned invalid JSON.");
-    return parsed;
-  }
-  async function generate(input: SocialMailInput): Promise<SocialMailInterpretation> {
-    const state = cloneWorldContext(input.admitted),
-      resident = state.villagers.find((row) => row.characterId === input.residentId);
-    if (!resident) throw new Error("The recipient is unavailable.");
-    if (!state.relationshipContext) throw new Error("The admitted correspondence relationship context is unavailable.");
-    state.relationshipContext = coerceRelationshipState(state.seed, state.relationshipContext);
-    const ownContext = relationshipWritingPrompt(state, input.residentId);
-    const sourceLine: RelationshipEvidenceLine = {
-      id: input.messageId,
-      speakerId: input.mode === "resident" ? input.residentId : "player",
-      role: input.mode === "resident" ? "assistant" : "user",
-      content: input.sourceText,
-      heardBy: ["player", input.residentId],
-      kind: "mail",
-      playerHeard: true,
-    };
-    const replyId = input.messageId + ":reply";
-    const replyLine: RelationshipEvidenceLine = {
-      id: replyId,
-      speakerId: input.residentId,
-      role: "assistant",
-      content: "",
-      heardBy: ["player", input.residentId],
-      kind: "mail",
-      playerHeard: true,
-    };
-    const meaningMessages = (): CapabilityLanguageModelMessage[] => [
-      {
-        role: "system",
-        content:
-          RELATIONSHIP_REVIEW_INSTRUCTION +
-          " " +
-          SOCIAL_WISH_INSTRUCTION +
-          " Return sourceWishChanges:[] and replyWishChanges:[] for incoming and reply respectively, using supplied exact message IDs as evidence. Source effects cite only incoming.id; reply effects require reply.id as new evidence. Source effects are empty when sourceDelivered is true. Letters prove written interactions, never actual meetings or physical deeds. " +
-          SCENE_MEMORY_INSTRUCTION +
-          " Additionally return sourceMemoryChanges:[] and replyMemoryChanges:[] under that native Memory schema, grounded in incoming and reply respectively. These arrays teach ONLY the corresponding resident, never player or another resident. All player learning uses disclosures when read. sourceMemoryChanges cites incoming.id only; replyMemoryChanges must include reply.id as new evidence. Reports name the actual speaker; claims establish no physical outcome. Use the supplied memory.administrative screening fingerprint. Empty arrays are valid for filler, repeated or unimportant correspondence. When sourceDelivered is true, sourceMemoryChanges must be empty. " +
-          " Interpret this correspondence as separate source and reply reviews. Return JSON {sourceReview:relationshipReview,replyReview:relationshipReview}. sourceReview cites only incoming.id; replyReview cites the resident reply as new evidence. In resident mode interpret only sourceReview. When sourceDelivered is true, sourceReview must be empty. Set permissions to an empty array and omit agreement and commitment records: letters never grant access, create obligations, or perform actions. Private stances remain private. Disclosures are saved for the player only when the delivered letter is read. Written claims are not verified physical deeds. Only supplied source IDs are evidence.",
-      },
-      {
-        role: "user",
-        content: JSON.stringify({
-          memory: input.systemMemory?.envelope,
-          sourceDelivered: input.sourceDelivered,
-          mode: input.mode ?? "player",
-          incoming: sourceLine,
-          reply: replyLine,
-          social: state.relationshipContext,
-          actors: state.villagers.map((row) => ({
-            id: row.characterId,
-            name: row.cardSnapshot.name,
-            wishes: row.wishes,
-          })),
-          now: input.admittedAt ?? input.sourceAt,
-        }),
-      },
-    ];
-    let systemModel: CapabilityResolvedLanguageModel | undefined;
-    const system = async () => (systemModel ??= await resolveModel("system"));
-    const narrationModel =
-      input.mode !== "resident" && input.retainedReply == null ? await resolveModel("narration") : undefined;
-    const gmRaw = narrationModel
-      ? await modelRequest(
-          "narration",
-          narrationModel,
-          [
-            {
-              role: "system",
-              content:
-                "You are the GM of Villages correspondence. Write a personal reply as this resident and interpret the incoming letter and your reply in ONE response. A natural choice not to reply is valid. Return text (max2000 characters) and only meaningful optional sourceReview,replyReview,sourceMemoryChanges,replyMemoryChanges,sourceWishChanges,replyWishChanges. Preserve identity, motives and private knowledge. No self-review or independent checker. The reply cannot perform actions, grant access or create obligations. " +
-                PERSONAL_LETTER_INSTRUCTION +
-                " " +
-                meaningMessages()[0].content +
-                " All optional results belong inside that SAME root object. Omitted sections mean no change. Source interpretation precedes reply interpretation; reply relationship revisions refer to the state AFTER your source changes. Do not repeat unchanged projections or write filler Memories.",
-            },
-            {
-              role: "user",
-              content: JSON.stringify({
-                ...JSON.parse(String(meaningMessages()[1].content)),
-                setting: villageCurrentSetting(state),
-                character: resident.cardSnapshot,
-                admission: resident.admission,
-                playerName: state.playerPersonaName || state.playerName,
-                ownContext,
-                replyInstruction:
-                  "Write the reply in root text, then cite its supplied reply ID for new reply effects.",
-              }),
-            },
-          ],
-          "personal-mail:gm:" + input.sourceHash,
-          4096,
-        )
-      : undefined;
-    const text = input.mode === "resident" ? "" : gmRaw ? String(gmRaw.text ?? "") : (input.retainedReply ?? "");
-    if (text.length > 2000) throw new Error("The personal reply exceeded its size limit.");
-    if (input.mode !== "resident") assertPersonalLetter(text, resident.cardSnapshot.name);
-    replyLine.content = text;
-    const raw =
-      gmRaw ??
-      (await modelRequest(
-        "system",
-        await system(),
-        meaningMessages(),
-        "personal-mail:meaning:" + input.sourceHash + ":" + semanticHash(state.relationshipContext),
-        4096,
-      ));
-    if (gmRaw)
-      for (const key of ["sourceReview", "replyReview"])
-        raw[key] = { ...emptyRelationshipReview(), ...asRecord(raw[key]) };
-    const source = input.sourceDelivered
-      ? emptyRelationshipReview()
-      : parseRelationshipReview(mailReviewInput(raw.sourceReview), input.messageId, [sourceLine], state, true);
-    if (
-      input.sourceDelivered &&
-      JSON.stringify(raw.sourceReview) !== JSON.stringify(emptyRelationshipReview()) &&
-      ["changes", "permissions", "disclosures", "intentions"].some(
-        (key) =>
-          Array.isArray(asRecord(raw.sourceReview)[key]) && (asRecord(raw.sourceReview)[key] as unknown[]).length,
-      )
-    )
-      throw new Error("Delivered mail cannot be reinterpreted as a new source.");
-    applyRelationshipReview(state.relationshipContext!, source, state, input.messageId, input.sourceAt);
-    if (text)
-      for (const key of ["changes", "disclosures", "intentions"]) {
-        for (const effect of (Array.isArray(asRecord(raw.replyReview)[key])
-          ? asRecord(raw.replyReview)[key]
-          : []) as unknown[])
-          if (!Array.isArray(asRecord(effect).lineIds) || !(asRecord(effect).lineIds as unknown[]).includes(replyId))
-            throw new Error("Every reply effect must cite the resident reply as new evidence.");
-      }
-    const reply = text
-      ? parseRelationshipReview(mailReviewInput(raw.replyReview), replyId, [sourceLine, replyLine], state, true)
-      : emptyRelationshipReview();
-    const memories = (value: unknown): unknown[] => {
-      if (value === undefined) return [];
-      if (!Array.isArray(value) || value.length > 16) throw new Error("Invalid correspondence Memory proposals.");
-      return value;
-    };
-    return {
-      source,
-      reply,
-      replyText: text,
-      sourceMemoryChanges: input.sourceDelivered ? [] : memories(raw.sourceMemoryChanges),
-      sourceWishChanges: input.sourceDelivered ? [] : readSocialWishChanges(raw.sourceWishChanges ?? []),
-      replyWishChanges: text ? readSocialWishChanges(raw.replyWishChanges ?? []) : [],
-      replyMemoryChanges: text ? memories(raw.replyMemoryChanges) : [],
-    };
-  }
-  /** Reuse the native witnessed-memory adapter locally; this never dispatches a model. */
-  async function rememberResidentMail(
-    input: SocialMailInput,
-    result: SocialMailInterpretation,
-    bundle: "source" | "reply",
-  ) {
-    const changes = bundle === "source" ? result.sourceMemoryChanges : result.replyMemoryChanges;
-    if (!changes?.length) return;
-    if (!ports.processLiveMemories || !input.systemMemory)
-      throw new Error("Correspondence Memory settlement is unavailable.");
-    const originalIds = [input.messageId, input.messageId + ":reply"];
-    const ids = originalIds.map((id) => "mail-line:" + semanticHash(id));
-    const lines: (RelationshipEvidenceLine & { name: string; at: string; contactHidden: boolean })[] = [
-      {
-        id: ids[0]!,
-        speakerId: input.mode === "resident" ? input.residentId : "player",
-        role: input.mode === "resident" ? "assistant" : "user",
-        name: input.residentId,
-        at: input.sourceAt,
-        contactHidden: true,
-        content: input.sourceText,
-        kind: "dialogue",
-        heardBy: [input.residentId],
-        playerHeard: false,
-      },
-      ...(bundle === "reply"
-        ? [
-            {
-              id: ids[1]!,
-              speakerId: input.residentId,
-              role: "assistant" as const,
-              name: input.residentId,
-              at: input.sourceAt,
-              contactHidden: true,
-              content: result.replyText,
-              kind: "dialogue",
-              heardBy: [input.residentId],
-              playerHeard: false,
-            },
-          ]
-        : []),
-    ];
-    const scoped = changes.map((raw) => {
-      const row = asRecord(raw),
-        learners = asRecord(row.learners),
-        own = asRecord(learners[input.residentId]);
-      return {
-        ...row,
-        learners: learners[input.residentId]
-          ? {
-              [input.residentId]: {
-                ...own,
-                support: Array.isArray(own.support)
-                  ? own.support.map((raw) => {
-                      const ref = asRecord(raw),
-                        index = originalIds.indexOf(String(ref.lineId));
-                      return {
-                        ...ref,
-                        lineId:
-                          index >= 0
-                            ? ids[index]
-                            : typeof ref.lineId === "number"
-                              ? ids[ref.lineId]
-                              : ref.lineId === "player"
-                                ? ids[0]
-                                : ref.lineId,
-                      };
-                    })
-                  : own.support,
-              },
-            }
-          : {},
-      };
-    });
-    const at = input.sourceAt,
-      submissionId = semanticHash([input.messageId, bundle]).slice(0, 24);
-    const scene = coerceSession({
-      version: 4,
-      id: "offscreen:mail:" + input.sourceHash.slice(0, 24),
-      villageSeed: input.seed,
-      status: "closed",
-      startedAt: at,
-      activeIds: [input.residentId],
-      participants: [{ characterId: input.residentId, name: input.residentId, doing: "correspondence" }],
-      lines,
-      submissions: [
-        {
-          id: submissionId,
-          at,
-          mode: "chat",
-          message: "",
-          targetId: "",
-          liveProposals: bindLiveProposals(
-            {
-              memoryChanges: scoped,
-              earlierLineIds: bundle === "reply" ? [ids[0]!] : [],
-              memoryContexts: { [input.systemMemory.saved.protection.fingerprint]: input.systemMemory.saved },
-            },
-            "",
-            [bundle === "reply" ? ids[1]! : ids[0]!],
-            lines,
-          ),
-        },
-      ],
-    });
-    const outcome = await ports.processLiveMemories(scene, submissionId, undefined, {
-      [input.residentId]: input.incarnation,
-    });
-    if (outcome.status === "failed" || outcome.status === "pending")
-      throw new Error(outcome.reason || "Correspondence Memory settlement needs recovery.");
-  }
-  async function publishReadWishMail(seed: string, threadId: string) {
-    const social = await ports.readRelationshipState(seed);
-    const messages =
-      social.mailThreads[threadId]?.messages.filter(
-        (m) => m.toId === "player" && m.readAt && social.mailDeliveries[m.id] && m.wishDisclosures?.length,
-      ) ?? [];
-    if (!messages.length) return;
-    await ports.mutateVillageState(
-      (state) => {
-        if (state.seed !== seed) throw conflict("Village identity changed.");
-        for (const message of messages)
-          for (const fact of message.wishDisclosures ?? []) publishWishDisclosure(state, fact, message.readAt!);
-      },
-      { memories: true },
-    );
-  }
-  async function settleWishMail(input: SocialMailInput, result: SocialMailInterpretation, bundle: "source" | "reply") {
-    const sourceId = input.messageId,
-      replyId = input.messageId + ":reply";
-    const rows = (bundle === "source" ? result.sourceWishChanges : result.replyWishChanges) ?? [];
-    let facts: import("../../../shared/contracts/wishes.js").WishDisclosure[] = [];
-    await ports.mutateVillageState(
-      (state) => {
-        if (state.seed !== input.seed) throw conflict("Village identity changed.");
-        const captured = cloneWorldContext({ villagers: input.admitted.villagers }).villagers;
-        if (bundle === "reply")
-          for (const original of captured) {
-            for (const receipt of Object.values(state.exchangeReceipts)) {
-              if (
-                receipt.sceneId !== "mail:" + sourceId + ":source" ||
-                receipt.actorId !== original.characterId ||
-                !receipt.sceneFacts?.wish?.value
-              )
-                continue;
-              const value = receipt.sceneFacts.wish.value;
-              const index = original.wishes.findIndex((wish) => wish.id === value.id);
-              if (index < 0) original.wishes.push(value);
-              else original.wishes[index] = value;
-            }
-          }
-        const lines = [
-          {
-            id: sourceId,
-            speakerId: input.mode === "resident" ? input.residentId : "player",
-            content: input.sourceText,
-            heardBy: [input.residentId, "player"],
-            playerHeard: true,
-            kind: "mail",
-          },
-          ...(bundle === "reply"
-            ? [
-                {
-                  id: replyId,
-                  speakerId: input.residentId,
-                  content: result.replyText,
-                  heardBy: [input.residentId, "player"],
-                  playerHeard: true,
-                  kind: "mail",
-                },
-              ]
-            : []),
-        ];
-        facts = applyWishSource(state, {
-          id: "mail:" + sourceId + ":" + bundle,
-          kind: "mail",
-          at: input.sourceAt,
-          recordedAt: new Date().toISOString(),
-          lines,
-          currentLineIds: bundle === "reply" ? [replyId] : [sourceId],
-          changes: rows,
-          authority: captureWishAuthority(captured, readSocialWishChanges(rows)),
-          learn: false,
-        }).disclosures;
-      },
-      {
-        wishes: [input.residentId],
-        wishEffects:
-          bundle === "reply"
-            ? (state) =>
-                Object.entries(state.exchangeReceipts)
-                  .filter(([, receipt]) => receipt.sceneId === "mail:" + sourceId + ":source")
-                  .map(([id]) => id)
-            : undefined,
-      },
-    );
-    await ports.mutateRelationships(input.seed, (state) => {
-      const message = mutablePersonalMessage(state, input.threadId, bundle === "reply" ? replyId : sourceId);
-      if (message && message.toId === "player") message.wishDisclosures = facts;
-    });
-    await publishReadWishMail(input.seed, input.threadId);
-  }
-  async function applyEntry(entry: WorldSocialMailOutbox) {
-    const input = await ports.readMailInput(entry.input, entry.input.seed),
-      result = entry.result;
-    const village = await ports.readVillageSnapshot({ memories: true });
-    if (village.seed !== input.seed) throw conflict("Village identity changed.");
-    let current = await ports.readRelationshipState(input.seed);
-    if (input.mode !== "resident" && result.replyText && !current.mailDeliveries[input.messageId + ":reply"])
-      assertPersonalLetter(
-        result.replyText,
-        input.admitted.villagers.find((row) => row.characterId === input.residentId)?.cardSnapshot.name,
-      );
-    if (
-      input.mode === "resident" &&
-      !current.mailThreads[input.threadId]?.messages.some((row) => row.id === input.messageId)
-    ) {
-      current = await ports.mutateRelationships(input.seed, (state) => {
-        const thread = (state.mailThreads[input.threadId] ??= {
-          id: input.threadId,
-          participantIds: ["player", input.residentId],
-          revision: 0,
-          messages: [],
-        });
-        if (!thread.messages.some((row) => row.id === input.messageId))
-          thread.messages.push({
-            id: input.messageId,
-            requestId: input.messageId,
-            fromId: input.residentId,
-            toId: "player",
-            text: input.sourceText,
-            at: input.sourceAt,
-            status: "pending",
-            sourceHash: input.sourceHash,
-            incarnation: input.incarnation,
-          });
-      });
-    }
-    const original = requireMailSource(current, input.threadId, input.messageId).message;
-    if (
-      (["cancelled", "undeliverable"].includes(original.status) && !current.mailDeliveries[input.messageId]) ||
-      (original.replyUnavailable && !current.mailDeliveries[input.messageId + ":reply"])
-    ) {
-      await ports.mutateVillageState((state) => {
-        if (state.seed === input.seed)
-          state.socialMailOutbox = state.socialMailOutbox?.filter((row) => row.id !== entry.id);
-      });
-      return;
-    }
-    if (
-      original.text !== input.sourceText ||
-      original.sourceHash !== input.sourceHash ||
-      original.incarnation !== input.incarnation ||
-      ["cancelled", "undeliverable"].includes(original.status)
-    )
-      throw conflict("This mail source changed or was cancelled.");
-    const complete =
-      !!current.mailDeliveries[input.messageId] &&
-      (!result.replyText || !!current.mailDeliveries[input.messageId + ":reply"]);
-    if (
-      !complete &&
-      !village.villagers.some(
-        (row) => row.characterId === input.residentId && row.cardSnapshot.capturedAt === input.incarnation,
-      )
-    )
-      throw conflict("The correspondent changed. This retained message cannot settle under a different resident card.");
-    if (!current.mailDeliveries[input.messageId]) {
-      await ports.mutateRelationships(input.seed, (state) => beginMailDelivery(state, input.threadId, input.messageId));
-      // Validate current revisions before any world effect; retries remain entirely local.
-      applyRelationshipReview(
-        coerceRelationshipState(current.seed, current),
-        withoutMailDisclosures(mailReview(result.source)),
-        village,
-        input.messageId,
-        input.sourceAt,
-      );
-      await ports.withVillageSceneAcceptance(async (authority) => {
-        if (
-          authority.seed !== input.seed ||
-          !authority.villagers.some(
-            (row) => row.characterId === input.residentId && row.cardSnapshot.capturedAt === input.incarnation,
-          )
-        )
-          throw conflict("The correspondent changed before the letter was delivered.");
-        await ports.mutateRelationships(input.seed, (state) => {
-          applyRelationshipReview(
-            state,
-            withoutMailDisclosures(mailReview(result.source)),
-            authority,
-            input.messageId,
-            input.sourceAt,
-          );
-          completeMailDelivery(state, input.threadId, input.messageId, input.sourceHash, new Date().toISOString());
-          if (input.mode === "resident") {
-            const message = requireMailSource(state, input.threadId, input.messageId).message;
-            message.replyStatus = "complete";
-            message.disclosures = result.source.disclosures;
-          }
-        });
-      });
-    }
-    await settleWishMail(input, result, "source");
-    await rememberResidentMail(input, result, "source");
-    current = await ports.readRelationshipState(input.seed);
-    const replyId = input.messageId + ":reply";
-    if (!current.mailDeliveries[replyId] && result.replyText) {
-      applyRelationshipReview(
-        coerceRelationshipState(current.seed, current),
-        withoutMailDisclosures(mailReview(result.reply)),
-        village,
-        replyId,
-        input.sourceAt,
-      );
-      await ports.withVillageSceneAcceptance(async (authority) => {
-        if (
-          authority.seed !== input.seed ||
-          !authority.villagers.some(
-            (row) => row.characterId === input.residentId && row.cardSnapshot.capturedAt === input.incarnation,
-          )
-        )
-          throw conflict("The correspondent changed before the reply was delivered.");
-        await ports.mutateRelationships(input.seed, (state) => {
-          const { thread, message } = requireMailSource(state, input.threadId, input.messageId);
-          if (state.mailDeliveries[replyId]) return;
-          if (message.replyUnavailable) throw conflict("The correspondent changed before the reply was delivered.");
-          applyRelationshipReview(
-            state,
-            withoutMailDisclosures(mailReview(result.reply)),
-            authority,
-            replyId,
-            input.sourceAt,
-          );
-          thread.messages.push({
-            id: replyId,
-            requestId: replyId,
-            fromId: input.residentId,
-            toId: "player",
-            text: result.replyText,
-            at: new Date().toISOString(),
-            status: "delivered",
-            replyTo: input.messageId,
-            disclosures: result.reply.disclosures,
-          });
-          state.mailDeliveries[replyId] = {
-            messageId: replyId,
-            sourceHash: semanticHash([input.sourceHash, result.replyText]),
-            at: new Date().toISOString(),
-          };
-          message.replyStatus = "complete";
-          message.error = undefined;
-          thread.revision++;
-        });
-      });
-    } else
-      await ports.mutateRelationships(input.seed, (state) => {
-        const { message } = requireMailSource(state, input.threadId, input.messageId);
-        message.replyStatus = "complete";
-        message.error = undefined;
-      });
-    await settleWishMail(input, result, "reply");
-    await rememberResidentMail(input, result, "reply");
-    await ports.mutateVillageState((state) => {
-      if (state.seed === input.seed) {
-        state.socialMailOutbox = state.socialMailOutbox?.filter((row) => row.id !== entry.id);
-      }
-    });
-  }
-  async function processOutbox(village: VillageState): Promise<boolean> {
-    // Claim shared tasks only after taking the same admission/authority order as Retry.
-    // Otherwise Retry can hold authority while awaiting a task which is itself waiting for authority.
-    return ports.withWork(() => ports.withVillageSceneAcceptance(() => settleOutbox(village)));
-  }
-  async function settleOutbox(village: VillageState): Promise<boolean> {
-    let retired = false;
-    for (const entry of village.socialMailOutbox ?? []) {
-      const sender = entry.input.admitted.villagers.find((row) => row.characterId === entry.input.residentId)
-        ?.cardSnapshot.name;
-      if (entry.input.mode === "resident" && hasPersonalLetterAction(entry.input.sourceText, sender)) {
-        const discarded = await retireChangedCorrespondent(entry, true);
-        if (discarded) {
-          retired = true;
-          continue;
-        }
-      }
-      if (
-        entry.error &&
-        village.seed === entry.input.seed &&
-        !village.villagers.some(
-          (row) =>
-            row.characterId === entry.input.residentId && row.cardSnapshot.capturedAt === entry.input.incarnation,
-        )
-      )
-        retired = (await retireChangedCorrespondent(entry)) || retired;
-    }
-    if (retired) village = await ports.readVillageSnapshot({ memories: true });
-    const current = await ports.readRelationshipState(village.seed);
-    const entries = (village.socialMailOutbox ?? []).filter((row) => {
-      if (!row.error) return true;
-      const source = current.mailThreads[row.input.threadId]?.messages.find((message) => message.id === row.id);
-      const completedDelivery =
-        !!current.mailDeliveries[row.id] && (!row.result.replyText || !!current.mailDeliveries[row.id + ":reply"]);
-      const changed = !village.villagers.some(
-        (resident) =>
-          resident.characterId === row.input.residentId && resident.cardSnapshot.capturedAt === row.input.incarnation,
-      );
-      if (completedDelivery && changed) return true;
-      return (
-        !!source &&
-        source.sourceHash === row.input.sourceHash &&
-        source.incarnation === row.input.incarnation &&
-        ((["cancelled", "undeliverable"].includes(source.status) && !current.mailDeliveries[row.id]) ||
-          (source.replyUnavailable && !current.mailDeliveries[row.id + ":reply"]))
-      );
-    });
-    if (!entries.length) return retired;
-    for (const entry of entries) {
-      const existing = running.get(entry.id);
-      if (existing) {
-        await existing;
-        continue;
-      }
-      const task = applyEntry(entry)
-        .catch(async (error) => {
-          const latest = await ports.readVillageSnapshot({ memories: true });
-          if (
-            latest.seed === entry.input.seed &&
-            !latest.villagers.some(
-              (row) =>
-                row.characterId === entry.input.residentId && row.cardSnapshot.capturedAt === entry.input.incarnation,
-            ) &&
-            (await retireChangedCorrespondent(entry))
-          )
-            return;
-          const message = error instanceof Error ? error.message : "Mail delivery needs recovery.";
-          await ports.mutateRelationships(entry.input.seed, (state) => {
-            const source = mutablePersonalMessage(state, entry.input.threadId, entry.input.messageId);
-            if (source) source.error = message;
-          });
-          await ports.mutateVillageState((state) => {
-            const saved = state.socialMailOutbox?.find((row) => row.id === entry.id);
-            if (saved) {
-              saved.error = message;
-              saved.reinterpretRequired =
-                error instanceof SocialRevisionConflict ||
-                error instanceof PersonalLetterActionError ||
-                error instanceof WishInterpretationError;
-            }
-          });
-        })
-        .finally(() => running.delete(entry.id));
-      running.set(entry.id, task);
-      await task;
-    }
-    return true;
-  }
-  async function retireChangedCorrespondent(entry: WorldSocialMailOutbox, invalidLetter = false): Promise<boolean> {
-    const input = entry.input;
-    let retired = false;
-    await ports.withVillageSceneAcceptance(async (current) => {
-      if (
-        current.seed !== input.seed ||
-        (!invalidLetter &&
-          current.villagers.some(
-            (row) => row.characterId === input.residentId && row.cardSnapshot.capturedAt === input.incarnation,
-          ))
-      )
-        return;
-      await ports.mutateRelationships(input.seed, (state) => {
-        retired = false;
-        if (invalidLetter && input.mode !== "resident") return;
-        if (
-          state.mailDeliveries[input.messageId] &&
-          (input.mode === "resident" || state.mailDeliveries[input.messageId + ":reply"])
-        )
-          return;
-        let thread = state.mailThreads[input.threadId];
-        if (!thread && input.mode === "resident") {
-          thread = state.mailThreads[input.threadId] = {
-            id: input.threadId,
-            participantIds: ["player", input.residentId],
-            revision: 0,
-            messages: [],
-          };
-        }
-        if (!thread || !thread.participantIds.includes("player") || !thread.participantIds.includes(input.residentId))
-          return;
-        let source = mutablePersonalMessage(state, input.threadId, input.messageId);
-        if (!source && input.mode === "resident") {
-          source = {
-            id: input.messageId,
-            requestId: input.messageId,
-            fromId: input.residentId,
-            toId: "player",
-            text: input.sourceText,
-            at: input.sourceAt,
-            status: "cancelled",
-            sourceHash: input.sourceHash,
-            incarnation: input.incarnation,
-          };
-          thread.messages.push(source);
-        }
-        if (
-          !source ||
-          source.sourceHash !== input.sourceHash ||
-          source.incarnation !== input.incarnation ||
-          source.fromId !== (input.mode === "resident" ? input.residentId : "player") ||
-          source.toId !== (input.mode === "resident" ? "player" : input.residentId)
-        )
-          return;
-        if (state.mailDeliveries[input.messageId]) {
-          source.replyUnavailable = true;
-          source.replyStatus = "complete";
-          source.error = "A reply could not be delivered because the correspondent changed.";
-        } else {
-          source.status = input.mode === "resident" ? "cancelled" : "undeliverable";
-          source.error =
-            input.mode === "resident" ? undefined : "This letter could not be delivered because its recipient changed.";
-        }
-        thread.revision++;
-        retired = true;
-      });
-    });
-    if (!retired) return false;
-    await ports.mutateVillageState((state) => {
-      if (state.seed === input.seed)
-        state.socialMailOutbox = state.socialMailOutbox?.filter(
-          (row) =>
-            !(
-              row.id === entry.id &&
-              row.input.sourceHash === input.sourceHash &&
-              row.input.incarnation === input.incarnation
-            ),
-        );
-    });
-    return true;
-  }
-  async function queue(input: SocialMailInput, actionId?: string) {
-    await ports.queueBackgroundJob({
-      kind: "personal-mail",
-      subjectId: input.messageId,
-      seed: input.seed,
-      finite: true,
-      label: "Personal reply",
-      revision: actionId ? input.sourceHash + ":" + actionId : input.sourceHash,
-      input,
-    });
-  }
-  async function admit(
-    village: VillageState,
-    threadId: string,
-    messageId: string,
-    actionId?: string,
-    retainedReply?: string,
-  ) {
-    try {
-      await queue(await makeInput(village, threadId, messageId, retainedReply), actionId);
-    } catch (error) {
-      const latest = await ports.readVillageSnapshot({ memories: true });
-      const retained = latest.socialMailOutbox?.find((row) => row.id === messageId && row.input.threadId === threadId);
-      if (retained && (await retireChangedCorrespondent(retained))) throw error;
-      await ports.withVillageSceneAcceptance(async (authority) => {
-        if (authority.seed !== village.seed) return;
-        await ports.mutateRelationships(village.seed, (state) => {
-          const message = mutablePersonalMessage(state, threadId, messageId);
-          if (message && !state.mailDeliveries[message.id]) {
-            const unavailable =
-              message.fromId === "player" &&
-              !authority.villagers.some(
-                (resident) =>
-                  resident.characterId === message.toId && resident.cardSnapshot.capturedAt === message.incarnation,
-              );
-            message.status = unavailable ? "undeliverable" : message.status;
-            message.admissionFailed = !unavailable;
-            message.error = unavailable
-              ? "This letter could not be delivered because its recipient changed."
-              : "Letter processing could not start.";
-          }
-        });
-      });
-      throw error;
-    }
-    await ports.mutateRelationships(village.seed, (state) => {
-      const message = mutablePersonalMessage(state, threadId, messageId);
-      if (message?.admissionFailed) {
-        message.admissionFailed = undefined;
-        message.error = undefined;
-      }
-    });
-  }
-  async function makeInput(
-    village: VillageState,
-    threadId: string,
-    messageId: string,
-    retainedReply?: string,
-  ): Promise<SocialMailInput> {
-    if (village.villagers.some((row) => !wishHistoryLoaded(row))) {
-      const current = await ports.readVillageSnapshot({ memories: true, wishes: true });
-      if (current.seed !== village.seed || current.setupAt !== village.setupAt)
-        throw conflict("Village identity changed.");
-      village = current;
-    }
-    const state = await ports.readRelationshipState(village.seed),
-      { thread, message } = requireMailSource(state, threadId, messageId);
-    const resident = village.villagers.find(
-      (row) => row.characterId === (message.toId === "player" ? message.fromId : message.toId),
-    );
-    if (!resident) throw badRequest("The recipient is no longer a resident.");
-    const incarnation = message.incarnation;
-    if (!incarnation || !message.sourceHash) throw conflict("The pending message has no saved source identity.");
-    if (resident.cardSnapshot.capturedAt !== incarnation)
-      throw conflict("The correspondent changed. The original message is retained for recovery.");
-    return {
-      mode: message.fromId === "player" ? "player" : "resident",
-      seed: village.seed,
-      threadId,
-      messageId,
-      residentId: resident.characterId,
-      sourceText: message.text,
-      sourceAt: message.at,
-      admittedAt: new Date().toISOString(),
-      sourceHash: message.sourceHash,
-      incarnation,
-      admitted: admission({ ...village, relationshipContext: state }, resident.characterId),
-      retainedReply,
-      systemMemory: sceneMemoryContext(
-        village,
-        [resident.characterId, "player"],
-        message.text,
-        "",
-        thread.messages
-          .slice(0, thread.messages.indexOf(message))
-          .filter((row) => row.status === "delivered" && (row.fromId === "player" || !!row.readAt))
-          .slice(-4)
-          .map((row) => row.text)
-          .join("\n"),
-      ),
-      sourceDelivered: !!state.mailDeliveries[message.id],
-    };
-  }
-  const readScope = (value: unknown) =>
-    z
-      .string()
-      .regex(/^[a-f0-9]{64}$/)
-      .parse(value);
-  function assertScope(world: VillageState, scope: string) {
-    if (villageWorldScope(world) !== readScope(scope)) throw conflict("The Village changed. Open its Mailbox again.");
-  }
-  async function presentation(scope?: string, settle = false) {
-    let village = await ports.readVillageSnapshot();
-    if (scope) assertScope(village, scope);
-    if (settle && (await processOutbox(village))) village = await ports.readVillageSnapshot();
-    if (scope) assertScope(village, scope);
-    const state = await ports.readRelationshipState(village.seed);
-    return createMailboxPresentation(village, state, await ports.backgroundWorkSummaries());
+  const assertScope = (state: Parameters<typeof villageWorldScope>[0], scope: string) => {
+    if (villageWorldScope(state) !== scopeId.parse(scope))
+      throw conflict("The Village changed. Open its Mailbox again.");
+  };
+  const now = (state: Pick<Awaited<ReturnType<SocialMailPorts["readVillageSnapshot"]>>, "clock">) =>
+    villageNow(state.clock?.advanceMs ?? 0).toISOString();
+  async function presentation(scope?: string) {
+    const state = await ports.readVillageSnapshot({ memories: true });
+    if (scope) assertScope(state, scope);
+    return createMailboxPresentation(state, state.mailbox, await ports.backgroundWorkSummaries());
   }
   async function readMailbox(value: unknown = {}): Promise<MailboxView> {
     const query = readMailboxQuery(value);
-    return (await presentation(query.scope, true)).mailbox(query);
+    return (await presentation(query.scope)).mailbox(query);
   }
   async function getLetter(threadId: string, messageId: string, scope: string, token: string): Promise<PersonalLetter> {
-    const detail = (await presentation(readScope(scope))).letter(threadId, messageId);
-    if (detail.message.token !== readScope(token)) throw conflict("The letter changed. Choose it again.");
-    return detail;
+    const letter = (await presentation(scope)).letter(threadId, messageId);
+    if (letter.message.token !== scopeId.parse(token)) throw conflict("The letter changed. Choose it again.");
+    return letter;
+  }
+  function mutation(state: Awaited<ReturnType<SocialMailPorts["readVillageSnapshot"]>>, messageId: string) {
+    const message = state.mailbox.messages[messageId];
+    if (!message) throw conflict("The saved letter is no longer in this Village.");
+    const threadId = mailboxThreadId(message.from.id === "player" ? message.to.id : message.from.id);
+    return {
+      scope: villageWorldScope(state),
+      threadId,
+      messageId,
+      token: mailboxLetterIdentity(state, state.mailbox, threadId, message),
+    };
+  }
+  function makeInput(
+    state: Awaited<ReturnType<SocialMailPorts["readVillageSnapshot"]>>,
+    messageId: string,
+  ): PersonalMailInput {
+    const message = state.mailbox.messages[messageId],
+      resident = state.villagers.find(
+        (resident) => resident.characterId === message.to.id && resident.incarnation === message.to.incarnation,
+      );
+    if (!resident) throw conflict("The original correspondent changed. The saved letter is retained.");
+    const player = readPlayerIdentity(state);
+    return readPersonalMailInput({
+      seed: state.seed,
+      setupAt: state.setupAt,
+      residentId: resident.characterId,
+      incarnation: resident.incarnation,
+      residentName: resident.cardSnapshot.name,
+      incoming: {
+        id: message.id,
+        at: message.at,
+        from: message.from,
+        to: message.to,
+        text: message.text,
+        requestId: message.requestId,
+      },
+      capture: captureContinuityContext(state, ["player", resident.characterId], message.text, now(state)),
+      identity:
+        venueCardProfile(readEffectiveVillagerCard(resident), player.name) +
+        "\n\n" +
+        JSON.stringify({ setting: villageCurrentSetting(state), player }),
+    });
+  }
+  async function admit(state: Awaited<ReturnType<SocialMailPorts["readVillageSnapshot"]>>, messageId: string) {
+    try {
+      const input = makeInput(state, messageId);
+      await ports.queueBackgroundJob({
+        kind: "personal-mail",
+        seed: input.seed,
+        subjectId: messageId,
+        finite: true,
+        label: "Personal reply",
+        revision: mailSourceHash(input.seed, input.incoming, input.incoming.text),
+        input,
+      });
+    } catch (error) {
+      await ports.mutateVillageState(
+        (current) => {
+          if (current.seed !== state.seed || current.setupAt !== state.setupAt) return;
+          const message = current.mailbox.messages[messageId];
+          if (message?.status !== "pending") return;
+          current.mailbox = {
+            ...current.mailbox,
+            revision: current.mailbox.revision + 1,
+            messages: {
+              ...current.mailbox.messages,
+              [messageId]: { ...message, admissionFailed: true, error: "Letter processing could not start." },
+            },
+          };
+        },
+        { memories: true },
+      );
+      throw error;
+    }
   }
   async function send(value: unknown, threadId?: string) {
     const input = z
       .object({
-        scope: z.string().regex(/^[a-f0-9]{64}$/),
-        residentId: z.string().min(1),
-        requestId: z.string().min(1).max(200),
+        scope: scopeId,
+        residentId: z.string().min(1).max(160),
+        requestId: z.string().regex(/^[a-zA-Z0-9_-]{1,200}$/),
         text: z.string().min(1).max(4000),
       })
+      .strict()
       .parse(value);
-    const village = await ports.readVillageSnapshot({ memories: true });
-    assertScope(village, input.scope);
-    if (!village.villagers.some((row) => row.characterId === input.residentId))
-      throw badRequest("Choose a current resident.");
-    if (!village.relationshipContext?.reviewedActorIds.includes(input.residentId))
-      throw conflict("Starting history needs preparation before correspondence.");
-    if (threadId && threadId !== personalThreadId(input.residentId))
+    const messageId = mailboxThreadId(input.residentId) + ":" + input.requestId;
+    if (threadId && threadId !== mailboxThreadId(input.residentId))
       throw badRequest("The recipient does not match this thread.");
-    const state = await ports.mutateRelationships(village.seed, (state) => {
-      const source = queuePersonalMessage(
-        state,
-        input.residentId,
-        input.requestId,
-        input.text,
-        new Date().toISOString(),
-      );
-      source.incarnation ??= village.villagers.find(
-        (row) => row.characterId === input.residentId,
-      )!.cardSnapshot.capturedAt;
-      source.sourceHash ??= semanticHash([
-        village.seed,
-        source.id,
-        source.fromId,
-        source.toId,
-        source.text,
-        source.at,
-        source.incarnation,
-      ]);
-    });
-    const source = state.mailThreads[personalThreadId(input.residentId)]!.messages.find(
-      (row) => row.requestId === input.requestId,
-    )!;
-    if (source.status === "pending") await admit(village, personalThreadId(input.residentId), source.id);
-    return {
-      scope: villageWorldScope(village),
-      threadId: personalThreadId(input.residentId),
-      messageId: source.id,
-      token: mailboxLetterIdentity(village, state, personalThreadId(input.residentId), source),
-    };
+    const state = await ports.mutateVillageState(
+      (state) => {
+        assertScope(state, input.scope);
+        const prior = state.mailbox.messages[messageId];
+        if (prior) {
+          if (
+            prior.from.id !== "player" ||
+            prior.to.id !== input.residentId ||
+            prior.requestId !== input.requestId ||
+            prior.text !== input.text
+          )
+            throw conflict("This request ID already belongs to a different letter.");
+          return;
+        }
+        if (!startingHistoryReady(state)) throw conflict("Starting history needs preparation before correspondence.");
+        const from = continuityActor(state, "player"),
+          to = continuityActor(state, input.residentId);
+        if (!from || !to || !state.villagers.some((resident) => resident.characterId === input.residentId))
+          throw badRequest("Choose a current resident.");
+        if (threadId && threadId !== mailboxThreadId(to.id))
+          throw badRequest("The recipient does not match this thread.");
+        state.mailbox = queueMailboxLetter(
+          state.mailbox,
+          state.seed,
+          { id: mailboxThreadId(to.id) + ":" + input.requestId, at: now(state), from, to },
+          input.requestId,
+          input.text,
+        );
+      },
+      { memories: true },
+    );
+    if (state.mailbox.messages[messageId].status === "pending") await admit(state, messageId);
+    const latest = await ports.readVillageSnapshot({ memories: true });
+    assertScope(latest, input.scope);
+    return mutation(latest, messageId);
   }
   async function readLetter(threadId: string, messageId: string, scope: string, token: string) {
-    const village = await ports.readVillageSnapshot({ memories: true });
-    assertScope(village, scope);
-    const thread = village.relationshipContext?.mailThreads[threadId];
-    if (!thread || !thread.participantIds.includes("player")) throw badRequest("That thread is unavailable.");
-    const letter = thread.messages.find((message) => message.id === messageId && message.toId === "player");
-    if (!letter || !village.relationshipContext!.mailDeliveries[messageId])
-      throw badRequest("That letter is unavailable.");
-    if (mailboxLetterIdentity(village, village.relationshipContext!, threadId, letter) !== readScope(token))
-      throw conflict("The letter changed. Choose it again.");
-    const lines: RelationshipEvidenceLine[] = thread.messages
-      .filter(
-        (message) =>
-          !!village.relationshipContext!.mailDeliveries[message.id] &&
-          (message.fromId === "player" || !!message.readAt || message.id === messageId),
-      )
-      .map((message) => ({
-        id: message.id,
-        speakerId: message.fromId,
-        role: message.fromId === "player" ? "user" : "assistant",
-        content: message.text,
-        heardBy: ["player"],
-        playerHeard: true,
-      }));
-    // Publish first. A failed Memory write leaves the message unread and locally retryable.
-    for (const message of [letter]) {
-      const delivery = village.relationshipContext!.mailDeliveries[message.id];
-      if (message.toId !== "player" || !delivery || message.readAt) continue;
-      await ports.mutateVillageState(
-        (state) => {
-          assertScope(state, scope);
-          for (const fact of message.wishDisclosures ?? [])
-            publishWishDisclosure(state, fact, new Date().toISOString());
-          publishRelationshipDisclosures(
-            state,
-            message.disclosures ?? [],
-            { kind: "domain", id: "mail:" + semanticHash(message.id), revision: 1, fingerprint: delivery.sourceHash },
-            lines,
-            message.at,
-            new Date().toISOString(),
-          );
-        },
-        { memories: true },
-      );
-    }
-    await ports.mutateRelationships(village.seed, (state) =>
-      readPersonalThread(state, threadId, new Date().toISOString(), [messageId]),
+    const state = await ports.mutateVillageState(
+      (state) => {
+        assertScope(state, scope);
+        const message = state.mailbox.messages[messageId];
+        if (!message || message.to.id !== "player" || mailboxThreadId(message.from.id) !== threadId)
+          throw badRequest("That letter is unavailable.");
+        if (mailboxLetterIdentity(state, state.mailbox, threadId, message) !== scopeId.parse(token))
+          throw conflict("The letter changed. Choose it again.");
+        readDeliveredLetter(state, messageId, now(state));
+      },
+      { memories: true },
     );
-    await publishReadWishMail(village.seed, threadId);
-    return { scope, threadId, messageId, token };
+    return mutation(state, messageId);
   }
   async function retry(threadId: string, messageId: string, requestId: string, scope: string, token: string) {
     z.string()
       .regex(/^[a-zA-Z0-9_-]{1,200}$/)
       .parse(requestId);
-    const village = await ports.readVillageSnapshot({ memories: true }),
-      social = await ports.readRelationshipState(village.seed);
-    assertScope(village, scope);
-    const source = social.mailThreads[threadId]?.messages.find((row) => row.id === messageId);
-    if (source?.replyUnavailable || (source && ["cancelled", "undeliverable"].includes(source.status)))
-      throw conflict("This letter can no longer be delivered.");
-    const jobs = (await ports.backgroundWorkSummaries()).filter(
-      (row) => row.kind === "personal-mail" && row.subjectId === messageId,
-    );
-    const job =
-      jobs.find((row) => ["queued", "running", "paused"].includes(row.status)) ??
-      jobs.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))[0];
+    const state = await ports.readVillageSnapshot({ memories: true });
+    assertScope(state, scope);
+    const message = state.mailbox.messages[messageId];
+    if (!message || message.status !== "pending" || mailboxThreadId(message.to.id) !== threadId)
+      throw conflict("This letter has no pending processing to retry.");
+    if (mailboxLetterIdentity(state, state.mailbox, threadId, message) !== scopeId.parse(token))
+      throw conflict("The saved letter changed. Refresh its status.");
+    const jobs = (await ports.backgroundWorkSummaries())
+        .filter((job) => job.kind === "personal-mail" && job.subjectId === messageId)
+        .sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "")),
+      job = jobs.find((job) => ["queued", "running", "paused"].includes(job.status)) ?? jobs[0];
     if (job && ["queued", "running", "paused"].includes(job.status))
       throw conflict("This letter is already being processed.");
-    const entry = village.socialMailOutbox?.find((row) => row.id === messageId && row.input.threadId === threadId);
-    const currentToken = source
-      ? mailboxLetterIdentity(village, social, threadId, source)
-      : entry
-        ? mailboxRecoveryIdentity(village, entry)
-        : undefined;
-    if (currentToken !== readScope(token)) throw conflict("The saved mail changed. Refresh its status.");
-    const name = village.villagers.find((row) => row.characterId === entry?.input.residentId)?.cardSnapshot.name;
-    const replaceInvalidReply =
-      !!entry?.error &&
-      entry.input.mode !== "resident" &&
-      !social.mailDeliveries[messageId + ":reply"] &&
-      hasPersonalLetterAction(entry.result.replyText, name);
-    const fingerprint = (row: WorldSocialMailOutbox) =>
-      semanticHash([row.id, row.input.sourceHash, row.input.admittedAt, row.result, row.error]);
-    const rewriteAction = replaceInvalidReply && entry ? "mail-rewrite-" + fingerprint(entry).slice(0, 32) : "";
-    // An older saved reply may have failed after source delivery but before its Memory settled.
-    // Preserve that local work before a replacement generation can overwrite the saved result.
-    if (replaceInvalidReply && entry && social.mailDeliveries[messageId]) {
-      const input = await ports.readMailInput(entry.input, village.seed);
-      await settleWishMail(input, entry.result, "source");
-      await rememberResidentMail(input, entry.result, "source");
-    }
-    if (entry?.error && !entry.reinterpretRequired && !replaceInvalidReply) {
-      await ports.mutateVillageState((state) => {
-        const saved = state.socialMailOutbox?.find((row) => row.id === messageId);
-        if (saved) saved.error = undefined;
-      });
-      await processOutbox(await ports.readVillageSnapshot({ memories: true }));
-      return { scope, threadId, messageId, token };
-    }
-    const { message } = requireMailSource(social, threadId, messageId);
-    if (["cancelled", "undeliverable"].includes(message.status))
-      throw conflict("This letter can no longer be delivered.");
-    if (
-      job &&
-      ["failed", "interrupted"].includes(job.status) &&
-      (!replaceInvalidReply || entry?.retryAdmitted === rewriteAction)
-    ) {
+    if (job && ["failed", "interrupted"].includes(job.status))
       await ports.retryBackgroundJob(job.id, job.attempt, requestId, job.instanceId);
-    } else if (entry?.error) {
-      // An explicit retry replaces an invalid unseen reply; otherwise it retains the saved text.
-      const action = (replaceInvalidReply ? "mail-rewrite-" : "mail-reinterpret-") + fingerprint(entry).slice(0, 32);
-      let claimed = false;
-      await ports.mutateVillageState((state) => {
-        claimed = false;
-        const saved = state.socialMailOutbox?.find((row) => row.id === messageId && row.input.threadId === threadId);
-        if (!saved || fingerprint(saved) !== fingerprint(entry) || (saved.retryClaim && saved.retryClaim !== action))
-          return;
-        saved.retryClaim = action;
-        claimed = true;
-      });
-      if (!claimed) return { scope, threadId, messageId, token };
-      await admit(village, threadId, messageId, action, replaceInvalidReply ? undefined : entry.result.replyText);
-      await ports.mutateVillageState((state) => {
-        const saved = state.socialMailOutbox?.find((row) => row.id === messageId && row.input.threadId === threadId);
-        if (saved?.retryClaim === action) saved.retryAdmitted = action;
-      });
-    } else {
-      if (message.status === "pending" && !job && message.admissionFailed) await admit(village, threadId, messageId);
-      else throw conflict("This letter has no failed processing to retry.");
-    }
-    return { scope, threadId, messageId, token };
+    else if (!job && message.admissionFailed) await admit(state, messageId);
+    else throw conflict("This letter has no failed processing to retry.");
+    return mutation(state, messageId);
   }
   const handler: Handler = {
-    generate,
-    valid: (state, input: SocialMailInput) =>
-      state.seed === input.seed &&
-      state.villagers.some(
-        (row) => row.characterId === input.residentId && row.cardSnapshot.capturedAt === input.incarnation,
-      ) &&
-      !!state.relationshipContext?.mailThreads[input.threadId]?.messages.some(
-        (row) =>
-          row.id === input.messageId &&
-          row.text === input.sourceText &&
-          !row.replyUnavailable &&
-          !["cancelled", "undeliverable"].includes(row.status),
-      ),
-    apply: (state, input, result) => {
-      state.socialMailOutbox ??= [];
-      const prior = state.socialMailOutbox.find((row) => row.id === input.messageId);
-      if (prior) {
-        if (prior.input.sourceHash !== input.sourceHash) throw conflict("Mail source identity changed.");
-        prior.input = input;
-        prior.result = result;
-        prior.error = undefined;
-        prior.reinterpretRequired = undefined;
-        prior.retryClaim = undefined;
-        prior.retryAdmitted = undefined;
-      } else state.socialMailOutbox.push({ id: input.messageId, input, result });
-    },
-    afterApply: async () => {
-      await processOutbox(await ports.readVillageSnapshot({ memories: true }));
-    },
-    afterFailure: async (input: SocialMailInput) => {
-      await ports.withVillageSceneAcceptance(async (latest) => {
-        if (latest.seed !== input.seed) return;
-        await ports.mutateRelationships(input.seed, (state) => {
-          const message = mutablePersonalMessage(state, input.threadId, input.messageId);
-          if (!message || message.sourceHash !== input.sourceHash || message.incarnation !== input.incarnation) return;
-          if (
-            input.mode !== "resident" &&
-            !state.mailDeliveries[message.id + ":reply"] &&
-            !latest.villagers.some(
-              (row) => row.characterId === input.residentId && row.cardSnapshot.capturedAt === input.incarnation,
-            )
-          ) {
-            if (state.mailDeliveries[message.id]) {
-              message.replyUnavailable = true;
-              message.replyStatus = "complete";
-              message.error = "A reply could not be delivered because the correspondent changed.";
-            } else {
-              message.status = "undeliverable";
-              message.error = "This letter could not be delivered because its recipient changed.";
-            }
-          } else
-            message.error = state.mailDeliveries[message.id]
-              ? "Delivered; reply needs retry."
-              : "Letter processing needs attention.";
-        });
+    authority: "raw",
+    generate: async (raw) => {
+      const input = readPersonalMailInput(raw),
+        model = await ports
+          .villagesLanguageModels()
+          .resolveForRequest({ connectionId: await ports.villagesConnectionIdFor("narration") }),
+        messages: CapabilityLanguageModelMessage[] = [
+          { role: "system", content: MAIL_DIRECTION + "\n\n" + input.identity },
+          {
+            role: "user",
+            content: JSON.stringify({ incoming: input.incoming, at: input.capture.at, context: input.capture.prompt }),
+          },
+        ],
+        output = Math.min(4096, model.maxOutputTokens ?? 4096);
+      const fit = () => {
+        const fitted = model.fitContext(messages, { maxTokens: output });
+        if (
+          fitted.trimmed ||
+          JSON.stringify(fitted.messages) !== JSON.stringify(messages) ||
+          (fitted.maxTokens ?? output) < 1024
+        )
+          throw new Error("Required personal mail context does not fit. No request was made.");
+        return Math.min(output, fitted.maxTokens ?? output);
+      };
+      const answer = await ports.completeWithRoom(model, messages, fit(), {
+        responseFormat: { type: "json_object" },
+        checkpointId: "personal-mail:gm:" + mailSourceHash(input.seed, input.incoming, input.incoming.text),
+        beforeBackgroundDispatch: async () => fit(),
+        debugMode: false,
+        temperature: 0.7,
+        usagePurpose: "background",
       });
+      return parseReply(input, answer);
+    },
+    valid: (state, raw) => {
+      const input = readPersonalMailInput(raw);
+      if (state.seed !== input.seed || state.setupAt !== input.setupAt) return false;
+      const source = state.mailbox.messages[input.incoming.id];
+      memoryRequire(
+        source &&
+          source.text === input.incoming.text &&
+          memoryHash([source.id, source.at, source.from, source.to, source.requestId]) ===
+            memoryHash([
+              input.incoming.id,
+              input.incoming.at,
+              input.incoming.from,
+              input.incoming.to,
+              input.incoming.requestId,
+            ]),
+        "saved mail source changed",
+      );
+      if (source.status === "delivered") return true;
+      if (source.status !== "pending" || continuityActor(state, input.residentId)?.incarnation !== input.incarnation)
+        throw conflict("The original correspondent changed. The saved source and response are retained.");
+      const scope = [
+          ...[input.incoming.from, input.incoming.to, ...input.capture.references].map((party) => ({
+            kind: "actor" as const,
+            ...party,
+          })),
+          ...episodeContextRooms({ actors: input.capture.actors }, Object.keys(input.capture.provenance)),
+        ],
+        expected = input.capture.protection[continuityContextScopeKey(scope)];
+      if (expected !== continuityProtectionFingerprint(state.continuity, scope))
+        throw conflict("Mail continuity protection changed. The saved work is retained.");
+      return true;
+    },
+    apply: (state, raw, savedResult: unknown) => {
+      const input = readPersonalMailInput(raw),
+        result = resultSchema.parse(savedResult) as PersonalMailResult;
+      assertPersonalLetter(result.replyText, input.residentName);
+      acceptMailExchange(
+        state,
+        {
+          capture: input.capture,
+          incoming: input.incoming,
+          incomingMeaning: result.incomingMeaning,
+          replyMeaning: result.replyMeaning,
+          replyText: result.replyText,
+          responseDigest: result.responseDigest,
+        },
+        now(state),
+      );
+    },
+    recoverSavedResult: (raw, steps) => {
+      const input = readPersonalMailInput(raw),
+        key = "personal-mail:gm:" + mailSourceHash(input.seed, input.incoming, input.incoming.text),
+        step = steps.find((step) => step.key === key && step.status === "completed" && step.response);
+      return step?.response ? parseReply(input, step.response) : undefined;
     },
   };
-  function automaticOutbox(
-    village: VillageState,
-    social: VillageState["relationshipContext"],
-    value: unknown,
-    opportunityId: string,
-    at: string,
-    memory?: ReturnType<typeof sceneMemoryContext>,
-  ): SocialMailOutbox {
-    const row = z
-      .object({
-        senderId: z.string(),
-        text: z.string().min(1).max(2000),
-        relationshipReview: z.unknown(),
-      })
-      .parse(value);
-    const resident = village.villagers.find((person) => person.characterId === row.senderId);
-    if (!resident) throw new Error("Automatic correspondent is unavailable.");
-    assertPersonalLetter(row.text, resident.cardSnapshot.name);
-    const messageId = opportunityId + ":mail",
-      threadId = personalThreadId(row.senderId);
-    const captured = admission({ ...village, relationshipContext: social }, row.senderId);
-    const input: SocialMailInput = {
-      mode: "resident",
-      seed: village.seed,
-      threadId,
-      messageId,
-      residentId: row.senderId,
-      sourceText: row.text,
-      sourceAt: at,
-      incarnation: resident.cardSnapshot.capturedAt,
-      sourceHash: semanticHash([
-        village.seed,
-        messageId,
-        row.senderId,
-        "player",
-        row.text,
-        at,
-        resident.cardSnapshot.capturedAt,
-      ]),
-      admitted: captured,
-      systemMemory: memory,
-      sourceDelivered: false,
-    };
-    const sourceLine: RelationshipEvidenceLine = {
-      id: messageId,
-      speakerId: row.senderId,
-      role: "assistant",
-      content: row.text,
-      heardBy: [row.senderId, "player"],
-      playerHeard: true,
-      kind: "mail",
-    };
-    const raw = asRecord(row.relationshipReview);
-    const bound = Object.fromEntries(
-      ["changes", "disclosures", "intentions"].map((kind) => [
-        kind,
-        (Array.isArray(raw[kind]) ? raw[kind] : []).map((value) => ({
-          ...asRecord(value),
-          lineIds: Array.isArray(asRecord(value).lineIds)
-            ? (asRecord(value).lineIds as unknown[]).map((id: unknown) => (id === 0 ? messageId : id))
-            : [],
-        })),
-      ]),
-    );
-    const source = parseRelationshipReview(mailReviewInput(bound), messageId, [sourceLine], captured, true);
-    return {
-      id: messageId,
-      input,
-      result: {
-        source,
-        reply: emptyRelationshipReview(),
-        replyText: "",
-        sourceWishChanges: Array.isArray(asRecord(value).wishChanges)
-          ? readSocialWishChanges(asRecord(value).wishChanges).map((raw) => ({
-              ...asRecord(raw),
-              evidence: (asRecord(raw).evidence as unknown[]).map((ref) => (ref === 0 ? messageId : ref)),
-            }))
-          : [],
-        sourceMemoryChanges: Array.isArray(asRecord(value).memoryChanges)
-          ? (asRecord(value).memoryChanges as unknown[])
-          : [],
-      },
-    };
-  }
   const owned =
     <A extends unknown[], R>(work: (...args: A) => Promise<R>) =>
     (...args: A) =>
       ports.withWork(() => work(...args));
   const command = <A extends unknown[], R>(work: (...args: A) => Promise<R>) =>
-    owned((...args: A) => ports.withVillageSceneAcceptance(() => work(...args)));
+    owned((...args: A) => ports.withVillageSceneAcceptance(() => work(...args), { memories: true }));
   return {
     handler,
-    processOutbox,
     readMailbox: owned(readMailbox),
     getLetter: owned(getLetter),
     send: command(send),
     readLetter: command(readLetter),
     retry: command(retry),
-    automaticOutbox,
   };
 }
 export type SocialMailService = ReturnType<typeof createSocialMail>;

@@ -12,7 +12,7 @@ import {
 import { replayStaging } from "./helpers/scene-staging.fixture.js";
 
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
+import { readNarrationReply } from "../packages/villages/src/server/domain/rules/narration-contract.js";
 import { validateSpriteExpression } from "../packages/villages/src/server/domain/rules/sprite-expressions.js";
 import { selectSpriteImage } from "../packages/villages/src/client/features/scenes/villages-sprite-stage.js";
 
@@ -136,16 +136,14 @@ assert.equal(
 );
 assert.equal(stagingLayout(crossed.activeIds, crossed.state).eli.facing, "right");
 
-const parsed = parseVenueReply(
+const parsed = readNarrationReply(
   {
-    heardPlayerBy: [],
     segments: [
-      { kind: "narration", text: "Mara considers the idea.", heardBy: ids, staging: cues },
+      { kind: "narration", text: "Mara considers the idea.", staging: cues },
       {
         kind: "dialogue",
         speakerId: "eli",
         text: "Perhaps.",
-        heardBy: ids,
         staging: [
           { characterId: "outsider", position: "left" },
           { characterId: "eli", look: { target: "direction", direction: "up" }, position: "right" },
@@ -155,11 +153,9 @@ const parsed = parseVenueReply(
   },
   ids,
 );
-assert(
-  parsed.lines.every((line) => !Object.hasOwn(line, "staging")),
-  "Narrative segments cannot supply cues",
-);
-assert.equal(parsed.lines[1].content, "Perhaps.");
+assert.deepEqual(parsed.segments[0].staging, cues);
+assert.deepEqual(parsed.segments[1].staging, [{ characterId: "eli", position: "right" }]);
+assert.equal(parsed.segments[1].text, "Perhaps.");
 
 const validatedCues = readStagingCues(
   [
@@ -171,7 +167,7 @@ const validatedCues = readStagingCues(
 );
 assert.equal(validatedCues[0].expression, "e-thinking", "Invalid later fields do not overwrite earlier valid fields");
 const rawScene = {
-  version: 4,
+  version: 5,
   id: "current-cues",
   status: "closed",
   participants: [{ characterId: "mara", name: "Mara" }],

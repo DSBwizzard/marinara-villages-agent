@@ -1,5 +1,5 @@
 import type { Handler } from "../../domain/models/background-model.js";
-import { semanticHash } from "../../domain/rules/semantic-contract.js";
+import { backgroundRevision } from "../../domain/rules/background-revision.js";
 import {
   canInterpretSchedule,
   influenceSettings,
@@ -36,14 +36,14 @@ export function createScheduleInfluence(ports: ScheduleInfluencePorts) {
       settings,
       schedule,
       sourceHash,
-      profileHash: semanticHash(profile.activities),
+      profileHash: backgroundRevision(profile.activities),
       venues: state.venues.map(({ id, name }) => ({ id, name })),
     };
     await ports.queueBackgroundJob({
       kind: "schedule-influence",
       subjectId: characterId,
       seed: state.seed,
-      revision: semanticHash(input),
+      revision: backgroundRevision(input),
       finite: true,
       label: "Interpret schedule",
       input,
@@ -56,8 +56,8 @@ export function createScheduleInfluence(ports: ScheduleInfluencePorts) {
         !!resident &&
         !!resident.agenda?.routineProfile &&
         canInterpretSchedule(resident.agenda) &&
-        semanticHash(influenceSettings(resident.scheduleInfluence)) === semanticHash(input.settings) &&
-        semanticHash(resident.agenda.routineProfile.activities) === input.profileHash
+        backgroundRevision(influenceSettings(resident.scheduleInfluence)) === backgroundRevision(input.settings) &&
+        backgroundRevision(resident.agenda.routineProfile.activities) === input.profileHash
       );
     },
     generate: async (input) => {
@@ -95,7 +95,7 @@ export function createScheduleInfluence(ports: ScheduleInfluencePorts) {
         result.entities.some((id) => !input.venues.some((venue: { id: string }) => venue.id === id))
       )
         throw new Error("Schedule interpretation is incomplete; explicitly retry.");
-      return { ...result, signature: semanticHash(result), available: !!input.schedule, enabled: true };
+      return { ...result, signature: backgroundRevision(result), available: !!input.schedule, enabled: true };
     },
     apply: (state, input, result) => {
       const profile = state.villagers.find((row) => row.characterId === input.characterId)?.agenda?.routineProfile;

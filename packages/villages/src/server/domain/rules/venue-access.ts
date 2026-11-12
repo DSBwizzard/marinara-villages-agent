@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { ordinaryUseRestricted } from "./narrative-environment.js";
 import type {
   AccessCommand,
@@ -6,7 +5,7 @@ import type {
   ZoneAccessDecision,
   ZoneAccessPolicy,
 } from "../../../shared/helpers/venue-access.js";
-import type { VillageState, VillageVenue, VillageVenueZone } from "../models/world.js";
+import type { VillageVenue, VillageVenueZone } from "../models/world.js";
 import { badRequest, conflict, VillagesRequestError } from "./errors.js";
 import { z } from "zod";
 import { communityVenueEligible } from "./community-venue.js";
@@ -32,7 +31,7 @@ export const zonePolicySchema = z
     accompanied: z.boolean(),
   })
   .strict();
-const permissionSchema = z.object({
+export const permissionSchema = z.object({
   id,
   zoneId: id,
   visitorId: id,
@@ -45,7 +44,7 @@ const permissionSchema = z.object({
   issuedAt: id,
   sourceLineIds: ids,
 });
-const banSchema = z.object({
+export const banSchema = z.object({
   id,
   zoneId: id.nullable(),
   visitorId: id,
@@ -76,11 +75,13 @@ const stateSchema = z.object({
   visitDenials: z.array(z.object({ zoneId: id, visitorId: id, sceneId: id, issuerId: id })).default([]),
   receipts: z.record(
     z.string(),
-    z.object({
-      fingerprint: z.string(),
-      revision: z.number().int(),
-      outcome: z.enum(["applied", "rejected"]).optional(),
-    }),
+    z
+      .object({
+        fingerprint: z.string(),
+        revision: z.number().int(),
+        outcome: z.literal("rejected").optional(),
+      })
+      .strict(),
   ),
 });
 const base = { operationId: id, expectedRevision: z.number().int().nonnegative(), zoneId: id.nullable() };
@@ -256,10 +257,10 @@ export type AccessContext = {
   positions?: Record<string, string>;
   /** Only deliberate entry may claim an invitation not yet bound to a Scene. */
   accepting?: boolean;
+  permissionId?: string;
   unavailable?: boolean;
-  relationships?: VillageState["relationshipContext"];
 };
-/** Pure decision. Neither relationships nor invitations mutate while evaluating. */
+/** Pure native access decision; invitations never mutate while evaluating. */
 export function evaluateZoneAccess(
   venue: VillageVenue,
   zone: VillageVenueZone,
@@ -299,6 +300,7 @@ export function evaluateZoneAccess(
   const grants = ledger.permissions.filter(
     (grant) =>
       !grant.revoked &&
+      (!context.permissionId || grant.id === context.permissionId) &&
       grant.zoneId === zone.id &&
       grant.visitorId === actor &&
       mayInvite(venue, zone, grant.issuerId) &&
@@ -375,19 +377,22 @@ export function evaluateZoneAccess(
 /** Settlement is monotonic: losing invitation authority never resurrects an old grant. */
 export function reconcileVenueAccess(venue: VillageVenue, knownActors?: string[]): void {
   if (!venue.access) return;
-  if (knownActors) {
-    venue.access.managerIds = venue.access.managerIds.filter((actor) => knownActors.includes(actor));
+  const known = knownActors && new Set(knownActors);
+  if (known) {
+    venue.access.managerIds = venue.access.managerIds.filter((actor) => known.has(actor));
     for (const zone of venue.zones ?? [])
       if (zone.access) {
-        if (zone.access.managerIds)
-          zone.access.managerIds = zone.access.managerIds.filter((actor) => knownActors.includes(actor));
-        zone.access.memberIds = zone.access.memberIds.filter((actor) => knownActors.includes(actor));
-        zone.access.inviterIds = zone.access.inviterIds.filter((actor) => knownActors.includes(actor));
+        if (zone.access.managerIds) zone.access.managerIds = zone.access.managerIds.filter((actor) => known.has(actor));
+        zone.access.memberIds = zone.access.memberIds.filter((actor) => known.has(actor));
+        zone.access.inviterIds = zone.access.inviterIds.filter((actor) => known.has(actor));
       }
+    for (const ban of venue.access.bans) if (!known.has(ban.visitorId)) ban.active = false;
+    venue.access.visitDenials = venue.access.visitDenials.filter((row) => known.has(row.visitorId));
   }
   for (const grant of venue.access.permissions) {
     const zone = venue.zones?.find((row) => row.id === grant.zoneId);
-    if (!zone || !mayInvite(venue, zone, grant.issuerId)) grant.revoked = true;
+    if (!zone || (known && !known.has(grant.visitorId)) || !mayInvite(venue, zone, grant.issuerId))
+      grant.revoked = true;
   }
 }
 export function applyAccessCommand(
@@ -594,96 +599,6 @@ export function claimVisitPermission(venue: VillageVenue, permissionId: string |
   if (grant.revoked || (grant.sceneId && grant.sceneId !== sceneId))
     throw conflict("This invitation belongs to another visit.");
   grant.sceneId = sceneId;
-}
-/** Later authority changes invalidate a previously witnessed permission. */
-export function accessChangedAfter(venue: VillageVenue, zoneId: string, at: string): boolean {
-  return !!venue.access?.changes.some(
-    (change) =>
-      change.action !== "invite" &&
-      change.action !== "destinations" &&
-      (change.zoneId === null || change.zoneId === zoneId) &&
-      Date.parse(change.at) > Date.parse(at),
-  );
-}
-/** Both live and offscreen witnessed standing permissions use this replay/authority fence. */
-export function settleStandingAccess(
-  venue: VillageVenue,
-  permission: {
-    id: string;
-    controllerId: string;
-    visitorId: string;
-    zoneId: string;
-    action: "grant" | "revoke";
-    lineIds: string[];
-  },
-  at: string,
-  knownActors: string[],
-): void {
-  const ledger = venue.access;
-  if (!ledger || ledger.receipts[permission.id]) return;
-  if (permission.action === "grant" && accessChangedAfter(venue, permission.zoneId, at)) {
-    ledger.receipts[permission.id] = {
-      fingerprint: "obsolete-standing-speech",
-      revision: ledger.revision,
-      outcome: "rejected",
-    };
-    return;
-  }
-  if (permission.action === "grant")
-    applyAccessCommand(
-      venue,
-      {
-        action: "invite",
-        operationId: permission.id,
-        expectedRevision: ledger.revision,
-        zoneId: permission.zoneId,
-        visitorId: permission.visitorId,
-        duration: "standing",
-        accompanied: false,
-        outsideHours: false,
-      },
-      permission.controllerId,
-      at,
-      knownActors,
-      permission.lineIds,
-    );
-  else {
-    for (const grant of ledger.permissions.filter(
-      (grant) =>
-        grant.zoneId === permission.zoneId &&
-        grant.visitorId === permission.visitorId &&
-        grant.duration === "standing" &&
-        !grant.revoked &&
-        Date.parse(grant.issuedAt) <= Date.parse(at) &&
-        grant.issuerId === permission.controllerId,
-    )) {
-      const operationId =
-        "standing-revoke:" +
-        createHash("sha256")
-          .update(JSON.stringify([permission.id, grant.id]))
-          .digest("hex");
-      if (!ledger.receipts[operationId])
-        applyAccessCommand(
-          venue,
-          {
-            action: "revoke",
-            operationId,
-            expectedRevision: ledger.revision,
-            zoneId: permission.zoneId,
-            permissionId: grant.id,
-          },
-          permission.controllerId,
-          at,
-          knownActors,
-          permission.lineIds,
-        );
-    }
-    ledger.receipts[permission.id] = {
-      fingerprint: "witnessed-standing-revocation",
-      revision: ledger.revision,
-      outcome: "applied",
-    };
-  }
 }
 export function projectVenueAccess(venue: VillageVenue, actor: string, communityVenueId?: string) {
   if (!venue.access) return undefined;

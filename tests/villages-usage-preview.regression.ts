@@ -1,11 +1,20 @@
+import { randomUUID } from "node:crypto";
+import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
+import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
+import {
+  nativeBackgroundJob,
+  backgroundResponseClaim,
+  prepareBackgroundResponse,
+} from "../packages/villages/src/server/adapters/storage/background-responses.js";
+import { retainNativeFact } from "../packages/villages/src/server/domain/rules/native-continuity.js";
+import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
+import { continuityPreparationContext } from "../packages/villages/src/server/domain/rules/continuity-library.js";
 import { agendaFixture } from "./helpers/agenda.fixture.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { withSettingsOwners, settingsJobId } from "./fixtures/villages-settings-owner.fixture.js";
 import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
-import { fixtureWish } from "./helpers/social-wishes-fixture.js";
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 import { readNativeScheduleSnapshot } from "../packages/villages/src/server/adapters/engine/native-schedules.js";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -60,44 +69,47 @@ const model: any = {
     };
   },
 };
-const release = configureVillagesRuntime({
-  isDebugAgentsEnabled: () => false,
-  logger: { debugOverride() {}, warn() {}, error() {}, info() {}, debug() {} },
-  getAgentConfig: async () => ({ connectionId: "paid", settings: { imageConnectionId: "picture" } }),
-  persistence: {
-    documents: villageFixtureDocuments({
-      async getById(_p: string, id: string) {
-        return structuredClone(records.get(id) ?? null);
+const owner = createActivationScope();
+const release = owner.run(() =>
+  configureVillagesRuntime({
+    isDebugAgentsEnabled: () => false,
+    logger: { debugOverride() {}, warn() {}, error() {}, info() {}, debug() {} },
+    getAgentConfig: async () => ({ connectionId: "paid", settings: { imageConnectionId: "picture" } }),
+    persistence: {
+      documents: {
+        async getById(_p: string, id: string) {
+          return structuredClone(records.get(id) ?? null);
+        },
+        async list(_p: string, kind: string) {
+          return structuredClone([...records.values()].filter((r) => r.kind === kind));
+        },
+        async create(value: any) {
+          writes++;
+          const r = { ...structuredClone(value), revision: 1 };
+          records.set(value.id, r);
+          return r;
+        },
+        async update(value: any) {
+          writes++;
+          const r = { ...structuredClone(value), revision: (records.get(value.id)?.revision ?? 0) + 1 };
+          records.set(value.id, r);
+          return r;
+        },
       },
-      async list(_p: string, kind: string) {
-        return structuredClone([...records.values()].filter((r) => r.kind === kind));
-      },
-      async create(value: any) {
-        writes++;
-        const r = { ...structuredClone(value), revision: 1 };
-        records.set(value.id, r);
-        return r;
-      },
-      async update(value: any) {
-        writes++;
-        const r = { ...structuredClone(value), revision: (records.get(value.id)?.revision ?? 0) + 1 };
-        records.set(value.id, r);
-        return r;
-      },
-    }),
-  },
-  resources: {
-    async listCharacters() {
-      if (failCards) throw Error("Unreadable");
-      return [{ id: "a", data: { extensions: { conversationSchedule: schedule } } }];
     },
-  },
-  languageModels: {
-    async resolveForRequest() {
-      return model;
+    resources: {
+      async listCharacters() {
+        if (failCards) throw Error("Unreadable");
+        return [{ id: "a", data: { extensions: { conversationSchedule: schedule } } }];
+      },
     },
-  },
-} as any);
+    languageModels: {
+      async resolveForRequest() {
+        return model;
+      },
+    },
+  } as any),
+);
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async () =>
   new Response(
@@ -109,7 +121,6 @@ globalThis.fetch = async () =>
 const state = coerceVillageState({
   ...defaultVillageState(),
 
-  wishSystemVersion: 3,
   seed: "seed",
   setting: "Village",
   venues: [
@@ -125,6 +136,7 @@ const state = coerceVillageState({
     {
       letterFontId: "caveat",
       characterId: "a",
+      incarnation: "one",
       addedAt: "2026-09-01",
       cardSnapshot: {
         id: "a",
@@ -137,11 +149,29 @@ const state = coerceVillageState({
     },
   ],
 });
-const storeState = () =>
-  records.set("villages-village", { id: "villages-village", data: structuredClone(state), revision: 1 });
+const storeState = async () => {
+  const documents = {
+    getById: async (_pkg: string, id: string) => structuredClone(records.get(id) ?? null),
+    create: async (input: any) => {
+      const row = { ...structuredClone(input), revision: 1 };
+      records.set(input.id, row);
+      return structuredClone(row);
+    },
+    update: async (input: any) => {
+      const before = records.get(input.id);
+      if (!before || before.revision !== input.expectedRevision) return null;
+      const row = { ...before, ...structuredClone(input), revision: before.revision + 1 };
+      records.set(input.id, row);
+      return structuredClone(row);
+    },
+  };
+  await createVillageRepository(() => documents as any).mutateAuthority((current) => Object.assign(current, state), {
+    memories: true,
+  });
+};
 async function main() {
   try {
-    storeState();
+    await storeState();
     const plan = await previewVillageBurst({ action: "agenda", characterId: "a" });
     assert.equal(plan.requests, 1, "one owned routine request, no translation");
     assert.equal(plan.residents[0]?.requests, 1);
@@ -151,13 +181,13 @@ async function main() {
     assert.equal(calls, 0);
     assert.equal(writes, 0, "previews do not reconcile or write village state");
     const context = {
+      continuity: continuityPreparationContext(state, "a", "2026-09-01T00:00:00.000Z"),
       card: { id: "a", name: "A", summary: "", personality: "", description: "", tags: [] },
       village: "V",
       setting: "Village",
       lore: [],
       home: "",
-      venues: [],
-      activeWishes: [],
+      venues: state.venues,
       wishes: [],
       schedule: null,
     };
@@ -168,8 +198,13 @@ async function main() {
       (await previewVillageBurst({ action: "change", settings: { setting: "A different world" } })).requests,
       0,
     );
-    state.villagers[0].wishes = [fixtureWish({ wish: "Talk about pottery" })];
-    storeState();
+    retainNativeFact(
+      state,
+      { id: "wish", kind: "initialization", targetId: "a", revision: 1, text: "Talk about pottery", witnesses: ["a"] },
+      "2026-09-01T00:00:00.000Z",
+      { class: "desire", owner: continuityActor(state, "a")!, about: ["a"] },
+    );
+    await storeState();
     assert.equal(
       (await previewVillageBurst({ action: "agenda", characterId: "a" })).requests,
       1,
@@ -179,27 +214,37 @@ async function main() {
     await readUsageMeter(true);
     assert.deepEqual(records.get("villages-village"), unchanged, "meter reads cannot reconcile the village");
     const jobSlot = "villages-background-" + backgroundRevision(["agenda", "a"]);
+    const savedJob: any = {
+      id: "fixture-job",
+      seed: state.seed,
+      instanceId: randomUUID(),
+      attempt: 1,
+      kind: "agenda",
+      subjectId: "a",
+      status: "failed",
+      steps: Array.from({ length: 3 }, (_, index) => ({
+        fingerprint: "saved:" + index,
+        status: "completed",
+        response: { content: "{}", finishReason: "stop" },
+      })),
+      input: {},
+    };
+    for (const [index, step] of savedJob.steps.entries()) {
+      step.responseClaim = backgroundResponseClaim(savedJob, index);
+      const body = prepareBackgroundResponse(savedJob, index, step.response);
+      records.set(body.ref.id, {
+        id: body.ref.id,
+        kind: "generation-response",
+        packageId: "villages",
+        revision: 1,
+        data: body.data,
+      });
+      step.responseRef = body.ref;
+    }
     records.set(jobSlot, {
       id: jobSlot,
       kind: "background-work",
-      data: {
-        seed: state.seed,
-        id: "fixture-job",
-        attempt: 1,
-        kind: "agenda",
-        subjectId: "a",
-        status: "failed",
-        finite: true,
-        steps: Array.from({ length: 3 }, (_, index) => ({
-          fingerprint: "saved:" + index,
-          status: "completed",
-          response: { content: "{}", finishReason: "stop" },
-        })),
-        settings: {},
-        input: {},
-        failedStep: null,
-        completedCount: 0,
-      },
+      data: nativeBackgroundJob(savedJob),
     });
     assert.equal(
       (await previewVillageBurst({ action: "agenda", characterId: "a" })).requests,
@@ -305,4 +350,5 @@ async function main() {
     assert.equal(a.writes, 0);
   });
 }
-await main();
+await owner.run(main);
+owner.dispose();

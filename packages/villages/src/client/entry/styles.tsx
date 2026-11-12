@@ -768,16 +768,6 @@ ${LORE_ACTIVITY_STYLES}
 }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-pending { align-items: center; gap: .5rem; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-pending-label { font-size: .75rem; }
-.${ELEMENT_TAG}-room-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .375rem; }
-.${ELEMENT_TAG}-room-mode {
-  min-width: 0; min-height: 2.5rem; padding: .375rem .25rem;
-  border: 1px solid var(--border); border-radius: .625rem;
-  background: var(--popover); color: var(--foreground);
-  font: inherit; font-size: .75rem; font-weight: 600; cursor: pointer;
-}
-.${ELEMENT_TAG}-room-mode[data-active="true"] { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 18%, var(--popover)); color: var(--primary); }
-.${ELEMENT_TAG}-room-mode:disabled { opacity: .5; cursor: default; }
-.${ELEMENT_TAG}-room-mode:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .${ELEMENT_TAG}-room-error {
   display: flex; flex-wrap: wrap; align-items: center; gap: .5rem;
   border: 1px solid color-mix(in srgb, var(--destructive, #e5484d) 45%, transparent);
@@ -1844,18 +1834,12 @@ ${ELEMENT_TAG} {
 .${ELEMENT_TAG}-room-panel-tools { display: flex; align-items: center; gap: .5rem; min-height: 2rem; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-history-toggle { min-height: 2rem; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-composer { min-width: 0; }
-.${ELEMENT_TAG}-room-mode-anchor { position: relative; flex: 0 0 auto; }
-.${ELEMENT_TAG}-room-mode-toggle { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; border: 0; border-radius: .5rem; background: transparent; color: var(--primary); font-size: 1rem; cursor: pointer; }
-.${ELEMENT_TAG}-room-mode-menu { position: absolute; z-index: 20; left: 0; bottom: calc(100% + .45rem); display: grid; width: 9rem; padding: .25rem; border: 1px solid var(--border); border-radius: .6rem; background: var(--popover); box-shadow: 0 .5rem 1rem #0008; }
-.${ELEMENT_TAG}-room-mode-menu button { border: 0; border-radius: .35rem; background: transparent; color: var(--foreground); text-align: left; padding: .5rem; font: inherit; cursor: pointer; }
-.${ELEMENT_TAG}-room-mode-menu button[aria-checked="true"] { background: color-mix(in srgb, var(--primary) 17%, var(--popover)); }
-.${ELEMENT_TAG}-room-mode-menu button:disabled { opacity: .5; cursor: default; }
 .${ELEMENT_TAG}-mailbox-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 1rem; background: #0009; }
 .${ELEMENT_TAG}-mailbox { width: min(42rem, 100%); max-height: min(80vh, 48rem); overflow: auto; padding: 1.5rem; border: 1px solid var(--border); border-radius: 1rem; background: var(--popover); box-shadow: 0 1rem 3rem #0009; }
 .${ELEMENT_TAG}-mailbox-list { display: grid; gap: .75rem; margin-top: 1rem; }
 .${ELEMENT_TAG}-mailbox-item { padding: .9rem; border: 1px solid var(--border); border-radius: .75rem; }
 .${ELEMENT_TAG}-venue-space-picture { display: block; width: min(100%, 24rem); aspect-ratio: 4 / 3; object-fit: cover; border: 1px solid var(--border); border-radius: .625rem; }
-.${ELEMENT_TAG}-room-mode-toggle:focus-visible, .${ELEMENT_TAG}-room-mode-menu button:focus-visible, .${ELEMENT_TAG}-room-star-detail:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.${ELEMENT_TAG}-room-star-detail:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .${ELEMENT_TAG}-room-star-detail { flex: 1; align-self: stretch; border: 0; padding: 0; background: transparent; color: inherit; font: inherit; line-height: inherit; text-align: left; cursor: pointer; }
 .${ELEMENT_TAG}-memory-backdrop { position: absolute; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 1rem; background: #0009; }
 .${ELEMENT_TAG}-memory-dialog { box-sizing: border-box; width: min(28rem, 100%); max-height: min(75cqh, 36rem); overflow-y: auto; padding: 1rem; border: 1px solid var(--border); border-radius: .8rem; background: var(--popover); color: var(--foreground); box-shadow: 0 1rem 2rem #0009; }
@@ -1863,7 +1847,7 @@ ${ELEMENT_TAG} {
 .${ELEMENT_TAG}-memory-dialog-head h2 { margin: 0; font-size: 1rem; line-height: 1.4; }
 .${ELEMENT_TAG}-memory-dialog-head button { border: 0; background: transparent; color: inherit; font: inherit; font-size: 1.5rem; cursor: pointer; }
 .${ELEMENT_TAG}-memory-dialog p { margin: .75rem 0 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
-@container ${ELEMENT_TAG} (max-width: 44rem) { .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn { width: 100%; padding: .45rem; } .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-asides { width: min(85%, 22rem); } .${ELEMENT_TAG}-room-mode-toggle { width: 2.5rem; height: 2.5rem; } }
+@container ${ELEMENT_TAG} (max-width: 44rem) { .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn { width: 100%; padding: .45rem; } .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-asides { width: min(85%, 22rem); } }
 .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-room-stars { top: 4.25rem; left: .625rem; width: min(15rem, calc(100% - 1.25rem)); max-height: 20cqh; gap: .25rem; }
 .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-room-star { gap: .35rem; padding: .35rem .45rem; font-size: .75rem; line-height: 1.3; }
 .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-room-star-dismiss { margin: -.3rem -.35rem -.3rem 0; }

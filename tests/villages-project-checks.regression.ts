@@ -1,47 +1,10 @@
 import assert from "node:assert/strict";
-import { fixture, renovation } from "./fixtures/villages-projects.fixture.js";
-import {
-  bindProjectSpeech,
-  validateProjectSpeech,
-  coerceProjectSpeech,
-  projectSpeechContexts,
-} from "../packages/villages/src/server/domain/rules/project-interpretation.js";
-const f = fixture(),
-  id = await renovation(f);
-const draft = [{ speakerId: "a", kind: "dialogue", content: "I approve Renovate and will lead it.", heardBy: ["a"] }];
-const context = projectSpeechContexts(f.state(), ["a"], "");
-const proposals = bindProjectSpeech(
-  ["approval", "builder"].map((kind) => ({
-    projectId: id,
-    kind,
-    speakerId: "a",
-    citations: [{ segment: 0, quote: draft[0].content }],
-  })),
-  context,
-  [{ ...draft[0], id: "0" }] as any,
-);
-assert.equal(proposals.length, 2);
-for (const proposal of proposals) assert.equal(validateProjectSpeech(proposal, [{ ...draft[0], id: "0" }]), "");
-assert.equal(coerceProjectSpeech(proposals).length, 2);
-assert.deepEqual(
-  bindProjectSpeech([{ projectId: "unknown", kind: "approval", speakerId: "a", citations: [] }], context, []),
-  [],
-);
-assert.equal(context[0].revision, f.get(id).lifecycle!.revision);
-const bound = bindProjectSpeech(
-  [{ projectId: id, kind: "builder", speakerId: "a", citations: [{ segment: 0, quote: draft[0].content }] }],
-  context,
-  [{ ...draft[0], id: "saved-line" }] as any,
-);
-assert.equal(bound[0].citations[0].lineId, "saved-line");
-assert.equal(
-  validateProjectSpeech({ ...bound[0], speakerId: "b" }, [{ ...draft[0], id: "saved-line" }]),
-  "Interpretation citation does not match this speaker's saved words.",
-);
+import { fixture, renovation, seedObservedProjectRoom } from "./fixtures/villages-projects.fixture.js";
 const persisted = fixture();
+await persisted.mutate((state) => seedObservedProjectRoom(state, state.venues[0], "exterior", "A stone arch."));
 const persistedId = await renovation(persisted, {
   form: "A restored stone hall",
-  exteriorDescription: "A repaired doorway beneath the original arch.",
+  roomEdits: [{ zoneId: "exterior", text: "A repaired doorway beneath the original arch." }],
 });
 await persisted.agree(persistedId);
 const savedDesign = structuredClone(persisted.get(persistedId).lifecycle!.change!);
@@ -51,9 +14,31 @@ assert.equal(persisted.get(persistedId).lifecycle!.candidates.length, 1, "spoken
 assert.equal(persisted.get(persistedId).lifecycle!.approvals.length, 1, "unchanged approval remains valid");
 await persisted.service.reviseRenovationProject(
   persistedId,
-  persisted.body(persistedId, { ...savedDesign, exteriorDescription: "A different Entrance." }),
+  persisted.body(persistedId, { ...savedDesign, roomEdits: [{ zoneId: "exterior", text: "A different Entrance." }] }),
 );
 assert.equal(persisted.get(persistedId).lifecycle!.builderId, "", "changed physical terms need renewed willingness");
 assert.equal(persisted.get(persistedId).lifecycle!.candidates.length, 0);
 assert.equal(persisted.get(persistedId).lifecycle!.approvals.length, 0, "changed Entrance needs renewed approval");
-console.log("Current Project interpretation contracts, independent checks and grounded citations passed.");
+
+for (const role of ["lead", "controller"]) {
+  const f = fixture(),
+    id = role === "lead" ? await f.newProject() : await renovation(f);
+  if (role === "controller") await f.agree(id, "b");
+  await f.mutate((state) => {
+    state.villagers.find((resident) => resident.characterId === "a")!.incarnation = "replacement";
+  });
+  if (role === "lead") {
+    await assert.rejects(f.service.lockProjectBuilder(id, f.body(id, { residentId: "a" })), /Ask this resident/);
+    await assert.rejects(f.service.startProjectConstruction(id, f.body(id)), /willing resident/);
+  } else {
+    await f.service.lockProjectBuilder(id, f.body(id, { residentId: "b" }));
+    await assert.rejects(f.service.startProjectConstruction(id, f.body(id)), /necessary agreements/);
+  }
+  await f.service.renewRenovationApprovals(id, f.body(id));
+  assert.equal(f.get(id).lifecycle!.approvals.length, 0);
+  if (role === "lead") assert.equal(f.get(id).lifecycle!.builderId, "");
+  await f.agree(id, role === "lead" ? "a" : "b");
+  await f.service.startProjectConstruction(id, f.body(id));
+  assert.equal(f.get(id).status, "working", "fresh current-person consent works through the public lifecycle service");
+}
+console.log("Current Project terms, native identity and explicit lifecycle commands passed.");

@@ -5,6 +5,8 @@ import type {
   MemoryCursor,
   MemoryLibrary,
   MemoryListEntry,
+  MemoryInspection,
+  MemoryForgetRequest,
   VillagerAgendaView,
   VillagerRefreshPreview,
   VillageSnapshot,
@@ -82,24 +84,40 @@ export function useForgetMemory(ports: {
   setError: React.Dispatch<SetStateAction<string>>;
 }) {
   const { loadMemoryLibrary, setBusy, setError } = ports;
+  const saving = useRef(false);
+  const pending = useRef<{ key: string; body: MemoryForgetRequest } | null>(null);
   return useCallback(
     async (entry: MemoryListEntry, knowers: string[], library: MemoryLibrary) => {
+      if (saving.current) return;
+      saving.current = true;
       setBusy(true);
       try {
+        const key = JSON.stringify([library.seed, entry, knowers]);
+        if (pending.current?.key !== key) {
+          const inspected = await request<MemoryInspection>(
+            `/memories/inspect/${encodeURIComponent(entry.id)}?characterId=${encodeURIComponent(library.characterId)}`,
+          );
+          if (
+            !inspected.target ||
+            inspected.seed !== library.seed ||
+            JSON.stringify(inspected.entry) !== JSON.stringify(entry)
+          )
+            throw new Error("The memory changed. Refresh the list.");
+          pending.current = {
+            key,
+            body: { operationId: createVillagesClientId(), seed: library.seed, target: inspected.target, knowers },
+          };
+        }
         await request("/memories/" + encodeURIComponent(entry.id) + "/forget", {
           method: "POST",
-          body: JSON.stringify({
-            operationId: createVillagesClientId(),
-            seed: library.seed,
-            expectedCollectionRevision: library.revision,
-            target: { id: entry.id, revision: entry.revision, rootRevision: entry.rootRevision },
-            knowers,
-          }),
+          body: JSON.stringify(pending.current.body),
         });
+        pending.current = null;
         await loadMemoryLibrary(undefined, { characterId: library.characterId, query: library.query });
       } catch (cause) {
         setError(messageFrom(cause, "Could not forget that memory."));
       } finally {
+        saving.current = false;
         setBusy(false);
       }
     },

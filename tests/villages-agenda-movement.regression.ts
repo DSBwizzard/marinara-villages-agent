@@ -1,8 +1,6 @@
 import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { flexibleAgendaBlock } from "../packages/villages/src/server/domain/rules/agenda-flexibility.js";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
   coerceVillageState,
@@ -34,7 +32,6 @@ function place(id: string, residentCharacterId: string | null = null): VillageVe
     presentation: { image: null, x: null, y: null },
     occupancy: { playerHome: false, residentCharacterId, homeKind: residentCharacterId ? "cottage" : null },
     capabilities: [],
-    state: { revision: 0, recent: null, updatedAt: "" },
   }) as VillageVenue;
 }
 
@@ -89,11 +86,11 @@ assert.deepEqual(agendaBlocksFor(activeAgenda, new Date()), week.Monday, "turnin
 const recovered = coerceVillageState({
   ...defaultVillageState(),
 
-  wishSystemVersion: 3,
   villagers: [
     {
       letterFontId: "caveat",
       characterId: "r1",
+      incarnation: "one",
       cardSnapshot: {
         id: "r1",
         revision: 1,
@@ -120,13 +117,12 @@ assert.equal(agendaAt({ day } as VillageAgenda, 719)?.activity, "watering flower
 assert.equal(agendaAt({ day } as VillageAgenda, 720)?.activity, "reading in the square");
 
 const agenda = {
-  wishes: [],
   routineSummary: "An ordinary day.",
   day,
   source: "village",
   generatedAt: "now",
 } as VillageAgenda;
-const villager = { characterId: "r1", agenda } as VillageVillager;
+const villager = { characterId: "r1", incarnation: "one", agenda } as VillageVillager;
 const village = {
   foundedAt: "2026-09-01T00:00:00.000Z",
   seed: "testseed",
@@ -137,11 +133,6 @@ assert.equal(villagerPlaceView(village, villager, 540)?.id, "garden");
 assert.equal(villagerPlaceView(village, villager, 780)?.id, "square");
 assert.equal(villagerPlaceView(village, villager, 1080)?.id, "home");
 assert.equal(agendaAt(agenda, 540)?.activity, "watering flowers");
-
-const venueSource = readFileSync(resolve("packages/villages/src/server/features/scenes/command-service.ts"), "utf8");
-assert.match(venueSource, /const sceneAttendance = captureSceneAttendance\(village, placeId, villageNow\(\)\)/u);
-assert.match(venueSource, /activeIds: participants\.map\(\(person\) => person\.characterId\)/u);
-assert.doesNotMatch(venueSource, /roomPresenceLines|repairRoomMirrors/u);
 
 // A Scene is a snapshot: the live clock crosses the boundary without changing it.
 const beforeSeven = new Date(2026, 9, 14, 6, 59);
@@ -158,9 +149,11 @@ agenda.activeDay = {
 };
 const captured = captureSceneAttendance(village, "square", beforeSeven);
 const scene = coerceSession({
-  version: 4,
+  version: 5,
   id: "clock-scene",
+  villageSeed: village.seed,
   placeId: "square",
+  zoneId: "community",
   status: "active",
   startedAt: beforeSeven.toISOString(),
   sceneAttendance: { ...captured, occupants: captured.occupants.map((row) => ({ ...row, availability: "offline" })) },

@@ -1,77 +1,58 @@
-import { residenceProposal } from "../../domain/rules/residence-agreement.js";
-import { copySocialWishes, immutableSocialWishes } from "../../domain/rules/social-wishes.js";
-import { recentPlaceText } from "../../../shared/helpers/place-continuity.js";
-import { environmentObservations, environmentCircumstances } from "../../domain/rules/narrative-environment.js";
-import { createHash } from "node:crypto";
-import { PLACE_UPDATE_INSTRUCTION } from "../../domain/rules/zone-continuity.js";
-import { encounterPhysicalId } from "../../domain/rules/social-encounter.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { Handler } from "../../domain/models/background-model.js";
-import type { VillageResidence } from "../../domain/models/world.js";
 import type { ResidentPlanningOpportunity, ReturnCatchupCapture, VillageState } from "../../domain/models/world.js";
-import { agendaAt } from "../../domain/rules/agenda-plan.js";
-import { asRecord } from "../../domain/rules/coerce.js";
-import {
-  cloneVillageContext,
-  captureResidentActivity,
-  sameRelationshipContext,
-} from "../../domain/rules/world-context-copy.js";
-import {
-  returnCaptureRevision,
-  type RelationshipIdentity,
-  type WishIdentity,
-} from "../../domain/rules/return-capture-revision.js";
+import { continuityActor } from "../../domain/rules/continuity-actors.js";
 import { activityDate, eventAttemptAvailable } from "../../domain/rules/event-attempts.js";
+import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
+import { acceptResidentLetter } from "../../domain/rules/mail-delivery.js";
+import { memoryHash, memoryRequire } from "../../domain/rules/memory-integrity.js";
+import { addRoutineIdea } from "../../domain/rules/owned-routine.js";
+import { assertPersonalLetter } from "../../domain/rules/personal-letter.js";
+import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
+import { residenceProposal } from "../../domain/rules/residence-agreement.js";
+import { planRoutineDays } from "../../domain/rules/resident-agenda.js";
+import {
+  captureResidentNarration,
+  assertResidentNarrationCurrent,
+  acceptResidentNarration,
+} from "../../domain/rules/resident-narration.js";
+import {
+  buildResidentPlanningMessages,
+  localDateKey,
+  planningAllowance,
+  readResidentPlanningInput,
+  readResidentPlanningProposal,
+  residentPlanningOpportunity,
+  type ResidentPlanningContext,
+  type ResidentPlanningInput,
+} from "../../domain/rules/resident-planning.js";
+import { responseDiagnostics } from "../../domain/rules/response-diagnostics.js";
 import {
   ReturnOpportunityUnavailable,
   returnCatchupSubject,
   sameReturnResident,
 } from "../../domain/rules/return-catchup-authority.js";
-import { planRoutineDays } from "../../domain/rules/resident-agenda.js";
-import { departureMemoriesAvailable } from "../../domain/rules/return-catchup-capture.js";
-import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
-import { recallMemories } from "../../domain/rules/memory-recall.js";
-import { addRoutineIdea } from "../../domain/rules/owned-routine.js";
-import { assertPersonalLetter, hasPersonalLetterAction } from "../../domain/rules/personal-letter.js";
-import { currentVillageCircumstances, villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
-import { relationshipWritingPrompt } from "../../domain/rules/relationship-presentation.js";
-import { RELATIONSHIP_REVIEW_INSTRUCTION } from "../../domain/rules/relationship-review.js";
+import { departureContinuityAvailable } from "../../domain/rules/return-catchup-capture.js";
+import { returnCaptureRevision } from "../../domain/rules/return-capture-revision.js";
+import { liveSceneEncounterConflicts, sameSceneRoutine } from "../../domain/rules/scene-attendance.js";
+import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
 import {
-  buildResidentPlanningMessages,
-  assertCatchupChoices,
-  localDateKey,
-  planningAllowance,
-  readResidentPlanningProposal,
-  residentPlanningOpportunity,
-  residentPlanningRecallContext,
-  type ResidentPlanningContext,
-} from "../../domain/rules/resident-planning.js";
-import { responseDiagnostics } from "../../domain/rules/response-diagnostics.js";
-import { SCENE_MEMORY_INSTRUCTION, sceneMemoryContext } from "../../domain/rules/scene-memories.js";
-import { socialContextState } from "../../domain/rules/social-context.js";
-import { socialContinuationValid, socialPlanCandidates } from "../../domain/rules/social-rules.js";
-import {
-  applyWishReflection,
-  readSocialWishChanges,
-  SOCIAL_WISH_INSTRUCTION,
-} from "../../domain/rules/social-wishes.js";
+  acceptSocialPlan,
+  completeSocialPlan,
+  socialContinuationValid,
+  socialPlanCandidates,
+} from "../../domain/rules/social-rules.js";
 import { hasVenueClass, venueResidentIds } from "../../domain/rules/venue-model.js";
-import { venueZones } from "../../domain/rules/venue-zones.js";
 import { fitVenueWritingMessages, venueCardProfile } from "../../domain/rules/venue-writing.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
 import { completionFailure, WorkFailureError } from "../../domain/rules/work-failure.js";
-import { liveSceneEncounterConflicts } from "../../domain/rules/scene-attendance.js";
 
 export type ResidentPlanningPorts = {
   activeVenueSession: () => Promise<import("../../domain/models/scene-model.js").VenueScene | null>;
-  relationshipIdentity: RelationshipIdentity;
-  wishIdentity: WishIdentity;
   afterCatchup?: (input: unknown) => Promise<void>;
   afterCatchupFailure?: (input: unknown) => Promise<void>;
-  applySavedStartingTies?: () => Promise<void>;
-  automaticMail?: import("./social-mail-service.js").SocialMailService["automaticOutbox"];
   readVillageState: typeof import("../world/village-store.js").readVillageState;
   readEffectiveVillagerCard: typeof import("../../adapters/engine/catalog.js").readEffectiveVillagerCard;
   queueBackgroundJob: typeof import("../../jobs/background-work.js").queueBackgroundJob;
@@ -80,672 +61,493 @@ export type ResidentPlanningPorts = {
   villagesConnectionIdFor: typeof import("../settings/connections.js").villagesConnectionIdFor;
   completeWithRoom: typeof import("../generation/model-requests.js").completeWithRoom;
 };
-/** Paced resident choices are independent from public prose, physical state and memory settlement. */
+
+/** One captured GM choice and its native/continuity consequences share the job's Village CAS. */
 export function createResidentPlanning(ports: ResidentPlanningPorts) {
-  const {
-    readVillageState,
-    readEffectiveVillagerCard,
-    queueBackgroundJob,
-    backgroundJobSnapshot,
-    villagesLanguageModels,
-    villagesConnectionIdFor,
-    completeWithRoom,
-  } = ports;
+  function absentPlayerConflicts(
+    state: VillageState,
+    scene: Awaited<ReturnType<ResidentPlanningPorts["activeVenueSession"]>>,
+    at: Date,
+  ) {
+    if (!scene || Date.parse(scene.startedAt) > at.getTime()) return new Set<string>();
+    const conflicts = liveSceneEncounterConflicts(state, scene, at);
+    if (scene.status === "closed" || scene.villageSeed !== state.seed) return conflicts;
+    const positions = sceneAccessContext(scene).positions ?? {},
+      zone = positions.player;
+    for (const resident of state.villagers)
+      if (zone && positions[resident.characterId] === zone && sameSceneRoutine(state, scene, resident.characterId, at))
+        conflicts.add(resident.characterId);
+    return conflicts;
+  }
+  function contextFor(
+    state: VillageState,
+    opportunity: ResidentPlanningOpportunity,
+    catchup = false,
+  ): ResidentPlanningContext {
+    const now = new ZonedDate(opportunity.endsAt, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
+      moment = deriveVillageMoment({
+        foundedAt: state.foundedAt,
+        environment: state.narrative,
+        seed: state.seed,
+        timeZone: state.timeZone || undefined,
+        now,
+      }),
+      narration = captureResidentNarration(state, opportunity, catchup);
+    return {
+      format: 1,
+      ...(catchup ? { catchup: true as const } : {}),
+      village: state.name,
+      setting: villageCurrentSetting(state),
+      playerBackground: state.playerBackground,
+      playerPersonaName: state.playerPersonaName,
+      moment,
+      environment: { weather: moment.weather },
+      residents: opportunity.actorIds.map((id) => {
+        const resident = state.villagers.find((row) => row.characterId === id)!,
+          card = ports.readEffectiveVillagerCard(resident);
+        return {
+          characterId: id,
+          name: card.name,
+          profile: venueCardProfile(card, readPlayerIdentity(state).name),
+        };
+      }),
+      housing: catchup
+        ? []
+        : opportunity.actorIds
+            .filter((id) => !state.residences.some((row) => row.characterId === id && row.status !== "current"))
+            .map((characterId) => ({
+              characterId,
+              destinations: state.venues
+                .filter(
+                  (venue) =>
+                    hasVenueClass(venue, "residence") &&
+                    venue.constructionStatus !== "worksite" &&
+                    !venue.occupancy.playerHome &&
+                    !venueResidentIds(venue).length &&
+                    !state.residences.some(
+                      (row) => row.proposedVenueId === venue.id && ["pending", "moving"].includes(row.status),
+                    ),
+                )
+                .map(({ id, name }) => ({ id, name })),
+            })),
+      plans: catchup ? [] : socialPlanCandidates(state, now),
+      narration,
+    };
+  }
+  function assertCurrent(state: VillageState, input: ResidentPlanningInput) {
+    const { context, catchup } = input,
+      opportunity = context.narration.opportunity;
+    memoryRequire(
+      context.setting === villageCurrentSetting(state) && state.backgroundPace !== "off",
+      "resident planning setting or pace changed",
+    );
+    if (catchup) {
+      const tracking = state.returnCatchup,
+        batch = tracking?.batch,
+        capture = tracking?.capture;
+      memoryRequire(
+        batch?.id === catchup.batchId &&
+          batch.status === "running" &&
+          batch.until === catchup.until &&
+          capture &&
+          returnCaptureRevision(capture) === catchup.captureRevision &&
+          memoryHash(capture.world) === memoryHash(catchup.world) &&
+          departureContinuityAvailable(capture, state) &&
+          batch.opportunities?.some((row) => memoryHash(row) === memoryHash(opportunity)),
+        "historical resident opportunity changed",
+      );
+      const historical = { ...state, ...structuredClone(catchup.world) },
+        at = new ZonedDate(opportunity.endsAt, historical.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
+      memoryRequire(
+        opportunity.actorIds.every((id) => {
+          const old = historical.villagers.find((row) => row.characterId === id),
+            live = state.villagers.find((row) => row.characterId === id);
+          return old && live && sameReturnResident(old, live, at, historical);
+        }),
+        "historical resident changed",
+      );
+      memoryRequire(
+        !opportunity.venueId ||
+          memoryHash(state.venues.find((row) => row.id === opportunity.venueId)) ===
+            memoryHash(historical.venues.find((row) => row.id === opportunity.venueId)),
+        "historical Venue changed",
+      );
+      memoryRequire(memoryHash(state.opening) === memoryHash(historical.opening), "historical opening changed");
+      planRoutineDays(historical, at);
+      assertResidentNarrationCurrent(historical, context.narration);
+    } else {
+      assertResidentNarrationCurrent(state, context.narration);
+      memoryRequire(
+        !input.socialPlan ||
+          socialContinuationValid(state, input.socialPlan.id, input.socialPlan, new Date(context.narration.context.at)),
+        "due resident plan changed",
+      );
+    }
+  }
   async function reconcile(now: Date, dueOnly = false): Promise<boolean | void> {
-    await ports.applySavedStartingTies?.();
-    const village = await readVillageState({ memories: true, wishes: true });
-    const dateKey = activityDate(village, now),
-      allowance = planningAllowance(village.backgroundPace, village.seed, dateKey);
-    if (
-      !allowance ||
-      !eventAttemptAvailable(village, dateKey, now.getTime()) ||
-      village.villagers.some((r) => !village.relationshipContext?.reviewedActorIds.includes(r.characterId)) ||
-      village.socialOutbox?.some((r) => !!r.error) ||
-      village.socialMailOutbox?.some((r) => !!r.error)
-    )
-      return;
+    const state = await ports.readVillageState({ memories: true }),
+      dateKey = activityDate(state, now),
+      allowance = planningAllowance(state.backgroundPace, state.seed, dateKey);
+    if (!allowance || !eventAttemptAvailable(state, dateKey, now.getTime())) return;
     const moment = deriveVillageMoment({
-      foundedAt: village.foundedAt,
-      environment: village.narrative,
-      seed: village.seed,
-      timeZone: village.timeZone || undefined,
-      now,
-    });
-    const used = village.eventAttempts?.attempts.filter((r) => r.date === dateKey).length ?? 0;
-    const encounterConflicts = liveSceneEncounterConflicts(village, await ports.activeVenueSession(), now);
-    const activePlan =
-      used < allowance
-        ? village.relationshipContext?.socialPlans.find(
-            (plan) =>
-              plan.status === "planned" &&
-              plan.kind === "meeting" &&
-              !plan.actorIds.some((id) => encounterConflicts.has(id)) &&
-              plan.dateKey === dateKey &&
-              plan.startMinute <= moment.minuteOfDay &&
-              plan.endMinute > moment.minuteOfDay,
-          )
-        : undefined;
-    const subjectId = activePlan ? "social:" + activePlan.id : "village";
-    if (dueOnly && !activePlan) return false;
-    const prior = await backgroundJobSnapshot("resident-planning", subjectId);
-    if (prior?.seed === village.seed && ["queued", "running", "failed", "interrupted", "paused"].includes(prior.status))
+        foundedAt: state.foundedAt,
+        environment: state.narrative,
+        seed: state.seed,
+        timeZone: state.timeZone || undefined,
+        now,
+      }),
+      conflicts = absentPlayerConflicts(state, await ports.activeVenueSession(), now),
+      due = state.residentPlans.plans.find(
+        (plan) =>
+          plan.status === "planned" &&
+          plan.kind === "meeting" &&
+          !plan.actors.some((actor) => conflicts.has(actor.id)) &&
+          socialContinuationValid(state, plan.id, plan, now) &&
+          plan.dateKey === dateKey &&
+          plan.startMinute <= moment.minuteOfDay &&
+          plan.endMinute > moment.minuteOfDay,
+      );
+    if (dueOnly && !due) return false;
+    const subjectId = due ? "social:" + due.id : "village",
+      prior = await ports.backgroundJobSnapshot("resident-planning", subjectId);
+    if (prior?.seed === state.seed && ["queued", "running", "failed", "interrupted", "paused"].includes(prior.status))
       return;
-    const opportunity = activePlan
+    const opportunity = due
       ? {
-          id: activePlan.id + ":encounter",
+          id: due.id + ":encounter",
           kind: "encounter" as const,
           startsAt: now.toISOString(),
           endsAt: now.toISOString(),
-          actorIds: activePlan.actorIds,
-          venueId: activePlan.venueId,
-          zoneId: activePlan.zoneId,
-          facts: [activePlan.activity, "An accepted free-time plan is happening now."],
+          actorIds: due.actors.map((actor) => actor.id),
+          venueId: due.venueId,
+          zoneId: due.zoneId,
+          facts: ["An accepted free-time plan is happening now."],
         }
-      : residentPlanningOpportunity(village, moment, village.simulatedThrough, encounterConflicts);
-    if (!opportunity || village.processedActionIds.includes(opportunity.id)) return;
-    const context: ResidentPlanningContext = {
-      version: 1,
-      village: village.name,
-      setting: villageCurrentSetting(village),
-      playerBackground: village.playerBackground,
-      playerPersonaName: village.playerPersonaName,
-      worldFacts: currentVillageCircumstances(village),
-      moment,
-      ...(village.narrative
-        ? {
-            environment: {
-              weather: moment.weather,
-              circumstances: environmentCircumstances(village.narrative, opportunity.venueId, opportunity.zoneId ?? ""),
-              conditions: environmentObservations(
-                village.narrative,
-                moment.instant,
-                opportunity.venueId,
-                opportunity.zoneId ?? "",
-              ),
-            },
-          }
-        : {}),
-      residents: village.villagers.map((resident) => {
-        const card = readEffectiveVillagerCard(resident);
-        return {
-          characterId: resident.characterId,
-          capturedAt: resident.cardSnapshot.capturedAt,
-          name: card.name,
-          profile: venueCardProfile(card, readPlayerIdentity(village).name),
-          doing: agendaAt(resident.agenda, moment.minuteOfDay, now)?.activity ?? "",
-          agenda: resident.agenda,
-          wishes: resident.wishes,
-        };
-      }),
-      venues: village.venues,
-      pendingHousingCharacterIds: village.residences.filter((r) => r.status !== "current").map((r) => r.characterId),
-      opportunity,
-      narrationMemories: Object.fromEntries(
-        opportunity.actorIds.map((id) => [
-          id,
-          recallMemories(village.memories, {
-            purpose: "narration",
-            audience: [id],
-            query: opportunity.facts.join(" ") + " " + id,
-            context: residentPlanningRecallContext(village, opportunity, [id]),
-          }).serialized,
-        ]),
-      ),
-      memory: sceneMemoryContext(
-        village,
-        opportunity.actorIds,
-        opportunity.facts.join(" "),
-        "",
-        residentPlanningRecallContext(village, opportunity),
-      ),
-      social: {
-        candidates: !activePlan && allowance > 1 ? socialPlanCandidates(village, now) : [],
-        relationships: opportunity.actorIds.map((id) => relationshipWritingPrompt(village, id)),
-        state: socialContextState(village.relationshipContext, opportunity.actorIds, opportunity.facts.join(" ")),
-      },
-    };
-    await queueBackgroundJob({
+      : residentPlanningOpportunity(state, moment, state.simulatedThrough, conflicts);
+    if (!opportunity || state.processedActionIds.includes(opportunity.id)) return;
+    const context = contextFor(state, opportunity);
+    if (due) context.plans = [];
+    const input = readResidentPlanningInput({
+      format: 1,
+      context,
+      dateKey,
+      reviewBasis: state.eventAttempts?.lastAttemptAt || "",
+      ...(due ? { socialPlan: due } : {}),
+    });
+    const used = state.eventAttempts?.attempts.filter((row) => row.date === dateKey).length || 0;
+    await ports.queueBackgroundJob({
       kind: "resident-planning",
       subjectId,
-      seed: village.seed,
+      seed: state.seed,
       revision: dateKey + ":" + used,
       finite: false,
       label: "Resident activity",
       automaticDate: dateKey,
-      input: {
-        context,
-        reviewBasis: village.eventAttempts?.lastAttemptAt ?? "",
-        opportunity,
-        dateKey,
-        now: now.toISOString(),
-        socialPlanId: activePlan?.id,
-        socialPlan: activePlan,
-        admitted: captureResidentActivity(village),
-        actorIncarnations: Object.fromEntries(
-          opportunity.actorIds.map((id) => [
-            id,
-            village.villagers.find((r) => r.characterId === id)?.cardSnapshot.capturedAt,
-          ]),
-        ),
-      },
+      input,
     });
     return true;
   }
-  /** Queue one dated opportunity using the saved departure context. */
   async function queueReturnOpportunity(
     batchId: string,
     opportunity: ResidentPlanningOpportunity,
     capture: ReturnCatchupCapture,
-  ): Promise<void> {
-    const current = await readVillageState({ memories: true, wishes: true });
-    if (current.returnCatchup?.batch?.id !== batchId || current.returnCatchup.batch.status !== "running")
-      throw new Error("The catch-up batch is no longer active.");
-    const eventAt = Date.parse(opportunity.startsAt),
-      capturedAt = Date.parse(capture.at),
-      returnAt = Date.parse(current.returnCatchup.batch.until ?? "");
+  ) {
+    const state = await ports.readVillageState({ memories: true }),
+      batch = state.returnCatchup?.batch,
+      eventAt = Date.parse(opportunity.startsAt),
+      returnAt = Date.parse(batch?.until || "");
     if (
+      batch?.id !== batchId ||
+      batch.status !== "running" ||
+      batch.from !== capture.at ||
+      returnCaptureRevision(state.returnCatchup?.capture) !== returnCaptureRevision(capture) ||
+      !batch.opportunities?.some((row) => memoryHash(row) === memoryHash(opportunity)) ||
       !Number.isFinite(eventAt) ||
-      !Number.isFinite(capturedAt) ||
       !Number.isFinite(returnAt) ||
-      current.returnCatchup.batch.from !== capture.at ||
-      !current.returnCatchup.capture ||
-      returnCaptureRevision(current.returnCatchup.capture, ports.relationshipIdentity, ports.wishIdentity) !==
-        returnCaptureRevision(capture, ports.relationshipIdentity, ports.wishIdentity) ||
-      !current.returnCatchup.batch.opportunities?.some((row) => JSON.stringify(row) === JSON.stringify(opportunity)) ||
-      eventAt < capturedAt ||
+      eventAt < Date.parse(capture.at) ||
       eventAt > returnAt ||
       returnAt > villageNow().getTime() ||
-      opportunity.endsAt !== opportunity.startsAt ||
+      opportunity.startsAt !== opportunity.endsAt ||
       !["encounter", "routine"].includes(opportunity.kind) ||
-      !opportunity.actorIds.length ||
-      opportunity.actorIds.includes("player") ||
-      new Set(opportunity.actorIds).size !== opportunity.actorIds.length ||
-      (opportunity.kind === "encounter" && (opportunity.actorIds.length < 2 || !opportunity.venueId)) ||
-      (opportunity.kind === "routine" && (opportunity.actorIds.length !== 1 || !!opportunity.venueId))
+      !departureContinuityAvailable(capture, state)
     )
-      throw new ReturnOpportunityUnavailable("The historical opportunity is not supported by its departure interval.");
-    if (!departureMemoriesAvailable(capture, current))
-      throw new ReturnOpportunityUnavailable("Resident memories changed after the departure capture.");
-    if (
-      !current.relationshipContext ||
-      !capture.world.relationshipContext ||
-      !sameRelationshipContext(current.relationshipContext, capture.world.relationshipContext)
-    )
-      throw new ReturnOpportunityUnavailable("Resident relationships changed after the departure capture.");
-    if (JSON.stringify(current.opening) !== JSON.stringify(capture.world.opening))
-      throw new ReturnOpportunityUnavailable("The opening changed after the departure capture.");
-    const historical: VillageState = cloneVillageContext({ ...current, ...capture.world });
-    const now = new ZonedDate(
-      opportunity.startsAt,
-      historical.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
-    );
-    planRoutineDays(historical, now);
-    if (opportunity.actorIds.some((id) => !historical.relationshipContext?.reviewedActorIds.includes(id)))
-      throw new ReturnOpportunityUnavailable("A resident's relationships have not been reviewed.");
-    if (
-      opportunity.actorIds.some((id) => {
-        const before = historical.villagers.find((row) => row.characterId === id);
-        const live = current.villagers.find((row) => row.characterId === id);
-        return (
-          !before ||
-          !live ||
-          !sameReturnResident(
-            before,
-            live,
-            new ZonedDate(
-              opportunity.startsAt,
-              historical.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
-            ),
-            historical,
-            ports.wishIdentity,
-          )
-        );
-      })
-    )
-      throw new ReturnOpportunityUnavailable("A resident changed after the departure capture.");
-    if (
-      opportunity.venueId &&
-      JSON.stringify(historical.venues.find((row) => row.id === opportunity.venueId)) !==
-        JSON.stringify(current.venues.find((row) => row.id === opportunity.venueId))
-    )
-      throw new ReturnOpportunityUnavailable("The opportunity's Venue changed after the departure capture.");
-    const moment = deriveVillageMoment({
-      foundedAt: historical.foundedAt,
-      environment: historical.narrative,
-      seed: historical.seed,
-      timeZone: historical.timeZone || undefined,
-      now,
+      throw new ReturnOpportunityUnavailable(
+        "The historical opportunity is no longer supported by its departure capture.",
+      );
+    const historical = { ...state, ...structuredClone(capture.world) },
+      at = new ZonedDate(opportunity.startsAt, historical.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
+    planRoutineDays(historical, at);
+    const input = readResidentPlanningInput({
+      format: 1,
+      context: contextFor(historical, opportunity, true),
+      dateKey: batch.budgetDate,
+      catchup: { batchId, captureRevision: returnCaptureRevision(capture), until: batch.until!, world: capture.world },
     });
-    const venue = historical.venues.find((row) => row.id === opportunity.venueId);
-    const encounterZone = venue && venueZones(venue).find((row) => row.id === opportunity.zoneId);
-    if (opportunity.kind === "encounter" && (!venue || !encounterZone))
-      throw new ReturnOpportunityUnavailable("The historical encounter Zone is unavailable.");
-    const context: ResidentPlanningContext = {
-      version: 1,
-      catchup: true,
-      village: historical.name,
-      setting: villageCurrentSetting(historical),
-      playerBackground: historical.playerBackground,
-      playerPersonaName: historical.playerPersonaName,
-      worldFacts: currentVillageCircumstances(historical),
-      moment,
-      ...(historical.narrative
-        ? {
-            environment: {
-              weather: moment.weather,
-              circumstances: environmentCircumstances(
-                historical.narrative,
-                opportunity.venueId,
-                opportunity.zoneId ?? "",
-              ),
-              conditions: environmentObservations(
-                historical.narrative,
-                moment.instant,
-                opportunity.venueId,
-                opportunity.zoneId ?? "",
-              ),
-            },
-          }
-        : {}),
-      residents: historical.villagers
-        .filter((resident) => opportunity.actorIds.includes(resident.characterId))
-        .map((resident) => {
-          const card = readEffectiveVillagerCard(resident);
-          return {
-            characterId: resident.characterId,
-            capturedAt: resident.cardSnapshot.capturedAt,
-            name: card.name,
-            profile: venueCardProfile(card, readPlayerIdentity(historical).name),
-            doing: agendaAt(resident.agenda, moment.minuteOfDay, now)?.activity ?? "",
-            agenda: resident.agenda,
-            wishes: resident.wishes,
-          };
-        }),
-      venues: [],
-      ...(venue && encounterZone
-        ? {
-            catchupPlace: {
-              venueId: venue.id,
-              name: venue.name,
-              category: venue.category,
-              classes: venue.classes,
-              zone: {
-                id: encounterZone.id,
-                name: encounterZone.name,
-                kind: encounterZone.kind,
-                description: encounterZone.description,
-                revision: encounterZone.state.revision,
-                recentContext: recentPlaceText(encounterZone.state, opportunity.startsAt),
-              },
-            },
-          }
-        : {}),
-      pendingHousingCharacterIds: [],
-      opportunity,
-      narrationMemories: Object.fromEntries(
-        opportunity.actorIds.map((id) => [
-          id,
-          recallMemories(historical.memories, {
-            purpose: "narration",
-            audience: [id],
-            query: opportunity.facts.join(" ") + " " + id,
-            context: residentPlanningRecallContext(historical, opportunity, [id]),
-          }).serialized,
-        ]),
-      ),
-      memory: sceneMemoryContext(
-        historical,
-        opportunity.actorIds,
-        opportunity.facts.join(" "),
-        "",
-        residentPlanningRecallContext(historical, opportunity),
-      ),
-      social: {
-        candidates: [],
-        relationships: opportunity.actorIds.map((id) => relationshipWritingPrompt(historical, id)),
-        state: socialContextState(historical.relationshipContext, opportunity.actorIds, opportunity.facts.join(" ")),
-      },
-    };
-    const dateKey = current.returnCatchup.batch.budgetDate;
-    await queueBackgroundJob({
+    assertCurrent(state, input);
+    await ports.queueBackgroundJob({
       kind: "resident-planning",
       subjectId: returnCatchupSubject(batchId, opportunity.id),
-      seed: historical.seed,
+      seed: state.seed,
       revision: batchId + ":" + opportunity.id,
       finite: false,
       label: "Return catch-up",
-      automaticDate: dateKey,
-      input: {
-        catchupBatchId: batchId,
-        context,
-        opportunity,
-        dateKey,
-        now: opportunity.startsAt,
-        memoryRevision: capture.memoryRevision,
-        captureRevision: returnCaptureRevision(capture, ports.relationshipIdentity, ports.wishIdentity),
-        returnUntil: current.returnCatchup.batch.until,
-        relationshipRevision: ports.relationshipIdentity(capture.world),
-        admitted: captureResidentActivity(historical, true),
-        actorIncarnations: Object.fromEntries(
-          opportunity.actorIds.map((id) => [
-            id,
-            historical.villagers.find((row) => row.characterId === id)?.cardSnapshot.capturedAt,
-          ]),
-        ),
-      },
+      automaticDate: batch.budgetDate,
+      input,
     });
-  }
-  async function proposeResidentChoices(context: ResidentPlanningContext) {
-    const model = await villagesLanguageModels().resolveForRequest({
-      connectionId: await villagesConnectionIdFor("system"),
-    });
-    const messages = buildResidentPlanningMessages(context);
-    {
-      messages[0].content +=
-        " You are the GM: generate the choices, exact encounter/mail source and its meaningful updates in ONE object. Optional meaning:{relationshipReview:{changes:[],permissions:[],disclosures:[],intentions:[]},memoryChanges:[],wishChanges:[],placeUpdate?}. Omit unchanged sections. No independent review or consistent flag. Numeric source indexes refer to your social.encounter.lines, or index0 for social.mail.text. The player is absent during an encounter: no player disclosures, knowledge or consent. Mail never grants access, performs physical work or creates actionable terms; player learning waits for reading. " +
-        RELATIONSHIP_REVIEW_INSTRUCTION +
-        " " +
-        SCENE_MEMORY_INSTRUCTION +
-        " " +
-        SOCIAL_WISH_INSTRUCTION +
-        " " +
-        PLACE_UPDATE_INSTRUCTION +
-        " Put every meaningful proposal inside meaning in the SAME root as the choices. No recopy of unchanged state. For social projections return liveAfter only; code uses the same view for the captured timeline. All actual physical changes need their supported placeUpdate. No inventory or invented supplies.";
-      messages[1].content +=
-        "\n" +
-        JSON.stringify({
-          social: context.social.state,
-          memory: context.memory?.envelope,
-          possibleMemoryEffects: {
-            physical: {
-              id: encounterPhysicalId(context.opportunity.id + ":social"),
-              domainRef: { kind: "physical", id: context.opportunity.venueId },
-            },
-          },
-        });
-    }
-    const output = 4096;
-    const fitted = fitVenueWritingMessages(
-      model,
-      [{ text: String(messages[0].content) }],
-      String(messages[1].content),
-      Math.min(model.maxOutputTokens ?? output, output),
-      "System",
-    );
-    const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? output, {
-      responseFormat: { type: "json_object" },
-      temperature: 0.85,
-    });
-    const payload = extractModelJsonObject(completion);
-    const failure = completionFailure(completion, "resident-planning", fitted.maxTokens ?? output);
-    if (!payload || failure)
-      throw new WorkFailureError({
-        ...failure,
-        cause: failure?.cause ?? "invalid_json",
-        stage: "resident-planning",
-        message: failure?.message ?? "Resident activity returned no usable result. Retry unfinished work explicitly.",
-        responseDiagnostics: responseDiagnostics(model, completion, fitted.maxTokens ?? output, payload),
-      });
-    let proposal;
-    try {
-      proposal = readResidentPlanningProposal(payload, context);
-    } catch {
-      throw new WorkFailureError({
-        cause: "missing_result",
-        stage: "resident-planning",
-        message: "Resident activity returned incomplete choices. Retry unfinished work explicitly.",
-        responseDiagnostics: responseDiagnostics(model, completion, fitted.maxTokens ?? output, payload),
-      });
-    }
-    const encounter = proposal.social?.encounter,
-      mail = proposal.social?.mail;
-    if (encounter && mail) throw new Error("Choose one automatic social interaction per attempt.");
-    if (
-      mail &&
-      (typeof mail !== "object" ||
-        !context.opportunity.actorIds.includes(String((mail as Record<string, unknown>).senderId)) ||
-        typeof (mail as Record<string, unknown>).text !== "string" ||
-        String((mail as Record<string, unknown>).text).length > 2000)
-    )
-      throw new Error("Invalid automatic correspondent or message.");
-    if (mail) {
-      const row = mail as { senderId: string; text: string };
-      assertPersonalLetter(row.text, context.residents.find((resident) => resident.characterId === row.senderId)?.name);
-    }
-    for (const raw of [encounter, mail])
-      if (raw && typeof raw === "object")
-        for (const key of [
-          "placeUpdate",
-          "physicalConsistent",
-          "semanticVersion",
-          "semanticSourceHash",
-          "producer",
-          "memoryChanges",
-          "memoryContexts",
-          "relationshipReview",
-          "invitation",
-          "wishChanges",
-        ])
-          delete (raw as Record<string, unknown>)[key];
-    if (encounter || mail) {
-      const record = (encounter ?? mail) as Record<string, unknown>;
-      const lines = mail ? [{ speakerId: record.senderId, text: record.text }] : record.lines;
-      if (!Array.isArray(lines)) throw new Error("Automatic social source has no lines.");
-      const nativeMemory = context.memory;
-      if (!nativeMemory) throw new Error("Automatic social Memory context is missing.");
-      const interpreted: Record<string, any> = {
-        ...asRecord(payload.meaning),
-        memoryChanges: asRecord(payload.meaning).memoryChanges ?? [],
-        wishChanges: asRecord(payload.meaning).wishChanges ?? [],
-        relationshipReview: {
-          changes: [],
-          permissions: [],
-          disclosures: [],
-          ...asRecord(asRecord(payload.meaning).relationshipReview),
-        },
-      };
-      const review = interpreted?.relationshipReview as Record<string, unknown> | undefined;
-      if (Array.isArray(review?.changes))
-        review.changes = review.changes.map((value) => {
-          const row = asRecord(value);
-          return { ...row, sceneAfter: row.liveAfter };
-        });
-      if (
-        !review ||
-        !Array.isArray(interpreted?.memoryChanges) ||
-        interpreted.memoryChanges.length > 16 ||
-        !Array.isArray(interpreted.wishChanges) ||
-        interpreted.wishChanges.length > 16 ||
-        !["changes", "permissions", "disclosures"].every((key) => Array.isArray(review[key]))
-      )
-        throw new Error("Offscreen interpretation is incomplete; explicit retry required.");
-      record.placeUpdate = mail ? null : (interpreted?.placeUpdate ?? null);
-      record.producer = "gm";
-      record.relationshipReview = review;
-      record.wishChanges = readSocialWishChanges(interpreted!.wishChanges);
-      record.semanticVersion = 2;
-      record.memoryChanges = interpreted!.memoryChanges;
-      record.memoryContexts = { [nativeMemory.saved.protection.fingerprint]: nativeMemory.saved };
-      record.semanticSourceHash = createHash("sha256")
-        .update(JSON.stringify({ messages, lines, meaning: interpreted }))
-        .digest("hex");
-    }
-
-    return proposal;
   }
   const handler: Handler = {
-    reserve(state, input) {
-      if (input.reviewBasis !== undefined && input.reviewBasis !== (state.eventAttempts?.lastAttemptAt ?? ""))
-        throw new Error("This automatic activity opportunity was already used. Its source is preserved.");
+    authority: "raw",
+    reserve(state, raw) {
+      const input = readResidentPlanningInput(raw);
+      memoryRequire(
+        input.reviewBasis === undefined || input.reviewBasis === (state.eventAttempts?.lastAttemptAt || ""),
+        "automatic activity opportunity was already used",
+      );
     },
-    generate: (input) => proposeResidentChoices(input.context),
-    valid: (state, input, admission) =>
-      input.context.version === 1 &&
-      (!input.context.catchup ||
-        (state.returnCatchup?.batch?.id === input.catchupBatchId &&
-          state.returnCatchup.batch.status === "running" &&
-          state.returnCatchup.batch.until === input.returnUntil &&
-          !!state.returnCatchup.capture &&
-          returnCaptureRevision(state.returnCatchup.capture, ports.relationshipIdentity, ports.wishIdentity) ===
-            input.captureRevision &&
-          !!state.returnCatchup.batch.opportunities?.some(
-            (row) => JSON.stringify(row) === JSON.stringify(input.opportunity),
-          ) &&
-          state.memories.revision === input.memoryRevision &&
-          ports.relationshipIdentity(state) === input.relationshipRevision &&
-          JSON.stringify(state.opening) === JSON.stringify(input.admitted.opening) &&
-          input.opportunity.actorIds.every((id: string) => {
-            const live = state.villagers.find((row) => row.characterId === id);
-            const before = input.admitted.villagers.find((row: { characterId: string }) => row.characterId === id);
-            return (
-              !!live &&
-              !!before &&
-              sameReturnResident(
-                before,
-                live,
-                new ZonedDate(input.now, input.admitted.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
-                { ...state, ...input.admitted },
-                ports.wishIdentity,
-              )
+    async generate(raw) {
+      const input = readResidentPlanningInput(raw),
+        state = await ports.readVillageState({ memories: true });
+      assertCurrent(state, input);
+      const active = await ports.activeVenueSession(),
+        conflicts = absentPlayerConflicts(state, active, new Date(input.context.narration.context.at));
+      memoryRequire(
+        !input.context.narration.actors.some((actor) => conflicts.has(actor.id)),
+        "resident entered a live Scene",
+      );
+      const model = await ports
+          .villagesLanguageModels()
+          .resolveForRequest({ connectionId: await ports.villagesConnectionIdFor("system") }),
+        messages = buildResidentPlanningMessages(input.context),
+        output = 4096,
+        fitted = fitVenueWritingMessages(
+          model,
+          [{ text: String(messages[0].content) }],
+          String(messages[1].content),
+          Math.min(model.maxOutputTokens ?? output, output),
+          "System",
+        ),
+        completion = await ports.completeWithRoom(model, fitted.messages, fitted.maxTokens ?? output, {
+          responseFormat: { type: "json_object" },
+          checkpointId: "resident-planning:gm:" + input.context.narration.opportunity.id,
+          beforeBackgroundDispatch: async () => {
+            const latest = await ports.readVillageState({ memories: true });
+            assertCurrent(latest, input);
+            const conflicts = absentPlayerConflicts(
+              latest,
+              await ports.activeVenueSession(),
+              new Date(input.context.narration.context.at),
             );
-          }) &&
-          (!input.opportunity.venueId ||
-            JSON.stringify(state.venues.find((row) => row.id === input.opportunity.venueId)) ===
-              JSON.stringify(
-                input.admitted.venues.find((row: { id: string }) => row.id === input.opportunity.venueId),
-              )))) &&
-      input.context.setting === villageCurrentSetting(state) &&
-      state.backgroundPace !== "off" &&
-      input.opportunity.actorIds.every((id: string) =>
-        state.villagers.some((r) => r.characterId === id && r.cardSnapshot.capturedAt === input.actorIncarnations[id]),
-      ) &&
-      (!input.opportunity.venueId || state.venues.some((v) => v.id === input.opportunity.venueId)) &&
-      (!input.socialPlanId || socialContinuationValid(state, input.socialPlanId, input.socialPlan, villageNow())) &&
-      (input.context.catchup ||
-        (typeof admission?.activityDate === "string" && admission.activityDate === input.dateKey) ||
-        state.eventAttempts?.attempts.some(
-          (row) => row.id === admission?.activityAttemptId && row.date === input.dateKey && row.batchId === undefined,
+            memoryRequire(
+              !input.context.narration.actors.some((actor) => conflicts.has(actor.id)),
+              "resident entered a live Scene",
+            );
+          },
+          usagePurpose: "background",
+          temperature: 0.85,
+        }),
+        payload = extractModelJsonObject(completion),
+        failure = completionFailure(completion, "resident-planning", fitted.maxTokens ?? output);
+      if (!payload || failure)
+        throw new WorkFailureError({
+          ...failure,
+          cause: failure?.cause ?? "invalid_json",
+          stage: "resident-planning",
+          message: failure?.message ?? "Resident activity returned no usable result. Retry unfinished work explicitly.",
+          responseDiagnostics: responseDiagnostics(model, completion, fitted.maxTokens ?? output, payload),
+        });
+      try {
+        return {
+          proposal: readResidentPlanningProposal(payload, input.context),
+          responseDigest: memoryHash(completion.content),
+        };
+      } catch (error) {
+        throw new WorkFailureError({
+          cause: "missing_result",
+          stage: "resident-planning",
+          message: String(error).slice(0, 2000),
+          responseDiagnostics: responseDiagnostics(model, completion, fitted.maxTokens ?? output, payload),
+        });
+      }
+    },
+    recoverSavedResult(raw, steps) {
+      const input = readResidentPlanningInput(raw),
+        saved = steps.filter(
+          (step) =>
+            step.status === "completed" &&
+            step.key === "resident-planning:gm:" + input.context.narration.opportunity.id,
+        );
+      memoryRequire(saved.length === 1 && saved[0].response, "resident activity needs its exact saved GM response");
+      const completion = saved[0].response,
+        payload = extractModelJsonObject(completion),
+        failure = completionFailure(completion, "resident-planning", 4096);
+      memoryRequire(payload && !failure, "saved resident response is incomplete");
+      return {
+        proposal: readResidentPlanningProposal(payload, input.context),
+        responseDigest: memoryHash(completion.content),
+      };
+    },
+    valid(state, raw, admission) {
+      const input = readResidentPlanningInput(raw),
+        id = input.context.narration.opportunity.id;
+      if (state.seed !== input.context.narration.context.seed) return false;
+      if (state.processedActionIds.includes(id)) return true;
+      assertCurrent(state, input);
+      return (
+        !!input.catchup ||
+        admission?.activityDate === input.dateKey ||
+        !!state.eventAttempts?.attempts.some(
+          (row) => row.id === admission?.activityAttemptId && row.date === input.dateKey && !row.batchId,
         ) ||
         localDateKey(
           new ZonedDate(state.simulatedThrough, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
-        ) <= input.dateKey),
-    apply(state, input, proposal) {
-      if (input.context.catchup) assertCatchupChoices(proposal);
-      const { dateKey, opportunity } = input;
-      if (state.backgroundPace === "off" || state.processedActionIds.includes(opportunity.id)) return;
-      if (proposal.wishReflection) {
-        const owner = asRecord(proposal.wishReflection).actorId;
-        if (!opportunity.actorIds.includes(String(owner))) throw new Error("Reflection owner was not offered.");
-        if (proposal.social) throw new Error("Reflection cannot fabricate an interaction.");
-        applyWishReflection(state, proposal.wishReflection, opportunity.id, input.now, input.admitted.villagers);
-      }
-      const used = state.planningUsage.dateKey === dateKey ? state.planningUsage.count : 0;
-      const savedMail = proposal.social?.mail as { senderId?: string; text?: string } | undefined;
-      // A result saved by an older writer may contain a stage direction. Omit only
-      // that unseen letter; other already-generated choices still apply normally.
-      const invalidSavedMail =
-        typeof savedMail?.text === "string" &&
-        hasPersonalLetterAction(
-          savedMail.text,
-          input.context.residents.find(
-            (resident: { characterId: string }) => resident.characterId === savedMail.senderId,
-          )?.name ?? state.villagers.find((resident) => resident.characterId === savedMail.senderId)?.cardSnapshot.name,
+        ) <= input.dateKey
+      );
+    },
+    apply(state, raw, saved) {
+      const input = readResidentPlanningInput(raw),
+        proposal = readResidentPlanningProposal(saved.proposal, input.context),
+        capture = input.context.narration,
+        opportunity = capture.opportunity,
+        replayed = state.processedActionIds.includes(opportunity.id);
+      memoryRequire(
+        typeof saved.responseDigest === "string" && /^[a-f0-9]{64}$/.test(saved.responseDigest),
+        "resident response lost its source digest",
+      );
+      if (!replayed) assertCurrent(state, input);
+      const next = {
+          ...state,
+          villagers: structuredClone(state.villagers),
+          residences: structuredClone(state.residences),
+          residentPlans: structuredClone(state.residentPlans),
+          returnCatchup: structuredClone(state.returnCatchup),
+        },
+        at = villageNow().toISOString();
+      if (proposal.mail) {
+        const from = continuityActor(next, proposal.mail.senderId)!,
+          to = continuityActor(next, "player")!;
+        assertPersonalLetter(
+          proposal.mail.text,
+          input.context.residents.find((row) => row.characterId === from.id)?.name,
         );
-      if (proposal.social?.mail && !invalidSavedMail) {
-        if (!ports.automaticMail) throw new Error("Automatic personal mail unavailable.");
-        const entry = ports.automaticMail(
-          { ...state, ...input.admitted },
-          input.context.social.state,
-          proposal.social.mail,
+        acceptResidentLetter(
+          next,
+          capture.context,
+          {
+            id: "resident-mail-" + memoryHash([state.seed, opportunity.id]).slice(0, 32),
+            at: capture.context.at,
+            from,
+            to,
+          },
+          proposal.mail.text,
           opportunity.id,
-          input.now,
-          input.context.memory,
+          { keep: proposal.keep, requires: proposal.requires },
+          saved.responseDigest,
+          at,
+          capture.room
+            ? {
+                holder: capture.room.holder,
+                provenance: capture.room.provenance,
+                fingerprint: capture.room.fingerprint,
+                protectedRoots: capture.room.protections.map((row) => row.id),
+              }
+            : undefined,
         );
-        state.socialMailOutbox ??= [];
-        if (!state.socialMailOutbox.some((r) => r.id === entry.id)) state.socialMailOutbox.push(entry);
+      } else {
+        const target = input.catchup ? { ...next, ...structuredClone(input.catchup.world) } : next;
+        if (input.catchup)
+          planRoutineDays(
+            target,
+            new ZonedDate(capture.context.at, target.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
+          );
+        const fiction = {
+            ...(proposal.encounter ? { encounter: proposal.encounter } : {}),
+            ...(proposal.reflection ? { reflection: proposal.reflection } : {}),
+            keep: proposal.keep,
+            requires: proposal.requires,
+            commands: proposal.commands,
+          },
+          accepted = acceptResidentNarration(target, capture, fiction, saved.responseDigest, at);
+        memoryRequire(
+          !accepted.held,
+          "Resident activity held: " + accepted.rejected.map((row) => row.id + ": " + row.reason).join("; "),
+        );
+        next.continuity = target.continuity;
+        next.episodes = target.episodes;
       }
-      if (proposal.social && !proposal.social.mail) {
-        const id = opportunity.id + ":social";
-        state.socialOutbox ??= [];
-        if (!state.socialOutbox.some((entry) => entry.id === id))
-          state.socialOutbox.push({
-            id,
-            ...(input.context.catchup ? { catchupBatchId: input.catchupBatchId } : {}),
-            seed: state.seed,
-            at: input.now,
-            opportunity,
-            candidates: input.context.social.candidates,
-            proposal: proposal.social,
-            requiredPlanId: input.socialPlanId,
-            requiredPlan: input.socialPlan,
-            relationshipSnapshot: input.context.social.state,
-            admitted: input.admitted,
-          });
+      if (replayed) return;
+      const now = new ZonedDate(villageNow(), state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
+      acceptSocialPlan(next, input.context.plans, proposal.planId, now);
+      if (input.socialPlan) {
+        memoryRequire(!!proposal.encounter, "due encounter must preserve its accepted plan");
+        completeSocialPlan(
+          next,
+          input.socialPlan,
+          opportunity.actorIds,
+          opportunity.venueId,
+          opportunity.zoneId!,
+          new ZonedDate(capture.context.at, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
+        );
       }
       if (proposal.routineIdea) {
-        const resident = state.villagers.find((r) => r.characterId === proposal.routineIdea.characterId);
-        if (resident?.agenda) addRoutineIdea(resident.agenda, proposal.routineIdea, resident, state, villageNow());
+        const resident = next.villagers.find((row) => row.characterId === proposal.routineIdea!.characterId);
+        memoryRequire(resident?.agenda, "routine owner changed");
+        addRoutineIdea(resident.agenda, proposal.routineIdea, resident, next, now);
       }
       for (const request of proposal.housingRequests) {
-        if (!opportunity.actorIds.includes(request.characterId)) continue;
-        const resident = state.villagers.find((r) => r.characterId === request.characterId),
-          venue = state.venues.find((v) => v.id === request.venueId);
-        if (
-          !resident ||
-          !venue ||
-          !hasVenueClass(venue, "residence") ||
-          venue.constructionStatus === "worksite" ||
-          venue.occupancy.playerHome ||
-          venueResidentIds(venue).length > 0 ||
-          state.residences.some(
-            (r) =>
-              (r.characterId === request.characterId && r.status !== "current") ||
-              (r.proposedVenueId === venue.id && ["pending", "moving"].includes(r.status)),
-          )
-        )
-          continue;
-        let next: VillageResidence;
-        try {
-          next = residenceProposal(
-            state,
+        const venue = next.venues.find((row) => row.id === request.venueId);
+        memoryRequire(
+          venue &&
+            hasVenueClass(venue, "residence") &&
+            venue.constructionStatus !== "worksite" &&
+            !venue.occupancy.playerHome &&
+            !venueResidentIds(venue).length &&
+            !next.residences.some(
+              (row) =>
+                row.status !== "current" &&
+                (row.characterId === request.characterId || row.proposedVenueId === venue.id),
+            ),
+          "housing destination changed",
+        );
+        const residence = residenceProposal(
+            next,
             request.characterId,
             venue,
             "villager",
-            input.now,
+            capture.context.at,
             "",
             opportunity.id + ":" + request.characterId,
-          );
-        } catch {
-          continue;
-        }
-        const index = state.residences.findIndex((r) => r.characterId === request.characterId);
-        if (index < 0) state.residences.push(next);
-        else state.residences[index] = next;
+          ),
+          index = next.residences.findIndex((row) => row.characterId === request.characterId);
+        if (index < 0) next.residences.push(residence);
+        else next.residences[index] = residence;
       }
-      if (state.lastPlanningDate < dateKey) state.lastPlanningDate = dateKey;
-      state.planningUsage = { dateKey, count: used + 1 };
-      state.processedActionIds = [...state.processedActionIds, opportunity.id].slice(-256);
-      if (input.context.catchup) {
-        const tracking = state.returnCatchup;
-        const record = tracking?.batch?.records?.find((row) => row.opportunityId === opportunity.id);
-        if (!tracking?.capture || !record || tracking.batch?.id !== input.catchupBatchId)
-          throw new Error("The return opportunity is no longer recorded in its batch.");
+      next.lastPlanningDate = next.lastPlanningDate < input.dateKey ? input.dateKey : next.lastPlanningDate;
+      next.planningUsage = {
+        dateKey: input.dateKey,
+        count: (next.planningUsage.dateKey === input.dateKey ? next.planningUsage.count : 0) + 1,
+      };
+      next.processedActionIds = [...next.processedActionIds, opportunity.id].slice(-256);
+      if (input.catchup) {
+        const tracking = next.returnCatchup,
+          record = tracking?.batch?.records?.find((row) => row.opportunityId === opportunity.id);
+        memoryRequire(
+          tracking?.capture && tracking.batch?.id === input.catchup.batchId && record,
+          "historical resident record changed",
+        );
         record.outcome = structuredClone(proposal);
-        record.status = proposal.social?.encounter ? "settling" : "settled";
-        if (proposal.wishReflection) {
-          const id = String(asRecord(proposal.wishReflection).actorId);
-          const captured = tracking.capture.world.villagers.find((row) => row.characterId === id);
-          const live = state.villagers.find((row) => row.characterId === id);
-          if (!captured || !live) throw new Error("The reflecting resident changed.");
-          captured.wishes = copySocialWishes(immutableSocialWishes(live.wishes));
-        }
+        record.status = "settled";
+        tracking.capture.continuityRevision = next.continuity.revision;
+        tracking.capture.episodeRevision = next.episodes.revision;
       }
+      Object.assign(state, next);
     },
-    afterApply: async (input) => {
-      if (input.context.catchup) await ports.afterCatchup?.(input);
+    afterApply: async (raw) => {
+      const input = readResidentPlanningInput(raw);
+      if (input.catchup) await ports.afterCatchup?.(input);
     },
-    afterFailure: async (input) => {
-      if (input?.context?.catchup) await ports.afterCatchupFailure?.(input);
+    afterFailure: async (raw) => {
+      const input = readResidentPlanningInput(raw);
+      if (input.catchup) await ports.afterCatchupFailure?.(input);
     },
   };
   return { reconcile, queueReturnOpportunity, handler };

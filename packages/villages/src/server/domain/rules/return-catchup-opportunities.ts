@@ -162,7 +162,7 @@ export function returnCatchupOpportunities(
   ]
     .slice(0, cap)
     .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
-  if (captured.narrative) {
+  if (captured.narrative && residentsEligible) {
     chosen = [];
     let lane = preferredActivityLane(captured);
     const width = (end - windowStart) / cap;

@@ -55,11 +55,17 @@ The runner executes selected tests afresh. Focused local tests are feedback; pas
 
 `npm run test:engine` is separate integration coverage. Its tests require an explicitly supplied compatible Engine root, existing built runtime or isolated Engine URL. They do not authorize Engine changes, builds, upgrades or personal installation operations. Mocked tests do not prove real-provider quality. Private Docker tooling verifies packaged activation, desktop/phone rendering, restart and persistence using disposable provider-free storage.
 
+`npm run bench:scene` runs 17 synthetic Scene cases through the built package's HTTP handlers, including consequential events, long history, rich Wishes/Memories and saved-response replay. Build first. It verifies the archive and receipt inputs, then writes `.build-tmp/scene-cost/provider-free.json` with their identities, prompt bytes, explicitly estimated tokens, mocked completion count and accepted-state assertions. This command purchases no provider requests. Its estimates and local timings do not establish provider cache hits, real latency or cost parity; those require an authorized matched run through the actual Engine Game Mode and Villages providers with all retries included.
+
+`npm run bench:scene:live -- <private-config.json> [report.json]` deliberately purchases model requests through actual Villages and Game Mode HTTP paths. Prepare a quiet synthetic Village and native Game chat on the same isolated Engine and saved connection first. Set `VILLAGES_ENGINE_URL` to its loopback URL (8500 is refused) and `VILLAGES_ENGINE_ADMIN_SECRET` when required. The private JSON supplies `sessionId`, `chatId`, `connectionId` and `pairs: [{id, message}]`; optional `runtimeIdentity` records externally verified package/image identities, while `rate` and `pricingProvider` supply separately verified current pricing. The driver never changes model settings or resets progress. It retains every tracked attempt, unknown billing, replay checks, provider usage and actual Game prompt hashes; rated costs remain distinct from invoices and provider-internal retries are explicitly unobservable. Human review of consequences and identity correspondence remains necessary.
+
+The [Scene cost characterization](docs/scene-cost.md) records the actual staging integration target, measured provider usage, cache behavior and remaining limits.
+
 ## Preview and saved data
 
 Villages is an unreleased prototype without a public installer or official catalog entry. Test installation is arranged separately; historical tagged downloads are not the current prototype distribution.
 
-The [social Wishes](docs/wishes.md) guide documents their behavior and extension boundaries. Social Wishes replace the prior Wish/Pursuit implementations. The current build requires a fresh format-16 Village with immutable Memory pages; no conversion is provided.
+The current build requires a fresh format-18 Village. The [saved-state contract](docs/architecture-migration.md#saved-work-and-compatibility) describes strict format checks and preservation of existing storage. See [social Wishes](docs/wishes.md) for the current continuity behavior.
 
 During development, **DEBUG Settings → Advance Village time** advances the current instance by a chosen elapsed duration. The saved offset survives restart; days are 24 hours. It runs ordinary absence catch-up across Village mechanics, including any normally enabled model work, and preserves active Scene snapshots and held failures. Operational clocks and model settings remain unchanged. It is available in every development instance. Before admitting active playtesters, remove the `TimeControl.tsx` UI and `/clock/advance` route. Retain saved-offset compatibility so existing development worlds do not jump backwards; resetting the offset is not an undo operation. Checkpoint retained worlds before consequential time tests.
 
@@ -71,18 +77,27 @@ New previews copy selective setup and Villages data from a verified saved checkp
 
 ## Build and release
 
-The builder owns generated bundles, manifests, locales and ZIPs. Commit maintained sources, tests and documentation. Locked dependencies and pinned public Engine declarations permit builds without an Engine checkout. `sources/engine-public/PROVENANCE.md` identifies those declarations. Engine 2.5.0 is the minimum.
+The builder owns generated bundles, manifests, locales and ZIPs. Commit maintained sources, tests and documentation. Locked dependencies and pinned public Engine declarations permit builds without an Engine checkout. `sources/engine-public/PROVENANCE.md` identifies those declarations. Engine 2.5.2 and Capability API 1.818 are the minimum.
 
 `npm run verify:build` builds twice, compares archive hashes and checks that tracked source bytes are unchanged. The latest build receipt is `.build-tmp/package-build.json`; exact retained archives are under `artifacts/<version>/<source-content-hash>/<archive-sha256>.zip`. Version equality alone does not establish package identity.
 
-For an explicitly authorized release:
+### Publish to staging
+
+1. If the package changed, choose a higher Villages version in the staging PR. A matching ZIP digest can reuse the current catalog entry.
+2. Merge through the staging turn and required checks. Run the full `ci.yml` workflow by manual dispatch on `staging` and verify its exact final staging revision, successful required jobs, Linux and Windows artifact digests, and matching inner ZIP hashes and build receipts. Verify the exact package on a compatible Engine.
+3. Upload that ZIP to the `agent-catalog-artifacts` prerelease as `villages-<version>-<first-16-hex-of-sha256>.zip`. Give each digest a new asset name. Update `catalog.json` on `agent-catalog` with the manifest, HTTPS asset URL, byte count and full SHA-256. Set `provenance.kind` to `custom` and `provenance.url` to the successful staging workflow run. Verify the published catalog and downloadable ZIP before reporting publication.
+4. Report the staging merge and catalog publication. The owner selects the update in 8500 Agent Organizer, which checks and activates the chosen package. A catalog publication alone leaves the running instance available for play.
+
+### Numbered releases
+
+For an explicitly authorized numbered release:
 
 1. Choose the deliberate release version once in the package definition. Do not bump it for each development edit. Preserve published numbered bytes.
 2. Open the staging-to-main PR. Obtain all required checks for its current merge candidate. Record the successful Actions run URL, tested Git SHA/tree, package artifact and SHA256. Download the artifact from that successful run; verify its hash and the Linux/Windows parity job. If a merge changes executable source, validate the new candidate.
 3. Rehearse the exact ZIP with guarded provider-free packaged verification and, when needed, a checkpointed copy of an existing world. Preserve rollback and review meaningful saved-data compatibility changes.
 4. Obtain explicit authorization for main promotion and numbered publication. Publish the verified immutable artifact, not an unverified rebuild. Record the version, commit, run URL and archive hash in the normal release description.
 
-Never substitute a local success, identical bytes alone, or stale PR approval for required current checks. No publication occurs merely because staging merged.
+Required checks must pass for the current candidate. A staging merge alone does not publish a package.
 
 ## Product contracts
 

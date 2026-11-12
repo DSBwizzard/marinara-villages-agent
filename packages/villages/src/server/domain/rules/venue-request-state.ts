@@ -12,7 +12,7 @@ export function queueVillageVenueRequest(
   sourceKey: string,
   at: string,
   requestQuote = "",
-): void {
+): VillagePendingDecision | undefined {
   const requester = state.villagers.find((villager) => villager.characterId === requesterCharacterId);
   if (!requester || !sourceKey) return;
   if (
@@ -48,6 +48,7 @@ export function queueVillageVenueRequest(
     status: "pending",
     venueDraft: venueRequestDraft(core),
     requesterCharacterId,
+    requesterIncarnation: requester.incarnation,
     requesterName: requester.cardSnapshot.name,
     requestQuote: boundText(requestQuote, MAX_VENUE_NOTE_LENGTH),
     source,
@@ -58,4 +59,5 @@ export function queueVillageVenueRequest(
   const resolved = state.pendingDecisions.filter((entry) => entry.status === "approved" || entry.status === "denied");
   const historyRoom = 256 - pending.length;
   state.pendingDecisions = [...(historyRoom > 0 ? resolved.slice(-historyRoom) : []), ...pending];
+  return decision;
 }

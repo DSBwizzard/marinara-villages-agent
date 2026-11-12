@@ -1,5 +1,7 @@
 import { clickCharacterTool, openCharacterTools } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
+import { mkdirSync } from "node:fs";
+import { resolve } from "node:path";
 import { build } from "../scripts/esbuild.mjs";
 import { chromium, expect, fulfill, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 
@@ -34,12 +36,12 @@ function Harness(){
  const influence=useSetScheduleInfluence({currentSnapshotRef,setAgendas,setError,setBusy:()=>{}});
  const [validating,setValidating]=useState(false),observed=useRef(''),completion=useRef({roomId:'',submissionId:''}),movement=useRef(''),seen=useRef(new Set());
  const noChange=useCallback(()=>{},[]);
- useSceneSelectionReset({snapshot:{village:{instant:'same'}},loadSnapshot:noChange,observedRoomIdRef:observed,room:validating?{id:'saved-scene',status:'active',liveSceneVersion:1}:null,roomCompletionRef:completion,roomMoveOperationIdRef:movement,screen:'room',seenRoomEventIdsRef:seen,setLastSceneEnding:noChange,setRoom:noChange,setRoomContactBoundary:noChange,setRoomMoveZoneId:noChange,setRoomNotices:noChange,setRoomOpen:noChange,setRoomTargetId:noChange,setScreen:noChange});
+ useSceneSelectionReset({snapshot:{village:{instant:'same'}},loadSnapshot:noChange,observedRoomIdRef:observed,room:validating?{id:'saved-scene',status:'active'}:null,roomCompletionRef:completion,roomMoveOperationIdRef:movement,screen:'room',seenRoomEventIdsRef:seen,setLastSceneEnding:noChange,setRoom:noChange,setRoomContactBoundary:noChange,setRoomMoveZoneId:noChange,setRoomNotices:noChange,setRoomOpen:noChange,setRoomTargetId:noChange,setScreen:noChange});
  window.h={scope:setScope,actor:setActor,refresh:()=>setRevision(value=>String(Number(value)+1)),active:setActive,hidden:setHidden,visible,sprites:setSprites,loadAgendas,influence,agendas,validate:setValidating,navigateWish:()=>setNavigation({actorId:actor,returnTo:'home',wishId:actor+'-wish'})};
  return <VillageActivity value={{visible,backgroundRevision:revision,worldScope:scope}}><style>{DOSSIER_STYLES}</style>
  <RetainedView active={active}><VillagerDossier key={scope+actor} navigation={personProfile} villager={{characterId:actor,name:actor,summary:'A villager',missing:false}}
  portrait={null} request={request} venues={[]} links={[]} controls={<input aria-label='Identity draft'/>} spriteManager={sprites?<button onClick={()=>setSprites(false)}>Back to profile</button>:undefined}
- onInspectSection={setInspection} onVenue={()=>{}} inspectors={{
+ onInspectSection={setInspection} onVenue={id=>window.h.openedVenue=id} inspectors={{
  wishes:<VillagerWishJournal request={request} characterId={actor} prefix='v' inspect/>,
  memories:<VillagerMemoriesPanel characterId={actor} library={library} busy={false} onQuery={(query,signal)=>loadMemory(signal,query)} onForget={()=>{}}/>,
  agenda:<pre>{JSON.stringify(agendas)}</pre>
@@ -56,6 +58,8 @@ function Harness(){
 });
 
 const browser = await chromium.launch({ headless: process.env.VILLAGES_HEADED !== "1" });
+const output = resolve(".build-tmp/ui-continuity");
+mkdirSync(output, { recursive: true });
 await withBrowser(browser, async () => {
   for (const [width, panelWidth] of [
     [1280, 1280],
@@ -74,17 +78,50 @@ await withBrowser(browser, async () => {
     let summary = "Known relationship";
     let followed = false;
     let agendaName = "Current agenda";
+    const agreement =
+      "Visit the fair together only if Delia comes and the north path is open. " +
+      "Long retained condition 🌿 👩🏽‍🚀 ".repeat(35) +
+      "Nobody must cancel work.";
     const profiles = () =>
       ["mara", "eli"].map((characterId) => ({
         characterId,
         name: characterId,
-        summary,
-        knownAt: "2026-11-05T00:00:00Z",
-        routine: [summary],
-        interests: "",
-        ties: [],
-        learned: [],
-        access: [],
+        entries: [
+          {
+            id: characterId + "-routine",
+            revision: 1,
+            kind: "information",
+            text: summary,
+            occurredAt: "2026-11-05T00:00:00Z",
+            recordedAt: "2026-11-05T00:00:00Z",
+            subjects: [],
+            knownBy: [{ id: "player", name: "You" }],
+            forgotten: false,
+            playerCorrection: false,
+            current: true,
+          },
+          {
+            id: characterId + "-offer",
+            revision: 1,
+            kind: "commitment",
+            text: agreement,
+            occurredAt: "2026-11-05T00:00:00Z",
+            recordedAt: "2026-11-05T00:00:00Z",
+            subjects: [],
+            knownBy: [{ id: "player", name: "You" }],
+            forgotten: false,
+            playerCorrection: false,
+            current: true,
+            offer: {
+              state: "offered",
+              participants: [
+                { id: "player", name: "You" },
+                { id: characterId, name: characterId },
+              ],
+            },
+          },
+        ],
+        access: [{ venueId: "known-home", zoneId: "library", active: true, name: "Library" }],
         knownWishes: [
           {
             wishId: characterId + "-wish",
@@ -107,19 +144,51 @@ await withBrowser(browser, async () => {
       let json;
       if (url.pathname.endsWith("/follow")) {
         followed = route.request().postDataJSON().followed;
-        json = { profiles: profiles() };
-      } else if (url.pathname.endsWith("/relationships")) json = { profiles: profiles(), starting: { pending: false } };
+        json = {
+          wishes: profiles().find(
+            (profile) => profile.characterId === url.pathname.split("/villagers/")[1].split("/")[0],
+          ).knownWishes,
+        };
+      } else if (url.pathname.endsWith("/relationships/inspect"))
+        json = {
+          processing: [],
+          conflicts: [],
+          residents: profiles().map((profile) => ({
+            characterId: profile.characterId,
+            name: profile.name,
+            initialized: true,
+            entries: [
+              {
+                ...profile.entries[0],
+                text: "PRIVATE " + profile.characterId + " perspective",
+                support: [
+                  {
+                    id: "private-source",
+                    text: "Private directional source.",
+                    speaker: { id: profile.characterId, name: profile.name },
+                  },
+                ],
+              },
+            ],
+          })),
+        };
+      else if (url.pathname.endsWith("/relationships")) json = { profiles: profiles(), starting: { pending: false } };
+      else if (url.pathname.endsWith("/wishes"))
+        json = {
+          wishes: profiles().find(
+            (profile) => profile.characterId === url.pathname.split("/villagers/")[1].split("/")[0],
+          ).knownWishes,
+        };
       else if (url.pathname.endsWith("/wishes/inspect"))
         json = {
           wishes: [
             {
-              id: "private",
-              wish: "Private Wish",
-              reason: "Private reason",
+              wishId: "private",
+              text: "Private Wish",
               status: "open",
-              addedAt: "2026-11-05T00:00:00Z",
-              history: [],
-              conditions: [],
+              at: "2026-11-05T00:00:00Z",
+              facts: [],
+              details: [{ id: "private-reason", kind: "reason", text: "Private reason" }],
             },
           ],
         };
@@ -148,8 +217,7 @@ await withBrowser(browser, async () => {
       } else if (url.pathname.endsWith("/agendas") || url.pathname.endsWith("/influence"))
         json = { villagers: [{ characterId: "mara", name: agendaName }] };
       else if (url.pathname.endsWith("/signature")) json = { status: "idle", attempt: 0 };
-      else if (url.pathname.endsWith("/rooms/active"))
-        json = { session: { id: "saved-scene", status: "active", liveSceneVersion: 1 } };
+      else if (url.pathname.endsWith("/rooms/active")) json = { session: { id: "saved-scene", status: "active" } };
       else throw Error("Unexpected read " + url.pathname);
       const pending = hold?.path === url.pathname ? hold : null;
       if (pending) {
@@ -278,6 +346,7 @@ await withBrowser(browser, async () => {
     }
     await clickCharacterTool(page, "Inspect");
     await page.getByRole("button", { name: "Open Wish: Private Wish" }).click();
+    await page.getByRole("tab", { name: "Why it matters", exact: true }).click();
     const privateNode = await page.getByText("Private reason", { exact: true }).elementHandle();
     const privateRead = pause(
       process.env.VILLAGES_HEADED === "1"
@@ -412,6 +481,32 @@ await withBrowser(browser, async () => {
     });
     await expect.poll(() => validation.started).toBe(2);
     hold = null;
+    await chooseSection("Relationships");
+    const relationships = page.getByRole("region", { name: "Relationships content" });
+    await expect(relationships.getByText(agreement, { exact: true })).toBeVisible();
+    await expect(relationships.getByText(/PRIVATE/)).toHaveCount(0);
+    const nativeAccess = relationships.getByRole("button", { name: "Library · Standing invitation", exact: true });
+    await nativeAccess.click();
+    assert.equal(await page.evaluate(() => window.h.openedVenue), "known-home");
+    for (const card of await relationships.locator("article").all()) {
+      assert(
+        await card.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+        "Long Unicode terms wrap inside the book",
+      );
+    }
+    await relationships.locator("article").first().scrollIntoViewIfNeeded();
+    await page.evaluate(() => document.fonts.ready);
+    await page.screenshot({ path: resolve(output, `relationships-${width}.png`) });
+    await clickCharacterTool(page, "Inspect");
+    await expect(relationships.getByText("PRIVATE eli perspective", { exact: true })).toBeVisible();
+    await expect(relationships.getByText("PRIVATE mara perspective", { exact: true })).toHaveCount(0);
+    const sources = relationships.getByText("Sources", { exact: true });
+    await sources.focus();
+    await page.keyboard.press("Enter");
+    await expect(relationships.getByText("Private directional source.", { exact: false })).toBeVisible();
+    await page.screenshot({ path: resolve(output, `relationships-inspect-${width}.png`) });
+    await clickCharacterTool(page, "Leave Inspect");
+    await expect(relationships.getByText(/PRIVATE/)).toHaveCount(0);
     await context.close();
   }
 });

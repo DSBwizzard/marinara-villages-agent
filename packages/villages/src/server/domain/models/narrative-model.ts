@@ -1,11 +1,15 @@
-import type { PlaceAfter, PlaceUpdate } from "../../../shared/contracts/place-continuity.js";
 import type { VillageNarrativeConsequence } from "../../../shared/contracts/village.js";
 
-export type NarrativeTarget = PlaceAfter & {
+export type NarrativeTarget = {
   venueId: string;
   zoneId: string;
   name: string;
   exterior: boolean;
+  room: { id: string; text: string; expiresAt?: string }[];
+  roomBasis: string;
+  structure: string;
+  roomWritable: boolean;
+  protections: ReturnType<typeof import("../rules/continuity.js").continuityConstraints>;
   controllers: string[];
   correctiveActorIds: string[];
 };
@@ -23,7 +27,7 @@ export type NarrativeCondition = {
   endsAt: string | null;
   clearedAt: string | null;
   /** A repair-linked restriction cannot clear without matching physical work. */
-  physicalRevision?: number;
+  repairEntries?: string[];
 };
 export type NarrativeWeather = {
   id: string;
@@ -35,11 +39,12 @@ export type NarrativeWeather = {
 };
 /** A code-authored finite source, saved in the existing job/Scene before dispatch. */
 export type NarrativeAdmission = {
-  version: 1;
+  version: 2;
   id: string;
   source: "world" | "scene";
   sourceId: string;
   seed: string;
+  setupAt: string;
   at: string;
   adoptedAt: string;
   setting: string;
@@ -65,15 +70,20 @@ export type NarrativeDevelopment = {
     summary: string;
     status: "active" | "resolved";
   };
-  physical: { venueId: string; zoneId: string; update: PlaceUpdate }[];
+  room: {
+    replace?: string;
+    text: string | null;
+    expiresInMinutes?: number;
+  }[];
+  protection?: { roots: string[]; disposition: "clear" };
   conditions: {
     id: string | null;
     expectedRevision: number;
     venueId: string;
     zoneId: string;
-    observation: string;
+    observation?: string;
     restriction: "none" | "ordinary-use";
-    remedy: string;
+    remedy?: string;
     endsAt: string | null;
     clear: boolean;
   }[];
@@ -90,10 +100,10 @@ export type NarrativeReceipt = {
   id: string;
   at: string;
   sourceId: string;
-  source: "world" | "scene" | "action";
+  source: "world" | "scene";
   occurrence: string;
   after: NarrativeAfter;
-  physical: (PlaceAfter & { venueId: string; zoneId: string; appearanceChanged: boolean })[];
+  resultFingerprint?: string;
 };
 export type NarrativeState = {
   claims?: {

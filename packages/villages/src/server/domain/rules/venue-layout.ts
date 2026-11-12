@@ -1,4 +1,4 @@
-import { zonePictureBaseline } from "./zone-picture.js";
+import { zoneAppearanceContext, zonePictureBaseline } from "./zone-picture.js";
 import {
   applyConnectionEdits,
   connectionProblem,
@@ -102,11 +102,8 @@ export function readBaseVenueLayout(
   const daylight = (value: Record<string, unknown>) => {
     if (value.dayNight !== undefined && typeof value.dayNight !== "boolean")
       throw badRequest("Day & night must be on or off.");
-    if (value.dayNightManual !== undefined && typeof value.dayNightManual !== "boolean")
-      throw badRequest("Check the artwork preference.");
     return {
       dayNight: value.dayNight !== false,
-      dayNightManual: false,
     };
   };
   const picture = (area: Record<string, unknown>, existing: VillageVenueImage | null) => {
@@ -123,11 +120,7 @@ export function readBaseVenueLayout(
           dirty:
             (!!reference && area.referenceAppliedId !== reference.id) ||
             (!!context &&
-              context !==
-                JSON.stringify({
-                  description: asTrimmedString(area.description),
-                  ...(asTrimmedString(row.form) ? { form: asTrimmedString(row.form) } : {}),
-                })),
+              context !== zoneAppearanceContext(asTrimmedString(area.description), asTrimmedString(row.form))),
         }
       : undefined;
   };
@@ -150,6 +143,8 @@ export function readBaseVenueLayout(
     ...rooms.map((raw) => [true, raw] as const),
   ]) {
     const area = asRecord(raw);
+    const id = asTrimmedString(area.id) || (isPrivate ? "private:base" : "common:base");
+    if (Buffer.byteLength(id) > 160) throw badRequest("A Zone ID must fit within 160 UTF-8 bytes.");
     const role = area.venueClass as VillageVenueClass;
     if (!classes.includes(role)) throw badRequest("Choose one of this venue's Classes for each area.");
     const description = asTrimmedString(area.description);
@@ -168,10 +163,10 @@ export function readBaseVenueLayout(
     if (area.access === undefined && isPrivate && !["residence", "workplace"].includes(role) && !controllers.length)
       throw badRequest("Choose controllers for the Private Space.");
     result.push({
-      ...defaultVenueSpace(role, description),
+      ...defaultVenueSpace(role, prepareInterior ? "" : description),
       ...daylight(area),
       ...(prepareInterior ? { roomSpecification } : {}),
-      id: asTrimmedString(area.id) || (isPrivate ? "private:base" : "common:base"),
+      id,
       connectedTo: Array.isArray(area.connectedTo) ? (area.connectedTo as string[]) : undefined,
       name: asTrimmedString(area.name).slice(0, 100) || "Zone",
       purpose:

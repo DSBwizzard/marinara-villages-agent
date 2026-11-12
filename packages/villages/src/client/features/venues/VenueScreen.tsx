@@ -2,8 +2,10 @@ import { useVillageLighting } from "../../shared/useVillageLighting.js";
 import { useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react";
 import { useConfirmation } from "../../shared/confirmation.js";
 import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
+import { galleryArtworkVariant } from "../../../shared/helpers/gallery-artwork.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
+import { ArtworkImage } from "../../shared/ArtworkImage.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import { playerDisplayName } from "../../shared/presentation.js";
 import { venueClassesFor } from "../../shared/venue.js";
@@ -200,7 +202,7 @@ function ZoneArtwork({
     <>
       <div className={`${ELEMENT_TAG}-zone-artwork-frame`}>
         {artwork ? (
-          <img
+          <ArtworkImage
             className={`${ELEMENT_TAG}-venue-profile-image`}
             src={artwork.url}
             alt={`${zone.name} at ${place.name}`}
@@ -223,7 +225,7 @@ function ZoneArtwork({
         <details
           className={`${ELEMENT_TAG}-picture-menu`}
           onClick={(event) => {
-            if (event.target instanceof Element && event.target.closest("button")) {
+            if (event.target instanceof Element && event.target.closest("button,a")) {
               event.currentTarget.open = false;
               event.currentTarget.querySelector("summary")?.focus();
             }
@@ -240,6 +242,11 @@ function ZoneArtwork({
             Picture <span aria-hidden="true">▾</span>
           </summary>
           <div>
+            {artwork && galleryArtworkVariant(artwork.url, 1024) ? (
+              <a className={`${ELEMENT_TAG}-button`} href={artwork.url} target="_blank" rel="noreferrer">
+                Open full size
+              </a>
+            ) : null}
             <button
               type="button"
               aria-label="Generate new picture"
@@ -287,14 +294,20 @@ function ZoneArtwork({
           </div>
         </details>
       </div>
-      {zone.pictureProblem || zone.pictureUpdating || zone.nightPending || zone.referencePending ? (
+      {zone.pictureProblem ||
+      zone.pictureUpdating ||
+      zone.nightPending ||
+      zone.referencePending ||
+      zone.pictureOutdated ? (
         <p role="status">
           {zone.pictureProblem ||
             (zone.pictureUpdating
               ? "Artwork pending"
               : zone.referencePending
                 ? "Reference saved for your next visit."
-                : "Artwork pending")}
+                : zone.pictureOutdated
+                  ? "Artwork is out of date."
+                  : "Artwork pending")}
         </p>
       ) : null}
     </>
@@ -491,7 +504,7 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
       >
         {backdrop ? (
           <figure className={ELEMENT_TAG + "-venue-photo"}>
-            <img src={backdrop.url} alt={browsing && zoneArt ? selected.name : place.name} />
+            <ArtworkImage src={backdrop.url} alt={browsing && zoneArt ? selected.name : place.name} />
           </figure>
         ) : null}
         <div className={`${ELEMENT_TAG}-venue-navigation`}>

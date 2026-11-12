@@ -3,10 +3,73 @@ import { useVillageActivity } from "../../shared/activity.js";
 import { invalidatesRead } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { useEffect, useRef, useState } from "react";
-import type { RelationshipInspectView, RelationshipView } from "../../../shared/contracts/relationships.js";
+import type {
+  RelationshipEntry,
+  RelationshipInspectView,
+  RelationshipView,
+} from "../../../shared/contracts/relationships.js";
 export type { RelationshipProfile, RelationshipView } from "../../../shared/contracts/relationships.js";
 type Request = <T>(path: string, options?: RequestInit) => Promise<T>;
 const date = (at: string) => (at ? new Date(at).toLocaleString() : "");
+
+export function RelationshipEntries({
+  entries,
+  empty = "Nothing shared yet.",
+}: {
+  entries: (RelationshipEntry & {
+    support?: RelationshipInspectView["residents"][number]["entries"][number]["support"];
+  })[];
+  empty?: string;
+}) {
+  return entries.length ? (
+    <div className="villages-relationship-entries">
+      <style>{`
+    .villages-relationship-entries {display:grid;gap:1rem;min-width:0}
+    .villages-relationship-entries article {padding:1rem;border:1px solid #65708966;border-radius:.7rem;min-width:0;overflow-wrap:anywhere}
+    .villages-relationship-entries p,.villages-relationship-entries blockquote {white-space:pre-wrap;line-height:1.5}
+    .villages-relationship-entry-label {text-transform:capitalize}
+  `}</style>
+      {entries.map((entry) => (
+        <article key={entry.id}>
+          <strong className="villages-relationship-entry-label">
+            {(entry.facet ?? entry.kind).replaceAll("-", " ")}
+          </strong>
+          {entry.forgotten ? (
+            <small> · Forgotten</small>
+          ) : entry.playerCorrection ? (
+            <small> · Player correction</small>
+          ) : null}
+          <p>{entry.text}</p>
+          {entry.subjects.length ? <p>About {entry.subjects.map((person) => person.name).join(", ")}</p> : null}
+          {entry.offer ? (
+            <p>
+              {entry.offer.state} · {entry.offer.participants.map((person) => person.name).join(", ")}
+            </p>
+          ) : null}
+          <small>
+            {[entry.owner?.name, entry.closed ?? (entry.current ? "Current" : ""), date(entry.occurredAt)]
+              .filter(Boolean)
+              .join(" · ")}
+          </small>
+          {entry.support?.length ? (
+            <details>
+              <summary>Sources</summary>
+              {entry.support.map((source) => (
+                <blockquote key={source.id}>
+                  {source.speaker ? <strong>{source.speaker.name}: </strong> : null}
+                  {source.text}
+                </blockquote>
+              ))}
+            </details>
+          ) : null}
+        </article>
+      ))}
+    </div>
+  ) : (
+    <p>{empty}</p>
+  );
+}
+
 export function VillagesRelationships({
   request,
   prefix,
@@ -21,13 +84,12 @@ export function VillagesRelationships({
   characterId?: string;
   inspect?: boolean;
   view?: RelationshipView | null;
-  onView?: (view: RelationshipView) => void;
 }) {
   const { visible, backgroundRevision } = useVillageActivity();
   const [localView, setLocalView] = useState<RelationshipView | null>(null);
   const [debug, setDebug] = useState<RelationshipInspectView | null>(null);
   const [error, setError] = useState("");
-  const recoveryIdentity = useRef<Record<string, string>>({});
+  const retryIdentity = useRef<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const supplied = suppliedView !== undefined;
   useEffect(() => {
@@ -36,112 +98,81 @@ export function VillagesRelationships({
   useEffect(() => {
     if (!visible) return;
     const controller = new AbortController();
-    const refresh = () => {
-      const pending: Promise<unknown>[] = [];
-      if (!supplied)
-        pending.push(
-          request<RelationshipView>("/relationships", { signal: controller.signal }).then((next) => {
-            if (!controller.signal.aborted) setLocalView(next);
-          }),
-        );
-      if (inspect)
-        pending.push(
-          request<RelationshipInspectView>("/relationships/inspect", { signal: controller.signal }).then((next) => {
-            if (!controller.signal.aborted) setDebug(next);
-          }),
-        );
-      void Promise.all(pending)
-        .then(() => {
-          if (!controller.signal.aborted) setError("");
-        })
-        .catch((cause) => {
-          if (!controller.signal.aborted) {
-            if (invalidatesRead(cause)) {
-              setLocalView(null);
-              setDebug(null);
-            }
-            setError(cause instanceof Error ? cause.message : "Relationships could not be read.");
-          }
-        });
-    };
-    refresh();
-    return () => controller.abort();
-  }, [request, supplied, inspect, visible, backgroundRevision]);
-  async function recoverEncounter(row: NonNullable<RelationshipInspectView["recovery"]>[number], skip = false) {
-    const key = row.id + ":" + row.reinterpretRequired + ":" + skip;
-    recoveryIdentity.current[key] ??= createVillagesClientId();
-    setSaving(true);
-    setError("");
-    try {
-      setDebug(
-        await request<RelationshipInspectView>("/relationships/outbox/" + encodeURIComponent(row.id) + "/recovery", {
-          method: "POST",
-          body: JSON.stringify({
-            requestId: recoveryIdentity.current[key],
-            reinterpret: row.reinterpretRequired,
-            skip,
-          }),
+    const pending: Promise<unknown>[] = [];
+    if (!supplied)
+      pending.push(
+        request<RelationshipView>("/relationships", { signal: controller.signal }).then((next) => {
+          if (!controller.signal.aborted) setLocalView(next);
         }),
       );
-      delete recoveryIdentity.current[key];
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Recovery failed.");
-    } finally {
-      setSaving(false);
-    }
-  }
+    if (inspect)
+      pending.push(
+        request<RelationshipInspectView>("/relationships/inspect", { signal: controller.signal }).then((next) => {
+          if (!controller.signal.aborted) setDebug(next);
+        }),
+      );
+    void Promise.all(pending)
+      .then(() => {
+        if (!controller.signal.aborted) setError("");
+      })
+      .catch((cause) => {
+        if (!controller.signal.aborted) {
+          if (invalidatesRead(cause)) {
+            setLocalView(null);
+            setDebug(null);
+          }
+          setError(cause instanceof Error ? cause.message : "Relationships could not be read.");
+        }
+      });
+    return () => controller.abort();
+  }, [request, supplied, inspect, visible, backgroundRevision]);
   const view = suppliedView === undefined ? localView : suppliedView;
   return (
     <section className={prefix + "-overlay villages-relationships"} aria-label="Relationships">
       <style>{`
-      .villages-relationships {display:grid;gap:1rem;min-width:0}
-      .villages-relationships article {padding:1rem;border:1px solid #65708966;border-radius:.7rem;min-width:0;overflow-wrap:anywhere}
+      .villages-relationships,.villages-relationship-entries {display:grid;gap:1rem;min-width:0}
+      .villages-relationships article,.villages-relationship-entries article {padding:1rem;border:1px solid #65708966;border-radius:.7rem;min-width:0;overflow-wrap:anywhere}
       .villages-relationships h3,.villages-relationships h4 {margin:.4rem 0}
-      .villages-relationships p {white-space:pre-wrap;line-height:1.5}
-      .villages-relationships blockquote {margin:.5rem 0;padding-left:.75rem;border-left:2px solid #8c90b0}
+      .villages-relationships p,.villages-relationship-entries p {white-space:pre-wrap;line-height:1.5}
+      .villages-relationships blockquote {margin:.5rem 0;padding-left:.75rem;border-left:2px solid #8c90b0;white-space:pre-wrap}
       .villages-relationships details {margin:.75rem 0}
       .villages-relationships summary {cursor:pointer}
-      .villages-relationships pre {white-space:pre-wrap;font-size:.8rem}
     `}</style>
       {error ? <p role="alert">{error}</p> : null}
-      {view?.starting.pending ? (
-        <p role="status">Starting history is not ready. Check preparation in Inspect → Relationships.</p>
-      ) : null}
+      {view?.starting.pending ? <p role="status">Starting history is not ready.</p> : null}
       {!view ? (
         <p role="status">Reading relationships…</p>
       ) : (
         view.profiles
           .filter((person) => !characterId || person.characterId === characterId)
           .map((person) => (
-            <article key={person.characterId}>
+            <section key={person.characterId}>
               <h3>{person.name}</h3>
-              <p>{person.summary || "No relationship has been expressed yet."}</p>
-              {person.learned.map((entry, index) => (
-                <p key={index}>
-                  <strong>{entry.kind === "history" ? "Known history" : person.name + " shared"}:</strong> {entry.text}
-                  <small> · {date(entry.at)}</small>
-                </p>
-              ))}
+              <RelationshipEntries entries={person.entries} />
               {person.access.map((access) => (
-                <button key={access.venueId + access.zoneId} type="button" onClick={() => onVenue(access.venueId)}>
+                <button
+                  key={access.venueId + ":" + access.zoneId}
+                  type="button"
+                  onClick={() => onVenue(access.venueId)}
+                >
                   {access.name} · {access.active ? "Standing invitation" : "Unavailable"}
                 </button>
               ))}
-            </article>
+            </section>
           ))
       )}
       {inspect ? (
         <section aria-label="Relationship inspection">
           <h3>Inspect relationships</h3>
           {!debug ? (
-            <p role="status">Reading saved social state…</p>
+            <p role="status">Reading relationships…</p>
           ) : (
             <>
-              {debug.processing?.length ? (
+              {debug.processing.length ? (
                 <section aria-label="Social processing">
                   <h4>Processing</h4>
-                  {debug.processing.map((work, index) => (
-                    <p key={index}>
+                  {debug.processing.map((work) => (
+                    <p key={work.id}>
                       <strong>{work.label}:</strong> {work.status}
                       {work.message ? <> · {work.message}</> : null}
                       <small>
@@ -155,7 +186,7 @@ export function VillagesRelationships({
                           disabled={saving}
                           onClick={async () => {
                             const key = work.instanceId + ":" + work.attempt;
-                            recoveryIdentity.current[key] ??= createVillagesClientId();
+                            retryIdentity.current[key] ??= createVillagesClientId();
                             setSaving(true);
                             setError("");
                             try {
@@ -165,10 +196,10 @@ export function VillagesRelationships({
                                   id: work.id,
                                   expectedAttempt: work.attempt,
                                   expectedInstanceId: work.instanceId,
-                                  actionId: recoveryIdentity.current[key],
+                                  actionId: retryIdentity.current[key],
                                 }),
                               });
-                              delete recoveryIdentity.current[key];
+                              delete retryIdentity.current[key];
                               setDebug(await request<RelationshipInspectView>("/relationships/inspect"));
                             } catch (cause) {
                               setError(cause instanceof Error ? cause.message : "Preparation retry failed.");
@@ -184,29 +215,11 @@ export function VillagesRelationships({
                   ))}
                 </section>
               ) : null}
-              {debug.recovery?.map((row) => (
-                <article key={row.id}>
-                  <h4>Encounter needs recovery</h4>
-                  <p>{row.message}</p>
-                  <button type="button" disabled={saving} onClick={() => void recoverEncounter(row)}>
-                    {row.reinterpretRequired ? "Reinterpret saved encounter" : "Replay delivery"}
-                  </button>
-                  {row.canSkip ? (
-                    <button type="button" disabled={saving} onClick={() => void recoverEncounter(row, true)}>
-                      Skip encounter
-                    </button>
-                  ) : null}
-                  <details>
-                    <summary>Source</summary>
-                    <code>{row.id}</code>
-                  </details>
-                </article>
-              ))}
               <HistoryClarifications
                 conflicts={debug.conflicts}
                 disabled={
                   saving ||
-                  debug.processing?.some(
+                  debug.processing.some(
                     (work) => work.kind === "starting-ties" && ["queued", "running"].includes(work.status),
                   )
                 }
@@ -222,91 +235,12 @@ export function VillagesRelationships({
               {debug.residents
                 .filter((person) => !characterId || person.characterId === characterId)
                 .map((person) => (
-                  <article key={person.characterId}>
+                  <section key={person.characterId}>
                     <h4>
                       {person.name} · {person.initialized ? "History prepared" : "History pending"}
                     </h4>
-                    {person.intentions.length ? (
-                      <>
-                        <h4>Social intentions</h4>
-                        {person.intentions.map((intention, index) => (
-                          <div key={index}>
-                            <p>
-                              {intention.text} · {intention.status}
-                            </p>
-                            <p>{intention.reason}</p>
-                            <small>{intention.targets.join(", ")}</small>
-                          </div>
-                        ))}
-                      </>
-                    ) : (
-                      <p>No saved social intention.</p>
-                    )}
-                    {person.perspectives.map((perspective, index) => (
-                      <details key={index} open={perspective.technical.toId === "player" || undefined}>
-                        <summary>
-                          About {perspective.aboutName} · {perspective.connection || "Unestablished"}
-                        </summary>
-                        <p>{perspective.stance || "No private stance recorded."}</p>
-                        {perspective.expectations.length ? (
-                          <>
-                            <h4>Expectations</h4>
-                            <ul>
-                              {perspective.expectations.map((text, i) => (
-                                <li key={i}>{text}</li>
-                              ))}
-                            </ul>
-                          </>
-                        ) : null}
-                        {perspective.concerns.length ? (
-                          <>
-                            <h4>Unresolved concerns</h4>
-                            <ul>
-                              {perspective.concerns.map((text, i) => (
-                                <li key={i}>{text}</li>
-                              ))}
-                            </ul>
-                          </>
-                        ) : null}
-                        {perspective.records.map((record, i) => (
-                          <p key={i}>
-                            <strong>
-                              {record.kind} · {record.status}:
-                            </strong>{" "}
-                            {record.text}
-                            {record.currentStatus && record.currentStatus !== record.status ? (
-                              <small> · Current shared terms: {record.currentStatus}</small>
-                            ) : null}
-                            {record.dueAt ? <> · Due {date(record.dueAt)}</> : null}
-                          </p>
-                        ))}
-                        <h4>Defining experiences</h4>
-                        {perspective.experiences.map((experience, i) => (
-                          <details key={i}>
-                            <summary>
-                              {experience.reason} · {date(experience.at)}
-                            </summary>
-                            {experience.evidence.map((evidence, j) => (
-                              <blockquote key={j}>
-                                <strong>{evidence.speaker}:</strong> {evidence.text}
-                              </blockquote>
-                            ))}
-                            <details>
-                              <summary>Source ID</summary>
-                              <pre>{experience.sourceId}</pre>
-                            </details>
-                          </details>
-                        ))}
-                        <small>
-                          Updated {date(perspective.updatedAt)} · Revision {perspective.revision}
-                        </small>
-                        <details>
-                          <summary>Technical details</summary>
-                          <pre>{JSON.stringify(perspective.technical, null, 2)}</pre>
-                        </details>
-                      </details>
-                    ))}
-                  </article>
+                    <RelationshipEntries entries={person.entries} empty="Nothing recorded." />
+                  </section>
                 ))}
             </>
           )}

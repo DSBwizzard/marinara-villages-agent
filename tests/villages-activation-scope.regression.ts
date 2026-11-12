@@ -46,7 +46,9 @@ function fixture(name: string) {
           reads.push(id);
           if (id === checkpointId) return structuredClone(checkpoint ?? null);
           if (id === "villages-village") await onVillageRead?.();
-          return id === "villages-village" ? { id, revision: 1, data: structuredClone(state) } : null;
+          return id === "villages-village"
+            ? { id, packageId: "villages", kind: "village", revision: 1, data: structuredClone(state) }
+            : null;
         },
         async list() {
           return [];

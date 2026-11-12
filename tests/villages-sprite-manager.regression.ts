@@ -33,14 +33,13 @@ const now = new Date().toISOString();
 const village = coerceVillageState({
   ...defaultVillageState(),
 
-  wishSystemVersion: 3,
   name: "Preserved village",
   foundedAt: now,
-  visitMemoryBackfilled: true,
   villagers: [
     {
       letterFontId: "caveat",
       characterId: "mara",
+      incarnation: "mara:original",
       addedAt: now,
       cardSnapshot: {
         id: "mara",
@@ -51,17 +50,20 @@ const village = coerceVillageState({
         nameColor: "",
         dialogueColor: "",
       },
-      sprite: {
-        assetId: "villages-123e4567-e89b-42d3-a456-426614174000",
-        expressions: [{ label: "neutral", filename: "neutral.png" }],
-      },
     },
   ],
 });
-records.set("villages-village", { id: "villages-village", data: village, revision: 1 });
-records.set("sprite-studio-old", {
-  id: "sprite-studio-old",
-  data: { version: 2, jobs: [{ sheets: [] }] },
+records.set("villages-village", {
+  id: "villages-village",
+  packageId: "villages",
+  kind: "village",
+  data: village,
+  revision: 1,
+});
+records.set("unrelated-feature", {
+  id: "unrelated-feature",
+  kind: "unrelated",
+  data: { unrelated: true },
   revision: 1,
 });
 let failVillage = false,
@@ -369,7 +371,7 @@ async function run() {
     await removeSpriteArtwork("mara", { artworkId: removing.id, expectedUrl: removing.rendered.url });
     assert.equal((await readSpriteManager("mara")).defaultExpressionId, expression.id);
     assert.equal((await readVillageState({ memories: true })).name, "Preserved village");
-    assert.ok(records.has("sprite-studio-old"), "retired documents are left untouched");
+    assert.ok(records.has("unrelated-feature"), "unrelated documents are left untouched");
     for (const format of ["jpeg", "webp"] as const) {
       const encoded = await sharp(Buffer.from(original.split(",")[1]!, "base64"))
         [format]()

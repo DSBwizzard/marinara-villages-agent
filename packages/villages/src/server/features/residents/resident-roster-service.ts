@@ -1,4 +1,5 @@
 import { chooseLetterFont } from "../../../shared/helpers/letter-font-selection.js";
+import { randomUUID } from "node:crypto";
 import { MAX_IDENTITY_DESCRIPTION_LENGTH } from "../../../shared/contracts/resident-description.js";
 import { EMPTY_RESIDENT_ADMISSION, readResidentAdmission } from "../../../shared/helpers/resident-admission.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
@@ -67,6 +68,7 @@ export function createResidentRoster({
     if (!alreadyResident) {
       const spriteManager = await preparedSpriteManager?.(characterId, spriteSetupRevision);
       const addedAt = villageNow().toISOString();
+      const incarnation = randomUUID();
       const letterFontId = chooseLetterFont(randomVillageSeed());
       await mutateVillageState((state) => {
         if (state.villagers.some((villager) => villager.characterId === characterId)) return;
@@ -79,6 +81,7 @@ export function createResidentRoster({
         // that failed because the model was down would be a villager who exists
         // everywhere except on the map.
         state.villagers.push({
+          incarnation,
           characterId,
           letterFontId:
             (state.formerLetterFonts && Object.hasOwn(state.formerLetterFonts, characterId)
@@ -110,7 +113,6 @@ export function createResidentRoster({
           },
           addedAt,
           agenda: unwrittenVillageAgenda(villageNow()),
-          wishes: [],
           scheduleInfluence: influenceSettings(null),
         });
       });

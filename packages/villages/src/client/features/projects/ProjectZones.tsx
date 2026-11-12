@@ -3,6 +3,8 @@ import type { VillageVenue, VillageZoneDraft } from "../../../shared/contracts/v
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { ClassChoices, ArtworkUpload } from "./ProjectDesign.js";
 import { useState } from "react";
+import { ProjectRoomEditor } from "./ProjectRoomEditor.js";
+import type { DraftProjectRoomEdit } from "./useProjectWorkspaces.js";
 
 const personalKind = (kind: string) => ["private-residence", "staff", "restricted"].includes(kind);
 function kindFor(role: string, personal: boolean): VillageZoneDraft["kind"] {
@@ -24,6 +26,8 @@ export function ProjectZones({
   busy,
   onVenue,
   onZones,
+  roomEdits,
+  onRoomEdits,
   onUpload,
   people,
   selectedId,
@@ -43,6 +47,8 @@ export function ProjectZones({
   busy: boolean;
   onVenue(venue: VillageVenue): void;
   onZones(zones: VillageZoneDraft[]): void;
+  roomEdits: DraftProjectRoomEdit[];
+  onRoomEdits(edits: DraftProjectRoomEdit[]): void;
   onUpload(file?: File, zoneId?: string): void;
 }) {
   const [view, setView] = useState<"list" | "editor">("list");
@@ -125,7 +131,6 @@ export function ProjectZones({
           mode: personal || role === "residence" ? ("permission-required" as const) : ("public" as const),
         },
         image: null,
-        state: { revision: 0, updatedAt: "", recent: null },
       };
       setNewRows(
         personal ? (venue.spaces ?? []) : [...(venue.spaces ?? []), area],
@@ -143,13 +148,26 @@ export function ProjectZones({
           ...zone,
           connectedTo: zone.connectedTo?.filter((id) => id !== selected.id),
         }));
-    if (renovation) onZones(without(rows));
-    else setNewRows(without(venue.spaces ?? []), without(venue.privateSpaces ?? []));
+    if (renovation) {
+      onZones(without(rows));
+      onRoomEdits(roomEdits.filter((edit) => edit.zoneId !== selected.id));
+    } else setNewRows(without(venue.spaces ?? []), without(venue.privateSpaces ?? []));
     select("exterior");
     setView("list");
   };
   const privateRoom = !!selected && personalKind(selected.kind);
   const specificationOnly = privateRoom && renovation;
+  const existingRoom = renovation && (entrance || !!venue.zones?.some((zone) => zone.id === selected.id));
+  const roomEditor = (zoneId: string) => (
+    <ProjectRoomEditor
+      key={zoneId}
+      placeId={venue.id}
+      zoneId={zoneId}
+      editable={editable}
+      edits={roomEdits}
+      onEdits={onRoomEdits}
+    />
+  );
   const artwork = [...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])].find(
     (zone) => zone.id === selected?.id,
   )?.image;
@@ -268,17 +286,21 @@ export function ProjectZones({
         ) : null}
         <fieldset disabled={!editable || busy}>
           {entrance ? (
-            <label>
-              Long-term details
-              <textarea
-                autoComplete="off"
-                aria-label="Long-term details"
-                rows={4}
-                value={venue.description}
-                readOnly={!editable}
-                onChange={(event) => onVenue({ ...venue, description: event.target.value })}
-              />
-            </label>
+            renovation ? (
+              roomEditor("exterior")
+            ) : (
+              <label>
+                Long-term details
+                <textarea
+                  autoComplete="off"
+                  aria-label="Long-term details"
+                  rows={4}
+                  value={venue.description}
+                  readOnly={!editable}
+                  onChange={(event) => onVenue({ ...venue, description: event.target.value })}
+                />
+              </label>
+            )
           ) : (
             <>
               <div className="vp-zone-details">
@@ -304,6 +326,7 @@ export function ProjectZones({
                 </label>
               </div>
               <div className="vp-zone-appearance">
+                {existingRoom && (!mobile || editorPage === "appearance") ? roomEditor(selected.id) : null}
                 {specificationOnly ? (
                   <label>
                     Room specification
@@ -316,7 +339,7 @@ export function ProjectZones({
                       onChange={(event) => patch({ roomSpecification: event.target.value })}
                     />
                   </label>
-                ) : (
+                ) : !existingRoom ? (
                   <label>
                     Long-term details
                     <textarea
@@ -328,8 +351,7 @@ export function ProjectZones({
                       onChange={(event) => patch({ description: event.target.value })}
                     />
                   </label>
-                )}
-                {specificationOnly ? <p className="vp-note">Specify the physical changes to this Zone.</p> : null}
+                ) : null}
               </div>
               <div className="vp-zone-options">
                 {!mobile || optionPage === "main" ? (

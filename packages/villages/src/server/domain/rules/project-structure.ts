@@ -25,17 +25,16 @@ export function changedZoneIds(venue: VillageVenue, change?: VillageProjectChang
     const previous = old.find((saved) => saved.id === zone.id);
     return {
       ...zone,
-      description: zone.preserveDescription && previous ? previous.description : zone.description,
       roomSpecification: zone.roomSpecification ?? previous?.roomSpecification,
     };
   });
   const changed = [...new Set([...old, ...next].map((zone) => zone.id))].filter(
     (id) =>
-      JSON.stringify(old.find((zone) => zone.id === id) && shape(old.find((zone) => zone.id === id)!)) !==
-      JSON.stringify(next.find((zone) => zone.id === id) && shape(next.find((zone) => zone.id === id)!)),
+      JSON.stringify(old.find((zone) => zone.id === id) && structuralShape(old.find((zone) => zone.id === id)!)) !==
+      JSON.stringify(next.find((zone) => zone.id === id) && structuralShape(next.find((zone) => zone.id === id)!)),
   );
-  if (change.form !== undefined || change.exteriorDescription !== undefined) changed.push("exterior");
-  return changed;
+  if (change.form !== undefined) changed.push("exterior");
+  return [...new Set([...changed, ...(change.roomEdits ?? []).map(({ zoneId }) => zoneId)])];
 }
 export function venueDesignHash(
   venue: VillageVenue,
@@ -56,18 +55,7 @@ export function venueDesignHash(
             const zone = venue.zones?.find((zone) => zone.id === id);
             if (!zone) return [id, null];
             const privateInterior = ["private-residence", "staff", "restricted"].includes(zone.kind);
-            const draft = change?.zones?.find((row) => row.id === id);
-            const replacing =
-              zone.kind === "exterior"
-                ? change?.exteriorDescription !== undefined
-                : !!change &&
-                  (!draft ||
-                    !draft.preserveDescription ||
-                    (draft.roomSpecification !== undefined && draft.roomSpecification !== zone.roomSpecification));
-            return [
-              structuralShape(privateInterior ? { ...zone, name: "" } : zone),
-              replacing ? zone.description : null,
-            ];
+            return structuralShape(privateInterior ? { ...zone, name: "" } : zone);
           }),
       ]),
     )

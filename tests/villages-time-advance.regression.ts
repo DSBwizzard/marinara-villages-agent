@@ -1,27 +1,28 @@
+import { retainNativeFact } from "../packages/villages/src/server/domain/rules/native-continuity.js";
+import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
+import { continuityWishes } from "../packages/villages/src/server/domain/rules/continuity-library.js";
+import {
+  captureResidentNarration,
+  acceptResidentNarration,
+} from "../packages/villages/src/server/domain/rules/resident-narration.js";
+import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { influenceSettings } from "../packages/villages/src/server/domain/rules/owned-routine.js";
 import { residenceProposal } from "../packages/villages/src/server/domain/rules/residence-agreement.js";
 import assert from "node:assert/strict";
 import { configureVillageClock, villageNow } from "../packages/villages/src/server/adapters/time/clock-gate.js";
 import { createVillageClock } from "../packages/villages/src/server/adapters/time/clock-service.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import type { VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
 import type { VillageSnapshot, VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
 import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import { reconcileProjectLifecycles } from "../packages/villages/src/server/domain/rules/project-lifecycle-rules.js";
-import {
-  defaultRelationshipState,
-  neutralRelationship,
-  reconcileRelationships,
-  relationshipKey,
-} from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { completeResidenceMove } from "../packages/villages/src/server/domain/rules/residence-move.js";
 import {
   captureSceneContinuity,
   sceneContinuityView,
 } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
-import { readEncounter } from "../packages/villages/src/server/domain/rules/social-encounter.js";
-import { captureResidentActivity } from "../packages/villages/src/server/domain/rules/world-context-copy.js";
 import { villagePresence } from "../packages/villages/src/server/domain/rules/village-projections.js";
 import { createResidentAgendas } from "../packages/villages/src/server/features/residents/resident-agenda-service.js";
 import { createVillageSnapshot } from "../packages/villages/src/server/features/world/snapshot-service.js";
@@ -30,8 +31,6 @@ import { createVillageStateService } from "../packages/villages/src/server/featu
 import { ZonedDate } from "../packages/villages/src/shared/helpers/zoned-date.js";
 import { socialWorldFixture } from "./fixtures/social-world.fixture.js";
 import { fixture as projectFixture } from "./fixtures/villages-projects.fixture.js";
-import { addMemory } from "./helpers/memories-fixture.js";
-import { fixtureWish } from "./helpers/social-wishes-fixture.js";
 
 const day = 86_400_000;
 const start = Date.parse("2026-10-24T12:00:00Z");
@@ -49,7 +48,12 @@ async function fixture() {
     resident.agenda = unwrittenVillageAgenda(new Date(start));
     resident.agenda.personalizationPending = false;
   }
-  state.villagers[0]!.wishes = [fixtureWish({ wish: "Take a walk together" }, "walk", state.simulatedThrough)];
+  retainNativeFact(
+    state,
+    { id: "wish", kind: "initialization", targetId: "a", revision: 1, text: "Take a walk together", witnesses: ["a"] },
+    state.simulatedThrough,
+    { class: "desire", owner: continuityActor(state, "a")!, about: ["a"] },
+  );
   state.residences = [
     {
       characterId: "a",
@@ -77,23 +81,35 @@ async function fixture() {
   state.residences = [
     { ...move, status: "moving", approvedAt: state.simulatedThrough, completesAt: new Date(start + day).toISOString() },
   ];
-  state.memories = addMemory(state.memories, { text: "Yesterday’s weather", audience: ["player", "a"] });
-  state.relationshipContext = defaultRelationshipState(state.seed);
-  for (const to of ["b", "player"])
-    state.relationshipContext.edges[relationshipKey("a", to)] = {
-      ...neutralRelationship("a", to),
-      warmth: 30,
-      lastContactAt: state.simulatedThrough,
-      decayAnchorAt: state.simulatedThrough,
-    };
-  const scene = {
+  retainNativeFact(
+    state,
+    {
+      id: "memory",
+      kind: "initialization",
+      targetId: "a",
+      revision: 1,
+      text: "Yesterday's weather",
+      witnesses: ["player", "a"],
+    },
+    state.simulatedThrough,
+    { about: ["a"] },
+  );
+  const scene = coerceSession({
+    version: 5,
     id: "existing",
     villageSeed: state.seed,
+    placeId: "home-a",
+    zoneId: "residence",
+    status: "active",
     startedAt: state.simulatedThrough,
-    sceneAttendance: { capturedAt: state.simulatedThrough, occupants: [] },
+    sceneAttendance: {
+      capturedAt: state.simulatedThrough,
+      layout: captureSceneLayout(state.venues.find((row) => row.id === "home-a")!),
+      occupants: [],
+    },
     lines: [],
     submissions: [],
-  } as unknown as VenueScene;
+  });
   scene.continuity = captureSceneContinuity(state, scene, start);
   const originalScene = structuredClone(scene);
   let wall = start;
@@ -109,7 +125,6 @@ async function fixture() {
   const release = configureVillageClock(clock);
   await clock.observe();
   const readVillageState = async () => {
-    reconcileRelationships(state.relationshipContext!, state, villageNow().getTime());
     return structuredClone(state);
   };
   const mutateVillageState = async (update: (state: VillageState) => void) => {
@@ -188,21 +203,27 @@ for (const duration of [90 * 60_000, day, 7 * day, 30 * day]) {
       const memories = await f.world.buildVillageMemories();
       assert.deepEqual(f.scene, f.originalScene, "Catch-up cannot rewrite an active Scene's capture.");
       assert.equal(sceneContinuityView(state, f.scene).residences[0]!.status, "moving");
-      assert.equal(
-        state.relationshipContext!.edges[relationshipKey("a", "player")]!.warmth,
-        30,
-        "Player absence cannot decay player feelings.",
-      );
+
       assert.equal(state.villagers[0]!.agenda!.activeDay!.dateKey, agendaDateKey(new Date(start + duration)));
       assert.equal(state.residences[0]!.status, duration >= day ? "current" : "moving");
-      assert.equal(state.villagers[0]!.wishes.length, 1, "Retained Wishes have no time expiry");
+      assert.equal(
+        continuityWishes(state, "a", true, state.simulatedThrough).length,
+        1,
+        "Retained Wishes have no time expiry",
+      );
       assert.equal(memories.total, 1, "Meaningful memory never expires during catch-up");
       results.push({
         move: state.residences[0],
-        wishes: state.villagers[0]!.wishes,
+        wishes: continuityWishes(state, "a", true, state.simulatedThrough),
         memories: memories.entries,
         project: state.projects.map((p) => [p.status, p.lifecycle?.phase, p.lifecycle?.completedAt]),
-        npcWarmth: state.relationshipContext!.edges[relationshipKey("a", "b")]!.warmth,
+        continuity: state.continuity.records.flatMap((record) =>
+          Object.values(record.heads).map((head) => ({
+            holder: head.holder,
+            current: head.current,
+            text: state.continuity.versions.find((version) => version.id === head.versionId)!.text,
+          })),
+        ),
         date: state.villagers[0]!.agenda!.activeDay!.dateKey,
       });
     } finally {
@@ -236,27 +257,35 @@ for (const duration of [90 * 60_000, day, 7 * day, 30 * day]) {
     }
     const positions = villagePresence(state, 600, now);
     assert.equal(positions.get("b")?.zoneId, "common", "An advanced opening-hour check uses Village civil time.");
-    const opportunity = { id: "meeting", kind: "encounter", actorIds: ["a", "b"], venueId: cafe.id, zoneId: "common" };
-    const entry = {
-      id: "meeting-entry",
-      seed: state.seed,
-      at: now.toISOString(),
-      opportunity,
-      admitted: captureResidentActivity(state),
-      relationshipSnapshot: structuredClone(state.relationshipContext ?? defaultRelationshipState(state.seed)),
-    } as any;
-    const reply = {
-      opportunityId: opportunity.id,
-      lines: [
-        { speakerId: "a", text: "The garden is coming along." },
-        { speakerId: "b", text: "I will help with the planting." },
-      ],
-      relationshipReview: { changes: [], disclosures: [], permissions: [] },
+    const opportunity = {
+      id: "meeting",
+      kind: "encounter" as const,
+      actorIds: ["a", "b"],
+      venueId: cafe.id,
+      zoneId: "common",
+      startsAt: now.toISOString(),
+      endsAt: now.toISOString(),
+      facts: [],
     };
-    assert.ok(
-      readEncounter(reply, entry, state, now),
-      "A future-dated meeting remains valid against advanced Village time.",
+    const capture = captureResidentNarration(state, opportunity);
+    const result = acceptResidentNarration(
+      state,
+      capture,
+      {
+        encounter: {
+          opportunityId: opportunity.id,
+          lines: [
+            { id: "hello", speakerId: "a", text: "Glad we could meet this morning." },
+            { id: "answer", speakerId: "b", text: "There is time to talk before tending the garden." },
+          ],
+        },
+        keep: [],
+        requires: [],
+      },
+      memoryHash("advanced-meeting"),
+      now.toISOString(),
     );
+    assert.equal(result.held, false, "A native future-dated meeting uses captured Village civil time.");
     const closed = new ZonedDate("2026-11-03T03:00:00Z", state.timeZone);
     assert.notEqual(
       villagePresence(state, 1140, closed).get("b")?.zoneId,
@@ -312,15 +341,7 @@ for (const duration of [90 * 60_000, day, 7 * day, 30 * day]) {
       actionId: "before-reset",
       milliseconds: 30 * day,
     });
-    const stateService = createVillageStateService(
-      f.repository as any,
-      () =>
-        ({
-          readRelationshipState: async (seed: string) => defaultRelationshipState(seed),
-          reconcileRelationships,
-          persistRelationshipAuthority: async () => {},
-        }) as any,
-    );
+    const stateService = createVillageStateService(f.repository as any);
     await stateService.mutateVillageState((state) => Object.assign(state, defaultVillageState()));
     assert.equal(
       f.state.foundedAt,
@@ -335,5 +356,52 @@ for (const duration of [90 * 60_000, day, 7 * day, 30 * day]) {
   }
 }
 console.log(
-  "Village time matches ordinary absence across moves, construction, Wishes, memories, relationships, agendas and Scene continuity; concurrent snapshots and resets retain coherent time.",
+  "Village time matches ordinary absence across moves, construction, common Wishes, memories, agendas and Scene continuity; concurrent snapshots and resets retain coherent time.",
 );
+
+for (const changed of ["continuity", "native"]) {
+  const f = await fixture();
+  try {
+    const before = await f.clock.observe();
+    const read = f.repository.readAuthority;
+    let injected = false;
+    f.repository.readAuthority = async () => {
+      const state = await read();
+      if (!injected) {
+        injected = true;
+        if (changed === "continuity")
+          retainNativeFact(
+            f.state,
+            {
+              id: "concurrent-note",
+              kind: "initialization",
+              targetId: "player",
+              revision: 1,
+              text: "A newly retained fact.",
+              witnesses: ["player"],
+            },
+            new Date(start).toISOString(),
+          );
+        else f.state.venues[0].form = "A changed native building.";
+      }
+      return state;
+    };
+    await assert.rejects(
+      f.world.reconcileVillage({
+        advanceTime: {
+          worldId: before.worldId!,
+          revision: before.revision,
+          actionId: "concurrent-" + changed,
+          milliseconds: day,
+        },
+      }),
+      /Village changed/,
+    );
+    assert.equal(f.state.clock?.advanceMs ?? 0, 0, "stale departure authority cannot commit a time advance");
+    if (changed === "continuity")
+      assert(f.state.continuity.versions.some((row) => row.text === "A newly retained fact."));
+    else assert.equal(f.state.venues[0].form, "A changed native building.");
+  } finally {
+    f.release();
+  }
+}

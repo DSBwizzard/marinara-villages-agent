@@ -1,6 +1,7 @@
 import { rememberZoneArtwork, observedPictureKey, zoneObservationKey } from "../../domain/rules/zone-observation.js";
 import { DAYTIME_IMAGE_INSTRUCTION } from "../../domain/rules/location-image-rules.js";
 import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import { createHash } from "node:crypto";
 import type { VillageState, VillageVenueZone } from "../../domain/models/world.js";
 import { MAX_LOCATION_IMAGE_BASE64_LENGTH } from "../../domain/rules/image-limits.js";
@@ -103,7 +104,8 @@ export function createZonePictures(
         const observed = automatic ? undefined : zone.observed;
         const source = observed ? observed.image : zone.image,
           base = observed ? source : (zone.picture?.base ?? source);
-        const target = observed ? observed.context : zonePictureContext(village, venue, zone);
+        const at = villageNow().toISOString();
+        const target = observed ? observed.context : zonePictureContext(village, venue, zone, at);
         const prior = observed ? observed.pictureContext : (zone.picture?.context ?? zone.picture?.baseline);
         const dayNight = observed ? observed.dayNight : zone.dayNight;
         const daylight = observed ? observed.daylight : zone.picture?.daylight;
@@ -119,7 +121,7 @@ export function createZonePictures(
         );
         const freshContext = automatic
           ? !source || regenerate
-            ? sceneryImageKey(village, venue, zone.id)
+            ? sceneryImageKey(village, venue, at, zone.id)
             : undefined
           : observedPictureKey(village, zone);
         const epoch = village.zonePictureEpoch ?? 0,
@@ -138,6 +140,7 @@ export function createZonePictures(
         const valid = (state: VillageState) => {
           const found = find(state, venueId, zone.id),
             current = found.zone;
+          const instant = villageNow().toISOString();
           return current &&
             JSON.stringify([state.seed, state.foundedAt]) === identity &&
             (state.zonePictureEpoch ?? 0) === epoch &&
@@ -148,11 +151,12 @@ export function createZonePictures(
             current.image?.id === zone.image?.id &&
             found.venue &&
             (automatic
-              ? zonePictureContext(state, found.venue, current) === target
+              ? zonePictureContext(state, found.venue, current, instant) === target
               : !!current.observed && current.observed.context === target) &&
             (!freshContext ||
-              (automatic ? sceneryImageKey(state, found.venue, zone.id) : observedPictureKey(state, current)) ===
-                freshContext) &&
+              (automatic
+                ? sceneryImageKey(state, found.venue, instant, zone.id)
+                : observedPictureKey(state, current)) === freshContext) &&
             eligible(state, current)
             ? current
             : undefined;
@@ -171,6 +175,7 @@ export function createZonePictures(
                     state,
                     state.venues.find((row) => row.id === venueId)!,
                     current,
+                    villageNow().toISOString(),
                   ) !== target;
                 current.picture.problem = undefined;
                 current.picture.failed = false;
@@ -337,14 +342,7 @@ export function createZonePictures(
             ? ""
             : await ports.readVillageImageLore(
                 village.selectedLorebookIds,
-                loreText(
-                  villageLoreContext(village),
-                  venue.name,
-                  venue.form,
-                  zone.name,
-                  zone.purpose,
-                  zone.description,
-                ),
+                loreText(villageLoreContext(village), venue.name, venue.form, zone.name, zone.purpose, target),
                 900,
                 village.loreTokenBudget,
                 (report) => {
@@ -434,6 +432,7 @@ export function createZonePictures(
                   state,
                   state.venues.find((row) => row.id === venueId)!,
                   current,
+                  villageNow().toISOString(),
                 ) !== target,
               lastAutomaticAt: current.picture.lastAutomaticAt,
             };
@@ -489,7 +488,7 @@ export function createZonePictures(
       zone && !automatic
         ? zone.observed?.context
         : venue && zone
-          ? zonePictureContext(village, venue, zone)
+          ? zonePictureContext(village, venue, zone, villageNow().toISOString())
           : undefined;
     if (
       venue &&

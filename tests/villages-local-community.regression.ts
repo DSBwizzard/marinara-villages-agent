@@ -6,7 +6,11 @@ import {
   communityVenueEligible,
   designateCommunityVenue,
 } from "../packages/villages/src/server/domain/rules/community-venue.js";
-import { applyAccessCommand, projectVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
+import {
+  applyAccessCommand,
+  projectVenueAccess,
+  readAccessCommand,
+} from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { createVenueCommands } from "../packages/villages/src/server/features/venues/venue-service.js";
 import { validateRoutineDay } from "../packages/villages/src/server/domain/rules/owned-routine.js";
 import assert from "node:assert/strict";
@@ -33,9 +37,14 @@ import {
 } from "../packages/villages/src/server/domain/rules/narrative-development.js";
 import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
 import { villageCurrentSetting } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
+import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
+import { continuityViews } from "../packages/villages/src/server/domain/rules/continuity.js";
 import { createResidences } from "../packages/villages/src/server/features/venues/residence-service.js";
 import { residenceProposal } from "../packages/villages/src/server/domain/rules/residence-agreement.js";
-import { completeResidenceMove } from "../packages/villages/src/server/domain/rules/residence-move.js";
+import {
+  completeResidenceMove,
+  decideResidenceMove,
+} from "../packages/villages/src/server/domain/rules/residence-move.js";
 import { accessibleVenueRoute } from "../packages/villages/src/server/domain/rules/venue-path.js";
 import { ZonedDate } from "../packages/villages/src/shared/helpers/zoned-date.js";
 import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
@@ -85,10 +94,10 @@ function world(groups: Record<string, string> = {}) {
   state.villagers = actors.slice(1).map((actor) => ({
     letterFontId: "caveat",
     characterId: actor.id,
+    incarnation: "one",
     cardSnapshot: { id: actor.id, name: actor.name, capturedAt: at },
     addedAt: at,
     agenda: null,
-    wishes: [],
   })) as VillageState["villagers"];
   return state;
 }
@@ -265,10 +274,26 @@ for (const [groups, count] of [
     assert.throws(() => designateCommunityVenue(copy, target, command, at), /public, always-open/);
     assert.equal(JSON.stringify(copy), unchanged);
   }
+  const beforeDesignation = structuredClone(live);
   await commands.changeVenueAccess(candidate.id, command);
   const committed = JSON.stringify(live);
   await commands.changeVenueAccess(candidate.id, command);
   assert.equal(JSON.stringify(live), committed, "A lost acknowledgement retries the exact designation without replay");
+  const beforeCandidate = beforeDesignation.venues.find((row) => row.id === candidate.id)!;
+  beforeCandidate.access!.receipts[command.operationId] = {
+    ...live.venues.find((row) => row.id === candidate.id)!.access!.receipts[command.operationId],
+    revision: beforeCandidate.access!.revision,
+    outcome: "rejected",
+  };
+  const rolledBack = coerceVillageState(beforeDesignation);
+  const restoredCandidate = rolledBack.venues.find((row) => row.id === candidate.id)!;
+  const parsed = readAccessCommand(command);
+  assert.equal(parsed.action, "community-venue");
+  assert.throws(
+    () => designateCommunityVenue(rolledBack, restoredCandidate, parsed, at),
+    /designation was rolled back/,
+  );
+  assert.equal(rolledBack.communityVenueId, current.id);
   assert.equal(live.communityVenueId, candidate.id);
   const loaded = coerceVillageState(JSON.parse(committed));
   assert.equal(loaded.communityVenueId, candidate.id, "The ongoing designation survives restart");
@@ -443,10 +468,18 @@ assert.throws(
     actors.map((actor) => actor.id),
     at,
   );
-  const learned = state.memories.records.filter((record) => record.origin.id.startsWith("founding:0:"));
-  assert.equal(learned.map((record) => record.text).join(""), summary, "all multibyte starting knowledge is retained");
-  for (const record of learned)
-    assert.deepEqual(Object.keys(record.knowers).sort(), actors.map((actor) => actor.id).sort());
+  const episode = state.episodes.records.find((episode) =>
+    episode.commandReceipts.some((receipt) => receipt.targetId === situations[0].id),
+  )!;
+  const learned = state.continuity.versions.filter((version) => episode.continuityVersionIds.includes(version.id));
+  assert.equal(learned.length, actors.length);
+  for (const actor of actors) {
+    const view = continuityViews(state.continuity, continuityActor(state, actor.id)!, at, new Set()).find(
+      (view) => view.id === learned[0].rootId,
+    )!;
+    assert.equal(view.version.text, summary, "each admitted holder retains the complete multibyte meaning");
+    assert.equal(view.version.sources[0].excerpt, summary);
+  }
   const restarted = coerceVillageState(state);
   assert.equal(restarted.narrative!.situations[1].scope, "zone");
   assert.ok(summary.length > 1200);
@@ -477,7 +510,7 @@ assert.throws(
         summary: "Transport is running again.",
         status: "resolved",
       },
-      physical: [],
+      room: [],
       conditions: [],
       weather: null,
     },
@@ -509,22 +542,18 @@ async function housing() {
   await service.proposeVillageResidence("c", target.id);
   let move = state.residences.find((row) => row.characterId === "c")!;
   const oldScope = move.agreement!.scope;
-  await service.decideVillageResidence("c", false, "player", undefined, undefined, oldScope);
+  await service.decideVillageResidence("c", false, oldScope);
   await service.proposeVillageResidence("c", target.id);
   move = state.residences.find((row) => row.characterId === "c")!;
   const scope = move.agreement!.scope;
   assert.notEqual(scope, oldScope, "replacement requests have independent consent identities");
-  await assert.rejects(
-    service.decideVillageResidence("c", true, "villager", "late-old", "c", oldScope),
-    /reviewed move/,
-  );
-  for (const id of ["c", "a", "b"])
-    await service.decideVillageResidence("c", true, "villager", `approve:${id}`, id, scope);
+  assert.throws(() => decideResidenceMove(state, "c", true, "villager", "c", oldScope, new Date()), /reviewed move/);
+  for (const id of ["c", "a", "b"]) decideResidenceMove(state, "c", true, "villager", id, scope, new Date());
   move = state.residences.find((row) => row.characterId === "c")!;
   assert.equal(move.status, "moving");
   assert.equal(Date.parse(move.completesAt!) - Date.parse(move.approvedAt!), 86400_000);
   const completesAt = move.completesAt;
-  await service.decideVillageResidence("c", true, "villager", "repeat", "a", scope);
+  decideResidenceMove(state, "c", true, "villager", "a", scope, new Date());
   assert.equal(state.residences[0].completesAt, completesAt, "duplicate consent does not postpone a move");
   state = coerceVillageState(state);
   assert.equal(state.residences[0].agreement!.scope, scope);
@@ -534,7 +563,7 @@ async function housing() {
   await service.movePlayerToResidence(target.id);
   move = state.residences.find((row) => row.characterId === "player")!;
   for (const id of ["a", "b", "c"])
-    await service.decideVillageResidence("player", true, "villager", `player:${id}`, id, move.agreement!.scope);
+    decideResidenceMove(state, "player", true, "villager", id, move.agreement!.scope, new Date());
   assert.equal(
     state.venues.find((venue) => venue.id === target.id)!.occupancy.playerHome,
     true,
@@ -584,7 +613,6 @@ await housing();
       startsAt: at,
       endsAt: null,
       clearedAt: null,
-      physicalRevision: 0,
     },
   ];
   const access = evaluateZoneAccess(target, zone, "player", { environment: state.narrative, at: new Date(at) });
@@ -777,17 +805,24 @@ console.log(
 }
 
 {
-  const { fixture, renovation, venue: makeVenue } = await import("./fixtures/villages-projects.fixture.js");
+  const {
+    fixture,
+    renovation,
+    venue: makeVenue,
+    seedObservedProjectRoom,
+  } = await import("./fixtures/villages-projects.fixture.js");
   const { venueFixture } = await import("./helpers/venues.fixture.js");
   const { buildLocationPrompt } = await import("../packages/villages/src/server/domain/rules/location-image-rules.js");
   const { venueInZone } = await import("../packages/villages/src/server/domain/rules/venue-zones.js");
+  const { observableRoomDescription } = await import("../packages/villages/src/server/domain/rules/zone-picture.js");
+  const { projectRoomEntries } = await import("../packages/villages/src/server/domain/rules/project-room-edits.js");
   const f = fixture();
   await f.mutate((state) => {
     const mall = state.venues[0];
     mall.name = "Seafront mall";
     mall.description = "An abandoned mall with a boarded entrance";
     mall.zones![0].description = mall.description;
-    mall.zones![1].description = "The atrium floor is damaged; shopfronts remain boarded.";
+    seedObservedProjectRoom(state, mall, "common", "The atrium floor is damaged; shopfronts remain boarded.");
     state.venues.push(
       venueFixture({ ...makeVenue("second-mall", "community"), description: "An operating mall with glass doors" }),
     );
@@ -796,25 +831,30 @@ console.log(
     state.worldRules = "The sun never sets";
   });
   const mall = f.state().venues[0];
+  const [entry] = projectRoomEntries(f.state(), mall, "common", f.state().setupAt)!;
   const id = await renovation(f, {
-    zones: mall
-      .zones!.filter((z) => z.kind !== "exterior")
-      .map((z) => ({ ...z, description: "The atrium floor is repaired; shopfronts remain boarded." })),
+    roomEdits: [
+      {
+        zoneId: "common",
+        entryId: entry.id,
+        version: entry.version,
+        text: "The atrium floor is repaired; shopfronts remain boarded.",
+      },
+    ],
   });
   await f.agree(id);
   await f.service.startProjectConstruction(id, f.body(id));
   await f.service.debugCompleteProjectConstruction(id, f.body(id));
   const restarted = coerceVillageState(JSON.parse(JSON.stringify(f.state())));
   const restored = restarted.venues.find((v) => v.id === mall.id)!;
-  assert.match(
-    restored.zones!.find((z) => z.id === "common")!.description,
-    /floor is repaired; shopfronts remain boarded/,
-  );
+  const completedAt = restarted.projects.find((project) => project.id === id)!.lifecycle!.completedAt!;
+  const appearance = observableRoomDescription(restarted, restored.id, "common", completedAt);
+  assert.match(appearance, /floor is repaired; shopfronts remain boarded/);
   assert.match(restored.description, /boarded entrance/);
   assert.equal(restarted.venues.find((v) => v.id === "second-mall")!.description, "An operating mall with glass doors");
   const picture = buildLocationPrompt(
     restarted,
-    venueInZone(restored, "common"),
+    { ...venueInZone(restored, "common"), description: appearance },
     "Old lore describes a damaged atrium",
     "interior",
   );
@@ -916,7 +956,9 @@ console.log(
       .zones!.filter((z) => z.kind !== "exterior")
       .map((z) => ({ ...z, venueClass: "residence", kind: "shared-residence" })),
   });
-  const id = "project:repurpose-community";
+  const id = f
+    .state()
+    .projects.find((project) => Object.hasOwn(project.lifecycle!.commandReceipts, "repurpose-community"))!.id;
   await f.agree(id);
   await f.service.startProjectConstruction(id, f.body(id));
   await f.service.debugCompleteProjectConstruction(id, f.body(id));
@@ -963,14 +1005,13 @@ console.log(
   let move = state.residences.find((row) => row.characterId === "player")!;
   const scope = move.agreement!.scope;
   await assert.rejects(service.proposeVillageResidence("c", target.id, "player", "", "guest-room"), /reserved/);
-  for (const id of ["a", "b"])
-    await service.decideVillageResidence("player", true, "villager", "housemate:" + id, id, scope);
+  for (const id of ["a", "b"]) decideResidenceMove(state, "player", true, "villager", id, scope, new Date());
   assert.equal(
     state.venues.find((v) => v.id === target.id)!.occupancy.playerHome,
     false,
     "Housemates cannot approve on behalf of a private room controller",
   );
-  await service.decideVillageResidence("player", false, "villager", "withdraw-room", "b", scope);
+  decideResidenceMove(state, "player", false, "villager", "b", scope, new Date());
   assert.equal(
     state.residences.some((row) => row.characterId === "player"),
     false,
@@ -989,9 +1030,9 @@ console.log(
   );
   move = state.residences.find((row) => row.characterId === "c")!;
   for (const id of ["a", "b", "c"])
-    await service.decideVillageResidence("c", true, "villager", "reserve-approved:" + id, id, move.agreement!.scope);
+    decideResidenceMove(state, "c", true, "villager", id, move.agreement!.scope, new Date());
   assert.equal(state.residences.find((row) => row.characterId === "c")!.status, "moving");
-  await service.decideVillageResidence("c", false, "villager", "scheduled-withdrawal", "a", move.agreement!.scope);
+  decideResidenceMove(state, "c", false, "villager", "a", move.agreement!.scope, new Date());
   assert.equal(
     state.residences.some((row) => row.characterId === "c"),
     false,
@@ -1040,18 +1081,16 @@ console.log(
     await import("../packages/villages/src/server/domain/rules/return-catchup-capture.js");
   const { returnCaptureRevision } =
     await import("../packages/villages/src/server/domain/rules/return-capture-revision.js");
-  const { fixtureRelationshipIdentity, fixtureWishIdentity } = await import("./helpers/village-storage.fixture.js");
   const { foundingTaskRevision, ownsFoundingTask } =
     await import("../packages/villages/src/server/domain/rules/founding-tasks.js");
   const state = coerceVillageState(JSON.parse(JSON.stringify(world())));
   const scene = coerceSession({
-    version: 4,
+    version: 5,
     id: "frozen-history",
     placeId: "community",
     zoneId: "common:base",
     area: "public",
     status: "active",
-    liveSceneVersion: 1,
     villageSeed: state.seed,
     startedAt: at,
     participants: [],
@@ -1075,15 +1114,11 @@ console.log(
   const departure = captureReturnContext(state, new Date(at));
   departure.world.worldRules = "EXACT DEPARTURE WORLD RULES";
   state.returnCatchup = { capture: departure };
-  const identity = returnCaptureRevision(departure, fixtureRelationshipIdentity, fixtureWishIdentity);
+  const identity = returnCaptureRevision(departure);
   const loaded = coerceVillageState(JSON.parse(JSON.stringify(state)));
-  assert.equal(
-    returnCaptureRevision(loaded.returnCatchup!.capture, fixtureRelationshipIdentity, fixtureWishIdentity),
-    identity,
-  );
+  assert.equal(returnCaptureRevision(loaded.returnCatchup!.capture), identity);
   assert.equal(Object.hasOwn(loaded, "foundingHistory"), false);
-  const context = { circumstances: { details: "Admitted source history" } };
-  const revision = foundingTaskRevision(state, "a", "routine", context);
+  const revision = foundingTaskRevision(state, "a", "routine");
   state.foundingPreparation = {
     status: "pending",
     tasksVersion: 1,
@@ -1092,13 +1127,13 @@ console.log(
     currentId: "",
     error: "",
   };
-  assert.equal(ownsFoundingTask(state, "a", "routine", revision, context), true);
+  assert.equal(ownsFoundingTask(state, "a", "routine", revision), true);
   const changed = structuredClone(state);
   changed.venues[0].zones![1].description += " A new room layout.";
   assert.equal(
-    ownsFoundingTask(changed, "a", "routine", revision, context),
+    ownsFoundingTask(changed, "a", "routine", revision),
     false,
-    "Retained source history does not bypass current physical validation",
+    "Changing the native layout invalidates a pending founding routine",
   );
 }
 

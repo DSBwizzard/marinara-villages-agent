@@ -6,11 +6,11 @@ The extractor requires one complete current object and a normal finish, optional
 
 ## Saved responses and diagnostics
 
-Provider responses checkpoint before validation. Parser rejection preserves the submitted input and requires explicit replacement; local storage replay reuses saved output. The generation lifecycle's one bounded outcome correction is separate from parser repair. A late callback retains evidence without authorizing publication under another request owner.
+Villages saves the fitted request and its exact evidence before dispatch, then checkpoints the response before validation. Parser rejection preserves the original input and reply for explicit recovery. Local Replay reuses the saved response. A late callback retains evidence under its original request identity.
 
 Ordinary diagnostics share one server-only log of 100 recent entries, each capped at 24,000 characters of redacted response text. Prompts and connection configuration are excluded. The opaque diagnostic envelope owns no Gallery media and has no recovery authority. Eviction cannot release unfinished work, purchased responses or unknown accounting. Publication is best effort and cannot change the original failure. Redaction does not guarantee that story text contains no private information.
 
-Noncritical optional effects can retain independent failures alongside accepted prose. Malformed consequential standing permissions or Project proposals fail the combined response before publication. Explicit selected-domain interpretation uses the original accepted evidence without rewriting prose. Reads, reloads and copying diagnostics purchase no inference.
+Villages validates the GM's segments, common continuity and native commands against detached state. Invalid required effects or a valid halt hold the turn. Explicitly independent optional failures can accompany accepted prose. One Village compare-and-swap publishes the accepted Episode and its effects before Scene acknowledgement. Recovery attaches an already committed Episode before considering abandonment or replacement. Reads, reloads and copying diagnostics purchase no inference.
 
 ## Lost turn connections
 
@@ -24,9 +24,9 @@ Late replies preserve newer composer edits, including edits with identical text,
 
 Current nonverbal sounds use metadata on an ordinary narration segment. Full narration stays local; remote listeners receive only the permitted audible cue through soundOnly under the same line ID. Raised voices likewise distinguish heard words from indistinct sound. Routing creates no extra evidence line and grants no unseen visuals, attendance, access or movement.
 
-Player speech binds exact submitted spans and one-based occurrences. When code inserts those source lines, numeric generated-segment indexes and utterance:N references are remapped; ordinary strings remain possible exact evidence IDs. Decimal-string indexes are not guessed. Every affected knower still needs the actual source and witnesses.
+Consequential input citations bind exact excerpts and, when necessary, their occurrence. The submitted text establishes the source. Code checks the claimed communication or perception against captured positions and eligible witnesses. The full input remains private GM chronology with an empty resident audience. Generated segment labels and fitted source references bind accepted effects to the evidence the GM actually received.
 
-Ordinary responses omit private provider evidence, checkpoints and interpretation history. Copy details explicitly reads owner diagnostics for the displayed attempt or update result. That endpoint retains bounded failure/source context, protects credentials and marks unavailable or shortened details. Copying never replays work or changes Village time.
+Ordinary responses omit private provider evidence and request checkpoints. Copy error details explicitly reads bounded diagnostics for the displayed attempt. The Changes evidence panel reads its own scoped diagnostics. These reads protect credentials, mark unavailable or shortened details and leave saved work and Village time intact.
 
 ## Response timings and validation
 

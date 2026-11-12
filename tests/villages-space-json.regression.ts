@@ -7,16 +7,18 @@ import {
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { observableRoomDescription } from "../packages/villages/src/server/domain/rules/zone-picture.js";
 import { createPrivateSpacePreparation } from "../packages/villages/src/server/jobs/private-space-service.js";
 
 async function main() {
+  const at = new Date().toISOString();
   const world = coerceVillageState({
     ...defaultVillageState(),
-
     seed: "fixture",
+    setupAt: at,
+    foundedAt: at,
     name: "Test",
     setting: "Test",
-    wishSystemVersion: 3,
     backgroundPace: "off",
     villagers: [],
     venues: [
@@ -42,6 +44,7 @@ async function main() {
   });
   const zone = world.venues[0].zones!.find((zone) => zone.id === "space")!;
   const original = structuredClone(zone);
+  const originalHistory = structuredClone([world.continuity, world.episodes]);
   const records = new Map<string, any>();
   let failDiagnostics = false;
   const documents = {
@@ -115,7 +118,7 @@ async function main() {
     await service.preparePrivateSpaces();
     assert.equal(calls, before + 1, "Read/activation never retries failed provider work");
     assert.equal(zone.description, original.description);
-    assert.deepEqual(zone.state, original.state);
+    assert.deepEqual([world.continuity, world.episodes], originalHistory);
     const record = records.get("villages-private-diagnostics");
     assert.equal(record.kind, "private-diagnostics");
     assert(readPrivateDiagnostics(record.data).entries.length <= 100);
@@ -154,11 +157,11 @@ async function main() {
   await service.retryPrivateSpaces();
   assert.equal(zone.preparation?.status, "ready");
   assert.equal(
-    zone.description,
+    observableRoomDescription(world, "venue", "space", new Date().toISOString()),
     "Ordinary shelves. Dry.",
     "Syntax repair still goes through normal room validation and application",
   );
-  assert.equal(zone.state.recent, null);
+  assert.equal(zone.description, original.description);
   const beforeReady = calls;
   await service.preparePrivateSpaces();
   assert.equal(calls, beforeReady);

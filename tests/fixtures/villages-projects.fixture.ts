@@ -18,6 +18,40 @@ import {
   draftRenovationProject,
 } from "../../packages/villages/src/server/features/projects/project-drafts.js";
 import { createProjectLifecycle } from "../../packages/villages/src/server/features/projects/project-lifecycle-service.js";
+import { initializeRoomContinuity } from "../../packages/villages/src/server/domain/rules/native-continuity.js";
+import { captureZoneObservation } from "../../packages/villages/src/server/domain/rules/zone-observation.js";
+import { projectRoomEntries } from "../../packages/villages/src/server/domain/rules/project-room-edits.js";
+import {
+  applyWorldRepair,
+  repairId,
+  worldRepairRecords,
+} from "../../packages/villages/src/server/domain/rules/repair-records.js";
+
+export function seedObservedProjectRoom(state: VillageState, venue: VillageVenue, zoneId: string, text: string) {
+  const zone = venue.zones!.find((row) => row.id === zoneId)!;
+  zone.description = text;
+  initializeRoomContinuity(state, venue.id, zoneId, text, "project-fixture", state.setupAt);
+  zone.observed = captureZoneObservation(venue, zone, text);
+  return projectRoomEntries(state, venue, zoneId, state.setupAt)!;
+}
+
+export function correctProjectFixtureRoom(state: VillageState, entryId: string, text: string, at: string) {
+  const recordId = repairId("room", entryId);
+  const record = worldRepairRecords(state, false).find((row) => row.id === recordId)!;
+  applyWorldRepair(
+    state,
+    record,
+    {
+      operationId: "correct-" + entryId,
+      recordId,
+      action: "correct",
+      values: { text },
+      knowers: [],
+      expectedRecord: "",
+    },
+    at,
+  );
+}
 
 export function venue(id = "cafe", role: "community" | "residence" = "community"): VillageVenue {
   const entrance = {
@@ -53,7 +87,6 @@ export function venue(id = "cafe", role: "community" | "residence" = "community"
     occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
     presentation: { mapId: "map-projects", image: null, x: 0.2, y: 0.2 },
     capabilities: [],
-    state: { revision: 0, recent: null, updatedAt: "" },
   });
   initializeVenueAccess(result);
   result.access!.managerIds = ["a"];
@@ -76,6 +109,7 @@ export function fixture() {
   ];
   state.venues = [venue()];
   state.villagers = ["a", "b", "c"].map((id) => ({
+    incarnation: "founding-" + id,
     letterFontId: "caveat",
     characterId: id,
     addedAt: state.setupAt,
@@ -120,6 +154,7 @@ export function fixture() {
         flow = project.lifecycle!;
       flow.candidates.push({
         residentId: lead,
+        incarnation: current.villagers.find((row) => row.characterId === lead)!.incarnation,
         evidenceId: "spoken:" + id,
         scope: projectDesignKey(project),
         at: current.setupAt,
@@ -130,22 +165,27 @@ export function fixture() {
         for (const residentId of flow.affectedIds)
           flow.approvals.push({
             residentId,
+            incarnation: current.villagers.find((row) => row.characterId === residentId)!.incarnation,
             source: "conversation",
-            scope: approvalScope(target, flow.change, residentId, flow.changedZoneIds),
+            scope: approvalScope(target, flow.change, residentId, flow.changedZoneIds, flow.roomBasis),
             evidenceId: "consent:" + id,
             at: current.setupAt,
           });
       }
     });
-  const newProject = async (name = "Workshop", lead = "a", position = { x: 0.7, y: 0.7 }) => {
-    const requestId = randomUUID();
+  const newProject = async (
+    name = "Workshop",
+    lead = "a",
+    position = { x: 0.7, y: 0.7 },
+    requestId: string = randomUUID(),
+  ) => {
     await service.createNewVenueProject({
       requestId,
       name,
       classes: ["community"],
       description: "A shared place for making art.",
     });
-    const id = "project:" + requestId;
+    const id = state.projects.find((project) => Object.hasOwn(project.lifecycle!.commandReceipts, requestId))!.id;
     await service.saveProjectPlan(
       id,
       body(id, {
@@ -183,7 +223,7 @@ export async function renovation(f: Fixture, change: Record<string, unknown> = {
     capacity: 3,
     ...change,
   });
-  return "project:" + requestId;
+  return f.state().projects.find((project) => Object.hasOwn(project.lifecycle!.commandReceipts, requestId))!.id;
 }
 export const projectState = (project: VillageProject) => ({
   status: project.status,

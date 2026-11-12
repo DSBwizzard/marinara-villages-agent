@@ -36,31 +36,47 @@ export function venueCardProfile(
 
 export type VenueWritingBlock = {
   text: string;
-  optional?: "wish" | "history" | "memory" | "lore";
+  cacheBreakpoint?: true;
+  evidenceId?: string;
+  /** Each group needs at least one retained source. */
+  requiresEvidence?: string[][];
+  pruningPriority?: number;
+  optional?: "history" | "memory" | "lore";
   lore?: LoreUse;
 };
+
+export const hasWritingEvidence = (block: VenueWritingBlock, retained: ReadonlySet<string | undefined>) =>
+  block.requiresEvidence?.every((group) => group.some((id) => retained.has(id))) ?? true;
 
 export type VenueWritingSections = {
   direction: VenueWritingBlock[];
   identity: VenueWritingBlock[];
+  frame?: VenueWritingBlock[];
   circumstances: VenueWritingBlock[];
   conversation: VenueWritingBlock[];
   authoredInstructions: VenueWritingBlock[];
   metadata: VenueWritingBlock[];
 };
 
-/** Keep the writing task distinct from evidence bookkeeping within one request. */
+/** Stable rules and complete identities precede all changing Scene facts. */
 export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWritingBlock[] {
   const headings: Record<keyof VenueWritingSections, string> = {
     direction: "Writing direction",
+    metadata: "Response format and evidence metadata",
     identity: "Complete authored character identity",
+    authoredInstructions: "Authored post-history direction",
+    frame: "Current Scene reference",
     conversation: "Witnessed conversation and recalled memories",
     circumstances: "Current Scene circumstances",
-    authoredInstructions: "Authored post-history direction",
-    metadata: "Response format and evidence metadata",
   };
   return (Object.keys(headings) as (keyof VenueWritingSections)[]).flatMap((section) => {
-    const blocks = sections[section].filter((block) => block.text.trim());
+    const blocks = (sections[section] ?? []).filter((block) => block.text.trim());
+    const breakpoint =
+      section === "metadata" ||
+      section === "frame" ||
+      section ===
+        (sections.authoredInstructions.some((block) => block.text.trim()) ? "authoredInstructions" : "identity");
+    if (breakpoint && blocks.length) blocks[blocks.length - 1] = { ...blocks.at(-1)!, cacheBreakpoint: true };
     return blocks.length ? [{ text: `## ${headings[section]}` }, ...blocks] : [];
   });
 }
@@ -68,16 +84,20 @@ export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWrit
 /** Shared by live generation and isolated evaluations. Never silently shrink a character. */
 export function assembleVenueWritingMessages(blocks: readonly VenueWritingBlock[], input: string) {
   const lore = blocks.filter((block) => block.optional === "lore").map((block) => block.text);
+  const messages: CapabilityLanguageModelMessage[] = [];
+  let text: string[] = [];
+  for (const block of blocks) {
+    if (block.optional === "lore") continue;
+    if (block.text) text.push(block.text);
+    if (block.cacheBreakpoint && text.length) {
+      messages.push({ role: "system", content: text.join("\n\n"), cacheBreakpoint: true });
+      text = [];
+    }
+  }
+  if (lore.length) text.push(LORE_REFERENCE_RULE);
+  if (text.length) messages.push({ role: "system", content: text.join("\n\n") });
   return [
-    {
-      role: "system",
-      content: blocks
-        .filter((block) => block.optional !== "lore")
-        .map((block) => block.text)
-        .filter(Boolean)
-        .concat(lore.length ? [LORE_REFERENCE_RULE] : [])
-        .join("\n\n"),
-    },
+    ...messages,
     ...(lore.length
       ? [
           {
@@ -99,30 +119,43 @@ export function fitVenueWritingMessages(
   maxTokens: number,
   connectionName = "Narration",
 ) {
-  const kept = [...blocks];
-  // Old history first, then optional memories/lore. Essential blocks and the
+  let kept = [...blocks];
+  // Low-priority history first, then optional memories/lore. Essential blocks and the
   // latest player input must survive fitting byte-for-byte before any paid call.
   for (;;) {
+    const evidence = new Set(kept.map((block) => block.evidenceId));
+    kept = kept.filter((block) => hasWritingEvidence(block, evidence));
     const messages = assembleVenueWritingMessages(kept, input);
     const fitted = model.fitContext(messages, { maxTokens });
     if (JSON.stringify(fitted.messages) === JSON.stringify(messages))
       return {
         ...fitted,
+        trimmed: fitted.trimmed || kept.length < blocks.length,
+        evidenceIds: kept.flatMap((block) => (block.evidenceId ? [block.evidenceId] : [])),
         loreEntries: kept.filter((block) => block.optional === "lore").map((block) => block.text),
         lore: mergeLoreUse(kept.flatMap((block) => (block.lore ? [block.lore] : []))),
       };
     const optional =
-      ["wish", "history", "memory", "lore"]
+      ["history", "memory", "lore"]
         .map((kind) =>
           kind === "lore"
-            ? kept.findLastIndex((block) => block.optional === kind)
-            : kept.findIndex((block) => block.optional === kind),
+            ? kept
+                .map((block, index) => ({ block, index }))
+                .filter(({ block }) => block.optional === kind)
+                .reverse()
+            : kept
+                .map((block, index) => ({ block, index }))
+                .filter(({ block }) => block.optional === kind)
+                .sort((a, b) => (a.block.pruningPriority ?? 0) - (b.block.pruningPriority ?? 0) || a.index - b.index),
         )
-        .find((index) => index >= 0) ?? -1;
-    if (optional < 0)
+        .find((rows) => rows.length) ?? [];
+    if (!optional.length)
       throw badRequest(
         `The complete character cards and required context do not fit the ${connectionName} connection. Increase its context limit or choose a connection with a larger context window. No reply was requested.`,
       );
-    kept.splice(optional, 1);
+    // Drop whole low-priority rows in batches: fitting a long Scene must not scan it once per line.
+    const count = optional[0].block.optional === "history" ? Math.ceil(optional.length / 4) : 1;
+    const remove = new Set(optional.slice(0, count).map(({ block }) => block));
+    kept = kept.filter((block) => !remove.has(block));
   }
 }

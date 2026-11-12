@@ -1,67 +1,68 @@
-import type { RelationshipDisclosure, RelationshipHead, RelationshipReview } from "./relationship-types.js";
-import type { CapturedAdmission } from "./captured-admission-model.js";
-export type SocialMailMessage = {
+import type {
+  ContinuityAdmission,
+  ContinuityCapture,
+  ContinuityEvidence,
+  ContinuityHolder,
+} from "./continuity-model.js";
+export type MailRoomContext = {
+  holder: Extract<ContinuityHolder, { kind: "room" }>;
+  provenance: string[];
+  fingerprint: string;
+  protectedRoots: string[];
+};
+export type MailContinuityPlan = {
+  setupAt: string;
+  admission: Omit<ContinuityAdmission, "continuityRevision" | "protectionFingerprint" | "room" | "blockedSources"> & {
+    continuityRevision: number;
+    protectionFingerprint: string;
+  };
+  historical: Record<string, ContinuityEvidence>;
+  keep: unknown[];
+  offered: import("./episode-model.js").AcceptedEpisode["offered"];
+  requires: string[];
+  responseDigest: string;
+  roomContext?: MailRoomContext;
+};
+export type MailboxMessage = {
   id: string;
   requestId: string;
-  fromId: string;
-  toId: string;
-  text: string;
   at: string;
-  status: "pending" | "applying" | "delivered" | "cancelled" | "undeliverable";
-  sourceHash?: string;
-  incarnation?: string;
+  from: { id: string; incarnation: string };
+  to: { id: string; incarnation: string };
+  text: string;
+  status: "pending" | "delivered" | "cancelled" | "undeliverable";
+  deliveredAt?: string;
   readAt?: string;
   replyTo?: string;
-  replyStatus?: "pending" | "complete";
-  disclosures?: RelationshipDisclosure[];
-  wishDisclosures?: import("../../../shared/contracts/wishes.js").WishDisclosure[];
   error?: string;
-  admissionFailed?: boolean;
-  replyUnavailable?: boolean;
+  admissionFailed?: true;
+  reading?: MailContinuityPlan;
 };
-export type SocialMailThread = {
-  id: string;
-  participantIds: string[];
+export type MailboxState = {
+  format: 1;
   revision: number;
-  messages: SocialMailMessage[];
+  messages: Record<string, MailboxMessage>;
 };
-export type SocialMailInterpretation = {
-  source: RelationshipReview;
-  reply: RelationshipReview;
-  replyText: string;
-  sourceMemoryChanges?: unknown[];
-  sourceWishChanges?: unknown[];
-  replyWishChanges?: unknown[];
-  replyMemoryChanges?: unknown[];
-};
-export type SocialMailInput = {
-  mode?: "player" | "resident";
+export type PersonalMailInput = {
   seed: string;
-  threadId: string;
-  messageId: string;
+  setupAt: string;
   residentId: string;
-  sourceText: string;
-  sourceAt: string;
-  admittedAt?: string;
-  sourceHash: string;
   incarnation: string;
-  admitted: import("./world.js").VillageState;
-  retainedReply?: string;
-  systemMemory?: ReturnType<typeof import("../rules/scene-memories.js").sceneMemoryContext>;
-  sourceDelivered: boolean;
+  incoming: {
+    id: string;
+    at: string;
+    from: { id: string; incarnation: string };
+    to: { id: string; incarnation: string };
+    text: string;
+    requestId: string;
+  };
+  capture: ContinuityCapture;
+  identity: string;
+  residentName: string;
 };
-export type SocialMailOutbox = {
-  id: string;
-  input: SocialMailInput;
-  result: SocialMailInterpretation;
-  error?: string;
-  reinterpretRequired?: boolean;
-  retryClaim?: string;
-  retryAdmitted?: string;
-};
-export type CapturedSocialMailInput = Omit<SocialMailInput, "admitted"> & {
-  admitted: CapturedAdmission<SocialMailInput["admitted"]> & { relationshipHead: RelationshipHead | null };
-};
-export type WorldSocialMailOutbox = Omit<SocialMailOutbox, "input"> & {
-  input: SocialMailInput | CapturedSocialMailInput;
+export type PersonalMailResult = {
+  replyText: string;
+  incomingMeaning: { keep: unknown[]; requires: string[] };
+  replyMeaning: { keep: unknown[]; requires: string[] };
+  responseDigest: string;
 };

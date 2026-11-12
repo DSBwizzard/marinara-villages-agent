@@ -48,10 +48,12 @@ await withBrowser(browser, async () => {
         { id: "new", text: "Actually, the shallow beach sounds better.", at: now },
       ],
     };
-    const profiles = [
-      { characterId: "feddy", knownWishes: [wish] },
-      { characterId: "roxie", knownWishes: [] },
-    ];
+    const profiles = village.villagers.map((person) => ({
+      characterId: person.characterId,
+      name: person.name,
+      entries: [],
+      access: [],
+    }));
     let follows = 0,
       privateReads = 0,
       writes = 0,
@@ -69,60 +71,60 @@ await withBrowser(browser, async () => {
     await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
       let value = village;
-      if (path.endsWith("/relationships")) value = { profiles };
+      if (path.endsWith("/relationships")) value = { profiles, starting: { pending: false } };
+      else if (path.endsWith("/wishes")) value = { wishes: path.includes("/feddy/") ? [wish] : [] };
       else if (path.endsWith("/wishes/swim/follow")) {
         follows++;
         writes++;
         assert.equal(route.request().method(), "PATCH");
         wish.followed = JSON.parse(route.request().postData()).followed;
-        value = { profiles };
+        value = { wishes: [wish] };
       } else if (path.endsWith("/wishes/inspect")) {
         privateReads++;
         value = {
           wishes: [
             {
-              id: "private",
-              revision: 3,
-              wish: "PRIVATE SOCIAL DESIRE",
-              reason:
-                "PRIVATE REASON. " +
-                "Unhurried company lets them speak honestly while retaining time for their ordinary life. ".repeat(3) +
-                "They want this.",
+              wishId: "private",
+              text: "PRIVATE SOCIAL DESIRE",
+              at: now,
               status: "open",
-              attention: { state: "background", reason: "Available when relevant." },
-              approach: "Ask Roxie about a quiet afternoon together.",
-              addedAt: now,
-              changedAt: now,
-              origin: { kind: "preparation", sourceId: "founding", lineIds: [] },
-              conditions: [{ id: "quiet", quote: "Somewhere quiet, please.", at: now }],
-              history: [
+              followed: false,
+              details: [
                 {
-                  id: "approach",
-                  at: new Date(Date.parse(now) + 120000).toISOString(),
-                  kind: "approach",
-                  text: "Chose to ask Roxie directly.",
+                  id: "reason",
+                  kind: "reason",
+                  text:
+                    "PRIVATE REASON. " +
+                    "Unhurried company lets them speak honestly while retaining time for their ordinary life. ".repeat(
+                      3,
+                    ) +
+                    "They want this.",
                 },
+                { id: "attention", kind: "attention", text: "Available when relevant." },
+                { id: "approach", kind: "approach", text: "Ask Roxie about a quiet afternoon together." },
+              ],
+              facts: [
+                { id: "quiet", text: "Somewhere quiet, please.", at: now },
                 {
                   id: "attention",
                   at: new Date(Date.parse(now) + 60000).toISOString(),
-                  kind: "attention",
                   text: "Other things need attention today.",
+                },
+                {
+                  id: "approach",
+                  at: new Date(Date.parse(now) + 120000).toISOString(),
+                  text: "Chose to ask Roxie directly.",
                 },
               ],
             },
             {
-              id: "foreground",
-              revision: 1,
-              wish: "PRIVATE FOREGROUND DESIRE",
-              reason: "Another grounded social desire.",
+              wishId: "foreground",
+              text: "PRIVATE FOREGROUND DESIRE",
+              at: now,
               status: "open",
-              attention: { state: "foreground", reason: "A recent conversation brought this to mind." },
-              approach: "",
-              conditions: [],
-              history: [],
-              addedAt: now,
-              changedAt: now,
-              origin: { kind: "reflection", sourceId: "reflection", lineIds: [] },
+              followed: false,
+              facts: [],
+              details: [{ id: "attention", kind: "attention", text: "A recent conversation brought this to mind." }],
             },
           ],
         };
@@ -136,7 +138,7 @@ await withBrowser(browser, async () => {
       else if (path.endsWith("/rooms") && route.request().method() === "POST") {
         writes++;
         session = {
-          version: 2,
+          version: 5,
           id: "visit",
           placeId: "mill",
           placeName: "The Mill",
@@ -144,27 +146,28 @@ await withBrowser(browser, async () => {
           lastActivityAt: now,
           endedAt: "",
           status: "active",
-          memoryMode: "live",
           activeIds: ["feddy"],
           participants: [{ characterId: "feddy", name: "Feddy" }],
           lines: [
             {
               id: "earlier",
               kind: "narration",
+              role: "assistant",
               speakerId: "",
               name: "Narration",
               at: now,
               content: "The mill hums while light settles across the floor. ".repeat(30),
-              heardBy: ["feddy"],
+              heardBy: ["player", "feddy"],
             },
             {
               id: "latest",
-              kind: "speech",
+              kind: "dialogue",
+              role: "assistant",
               speakerId: "feddy",
               name: "Feddy",
               at: now,
               content: "Ready.",
-              heardBy: ["feddy"],
+              heardBy: ["player", "feddy"],
             },
           ],
           sceneRevision: 1,
@@ -177,7 +180,7 @@ await withBrowser(browser, async () => {
           changes: [],
           backgroundChecks: [],
           unresolved: [],
-          nextCursor: "1:1:0",
+          nextCursor: "1",
           hasMore: false,
           processingSummary: {},
         };
@@ -251,7 +254,7 @@ await withBrowser(browser, async () => {
     await expect(historyTab).toBeFocused();
     await expect(historyTab).toHaveAttribute("aria-selected", "true");
     await expect(details.getByRole("tabpanel", { name: "History", exact: true })).toBeVisible();
-    await expect(details.getByRole("region", { name: "Recorded statements" }).locator("time")).toHaveCount(4);
+    await expect(details.getByRole("region", { name: "History" }).locator("time")).toHaveCount(4);
     await expect(profile.getByText("Deep water makes me nervous.", { exact: true })).toBeVisible();
     await expect(profile.getByText("I like the idea of lessons.", { exact: true })).toBeVisible();
     await expect(profile.getByText("I would prefer the lake.", { exact: true })).toBeVisible();
@@ -275,10 +278,12 @@ await withBrowser(browser, async () => {
     await expect(profile.getByText(/PRIVATE REASON/)).toHaveCount(0);
     await profile.getByRole("button", { name: "Open Wish: PRIVATE SOCIAL DESIRE", exact: true }).click();
     await expect(section.getByRole("tab")).toHaveCount(5);
-    await expect(details.getByRole("region", { name: "Wish summary" })).toHaveText(/PRIVATE REASON/);
+    const reasonTab = section.getByRole("tab", { name: "Why it matters", exact: true });
+    await reasonTab.click();
+    await expect(details.getByRole("region", { name: "Why it matters" })).toHaveText(/PRIVATE REASON/);
     assert(
       await details
-        .getByRole("region", { name: "Wish summary" })
+        .getByRole("region", { name: "Why it matters" })
         .locator("p")
         .last()
         .evaluate((node, mobile) => {
@@ -299,10 +304,10 @@ await withBrowser(browser, async () => {
         }, width <= 700),
       "The final line of a long reason is reachable in the profile reading area",
     );
-    await wishTab.press("ArrowRight");
+    await reasonTab.press("ArrowRight");
     await expect(section.getByRole("tab", { name: "Attention", exact: true })).toBeFocused();
     await expect(details.getByRole("region", { name: "Attention", exact: true })).toHaveText(
-      /In the background.*Available when relevant\./s,
+      "Available when relevant.",
     );
     await readTo(section);
     await section.getByRole("tab", { name: "Approach", exact: true }).click();
@@ -310,16 +315,12 @@ await withBrowser(browser, async () => {
       /Ask Roxie about a quiet afternoon together\./,
     );
     await readTo(section);
-    await section.getByRole("tab", { name: "Conditions", exact: true }).click();
-    await expect(details.getByRole("region", { name: "Conditions", exact: true })).toHaveText(
-      /Somewhere quiet, please\./,
-    );
-    await readTo(section);
     await section.getByRole("tab", { name: "History", exact: true }).click();
-    await expect(details.getByRole("region", { name: "Wish history" }).getByRole("listitem")).toHaveCount(3);
-    await expect(details.getByRole("region", { name: "Wish history" }).getByRole("listitem").last()).toContainText(
+    await expect(details.getByRole("region", { name: "History" }).getByRole("listitem")).toHaveCount(3);
+    await expect(details.getByRole("region", { name: "History" }).getByRole("listitem").last()).toContainText(
       "Chose to ask Roxie directly.",
     );
+    await expect(details.getByText("Somewhere quiet, please.", { exact: true })).toBeVisible();
     await expect(details.getByText("Other things need attention today.", { exact: true })).toBeVisible();
     await readTo(details.getByText("Chose to ask Roxie directly.", { exact: true }));
     await page.screenshot({ path: resolve(`.build-tmp/wish-journal/inspect-${width}.png`), fullPage: true });
@@ -335,7 +336,7 @@ await withBrowser(browser, async () => {
     await foregroundWish.click();
     await section.getByRole("tab", { name: "Attention", exact: true }).click();
     await expect(details.getByRole("region", { name: "Attention", exact: true })).toHaveText(
-      /On their mind.*A recent conversation brought this to mind\./s,
+      "A recent conversation brought this to mind.",
     );
     await readTo(section);
     await details.getByRole("button", { name: "← Wishes", exact: true }).click();

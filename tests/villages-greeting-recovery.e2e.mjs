@@ -27,10 +27,12 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
   let nextFailure = "";
   let changeAttemptOnRead = false;
   let succeedNextGreeting = false;
+  let activeReads = 0;
+  const initialValidation = Promise.withResolvers();
   const archived = new Map();
   function opening(id) {
     return {
-      version: 2,
+      version: 5,
       sceneRevision: 0,
       id,
       placeId: "mill",
@@ -60,6 +62,7 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
           name: "Mara",
           content: "The saved greeting.",
           at: now,
+          heardBy: ["player", "mara"],
         },
       ],
     };
@@ -81,6 +84,7 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
         complete();
         return fulfill(route, { json: authorSceneResponse({ session }, snapshot.worldScope) });
       }
+      if (recovery === "delayed" && greetingCalls === 1) await initialValidation.promise;
       recoveryPending = true;
       if (recovery === "immediate") complete();
       if (nextFailure)
@@ -90,6 +94,12 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
           body: JSON.stringify({ error: nextFailure }),
         });
       return abort(route, "failed");
+    }
+    if (path.endsWith("/rooms/active") && ++activeReads === 2 && recovery === "delayed") {
+      // Hold the recovery read, after the normal selection validation has completed.
+      await fulfill(route, { json: authorSceneResponse({ session }, snapshot.worldScope) });
+      initialValidation.resolve();
+      return;
     }
     if (path.endsWith("/rooms/active") && recoveryPending) {
       recoveryPending = false;
@@ -107,7 +117,7 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
     }
     if (path.endsWith("/rooms/active") && failActiveReads) return abort(route, "failed");
     if (path.endsWith("/rooms/turn"))
-      return fulfill(route, { status: 400, json: { error: "This line could not be accepted." } });
+      return fulfill(route, { status: 400, json: { error: "A line can be at most 4000 characters." } });
     let value;
     if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity"))
       value = { session, debugDiscardEnabled: false };
@@ -232,10 +242,10 @@ await withBrowser(browser, async () => {
     const composer = f.page.getByRole("textbox", { name: "Message at The Mill" });
     await composer.fill("Keep this unsent draft.");
     await f.page.getByRole("button", { name: "Send", exact: true }).click();
-    await expectSceneError(f.page, "The game couldn’t accept your message.");
+    await expectSceneError(f.page, "A line can be at most 4000 characters.");
     await f.focus();
     await expect(composer).toHaveValue("Keep this unsent draft.");
-    await expectSceneError(f.page, "The game couldn’t accept your message.");
+    await expectSceneError(f.page, "A line can be at most 4000 characters.");
     await f.mount();
     await expect(f.page.getByText("The saved greeting.", { exact: true })).toBeVisible();
     await expect(f.page.getByRole("alert")).toHaveCount(0);

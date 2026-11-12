@@ -1,19 +1,13 @@
 import type { SpeechDelivery, SpeechPresentation } from "../../../shared/helpers/scene-speech.js";
 import type { StagingCue } from "../../../shared/helpers/scene-staging.js";
-import type { ProjectSpeechContext, ProjectSpeechProposal } from "../rules/project-interpretation.js";
 import type { ResponseDiagnostics } from "../rules/response-diagnostics.js";
-import type { ContactIntent, ContactMove, ContactRelay, DoorwayContact } from "../rules/venue-contact.js";
-import type { VenueSceneChange } from "../rules/venue-scene-state.js";
-import type { ExchangeProcessing } from "./exchange-model.js";
-import type { LiveExchangeProposals } from "./memory-model.js";
+import type { DoorwayContact } from "../rules/venue-contact.js";
 import type { VenueOperation, VenueRequestMetrics } from "./operation-model.js";
-import type { VenueActionResult } from "./venue-action-model.js";
-import type { WishProposal } from "./wish-check-model.js";
 import type { VillageVenueClass } from "./world.js";
 
 export type VenueLine = {
-  speechSource?: { version: 3; spans: import("../rules/player-speech-capture.js").SpeechSource[] };
   id: string;
+  inputOf?: string;
   speakerId: string;
   name: string;
   role: "user" | "assistant";
@@ -31,7 +25,7 @@ export type VenueLine = {
   contactHidden?: boolean;
   attentionEvidence?: boolean;
   contactReport?: boolean;
-  kind?: "narration" | "dialogue" | "side" | "whisper";
+  kind?: "narration" | "dialogue" | "side" | "whisper" | "input";
   delivery?: SpeechDelivery;
   presentation?: SpeechPresentation;
   staging?: StagingCue[];
@@ -45,98 +39,28 @@ export type SceneAttendance = {
   occupants: (VenueParticipant & { zoneId: string })[];
 };
 export type VenueSubmission = {
-  lore?: import("../../../shared/contracts/lore.js").LoreUse[];
-  npcAdmissions?: import("../rules/npc-participation.js").NpcAdmission[];
-  placeDiscoveries?: unknown[];
-  establishmentProgress?: unknown[];
-  speechCapture?: { version: 3; status: "captured" | "silent" };
-  effectFailures?: Partial<
-    Record<
-      import("./exchange-model.js").ExchangeDomain,
-      { kind: "metadata" | "interpretation"; message: string; proposal?: unknown }
-    >
-  >;
-  zoneEventsVersion?: 1;
-  wishProposals?: WishProposal[];
-  wishAuthority?: import("../rules/social-wishes.js").WishAuthority;
-  wishProposalError?: string;
-  processing?: ExchangeProcessing;
   id: string;
   message: string;
-  mode: "chat" | "leave" | "contact";
-  contact?: ContactIntent;
-  speechIdsAtTurn?: string[];
-  contactEvidence?: { moves: ContactMove[]; relay: ContactRelay | null };
+  mode: "chat" | "contact" | "leave";
   targetId: string;
-  areaAtTurn?: VenueScene["area"];
+  at: string;
+  requestFingerprint: string;
+  /** The existing Scene outbox owns the purchased fit until its episode is published. */
+  narration?: Omit<import("../rules/narration-acceptance.js").NarrationPublication, "native">;
+  acceptance: { status: "pending" | "held" | "applied" | "abandoned"; rejected: { id: string; reason: string }[] };
+  episodeId?: string;
+  lore?: import("../../../shared/contracts/lore.js").LoreUse[];
+  replyLineIds?: string[];
   zoneIdAtTurn?: string;
-  privateOwnerIdAtTurn?: string;
   activeIdsAtTurn?: string[];
   activeIdsAfterTurn?: string[];
-  replyLineIds?: string[];
-  projectContexts?: ProjectSpeechContext[];
-  projectSpeech?: ProjectSpeechProposal[];
-  projectInterpretationVersion?: 1;
   progressProcessedAt?: string;
   progressError?: string;
-  verdict: { fulfilled: boolean; reason: string } | null;
-  wishId: string;
-  wishMemory: string;
-  action?: VenueActionResult;
-  actionReplyDone?: boolean;
-  physicalOutcomeVersion?: 1;
-  narrativeSource?: import("../rules/scene-narrative-effects.js").SceneNarrativeSource;
-  placeUpdate?: VenueSceneChange;
-  semanticPlayerMoves?: import("../rules/semantic-timeline.js").SemanticPlayerMove[];
-  physicalContext?: import("../../../shared/contracts/place-continuity.js").PlaceEvidence & {
-    zoneId: string;
-    segment: number;
-  };
-  residenceSignal?: {
-    kind: "request" | "decision";
-    characterId: string;
-    venueId: string;
-    approved?: boolean;
-    approverId?: string;
-    agreementScope?: string;
-  };
-  venueRequestSignal?: {
-    characterId: string;
-    name: string;
-    classes: VillageVenueClass[];
-    quote: string;
-    sourceLineId?: string;
-  };
-  /** Approved access interpretations saved with their exact witnessed reply; never sent to the client. */
-  accessEvents?: SavedAccessEvent[];
-  invitationSignal?: {
-    accessOperationId: string;
-    residentId: string;
-    venueId: string;
-    zoneId: string;
-    zoneLabel: string;
-    accompanies?: boolean;
-    timing: "now" | "later";
-    quote: string;
-  };
-  semanticReady?: boolean;
-  semanticConclude?: boolean;
-  semanticContinuedDomains?: import("./exchange-model.js").ExchangeDomain[];
-  semanticProvenance?: import("./semantic-model.js").SemanticProvenance;
-  liveProposals?: LiveExchangeProposals;
-  wishContexts?: import("./wish-check-model.js").CapturedWishContexts;
   requestMetrics?: VenueRequestMetrics;
   timing?: import("./operation-model.js").VenueTiming;
-  interpretationHistory?: {
-    at: string;
-    domain: string;
-    source: string;
-    proposals: unknown;
-    responseDiagnostics?: ResponseDiagnostics;
-  }[];
+  responseDiagnostics?: ResponseDiagnostics;
   changeSequence?: number;
   recordEvents?: VenueRecordEvent[];
-  at?: string;
 };
 export type VenueRecordEvent = {
   id: string;
@@ -152,24 +76,15 @@ export type VenueScene = {
   /** Private captured writing context; never part of a client projection. */
   continuity?: import("../rules/scene-continuity.js").SceneContinuity;
   openingGatheringId?: string;
-  semanticVersion?: 2;
-  semanticIntent?: import("./semantic-model.js").SemanticIntent;
-  version: 4;
+  version: 5;
   changeSequence?: number;
   villageSeed?: string;
   sceneRevision: number;
-  /** Interactive Scenes follow the Village clock; noninteractive memory inputs omit this marker. */
-  liveSceneVersion?: 1;
   operation?: VenueOperation;
+  /** Opaque stored operation heads retain purchases from explicitly abandoned requests. */
+  abandonedOperations?: VenueOperation[];
   /** Idempotent free navigation, separate from conversational turns. */
   navigationReceipts?: { id: string; originZoneId: string; destinationZoneId: string; at: string }[];
-  /** Operational receipts only: rejected inputs never become fictional submissions. */
-  rejectedSubmissions?: {
-    id: string;
-    inputHash: string;
-    sceneRevision: number;
-    turnOutcome: import("../../../shared/contracts/scene-turn-outcome.js").SceneTurnOutcome;
-  }[];
   generationReceipts?: {
     operationId: string;
     attemptId: string;
@@ -189,7 +104,6 @@ export type VenueScene = {
   pendingProjectQuestions?: string[];
   accompanying?: { characterId: string; zoneId: string }[];
   doorwayContacts?: DoorwayContact[];
-  entryOffers?: { zoneId: string; label: string; controllerId: string; accompanies: boolean }[];
   /** Ephemeral prompt context; never stored or disclosed. */
   contactGeneration?: {
     zoneEvents?: boolean;
@@ -210,7 +124,6 @@ export type VenueScene = {
   endedAt: string;
   lastActivityAt: string;
   endReason: "player" | "scene" | "inactivity" | "debug" | "";
-  memoryMode: "live";
   status: "opening" | "active" | "closing" | "closed";
   participants: VenueParticipant[];
   sceneAttendance?: SceneAttendance;
@@ -222,16 +135,7 @@ export type VenueScene = {
 export type VenueSession = VenueScene;
 export type ActiveVenue = { sessionId: string; placeId: string; playbackSceneId?: string };
 export type GreetingTrace = (stage: string, elapsedMs: number, detail?: string) => void;
-export type VenueReplyFailureKind =
-  | "invalid-json"
-  | "invalid-segments"
-  | "player-echo"
-  | "repeated-question"
-  | "residence-consent"
-  | "construction-worksite"
-  | "unsupported-physical-claim";
 export type VenueReplyLine = {
-  speechSource?: VenueLine["speechSource"];
   zoneId?: string;
   soundOnly?: VenueLine["soundOnly"];
   attentionEvidence?: boolean;
@@ -249,19 +153,4 @@ export type VenueReplyLine = {
   staging?: StagingCue[];
   targetId?: string;
   anchorIndex?: number;
-};
-export type SavedAccessEvent = {
-  interpretationVersion: 1;
-  id: string;
-  facts: {
-    actorId: string;
-    venueId: string;
-    zoneId: string | null;
-    accessRevision: number;
-    semanticVersion: 2;
-    accompanies?: boolean;
-    accessCommand?: import("../../../shared/helpers/venue-access.js").AccessCommand;
-  };
-  outcome: string;
-  evidenceIds: string[];
 };

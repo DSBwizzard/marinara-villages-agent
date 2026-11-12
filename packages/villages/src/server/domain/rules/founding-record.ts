@@ -5,7 +5,7 @@ import { badRequest } from "./errors.js";
 import { validateStartingVenue } from "./founding-template.js";
 import { isGlobalGalleryRef, MAX_VENUE_IMAGE_URL_LENGTH, MAX_VENUE_NAME_LENGTH } from "./prompt-preset.js";
 import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
-import { readPlaceDescription } from "./zone-continuity.js";
+import { readPlaceDescription } from "./prompt-preset.js";
 import { defaultZonePolicy, initializeVenueAccess, readVenueAccess } from "./venue-access.js";
 import { readPlacePosition } from "./venue-authoring.js";
 import { readBaseVenueLayout } from "./venue-layout.js";
@@ -108,7 +108,6 @@ export function parsePlace(value: unknown): VillageVenue {
       image: foundingImage(presentation.image),
       ...position,
     },
-    state: { revision: 0, recent: null, updatedAt: "" },
   };
   if (row.zoneLayout !== undefined) {
     const layout = readZoneLayout(
@@ -143,7 +142,7 @@ export function parsePlace(value: unknown): VillageVenue {
       result.destinations![actor][role] = target;
     }
   }
-  for (const zone of zones) zone.observed = captureZoneObservation(result, zone);
+  for (const zone of zones) zone.observed = captureZoneObservation(result, zone, zone.description);
   return result;
 }
 export function parsePlaces(

@@ -29,7 +29,7 @@ export function scenePlaybackSteps(window: ScenePlaybackWindow, playerName: stri
       speakerId: line.speakerId,
       name: line.name,
     }));
-    const player = line.speakerId.length === 0;
+    const player = line.role === "user";
     const paragraphs = splitVillagesParagraphs(line.content);
     paragraphs.forEach((text, paragraph) => {
       const last = paragraph === paragraphs.length - 1;

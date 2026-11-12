@@ -1265,7 +1265,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
         setRoom(session);
         scenes.setRoomEnded(false);
         scenes.setRoomOpen(true);
-        scenes.setRoomMode("chat");
         return kept;
       }
     } else if (scenes.roomOpen && room) {
@@ -1401,16 +1400,12 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     roomGreetingError: scenes.roomGreetingError,
     roomGreetingNotice: scenes.roomGreetingNotice,
     roomLeaveSubmissionIdRef: scenes.roomLeaveSubmissionIdRef,
-    roomMode: scenes.roomMode,
     contactRecovery: scenes.contactRecovery,
     setContactRecovery: scenes.setContactRecovery,
     roomMoveOperationIdRef: scenes.roomMoveOperationIdRef,
-    roomMoveZoneId: scenes.roomMoveZoneId,
     roomNotices: scenes.roomNotices,
     sceneReading: scenes.sceneReading,
     roomOpen: scenes.roomOpen,
-    roomRuling: scenes.roomRuling,
-    setRoomRuling: scenes.setRoomRuling,
     roomSubmissionIdRef: scenes.roomSubmissionIdRef,
     roomTargetId: scenes.roomTargetId,
     roomUnresolvedChanges: scenes.roomUnresolvedChanges,
@@ -1469,8 +1464,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setRoomContactKind: scenes.setRoomContactKind,
     setRoomDraft: scenes.setRoomDraft,
     setRoomError: scenes.setRoomError,
-    setRoomMode: scenes.setRoomMode,
-    setRoomMoveZoneId: scenes.setRoomMoveZoneId,
     setRoomTargetId: scenes.setRoomTargetId,
     setSceneryStyle: founding.setSceneryStyle,
     setSceneryStyleProfileId: founding.setSceneryStyleProfileId,

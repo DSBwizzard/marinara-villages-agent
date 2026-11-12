@@ -46,7 +46,6 @@ await withBrowser(browser, async () => {
     place.residentIds = ["mara"];
     place.form = "A converted warehouse";
     place.description = "A home beside the village mill.";
-    const state = { revision: 0, recent: null, updatedAt: "" };
     const access = (allowed, mode = "permission-required") => ({
       decision: {
         allowed,
@@ -68,7 +67,6 @@ await withBrowser(browser, async () => {
         seen: true,
         description: "A sheltered approach.",
         image: null,
-        state,
       },
       {
         id: "bay",
@@ -80,7 +78,6 @@ await withBrowser(browser, async () => {
         pictureGenerateAvailable: true,
         description: "An open living area.",
         image: null,
-        state,
         accessView: access(false),
       },
       {
@@ -93,7 +90,6 @@ await withBrowser(browser, async () => {
         pictureGenerateAvailable: false,
         description: "A private sleeping alcove with a blue blanket.",
         image: { id: "alcove-art", ref: "global-gallery:alcove-art", url: mapImage },
-        state,
         accessView: access(false),
       },
       {
@@ -105,7 +101,6 @@ await withBrowser(browser, async () => {
         seen: true,
         description: "A bright bench.",
         image: null,
-        state,
         accessView: access(true, "public"),
       },
     ];
@@ -222,18 +217,22 @@ await withBrowser(browser, async () => {
       .click();
     await expect(page.getByRole("main", { name: "Projects" })).toBeVisible();
     await page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();
-    await page
+    const placesButton = page
       .getByRole("navigation", { name: "Village exploration" })
-      .getByRole("button", { name: "Places", exact: true })
-      .click();
+      .getByRole("button", { name: "Places", exact: true });
+    await placesButton.click();
     const placesDirectory = page.getByRole("complementary", { name: "Places navigator" });
+    const placesSearch = placesDirectory.getByRole("searchbox", { name: "Search places", exact: true });
+    await expect(placesSearch).toBeFocused();
     await placesDirectory.getByRole("button", { name: /^(Collapse|Close) places$/ }).click();
     await expect(placesDirectory).toHaveCount(0);
-    await page
-      .getByRole("navigation", { name: "Village exploration" })
-      .getByRole("button", { name: "Places", exact: true })
-      .click();
-    await expect(placesDirectory.getByRole("searchbox", { name: "Search places", exact: true })).toBeFocused();
+    await expect(placesButton).toBeFocused();
+    await placesButton.click();
+    await expect(placesSearch).toBeFocused();
+    await placesSearch.press("Escape");
+    await expect(placesButton).toBeFocused();
+    await placesButton.press("Enter");
+    await expect(placesSearch).toBeFocused();
     const openProfile = async (id = place.id) => {
       const navigator = page.getByRole("complementary", { name: "Places navigator" });
       await navigator.locator(`[data-exploration-row="${id}"]`).click();

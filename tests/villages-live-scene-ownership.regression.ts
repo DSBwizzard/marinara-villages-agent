@@ -19,6 +19,18 @@ import { applySceneMutation } from "../packages/villages/src/server/domain/rules
 import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { resolveVenueZone } from "../packages/villages/src/server/domain/rules/venue-zones.js";
 import { createLiveScenes } from "../packages/villages/src/server/features/scenes/live-session-service.js";
+import { readNarrationSubmission } from "../packages/villages/src/server/domain/decoding/narration-submission.js";
+import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import {
+  initializeRoomContinuity,
+  retainNativeFact,
+} from "../packages/villages/src/server/domain/rules/native-continuity.js";
+import { captureZoneObservation } from "../packages/villages/src/server/domain/rules/zone-observation.js";
+import { createSceneWorkFence } from "../packages/villages/src/server/jobs/scene-work-fence.js";
+import {
+  narrationContinuityContext,
+  fittedNarrationReadset,
+} from "../packages/villages/src/server/domain/rules/narration-context.js";
 import {
   activeVenueSession,
   configureLiveScenes,
@@ -50,6 +62,7 @@ function fixture(name: string) {
         {
           letterFontId: "caveat",
           characterId: "mara",
+          incarnation: "one",
           addedAt: stamp,
           cardSnapshot: { id: "mara", name: name + " Mara", capturedAt: stamp, revision: 1, sourceStatus: "available" },
           agenda: agendaFixture({
@@ -68,9 +81,12 @@ function fixture(name: string) {
       ],
     });
   initializeVenueAccess(world.venues[0]!);
+  for (const zone of world.venues[0].zones!) {
+    initializeRoomContinuity(world, "venue", zone.id, zone.description, "founding", stamp);
+    zone.observed = captureZoneObservation(world.venues[0], zone, zone.description);
+  }
   const saved = coerceSession({
-    version: 4,
-    liveSceneVersion: 1,
+    version: 5,
     id: "same",
     villageSeed: world.seed,
     placeId: "venue",
@@ -87,6 +103,8 @@ function fixture(name: string) {
     submissions: [],
   });
   saved.continuity = captureSceneContinuity(world, saved, now.getTime());
+  const capturedWorld = structuredClone(world),
+    capturedScene = structuredClone(saved);
   sessions.set(saved.id, saved);
   let busy = false,
     pauseAt = "",
@@ -109,7 +127,10 @@ function fixture(name: string) {
     await gate.promise;
     note(call + ":resumed");
   }
+  const fence = createSceneWorkFence();
   const service = createLiveScenes({
+    withSceneWork: fence.run,
+    withIdleSceneWork: (id, observe) => (fence.isBusy(id) ? Promise.resolve() : fence.run(id, observe)),
     async readActive() {
       note("active");
       await wait("active");
@@ -169,8 +190,30 @@ function fixture(name: string) {
     calls,
     owners,
     service,
+    fence,
     entered,
     gate,
+    submission(status: "held" | "applied", id = "accepted") {
+      const base = {
+        id,
+        message: "",
+        mode: "chat",
+        targetId: "",
+        at: stamp,
+        requestFingerprint: memoryHash(["chat", "", null, ""]),
+        acceptance: { status, rejected: [] },
+      };
+      if (status === "applied")
+        return readNarrationSubmission({ ...base, episodeId: "episode-" + id, progressProcessedAt: stamp });
+      const context = narrationContinuityContext(capturedWorld, capturedScene, capturedWorld.venues[0], id, "", stamp),
+        readset = fittedNarrationReadset(
+          capturedWorld,
+          context,
+          context.parts.flatMap((part) => (part.block.evidenceId ? [part.block.evidenceId] : [])),
+        ),
+        raw = { segments: [{ id: "reply", kind: "narration", text: "The hall is quiet." }] };
+      return readNarrationSubmission({ ...base, narration: { raw, readset, responseDigest: memoryHash(raw) } });
+    },
     pause(call: string) {
       pauseAt = call;
     },
@@ -191,6 +234,40 @@ function fixture(name: string) {
 }
 async function main() {
   {
+    const f = fixture("observation-fence");
+    const zone = f.world.venues[0].zones!.find((row) => row.id === "community")!;
+    const previous = structuredClone(zone.observed);
+    const queued = deferred(),
+      release = deferred();
+    const owner = f.fence.run(f.saved.id, async () => {
+      retainNativeFact(
+        f.world,
+        {
+          id: "room-edit",
+          kind: "structure",
+          targetId: JSON.stringify(["venue", "community"]),
+          revision: 1,
+          text: "A fresh lamp stands by the chair.",
+          witnesses: [],
+        },
+        now.toISOString(),
+        { room: { kind: "room", placeId: "venue", zoneId: "community" } },
+      );
+      queued.resolve();
+      await release.promise;
+    });
+    try {
+      await queued.promise;
+      await f.service.activeVenueSession();
+      assert.deepEqual(zone.observed, previous, "An admitted owner prevents a concurrent observation");
+    } finally {
+      release.resolve();
+      await owner;
+    }
+    await f.service.activeVenueSession();
+    assert.match(zone.observed!.description, /fresh lamp/);
+  }
+  {
     const f = fixture("authored-unvisited");
     const zone = f.world.venues[0].zones!.find((row) => row.id === "community")!;
     zone.seen = false;
@@ -200,17 +277,18 @@ async function main() {
   }
   for (const completing of [false, true]) {
     const invalid = fixture("missing-native-access");
-    invalid.saved.liveSceneVersion = 1;
     delete invalid.world.venues[0]!.access;
-    if (completing) delete invalid.saved.continuity!.facts.venues[0]!.access;
+    if (completing) {
+      invalid.saved.continuity = structuredClone(invalid.saved.continuity);
+      delete invalid.saved.continuity!.facts.venues[0]!.access;
+    }
     const before = structuredClone({ scene: invalid.saved, world: invalid.world });
     await assert.rejects(invalid.service.refreshZoneParticipants(invalid.saved, completing), /no native access record/);
     assert.deepEqual({ scene: invalid.saved, world: invalid.world }, before);
     assert(!invalid.calls.some((call) => call.startsWith("change:") || call === "world-change"));
   }
-  for (const hold of ["busy", "failed", "semantic"] as const) {
+  for (const hold of ["busy", "failed", "held"] as const) {
     const held = fixture("native-access-" + hold);
-    held.saved.liveSceneVersion = 1;
     delete held.world.venues[0]!.access;
     if (hold === "busy") held.setBusy(true);
     if (hold === "failed")
@@ -220,25 +298,18 @@ async function main() {
         status: "interrupted",
         error: "Unknown provider outcome",
       } as any;
-    if (hold === "semantic")
-      held.saved.submissions.push({
-        id: "accepted",
-        mode: "chat",
-        semanticProvenance: { version: 2 },
-        semanticReady: false,
-      } as any);
+    if (hold === "held") held.saved.submissions.push(held.submission("held"));
     const before = structuredClone(held.saved);
     assert.equal(await held.service.refreshZoneParticipants(held.saved), held.saved);
     assert.deepEqual(held.saved, before);
     assert(!held.calls.includes("world"));
   }
   const capturedAccess = fixture("captured-native-access");
-  capturedAccess.saved.liveSceneVersion = 1;
   delete capturedAccess.world.venues[0]!.access;
   const admitted = structuredClone(capturedAccess.saved);
   const completed = await capturedAccess.service.refreshZoneParticipants(capturedAccess.saved, true);
   assert.deepEqual(completed, admitted, "completion uses its valid captured ledger and attendance");
-  for (const missing of ["zoneId", "sceneAttendance", "liveSceneVersion"] as const) {
+  for (const missing of ["zoneId", "sceneAttendance"] as const) {
     const invalid = fixture("missing-" + missing);
     delete invalid.saved[missing];
     const before = structuredClone(invalid.saved);
@@ -246,19 +317,13 @@ async function main() {
     await assert.rejects(invalid.service.refreshZoneParticipants(invalid.saved, true), /no current live admission/);
     assert.deepEqual(invalid.saved, before);
     assert(!invalid.calls.some((call) => call === "world" || call.startsWith("change:")));
-    for (const hold of ["busy", "failed", "semantic"] as const) {
+    for (const hold of ["busy", "failed", "held"] as const) {
       const held = fixture(missing + "-" + hold);
       delete held.saved[missing];
       if (hold === "busy") held.setBusy(true);
       if (hold === "failed")
         held.saved.operation = { id: "paid", kind: "turn", status: "failed", error: "Unknown provider outcome" } as any;
-      if (hold === "semantic")
-        held.saved.submissions.push({
-          mode: "chat",
-          id: "accepted",
-          semanticProvenance: { version: 2 },
-          semanticReady: false,
-        } as any);
+      if (hold === "held") held.saved.submissions.push(held.submission("held"));
       const retained = structuredClone(held.saved);
       const observed = observations;
       assert.equal(await held.service.refreshZoneParticipants(held.saved), held.saved);
@@ -275,8 +340,6 @@ async function main() {
   assert(resumed.continuity);
   assert(resumed.sceneAttendance!.layout);
   assert.equal(resumed.sceneAttendance!.capturedAt, sourceAt);
-  const synthetic = coerceSession({ version: 4, id: "offscreen", status: "closed", lines: [], submissions: [] });
-  assert.equal(synthetic.liveSceneVersion, undefined, "closed synthetic Scenes need no live admission");
   const empty = fixture("empty");
   assert.deepEqual(empty.calls, [], "construction is inert");
   empty.active.sessionId = "";
@@ -322,7 +385,10 @@ async function main() {
         at: interrupted.saved.startedAt,
         heardBy: ["player"],
       });
-      interrupted.saved.submissions.push({ mode: "chat", id: "greeting", replyLineIds: ["greeting-line"] } as any);
+      interrupted.saved.submissions.push({
+        ...interrupted.submission("applied", "greeting"),
+        replyLineIds: ["greeting-line"],
+      });
       interrupted.saved.operation = {
         id: "greeting",
         kind: "greet",
@@ -448,6 +514,11 @@ async function main() {
     sourceLineIds: [],
   });
   claim.saved.pendingAccessClaim = "permission";
+  claim.fail("change:same", Error("Scene acknowledgement unavailable"));
+  await assert.rejects(claim.service.refreshZoneParticipants(claim.saved, true), /acknowledgement unavailable/);
+  assert.equal(venue.access!.permissions[0]!.sceneId, "same");
+  assert.equal(claim.sessions.get("same")!.pendingAccessClaim, "permission");
+  claim.fail("", Error("unused"));
   const settled = await claim.service.refreshZoneParticipants(claim.saved, true);
   assert.equal(venue.access!.permissions[0]!.sceneId, "same");
   assert.equal(settled.pendingAccessClaim, undefined);
@@ -455,11 +526,37 @@ async function main() {
     claim.calls.indexOf("world-change") < claim.calls.indexOf("change:same"),
     "claim is committed before the Scene flag is cleared",
   );
+  const revoked = fixture("revoked-before-entry");
+  const revokedPlace = revoked.world.venues[0]!;
+  const revokedZone = resolveVenueZone(revokedPlace, "community")!;
+  revokedZone.access!.mode = "permission-required";
+  revokedPlace.access!.managerIds = ["mara"];
+  const pendingGrant = { ...venue.access!.permissions[0]!, sceneId: null };
+  revokedPlace.access!.permissions.push(pendingGrant);
+  revoked.saved.continuity = captureSceneContinuity(revoked.world, revoked.saved, Date.parse(revoked.saved.startedAt));
+  revoked.saved.pendingAccessClaim = pendingGrant.id;
+  pendingGrant.revoked = true;
+  revokedPlace.access!.permissions.push({ ...pendingGrant, id: "alternate-permission", revoked: false });
+  const denied = await revoked.service.refreshZoneParticipants(revoked.saved, true);
+  assert.equal(denied.zoneId, "exterior");
+  assert.equal(denied.pendingAccessClaim, undefined);
+  assert(revokedPlace.access!.permissions.every((grant) => grant.sceneId === null));
+  assert(!denied.continuity!.facts.venues[0].access!.permissions.some((grant) => grant.sceneId));
+  assert.equal(denied.lines.length, 0, "Unadmitted entry never publishes a departure from the private Zone");
+  const removed = fixture("zone-removed-before-entry");
+  removed.saved.pendingAccessClaim = "removed-permission";
+  removed.world.venues[0].zones = removed.world.venues[0].zones!.filter((zone) => zone.id !== "community");
+  for (const zone of removed.world.venues[0].zones)
+    zone.connectedTo = zone.connectedTo?.filter((id) => id !== "community");
+  const redirected = await removed.service.refreshZoneParticipants(removed.saved, true);
+  assert.equal(redirected.zoneId, "exterior");
+  assert.equal(redirected.pendingAccessClaim, undefined);
   const privateExit = fixture("private-exit"),
     privateVenue = privateExit.world.venues[0]!,
     privateZone = resolveVenueZone(privateVenue, "community")!;
   privateZone.access!.mode = "permission-required";
   privateVenue.access!.managerIds = ["player"];
+  privateExit.saved.continuity = structuredClone(privateExit.saved.continuity);
   privateExit.saved.continuity!.facts.venues = structuredClone(privateExit.world.venues);
   privateExit.saved.zoneId = "exterior";
   privateExit.saved.activeIds = [];
@@ -479,6 +576,7 @@ async function main() {
   hiddenZone.access!.mode = "permission-required";
   hiddenZone.access!.managerIds = ["player"];
   unseenVenue.zones!.push(hiddenZone);
+  unseen.saved.continuity = structuredClone(unseen.saved.continuity);
   unseen.saved.continuity!.facts.venues = structuredClone(unseen.world.venues);
   unseen.saved.sceneAttendance!.layout = captureSceneLayout(unseenVenue);
   unseen.saved.sceneAttendance!.occupants[0]!.zoneId = hiddenZone.id;
@@ -502,6 +600,7 @@ async function main() {
     concurrentVenue = concurrent.world.venues[0]!;
   resolveVenueZone(concurrentVenue, "community")!.access!.mode = "permission-required";
   concurrentVenue.access!.managerIds = ["player"];
+  concurrent.saved.continuity = structuredClone(concurrent.saved.continuity);
   concurrent.saved.continuity!.facts.venues = structuredClone(concurrent.world.venues);
   concurrent.saved.zoneId = "exterior";
   concurrent.saved.activeIds = [];
@@ -576,9 +675,7 @@ async function main() {
   current.run(() => current.run(releaseCurrent));
   current.dispose();
 
-  console.log(
-    "PASS live Scene ownership, persistent absence, activity compatibility, captured attendance and access ordering",
-  );
+  console.log("PASS native Scene ownership, persistent absence, captured attendance and access ordering");
 }
 await main()
   .finally(releaseClock)

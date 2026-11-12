@@ -1,18 +1,13 @@
 import type { SpriteManagerState } from "../../../shared/contracts/sprites.js";
-import type { VillageSettings } from "../../../shared/contracts/village.js";
+import type { ProjectRoomEdit, VillageSettings } from "../../../shared/contracts/village.js";
 import type { VillageNarrationStyle } from "../rules/narration-style.js";
-import type { ProgressTask } from "../rules/progress-engine.js";
 import type { HomeBuildingKind } from "../rules/prompt-preset.js";
-
-/** Resident Wish authority and its witnessed conditions. */
-export type VillageWish = import("../../../shared/contracts/wishes.js").SocialWish;
 
 /** Owned routines and dated commitments. */
 export type VillageAgenda = {
   plannedDays?: Record<string, VillageAgendaBlock[]>;
   routineProfile?: import("../rules/owned-routine.js").RoutineProfile;
   scheduleInfluenceSnapshot?: import("../rules/owned-routine.js").InfluenceSnapshot;
-  socialActivities?: import("./social-activity.js").SocialActivity[];
   /** Derived from feature authority on hydration; never an independently editable booking. */
   reservations?: import("./agenda-reservation.js").AgendaReservation[];
   /** One line about an ordinary day for them, here. */
@@ -56,13 +51,13 @@ export type VillageDayView = {
 
 /** One library card the village has adopted. */
 export type VillageVillager = {
+  incarnation: string;
   letterFontId: string;
   identityDescription?: import("../../../shared/contracts/resident-description.js").ResidentIdentityDescription & {
     initialGenerationComplete: boolean;
   };
   signature?: import("../../../shared/helpers/resident-signature.js").ResidentSignatureImage;
   admission: import("../../../shared/helpers/resident-admission.js").ResidentAdmission;
-  wishes: VillageWish[];
   agendaGeneration?: string;
   characterId: string;
   /** Card prose captured at move-in; deliberately excludes the Engine-only first message. */
@@ -206,7 +201,6 @@ export type ZonePicture = {
 export type VillageVenueSpace = {
   picture?: ZonePicture;
   dayNight?: boolean;
-  dayNightManual?: boolean;
   freezePicture?: boolean;
   pictureRevision?: number;
   connectedTo?: string[];
@@ -216,7 +210,6 @@ export type VillageVenueSpace = {
   roomSpecification?: string;
   description: string;
   image: VillageVenueImage | null;
-  state: import("../../../shared/contracts/place-continuity.js").PlaceContinuity;
 };
 
 export type VillageZoneKind = "exterior" | "public" | "shared-residence" | "private-residence" | "staff" | "restricted";
@@ -227,6 +220,8 @@ export type PrivateSpacePreparation = {
   error?: string;
   /** Persisted before dispatch. A surviving claim requires deliberate retry. */
   claimId?: string;
+  /** Exact private generation scope. A retry may reopen only this scope. */
+  basis?: string;
   startedAt?: string;
   attempt?: number;
 };
@@ -252,14 +247,13 @@ export type ZoneObservation = {
   purpose?: string;
   roomSpecification?: string;
   form?: string;
-  state: VillageVenueSpace["state"];
   image: VillageVenueImage | null;
   dayNight?: boolean;
   daylight?: boolean;
   night?: ZonePicture["night"];
   pictureContext?: string;
 };
-export type VillageZoneDraft = { preserveDescription?: boolean } & Pick<
+export type VillageZoneDraft = Pick<
   VillageVenueZone,
   | "id"
   | "name"
@@ -308,8 +302,6 @@ export type VillageVenue = {
   residenceCapacity?: number;
   /** The complete resident roster. The older occupancy field remains a read projection. */
   residentIds?: string[];
-  /** The approach is distinct from both shared and private Residence state. */
-  exteriorState?: VillageVenueSpace["state"];
   privateSpaces?: VillagePrivateSpace[];
   playerSeenShared?: boolean;
   playerSeenPublic?: boolean;
@@ -335,25 +327,6 @@ export type VillageVenue = {
   capabilities: string[];
   /** Assigned workers retain their existing access and activity roles. */
   workerIds?: string[];
-  /** Durable physical state visible to the village by default. */
-  state: import("../../../shared/contracts/place-continuity.js").PlaceContinuity;
-};
-
-/** A committed physical change and its evidence, attached to a Venue. */
-export type VillageVenueEvent = {
-  id: string;
-  venueId: string;
-  venueName: string;
-  zoneId?: string;
-  text: string;
-  at: string;
-  actionReceipt?: import("../../../shared/contracts/place-continuity.js").PlaceUpdate & {
-    submissionId: string;
-    happened: boolean;
-    narration: string;
-    witnessIds?: string[];
-    after: import("../../../shared/contracts/place-continuity.js").PlaceAfter;
-  };
 };
 
 /** Coordinates remain fractions of the town map, never pixels. */
@@ -364,7 +337,7 @@ export type VillageVenuePosition = {
 
 /**
  * The old flat fields intentionally do not exist here. Callers must choose the
- * explicit presentation, occupancy, capability, or state boundary they need.
+ * explicit presentation, occupancy, or capability boundary they need.
  */
 export type VillageVenueDraft = {
   name: string;
@@ -374,7 +347,6 @@ export type VillageVenueDraft = {
   position: VillageVenuePosition & { mapId?: string };
   occupancy: VillageVenue["occupancy"];
   capabilities: string[];
-  state: VillageVenue["state"];
 };
 
 /** A home is now an occupancy fact on a venue, never a second place system. */
@@ -420,7 +392,7 @@ export type ResidentPlanningOpportunity = {
 export type VillageProjectPhase = "planning" | "working" | "paused" | "complete" | "cancelled";
 export type VillageProjectChange = {
   form?: string;
-  exteriorDescription?: string;
+  roomEdits?: ProjectRoomEdit[];
   classes?: VillageVenueClass[];
   capacity?: number;
   zones?: VillageZoneDraft[];
@@ -434,12 +406,13 @@ export type VillageProjectLifecycle = {
   affectedIds: string[];
   approvals: {
     residentId: string;
+    incarnation: string;
     source: "conversation";
     evidenceId: string;
     scope: string;
     at: string;
   }[];
-  candidates: { residentId: string; evidenceId: string; scope: string; at: string }[];
+  candidates: { residentId: string; incarnation: string; evidenceId: string; scope: string; at: string }[];
   builderId: string;
   spokenProofs: {
     lineId: string;
@@ -457,6 +430,7 @@ export type VillageProjectLifecycle = {
   evidenceIds: string[];
   commandReceipts: Record<string, string>;
   baseDesignHash: string;
+  roomBasis?: string[];
   changedZoneIds: string[];
   workOrder: {
     startsAt: string;
@@ -507,6 +481,7 @@ export type VillageProject = {
   };
   requesterCharacterId?: string;
   lifecycle?: VillageProjectLifecycle;
+  requesterIncarnation?: string;
 };
 
 export type VillagePendingDecision = {
@@ -521,6 +496,7 @@ export type VillagePendingDecision = {
   venueId?: string;
   requesterCharacterId?: string;
   requesterName?: string;
+  requesterIncarnation?: string;
   requestQuote?: string;
   source?: "chat" | "background";
   sourceKey?: string;
@@ -529,7 +505,7 @@ export type VillagePendingDecision = {
 export const RETURN_CATCHUP_HISTORY_LIMIT = 20;
 export type ReturnCatchupBatch = {
   id: string;
-  status: "queued" | "running" | "failed" | "recovering" | "completed" | "cancelled";
+  status: "queued" | "running" | "failed" | "completed" | "cancelled";
   /** Each batch is bounded by its captured calendar day and allowance. */
   budgetDate: string;
   opportunityLimit: number;
@@ -539,8 +515,8 @@ export type ReturnCatchupBatch = {
   opportunities?: ResidentPlanningOpportunity[];
   records?: {
     opportunityId: string;
-    status: "pending" | "queued" | "settling" | "settled" | "rejected" | "held";
-    heldStage?: "queued" | "settling";
+    status: "pending" | "queued" | "settled" | "rejected" | "held";
+    heldStage?: "queued";
     automaticRetryUsed?: true;
     outcome?: unknown;
     error?: string;
@@ -550,7 +526,8 @@ export type ReturnCatchupBatch = {
 };
 export type ReturnCatchupCapture = {
   at: string;
-  memoryRevision: number;
+  continuityRevision: number;
+  episodeRevision: number;
   world: Pick<
     VillageState,
     | "seed"
@@ -573,7 +550,8 @@ export type ReturnCatchupCapture = {
     | "venues"
     | "residences"
     | "projects"
-    | "relationshipContext"
+    | "residentPlans"
+    | "worldPlaces"
     | "opening"
   >;
 };
@@ -582,12 +560,11 @@ export type VillageState = {
   worldPlaces: import("./places.js").PlaceRegistry;
   narrative?: import("./narrative-model.js").NarrativeState;
   narrativeConsequence?: import("../../../shared/contracts/village.js").VillageNarrativeConsequence;
-  memories: import("./memories.js").MemoryCollection;
-  memoryScenes: Record<string, import("./memories.js").MemorySceneState>;
-  memoryReceipts: Record<string, import("./wish-check-model.js").ExchangeEffectReceipt>;
-  socialContractVersion: 2;
-  socialMailOutbox?: import("./social-mail.js").WorldSocialMailOutbox[];
-  socialPublications?: Record<string, true>;
+  continuity: import("./continuity-model.js").ContinuityCollection;
+  episodes: import("./episode-model.js").EpisodeCollection;
+  mailbox: import("./social-mail.js").MailboxState;
+  residentPlans: import("./resident-plans.js").ResidentPlans;
+  startingHistory: import("./starting-history-model.js").StartingHistoryState;
   eventAttempts?: import("../rules/event-attempts.js").EventAttemptLedger;
   /** Current work remains separate from the recent, terminal debug history. */
   returnCatchup?: {
@@ -595,30 +572,10 @@ export type VillageState = {
     batch?: ReturnCatchupBatch;
     history?: ReturnCatchupBatch[];
   };
-  socialClarifications?: { id: string; actorIds: string[]; text: string; at: string }[];
   opening?: import("../rules/opening-project.js").OpeningRecord;
-  semanticRequestReceipts?: Record<string, string>;
-  semanticContinuations?: Record<string, import("./exchange-model.js").ExchangeDomain[]>;
-  semanticStartingTies?: {
-    lore?: import("../../../shared/contracts/lore.js").LoreUse[];
-    preparedAt?: string;
-    sourceHash: string;
-    stateHash?: string;
-    ties: import("./relationship-types.js").StartingTie[];
-    conflicts?: { actorIds: string[]; question: string; sourceIds: string[] }[];
-    sources?: import("./relationship-types.js").SocialEvidence[];
-  };
-  /** Prepared residents awaiting their one-time, finite post-reset Wish attempt. */
-  exchangeReceipts: Record<string, import("./wish-check-model.js").ExchangeEffectReceipt>;
-  noticeSequence: number;
   dismissedNoticeIds: string[];
-  relationshipContext?: import("./relationship-types.js").RelationshipState;
-  socialOutbox?: import("./social-outbox-model.js").WorldSocialOutboxEntry[];
   backgroundReceipts: Record<string, string>;
-  /** Private expiry holds owned by unfinished Scenes or their retained final effects. */
-  version: 16;
-  /** Shared evidence engine used by Wishes. */
-  progressEngineVersion: 1;
+  version: 18;
   name: string;
   /** Per-village writing choices for live Scenes. */
   narrationStyle: VillageNarrationStyle;
@@ -648,23 +605,12 @@ export type VillageState = {
   personalizeVenueImagesByDefault: boolean;
   useVisualLoreByDefault: boolean;
   loreTokenBudget: number;
-  /**
-   * Every place the village has: the houses people live in, the player's own
-   * home, and everywhere anyone goes.
-   *
-   * One list rather than two. There used to be a `homes` array beside this one,
-   * and the two were the same thing with different fields — which is what made
-   * "can I walk into it?" a question with two answers. A house answers yes, and
-   * so does a mill.
-   */
+  /** Established village venues, including homes. */
   venues: VillageVenue[];
   /** Stable building kinds have labels the player can adapt to the village's world. */
   homeBuildingNames: Record<HomeBuildingKind, string>;
-  /** Physical-change receipts retain the Venue name even after deletion. */
-  venueEvents: VillageVenueEvent[];
-  /** Exact completed visit transcript retention. Missing older settings mean forever. */
+  /** Retention for completed visit transcripts. */
   visitRetention: { mode: "forever" | "count" | "days"; value: number };
-  /** One-time archive migration marker, so a player-deleted memory stays deleted. */
   /** A pending residence move is explicit and requires player approval. */
   residences: VillageResidence[];
   /**
@@ -723,7 +669,6 @@ export type VillageState = {
   projects: VillageProject[];
   /** Versioned evidence-backed task records; empty for villages that have not adopted the Progress Engine. */
   wishFollowing?: Record<string, boolean>;
-  progressTasks: ProgressTask[];
   pendingDecisions: VillagePendingDecision[];
   villagers: VillageVillager[];
   /** Writing styles retained when residents leave, keyed by character ID. */
@@ -1021,10 +966,8 @@ export type VillageSnapshot = ClientVisibleSnapshot<{
   sceneVenue?: { sceneId: string; venue: VillageSettingsView["venues"][number] };
   opening?: import("../../../shared/contracts/opening.js").OpeningView;
   clock?: import("../../../shared/contracts/clock.js").VillageClockView;
-  relationshipStartingPending?: boolean;
   backgroundWork: import("./background-model.js").BackgroundSummary[];
   status: "ready";
-  progressEngineVersion: 1;
   foundingPreparation:
     (NonNullable<VillageState["foundingPreparation"]> & { canPlay: boolean; startingHistoryReady: boolean }) | null;
   village: VillageMomentView;

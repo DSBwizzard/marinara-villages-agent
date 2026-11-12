@@ -8,7 +8,6 @@ export type VenueTiming = {
   stages: { stage: string; elapsedMs: number; reused: boolean }[];
 };
 export type VenueOperation = {
-  turnOutcome?: import("../../../shared/contracts/scene-turn-outcome.js").SceneTurnOutcome;
   timing?: VenueTiming;
   failure?: WorkFailure;
   id: string;

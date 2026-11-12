@@ -51,7 +51,6 @@ const snapshot = {
 const session = {
   version: 2,
   id: "live",
-  memoryMode: "live",
   sceneRevision: 1,
   placeId: "park",
   placeName: "The Park",
@@ -76,42 +75,44 @@ const session = {
   ],
 };
 const notices = [],
-  dismissed = new Set();
+  dismissed = new Set(),
+  hiddenWishes = new Set();
+const progressId = "notice:" + "a".repeat(64);
 let pending = true,
   failed = false,
   polls = 0,
   interpretations = 0,
   replays = 0,
   closingReviews = 0;
-let failedDomain = "memories";
-const interpretedDomains = [];
 let diagnosticReads = 0;
 const api = async (route) => {
-  const path = new URL(route.request().url()).pathname;
+  const url = new URL(route.request().url());
+  const path = url.pathname;
   let value = snapshot;
   if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity"))
     value = { session, debugDiscardEnabled: true };
   else if (path.endsWith("/changes/diagnostics")) {
     diagnosticReads++;
     assert.equal(route.request().method(), "GET");
-    value = { nextCursor: "1:2:3", hasMore: false, ownerEvidence: "PRIVATE_OWNER_DIAGNOSTIC" };
+    value = { nextCursor: "1", hasMore: false, ownerEvidence: "PRIVATE_OWNER_DIAGNOSTIC" };
   } else if (path.endsWith("/changes"))
     value = {
       changes: [],
-      notices: notices.filter((n) => !dismissed.has(n.id)),
+      notices: notices.filter((n) => !dismissed.has(n.id) && !hiddenWishes.has(n.id)),
       dismissedNoticeIds: [...dismissed],
+      hiddenWishNoticeIds: (url.searchParams.get("shownWishes") ?? "").split(",").filter((id) => hiddenWishes.has(id)),
       processingSummary: { pending: pending ? 1 : 0, failed: failed ? 1 : 0, rejected: 0 },
       unresolved: failed
         ? [
             {
               submissionId: "turn",
-              domain: failedDomain,
-              status: "failed",
-              reason: "A citation is unavailable or was not witnessed by every affected resident.",
+              status: "held",
+              at: now,
+              reason: "The saved reply needs review.",
             },
           ]
         : [],
-      nextCursor: String(++polls) + ":0:0",
+      nextCursor: String(++polls),
       hasMore: false,
     };
   else if (path.endsWith("/dismiss")) {
@@ -121,11 +122,10 @@ const api = async (route) => {
     value = { dismissed: true };
   } else if (path.endsWith("/interpret")) {
     interpretations++;
-    interpretedDomains.push(route.request().postDataJSON().domain);
-    failed = false;
-    value = {};
+    return fulfill(route, { status: 404, contentType: "application/json", body: '{"error":"Retired Scene route"}' });
   } else if (path.endsWith("/changes/replay")) {
     replays++;
+    failed = false;
     value = {};
   } else if (path.endsWith("/retry-memory") || path.endsWith("/leave-pending")) {
     closingReviews++;
@@ -183,7 +183,7 @@ await withBrowser(browser, async () => {
   await expect(detail).toHaveCount(0);
   await expect(trigger).toBeFocused();
   notices.push({
-    id: "wish-progress",
+    id: progressId,
     kind: "wish",
     text: "Wish progressed · Bob",
     detail: "Plant a garden together. A planting day remains undecided.",
@@ -225,6 +225,10 @@ await withBrowser(browser, async () => {
   await refresh(second);
   await expect(second.locator("[aria-label='World changes']")).not.toContainText(fulfilled.text);
   await second.close();
+  hiddenWishes.add(progressId);
+  await refresh();
+  await expect(stack).not.toContainText("Wish progressed");
+  await expect(stack).toContainText("A memory was forged.");
   const arrival = {
     id: "attendance",
     role: "assistant",
@@ -300,8 +304,8 @@ await withBrowser(browser, async () => {
   const chip = page.getByRole("button", { name: /^\d+ Scene errors?$/ });
   await chip.click();
   const status = page.getByRole("region", { name: "Scene errors" });
-  await expect(status).toContainText("The AI based a memory on words a resident didn’t hear.");
-  await expect(status.getByRole("button", { name: "Retry memories" })).toBeVisible();
+  await expect(status.getByRole("group", { name: "Saved reply needs review", exact: true })).toBeVisible();
+  await expect(status.getByRole("button", { name: /Retry/ })).toHaveCount(0);
   await page.setViewportSize({ width: 375, height: 740 });
   await page.screenshot({ path: "artifacts/memory-cause-phone.png" });
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -309,20 +313,8 @@ await withBrowser(browser, async () => {
   await status.getByRole("button", { name: "Replay" }).click();
   await expect.poll(() => replays).toBe(1);
   assert.equal(interpretations, 0);
-  await status.getByRole("button", { name: "Retry memories" }).click();
-  await expect.poll(() => interpretations).toBe(1);
-  failedDomain = "projects";
-  failed = true;
   await refresh();
-  await expect(chip).toBeVisible();
-  if ((await chip.getAttribute("aria-expanded")) !== "true") await chip.click();
-  await page.setViewportSize({ width: 375, height: 740 });
-  await page.screenshot({ path: "artifacts/project-recovery-phone.png" });
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await page.screenshot({ path: "artifacts/project-recovery-desktop.png" });
-  await status.getByRole("button", { name: "Retry projects" }).click();
-  await expect.poll(() => interpretations).toBe(2);
-  assert.deepEqual(interpretedDomains, ["memories", "projects"]);
+  await expect(chip).toHaveCount(0);
   assert.equal(diagnosticReads, 0, "Ordinary feed polling never requests owner diagnostics");
   for (const width of [375, 1280]) {
     await page.setViewportSize({ width, height: 900 });

@@ -1,21 +1,23 @@
 import { readPrivateDiagnostics } from "../packages/villages/src/server/adapters/observability/private-diagnostics.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
   boundedRejectedText,
   privateRejectedText,
   REJECTED_RESPONSE_TEXT_LIMIT,
 } from "../packages/villages/src/server/domain/rules/rejected-response.js";
-import {
-  responseDiagnostics,
-  sceneMissingFields,
-} from "../packages/villages/src/server/domain/rules/response-diagnostics.js";
+import { responseDiagnostics } from "../packages/villages/src/server/domain/rules/response-diagnostics.js";
 import { completeSceneObject } from "../packages/villages/src/server/domain/rules/scene-writing-contract.js";
-import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
+import { buildResidentPlanningMessages } from "../packages/villages/src/server/domain/rules/resident-planning.js";
 import { WorkFailureError } from "../packages/villages/src/server/domain/rules/work-failure.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
+import { createResidentPlanning } from "../packages/villages/src/server/features/residents/resident-planning-service.js";
 import {
   backgroundWorkSummaries,
   backgroundJobSnapshot,
@@ -30,13 +32,29 @@ import {
   readVenueOperation,
   rejectVenueCompletion,
 } from "../packages/villages/src/server/jobs/venue-coordinator.js";
-import { buildResidentPlanningMessages, proposeResidentChoices } from "./fixtures/resident-planning.fixture.js";
+import { residentPlanningInput } from "./fixtures/resident-planning.fixture.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 async function main() {
-  const state = defaultVillageState();
-  state.seed = "response-format-fixture";
-  state.setupAt = state.foundedAt = new Date().toISOString();
+  const at = new Date().toISOString();
+  const state = coerceVillageState({
+    ...defaultVillageState(),
+    seed: "response-format-fixture",
+    name: "QA",
+    setting: "A village",
+    timeZone: "UTC",
+    setupAt: at,
+    foundedAt: at,
+    villagers: [
+      {
+        characterId: "a",
+        incarnation: "ada-one",
+        letterFontId: "caveat",
+        addedAt: at,
+        cardSnapshot: { id: "a", name: "Ada", capturedAt: at, revision: 1, sourceStatus: "available" },
+      },
+    ],
+  });
   const rows = new Map<string, any>([
     ["villages-village", { id: "villages-village", packageId: "villages", kind: "village", data: state, revision: 1 }],
   ]);
@@ -80,6 +98,7 @@ async function main() {
   const model = {
     model: "fixture",
     connectionId: "fixture",
+    maxContext: 16000,
     maxOutputTokens: 4096,
     fitContext(messages: any[], options: any) {
       return { messages, ...options };
@@ -98,36 +117,27 @@ async function main() {
     getAgentConfig: async () => null,
     logger: { debug() {}, debugOverride() {}, info() {}, warn() {}, error() {} },
   } as any);
-  const context: any = {
-    village: "QA",
-    setting: "A village",
-    moment: deriveVillageMoment({ foundedAt: state.foundedAt, seed: state.seed, now: new Date() }),
-    residents: [
-      { characterId: "a", name: "Ada", summary: "Ada", doing: "Resting", profile: "Ada", wishes: [], agenda: {} },
-    ],
-    venues: [],
-    opportunities: [{ id: "opportunity", kind: "wish", actorIds: ["a"], venueId: "park", facts: ["A quiet morning"] }],
-    recent: [],
-  };
+  const planningInput = residentPlanningInput(state, "a", at, "routine-a");
+  const planning = createResidentPlanning({
+    activeVenueSession: async () => null,
+    readVillageState: async () => state,
+    readEffectiveVillagerCard,
+    queueBackgroundJob,
+    backgroundJobSnapshot,
+    villagesLanguageModels: () => ({ resolveForRequest: async () => model }) as any,
+    villagesConnectionIdFor: async () => "fixture",
+    completeWithRoom,
+  }).handler;
   const jsonOptions = { temperature: 0, debugMode: false, responseFormat: { type: "json_object" } };
-  const truncated =
-    '{"input":[],"segments":[{"kind":"narration","text":"The gate creaks."}],"memoryChanges":[{"text":"cut';
+  const truncated = '{"segments":[{"kind":"narration","text":"The gate creaks."}],"keep":[{"text":"cut';
   assert.equal(completeSceneObject(truncated, "length"), null);
   assert.equal(
-    responseDiagnostics(
-      model,
-      { content: truncated, finishReason: "length" },
-      1600,
-      null,
-      false,
-      sceneMissingFields(null),
-    ).parseStatus,
+    responseDiagnostics(model, { content: truncated, finishReason: "length" }, 1600, null).parseStatus,
     "invalid",
   );
-  const prompt = buildResidentPlanningMessages(context);
-  assert.match(prompt[1].content, /Review the supplied resident choices/);
-  assert.ok(!prompt[1].content.includes("What appears in Events?"));
-  assert.match(prompt[0].content, /"id":"opportunity"/);
+  const prompt = buildResidentPlanningMessages(planningInput.context);
+  assert.match(String(prompt[0].content), /A quiet result \{\} is valid/);
+  assert.deepEqual(JSON.parse(String(prompt[1].content)).opportunity, planningInput.context.narration.opportunity);
   const stop = startBackgroundWork();
   try {
     await completeWithRoom(model as any, [{ role: "user", content: "JSON" }], 3000, jsonOptions);
@@ -151,11 +161,13 @@ async function main() {
         kind: "venue-visit",
         revision: 1,
         data: {
-          version: 4,
+          version: 5,
+          villageSeed: state.seed,
           id,
           status: "active",
           sceneRevision: 0,
-          lastActivityAt: new Date().toISOString(),
+          startedAt: at,
+          lastActivityAt: at,
           lines: [],
           submissions: [],
           operation: {
@@ -242,7 +254,6 @@ async function main() {
     makeSaved("saved-paid", "complete", priorHash);
     const paidScene = rows.get("villages-venue-visit-saved-paid").data;
     paidScene.operation.attempts["turn:0:" + formatHash] = { status: "rejected" };
-    paidScene.submissions = [{ mode: "chat", id: "saved-paid" }];
     output = "not JSON";
     const beforePaid = calls;
     await assert.rejects(
@@ -346,12 +357,12 @@ async function main() {
       ["No entries yet — Events is empty.", "stop", "invalid_json"],
       ["", "stop", "empty_output"],
       ["{", "length", "output_limit"],
-      ["{}", "stop", "missing_result"],
+      ['{"encounter":{},"reflection":{}}', "stop", "missing_result"],
     ]) {
       output = content;
       finishReason = finish;
       const before = calls;
-      await assert.rejects(proposeResidentChoices(context), (error: any) => {
+      await assert.rejects(planning.generate(planningInput), (error: any) => {
         assert.ok(error instanceof WorkFailureError, String(error.stack));
         assert.equal(error.failure.cause, cause);
         assert.equal(error.failure.responseDiagnostics.responseLength, content.trim().length);
@@ -363,7 +374,7 @@ async function main() {
     output = "No entries yet — Events is empty.";
     finishReason = "stop";
     registerBackgroundHandler("agenda", {
-      generate: () => proposeResidentChoices(context),
+      generate: () => planning.generate(planningInput),
       valid: () => true,
       apply() {
         throw Error("Invalid output cannot apply");
@@ -397,48 +408,53 @@ async function main() {
       zoneId: "exterior",
       flexible: true,
     };
-    const social = { planId: "offered-plan" };
-    const supportedContext = {
-      ...context,
-      venues: [
-        {
-          id: "destination",
-          name: "Open home",
-          classes: ["residence"],
-          residentIds: [],
-          occupancy: { playerHome: false, residentCharacterId: null },
-        },
-      ],
-      social: { candidates: [{ id: "offered-plan" }], relationships: [] },
+    const supportedInput = {
+      ...planningInput,
+      context: {
+        ...planningInput.context,
+        housing: [{ characterId: "a", destinations: [{ id: "destination", name: "Open home" }] }],
+        plans: [
+          {
+            id: "offered-plan",
+            dateKey: planningInput.dateKey,
+            actors: [{ id: "a", incarnation: "ada-one" }],
+            venueId: "park",
+            zoneId: "exterior",
+            startMinute: 480,
+            endMinute: 510,
+            revisions: { a: "0".repeat(64) },
+            kind: "avoidance",
+            status: "planned",
+          },
+        ],
+      },
     };
-    output = JSON.stringify({
-      happenings: [
-        {
-          opportunityId: "opportunity",
-          kind: "wish",
-          actorIds: ["a"],
-          venueId: "park",
-          narration: "Ada rests beside the gate.",
-        },
-      ],
-      housingRequests: [{ who: "a", kind: "move", venueId: "destination" }],
+    const supported = {
+      housingRequests: [{ characterId: "a", venueId: "destination" }],
       routineIdea,
-      social,
-      memory: [{ text: "A private fact was invented", who: ["Ada"], private: true }],
-      notices: [{ author: "Ada", text: "A notice was invented" }],
-      venueRequests: [{ who: "Ada", name: "Unrequested hall", classes: ["community"] }],
-      featureEdits: [{ who: "Ada", venueId: "park", featureId: "wall", text: "An invented change" }],
-      lapsed: [{ who: "Ada", wish: "An invented loss" }],
-    });
+      planId: "offered-plan",
+    };
+    for (const unsupported of ["happenings", "memory", "notices", "venueRequests", "featureEdits", "lapsed"]) {
+      output = JSON.stringify({ ...supported, [unsupported]: [] });
+      const before = calls;
+      await assert.rejects(
+        planning.generate(supportedInput),
+        (error: any) => error.failure?.cause === "missing_result",
+      );
+      assert.equal(calls - before, 1);
+    }
+    output = JSON.stringify(supported);
     const beforeValid = calls;
-    const valid = await proposeResidentChoices(supportedContext);
-    assert.equal(Object.hasOwn(valid, "happenings"), false);
+    const valid = await planning.generate(supportedInput);
     assert.equal(calls - beforeValid, 1, "supported Events use one completion without repair");
-    assert.deepEqual(valid.housingRequests, [{ characterId: "a", kind: "move", venueId: "destination" }]);
-    assert.deepEqual(valid.routineIdea, routineIdea);
-    assert.deepEqual(valid.social, social);
-    for (const key of ["memory", "notices", "venueRequests", "featureEdits", "lapsed"])
-      assert.equal(Object.hasOwn(valid, key), false, `Events never admit the unsupported ${key} effect channel`);
+    assert.deepEqual(valid.proposal, { ...supported, keep: [], requires: [], commands: [] });
+    output = "{}";
+    assert.deepEqual((await planning.generate(planningInput)).proposal, {
+      keep: [],
+      requires: [],
+      commands: [],
+      housingRequests: [],
+    });
     providerError = true;
     const beforeError = calls;
     await assert.rejects(

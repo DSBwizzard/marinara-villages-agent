@@ -61,7 +61,7 @@ export type VenueAccessState = {
   exceptions: AccessException[];
   changes: AccessChange[];
   visitDenials: { zoneId: string; visitorId: string; sceneId: string; issuerId: string }[];
-  receipts: Record<string, { fingerprint: string; revision: number; outcome?: "applied" | "rejected" }>;
+  receipts: Record<string, { fingerprint: string; revision: number; outcome?: "rejected" }>;
 };
 export type AccessReason =
   | "entrance"
@@ -72,7 +72,6 @@ export type AccessReason =
   | "member"
   | "public"
   | "invitation"
-  | "regular-visitor"
   | "accompaniment-required"
   | "permission-required";
 export type ZoneAccessDecision = {

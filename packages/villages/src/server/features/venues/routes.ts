@@ -157,14 +157,7 @@ export function registerVenueManagementRoutes(engine: FastifyInstance) {
     "/residences/denials",
     async (request, reply) => {
       try {
-        return await decideVillageResidence(
-          request.body?.characterId,
-          false,
-          "player",
-          undefined,
-          undefined,
-          request.body?.expectedScope,
-        );
+        return await decideVillageResidence(request.body?.characterId, false, request.body?.expectedScope);
       } catch (error) {
         return fail(reply, error, "denying a residence change");
       }

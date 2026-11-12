@@ -1,4 +1,4 @@
-import type { VenueLine, VenueReplyLine, VenueScene } from "../models/scene-model.js";
+import type { VenueReplyLine, VenueScene } from "../models/scene-model.js";
 import type { VillageVenue } from "../models/world.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { badGateway, VillagesRequestError } from "./errors.js";
@@ -75,11 +75,7 @@ export function zoneEventScene(
     ...rotate(far).slice(0, 1),
     ...nearby,
   ];
-  const plannedZones = new Set(scene.semanticIntent?.timeline.map((step) => step.zoneId).filter(Boolean));
-  const required = remote.filter((person) => plannedZones.has(contactPosition(scene, person.characterId)));
-  const offered = [
-    ...new Map([...required, ...candidates].map((person) => [person.characterId, person])).values(),
-  ].slice(0, Math.max(4, required.length));
+  const offered = [...new Map(candidates.map((person) => [person.characterId, person])).values()].slice(0, 4);
   const priority = [
     ...named.filter((person) => person.characterId === intent.targetId).map((person) => person.characterId),
     ...named.map((person) => person.characterId),
@@ -135,78 +131,46 @@ export function zoneEventHearingContext(scene: VenueScene, venue: VillageVenue):
   );
 }
 
-/** Adapt only syntax before the existing parser; segment indexes never change. */
-export function zoneEventReply(raw: Record<string, unknown> | null, message: string): Record<string, unknown> | null {
-  if (!raw) return raw;
-  const segments = raw.segments;
-  if (!Array.isArray(segments)) return raw;
-  return {
-    ...raw,
-    heardPlayerBy: [],
-    segments: segments.map((value) => {
-      const row = { ...asRecord(value) };
-      const spoken = ["dialogue", "side", "whisper"].includes(String(row.kind));
-      if (row.delivery !== undefined && !["ordinary", "whisper", "shout"].includes(String(row.delivery)))
-        throw badGateway("The reply used an unknown speech delivery. Your draft is preserved.");
-      if (row.presentation !== undefined && !["main", "aside"].includes(String(row.presentation)))
-        throw badGateway("The reply used an unknown speech presentation. Your draft is preserved.");
-      if (spoken) {
-        row.delivery ??= row.kind === "whisper" ? "whisper" : "ordinary";
-        row.presentation ??= row.kind === "side" || row.kind === "whisper" ? "aside" : "main";
-        // Saved evidence tags remain independent of presentation.
-        row.kind = row.delivery === "whisper" ? "whisper" : row.presentation === "aside" ? "side" : "dialogue";
-      } else {
-        // Narrated sound carries its own range, independent of speech styling.
-        delete row.delivery;
-        delete row.presentation;
-      }
-      if (row.speakerId === "player") {
-        const text = asTrimmedString(row.text);
-        if (!spoken || !text || !message.includes(text))
-          throw badGateway("The reply invented player speech. Your draft is preserved.");
-        row.text = text;
-      }
-      return row;
-    }),
-  };
-}
-
 /** No model-authored audiences and no extra evidence lines or index remapping. */
 export function routeZoneEvents(
-  raw: Record<string, unknown>,
+  segments: readonly unknown[],
   scene: VenueScene,
-  parsed: { lines: VenueReplyLine[]; heardPlayerBy: string[] },
-  moves: ContactMove[],
+  lines: VenueReplyLine[],
+  moves: Pick<ContactMove, "characterId" | "zoneId" | "segment">[],
   playerMoves: readonly { zoneId: string; segment: number }[] = [],
 ) {
   const venue = scene.contactGeneration?.venue;
-  if (!venue || !Array.isArray(raw.segments)) return;
+  if (!venue) return;
   const ids = [
     ...new Set([...(scene.sceneAttendance?.occupants ?? []).map((person) => person.characterId), ...scene.activeIds]),
   ].filter((id) => !scene.departedIds?.includes(id));
   const playerZoneAt = (index: number) =>
     playerMoves.findLast((move) => move.segment <= index)?.zoneId ?? scene.zoneId ?? "exterior";
+  const orderedMoves = moves.toSorted((a, b) => a.segment - b.segment);
   const position = (id: string, index: number) =>
     id === "player"
       ? playerZoneAt(index)
-      : (moves.find((move) => move.characterId === id && move.segment <= index)?.zoneId ?? contactPosition(scene, id));
+      : scene.pendingNpcAdmissions?.some((arrival) => arrival.npc.id === id && arrival.segment > index)
+        ? ""
+        : (orderedMoves.findLast((move) => move.characterId === id && move.segment <= index)?.zoneId ??
+          contactPosition(scene, id));
   const inZones = (zones: string[], index: number) => ids.filter((id) => zones.includes(position(id, index)));
-  parsed.heardPlayerBy = [];
-  parsed.lines.forEach((line, index) => {
+  lines.forEach((line, index) => {
     const playerZone = playerZoneAt(index);
-    const row = asRecord((raw.segments as unknown[])[index]);
-    if (row.kind === "whisper" && line.kind !== "whisper")
-      throw badGateway("A whisper needs a recipient. Your draft is preserved.");
+    if (
+      moves.some((move) => move.segment === index) ||
+      playerMoves.some((move) => move.segment === index) ||
+      scene.pendingNpcAdmissions?.some((arrival) => arrival.segment === index)
+    )
+      line.physicalIdsAfter = inZones([playerZone], index);
+    const row = asRecord(segments[index]);
     const actor = line.speakerId;
     const origin = line.kind !== "narration" ? position(actor, index) : playerZone;
     const sources = scene.contactGeneration?.actorIds ?? [
       ...(scene.contactGeneration?.localIds ?? scene.activeIds),
       ...(scene.contactGeneration?.remoteIds ?? []),
     ];
-    if (
-      !origin ||
-      (line.kind !== "narration" && actor !== "player" && (!ids.includes(actor) || !sources.includes(actor)))
-    )
+    if (!origin || (line.kind !== "narration" && (!ids.includes(actor) || !sources.includes(actor))))
       throw badGateway("The reply used an unknown sound source. Your draft is preserved.");
     line.zoneId = origin;
     const local = inZones([origin], index);
@@ -227,12 +191,10 @@ export function routeZoneEvents(
         throw badGateway("A whisper needs a recipient in the same Zone. Your draft is preserved.");
       line.heardBy = local.filter((id) => id === actor || id === line.targetId);
     }
-    if (actor === "player") {
-      line.role = "user";
-      line.speakerId = "";
-      line.contactHidden = true;
-      line.attentionEvidence = true;
-    } else if (line.kind !== "narration") {
+    const playerWords =
+      speechDelivery(line) === "whisper" ? line.targetId === "player" : (loud ? near : [origin]).includes(playerZone);
+    if (line.kind === "narration" || playerWords) line.heardBy.push("player");
+    if (line.kind !== "narration") {
       line.viaDoorway = origin !== playerZone;
       line.contactHidden =
         (!loud && spoken ? origin !== playerZone : !playerNear) ||
@@ -292,8 +254,8 @@ export function routeZoneEvents(
       ids.filter((id) => position(id, index) === playerZone),
     );
   });
-  // Hidden player speech and inaudible events must never own visible bubbles.
-  const visible = parsed.lines
+  // Inaudible events cannot anchor visible asides.
+  const visible = lines
     .map((line, index) => ({ line, index }))
     .filter(({ line }) => !line.contactHidden || line.soundOnly?.player);
   let main = visible.filter(({ line }) => !isSceneAside(line));
@@ -305,19 +267,4 @@ export function routeZoneEvents(
     delete line.anchorIndex;
     if (isSceneAside(line)) line.anchorIndex = (main.findLast((entry) => entry.index < index) ?? main[0])?.index;
   }
-}
-
-/** A distant listener's history contains the cue, never the original words. */
-export function perceivedZoneLine(line: VenueLine, characterId: string): VenueLine {
-  return !line.heardBy.includes(characterId) && line.soundOnly?.characterIds.includes(characterId)
-    ? {
-        ...line,
-        speakerId: "__venue_scene__",
-        name: "Narration",
-        kind: "narration",
-        content: line.soundOnly.text,
-        heardBy: [...line.soundOnly.characterIds],
-        soundOnly: undefined,
-      }
-    : line;
 }

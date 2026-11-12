@@ -2,6 +2,7 @@ import { foundingReadyForPlay } from "../../domain/rules/founding-tasks.js";
 import type { VillageState, ResidentPlanningOpportunity, ReturnCatchupCapture } from "../../domain/models/world.js";
 import type { Handler } from "../../domain/models/background-model.js";
 import type { NarrativeAdmission } from "../../domain/models/narrative-model.js";
+import type { readWorldNarrativeInput } from "../../domain/decoding/narrative-codec.js";
 import {
   admitNarrative,
   applyNarrativeDevelopment,
@@ -14,21 +15,16 @@ import { activityDate, eventAttemptAvailable } from "../../domain/rules/event-at
 import { arrangementActivityAt, preferredActivityLane } from "../../domain/rules/activity-arbitration.js";
 import { backgroundRevision } from "../../domain/rules/background-revision.js";
 import { cloneVillageContext } from "../../domain/rules/world-context-copy.js";
-import {
-  returnCaptureRevision,
-  type RelationshipIdentity,
-  type WishIdentity,
-} from "../../domain/rules/return-capture-revision.js";
+import { returnCaptureRevision } from "../../domain/rules/return-capture-revision.js";
+import { departureContinuityAvailable } from "../../domain/rules/return-catchup-capture.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { fitVenueWritingMessages } from "../../domain/rules/venue-writing.js";
 import { ReturnOpportunityUnavailable, returnCatchupSubject } from "../../domain/rules/return-catchup-authority.js";
 import { conflict } from "../../domain/rules/errors.js";
 import { completionFailure, WorkFailureError } from "../../domain/rules/work-failure.js";
-import { WORLD_GM_INSTRUCTION } from "../../domain/rules/narrative-prompts.js";
+import { WORLD_GM_INSTRUCTION, worldNarrativeContext } from "../../domain/rules/narrative-prompts.js";
 
 type Ports = {
-  relationshipIdentity: RelationshipIdentity;
-  wishIdentity: WishIdentity;
   read: (options?: import("../../domain/models/world-repository.js").VillageMemoryRead) => Promise<VillageState>;
   mutate: (update: (state: VillageState) => void) => Promise<void>;
   socialSnapshot: () => Promise<VillageState>;
@@ -41,6 +37,31 @@ type Ports = {
   now: () => Date;
   afterCatchup: () => Promise<void>;
 };
+
+function capturedReturn(state: VillageState, input: ReturnType<typeof readWorldNarrativeInput>) {
+  const tracking = state.returnCatchup,
+    batch = tracking?.batch,
+    capture = tracking?.capture,
+    opportunity = input.opportunity;
+  if (
+    !batch ||
+    !capture ||
+    !opportunity ||
+    batch.id !== input.catchupBatchId ||
+    batch.status !== "running" ||
+    batch.from !== capture.at ||
+    batch.until !== input.returnUntil ||
+    batch.budgetDate !== input.dateKey ||
+    opportunity.startsAt < capture.at ||
+    opportunity.endsAt > batch.until! ||
+    !batch.opportunities?.some((row) => JSON.stringify(row) === JSON.stringify(opportunity)) ||
+    !departureContinuityAvailable(capture, state) ||
+    returnCaptureRevision(capture) !== input.captureRevision
+  )
+    return;
+  const record = batch.records?.find((row) => row.opportunityId === opportunity.id);
+  if (record?.status === "queued") return { capture, record };
+}
 
 /** Raw environmental authority shares the existing worker, allowance and provider queue. */
 export function createNarrative(ports: Ports) {
@@ -90,7 +111,7 @@ export function createNarrative(ports: Ports) {
       label: "World development",
       automaticDate: date,
       input: {
-        version: 1,
+        version: 2,
         grant,
         dateKey: date,
         ...(batchId
@@ -98,7 +119,7 @@ export function createNarrative(ports: Ports) {
               catchupBatchId: batchId,
               context: { catchup: true },
               opportunity,
-              captureRevision: returnCaptureRevision(capture, ports.relationshipIdentity, ports.wishIdentity),
+              captureRevision: returnCaptureRevision(capture),
               returnUntil: state.returnCatchup?.batch?.until,
             }
           : {}),
@@ -138,7 +159,7 @@ export function createNarrative(ports: Ports) {
         /* World remains independent. */
       }
     }
-    state = await ports.read();
+    state = await ports.read({ memories: true });
     const sourceId =
       "world:" + backgroundRevision([state.seed, state.eventAttempts?.lastAttemptAt ?? "", now.toISOString()]);
     const grant = admitNarrative(state, now.toISOString(), sourceId);
@@ -161,15 +182,15 @@ export function createNarrative(ports: Ports) {
     opportunity: ResidentPlanningOpportunity,
     capture: ReturnCatchupCapture,
   ): Promise<void> {
-    const live = await ports.read({ wishes: true });
+    const live = await ports.read({ memories: true });
     const batch = live.returnCatchup?.batch;
     if (
       batch?.id !== batchId ||
       batch.status !== "running" ||
       !batch.opportunities?.some((row) => JSON.stringify(row) === JSON.stringify(opportunity)) ||
       !live.returnCatchup?.capture ||
-      returnCaptureRevision(live.returnCatchup.capture, ports.relationshipIdentity, ports.wishIdentity) !==
-        returnCaptureRevision(capture, ports.relationshipIdentity, ports.wishIdentity)
+      !departureContinuityAvailable(capture, live) ||
+      returnCaptureRevision(live.returnCatchup.capture) !== returnCaptureRevision(capture)
     )
       throw new ReturnOpportunityUnavailable("The historical world opportunity changed.");
     const historical = cloneVillageContext({ ...live, ...capture.world });
@@ -190,7 +211,7 @@ export function createNarrative(ports: Ports) {
   const handler: Handler = {
     authority: "raw",
     async generate(input) {
-      const result = await ask(WORLD_GM_INSTRUCTION, input.grant, 3000);
+      const result = await ask(WORLD_GM_INSTRUCTION, worldNarrativeContext(input.grant), 3000);
       if (result.quiet === true && Object.keys(result).length === 1) return { quiet: true };
       if (result.quiet !== false || !result.development)
         throw new WorkFailureError({
@@ -201,7 +222,7 @@ export function createNarrative(ports: Ports) {
       return { quiet: false, development: readNarrativeDevelopment(result.development, input.grant) };
     },
     valid(state, input) {
-      if (input.version !== 1 || state.backgroundPace === "off") return false;
+      if (input.version !== 2 || state.backgroundPace === "off") return false;
       if (state.narrative?.receipts.some((row) => row.id === input.grant.id && row.rejected)) return false;
       const grant = input.grant as NarrativeAdmission;
       const claimed = state.narrative?.claims?.some((row) => row.id === grant.id);
@@ -211,14 +232,11 @@ export function createNarrative(ports: Ports) {
         if (claimed) throw error;
         return false;
       }
-      if (
-        input.catchupBatchId &&
-        (state.returnCatchup?.batch?.id !== input.catchupBatchId ||
-          state.returnCatchup.batch.until !== input.returnUntil ||
-          returnCaptureRevision(state.returnCatchup.capture, ports.relationshipIdentity, ports.wishIdentity) !==
-            input.captureRevision)
-      )
+      if (input.catchupBatchId && !capturedReturn(state, input)) {
+        if (claimed)
+          throw conflict("The departure continuity or opportunity changed. The saved World result is retained.");
         return false;
+      }
       const claim = state.narrative?.claims?.find((row) => row.id === grant.id);
       return !!claim || grant.reviewBasis === (state.eventAttempts?.lastAttemptAt ?? "");
     },
@@ -246,34 +264,24 @@ export function createNarrative(ports: Ports) {
       });
     },
     apply(state, input, result) {
+      const historical = input.catchupBatchId ? capturedReturn(state, input) : undefined;
+      if (input.catchupBatchId && !historical)
+        throw conflict("The departure continuity or opportunity changed. The saved World result is retained.");
       const receipt = !result.quiet ? applyNarrativeDevelopment(state, input.grant, result.development) : null;
       if (state.narrative?.claims)
         state.narrative.claims = state.narrative.claims.filter((row) => row.id !== input.grant.id);
-      if (input.catchupBatchId) {
-        const tracking = state.returnCatchup!;
-        const record = tracking.batch?.records?.find((row) => row.opportunityId === input.opportunity.id);
-        if (!record || !tracking.capture || tracking.batch?.id !== input.catchupBatchId)
-          throw conflict("World catch-up changed.");
+      if (historical) {
+        const { capture, record } = historical;
         record.status = "settled";
         record.outcome = structuredClone(result);
-        if (receipt && tracking.capture.world.narrative) {
-          mergeNarrativeAfter(tracking.capture.world.narrative, receipt.after);
-          tracking.capture.world.narrative.receipts.push(structuredClone(receipt));
-          tracking.capture.world.narrative.revision++;
+        if (receipt && capture.world.narrative) {
+          mergeNarrativeAfter(capture.world.narrative, receipt.after);
+          capture.world.narrative.receipts.push(structuredClone(receipt));
+          capture.world.narrative.revision++;
         }
-        tracking.capture.world.eventAttempts = structuredClone(state.eventAttempts);
-        for (const target of (input.grant as NarrativeAdmission).targets) {
-          const before = tracking.capture.world.venues
-            .find((row) => row.id === target.venueId)
-            ?.zones?.find((row) => row.id === target.zoneId);
-          const after = state.venues
-            .find((row) => row.id === target.venueId)
-            ?.zones?.find((row) => row.id === target.zoneId);
-          if (before && after) {
-            before.description = after.description;
-            before.state = structuredClone(after.state);
-          }
-        }
+        capture.world.eventAttempts = structuredClone(state.eventAttempts);
+        capture.continuityRevision = state.continuity.revision;
+        capture.episodeRevision = state.episodes.revision;
       }
     },
     afterApply: async (input) => {

@@ -14,6 +14,7 @@ import { captureReturnContext } from "../packages/villages/src/server/domain/rul
 import { createReturnCatchup } from "../packages/villages/src/server/features/background/return-catchup-service.js";
 import { createBackgroundWork } from "../packages/villages/src/server/jobs/background-service.js";
 import { villageSchedulerDelayMs } from "../packages/villages/src/server/jobs/village-refresh-scheduler.js";
+import { residentPlanningInput } from "./fixtures/resident-planning.fixture.js";
 
 const scheduled = defaultVillageState();
 scheduled.seed = "activity";
@@ -164,8 +165,20 @@ for (const evidence of ["unstarted", "paid", "uncertain", "retry"] as const) {
 let instant = new Date("2026-10-31T23:59:00Z");
 let world = defaultVillageState();
 world.seed = "month-rollover";
-world.setupAt = instant.toISOString();
+world.setupAt = world.foundedAt = instant.toISOString();
 world.timeZone = "UTC";
+world = coerceVillageState({
+  ...world,
+  villagers: [
+    {
+      characterId: "actor",
+      incarnation: "actor-one",
+      letterFontId: "caveat",
+      addedAt: world.setupAt,
+      cardSnapshot: { id: "actor", name: "Actor", capturedAt: world.setupAt, revision: 1, sourceStatus: "available" },
+    },
+  ],
+});
 const releaseClock = configureVillageClock({
   now: () => new Date(instant),
   observe: async () => ({}) as any,
@@ -248,26 +261,7 @@ try {
     finite: false,
     label: "Activity",
     automaticDate: "2026-10-31",
-    input: {
-      admitted: {
-        seed: world.seed,
-        setupAt: world.setupAt,
-        villagers: [
-          {
-            letterFontId: "caveat",
-            characterId: "actor",
-            cardSnapshot: { name: "Actor", capturedAt: world.setupAt },
-            wishes: [],
-          },
-        ],
-      },
-      opportunity: { actorIds: ["actor"] },
-      actorIncarnations: { actor: world.setupAt },
-      context: {
-        residents: [{ characterId: "actor", capturedAt: world.setupAt, wishes: [] }],
-        social: { state: undefined },
-      },
-    },
+    input: residentPlanningInput(world, "actor", instant.toISOString(), "october"),
   });
   await service.settleBackgroundWork();
   const outcome = (await service.backgroundWorkSummaries())[0]!;

@@ -4,6 +4,7 @@ export type PersonalMailThread = {
   id: string;
   residentId: string;
   residentName: string;
+  former?: true;
   letterFontId?: string;
   revision: number;
 };

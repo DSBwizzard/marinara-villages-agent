@@ -25,13 +25,13 @@ function App(){
   return <><style>{VILLAGES_SCENE_STYLES}</style><div style={{position:'relative',margin:16}}>
     <SceneErrorChip open={open} onOpen={setOpen} loadDetails={()=>{
       window.detailReads++; return new Promise(resolve=>window.finishDetails=()=>resolve({errors:[
-        {id:'memory-failure',details:JSON.stringify({failure:{cause:'missing_result',stage:'metadata',detail:'memories[0].text must be a nonempty string.'}})}
+        {id:'reply-failure',details:JSON.stringify({failure:{cause:'invalid_json',stage:'scene-response',detail:'The Scene response was not complete JSON.'}})}
       ]}));
     }} items={[
-      {id:'blank',title:'Memory update',domain:'memories',message:'memories[0].text must be a nonempty string.',diagnosticId:'memory-failure'},
+      {id:'parse',title:'Reply',message:'The Scene response was not complete JSON.',diagnosticId:'reply-failure'},
       {id:'hearing',title:'Memory evidence',message:'The AI based a memory on words the resident didn’t hear.'},
       {id:'network',title:'AI connection',message:'The game couldn’t reach the AI service.'},
-      {id:'length',title:'Reply',message:'System interpretation was truncated. Explicit retry required.'},
+      {id:'length',title:'Response length',message:'The response was truncated.'},
     ].map(item=>({...item,fields:[{label:'Scene ID',value:'private-scene-id'},{label:'Scene',value:'Breakwater Bungalow'}]}))}/>
   </div></>;
 }
@@ -56,13 +56,13 @@ await withBrowser(browser, async () => {
     await page.getByRole("button", { name: "4 Scene errors", exact: true }).click();
     const panel = page.getByRole("region", { name: "Scene errors", exact: true });
     for (const message of [
-      "The AI left a memory blank.",
+      "The AI returned a reply the game couldn’t read.",
       "The AI based a memory on words the resident didn’t hear.",
       "The game couldn’t reach the AI service.",
       "The AI stopped before it finished the reply.",
     ])
       await expect(panel.getByText(message, { exact: true })).toBeVisible();
-    await expect(panel).not.toContainText(/private-scene-id|retry required|transcript|memories\[0\]/);
+    await expect(panel).not.toContainText(/private-scene-id|retry required|transcript|complete JSON/);
     assert.equal(await page.evaluate(() => window.detailReads), 0, "opening errors never loads owner diagnostics");
     const box = await panel.boundingBox();
     assert.ok(box.x >= 0 && box.x + box.width <= width, "error text stays within the phone viewport");
@@ -80,8 +80,8 @@ await withBrowser(browser, async () => {
     await page.evaluate(() => window.finishDetails());
     await expect(panel.getByRole("button", { name: "Copied", exact: true })).toBeVisible();
     const copied = await page.evaluate(() => window.copied);
-    assert.match(copied, /Original error: memories\[0\]\.text must be a nonempty string/);
-    assert.match(copied, /"cause":"missing_result"/);
+    assert.match(copied, /Original error: The Scene response was not complete JSON/);
+    assert.match(copied, /"cause":"invalid_json"/);
     assert.match(copied, /private-scene-id/);
     assert.equal(copied.match(/Scene ID:/g)?.length, 1);
     assert.ok(copied.length < 2500);

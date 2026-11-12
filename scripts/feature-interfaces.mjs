@@ -14,8 +14,8 @@ export const serverFeatureInterfaces = Object.freeze({
     "foundingPreparationSnapshot",
     "assertFoundedVillageReady",
   ],
-  "founding/village-bootstrap.ts": ["interpretSocialSource", "draftVillageVenueDescriptions"],
-  "generation/model-requests.ts": ["completeWithRoom"],
+  "founding/village-bootstrap.ts": ["draftVillageVenueDescriptions"],
+  "generation/model-requests.ts": ["completeWithRoom", "reopenSavedResponse"],
   "media/image-generation.ts": [
     "resolveVillageImageConnectionId",
     "resolveVillageImageEditing",
@@ -32,11 +32,6 @@ export const serverFeatureInterfaces = Object.freeze({
   "media/town-map-image.ts": ["generateVillageTownMap"],
   "media/town-map-review.ts": ["prepareVillageMap", "createVillageMap", "updateVillageMap"],
   "media/sprite-setup.ts": ["preparedSpriteManager"],
-  "projects/project-evidence.ts": [
-    "recordProjectSpokenEvidence",
-    "processProjectSpeechTurn",
-    "listProjectEvidenceCandidates",
-  ],
   "projects/project-lifecycle.ts": [
     "saveProjectPlan",
     "draftNewVenueProject",
@@ -52,10 +47,6 @@ export const serverFeatureInterfaces = Object.freeze({
     "reviseRenovationProject",
     "renewRenovationApprovals",
   ],
-  "residents/live-memory.ts": ["processLiveMemories", "processLiveRelationships"],
-  "residents/social-mail.ts": ["processPersonalMailOutbox"],
-  "residents/relationship-social.ts": ["processSocialOutbox", "recoverSocialOutbox"],
-  "residents/relationship-store.ts": ["readRelationshipState", "mutateRelationships", "persistRelationshipAuthority"],
   "residents/resident-agendas.ts": [
     "readFoundingResidentContext",
     "queueVillagerAgenda",

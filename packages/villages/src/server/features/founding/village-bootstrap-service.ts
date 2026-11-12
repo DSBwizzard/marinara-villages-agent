@@ -1,16 +1,12 @@
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import type { LoreUse } from "../../../shared/contracts/lore.js";
-import { createHash } from "node:crypto";
-import { PLACE_UPDATE_INSTRUCTION } from "../../domain/rules/zone-continuity.js";
-import { asRecord } from "../../domain/rules/coerce.js";
+
 import type { villagesLanguageModels } from "../../adapters/models/language-models.js";
 import { badRequest } from "../../domain/rules/errors.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { boundText, MAX_VENUE_DESCRIPTION_LENGTH, MAX_VENUE_NAME_LENGTH } from "../../domain/rules/prompt-preset.js";
-import { RELATIONSHIP_REVIEW_INSTRUCTION } from "../../domain/rules/relationship-review.js";
-import { SCENE_MEMORY_INSTRUCTION } from "../../domain/rules/scene-memories.js";
-import { readSocialWishChanges, SOCIAL_WISH_INSTRUCTION } from "../../domain/rules/social-wishes.js";
+
 import type { completeWithRoom } from "../generation/model-requests.js";
 import type { villagesConnectionIdFor } from "../settings/connections.js";
 
@@ -76,91 +72,6 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
     return result;
   }
 
-  async function interpretSocialSource(
-    lines: unknown,
-    context: {
-      state?: import("../../domain/models/relationship-types.js").RelationshipState;
-      candidates: unknown[];
-      relationships: string[];
-      residents: Pick<
-        import("../../domain/models/world.js").VillageVillager,
-        "characterId" | "cardSnapshot" | "wishes"
-      >[];
-      memory?: ReturnType<typeof import("../../domain/rules/scene-memories.js").sceneMemoryContext>;
-      at: string;
-      place?: unknown;
-      possibleMemoryEffects?: unknown;
-      committedPhysical?: unknown;
-      originalPlaceUpdate?: unknown;
-    },
-    mail: boolean,
-    options: { signal?: AbortSignal } = {},
-  ) {
-    const model = await villagesLanguageModels().resolveForRequest({
-      connectionId: await villagesConnectionIdFor("system"),
-    });
-    const reviewMessages = [
-      {
-        role: "system" as const,
-        content:
-          RELATIONSHIP_REVIEW_INSTRUCTION +
-          " Return JSON only. Independently interpret these supplied exact lines. Return a memoryChanges array using the native Memory contract supplied below, grounded only in actual witnessed dialogue; use an empty array when none are supported. Use zero-based numeric lineIds into lines for social citations. For an encounter the player is absent: disclosures must be empty. For personal mail the recipient is player; save its disclosures for reading. The captured and live social baseline is context.state; absent pair revisions are 0. sceneAfter and liveAfter coincide for this automatic source. Mail cannot grant access or create actionable invitations; return permissions:[] for mail. Do not invent physical deeds or player consent. Private reasons and intentions remain private. " +
-          (mail
-            ? ""
-            : " Return consistent:true only if every narrated physical outcome is supported. Otherwise consistent:false; never rewrite source facts. possibleMemoryEffects lists a pending physical receipt: dependent physical facts need its exact effectId with validated-event support, and a supported matching placeUpdate. When committedPhysical is supplied, physical truth is already settled: preserve the original physical nomination and use its saved outcome while reinterpreting social meaning. " +
-              PLACE_UPDATE_INSTRUCTION) +
-          SCENE_MEMORY_INSTRUCTION +
-          "\n" +
-          SOCIAL_WISH_INSTRUCTION,
-      },
-      {
-        role: "user" as const,
-        content: JSON.stringify({ lines, mode: mail ? "mail" : "encounter", context, now: context.at }),
-      },
-    ];
-    const fittedReview = model.fitContext(reviewMessages, { maxTokens: 4096 });
-    if (fittedReview.trimmed || JSON.stringify(fittedReview.messages) !== JSON.stringify(reviewMessages))
-      throw new Error("Offscreen semantic evidence does not fit System context.");
-    const judged = await completeWithRoom(model, reviewMessages, Math.min(fittedReview.maxTokens ?? 4096, 4096), {
-      responseFormat: { type: "json_object" },
-      temperature: 0.1,
-      reasoningEffort: "low",
-      debugMode: false,
-      usagePurpose: "checks",
-      signal: options.signal,
-    });
-    const interpreted = extractModelJsonObject(judged);
-    const review = interpreted?.relationshipReview as Record<string, unknown> | undefined;
-    if (
-      judged.finishReason === "length" ||
-      !review ||
-      !Array.isArray(interpreted?.wishChanges) ||
-      interpreted.wishChanges.length > 16 ||
-      !Array.isArray(interpreted?.memoryChanges) ||
-      interpreted.memoryChanges.length > 16 ||
-      !["changes", "permissions", "disclosures"].every((key) => Array.isArray(review[key]))
-    )
-      throw new Error("Offscreen interpretation is incomplete; explicit retry required.");
-    if (
-      !mail &&
-      Array.isArray(lines) &&
-      lines.some((line) => asRecord(line).kind === "narration") &&
-      interpreted?.consistent !== true
-    )
-      throw new Error("The saved encounter contains unsupported physical outcomes.");
-    const record: Record<string, unknown> = {
-      relationshipReview: review,
-      placeUpdate: mail ? null : (interpreted?.placeUpdate ?? null),
-      physicalConsistent: !mail && interpreted?.consistent === true,
-    };
-    if (context.memory) record.memoryContexts = { [context.memory.saved.protection.fingerprint]: context.memory.saved };
-    record.semanticVersion = 2;
-    record.memoryChanges = interpreted!.memoryChanges;
-    record.wishChanges = readSocialWishChanges(interpreted!.wishChanges);
-    record.semanticSourceHash = createHash("sha256").update(JSON.stringify(reviewMessages)).digest("hex");
-    return record;
-  }
-
-  return { draftVillageVenueDescriptions, interpretSocialSource };
+  return { draftVillageVenueDescriptions };
 }
 export type VillageBootstrapService = ReturnType<typeof createVillageBootstrap>;

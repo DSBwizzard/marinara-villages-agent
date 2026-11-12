@@ -51,21 +51,13 @@ function owner() {
 }
 const live = owner(),
   departure = owner(),
-  social = owner(),
-  mail = owner();
+  replacement = owner();
 const world = {
   ...live.world,
   setting: `/api/sprites/${assetId}/file/${name}.png`,
   returnCatchup: { capture: { world: departure.world } },
-  socialOutbox: [{ admitted: social.world }],
-  socialMailOutbox: [{ input: { admitted: mail.world } }],
 };
-assert.deepEqual(retainedSpriteFiles("village", world), [
-  ...live.refs,
-  ...departure.refs,
-  ...social.refs,
-  ...mail.refs,
-]);
+assert.deepEqual(retainedSpriteFiles("village", world), [...live.refs, ...departure.refs]);
 assert.deepEqual(
   retainedSpriteFiles("sprite-setup", { manager: live.manager, assignments: [], useSprites: false }),
   live.refs,
@@ -80,16 +72,13 @@ assert.deepEqual(
 for (const kind of ["background-work", "background-history"]) {
   assert.deepEqual(
     retainedSpriteFiles(kind, {
-      kind: "personal-mail",
-      input: { admitted: mail.world },
-      replacement: { kind: "resident-planning", input: { admitted: social.world } },
+      kind: "resident-planning",
+      input: { catchup: { world: departure.world } },
+      replacement: { kind: "resident-planning", input: { catchup: { world: replacement.world } } },
     }),
-    [...mail.refs, ...social.refs],
+    [...departure.refs, ...replacement.refs],
   );
-  assert.deepEqual(
-    retainedSpriteFiles(kind, { kind: "social-recovery", input: { entry: { admitted: social.world } } }),
-    social.refs,
-  );
+  assert.deepEqual(retainedSpriteFiles(kind, { kind: "resident-planning", input: { setting: world.setting } }), []);
 }
 assert.throws(() => retainedSpriteFiles("sprite-setup", {}), /missing/);
 const broken = structuredClone(live.world);

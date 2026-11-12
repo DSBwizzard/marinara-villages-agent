@@ -2,10 +2,9 @@ import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { defaultVillageState } from "../decoding/village-codec.js";
 import { RETURN_CATCHUP_HISTORY_LIMIT, type ReturnCatchupBatch, type VillageState } from "../models/world.js";
 import { calendarReplay } from "./clock-state.js";
-import { captureReturnContext, departureMemoriesAvailable } from "./return-catchup-capture.js";
+import { captureReturnContext, departureContinuityAvailable } from "./return-catchup-capture.js";
 import { returnCatchupOpportunities } from "./return-catchup-opportunities.js";
 import { localDateKey, planningAllowance } from "./resident-planning.js";
-import { sameRelationshipContext } from "./world-context-copy.js";
 
 /** Retain recent finished accounts without copying departure snapshots or active work. */
 const HISTORY_BYTES = 512 * 1024;
@@ -46,19 +45,16 @@ export function discoverReturnBatch(state: VillageState, now: Date, id: string):
   let reason = "";
   if (calendarReplay(state, localNow)) reason = "The calendar is replaying a previously visited date.";
   else {
-    const historical = { ...defaultVillageState(), ...capture.world };
-    const residentEligible =
-      !!state.relationshipContext &&
-      !!capture.world.relationshipContext &&
-      departureMemoriesAvailable(capture, state) &&
-      sameRelationshipContext(state.relationshipContext, capture.world.relationshipContext);
+    const residentEligible = departureContinuityAvailable(capture, state);
+    const historical = {
+      ...defaultVillageState(),
+      ...capture.world,
+      ...(residentEligible ? { continuity: state.continuity, episodes: state.episodes } : {}),
+    };
     const selected = returnCatchupOpportunities(historical, new Date(capture.at), now, remaining, residentEligible);
     opportunities = selected.opportunities;
     reason = selected.reason;
-    if (!residentEligible)
-      reason += !departureMemoriesAvailable(capture, state)
-        ? " Resident memories changed after departure."
-        : " Resident relationships changed after departure.";
+    if (!residentEligible) reason += " Continuity changed after departure.";
   }
   if (prior?.id === id || tracking.history?.some((row) => row.id === id)) return;
   if (prior) tracking.history = rememberFinishedBatch(tracking.history ?? [], prior);

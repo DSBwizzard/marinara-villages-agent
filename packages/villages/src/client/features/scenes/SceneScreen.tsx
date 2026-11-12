@@ -1,9 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  isSceneTurnOutcome,
-  isSceneTurnOutcomeMessage,
-  sceneTurnOutcomeMessage,
-} from "../../../shared/contracts/scene-turn-outcome.js";
 import type { RoomOperation, SceneView } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
@@ -65,20 +60,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     (message: string) => reportSettingsError("diagnostics", "Saved change diagnostics unavailable", message),
     [reportSettingsError],
   );
-  const restoreRoomDraft = controller.setRoomDraft;
-  const currentOperation = controller.room?.operation;
-  const editVersionRef = controller.composerEditVersionRef;
-  const showInformation = controller.setRoomRuling;
-  const restoredInformation = useRef("");
-  useEffect(() => {
-    const operation = currentOperation;
-    const key = `${sceneId}:${operation?.id}`;
-    if (!operation || !isSceneTurnOutcome(operation.turnOutcome) || restoredInformation.current === key) return;
-    restoredInformation.current = key;
-    if (editVersionRef.current !== 0) return;
-    restoreRoomDraft((current) => current || operation.input?.message || "");
-    showInformation(sceneTurnOutcomeMessage(operation.turnOutcome));
-  }, [sceneId, currentOperation, editVersionRef, showInformation, restoreRoomDraft]);
   const {
     closeRoom,
     composerEditVersionRef,
@@ -108,12 +89,10 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     roomGreetingError,
     roomGreetingNotice,
     roomLeaveSubmissionIdRef,
-    roomMode,
     contactRecovery,
     setContactRecovery,
     roomNotices,
     roomOpen,
-    roomRuling,
     roomSubmissionIdRef,
     roomUnresolvedChanges,
     sendRoom,
@@ -122,7 +101,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     setRoomBusy,
     setRoomDraft,
     setRoomError,
-    setRoomMode,
     openVenue,
     snapshot,
   } = controller;
@@ -204,7 +182,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           }
           picture={venuePictureOf(room.status === "closed" ? sceneVenues : (snapshot?.settings.venues ?? []), room)}
           draft={roomDraft}
-          mode={roomMode}
           contactRecovery={contactRecovery?.sceneId === room.id ? contactRecovery : null}
           recoveryDestination={(() => {
             const input = contactRecovery?.sceneId === room.id ? contactRecovery.operation.input : undefined;
@@ -300,7 +277,11 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
                 if (zone.closed) return false;
                 return zone.accessView?.decision.allowed ?? false;
               })
-              .map((zone) => ({ id: zone.id, label: sceneZoneLabel(zone), closed: zone.closed }));
+              .map((zone) => ({
+                id: zone.id,
+                label: sceneZoneLabel(zone) + (zone.accessView?.decision.reason === "invitation" ? " (invited)" : ""),
+                closed: zone.closed,
+              }));
           })()}
           onMovementTarget={(zoneId) => void moveRoom(zoneId)}
           currentZoneLabel={sceneZoneLabel(
@@ -314,7 +295,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           }
           draftWhilePending={controller.replyPending}
           greetingNotice={roomGreetingNotice}
-          ruling={roomRuling}
           open={roomOpen}
           ended={roomEnded}
           playerName={room.playerName ?? playerDisplayName(snapshot)}
@@ -324,20 +304,14 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
             (snapshot?.villagers ?? []).map((villager) => [villager.characterId, villager.sprite]),
           )}
           onDraft={(value) => {
-            if (isSceneTurnOutcomeMessage(roomRuling)) controller.setRoomRuling("");
             composerEditVersionRef.current++;
             roomSubmissionIdRef.current = null;
             roomLeaveSubmissionIdRef.current = null;
             setRoomDraft(value);
           }}
-          onMode={(value) => {
-            if (isSceneTurnOutcomeMessage(roomRuling)) controller.setRoomRuling("");
-            composerEditVersionRef.current++;
-            roomSubmissionIdRef.current = null;
-            setRoomMode(value);
-          }}
           sendOnEnter={snapshot?.settings.sendOnEnter === true}
-          onSend={() => void (roomMode === "conclude" ? leaveRoom() : sendRoom())}
+          onSend={() => void sendRoom()}
+          onConclude={() => void leaveRoom()}
           onViewVenue={() => {
             const place = snapshot?.settings.venues.find((place) => place.id === room.placeId);
             if (place) openVenue(place);
@@ -350,45 +324,19 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           onOpenWish={(actorId, wishId) => {
             openPerson({ actorId, wishId, section: "wishes", returnTo: "room" });
           }}
-          changeStatus={room?.memoryMode === "live" ? roomChangeStatus : undefined}
+          changeStatus={room.id ? roomChangeStatus : undefined}
           unresolvedChanges={roomUnresolvedChanges}
-          onContinueChange={(submissionId, domain) => {
-            if (!room?.id || roomBusy) return;
-            setRoomBusy(true);
-            void request(`/rooms/${encodeURIComponent(room.id)}/changes/${encodeURIComponent(submissionId)}/continue`, {
-              method: "POST",
-              body: JSON.stringify({ domain }),
-            })
-              .catch((cause) => setRoomError(messageFrom(cause, "Could not continue.")))
-              .finally(() => setRoomBusy(false));
-          }}
-          onRetryChangeInterpretation={(submissionId, domain) => {
-            if (!room?.id || roomBusy) return;
-            setRoomBusy(true);
-            void request(
-              `/rooms/${encodeURIComponent(room.id)}/changes/${encodeURIComponent(submissionId)}/interpret`,
-              {
-                method: "POST",
-                body: JSON.stringify({ domain, retryOfAttemptId: room.operation?.attemptId }),
-              },
-            )
-              .catch(async (cause) => {
-                setRoomError(messageFrom(cause, "Interpretation needs an explicit retry."));
-                const result = await request<{ operation: RoomOperation | null }>(
-                  `/rooms/${encodeURIComponent(room.id)}/operation`,
-                ).catch(() => null);
-                if (result)
-                  setRoom((current) =>
-                    current?.id === room.id ? { ...current, operation: result.operation } : current,
-                  );
-              })
-              .finally(() => setRoomBusy(false));
-          }}
           onReplayChanges={() => {
-            if (!room?.id) return;
-            void request(`/rooms/${encodeURIComponent(room.id)}/changes/replay`, { method: "POST" }).catch((cause) =>
-              setRoomError(messageFrom(cause, "World changes could not be replayed.")),
-            );
+            if (!room?.id || roomBusy) return;
+            setRoomBusy(true);
+            void (async () => {
+              await request("/rooms/" + encodeURIComponent(room.id) + "/changes/replay", { method: "POST" });
+              const active = await request<{ session: SceneView | null }>("/rooms/active");
+              if (active.session?.id === room.id) setRoom(active.session);
+              await loadSnapshot();
+            })()
+              .catch((cause) => setRoomError(messageFrom(cause, "Could not replay the saved reply.")))
+              .finally(() => setRoomBusy(false));
           }}
           debugDiscardEnabled={debugDiscardEnabled}
           onDebugDiscard={() => void discardRoomDebug()}
@@ -420,16 +368,9 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           onProposals={() => openMenu("venueRequests")}
           spriteCardFlipEnabled={snapshot?.settings.spriteCardFlipEnabled !== false}
           sceneSettings={
-            <>
-              {room.memoryMode === "live" ? (
-                <SavedChangesDiagnostics
-                  key={room.id}
-                  sceneId={room.id}
-                  api={request}
-                  onError={reportDiagnosticsError}
-                />
-              ) : null}
-            </>
+            room.id ? (
+              <SavedChangesDiagnostics key={room.id} sceneId={room.id} api={request} onError={reportDiagnosticsError} />
+            ) : undefined
           }
         />
       ) : (

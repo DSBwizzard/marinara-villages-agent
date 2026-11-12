@@ -80,7 +80,7 @@ export async function readVillageLore(
     current?: string;
     recent?: readonly string[];
     purpose?: string;
-    inspect?: (report: LoreInspection) => void;
+    inspect?: (report: LoreInspection, recentRequirements: number[][][]) => void;
     images?: boolean;
   },
 ): Promise<string[]> {
@@ -92,7 +92,7 @@ export async function readVillageLore(
       entries: [],
       omittedDiagnostics: 0,
     };
-    options?.inspect?.(inspection);
+    options?.inspect?.(inspection, []);
     runtimeDebug("lore inspection", inspection);
     return [];
   }
@@ -165,7 +165,7 @@ export async function readVillageLore(
       requestContext: requestContext.length > 1200 ? requestContext.slice(0, 1199) + "…" : requestContext,
     };
     inspection.inspectionId = await rememberLoreInspection(inspection);
-    options?.inspect?.(inspection);
+    options?.inspect?.(inspection, result.recentRequirements);
     runtimeDebug("lore inspection", inspection);
     return result.selected;
   } catch (_error) {

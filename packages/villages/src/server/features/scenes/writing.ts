@@ -6,9 +6,6 @@ const binding = createActivationBinding<SceneWriting>("Scene writing service is 
 export function configureSceneWriting(service: SceneWriting): () => void {
   return binding.configure(bindActivationService(service));
 }
-export async function prepareVenueTurnMessages(...args: Parameters<SceneWriting["prepareVenueTurnMessages"]>) {
-  return binding.get().prepareVenueTurnMessages(...args);
-}
 export async function generate(...args: Parameters<SceneWriting["generate"]>) {
   return binding.get().generate(...args);
 }

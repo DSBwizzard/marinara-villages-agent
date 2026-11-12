@@ -149,11 +149,21 @@ await withBrowser(browser, async () => {
       .getByRole("navigation", { name: "Project Zones" })
       .getByRole("button", { name: /Entrance/ })
       .click();
-    await page.getByLabel("Long-term details", { exact: true }).fill("A repaired entrance with new timber doors.");
+    await page.getByLabel("Room entry", { exact: true }).selectOption({ label: "An approach." });
+    await page.getByLabel("Room detail", { exact: true }).fill("A repaired entrance with new timber doors.");
     await fits("renovation entrance");
+    if (process.env.VILLAGES_SCREENSHOT_DIR)
+      await page.screenshot({ path: join(process.env.VILLAGES_SCREENSHOT_DIR, `room-edit-${width}x${height}.png`) });
     await page.getByRole("button", { name: "Save design", exact: true }).click();
     await expect.poll(() => calls.at(-1)?.body.form).toBe("A restored timber mill");
-    assert.equal(calls.at(-1).body.exteriorDescription, "A repaired entrance with new timber doors.");
+    assert.deepEqual(calls.at(-1).body.roomEdits, [
+      {
+        zoneId: "exterior",
+        entryId: "continuity-" + "a".repeat(32),
+        version: "continuity-version-" + "b".repeat(32),
+        text: "A repaired entrance with new timber doors.",
+      },
+    ]);
     await page.close();
     const working = projectSnapshot();
     working.village.timeZone = "America/Los_Angeles";

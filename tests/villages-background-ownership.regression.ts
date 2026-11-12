@@ -24,7 +24,7 @@ import {
   settleBackgroundWork,
   startBackgroundWork,
 } from "../packages/villages/src/server/jobs/background-work.js";
-import { authorWorldWishFixture, villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { authorVillageFixture, villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 function deferred() {
   return Promise.withResolvers<void>();
@@ -54,6 +54,7 @@ function fixture(label: string) {
       ({
         letterFontId: "caveat",
         characterId,
+        incarnation: characterId + ":original",
         cardSnapshot: {
           id: characterId,
           name: characterId,
@@ -65,7 +66,6 @@ function fixture(label: string) {
           backstory: "",
           tags: [],
         },
-        wishes: [],
         agenda: null,
       }) as any,
   );
@@ -150,11 +150,6 @@ function fixture(label: string) {
   const suppliedHandlers = new Map<"agenda", Handler>([["agenda", handler()]]);
   let beforeCurrentWrite: (() => Promise<void>) | undefined;
   function seedRuntimeWorld() {
-    const native = structuredClone(world) as any;
-    delete native.memories;
-    delete native.memoryScenes;
-    delete native.memoryReceipts;
-    delete native.worldPlaces;
     records.set("villages-village", {
       id: "villages-village",
       packageId: "villages",
@@ -162,7 +157,7 @@ function fixture(label: string) {
       name: label,
       description: "",
       revision: (records.get("villages-village")?.revision ?? 0) + 1,
-      data: authorWorldWishFixture(records, { ...native, memoryHead: null }),
+      data: authorVillageFixture(records, world),
     });
   }
   seedRuntimeWorld();
@@ -734,9 +729,67 @@ async function reusedNativeRevisions() {
     }
   }
 }
+async function resumeCannotOverwriteTerminalWork() {
+  for (const status of ["paused", "queued", "running"] as const) {
+    const f = fixture("lost-resume-" + status);
+    f.gate.resolve();
+    const stop = f.service.startBackgroundWork();
+    try {
+      await f.service.queueBackgroundJob({ ...input(), initialError: "Hold without a provider request" });
+      await f.service.settleBackgroundWork();
+      const prior = [...f.records.values()].find((row) => row.kind === "background-work")!;
+      Object.assign(prior.data, { status, owner: "previous-activation" });
+      if (status === "running") {
+        prior.data.steps = [{ status: "running", fingerprint: "unresolved-request" }];
+        prior.data.steps[0].responseClaim = backgroundResponseClaim(prior.data, 0);
+      }
+      let terminal: unknown;
+      f.beforeCurrentWrite(async () => {
+        terminal = await f.documents.update({
+          id: prior.id,
+          packageId: "villages",
+          expectedRevision: prior.revision,
+          data: { ...prior.data, status: "failed", steps: [], error: "Original owner held this work" },
+        });
+      });
+      await f.service.recoverBackgroundWork();
+      await f.service.settleBackgroundWork();
+      assert(terminal, "Another owner wrote a terminal status before the resume CAS");
+      assert.deepEqual(f.records.get(prior.id), terminal);
+      assert.deepEqual(f.calls, []);
+      assert.equal(f.world().setting, "");
+    } finally {
+      stop();
+      await f.service.settleBackgroundWork();
+    }
+  }
+}
+async function heartbeatKeepsLiveFoundingWork() {
+  const f = fixture("live-founding");
+  const stop = f.service.startBackgroundWork();
+  try {
+    await f.service.villageBackgroundPresence("founding-session", true);
+    const work = input();
+    await f.service.queueBackgroundJob({ ...work, input: { ...(work.input as object), foundingContract: 1 } });
+    await until(() => f.calls.length === 1);
+    await f.service.villageBackgroundPresence("founding-session", true);
+    assert.equal((await f.service.backgroundWorkSummaries())[0].status, "running");
+    f.gate.resolve();
+    await f.service.settleBackgroundWork();
+    assert.equal((await f.service.backgroundWorkSummaries())[0].status, "completed");
+    assert.deepEqual(f.calls, ["same"]);
+    assert.equal(f.world().setting, "live-founding:same");
+  } finally {
+    f.gate.resolve();
+    stop();
+    await f.service.settleBackgroundWork();
+  }
+}
 async function main() {
   await replacedInstanceCallbacks();
   await reusedNativeRevisions();
+  await resumeCannotOverwriteTerminalWork();
+  await heartbeatKeepsLiveFoundingWork();
   const admittedRetry = fixture("explicit-admission-replay");
   admittedRetry.fail(true);
   admittedRetry.gate.resolve();

@@ -8,6 +8,7 @@ import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mj
 import { snapshot, residents, now, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 import { authorSceneFixture, fixtureSceneState } from "./helpers/village-storage.fixture.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
@@ -30,7 +31,8 @@ let record = {
   description: "",
   revision: 1,
   data: {
-    version: 4,
+    version: 5,
+    villageSeed: "venue-coordination-browser",
     sceneRevision: 0,
     id: "browser",
     placeId: "mill",
@@ -52,6 +54,7 @@ let record = {
         name: "Mara",
         content: "Welcome to the mill.",
         at: now,
+        heardBy: ["player", "mara"],
       },
     ],
   },
@@ -153,10 +156,13 @@ await withBrowser(browser, async () => {
                   {
                     id: body.submissionId + ":player",
                     role: "user",
-                    speakerId: "",
-                    name: "",
+                    kind: "input",
+                    inputOf: body.submissionId,
+                    speakerId: "player",
+                    name: "Player",
                     content: body.message,
                     at: now,
+                    heardBy: [],
                   },
                   {
                     id: body.submissionId + ":reply",
@@ -166,11 +172,19 @@ await withBrowser(browser, async () => {
                     name: "Mara",
                     content: answer,
                     at: now,
+                    heardBy: ["player", "mara"],
                   },
                 );
                 record.data.submissions.push({
                   mode: "chat",
                   id: body.submissionId,
+                  message: body.message,
+                  targetId: "",
+                  at: now,
+                  requestFingerprint: memoryHash(["chat", "", null, body.message]),
+                  acceptance: { status: "applied", rejected: [] },
+                  episodeId: "episode:" + body.submissionId,
+                  progressProcessedAt: now,
                   activeIdsAtTurn: ["mara"],
                   activeIdsAfterTurn: ["mara"],
                   replyLineIds: [body.submissionId + ":reply"],
@@ -178,7 +192,7 @@ await withBrowser(browser, async () => {
                 record.data.sceneRevision++;
               },
             );
-            value = { session: publicRoom(), verdict: null, recordEvents: [] };
+            value = { session: publicRoom(), recordEvents: [] };
           }
           await fulfill(route, {
             status: 200,
@@ -271,11 +285,12 @@ await withBrowser(browser, async () => {
       name: "Mara",
       content: "The scene has changed elsewhere.",
       at: now,
+      heardBy: ["player", "mara"],
     });
     await composer(two).fill("Review the updated scene");
     await send(two).click();
     await two.getByRole("button", { name: /^1 Scene error$/ }).click();
-    await expect(two.getByRole("region", { name: "Scene errors" })).toContainText(/scene changed/i);
+    await expect(two.getByRole("region", { name: "Scene errors" })).toContainText("The situation changed.");
     await two.getByRole("button", { name: "Close Scene errors" }).click();
     assert.equal(calls, 2);
     await expect(next).toBeVisible();

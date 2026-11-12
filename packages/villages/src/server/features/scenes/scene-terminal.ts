@@ -1,12 +1,11 @@
-import { createHash } from "node:crypto";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 import type { DocumentSlot } from "../../adapters/storage/document-store.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
 import type { SceneTerminal } from "../../domain/models/scene-terminal-model.js";
+import { sceneNoticeSchema } from "../../domain/decoding/narration-submission.js";
 import { asRecord } from "../../domain/rules/coerce.js";
-import { isSceneTurnOutcome } from "../../../shared/contracts/scene-turn-outcome.js";
-import { scenePresenceNotices } from "../../domain/rules/scene-public.js";
+import { scenePresenceNotices, sceneTurnNotices } from "../../domain/rules/scene-public.js";
 
 export const SCENE_TERMINAL_KIND = "scene-terminal";
 export const SCENE_TERMINAL_PREFIX = "villages-scene-terminal-";
@@ -20,7 +19,7 @@ function slot(id: string): DocumentSlot<SceneTerminal> {
       const raw = asRecord(value);
       if (!value)
         return {
-          version: 1,
+          version: 2,
           sceneId: id,
           villageSeed: "",
           sourceRevision: 0,
@@ -29,12 +28,11 @@ function slot(id: string): DocumentSlot<SceneTerminal> {
           endReason: "",
           submissions: [],
           navigationReceipts: [],
-          rejectedSubmissions: [],
           generationReceipts: [],
           recordEvents: [],
         };
       if (
-        raw.version !== 1 ||
+        raw.version !== 2 ||
         raw.sceneId !== id ||
         typeof raw.villageSeed !== "string" ||
         !raw.villageSeed ||
@@ -46,7 +44,6 @@ function slot(id: string): DocumentSlot<SceneTerminal> {
         !["player", "scene", "inactivity", "debug", ""].includes(String(raw.endReason)) ||
         !Array.isArray(raw.submissions) ||
         !Array.isArray(raw.navigationReceipts) ||
-        !Array.isArray(raw.rejectedSubmissions) ||
         !Array.isArray(raw.generationReceipts) ||
         !Array.isArray(raw.recordEvents)
       )
@@ -59,20 +56,6 @@ function slot(id: string): DocumentSlot<SceneTerminal> {
             !row.id ||
             typeof row.inputHash !== "string" ||
             !/^[a-f0-9]{64}$/u.test(row.inputHash)
-          );
-        })
-      )
-        throw new Error("Saved Scene receipt is invalid; Scene cleanup is deferred.");
-      if (
-        raw.rejectedSubmissions.some((value) => {
-          const row = asRecord(value);
-          return (
-            typeof row.id !== "string" ||
-            !row.id ||
-            typeof row.inputHash !== "string" ||
-            !/^[a-f0-9]{64}$/u.test(row.inputHash) ||
-            !Number.isSafeInteger(row.sceneRevision) ||
-            !isSceneTurnOutcome(row.turnOutcome)
           );
         })
       )
@@ -98,18 +81,7 @@ function slot(id: string): DocumentSlot<SceneTerminal> {
         })
       )
         throw new Error("Saved Scene receipt is invalid; Scene cleanup is deferred.");
-      if (
-        raw.recordEvents.some((value) => {
-          const row = asRecord(value);
-          return (
-            typeof row.id !== "string" ||
-            typeof row.text !== "string" ||
-            !["memory", "wish", "venue", "request", "project", "relationship-up", "relationship-down"].includes(
-              String(row.kind),
-            )
-          );
-        })
-      )
+      if (raw.recordEvents.some((value) => !sceneNoticeSchema.safeParse(value).success))
         throw new Error("Saved Scene receipt is invalid; Scene cleanup is deferred.");
       if (raw.operation !== undefined) {
         const operation = asRecord(raw.operation);
@@ -117,14 +89,8 @@ function slot(id: string): DocumentSlot<SceneTerminal> {
           operation.status !== "complete" ||
           typeof operation.id !== "string" ||
           typeof operation.kind !== "string" ||
-          typeof operation.attemptId !== "string" ||
-          (operation.turnOutcome !== undefined && !isSceneTurnOutcome(operation.turnOutcome))
+          typeof operation.attemptId !== "string"
         )
-          throw new Error("Saved Scene receipt is invalid; Scene cleanup is deferred.");
-      }
-      if (raw.abandonedRequest !== undefined) {
-        const abandoned = asRecord(raw.abandonedRequest);
-        if (["id", "kind", "attemptId"].some((key) => typeof abandoned[key] !== "string" || !abandoned[key]))
           throw new Error("Saved Scene receipt is invalid; Scene cleanup is deferred.");
       }
       return structuredClone(raw) as SceneTerminal;
@@ -139,14 +105,13 @@ export function readSceneTerminal(value: unknown, id: string): SceneTerminal {
 export function terminalForScene(scene: VenueScene, sourceRevision: number): SceneTerminal {
   if (!scene.villageSeed || scene.status !== "closed" || !Number.isSafeInteger(sourceRevision) || sourceRevision < 1)
     throw new Error("Scene is not ready for a terminal receipt.");
-  const abandoned = asRecord(scene.operation?.checkpoints?.["abandoned-request"]);
   if (
-    scene.operation?.checkpoints?.["abandoned-request"] &&
-    ["id", "kind", "attemptId"].some((key) => typeof abandoned[key] !== "string" || !abandoned[key])
+    scene.abandonedOperations?.length ||
+    scene.submissions.some((turn) => turn.acceptance.status !== "applied" || turn.narration)
   )
-    throw new Error("Abandoned Scene request identity is invalid; Scene cleanup is deferred.");
+    throw new Error("Scene purchases still own retained evidence.");
   return {
-    version: 1,
+    version: 2,
     sceneId: scene.id,
     villageSeed: scene.villageSeed,
     sourceRevision,
@@ -155,23 +120,11 @@ export function terminalForScene(scene: VenueScene, sourceRevision: number): Sce
     endReason: scene.endReason,
     submissions: scene.submissions.map((turn) => ({
       id: turn.id,
-      inputHash: createHash("sha256")
-        .update(JSON.stringify([turn.mode, turn.message, turn.targetId, turn.contact ?? null]))
-        .digest("hex"),
+      inputHash: turn.requestFingerprint,
     })),
     navigationReceipts: structuredClone(scene.navigationReceipts ?? []),
-    rejectedSubmissions: structuredClone(scene.rejectedSubmissions ?? []),
     generationReceipts: structuredClone(scene.generationReceipts ?? []),
-    recordEvents: [...scenePresenceNotices(scene), ...scene.submissions.flatMap((turn) => turn.recordEvents ?? [])],
-    ...(scene.operation?.checkpoints?.["abandoned-request"]
-      ? {
-          abandonedRequest: {
-            id: abandoned.id as string,
-            kind: abandoned.kind as string,
-            attemptId: abandoned.attemptId as string,
-          },
-        }
-      : {}),
+    recordEvents: [...scenePresenceNotices(scene), ...scene.submissions.flatMap(sceneTurnNotices)],
     ...(scene.operation?.status === "complete"
       ? {
           operation: {
@@ -179,7 +132,6 @@ export function terminalForScene(scene: VenueScene, sourceRevision: number): Sce
             kind: scene.operation.kind,
             attemptId: scene.operation.attemptId,
             status: "complete" as const,
-            ...(scene.operation.turnOutcome ? { turnOutcome: scene.operation.turnOutcome } : {}),
           },
         }
       : {}),
@@ -201,7 +153,6 @@ export function createSceneTerminalStore(ports: {
         throw new Error("Village changed while saving the Scene receipt.");
       if (current.sourceRevision > sourceRevision) throw new Error("Scene receipt source changed.");
       delete current.operation;
-      delete current.abandonedRequest;
       Object.assign(current, receipt);
     });
   }

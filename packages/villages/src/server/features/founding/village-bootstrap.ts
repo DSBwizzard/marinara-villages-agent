@@ -12,9 +12,3 @@ export async function draftVillageVenueDescriptions(
 ): ReturnType<VillageBootstrapService["draftVillageVenueDescriptions"]> {
   return binding.get().draftVillageVenueDescriptions(...args);
 }
-
-export async function interpretSocialSource(
-  ...args: Parameters<VillageBootstrapService["interpretSocialSource"]>
-): ReturnType<VillageBootstrapService["interpretSocialSource"]> {
-  return binding.get().interpretSocialSource(...args);
-}

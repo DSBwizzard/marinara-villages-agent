@@ -62,7 +62,6 @@ export function newSetupVenue(
     presentation: { mapId: "", image: null, x, y },
     occupancy: { playerHome, residentCharacterId: null, homeKind: null },
     capabilities: [],
-    state: { revision: 0, updatedAt: "", recent: null },
   };
   return {
     ...venue,

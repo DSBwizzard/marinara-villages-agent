@@ -12,6 +12,7 @@ import { randomUUID } from "node:crypto";
 import { MAX_PROJECT_DRAFTS } from "../../../shared/helpers/project-design.js";
 import { establishmentControllers, establishmentDraft, establishmentChange } from "../../domain/rules/establishment.js";
 import { findLocation } from "../../domain/rules/places.js";
+import { continuityActor } from "../../domain/rules/continuity-actors.js";
 
 function requireDraftSpace(state: VillageState): void {
   if (state.projects.filter((project) => project.status === "planning").length >= MAX_PROJECT_DRAFTS)
@@ -38,6 +39,8 @@ export function draftNewVenueProject(
   if (!name || !description || !validVenueClasses(classes))
     throw badRequest("Choose one or two Classes, a name and a description.");
   if (!state.setupAt) throw conflict("Found the Village before planning a Project.");
+  const requester = requesterCharacterId ? continuityActor(state, requesterCharacterId) : undefined;
+  if (requesterCharacterId && !requester) throw conflict("The Project requester is unavailable.");
   const project: VillageProject = {
     id: requestId || randomUUID(),
     kind: "new-venue",
@@ -45,6 +48,7 @@ export function draftNewVenueProject(
     venueId: "",
     participantIds: [],
     requesterCharacterId,
+    ...(requester ? { requesterIncarnation: requester.incarnation } : {}),
     progress: 0,
     status: "planning",
     updatedAt: villageNow().toISOString(),
@@ -66,7 +70,8 @@ export function draftRenovationProject(
   const venue = state.venues.find((venue) => venue.id === venueId && venue.constructionStatus !== "worksite");
   if (!venue) throw notFound("Choose a finished Venue.");
   const row = asRecord(value),
-    change = readRenovationChange(state, venue, row, villageNow());
+    design = readRenovationChange(state, venue, row, villageNow()),
+    { change } = design;
   const project: VillageProject = {
     id: requestId || randomUUID(),
     kind: "renovation",
@@ -76,7 +81,7 @@ export function draftRenovationProject(
     progress: 0,
     status: "planning",
     updatedAt: villageNow().toISOString(),
-    lifecycle: lifecycle(venueId, change),
+    lifecycle: { ...lifecycle(venueId), ...design },
   };
   project.lifecycle!.changedZoneIds = changedZoneIds(venue, change);
   project.lifecycle!.baseDesignHash = venueDesignHash(venue, project.lifecycle!.changedZoneIds, change);
@@ -98,7 +103,8 @@ export function draftEstablishmentProject(
   if (!place || !venue || !place.knownBy.includes("player") || !place.prepared || place.report)
     throw conflict("Visit and prepare the Place before establishing it.");
   const establishment = establishmentDraft(row.establishment);
-  const change = establishmentChange(state, venue, row, establishment, villageNow());
+  const design = establishmentChange(state, venue, row, establishment, villageNow()),
+    { change } = design;
   const project: VillageProject = {
     id: requestId,
     kind: "establishment",
@@ -109,7 +115,7 @@ export function draftEstablishmentProject(
     status: "planning",
     updatedAt: villageNow().toISOString(),
     establishment,
-    lifecycle: lifecycle(venueId, change),
+    lifecycle: { ...lifecycle(venueId), ...design },
   };
   project.lifecycle!.changedZoneIds = establishment.physical ? changedZoneIds(venue, change) : [];
   project.lifecycle!.baseDesignHash = venueDesignHash(venue, project.lifecycle!.changedZoneIds, change);

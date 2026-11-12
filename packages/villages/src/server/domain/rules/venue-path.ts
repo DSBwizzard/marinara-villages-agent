@@ -6,7 +6,7 @@ import { ordinaryUseRestricted } from "./narrative-environment.js";
 
 /** Every traversed Zone must admit this actor; physical connectivity alone is insufficient. */
 export function accessibleVenueRoute(
-  state: Pick<VillageState, "projects" | "narrative" | "relationshipContext">,
+  state: Pick<VillageState, "projects" | "narrative">,
   venue: VillageVenue,
   actor: string,
   targetId: string,
@@ -26,7 +26,6 @@ export function accessibleVenueRoute(
         !evaluateZoneAccess(venue, zone, actor, {
           at,
           environment: state.narrative,
-          relationships: state.relationshipContext,
           unavailable: !preparing && zoneClosed(state, venue, zone),
         }).allowed
       )

@@ -313,7 +313,7 @@ export function createSceneRecordTracer(
       }
       const source = rows.map((row) => row[1]);
       const decoded = normalize(
-        { version: 4, participants: [...cast].map((id) => ({ characterId: id, name: id, doing: "" })) },
+        { version: 5, participants: [...cast].map((id) => ({ characterId: id, name: id, doing: "" })) },
         source,
         kind,
       );

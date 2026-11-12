@@ -37,7 +37,6 @@ function preferredVillagerPlace(
   if (venue) {
     const zone = chooseAgendaZone(venue, villager.characterId, agenda?.activity, agenda?.zoneId, village, {
       at,
-      relationships: village.relationshipContext,
     });
     return {
       id: venue.id,
@@ -57,7 +56,6 @@ function preferredVillagerPlace(
   const building = homeBuildingOptions().find((option) => option.kind === home.occupancy.homeKind);
   const zone = chooseAgendaZone(home, villager.characterId, agenda?.activity, agenda?.zoneId, village, {
     at,
-    relationships: village.relationshipContext,
   });
   return {
     id: home.id,
@@ -113,7 +111,6 @@ export function villagePresence(
           !(venue.access
             ? evaluateZoneAccess(venue, zone, resident.characterId, {
                 at,
-                relationships: village.relationshipContext,
               }).allowed
             : canOccupyZone(venue, zone, resident.characterId))
         )

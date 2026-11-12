@@ -3,36 +3,27 @@ import { sceneErrorMessage } from "../packages/villages/src/client/features/scen
 import { sceneErrorReport } from "../packages/villages/src/client/features/scenes/scene-error-report.js";
 
 const cases = [
-  [
-    "Required response metadata is missing or invalid.",
-    "The AI returned incomplete or invalid information for the update.",
-  ],
-  ["This line could not be accepted.", "The game couldn’t accept your message."],
   ["Invalid request details", "The request contains invalid details."],
   ["History temporarily unavailable", "The game couldn’t load the Scene history."],
   [
     "The reply used an invalid narrated sound. Your draft is preserved.",
     "The AI described a sound the game couldn’t place in the Scene.",
   ],
-  ["Malformed memory proposal: memories[0].text must be a nonempty string", "The AI left a memory blank."],
-  ["memories[0].text must be a nonempty string.", "The AI left a memory blank."],
-  ["System update metadata is missing.", "The AI left out information the game needs to check the reply."],
+  [
+    "The Scene response was not complete JSON. Your input and purchased response are retained.",
+    "The AI returned a reply the game couldn’t read.",
+  ],
   ["No language model connection selected", "The game has no usable AI connection."],
-  ["System interpretation is not configured.", "The game has no usable AI connection."],
-  [
-    "The saved physical outcome could not commit. Recover the saved request.",
-    "The game couldn’t finish saving an action.",
-  ],
-  ["The saved standing permission needs recovery.", "The game couldn’t finish saving an action."],
+  ["The saved narration needs recovery.", "The game couldn’t finish saving an action."],
   ["The Villages package runtime is not configured.", "The server hasn’t started Villages correctly."],
-  ["System verification failed during the model request.", "The AI service couldn’t complete the request."],
+  ["The model request failed.", "The AI service couldn’t complete the request."],
   ["Invalid or missing X-Admin-Secret header", "The server refused admin access."],
+  ["The response has insufficient output budget.", "The response length limit leaves too little room for this check."],
+  ["The response was truncated.", "The AI stopped before it finished the reply."],
   [
-    "System verification has insufficient output budget.",
-    "The response length limit leaves too little room for this check.",
+    "The complete character cards and required context do not fit the Narration connection. Increase its context limit or choose a connection with a larger context window. No reply was requested.",
+    "The conversation exceeds the AI’s reading limit.",
   ],
-  ["System interpretation was truncated. Explicit retry required.", "The AI stopped before it finished the reply."],
-  ["Saved evidence exceeds the System context budget.", "The conversation exceeds the AI’s reading limit."],
   ["The model request outcome is unknown.", "The game couldn’t confirm whether the reply finished."],
   ["The model returned no answer.", "The AI returned an empty reply."],
   ["The saved update could not be applied to storage.", "The game couldn’t save the update."],
@@ -42,19 +33,9 @@ const cases = [
     "Saved Scene evidence fingerprint changed; recover saved data before replay.",
     "The conversation changed before the game could check it.",
   ],
-  [
-    "This saved request uses an unsupported writing contract. Its history is preserved.",
-    "This version of the game can’t read the saved action’s format.",
-  ],
+  ["Unsupported Scene format. Start a fresh Village.", "This version of the game requires a fresh Village."],
   ["TypeError: Cannot read properties of undefined", "The game hit an internal error."],
-  [
-    "The proposed world change did not meet the requirements for saving. The conversation remains in the transcript; saved diagnostics contain the validation result.",
-    "The game rejected the AI’s proposed update.",
-  ],
-  [
-    "The proposed world change cited speech or actions that were not witnessed by everyone it would affect. It wasn’t saved; the conversation remains in the transcript.",
-    "The AI based an update on something a resident didn’t see or hear.",
-  ],
+  ["This evidence was not witnessed.", "The AI based an update on something a resident didn’t see or hear."],
   [
     "Could not reach the server (POST /api/villages/rooms/greet). Check your connection and reload to see whether the action completed before trying again.",
     "The game couldn’t reach the server.",
@@ -83,10 +64,6 @@ assert.equal(
   sceneErrorMessage("Reconnecting to check your saved reply…\n\nFailed to fetch\n\nRequest: turn-123"),
   "The game couldn’t confirm whether the reply finished.",
 );
-assert.equal(
-  sceneErrorMessage("The proposed world change did not meet the requirements for saving.", "memories"),
-  "The game rejected a memory update.",
-);
 
 const items = [
   {
@@ -100,10 +77,10 @@ const items = [
     ],
   },
   {
-    id: "memory",
-    title: "World change not saved",
-    message: "memories[0].text must be a nonempty string.",
-    diagnosticId: "turn:memories",
+    id: "keep",
+    title: "Continuity update held",
+    message: "The saved narration needs recovery.",
+    diagnosticId: "turn:continuity",
     fields: [
       { label: "Scene ID", value: "scene" },
       { label: "Message ID", value: "turn" },
@@ -115,7 +92,7 @@ const report = sceneErrorReport(items, [
     id: "operation:turn:attempt",
     details: '{"cause":"missing_result","stage":"sound-witnesses","field":"attentionWitnesses.segment"}',
   },
-  { id: "turn:memories", details: '{"rejectedProposals":[{"index":0,"reason":"Exact validation failure"}]}' },
+  { id: "turn:continuity", details: '{"rejected":[{"id":"note","reason":"Exact validation failure"}]}' },
   { id: "unrelated", details: "UNRELATED ERROR AND PRIVATE EVIDENCE" },
 ]);
 assert.ok(report.includes("Original error: " + items[0]!.message));

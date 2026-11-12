@@ -4,7 +4,7 @@ import type { VillageVenue, VillageState } from "../models/world.js";
 import { badRequest } from "./errors.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { ensureNarrative } from "./narrative-development.js";
-import { rememberDomainFact } from "./domain-memories.js";
+import { retainNativeFact } from "./native-continuity.js";
 
 export function readFoundingCircumstances(value: unknown, venues: VillageVenue[], at: string): NarrativeSituation[] {
   if (!Array.isArray(value) || value.length > 4) throw badRequest("Choose at most four starting circumstances.");
@@ -45,18 +45,17 @@ export function seedFoundingCircumstances(
 ): void {
   ensureNarrative(state, at).situations = situations;
   for (const situation of situations) {
-    const parts: string[] = [];
-    let part = "";
-    for (const character of situation.summary) {
-      if (Buffer.byteLength(part + character, "utf8") > 600) {
-        parts.push(part);
-        part = "";
-      }
-      part += character;
-    }
-    if (part) parts.push(part);
-    parts.forEach((text, index) =>
-      rememberDomainFact(state, { id: `${situation.id}:${index}`, at, recordedAt: at, text, knowers, subjects: [] }),
+    retainNativeFact(
+      state,
+      {
+        id: "founding-circumstance:" + situation.id,
+        kind: "circumstance",
+        targetId: situation.id,
+        revision: situation.revision,
+        text: situation.summary,
+        witnesses: knowers,
+      },
+      at,
     );
   }
 }

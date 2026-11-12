@@ -49,12 +49,9 @@ export function createUsagePreview({
     // This inert estimator uses mechanical settings, never conversational history.
     const snapshot = await readVillageAuthority();
     const original = coerceVillageState({
+      ...defaultVillageState(),
       ...snapshot,
-      villagers: snapshot.villagers.map((resident) => ({ ...resident, wishes: [] })),
       returnCatchup: undefined,
-      memories: defaultVillageState().memories,
-      memoryScenes: {},
-      memoryReceipts: {},
     });
     const state = structuredClone(original);
     if (action === "change") {

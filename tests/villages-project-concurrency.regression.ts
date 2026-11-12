@@ -10,7 +10,6 @@ import {
 } from "../packages/villages/src/server/features/projects/project-drafts.js";
 import { createProjectLifecycle } from "../packages/villages/src/server/features/projects/project-lifecycle-service.js";
 import { fixture } from "./fixtures/villages-projects.fixture.js";
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 const f = fixture(),
   now = new Date("2026-10-24T00:00:00Z");
 const ids = [
@@ -18,23 +17,18 @@ const ids = [
   await f.newProject("Two", "b", { x: 0.8, y: 0.8 }),
   await f.newProject("Three", "c", { x: 0.5, y: 0.8 }),
 ];
-const root = () => ({
-  id: "villages-village",
-  packageId: "villages",
-  kind: "village",
-  data: structuredClone(f.state()),
-  revision: 1,
-});
-let record = root(),
+let record: any = null,
   conflicts = 0;
 const rows = new Map<string, any>();
 const documents = {
-  getById: async (_pkg: string, id: string) => structuredClone(id === record.id ? record : (rows.get(id) ?? null)),
+  getById: async (_pkg: string, id: string) =>
+    structuredClone(id === "villages-village" ? record : (rows.get(id) ?? null)),
   list: async (_pkg: string, kind: string) =>
     [...rows.values()].filter((row) => row.kind === kind).map((row) => structuredClone(row)),
   create: async (input: any) => {
     const row = { ...structuredClone(input), revision: 1 };
-    rows.set(input.id, row);
+    if (input.id === "villages-village") record = row;
+    else rows.set(input.id, row);
     return structuredClone(row);
   },
   remove: async (_pkg: string, id: string, revision: number) => {
@@ -60,7 +54,15 @@ const documents = {
     return structuredClone(record);
   },
 };
-const repository = createVillageRepository(() => villageFixtureDocuments(documents as any));
+const repository = createVillageRepository(() => documents as any);
+await repository.mutateAuthority((state) => Object.assign(state, f.state()), { memories: true });
+const initial = structuredClone(record),
+  initialPages = structuredClone(rows);
+const reset = () => {
+  record = structuredClone(initial);
+  rows.clear();
+  for (const [id, row] of initialPages) rows.set(id, structuredClone(row));
+};
 const service = createProjectLifecycle({
   draftNewVenueProject,
   draftRenovationProject,
@@ -88,8 +90,7 @@ const create = { requestId: "create", name: "Current", description: "A future ro
 await service.createNewVenueProject(create);
 await service.createNewVenueProject(create);
 await assert.rejects(service.createNewVenueProject({ ...create, name: "Other" }), /already used/);
-record = root();
-rows.clear();
+reset();
 await service.createNewVenueProject({ ...create, requestId: "four", name: "Four" });
 await service.createNewVenueProject({ ...create, requestId: "five", name: "Five" });
 const draftRace = await Promise.allSettled([
@@ -99,9 +100,8 @@ const draftRace = await Promise.allSettled([
 assert.equal(draftRace.filter((result) => result.status === "fulfilled").length, 1);
 assert.equal(draftRace.filter((result) => result.status === "rejected").length, 1);
 assert.equal(record.data.projects.filter((project) => project.status === "planning").length, 6);
-const winningDraft = record.data.projects.find((project) => ["project:six-a", "project:six-b"].includes(project.id))!;
 const winningBody =
-  winningDraft.id === "project:six-a"
+  draftRace[0].status === "fulfilled"
     ? { ...create, requestId: "six-a", name: "Six A" }
     : { ...create, requestId: "six-b", name: "Six B" };
 await service.createNewVenueProject(winningBody);
@@ -111,8 +111,7 @@ assert.equal(
   "replaying the winner remains idempotent at capacity",
 );
 for (const completeFirst of [false, true]) {
-  record = root();
-  rows.clear();
+  reset();
   await service.startProjectConstruction(ids[0], commands[0].body, now);
   const complete = () =>
     repository.mutateAuthority(

@@ -33,11 +33,11 @@ function documents(name: string) {
     seed: "identical-seed",
     name,
     foundedAt: stamp,
-    wishSystemVersion: 3,
     villagers: [
       {
         letterFontId: "caveat",
         characterId: "same",
+        incarnation: "same:original",
         addedAt: stamp,
         cardSnapshot: {
           id: "same",
@@ -51,7 +51,7 @@ function documents(name: string) {
     ],
   });
   const rows = new Map<string, any>([
-    ["villages-village", { id: "villages-village", data: state, revision: 1 }],
+    ["villages-village", { id: "villages-village", packageId: "villages", kind: "village", data: state, revision: 1 }],
     [
       "villages-connections",
       {

@@ -3,12 +3,8 @@ import {
   createActivationScope,
   activationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
-import {
-  readEffectiveVillagerCard,
-  readVillagerCard,
-} from "../packages/villages/src/server/adapters/engine/catalog.js";
+import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import type { BackgroundInput } from "../packages/villages/src/server/domain/models/background-model.js";
 import type { VillageSnapshot, VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
 import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
@@ -20,10 +16,11 @@ import {
   buildVillageMemories,
   configureWorldCoordination,
   forgetMemory,
+  readVillageMemoryEvidence,
   reconcileVillage,
   resetVillage,
 } from "../packages/villages/src/server/features/world/village.js";
-import { addMemory, memoryRepair } from "./helpers/memories-fixture.js";
+import { retainAuthoredNote } from "./helpers/continuity.fixture.js";
 
 const stamp = "2026-10-06T12:00:00.000Z";
 function deferred() {
@@ -35,14 +32,10 @@ function fixture(name: string) {
   const card = readVillagerCard({ id: "same", comment: "", data: { name: `${name} library` } });
   const calls: string[] = [],
     owners: unknown[] = [],
-    times: Date[] = [],
-    queued: BackgroundInput[] = [];
+    times: Date[] = [];
   const entered = deferred(),
-    gate = deferred(),
-    _modelEntered = deferred(),
-    _modelGate = deferred();
+    gate = deferred();
   let pauseRead = false,
-    fault: Error | undefined,
     retry: ((s: VillageState) => void) | undefined;
   function note(call: string) {
     calls.push(call);
@@ -105,11 +98,6 @@ function fixture(name: string) {
       const log = () => note("warning");
       return { warn: log, info: log, error: log, debug: log, debugOverride: log };
     },
-    async listVillagerCards() {
-      note("catalog");
-      return [card];
-    },
-    readEffectiveVillagerCard,
     outsideVenueOperation(work) {
       note("outside");
       return work();
@@ -117,12 +105,7 @@ function fixture(name: string) {
     async completeVillageResidence(id, _force, now) {
       note(`move:${id}`);
       if (now) times.push(now);
-      if (fault) throw fault;
       return {} as Awaited<ReturnType<WorldCoordinationPorts["completeVillageResidence"]>>;
-    },
-    async retryResidencePrivateSpaceAdaptation(id) {
-      note(`adapt:${id}`);
-      return {} as Awaited<ReturnType<WorldCoordinationPorts["retryResidencePrivateSpaceAdaptation"]>>;
     },
     async queuePendingAgendas(village, now) {
       note("agendas");
@@ -133,9 +116,9 @@ function fixture(name: string) {
       note("remaps");
       times.push(now);
     },
-    async queueBackgroundJob(input) {
-      note("queue");
-      queued.push(input);
+    async reconcileResidentPlanning(now) {
+      note("resident-planning");
+      times.push(now);
     },
     async preparePrivateSpaces() {
       note("prepare");
@@ -149,26 +132,18 @@ function fixture(name: string) {
       if (now) times.push(now);
       return false;
     },
-    relationshipWritingPrompt(_village, id) {
-      note(`relationship:${id}`);
-      return `${name} relationship`;
-    },
   });
   return {
     state,
     calls,
     owners,
     times,
-    queued,
     card,
     service,
     entered,
     gate,
     pauseRead: () => {
       pauseRead = true;
-    },
-    fail: (error: Error) => {
-      fault = error;
     },
     retry: (edit: (s: VillageState) => void) => {
       retry = edit;
@@ -212,28 +187,19 @@ for (const status of ["pending", "failed"] as const) {
   assert(local.calls.includes("roll"), "Local routines advance while optional preparation is unfinished");
   assert(local.calls.includes("projects"), "Existing Projects continue");
   assert(
-    !local.calls.includes("prepare") && !local.calls.includes("agendas"),
+    !local.calls.includes("prepare") && !local.calls.includes("agendas") && !local.calls.includes("resident-planning"),
     "A pulse does not redispatch founding generation",
   );
-  assert.equal(local.queued.length, 0);
   assert.equal(local.state.foundingPreparation.status, status, "Unfinished work retains its retry state");
 }
 await A.scope.run(() => reconcileVillage({ now }));
 A.scope.run(() => assert.equal(a.state.simulatedThrough, now.toISOString()));
-assert.equal(a.queued.length, 0);
 const weatherOnly = fixture("Weather-only"),
   weatherOwner = A.scope.run(() => install(weatherOnly));
 weatherOnly.state.setupAt = weatherOnly.state.foundedAt = weatherOnly.state.simulatedThrough = stamp;
 weatherOnly.state.backgroundPace = "balanced";
 weatherOnly.state.venues = [{ id: "commons", classes: ["workplace"], occupancy: {} }] as any;
 await A.scope.run(() => weatherOwner.scope.run(() => reconcileVillage({ now })));
-assert.equal(weatherOnly.queued.length, 0, "Weather alone queues no automatic model work");
-A.scope.run(() =>
-  assert(
-    !weatherOnly.calls.some((call) => call.startsWith("story:")),
-    "Weather-only fallback makes no provider request",
-  ),
-);
 assert.equal(weatherOnly.state.eventAttempts?.attempts.length ?? 0, 0, "Skipped weather consumes no Events allowance");
 A.scope.run(() => weatherOwner.release());
 weatherOwner.scope.dispose();
@@ -250,27 +216,18 @@ A.scope.run(() =>
 
 // Native pages remain owned, scoped and read-only across equal actor IDs.
 for (const f of [a, b]) {
-  A.scope.run(
-    () =>
-      (f.state.villagers = [
-        {
-          letterFontId: "caveat",
-          characterId: "same",
-          cardSnapshot: snapshotFromCard(f.card, 1),
-          addedAt: stamp,
-          wishes: [],
-          agenda: null,
-        },
-      ]),
-  );
-  A.scope.run(
-    () =>
-      (f.state.memories = addMemory(f.state.memories, {
-        text: "remembered " + f.state.name,
-        audience: ["player", "same"],
-        sourceId: "owned",
-      })),
-  );
+  f.state.setupAt ||= stamp;
+  f.state.villagers = [
+    {
+      letterFontId: "caveat",
+      characterId: "same",
+      incarnation: "resident-" + f.state.seed,
+      cardSnapshot: snapshotFromCard(f.card, 1),
+      addedAt: stamp,
+      agenda: null,
+    },
+  ];
+  retainAuthoredNote(f.state, "owned", "remembered " + f.state.name, ["player", "same"], stamp);
 }
 const memories = await A.scope.run(() => buildVillageMemories({ inspection: true, characterId: "same" }));
 assert.equal(memories.entries[0].knownBy[0].name, "A library");
@@ -278,13 +235,20 @@ await A.scope.run(async () =>
   assert.match((await B.scope.run(() => buildVillageMemories())).entries[0].text, /remembered B/),
 );
 const selected = memories.entries[0],
-  operation = A.scope.run(() => memoryRepair(a.state.memories, "forget", ["same"], undefined, selected.id));
+  evidence = await A.scope.run(() => readVillageMemoryEvidence(selected.id, true, "same"));
 A.scope.run(() =>
   a.retry((state) => {
     state.name = "Concurrent A";
   }),
 );
-await A.scope.run(() => forgetMemory(selected.id, { ...operation, seed: a.state.seed }));
+await A.scope.run(() =>
+  forgetMemory(selected.id, {
+    operationId: "forget-same",
+    target: evidence.target!,
+    knowers: ["same"],
+    seed: evidence.seed,
+  }),
+);
 assert.equal(a.state.name, "Concurrent A");
 await A.scope.run(async () =>
   assert.equal((await buildVillageMemories({ inspection: true, characterId: "same" })).entries[0].forgotten, true),
@@ -300,14 +264,8 @@ await A.scope.run(async () =>
 const delayed = fixture("Delayed A"),
   D = A.scope.run(() => install(delayed));
 
-D.scope.run(
-  () =>
-    (delayed.state.memories = addMemory(delayed.state.memories, {
-      text: "Remembered",
-      audience: ["player"],
-      sourceId: "delayed",
-    })),
-);
+delayed.state.setupAt = stamp;
+retainAuthoredNote(delayed.state, "delayed", "Remembered", ["player"], stamp);
 D.scope.run(() => delayed.pauseRead());
 const pending = D.scope.run(() => buildVillageMemories());
 await delayed.entered.promise;
@@ -323,7 +281,7 @@ await B.scope.run(async () =>
 // Explicit reset operates only on its selected owner and returns that owner's snapshot.
 await B.scope.run(() => B.scope.run(resetVillage));
 B.scope.run(() => assert.deepEqual(b.state, defaultVillageState()));
-assert.equal(delayed.state.memories.records.length, 1);
+assert.equal(delayed.state.continuity.records.length, 1);
 const missing = createActivationScope();
 await B.scope.run(() => assert.rejects(missing.run(buildVillageMemories), /not configured/));
 B.scope.dispose();

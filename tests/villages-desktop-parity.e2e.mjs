@@ -50,7 +50,6 @@ const place = (id, x, y) =>
       y,
     },
     occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-    state: { revision: 0, recent: null, updatedAt: now },
   });
 const snapshot = {
   worldScope: "a".repeat(64),
@@ -467,8 +466,7 @@ await withBrowser(browser, async () => {
     await expect(page.getByRole("menuitem", { name: /Leave Scene/u })).toHaveCount(0);
     await expect(page.getByRole("menuitem", { name: "End Scene now" })).toBeVisible();
     await page.getByRole("button", { name: "Venue actions" }).click();
-    const modeButton = () => page.getByRole("button", { name: /^Mode: /u });
-    await expect(modeButton()).toHaveAttribute("title", "Say / Do");
+    await expect(page.getByRole("button", { name: /^Mode: /u })).toHaveCount(0);
     const oneLine = await composer.evaluate((field) => {
       const style = getComputedStyle(field);
       return {
@@ -493,29 +491,20 @@ await withBrowser(browser, async () => {
     await composer.fill("My response.");
     await composer.press("Escape");
     await expect(composer).toBeVisible();
-    await modeButton().click();
-    await expect(page.getByRole("menuitemradio", { name: "Conclude" })).toBeVisible();
-    await expect(page.getByRole("menuitemradio", { name: "Act", exact: true })).toHaveCount(0);
+    const actions = page.getByRole("button", { name: "Venue actions", exact: true });
+    const menu = page.getByRole("menu", { name: "Venue actions" });
+    await actions.click();
+    await expect(menu.getByRole("menuitem", { name: "Conclude", exact: true })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: "Move", exact: true })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: "Contact", exact: true })).toHaveCount(0);
     await historyButton.focus();
-    await expect(page.getByRole("menu", { name: "Scene mode" })).toHaveCount(0);
-    await modeButton().click();
-    await historyButton.click();
-    await historyButton.click();
-    await expect(page.getByRole("menu", { name: "Scene mode" })).toHaveCount(0);
-    await modeButton().click();
-    await page.getByRole("menuitemradio", { name: "Conclude" }).click();
-    await expect(modeButton()).toHaveAttribute("title", "Conclude");
-    assert.equal(lastLeave, null, "selecting Conclude does not leave the scene");
+    await expect(menu).toHaveCount(0);
+    await actions.click();
+    await page.keyboard.press("Escape");
+    await expect(actions).toBeFocused();
     await expect(composer).toHaveValue("My response.");
-    await modeButton().click();
-    await page.getByRole("menuitemradio", { name: "Say / Do" }).click();
-    await expect(modeButton()).toHaveAttribute("title", "Say / Do");
-    await modeButton().click();
-    await expect(page.getByRole("menuitemradio", { name: "Move", exact: true })).toBeVisible();
-    await expect(page.getByRole("menuitemradio", { name: "Contact", exact: true })).toHaveCount(0);
-    await page.getByRole("menuitemradio", { name: "Say / Do" }).click();
-    await expect(modeButton()).toHaveAttribute("title", "Say / Do");
-    assert.equal(lastTurn, null, "changing modes does not send the draft");
+    assert.equal(lastTurn, null, "opening Venue actions does not send the draft");
+    assert.equal(lastLeave, null, "opening Venue actions does not conclude the Scene");
     while (await page.getByRole("button", { name: "Next paragraph" }).isEnabled())
       await page.getByRole("button", { name: "Next paragraph" }).click();
     await page.getByRole("button", { name: "Send" }).click();
@@ -547,7 +536,7 @@ await withBrowser(browser, async () => {
     for (let step = 0; step < 5; step += 1) await page.getByRole("button", { name: "Next paragraph" }).click();
     await expect(reading).toContainText("Sixth reply.");
     await expect(composer).toBeVisible();
-    await expect(modeButton()).toHaveAttribute("title", "Say / Do");
+    await expect(page.getByRole("button", { name: /^Mode: /u })).toHaveCount(0);
     const asideBand = page.locator(".marinara-capability-villages-chat-vn-asides");
     await expect(asideBand).toContainText("A small aside rides with the final reply.");
     await expect(asideBand).toContainText("A quiet word stays visible too.");
@@ -580,11 +569,9 @@ await withBrowser(browser, async () => {
     }
     const finalLine = width === 390 ? "" : "Goodbye.";
     await composer.fill(finalLine);
-    await modeButton().click();
-    await page.getByRole("menuitemradio", { name: "Conclude" }).click();
-    await expect(modeButton()).toHaveAttribute("title", "Conclude");
-    assert.equal(lastLeave, null, "Conclude waits for Send");
-    await page.getByRole("button", { name: "Send" }).click();
+    await actions.click();
+    assert.equal(lastLeave, null, "opening Venue actions does not submit the final draft");
+    await menu.getByRole("menuitem", { name: "Conclude", exact: true }).click();
     await expect(page.getByRole("button", { name: "Return to map" }).first()).toBeVisible();
     assert.equal(lastLeave.message, finalLine, "Conclude sends the optional final line");
     if (width === 1440) {

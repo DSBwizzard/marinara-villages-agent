@@ -1,4 +1,3 @@
-import { currentVillageCircumstances } from "../../domain/rules/prompt-preset.js";
 import type { FastifyInstance } from "fastify";
 import { listVillageLorebooks, readVillageLore } from "../../adapters/engine/lorebooks.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
@@ -147,7 +146,7 @@ export function registerRuntimeDiagnosticsRoutes(engine: FastifyInstance) {
       let report: LoreInspection | undefined;
       await readVillageLore(
         state.selectedLorebookIds,
-        [state.setting, state.worldName, ...currentVillageCircumstances(state)].join("\n"),
+        [state.setting, state.worldName, state.worldRules].join("\n"),
         undefined,
         state.loreTokenBudget,
         {

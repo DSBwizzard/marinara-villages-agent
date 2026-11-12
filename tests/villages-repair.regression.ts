@@ -1,19 +1,7 @@
 import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
-import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
-import { knownSocialWishes } from "../packages/villages/src/server/domain/rules/social-wishes.js";
-// Test cases: repair/review, repair/review-retirement, repair/review-cancel-race, repair/review-retirement-recovery, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/checkpoint-retention, repair/checkpoint-deletion, repair/snapshot-integrity, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/relationship-history, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/wishes, repair/wish-checkpoints, repair/place-continuity, repair/checkpoint-pages, repair/journal-integrity, repair/places
+// Test cases: repair/review, repair/review-retirement, repair/review-cancel-race, repair/review-retirement-recovery, repair/people, repair/checkpoints, repair/checkpoint-retention, repair/checkpoint-deletion, repair/snapshot-integrity, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/checkpoint-pages, repair/journal-integrity, repair/places
 import assert from "node:assert/strict";
-import { authorSceneFixture, fixtureSceneState } from "./helpers/village-storage.fixture.js";
-import {
-  defaultRelationshipState,
-  neutralRelationship,
-  relationshipKey,
-} from "../packages/villages/src/server/domain/rules/relationship-rules.js";
-import {
-  relationshipPayloadStore,
-  readRelationshipRoot,
-  relationshipDocumentId,
-} from "../packages/villages/src/server/adapters/storage/relationship-payload-store.js";
+import { authorSceneFixture } from "./helpers/village-storage.fixture.js";
 import { LETTER_FONTS } from "../packages/villages/src/shared/helpers/letter-fonts.js";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -22,13 +10,10 @@ import {
 } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
 import { createRepairTransactionCodec } from "../packages/villages/src/server/adapters/storage/repair-transaction-codec.js";
 import { createRepairSnapshots } from "../packages/villages/src/server/adapters/storage/repair-snapshot-store.js";
-import { collectRetainedStorage } from "../packages/villages/src/server/features/repair/retained-storage-cleanup.js";
+import { readSceneWorkIndex } from "../packages/villages/src/server/adapters/storage/scene-history.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import {
-  captureSceneContinuity,
-  sceneContinuityView,
-} from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { terminalForScene } from "../packages/villages/src/server/features/scenes/scene-terminal.js";
 import {
   memoryPayloadDocuments,
   readMemoryHead,
@@ -38,17 +23,16 @@ import { captureReturnContext } from "../packages/villages/src/server/domain/rul
 import { createRepairService } from "../packages/villages/src/server/features/repair/repair-service.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { repairId } from "../packages/villages/src/server/domain/rules/repair-records.js";
-import { captureMemoryScene, projectMemories } from "../packages/villages/src/server/domain/rules/memory-views.js";
-import { sceneMemories } from "../packages/villages/src/server/domain/rules/village-memories.js";
-import { addMemory, memoryTime, realisticMemoryHistory, targetOf, memoryRepair } from "./helpers/memories-fixture.js";
-import { applyMemoryRepair } from "../packages/villages/src/server/domain/rules/memory-application.js";
-import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
+import { initializeRoomContinuity } from "../packages/villages/src/server/domain/rules/native-continuity.js";
+import { nativeHistoryFixture, retainAuthoredNote } from "./helpers/continuity.fixture.js";
 import { fixture as projectFixture, venue } from "./fixtures/villages-projects.fixture.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { villagesRoutes } from "../packages/villages/src/server/entry/routes.js";
 import Fastify from "fastify";
 import type { RepairRequest } from "../packages/villages/src/shared/contracts/repair.js";
+
+const memoryTime = (hours = 0) => new Date(Date.UTC(2025, 0, 1) + hours * 3_600_000).toISOString();
 
 async function fixture() {
   const rows = new Map<string, any>();
@@ -103,7 +87,6 @@ async function fixture() {
         throw Error("No Project command in this fixture");
       },
       replaySaved: async () => {},
-      continueSaved: async () => {},
     });
   let api = makeService();
   const initial = defaultVillageState();
@@ -111,12 +94,17 @@ async function fixture() {
   initial.setupAt = memoryTime();
   initial.name = "Willowmere";
   initial.setting = "Original setting";
-  initial.memories = addMemory(initial.memories, { audience: ["player", "aqua"] });
-  initial.memories = addMemory(initial.memories, {
-    sourceId: "secret",
-    audience: ["aqua"],
-    text: "The hidden brass compass.",
-  });
+  initial.villagers = [
+    {
+      characterId: "aqua",
+      incarnation: "one",
+      letterFontId: "caveat",
+      addedAt: initial.setupAt,
+      cardSnapshot: { id: "aqua", name: "Aqua", sourceStatus: "available", revision: 1, capturedAt: initial.setupAt },
+    },
+  ] as typeof initial.villagers;
+  retainAuthoredNote(initial, "shared", "Aqua lent the telescope.", ["player", "aqua"], initial.setupAt);
+  retainAuthoredNote(initial, "secret", "The hidden brass compass.", ["aqua"], initial.setupAt);
   await repo.mutateAuthority(
     (state) => {
       Object.assign(state, initial);
@@ -152,55 +140,6 @@ async function fixture() {
     read: () => repo.readAuthority({ memories: true, wishes: true }),
   };
 }
-await runCase("repair/place-continuity", async () => {
-  const f = await fixture();
-  const old = {
-    text: "Tea and plates.",
-    occurredAt: "2026-10-01T10:00:00.000Z",
-    expiresAt: "2026-10-02T10:00:00.000Z",
-  };
-  await f.repo.mutateAuthority((s) => {
-    const place = venue();
-    const zone = place.zones!.find((z) => z.id === "common")!;
-    zone.description = "";
-    zone.state.recent = old;
-    s.venues = [place];
-  });
-  const id = repairId("zone", "cafe", "common");
-  const record = await f.api.inspect(id);
-  const values = Object.fromEntries(record.fields.map((field) => [field.key, field.value]));
-  const request = {
-    recordId: id,
-    values,
-    operationId: "renew",
-    action: "renew-recent",
-    knowers: [],
-    expectedRecord: record.token!,
-  };
-  const review = await f.api.prepare(request);
-  assert.deepEqual((await f.read()).venues[0].zones!.find((z) => z.id === "common")!.state.recent, old);
-  await f.api.apply(review.id, review.token);
-  const renewed = (await f.read()).venues[0].zones!.find((z) => z.id === "common")!.state;
-  assert.notEqual(renewed.recent!.expiresAt, old.expiresAt);
-  const inverse = await f.api.undo(review.id, "undo-renew");
-  await f.api.apply(inverse.id, inverse.token);
-  const restored = (await f.read()).venues[0].zones!.find((z) => z.id === "common")!.state;
-  assert.deepEqual(restored.recent, old);
-  assert.ok(restored.revision > renewed.revision);
-  const current = await f.api.inspect(id);
-  const clear = await f.api.prepare({
-    ...request,
-    operationId: "clear",
-    action: "clear-recent",
-    expectedRecord: current.token!,
-  });
-  await f.api.apply(clear.id, clear.token);
-  assert.equal((await f.read()).venues[0].zones!.find((z) => z.id === "common")!.state.recent, null);
-  await f.repo.mutateAuthority((s) => {
-    s.venues[0].zones!.find((z) => z.id === "common")!.description = "Later gameplay.";
-  });
-  await assert.rejects(() => f.api.undo(clear.id, "unsafe-undo"), /changed|later/i);
-});
 const edit = (recordId: string, values: RepairRequest["values"], operationId = "first-repair"): RepairRequest => ({
   recordId,
   values,
@@ -330,311 +269,34 @@ await runCase("repair/review-retirement-recovery", async () => {
   assert.equal((await f.api.index()).historyTotal, 1);
   assert.equal([...f.rows.values()].filter((row) => row.kind === "repair-plan").length, 0);
 });
-await runCase("repair/relationship-history", async () => {
-  const f = await fixture(),
-    { seed, setupAt } = await f.read(),
-    scope = { seed, setupAt },
-    stamp = memoryTime(10);
-  const id = relationshipDocumentId(seed);
-  const readSocial = async () => {
-    const row = await f.gate.documents.getById("villages", id);
-    return relationshipPayloadStore(f.gate.documents).read(readRelationshipRoot(row!.data, scope).head, scope);
-  };
-  const social = defaultRelationshipState(seed),
-    key = relationshipKey("aqua", "player");
-  social.edges[key] = { ...neutralRelationship("aqua", "player"), revision: 4, connection: "Original connection" };
-  await f.gate.documents.create({
-    id,
-    packageId: "villages",
-    kind: "relationships",
-    name: "Relationships",
-    description: "",
-    data: {
-      format: 4,
-      ...scope,
-      head: await f.gate.work(() => relationshipPayloadStore(f.gate.documents).prepare(social, scope)),
-    },
-    createdAt: stamp,
-    updatedAt: stamp,
-  });
-  const frozenId = "villages-venue-visit-inline-relationships";
-  const frozen = coerceSession({
-    version: 4,
-    id: "inline-relationships",
-    villageSeed: seed,
-    status: "closed",
-    startedAt: stamp,
-    lines: [],
-    submissions: [],
-  });
-  await f.repo.mutateAuthority(
-    (world) => {
-      world.relationshipContext = social;
-      frozen.continuity = captureSceneContinuity(world, frozen, Date.parse(stamp));
-      delete world.memoryScenes[frozen.id];
-    },
-    { memories: true },
-  );
-  await f.gate.documents.create({
-    id: frozenId,
-    packageId: "villages",
-    kind: "venue-visit",
-    name: "Frozen relationships",
-    description: "",
-    data: frozen,
-    createdAt: stamp,
-    updatedAt: stamp,
-  });
-  const cp = await f.api.createCheckpoint("Relationship baseline", "relationship-baseline");
-  const correction = await f.prepare(
-    edit(
-      repairId("relationship", "aqua", "player"),
-      {
-        connection: "Corrected",
-        stance: "",
-        expectations: "",
-        concerns: "",
-      },
-      "correct-relationship",
-    ),
-  );
-  await f.api.apply(correction.id, correction.token);
-  const changedRevision = (await readSocial()).edges[key].revision;
-  const undo = await f.api.undo(correction.id, "undo-relationship");
-  await f.api.apply(undo.id, undo.token);
-  assert.equal((await readSocial()).edges[key].connection, "Original connection");
-  assert.ok((await readSocial()).edges[key].revision > changedRevision);
-  const current = await f.gate.documents.getById("villages", id),
-    later = await readSocial();
-  later.eventSequence = 42;
-  later.edges[key].revision = 100;
-  await f.gate.work(async () => {
-    const head = await relationshipPayloadStore(f.gate.documents).prepare(
-      later,
-      scope,
-      readRelationshipRoot(current!.data, scope).head,
-      current!.revision,
-    );
-    await f.gate.documents.update({
-      ...current!,
-      expectedRevision: current!.revision,
-      data: { format: 4, ...scope, head },
-    });
-  });
-  const restore = await f.api.restore(cp.id, "restore-relationship-baseline");
-  await f.api.apply(restore.id, restore.token);
-  f.reopen();
-  const restarted = await readSocial();
-  assert.equal(restarted.eventSequence, 42, "Checkpoint restoration cannot rewind relationship publication order");
-  assert.ok(restarted.edges[key].revision > 100);
-  assert.equal(restarted.edges[key].connection, "Original connection");
-  const retainedScene = fixtureSceneState((await f.gate.documents.getById("villages", frozenId))!.data, f.rows);
-  const retainedView = sceneContinuityView(
-    { ...(await f.read()), relationshipContext: restarted },
-    retainedScene,
-    false,
-  );
-  assert.equal(retainedView.relationshipContext!.edges[key].revision, 4);
-  assert.equal(
-    retainedView.relationshipContext!.edges[key].connection,
-    "Original connection",
-    "Inline frozen Scene facts remain exact across repair, Undo, checkpoint restoration and restart",
-  );
-});
-await runCase("repair/memory-undo", async () => {
-  const f = await fixture();
-  await f.repo.mutateAuthority(
-    (s) => {
-      s.memoryScenes.frozen = {
-        snapshot: captureMemoryScene(s.memories, "frozen", ["player", "aqua"], memoryTime(9)),
-        effects: {},
-      };
-    },
-    { memories: true },
-  );
-  const before = await f.read(),
-    id = before.memories.records[0].id;
-  const request = { ...edit(repairId("memory", id), { text: "Aqua lent the telescope." }), knowers: ["player"] };
-  const review = await f.prepare(request);
-  await f.api.apply(review.id, review.token);
-  let current = await f.read();
-  assert.equal(projectMemories(current.memories, ["player"])[0].text, request.values.text);
-  assert.deepEqual(sceneMemories(current, "frozen"), sceneMemories(before, "frozen"));
-  assert.equal(
-    projectMemories(current.memories, ["aqua"]).find((m) => m.id === id)?.text,
-    before.memories.records[0].text,
-  );
-  const revision = current.memories.revision;
-  const undo = await f.api.undo(review.id, "undo-memory");
-  await f.api.apply(undo.id, undo.token);
-  current = await f.read();
-  assert.ok(current.memories.revision > revision);
-  assert.equal(projectMemories(current.memories, ["player"])[0].text, before.memories.records[0].text);
-  assert.deepEqual(sceneMemories(current, "frozen"), sceneMemories(before, "frozen"));
-  const forget = await f.prepare({
-    ...request,
-    operationId: "forget-with-unsaved-text",
-    action: "forget",
-    values: { text: "This unfinished text edit must never be saved by Forget." },
-  });
-  assert.deepEqual(forget.changes, [
-    { label: "Your Persona · memory", before: before.memories.records[0].text, after: "Forgotten" },
-  ]);
-  await f.api.apply(forget.id, forget.token);
-  current = await f.read();
-  const forgotten = current.memories.records.find((record) => record.id === id)!;
-  assert.ok(forgotten.knowers.player.forgotten);
-  assert.deepEqual(forgotten.knowers.player.repair, before.memories.records[0].knowers.player.repair);
-  assert.equal(
-    projectMemories(current.memories, ["player"]).find((record) => record.rootId === id),
-    undefined,
-  );
-  assert.equal(
-    projectMemories(current.memories, ["aqua"]).find((record) => record.rootId === id)?.text,
-    before.memories.records[0].text,
-  );
-  assert.deepEqual(sceneMemories(current, "frozen"), sceneMemories(before, "frozen"));
-  const restore = await f.api.undo(forget.id, "undo-forget-with-unsaved-text");
-  await f.api.apply(restore.id, restore.token);
-  assert.equal(
-    projectMemories((await f.read()).memories, ["player"]).find((record) => record.rootId === id)?.text,
-    before.memories.records[0].text,
-  );
-});
-await runCase("repair/add-memory", async () => {
-  const f = await fixture(),
-    text = "I had the most slamming ham and cheese sandwich";
-  const request = { ...edit(repairId("new-memory"), { text }, "add-sandwich"), knowers: ["player"] };
-  const review = await f.prepare(request);
-  assert.deepEqual(review.memory, { creating: true, people: ["Your Persona"] });
-  assert.equal(review.changes.length, 1, "A new memory has one content change, separate from its recipients");
-  assert.equal(review.changes[0].before, "");
-  assert.equal(review.changes[0].after, text);
-  assert.ok(!review.affected.includes(text), "Memory text is not repeated as an affected-record label");
-  await f.api.apply(review.id, review.token);
-  const added = (await f.read()).memories.records.find((row) => row.id === "player-repair:add-sandwich")!;
-  assert.equal(added.text, text);
-  assert.deepEqual(Object.keys(added.knowers), ["player"]);
-  const inverse = await f.api.undo(review.id, "undo-sandwich");
-  assert.equal(inverse.changes.filter((change) => change.before === text).length, 1);
-  await f.api.apply(inverse.id, inverse.token);
-  assert.ok(!projectMemories((await f.read()).memories, ["player"]).some((row) => row.id === added.id));
-});
 await runCase("repair/people", async () => {
   const f = await fixture(),
     model = projectFixture().state();
   model.villagers[0].cardSnapshot.name = "Nora";
   model.villagers[1].cardSnapshot.name = "Ellis";
   model.villagers[2].cardSnapshot.name = "Mira";
-  let memories = addMemory(
-    { format: 1, revision: 0, records: [] },
-    {
-      sourceId: "shared",
-      audience: ["player", "a"],
-      text: "We will repair the telescope.",
-      patch: { subjects: ["a"] },
-    },
-  );
-  const root = memories.records[0];
-  memories = addMemory(memories, {
-    sourceId: "player-correction",
-    audience: ["player"],
-    text: "The Persona remembers a later date.",
-    patch: { action: "correct", target: targetOf(memories, root.id), subjects: ["a"] },
-  });
-  memories = addMemory(memories, {
-    sourceId: "nora-secret",
-    audience: ["a"],
-    text: "Nora privately hid a compass from Ellis.",
-    patch: { subjects: ["b"] },
-  });
-  memories = addMemory(memories, {
-    sourceId: "about-ellis",
-    audience: ["player"],
-    text: "Ellis paints the harbor boats.",
-    patch: { subjects: ["b"] },
-  });
-  memories = addMemory(memories, {
-    sourceId: "residents-only",
-    audience: ["a", "b"],
-    text: "The residents plan a private festival.",
-    patch: { subjects: [] },
-  });
-  memories = addMemory(memories, {
-    sourceId: "forgotten",
-    audience: ["a"],
-    text: "A forgotten private appointment.",
-    patch: { subjects: ["a"] },
-  });
-  const forgotten = memories.records.at(-1)!;
-  memories = applyMemoryRepair(
-    memories,
-    memoryRepair(memories, "forget", ["a"], undefined, forgotten.id),
-    memoryTime(200),
-  ).collection;
   await f.repo.mutateAuthority(
-    (s) => {
-      Object.assign(s, model);
-      s.seed = f.initial.seed;
-      s.setupAt = f.initial.setupAt;
-      s.memories = memories;
+    (state) => {
+      Object.assign(state, model, { seed: f.initial.seed, setupAt: f.initial.setupAt });
+      retainAuthoredNote(state, "nora-secret", "Nora privately hid a compass from Ellis.", ["a"], memoryTime(), {
+        about: ["b"],
+      });
+      retainAuthoredNote(state, "about-ellis", "Ellis paints the harbor boats.", ["player"], memoryTime(), {
+        about: ["b"],
+      });
     },
     { memories: true },
   );
   assert.deepEqual(
-    (await f.api.index()).people.map((p) => p.name),
+    (await f.api.index()).people.map((person) => person.name),
     ["Your Persona", "Nora", "Ellis", "Mira"],
   );
-  assert.equal((await f.api.list("people")).records.length, 0, "People opens a roster, not mixed record rows");
-  const beforeBrowsing = await f.read();
-  assert.equal(
-    (await f.api.list("people", "compass", 0, "b")).total,
-    1,
-    "Administrative search includes memories the Persona does not know",
-  );
-  const allEllis = await f.api.list("people", "", 0, "b");
-  assert.ok(allEllis.records.some((r) => r.title.includes("compass")));
-  assert.ok(allEllis.records.some((r) => r.title.includes("private festival")));
-  assert.ok(allEllis.records.some((r) => r.title.includes("harbor") && r.summary.startsWith("About Ellis")));
-  assert.ok(allEllis.creation?.people?.some((person) => person.id === "b"));
-  assert.ok(
-    (await f.api.list("people", "", 0, "a", "details")).records.some((r) => r.title.includes("character context")),
-  );
+  assert.equal((await f.api.list("people")).records.length, 0);
+  const before = await f.read();
+  assert.equal((await f.api.list("people", "compass", 0, "b")).total, 1);
+  assert.ok((await f.api.list("people", "", 0, "b")).records.some((record) => record.title.includes("harbor")));
   assert.ok(!JSON.stringify(await f.api.list("people", "", 0, "player")).includes("compass"));
-  assert.deepEqual(await f.read(), beforeBrowsing, "Administrative browsing cannot teach or change saved knowledge");
-  const nora = await f.api.inspect(repairId("memory", root.id), "a"),
-    player = await f.api.inspect(nora.id, "player");
-  assert.equal(nora.id, player.id);
-  assert.notEqual(nora.token, player.token);
-  assert.equal(nora.fields[0].value, "We will repair the telescope.");
-  assert.equal(player.fields[0].value, "The Persona remembers a later date.");
-  assert.deepEqual(
-    nora.people?.map((p) => [p.id, p.text]),
-    [
-      ["player", "The Persona remembers a later date."],
-      ["a", "We will repair the telescope."],
-    ],
-  );
-  const editBoth = {
-    ...edit(nora.id, { text: "The telescope will be repaired on Friday." }, "shared-edit"),
-    personId: "a",
-    knowers: ["player", "a"],
-  };
-  await assert.rejects(() => f.api.prepare({ ...editBoth, expectedRecord: player.token! }), /record changed/u);
-  const review = await f.prepare(editBoth);
-  assert.deepEqual(review.memory?.people, ["Your Persona", "Nora"]);
-  await f.api.apply(review.id, review.token);
-  for (const id of ["player", "a"])
-    assert.equal(
-      projectMemories((await f.read()).memories, [id]).find((r) => r.rootId === root.id)?.text,
-      editBoth.values.text,
-    );
-  const inverse = await f.api.undo(review.id, "shared-undo");
-  await f.api.apply(inverse.id, inverse.token);
-  assert.equal((await f.api.inspect(nora.id, "a")).fields[0].value, nora.fields[0].value);
-  assert.equal((await f.api.inspect(nora.id, "player")).fields[0].value, player.fields[0].value);
-  const allNora = await f.api.list("people", "", 0, "a");
-  assert.ok(allNora.records.some((r) => r.people?.some((p) => p.id === "a" && p.forgotten)));
+  assert.deepEqual(await f.read(), before);
 });
 await runCase("repair/checkpoints", async () => {
   const f = await fixture();
@@ -653,7 +315,7 @@ await runCase("repair/checkpoints", async () => {
       s.setting = "Later setting";
       s.zonePictureBudget = { startedAt: "2026-10-29T12:00:00.000Z", used: 6 };
       s.zonePictureEpoch = 11;
-      s.memories = addMemory(s.memories, { sourceId: "later" });
+      retainAuthoredNote(s, "later", "The player returned with a notebook.", ["player"], memoryTime(10));
       s.eventAttempts = {
         highWaterDate: "2026-10-26",
         lastAttemptAt: memoryTime(10),
@@ -715,7 +377,7 @@ await runCase("repair/checkpoints", async () => {
   const withoutBatch = await f.api.restore(withBatch.id, "restore-without-catchup");
   await f.api.apply(withoutBatch.id, withoutBatch.token);
   assert.equal((await f.read()).returnCatchup, undefined, "Restoring cannot revive an older catch-up batch.");
-  assert.equal((await f.read()).memories.records.length, 2, "Checkpoint owns independently restorable memory bytes");
+  assert.equal((await f.read()).continuity.records.length, 2, "Checkpoint owns independently restorable memory bytes");
   const now = new Date().toISOString();
   await f.gate.documents.create({
     id: "villages-active-venue",
@@ -736,10 +398,16 @@ await runCase("repair/checkpoints", async () => {
 });
 await runCase("repair/checkpoint-retention", async () => {
   const f = await fixture();
-  await f.repo.mutateAuthority((state) => {
-    state.foundedAt = state.setupAt;
-    state.venues = [venue()];
-  });
+  await f.repo.mutateAuthority(
+    (state) => {
+      state.foundedAt = state.setupAt;
+      state.venues = [venue()];
+      const common = state.venues[0].zones!.find((zone) => zone.id === "common")!;
+      initializeRoomContinuity(state, "cafe", common.id, common.description, "room-seed", state.setupAt);
+    },
+    { memories: true },
+  );
+  const room = (await f.api.list("places")).records.find((row) => row.summary === "Room description")!;
   const manual = await f.api.createCheckpoint("Keep this", "manual-keep");
   const countBodies = () => [...f.rows.values()].filter((row) => row.kind === "repair-snapshot").length;
   const bodies = countBodies();
@@ -747,9 +415,9 @@ await runCase("repair/checkpoint-retention", async () => {
   // The first checkpoint publication adds only its small header after-image to the journal.
   assert.equal(countBodies() - bodies, 1, "An unchanged world shares its snapshot body.");
   for (let i = 0; i < 11; i++) {
-    const record = await f.api.inspect(repairId("zone", "cafe", "common"));
+    const record = await f.api.inspect(room.id);
     const values = Object.fromEntries(record.fields.map((field) => [field.key, field.value]));
-    values.description = `Physical account ${i}`;
+    values.text = `Physical account ${i}`;
     const review = await f.prepare(edit(record.id, values, `retained-${i}`));
     await f.api.apply(review.id, review.token);
   }
@@ -862,7 +530,7 @@ await runCase("repair/snapshot-integrity", async () => {
   const recovered = await f.api.createCheckpoint("Interrupted", "interrupted-header");
   assert.equal(recovered.id, "interrupted-header");
   assert.deepEqual(await f.read(), before);
-  const malformedScene = await f.store.create({
+  const malformedScene = {
     id: "villages-venue-visit-invalid-owner",
     packageId: "villages",
     kind: "venue-visit",
@@ -870,8 +538,10 @@ await runCase("repair/snapshot-integrity", async () => {
     description: "",
     createdAt: memoryTime(),
     updatedAt: memoryTime(),
-    data: { version: 4, id: "invalid-owner", villageSeed: null, status: "closed", submissions: [], lines: [] },
-  });
+    revision: 1,
+    data: { version: 5, id: "invalid-owner", villageSeed: null, status: "closed", submissions: [], lines: [] },
+  };
+  f.rows.set(malformedScene.id, malformedScene);
   const control = structuredClone(f.rows.get("villages-repair-control"));
   await assert.rejects(f.api.createCheckpoint("Invalid source", "invalid-owner-save"), /source ownership/);
   await assert.rejects(f.api.restore(cp.id, "invalid-owner-restore"), /source ownership/);
@@ -1102,62 +772,14 @@ await runCase("repair/fences", async () => {
 await runCase("repair/privacy", async () => {
   const f = await fixture();
   assert.ok(JSON.stringify(await f.api.list("memories")).includes("hidden brass compass"));
-  const untouched = await f.read();
-  assert.ok(!projectMemories(untouched.memories, ["player"]).some((r) => r.text.includes("hidden brass compass")));
-  const stamp = memoryTime(10),
-    archived = {
-      version: 4,
-      id: "private-archive",
-      status: "closed",
-      placeName: "Workshop",
-      startedAt: stamp,
-      lines: [{ id: "whisper", content: "A private archived exchange.", contactHidden: true, heardBy: ["aqua"] }],
-      submissions: [],
-      operation: {
-        id: "private",
-        kind: "turn",
-        status: "complete",
-        input: { internal: "Private runtime sentinel" },
-        checkpoints: {},
-        attempts: {},
-        snapshot: null,
-      },
-    };
-  await f.gate.documents.create({
-    id: "villages-venue-visit-private-archive",
-    packageId: "villages",
-    kind: "venue-visit",
-    name: "Workshop",
-    description: "",
-    data: archived,
-    createdAt: stamp,
-    updatedAt: stamp,
-  });
-  const archiveRecord = await f.api.inspect(repairId("scene", archived.id));
-  assert.ok(archiveRecord.source.includes(archived.lines[0].content));
-  assert.ok(!JSON.stringify(archiveRecord).includes("Private runtime sentinel"));
-  assert.equal(publicSceneResponse(archived).lines.length, 0, "Gameplay still hides the private exchange");
-  assert.deepEqual(await f.read(), untouched, "Administrative reads cannot change gameplay knowledge");
-  const id = (await f.read()).memories.records[0].id;
-  await assert.rejects(
-    () => f.prepare({ ...edit(repairId("memory", id), { text: "Teach another person" }), knowers: ["stranger"] }),
-    /knowers/u,
-  );
-  assert.equal((await f.read()).memories.revision, f.initial.memories.revision);
-  const secret = {
-    ...edit(repairId("new-memory"), { text: "Nora secretly plans a voyage." }, "private-addition"),
-    knowers: ["aqua"],
-  };
-  const added = await f.prepare(secret);
-  await f.api.apply(added.id, added.token);
-  const history = [...f.rows.values()].find((row) => row.kind === "repair-history" && row.data.id === added.id)!;
-  const undoBody = f.rows.get(history.data.undoId);
-  undoBody.data.payload.request.inspection = false;
-  undoBody.data.payload.record.private = true;
-  assert.ok(JSON.stringify(await f.api.index()).includes("voyage"), "Earlier private history remains available");
-  const undo = await f.api.undo(added.id, "undo-private-addition");
-  await f.api.apply(undo.id, undo.token);
-  assert.ok(!projectMemories((await f.read()).memories, ["aqua"]).some((row) => row.text.includes("voyage")));
+  const before = await f.read();
+  const privateId = before.continuity.records.find((record) =>
+    before.continuity.versions.some((row) => row.rootId === record.id && row.text.includes("hidden brass compass")),
+  )!.id;
+  const record = await f.api.inspect(repairId("memory", privateId), "aqua");
+  assert.ok(record.people?.some((person) => person.id === "aqua"));
+  assert.ok(!record.people?.some((person) => person.id === "player"));
+  assert.deepEqual(await f.read(), before, "Administrative reads cannot change gameplay knowledge");
 });
 
 await runCase("repair/domain-editors", async () => {
@@ -1166,10 +788,12 @@ await runCase("repair/domain-editors", async () => {
   await f.repo.mutateAuthority(
     (s) => {
       Object.assign(s, model);
-      s.memories = f.initial.memories;
       s.seed = "repair-world";
       s.name = "Village";
       s.worldRules = "Original standing rules";
+      const common = s.venues[0].zones!.find((zone) => zone.id === "common")!;
+      common.seen = false;
+      initializeRoomContinuity(s, "cafe", common.id, common.description, "room-seed", s.setupAt);
     },
     { memories: true },
   );
@@ -1199,26 +823,12 @@ await runCase("repair/domain-editors", async () => {
   await f.api.apply(undoMap.id, undoMap.token);
   assert.ok((await f.read()).maps[0].revision > revision);
   assert.equal((await f.read()).venues[0].presentation.x, 0.2);
-  assert.ok(
-    (await f.api.list("places")).records.some((record) => record.id === repairId("zone", "cafe", "common")),
-    "Administrative records include unseen interiors",
-  );
-  const physical = await f.api.inspect(repairId("zone", "cafe", "common"));
-  const physicalValues = Object.fromEntries(physical.fields.map((field) => [field.key, field.value]));
-  physicalValues.description = "A shared room. The roof is sound.";
-  const roof = await f.prepare(edit(physical.id, physicalValues, "fix-roof"));
+  const room = (await f.api.list("places")).records.find((row) => row.summary === "Room description");
+  assert.ok(room, "Administrative records include unseen interiors");
+  const roof = await f.prepare(edit(room.id, { text: "A shared room. The roof is sound." }, "fix-roof"));
   await f.api.apply(roof.id, roof.token);
-  assert.equal(
-    (await f.read()).venues[0].zones?.find((z) => z.id === "common")?.description,
-    "A shared room. The roof is sound.",
-  );
+  assert.equal((await f.api.inspect(room.id)).fields[0].value, "A shared room. The roof is sound.");
   assert.ok((await f.api.index()).checkpoints.length >= 2);
-  const legacyCheckpoint = [...f.rows.values()].find((row) => row.kind === "repair-checkpoint")!;
-  legacyCheckpoint.data.private = true;
-  assert.ok((await f.api.index()).checkpoints.some((checkpoint) => checkpoint.id === legacyCheckpoint.data.id));
-  const restoreReview = await f.api.restore(legacyCheckpoint.data.id, "legacy-private-checkpoint");
-  assert.equal(restoreReview.kind, "restore");
-  await f.api.apply(restoreReview.id, restoreReview.token);
   const oldHome = venue("old-home", "residence"),
     newHome = venue("new-home", "residence");
   newHome.residentIds = [];
@@ -1263,8 +873,9 @@ await runCase("repair/retained-scenes", async () => {
   const f = await fixture(),
     stamp = memoryTime(10);
   const scene: any = {
-    version: 4,
+    version: 5,
     id: "held-scene",
+    villageSeed: f.initial.seed,
     sceneRevision: 4,
     status: "active",
     placeName: "Workshop",
@@ -1292,14 +903,7 @@ await runCase("repair/retained-scenes", async () => {
     createdAt: stamp,
     updatedAt: stamp,
   });
-  await f.repo.mutateAuthority(
-    (s) => {
-      s.memoryScenes[scene.id] = { snapshot: captureMemoryScene(s.memories, scene.id, ["player"], stamp), effects: {} };
-    },
-    { memories: true },
-  );
   const cp = await f.api.createCheckpoint("Idle Scene");
-  const held = (await f.read()).memoryScenes[scene.id];
   const pointer = (await f.gate.documents.getById("villages", "villages-active-venue"))!;
   await f.gate.documents.update({
     ...pointer,
@@ -1316,54 +920,18 @@ await runCase("repair/retained-scenes", async () => {
     data: { ...scene, status: "closed", sceneRevision: 9 },
     updatedAt: stamp,
   });
-  await f.repo.mutateAuthority(
-    (s) => {
-      delete s.memoryScenes[scene.id];
-      s.exchangeReceipts.future = {
-        id: "future",
-        sceneId: "later",
-        submissionId: "later",
-        domain: "physical",
-        at: stamp,
-        committedAt: stamp,
-        status: "applied",
-        reason: "Future physical proof",
-        evidenceIds: ["later"],
-        physicalOutcome: {
-          id: "future",
-          venueId: "venue",
-          venueName: "Venue",
-          zoneId: "exterior",
-          text: "A later change",
-          at: stamp,
-          actionReceipt: {
-            happened: true,
-            submissionId: "later",
-            narration: "A later change",
-            expectedRevision: 0,
-            witnessIds: [],
-            after: { description: "Later physical account", state: { revision: 1, updatedAt: stamp, recent: null } },
-          },
-        },
-      };
-    },
-    { memories: true },
-  );
   const review = await f.api.restore(cp.id, "restore-idle");
   await f.api.apply(review.id, review.token);
   f.reopen();
-  const restored = await f.read();
   assert.equal(
     (await f.gate.documents.getById("villages", "villages-active-venue"))?.data &&
       ((await f.gate.documents.getById("villages", "villages-active-venue"))!.data as any).sessionId,
     scene.id,
   );
-  assert.deepEqual(restored.memoryScenes[scene.id], held);
-  assert.equal(restored.exchangeReceipts.future.status, "rejected");
-  assert.ok(!restored.exchangeReceipts.future.physicalOutcome, "Withdrawn future proof cannot satisfy a restored Wish");
-  assert.ok(
-    ((await f.gate.documents.getById("villages", "villages-venue-visit-held-scene"))!.data as any).sceneRevision > 9,
-  );
+  const saved = await f.gate.documents.getById("villages", row.id);
+  const restored = await readSceneWorkIndex(f.gate.documents, saved!.data);
+  assert.equal(restored.status, "active");
+  assert.ok(restored.sceneRevision > 9);
 });
 await runCase("repair/correction-retained", async () => {
   const f = await fixture(),
@@ -1375,7 +943,7 @@ await runCase("repair/correction-retained", async () => {
     name: "Library",
     description: "",
     data: {
-      version: 4,
+      version: 5,
       id: "corrected",
       villageSeed: "repair-world",
       status: "closed",
@@ -1400,7 +968,7 @@ await runCase("repair/restored-evidence", async () => {
   const f = await fixture(),
     stamp = memoryTime(10);
   const scene = {
-    version: 4,
+    version: 5,
     id: "restored",
     villageSeed: "repair-world",
     status: "closed",
@@ -1421,16 +989,6 @@ await runCase("repair/restored-evidence", async () => {
     createdAt: stamp,
     updatedAt: stamp,
   });
-  await f.gate.documents.create({
-    id: "villages-project-scene-evidence",
-    packageId: "villages",
-    kind: "project-scene-evidence",
-    name: "Evidence",
-    description: "",
-    data: { version: 1, seed: "repair-world", scenes: [{ revision: 12, digest: "saved", scene }] },
-    createdAt: stamp,
-    updatedAt: stamp,
-  });
   const cp = await f.api.createCheckpoint("Publication interrupted", "publication-checkpoint");
   await f.gate.documents.remove("villages", savedScene.id, savedScene.revision);
   await f.gate.documents.create({
@@ -1439,12 +997,15 @@ await runCase("repair/restored-evidence", async () => {
     kind: "scene-terminal",
     name: "Receipt",
     description: "",
-    data: {
-      sceneId: "restored",
-      generationReceipts: [
-        { operationId: "old", attemptId: "spent", stages: ["reply"], outcome: "unknown", acknowledgedAt: stamp },
-      ],
-    },
+    data: terminalForScene(
+      coerceSession({
+        ...scene,
+        generationReceipts: [
+          { operationId: "old", attemptId: "spent", stages: ["reply"], outcome: "unknown", acknowledgedAt: stamp },
+        ],
+      }),
+      savedScene.revision,
+    ),
     createdAt: stamp,
     updatedAt: stamp,
   });
@@ -1452,22 +1013,20 @@ await runCase("repair/restored-evidence", async () => {
   await f.api.apply(review.id, review.token);
   const restored = (await f.gate.documents.getById("villages", savedScene.id))!.data as any;
   assert.equal(restored.generationReceipts[0].attemptId, "spent");
-  const index = (await f.gate.documents.getById("villages", "villages-project-scene-evidence"))!.data as any;
-  assert.deepEqual(index.scenes, [], "a restored source is rebuilt against its new revision");
   assert.equal(await f.gate.documents.getById("villages", "villages-scene-terminal-restored"), null);
 });
 await runCase("repair/scale", async () => {
   const f = await fixture();
   await f.repo.mutateAuthority(
     (s) => {
-      s.memories = realisticMemoryHistory(25000);
+      Object.assign(s, nativeHistoryFixture(s, 25_000));
     },
     { memories: true },
   );
   const page = await f.api.list("memories");
   assert.equal(page.records.length, 50);
   assert.ok(page.total > 10000);
-  const oldest = (await f.read()).memories.records[0];
+  const oldest = (await f.read()).continuity.records[0];
   const found = await f.api.inspect(repairId("memory", oldest.id));
   assert.ok(found.people?.length);
   assert.ok(found.source.length);
@@ -1477,7 +1036,7 @@ await runCase("repair/checkpoint-pages", async () => {
   await f.repo.mutateAuthority(
     (state) => {
       state.foundedAt = state.setupAt;
-      state.memories = realisticMemoryHistory(5000);
+      Object.assign(state, nativeHistoryFixture(state, 5_000));
     },
     { memories: true },
   );
@@ -1523,7 +1082,7 @@ await runCase("repair/checkpoint-pages", async () => {
   const head = readMemoryHead((savedDocuments.find((r: any) => r.id === "villages-village")!.data as any).memoryHead)!;
   await f.repo.mutateAuthority(
     (state) => {
-      state.memories = realisticMemoryHistory(7500);
+      Object.assign(state, nativeHistoryFixture(state, 7_500));
     },
     { memories: true },
   );
@@ -1541,12 +1100,12 @@ await runCase("repair/checkpoint-pages", async () => {
   await f.api.apply(review.id, review.token);
   f.reopen();
   const restored = await f.read();
-  assert.equal(restored.memories.records.length, 5000);
+  assert.equal(restored.continuity.records.length, 5_000);
   assert.deepEqual(
-    restored.memories.records.map((r) => r.text),
-    original.memories.records.map((r) => r.text),
+    restored.continuity.versions.map((r) => r.text),
+    original.continuity.versions.map((r) => r.text),
   );
-  assert.ok(restored.memories.revision > original.memories.revision);
+  assert.ok(restored.continuity.revision > original.continuity.revision);
   assert.deepEqual([...envelopes].sort(), ["repair-checkpoint", "repair-control", "repair-plan"]);
 });
 await runCase("repair/http", async () => {
@@ -1574,7 +1133,7 @@ await runCase("repair/http", async () => {
         const memories = await app.inject({ url: "/repair/records?topic=memories&inspection=false" });
         assert.equal(memories.statusCode, 200, memories.body);
         assert.ok(memories.json().records.some((entry: any) => entry.title.includes("hidden brass compass")));
-        assert.ok(memories.json().creation.people.some((person: any) => person.id === "aqua"));
+        assert.ok(index.json().people.some((person: any) => person.id === "aqua"));
         const checkpoint = await app.inject({
           method: "POST",
           url: "/repair/checkpoints",
@@ -1667,90 +1226,6 @@ await runCase("repair/letter-fonts", async () => {
   });
   await assert.rejects(() => f.api.apply(stale.id, stale.token), /changed/u);
   assert.equal((await f.read()).villagers[0]!.letterFontId, original);
-});
-
-await runCase("repair/wishes", async () => {
-  const f = await fixture();
-  await f.repo.mutateAuthority((state) => {
-    state.villagers = wishWorld().villagers;
-    const wish = fixtureWish({ wish: "Share a conversation", reason: "Private motive." }, "talk");
-    wish.status = "fulfilled";
-    state.villagers[0].wishes = [wish];
-    state.villagers[1].wishes = [fixtureWish({ wish: "A separately retained private desire" }, "separate")];
-  });
-  const record = await f.api.inspect(repairId("wish", "a", "talk"));
-  const values = Object.fromEntries(record.fields.map((field) => [field.key, field.value]));
-  values.status = "open";
-  values.approach = "Ask when they have time.";
-  const before = await f.read(),
-    review = await f.prepare(edit(record.id, values, "fix-social-wish"));
-  assert.equal((await f.read()).villagers[0].wishes[0].status, "fulfilled", "Repair review is read-only");
-  const plan = [...f.rows.values()].find((row) => row.kind === "repair-plan" && row.data.review.id === review.id)!;
-  const originalTransaction = plan.data.transaction;
-  const codec = createRepairTransactionCodec(f.store),
-    transaction = await codec.decode(originalTransaction);
-  const dependency = f.rows.get(f.rows.get("villages-village").data.villagers[1].wishHead.root.id);
-  const { id, kind, name, description, data } = dependency;
-  transaction.writes.push({ before: { id, kind, name, description, data }, after: null });
-  plan.data.transaction = await codec.encode(transaction);
-  const protectedRows = structuredClone(f.rows);
-  await assert.rejects(f.api.apply(review.id, review.token), /Wish history is missing or changed/);
-  await assert.rejects(collectRetainedStorage(f.gate), /Wish history page is missing or changed/);
-  assert.deepEqual(f.rows, protectedRows, "A proposed deletion cannot masquerade as an available physical dependency");
-  plan.data.transaction = originalTransaction;
-  f.reopen();
-  await collectRetainedStorage(f.gate);
-  await f.api.apply(review.id, review.token);
-  const repaired = await f.read(),
-    wish = repaired.villagers[0].wishes[0];
-  assert.equal(wish.status, "open");
-  assert.equal(wish.approach, values.approach);
-  assert(wish.revision > before.villagers[0].wishes[0].revision);
-  assert.deepEqual(knownSocialWishes(repaired, "a"), [], "Administrative state repair grants no player knowledge");
-  const undo = await f.api.undo(review.id, "undo-social-wish");
-  f.reopen();
-  await collectRetainedStorage(f.gate);
-  await f.api.apply(undo.id, undo.token);
-  assert.equal((await f.read()).villagers[0].wishes[0].status, "fulfilled");
-});
-
-await runCase("repair/wish-checkpoints", async () => {
-  const f = await fixture();
-  await f.repo.mutateAuthority((state) => {
-    state.foundedAt = state.setupAt;
-    state.villagers = wishWorld().villagers;
-    state.villagers[0].wishes = Array.from({ length: 25_000 }, (_, index) =>
-      fixtureWish({ wish: "Exact retained desire " + index }, "wish:" + index),
-    );
-    state.villagers[1].wishes = [fixtureWish({ wish: "A former resident's private desire" }, "former")];
-  });
-  const checkpoint = await f.api.createCheckpoint("Large Wish library", "large-wish-library");
-  await f.repo.mutateAuthority(
-    (state) => {
-      state.villagers[0].wishes[0] = { ...state.villagers[0].wishes[0], status: "fulfilled", revision: 2 };
-      state.villagers = state.villagers.filter((resident) => resident.characterId !== "b");
-    },
-    { wishes: ["a"] },
-  );
-  assert.equal(f.rows.get("villages-village").data.wishArchiveHead.count, 1);
-  f.reopen();
-  const restore = await f.api.restore(checkpoint.id, "restore-large-wishes");
-  f.reopen();
-  await collectRetainedStorage(f.gate);
-  await f.api.apply(restore.id, restore.token);
-  f.reopen();
-  const restored = await f.read();
-  assert.equal(restored.villagers[0].wishes.length, 25_000);
-  assert.equal(restored.villagers[0].wishes[0].status, "open");
-  assert.ok(restored.villagers[0].wishes[0].revision > 2);
-  assert.equal(restored.villagers[0].wishes.at(-1)!.wish, "Exact retained desire 24999");
-  assert.equal(restored.villagers[1].wishes[0].id, "former");
-  assert.equal(
-    f.rows.get("villages-village").data.wishArchiveHead.count,
-    1,
-    "Restoration preserves the monotonic private archive instead of rewinding meaningful removed history",
-  );
-  await collectRetainedStorage(f.gate);
 });
 
 await runCase("repair/places", async () => {

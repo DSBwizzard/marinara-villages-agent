@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import { fail } from "../../adapters/http/route-support.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { badRequest } from "../../domain/rules/errors.js";
-import { returnCatchupHasCommittedEffects } from "../../domain/rules/return-catchup-recovery.js";
 import {
   backgroundJobSnapshot,
   backgroundWorkSummaries,
@@ -29,7 +28,6 @@ export function registerBackgroundRoutes(engine: FastifyInstance) {
     const batch = state.returnCatchup?.batch;
     if (!batch) return null;
     const current = batch.records?.find((row) => !["settled", "rejected"].includes(row.status));
-    const source = state.socialOutbox?.find((row) => row.id === current?.opportunityId + ":social");
     const opportunity = batch.opportunities?.find((row) => row.id === current?.opportunityId);
     const job =
       batch.status === "failed" && opportunity
@@ -45,19 +43,7 @@ export function registerBackgroundRoutes(engine: FastifyInstance) {
       until: batch.until,
       completed: batch.records?.filter((row) => ["settled", "rejected"].includes(row.status)).length ?? 0,
       total: batch.records?.length ?? 0,
-      settlementRequired: returnCatchupHasCommittedEffects(state, batch.id),
-      issue:
-        batch.status === "failed"
-          ? current
-            ? job
-              ? "generation"
-              : "preparation"
-            : "authority"
-          : batch.status === "recovering"
-            ? source?.reinterpretRequired
-              ? "interpretation"
-              : "settlement"
-            : null,
+      issue: batch.status === "failed" ? (current ? (job ? "generation" : "preparation") : "authority") : null,
     };
   }
   app.post<{ Body: { sessionId?: unknown; visible?: unknown } }>("/background/presence", async (request, reply) => {
@@ -104,7 +90,6 @@ export function registerBackgroundRoutes(engine: FastifyInstance) {
               opportunity.kind === "world" ? "world-development" : "resident-planning",
               returnCatchupSubject(period.id, opportunity.id),
             ),
-            interpretation: await backgroundJobSnapshot("social-recovery", opportunity.id + ":social"),
           })),
         ),
       });

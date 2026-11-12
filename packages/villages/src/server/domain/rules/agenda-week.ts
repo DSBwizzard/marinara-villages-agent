@@ -129,15 +129,8 @@ export function agendaBlocksFor(agenda: VillageAgenda, at: Date): VillageAgendaB
           ...block(entry.startMinute, entry.endMinute, entry.venueId, entry.activity),
           zoneId: entry.zoneId,
         })));
-  return composeAgenda(ordinary, [
-    ...(agenda.socialActivities ?? [])
-      .filter((activity) => activity.dateKey === key)
-      .map((activity) => ({
-        ...activity,
-        id: activity.wishId,
-        source: "social" as const,
-        replaces: "flexible" as const,
-      })),
-    ...(agenda.reservations ?? []).filter((reservation) => reservation.dateKey === key),
-  ]);
+  return composeAgenda(
+    ordinary,
+    (agenda.reservations ?? []).filter((reservation) => reservation.dateKey === key),
+  );
 }

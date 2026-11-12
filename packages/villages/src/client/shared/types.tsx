@@ -29,8 +29,6 @@ export type SetupVenueDraft = VillageVenue & {
  */
 export type VillageBeatRegister = "speech" | "narration";
 
-export type SceneComposerMode = "chat" | "move" | "conclude";
-
 /**
  * What a connection is for, in the Engine's own terms.
  *

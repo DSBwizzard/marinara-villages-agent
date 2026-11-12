@@ -1,4 +1,3 @@
-import { fixtureWishIdentity, fixtureRelationshipIdentity } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import { createBackgroundContext } from "../packages/villages/src/server/adapters/operations/background-context-service.js";
 import { configureVillageClock } from "../packages/villages/src/server/adapters/time/clock-gate.js";
@@ -12,6 +11,7 @@ import { worldRepairRecords } from "../packages/villages/src/server/domain/rules
 import { createRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
 import { createRepairService } from "../packages/villages/src/server/features/repair/repair-service.js";
+import { currentRoomViews } from "../packages/villages/src/server/domain/rules/continuity-retrieval.js";
 
 let now = new Date("2026-10-29T10:00:00.000Z"),
   state = defaultVillageState();
@@ -38,6 +38,8 @@ const rows = new Map<string, any>(),
   context = createBackgroundContext();
 let requests = 0,
   proposal: any,
+  prompt: any,
+  chosen: { venueId: string; zoneId: string },
   failApply = false;
 const mutate = async (update: (world: typeof state) => void) => {
   const next = structuredClone(state);
@@ -49,16 +51,15 @@ const model: any = {
   model: "fixture",
   maxOutputTokens: 3000,
   fitContext: (messages: any, options: any) => ({ messages, maxTokens: options.maxTokens }),
-  chatComplete: async () => {
+  chatComplete: async (messages: any[]) => {
     requests++;
+    prompt = JSON.parse(messages.at(-1).content);
     if (failApply) state.narrativeConsequence = "gentle";
     return { content: JSON.stringify({ quiet: false, development: proposal }), finishReason: "stop" };
   },
 };
 let documents: any;
 const narrative = createNarrative({
-  relationshipIdentity: fixtureRelationshipIdentity,
-  wishIdentity: fixtureWishIdentity,
   read: async () => structuredClone(state),
   mutate,
   socialSnapshot: async () => {
@@ -69,6 +70,7 @@ const narrative = createNarrative({
   },
   queue: async (work) => {
     const target = (work.input as any).grant.targets[0];
+    chosen = { venueId: target.venueId, zoneId: target.zoneId };
     proposal = {
       severity: failApply ? "moderate" : "gentle",
       occurrence: "Drizzle collects beneath a window.",
@@ -80,7 +82,7 @@ const narrative = createNarrative({
         summary: "Wet paving beneath a window.",
         status: "active",
       },
-      physical: [],
+      room: [{ text: "Drizzle beads on the sill.", expiresInMinutes: 15 }],
       conditions: [
         {
           id: null,
@@ -148,6 +150,23 @@ try {
   await background.settleBackgroundWork();
   assert.equal((await background.backgroundWorkSummaries())[0]!.status, "completed");
   assert.equal(requests, 1);
+  assert.equal(prompt.target.zoneId, chosen!.zoneId);
+  assert.equal(
+    prompt.target.roomBasis,
+    undefined,
+    "The provider receives the scoped Room view without its authority digest.",
+  );
+  assert.equal(prompt.target.controllers, undefined);
+  assert.deepEqual(
+    currentRoomViews(
+      state.continuity,
+      state.episodes,
+      { kind: "room", placeId: chosen!.venueId, zoneId: chosen!.zoneId },
+      now.toISOString(),
+    ).map((row) => row.version.text),
+    ["Drizzle beads on the sill."],
+  );
+  assert.equal(state.episodes.records.filter((episode) => episode.room?.zoneId === chosen!.zoneId).length, 2);
   assert.equal(state.eventAttempts!.attempts.length, 1);
   assert.equal(state.eventAttempts!.attempts[0]!.origin, "world");
   assert.equal(state.narrative!.conditions.length, 1);
@@ -169,9 +188,12 @@ try {
   const record = worldRepairRecords(state, false).find((row) => row.id.includes("narrative-claim"))!;
   const gate = createRepairGate(documents),
     repository = createVillageRepository(() => gate.documents);
-  await repository.mutateAuthority((world) => {
-    Object.assign(world, structuredClone(state));
-  });
+  await repository.mutateAuthority(
+    (world) => {
+      Object.assign(world, structuredClone(state));
+    },
+    { memories: true },
+  );
   const repair = createRepairService({
     gate,
     repository,
@@ -194,11 +216,11 @@ try {
     expectedRecord: selected.token,
   } as any);
   await repair.apply(review.id, review.token);
-  state = await repository.readAuthority();
+  state = await repository.readAuthority({ memories: true });
   assert.equal(state.narrative!.claims!.length, 0);
   const undo = await repair.undo("reject", "undo-reject");
   await repair.apply(undo.id, undo.token);
-  state = await repository.readAuthority();
+  state = await repository.readAuthority({ memories: true });
   assert.equal(state.narrative!.claims!.length, 1, "Undo restores the held claim with its saved job.");
   assert.equal((await background.backgroundWorkSummaries())[0]!.status, "failed");
   const again = await repair.inspect(record.id);
@@ -211,7 +233,7 @@ try {
     expectedRecord: again.token,
   } as any);
   await repair.apply(againReview.id, againReview.token);
-  state = await repository.readAuthority();
+  state = await repository.readAuthority({ memories: true });
   failApply = false;
   now = new Date(now.getTime() + 31 * 60_000);
   await narrative.reconcile(now);

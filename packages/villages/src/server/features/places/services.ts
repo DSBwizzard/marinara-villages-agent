@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { initializeRoomContinuity } from "../../domain/rules/native-continuity.js";
 import type { CapabilityLanguageModelCompletion } from "@marinara-engine/shared";
 import { z } from "zod";
 import { readVillageState, mutateVillageState } from "../world/village-store.js";
@@ -40,7 +41,7 @@ export async function listPlaces(query: Record<string, unknown>): Promise<PlaceD
       !place.disabled &&
       place.knownBy.includes("player") &&
       (!query.mapId || place.location.presentation.mapId === query.mapId) &&
-      (!search || `${place.location.name} ${place.location.description}`.toLocaleLowerCase().includes(search)),
+      (!search || `${place.location.name} ${placeSummary(place).description}`.toLocaleLowerCase().includes(search)),
   );
   const bounds = query.bounds === undefined ? undefined : String(query.bounds).split(",").map(Number);
   if (bounds && (bounds.length !== 4 || bounds.some((n) => !Number.isFinite(n) || n < 0 || n > 1)))
@@ -322,8 +323,8 @@ export async function generatePlace(value: unknown, placeId?: string) {
         } else if (raw.place === null) {
           if (placeId) throw badRequest("The known Place could not be prepared. Its discovery is retained.");
           saved.placeId = "";
-        } else
-          establishPlace(
+        } else {
+          const created = establishPlace(
             state,
             validateDraft(raw.place),
             admitted.placeId,
@@ -333,6 +334,17 @@ export async function generatePlace(value: unknown, placeId?: string) {
             true,
             prior,
           );
+          for (const zone of created.location.zones ?? [])
+            if (!prior?.location.zones?.some((row) => row.id === zone.id))
+              initializeRoomContinuity(
+                state,
+                created.id,
+                zone.id,
+                zone.description,
+                `request:${admitted.id}`,
+                villageNow().toISOString(),
+              );
+        }
         saved.status = "ready";
         delete saved.error;
         state.worldPlaces.revision++;

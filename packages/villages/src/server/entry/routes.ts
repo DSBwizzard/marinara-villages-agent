@@ -11,6 +11,7 @@ import { prepareReturnCatchup } from "../features/background/return-catchup.js";
 import { hasVillagePresence } from "../jobs/background-work.js";
 import { peekVillageAuthority } from "../features/world/village-store.js";
 import { registerFoundingRoutes } from "../features/founding/routes.js";
+import { registerArtworkPreviewRoute } from "../features/media/artwork-preview.js";
 import {
   registerSpriteManagerRoutes,
   registerTownMapRoutes,
@@ -84,6 +85,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
     "get /memories/inspect",
     "get /memories/:id/evidence",
     "get /memories/inspect/:id",
+    "get /artwork/:size/:id/:extension",
     "post /memories/:id/forget",
     "post /memories/:id/correct",
   ]);
@@ -92,6 +94,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
   registerSnapshotCatalogRoutes(surface);
   registerPersonaRoutes(surface);
   registerTownMapRoutes(surface);
+  registerArtworkPreviewRoute(surface);
   registerResidentRoutes(surface);
   registerSceneEntryRoutes(surface);
   registerVenueAccessRoutes(surface);

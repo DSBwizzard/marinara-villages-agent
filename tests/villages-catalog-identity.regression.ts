@@ -107,10 +107,10 @@ try {
       {
         letterFontId: "caveat",
         characterId: "requested",
+        incarnation: "requested:original",
         cardSnapshot: snapshotFromCard(cachedCard, 2),
         addedAt: "2026-10-06T12:00:00Z",
         agenda: null,
-        wishes: [],
       },
     ];
   });

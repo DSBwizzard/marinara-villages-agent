@@ -1,13 +1,9 @@
 import assert from "node:assert/strict";
 import { mock } from "node:test";
 import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
-import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
-import { reserveMemoryScene } from "../packages/villages/src/server/domain/rules/village-memories.js";
-import { createSceneWishContexts } from "../packages/villages/src/server/adapters/storage/scene-wish-contexts.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
 import { mutableSceneSubmission } from "../packages/villages/src/server/domain/rules/scene-submissions.js";
 import { sessionSlot } from "../packages/villages/src/server/adapters/storage/scene-slots.js";
 import { operationEvidenceStore } from "../packages/villages/src/server/adapters/storage/operation-evidence.js";
@@ -23,7 +19,16 @@ import { createRepairService } from "../packages/villages/src/server/features/re
 import { collectRetainedStorage } from "../packages/villages/src/server/features/repair/retained-storage-cleanup.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import { createSceneQueryService } from "../packages/villages/src/server/features/scenes/scene-query-service.js";
-import { createSceneCommands } from "../packages/villages/src/server/features/scenes/command-service.js";
+import { sceneEpisodeId } from "../packages/villages/src/server/domain/rules/episode-sources.js";
+import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
+import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
+import {
+  fittedNarrationReadset,
+  narrationContinuityContext,
+} from "../packages/villages/src/server/domain/rules/narration-context.js";
+import type { VenueSubmission } from "../packages/villages/src/server/domain/models/scene-model.js";
+import { venueFixture } from "./helpers/venues.fixture.js";
 import { createVenueCoordinator } from "../packages/villages/src/server/jobs/venue-coordinator-service.js";
 import { createVenueOperationContext } from "../packages/villages/src/server/adapters/operations/operation-context-service.js";
 import { ensureNarrative } from "../packages/villages/src/server/domain/rules/narrative-development.js";
@@ -33,69 +38,64 @@ const at = "2026-10-30T12:00:00.000Z",
   sceneId = "submissions",
   seed = "submission-growth";
 const f = () => sceneHistoryFixture();
-function turn(index: number) {
-  const wish = fixtureWish({ wish: "A conversation about the river" }, "wish:" + index, at);
-  wish.history = Array.from({ length: 4 }, (_, ordinal) => ({
-    id: "history:" + ordinal,
-    at,
-    kind: "progress" as const,
-    text: "Private retained context café 🌼 " + index + " " + ordinal + " exact evidence. ".repeat(12),
-    sourceId: "original:" + index,
-    lineIds: ["original-line:" + ordinal],
-  }));
-  const processing = createExchangeProcessing({
-    seed,
-    sceneId,
-    submissionId: "turn:" + index,
-    order: index,
-    lineIds: [],
-    actionReceiptIds: [],
-  });
-  for (const domain of Object.values(processing.domains)) domain.status = "applied";
+function turn(index: number): VenueSubmission {
+  const id = "turn:" + index,
+    message = "Exact private player input café 🌼 " + index + " exact original text. ".repeat(6);
   return {
-    id: "turn:" + index,
-    message: "A public exchange " + index,
+    id,
+    message,
     at,
     mode: "chat",
-    progressProcessedAt: at,
     targetId: "",
-    activeIdsAfterTurn: ["ada"],
-    processing,
-    wishContexts: [{ actorId: "ada", wishId: wish.id, fingerprint: "captured", capturedAt: at, wishes: [wish] }],
-    interpretationHistory: [
-      {
-        at,
-        domain: "wishes",
-        source: "Exact original judgment",
-        proposals: { evidence: "Private original verdict " + index },
-      },
-    ],
+    requestFingerprint: memoryHash(["chat", "", null, message]),
+    episodeId: sceneEpisodeId(seed, sceneId, id),
+    acceptance: { status: "applied", rejected: [] },
+    progressProcessedAt: at,
   };
 }
 async function populate(fixture: ReturnType<typeof f>, count: number) {
-  const world = wishWorld();
-  world.seed = seed;
-  world.setupAt = at;
-  world.villagers[0].characterId = "ada";
-  world.villagers[0].cardSnapshot.id = "ada";
-  world.villagers[0].cardSnapshot.capturedAt = at;
-  await createVillageRepository(() => fixture.gate.documents).mutateAuthority((state) => {
-    Object.assign(state, world);
-  });
+  const world = { ...defaultVillageState(), seed, setupAt: at, foundedAt: at };
+  const venue = venueFixture({ id: "hall", name: "Hall" });
+  world.venues = [venue];
+  await createVillageRepository(() => fixture.gate.documents).mutateAuthority(
+    (state) => {
+      Object.assign(state, world);
+    },
+    { memories: true },
+  );
   const scene = coerceSession({
-    version: 4,
+    version: 5,
     id: sceneId,
     villageSeed: seed,
+    placeId: venue.id,
+    placeName: venue.name,
+    zoneId: "exterior",
     status: "closed",
     startedAt: at,
-    participants: [{ characterId: "ada", name: "Ada", doing: "Talking" }],
-    submissions: Array.from({ length: count }, (_, index) => turn(index)),
+    lastActivityAt: at,
+    participants: [],
     lines: [],
+    submissions: [],
+    sceneAttendance: { capturedAt: at, layout: captureSceneLayout(venue), occupants: [] },
   });
   scene.continuity = captureSceneContinuity(world, scene, Date.parse(at));
+  scene.submissions = Array.from({ length: count }, (_, index) => turn(index));
+  const latest = scene.submissions.at(-1)!;
+  const scoped = zoneEventScene({ ...scene, submissions: [] }, venue, { message: latest.message });
+  const context = narrationContinuityContext(world, scoped, venue, latest.id, latest.message, at);
+  const raw = {
+    segments: [{ kind: "narration", text: "The hall is quiet." }],
+    keep: [{ text: "Private retained context" }],
+  };
+  latest.narration = { raw, readset: fittedNarrationReadset(world, context, []), responseDigest: memoryHash(raw) };
   await fixture.mutateDocument("villages-venue-visit-" + sceneId, sessionSlot(fixture.gate.documents), (saved) =>
     Object.assign(saved, scene),
   );
+}
+function saveRetry(turn: VenueSubmission, revision: number) {
+  const narration = turn.narration!;
+  narration.raw = { ...narration.raw, retry: "Exact retained revision " + revision };
+  narration.responseDigest = memoryHash(narration.raw);
 }
 for (const fault of ["before", "after"] as const) {
   const fixture = f();
@@ -107,19 +107,13 @@ for (const fault of ["before", "after"] as const) {
       resumeProject: async () => {},
       cancelProject: async () => {},
       replaySaved: async () => {},
-      continueSaved: async () => {},
     });
     const checkpoint = await repair.createCheckpoint("Original exact submission context", "original");
     const old = structuredClone(fixture.rows.get("villages-venue-visit-" + sceneId).data);
     fixture.fail(fault);
     await assert.rejects(
       fixture.repository.changeSession(sceneId, (scene) => {
-        mutableSceneSubmission(scene, "turn:7")!.interpretationHistory!.push({
-          at,
-          domain: "wishes",
-          source: "Purchased recovery",
-          proposals: { exact: "Retain this verdict" },
-        });
+        saveRetry(mutableSceneSubmission(scene, "turn:7")!, 1);
       }),
       /Synthetic/,
     );
@@ -128,10 +122,13 @@ for (const fault of ["before", "after"] as const) {
       fixture.gate.documents,
       fixture.rows.get("villages-venue-visit-" + sceneId).data,
     );
-    assert.equal(current.submissions[7].interpretationHistory!.length, fault === "after" ? 2 : 1);
+    assert.equal(
+      current.submissions[7].narration!.raw.retry,
+      fault === "after" ? "Exact retained revision 1" : undefined,
+    );
     const restoration = await repair.restore(checkpoint.id, "restore-original");
     await repair.apply(restoration.id, restoration.token);
-    assert.equal((await fixture.repository.readSession(sceneId)).submissions[7].interpretationHistory!.length, 1);
+    assert.equal((await fixture.repository.readSession(sceneId)).submissions[7].narration!.raw.retry, undefined);
     const root = fixture.rows.get(old.submissionHistory.submissions.id);
     fixture.rows.delete(root.id);
     const held = structuredClone(fixture.rows);
@@ -150,7 +147,7 @@ for (const consumer of ["backlog", "operation", "restart"] as const) {
   try {
     await populate(fixture, 8);
     await fixture.repository.changeSession(sceneId, (scene) => {
-      mutableSceneSubmission(scene, "turn:7")!.processing!.domains.memories.status = "pending";
+      mutableSceneSubmission(scene, "turn:7")!.acceptance.status = "held";
     });
     if (consumer === "restart")
       fixture.rows.get("villages-venue-visit-" + sceneId).data.operation = {
@@ -174,7 +171,7 @@ for (const consumer of ["backlog", "operation", "restart"] as const) {
       if (changed) return;
       changed = true;
       await fixture.repository.changeSession(sceneId, (scene) => {
-        mutableSceneSubmission(scene, "turn:7")!.processing!.domains.memories.status = "applied";
+        mutableSceneSubmission(scene, "turn:7")!.acceptance.status = "applied";
       });
       try {
         await collectRetainedStorage(collector);
@@ -224,7 +221,7 @@ for (const consumer of ["backlog", "operation", "restart"] as const) {
         await coordinator.recoverVenueOperations(async (id) => {
           recovered.push(id);
         });
-        assert.deepEqual(recovered, [sceneId]);
+        assert.deepEqual(recovered, [], "The startup reader honors the held purchase in its retained snapshot");
       }
     }
     assert(changed && deferred, "A separate activation cannot collect pages during the complete read");
@@ -234,51 +231,6 @@ for (const consumer of ["backlog", "operation", "restart"] as const) {
     fixture.release();
     fixture.gate.dispose();
     collector.dispose();
-  }
-}
-
-{
-  const fixture = f();
-  try {
-    await populate(fixture, 8);
-    await fixture.repository.changeSession(sceneId, (scene) => {
-      scene.status = "active";
-    });
-    const notice = { id: "committed-notice", kind: "wish" as const, text: "Wish fulfilled" };
-    const world = {
-      ...defaultVillageState(),
-      seed,
-      exchangeReceipts: {
-        committed: {
-          id: "committed",
-          sceneId,
-          submissionId: "turn:7",
-          domain: "wishes",
-          status: "applied",
-          at,
-          notice,
-        },
-      },
-    };
-    reserveMemoryScene(world, sceneId, at);
-    const commands = createSceneCommands({
-      readSession: fixture.repository.readSession,
-      changeSession: fixture.repository.changeSession,
-      readVillageSnapshot: async () => world,
-      bindReplayEffects: (effects: unknown) => effects,
-    } as any);
-    const effects = commands.sceneReplayEffects();
-    const scene = await fixture.repository.readSession(sceneId);
-    assert.deepEqual(await effects.receiptForTurn(scene, scene.submissions[7]), [notice]);
-    assert.deepEqual((await fixture.repository.readSession(sceneId)).submissions[7].recordEvents, [notice]);
-    assert.deepEqual(
-      await effects.receiptForTurn(scene, scene.submissions[7]),
-      [notice],
-      "Reconstructing committed notices is idempotent and provider-free",
-    );
-  } finally {
-    fixture.release();
-    fixture.gate.dispose();
   }
 }
 
@@ -306,7 +258,6 @@ for (const committed of [false, true]) {
       resumeProject: async () => {},
       cancelProject: async () => {},
       replaySaved: async () => {},
-      continueSaved: async () => {},
     });
     const record = await repair.inspect(repairId("narrative-claim", "held"));
     const before = structuredClone(fixture.rows);
@@ -354,21 +305,23 @@ for (const count of [1000, 10_000, 25_000]) {
     await fixture.repository.changeSession(sceneId, (scene) => {
       scene.lines.push(
         {
-          id: "saved-player",
-          role: "user",
-          speakerId: "player",
-          name: "Player",
-          content: "The exact question",
-          heardBy: ["ada", "player"],
+          id: "saved-setting",
+          role: "assistant",
+          kind: "narration",
+          speakerId: "__venue_scene__",
+          name: "Narration",
+          content: "The hall is quiet.",
+          heardBy: ["player"],
           at,
         },
         {
           id: "saved-reply",
           role: "assistant",
-          speakerId: "ada",
-          name: "Ada",
-          content: "The exact answer",
-          heardBy: ["ada", "player"],
+          kind: "narration",
+          speakerId: "__venue_scene__",
+          name: "Narration",
+          content: "The room grows colder.",
+          heardBy: ["player"],
           at,
         },
       );
@@ -417,6 +370,7 @@ for (const count of [1000, 10_000, 25_000]) {
         input: null,
         committed: true,
         replyReady: true,
+        acceptance: "applied",
       },
       "A later close operation cannot hide a saved turn outside the visible playback window",
     );
@@ -429,10 +383,7 @@ for (const count of [1000, 10_000, 25_000]) {
     console.log(`Latest operation proof ${count}: ${proofIo.readBytes} read bytes, no writes or model requests`);
     if (count === 1000) {
       await fixture.repository.changeSession(sceneId, (scene) => {
-        Object.assign(mutableSceneSubmission(scene, requested)!, {
-          semanticProvenance: { version: 2 },
-          semanticReady: false,
-        });
+        mutableSceneSubmission(scene, requested)!.acceptance.status = "held";
       });
       assert.deepEqual(
         await coordinator.readVenueOperation(sceneId, requested),
@@ -440,13 +391,14 @@ for (const count of [1000, 10_000, 25_000]) {
           id: requested,
           status: "complete",
           input: null,
-          committed: true,
+          committed: false,
           replyReady: false,
+          acceptance: "held",
         },
         "Committed but unpublished work keeps its recovery hold",
       );
       await fixture.repository.changeSession(sceneId, (scene) => {
-        mutableSceneSubmission(scene, requested)!.semanticReady = true;
+        mutableSceneSubmission(scene, requested)!.acceptance.status = "applied";
       });
       assert.deepEqual(await coordinator.readVenueOperation(sceneId, requested), {
         id: requested,
@@ -454,6 +406,7 @@ for (const count of [1000, 10_000, 25_000]) {
         input: null,
         committed: true,
         replyReady: true,
+        acceptance: "applied",
       });
       assert.deepEqual(
         await coordinator.readVenueOperation(sceneId, "turn:0"),
@@ -463,6 +416,7 @@ for (const count of [1000, 10_000, 25_000]) {
           input: null,
           committed: true,
           replyReady: true,
+          acceptance: "applied",
         },
         "Explicit recovery of an older turn retains the complete evidence lookup",
       );
@@ -486,20 +440,12 @@ for (const count of [1000, 10_000, 25_000]) {
           scene.activity = "Metadata update " + index;
         });
         await fixture.repository.changeSession(sceneId, (scene) => {
-          mutableSceneSubmission(scene, "turn:" + (count - 1))!.interpretationHistory!.push({
-            at,
-            domain: "wishes",
-            source: "Retry " + index,
-            proposals: { exact: "Saved retry evidence " + index },
-          });
+          saveRetry(mutableSceneSubmission(scene, requested)!, index);
         });
       }
       for (let index = 0; index < 20; index++)
         await fixture.repository.changeSession(sceneId, (scene) => {
-          scene.submissions.push(
-            coerceSession({ version: 4, participants: scene.participants, submissions: [turn(count + index)] })
-              .submissions[0],
-          );
+          scene.submissions.push(turn(count + index));
         });
     } finally {
       mock.restoreAll();
@@ -516,17 +462,18 @@ for (const count of [1000, 10_000, 25_000]) {
     assert.deepEqual(stored.operation.snapshot.submissionHistory, original.data.submissionHistory);
     const current = await fixture.repository.readSession(sceneId);
     assert.equal(current.submissions.at(-1)!.id, "turn:" + (count + 19));
-    assert.equal(current.submissions[count - 1].interpretationHistory!.length, 21);
+    assert.equal(current.submissions[count - 1].narration!.raw.retry, "Exact retained revision 19");
     const returned = await fixture.repository.changeSession(sceneId, (scene) => {
       scene.activity = "Array isolation";
     });
     returned.submissions.pop();
     returned.lines.push({
       id: "unsaved",
-      role: "user",
-      speakerId: "player",
+      role: "assistant",
+      kind: "narration",
+      speakerId: "__venue_scene__",
       content: "Not committed",
-      name: "Player",
+      name: "Narration",
       heardBy: [],
       at,
     });
@@ -537,18 +484,16 @@ for (const count of [1000, 10_000, 25_000]) {
       "A returned outer array cannot mutate the persisted-head cache",
     );
     assert.equal(persisted.lines.length, 2);
-    const context = await createSceneWishContexts(fixture.gate.documents).read(
-      current.submissions[0].wishContexts!,
-      current,
-    );
-    assert.throws(() => context[0].wishes[0].history.push({} as never), TypeError);
+    const latest = current.submissions[count - 1];
+    assert.throws(() => {
+      latest.narration!.raw.keep = [];
+    }, TypeError);
     assert(!JSON.stringify(publicSceneResponse(current)).includes("Private retained context"));
     const cold = createSceneHistory(createRepairGate(fixture.documents).documents);
-    assert.equal(
-      (await cold.decode(stored.operation.snapshot)).submissions[count - 1].interpretationHistory!.length,
-      1,
-    );
-    assert.equal((await cold.decode(stored)).submissions[count - 1].interpretationHistory!.length, 21);
+    const snapshot = (await cold.decode(stored.operation.snapshot)).submissions[count - 1];
+    assert.equal(snapshot.message, latest.message, "Private original input survives both owners verbatim");
+    assert.equal(snapshot.narration!.raw.retry, undefined);
+    assert.equal((await cold.decode(stored)).submissions[count - 1].narration!.raw.retry, "Exact retained revision 19");
     await collectRetainedStorage(fixture.gate);
     await validateSceneHistory(fixture.gate.documents, [fixture.rows.get(original.id).data]);
   } finally {

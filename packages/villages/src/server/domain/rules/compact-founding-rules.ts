@@ -1,5 +1,5 @@
 import type { VillagerCard } from "../models/catalog-model.js";
-import type { VillageAgenda, VillagePlayerBackground, VillageVenue, VillageWish } from "../models/world.js";
+import type { VillageAgenda, VillagePlayerBackground, VillageVenue } from "../models/world.js";
 import { extractModelJsonObject } from "./json-reply.js";
 import type { RoutineProfile } from "./owned-routine.js";
 import {
@@ -13,7 +13,7 @@ import { boundText, MAX_ROUTINE_SUMMARY_LENGTH } from "./prompt-preset.js";
 import { generatedIdentityDescription } from "./resident-description.js";
 import { ROUTINE_CONTRACT } from "./routine-contract.js";
 import type { NativeWeekSchedule } from "./schedule-rules.js";
-import { semanticHash } from "./semantic-contract.js";
+import { backgroundRevision } from "./background-revision.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 
 export class RoutineResponseError extends Error {}
@@ -30,10 +30,16 @@ type PaletteEntry = {
 };
 
 export type CompactFoundingContext = {
+  continuity: {
+    fingerprint: string;
+    sources: string[];
+    protectionFingerprint: string;
+    protections: ReturnType<typeof import("./continuity.js").continuityConstraints>;
+  };
   loreUse?: import("../../../shared/contracts/lore.js").LoreUse[];
   identityDescriptionRevision?: string;
   sourceRevision?: string;
-  circumstances?: unknown;
+  circumstances?: { worldFacts: readonly string[]; worldRules: string };
   playerBackground?: VillagePlayerBackground | null;
   playerPersonaName?: string;
   village: string;
@@ -42,7 +48,7 @@ export type CompactFoundingContext = {
   card: Partial<Omit<VillagerCard, "tags">> & Pick<VillagerCard, "id" | "name"> & { tags?: readonly string[] };
   venues: readonly VillageVenue[];
   lore: readonly string[];
-  wishes: readonly VillageWish[];
+  wishes: readonly string[];
   schedule: NativeWeekSchedule | null;
   characterId?: string;
   influenceHints?: readonly string[];
@@ -95,7 +101,7 @@ function checkedPalette(value: unknown, venues: readonly VillageVenue[]): Palett
 
 /** Models select activities and dayparts; code owns the repeated calendar structure. */
 export function compileRoutineDays(palette: readonly PaletteEntry[], residentId: string): number[][] {
-  const seed = Number.parseInt(semanticHash(residentId).slice(0, 8), 16);
+  const seed = Number.parseInt(backgroundRevision(residentId).slice(0, 8), 16);
   return VILLAGE_WEEKDAYS.map((_, day) =>
     Array.from({ length: 8 }, (_, slot) => {
       const candidates = palette.flatMap((activity, index) =>
@@ -203,7 +209,7 @@ export function parseCompactFounding(
     const row = influence as Record<string, unknown>;
     profile.influence = {
       version: 1,
-      signature: semanticHash(influence),
+      signature: backgroundRevision(influence),
       available: !!context.schedule,
       enabled: true,
       rhythms: Array.isArray(row.rhythms)

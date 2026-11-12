@@ -8,11 +8,7 @@ import {
   MAX_VENUE_NOTE_LENGTH,
 } from "../../packages/villages/src/server/domain/rules/prompt-preset.js";
 import { venueFieldText, venueStringList } from "../../packages/villages/src/server/domain/rules/venue-authoring.js";
-import {
-  validVenueClasses,
-  venueResidentIds,
-  venueSpaces,
-} from "../../packages/villages/src/server/domain/rules/venue-model.js";
+import { validVenueClasses, venueResidentIds } from "../../packages/villages/src/server/domain/rules/venue-model.js";
 import { randomVillageSeed } from "../../packages/villages/src/server/domain/rules/village-clock.js";
 import type { VillageVenueClass } from "../../packages/villages/src/server/domain/models/world.js";
 import { initializeVenueAccess } from "../../packages/villages/src/server/domain/rules/venue-access.js";
@@ -40,7 +36,6 @@ export function venueFixture(input: Partial<VillageVenue>): VillageVenue {
     kind: "exterior",
     description: venue.description,
     image: venue.presentation?.image ?? null,
-    state: venue.exteriorState ?? defaultVenueSpace("other").state,
     seen: true,
   };
   const common = (
@@ -126,7 +121,7 @@ function venueDraft(value: unknown, existing: VillageVenue | null): VillageVenue
   const y = presentation.y === undefined ? (existing?.presentation.y ?? null) : presentation.y;
   const position = readPlacePosition({ x, y });
   const priorSpaces = existing
-    ? venueSpaces(existing)
+    ? (existing.spaces ?? [])
     : classes.map((venueClass) => defaultVenueSpace(venueClass, description));
   const editableSpaceClasses = existing?.layoutVersion === 1 ? priorSpaces.map((space) => space.venueClass) : classes;
   const postedSpaces = record.spaces;
@@ -143,15 +138,9 @@ function venueDraft(value: unknown, existing: VillageVenue | null): VillageVenue
       : null;
     const row = posted && typeof posted === "object" ? (posted as Record<string, unknown>) : {};
     const nextDescription = venueFieldText(row.description, prior.description, MAX_VENUE_DESCRIPTION_LENGTH).trim();
-    const nextState = { ...prior.state };
-    if (nextDescription !== prior.description) {
-      nextState.revision++;
-      nextState.updatedAt = new Date().toISOString();
-    }
     return {
       ...prior,
       description: nextDescription,
-      state: nextState,
     };
   });
   if (spaces.some((space) => !space.description)) throw badRequest("Approve a description for every Venue space.");
@@ -168,7 +157,6 @@ function venueDraft(value: unknown, existing: VillageVenue | null): VillageVenue
     spaces,
     residenceCapacity,
     residentIds: existing ? venueResidentIds(existing) : venueStringList(record.residentIds, []),
-    exteriorState: existing?.exteriorState,
     privateSpaces: existing?.privateSpaces,
     archivedPrivateSpaces: existing?.archivedPrivateSpaces,
     playerSeenShared: existing?.playerSeenShared,
@@ -190,7 +178,6 @@ function venueDraft(value: unknown, existing: VillageVenue | null): VillageVenue
     },
     capabilities: venueStringList(record.capabilities, existing?.capabilities ?? []),
     workerIds: venueStringList(record.workerIds, existing?.workerIds ?? []),
-    state: existing?.state ?? { revision: 0, updatedAt: "", recent: null },
   };
   return draft;
 }

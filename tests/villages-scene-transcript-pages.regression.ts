@@ -10,7 +10,6 @@ import {
   SCENE_STORAGE_FORMAT,
 } from "../packages/villages/src/server/adapters/storage/scene-history.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { heardLines } from "../packages/villages/src/server/domain/rules/scene-record.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import { collectRetainedStorage } from "../packages/villages/src/server/features/repair/retained-storage-cleanup.js";
 import {
@@ -26,6 +25,7 @@ import { readSceneSubmissionHead } from "../packages/villages/src/server/adapter
 import { createRepairService } from "../packages/villages/src/server/features/repair/repair-service.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { authorVillageFixture } from "./helpers/village-storage.fixture.js";
 
 const at = "2026-10-30T12:00:00.000Z";
 const line = (id: string) => ({
@@ -36,14 +36,14 @@ const line = (id: string) => ({
   content: "Exact witnessed café 🌼 — " + id + ". ".repeat(40),
   at,
   staging: [{ characterId: "ada", look: { target: "player" as const } }],
-  heardBy: ["ada", "remote"],
+  heardBy: ["player", "ada", "remote"],
 });
 const measurements: unknown[] = [];
 for (const count of [1000, 10_000, 25_000]) {
   const f = fixture();
   try {
     const scene = coerceSession({
-      version: 4,
+      version: 5,
       id: "long",
       villageSeed: "seed",
       startedAt: at,
@@ -123,7 +123,7 @@ for (const count of [1000, 10_000, 25_000]) {
       assert.equal(read.lines.length, count + 20);
       assert.equal(read.lines[0].content, line("line-0").content);
       assert.equal(
-        heardLines(read, "remote").length,
+        read.lines.filter((entry) => entry.heardBy.includes("remote")).length,
         count + 20,
         "historical hearers need not be current participants",
       );
@@ -164,7 +164,7 @@ console.log("Scene transcript document-store growth:", JSON.stringify(measuremen
 const f = fixture();
 try {
   const scene = coerceSession({
-    version: 4,
+    version: 5,
     id: "faults",
     villageSeed: "seed",
     startedAt: at,
@@ -183,9 +183,10 @@ try {
   });
   await f.mutateDocument("villages-venue-visit-faults", sessionSlot, (saved) => Object.assign(saved, scene));
   const logical = await f.repository.readSession("faults");
-  assert.equal(heardLines(logical, "near")[0].content, "A distant clatter.");
-  assert(!JSON.stringify(heardLines(logical, "near")).includes("Private original words"));
-  assert(!JSON.stringify(publicSceneResponse(logical)).includes("Private original words"));
+  assert.deepEqual(logical.lines[1].soundOnly, { characterIds: ["near"], player: true, text: "A distant clatter." });
+  const visible = publicSceneResponse(logical).lines;
+  assert.equal(visible[1].content, "A distant clatter.");
+  assert(!JSON.stringify(visible).includes("Private original words"));
   for (const failure of ["before", "after"] as const) {
     f.fail(failure);
     await assert.rejects(
@@ -280,20 +281,13 @@ try {
     /participant identity/,
   );
   const world = { ...defaultVillageState(), seed: "seed", setupAt: at };
-  const {
-    memories: _memories,
-    memoryScenes: _scenes,
-    memoryReceipts: _receipts,
-    worldPlaces: _places,
-    ...facts
-  } = world;
   await f.documents.create({
     id: "villages-village",
     packageId: "villages",
     kind: "village",
     name: "World",
     description: "",
-    data: { ...facts, memoryHead: null, wishArchiveHead: { count: 0, root: null } },
+    data: authorVillageFixture(f.rows, world),
   });
   const repair = createRepairService({
     gate: f.gate,

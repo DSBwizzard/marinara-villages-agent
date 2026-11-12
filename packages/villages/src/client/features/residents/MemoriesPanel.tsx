@@ -12,7 +12,15 @@ import { stampTime, renderVillagesMarkdown } from "../../shared/presentation.js"
 import { MemoryCorrectionForm } from "./MemoryCorrectionForm.js";
 
 export type MemoryListQuery = { characterId: string; query?: string; cursor?: MemoryCursor };
-const kindLabel = { experience: "Experience", information: "Information", "open-matter": "Open matter" };
+const kindLabel = {
+  experience: "Experience",
+  information: "Information",
+  "open-matter": "Open matter",
+  perspective: "Perspective",
+  desire: "Desire",
+  motivation: "Motive",
+  commitment: "Commitment",
+};
 
 export function VillagerMemoriesPanel({
   library,
@@ -164,7 +172,7 @@ export function VillagerMemoriesPanel({
                 Forget
               </button>
             </div>
-            {correction && (correction.entry.id === entry.id || correction.entry.rootId === entry.id) ? (
+            {correction && correction.entry.id === entry.id ? (
               <MemoryCorrectionForm
                 key={`${correction.entry.id}:${correction.revision}`}
                 inspection={correction}
@@ -221,24 +229,18 @@ export function VillagerMemoriesPanel({
               {known.playerCorrection ? (
                 <p>{renderVillagesMarkdown(known.text, `${evidence.entry.id}:${known.person.id}`)}</p>
               ) : null}
-              <p>
-                {
-                  {
-                    observation: "Observation",
-                    report: "Report",
-                    interpretation: "Interpretation",
-                    "validated-event": "Event",
-                  }[known.basis]
-                }
-                {known.attributedTo
-                  ? ` · ${library?.residents.find((row) => row.id === known.attributedTo)?.name ?? known.attributedTo}`
-                  : ""}
-              </p>
               {known.support.map((source, index) => (
                 <blockquote key={`${source.sourceId}:${source.lineId}:${index}`}>
                   <p>{renderVillagesMarkdown(source.excerpt, `${source.sourceId}:${source.lineId}`)}</p>
                   <small>
-                    {source.sourceId} · {source.lineId}
+                    {source.speaker ? source.speaker.name + " · " : ""}
+                    {{
+                      speech: "Dialogue",
+                      observation: "Observation",
+                      private: "Private",
+                      self: "Perspective",
+                      native: "Event",
+                    }[source.kind] ?? "Source"}
                   </small>
                 </blockquote>
               ))}

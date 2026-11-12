@@ -4,10 +4,9 @@ import { defaultVillageState } from "../../domain/decoding/village-codec.js";
 import type { VillageState } from "../../domain/models/world.js";
 import type { VillageRepository, VillageMemoryRead, VillageMemoryWrite } from "../../domain/models/world-repository.js";
 import { normalizeVillageMutation } from "../../domain/rules/world-mutation.js";
-import type { WorldRelationships } from "./world-relationships.js";
 
-/** Owns hydrated reads and relationship effects, separate from raw document storage. */
-export function createVillageStateService(repository: VillageRepository, worldRelationships: () => WorldRelationships) {
+/** Clock and native Project views share the Village's one authority publication. */
+export function createVillageStateService(repository: VillageRepository) {
   const peekVillageAuthority = () => repository.readAuthority();
   const readVillageAuthority = async (options?: VillageMemoryRead) => {
     await observeVillageClock();
@@ -18,29 +17,11 @@ export function createVillageStateService(repository: VillageRepository, worldRe
   async function readVillageSnapshot(options?: VillageMemoryRead): Promise<VillageState> {
     const state = await readVillageAuthority(options);
     refreshProjectAgreements(state);
-    if (state.seed) {
-      const { readRelationshipState, reconcileRelationships } = worldRelationships();
-      state.relationshipContext = await readRelationshipState(state.seed);
-      reconcileRelationships(state.relationshipContext, state, villageNow().getTime());
-    }
     return state;
   }
 
   async function readVillageState(options?: VillageMemoryRead): Promise<VillageState> {
-    let state = await readVillageSnapshot(options);
-    if (state.seed) {
-      const { readRelationshipState, reconcileRelationships } = worldRelationships();
-      const { projectSocialActivities, processSocialOutbox, reconcileSocialPlans } = worldRelationships();
-      const mailChanged = await worldRelationships().processPersonalMailOutbox?.(state);
-      if ((await processSocialOutbox(state)) || mailChanged) {
-        state = await readVillageAuthority(options);
-        state.relationshipContext = await readRelationshipState(state.seed);
-        reconcileRelationships(state.relationshipContext, state, villageNow().getTime());
-      }
-      reconcileSocialPlans(state, villageNow());
-      projectSocialActivities(state, villageNow());
-    }
-    return state;
+    return readVillageSnapshot(options);
   }
 
   /**
@@ -58,13 +39,7 @@ export function createVillageStateService(repository: VillageRepository, worldRe
   ): Promise<VillageState> {
     let next = defaultVillageState();
     await repository.mutateAuthority(async (state) => {
-      const relationshipSeed = state.seed;
-      if (relationshipSeed) {
-        const { readRelationshipState, reconcileRelationships } = worldRelationships();
-        state.relationshipContext = await readRelationshipState(relationshipSeed);
-        reconcileRelationships(state.relationshipContext, state, villageNow().getTime());
-      }
-      normalizeVillageMutation(state, relationshipSeed, mutate, {
+      normalizeVillageMutation(state, mutate, {
         // A reset can replace the clock inside this mutation. Stamp the resulting world's time.
         now: () => villageNow(state.clock?.advanceMs ?? 0),
         seed: () => Math.random().toString(36).slice(2, 10).padEnd(8, "0"),
@@ -72,8 +47,6 @@ export function createVillageStateService(repository: VillageRepository, worldRe
 
       next = state;
     }, options);
-    const { persistRelationshipAuthority } = worldRelationships();
-    await persistRelationshipAuthority(next);
     return next;
   }
   async function withVillageSceneAcceptance<T>(

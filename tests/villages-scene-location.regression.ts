@@ -4,17 +4,55 @@ import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { sceneLocationContext } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import {
+  captureSceneContinuity,
+  sceneLocationContext,
+} from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
+import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
+import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
+import {
+  fittedNarrationReadset,
+  narrationContinuityContext,
+} from "../packages/villages/src/server/domain/rules/narration-context.js";
+import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
+import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { currentScenePrompt, scenePromptPacket } from "./fixtures/villages-scene-writing.fixture.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 
 const at = "2026-10-23T12:00:00.000Z";
+const card = readVillagerCard({
+  id: "mari",
+  data: {
+    name: "Mari",
+    scenario: "Mari is already seated beside the player in the booth.",
+    description: "A tutor.",
+    personality: "Direct.",
+  },
+} as any);
 const world = coerceVillageState({
-  version: 6,
   ...defaultVillageState(),
   seed: "location-regression",
+  setupAt: at,
+  foundedAt: at,
+  villagers: [
+    {
+      characterId: "mari",
+      incarnation: "mari-one",
+      letterFontId: "caveat",
+      addedAt: at,
+      cardSnapshot: snapshotFromCard(card, 1),
+    },
+    {
+      characterId: "hidden",
+      incarnation: "hidden-one",
+      letterFontId: "caveat",
+      addedAt: at,
+      cardSnapshot: { id: "hidden", name: "HIDDEN OCCUPANT", revision: 1, capturedAt: at, sourceStatus: "available" },
+    },
+  ],
   venues: [
     venueFixture({
       id: "nook",
@@ -53,7 +91,7 @@ const world = coerceVillageState({
 });
 const venue = world.venues[0];
 const scene = coerceSession({
-  version: 4,
+  version: 5,
   id: "location",
   villageSeed: world.seed,
   placeId: venue.id,
@@ -62,7 +100,6 @@ const scene = coerceSession({
   startedAt: at,
   area: "shared",
   zoneId: "bar",
-  semanticVersion: 2,
   participants: [{ characterId: "mari", name: "Mari", doing: "Talking" }],
   activeIds: [],
   sceneAttendance: {
@@ -109,7 +146,6 @@ assert.doesNotMatch(JSON.stringify(remote), /HIDDEN|secret-room|hidden/);
 assert.deepEqual(scene, before, "building writing context never repairs or rewrites saved positions");
 
 const moved = coerceSession({
-  version: 4,
   ...scene,
   activeIds: ["mari"],
   accompanying: [{ characterId: "mari", zoneId: "bar" }],
@@ -120,7 +156,6 @@ const reloaded = coerceSession(structuredClone(moved));
 assert.deepEqual(sceneLocationContext(reloaded, venue, ["mari"]), sceneLocationContext(moved, venue, ["mari"]));
 
 const privateScene = coerceSession({
-  version: 4,
   ...scene,
   accompanying: [{ characterId: "mari", zoneId: "secret-room" }],
 });
@@ -138,33 +173,21 @@ assert.deepEqual(
   "captured Scene layout outranks later background changes",
 );
 
-const card = {
-  id: "mari",
-  name: "Mari",
-  scenario: "Mari is already seated beside the player in the booth.",
-  description: "A tutor.",
-  personality: "Direct.",
-};
 const input = '"Why not come join me here?"';
-const marker = '{"context":';
+const marker = '{"location":';
 for (const mode of ["greet", "chat", "leave"] as const) {
-  const prompt = await currentScenePrompt(world, card, mode, mode === "greet" ? "" : input, scene, {
-    interactionScopeVersion: 6,
-    writingContractVersion: 3,
-    semanticPipelineVersion: 3,
-  });
-  assert.deepEqual(scenePromptPacket(prompt).positions, remote);
+  const prompt = await currentScenePrompt(world, card, mode, mode === "greet" ? "" : input, scene);
+  assert.deepEqual(scenePromptPacket(prompt, "location").location, remote);
   assert.ok(
     prompt.indexOf(marker) > prompt.indexOf(card.scenario),
     "current physical authority follows card scenarios",
   );
-  if (mode !== "greet")
-    assert.ok(
-      prompt.indexOf(marker) > prompt.indexOf(scene.lines[0].content),
-      "current physical authority follows misleading earlier narration",
-    );
+  assert(
+    !prompt.includes(scene.lines[0].content),
+    "A loose saved line without an accepted episode supplies no historical evidence",
+  );
   assert.doesNotMatch(prompt, /HIDDEN OCCUPANT|HIDDEN ACTIVITY/);
-  assert.doesNotMatch(JSON.stringify(scenePromptPacket(prompt).positions), /HIDDEN ROOM NAME/);
+  assert.doesNotMatch(JSON.stringify(scenePromptPacket(prompt, "location").location), /HIDDEN ROOM NAME/);
 }
 for (const context of [
   { ...scene, zoneId: "exterior", area: "outside" as const, activeIds: ["mari"] },
@@ -176,7 +199,7 @@ for (const context of [
     contactGeneration: scene.contactGeneration,
   });
   assert.deepEqual(
-    scenePromptPacket(prompt).positions,
+    scenePromptPacket(prompt, "location").location,
     sceneLocationContext(context, venue, ["mari"]),
     "the actual writer refreshes positions on arrival and movement, in the current GM context",
   );
@@ -192,14 +215,9 @@ const empty = {
   contactGeneration: { ...scene.contactGeneration!, localIds: [], remoteIds: [], actorIds: [] },
 };
 for (const mode of ["greet", "chat", "leave"] as const) {
-  const prompt = await currentScenePrompt(world, card, mode, mode === "greet" ? "" : '"Mari?"', empty, {
-    interactionScopeVersion: 6,
-    writingContractVersion: 3,
-    semanticPipelineVersion: 3,
-  });
-  assert.deepEqual(scenePromptPacket(prompt).positions.residents, []);
+  const prompt = await currentScenePrompt(world, card, mode, mode === "greet" ? "" : '"Mari?"', empty);
+  assert.deepEqual(scenePromptPacket(prompt, "location").location.residents, []);
   assert(!prompt.includes(card.description), "an absent resident's profile cannot supply an invented response");
-  assert.deepEqual(scenePromptPacket(prompt).context.actors, [], "Earlier prose cannot supply an absent actor");
   assert.doesNotMatch(prompt, /HIDDEN ROOM NAME|HIDDEN OCCUPANT|HIDDEN ACTIVITY/);
 }
 console.log(
@@ -207,40 +225,39 @@ console.log(
 );
 
 {
-  const history = {
-    ...scene,
-    activeIds: ["mari"],
-    lines: [
+  const history = zoneEventScene({ ...moved, id: "earlier-visit", lines: [], contactGeneration: undefined }, venue);
+  history.continuity = captureSceneContinuity(world, history, Date.parse(at));
+  const witnessed = "Moonflower tea tastes bitter to me.";
+  const submitted = witnessed + " I privately think about my favorite blend.";
+  const context = narrationContinuityContext(world, history, venue, "earlier-turn", submitted, at);
+  const readset = fittedNarrationReadset(
+    world,
+    context,
+    context.parts.map((part) => part.block.evidenceId!),
+  );
+  const raw = {
+    segments: [{ kind: "dialogue", speakerId: "mari", text: "I'll steep the next pot differently." }],
+    keep: [
       {
-        ...scene.lines[0],
-        id: "witnessed-preference",
-        role: "user" as const,
-        kind: "dialogue" as const,
-        content: "Moonflower tea tastes bitter to me.",
-        heardBy: ["mari"],
+        for: ["mari"],
+        class: "information",
+        text: "The player says moonflower tea tastes bitter.",
+        source: [{ input: witnessed, ground: { kind: "spoken", to: ["mari"] } }],
       },
-      {
-        ...scene.lines[0],
-        id: "unwitnessed-preference",
-        role: "user" as const,
-        kind: "dialogue" as const,
-        content: "UNWITNESSED PRIVATE TEA PREFERENCE",
-        heardBy: [],
-      },
-      ...Array.from({ length: 40 }, (_, index) => ({
-        ...scene.lines[0],
-        id: "later-" + index,
-        content: "They discuss the weather by the booth.",
-        heardBy: ["mari"],
-      })),
     ],
   };
-  const before = JSON.stringify(history);
-  const prompt = await currentScenePrompt(world, card, "chat", "Which moonflower tea did I dislike?", history);
-  assert(
-    prompt.includes("Moonflower tea tastes bitter to me."),
-    "Current writing retrieves an older whole witnessed preference",
+  const accepted = acceptNarration(world, { raw, readset, responseDigest: memoryHash(raw) }, "earlier-submission", at);
+  assert.equal(accepted.held, false, JSON.stringify(accepted.rejected));
+  const before = memoryHash(world.episodes);
+  const prompt = await currentScenePrompt(world, card, "chat", "Which moonflower tea did I dislike?", scene);
+  const interaction = scenePromptPacket(prompt, "interaction").interaction;
+  assert.equal(interaction.gmPrivateInput.text, submitted);
+  assert.deepEqual(
+    interaction.groundedInput.map(({ for: holder, text }: { for: string; text: string }) => [holder, text]),
+    [
+      ["player", witnessed],
+      ["mari", witnessed],
+    ],
   );
-  assert(!prompt.includes("UNWITNESSED PRIVATE TEA PREFERENCE"), "Raw history cannot invent a listener");
-  assert.equal(JSON.stringify(history), before, "Retrieval never rewrites saved evidence");
+  assert.equal(memoryHash(world.episodes), before, "Retrieval never rewrites saved evidence");
 }
