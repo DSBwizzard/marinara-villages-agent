@@ -587,6 +587,8 @@ await runCase("resident-planning/mail-initiative", async () => {
   );
   Object.assign(f.state, coerceVillageState(JSON.parse(JSON.stringify(f.state))));
   await f.service.reconcile(new Date(f.now.getTime() + 60000));
+  assert.equal(f.queued.length, 1, "A settled shared visit is not repurchased on the next refresh");
+  await f.service.reconcile(new Date(f.now.getTime() + 86_400_000));
   const second = f.queued[1].input.context.narration.context.offered.find((row: any) => row.holder.id === "mara").ids;
   assert(
     second.some((id: string) => !offered.includes(id)),

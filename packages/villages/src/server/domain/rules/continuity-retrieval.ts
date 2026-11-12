@@ -164,7 +164,7 @@ export function selectActorContinuity(
     bytes: number;
     requiredIds: string[];
     identity: (id: string) => { incarnation: string } | undefined;
-    initiative?: boolean;
+    includeExtraInitiative?: boolean;
   },
 ) {
   memoryRequire(Number.isSafeInteger(request.bytes) && request.bytes > 0, "invalid actor context budget");
@@ -232,7 +232,7 @@ export function selectActorContinuity(
     }
   };
   const lastOffered = new Map<string, number>();
-  const initiativeHolders = request.initiative === false ? [] : holders.filter((holder) => holder.id !== "player");
+  const initiativeHolders = holders.filter((holder) => holder.id !== "player");
   const created = new Map<string, number>(),
     versions = new Map(collection.versions.map((version) => [version.id, version]));
   (initiativeHolders.length ? episodes.records : []).forEach((episode, sequence) => {
@@ -256,12 +256,13 @@ export function selectActorContinuity(
             (lastOffered.get(JSON.stringify([key, b.id])) ?? created.get(b.id) ?? 0) || a.id.localeCompare(b.id),
       );
     const available = current.filter((row) => !selected.includes(row));
-    const first = available[0] ?? current[0];
+    const first =
+      available[0] ?? current[0] ?? all.find((row) => row.current && continuityHolderKey(row.holder) === key);
     if (first) {
       take(first, true);
       fair.push(first);
     }
-    if (available[1]) surplus.push(available[1]);
+    if (available[1] && request.includeExtraInitiative !== false) surplus.push(available[1]);
   }
   for (const holder of initiativeHolders) {
     const foreground = all.find(
@@ -277,9 +278,7 @@ export function selectActorContinuity(
   for (const { row, score } of rank(all, request.query, (row) =>
     [
       row.version.text,
-      ...(request.initiative === false && row.current && row.version.class === "commitment"
-        ? ["promise promised"]
-        : []),
+      ...(row.current && row.version.class === "commitment" ? ["promise promised"] : []),
       ...row.version.about.map((subject) => subject.id),
       ...row.version.sources.map((source) => source.excerpt),
     ].join(" "),

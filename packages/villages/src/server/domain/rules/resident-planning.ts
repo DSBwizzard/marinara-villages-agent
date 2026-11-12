@@ -50,7 +50,7 @@ export function localDateKey(now: Date): string {
 export function planningAllowance(pace: VillageBackgroundPace, _seed: string, _date: string): number {
   return VILLAGE_ACTIVITY_POLICY[pace].reviews;
 }
-/** Current shared space supports an encounter. A lone resident still has routine/housing choices. */
+/** Review a shared scheduled visit once per group and Zone per Village day. */
 export function residentPlanningOpportunity(
   village: VillageState,
   moment: VillageMoment,
@@ -71,29 +71,25 @@ export function residentPlanningOpportunity(
     const key = JSON.stringify([place.id, place.zoneId ?? "exterior"]);
     currentPlaces.set(key, [...(currentPlaces.get(key) ?? []), resident.characterId]);
   }
-  const overlap = [...currentPlaces]
-    .map(([key, ids]) => [key, ids.filter((id) => !encounterConflicts.has(id))] as const)
-    .find(([, ids]) => ids.length >= 2);
-  const rotation = (village.eventAttempts?.attempts.length ?? 0) % residents.length;
-  const actorIds = overlap?.[1].slice(0, 4) ?? [residents[rotation]!.characterId];
-  const destination = overlap?.[0] ?? [...currentPlaces].find(([, ids]) => ids.includes(actorIds[0]))?.[0];
-  const [venueId, zoneId] = destination ? (JSON.parse(destination) as [string, string]) : ["", "exterior"];
-  const kind = overlap ? "encounter" : "routine";
-  const id =
-    "planning-" + hashString([village.seed, startsAt, moment.instant, kind, actorIds.join(","), venueId].join("|"));
-  return {
-    id,
-    kind,
-    actorIds,
-    venueId,
-    zoneId,
-    startsAt,
-    endsAt: moment.instant,
-    facts: [
-      moment.localTime + " local time",
-      overlap ? "Residents currently share this Zone." : "Optional future routine and housing choices.",
-    ],
-  };
+  const date = localDateKey(new ZonedDate(moment.instant, moment.timeZone));
+  for (const [key, ids] of currentPlaces) {
+    if (ids.length < 2) continue;
+    const actorIds = ids.slice(0, 4);
+    const [venueId, zoneId] = JSON.parse(key) as [string, string];
+    const id = "planning-" + hashString([village.seed, date, actorIds.toSorted().join(","), venueId, zoneId].join("|"));
+    if (village.processedActionIds.includes(id)) continue;
+    return {
+      id,
+      kind: "encounter",
+      actorIds,
+      venueId,
+      zoneId,
+      startsAt,
+      endsAt: moment.instant,
+      facts: [moment.localTime + " local time", "Residents currently share this Zone."],
+    };
+  }
+  return null;
 }
 export function residentEncounterPlace(
   venues: readonly VillageVenue[],

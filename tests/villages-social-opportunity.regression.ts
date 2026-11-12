@@ -31,25 +31,14 @@ state.villagers = ["ada", "ben"].map((characterId) => ({
 })) as any;
 const now = new Date("2026-10-26T17:00:00.000Z");
 const moment = deriveVillageMoment({ foundedAt: now.toISOString(), seed: state.seed, now });
-const opportunity = () => residentPlanningOpportunity(state, moment, now.toISOString())!;
-assert.equal(
-  opportunity().kind,
-  "routine",
-  "An available resident is a social opportunity without a physical encounter",
-);
-assert.deepEqual(opportunity().actorIds, ["ada"]);
+const opportunity = () => residentPlanningOpportunity(state, moment, now.toISOString());
+assert.equal(opportunity(), null, "Availability alone does not admit a paid social review");
 state.eventAttempts = {
   highWaterDate: "2026-10-26",
   lastAttemptAt: now.toISOString(),
   attempts: [{ id: "first", date: "2026-10-26", at: now.toISOString() }],
 };
-assert.deepEqual(
-  opportunity().actorIds,
-  ["ben"],
-  "Fallback contact consideration rotates rather than always choosing the first resident",
-);
-assert.equal(opportunity().kind, "routine", "Different residents are never asserted to share a Zone");
-assert.equal(opportunity().venueId, "", "No current location is invented for an available correspondent");
+assert.equal(opportunity(), null, "An elapsed review interval does not create a social opportunity");
 state.villagers = [];
 state.venues = [{ id: "commons", classes: ["workplace"], occupancy: {} }] as any;
 assert.equal(opportunity(), null, "Weather alone does not admit paid resident activity");
@@ -155,10 +144,11 @@ for (const [pace, expected] of [
   recordReturnVisibility(world, now);
   discoverReturnBatch(world, new Date(now.getTime() + 7 * 86_400_000), "bounded-" + pace);
   assert.equal(world.returnCatchup!.batch!.opportunityLimit, expected);
-  assert.equal(
-    world.returnCatchup!.batch!.opportunities!.length,
-    expected,
-    "Busy's twelve reviews do not enlarge catch-up.",
+  const opportunities = world.returnCatchup!.batch!.opportunities!;
+  assert(opportunities.length > 0 && opportunities.length <= expected);
+  assert(
+    opportunities.every((row) => row.kind === "encounter"),
+    "Unused allowance cannot create speculative work.",
   );
 }
 for (const patch of [{ opportunityLimit: 7 }, { budgetDate: 12 }, { budgetDate: undefined }]) {

@@ -13,6 +13,7 @@ export const recallTerms = (text: string): string[] =>
 export const estimatedTextTokens = (text: string) => Math.ceil(Buffer.byteLength(text, "utf8") / 4);
 export const asksForRecallQuote = (text: string) =>
   /\b(?:quote|verbatim|exact (?:words|wording)|what (?:exactly )?did [^.!?]{0,80}\bsay)\b/iu.test(text);
+export const asksForPastExchange = (text: string) => /\b(?:which|what) [^?!.]{0,80}\bdid (?:i|we|you)\b/iu.test(text);
 export const sceneQuoteTerms = (text: string) => [
   ...new Set(recallTerms(text.replace(/\b(?:quote|verbatim|exact(?:ly)?|wording|words|line|say)\b/giu, " "))),
 ];

@@ -15,6 +15,12 @@ const scene = {
 const json = JSON.stringify(scene);
 
 await runCase("scene-json-hardening/syntax", () => {
+  const main = readNarrationReply(
+    { segments: [{ ...scene.segments[0], presentation: "main", delivery: "whisper", targetId: "player" }] },
+    ["a"],
+  ).segments[0];
+  assert.equal("presentation" in main && main.presentation, undefined);
+  assert.equal("delivery" in main && main.delivery, "whisper");
   for (const input of [
     json,
     "```json\n" + json + "\n```",

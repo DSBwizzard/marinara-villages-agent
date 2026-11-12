@@ -288,7 +288,10 @@ await runCase("narration-writing/learned-wish-initiative", () => {
     !fitted.offered.some((offer) => offer.holder.id === f.id && offer.ids.includes(root)),
     "the final fitted request cannot count learned wishes as the hearer's own initiative",
   );
-  assert(context.parts.every((part) => !part.block.text.includes(ownWish)));
+  assert(
+    context.parts.some((part) => part.block.text.includes(ownWish)),
+    "the resident keeps one current initiative alongside relevant learned facts",
+  );
   const opening = narrationContinuityContext(f.state, { ...f.scene, status: "opening" }, f.venue, "opening", "", at);
   assert(
     opening.parts.some((part) => part.block.text.includes(ownWish)),

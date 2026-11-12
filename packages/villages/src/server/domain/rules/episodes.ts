@@ -9,7 +9,13 @@ import {
 } from "./continuity.js";
 import { episodeSpeechEvidence, episodeContextActors, episodeContextRooms } from "./episode-sources.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
-import { asksForRecallQuote, recallTerms, sceneQuoteScore, sceneQuoteTerms } from "./text-recall.js";
+import {
+  asksForPastExchange,
+  asksForRecallQuote,
+  recallTerms,
+  sceneQuoteScore,
+  sceneQuoteTerms,
+} from "./text-recall.js";
 import { assertMailHistory, episodeMailEvidence } from "./mail-evidence.js";
 
 export const emptyEpisodes = (): EpisodeCollection => ({ format: 1, revision: 0, records: [] });
@@ -355,6 +361,12 @@ export function selectEpisodeHistory(
   sceneId?: string,
 ) {
   memoryRequire(Number.isSafeInteger(bytes) && bytes >= 0, "invalid episode context budget");
+  const holderKeys = new Set(holders.map(continuityHolderKey));
+  const eligible = collection.records.flatMap((episode, index) =>
+    episode.actors.some((actor) => holderKeys.has(continuityHolderKey({ kind: "actor", ...actor })))
+      ? [{ episode, index }]
+      : [],
+  );
   const terms = new Set(
     query
       .normalize("NFKC")
@@ -365,24 +377,31 @@ export function selectEpisodeHistory(
     collection,
     continuity,
     holders,
-    collection.records.flatMap((episode) => [
+    eligible.flatMap(({ episode }) => [
       ...episode.actors.map((actor) => ({ kind: "actor" as const, ...actor })),
       ...episodeContextActors(episode),
     ]),
   );
-  const candidates = collection.records.flatMap((episode, index) => {
+  const roomProtections = new Map<string, Set<string>>();
+  const candidates = eligible.flatMap(({ episode, index }) => {
     const view = projectGmEpisode(
       episode,
       holders,
       protections,
       new Set(
-        [...(episode.room ? [episode.room] : []), ...episodeContextRooms(episode)].flatMap((room) => [
-          ...blockedUnits(continuity, room, episodeSourceGraph(collection.records, room)),
-        ]),
+        [...(episode.room ? [episode.room] : []), ...episodeContextRooms(episode)].flatMap((room) => {
+          const key = continuityHolderKey(room);
+          let blocked = roomProtections.get(key);
+          if (!blocked) {
+            blocked = blockedUnits(continuity, room, episodeSourceGraph(collection.records, room));
+            roomProtections.set(key, blocked);
+          }
+          return [...blocked];
+        }),
       ),
     );
     if (!view) return [];
-    const text = JSON.stringify(view);
+    const text = !sceneId || episode.sceneId === sceneId ? JSON.stringify(view) : "";
     const words = sceneId
       ? new Set<string>()
       : new Set(
@@ -408,7 +427,7 @@ export function selectEpisodeHistory(
     const cue =
       /(?:^\s*about\b|\b(?:remember|earlier|before|yesterday|last time|previously|promis(?:e|ed)|(?:you|we) (?:said|talked|agreed)|told me)\b)/giu;
     const quote = asksForRecallQuote(query);
-    const explicit = quote || new RegExp(cue.source, "iu").test(query);
+    const explicit = quote || asksForPastExchange(query) || new RegExp(cue.source, "iu").test(query);
     const queryTerms = quote
       ? sceneQuoteTerms(query)
       : [...new Set(recallTerms(query.replace(cue, " ")))].filter((term) => term.length >= 3);

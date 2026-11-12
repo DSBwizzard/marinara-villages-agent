@@ -25,6 +25,7 @@ import { selectActorContinuity, selectRoomContinuity } from "./continuity-retrie
 import { appendHistoryWithin, selectEpisodeHistory } from "./episodes.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import {
+  asksForPastExchange,
   asksForRecallQuote,
   estimatedTextTokens,
   recallTerms,
@@ -294,7 +295,7 @@ export function narrationContinuityContext(
     bytes: capacity,
     identity: (id) => continuityActor(state, id),
     requiredIds: [...requiredRoots].filter((id) => views.some((view) => view.id === id)),
-    initiative: opening,
+    includeExtraInitiative: opening,
   });
   const repairs = sceneRepairOffers(state, scene, room, at);
   const roomSelection = selectRoomContinuity(state.continuity, state.episodes, room, at, {
@@ -617,9 +618,15 @@ export function narrationContinuityContext(
     ? projectSpeechContexts(projectWorld, writerIds, "", "", scene.placeId)
     : [];
   for (const project of projects) {
-    const title = projectWorld.projects.find((row) => row.id === project.projectId)!.title.toLocaleLowerCase("en-US");
+    const record = projectWorld.projects.find((row) => row.id === project.projectId)!;
+    const targetId = record.lifecycle?.targetVenueId || record.venueId;
+    const names = [
+      record.title,
+      projectWorld.venues.find((row) => row.id === targetId)?.name,
+      projectWorld.worldPlaces.places[targetId]?.location.name,
+    ].flatMap((name) => (name && name.length > 3 ? [name.toLocaleLowerCase("en-US")] : []));
     const named = (query: string) =>
-      query.includes(project.projectId.toLocaleLowerCase("en-US")) || (title.length > 3 && query.includes(title));
+      query.includes(project.projectId.toLocaleLowerCase("en-US")) || names.some((name) => query.includes(name));
     const localCue = (query: string) =>
       localProjects.length === 1 &&
       localProjects[0].projectId === project.projectId &&
@@ -684,7 +691,7 @@ export function narrationContinuityContext(
   if (opening || !recalledQuote || editingMemory) {
     let count = 0;
     for (const part of facts) if (takeRecall(part) && ++count === (recalledQuote ? 1 : 2) && !opening) break;
-    if (!count && !opening && !asksForQuote) tryOlder();
+    if (!opening && !asksForQuote && (!count || asksForPastExchange(recallQuery))) tryOlder();
   }
   const evidenceIds = new Set([...retained].map((part) => part.block.evidenceId));
   const bounded = parts.filter((part) => retained.has(part) && hasWritingEvidence(part.block, evidenceIds));
