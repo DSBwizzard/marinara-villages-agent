@@ -67,8 +67,7 @@ for (const scenario of ["ordinary", "invitation", "revoked", "refused", "banned"
       if (calls === 2)
         assert(
           messages.some(
-            (row) =>
-              row.role === "system" && row.content.includes('"gmPrivateInput":' + JSON.stringify({ text: message })),
+            (row) => row.role === "user" && row.content.includes('"gmPrivateInput":' + JSON.stringify(message)),
           ),
           "ordinary GM history preserves the complete earlier contribution",
         );

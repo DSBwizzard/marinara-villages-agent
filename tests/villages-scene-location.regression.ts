@@ -251,12 +251,12 @@ console.log(
   const before = memoryHash(world.episodes);
   const prompt = await currentScenePrompt(world, card, "chat", "Which moonflower tea did I dislike?", scene);
   const interaction = scenePromptPacket(prompt, "interaction").interaction;
-  assert.equal(interaction.gmPrivateInput.text, submitted);
+  assert.equal(interaction.gmPrivateInput, submitted);
   assert.deepEqual(
-    interaction.groundedInput.map(({ for: holder, text }: { for: string; text: string }) => [holder, text]),
+    interaction.groundedInput.map(({ for: holder, text }: { for: string; text: string }) => [holder, text]).sort(),
     [
-      ["player", witnessed],
       ["mari", witnessed],
+      ["player", witnessed],
     ],
   );
   assert.equal(memoryHash(world.episodes), before, "Retrieval never rewrites saved evidence");

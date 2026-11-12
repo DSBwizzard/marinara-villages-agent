@@ -429,17 +429,36 @@ export function selectEpisodeHistory(
       .sort((a, b) => b.matches - a.matches || b.row.index - a.row.index)
       .map(({ row }) => row);
     // On arrival, offer the latest eligible shared exchange even before anyone asks for a callback.
-    const shared = sceneWindow.length ? [] : recentSharedEpisodes(collection, holders);
-    const arrivalRecall = candidates
-      .toReversed()
-      .filter((row) => shared.includes(row.episode) && !recalled.includes(row));
+    const arrivalRecall = sceneWindow.length
+      ? []
+      : candidates
+          .toReversed()
+          .filter(
+            ({ view }) =>
+              view.segments.some(
+                ({ perceivedBy }) =>
+                  perceivedBy.player === "words" &&
+                  Object.entries(perceivedBy).some(([id, channel]) => id !== "player" && channel === "words"),
+              ) ||
+              view.letters?.some(
+                ({ knownBy }) => knownBy.includes("player") && knownBy.some((id) => id !== "player"),
+              ) ||
+              view.groundedInput.some(
+                (row) =>
+                  row.for !== "player" &&
+                  row.channel === "words" &&
+                  view.groundedInput.some(
+                    (other) => other.for === "player" && other.id === row.id && other.channel === "words",
+                  ),
+              ),
+          );
     return {
       partial: sceneWindow.length < candidates.length,
       omitted: candidates.length - sceneWindow.length,
       bytes: sceneWindow.reduce((total, row) => total + row.bytes, 0),
       sceneWindow: sceneIds,
       episodes: sceneWindow.map((row) => row.view),
-      recallCandidates: [...recalled, ...arrivalRecall].map((row) => row.view),
+      recallCandidates: [...new Set([...recalled, ...arrivalRecall])].map((row) => row.view),
     };
   }
   const shared = recentSharedEpisodes(collection, holders)

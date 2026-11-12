@@ -96,7 +96,11 @@ await runCase("episodes/shared-pair-budget", () => {
     episode("mara-two", "Another question.", "B".repeat(600)),
   ];
   const latest = episode("leo-latest", "Why, Leo?", "C".repeat(850));
-  latest.actors = [player, leo].map(({ id, incarnation }) => ({ id, incarnation, zoneId: "parlor" }));
+  latest.actors = [player, leo, mara].map(({ id, incarnation }) => ({
+    id,
+    incarnation,
+    zoneId: id === "mara" ? "outside" : "parlor",
+  }));
   latest.segments[0] = { ...latest.segments[0], speakerId: "leo", name: "Leo", heardBy: ["player", "leo"] };
   const history = readEpisodes({ format: 1, revision: 3, records: [...old, latest] }, "world"),
     continuity = emptyContinuity(),
@@ -114,6 +118,12 @@ await runCase("episodes/shared-pair-budget", () => {
     "older exchanges for another resident cannot exhaust the budget before the actual latest answer",
   );
   assert.equal(selected.episodes.length, 2);
+  const arrival = selectEpisodeHistory(history, continuity, [player, mara], "Hello.", 12000, "new-scene");
+  assert.equal(
+    arrival.recallCandidates?.[0].id,
+    "mara-two",
+    "An admitted but offstage resident does not displace the latest exchange they actually shared",
+  );
 });
 
 function inputSource(episode: AcceptedEpisode, text: string): ContinuityEvidence {
