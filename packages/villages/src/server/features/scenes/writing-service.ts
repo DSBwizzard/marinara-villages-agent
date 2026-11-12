@@ -69,6 +69,7 @@ type Request = {
   fitted: ReturnType<typeof fitVenueWritingMessages>;
   readset: NarrationReadset;
   model: { model: string; connectionId: string };
+  plainJson?: true;
 };
 
 /** One GM purchase. Existing operation checkpoints own the exact fit and purchased reply through recovery. */
@@ -176,6 +177,9 @@ export function createSceneWriting({
       loreUses = inspectedLoreUse(loreInspection, "GM");
     const blocksFor = (texts: string[]): VenueWritingBlock[] => texts.filter(Boolean).map((text) => ({ text }));
     const nativeCommands = mode !== "chat" || !!scene.contactGeneration?.instruction;
+    const plainJson =
+      !nativeCommands &&
+      ["deepseek-flash", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"].includes(model.model.toLowerCase());
     const housingDiscussed =
       /\b(?:housing|residence|household|roommate|lodging|move in|move out|live with|sleep here)\b/iu.test(input);
     const housing = narrationResidencePrompt(
@@ -218,6 +222,9 @@ export function createSceneWriting({
         narrationResponse(nativeCommands),
         nativeCommands ? SCENE_NARRATION_KEEP : ORDINARY_SCENE_KEEP,
         nativeCommands ? NARRATION_NATIVE : "",
+        plainJson
+          ? 'Start the reply with {"segments":[ and finish the JSON object. Put all narration and dialogue inside segment text values.'
+          : "",
       ]),
       identity: blocksFor([
         ...profiles,
@@ -317,6 +324,8 @@ export function createSceneWriting({
       fitted,
       readset: fittedNarrationReadset(authority, context, fitted.evidenceIds),
       model: { model: model.model, connectionId: model.connectionId },
+      // Plain transport lets local validation see replies that JSON mode can return as spaces.
+      ...(plainJson ? { plainJson: true } : {}),
     };
     const retained = await venueCheckpoint("writing-request:" + key, async () => request);
     assertRequestIdentity(retained, original, input);
@@ -406,7 +415,7 @@ export function createSceneWriting({
   }
   function requestCompletion(model: CapabilityResolvedLanguageModel, request: Request, signal?: AbortSignal) {
     return completeWithRoom(model, request.fitted.messages, request.fitted.maxTokens ?? VENUE_REPLY_MAX_TOKENS, {
-      responseFormat: { type: "json_object" },
+      ...(request.plainJson ? {} : { responseFormat: { type: "json_object" } }),
       temperature: 0.85,
       usagePurpose: "conversation",
       reasoningEffort: null,

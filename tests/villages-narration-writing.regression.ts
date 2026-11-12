@@ -49,7 +49,7 @@ import {
 } from "../packages/villages/src/server/adapters/storage/continuity-pages.js";
 
 const at = "2026-11-09T12:00:00.000Z";
-function fixture(beforeRead?: () => void | Promise<void>) {
+function fixture(beforeRead?: () => void | Promise<void>, modelId = "fixture") {
   const state = { ...defaultVillageState(), seed: "world", setupAt: at, foundedAt: at };
   const place = establishPlace(
     state,
@@ -95,6 +95,7 @@ function fixture(beforeRead?: () => void | Promise<void>) {
   });
   const checkpoints = new Map<string, unknown>(),
     calls = { purchases: 0, resolutions: 0, reads: 0 };
+  const formats: unknown[] = [];
   let operationId = "operation";
   let messages: any[] = [],
     unavailable = false,
@@ -103,7 +104,7 @@ function fixture(beforeRead?: () => void | Promise<void>) {
     configuredConnection = "narration",
     usedModel = "";
   const model = {
-    model: "fixture",
+    model: modelId,
     connectionId: "narration",
     maxOutputTokens: 4096,
     fitContext(input: any[], options: any) {
@@ -139,10 +140,11 @@ function fixture(beforeRead?: () => void | Promise<void>) {
       assert(!unavailable);
       return [];
     },
-    completeWithRoom: async (selected: { model: string }, input: any[]) => {
+    completeWithRoom: async (selected: { model: string }, input: any[], _tokens: number, options: any) => {
       calls.purchases++;
       usedModel = selected.model;
       messages = structuredClone(input);
+      formats.push(options.responseFormat);
       return {
         content: JSON.stringify({
           segments: [{ kind: "dialogue", speakerId: scene.activeIds[0] ?? id, text: "Because it matters to me." }],
@@ -163,6 +165,7 @@ function fixture(beforeRead?: () => void | Promise<void>) {
     id,
     checkpoints,
     calls,
+    formats,
     writing,
     messages: () => messages,
     disable: () => {
@@ -316,6 +319,20 @@ await runCase("narration-writing/single-request", async () => {
   assert(!Object.hasOwn(reply.raw, "input"), "ordinary dialogue has no classification inventory");
   assert.equal(reply.readset.source.scene.lines.length, 0);
   assert.equal(reply.readset.source.scene.submissions.length, 0);
+  assert.deepEqual(f.formats, [{ type: "json_object" }]);
+
+  const deepSeek = fixture(undefined, "deepseek-flash");
+  await deepSeek.writing.generate(deepSeek.scene, input, "chat");
+  await deepSeek.writing.generate(deepSeek.scene, "", "greet");
+  assert.deepEqual(deepSeek.formats, [undefined, { type: "json_object" }]);
+
+  const legacy = fixture(undefined, "deepseek-flash");
+  await legacy.writing.prepareVenueTurnMessages(legacy.scene, input, "chat");
+  const saved = [...legacy.checkpoints.values()][0] as { plainJson?: true };
+  assert.equal(saved.plainJson, true);
+  delete saved.plainJson;
+  await legacy.writing.generate(legacy.scene, input, "chat");
+  assert.deepEqual(legacy.formats, [{ type: "json_object" }], "an admitted request retains its previous transport");
 });
 
 await runCase("narration-writing/circumstance-provenance", async () => {
