@@ -130,7 +130,7 @@ export const narrationAccessScopeSchema = z
   .strict();
 export function narrationAccessPrompt(scopes: NarrationAccessScope[]) {
   return scopes.length
-    ? "Scoped access authority (GM only). Omitted Zone hours inherit; null removes hours. " +
+    ? "Scoped native access authority (GM only). Omitted Zone hours inherit; null removes hours. " +
         JSON.stringify(
           scopes.map(({ venueId, name, authorities }) => ({
             venueId,
