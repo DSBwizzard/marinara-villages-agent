@@ -165,7 +165,14 @@ await withBrowser(browser, async () => {
     page.on("pageerror", (error) => errors.push(error.message));
     let fixture = structuredClone(snapshot);
     fixture.settings.venues = [
-      { ...place("market", 0.5, 0.5), name: "Village Market" },
+      {
+        ...place("market", 0.5, 0.5),
+        name: "Village Market",
+        ...(height === 500 && {
+          description:
+            "The market opens onto a square lined with awnings. Local growers bring their produce here, and the wooden stalls stay out through the afternoon so neighbors can trade.",
+        }),
+      },
       { ...place("crowded", 0.51, 0.51), name: "A nearby venue with a very long readable name" },
       {
         ...place("unplaced", null, null),
@@ -392,10 +399,30 @@ await withBrowser(browser, async () => {
     await expect(venue.getByRole("button", { name: "View venue", exact: true })).toHaveCount(0);
     await expect(venue.getByRole("group", { name: "Venues", exact: true })).toHaveCount(0);
     const tabs = venue.getByRole("navigation", { name: "Venue sections" });
+    const client = mobile ? await page.context().newCDPSession(page) : null;
+    const touch = (type, points) =>
+      client.send("Input.dispatchTouchEvent", {
+        type,
+        touchPoints: points.map(([x, y], id) => ({ x, y, id })),
+      });
     await expect(tabs.getByRole("button", { name: "About", exact: true })).toHaveAttribute("aria-pressed", "true");
     await tabs.getByRole("button", { name: "Manage", exact: true }).click();
     await expect(venue.getByRole("button", { name: "Plan a renovation →" })).toBeVisible();
     await tabs.getByRole("button", { name: "About", exact: true }).click();
+    if (mobile && height === 500) {
+      const visit = venue.getByRole("button", { name: "Visit venue", exact: true });
+      const arrival = home.locator("[data-arrival]");
+      const frame = await arrival.boundingBox();
+      await expect(visit).not.toBeInViewport();
+      const x = frame.x + frame.width * 0.5;
+      const start = frame.y + frame.height * 0.85;
+      await touch("touchStart", [[x, start]]);
+      for (let step = 1; step <= 6; step++) {
+        await touch("touchMove", [[x, start - (frame.height * 0.7 * step) / 6]]);
+      }
+      await touch("touchEnd", []);
+      await expect(visit).toBeInViewport({ ratio: 1 });
+    }
     await screenshot("arrival");
     await page.keyboard.press("Escape");
     await expect(marker).toBeFocused();
@@ -426,12 +453,6 @@ await withBrowser(browser, async () => {
     await expect(navigator.getByRole("button", { name: "Visit", exact: true })).toHaveCount(0);
     await navigator.getByRole("searchbox").fill("");
     if (mobile) await closePlaces();
-    const client = mobile ? await page.context().newCDPSession(page) : null;
-    const touch = (type, points) =>
-      client.send("Input.dispatchTouchEvent", {
-        type,
-        touchPoints: points.map(([x, y], id) => ({ x, y, id })),
-      });
     if (!mobile) await home.getByRole("button", { name: "Reset map view" }).click();
     await settleLayout();
     const initial = await geometry();

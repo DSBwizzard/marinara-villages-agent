@@ -37,7 +37,9 @@ export const EXPLORATION_STYLES = `
   --menu-font:"village-letter-lora",Georgia,serif;
   color:var(--foreground); background:var(--background); font-family:var(--menu-font);
 }
-.${P}-venue-arrival .${P}-workspace-content { padding:0; }
+/* Map arrivals sit outside the scrolling desk stage. */
+.${P}-venue-arrival .${P}-workspace-body { height:100%; }
+.${P}-venue-arrival .${P}-workspace-content { flex:1; overflow:auto; overscroll-behavior-y:contain; padding:0; }
 @media (prefers-reduced-motion:no-preference) {
   .${P}-home-map-viewport[data-arrival] > .${P}-stage {
     transform-origin:var(--arrival-origin,center);
