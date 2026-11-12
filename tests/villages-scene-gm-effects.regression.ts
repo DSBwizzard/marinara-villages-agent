@@ -126,6 +126,7 @@ await runCase("gm-effects/relationship-answer", async () => {
       const fit = messages.map(({ content }) => content).join("\n");
       assert(fit.includes('"relationshipAnswersDue":["mara"]'));
       assert.equal(fit.includes("only if this reply uses scene.end"), !ending || native);
+      assert.equal(fit.includes('{"relationships":[{"for":"mara","about":"player","score":3}]}'), ending);
       return {
         content: JSON.stringify({
           segments: [
@@ -153,9 +154,9 @@ await runCase("gm-effects/relationship-answer", async () => {
               about: ["player"],
               class: "perspective",
               current: true,
-              text: answer,
-              source: ["self"],
-              relationship: { answer },
+              text: ending ? answer : "I feel a little more at ease with the player.",
+              source: ending ? ["self"] : ["said", "self"],
+              relationship: ending ? { answer } : { impact: "small-positive", answer },
             },
           ],
         }),
@@ -187,7 +188,9 @@ await runCase("gm-effects/relationship-answer", async () => {
       assert.equal((await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" })).statusCode, 200);
       const turn = await send(false);
       assert.equal(turn.statusCode, 200, turn.body);
-      assert.equal((await edge()).answer, undefined);
+      const firstEdge = await edge();
+      assert.equal(firstEdge.score, 3);
+      assert.equal(firstEdge.answer, undefined);
       const ending = await send(true);
       assert.equal(ending.statusCode, 200, ending.body);
       assert.equal(host.scene().status, "closed");

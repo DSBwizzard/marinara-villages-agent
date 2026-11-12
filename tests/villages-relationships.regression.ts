@@ -1,4 +1,4 @@
-// Test cases: relationships/player-snapshot, relationships/scoring, relationships/daily-pacing, relationships/answer-cadence, relationships/shared-terms, relationships/common-protection, relationships/identity-labels, relationships/native-access, relationships/access-calendar, relationships/pure-reads
+// Test cases: relationships/player-snapshot, relationships/scoring, relationships/daily-pacing, relationships/answer-cadence, relationships/behavior-context, relationships/shared-terms, relationships/common-protection, relationships/identity-labels, relationships/native-access, relationships/access-calendar, relationships/pure-reads
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -11,6 +11,8 @@ import {
   relationshipCalendar,
 } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
 import { capturedSceneCalendar } from "../packages/villages/src/server/domain/rules/scene-calendar.js";
+import { captureContinuityContext } from "../packages/villages/src/server/domain/rules/continuity-context.js";
+import { continuityCaptureSchema } from "../packages/villages/src/server/domain/decoding/continuity-context-codec.js";
 import { applyContinuityWrite, continuityHolderKey } from "../packages/villages/src/server/domain/rules/continuity.js";
 import { appendEpisode } from "../packages/villages/src/server/domain/rules/episodes.js";
 import { episodeSpeechEvidence } from "../packages/villages/src/server/domain/rules/episode-sources.js";
@@ -185,6 +187,40 @@ function fixture() {
   }
   return { state, actor, keep, target, cold, profiles: () => continuityRelationships(state, at) };
 }
+
+await runCase("relationships/behavior-context", () => {
+  const f = fixture();
+  for (const [owner, subject, impact] of [
+    ["mara", "player", "small-positive"],
+    ["mara", "leo", "small-positive"],
+    ["leo", "mara", "meaningful-negative"],
+  ] as const)
+    f.keep(
+      {
+        id: owner + "-" + subject,
+        holders: [f.actor(owner)],
+        owner: f.actor(owner),
+        class: "perspective",
+        about: [f.actor(subject)],
+        text: "That conversation changed how I feel.",
+        current: true,
+        relationship: { impact },
+      },
+      owner,
+    );
+  const capture = (ids: string[]) => continuityCaptureSchema.parse(captureContinuityContext(f.state, ids, "", at));
+  assert.deepEqual(capture(["player", "mara"]).prompt.relationships, [{ for: "mara", about: "player", score: 3 }]);
+  const residents = capture(["player", "mara", "leo"]);
+  assert.deepEqual(residents.prompt.relationships, [
+    { for: "mara", about: "player", score: 3 },
+    { for: "leo", about: "mara", score: -6 },
+    { for: "mara", about: "leo", score: 3 },
+  ]);
+  f.state.villagers[0].incarnation = "replacement";
+  assert.equal(capture(["player", "mara", "leo"]).prompt.relationships, undefined);
+  assert.equal(continuityCaptureSchema.parse(residents).prompt.relationships?.length, 3);
+});
+
 await runCase("relationships/player-snapshot", () => {
   const f = fixture();
   const root = f.keep({

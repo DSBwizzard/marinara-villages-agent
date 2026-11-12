@@ -15,6 +15,7 @@ import {
   NARRATION_RESPONSE,
   RELATIONSHIP_ANSWER,
   RELATIONSHIP_KEEP,
+  RELATIONSHIP_DIRECTION,
 } from "../../domain/rules/narration-contract.js";
 import { fittedNarrationReadset, narrationContinuityContext } from "../../domain/rules/narration-context.js";
 import { narrationCircumstancePrompt } from "../../domain/rules/narration-circumstance.js";
@@ -184,6 +185,7 @@ export function createSceneWriting({
     const blocks = buildVenueSceneBlocks({
       direction: blocksFor([
         NARRATION_DIRECTION,
+        RELATIONSHIP_DIRECTION,
         venueWritingDirection(village.narrationStyle, player.name),
         venueAdditionalWritingGuidance(village.narrationStyle),
       ]),

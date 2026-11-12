@@ -108,6 +108,7 @@ export type ContinuityCapture = {
   offered: { holder: Extract<ContinuityHolder, { kind: "actor" }>; ids: string[] }[];
   prompt: {
     entries: Record<string, unknown>[];
+    relationships?: ReturnType<typeof import("../rules/continuity-retrieval.js").relationshipAttitudes>;
     history: unknown;
     protections: ReturnType<typeof import("../rules/continuity.js").continuityConstraints>;
   };

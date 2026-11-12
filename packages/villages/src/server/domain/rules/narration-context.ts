@@ -21,7 +21,7 @@ import {
   continuityConstraints,
   continuityProtectionFingerprint,
 } from "./continuity.js";
-import { selectActorContinuity, selectRoomContinuity } from "./continuity-retrieval.js";
+import { relationshipAttitudes, selectActorContinuity, selectRoomContinuity } from "./continuity-retrieval.js";
 import { recentSharedEpisodes, selectEpisodeHistory } from "./episodes.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { estimatedTextTokens } from "./text-recall.js";
@@ -260,6 +260,17 @@ export function narrationContinuityContext(
     episodeIds: [],
     offered: [],
   });
+  const relationships = relationshipAttitudes(state.continuity, holders);
+  if (relationships.length)
+    parts.push({
+      ...emptyPart(),
+      block: {
+        text: JSON.stringify({ relationships }),
+        evidenceId: "relationship-attitudes",
+        optional: "memory",
+        pruningPriority: 1,
+      },
+    });
   const shared = new Set(recentSharedEpisodes(state.episodes, holders).map((row) => row.id));
   const history = selectEpisodeHistory(state.episodes, state.continuity, holders, input, 20000, scene.id);
   const contextScopes = new Map(

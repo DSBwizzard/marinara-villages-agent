@@ -15,7 +15,7 @@ import {
 import { episodeSourceGraph } from "../decoding/episode-codec.js";
 import { selectEpisodeHistory } from "./episodes.js";
 import { projectEpisodeRecall } from "./episode-recall.js";
-import { selectActorContinuity } from "./continuity-retrieval.js";
+import { relationshipAttitudes, selectActorContinuity } from "./continuity-retrieval.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 
 export const continuityContextScopeKey = (holders: (ContinuityHolder | { id: string; incarnation: string })[]) =>
@@ -149,6 +149,7 @@ export function captureContinuityContext(
     "continuity identity or evidence context exceeds its bound before generation",
   );
   const protections = continuityConstraints(state.continuity, [...holders, ...references]);
+  const relationships = relationshipAttitudes(state.continuity, holders);
   const value: ContinuityCapture = {
     seed: state.seed,
     setupAt: state.setupAt,
@@ -175,6 +176,7 @@ export function captureContinuityContext(
     offered: selected.offered,
     prompt: {
       entries,
+      ...(relationships.length ? { relationships } : {}),
       history: { ...renderedHistory, roomReferences: readOnlyRoomContext(state, rooms) },
       protections,
     },

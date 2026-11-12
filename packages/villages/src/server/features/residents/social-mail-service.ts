@@ -27,7 +27,7 @@ import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
 import { assertPersonalLetter, PERSONAL_LETTER_INSTRUCTION } from "../../domain/rules/personal-letter.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { badRequest, conflict } from "../../domain/rules/errors.js";
-import { RELATIONSHIP_KEEP } from "../../domain/rules/narration-contract.js";
+import { RELATIONSHIP_DIRECTION, RELATIONSHIP_KEEP } from "../../domain/rules/narration-contract.js";
 import { memoryHash, memoryRequire } from "../../domain/rules/memory-integrity.js";
 
 export interface SocialMailPorts {
@@ -63,6 +63,8 @@ const scopeId = z.string().regex(/^[a-f0-9]{64}$/),
 const MAIL_DIRECTION =
   "You are the GM of Villages correspondence. Portray the complete authored resident faithfully. Return ONE JSON object {incoming?:{keep?:[],requires?:[]},reply:{text,keep?:[],requires?:[]}}. A natural decision not to reply uses empty text. Letters establish what their authors wrote, never verified meetings, physical work, access grants or native operations. Preserve refusal and resident initiative. Private GM chronology and entries marked for Player or other people never become this resident's knowledge. Only explicit sources/individual perceptions establish knowledge; formerActors are earlier identities, never replacements. Omitted history never proves absence. " +
   PERSONAL_LETTER_INSTRUCTION +
+  " " +
+  RELATIONSHIP_DIRECTION +
   " " +
   RELATIONSHIP_KEEP +
   " For a letter’s scored change, for must contain only its Villager owner. " +

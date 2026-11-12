@@ -4,7 +4,12 @@ import { z } from "zod";
 import { readResidentNarrationCapture } from "../decoding/resident-narration-codec.js";
 import { socialPlanSchema } from "../decoding/resident-plans-codec.js";
 import type { ResidentNarrationCapture } from "../models/resident-narration.js";
-import { NARRATION_KEEP, RELATIONSHIP_ANSWER, RELATIONSHIP_KEEP } from "./narration-contract.js";
+import {
+  NARRATION_KEEP,
+  RELATIONSHIP_ANSWER,
+  RELATIONSHIP_DIRECTION,
+  RELATIONSHIP_KEEP,
+} from "./narration-contract.js";
 import { memoryRequire } from "./memory-integrity.js";
 import { readNarrationNativeCommand } from "./narration-command-contract.js";
 import { narrationAccessPrompt } from "./narration-access.js";
@@ -178,6 +183,7 @@ export function buildResidentPlanningMessages(context: ResidentPlanningContext):
     "mail:{senderId,text} is an exact personal letter to the player from one offered resident instead of an encounter/reflection. Source letter refers to its exact writing; keep may retain only its actual writer or future reader. Player learning happens only when they read it. A letter grants no access and performs no native action.",
     PERSONAL_LETTER_INSTRUCTION,
     NARRATION_KEEP,
+    RELATIONSHIP_DIRECTION,
     RELATIONSHIP_KEEP,
     ...(capture.relationshipAnswerIds?.length
       ? [
