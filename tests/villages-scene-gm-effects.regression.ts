@@ -251,7 +251,7 @@ for (const scenario of scenarios)
         };
       else if (scenario === "wish" || scenario === "wish-new") {
         const desire = scenario === "wish" ? supplied(messages).find((row) => row.class === "desire") : undefined;
-        if (scenario === "wish") assert(desire, "replacement must use an actually fitted desire");
+        if (scenario === "wish") assert.match(desire?.id ?? "", /^h:\d+$/, "the saved update uses a fitted short ID");
         raw = {
           segments: [
             said(

@@ -126,7 +126,7 @@ await runCase("scene-prefix/current-native-context", async () => {
                 row.forbidden.includes("PRIVATE FORGOTTEN OBSERVATORY GREETING."),
             ),
           );
-        assert(changing.includes("Scoped native access authority") || change === "policy");
+        assert.equal(changing.includes("Scoped native access authority"), change === "movement");
         return {
           content: JSON.stringify({ segments: [{ kind: "dialogue", speakerId: "mara", text: "Morning." }] }),
           finishReason: "stop",

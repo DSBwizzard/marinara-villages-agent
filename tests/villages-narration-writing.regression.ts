@@ -1020,6 +1020,7 @@ await runCase("narration-writing/long-followup", async () => {
   assert(memory.length < 4, "routine standing context has a separate budget");
   const shared = memory.find((row) => row.holders?.length === 2);
   assert(shared, "identical meanings retain each holder's own citation");
+  assert.equal(shared.id, shared.holders[0].source);
   for (const knower of shared.holders) assert.equal(reply.readset.source.historical[knower.source].actorId, knower.for);
   assert.equal(f.calls.purchases, 1);
 

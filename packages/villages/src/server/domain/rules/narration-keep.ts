@@ -56,10 +56,13 @@ export function prepareContinuityKeep(
   sourceContext: Pick<NarrationSourceContext, "seed" | "episodeId" | "actors" | "subjects"> & {
     operationId: string;
     bindSource(ref: unknown, owner: NarrationSourceOwner): ContinuityEvidence;
+    resolveTarget?(id: string): string;
   },
 ) {
   const proposal = readContinuityProposal(raw),
     header = readNarrationEffectHeader(raw, "keep-" + ordinal);
+  for (const field of ["replace", "parent"] as const)
+    if (proposal[field] && sourceContext.resolveTarget) proposal[field] = sourceContext.resolveTarget(proposal[field]);
   memoryRequire(
     admission.seed === sourceContext.seed &&
       admission.operationId === sourceContext.operationId &&
@@ -266,5 +269,32 @@ export function prepareNarrationKeep(
     ...sourceContext,
     operationId: sourceContext.episodeId,
     bindSource: (ref, owner) => bindNarrationSource(ref, sourceContext, owner),
+    resolveTarget: (id) => {
+      if (!id.startsWith("h:")) return id;
+      const evidence = Object.hasOwn(sourceContext.historical, id) && sourceContext.historical[id];
+      const version =
+        evidence &&
+        evidence.kind === "knowledge" &&
+        evidence.seed === sourceContext.seed &&
+        evidence.episodeId === sourceContext.episodeId &&
+        collection.versions.find((row) => row.id === evidence.unitId);
+      const target = version && admission.supplied.find((row) => row.id === version.rootId);
+      const record = target && collection.records.find((row) => row.id === target.id);
+      memoryRequire(
+        version &&
+          target &&
+          record &&
+          evidence &&
+          Object.entries(record.heads).some(
+            ([key, head]) =>
+              head.holder.kind === "actor" &&
+              head.holder.id === evidence.actorId &&
+              head.versionId === version.id &&
+              target.heads[key] === head.revision,
+          ),
+        "continuity target was not fitted or its holder changed",
+      );
+      return version.rootId;
+    },
   });
 }

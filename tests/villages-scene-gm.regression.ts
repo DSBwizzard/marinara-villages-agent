@@ -64,6 +64,9 @@ for (const scenario of ["ordinary", "invitation", "revoked", "refused", "banned"
     host.model.chatComplete = async (messages: any[]) => {
       calls++;
       assert.equal(messages.at(-1).content, calls === 1 ? message : "Why?");
+      const prompt = messages.map((row) => row.content).join("\n");
+      assert.equal(prompt.includes("Scoped native access authority"), invited);
+      assert.equal(prompt.includes("Access commands use supplied venue and zone IDs"), invited);
       if (calls === 2)
         assert(
           messages.some(

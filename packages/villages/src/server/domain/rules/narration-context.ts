@@ -448,6 +448,11 @@ export function narrationContinuityContext(
     }
   }
   const sharedPrivate = new Map<string, { part: Part; holders: { for: string; source: string }[] }>();
+  const actorRefs = new Map(
+    actorSelection.packet.entries
+      .filter((entry) => !circumstanceRoots.has(entry.id))
+      .map((entry) => [JSON.stringify([entry.for, entry.id]), sourceAlias()]),
+  );
   for (const entry of actorSelection.packet.entries) {
     if (circumstanceRoots.has(entry.id)) continue;
     const holder = holders.find((row) => row.id === entry.for)!,
@@ -472,7 +477,7 @@ export function narrationContinuityContext(
           emitted.add(JSON.stringify([key, row.id]));
           const view = views.find((view) => view.id === row.id && continuityHolderKey(view.holder) === key)!;
           const source = continuityKnowledge(view, state.seed, episodeId),
-            ref = sourceAlias();
+            ref = actorRefs.get(JSON.stringify([row.for, row.id]))!;
           part.sources[ref] = source;
           (part.provenance[key] ??= []).push(continuitySourceUnit(source));
           part.targets.push({ id: view.id, recordRevision: view.recordRevision, heads: { [key]: view.headRevision } });
@@ -481,7 +486,11 @@ export function narrationContinuityContext(
           part.episodeIds.push(...view.version.sources.map((source) => source.episodeId));
           if (row.current && holder.id !== "player" && continuityGuidesHolder(view))
             part.offered.push({ holder, ids: [row.id] });
-          return { ...row, source: ref };
+          return {
+            ...row,
+            id: ref,
+            ...(row.parent ? { parent: actorRefs.get(JSON.stringify([row.for, row.parent])) ?? row.parent } : {}),
+          };
         });
     const required = part.targets.some((target) => requiredKey(target, key));
     const packet: Part = {
@@ -493,13 +502,15 @@ export function narrationContinuityContext(
       },
     };
     if (!required && group.length === 1 && entries.length === 1 && !entries[0].parent) {
-      const { for: actor, source, ...meaning } = entries[0];
-      const meaningKey = JSON.stringify(meaning);
+      const { for: actor, id: source, ...meaning } = entries[0];
+      const meaningKey = JSON.stringify([entry.id, meaning]);
       const knower = { for: actor, source };
       const prior = sharedPrivate.get(meaningKey);
       if (prior) {
         prior.holders.push(knower);
-        prior.part.block.text = JSON.stringify({ privateContinuity: [{ ...meaning, holders: prior.holders }] });
+        prior.part.block.text = JSON.stringify({
+          privateContinuity: [{ id: prior.holders[0].source, ...meaning, holders: prior.holders }],
+        });
         prior.part.sources[source] = part.sources[source];
         prior.part.provenance[key] = part.provenance[key];
         prior.part.targets.push(...part.targets);

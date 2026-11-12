@@ -2,13 +2,17 @@ import type { ContinuityEvidence } from "../models/continuity-model.js";
 import { z } from "zod";
 import type { AcceptedEpisode } from "../models/episode-model.js";
 import type { NarrationReadset } from "../models/narration-model.js";
-import type { VillageState } from "../models/world.js";
+import type { VenueScene } from "../models/scene-model.js";
+import type { VillageState, VillageVenue } from "../models/world.js";
 import { continuityActor } from "./continuity-actors.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { narrationWitnesses, type NarrationCommunication } from "./narration-sources.js";
 import { findLocation, findNpc, sceneActorIds } from "./places.js";
+import { contactNeighbors } from "./venue-contact.js";
+import { sceneLayoutVenue } from "./scene-layout.js";
 import {
   applyAccessCommand,
+  defaultZonePolicy,
   managesAccess,
   mayInvite,
   readAccessCommand,
@@ -128,6 +132,39 @@ export const narrationAccessScopeSchema = z
       .max(5),
   })
   .strict();
+export function sceneAccessDiscussed(scene: VenueScene, venue: VillageVenue, input: string) {
+  // shortcut: keep full rules for structured access and likely access dialogue, extend only if access requests are missed.
+  const accessWords =
+    /\b(?:access|permission|invit(?:e|ed|es|ing|ation)|allow(?:ed|ing)?|forbid(?:den)?|ban(?:ned)?|visitor hours|visiting hours|(?:may|can|could) (?:i|we) (?:enter|come|go|use|visit)|come (?:in|through|inside)|let (?:me|us|them|you) (?:in|through)|open (?:the |this )?door|knock|locked|unlock)\b/iu;
+  const origin = scene.zoneId ?? "exterior";
+  const neighbors = contactNeighbors(venue, origin, scene);
+  const named = input.normalize("NFKC").toLowerCase();
+  const restricted = sceneLayoutVenue(venue, scene).zones?.some((zone) => {
+    if (
+      zone.id !== origin &&
+      !(zone.seen && neighbors.includes(zone.id) && named.includes(zone.name.normalize("NFKC").toLowerCase()))
+    )
+      return false;
+    const policy = zone.access ?? defaultZonePolicy(venue, zone);
+    return (
+      policy.mode !== "public" ||
+      policy.accompanied ||
+      Array.isArray(policy.visitorHours) ||
+      (policy.visitorHours === "inherit" && !!venue.access?.visitorHours)
+    );
+  });
+  return (
+    scene.area === "private" ||
+    origin === "exterior" ||
+    !!restricted ||
+    !!scene.pendingAccessClaim ||
+    !!scene.doorwayContacts?.length ||
+    !!scene.contactGeneration?.instruction ||
+    accessWords.test(input) ||
+    scene.lines.slice(-4).some((line) => !line.contactHidden && accessWords.test(line.content))
+  );
+}
+
 export function narrationAccessPrompt(scopes: NarrationAccessScope[]) {
   return scopes.length
     ? "Scoped native access authority (GM only). Omitted Zone hours inherit; null removes hours. " +
