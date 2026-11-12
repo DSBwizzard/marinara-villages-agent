@@ -416,11 +416,13 @@ await withBrowser(browser, async () => {
       await expect(visit).not.toBeInViewport();
       const x = frame.x + frame.width * 0.5;
       const start = frame.y + frame.height * 0.85;
-      await touch("touchStart", [[x, start]]);
-      for (let step = 1; step <= 6; step++) {
-        await touch("touchMove", [[x, start - (frame.height * 0.7 * step) / 6]]);
+      for (let swipe = 0; swipe < 2; swipe++) {
+        await touch("touchStart", [[x, start]]);
+        for (let step = 1; step <= 6; step++) {
+          await touch("touchMove", [[x, start - (frame.height * 0.7 * step) / 6]]);
+        }
+        await touch("touchEnd", []);
       }
-      await touch("touchEnd", []);
       await expect(visit).toBeInViewport({ ratio: 1 });
     }
     await screenshot("arrival");
