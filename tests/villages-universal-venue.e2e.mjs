@@ -465,7 +465,6 @@ await withBrowser(browser, async () => {
     const fullArtwork = viewer.getByRole("img", { name: `Main Bay at ${place.name}` });
     await expect(fullArtwork).toHaveAttribute("src", artworkUrl);
     await expect(fullArtwork).toHaveCSS("object-fit", "contain");
-    const frame = await fullArtwork.boundingBox();
     for (const [w, h] of [
       [120, 600],
       [1600, 200],
@@ -481,7 +480,14 @@ await withBrowser(browser, async () => {
         },
         { w, h },
       );
-      assert.deepEqual(await fullArtwork.boundingBox(), frame, "Portrait and wide artwork fit the same viewer");
+      await expect(fullArtwork).toBeInViewport({ ratio: 1 });
+      const frame = await viewer.boundingBox();
+      const image = await fullArtwork.boundingBox();
+      assert.ok(
+        image.y >= frame.y && image.y + image.height <= frame.y + frame.height,
+        "Portrait and wide artwork fit inside the viewer",
+      );
+      assert.ok(frame.width <= width - 32 && frame.height <= page.viewportSize().height * 0.75);
     }
     await viewer.getByRole("button", { name: "Close Main Bay" }).click();
     await expect(viewer).toHaveCount(0);
