@@ -21,7 +21,8 @@ export function requestsMemoryChange(text: string) {
     request,
   );
   const body = request.slice(polite?.[0].length ?? 0);
-  if (!polite && /^[^.!?\r\n]*\?/u.test(body)) return false;
+  const recallQuestion = /^(?:can|could) you\s+remember (?:who|what|when|where|why|how|which|whether|if)\b/iu;
+  if (/^[^.!?\r\n]*\?/u.test(body) && (!polite || recallQuestion.test(request))) return false;
   return (
     /^(?:remember|forget|don['’]t forget)\s+\S/iu.test(body) ||
     /^(?:correct|change|update|replace|record)\s+(?:(?:(?:the|this|that|my|our|your)\s+)?(?:memory|memories|record|notes?)|what (?:i|we|you) (?:said|told|remember|recorded)|the way you remember)\b/iu.test(

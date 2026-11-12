@@ -93,9 +93,11 @@ await runCase("scene-prefix/current-native-context", async () => {
             .join("\n");
         prefixes.push(prefix);
         const frame = messages.find((row) => row.content.includes("## Current Scene reference"));
-        assert.equal(frame?.role, "user");
-        assert(!frame.cacheBreakpoint);
+        assert.equal(frame?.role, "system");
+        assert(frame.cacheBreakpoint);
         frames.push(frame.content.split("\n").find((line: string) => line.startsWith('{"location":')));
+        assert(!stable.includes('"movements":'));
+        assert(changing.includes('"movements":'));
         for (const authored of [
           "AUTHORED RIVERSIDE SETTING",
           "AUTHORED WORLD RULE",
@@ -164,7 +166,6 @@ await runCase("scene-prefix/current-native-context", async () => {
     assert.deepEqual(prefixes[0], prefixes[1]);
     assert.notEqual(calendars[0], calendars[1], "the admitted clock can change independently of the authored prefix");
     for (const prefix of prefixes.slice(2)) assert.deepEqual(prefix.slice(0, 2), prefixes[0].slice(0, 2));
-    assert.deepEqual(prefixes[3], prefixes[0], "Zone movement does not invalidate the stable prefix");
     assert.notEqual(frames[3], frames[0], "the current Zone still changes the Scene reference");
     assert.deepEqual(prefixes[4], prefixes[1], "native Forget protection stays outside the cached Scene frame");
     assert.deepEqual(prefixes[5], prefixes[1], "native Project authority stays outside the cached Scene frame");

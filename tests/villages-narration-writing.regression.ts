@@ -345,7 +345,7 @@ await runCase("narration-writing/single-request", async () => {
     .map((row) => row.content)
     .join("\n");
   const frame = f.messages().find((row) => row.content.includes("## Current Scene reference"));
-  assert.equal(frame.role, "user");
+  assert.equal(frame.role, "system");
   assert(
     frame.content.includes(
       `"dialogueSpeakers":${JSON.stringify(reply.readset.source.scene.contactGeneration?.actorIds)}`,
@@ -379,6 +379,7 @@ await runCase("narration-writing/single-request", async () => {
   assert.equal(boundary.content, "## Current player submission");
   assert.deepEqual(submitted, { role: "user", content: exact });
   assert.match(reminder.content, /^## Scene reply reminder\nBegin with \{"segments":\[/u);
+  assert.match(reminder.content, /Dialogue and narration have no source field/u);
   assert.equal(deepSeekReply.readset.source.input, exact);
   await deepSeek.writing.generate(deepSeek.scene, "", "greet");
   assert.deepEqual(deepSeek.formats, [undefined, { type: "json_object" }]);
@@ -1182,6 +1183,7 @@ await runCase("narration-writing/long-followup", async () => {
   for (const callback of [
     "Mara, I remember you mentioned the weaving memory. Does that change how you think about it?",
     "Remember the weaving memory?",
+    "Can you remember what we said about the weaving memory?",
   ]) {
     const read = await f.writing.prepareVenueTurnMessages(f.scene, callback, "chat");
     assert(read.readset.readOnlyKnowledge?.some((source) => source.excerpt === shared.text));
@@ -1412,7 +1414,7 @@ await runCase("narration-writing/history-prefix", async () => {
         .every((row) => !row.content.includes('{"interaction":')),
     );
     const tail = request.fitted.messages.slice(request.fitted.messages.indexOf(cacheBoundary!) + 1);
-    assert(tail.some((row) => row.role === "user" && row.content.includes("## Current Scene reference")));
+    assert(tail.some((row) => row.role === "user" && row.content.includes('"movements":')));
     assert(tail.some((row) => row.role === "user" && row.content.includes("## Current Scene circumstances")));
     assert.equal(tail.at(-2)?.content, "## Current player submission");
     assert.equal(tail.at(-1)?.content, keyword);

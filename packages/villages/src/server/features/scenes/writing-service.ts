@@ -225,7 +225,7 @@ export function createSceneWriting({
           : "",
         "Ordinary words stay in the same Zone. A whisper goes to one named local recipient. An explicit shout reaches a directly connected Zone. Hearing groups show local and across listeners. Code routes each line. Use prose for local ambience.",
         !nativeCommands
-          ? "When the current Scene reference names a leadSpeakerId, let that resident answer. Other residents join when they add something new. Use pastSpeaker for who said a line and witnessedWords for who heard it. Recalled facts belong to their listed knowers. Other residents learn through witnessed exchanges. Keep that attribution implicit unless it matters to the player's question. Avoid echoing the player or repeating another resident's answer."
+          ? "When the current circumstances name a leadSpeakerId, let that resident answer. Other residents join when they add something new. Use pastSpeaker and witnessedWords as GM context for who said and heard a line. Let the addressee answer from their own knowledge. Mention another speaker or a recalled fact only if the resident knows it and it matters to the question. Other residents learn through witnessed exchanges. Avoid echoing the player or repeating another resident's answer."
           : "",
         "The witnessed transcript is read-only GM context with a different format from your reply. Use h: citations only as evidence. Historical witnessedWords lists its audience in by or inherits the last audience header. Timestamps carry forward. Other perceptions are [actor, channel, optional sources]. Letters give their readers. A privateContinuity ID cites one knower; for shared entries use that holder's source. Respect actual character knowledge. Omission never means absence. Code enforces access." +
           (nativeCommands ? " Change it only with a supplied access command." : ""),
@@ -257,9 +257,6 @@ export function createSceneWriting({
         JSON.stringify({
           location: sceneLocationContext(scene, venue, selectedIds),
           dialogueSpeakers: selectedIds.filter((id) => id !== "player"),
-          leadSpeakerId,
-          movements: residentMovementPrompt(residentMovementOptions(village, venue, scene, selectedIds)),
-          doorwayContacts: scene.doorwayContacts?.map((contact) => contact.characterId) ?? [],
         }),
         zoneEventHearingContext({ ...scene, participants: cast }, venue),
       ]),
@@ -297,6 +294,9 @@ export function createSceneWriting({
           : "",
         JSON.stringify({
           calendar,
+          leadSpeakerId,
+          movements: residentMovementPrompt(residentMovementOptions(village, venue, scene, selectedIds)),
+          doorwayContacts: scene.doorwayContacts?.map((contact) => contact.characterId) ?? [],
           protections: context.protections,
           roomReferences: context.roomReferences,
           circumstance: narrationCircumstancePrompt(context.circumstance, nativeCommands),
@@ -321,7 +321,7 @@ export function createSceneWriting({
       Math.min(model.maxOutputTokens ?? VENUE_REPLY_MAX_TOKENS, VENUE_REPLY_MAX_TOKENS),
       "Narration",
       plainJson
-        ? '## Scene reply reminder\nBegin with {"segments":[ and return one complete JSON object. Put all prose in segment text. Use the listed dialogue and narration fields. History and recalled facts are input. Put source citations only on keeps or a halt. Finish the JSON object after the last segment or effect.'
+        ? '## Scene reply reminder\nBegin with {"segments":[ and return one complete JSON object. Put all prose in segment text. Dialogue and narration have no source field, even when recalling a conversation. Add source only inside keep or halt. Finish the JSON object after the last segment or effect.'
         : undefined,
     );
     if (loreInspection) {
