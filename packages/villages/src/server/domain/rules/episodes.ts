@@ -428,13 +428,18 @@ export function selectEpisodeHistory(
       .filter(({ matches }) => matches >= (explicit ? 1 : 3))
       .sort((a, b) => b.matches - a.matches || b.row.index - a.row.index)
       .map(({ row }) => row);
+    // On arrival, offer the latest eligible shared exchange even before anyone asks for a callback.
+    const shared = sceneWindow.length ? [] : recentSharedEpisodes(collection, holders);
+    const arrivalRecall = candidates
+      .toReversed()
+      .filter((row) => shared.includes(row.episode) && !recalled.includes(row));
     return {
       partial: sceneWindow.length < candidates.length,
       omitted: candidates.length - sceneWindow.length,
       bytes: sceneWindow.reduce((total, row) => total + row.bytes, 0),
       sceneWindow: sceneIds,
       episodes: sceneWindow.map((row) => row.view),
-      recallCandidates: recalled.map((row) => row.view),
+      recallCandidates: [...recalled, ...arrivalRecall].map((row) => row.view),
     };
   }
   const shared = recentSharedEpisodes(collection, holders)

@@ -883,7 +883,7 @@ await runCase("mail-continuity/scene-context", () => {
         name: "Mara",
         role: "assistant",
         kind: "dialogue",
-        content: "I will ask about the Saturday letter.",
+        content: "I will ask about the brass compass.",
         at,
         zoneId,
         heardBy: ["player", "mara"],
@@ -901,12 +901,14 @@ await runCase("mail-continuity/scene-context", () => {
     { ...scene, id: "third-scene" },
     venue,
     "speech-follow-up",
-    "About Saturday?",
+    "About the brass compass?",
     at,
   );
   const oldTalk = speechContext.parts
     .map((part) => JSON.parse(part.block.text))
-    .find((part) => part.interaction?.id === spoken.id);
+    .find((part) =>
+      part.interaction?.segments.some((line: { text?: string }) => line.text === spoken.segments[0].content),
+    );
   assert.deepEqual(
     oldTalk.interaction.formerActors,
     ["mara"],
