@@ -16,8 +16,9 @@ export function completeSceneObject(
   if (finishReason !== "stop" && finishReason !== "end_turn") return null;
   const text = content
     .trim()
-    .replace(/^```(?:json)?\s*\n/u, "")
-    .replace(/\n```$/u, "");
+    .replace(/^```(?:json)?\s*\n/iu, "")
+    .replace(/\r?\n```$/u, "")
+    .trim();
   if (!text.startsWith("{") || !text.endsWith("}")) return null;
   const value = (parsed ?? readModelJsonObject({ content, finishReason })).value;
   if (value) return value;

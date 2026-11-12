@@ -58,6 +58,7 @@ type Part = {
   offered: NarrationReadset["offered"];
   sharedLoreWords?: string[];
   plainRecall?: true;
+  openOffer?: true;
 };
 
 function sharedLoreWords(
@@ -522,6 +523,7 @@ export function narrationContinuityContext(
     const required = part.targets.some((target) => requiredKey(target, key));
     const packet: Part = {
       ...part,
+      ...(entries.some((row) => row.offer && !row.closed) ? { openOffer: true } : {}),
       ...(!required &&
       entries.every(
         (row) =>

@@ -78,7 +78,7 @@ async function main() {
     assert.equal(scenePromptPacket(prompt, "interaction").interaction.gmPrivateInput, input);
     assert.match(prompt, /Then the bees can stay put/u);
     if (mode === "greet") assert.match(prompt, /Open the Scene from established presence/u);
-    if (mode === "leave") assert.match(prompt, /without inventing the player's goodbye/u);
+    if (mode === "leave") assert.match(prompt, /Any goodbye from the player comes from their submission/u);
   }
   console.log("Villages player voice regression: current greeting, conversation and departure prompts passed");
 }

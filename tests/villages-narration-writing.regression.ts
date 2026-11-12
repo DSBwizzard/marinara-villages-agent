@@ -1,4 +1,4 @@
-// Test cases: narration-writing/single-request, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/history-prefix, narration-writing/required-evidence-bound, narration-writing/circumstance-provenance, narration-writing/learned-wish-initiative, narration-writing/subject-scope, narration-writing/activation-owner
+// Test cases: narration-writing/single-request, narration-writing/open-offer-guidance, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/history-prefix, narration-writing/required-evidence-bound, narration-writing/circumstance-provenance, narration-writing/learned-wish-initiative, narration-writing/subject-scope, narration-writing/activation-owner
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -309,6 +309,16 @@ await runCase("narration-writing/single-request", async () => {
   assert.equal(f.messages().at(-1).content, input);
   assert.equal(reply.readset.source.input, input);
   assert.deepEqual(reply.readset.source.historical, {});
+  const system = f
+    .messages()
+    .filter((row) => row.role === "system")
+    .map((row) => row.content)
+    .join("\n");
+  assert(
+    system.includes(`"dialogueSpeakers":${JSON.stringify(reply.readset.source.scene.contactGeneration?.actorIds)}`),
+  );
+  assert.match(system, /Omit delivery and targetId for ordinary speech/u);
+  assert.doesNotMatch(system, /"whisper\|shout"/u);
   assert(
     f
       .messages()
@@ -325,6 +335,31 @@ await runCase("narration-writing/single-request", async () => {
   await deepSeek.writing.generate(deepSeek.scene, input, "chat");
   await deepSeek.writing.generate(deepSeek.scene, "", "greet");
   assert.deepEqual(deepSeek.formats, [undefined, { type: "json_object" }]);
+  const greeting = deepSeek
+    .messages()
+    .filter((row) => row.role === "system")
+    .map((row) => row.content)
+    .join("\n");
+  assert.match(greeting, /Open the Scene from established presence/u);
+  assert.doesNotMatch(greeting, /several substantial exchanges/u);
+  const leaving = await deepSeek.writing.prepareVenueTurnMessages(deepSeek.scene, "I leave.", "leave");
+  const departure = leaving.fitted.messages
+    .filter((row) => row.role === "system")
+    .map((row) => row.content)
+    .join("\n");
+  assert.match(departure, /close when it is complete/u);
+  assert.doesNotMatch(departure, /several substantial exchanges/u);
+  const casual = await f.writing.prepareVenueTurnMessages(
+    f.scene,
+    "I offer a wave and update the chalk label.",
+    "chat",
+  );
+  const casualPrompt = casual.fitted.messages.map((row) => row.content).join("\n");
+  assert.match(casualPrompt, /explicit request to remember, an actual promise or offer/u);
+  assert.doesNotMatch(
+    casualPrompt,
+    /mutual-offer decision|decision on a supplied open offer|Details for complex memory updates/u,
+  );
 
   const legacy = fixture(undefined, "deepseek-flash");
   await legacy.writing.prepareVenueTurnMessages(legacy.scene, input, "chat");
@@ -333,6 +368,34 @@ await runCase("narration-writing/single-request", async () => {
   delete saved.plainJson;
   await legacy.writing.generate(legacy.scene, input, "chat");
   assert.deepEqual(legacy.formats, [{ type: "json_object" }], "an admitted request retains its previous transport");
+});
+
+await runCase("narration-writing/open-offer-guidance", async () => {
+  const f = fixture();
+  const text = "Would you paint the mill sign with me?";
+  const { readset } = await f.writing.prepareVenueTurnMessages(f.scene, "What did you have in mind?", "chat");
+  const raw = {
+    segments: [{ id: "invite", kind: "dialogue", speakerId: f.id, text }],
+    keep: [
+      {
+        for: ["player", f.id],
+        text,
+        offer: { proposer: f.id, participants: ["player", f.id] },
+        source: [{ segment: "invite", act: "offer" }],
+      },
+    ],
+  };
+  const result = acceptNarration(
+    f.state,
+    { raw, readset, responseDigest: memoryHash(raw) },
+    "offer-turn",
+    readset.capturedAt,
+  );
+  assert.equal(result.held, false, JSON.stringify(result.rejected));
+  const next = await f.writing.prepareVenueTurnMessages(f.scene, "Yes, I'll help paint the sign.", "chat");
+  const prompt = next.fitted.messages.map((row) => row.content).join("\n");
+  assert.match(prompt, /For a decision on a supplied open offer/u);
+  assert.match(prompt, /"offer":\{/u);
 });
 
 await runCase("narration-writing/circumstance-provenance", async () => {

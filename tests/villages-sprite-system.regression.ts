@@ -208,7 +208,7 @@ const writer = createSceneWriting({
     assert.match(prompt, /End naturally when it's the player's turn to speak or act/u);
     assert.doesNotMatch(prompt, /about 2,000 characters|several substantial exchanges/u);
     assert.match(prompt, /Optional staging:/u);
-    assert.doesNotMatch(prompt, /commands\?:\[\]|Native changes use commands|roomKeeps:\[/u);
+    assert.doesNotMatch(prompt, /commands array|Native changes use commands|roomKeeps:\[/u);
     const catalog = scenePromptPacket(prompt, "calendar").presentation;
     assert(catalog.sprites[0].expressions.includes(group));
     assert.deepEqual(catalog.state.a, { expression: side, look: { target: "villager", characterId: "b" } });

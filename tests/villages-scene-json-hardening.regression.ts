@@ -24,6 +24,9 @@ await runCase("scene-json-hardening/syntax", () => {
   for (const input of [
     json,
     "```json\n" + json + "\n```",
+    "```JSON\r\n" + json + "\r\n```",
+    "```json\n" + json,
+    json + "\n```",
     json.slice(0, -1) + ",}",
     json.replace('"answer"]}],', '"answer"]},],'),
   ]) {
