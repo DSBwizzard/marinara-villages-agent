@@ -775,7 +775,7 @@ await runCase("narration-writing/arrival-routing", () => {
         acoustic,
         [],
       ),
-    /unknown sound source/,
+    /invalid narrated sound/,
   );
   const context = narrationContinuityContext(f.state, projected, f.venue, "arrival", "Hello", at);
   const sourceContext = {
@@ -823,7 +823,7 @@ await runCase("narration-writing/explicit-player-delivery", () => {
     lines.map((line) => line.heardBy.includes("player")),
     [true, false, true, true],
   );
-  assert.equal(lines[1].soundOnly?.player, true);
+  assert.equal(lines[1].soundOnly, undefined);
   const context = narrationContinuityContext(f.state, scene, f.venue, "route", "", at);
   const sourceContext = {
     ...context.source,
@@ -1049,17 +1049,17 @@ await runCase("narration-writing/long-followup", async () => {
     .filter((row) => row.startsWith('{"interaction":'))
     .map((row) => JSON.parse(row))
     .filter((row) => row.earlierRecall);
-  assert.deepEqual(
-    recalled.map((row) => row.interaction.id),
-    ["astrolabe-note"],
-  );
+  assert.equal(recalled.length, 1);
   assert.match(JSON.stringify(recalled), /brass astrolabe belongs to the ferryman/);
-  for (const [holder, channel, [ref]] of recalled[0].interaction.segments[0].perceivedBy) {
-    assert.match(ref, /^h:\d+\.\d+$/u);
-    const evidence = callback.readset.source.historical[ref];
-    assert.equal(evidence.excerpt, "The brass astrolabe belongs to the ferryman.");
-    assert(evidence.perceptions.some((row) => row.actorId === holder && row.channel === channel));
-  }
+  const { heard } = recalled[0].interaction.segments[0];
+  assert.match(heard.ref, /^h:\d+\.\d+$/u);
+  const evidence = callback.readset.source.historical[heard.ref];
+  assert.equal(evidence.episodeId, "astrolabe-note");
+  assert.equal(evidence.excerpt, "The brass astrolabe belongs to the ferryman.");
+  assert.deepEqual(
+    evidence.perceptions.map((row) => row.actorId),
+    heard.by,
+  );
   const ordinary = await f.writing.prepareVenueTurnMessages(f.scene, "Look around the room.", "chat");
   assert(ordinary.fitted.messages.every((row) => !row.content.includes("brass astrolabe")));
 });
@@ -1120,7 +1120,7 @@ await runCase("narration-writing/history-prefix", async () => {
       .flatMap((row) => row.content.split("\n\n"))
       .filter((row) => row.startsWith('{"interaction":'));
     const active = blocks.filter((row) => !JSON.parse(row).earlierRecall);
-    assert.equal(JSON.parse(active.at(-1)!).interaction.id, id);
+    assert.equal(JSON.parse(active.at(-1)!).interaction.id, "e" + count);
     assert.deepEqual(blocks.slice(0, active.length), active);
     const cacheBoundary = request.fitted.messages.findLast((row) => row.cacheBreakpoint);
     assert(cacheBoundary?.content.endsWith(active.at(-1)!));

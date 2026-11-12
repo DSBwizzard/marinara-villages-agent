@@ -271,7 +271,8 @@ export function narrationContinuityContext(
   );
   const historyPart = (view: (typeof history.episodes)[number], transcript: boolean): Part => {
     let localAlias = 0;
-    const episode = state.episodes.records.find((row) => row.id === view.id)!,
+    const exchangeNumber = episodeOrder.get(view.id)! + 1,
+      episode = state.episodes.records[exchangeNumber - 1],
       { interaction, ...recall } = projectEpisodeRecall(
         state,
         episode,
@@ -279,11 +280,11 @@ export function narrationContinuityContext(
         holders,
         actors,
         transcript ? contextScopes : new Map(contextScopes),
-        () => `h:${episodeOrder.get(episode.id)! + 1}.${++localAlias}`,
+        () => `h:${exchangeNumber}.${++localAlias}`,
       ),
-      compact = compactSceneExchange(interaction, recall.sources);
+      compact = compactSceneExchange(interaction, recall.sources, exchangeNumber, transcript);
     const text = JSON.stringify({
-      interaction: compact.exchange,
+      interaction: transcript ? compact.exchange : { ...compact.exchange, at: interaction.at },
       ...(transcript ? {} : { earlierRecall: true }),
     });
     return {
@@ -295,7 +296,7 @@ export function narrationContinuityContext(
         text,
         evidenceId: "episode-context:" + view.id,
         optional: "history",
-        ...(transcript ? { transcript: true } : {}),
+        ...(transcript ? { transcript: true, transcriptAt: interaction.at, transcriptAudience: compact.audience } : {}),
       },
     };
   };

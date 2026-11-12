@@ -122,6 +122,7 @@ const scene = zoneEventScene(
     ],
   }),
   venue,
+  { targetId: "remote" },
 );
 assert(scene.contactGeneration?.actorIds?.includes("remote"), "The offstage actor is in the writer's scope");
 const raw = {

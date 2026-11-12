@@ -82,6 +82,25 @@ export function residentMovementOptions(
   };
 }
 
+/** Display eligibility and capacity once per destination. The native move checks still use the full options. */
+export function residentMovementPrompt(options: ReturnType<typeof residentMovementOptions>) {
+  return options.zones.map(({ id, name, connectedTo }) => {
+    const eligible = options.destinations.filter((row) => row.zoneIds.includes(id)).map((row) => row.characterId);
+    const villagers = (actors: string[]) => actors.filter((actor) => !actor.startsWith(NPC_PREFIX)).length;
+    const maxVillagers = Math.max(
+      eligible.some((actor) => !actor.startsWith(NPC_PREFIX)) ? 1 : 0,
+      ...options.groups.filter((group) => group.zoneIds.includes(id)).map((group) => villagers(group.characterIds)),
+    );
+    return {
+      id,
+      name,
+      connectedTo,
+      ...(eligible.length ? { eligible } : {}),
+      ...(maxVillagers < villagers(eligible) ? { maxVillagers } : {}),
+    };
+  });
+}
+
 /** Validate all captured occupants, including passive witnesses and offscreen destinations. */
 export function assertSceneMovementCapacity(
   scene: VenueScene,

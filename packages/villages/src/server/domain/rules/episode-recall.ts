@@ -6,6 +6,7 @@ import { continuityActor } from "./continuity-actors.js";
 import { episodeUnit } from "../decoding/episode-codec.js";
 import { episodeContextActors, episodeContextRooms } from "./episode-sources.js";
 import { actorEpisodeView, recallEpisodeSpeech, recallEpisodeMail, type selectEpisodeHistory } from "./episodes.js";
+import { memoryHash } from "./memory-integrity.js";
 type Actor = Extract<ContinuityHolder, { kind: "actor" }>;
 
 /** Scene and correspondence prompts share exact perception and inherited private-context provenance. */
@@ -167,8 +168,6 @@ export function projectEpisodeRecall(
 /** Shorten the on-wire projection while leaving immutable line IDs in the readset. */
 export function compactSceneExchange(
   {
-    id,
-    at,
     gmPrivateInput,
     formerActors,
     groundedInput,
@@ -176,6 +175,8 @@ export function compactSceneExchange(
     segments,
   }: ReturnType<typeof projectEpisodeRecall>["interaction"],
   sources: Record<string, ContinuityEvidence>,
+  exchangeNumber: number,
+  transcript: boolean,
 ) {
   const visible: Record<string, ContinuityEvidence> = {};
   const citation = (ref: string) => {
@@ -183,9 +184,41 @@ export function compactSceneExchange(
     visible[ref] = source;
     return source.act ? [ref, source.act] : ref;
   };
+  const segmentsWithAudience = segments.map(({ id: _id, perceivedBy, projections, ...segment }) => {
+    const audiences = Object.entries(perceivedBy);
+    const words = audiences.map(([actor, { channel, source }]) => {
+      const ref = source.length === 1 && channel === "words" ? source[0].ref : undefined;
+      if (!ref) return;
+      const evidence = sources[ref];
+      const { perceptions, ...identity } = evidence;
+      if (
+        perceptions.length !== 1 ||
+        perceptions[0].actorId !== actor ||
+        perceptions[0].channel !== "words" ||
+        perceptions[0].text !== evidence.excerpt
+      )
+        return;
+      return { actor, ref, identity: memoryHash(identity), evidence, perceptions };
+    });
+    const first = words[0];
+    const shared = first && words.every((row) => row?.identity === first.identity);
+    if (shared) visible[first.ref] = { ...first.evidence, perceptions: words.flatMap((row) => row!.perceptions) };
+    return {
+      segment,
+      shared: shared ? { actors: words.map((row) => row!.actor), ref: first.ref, act: first.evidence.act } : undefined,
+      audiences,
+      projections,
+    };
+  });
+  const common = segmentsWithAudience[0]?.shared?.actors;
+  const audience =
+    transcript &&
+    common &&
+    segmentsWithAudience.every((row) => row.shared && JSON.stringify(row.shared.actors) === JSON.stringify(common))
+      ? common
+      : undefined;
   const exchange = {
-    id,
-    at,
+    id: "e" + exchangeNumber,
     ...("text" in gmPrivateInput ? { gmPrivateInput: gmPrivateInput.text } : { inputWithheld: true }),
     ...(formerActors?.length ? { formerActors } : {}),
     ...(groundedInput.length
@@ -207,19 +240,26 @@ export function compactSceneExchange(
           })),
         }
       : {}),
-    segments: segments.map(({ id: _id, perceivedBy, projections, ...line }) => {
-      const audiences = Object.entries(perceivedBy);
+    segments: segmentsWithAudience.map(({ segment, shared, audiences, projections }) => {
       return {
-        ...line,
-        ...(audiences.length
+        ...segment,
+        ...(shared
           ? {
-              perceivedBy: audiences.map(([actor, { channel, source }]) => [
-                actor,
-                channel,
-                ...(source.length ? [source.map(({ ref }) => citation(ref))] : []),
-              ]),
+              heard: {
+                ...(audience ? {} : { by: shared.actors }),
+                ref: shared.ref,
+                ...(shared.act ? { act: shared.act } : {}),
+              },
             }
-          : {}),
+          : audiences.length
+            ? {
+                perceivedBy: audiences.map(([actor, { channel, source }]) => [
+                  actor,
+                  channel,
+                  ...(source.length ? [source.map(({ ref }) => citation(ref))] : []),
+                ]),
+              }
+            : {}),
         ...(projections.length
           ? {
               projections: projections.map(({ source, ...row }) => ({
@@ -231,5 +271,5 @@ export function compactSceneExchange(
       };
     }),
   };
-  return { exchange, sources: visible };
+  return { exchange, sources: visible, audience };
 }

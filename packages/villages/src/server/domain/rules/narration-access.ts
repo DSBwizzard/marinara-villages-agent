@@ -130,7 +130,7 @@ export const narrationAccessScopeSchema = z
   .strict();
 export function narrationAccessPrompt(scopes: NarrationAccessScope[]) {
   return scopes.length
-    ? "Scoped native access authority; never private room contents or character knowledge: " +
+    ? "Scoped access authority (GM only). Omitted Zone hours inherit; null removes hours. " +
         JSON.stringify(
           scopes.map(({ venueId, name, authorities }) => ({
             venueId,
@@ -141,40 +141,46 @@ export function narrationAccessPrompt(scopes: NarrationAccessScope[]) {
                 ? {
                     managerIds: row.venuePolicy.managerIds,
                     visitorHours:
-                      row.venuePolicy.visitorHours === null ? null : hoursSchema.parse(row.venuePolicy.visitorHours),
+                      row.venuePolicy.visitorHours === null
+                        ? undefined
+                        : hoursSchema.parse(row.venuePolicy.visitorHours),
                   }
                 : undefined,
               zones: row.zones.map(({ id, name, policy, manages, invites }) => ({
                 id,
                 name,
-                manages,
-                invites,
+                manages: manages || undefined,
+                invites: invites || undefined,
                 policy: policy
                   ? {
                       mode: policy.mode,
-                      managerIds: policy.managerIds,
-                      memberIds: policy.memberIds,
-                      memberRoles: policy.memberRoles,
-                      inviterIds: policy.inviterIds,
+                      managerIds: policy.managerIds ?? undefined,
+                      memberIds: policy.memberIds.length ? policy.memberIds : undefined,
+                      memberRoles: policy.memberRoles.length ? policy.memberRoles : undefined,
+                      inviterIds: policy.inviterIds.length ? policy.inviterIds : undefined,
                       visitorHours: Array.isArray(policy.visitorHours)
                         ? hoursSchema.parse(policy.visitorHours)
-                        : policy.visitorHours,
-                      accompanied: policy.accompanied,
+                        : policy.visitorHours === "inherit"
+                          ? undefined
+                          : policy.visitorHours,
+                      accompanied: policy.accompanied || undefined,
                     }
                   : undefined,
               })),
-              permissions: row.permissions.map(
-                ({ id, zoneId, visitorId, issuerId, duration, accompaniedBy, outsideHours }) => ({
-                  id,
-                  zoneId,
-                  visitorId,
-                  issuerId,
-                  duration,
-                  accompaniedBy,
-                  outsideHours,
-                }),
-              ),
-              bans: row.bans.map(({ id, zoneId, visitorId, issuerId }) => ({ id, zoneId, visitorId, issuerId })),
+              permissions: row.permissions.length
+                ? row.permissions.map(({ id, zoneId, visitorId, issuerId, duration, accompaniedBy, outsideHours }) => ({
+                    id,
+                    zoneId,
+                    visitorId,
+                    issuerId,
+                    duration,
+                    accompaniedBy,
+                    outsideHours,
+                  }))
+                : undefined,
+              bans: row.bans.length
+                ? row.bans.map(({ id, zoneId, visitorId, issuerId }) => ({ id, zoneId, visitorId, issuerId }))
+                : undefined,
             })),
           })),
         )

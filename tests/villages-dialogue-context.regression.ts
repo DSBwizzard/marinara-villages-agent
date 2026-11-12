@@ -87,7 +87,7 @@ state.episodes = appendEpisode(
     format: 1,
     id: "prior",
     seed: state.seed,
-    sceneId: "retired",
+    sceneId: "prompt-fixture",
     submissionId: "prior-submission",
     operationId: "prior-operation",
     capturedAt: at,
@@ -156,7 +156,7 @@ assert.deepEqual(prefix(ordered.fitted.messages), prefix(prepared.fitted.message
 assert.match(prompt, /where compatible with character identity/);
 assert.match(prompt, /Residents may initiate plausible actions/);
 assert.match(prompt, /The player controls their own speech, decisions, actions, thoughts, feelings, and consent/);
-assert.match(prompt, /permission\.grant\|permission\.revoke/);
+assert.match(prompt, /permission\.grant or permission\.revoke/);
 assert.doesNotMatch(prompt, /ABSENT PERSON SECRET|"rootRevision"/);
 
 const notes = prompt

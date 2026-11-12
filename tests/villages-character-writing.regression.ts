@@ -135,7 +135,7 @@ for (const [index, text] of ["DROP OLD RECAP", "LATEST WITNESSED FACT"].entries(
       format: 1,
       id: "history-" + index,
       seed: state.seed,
-      sceneId: "older-scene",
+      sceneId: "prompt-fixture",
       submissionId: "history-" + index,
       operationId: "history-operation-" + index,
       capturedAt: date,

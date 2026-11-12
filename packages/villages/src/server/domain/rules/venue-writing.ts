@@ -39,6 +39,8 @@ export type VenueWritingBlock = {
   role?: "user";
   cacheBreakpoint?: true;
   transcript?: true;
+  transcriptAt?: string;
+  transcriptAudience?: string[];
   evidenceId?: string;
   /** Each group needs at least one retained source. */
   requiresEvidence?: string[][];
@@ -96,6 +98,8 @@ export function assembleVenueWritingMessages(blocks: readonly VenueWritingBlock[
   const messages: CapabilityLanguageModelMessage[] = [];
   let text: string[] = [];
   let role: "system" | "user" = "system";
+  let transcriptAt: string | undefined;
+  let transcriptAudience: string | undefined;
   for (const block of blocks) {
     if (block.optional === "lore") continue;
     const blockRole = block.role ?? "system";
@@ -104,6 +108,15 @@ export function assembleVenueWritingMessages(blocks: readonly VenueWritingBlock[
       text = [];
     }
     role = blockRole;
+    if (block.transcript) {
+      const at = block.transcriptAt === transcriptAt ? undefined : block.transcriptAt;
+      const audience = block.transcriptAudience && JSON.stringify(block.transcriptAudience);
+      const audienceChanged = audience !== undefined && audience !== transcriptAudience;
+      if (at || audienceChanged)
+        text.push(JSON.stringify({ at, audience: audienceChanged ? block.transcriptAudience : undefined }));
+      transcriptAt = block.transcriptAt;
+      if (audience !== undefined) transcriptAudience = audience;
+    }
     if (block.text) text.push(block.text);
     if ((block.cacheBreakpoint || block.transcript) && text.length) {
       messages.push({

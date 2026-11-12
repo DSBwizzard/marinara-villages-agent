@@ -97,6 +97,7 @@ export const narrationResidenceContextSchema = z
   })
   .strict();
 export function narrationResidencePrompt(context: ReturnType<typeof narrationResidenceContext>) {
+  if (!context.homes.length && !context.requests.length) return "";
   return (
     "Native housing requests (not room descriptions or character knowledge): " +
     JSON.stringify({

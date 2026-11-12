@@ -6,6 +6,8 @@ import { contactNeighbors, contactPosition, type ContactMove } from "./venue-con
 import { isSceneAside, speechDelivery } from "../../../shared/helpers/scene-speech.js";
 import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
 import { readStagingCues } from "../../../shared/helpers/scene-staging.js";
+import { sceneLayoutVenue } from "./scene-layout.js";
+import { venueZones } from "./venue-zones.js";
 
 /** Loud sound reaches at most two captured Zone connections. */
 export function zoneSoundRange(scene: VenueScene, venue: VillageVenue, origin: string): string[] {
@@ -31,22 +33,16 @@ export function zoneEventScene(
   );
   // Delivery is never capped. Only the cast offered a reaction/initiative beat is bounded.
   const neighbors = contactNeighbors(venue, scene.zoneId ?? "exterior", scene);
-  const remote = occupants.filter((person) => !scene.activeIds.includes(person.characterId));
-  const near = remote.filter((person) => neighbors.includes(contactPosition(scene, person.characterId)));
-  const far = remote.filter((person) => !neighbors.includes(contactPosition(scene, person.characterId)));
-  const beat = scene.submissions.length;
-  const rotate = <T>(rows: T[]) =>
-    rows.length ? [...rows.slice(beat % rows.length), ...rows.slice(0, beat % rows.length)] : [];
+  const near = occupants.filter(
+    (person) =>
+      !scene.activeIds.includes(person.characterId) && neighbors.includes(contactPosition(scene, person.characterId)),
+  );
   const continuing = new Set(
     scene.lines
       .filter((line) => !line.contactHidden && line.kind !== "narration" && line.role !== "user")
       .slice(-2)
       .map((line) => line.speakerId),
   );
-  const nearby = [
-    ...near.filter((person) => continuing.has(person.characterId)),
-    ...rotate(near).filter((person) => !continuing.has(person.characterId)),
-  ];
   const words = (text: string) =>
     " " +
     text
@@ -56,7 +52,13 @@ export function zoneEventScene(
       .trim() +
     " ";
   const input = words(intent.message ?? "");
-  const named = remote.filter((person) => {
+  const crossZones = /\b(?:go|head|step|walk|move|cross|enter|into|through)\b/u.test(input)
+    ? venueZones(sceneLayoutVenue(venue, scene))
+        .filter((zone) => zone.seen && neighbors.includes(zone.id) && input.includes(words(zone.name)))
+        .map((zone) => zone.id)
+    : [];
+  const calling = /\b(?:shout|yell|call out)\b/u.test(input);
+  const named = near.filter((person) => {
     const first = person.name.split(/\s+/u)[0];
     const uniqueFirst =
       first.length >= 3 &&
@@ -70,16 +72,20 @@ export function zoneEventScene(
   const candidates = [
     ...named.filter((person) => person.characterId === intent.targetId),
     ...named,
-    ...remote.filter((person) => contactPosition(scene, person.characterId) === intent.zoneId),
-    ...nearby.slice(0, far.length ? 3 : 4),
-    ...rotate(far).slice(0, 1),
-    ...nearby,
+    ...near.filter(
+      (person) =>
+        contactPosition(scene, person.characterId) === intent.zoneId ||
+        crossZones.includes(contactPosition(scene, person.characterId)) ||
+        scene.doorwayContacts?.some((contact) => contact.characterId === person.characterId),
+    ),
+    ...(calling ? near.slice(0, 1) : []),
   ];
   const offered = [...new Map(candidates.map((person) => [person.characterId, person])).values()].slice(0, 4);
   const priority = [
     ...named.filter((person) => person.characterId === intent.targetId).map((person) => person.characterId),
     ...named.map((person) => person.characterId),
     ...scene.activeIds.filter((id) => continuing.has(id)),
+    ...offered.slice(0, 1).map((person) => person.characterId),
     ...scene.activeIds,
     ...offered.map((person) => person.characterId),
   ];
@@ -96,6 +102,7 @@ export function zoneEventScene(
     participants: cast,
     contactGeneration: {
       zoneEvents: true,
+      hearing: "direct",
       venue,
       instruction: "",
       localIds: scene.activeIds,
@@ -109,23 +116,15 @@ export function zoneEventScene(
 export function zoneEventHearingContext(scene: VenueScene, venue: VillageVenue): string {
   const actors = ["player", ...scene.participants.map((person) => person.characterId)];
   const position = (id: string) => (id === "player" ? (scene.zoneId ?? "exterior") : contactPosition(scene, id));
+  const groups = Map.groupBy(actors, position);
   return (
-    "Hearing relationships (not shared character knowledge): " +
+    "Hearing groups (GM only): " +
     JSON.stringify(
-      actors.map((source) => {
-        const origin = position(source);
-        const near = [origin, ...contactNeighbors(venue, origin, scene)];
-        return {
-          source,
-          onstage: origin === position("player"),
-          wordsReach: actors.filter((id) => position(id) === origin),
-          raisedWordsReach: actors.filter((id) => near.includes(position(id))),
-          muffledVoicesReach: actors.filter((id) => near.includes(position(id)) && position(id) !== origin),
-          whisperTargets: actors.filter((id) => id !== source && position(id) === origin),
-          alertOnly: actors.filter(
-            (id) => !near.includes(position(id)) && zoneSoundRange(scene, venue, origin).includes(position(id)),
-          ),
-        };
+      [...groups].flatMap(([zone, local]) => {
+        if (!zone) return [];
+        const adjacent = contactNeighbors(venue, zone, scene);
+        const across = actors.filter((actor) => adjacent.includes(position(actor)));
+        return [{ local, ...(across.length ? { across } : {}) }];
       }),
     )
   );
@@ -141,6 +140,7 @@ export function routeZoneEvents(
 ) {
   const venue = scene.contactGeneration?.venue;
   if (!venue) return;
+  const legacySound = scene.contactGeneration?.hearing !== "direct";
   const ids = [
     ...new Set([...(scene.sceneAttendance?.occupants ?? []).map((person) => person.characterId), ...scene.activeIds]),
   ].filter((id) => !scene.departedIds?.includes(id));
@@ -177,9 +177,6 @@ export function routeZoneEvents(
     const near = [origin, ...contactNeighbors(venue, origin, scene)];
     const spoken = line.kind === "dialogue" || line.kind === "side";
     const loud = speechDelivery(line) === "shout" && spoken;
-    const loudZones = zoneSoundRange(scene, venue, origin);
-    const loudIds = inZones(loudZones, index);
-    const playerLoud = loudZones.includes(playerZone);
     const playerNear = near.includes(playerZone);
     line.heardBy = spoken && loud ? inZones(near, index) : local;
     if (speechDelivery(line) === "whisper") {
@@ -201,6 +198,7 @@ export function routeZoneEvents(
         (speechDelivery(line) === "whisper" && line.targetId !== "player");
     }
     if (row.sound !== undefined) {
+      if (!legacySound) throw new InvalidNarratedSound();
       const cue = asRecord(row.sound);
       const sourceId = asTrimmedString(cue.sourceId);
       const text = asTrimmedString(cue.text);
@@ -234,11 +232,12 @@ export function routeZoneEvents(
         };
       }
     }
-    if (spoken) {
+    if (legacySound && spoken) {
       const wordZones = loud ? near : [origin];
-      const audibleIds = loud ? loudIds : inZones(near, index);
+      const loudZones = loud ? zoneSoundRange(scene, venue, origin) : near;
+      const audibleIds = inZones(loudZones, index);
       const distant = audibleIds.filter((id) => !wordZones.includes(position(id, index)));
-      const playerNoise = !wordZones.includes(playerZone) && (loud ? playerLoud : playerNear);
+      const playerNoise = !wordZones.includes(playerZone) && loudZones.includes(playerZone);
       if (distant.length || playerNoise)
         line.soundOnly = {
           characterIds: distant,

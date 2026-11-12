@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readNarrationReply } from "../packages/villages/src/server/domain/rules/narration-contract.js";
 import { completeSceneObject } from "../packages/villages/src/server/domain/rules/scene-writing-contract.js";
 import {
+  assembleVenueWritingMessages,
   fitVenueWritingMessages,
   type VenueWritingBlock,
 } from "../packages/villages/src/server/domain/rules/venue-writing.js";
@@ -106,5 +107,22 @@ assert.deepEqual(
   constrainedFit(transcriptLimit).evidenceIds,
   ["required"],
   "JSON format headroom is reserved before admission",
+);
+const sharedAudience = {
+  transcript: true as const,
+  transcriptAt: "2026-11-11T18:00:00.000Z",
+  transcriptAudience: ["player", "rosa"],
+};
+const first = { ...sharedAudience, text: "Rosa: first line" };
+const second = { ...sharedAudience, text: "Rosa: next line" };
+const audienceHeader = '{"at":"2026-11-11T18:00:00.000Z","audience":["player","rosa"]}';
+assert.deepEqual(
+  assembleVenueWritingMessages([first, second], input).map((row) => row.content),
+  [audienceHeader + "\n\n" + first.text, second.text, input],
+);
+assert.equal(
+  assembleVenueWritingMessages([second], input)[0].content,
+  audienceHeader + "\n\n" + second.text,
+  "a retained exchange redeclares its audience after the preceding exchange drops out",
 );
 console.log("Sparse narration parsing and bounded exact prompt fitting passed.");

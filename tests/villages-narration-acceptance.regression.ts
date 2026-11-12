@@ -276,6 +276,7 @@ await runCase("narration-acceptance/anonymous-metadata", () => {
       ],
     });
     const before = structuredClone(f.state);
+    publication.readset.source.scene.contactGeneration!.hearing = undefined;
     const result = acceptNarrationContinuity(f.state, publication, "submission", later);
     assert.equal(result.held, identify, "anonymous sound cannot identify its hidden speaker through about metadata");
     if (identify) {
