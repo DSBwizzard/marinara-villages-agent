@@ -205,7 +205,8 @@ const writer = createSceneWriting({
   completeWithRoom: async (_model: unknown, messages: { content: string }[]) => {
     calls++;
     const prompt = messages.map(({ content }) => content).join("\n");
-    assert.match(prompt, /about 2,000 characters/u);
+    assert.match(prompt, /End naturally when it's the player's turn to speak or act/u);
+    assert.doesNotMatch(prompt, /about 2,000 characters|several substantial exchanges/u);
     assert.match(prompt, /Optional staging:/u);
     assert.doesNotMatch(prompt, /commands\?:\[\]|Native changes use commands|roomKeeps:\[/u);
     const catalog = scenePromptPacket(prompt, "calendar").presentation;
