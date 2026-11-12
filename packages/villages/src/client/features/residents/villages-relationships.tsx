@@ -228,8 +228,8 @@ export function VillagesRelationships({
       .villages-relationship-scores li > div {display:grid;grid-template-columns:minmax(4rem,1fr) 2fr;gap:.65rem;align-items:center}
       .villages-relationship-meters {display:grid;gap:.28rem;min-width:0}
       .villages-romantic-interest-label {display:flex;flex-wrap:wrap;gap:.2rem .65rem;align-items:center;margin-top:.55rem;font-size:.875em}
-      .villages-romantic-interest {display:flex;gap:.1em;align-items:center;width:max-content;max-width:100%;line-height:1;font:1rem/1 "Segoe UI Symbol","DejaVu Sans",sans-serif}
-      .villages-romantic-interest > span {--heart-empty:#2a2238;--heart-full:#ed9db4;color:var(--heart-empty);-webkit-text-stroke:.65px #d1a0b3}
+      .villages-romantic-interest {display:grid;grid-template-columns:repeat(10,minmax(0,1fr));inline-size:min(100%,9rem);container-type:inline-size;font:1rem/1 "Segoe UI Symbol","DejaVu Sans",sans-serif}
+      .villages-romantic-interest > span {justify-self:center;font-size:min(1rem,10cqi);--heart-empty:#2a2238;--heart-full:#ed9db4;color:var(--heart-empty);-webkit-text-stroke:.65px #d1a0b3}
       .villages-romantic-interest > [data-fill=full] {color:var(--heart-full)}
       .villages-romantic-interest > [data-fill=half] {background:linear-gradient(90deg,var(--heart-full) 50%,var(--heart-empty) 50%);background-clip:text;color:transparent}
       .villages-relationship-bar {position:relative;height:.5rem;background:#1c192b;border-radius:3px}
