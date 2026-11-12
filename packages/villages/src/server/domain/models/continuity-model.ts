@@ -31,6 +31,8 @@ export type ContinuityVersion = {
   text: string;
   class: ContinuityClass;
   relationshipScore?: number;
+  romanticInterest?: number;
+  romanticDay?: { date: string; gained: boolean };
   relationshipDay?: {
     date: string;
     start: number;
@@ -122,7 +124,7 @@ export type ContinuityWrite = {
   text?: string;
   class?: ContinuityClass;
   current?: boolean;
-  relationship?: { impact?: RelationshipImpact; answer?: string };
+  relationship?: { impact?: RelationshipImpact; romance?: "grows" | "fades" | "drops"; answer?: string };
   about?: { id: string; incarnation: string }[];
   parentId?: string;
   facet?: ContinuityVersion["facet"];

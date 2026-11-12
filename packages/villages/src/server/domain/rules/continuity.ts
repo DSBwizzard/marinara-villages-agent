@@ -42,19 +42,23 @@ type ActorIdentity = { id: string; incarnation: string };
 export const relationshipKey = (owner: ActorIdentity, subject: ActorIdentity) =>
   JSON.stringify([owner.id, owner.incarnation, subject.id, subject.incarnation]);
 
-export function latestRelationshipScores(collection: ContinuityCollection) {
+function latestRelationshipVersions(collection: ContinuityCollection, field: "relationshipScore" | "romanticInterest") {
   const owners = new Map(collection.records.map((record) => [record.id, record.owner]));
-  const latest = new Map<string, ContinuityVersion & { relationshipScore: number }>();
+  const latest = new Map<string, ContinuityVersion>();
   for (const version of collection.versions) {
-    if (version.relationshipScore === undefined) continue;
+    if (version[field] === undefined) continue;
     const owner = owners.get(version.rootId);
     if (!owner || !version.about[0]) continue;
     const key = relationshipKey(owner, version.about[0]);
-    if ((latest.get(key)?.createdRevision ?? 0) < version.createdRevision)
-      latest.set(key, { ...version, relationshipScore: version.relationshipScore });
+    if ((latest.get(key)?.createdRevision ?? 0) < version.createdRevision) latest.set(key, version);
   }
   return latest;
 }
+
+export const latestRelationshipScores = (collection: ContinuityCollection) =>
+  latestRelationshipVersions(collection, "relationshipScore");
+export const latestRomanticInterests = (collection: ContinuityCollection) =>
+  latestRelationshipVersions(collection, "romanticInterest");
 
 export const ownedContinuityClass = (value: string) =>
   ["perspective", "desire", "motivation", "commitment"].includes(value);
@@ -613,6 +617,8 @@ export function applyContinuityWrite(
   );
   const created: ContinuityVersion[] = [];
   let relationshipScore: number | undefined;
+  let romanticInterest: number | undefined;
+  let romanticDay: ContinuityVersion["romanticDay"];
   let relationshipDay: ContinuityVersion["relationshipDay"];
   let relationshipMilestone: true | undefined;
   let relationshipAnswer: string | undefined;
@@ -645,25 +651,26 @@ export function applyContinuityWrite(
     const experienced = sources.filter((source) =>
       ["speech", "written", "observation", "native"].includes(source.kind),
     );
+    const { impact, romance } = write.relationship;
     ownerAnswer = write.holders.length === 1;
     memoryRequire(
       experienced.some((source) => source.episodeId === context.episodeId) ||
-        (!write.relationship.impact &&
+        (!impact &&
+          !romance &&
           ownerAnswer &&
           sources.some((source) => source.episodeId === context.episodeId && source.kind === "self")),
       "relationship change needs a current experienced event",
     );
-    memoryRequire(write.relationship.impact || write.relationship.answer, "empty relationship update");
+    memoryRequire(impact || romance || write.relationship.answer, "empty relationship update");
     if (write.relationship.answer !== undefined) {
       if (isRelationshipAnswer(write.relationship.answer)) relationshipAnswer = write.relationship.answer;
       else
         memoryRequire(
-          write.relationship.impact,
+          impact || romance,
           `relationship answer must be one sentence of at most ${RELATIONSHIP_ANSWER_WORD_LIMIT} words`,
         );
     }
-    if (write.relationship.impact) {
-      const impact = write.relationship.impact;
+    if (impact) {
       memoryRequire(Number.isInteger(RELATIONSHIP_IMPACTS[impact]), "invalid relationship impact");
       const latest = latestRelationshipScores(collection).get(relationshipKey(owner, subject));
       memoryRequire(
@@ -705,6 +712,37 @@ export function applyContinuityWrite(
         relationshipScore = score - lost;
       }
       if (relationshipScore !== score && (turningPoint || impact === "turning-negative")) relationshipMilestone = true;
+    }
+    if (romance) {
+      memoryRequire(
+        ownerAnswer &&
+          context.actors.some((actor) => actor.id === subject.id && actor.incarnation === subject.incarnation) &&
+          experienced.some(
+            (source) =>
+              source.episodeId === context.episodeId &&
+              source.actorId === subject.id &&
+              ((source.kind === "observation" &&
+                source.perceptions.some((row) => row.actorId === owner.id && row.channel === "sight")) ||
+                ((source.kind === "speech" || source.kind === "written") &&
+                  source.perceptions.some((row) => row.actorId === owner.id && row.channel === "words"))),
+          ),
+        "romantic interest needs the owner to witness this interaction",
+      );
+      const latest = latestRomanticInterests(collection).get(relationshipKey(owner, subject));
+      memoryRequire(
+        context.continuityRevision !== undefined && (!latest || latest.createdRevision <= context.continuityRevision),
+        "romantic interest changed since admission or already changed in this exchange",
+      );
+      const date = context.relationshipCalendar?.date;
+      memoryRequire(date && /^\d{4}-\d{2}-\d{2}$/.test(date), "romantic interest needs the Village day");
+      const previous = latest?.romanticDay;
+      if (!previous || date >= previous.date) {
+        const score = latest?.romanticInterest ?? 0;
+        const gained = previous?.date === date && previous.gained;
+        const delta = romance === "grows" ? (gained ? 0 : 1) : romance === "fades" ? -1 : -3;
+        romanticInterest = Math.min(20, Math.max(0, score + delta));
+        romanticDay = { date, gained: gained || romanticInterest > score };
+      }
     }
     if (relationshipAnswer !== undefined) {
       memoryRequire(
@@ -763,6 +801,7 @@ export function applyContinuityWrite(
       ...(relationshipScore !== undefined && owner && same(holder, owner)
         ? { relationshipScore, relationshipDay, ...(relationshipMilestone ? { relationshipMilestone } : {}) }
         : {}),
+      ...(romanticInterest !== undefined && owner && same(holder, owner) ? { romanticInterest, romanticDay } : {}),
       ...(holder.kind === "actor" &&
       (ownerAnswer ? holder.id === owner?.id : holder.id === "player") &&
       relationshipAnswer
@@ -1118,6 +1157,8 @@ export function protectContinuity(
       if (!restored) delete version.offerEvents;
       delete version.relationshipScore;
       delete version.relationshipDay;
+      delete version.romanticInterest;
+      delete version.romanticDay;
       delete version.relationshipAnswer;
       delete version.relationshipAnswerScore;
       delete version.relationshipAnswerScene;

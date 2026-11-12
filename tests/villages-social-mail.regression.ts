@@ -1,4 +1,4 @@
-// Test cases: social-mail/one-request, social-mail/saved-recovery, social-mail/authority, social-mail/admission, social-mail/fail-before-spend, social-mail/background-recovery
+// Test cases: social-mail/one-request, social-mail/romantic-interest, social-mail/saved-recovery, social-mail/authority, social-mail/admission, social-mail/fail-before-spend, social-mail/background-recovery
 import assert from "node:assert/strict";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { runCase } from "../scripts/test-cases.mjs";
@@ -13,6 +13,7 @@ import type {
   BackgroundSummary,
   Job,
 } from "../packages/villages/src/server/domain/models/background-model.js";
+import { continuityRelationships } from "../packages/villages/src/server/domain/rules/continuity-library.js";
 import { villageWorldScope } from "../packages/villages/src/server/domain/rules/village-identity.js";
 import { canAutomaticallyRetryBackgroundJob } from "../packages/villages/src/server/domain/rules/work-recovery.js";
 import { readPersonalMailInput } from "../packages/villages/src/server/domain/decoding/mailbox-codec.js";
@@ -195,6 +196,41 @@ async function fixture() {
     },
   };
 }
+
+await runCase("social-mail/romantic-interest", async () => {
+  const f = await fixture();
+  await f.send("ask-out", "I would love to take you on a date.");
+  f.answer({
+    content: JSON.stringify({
+      incoming: {
+        keep: [
+          {
+            id: "interest",
+            for: ["ada"],
+            owner: "ada",
+            about: ["player"],
+            class: "perspective",
+            current: true,
+            text: "PRIVATE: Ada feels the start of a crush.",
+            relationship: { romance: "grows" },
+            source: ["letter", "self"],
+            independent: true,
+          },
+        ],
+      },
+      reply: { text: "I’d love to." },
+    }),
+    finishReason: "stop",
+  });
+  const input = f.input();
+  const result = await f.service.handler.generate(input);
+  const saved = await f.apply(input, result);
+  const profiles = continuityRelationships(saved, at);
+  assert.equal(profiles[0].scores[0].romanticInterest, 1);
+  assert.equal(profiles[0].scores[0].score, 0);
+  assert(!JSON.stringify(profiles).includes("PRIVATE"));
+  assert.equal(f.requests, 1);
+});
 
 await runCase("social-mail/one-request", async () => {
   const f = await fixture(),

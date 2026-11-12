@@ -1,4 +1,4 @@
-// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/anonymous-experience, narration-acceptance/private-relationship-replay, narration-acceptance/unspoken-relationship-answer, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context, narration-acceptance/inherited-room-context, narration-acceptance/anonymous-metadata
+// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/anonymous-experience, narration-acceptance/private-relationship-replay, narration-acceptance/romantic-interest, narration-acceptance/unspoken-relationship-answer, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context, narration-acceptance/inherited-room-context, narration-acceptance/anonymous-metadata
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -433,6 +433,64 @@ await runCase("narration-acceptance/private-relationship-replay", () => {
     assert.equal(acceptNarrationContinuity(f.state, publication, "submission", later).replayed, true);
     assert.equal(f.state.continuity.versions.length, 1);
   }
+});
+
+await runCase("narration-acceptance/romantic-interest", () => {
+  const f = fixture("I say, “I’ve been hoping we could go out sometime.”");
+  f.state.villagers = [
+    { characterId: f.id, incarnation: "one", cardSnapshot: { name: "Mara" } },
+  ] as typeof f.state.villagers;
+  const publication = f.publication({
+    segments: [{ ...f.response()[0], text: "I’d like that." }],
+    keep: [
+      {
+        id: "attraction",
+        for: [f.id],
+        owner: f.id,
+        about: ["player"],
+        class: "perspective",
+        current: true,
+        text: "PRIVATE: Mara is newly interested in a date.",
+        relationship: { romance: "grows" },
+        independent: true,
+        source: [
+          { input: "I’ve been hoping we could go out sometime.", ground: { kind: "spoken", to: [f.id] } },
+          "self",
+        ],
+      },
+    ],
+  });
+  const result = acceptNarrationContinuity(f.state, publication, "submission", later);
+  assert.deepEqual(result.rejected, []);
+  const score = continuityRelationships(f.state, later)[0].scores[0];
+  assert.equal(score.romanticInterest, 1);
+  assert.equal(score.score, 0);
+  assert.equal(score.answer, undefined);
+  assert(acceptNarrationContinuity(f.state, publication, "submission", later).replayed);
+  assert.equal(f.state.continuity.versions.length, 1);
+  const unrelated = f.publication(
+    {
+      segments: [{ id: "candle", kind: "narration", text: "The candle flickers." }],
+      keep: [
+        {
+          id: "cooling",
+          for: [f.id],
+          owner: f.id,
+          about: ["player"],
+          class: "perspective",
+          current: true,
+          text: "Mara feels less attracted.",
+          relationship: { romance: "fades" },
+          independent: true,
+          source: [{ segment: "candle", perceive: { kind: "seen", by: [f.id] } }, "self"],
+        },
+      ],
+    },
+    "unrelated",
+  );
+  const rejected = acceptNarrationContinuity(f.state, unrelated, "submission-unrelated", later);
+  assert.match(rejected.rejected[0].reason, /witness this interaction/);
+  assert.equal(continuityRelationships(f.state, later)[0].scores[0].romanticInterest, 1);
 });
 
 await runCase("narration-acceptance/unspoken-relationship-answer", () => {

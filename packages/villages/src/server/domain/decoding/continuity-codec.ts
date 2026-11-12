@@ -85,6 +85,11 @@ const version = z
     text: text(ROOM_CONTINUITY_TEXT_BYTES),
     class: z.enum(["experience", "information", "perspective", "desire", "motivation", "commitment", "open-matter"]),
     relationshipScore: z.number().int().min(-100).max(100).optional(),
+    romanticInterest: z.number().int().min(0).max(20).optional(),
+    romanticDay: z
+      .object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), gained: z.boolean() })
+      .strict()
+      .optional(),
     relationshipDay: z
       .object({
         date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -227,11 +232,17 @@ export function readContinuity(raw: unknown, seed?: string): ContinuityCollectio
     memoryRequire(!ownedContinuityClass(entry.class) || root.owner || root.offer, "saved private state has no owner");
     memoryRequire(
       (!entry.relationshipMilestone || entry.relationshipDay) &&
+        (!entry.romanticDay || entry.romanticInterest !== undefined) &&
         (entry.relationshipAnswerScore === undefined || entry.relationshipAnswer) &&
         (!entry.relationshipAnswerScene || entry.relationshipAnswerScore !== undefined),
       "invalid saved relationship metadata",
     );
-    if (entry.relationshipScore !== undefined || entry.relationshipAnswer !== undefined || entry.relationshipDay) {
+    if (
+      entry.relationshipScore !== undefined ||
+      entry.romanticInterest !== undefined ||
+      entry.relationshipAnswer !== undefined ||
+      entry.relationshipDay
+    ) {
       const owner = root.owner;
       const evidenceSeed = entry.sources[0]?.seed;
       memoryRequire(
@@ -248,7 +259,8 @@ export function readContinuity(raw: unknown, seed?: string): ContinuityCollectio
         "invalid saved relationship update",
       );
       const ownerVersion = entry.id === continuityVersionId(evidenceSeed, entry.operationId, owner);
-      if (entry.relationshipScore !== undefined) memoryRequire(ownerVersion, "relationship score belongs to its owner");
+      if (entry.relationshipScore !== undefined || entry.romanticInterest !== undefined)
+        memoryRequire(ownerVersion, "relationship score belongs to its owner");
       if (entry.relationshipDay) {
         const { start, gained, lost, breach } = entry.relationshipDay;
         memoryRequire(

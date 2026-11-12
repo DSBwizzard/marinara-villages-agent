@@ -41,7 +41,17 @@ export const continuityCaptureSchema = z
       .object({
         entries: z.array(z.record(z.string(), z.unknown())).max(256),
         relationships: z
-          .array(z.object({ for: id, about: id, score: z.number().int().min(-100).max(100) }).strict())
+          .array(
+            z
+              .object({
+                for: id,
+                about: id,
+                score: z.number().int().min(-100).max(100).optional(),
+                romanticInterest: z.number().int().min(0).max(20).optional(),
+              })
+              .strict()
+              .refine((row) => row.score !== undefined || row.romanticInterest !== undefined),
+          )
           .max(16)
           .optional(),
         history: z.unknown(),
