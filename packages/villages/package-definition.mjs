@@ -6,7 +6,7 @@ const menuArtAssets = ["storybook-background-wide.webp", "storybook-scenery-matt
 // Authoritative Villages package metadata; generated payloads are built from this definition.
 export const villagesDefinition = {
   id: "villages",
-  version: "0.8.1",
+  version: "0.8.2",
   minEngineVersion: "2.5.2",
   maxEngineExclusive: "4.0.0",
   name: "Villages",
