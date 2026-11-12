@@ -17,6 +17,7 @@ import { venueDisplayZones, type VenueDisplayZone } from "./venue-view.js";
 import { VenueLayoutEditor } from "./VenueLayoutEditor.js";
 import { ZoneAccessLabels } from "./ZoneAccessLabels.js";
 import { LoreActivityButton } from "../../shared/LoreActivity.js";
+import { VillageIcon } from "../../shared/VillageIcon.js";
 
 function VenueName({ place, controller }: { place: VillageVenue; controller: VenueScreenController }) {
   const id = useId();
@@ -321,6 +322,7 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
   const connectionsButton = useRef<HTMLButtonElement>(null);
   const roomDetailsButton = useRef<HTMLButtonElement>(null);
   const manageBack = useRef<HTMLButtonElement>(null);
+  const roomPicker = useRef<HTMLDivElement>(null);
   useLetterFont(fromMap ? "lora" : undefined);
   const {
     snapshot,
@@ -350,6 +352,14 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
     if (scrollArea) scrollArea.scrollTop = 0;
     if (manageView) manageBack.current?.focus({ preventScroll: true });
   }, [venueSection, manageView]);
+  useLayoutEffect(() => {
+    const picker = roomPicker.current;
+    const active = picker?.querySelector('[aria-pressed="true"]');
+    if (!picker || !active || picker.scrollWidth <= picker.clientWidth) return;
+    const frame = picker.getBoundingClientRect();
+    const room = active.getBoundingClientRect();
+    picker.scrollLeft += Math.min(0, room.left - frame.left) + Math.max(0, room.right - frame.right);
+  }, [manageView, venueSection, venueZoneKey]);
   const navigationSelection = useMemo(
     () => ({ venueId, venueZoneKey, venueSection }),
     [venueId, venueZoneKey, venueSection],
@@ -426,9 +436,11 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
     (snapshot.isFounded && lighting === "night" && entrance?.dayNight ? entrance.nightImage : null) ??
     entrance?.image ??
     place.presentation.image;
-  const zoneArt =
-    selected &&
-    ((snapshot.isFounded && lighting === "night" && selected.dayNight ? selected.nightImage : null) ?? selected.image);
+  const roomArtwork = (zone: VenueDisplayZone) =>
+    zone.kind === "exterior"
+      ? entranceArt
+      : ((snapshot.isFounded && lighting === "night" && zone.dayNight ? zone.nightImage : null) ?? zone.image);
+  const zoneArt = selected ? roomArtwork(selected) : null;
   const browsing = venueSection === "zones";
   const backdrop = (browsing ? zoneArt : null) ?? entranceArt;
   const map = snapshot.settings.maps?.find((entry) => entry.id === place.presentation.mapId);
@@ -453,6 +465,7 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
       <section
         ref={profile}
         className={`${ELEMENT_TAG}-venue-profile`}
+        data-venue-section={venueSection}
         aria-label="Venue"
         onKeyDown={(event) => {
           if (
@@ -574,17 +587,25 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
           ) : null}
           {browsing ? (
             <section className={ELEMENT_TAG + "-venue-zone-picker"} aria-label="Zones">
-              {zones.map((zone) => (
-                <button
-                  key={zone.id}
-                  type="button"
-                  aria-pressed={zone.id === selected?.id}
-                  onClick={() => setVenueZoneKey(zone.id)}
-                >
-                  <span>{zone.name}</span>
-                  <ZoneAccessLabels zone={zone} hideOpen />
-                </button>
-              ))}
+              {zones.map((zone) => {
+                const image = roomArtwork(zone);
+                return (
+                  <button
+                    key={zone.id}
+                    type="button"
+                    aria-pressed={zone.id === selected?.id}
+                    onClick={() => setVenueZoneKey(zone.id)}
+                  >
+                    <span className={`${ELEMENT_TAG}-venue-zone-thumb`} aria-hidden="true">
+                      {image ? <ArtworkImage src={image.url} alt="" tile /> : <VillageIcon name="places" />}
+                    </span>
+                    <span className={`${ELEMENT_TAG}-venue-zone-caption`}>
+                      <span>{zone.name}</span>
+                      <ZoneAccessLabels zone={zone} hideOpen />
+                    </span>
+                  </button>
+                );
+              })}
               {selected && selected.kind !== "exterior" && !zoneArt ? <p>No artwork yet.</p> : null}
             </section>
           ) : null}
@@ -618,7 +639,7 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
                 </div>
               ) : (
                 <>
-                  <div className={ELEMENT_TAG + "-venue-room-picker"} role="group" aria-label="Rooms">
+                  <div ref={roomPicker} className={ELEMENT_TAG + "-venue-room-picker"} role="group" aria-label="Rooms">
                     {zones.map((zone) => (
                       <button
                         type="button"

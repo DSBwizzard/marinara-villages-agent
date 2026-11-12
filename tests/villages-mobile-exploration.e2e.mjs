@@ -171,11 +171,12 @@ await withBrowser(browser, async () => {
         ...(height === 500 && {
           zones: [
             market.zones[0],
-            ...Array.from({ length: 6 }, (_, index) => ({
+            ...Array.from({ length: 5 }, (_, index) => ({
               ...market.zones[0],
               id: `room-${index + 1}`,
               name: `Room ${index + 1}`,
               kind: "public",
+              image: index === 4 ? null : market.presentation.image,
             })),
           ],
         }),
@@ -424,6 +425,17 @@ await withBrowser(browser, async () => {
     for (const section of ["Zones", "Manage", "About"]) {
       await tabs.getByRole("button", { name: section, exact: true }).click();
       if (mobile) assert.deepEqual(await headerPosition(), aboutPosition);
+      if (section === "Zones") {
+        const thumb = venue.locator("." + P + "-venue-zone-thumb").first();
+        const backdrop = venue.locator("." + P + "-venue-photo");
+        if (mobile) {
+          await expect(thumb.locator("img")).toBeVisible();
+          await expect(backdrop).toBeHidden();
+        } else {
+          await expect(thumb).toBeHidden();
+          await expect(backdrop).toBeVisible();
+        }
+      }
       if (section === "Manage") {
         await expect(venue.getByRole("button", { name: "Plan a renovation" })).toBeVisible();
         await venue.getByRole("button", { name: "Zone connections", exact: true }).click();
@@ -434,7 +446,9 @@ await withBrowser(browser, async () => {
     }
     if (mobile && height === 500) {
       await tabs.getByRole("button", { name: "Zones", exact: true }).click();
-      const lastZone = venue.getByRole("button", { name: /^Room 6/ });
+      const list = venue.getByRole("region", { name: "Zones", exact: true });
+      await expect(list.getByRole("button")).toHaveCount(6);
+      const lastZone = list.getByRole("button", { name: /^Room 5/ });
       const arrival = home.locator("[data-arrival]");
       const frame = await arrival.boundingBox();
       await expect(lastZone).not.toBeInViewport({ ratio: 1 });
@@ -448,6 +462,17 @@ await withBrowser(browser, async () => {
         await touch("touchEnd", []);
       }
       await expect(lastZone).toBeInViewport({ ratio: 1 });
+      await expect(lastZone.locator("." + P + "-venue-zone-thumb svg")).toBeVisible();
+      await lastZone.click();
+      await expect(lastZone).toHaveAttribute("aria-pressed", "true");
+      await tabs.getByRole("button", { name: "Manage", exact: true }).click();
+      await venue.getByRole("button", { name: "Edit room details", exact: true }).click();
+      const rooms = venue.getByRole("group", { name: "Rooms", exact: true });
+      await expect(rooms.getByRole("button")).toHaveCount(6);
+      const selectedRoom = rooms.getByRole("button", { name: "Room 5", exact: true });
+      await expect(selectedRoom).toHaveAttribute("aria-pressed", "true");
+      await expect(selectedRoom).toBeInViewport({ ratio: 0.99 });
+      await venue.getByRole("button", { name: "← Manage", exact: true }).click();
     }
     await screenshot("arrival");
     await page.keyboard.press("Escape");

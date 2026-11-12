@@ -109,6 +109,8 @@ export const DESK_STYLES = `
 .${P}-venue-zone-picker{display:grid;max-width:22rem}
 .${P}-venue-zone-picker button{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:2px 12px;min-height:44px;padding:8px 12px;border:0;border-bottom:1px solid var(--border);border-inline-start:3px solid transparent;border-radius:0;background:transparent;color:inherit;font:inherit;text-align:left;overflow-wrap:anywhere;cursor:pointer}
 .${P}-venue-zone-picker button[aria-pressed="true"]{border-inline-start-color:#d29399;background:#514157aa}
+.${P}-venue-zone-thumb{display:none}
+.${P}-venue-zone-caption{display:contents}
 .${P}-venue-zone-picker small,.${P}-venue-assignments small{color:#ded0c2}
 .${P}-venue-manage{display:grid;width:min(100%,22rem);gap:12px;align-items:start}
 .${P}-venue-name-field{display:flex;min-width:0;margin-top:4px;border:1px solid #a39b84;border-radius:6px;background:#302d47cc}
@@ -237,14 +239,33 @@ export const DESK_STYLES = `
  .${P}-workspace-content .${P}-menu-content .${P}-label{font-size:19px}
  .${P}-workspace-content .${P}-menu-content select{width:100%;font-size:18px}
  .${P}-workspace-content .${P}-venue-back{order:0;font-size:20px}
- .${P}-workspace-venue-header{padding-bottom:12px}
+ .${P}-workspace-venue-header{padding-bottom:6px}
+ .${P}-workspace-venue-header .${P}-storybook-heading{font-size:clamp(24px,6.5cqw,32px)}
  .${P}-workspace-venue-header .${P}-directory-flourish{display:none}
+ .${P}-venue-metadata{margin-top:4px;font-size:15px}
  .${P}-workspace-content .${P}-venue-sections{gap:clamp(10px,4cqw,18px)}
  .${P}-workspace-content .${P}-venue-sections button{flex:none;min-width:44px;padding:6px 0;font-size:clamp(16px,4.5cqw,19px);text-align:left}
- .${P}-workspace-content .${P}-venue-profile-body{padding-top:12px}
+ .${P}-workspace-content .${P}-venue-profile-body{padding-top:8px}
  .${P}-venue-profile::before{background:linear-gradient(90deg,#262134b0,transparent),linear-gradient(180deg,#26213455 0%,#262134dd min(45cqh,320px),#262134f5 100%)}
- .${P}-venue-profile .${P}-venue-navigation{margin-bottom:clamp(8px,5cqh,42px)}
+ .${P}-venue-profile .${P}-venue-navigation{margin-bottom:4px}
  .${P}-venue-profile :is(.${P}-workspace-venue-header,.${P}-venue-sections,.${P}-venue-profile-body){width:min(100%,30rem)}
+ .${P}-workspace-content .${P}-venue-profile:not([data-venue-section="about"]){background:#3e2639}
+ .${P}-venue-profile:not([data-venue-section="about"])::before{content:none}
+ .${P}-venue-profile:not([data-venue-section="about"]) .${P}-venue-photo{display:none}
+ .${P}-venue-zone-picker{max-width:none}
+ .${P}-venue-zone-picker button{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;min-height:68px;padding:5px 8px}
+ .${P}-venue-zone-picker button[aria-pressed="true"]{background:#5c394e}
+ .${P}-venue-zone-thumb{display:grid;place-items:center;width:clamp(80px,27cqw,118px);height:56px;overflow:hidden;border-radius:5px;background:#51374c;color:#d0c1b3}
+ .${P}-venue-zone-thumb img{display:block;width:100%;height:100%;object-fit:cover}
+ .${P}-venue-zone-thumb svg{width:24px;height:24px}
+ .${P}-venue-zone-caption{display:flex;flex-wrap:wrap;align-items:baseline;gap:1px 8px;min-width:0;line-height:1.25}
+ .${P}-venue-zone-caption>span{flex-basis:100%;color:#fff0d5}
+ .${P}-venue-zone-caption small{font-size:13px}
+ .${P}-venue-manage-heading h2{font-size:19px}
+ .${P}-workspace-content .${P}-venue-manage-heading .${P}-venue-back{font-size:16px}
+ .${P}-venue-room-picker{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin;margin:2px 0 10px}
+ .${P}-venue-room-picker button{flex:none;max-width:100%;white-space:normal;overflow-wrap:anywhere;padding-inline:9px;font-size:15px}
+ .${P}-venue-zone-details{gap:8px}
  .${P}-venue-summary .${P}-venue-primary{min-width:8rem}
  .${P}-desk-workspace[data-venue="true"] .${P}-workspace-sidebar{display:none}
  .${P}-desk-workspace[data-desk="places"] .${P}-home{height:auto;min-height:0;display:block}
