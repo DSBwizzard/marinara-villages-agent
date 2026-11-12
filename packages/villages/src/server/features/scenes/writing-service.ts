@@ -225,7 +225,7 @@ export function createSceneWriting({
           : "",
         "Ordinary words stay in the same Zone. A whisper goes to one named local recipient. An explicit shout reaches a directly connected Zone. Hearing groups show local and across listeners. Code routes each line. Use prose for local ambience.",
         !nativeCommands
-          ? "When the current circumstances name a leadSpeakerId, let that resident answer. Other residents join when they add something new. Use pastSpeaker and witnessedWords as GM context for who said and heard a line. Let the addressee answer from their own knowledge. Mention another speaker or a recalled fact only if the resident knows it and it matters to the question. Other residents learn through witnessed exchanges. Avoid echoing the player or repeating another resident's answer."
+          ? "If a leadSpeakerId is supplied, let that resident answer from their own knowledge. Other residents join when they add something new. When the player has a natural opening to respond, end there."
           : "",
         "The witnessed transcript is read-only GM context with a different format from your reply. Use h: citations only as evidence. Historical witnessedWords lists its audience in by or inherits the last audience header. Timestamps carry forward. Other perceptions are [actor, channel, optional sources]. Letters give their readers. A privateContinuity ID cites one knower; for shared entries use that holder's source. Respect actual character knowledge. Omission never means absence. Code enforces access." +
           (nativeCommands ? " Change it only with a supplied access command." : ""),
@@ -341,7 +341,10 @@ export function createSceneWriting({
     }
     const request: Request = {
       fitted,
-      readset: fittedNarrationReadset(authority, context, fitted.evidenceIds),
+      readset: {
+        ...fittedNarrationReadset(authority, context, fitted.evidenceIds),
+        ...(!nativeCommands && !context.memoryChange ? { ordinaryDialogue: true } : {}),
+      },
       model: { model: model.model, connectionId: model.connectionId },
       // Plain transport lets local validation see replies that JSON mode can return as spaces.
       ...(plainJson ? { plainJson: true } : {}),

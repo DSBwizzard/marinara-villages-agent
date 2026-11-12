@@ -5,7 +5,7 @@ import type {
   ContinuityHolder,
   ContinuityWrite,
 } from "../models/continuity-model.js";
-import { continuityHolderKey } from "./continuity.js";
+import { continuityHolderKey, ownedContinuityClass } from "./continuity.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { readContinuityProposal, readNarrationEffectHeader } from "./narration-contract.js";
 import {
@@ -57,6 +57,7 @@ export function prepareContinuityKeep(
     operationId: string;
     bindSource(ref: unknown, owner: NarrationSourceOwner): ContinuityEvidence;
     resolveTarget?(id: string): string;
+    ordinaryDialogue?: true;
   },
 ) {
   const proposal = readContinuityProposal(raw),
@@ -191,6 +192,33 @@ export function prepareContinuityKeep(
   };
   const sources = citedSources(proposal.source.map((ref) => sourceContext.bindSource(ref, sourceOwner)));
   assertNarrationSourceOrder(sources);
+  const speaker = holders[0];
+  const dialogueOwner =
+    sourceContext.ordinaryDialogue &&
+    !owner &&
+    !proposal.replace &&
+    !proposal.parent &&
+    !proposal.offer &&
+    !proposal.retire &&
+    ownedContinuityClass(sourceOwner.class) &&
+    holders.length === 1 &&
+    speaker.kind === "actor" &&
+    speaker.id !== "player" &&
+    sources.length > 0 &&
+    sources.every(
+      (source) =>
+        source.episodeId === sourceContext.episodeId &&
+        source.kind === "speech" &&
+        source.unitId !== "input" &&
+        source.actorId === speaker.id &&
+        !/["“”«»‘]|(?:^|[\s,:;])'/u.test(source.excerpt) &&
+        /(?:^|[.!?]\s+|\band )I(?:['’]ll| (?:keep|will|won['’]t|intend|want|wish|hope|prefer|plan|promise|refuse|agree))\b/u.test(
+          source.excerpt,
+        ) &&
+        source.perceptions.some((row) => row.actorId === speaker.id && row.channel === "words"),
+    )
+      ? speaker
+      : undefined;
   if (proposal.parent)
     memoryRequire(
       admission.supplied.some((target) => target.id === proposal.parent),
@@ -204,7 +232,7 @@ export function prepareContinuityKeep(
   const write: ContinuityWrite = {
     id: header.id,
     holders,
-    ...(owner ? { owner } : {}),
+    ...(owner || dialogueOwner ? { owner: owner ?? dialogueOwner } : {}),
     sourceIds: sources.map((source) => source.id),
     ...(target ? { target } : {}),
     ...(typeof proposal.text === "string" ? { text: proposal.text } : learning ? { text } : {}),
@@ -264,10 +292,12 @@ export function prepareNarrationKeep(
   collection: ContinuityCollection,
   admission: ContinuityAdmission,
   sourceContext: NarrationSourceContext,
+  ordinaryDialogue?: true,
 ) {
   return prepareContinuityKeep(raw, ordinal, collection, admission, {
     ...sourceContext,
     operationId: sourceContext.episodeId,
+    ordinaryDialogue,
     bindSource: (ref, owner) => bindNarrationSource(ref, sourceContext, owner),
     resolveTarget: (id) => {
       if (!id.startsWith("h:")) return id;

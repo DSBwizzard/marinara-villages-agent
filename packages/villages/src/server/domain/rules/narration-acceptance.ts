@@ -264,6 +264,7 @@ export function acceptNarrationContinuity(
     memoryRequire(effects[index].id === header.id, "native effect identity changed");
   }
   const prepared = new Map<string, ReturnType<typeof prepareNarrationKeep>>();
+  const allowTranscriptNotes = readset.ordinaryDialogue && !reply.commands.length && !admission.protectedRoots.length;
   for (const [index, raw] of reply.keep.entries()) {
     let header: ReturnType<typeof readNarrationEffectHeader>;
     try {
@@ -274,7 +275,7 @@ export function acceptNarrationContinuity(
     }
     const effect: SceneEffectResult = { ...header };
     try {
-      const keep = prepareNarrationKeep(raw, index, state.continuity, admission, source);
+      const keep = prepareNarrationKeep(raw, index, state.continuity, admission, source, readset.ordinaryDialogue);
       for (const holder of keep.write.holders.filter((holder) => holder.kind === "room")) {
         const scope = (venue: typeof source.venue) => {
           const zone = venue.zones?.find((row) => row.id === holder.zoneId);
@@ -316,6 +317,37 @@ export function acceptNarrationContinuity(
           return id;
         });
       effect.requires = [...new Set([...header.requires, ...nativeDependencies])];
+      const { write } = keep;
+      if (
+        allowTranscriptNotes &&
+        !effect.requires.length &&
+        !write.target &&
+        !write.parentId &&
+        !write.facet &&
+        !write.retire &&
+        !write.offer &&
+        !write.accept &&
+        !write.closeOffer &&
+        !write.screening &&
+        write.current === undefined &&
+        keep.sources.every(
+          (proof) =>
+            proof.episodeId === source.episodeId &&
+            proof.unitId !== "input" &&
+            (proof.kind === "speech" || proof.kind === "context"),
+        ) &&
+        write.holders.every(
+          (holder) =>
+            holder.kind === "actor" &&
+            keep.sources.some(
+              (proof) =>
+                proof.kind === "speech" &&
+                proof.perceptions.some((row) => row.actorId === holder.id && row.channel === "words"),
+            ),
+        ) &&
+        ["experience", "information", "perspective", "open-matter"].includes(write.class ?? "experience")
+      )
+        effect.independent = true;
       prepared.set(header.id, keep);
     } catch (error) {
       effect.failure = error instanceof Error ? error.message.slice(0, 2000) : String(error).slice(0, 2000);

@@ -751,6 +751,7 @@ export function narrationContinuityContext(
     room,
     repairs,
     at,
+    memoryChange,
     parts: bounded,
     recentLore: bounded
       .filter((part) => part.sharedLoreWords)

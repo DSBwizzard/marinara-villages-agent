@@ -14,6 +14,7 @@ export type NarrationReadset = {
   source: Omit<NarrationSourceContext, "lines" | "labels" | "native" | "moves"> & { operationId: string };
   admission: Omit<ContinuityAdmission, "sources" | "blockedSources">;
   readOnlyKnowledge?: ContinuityEvidence[];
+  ordinaryDialogue?: true;
   offered: AcceptedEpisode["offered"];
   npcCandidates: { npc: import("./places.js").NpcIdentity; incarnation: string; offered: string[] }[];
   circumstance: import("./narrative-model.js").NarrativeAdmission | null;

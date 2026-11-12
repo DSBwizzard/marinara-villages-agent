@@ -1,4 +1,4 @@
-// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context, narration-acceptance/inherited-room-context, narration-acceptance/anonymous-metadata
+// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/ordinary-dialogue, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context, narration-acceptance/inherited-room-context, narration-acceptance/anonymous-metadata
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -117,6 +117,49 @@ function fixture(input = "I think privately that I am nervous. I say, “My moth
     ],
   };
 }
+
+await runCase("narration-acceptance/ordinary-dialogue", () => {
+  for (const [ordinary, speech, held] of [
+    [true, "I'll be by the door at dawn.", false],
+    [true, "Nell will be by the door at dawn.", true],
+    [true, "I heard Nell will be by the door at dawn.", true],
+    [true, "Nell said, “I'll be by the door at dawn.”", true],
+    [true, "Nell said, 'Sure. I'll be by the door at dawn.'", true],
+    [false, "I'll be by the door at dawn.", true],
+  ] as const) {
+    const f = fixture();
+    const p = f.publication({
+      segments: [{ ...f.response()[0], text: speech }],
+      keep: [{ ...f.keep, class: "commitment", text: speech, source: ["reply"] }],
+    });
+    if (ordinary) p.readset.ordinaryDialogue = true;
+    const result = acceptNarrationContinuity(f.state, p, "owner", later);
+    assert.equal(result.held, held);
+    assert.equal(f.state.continuity.records[0]?.owner?.id, held ? undefined : f.id);
+  }
+  for (const [ordinary, required, held] of [
+    [true, false, false],
+    [true, true, true],
+    [false, false, true],
+  ] as const) {
+    const f = fixture();
+    const p = f.publication({
+      segments: [
+        { kind: "narration", id: "fold", text: "Mara folds the cloth." },
+        { ...f.response(required ? ["remember"] : [])[0], text: "Which side would you like?" },
+      ],
+      keep: [
+        { ...f.keep, class: "open-matter", text: "Mara asked which side they would like.", source: ["fold", "reply"] },
+      ],
+    });
+    if (ordinary) p.readset.ordinaryDialogue = true;
+    const result = acceptNarrationContinuity(f.state, p, "note", later);
+    assert.equal(result.held, held);
+    assert.equal(result.rejected[0]?.id, "remember");
+    assert.deepEqual(f.state.continuity.records, []);
+    assert.equal(f.state.episodes.records.length, held ? 0 : 1);
+  }
+});
 
 await runCase("narration-acceptance/inherited-private-context", () => {
   const f = fixture("Hello."),

@@ -276,7 +276,7 @@ export function selectActorContinuity(
   }
   for (const row of surplus) take(row);
   const asksAboutWishes =
-    request.initiative === false &&
+    request.includeExtraInitiative === false &&
     /\b(?:what (?:do|would) you (?:want|hope|wish)|your (?:goals?|wishes?))\b/iu.test(request.query);
   const query = asksAboutWishes ? request.query + " wishes" : request.query;
   for (const { row, score } of rank(all, query, (row) =>

@@ -163,13 +163,16 @@ const notes = prompt
   .split("\n")
   .filter((line) => line.startsWith('{"privateContinuity":'))
   .flatMap((line) => JSON.parse(line).privateContinuity) as { for: string; text: string }[];
-assert(!notes.some((row) => row.text === "Values the player's reliability."));
-assert(!notes.some((row) => row.text === "Distrustful after a broken promise."));
+assert(notes.some((row) => row.for === "outgoing" && row.text === "Values the player's reliability."));
+assert(notes.some((row) => row.for === "reserved" && row.text === "Distrustful after a broken promise."));
 assert(
   notes.some((row) => row.for === "reserved" && row.text === "Reserved promised to repair Alex’s violin on Sunday."),
 );
 assert(
-  notes.some((row) => row.for === "reserved" && row.text === "Reserved and the player are discussing the violin."),
+  scenePromptPacket(prompt, "recalledFacts").recalledFacts.some(
+    (row: { knownBy: string[]; text: string }) =>
+      row.knownBy.includes("reserved") && row.text === "Reserved and the player are discussing the violin.",
+  ),
 );
 assert(!notes.some((row) => row.text === old), "Forgotten history cannot reappear as resident knowledge");
 assert(
