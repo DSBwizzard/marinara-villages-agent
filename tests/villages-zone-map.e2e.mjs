@@ -2,12 +2,14 @@
 import assert from "node:assert/strict";
 import { build } from "../scripts/esbuild.mjs";
 import { runCase } from "../scripts/test-cases.mjs";
-import { chromium, expect, mockEngineLookups, withBrowser } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { createVenueScreenHarness } from "./fixtures/villages-venue-screen-lifetime.fixture.mjs";
 
 const styles = await build({
   stdin: {
-    contents: "import {syncVillagesStyles} from './packages/villages/src/client/entry/styles.js';syncVillagesStyles();",
+    contents: `import {syncVillagesStyles} from './packages/villages/src/client/entry/styles.js';
+import {DESK_STYLES} from './packages/villages/src/client/shared/desk-styles.js';
+syncVillagesStyles();const tag=document.createElement('style');tag.textContent=DESK_STYLES;document.head.append(tag);`,
     resolveDir: process.cwd(),
     loader: "tsx",
   },
@@ -38,6 +40,7 @@ await withBrowser(browser, async () => {
     const f = await mount(false, 1366, {
       page: "view",
       zone: "exterior",
+      cleanName: true,
       prepareSeed(seed) {
         const place = seed.settings.venues[0],
           sample = place.zones[0];
@@ -52,6 +55,7 @@ await withBrowser(browser, async () => {
     });
     await f.page.evaluate(() => {
       const tag = document.createElement("marinara-capability-villages");
+      tag.className = "marinara-capability-villages-desk-container";
       document.body.append(tag);
       tag.append(document.getElementById("root"));
     });
@@ -60,19 +64,22 @@ await withBrowser(browser, async () => {
         "#state{display:none} :root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}body{margin:0}",
     });
     await f.page.addScriptTag({ content: styles.outputFiles[0].text });
+    await f.page.getByRole("button", { name: "Manage", exact: true }).click();
+    await f.page.getByRole("button", { name: "Zone connections", exact: true }).click();
     const map = f.page.locator(".villages-zone-map");
+    const save = f.page.getByRole("button", { name: "Save connections", exact: true });
     await expect(map.locator("[data-layout-zone]")).toHaveCount(7);
     await node(map, "exterior").press("ArrowRight");
-    await map.getByRole("button", { name: "Modify Zone Connections", exact: true }).click();
     await node(map, "zone:1").click();
-    await node(map, "zone:2").click();
+    await f.page.getByRole("checkbox", { name: "Room 2", exact: true }).check();
     assert.equal(f.requests.length, 0, "seven-tile draft is local");
-    await f.run("layout");
+    await save.click();
     await expect.poll(() => f.requests.length).toBe(1);
     const body = f.requests[0].body;
-    assert.equal(body.positions.exterior.x, 1);
+    assert.equal(body.positions.exterior.x, 0);
     assert.equal(body.connections.length, 7);
     assert.ok(body.connections.find((z) => z.id === "zone:1").connectedTo.includes("zone:2"));
+    assert.ok(body.connections.find((z) => z.id === "zone:2").connectedTo.includes("zone:1"));
     assert.ok(!JSON.stringify(body).includes("description"));
     f.seed.settings.venues[0].zoneLayout = body.positions;
     f.seed.settings.venues[0].zones.forEach(
@@ -81,12 +88,10 @@ await withBrowser(browser, async () => {
     await f.reply(0);
     await expect(f.page.getByText("Saving layout…", { exact: true })).toHaveCount(0);
     await node(map, "exterior").click();
-    await node(map, "zone:3").click();
+    await f.page.getByRole("checkbox", { name: "Room 3", exact: true }).uncheck();
     await expect(map.locator("svg line")).toHaveCount(6);
-    await expect(f.page.getByRole("alert")).toHaveCount(0);
-    const attempt = await f.run("layout");
-    const result = await f.settle(attempt);
-    assert.equal(result.value, false);
+    await expect(f.page.getByRole("alert")).toContainText("Unreachable Zones");
+    await expect(save).toBeDisabled();
     assert.equal(f.requests.length, 1);
     await f.run("discard");
     await expect(map.locator("svg line")).toHaveCount(7);
@@ -97,12 +102,11 @@ await withBrowser(browser, async () => {
         nodes.map((node) => ({
           width: node.getBoundingClientRect().width,
           height: node.getBoundingClientRect().height,
-          reservedWidth: node.parentElement.clientWidth * 0.32,
         })),
       );
       assert.ok(
-        metrics.every((tile) => Math.abs(tile.width - tile.reservedWidth) < 1 && tile.height >= 44),
-        "Visible nodes match their collision areas and retain full-height touch targets",
+        metrics.every((tile) => tile.width >= 44 && tile.height >= 44),
+        "Visible nodes retain full-size touch targets",
       );
       assert.equal(f.requests.length, 1, "Resizing visual nodes never rewrites saved coordinates");
     }

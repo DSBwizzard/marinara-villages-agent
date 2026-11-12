@@ -1,9 +1,19 @@
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 import { ELEMENT_TAG as P } from "./constants.js";
 
-export function StorybookHeading({ as: Heading = "h1", children }: { as?: "h1" | "h2"; children: ReactNode }) {
+export function StorybookHeading({
+  as: Heading = "h1",
+  children,
+  ref,
+  tabIndex,
+}: {
+  as?: "h1" | "h2";
+  children: ReactNode;
+  ref?: Ref<HTMLHeadingElement>;
+  tabIndex?: number;
+}) {
   return (
-    <Heading className={`${P}-storybook-heading`}>
+    <Heading className={`${P}-storybook-heading`} ref={ref} tabIndex={tabIndex}>
       {children}
       <svg
         className={`${P}-directory-flourish`}

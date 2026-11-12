@@ -377,9 +377,12 @@ await withBrowser(browser, async () => {
     assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width, "venue profile stays on screen");
     const sections = doors.getByRole("navigation", { name: "Venue sections" });
     await sections.getByRole("button", { name: "Zones", exact: true }).click();
-    await expect(doors.getByRole("checkbox", { name: "Prevent dynamic image updates for this Zone" })).toBeVisible();
+    const zones = doors.getByRole("region", { name: "Zones", exact: true });
+    await zones.getByRole("button", { name: /^Entrance\b/ }).click();
+    await expect(doors.getByRole("switch", { name: "Automatic artwork updates" })).toBeVisible();
+    await doors.getByRole("button", { name: "← Zones", exact: true }).click();
     await sections.getByRole("button", { name: "Manage", exact: true }).click();
-    await expect(doors.getByRole("button", { name: "Plan a renovation →" })).toBeVisible();
+    await expect(doors.getByRole("button", { name: "Plan a renovation" })).toBeVisible();
     await sections.getByRole("button", { name: "About", exact: true }).click();
     if (process.env.VILLAGES_VISUAL_OUTPUT)
       await page.screenshot({
@@ -578,8 +581,8 @@ await withBrowser(browser, async () => {
         .getByRole("navigation", { name: "Venue sections" })
         .getByRole("button", { name: "Manage", exact: true })
         .click();
-      await expect(page.getByRole("button", { name: "Plan a renovation →" })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Move here" })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Plan a renovation" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Move here" })).toHaveCount(0);
       await expect(page.getByText("About this area", { exact: true })).toHaveCount(0);
     }
     await page.close();

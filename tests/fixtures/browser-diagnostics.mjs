@@ -19,6 +19,7 @@ const expectations = new WeakMap();
 const deskAssets = {
   "storybook-background-wide.webp": "image/webp",
   "storybook-scenery-matte.webp": "image/webp",
+  "venue-fallback.webp": "image/webp",
   "letter-fonts/assistant.json": "application/json",
   "letter-fonts/lora.json": "application/json",
 };
