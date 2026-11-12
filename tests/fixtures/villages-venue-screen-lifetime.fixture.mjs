@@ -13,6 +13,7 @@ export async function createVenueScreenHarness(browser) {
 import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';import {StrictMode,useState,useCallback} from 'react';
 import {useVenueScreenCommands} from './packages/villages/src/client/features/venues/screen-commands.js';
 import {VenueScreen} from './packages/villages/src/client/features/venues/VenueScreen.js';
+import {PublicMeetingPlace} from './packages/villages/src/client/features/settings/PublicMeetingPlace.js';
 import {useSaveBackgroundPace} from './packages/villages/src/client/features/settings/actions.js';
 import {ConfirmationProvider} from './packages/villages/src/client/shared/confirmation.js';
 function Harness(){
@@ -39,11 +40,11 @@ poll:()=>rawSnapshot(current=>structuredClone(current)),hydrate:()=>rawSnapshot(
 removeVenue:()=>rawSnapshot(current=>({...current,settings:{...current.settings,venues:current.settings.venues.filter(v=>v.id!==venueId)}})),
 revision:()=>rawSnapshot(current=>({...current,settings:{...current.settings,venues:current.settings.venues.map(v=>v.id===venueId?{...v,accessView:{...v.accessView,revision:v.accessView.revision+1}}:v)}})),
 read:()=>({setting:snapshot.settings.setting,founded:snapshot.isFounded,screen,venueId,venuePage,venueZoneKey,busy,settingsError,venueEditBusy,venueEditError,venueEditNotice,venueEditDraft,venueProposalDraft,placeProblem})};
-return <><pre id='state'>{JSON.stringify(window.h.read())}</pre><VenueScreen controller={{...ports,...ui,busy,settingsError,venueEditBusy,venueEditError,venueEditNotice,venueEditDraft,venueProposalDraft,placeProblem,
+return <><pre id='state'>{JSON.stringify(window.h.read())}</pre>{window.meetingPlace?<PublicMeetingPlace snapshot={snapshot} onSnapshot={setSnapshot}/>:<VenueScreen controller={{...ports,...ui,busy,settingsError,venueEditBusy,venueEditError,venueEditNotice,venueEditDraft,venueProposalDraft,placeProblem,
 homeBuildings:[],room:null,roomBusy:false,drawPlaceImage:async()=>{},dropPlaceImage:async()=>{},keepPlaceImage:async()=>{},leaveVenue:()=>jump({id:null,active:false}),openRoom:async()=>{},retryWork:async()=>{},
 moveTargetId:'target / B',movePrivateZoneId:' private / target ',playerMovePrivateZoneId:' private / target ',setMoveTargetId:()=>{},setMovePrivateZoneId:()=>{},setPlayerMovePrivateZoneId:()=>{},
 placeBusyId:'',nameOfCharacter:id=>id??'',standingAt:()=>[],setScreen,setVenuePage,setVenueZoneKey,
-venueSection:venuePage==='view'?'zones':'manage',setVenueSection:value=>setVenuePage(value==='zones'?'view':'edit'),planVenueRenovation:()=>{},openVenueRequests:()=>{}}}/>
+venueSection:venuePage==='view'?'zones':'manage',setVenueSection:value=>setVenuePage(value==='zones'?'view':'edit'),planVenueRenovation:()=>{},openVenueRequests:()=>{}}}/>}
 </>;
 }
 window.pending=[];window.calls={snapshot:0,busy:0,settingsError:0,editBusy:0,editError:0,notice:0,draft:0,proposal:0,problem:0};
@@ -125,7 +126,7 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
     }));
     options.prepareSeed?.(seed);
     const draft = structuredClone(seed.settings.venues[0]);
-    draft.name = " Draft A ";
+    if (!options.cleanName) draft.name = " Draft A ";
     const proposal = {
       classes: ["residence", "community"],
       capacity: 2,
@@ -160,6 +161,7 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
       accessCommand,
       zoneBody,
       strict,
+      meetingPlace: options.meetingPlace ?? false,
       page: options.page ?? "edit",
       initialZone: options.zone ?? "zone / same",
       occupied: options.occupied ?? false,
@@ -212,6 +214,7 @@ export async function verifyVenueScreenLifetimes(browser) {
   const mount = await createVenueScreenHarness(browser);
   for (const width of [1366, 390]) {
     const f = await mount(true, width, {
+      meetingPlace: true,
       prepareSeed: (seed) => {
         seed.isFounded = true;
         seed.settings.communityVenueId = "B / venue";
@@ -228,8 +231,9 @@ export async function verifyVenueScreenLifetimes(browser) {
         }
       },
     });
-    const choose = f.page.getByRole("button", { name: "Use as Community Venue", exact: true });
-    await expect(choose).toBeVisible();
+    await f.page.getByText("Public meeting place", { exact: true }).click();
+    await f.page.getByRole("combobox", { name: "Replacement for B / venue", exact: true }).selectOption("A / venue");
+    const choose = f.page.getByRole("button", { name: "Save meeting place", exact: true });
     await choose.click();
     await expect(f.page.getByRole("button", { name: "Saving…", exact: true })).toBeDisabled();
     await expect.poll(() => f.requests.length).toBe(1);
@@ -253,13 +257,8 @@ export async function verifyVenueScreenLifetimes(browser) {
       canDesignateCommunity: true,
     };
     await fulfill(f.requests[0].route, { status: 200, contentType: "application/json", body: JSON.stringify(reply) });
-    await expect(choose).toHaveCount(0);
-    await expect(
-      f.page.getByText(
-        "Public and unowned, with no bans or opening hours. Designate another Venue before changing its use or control.",
-        { exact: true },
-      ),
-    ).toBeVisible();
+    await expect(choose).toBeDisabled();
+    await expect(f.page.getByRole("combobox", { name: "Replacement for A / venue", exact: true })).toHaveValue("");
     assert.equal(f.requests.length, 1, "Selecting a Community Venue sends one bounded access command");
     await f.finish();
   }
@@ -304,11 +303,16 @@ export async function verifyVenueScreenLifetimes(browser) {
       .toBe(true);
     return outcome;
   }
+  async function openZoneSettings(f) {
+    await f.page.getByRole("button", { name: "Zone connections", exact: true }).click();
+    await f.page.getByText("Zone settings", { exact: true }).click();
+  }
   // State-only lifetime scenarios need one width; responsive UI lives in universal-venue coverage.
   for (const width of [390])
     for (const strict of [true]) {
       {
-        const f = await mount(strict, width, { page: "view" });
+        const f = await mount(strict, width, { cleanName: true });
+        await openZoneSettings(f);
         await f.page.getByRole("button", { name: /^Rename / }).click();
         await f.page.getByLabel("Zone name", { exact: true }).fill("Retained name");
         await f.page.getByLabel("Zone name", { exact: true }).press("Tab");
@@ -323,7 +327,8 @@ export async function verifyVenueScreenLifetimes(browser) {
         await f.finish();
       }
       {
-        const f = await mount(strict, width, { page: "view" });
+        const f = await mount(strict, width, { cleanName: true });
+        await openZoneSettings(f);
         await f.page.getByRole("button", { name: /^Rename / }).click();
         await f.page.getByLabel("Zone name", { exact: true }).fill("Renamed Zone");
         await f.page.getByLabel("Zone name", { exact: true }).press("Enter");

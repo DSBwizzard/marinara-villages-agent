@@ -164,13 +164,21 @@ await withBrowser(browser, async () => {
     const sceneRequests = [];
     page.on("pageerror", (error) => errors.push(error.message));
     let fixture = structuredClone(snapshot);
+    const market = place("market", 0.5, 0.5);
     fixture.settings.venues = [
       {
-        ...place("market", 0.5, 0.5),
+        ...market,
         name: "Village Market",
         ...(height === 500 && {
-          description:
-            "The market opens onto a square lined with awnings. Local growers bring their produce here, and the wooden stalls stay out through the afternoon so neighbors can trade.",
+          zones: [
+            market.zones[0],
+            ...Array.from({ length: 6 }, (_, index) => ({
+              ...market.zones[0],
+              id: `room-${index + 1}`,
+              name: `Room ${index + 1}`,
+              kind: "public",
+            })),
+          ],
         }),
       },
       { ...place("crowded", 0.51, 0.51), name: "A nearby venue with a very long readable name" },
@@ -409,14 +417,28 @@ await withBrowser(browser, async () => {
         touchPoints: points.map(([x, y], id) => ({ x, y, id })),
       });
     await expect(tabs.getByRole("button", { name: "About", exact: true })).toHaveAttribute("aria-pressed", "true");
-    await tabs.getByRole("button", { name: "Manage", exact: true }).click();
-    await expect(venue.getByRole("button", { name: "Plan a renovation →" })).toBeVisible();
-    await tabs.getByRole("button", { name: "About", exact: true }).click();
+    const heading = venue.getByRole("heading", { name: "Village Market", exact: true });
+    const headerPosition = async () =>
+      (await Promise.all([heading.boundingBox(), tabs.boundingBox()])).map(({ x, y }) => [x, y]);
+    await page.evaluate(() => document.fonts.ready);
+    const aboutPosition = await headerPosition();
+    for (const section of ["Zones", "Manage", "About"]) {
+      await tabs.getByRole("button", { name: section, exact: true }).click();
+      if (mobile) assert.deepEqual(await headerPosition(), aboutPosition);
+      if (section === "Manage") {
+        await expect(venue.getByRole("button", { name: "Plan a renovation" })).toBeVisible();
+        await venue.getByRole("button", { name: "Zone connections", exact: true }).click();
+        if (mobile) assert.deepEqual(await headerPosition(), aboutPosition);
+        await venue.getByRole("button", { name: "← Manage", exact: true }).click();
+        if (mobile) assert.deepEqual(await headerPosition(), aboutPosition);
+      }
+    }
     if (mobile && height === 500) {
-      const visit = venue.getByRole("button", { name: "Visit venue", exact: true });
+      await tabs.getByRole("button", { name: "Zones", exact: true }).click();
+      const lastZone = venue.getByRole("button", { name: /^Room 6/ });
       const arrival = home.locator("[data-arrival]");
       const frame = await arrival.boundingBox();
-      await expect(visit).not.toBeInViewport({ ratio: 1 });
+      await expect(lastZone).not.toBeInViewport({ ratio: 1 });
       const x = frame.x + frame.width * 0.5;
       const start = frame.y + frame.height * 0.85;
       for (let swipe = 0; swipe < 2; swipe++) {
@@ -426,7 +448,7 @@ await withBrowser(browser, async () => {
         }
         await touch("touchEnd", []);
       }
-      await expect(visit).toBeInViewport({ ratio: 1 });
+      await expect(lastZone).toBeInViewport({ ratio: 1 });
     }
     await screenshot("arrival");
     await page.keyboard.press("Escape");

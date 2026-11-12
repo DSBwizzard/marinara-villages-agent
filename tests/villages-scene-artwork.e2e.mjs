@@ -141,8 +141,14 @@ await withBrowser(browser, async () => {
     await composer.fill("Keep this unsent Scene draft.");
     await expect(backdrop).toHaveAttribute("src", old);
     const openZonePicture = async () => {
-      await page.getByRole("button", { name: "Zones", exact: true }).click();
+      const editor = page.getByRole("region", { name: "Zone connections", exact: true });
+      if (!(await editor.isVisible())) {
+        await page.getByRole("button", { name: "Manage", exact: true }).click();
+        await page.getByRole("button", { name: "Zone connections", exact: true }).click();
+      }
       await page.locator(`[data-layout-zone="${targetId}"]`).click();
+      const settings = editor.locator("details").filter({ hasText: "Zone settings" });
+      if ((await settings.getAttribute("open")) === null) await settings.locator("summary").first().click();
       await page.getByRole("button", { name: "Picture", exact: true }).click();
     };
     const openSettings = async () => {

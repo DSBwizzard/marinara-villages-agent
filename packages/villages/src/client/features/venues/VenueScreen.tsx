@@ -1,13 +1,12 @@
 import { useVillageLighting } from "../../shared/useVillageLighting.js";
-import { useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react";
+import { useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react";
 import { useConfirmation } from "../../shared/confirmation.js";
 import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import { createVillagesClientId } from "../../shared/request-id.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import { playerDisplayName } from "../../shared/presentation.js";
-import { venueAssignedCountFor, venueCapacityFor, venueClassesFor } from "../../shared/venue.js";
+import { venueClassesFor } from "../../shared/venue.js";
 import { WorkspaceShell } from "../../shared/WorkspaceShell.js";
 import { StorybookHeading } from "../../shared/StorybookHeading.js";
 import { useLetterFont } from "../../shared/letter-font-css.js";
@@ -18,17 +17,23 @@ import { ZoneAccessLabels } from "./ZoneAccessLabels.js";
 import { LoreActivityButton } from "../../shared/LoreActivity.js";
 
 function VenueName({ place, controller }: { place: VillageVenue; controller: VenueScreenController }) {
+  const id = useId();
   const { venueEditDraft, setVenueEditDraft, venueEditBusy, saveVenueName } = controller;
   const name = venueEditDraft?.id === place.id ? venueEditDraft.name : place.name;
   return (
-    <section className={`${ELEMENT_TAG}-venue-section`}>
-      <h2>Venue name</h2>
-      <label className={`${ELEMENT_TAG}-label`}>
-        Venue name
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!venueEditBusy && name.trim() && name.trim() !== place.name) void saveVenueName(place, name);
+      }}
+    >
+      <label htmlFor={id}>Venue name</label>
+      <div className={`${ELEMENT_TAG}-venue-name-field`}>
         <input
+          id={id}
           autoComplete="off"
-          className={`${ELEMENT_TAG}-notice-input`}
           value={name}
+          maxLength={controller.snapshot.settings.maxVenueNameLength}
           onChange={(event) =>
             setVenueEditDraft((current) => ({
               ...(current?.id === place.id ? current : place),
@@ -36,66 +41,15 @@ function VenueName({ place, controller }: { place: VillageVenue; controller: Ven
             }))
           }
         />
-      </label>
-      <button
-        type="button"
-        className={`${ELEMENT_TAG}-button`}
-        disabled={venueEditBusy || !name.trim() || name === place.name}
-        onClick={() => void saveVenueName(place, name)}
-      >
-        Save name
-      </button>
-    </section>
-  );
-}
-
-function CommunityVenueControl({ place, controller }: { place: VillageVenue; controller: VenueScreenController }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const current = controller.snapshot.settings.venues.find(
-    (venue) => venue.id === controller.snapshot.settings.communityVenueId,
-  );
-  if (place.id === current?.id)
-    return (
-      <section className={`${ELEMENT_TAG}-venue-section`}>
-        <h2>Community Venue</h2>
-        <p>
-          Public and unowned, with no bans or opening hours. Designate another Venue before changing its use or control.
-        </p>
-      </section>
-    );
-  if (!place.accessView?.canDesignateCommunity || !current?.accessView || !controller.snapshot.isFounded) return null;
-  return (
-    <section className={`${ELEMENT_TAG}-venue-section`}>
-      <h2>Community Venue</h2>
-      <p>Make this the unowned public meeting place, replacing {current.name}.</p>
-      <button
-        type="button"
-        className={`${ELEMENT_TAG}-button`}
-        disabled={busy || controller.venueEditBusy}
-        onClick={async () => {
-          setBusy(true);
-          setError("");
-          try {
-            await controller.changeVenueAccess(place.id, {
-              action: "community-venue",
-              operationId: createVillagesClientId(),
-              zoneId: null,
-              expectedRevision: place.accessView!.revision,
-              previousVenueId: current.id,
-              previousRevision: current.accessView!.revision,
-            });
-          } catch (cause) {
-            setError(cause instanceof Error ? cause.message : "The Community Venue could not be changed.");
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        {busy ? "Saving…" : "Use as Community Venue"}
-      </button>
-      {error ? <p role="alert">{error}</p> : null}
-    </section>
+        <button
+          type="submit"
+          aria-label="Save name"
+          disabled={venueEditBusy || !name.trim() || name.trim() === place.name}
+        >
+          <span aria-hidden="true">✓</span>
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -347,139 +301,45 @@ function ZoneArtwork({
   );
 }
 
-function AssignedVillagers({
-  place,
-  controller,
-  canLeave,
-  navigationBusy,
-}: {
-  place: VillageVenue;
-  controller: VenueScreenController;
-  canLeave(): Promise<boolean>;
-  navigationBusy: boolean;
-}) {
-  const [housing, setHousing] = useState(false);
-  const {
-    snapshot,
-    nameOfCharacter,
-    playerMovePrivateZoneId,
-    setPlayerMovePrivateZoneId,
-    requestPlayerMove,
-    busy,
-    openVenueRequests,
-  } = controller;
-  const residents = [
-    ...new Set(place.residentIds ?? (place.occupancy.residentCharacterId ? [place.occupancy.residentCharacterId] : [])),
+function AssignedVillagers({ place, controller }: { place: VillageVenue; controller: VenueScreenController }) {
+  const { snapshot, nameOfCharacter } = controller;
+  const residents = new Set(
+    place.residentIds ?? (place.occupancy.residentCharacterId ? [place.occupancy.residentCharacterId] : []),
+  );
+  if (place.occupancy.playerHome) residents.add("player");
+  const assignments = [
+    ...[...residents].map((id) => ({ id, role: "Resident" })),
+    ...(place.workerIds ?? []).map((id) => ({ id, role: "Worker" })),
   ];
-  const workers = place.workerIds ?? [];
-  const name = (id: string) => (id === "player" ? playerDisplayName(snapshot) : nameOfCharacter(id));
-  const assignment = (id: string, role: string) => {
-    const destinations = place.destinations?.[id];
-    const ids = role === "Worker" ? [destinations?.work] : [destinations?.home, destinations?.sleep];
-    const zones = [...new Set(ids.filter(Boolean))]
-      .map((zoneId) => place.zones?.find((zone) => zone.id === zoneId)?.name)
-      .filter(Boolean);
-    if (!zones.length)
-      zones.push(...(place.zones?.filter((zone) => zone.ownerId === id).map((zone) => zone.name) ?? []));
-    return (
-      <li key={role + id}>
-        <strong>{name(id)}</strong>
-        <span>
-          {role}
-          {zones.length ? ` · ${zones.join(", ")}` : ""}
-        </span>
-      </li>
-    );
-  };
   return (
-    <section className={`${ELEMENT_TAG}-venue-section`}>
-      <h2>Assigned Villagers</h2>
-      <ul className={`${ELEMENT_TAG}-venue-assignments`}>
-        {place.occupancy.playerHome ? assignment("player", "Resident") : null}
-        {residents.filter((id) => id !== "player").map((id) => assignment(id, "Resident"))}
-        {workers.map((id) => assignment(id, "Worker"))}
-      </ul>
-      {!residents.length && !workers.length && !place.occupancy.playerHome ? <p>No assigned villagers.</p> : null}
-      {venueClassesFor(place).includes("residence") ? (
-        <>
-          <p>
-            {venueAssignedCountFor(place)} of {venueCapacityFor(place)} resident places filled.
-          </p>
-          <button
-            type="button"
-            className={`${ELEMENT_TAG}-button`}
-            disabled={navigationBusy}
-            onClick={async () => {
-              if (await canLeave()) openVenueRequests(place.id);
-            }}
-          >
-            View housing requests
-          </button>
-          {!place.occupancy.playerHome ? (
-            <>
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                disabled={venueAssignedCountFor(place) >= venueCapacityFor(place)}
-                onClick={() => setHousing((open) => !open)}
-                aria-expanded={housing}
-              >
-                Move here
-              </button>
-              {housing && venueAssignedCountFor(place) < venueCapacityFor(place) ? (
-                <div className={`${ELEMENT_TAG}-venue-section`}>
-                  <label className={`${ELEMENT_TAG}-label`}>
-                    Your sleeping Zone
-                    <select
-                      value={playerMovePrivateZoneId}
-                      onChange={(event) => setPlayerMovePrivateZoneId(event.target.value)}
-                    >
-                      <option value="">Choose shared sleeping space automatically</option>
-                      {place.zones
-                        ?.filter(
-                          (zone) =>
-                            zone.venueClass === "residence" &&
-                            zone.kind !== "exterior" &&
-                            !zone.ownerId &&
-                            !zone.closed &&
-                            !snapshot.residences.some(
-                              (move) =>
-                                move.status === "moving" &&
-                                move.proposedVenueId === place.id &&
-                                move.proposedPrivateZoneId === zone.id,
-                            ),
-                        )
-                        .map((zone) => (
-                          <option key={zone.id} value={zone.id}>
-                            {zone.name}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                  <button
-                    type="button"
-                    className={`${ELEMENT_TAG}-button`}
-                    disabled={busy}
-                    onClick={() => void requestPlayerMove(place.id, playerMovePrivateZoneId)}
-                  >
-                    Move in
-                  </button>
-                </div>
-              ) : null}
-            </>
-          ) : null}
-        </>
-      ) : null}
+    <section className={ELEMENT_TAG + "-venue-people"}>
+      <h2>Assigned villagers</h2>
+      {assignments.length ? (
+        <ul className={ELEMENT_TAG + "-venue-assignments"}>
+          {assignments.map(({ id, role }) => (
+            <li key={role + id}>
+              <span>{id === "player" ? playerDisplayName(snapshot) : nameOfCharacter(id)}</span>
+              <small>{role}</small>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p>No assigned villagers.</p>
+      )}
     </section>
   );
 }
 
 export function VenueScreen({ controller, fromMap = false }: { controller: VenueScreenController; fromMap?: boolean }) {
   const confirmVillages = useConfirmation();
+  const [connectionsOpen, setConnectionsOpen] = useState(false);
   const [zoneNameDirty, setZoneNameDirty] = useState(false);
   const [zoneEditorKey, setZoneEditorKey] = useState(0);
   const zoneNameEditor = useRef<{ save(): Promise<boolean> }>(null);
+  const profile = useRef<HTMLElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
+  const connectionsButton = useRef<HTMLButtonElement>(null);
+  const connectionsBack = useRef<HTMLButtonElement>(null);
   useLetterFont(fromMap ? "lora" : undefined);
   const {
     snapshot,
@@ -505,6 +365,11 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
   useLayoutEffect(() => {
     if (fromMap) heading.current?.focus({ preventScroll: true });
   }, [fromMap, place?.id]);
+  useLayoutEffect(() => {
+    const scrollArea = profile.current?.parentElement;
+    if (scrollArea) scrollArea.scrollTop = 0;
+    if (connectionsOpen) connectionsBack.current?.focus({ preventScroll: true });
+  }, [venueSection, connectionsOpen]);
   const navigationSelection = useMemo(
     () => ({ venueId, venueZoneKey, venueSection }),
     [venueId, venueZoneKey, venueSection],
@@ -583,10 +448,15 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
   const residents =
     place.residentIds ?? (place.occupancy.residentCharacterId ? [place.occupancy.residentCharacterId] : []);
   const entrance = place.zones?.find((zone) => zone.kind === "exterior");
-  const backdrop =
+  const entranceArt =
     (snapshot.isFounded && lighting === "night" && entrance?.dayNight ? entrance.nightImage : null) ??
     entrance?.image ??
     place.presentation.image;
+  const zoneArt =
+    selected &&
+    ((snapshot.isFounded && lighting === "night" && selected.dayNight ? selected.nightImage : null) ?? selected.image);
+  const browsing = venueSection === "zones";
+  const backdrop = (browsing ? zoneArt : null) ?? entranceArt;
   const map = snapshot.settings.maps?.find((entry) => entry.id === place.presentation.mapId);
   const visit = () =>
     activeScene && room.placeId === place.id ? setScreen("room") : void openRoom(place, exterior?.id);
@@ -594,12 +464,17 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
   const returnToMap = async () => {
     if (await canLeave()) leaveVenue(fromMap ? undefined : "map");
   };
+  const closeConnections = async () => {
+    if (!(await canLeave())) return;
+    setConnectionsOpen(false);
+    requestAnimationFrame(() => connectionsButton.current?.focus({ preventScroll: true }));
+  };
   return (
     <WorkspaceShell beforeLeave={canLeave} disabled={navigationBusy}>
       <section
+        ref={profile}
         className={`${ELEMENT_TAG}-venue-profile`}
         aria-label="Venue"
-        data-about={about || undefined}
         onKeyDown={(event) => {
           if (
             !fromMap ||
@@ -610,9 +485,15 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
             return;
           event.preventDefault();
           event.stopPropagation();
-          void returnToMap();
+          if (connectionsOpen) void closeConnections();
+          else void returnToMap();
         }}
       >
+        {backdrop ? (
+          <figure className={ELEMENT_TAG + "-venue-photo"}>
+            <img src={backdrop.url} alt={browsing && zoneArt ? selected.name : place.name} />
+          </figure>
+        ) : null}
         <div className={`${ELEMENT_TAG}-venue-navigation`}>
           <button
             type="button"
@@ -634,7 +515,7 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
             {place.name}
           </StorybookHeading>
           <dl className={`${ELEMENT_TAG}-venue-metadata`} aria-label="Venue details">
-            {!fromMap || !about ? (
+            {!fromMap ? (
               <div>
                 <dt>Type</dt>
                 <dd>{place.venueType || venueClassesFor(place).join(" · ") || "Venue"}</dd>
@@ -644,12 +525,6 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
               <div>
                 <dt>Map</dt>
                 <dd>{map.name}</dd>
-              </div>
-            ) : null}
-            {snapshot.settings.communityVenueId === place.id ? (
-              <div>
-                <dt>Use</dt>
-                <dd>Community Venue</dd>
               </div>
             ) : null}
             {place.constructionStatus === "worksite" ? (
@@ -668,7 +543,12 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
               disabled={navigationBusy}
               aria-pressed={venueSection === section}
               onClick={async () => {
-                if (section === venueSection || !(await canLeave())) return;
+                if (section === venueSection) {
+                  if (connectionsOpen) await closeConnections();
+                  return;
+                }
+                if (!(await canLeave())) return;
+                setConnectionsOpen(false);
                 setZoneNameDirty(false);
                 setVenueSection(section);
               }}
@@ -681,14 +561,7 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
           {navigationBusy ? <p role="status">Saving…</p> : null}
           {about ? (
             <section className={`${ELEMENT_TAG}-workspace-about`} aria-label="About this venue">
-              {backdrop ? (
-                <figure className={`${ELEMENT_TAG}-venue-photo`}>
-                  <img src={backdrop.url} alt={place.name} />
-                </figure>
-              ) : null}
               <div className={`${ELEMENT_TAG}-venue-summary`}>
-                <p className={`${ELEMENT_TAG}-venue-description`}>{place.description || "No description yet."}</p>
-                {place.form ? <p className={`${ELEMENT_TAG}-venue-form`}>{place.form}</p> : null}
                 {place.occupancy.playerHome || residents.length ? (
                   <div className={`${ELEMENT_TAG}-venue-occupants`}>
                     <h2>Lives here</h2>
@@ -705,11 +578,6 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
                     <h2>Works here</h2>
                     <p>{place.workerIds.map(nameOfCharacter).join(", ")}</p>
                   </div>
-                ) : null}
-                {venueClassesFor(place).includes("residence") ? (
-                  <p className={`${ELEMENT_TAG}-venue-capacity`}>
-                    Residents · {venueAssignedCountFor(place)} / {venueCapacityFor(place)}
-                  </p>
                 ) : null}
                 {(place.constructionStatus === "worksite" || activeProject?.kind === "new-venue") && activeProject ? (
                   <button
@@ -741,9 +609,37 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
               </div>
             </section>
           ) : null}
-          {venueSection === "zones" && selected ? (
-            <section className={`${ELEMENT_TAG}-venue-zones-workspace`} aria-label="Zones">
-              <div className={`${ELEMENT_TAG}-venue-zones-layout`}>
+          {browsing ? (
+            <section className={ELEMENT_TAG + "-venue-zone-picker"} aria-label="Zones">
+              {zones.map((zone) => (
+                <button
+                  key={zone.id}
+                  type="button"
+                  aria-pressed={zone.id === selected?.id}
+                  onClick={() => setVenueZoneKey(zone.id)}
+                >
+                  <span>{zone.name}</span>
+                  <ZoneAccessLabels zone={zone} hideOpen />
+                </button>
+              ))}
+              {selected && selected.kind !== "exterior" && !zoneArt ? <p>No artwork yet.</p> : null}
+            </section>
+          ) : null}
+          {venueSection === "manage" && connectionsOpen && selected ? (
+            <section className={ELEMENT_TAG + "-venue-connections"} aria-label="Zone connections">
+              <div className={ELEMENT_TAG + "-venue-connections-heading"}>
+                <h2>Zone connections</h2>
+                <button
+                  ref={connectionsBack}
+                  type="button"
+                  className={ELEMENT_TAG + "-venue-back"}
+                  disabled={navigationBusy}
+                  onClick={closeConnections}
+                >
+                  ← Manage
+                </button>
+              </div>
+              <div className={ELEMENT_TAG + "-venue-zones-layout"}>
                 <VenueLayoutEditor
                   key={place.id}
                   place={place}
@@ -757,79 +653,86 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
                   }}
                 />
               </div>
-              <section className={`${ELEMENT_TAG}-venue-zone-details`} aria-label={selected.name}>
-                {selected.kind !== "exterior" ? (
-                  <ZoneName
-                    key={place.id + selected.id + ":" + zoneEditorKey}
+              <details className={ELEMENT_TAG + "-venue-zone-settings"}>
+                <summary>Zone settings</summary>
+                <section className={`${ELEMENT_TAG}-venue-zone-details`} aria-label={selected.name}>
+                  {selected.kind !== "exterior" ? (
+                    <ZoneName
+                      key={place.id + selected.id + ":" + zoneEditorKey}
+                      place={place}
+                      zone={selected}
+                      controller={controller}
+                      onDirtyChange={setZoneNameDirty}
+                      saveRef={zoneNameEditor}
+                    />
+                  ) : (
+                    <h2>{selected.name}</h2>
+                  )}
+                  <ZoneArtwork
+                    key={selected.id}
                     place={place}
                     zone={selected}
                     controller={controller}
-                    onDirtyChange={setZoneNameDirty}
-                    saveRef={zoneNameEditor}
+                    night={snapshot.isFounded && lighting === "night"}
                   />
-                ) : (
-                  <h2>{selected.name}</h2>
-                )}
-                <ZoneArtwork
-                  key={selected.id}
-                  place={place}
-                  zone={selected}
-                  controller={controller}
-                  night={snapshot.isFounded && lighting === "night"}
-                />
-                <label className={`${ELEMENT_TAG}-zone-picture-freeze`}>
-                  <input
-                    autoComplete="off"
-                    type="checkbox"
-                    checked={selected.freezePicture === true}
-                    disabled={controller.busy}
-                    onChange={(event) => void controller.setZonePictureFrozen(place, selected.id, event.target.checked)}
-                  />
-                  Prevent dynamic image updates for this Zone
-                </label>
-                {selected.isPrivate || selected.restricted || !selected.allowed ? (
-                  <div className={`${ELEMENT_TAG}-zone-access-details`}>
-                    <ZoneAccessLabels zone={selected} hideOpen />
-                  </div>
-                ) : null}
-                {selected.preparation?.status === "failed" ? (
-                  <button
-                    type="button"
-                    className={`${ELEMENT_TAG}-button`}
-                    disabled={controller.busy}
-                    onClick={() => void controller.retryPrivateSpacePreparation()}
-                  >
-                    Retry private-space preparation
-                  </button>
-                ) : null}
-              </section>
+                  <label className={`${ELEMENT_TAG}-zone-picture-freeze`}>
+                    <input
+                      autoComplete="off"
+                      type="checkbox"
+                      checked={selected.freezePicture === true}
+                      disabled={controller.busy}
+                      onChange={(event) =>
+                        void controller.setZonePictureFrozen(place, selected.id, event.target.checked)
+                      }
+                    />
+                    Prevent dynamic image updates for this Zone
+                  </label>
+                  {selected.isPrivate || selected.restricted || !selected.allowed ? (
+                    <div className={`${ELEMENT_TAG}-zone-access-details`}>
+                      <ZoneAccessLabels zone={selected} hideOpen />
+                    </div>
+                  ) : null}
+                  {selected.preparation?.status === "failed" ? (
+                    <button
+                      type="button"
+                      className={`${ELEMENT_TAG}-button`}
+                      disabled={controller.busy}
+                      onClick={() => void controller.retryPrivateSpacePreparation()}
+                    >
+                      Retry private-space preparation
+                    </button>
+                  ) : null}
+                </section>
+              </details>
             </section>
           ) : null}
-          {venueSection === "manage" ? (
-            <section aria-label="Manage this venue">
+          {venueSection === "manage" && !connectionsOpen ? (
+            <section className={ELEMENT_TAG + "-venue-manage"} aria-label="Manage this venue">
               <VenueName place={place} controller={controller} />
-              <CommunityVenueControl key={`community:${place.id}`} place={place} controller={controller} />
-              <section className={`${ELEMENT_TAG}-venue-section`}>
-                <h2>Layout & renovations</h2>
-                <p>Changes to physical form, Zones, capacity or use require a Project.</p>
+              <button
+                type="button"
+                className={`${ELEMENT_TAG}-venue-primary`}
+                disabled={navigationBusy}
+                onClick={async () => {
+                  if (await canLeave()) planVenueRenovation(place);
+                }}
+              >
+                Plan a renovation
+              </button>
+              {selected ? (
                 <button
+                  ref={connectionsButton}
                   type="button"
-                  className={`${ELEMENT_TAG}-venue-primary`}
+                  className={ELEMENT_TAG + "-button"}
                   disabled={navigationBusy}
                   onClick={async () => {
-                    if (await canLeave()) planVenueRenovation(place);
+                    if (await canLeave(true)) setConnectionsOpen(true);
                   }}
                 >
-                  Plan a renovation →
+                  Zone connections <span aria-hidden="true">›</span>
                 </button>
-              </section>
-              <AssignedVillagers
-                key={place.id}
-                place={place}
-                controller={controller}
-                canLeave={canLeave}
-                navigationBusy={navigationBusy}
-              />
+              ) : null}
+              <AssignedVillagers place={place} controller={controller} />
             </section>
           ) : null}
           {placeBusyId === place.id ? <p role="status">Drawing or saving artwork…</p> : null}
