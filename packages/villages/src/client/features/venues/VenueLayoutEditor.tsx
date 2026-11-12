@@ -80,6 +80,7 @@ export function VenueLayoutEditor({
                 <label key={zone.id}>
                   <input
                     type="checkbox"
+                    autoComplete="off"
                     checked={neighbors.includes(zone.id)}
                     onChange={(event) => toggle(zone.id, event.target.checked)}
                   />

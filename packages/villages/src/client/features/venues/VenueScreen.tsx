@@ -20,10 +20,11 @@ import { LoreActivityButton } from "../../shared/LoreActivity.js";
 
 function VenueName({ place, controller }: { place: VillageVenue; controller: VenueScreenController }) {
   const id = useId();
-  const { venueEditDraft, setVenueEditDraft, venueEditBusy, saveVenueName } = controller;
+  const { venueEditDraft, setVenueEditDraft, venueEditBusy, venueEditError, saveVenueName } = controller;
   const name = venueEditDraft?.id === place.id ? venueEditDraft.name : place.name;
   return (
     <form
+      autoComplete="off"
       onSubmit={(event) => {
         event.preventDefault();
         if (!venueEditBusy && name.trim() && name.trim() !== place.name) void saveVenueName(place, name);
@@ -34,14 +35,16 @@ function VenueName({ place, controller }: { place: VillageVenue; controller: Ven
         <input
           id={id}
           autoComplete="off"
+          aria-describedby={venueEditError ? `${id}-error` : undefined}
           value={name}
           maxLength={controller.snapshot.settings.maxVenueNameLength}
-          onChange={(event) =>
+          onChange={(event) => {
+            if (venueEditError) controller.setVenueEditError("");
             setVenueEditDraft((current) => ({
               ...(current?.id === place.id ? current : place),
               name: event.target.value,
-            }))
-          }
+            }));
+          }}
         />
         <button
           type="submit"
@@ -51,6 +54,11 @@ function VenueName({ place, controller }: { place: VillageVenue; controller: Ven
           <span aria-hidden="true">✓</span>
         </button>
       </div>
+      {venueEditError ? (
+        <p id={`${id}-error`} role="alert">
+          {venueEditError}
+        </p>
+      ) : null}
     </form>
   );
 }
@@ -750,7 +758,9 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
           ) : null}
           {placeBusyId === place.id ? <p role="status">Drawing or saving artwork…</p> : null}
           {placeProblem?.id === place.id ? <p role="alert">{placeProblem.text}</p> : null}
-          {venueEditError ? <p role="alert">{venueEditError}</p> : null}
+          {venueEditError && (venueSection !== "manage" || connectionsOpen) ? (
+            <p role="alert">{venueEditError}</p>
+          ) : null}
           {venueEditNotice ? <p role="status">{venueEditNotice}</p> : null}
         </main>
       </section>

@@ -181,6 +181,10 @@ await withBrowser(browser, async () => {
           zone.pictureProblem = undefined;
         }
       } else if (path.endsWith(`/locations/venue/${place.id}`) && request.method() === "PUT") {
+        if (request.postDataJSON().name === "Taken name") {
+          await fulfill(route, { status: 409, json: { error: "A venue with that name already exists." } });
+          return;
+        }
         place.name = request.postDataJSON().name;
         if (holdVenueSave) {
           heldVenueSave = route;
@@ -518,6 +522,15 @@ await withBrowser(browser, async () => {
     await expect(profile.getByRole("button", { name: "View housing requests" })).toHaveCount(0);
     await expect(profile.getByLabel("Physical form", { exact: true })).toHaveCount(0);
     await expect(profile.getByRole("button", { name: "Generate new picture" })).toHaveCount(0);
+    const nameField = profile.getByLabel("Venue name", { exact: true });
+    const saveName = profile.getByRole("button", { name: "Save name", exact: true });
+    await expect(saveName).toBeDisabled();
+    await nameField.fill("Taken name");
+    await saveName.click();
+    await expect(profile.getByRole("alert")).toHaveText("A venue with that name already exists.");
+    await expect(nameField).toHaveAccessibleDescription("A venue with that name already exists.");
+    await expect(nameField).toHaveValue("Taken name");
+    await expect(saveName).toBeEnabled();
     const beforeName = writes.length;
     await profile.getByLabel("Venue name", { exact: true }).fill("Renamed warehouse");
     await profile.getByRole("button", { name: "← Back to map", exact: true }).click();
@@ -547,6 +560,9 @@ await withBrowser(browser, async () => {
     await fulfill(heldVenueSave, { json: snapshot });
     holdVenueSave = false;
     await expect(profile.getByRole("heading", { name: "Renamed warehouse", exact: true })).toBeVisible();
+    await expect(saveName).toBeDisabled();
+    await expect(profile.getByRole("alert")).toHaveCount(0);
+    await expect(profile.getByText("Venue name saved.", { exact: true })).toHaveCount(0);
     assert.deepEqual(writes.at(-1), {
       path: `/api/villages/locations/venue/${place.id}`,
       body: { name: "Renamed warehouse" },

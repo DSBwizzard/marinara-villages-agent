@@ -145,7 +145,6 @@ export function useVenueScreenCommands(ports: {
       if (!editor.owns(claim)) return;
       setSnapshot(next);
       setVenueEditDraft((current) => (current?.id === place.id && current.name === name ? null : current));
-      setVenueEditNotice("Venue name saved.");
     } catch (cause) {
       if (editor.owns(claim)) setVenueEditError(messageFrom(cause, "The Venue name could not be saved."));
     } finally {
