@@ -103,8 +103,6 @@ export const DESK_STYLES = `
 .${P}-venue-photo{position:absolute;inset:0;z-index:-2;margin:0;pointer-events:none}
 .${P}-venue-photo img{display:block;width:100%;height:100%;object-fit:cover}
 .${P}-venue-summary{min-width:0;font-size:clamp(16px,1.6cqw,23px);line-height:1.45;overflow-wrap:anywhere}
-.${P}-venue-occupants + .${P}-venue-occupants{margin-top:16px}
-.${P}-venue-occupants h2{font:700 25px/1.2 var(--menu-font);margin:0 0 8px}.${P}-venue-occupants p{margin:0}
 .${P}-workspace-content .${P}-venue-primary{display:inline-block;width:auto;margin:8px 0 0;padding:8px 24px;font:600 clamp(17px,1.7cqw,23px)/1.3 var(--menu-font);min-height:44px;background:#a5ac8b;color:#292938;border:1px solid #a5ac8b;border-radius:6px;cursor:pointer}
 .${P}-workspace-content .${P}-venue-primary:disabled{opacity:.65;cursor:default}
 .${P}-venue-arrival .${P}-venue-photo{bottom:auto;height:100cqh}
@@ -117,10 +115,8 @@ export const DESK_STYLES = `
 .${P}-venue-name-field input{flex:1;min-width:0;min-height:44px;padding:8px 10px;border:0;background:transparent;color:inherit;font:inherit}
 .${P}-venue-name-field button{flex:0 0 44px;border:0;border-inline-start:1px solid #a39b84;border-radius:0;background:transparent;color:#c4cbab;font:inherit;font-size:22px;cursor:pointer}
 .${P}-venue-name-field button:disabled{opacity:.45;cursor:default}
-.${P}-venue-manage > .${P}-venue-primary{width:100%;margin:0}
-.${P}-venue-manage > .${P}-button{justify-self:start}
-.${P}-venue-people{margin-top:4px;padding-top:12px;border-top:1px solid var(--border)}
-.${P}-venue-people h2{margin:0 0 4px}
+.${P}-venue-manage > .${P}-button{display:flex;align-items:center;justify-content:space-between;gap:8px;text-align:left}
+.${P}-venue-people h2{font:700 25px/1.2 var(--menu-font);margin:0 0 4px}
 .${P}-venue-people p{margin:0}
 .${P}-venue-people .${P}-venue-assignments li{padding:5px 0;border:0}
 .${P}-venue-connections-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}

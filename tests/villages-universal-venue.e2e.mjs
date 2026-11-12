@@ -42,6 +42,7 @@ await withBrowser(browser, async () => {
     place.venueType = "Converted office residence";
     place.classes = ["residence"];
     place.residentIds = ["mara"];
+    place.workerIds = ["eli"];
     place.occupancy = { playerHome: false, residentCharacterId: null, homeKind: null };
     place.residentIds = ["mara"];
     place.form = "A converted warehouse";
@@ -299,6 +300,11 @@ await withBrowser(browser, async () => {
     await expect(page.getByRole("dialog")).toHaveCount(0);
     const tabs = profile.getByRole("navigation", { name: "Venue sections" });
     await expect(tabs.getByRole("button", { name: "About", exact: true })).toHaveAttribute("aria-pressed", "true");
+    const about = profile.getByRole("region", { name: "About this venue" });
+    await expect(about.getByRole("heading", { name: "Assigned villagers", exact: true })).toBeVisible();
+    await expect(about.getByRole("listitem").filter({ hasText: "Mara" })).toContainText("Resident");
+    await expect(about.getByRole("listitem").filter({ hasText: "Eli" })).toContainText("Worker");
+    await expect(about.getByRole("heading", { name: /Lives here|Works here/ })).toHaveCount(0);
     await expect(profile.getByRole("button", { name: "Visit venue", exact: true })).toBeVisible();
     assert.equal(writes.length, 0);
     await tabs.getByRole("button", { name: "Zones", exact: true }).click();
@@ -518,7 +524,7 @@ await withBrowser(browser, async () => {
     await layout.locator('[data-layout-zone="bay"]').click();
     await expect(detail.getByRole("button", { name: "Rename Harbour Lounge", exact: true })).toBeVisible();
     await profile.getByRole("button", { name: "← Manage", exact: true }).click();
-    await expect(profile.getByRole("heading", { name: "Assigned villagers", exact: true })).toBeVisible();
+    await expect(profile.getByRole("heading", { name: "Assigned villagers", exact: true })).toHaveCount(0);
     await expect(profile.getByRole("button", { name: "View housing requests" })).toHaveCount(0);
     await expect(profile.getByLabel("Physical form", { exact: true })).toHaveCount(0);
     await expect(profile.getByRole("button", { name: "Generate new picture" })).toHaveCount(0);

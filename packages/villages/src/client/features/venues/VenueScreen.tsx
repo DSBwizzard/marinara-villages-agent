@@ -374,7 +374,6 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
     roomBusy,
     openRoom,
     setScreen,
-    nameOfCharacter,
     placeBusyId,
     placeProblem,
     venueEditError,
@@ -466,8 +465,6 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
     (project) => project.venueId === place.id && project.lifecycle?.phase !== "complete",
   );
   const activeScene = !!room && room.status !== "closed";
-  const residents =
-    place.residentIds ?? (place.occupancy.residentCharacterId ? [place.occupancy.residentCharacterId] : []);
   const entrance = place.zones?.find((zone) => zone.kind === "exterior");
   const entranceArt =
     (snapshot.isFounded && lighting === "night" && entrance?.dayNight ? entrance.nightImage : null) ??
@@ -583,23 +580,7 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
           {about ? (
             <section className={`${ELEMENT_TAG}-workspace-about`} aria-label="About this venue">
               <div className={`${ELEMENT_TAG}-venue-summary`}>
-                {place.occupancy.playerHome || residents.length ? (
-                  <div className={`${ELEMENT_TAG}-venue-occupants`}>
-                    <h2>Lives here</h2>
-                    <p>
-                      {[
-                        ...(place.occupancy.playerHome ? [playerDisplayName(snapshot)] : []),
-                        ...residents.filter((id) => id !== "player").map(nameOfCharacter),
-                      ].join(", ")}
-                    </p>
-                  </div>
-                ) : null}
-                {place.workerIds?.length ? (
-                  <div className={`${ELEMENT_TAG}-venue-occupants`}>
-                    <h2>Works here</h2>
-                    <p>{place.workerIds.map(nameOfCharacter).join(", ")}</p>
-                  </div>
-                ) : null}
+                <AssignedVillagers place={place} controller={controller} />
                 {(place.constructionStatus === "worksite" || activeProject?.kind === "new-venue") && activeProject ? (
                   <button
                     type="button"
@@ -732,13 +713,13 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
               <VenueName place={place} controller={controller} />
               <button
                 type="button"
-                className={`${ELEMENT_TAG}-venue-primary`}
+                className={ELEMENT_TAG + "-button"}
                 disabled={navigationBusy}
                 onClick={async () => {
                   if (await canLeave()) planVenueRenovation(place);
                 }}
               >
-                Plan a renovation
+                Plan a renovation <span aria-hidden="true">›</span>
               </button>
               {selected ? (
                 <button
@@ -753,7 +734,6 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
                   Zone connections <span aria-hidden="true">›</span>
                 </button>
               ) : null}
-              <AssignedVillagers place={place} controller={controller} />
             </section>
           ) : null}
           {placeBusyId === place.id ? <p role="status">Drawing or saving artwork…</p> : null}

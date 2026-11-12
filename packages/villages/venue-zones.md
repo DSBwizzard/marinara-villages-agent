@@ -8,7 +8,7 @@ Every Venue has an **Entrance** (`exterior`) plus up to six other Zones. The Ent
 
 ## Shared Venue page
 
-Map tiles, Places, People profiles, Scene headers, Requests and Village Settings open the same Venue page. **About** shows who lives or works there and offers **Visit** to enter a Scene. **Zones** lets you choose a room to see its known artwork and access status. Browsing leaves the player's location, admission and visit history alone and makes no generation requests. The map calls the arrival space Entrance.
+Map tiles, Places, People profiles, Scene headers, Requests and Village Settings open the same Venue page. **About** shows assigned villagers and their roles and offers **Visit** to enter a Scene. **Zones** lets you choose a room to see its known artwork and access status. Browsing leaves the player's location, admission and visit history alone and makes no generation requests. The map calls the arrival space Entrance.
 
 In Founding, drag Zones on the layout or use their arrow keys to arrange them without overlap. **Connect Zones** chooses a pair and shows existing links with Remove actions while active. Founding supports adding and removing up to six non-Entrance Zones. Removing a Zone clears its connections, positions and destination references. Quick Start combines Venue details and the layout in **Venue**. Selection carries to the **Zone** tab, where the heading has previous/next controls and compact access choices. Selecting the artwork thumbnail opens its controls.
 
@@ -16,7 +16,7 @@ During play, **Manage → Zone connections** shows a diagram and lets the manage
 
 Each Zone shows the player's current admission status separately from its policy: Open to you when admitted, Permission needed when permission is required, and Private independently for personal Zones. A permission-controlled Zone keeps Permission needed below Open to you when the player is admitted. Hours, bans, temporary invitations and relationship access still use the authoritative evaluator. Access options stay with the selected Zone; concealed ledgers and attendance remain concealed.
 
-**Zone settings** in the connection editor keeps name and artwork controls for the selected Zone. Manage also offers a Venue name field, a list of assigned villagers and their roles, and **Plan a renovation**. The renovation action opens the Project workflow with this Venue selected, or the existing active renovation. Physical form, Zone additions/removals, capabilities, capacity and substantial renovations go through Projects. Smaller supported actions update a Zone's long-term details through witnessed gameplay. Administrative corrections use REPAIR.
+**Zone settings** in the connection editor keeps name and artwork controls for the selected Zone. Manage also offers a Venue name field and **Plan a renovation**. The renovation action opens the Project workflow with this Venue selected, or the existing active renovation. Physical form, Zone additions/removals, capabilities, capacity and substantial renovations go through Projects. Smaller supported actions update a Zone's long-term details through witnessed gameplay. Administrative corrections use REPAIR.
 
 ## Authority and admission
 
