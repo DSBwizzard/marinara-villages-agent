@@ -380,6 +380,7 @@ await runCase("narration-writing/single-request", async () => {
   assert.deepEqual(submitted, { role: "user", content: exact });
   assert.match(reminder.content, /^## Scene reply reminder\nBegin with \{"segments":\[/u);
   assert.match(reminder.content, /Dialogue and narration have no source field/u);
+  assert.match(reminder.content, /pastSpeaker and witnessedWords belong to input/u);
   assert.equal(deepSeekReply.readset.source.input, exact);
   await deepSeek.writing.generate(deepSeek.scene, "", "greet");
   assert.deepEqual(deepSeek.formats, [undefined, { type: "json_object" }]);
@@ -1217,6 +1218,36 @@ await runCase("narration-writing/long-followup", async () => {
   assert.equal(normalized.segments[0].text, "I remember.");
   assert(!Object.hasOwn(normalized.segments[0], "source"));
   assert.deepEqual(annotated.segments[0].source, [alias], "recovery keeps the exact purchased reply");
+  const selfAnnotated = { segments: [{ ...annotated.segments[0], source: ["self"] }] };
+  assert.equal(
+    readSceneNarrationReply(selfAnnotated, [f.id], reply.readset, f.state.continuity).segments[0].text,
+    "I remember.",
+  );
+  assert.deepEqual(selfAnnotated.segments[0].source, ["self"]);
+  assert.throws(
+    () =>
+      readSceneNarrationReply(
+        { segments: [{ kind: "dialogue", speakerId: f.id, text: "I remember.", witnessedWords: { ref: alias } }] },
+        [f.id],
+        reply.readset,
+        f.state.continuity,
+      ),
+    /witnessedWords/,
+  );
+  assert.throws(
+    () => readSceneNarrationReply({ ...selfAnnotated, keep: [] }, [f.id], reply.readset, f.state.continuity),
+    /Unrecognized key/,
+  );
+  assert.throws(
+    () =>
+      readSceneNarrationReply(
+        { segments: [{ ...selfAnnotated.segments[0], requires: ["effect"] }] },
+        [f.id],
+        reply.readset,
+        f.state.continuity,
+      ),
+    /Unrecognized key/,
+  );
   assert.throws(
     () =>
       readSceneNarrationReply(

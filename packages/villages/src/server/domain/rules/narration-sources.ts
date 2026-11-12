@@ -51,7 +51,7 @@ export type NarrationSourceContext = {
 };
 export type NarrationSourceOwner = { holder: ContinuityHolder; writeId: string; text: string; class: ContinuityClass };
 
-/** Discard a redundant dialogue citation only with the speaker's own fitted proof of the same saved meaning. */
+/** Discard effect-free dialogue annotations that assert no provenance or have the speaker's own fitted proof. */
 export function readSceneNarrationReply(
   raw: Record<string, unknown>,
   speakers: string[],
@@ -69,6 +69,10 @@ export function readSceneNarrationReply(
     if (line.kind !== "dialogue" || line.requires !== undefined || !Array.isArray(source) || source.length !== 1)
       return value;
     const [alias] = source;
+    if (alias === "self") {
+      const { source: _annotation, ...prose } = line;
+      return prose;
+    }
     if (typeof alias !== "string" || !alias.startsWith("h:") || !Object.hasOwn(historical, alias)) return value;
     const cited = historical[alias];
     if (cited.kind !== "knowledge" || cited.seed !== seed) return value;

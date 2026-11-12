@@ -321,7 +321,7 @@ export function createSceneWriting({
       Math.min(model.maxOutputTokens ?? VENUE_REPLY_MAX_TOKENS, VENUE_REPLY_MAX_TOKENS),
       "Narration",
       plainJson
-        ? '## Scene reply reminder\nBegin with {"segments":[ and return one complete JSON object. Put all prose in segment text. Dialogue and narration have no source field, even when recalling a conversation. Add source only inside keep or halt. Finish the JSON object after the last segment or effect.'
+        ? '## Scene reply reminder\nBegin with {"segments":[ and return one complete JSON object. Put all prose in segment text. Transcript fields such as pastSpeaker and witnessedWords belong to input. Dialogue and narration have no source field. Add source only inside keep or halt. Finish the JSON object after the last segment or effect.'
         : undefined,
     );
     if (loreInspection) {
