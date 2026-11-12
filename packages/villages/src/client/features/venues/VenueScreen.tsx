@@ -5,6 +5,7 @@ import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { ArtworkImage } from "../../shared/ArtworkImage.js";
+import { STORYBOOK_BACKGROUND_URL } from "../../shared/desk-art.js";
 import { ModalDialog } from "../../shared/ModalDialog.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import { playerDisplayName } from "../../shared/presentation.js";
@@ -459,6 +460,7 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
   const zoneArt = selected ? roomArtwork(selected) : null;
   const browsing = venueSection === "zones";
   const zoneBackdrop = browsing && (!mobile || zoneDetailsOpen) && zoneArt?.url !== entranceArt?.url ? zoneArt : null;
+  const storybookBackdrop = (zoneDetailsOpen && !zoneArt) || (!entranceArt && !zoneBackdrop);
   const map = snapshot.settings.maps?.find((entry) => entry.id === place.presentation.mapId);
   const visit = () =>
     activeScene && room.placeId === place.id ? setScreen("room") : void openRoom(place, exterior?.id);
@@ -490,6 +492,7 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
         ref={profile}
         className={`${ELEMENT_TAG}-venue-profile`}
         data-room-backdrop={zoneDetailsOpen && !!zoneArt ? "true" : undefined}
+        data-storybook-backdrop={storybookBackdrop || undefined}
         aria-label="Venue"
         onKeyDown={(event) => {
           if (
@@ -506,14 +509,16 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
           else void returnToMap();
         }}
       >
-        {entranceArt || zoneBackdrop ? (
-          <figure className={ELEMENT_TAG + "-venue-photo"}>
-            {entranceArt ? <ArtworkImage src={entranceArt.url} alt={zoneBackdrop ? "" : place.name} /> : null}
-            {zoneBackdrop ? (
-              <ArtworkImage className={`${ELEMENT_TAG}-venue-zone-photo`} src={zoneBackdrop.url} alt={selected.name} />
-            ) : null}
-          </figure>
-        ) : null}
+        <figure className={ELEMENT_TAG + "-venue-photo"}>
+          {storybookBackdrop ? (
+            <img className={`${ELEMENT_TAG}-venue-storybook-photo`} src={STORYBOOK_BACKGROUND_URL} alt="" />
+          ) : entranceArt ? (
+            <ArtworkImage src={entranceArt.url} alt={zoneBackdrop ? "" : place.name} />
+          ) : null}
+          {zoneBackdrop ? (
+            <ArtworkImage className={`${ELEMENT_TAG}-venue-zone-photo`} src={zoneBackdrop.url} alt={selected.name} />
+          ) : null}
+        </figure>
         <div className={`${ELEMENT_TAG}-venue-navigation`}>
           <button
             type="button"
