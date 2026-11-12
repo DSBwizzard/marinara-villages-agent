@@ -336,12 +336,13 @@ await withBrowser(browser, async () => {
     const roomButton = (name) => picker.getByRole("button", { name: new RegExp(`^${name}\\b`) });
     const editor = profile.getByRole("region", { name: "Edit room details", exact: true });
     const zoneBack = editor.getByRole("button", { name: "← Zones", exact: true });
+    const roomName = editor.getByLabel("Room name", { exact: true });
     const chooseRoom = async (name) => {
       if (await zoneBack.isVisible()) await zoneBack.click();
       await roomButton(name).click();
-      await expect(editor.getByRole("heading", { name, exact: true })).toBeVisible();
+      if (name === "Entrance") await expect(editor.getByRole("heading", { name, exact: true })).toBeVisible();
+      else await expect(roomName).toHaveValue(name);
     };
-    const roomName = editor.getByLabel("Room name", { exact: true });
     await chooseRoom("Workshop");
     await roomName.fill("Unsent Zone name");
     await roomName.press("Escape");
@@ -389,13 +390,7 @@ await withBrowser(browser, async () => {
     await expect(generate).toBeVisible();
     await expect(detail.getByLabel("Upload Main Bay reference")).toHaveCount(1);
     await expect(detail.getByRole("button", { name: "Upload reference", exact: true })).toBeVisible();
-    await detail.getByRole("button", { name: "Lore activity", exact: true }).click();
-    const lore = page.getByRole("dialog", { name: "Lore activity", exact: true });
-    await expect(lore.getByRole("searchbox", { name: "Search Lore entries" })).toHaveValue(
-      `Zone artwork · ${place.name} · Main Bay`,
-    );
-    await lore.getByRole("button", { name: "Close Lore activity" }).click();
-    await expect(detail.getByRole("button", { name: "Lore activity", exact: true })).toBeFocused();
+    await expect(detail.getByRole("button", { name: "Lore activity", exact: true })).toHaveCount(0);
     const updates = detail.getByRole("switch", { name: "Automatic artwork updates", exact: true });
     await expect(updates).toBeChecked();
     await updates.click();
@@ -446,14 +441,17 @@ await withBrowser(browser, async () => {
         detail.getByRole("button", { name, exact: true }).boundingBox(),
       ),
     );
-    assert.ok(
-      actionBoxes.every(
-        (box, index) =>
-          box.width <= emptyFrame.width &&
-          (!index || box.y >= actionBoxes[index - 1].y + actionBoxes[index - 1].height),
-      ),
-      "Artwork actions fit in a compact column at every viewport",
-    );
+    if (width <= 704) {
+      assert.ok(
+        actionBoxes.every((box) => box.height === 44 && box.y === actionBoxes[0].y),
+        "Artwork actions fit on one touch-sized row on mobile",
+      );
+    } else {
+      assert.ok(
+        actionBoxes.every((box) => box.width <= emptyFrame.width),
+        "Artwork actions fit beside the image",
+      );
+    }
     const actions = detail.locator(`.${prefix}-zone-artwork-actions`);
     assert.ok(
       await actions
@@ -502,7 +500,7 @@ await withBrowser(browser, async () => {
     holdZoneSave = true;
     await zoneBack.click();
     await expect.poll(() => !!heldZoneSave).toBe(true);
-    await expect(editor.getByRole("heading", { name: "Main Bay", exact: true })).toBeVisible();
+    await expect(roomName).toHaveValue("Harbour Lounge");
     await fulfill(heldZoneSave, { json: snapshot });
     holdZoneSave = false;
     await expect(roomButton("Harbour Lounge")).toBeFocused();

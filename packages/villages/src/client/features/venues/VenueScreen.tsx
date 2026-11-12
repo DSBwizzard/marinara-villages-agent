@@ -16,7 +16,6 @@ import type { VenueScreenController } from "./screen-contracts.js";
 import { venueDisplayZones, type VenueDisplayZone } from "./venue-view.js";
 import { VenueLayoutEditor } from "./VenueLayoutEditor.js";
 import { ZoneAccessLabels } from "./ZoneAccessLabels.js";
-import { LoreActivityButton } from "../../shared/LoreActivity.js";
 import { VillageIcon } from "../../shared/VillageIcon.js";
 
 function VenueName({ place, controller }: { place: VillageVenue; controller: VenueScreenController }) {
@@ -139,10 +138,9 @@ function ZoneName({
         if (draft !== null && !event.currentTarget.contains(event.relatedTarget)) void save();
       }}
     >
-      <label htmlFor={id}>Room name</label>
       <div className={`${ELEMENT_TAG}-venue-name-field`}>
         <input
-          id={id}
+          aria-label="Room name"
           autoComplete="off"
           aria-describedby={error ? `${id}-error` : undefined}
           maxLength={controller.snapshot.settings.maxVenueNameLength}
@@ -190,8 +188,7 @@ function ZoneArtwork({
   const artwork = zone.dayNight && zone.nightImage && night ? zone.nightImage : zone.image;
   const disabled = busy || !!placeBusyId;
   return (
-    <section aria-label="Artwork">
-      <h3>Artwork</h3>
+    <section className={`${ELEMENT_TAG}-zone-artwork`} aria-label="Artwork">
       <div className={`${ELEMENT_TAG}-venue-room-artwork`}>
         <div className={`${ELEMENT_TAG}-zone-artwork-frame`}>
           {artwork ? (
@@ -203,38 +200,47 @@ function ZoneArtwork({
           ) : (
             <div className={`${ELEMENT_TAG}-venue-image-empty`}>No artwork yet</div>
           )}
+          {artwork && galleryArtworkVariant(artwork.url, 1024) ? (
+            <a
+              className={`${ELEMENT_TAG}-zone-artwork-full-size`}
+              href={artwork.url}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Open full size"
+            >
+              <span aria-hidden="true">↗</span>
+            </a>
+          ) : null}
         </div>
         <div className={`${ELEMENT_TAG}-zone-artwork-actions`}>
           {zone.pictureRetryAvailable ? (
             <button
               type="button"
               className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-zone-artwork-retry`}
+              aria-label="Retry artwork"
               disabled={disabled}
               onClick={() => void controller.retryZonePicture(place, zone.id)}
             >
-              Retry artwork
+              Retry
             </button>
-          ) : null}
-          {artwork && galleryArtworkVariant(artwork.url, 1024) ? (
-            <a className={`${ELEMENT_TAG}-button`} href={artwork.url} target="_blank" rel="noreferrer">
-              Open full size
-            </a>
           ) : null}
           <button
             type="button"
             className={`${ELEMENT_TAG}-button`}
+            aria-label="Generate artwork"
             disabled={disabled || zone.pictureGenerateAvailable === false}
             onClick={() => void drawPlaceImage(place.id, zone.id)}
           >
-            Generate artwork
+            Generate
           </button>
           <button
             type="button"
             className={`${ELEMENT_TAG}-button`}
+            aria-label="Upload reference"
             disabled={disabled}
             onClick={() => upload.current?.click()}
           >
-            Upload reference
+            Upload
           </button>
           <input
             autoComplete="off"
@@ -254,31 +260,44 @@ function ZoneArtwork({
             <button
               type="button"
               className={`${ELEMENT_TAG}-button`}
+              aria-label="Remove artwork"
               disabled={disabled}
               onClick={() => void dropPlaceImage(place.id, zone.id)}
             >
-              Remove artwork
+              Remove
             </button>
           ) : null}
-          <LoreActivityButton query={`Zone artwork · ${place.name} · ${zone.name}`} />
         </div>
       </div>
-      {zone.pictureProblem ||
-      zone.pictureUpdating ||
-      zone.nightPending ||
-      zone.referencePending ||
-      zone.pictureOutdated ? (
-        <p role="status">
-          {zone.pictureProblem ||
-            (zone.pictureUpdating
-              ? "Artwork pending"
-              : zone.referencePending
-                ? "Reference saved for your next visit."
-                : zone.pictureOutdated
-                  ? "Artwork is out of date."
-                  : "Artwork pending")}
-        </p>
-      ) : null}
+      <div className={`${ELEMENT_TAG}-zone-artwork-footer`}>
+        <label className={`${ELEMENT_TAG}-zone-picture-freeze`}>
+          <input
+            autoComplete="off"
+            type="checkbox"
+            role="switch"
+            checked={zone.freezePicture !== true}
+            disabled={busy}
+            onChange={(event) => void controller.setZonePictureFrozen(place, zone.id, !event.target.checked)}
+          />
+          Automatic artwork updates
+        </label>
+        {zone.pictureProblem ||
+        zone.pictureUpdating ||
+        zone.nightPending ||
+        zone.referencePending ||
+        zone.pictureOutdated ? (
+          <p role="status">
+            {zone.pictureProblem ||
+              (zone.pictureUpdating
+                ? "Artwork pending"
+                : zone.referencePending
+                  ? "Reference saved for your next visit."
+                  : zone.pictureOutdated
+                    ? "Artwork is out of date."
+                    : "Artwork pending")}
+          </p>
+        ) : null}
+      </div>
     </section>
   );
 }
@@ -626,8 +645,8 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
                 inert={!zoneDetailsOpen}
               >
                 {zoneDetails && selected ? (
-                  <>
-                    <div className={`${ELEMENT_TAG}-venue-manage-heading`}>
+                  <section className={`${ELEMENT_TAG}-venue-zone-details`} aria-label={selected.name}>
+                    <div className={`${ELEMENT_TAG}-venue-zone-toolbar`}>
                       <button
                         ref={zoneDetailsOpen ? subpageBack : undefined}
                         type="button"
@@ -637,9 +656,6 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
                       >
                         ← Zones
                       </button>
-                      <h2>{selected.name}</h2>
-                    </div>
-                    <section className={`${ELEMENT_TAG}-venue-zone-details`} aria-label={selected.name}>
                       {selected.kind !== "exterior" ? (
                         <ZoneName
                           key={place.id + selected.id}
@@ -649,39 +665,28 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
                           onDirtyChange={setZoneNameDirty}
                           saveRef={zoneNameEditor}
                         />
-                      ) : null}
-                      <ZoneArtwork
-                        key={selected.id}
-                        place={place}
-                        zone={selected}
-                        controller={controller}
-                        night={snapshot.isFounded && lighting === "night"}
-                      />
-                      <label className={`${ELEMENT_TAG}-zone-picture-freeze`}>
-                        <input
-                          autoComplete="off"
-                          type="checkbox"
-                          role="switch"
-                          checked={selected.freezePicture !== true}
-                          disabled={controller.busy}
-                          onChange={(event) =>
-                            void controller.setZonePictureFrozen(place, selected.id, !event.target.checked)
-                          }
-                        />
-                        Automatic artwork updates
-                      </label>
-                      {selected.preparation?.status === "failed" ? (
-                        <button
-                          type="button"
-                          className={`${ELEMENT_TAG}-button`}
-                          disabled={controller.busy}
-                          onClick={() => void controller.retryPrivateSpacePreparation()}
-                        >
-                          Retry private-space preparation
-                        </button>
-                      ) : null}
-                    </section>
-                  </>
+                      ) : (
+                        <h2>{selected.name}</h2>
+                      )}
+                    </div>
+                    <ZoneArtwork
+                      key={selected.id}
+                      place={place}
+                      zone={selected}
+                      controller={controller}
+                      night={snapshot.isFounded && lighting === "night"}
+                    />
+                    {selected.preparation?.status === "failed" ? (
+                      <button
+                        type="button"
+                        className={`${ELEMENT_TAG}-button`}
+                        disabled={controller.busy}
+                        onClick={() => void controller.retryPrivateSpacePreparation()}
+                      >
+                        Retry private-space preparation
+                      </button>
+                    ) : null}
+                  </section>
                 ) : null}
               </section>
             </div>

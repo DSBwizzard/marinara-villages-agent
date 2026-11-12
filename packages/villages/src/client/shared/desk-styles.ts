@@ -116,7 +116,9 @@ export const DESK_STYLES = `
 .${P}-venue-zone-picker button{position:relative;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:2px 12px;min-height:44px;padding:8px 34px 8px 12px;border:0;border-bottom:1px solid var(--border);border-inline-start:3px solid transparent;border-radius:0;background:transparent;color:inherit;font:inherit;text-align:left;overflow-wrap:anywhere;cursor:pointer}
 .${P}-venue-zone-picker button[aria-current="true"]{border-inline-start-color:#d29399;background:#514157aa}
 .${P}-venue-zone-chevron{position:absolute;inset-inline-end:10px;top:50%;translate:0 -50%;font-size:1.3em}
-.${P}-venue-zone-editor .${P}-venue-manage-heading{display:grid;justify-items:start;gap:0;margin-bottom:12px;overflow-wrap:anywhere}
+.${P}-venue-zone-toolbar{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:10px}
+.${P}-venue-zone-toolbar h2{margin:0;font:inherit;overflow-wrap:anywhere}
+.${P}-venue-zone-toolbar .${P}-venue-name-field{margin-top:0}
 .${P}-venue-zone-thumb{display:none}
 .${P}-venue-zone-caption{display:contents}
 .${P}-venue-zone-picker small,.${P}-venue-assignments small{color:#ded0c2}
@@ -143,6 +145,13 @@ export const DESK_STYLES = `
 .${P}-venue-connection-choices input{flex:none;margin:0;accent-color:#969b7e}
 .${P}-workspace-content .${P}-zone-artwork-frame{border-radius:8px}
 .${P}-workspace-content .${P}-zone-artwork-frame>.${P}-venue-image-empty{background:var(--menu-field);color:var(--muted-foreground);border-color:var(--border)}
+.${P}-zone-artwork-full-size{position:absolute;inset:0;display:flex;align-items:flex-end;justify-content:flex-end;color:#f0dfbc}
+.${P}-zone-artwork-full-size span{padding:0 6px;background:#302d47d9;border-start-start-radius:4px}
+.${P}-zone-artwork-full-size:focus-visible{outline-offset:-3px}
+.${P}-workspace-content .${P}-zone-artwork-actions .${P}-button{padding:4px 8px;font:400 15px/1.2 var(--menu-font,Georgia,serif);text-align:center}
+.${P}-zone-artwork-footer{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px}
+.${P}-zone-artwork-footer>p{max-width:45%;margin:0;font-size:14px;line-height:1.3;text-align:end;overflow-wrap:anywhere}
+.${P}-zone-artwork-footer .${P}-zone-picture-freeze{margin-bottom:0}
 .${P}-workspace-content .villages-zone-map-tile[aria-pressed="true"]{background:var(--menu-selected);border-color:var(--menu-tab-line);box-shadow:none}
 .${P}-desk-workspace[data-desk="places"] .${P}-home{--explore-background:transparent;--explore-panel:#393047;--explore-surface:#514157;--explore-text:#f0dfbc;--explore-muted:#d0c1b3;--explore-border:#a39b8460;--explore-selected:#b97980;background:transparent;color:inherit;border:0;border-radius:0;box-shadow:none;padding:0;font:inherit;overflow:visible}
 .${P}-desk-workspace[data-desk="places"] .${P}-home>.${P}-room{display:grid;grid-template-columns:clamp(180px,26%,300px) minmax(0,1fr);gap:26px;overflow:visible;background:transparent}
@@ -268,7 +277,13 @@ export const DESK_STYLES = `
  .${P}-venue-zone-caption small{font-size:13px}
  .${P}-venue-manage-heading h2{font-size:19px}
  .${P}-workspace-content .${P}-venue-manage-heading .${P}-venue-back{font-size:16px}
- .${P}-venue-zone-details{gap:8px}
+ .${P}-workspace-content .${P}-venue-zone-toolbar .${P}-venue-back{font-size:16px}
+ .${P}-venue-zone-details{gap:6px}
+ .${P}-venue-room-artwork{grid-template-columns:clamp(72px,26cqw,124px) minmax(0,1fr);align-items:center;gap:8px}
+ .${P}-venue-room-artwork .${P}-zone-artwork-frame{min-height:44px;font-size:12px}
+ .${P}-zone-artwork-actions{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
+ .${P}-workspace-content .${P}-zone-artwork-actions .${P}-button{padding-inline:2px;font-size:clamp(12px,3.5cqw,15px)}
+ .${P}-zone-artwork-footer>p{font-size:12px}
  .${P}-venue-summary .${P}-venue-primary{min-width:8rem}
  .${P}-desk-workspace[data-venue="true"] .${P}-workspace-sidebar{display:none}
  .${P}-desk-workspace[data-desk="places"] .${P}-home{height:auto;min-height:0;display:block}

@@ -2039,13 +2039,12 @@ ${VILLAGES_FORGING_STYLES}
 .${ELEMENT_TAG}-venue-zones-layout .villages-zone-map { margin:0; }
 .${ELEMENT_TAG}-venue-zones-layout .villages-zone-map-toolbar { margin-top:0; }
 .${ELEMENT_TAG}-venue-zone-details { min-width:0; display:grid; gap:.75rem; }
-.${ELEMENT_TAG}-venue-zone-details h3 { margin:0 0 .5rem; font:inherit; }
 .${ELEMENT_TAG}-venue-room-artwork { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr); gap:.75rem; align-items:start; }
 .${ELEMENT_TAG}-zone-artwork-frame { position:relative; width:100%; aspect-ratio:16/9; overflow:hidden; }
 .${ELEMENT_TAG}-zone-artwork-frame .${ELEMENT_TAG}-venue-profile-image { position:absolute; inset:0; height:100%; width:100%; max-height:none; object-fit:contain; margin:0; }
 .${ELEMENT_TAG}-zone-artwork-frame .${ELEMENT_TAG}-venue-image-empty { width:100%; height:100%; min-height:0; margin:0; box-sizing:border-box; }
 .${ELEMENT_TAG}-zone-artwork-actions { display:grid; min-width:0; gap:.4rem; }
-.${ELEMENT_TAG}-zone-artwork-actions > :is(button,a) { min-width:0; margin:0; text-align:left; overflow-wrap:anywhere; }
+.${ELEMENT_TAG}-zone-artwork-actions > button { min-width:0; margin:0; overflow-wrap:anywhere; }
 .${ELEMENT_TAG}-visual-setting { margin:.75rem 0; }
 .${ELEMENT_TAG}-visual-setting > label { margin-bottom:.15rem; }
 .villages-style-hint { display:block; line-height:1.4; }

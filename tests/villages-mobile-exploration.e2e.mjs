@@ -138,7 +138,7 @@ await withBrowser(browser, async () => {
     { width: 320, height: 568, shell: 120 },
     { width: 390, height: 844, shell: 144 },
     { width: 360, height: 640, shell: 80 },
-    { width: 390, height: 500, shell: 144 },
+    { width: 390, height: 580, shell: 144 },
     { width: 1440, height: 900, shell: 160 },
     { width: 1024, height: 768, shell: 120 },
     { width: 720, height: 900, shell: 120 },
@@ -169,7 +169,7 @@ await withBrowser(browser, async () => {
       {
         ...market,
         name: "Village Market",
-        ...(height === 500 && {
+        ...(height === 580 && {
           zones: [
             market.zones[0],
             ...Array.from({ length: 5 }, (_, index) => ({
@@ -178,6 +178,7 @@ await withBrowser(browser, async () => {
               name: `Room ${index + 1}`,
               kind: "public",
               image: index === 4 ? null : roomImage,
+              pictureUpdating: index === 0,
             })),
           ],
         }),
@@ -444,23 +445,31 @@ await withBrowser(browser, async () => {
         if (mobile) assert.deepEqual(await headerPosition(), aboutPosition);
       }
     }
-    if (mobile && height === 500) {
+    if (mobile && height === 580) {
       await tabs.getByRole("button", { name: "Zones", exact: true }).click();
       const list = venue.getByRole("region", { name: "Zones", exact: true });
       const editor = venue.getByRole("region", { name: "Edit room details", exact: true });
       const backToZones = editor.getByRole("button", { name: "← Zones", exact: true });
+      const arrival = home.locator("[data-arrival]");
+      const scroller = arrival.locator("." + P + "-workspace-content");
       await expect(list.getByRole("button")).toHaveCount(6);
       const roomWithArtwork = list.getByRole("button", { name: /^Room 1\b/ });
       await expect(roomWithArtwork.locator("img")).toHaveAttribute("src", roomImage.url);
       await expect(venue.locator("." + P + "-venue-zone-editor")).toHaveCSS("translate", "100%");
       await roomWithArtwork.click();
       await expect(backToZones).toBeFocused();
-      await expect(editor.getByRole("heading", { name: "Room 1", exact: true })).toBeVisible();
+      await expect(editor.getByRole("textbox", { name: "Room name" })).toHaveValue("Room 1");
+      await expect(editor.getByText("Room name", { exact: true })).toHaveCount(0);
+      await expect(editor.getByRole("heading", { name: "Room 1", exact: true })).toHaveCount(0);
+      await expect(editor.getByRole("status")).toHaveText("Artwork pending");
+      await expect(editor.getByRole("switch", { name: "Automatic artwork updates" })).toBeInViewport({ ratio: 1 });
+      await expect
+        .poll(() => scroller.evaluate((node) => node.scrollHeight - node.clientHeight))
+        .toBeLessThanOrEqual(1);
       await expect(backdrop).toHaveAttribute("src", market.presentation.image.url);
       await backToZones.click();
       await expect(roomWithArtwork).toBeFocused();
       const lastZone = list.getByRole("button", { name: /^Room 5/ });
-      const arrival = home.locator("[data-arrival]");
       const frame = await arrival.boundingBox();
       await expect(lastZone).not.toBeInViewport({ ratio: 1 });
       const x = frame.x + frame.width * 0.5;
@@ -474,7 +483,6 @@ await withBrowser(browser, async () => {
       }
       await expect(lastZone).toBeInViewport({ ratio: 1 });
       await expect(lastZone.locator("." + P + "-venue-zone-thumb svg")).toBeVisible();
-      const scroller = arrival.locator("." + P + "-workspace-content");
       const listScroll = await scroller.evaluate((node) => node.scrollTop);
       await lastZone.click();
       await expect(backToZones).toBeFocused();
