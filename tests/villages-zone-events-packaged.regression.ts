@@ -417,66 +417,70 @@ try {
   });
   assert.equal(completions, beforeContact + 1);
   assert.equal(turnOf("contact")?.mode, "contact");
-  const distant = await turn("distant", {
-    segments: [
-      { kind: "dialogue", speakerId: "distant", text: "PRIVATE WORDS NEVER DELIVERED", delivery: "shout" },
-      { kind: "narration", text: "You pause at the railing." },
-    ],
-  });
-  const distantPublic = JSON.stringify(await history(scope));
-  assert.match(distantPublic, /indistinct/);
-  assert.doesNotMatch(
-    JSON.stringify(distant) + distantPublic,
-    /PRIVATE WORDS NEVER DELIVERED|Distant Resident|UNSEEN BEDROOM FURNITURE|"soundOnly"/,
+  const doorway = await turn(
+    "doorway-call",
+    {
+      segments: [
+        { kind: "dialogue", speakerId: "neighbor", text: "I can hear you from the Kitchen.", delivery: "shout" },
+      ],
+    },
+    "I call out to Neighbor.",
   );
+  const doorwayPublic = JSON.stringify(await history(scope));
+  assert.match(doorwayPublic, /I can hear you from the Kitchen/);
+  assert.doesNotMatch(JSON.stringify(doorway) + doorwayPublic, /Distant Resident|UNSEEN BEDROOM FURNITURE|"soundOnly"/);
   await turn("local", {
     segments: [{ kind: "dialogue", speakerId: "aqua", text: "Only the terrace hears these words." }],
   });
   const local = episodeOf("local")!.segments[0];
   assert.deepEqual(local.heardBy.toSorted(), ["aqua", "feddy", "player"]);
-  assert.deepEqual(local.soundOnly?.characterIds, ["neighbor"]);
+  assert.equal(local.soundOnly, undefined);
   const beforeRestart = completions;
   await restart();
-  assert.doesNotMatch(JSON.stringify(await history(scope)), /PRIVATE WORDS NEVER DELIVERED|Distant Resident/);
+  assert.doesNotMatch(JSON.stringify(await history(scope)), /indistinct|Distant Resident/);
   assert.equal(completions, beforeRestart);
 
-  const arrival = await turn("crossing", {
-    segments: [
-      { id: "before", kind: "dialogue", speakerId: "neighbor", text: "PRIVATE WORDS BEFORE ARRIVAL" },
-      {
-        id: "cross",
-        kind: "narration",
-        text: "Neighbor steps out of the Kitchen onto the Terrace beside you.",
-        requires: ["arrive"],
-      },
-      {
-        id: "after",
-        kind: "dialogue",
-        speakerId: "neighbor",
-        text: "I work in the harbour workshop.",
-        delivery: "whisper",
-        targetId: "player",
-      },
-    ],
-    commands: [
-      {
-        id: "arrive",
-        type: "move",
-        who: "neighbor",
-        to: "terrace",
-        at: "cross",
-        source: [{ segment: "cross", perceive: { kind: "seen", by: ["player"] } }],
-      },
-    ],
-    keep: [
-      {
-        for: ["player"],
-        class: "information",
-        text: "Neighbor works in the harbour workshop.",
-        source: [{ segment: "after", perceive: { kind: "heard", by: ["player"] } }],
-      },
-    ],
-  });
+  const arrival = await turn(
+    "crossing",
+    {
+      segments: [
+        { id: "before", kind: "dialogue", speakerId: "neighbor", text: "PRIVATE WORDS BEFORE ARRIVAL" },
+        {
+          id: "cross",
+          kind: "narration",
+          text: "Neighbor steps out of the Kitchen onto the Terrace beside you.",
+          requires: ["arrive"],
+        },
+        {
+          id: "after",
+          kind: "dialogue",
+          speakerId: "neighbor",
+          text: "I work in the harbour workshop.",
+          delivery: "whisper",
+          targetId: "player",
+        },
+      ],
+      commands: [
+        {
+          id: "arrive",
+          type: "move",
+          who: "neighbor",
+          to: "terrace",
+          at: "cross",
+          source: [{ segment: "cross", perceive: { kind: "seen", by: ["player"] } }],
+        },
+      ],
+      keep: [
+        {
+          for: ["player"],
+          class: "information",
+          text: "Neighbor works in the harbour workshop.",
+          source: [{ segment: "after", perceive: { kind: "heard", by: ["player"] } }],
+        },
+      ],
+    },
+    "I ask Neighbor to come onto the Terrace.",
+  );
   const moved = episodeOf("crossing")!;
   assert(!moved.segments[0].heardBy.includes("player"));
   assert.deepEqual(moved.segments[2].heardBy.toSorted(), ["neighbor", "player"]);
