@@ -5,7 +5,6 @@ import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { NarrationReadset } from "../../domain/models/narration-model.js";
 import type { GreetingTrace, VenueScene } from "../../domain/models/scene-model.js";
-import { dueRelationshipAnswers } from "../../domain/rules/continuity-library.js";
 import { badGateway, conflict } from "../../domain/rules/errors.js";
 import { inspectedLoreUse, villageLoreContext } from "../../domain/rules/lore-context.js";
 import { memoryHash, memoryRequire } from "../../domain/rules/memory-integrity.js";
@@ -13,7 +12,6 @@ import {
   NARRATION_DIRECTION,
   NARRATION_KEEP,
   NARRATION_RESPONSE,
-  RELATIONSHIP_ANSWER,
   RELATIONSHIP_KEEP,
   RELATIONSHIP_DIRECTION,
 } from "../../domain/rules/narration-contract.js";
@@ -167,17 +165,6 @@ export function createSceneWriting({
     ]);
     signal?.throwIfAborted();
     const calendar = context.calendar;
-    const relationshipAnswers =
-      mode === "greet"
-        ? undefined
-        : dueRelationshipAnswers(
-            authority,
-            calendar,
-            selectedIds,
-            scene.id,
-            undefined,
-            input.trim() ? context.source.actors : [],
-          );
     const presentation = context.presentation,
       sprites = Object.entries(presentation.sprites),
       loreUses = inspectedLoreUse(loreInspection, "GM");
@@ -189,25 +176,11 @@ export function createSceneWriting({
         venueWritingDirection(village.narrationStyle, player.name),
         venueAdditionalWritingGuidance(village.narrationStyle),
       ]),
-      metadata: blocksFor([
-        NARRATION_RESPONSE,
-        NARRATION_KEEP,
-        RELATIONSHIP_KEEP,
-        relationshipAnswers?.owners.length
-          ? mode === "chat"
-            ? "Write the following answers only if this reply uses scene.end to conclude the Scene. Otherwise omit relationship.answer. " +
-              RELATIONSHIP_ANSWER
-            : RELATIONSHIP_ANSWER
-          : "",
-        NARRATION_NATIVE,
-      ]),
+      metadata: blocksFor([NARRATION_RESPONSE, NARRATION_KEEP, RELATIONSHIP_KEEP, NARRATION_NATIVE]),
       identity: blocksFor([
         ...profiles,
         JSON.stringify({
           player: { name: player.name, description: player.description },
-          ...(relationshipAnswers?.owners.length
-            ? { relationshipAnswersDue: relationshipAnswers.owners.map(({ id }) => id) }
-            : {}),
           startingBackground: renderPlayerBackgroundContext(village),
           setting: villageCurrentSetting({ ...village, narrative: undefined }),
         }),
@@ -296,11 +269,6 @@ export function createSceneWriting({
       });
     }
     const readset = fittedNarrationReadset(authority, context, fitted.evidenceIds);
-    if (relationshipAnswers?.owners.length)
-      readset.admission.relationshipAnswers = {
-        ...relationshipAnswers,
-        ...(mode === "chat" ? { onSceneEnd: true as const } : {}),
-      };
     const request: Request = {
       fitted,
       readset,

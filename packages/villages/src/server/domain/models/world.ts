@@ -381,7 +381,7 @@ export type VillageBackgroundPace = "off" | "quiet" | "balanced" | "lively";
 
 export type ResidentPlanningOpportunity = {
   id: string;
-  kind: "encounter" | "routine" | "world";
+  kind: "encounter" | "routine" | "world" | "relationship";
   startsAt: string;
   endsAt: string;
   actorIds: string[];
@@ -513,6 +513,7 @@ export type ReturnCatchupBatch = {
   from?: string;
   until?: string;
   reason?: string;
+  relationshipRefresh?: true;
   opportunities?: ResidentPlanningOpportunity[];
   records?: {
     opportunityId: string;

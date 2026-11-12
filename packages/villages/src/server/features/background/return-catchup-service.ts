@@ -1,6 +1,10 @@
 import type { VillageState } from "../../domain/models/world.js";
 import { ReturnOpportunityUnavailable, returnCatchupSubject } from "../../domain/rules/return-catchup-authority.js";
-import { discoverReturnBatch, recordReturnVisibility } from "../../domain/rules/return-catchup-state.js";
+import {
+  appendReturnRelationshipRefresh,
+  discoverReturnBatch,
+  recordReturnVisibility,
+} from "../../domain/rules/return-catchup-state.js";
 import { conflict } from "../../domain/rules/errors.js";
 import { activityDate } from "../../domain/rules/event-attempts.js";
 import { departureContinuityAvailable } from "../../domain/rules/return-catchup-capture.js";
@@ -90,9 +94,10 @@ export function createReturnCatchup(ports: Ports) {
           continue;
         }
         const independent = batch.opportunities?.some((row) => row.kind === "world");
+        const relationship = batch.opportunities?.find((row) => row.kind === "relationship");
         if (!independent && ports.readAuthority) state = await ports.readSnapshot({ memories: true });
         const record = batch.records?.find((row) => !["settled", "rejected", "held"].includes(row.status));
-        if (!record) {
+        if (!record || record.opportunityId === relationship?.id) {
           const held = batch.records?.find((row) => row.status === "held");
           if (held) {
             await update(batch.id, (world) => {
@@ -100,9 +105,17 @@ export function createReturnCatchup(ports: Ports) {
             });
             return;
           }
+        }
+        if (!record) {
+          let appended = false;
           await update(batch.id, (world) => {
+            appended = false;
+            const active = world.returnCatchup!.batch!;
+            if (active.records?.some((row) => row.status !== "settled" && row.status !== "rejected")) return;
+            appended = appendReturnRelationshipRefresh(world, active);
+            if (appended) return;
             if (
-              !independent &&
+              !active.opportunities?.some((row) => row.kind === "world" || row.kind === "relationship") &&
               (!world.returnCatchup?.capture || !departureContinuityAvailable(world.returnCatchup.capture, world))
             ) {
               world.returnCatchup!.batch!.reason = "Resident continuity changed before the absence could be verified.";
@@ -112,6 +125,7 @@ export function createReturnCatchup(ports: Ports) {
             world.returnCatchup!.batch!.status = "completed";
             if (!ports.hasPresence()) delete world.returnCatchup!.capture;
           });
+          if (appended) continue;
           if (ports.hasPresence()) await recordVisible(ports.now());
           return;
         }

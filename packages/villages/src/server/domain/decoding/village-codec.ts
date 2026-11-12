@@ -1196,6 +1196,8 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
       throw new Error("The saved Village catch-up batch could not be read.");
     if (historical && !["completed", "cancelled"].includes(String(batch.status)))
       throw new Error("The saved Village catch-up history contains unfinished work.");
+    if (batch.relationshipRefresh !== undefined && batch.relationshipRefresh !== true)
+      throw new Error("The saved Village relationship refresh could not be read.");
     if (
       typeof batch.budgetDate !== "string" ||
       !/^\d{4}-\d{2}-\d{2}$/.test(batch.budgetDate) ||
@@ -1241,7 +1243,7 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
         if (
           typeof row.id !== "string" ||
           !/^[a-zA-Z0-9-]{1,100}$/.test(row.id) ||
-          !["encounter", "routine", "world"].includes(String(row.kind)) ||
+          !["encounter", "routine", "world", "relationship"].includes(String(row.kind)) ||
           typeof row.startsAt !== "string" ||
           !Number.isFinite(Date.parse(row.startsAt)) ||
           row.endsAt !== row.startsAt ||
@@ -1256,12 +1258,16 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
           (row.kind === "encounter" &&
             (row.actorIds.length < 2 || !row.venueId || typeof row.zoneId !== "string" || !row.zoneId)) ||
           (row.kind === "routine" && (row.actorIds.length !== 1 || !!row.venueId)) ||
+          (row.kind === "relationship" &&
+            (row.startsAt !== batch.until || !!row.venueId || row.zoneId !== undefined)) ||
           (row.kind === "world" && (!row.venueId || typeof row.zoneId !== "string" || !row.zoneId)) ||
           !Array.isArray(row.facts) ||
           row.facts.some((fact) => typeof fact !== "string")
         )
           throw new Error("The saved Village catch-up opportunities could not be read.");
       }
+      if (batch.opportunities.slice(0, -1).some((row) => asRecord(row).kind === "relationship"))
+        throw new Error("The saved Village relationship refresh must follow catch-up history.");
     }
     if (batch.records !== undefined) {
       if (

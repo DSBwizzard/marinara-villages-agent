@@ -116,20 +116,16 @@ await runCase("gm-effects/provider-reply", async () => {
 });
 
 await runCase("gm-effects/relationship-answer", async () => {
-  for (const variant of ["conclude", "native", "invalid"]) {
+  for (const variant of ["conclude", "native"]) {
     const host = await packagedSceneServer();
     const native = variant !== "conclude";
-    const invalid = variant === "invalid";
     const answer = "I enjoy how curious you are when we talk.";
-    const tooLong = "I like the way your curiosity makes me notice the little things I usually walk past.";
-    const twoSentences = "Honestly? You made my evening.";
     const departure = "I leave now.";
     let calls = 0;
     host.model.chatComplete = async (messages: { content: string }[]) => {
       const ending = ++calls === 2;
       const fit = messages.map(({ content }) => content).join("\n");
-      assert(fit.includes('"relationshipAnswersDue":["mara"]'));
-      assert.equal(fit.includes("only if this reply uses scene.end"), !ending || native);
+      assert(!fit.includes('"relationshipAnswersDue"'));
       assert.equal(fit.includes('{"relationships":[{"for":"mara","about":"player","score":3}]}'), ending);
       return {
         content: JSON.stringify({
@@ -158,18 +154,10 @@ await runCase("gm-effects/relationship-answer", async () => {
               about: ["player"],
               class: "perspective",
               current: true,
-              ...(ending && variant === "native"
-                ? {}
-                : { text: ending && !invalid ? answer : "I feel a little more at ease with the player." }),
-              source: ending && !invalid ? ["self"] : ["said", "self"],
-              relationship:
-                ending && native
-                  ? invalid
-                    ? { impact: "small-positive", answer: [tooLong, twoSentences] }
-                    : { answer: [twoSentences, tooLong, answer] }
-                  : ending
-                    ? { answer }
-                    : { impact: "small-positive", answer },
+              text: ending ? answer : "I feel a little more at ease with the player.",
+              source: ending ? ["self"] : ["said", "self"],
+              relationship: ending ? { answer } : { impact: "small-positive", answer },
+              independent: true,
             },
           ],
         }),
@@ -208,11 +196,10 @@ await runCase("gm-effects/relationship-answer", async () => {
       assert.equal(ending.statusCode, 200, ending.body);
       assert.equal(host.scene().status, "closed");
       const closingEdge = await edge();
-      assert.equal(closingEdge.answer, invalid ? undefined : answer);
-      assert.equal(closingEdge.score, invalid ? 6 : 3);
+      assert.equal(closingEdge.answer, undefined);
+      assert.equal(closingEdge.score, 3);
       const saved = fixtureVillageState(host.records.get("villages-village").data, host.records);
-      const blurb = saved.continuity.versions.find((version) => version.relationshipAnswer === answer);
-      assert.equal(blurb?.text, invalid ? undefined : answer);
+      assert.equal(saved.villagers[0].relationshipScene?.id, host.scene().id);
       assert.equal(calls, 2);
       assert(!host.scene().lines.some((line) => line.content.includes(answer)));
     } finally {

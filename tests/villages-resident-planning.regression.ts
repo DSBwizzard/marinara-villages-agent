@@ -1,4 +1,4 @@
-// Test cases: resident-planning/one-gm, resident-planning/housing, resident-planning/reflection, resident-planning/mail, resident-planning/pre-spend, resident-planning/paid-hold, resident-planning/independent, resident-planning/catchup, resident-planning/strict-input, resident-planning/protected-context, resident-planning/live-scene, resident-planning/mail-initiative, resident-planning/delayed-meeting, resident-planning/background-recovery
+// Test cases: resident-planning/one-gm, resident-planning/housing, resident-planning/reflection, resident-planning/mail, resident-planning/pre-spend, resident-planning/paid-hold, resident-planning/independent, resident-planning/catchup, resident-planning/catchup-relationship, resident-planning/strict-input, resident-planning/protected-context, resident-planning/live-scene, resident-planning/mail-initiative, resident-planning/delayed-meeting, resident-planning/background-recovery
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -12,6 +12,12 @@ import {
 import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
 import { createResidentPlanning } from "../packages/villages/src/server/features/residents/resident-planning-service.js";
 import { captureReturnContext } from "../packages/villages/src/server/domain/rules/return-catchup-capture.js";
+import {
+  appendReturnRelationshipRefresh,
+  discoverReturnBatch,
+} from "../packages/villages/src/server/domain/rules/return-catchup-state.js";
+import { continuityRelationships } from "../packages/villages/src/server/domain/rules/continuity-library.js";
+import { reserveEventAttempt } from "../packages/villages/src/server/domain/rules/event-attempts.js";
 import {
   readResidentPlanningInput,
   readResidentPlanningProposal,
@@ -400,6 +406,86 @@ await runCase("resident-planning/catchup", async () => {
   assert.equal(f.calls.length, 1);
   assert.equal(coerceVillageState(f.state).returnCatchup!.capture!.episodeRevision, f.state.episodes.revision);
 });
+await runCase("resident-planning/catchup-relationship", async () => {
+  const returned = new Date(),
+    f = fixture(new Date(returned.getTime() - 2 * 60 * 60_000));
+  const state = f.state;
+  state.backgroundPace = "quiet";
+  for (const resident of state.villagers) resident.cardSnapshot.capturedAt = f.at;
+  const departure = captureReturnContext(state, f.now);
+  state.returnCatchup = { capture: departure };
+  discoverReturnBatch(state, returned, "before-first-scene");
+  assert.equal(state.returnCatchup.batch?.relationshipRefresh, undefined);
+  state.villagers[0].relationshipScene = { id: "completed-scene", endedAt: f.at };
+  const capture = captureReturnContext(state, f.now);
+  state.returnCatchup = { capture };
+  discoverReturnBatch(state, returned, "after-first-scene");
+  const batch = state.returnCatchup.batch!;
+  assert.equal(batch.relationshipRefresh, true);
+  assert.equal(batch.opportunityLimit, 2);
+  assert(batch.opportunities!.length <= 1, "the final write reserves part of Quiet's existing allowance");
+  batch.status = "running";
+  for (const record of batch.records!) {
+    reserveEventAttempt(state, record.opportunityId, batch.budgetDate, returned.getTime(), batch.id);
+    record.status = "settled";
+  }
+  const afterHistory = "Mara appreciated being asked about her craft.";
+  for (const [id, text, witnesses] of [
+    ["settled-history", afterHistory, ["mara"]],
+    ["private-player-input", "PLAYER ONLY SENTINEL", ["player"]],
+  ] as const)
+    retainNativeFact(
+      state,
+      { id, kind: "initialization", targetId: id, revision: 1, text, witnesses: [...witnesses] },
+      returned.toISOString(),
+      { about: ["player"] },
+    );
+  assert(appendReturnRelationshipRefresh(state, batch));
+  assert(!appendReturnRelationshipRefresh(state, batch));
+  const final = batch.opportunities!.at(-1)!;
+  assert.equal(final.kind, "relationship");
+  assert.deepEqual(final.actorIds, ["mara"]);
+  assert.equal(coerceVillageState(state).returnCatchup!.batch!.opportunities!.at(-1)!.kind, "relationship");
+  await f.service.queueReturnOpportunity(batch.id, final, capture);
+  const input = f.queued.at(-1).input;
+  assert.equal(input.context.narration.historical, undefined);
+  assert.equal(input.catchup.batchId, batch.id);
+  const line = "I liked how curious you were.";
+  f.payload({
+    keep: [
+      {
+        owner: "mara",
+        answer: [
+          "Honestly? You made my evening.",
+          "I like the way your curiosity makes me notice the little things I usually walk past.",
+          line,
+        ],
+      },
+      { owner: "leo", answer: ["I had fun with you."] },
+    ],
+  });
+  reserveEventAttempt(state, "paid-final", batch.budgetDate, returned.getTime(), batch.id);
+  const result = await f.service.handler.generate(input);
+  const prompt = JSON.stringify(f.calls[0]);
+  assert(prompt.includes(afterHistory), "capture uses post-history continuity");
+  assert(!prompt.includes("PLAYER ONLY SENTINEL"));
+  assert(!prompt.includes('"gmPrivateInput"'));
+  const stale = structuredClone(state);
+  stale.villagers[0].cardSnapshot.name = "Changed identity";
+  f.service.handler.apply(stale, input, result, { retrying: false });
+  assert.deepEqual(stale.returnCatchup!.batch!.records!.at(-1)!.outcome, { relationshipBlurbs: 0 });
+  f.service.handler.apply(state, input, result, { retrying: false });
+  f.service.handler.apply(state, input, result, { retrying: false });
+  assert.equal(f.calls.length, 1);
+  assert.deepEqual(state.returnCatchup!.batch!.records!.at(-1)!.outcome, { relationshipBlurbs: 1 });
+  assert.equal(state.episodes.records.at(-1)?.segments.length, 0);
+  assert.equal(state.episodes.records.at(-1)?.opportunity?.kind, "relationship");
+  const profiles = continuityRelationships(coerceVillageState(state), returned.toISOString());
+  assert.equal(profiles[0].scores[0].answer, line);
+  assert.equal(profiles[0].scores[0].score, 0);
+  assert.equal(profiles[1].scores[0].answer, undefined);
+});
+
 await runCase("resident-planning/protected-context", async () => {
   const f = fixture(),
     secret = "FORGOTTEN CIRCUMSTANCE SENTINEL",

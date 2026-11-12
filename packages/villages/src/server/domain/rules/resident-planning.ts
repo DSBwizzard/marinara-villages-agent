@@ -7,6 +7,7 @@ import type { ResidentNarrationCapture } from "../models/resident-narration.js";
 import {
   NARRATION_KEEP,
   RELATIONSHIP_ANSWER,
+  RELATIONSHIP_ANSWER_STYLE,
   RELATIONSHIP_DIRECTION,
   RELATIONSHIP_KEEP,
 } from "./narration-contract.js";
@@ -174,6 +175,53 @@ export type ResidentPlanningProposal = z.infer<typeof proposal>;
 export function buildResidentPlanningMessages(context: ResidentPlanningContext): CapabilityLanguageModelMessage[] {
   const capture = readResidentNarrationCapture(context.narration),
     offered = capture.opportunity;
+  if (offered.kind === "relationship") {
+    const { entries, protections, relationships } = capture.context.prompt;
+    const due = new Set(capture.relationshipAnswerIds);
+    const residents = context.residents
+      .filter((row) => due.has(row.characterId))
+      .map((resident) => {
+        const id = resident.characterId;
+        return {
+          ...resident,
+          warmth: relationships?.find((row) => row.for === id && row.about === "player")?.score ?? 0,
+          remembered: entries.filter(
+            (row) => row.for === id && Array.isArray(row.about) && row.about.includes("player"),
+          ),
+          exchanges: Object.values(capture.context.historical)
+            .flatMap((source) =>
+              (source.kind === "speech" || source.kind === "written") &&
+              (source.actorId === id || source.actorId === "player")
+                ? source.perceptions
+                    .filter((row) => row.actorId === id && row.channel === "words")
+                    .map((row) => ({ by: source.actorId, text: row.text }))
+                : [],
+            )
+            .slice(-12),
+          protections: protections.filter((row) => row.for === id),
+        };
+      });
+    return [
+      {
+        role: "system",
+        content: [
+          "Catch-up has reached the present. Write only private relationship blurbs about the player. Return JSON {keep:[{owner:resident ID,answer:[three alternative strings]}]}. The game shows one line per listed resident.",
+          RELATIONSHIP_ANSWER_STYLE,
+          "Use the card, the current relationship score and what each resident personally knows. Address the player directly. Treat private knowledge as belonging only to its named holder. Base every impression on existing history.",
+          'When protectionRequired is true, include protection:{roots:[applicable supplied protected root IDs, or an empty array],disposition:"clear"} only after checking the lines against the resident’s memory protections.',
+        ].join("\n\n"),
+      },
+      {
+        role: "user",
+        content: JSON.stringify({
+          player: context.playerPersonaName,
+          relationshipAnswersDue: capture.relationshipAnswerIds,
+          residents,
+          protectionRequired: capture.context.protectedRoots.length > 0,
+        }),
+      },
+    ];
+  }
   const text = [
     VILLAGE_SHARED_SETTING_RULE,
     "You are the GM for one captured resident opportunity. Return one JSON object. A quiet result {} is valid; no daily quota or obligation to act. The player is absent: never invent player participation, knowledge, actions or consent.",
@@ -227,6 +275,21 @@ export function readResidentPlanningProposal(
 ): ResidentPlanningProposal {
   const value = proposal.parse(payload),
     actors = context.narration.opportunity.actorIds;
+  if (context.narration.opportunity.kind === "relationship") {
+    memoryRequire(
+      !value.encounter &&
+        !value.reflection &&
+        !value.mail &&
+        !value.commands.length &&
+        !value.requires.length &&
+        !value.planId &&
+        !value.routineIdea &&
+        !value.housingRequests.length &&
+        value.keep.length <= 4,
+      "relationship catch-up accepts only private blurbs",
+    );
+    return value;
+  }
   memoryRequire(
     [value.encounter, value.reflection, value.mail].filter(Boolean).length <= 1,
     "choose one resident fictional source",
@@ -315,6 +378,7 @@ export function readResidentPlanningInput(raw: unknown): ResidentPlanningInput {
     context = value.context;
   memoryRequire(context.format === 1, "unsupported resident planning context");
   const capture = readResidentNarrationCapture(context.narration);
+  const relationship = capture.opportunity.kind === "relationship";
   memoryRequire(
     context.moment.instant === capture.context.at &&
       new Set(context.residents.map((row) => row.characterId)).size === context.residents.length &&
@@ -323,8 +387,13 @@ export function readResidentPlanningInput(raw: unknown): ResidentPlanningInput {
     "resident planning profile or calendar changed cast",
   );
   memoryRequire(
-    !!context.catchup === !!value.catchup &&
-      !!capture.historical === !!value.catchup &&
+    !!context.catchup === (!!value.catchup && !relationship) &&
+      !!capture.historical === (!!value.catchup && !relationship) &&
+      (!relationship ||
+        (value.catchup?.until === capture.context.at &&
+          !value.socialPlan &&
+          !context.housing.length &&
+          !context.plans.length)) &&
       (!value.catchup ||
         (value.catchup.world.seed === capture.context.seed && value.catchup.world.setupAt === capture.context.setupAt)),
     "resident planning changed historical world",

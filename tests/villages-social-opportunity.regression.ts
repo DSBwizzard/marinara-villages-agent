@@ -247,9 +247,12 @@ assert.equal(changedKnowledge.returnCatchup?.batch?.status, "completed");
 assert.match(changedKnowledge.returnCatchup?.batch?.reason ?? "", /continuity changed/i);
 let working = structuredClone(tracking);
 const dispatched: string[] = [];
+let beforeMutation: (() => void) | undefined;
 const coordinator = createReturnCatchup({
   readSnapshot: async () => structuredClone(working),
   mutate: async (change: any) => {
+    beforeMutation?.();
+    beforeMutation = undefined;
     change(working);
     return structuredClone(working);
   },
@@ -277,6 +280,26 @@ assert.equal(
   afterTwoHours.toISOString(),
   "A completed visible return establishes a new boundary.",
 );
+working = structuredClone(tracking);
+const racedBatch = working.returnCatchup!.batch!;
+racedBatch.status = "running";
+for (const record of racedBatch.records!) record.status = "settled";
+beforeMutation = () => {
+  const at = racedBatch.until!;
+  racedBatch.opportunities!.push({
+    id: "relationship-concurrent",
+    kind: "relationship",
+    startsAt: at,
+    endsAt: at,
+    actorIds: [working.villagers[0].characterId],
+    venueId: "",
+    facts: [],
+  });
+  racedBatch.records!.push({ opportunityId: "relationship-concurrent", status: "pending" });
+};
+await coordinator.advance();
+assert.equal(racedBatch.status, "running", "A stale completion cannot close over a newly queued blurb.");
+assert.equal(racedBatch.records!.at(-1)!.status, "pending");
 working = structuredClone(tracking);
 working.returnCatchup!.batch!.opportunities = [];
 working.returnCatchup!.batch!.records = [];
