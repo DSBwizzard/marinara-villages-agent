@@ -120,9 +120,9 @@ await runCase("gm-effects/relationship-answer", async () => {
     const host = await packagedSceneServer();
     const native = variant !== "conclude";
     const invalid = variant === "invalid";
-    const answer = invalid
-      ? "I like the way your curiosity makes me notice the little things I usually walk past."
-      : "I enjoy how curious you are when we talk.";
+    const answer = "I enjoy how curious you are when we talk.";
+    const tooLong = "I like the way your curiosity makes me notice the little things I usually walk past.";
+    const twoSentences = "Honestly? You made my evening.";
     const departure = "I leave now.";
     let calls = 0;
     host.model.chatComplete = async (messages: { content: string }[]) => {
@@ -158,9 +158,18 @@ await runCase("gm-effects/relationship-answer", async () => {
               about: ["player"],
               class: "perspective",
               current: true,
-              text: ending ? answer : "I feel a little more at ease with the player.",
+              ...(ending && variant === "native"
+                ? {}
+                : { text: ending && !invalid ? answer : "I feel a little more at ease with the player." }),
               source: ending && !invalid ? ["self"] : ["said", "self"],
-              relationship: ending && !invalid ? { answer } : { impact: "small-positive", answer },
+              relationship:
+                ending && native
+                  ? invalid
+                    ? { impact: "small-positive", answer: [tooLong, twoSentences] }
+                    : { answer: [twoSentences, tooLong, answer] }
+                  : ending
+                    ? { answer }
+                    : { impact: "small-positive", answer },
             },
           ],
         }),
@@ -201,6 +210,9 @@ await runCase("gm-effects/relationship-answer", async () => {
       const closingEdge = await edge();
       assert.equal(closingEdge.answer, invalid ? undefined : answer);
       assert.equal(closingEdge.score, invalid ? 6 : 3);
+      const saved = fixtureVillageState(host.records.get("villages-village").data, host.records);
+      const blurb = saved.continuity.versions.find((version) => version.relationshipAnswer === answer);
+      assert.equal(blurb?.text, invalid ? undefined : answer);
       assert.equal(calls, 2);
       assert(!host.scene().lines.some((line) => line.content.includes(answer)));
     } finally {

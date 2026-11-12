@@ -17,6 +17,18 @@ export const ROOM_CONTINUITY_TEXT_BYTES = 16000;
 export const RELATIONSHIP_ANSWER_WORD_LIMIT = 15;
 const relationshipSentence = new Intl.Segmenter("en", { granularity: "sentence" });
 const relationshipWords = new Intl.Segmenter("en", { granularity: "word" });
+
+export function isRelationshipAnswer(answer: unknown): answer is string {
+  if (typeof answer !== "string" || Buffer.byteLength(answer) > 320 || /[\r\n\u0085\u2028\u2029]/u.test(answer))
+    return false;
+  // ICU suppresses breaks before lowercase words; check those as sentence starts too.
+  const sentence = answer.replace(/(\.["'”’)]*\s+)(\p{Ll})/gu, (_, end, letter: string) => end + letter.toUpperCase());
+  const words = [...relationshipWords.segment(answer)].filter((word) => word.isWordLike).length;
+  return (
+    words > 0 && words <= RELATIONSHIP_ANSWER_WORD_LIMIT && [...relationshipSentence.segment(sentence)].length === 1
+  );
+}
+
 export const RELATIONSHIP_IMPACTS = {
   "small-positive": 3,
   "meaningful-positive": 6,
@@ -643,21 +655,7 @@ export function applyContinuityWrite(
     );
     memoryRequire(write.relationship.impact || write.relationship.answer, "empty relationship update");
     if (write.relationship.answer !== undefined) {
-      const answer = write.relationship.answer;
-      memoryString(answer, 320);
-      // ICU suppresses breaks before lowercase words; check those as sentence starts too.
-      const sentence = answer.replace(
-        /(\.["'”’)]*\s+)(\p{Ll})/gu,
-        (_, end, letter: string) => end + letter.toUpperCase(),
-      );
-      const words = [...relationshipWords.segment(answer)].filter((word) => word.isWordLike).length;
-      if (
-        words > 0 &&
-        words <= RELATIONSHIP_ANSWER_WORD_LIMIT &&
-        !/[\r\n\u0085\u2028\u2029]/u.test(answer) &&
-        [...relationshipSentence.segment(sentence)].length === 1
-      )
-        relationshipAnswer = answer;
+      if (isRelationshipAnswer(write.relationship.answer)) relationshipAnswer = write.relationship.answer;
       else
         memoryRequire(
           write.relationship.impact,
