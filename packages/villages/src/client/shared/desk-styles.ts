@@ -103,7 +103,7 @@ export const DESK_STYLES = `
 .${P}-venue-profile .${P}-storybook-heading{padding-bottom:.23em;border-bottom:1px solid #b49a6d}
 .${P}-venue-photo{position:absolute;inset:0;z-index:-2;margin:0;pointer-events:none}
 .${P}-venue-photo img{display:block;width:100%;height:100%;object-fit:cover}
-.${P}-venue-photo .${P}-venue-storybook-photo{object-position:30% bottom}
+.${P}-venue-photo .${P}-venue-storybook-photo{object-position:center bottom}
 .${P}-venue-zone-photo{position:absolute;inset:0}
 @media(prefers-reduced-motion:no-preference){.${P}-venue-zone-photo{transition:opacity .18s ease-out}}
 .${P}-venue-summary{min-width:0;font-size:clamp(16px,1.6cqw,23px);line-height:1.45;overflow-wrap:anywhere}

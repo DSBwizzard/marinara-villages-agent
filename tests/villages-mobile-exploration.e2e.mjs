@@ -351,7 +351,9 @@ await withBrowser(browser, async () => {
     await navigator.getByRole("button", { name: "View venue", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Unplaced Venue", exact: true })).toBeVisible();
     const storybook = page.locator("." + P + "-venue-storybook-photo");
-    await expect(storybook).toHaveAttribute("src", /\/storybook-background-wide\.webp$/);
+    await expect(storybook).toHaveAttribute("src", /\/venue-fallback\.webp$/);
+    await expect.poll(() => storybook.evaluate((image) => image.naturalWidth)).toBeGreaterThan(0);
+    await screenshot("venue-fallback");
     assert.equal(sceneRequests.length, 0, "selecting and reading a Venue never starts a Scene");
     await page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();
     await showPlaces();
@@ -496,7 +498,7 @@ await withBrowser(browser, async () => {
       await expect(list).toHaveCount(0);
       await expect(venue.locator("." + P + "-venue-zone-picker")).toHaveCSS("translate", "-100%");
       await expect(editor.getByRole("textbox", { name: "Room name" })).toHaveValue("Room 5");
-      await expect(storybook).toHaveAttribute("src", /\/storybook-background-wide\.webp$/);
+      await expect(storybook).toHaveAttribute("src", /\/venue-fallback\.webp$/);
       await expect(viewFullImage).toHaveCount(0);
       await backToZones.press("Escape");
       await expect(lastZone).toBeFocused();

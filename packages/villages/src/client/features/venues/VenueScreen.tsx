@@ -5,7 +5,7 @@ import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { ArtworkImage } from "../../shared/ArtworkImage.js";
-import { STORYBOOK_BACKGROUND_URL } from "../../shared/desk-art.js";
+import { VENUE_FALLBACK_URL } from "../../shared/desk-art.js";
 import { ModalDialog } from "../../shared/ModalDialog.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import { playerDisplayName } from "../../shared/presentation.js";
@@ -510,7 +510,7 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
       >
         <figure className={ELEMENT_TAG + "-venue-photo"}>
           {storybookBackdrop ? (
-            <img className={`${ELEMENT_TAG}-venue-storybook-photo`} src={STORYBOOK_BACKGROUND_URL} alt="" />
+            <img className={`${ELEMENT_TAG}-venue-storybook-photo`} src={VENUE_FALLBACK_URL} alt="" />
           ) : entranceArt ? (
             <ArtworkImage src={entranceArt.url} alt={zoneBackdrop ? "" : place.name} />
           ) : null}

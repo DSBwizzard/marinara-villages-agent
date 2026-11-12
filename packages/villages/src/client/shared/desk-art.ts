@@ -10,6 +10,7 @@ type ArtworkLayer = {
 
 const assets = "/api/capability-packages/villages/assets/";
 export const STORYBOOK_BACKGROUND_URL = assets + "storybook-background-wide.webp";
+export const VENUE_FALLBACK_URL = assets + "venue-fallback.webp";
 
 // The foreground matte uses the same pixel coordinates as the backdrop.
 const artwork: ArtworkLayer[] = [
