@@ -286,7 +286,9 @@ export const DESK_STYLES = `
  .${P}-workspace-content .${P}-venue-zone-toolbar .${P}-venue-back{font-size:16px}
  .${P}-venue-zone-details{gap:6px}
  .${P}-zone-artwork-actions{gap:4px}
- .${P}-workspace-content .${P}-zone-artwork-actions .${P}-button{padding-inline:4px;font-size:clamp(12px,3.4cqw,15px)}
+ .${P}-workspace-content .${P}-zone-artwork-actions .${P}-button{flex:1 1 0;padding-inline:2px;font-size:clamp(12px,3.4cqw,15px)}
+ .${P}-workspace-content .${P}-zone-artwork-actions .${P}-zone-view-image{flex-grow:1.8}
+ .${P}-workspace-content .${P}-zone-artwork-actions:has(.${P}-zone-artwork-retry) .${P}-button{flex-basis:auto}
  .${P}-zone-artwork-footer>p{font-size:12px}
  .${P}-venue-summary .${P}-venue-primary{min-width:8rem}
  .${P}-desk-workspace[data-venue="true"] .${P}-workspace-sidebar{display:none}
