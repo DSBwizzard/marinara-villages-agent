@@ -448,7 +448,7 @@ await withBrowser(browser, async () => {
       await tabs.getByRole("button", { name: "Zones", exact: true }).click();
       const list = venue.getByRole("region", { name: "Zones", exact: true });
       await expect(list.getByRole("button")).toHaveCount(6);
-      const roomWithArtwork = list.getByRole("button", { name: "Room 1", exact: true });
+      const roomWithArtwork = list.getByRole("button", { name: /^Room 1\b/ });
       await roomWithArtwork.click();
       await expect(roomWithArtwork).toHaveAttribute("aria-pressed", "true");
       await expect(roomWithArtwork.locator("img")).toHaveAttribute("src", roomImage.url);
