@@ -1167,6 +1167,7 @@ await runCase("narration-writing/long-followup", async () => {
   assert(shared, "ordinary recall names the people who know the fact");
   assert.deepEqual(Object.keys(shared).sort(), ["class", "knownBy", "text"]);
   assert(!Object.values(reply.readset.source.historical).some((source) => source.excerpt === shared.text));
+  assert(reply.readset.readOnlyKnowledge?.some((source) => source.excerpt === shared.text));
   const memoryEdit = await f.writing.prepareVenueTurnMessages(f.scene, "Remember that weaving memory?", "chat");
   const historical = Object.entries(memoryEdit.readset.source.historical);
   const [alias, reference] = historical.find(

@@ -506,6 +506,7 @@ export function acceptNarrationContinuity(
   );
   const currentSources = [
     ...Object.values(source.historical).filter((row) => row.kind === "knowledge"),
+    ...(readset.readOnlyKnowledge ?? []),
     ...acceptedKeeps.flatMap((keep) => keep.sources),
     ...selection.acceptedIds.flatMap((id) => native.sources[id] ?? []),
     ...selection.acceptedIds

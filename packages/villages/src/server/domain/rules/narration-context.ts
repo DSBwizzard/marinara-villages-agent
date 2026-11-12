@@ -58,6 +58,7 @@ type Part = {
   offered: NarrationReadset["offered"];
   sharedLoreWords?: string[];
   plainRecall?: true;
+  readOnly?: true;
   openOffer?: true;
 };
 
@@ -712,7 +713,7 @@ export function narrationContinuityContext(
   const evidenceIds = new Set([...retained].map((part) => part.block.evidenceId));
   const bounded = parts
     .filter((part) => retained.has(part) && hasWritingEvidence(part.block, evidenceIds))
-    .map((part) => (readOnlyRecall && part.plainRecall ? { ...part, sources: {}, targets: [] } : part));
+    .map((part): Part => (readOnlyRecall && part.plainRecall ? { ...part, readOnly: true } : part));
   const references = episodeContextActors({ actors, room }, [
     ...new Set(bounded.flatMap((part) => Object.keys(part.provenance))),
   ]);
@@ -776,10 +777,13 @@ export function fittedNarrationReadset(
   evidenceIds: string[],
 ): NarrationReadset {
   const parts = context.parts.filter((part) => evidenceIds.includes(part.block.evidenceId!));
-  const historical = Object.assign({}, ...parts.map((part) => part.sources)) as Record<string, ContinuityEvidence>;
+  const citable = parts.filter((part) => !part.readOnly);
+  const historical = Object.assign({}, ...citable.map((part) => part.sources)) as Record<string, ContinuityEvidence>;
+  const readOnlyKnowledge = parts.filter((part) => part.readOnly).flatMap((part) => Object.values(part.sources));
   // Reserve the remaining episode slots for 32 keeps, 16 command proofs and their native receipts.
   memoryRequire(
-    Object.values(historical).filter((source) => source.kind === "knowledge").length <= 1024 - 32 * 8 - 16 * 8 - 16,
+    Object.values(historical).filter((source) => source.kind === "knowledge").length + readOnlyKnowledge.length <=
+      1024 - 32 * 8 - 16 * 8 - 16,
     "required continuity evidence exceeds the retained request bound before generation",
   );
   const provenance: Record<string, string[]> = {};
@@ -830,6 +834,7 @@ export function fittedNarrationReadset(
     continuityRevision: state.continuity.revision,
     presentation: context.presentation,
     source: { ...context.source, historical, subjects },
+    ...(readOnlyKnowledge.length ? { readOnlyKnowledge } : {}),
     admission: {
       seed: state.seed,
       // The Scene request ID is local to one visit. Common continuity uses its Episode identity.
@@ -848,7 +853,7 @@ export function fittedNarrationReadset(
             .actors.map(({ id, incarnation }) => ({ id, incarnation })),
         ]),
       ),
-      supplied: mergeTargets(parts.flatMap((part) => part.targets)),
+      supplied: mergeTargets(citable.flatMap((part) => part.targets)),
       protectedRoots,
       protectionFingerprint: narrationProtectionFingerprint(state, [
         ...context.actors,
