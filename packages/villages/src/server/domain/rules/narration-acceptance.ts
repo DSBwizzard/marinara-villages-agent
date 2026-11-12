@@ -14,6 +14,7 @@ import {
 import { assertContinuityRetention } from "./continuity-retention.js";
 import { appendEpisode } from "./episodes.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
+import { asRecord } from "./coerce.js";
 import { conflict } from "./errors.js";
 import { narrationProtectionFingerprint } from "./narration-context.js";
 import { readNarrationEffectHeader, readNarrationReply } from "./narration-contract.js";
@@ -271,7 +272,13 @@ export function acceptNarrationContinuity(
       effects.push({ id: "keep-" + index, requires: [], failure: String(error).slice(0, 2000) });
       continue;
     }
-    const effect: SceneEffectResult = { ...header };
+    const note = asRecord(raw);
+    const optionalNote =
+      Array.isArray(note.for) &&
+      typeof note.text === "string" &&
+      (note.class === "experience" || note.class === "information") &&
+      Object.keys(note).every((key) => ["for", "text", "class", "source"].includes(key));
+    const effect: SceneEffectResult = { ...header, independent: optionalNote || header.independent };
     try {
       const keep = prepareNarrationKeep(raw, index, state.continuity, admission, source);
       for (const holder of keep.write.holders.filter((holder) => holder.kind === "room")) {
