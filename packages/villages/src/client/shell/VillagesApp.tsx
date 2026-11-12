@@ -47,12 +47,15 @@ function VillagesContent({ element }: { element: HTMLElement }) {
   const [mailRecipient, setMailRecipient] = useState("");
   const [phase, setPhase] = useState<"open" | "preparing" | "opening" | "closing">("open");
   const [artworkError, setArtworkError] = useState("");
+  const [mapArrival, setMapArrival] = useState<{ id: string; origin: string } | null>(null);
+  const arriving = controller.screen === "venue" && mapArrival?.id === controller.venueId;
   const bookVisible =
     controller.screen === "person" || (controller.screen === "menu" && controller.menuPage === "villagers");
   const destination = (screen: Controller["screen"], page = controller.menuPage): DeskDestination | null => {
     if (screen === "person" || (screen === "menu" && page === "villagers")) return "people";
     if (screen === "menu") return page === "projects" ? "projects" : "settings";
-    if (screen === "venue" || (screen === "home" && controller.exploreSheet?.tab === "places")) return "places";
+    if (screen === "venue") return arriving ? null : "places";
+    if (screen === "home" && controller.exploreSheet?.tab === "places") return "places";
     return null;
   };
   const active = controller.mailboxOpen ? "mailbox" : destination(controller.screen);
@@ -65,6 +68,7 @@ function VillagesContent({ element }: { element: HTMLElement }) {
     peopleOrigin.current = null;
     returnFocus.current = null;
     placesView.current = "atlas";
+    setMapArrival(null);
     setMailRecipient("");
     setArtworkError("");
     return () => {
@@ -75,9 +79,9 @@ function VillagesContent({ element }: { element: HTMLElement }) {
   }, [controller.snapshot?.worldScope]);
   useLayoutEffect(() => {
     if (controller.screen === "home" || controller.screen === "room") peopleOrigin.current = null;
-    if (controller.screen === "venue") placesView.current = "venue";
+    if (controller.screen === "venue" && !arriving) placesView.current = "venue";
     else if (controller.screen === "home" && controller.exploreSheet?.tab === "places") placesView.current = "atlas";
-  }, [controller.screen, controller.exploreSheet?.tab]);
+  }, [controller.screen, controller.exploreSheet?.tab, arriving]);
   useLayoutEffect(() => {
     if (!active || !documentRef.current) {
       moving.current = false;
@@ -216,12 +220,14 @@ function VillagesContent({ element }: { element: HTMLElement }) {
     },
     openPlace: (place) => {
       void move("places", () => {
+        setMapArrival(null);
         controller.setMailboxOpen(false);
         controller.openPlace(place);
       });
     },
     openVenue: (place) => {
       void move("places", () => {
+        setMapArrival(null);
         controller.setMailboxOpen(false);
         controller.openVenue(place);
       });
@@ -411,6 +417,13 @@ function VillagesContent({ element }: { element: HTMLElement }) {
           <RetainedView active={!controller.mailboxOpen}>
             <VillageScreen
               controller={navigation}
+              openMapVenue={(place, origin) => {
+                setMapArrival({ id: place.id, origin });
+                controller.explorationReturnTab.current = "map";
+                controller.openPlace(place);
+                controller.setVenueSection("about");
+              }}
+              arrivalOrigin={arriving ? mapArrival.origin : undefined}
               people={
                 <div hidden={!bookVisible} inert={!bookVisible} className={`${ELEMENT_TAG}-people-session`}>
                   <PeoplePages controller={navigation} active={bookVisible && !controller.mailboxOpen} />
@@ -426,7 +439,15 @@ function VillagesContent({ element }: { element: HTMLElement }) {
 
 type Controller = ReturnType<typeof ControllerFactory>;
 
-function VillageScreen({ controller, people }: { controller: Controller; people: import("react").ReactNode }) {
+type VillageScreenProps = {
+  controller: Controller;
+  people: import("react").ReactNode;
+  openMapVenue: (place: import("../../shared/contracts/village.js").VillageVenue, origin: string) => void;
+  arrivalOrigin?: string;
+};
+
+function VillageScreen(props: VillageScreenProps) {
+  const { controller } = props;
   const { room, sceneRestoration } = controller;
 
   if (!room && sceneRestoration.status !== "ready")
@@ -448,7 +469,7 @@ function VillageScreen({ controller, people }: { controller: Controller; people:
       </div>
     );
 
-  return <VillageDestinations controller={controller} people={people} />;
+  return <VillageDestinations {...props} />;
 }
 
 function PeoplePages({ controller, active }: { controller: Controller; active: boolean }) {
@@ -475,20 +496,27 @@ function PeoplePages({ controller, active }: { controller: Controller; active: b
 }
 
 /** One map, one Venue, and the fixed menu pages; never a history of resident/world data. */
-function VillageDestinations({ controller, people }: { controller: Controller; people: import("react").ReactNode }) {
+function VillageDestinations({ controller, people, openMapVenue, arrivalOrigin }: VillageScreenProps) {
   const { screen, menuPage, room, venueId } = controller;
   const [home, setHome] = useState(false);
   const [venue, setVenue] = useState<string | null>(null);
   const [menus, setMenus] = useState<MenuPage[]>([]);
   const page = menuPage === "index" ? "general" : menuPage;
   if (screen === "home" && !home) setHome(true);
-  if (screen === "venue" && venueId && venue !== venueId) setVenue(venueId);
+  if (screen === "venue" && !arrivalOrigin && venueId && venue !== venueId) setVenue(venueId);
   if (screen === "menu" && page !== "villagers" && !menus.includes(page)) setMenus([...menus, page]);
+  const arrival =
+    arrivalOrigin && venueId
+      ? {
+          origin: arrivalOrigin,
+          content: <VenueScreen key={venueId} controller={controller} fromMap />,
+        }
+      : undefined;
   return (
     <>
       {home ? (
-        <RetainedView active={screen === "home"}>
-          <ExplorationScreen controller={controller} />
+        <RetainedView active={screen === "home" || !!arrival}>
+          <ExplorationScreen controller={controller} openMapVenue={openMapVenue} arrival={arrival} />
         </RetainedView>
       ) : null}
       {room ? (
@@ -497,7 +525,7 @@ function VillageDestinations({ controller, people }: { controller: Controller; p
         </RetainedView>
       ) : null}
       {venue ? (
-        <RetainedView key={venue} active={screen === "venue"}>
+        <RetainedView key={venue} active={screen === "venue" && !arrival}>
           <VenueScreen controller={{ ...controller, screen: "venue", venueId: venue }} />
         </RetainedView>
       ) : null}

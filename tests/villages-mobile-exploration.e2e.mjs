@@ -63,7 +63,7 @@ const place = (id, x, y) =>
     capabilities: [],
     presentation: {
       mapId: "map-house",
-      image: { ref: id, url: image(id === "mill" ? "#a77a54" : "#6e91aa"), id },
+      image: id === "unplaced" ? null : { ref: id, url: image(id === "mill" ? "#a77a54" : "#6e91aa"), id },
       x,
       y,
     },
@@ -138,7 +138,7 @@ await withBrowser(browser, async () => {
     { width: 320, height: 568, shell: 120 },
     { width: 390, height: 844, shell: 144 },
     { width: 360, height: 640, shell: 80 },
-    { width: 390, height: 500, shell: 144 },
+    { width: 390, height: 580, shell: 144 },
     { width: 1440, height: 900, shell: 160 },
     { width: 1024, height: 768, shell: 120 },
     { width: 720, height: 900, shell: 120 },
@@ -163,8 +163,26 @@ await withBrowser(browser, async () => {
     const sceneRequests = [];
     page.on("pageerror", (error) => errors.push(error.message));
     let fixture = structuredClone(snapshot);
+    const market = place("market", 0.5, 0.5);
+    const roomImage = { ...market.presentation.image, url: image("#a77a54") };
     fixture.settings.venues = [
-      { ...place("market", 0.5, 0.5), name: "Village Market" },
+      {
+        ...market,
+        name: "Village Market",
+        ...(height === 580 && {
+          zones: [
+            market.zones[0],
+            ...Array.from({ length: 5 }, (_, index) => ({
+              ...market.zones[0],
+              id: `room-${index + 1}`,
+              name: `Room ${index + 1}`,
+              kind: "public",
+              image: index === 4 ? null : roomImage,
+              pictureUpdating: index === 0,
+            })),
+          ],
+        }),
+      },
       { ...place("crowded", 0.51, 0.51), name: "A nearby venue with a very long readable name" },
       {
         ...place("unplaced", null, null),
@@ -246,6 +264,7 @@ await withBrowser(browser, async () => {
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     const home = page.locator("." + P + "-home-full");
+    const venue = home.getByRole("region", { name: "Venue", exact: true });
     const nav = page.getByRole("navigation", { name: "Village exploration" });
     const navigator = page.getByRole("complementary", { name: "Places navigator" });
     const canvas = home.getByRole("group", { name: "Map navigation" });
@@ -286,6 +305,7 @@ await withBrowser(browser, async () => {
       if (process.env.VILLAGES_VISUAL_OUTPUT)
         await page.screenshot({
           path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "navigator-" + name + "-" + width + "x" + height + ".png"),
+          animations: "disabled",
         });
     };
     const settleLayout = () =>
@@ -330,6 +350,10 @@ await withBrowser(browser, async () => {
     await expect(navigator.getByRole("button", { name: "Visit", exact: true })).toBeVisible();
     await navigator.getByRole("button", { name: "View venue", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Unplaced Venue", exact: true })).toBeVisible();
+    const storybook = page.locator("." + P + "-venue-storybook-photo");
+    await expect(storybook).toHaveAttribute("src", /\/venue-fallback\.webp$/);
+    await expect.poll(() => storybook.evaluate((image) => image.naturalWidth)).toBeGreaterThan(0);
+    await screenshot("venue-fallback");
     assert.equal(sceneRequests.length, 0, "selecting and reading a Venue never starts a Scene");
     await page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();
     await showPlaces();
@@ -383,9 +407,118 @@ await withBrowser(browser, async () => {
     await expect(page.locator("[data-desk]")).toHaveAttribute("data-desk", "none");
     await settleLayout();
     const beforeMarker = await cameraGeometry();
+    const statusBar = home.locator("." + P + "-home-bar");
+    await expect(statusBar).toBeVisible();
     await marker.press("Enter");
-    await expect(page.getByRole("heading", { name: "Village Market", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();
+    await expect(venue.getByRole("heading", { name: "Village Market", exact: true })).toBeFocused();
+    await expect(statusBar).toBeHidden();
+    await expect(venue.locator("img")).toHaveAttribute("src", fixture.settings.venues[0].presentation.image.url);
+    await expect(venue.getByRole("button", { name: "View venue", exact: true })).toHaveCount(0);
+    await expect(venue.getByRole("group", { name: "Venues", exact: true })).toHaveCount(0);
+    const tabs = venue.getByRole("navigation", { name: "Venue sections" });
+    const backdrop = venue.locator("." + P + "-venue-photo img");
+    const client = mobile ? await page.context().newCDPSession(page) : null;
+    const touch = (type, points) =>
+      client.send("Input.dispatchTouchEvent", {
+        type,
+        touchPoints: points.map(([x, y], id) => ({ x, y, id })),
+      });
+    await expect(tabs.getByRole("button", { name: "About", exact: true })).toHaveAttribute("aria-pressed", "true");
+    const heading = venue.getByRole("heading", { name: "Village Market", exact: true });
+    const headerPosition = async () =>
+      (await Promise.all([heading.boundingBox(), tabs.boundingBox()])).map(({ x, y }) => [x, y]);
+    await page.evaluate(() => document.fonts.ready);
+    const aboutPosition = await headerPosition();
+    for (const section of ["Zones", "Manage", "About"]) {
+      await tabs.getByRole("button", { name: section, exact: true }).click();
+      if (mobile) {
+        assert.deepEqual(await headerPosition(), aboutPosition);
+        await expect(backdrop).toBeVisible();
+        await expect(backdrop).toHaveAttribute("src", market.presentation.image.url);
+      }
+      if (section === "Zones") {
+        const thumb = venue.locator("." + P + "-venue-zone-thumb").first();
+        if (mobile) await expect(thumb.locator("img")).toBeVisible();
+        else await expect(thumb).toBeHidden();
+      }
+      if (section === "Manage") {
+        await expect(venue.getByRole("button", { name: "Plan a renovation" })).toBeVisible();
+        await venue.getByRole("button", { name: "Zone connections", exact: true }).click();
+        if (mobile) assert.deepEqual(await headerPosition(), aboutPosition);
+        await venue.getByRole("button", { name: "← Manage", exact: true }).click();
+        if (mobile) assert.deepEqual(await headerPosition(), aboutPosition);
+      }
+    }
+    if (mobile && height === 580) {
+      await tabs.getByRole("button", { name: "Zones", exact: true }).click();
+      const list = venue.getByRole("region", { name: "Zones", exact: true });
+      const editor = venue.getByRole("region", { name: "Edit room details", exact: true });
+      const backToZones = editor.getByRole("button", { name: "← Zones", exact: true });
+      const arrival = home.locator("[data-arrival]");
+      const scroller = arrival.locator("." + P + "-workspace-content");
+      await expect(list.getByRole("button")).toHaveCount(6);
+      const cards = list.getByRole("button");
+      const [first, second, third] = await Promise.all([0, 1, 2].map((index) => cards.nth(index).boundingBox()));
+      assert(first.y === second.y && first.x < second.x && third.x === first.x && third.y > first.y);
+      await expect
+        .poll(() => scroller.evaluate((node) => node.scrollHeight - node.clientHeight))
+        .toBeLessThanOrEqual(1);
+      const roomWithArtwork = list.getByRole("button", { name: /^Room 1\b/ });
+      await expect(roomWithArtwork.locator("img")).toHaveAttribute("src", roomImage.url);
+      await expect(venue.locator("." + P + "-venue-zone-editor")).toHaveCSS("translate", "100%");
+      await roomWithArtwork.click();
+      await expect(backToZones).toBeFocused();
+      await expect(editor.getByRole("textbox", { name: "Room name" })).toHaveValue("Room 1");
+      await expect(editor.getByText("Room name", { exact: true })).toHaveCount(0);
+      await expect(editor.getByRole("heading", { name: "Room 1", exact: true })).toHaveCount(0);
+      await expect(editor.getByRole("status")).toHaveText("Artwork pending");
+      await expect(editor.getByRole("switch", { name: "Automatic artwork updates" })).toBeInViewport({ ratio: 1 });
+      await expect
+        .poll(() => scroller.evaluate((node) => node.scrollHeight - node.clientHeight))
+        .toBeLessThanOrEqual(1);
+      const roomBackdrop = venue.locator("." + P + "-venue-zone-photo");
+      await expect(roomBackdrop).toHaveAttribute("src", roomImage.url);
+      await expect(editor.locator("img")).toHaveCount(0);
+      const viewFullImage = editor.getByRole("button", { name: "View full image" });
+      await viewFullImage.tap();
+      const viewer = page.getByRole("dialog", { name: "Room 1", exact: true });
+      await expect(viewer.getByRole("img")).toHaveAttribute("src", roomImage.url);
+      await expect(viewer.getByRole("img")).toHaveCSS("object-fit", "contain");
+      const viewerBox = await viewer.boundingBox();
+      const closeImage = viewer.getByRole("button", { name: "Close Room 1" });
+      const closeBox = await closeImage.boundingBox();
+      assert.ok(viewerBox.width <= width - 32 && viewerBox.height <= height * 0.75);
+      assert.ok(closeBox.width >= 44 && closeBox.height >= 44);
+      assert.ok(closeBox.x + closeBox.width >= viewerBox.x + viewerBox.width - 16);
+      await closeImage.tap();
+      await expect(viewer).toHaveCount(0);
+      await expect(viewFullImage).toBeFocused();
+      await viewFullImage.tap();
+      await page.keyboard.press("Escape");
+      await expect(viewer).toHaveCount(0);
+      await expect(viewFullImage).toBeFocused();
+      await backToZones.click();
+      await expect(roomWithArtwork).toBeFocused();
+      await expect(backdrop).toHaveAttribute("src", market.presentation.image.url);
+      const lastZone = list.getByRole("button", { name: /^Room 5/ });
+      await expect(lastZone).toBeInViewport({ ratio: 1 });
+      await expect(lastZone.locator("." + P + "-venue-zone-thumb svg")).toBeVisible();
+      await lastZone.click();
+      await expect(backToZones).toBeFocused();
+      await expect(list).toHaveCount(0);
+      await expect(venue.locator("." + P + "-venue-zone-picker")).toHaveCSS("translate", "-100%");
+      await expect(editor.getByRole("textbox", { name: "Room name" })).toHaveValue("Room 5");
+      await expect(storybook).toHaveAttribute("src", /\/venue-fallback\.webp$/);
+      await expect(viewFullImage).toHaveCount(0);
+      await backToZones.press("Escape");
+      await expect(lastZone).toBeFocused();
+      await expect(lastZone).toHaveAttribute("aria-current", "true");
+      await expect.poll(() => scroller.evaluate((node) => node.scrollTop)).toBe(0);
+    }
+    await screenshot("arrival");
+    await page.keyboard.press("Escape");
+    await expect(marker).toBeFocused();
+    await expect(statusBar).toBeVisible();
     await expect.poll(cameraGeometry).toEqual(beforeMarker);
     for (const [id, name] of [
       ["edge", "Edge Venue"],
@@ -402,9 +535,9 @@ await withBrowser(browser, async () => {
         .locator('[data-pin-id="' + id + '"]')
         .locator("." + P + "-map-point")
         .click();
-      await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+      await expect(venue.getByRole("heading", { name, exact: true })).toBeVisible();
       await expect(page.getByRole("dialog")).toHaveCount(0);
-      await page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();
+      await venue.getByRole("button", { name: "Back to map" }).click();
       await expect.poll(cameraGeometry).toEqual(beforeTap);
     }
     assert.equal(sceneRequests.length, 0, "map and keyboard selections remain free of Scene requests");
@@ -413,12 +546,6 @@ await withBrowser(browser, async () => {
     await expect(navigator.getByRole("button", { name: "Visit", exact: true })).toHaveCount(0);
     await navigator.getByRole("searchbox").fill("");
     if (mobile) await closePlaces();
-    const client = mobile ? await page.context().newCDPSession(page) : null;
-    const touch = (type, points) =>
-      client.send("Input.dispatchTouchEvent", {
-        type,
-        touchPoints: points.map(([x, y], id) => ({ x, y, id })),
-      });
     if (!mobile) await home.getByRole("button", { name: "Reset map view" }).click();
     await settleLayout();
     const initial = await geometry();
@@ -519,10 +646,12 @@ await withBrowser(browser, async () => {
     await page.keyboard.press("Escape");
     await showPlaces();
     await select("Village Market");
-    await marker.locator("." + P + "-map-point").click();
+    await closePlaces();
+    await settleLayout();
+    await marker.press("Enter");
     await screenshot("visit");
     assert.equal(sceneRequests.length, 0, "search, selection, pan, zoom and People remain free of Scene requests");
-    await page.getByRole("button", { name: "Visit venue", exact: true }).click();
+    await venue.getByRole("button", { name: "Visit venue", exact: true }).click();
     await expect.poll(() => sceneRequests.length).toBe(1);
     assert.equal(sceneRequests[0].venueId, "market");
     await expect(page.getByRole("textbox", { name: "Message at Village Market" })).toBeVisible();
@@ -530,6 +659,8 @@ await withBrowser(browser, async () => {
     await page.getByRole("menuitem", { name: "End Scene now", exact: true }).click();
     await page.getByRole("button", { name: "Return to map", exact: true }).click();
     await expect(home).toBeVisible();
+    await expect(venue).toHaveCount(0);
+    await expect(marker).toBeVisible();
     assert.deepEqual(errors, []);
     if (client) await client.detach();
     await page.close();

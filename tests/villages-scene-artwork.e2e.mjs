@@ -152,9 +152,14 @@ await withBrowser(browser, async () => {
     await composer.fill("Keep this unsent Scene draft.");
     await expect(backdrop).toHaveAttribute("src", old);
     const openZonePicture = async () => {
-      await page.getByRole("button", { name: "Zones", exact: true }).click();
-      await page.locator(`[data-layout-zone="${targetId}"]`).click();
-      await page.getByRole("button", { name: "Picture", exact: true }).click();
+      const editor = page.getByRole("region", { name: "Edit room details", exact: true });
+      if (!(await editor.isVisible())) {
+        await page.getByRole("button", { name: "Zones", exact: true }).click();
+        await page
+          .getByRole("region", { name: "Zones", exact: true })
+          .getByRole("button", { name: new RegExp(`^${targetName}\\b`) })
+          .click();
+      }
     };
     const openSettings = async () => {
       await page.getByRole("button", { name: "Venue actions", exact: true }).click();
@@ -163,7 +168,7 @@ await withBrowser(browser, async () => {
     };
     const returnToScene = () => page.getByRole("button", { name: "Back to Scene", exact: true }).click();
     await openSettings();
-    await expect(page.getByRole("button", { name: "Generate new picture", exact: true })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Generate artwork", exact: true })).toBeEnabled();
     await expect(page.getByText("Artwork is out of date.", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "About", exact: true }).click();
     const photo = page.locator(".marinara-capability-villages-venue-photo img");
@@ -179,9 +184,9 @@ await withBrowser(browser, async () => {
     await page.evaluate(() => window.setBackdropFounded(true));
     await expect(photo).toHaveAttribute("src", night);
     await openZonePicture();
-    await page.getByRole("button", { name: "Generate new picture", exact: true }).click();
+    await page.getByRole("button", { name: "Generate artwork", exact: true }).click();
     await expect.poll(() => mutations.length).toBe(1);
-    await expect(page.getByRole("button", { name: "Picture", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Generate artwork", exact: true })).toBeEnabled();
     await expect(page.getByText("Artwork is out of date.", { exact: true })).toHaveCount(0);
     await returnToScene();
     await expect(backdrop).toHaveAttribute("src", generated);
