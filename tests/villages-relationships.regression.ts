@@ -312,6 +312,18 @@ await runCase("relationships/scoring", () => {
   });
   assert.equal(score().score, 6);
   assert.equal(score().answer, "I think you brighten my day.");
+  assert.throws(
+    () =>
+      f.keep({
+        ...directed,
+        id: "invalid-answer",
+        holders: [mara],
+        text: "You brighten my day. come back soon.",
+        relationship: { answer: "You brighten my day. come back soon." },
+      }),
+    /relationship answer must be one sentence/,
+  );
+  assert.equal(score().answer, "I think you brighten my day.");
   assert.equal(f.profiles()[0].scores.find((row) => row.person.id === "leo")?.score, 0);
 });
 

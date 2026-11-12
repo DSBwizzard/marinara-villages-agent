@@ -116,9 +116,13 @@ await runCase("gm-effects/provider-reply", async () => {
 });
 
 await runCase("gm-effects/relationship-answer", async () => {
-  for (const native of [false, true]) {
+  for (const variant of ["conclude", "native", "invalid"]) {
     const host = await packagedSceneServer();
-    const answer = "I enjoy how curious you are when we talk.";
+    const native = variant !== "conclude";
+    const invalid = variant === "invalid";
+    const answer = invalid
+      ? "Honestly? I like your curiosity. come by again."
+      : "I enjoy how curious you are when we talk.";
     const departure = "I leave now.";
     let calls = 0;
     host.model.chatComplete = async (messages: { content: string }[]) => {
@@ -155,8 +159,8 @@ await runCase("gm-effects/relationship-answer", async () => {
               class: "perspective",
               current: true,
               text: ending ? answer : "I feel a little more at ease with the player.",
-              source: ending ? ["self"] : ["said", "self"],
-              relationship: ending ? { answer } : { impact: "small-positive", answer },
+              source: ending && !invalid ? ["self"] : ["said", "self"],
+              relationship: ending && !invalid ? { answer } : { impact: "small-positive", answer },
             },
           ],
         }),
@@ -194,7 +198,9 @@ await runCase("gm-effects/relationship-answer", async () => {
       const ending = await send(true);
       assert.equal(ending.statusCode, 200, ending.body);
       assert.equal(host.scene().status, "closed");
-      assert.equal((await edge()).answer, answer);
+      const closingEdge = await edge();
+      assert.equal(closingEdge.answer, invalid ? undefined : answer);
+      assert.equal(closingEdge.score, invalid ? 6 : 3);
       assert.equal(calls, 2);
       assert(!host.scene().lines.some((line) => line.content.includes(answer)));
     } finally {

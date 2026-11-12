@@ -14,6 +14,7 @@ import { memoryHash, memoryKnowerId, memoryRequire, memoryString, memoryTimestam
 
 export const CONTINUITY_TEXT_BYTES = 2400;
 export const ROOM_CONTINUITY_TEXT_BYTES = 16000;
+const relationshipSentence = new Intl.Segmenter("en", { granularity: "sentence" });
 export const RELATIONSHIP_IMPACTS = {
   "small-positive": 3,
   "meaningful-positive": 6,
@@ -600,6 +601,7 @@ export function applyContinuityWrite(
   let relationshipScore: number | undefined;
   let relationshipDay: ContinuityVersion["relationshipDay"];
   let relationshipMilestone: true | undefined;
+  let relationshipAnswer: string | undefined;
   let relationshipAnswerScore: number | undefined;
   let ownerAnswer = false;
   if (write.relationship) {
@@ -638,6 +640,18 @@ export function applyContinuityWrite(
       "relationship change needs a current experienced event",
     );
     memoryRequire(write.relationship.impact || write.relationship.answer, "empty relationship update");
+    if (write.relationship.answer !== undefined) {
+      const answer = write.relationship.answer;
+      memoryString(answer, 320);
+      // ICU suppresses breaks before lowercase words; check those as sentence starts too.
+      const sentence = answer.replace(
+        /(\.["'”’)]*\s+)(\p{Ll})/gu,
+        (_, end, letter: string) => end + letter.toUpperCase(),
+      );
+      if (!/[\r\n\u0085\u2028\u2029]/u.test(answer) && [...relationshipSentence.segment(sentence)].length === 1)
+        relationshipAnswer = answer;
+      else memoryRequire(write.relationship.impact, "relationship answer must be one sentence");
+    }
     if (write.relationship.impact) {
       const impact = write.relationship.impact;
       memoryRequire(Number.isInteger(RELATIONSHIP_IMPACTS[impact]), "invalid relationship impact");
@@ -682,8 +696,7 @@ export function applyContinuityWrite(
       }
       if (relationshipScore !== score && (turningPoint || impact === "turning-negative")) relationshipMilestone = true;
     }
-    if (write.relationship.answer !== undefined) {
-      memoryString(write.relationship.answer, 320);
+    if (relationshipAnswer !== undefined) {
       memoryRequire(
         subject.id === "player" &&
           context.relationshipAnswers?.owners.some(
@@ -711,13 +724,12 @@ export function applyContinuityWrite(
         latestRelationshipScores(collection).get(relationshipKey(owner, subject))?.relationshipScore ??
         0;
       memoryRequire(
-        !/[\r\n]/.test(write.relationship.answer) &&
-          (ownerAnswer ||
-            (before.some(({ holder }) => holder.kind === "actor" && holder.id === "player") &&
-              sources.some(
-                (source) =>
-                  source.episodeId === context.episodeId && source.actorId === owner.id && heardWords(source, "player"),
-              ))),
+        ownerAnswer ||
+          (before.some(({ holder }) => holder.kind === "actor" && holder.id === "player") &&
+            sources.some(
+              (source) =>
+                source.episodeId === context.episodeId && source.actorId === owner.id && heardWords(source, "player"),
+            )),
         "relationship answer needs the villager's words heard or read by the player",
       );
     }
@@ -743,9 +755,9 @@ export function applyContinuityWrite(
         : {}),
       ...(holder.kind === "actor" &&
       (ownerAnswer ? holder.id === owner?.id : holder.id === "player") &&
-      write.relationship?.answer
+      relationshipAnswer
         ? {
-            relationshipAnswer: write.relationship.answer,
+            relationshipAnswer,
             relationshipAnswerScore,
             ...(context.relationshipAnswers?.sceneId
               ? { relationshipAnswerScene: context.relationshipAnswers.sceneId }
