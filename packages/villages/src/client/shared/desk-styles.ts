@@ -116,7 +116,8 @@ export const DESK_STYLES = `
 .${P}-venue-name-field button{flex:0 0 44px;border:0;border-inline-start:1px solid #a39b84;border-radius:0;background:transparent;color:#c4cbab;font:inherit;font-size:22px;cursor:pointer}
 .${P}-venue-name-field button:disabled{opacity:.45;cursor:default}
 .${P}-venue-manage > .${P}-button{display:flex;align-items:center;justify-content:space-between;gap:8px;text-align:left}
-.${P}-venue-people h2{font:700 25px/1.2 var(--menu-font);margin:0 0 4px}
+.${P}-venue-people{font-size:16px;line-height:1.35}
+.${P}-venue-people h2{font:600 18px/1.3 var(--menu-font);margin:0 0 4px}
 .${P}-venue-people p{margin:0}
 .${P}-venue-people .${P}-venue-assignments li{padding:5px 0;border:0}
 .${P}-venue-connections-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
