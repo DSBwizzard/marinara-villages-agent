@@ -313,7 +313,7 @@ export function Appearance({
                 Add sprite set
               </button>
               <button type="button" disabled={locked} onClick={() => setPicker("front")}>
-                Add front sprites
+                Add sprites manually
               </button>
               {typeof openCharacter === "function" ? (
                 <button
@@ -327,7 +327,7 @@ export function Appearance({
                     }
                   }}
                 >
-                  Edit art in Engine ↗
+                  Professor mari reminder to offer help with sprites!!!!!
                 </button>
               ) : null}
             </div>

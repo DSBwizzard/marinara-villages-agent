@@ -114,11 +114,16 @@ await withBrowser(browser, async () => {
     const screen = page.getByRole("region", { name: "Mara’s appearance" });
     await expect(screen.getByRole("heading", { name: "Mara’s appearance" })).toBeFocused();
     await expect(screen.getByRole("heading", { name: "Scene portrait" })).toBeVisible();
-    for (const name of ["Add sprite set", "Add front sprites", "Edit art in Engine"]) {
-      await expect(screen.getByRole("button", { name })).toHaveCount(0);
+    const engineLink = screen.getByRole("button", {
+      name: "Professor mari reminder to offer help with sprites!!!!!",
+      exact: true,
+    });
+    await expect(engineLink).toHaveCount(0);
+    for (const name of ["Add sprite set", "Add sprites manually"]) {
+      await expect(screen.getByRole("button", { name, exact: true })).toHaveCount(0);
     }
     await screen.getByRole("button", { name: "Sprites", exact: true }).click();
-    await screen.getByRole("button", { name: "Edit art in Engine" }).click();
+    await engineLink.click();
     assert.deepEqual(await page.evaluate(() => window.engineOpen), ["mara", { tab: "sprites" }]);
     await screen.getByRole("button", { name: "Sprites", exact: true }).click();
 
@@ -170,7 +175,7 @@ await withBrowser(browser, async () => {
     assert.ok(fields && fields.y < frontBounds.y && fields.x + fields.width <= width);
     await expect(expressionName).toHaveValue("Happy");
     await expressionName.fill("Joyful");
-    await screen.getByRole("button", { name: "Edit art in Engine" }).click();
+    await engineLink.click();
     const confirm = page.getByRole("dialog", { name: "Confirm" });
     await expect(confirm).toContainText("Discard unsaved appearance changes?");
     await confirm.getByRole("button", { name: "Keep editing" }).click();

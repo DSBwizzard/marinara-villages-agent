@@ -165,7 +165,7 @@ await withBrowser(browser, async () => {
       const pane = root.getByRole("region", { name: "Aqua’s appearance", exact: true });
       await expect(pane.getByRole("button", { name: "Portrait", exact: true })).toHaveAttribute("aria-pressed", "true");
       await expect(pane.getByRole("button", { name: "Add sprite set" })).toHaveCount(0);
-      await expect(pane.getByRole("button", { name: "Add front sprites" })).toHaveCount(0);
+      await expect(pane.getByRole("button", { name: "Add sprites manually", exact: true })).toHaveCount(0);
       const portrait = pane.locator(".appearance-portrait img");
       await expect(portrait).toHaveJSProperty("complete", true);
       const crop = await portrait.evaluate((image) => {
@@ -185,7 +185,7 @@ await withBrowser(browser, async () => {
         "Opening an older character setup does not adopt it",
       );
       await pane.getByRole("button", { name: "Sprites", exact: true }).click();
-      await pane.getByRole("button", { name: "Add front sprites" }).click();
+      await pane.getByRole("button", { name: "Add sprites manually", exact: true }).click();
       const picker = page.getByRole("dialog", { name: "Choose front sprites" });
       await picker.getByRole("checkbox", { name: "Happy_01", exact: true }).check();
       await picker.getByRole("checkbox", { name: "Happy_02", exact: true }).check();
