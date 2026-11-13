@@ -249,14 +249,17 @@ console.log(
   const accepted = acceptNarration(world, { raw, readset, responseDigest: memoryHash(raw) }, "earlier-submission", at);
   assert.equal(accepted.held, false, JSON.stringify(accepted.rejected));
   const before = memoryHash(world.episodes);
-  const prompt = await currentScenePrompt(world, card, "chat", "Which moonflower tea did I dislike?", scene);
+  const fact = await currentScenePrompt(world, card, "chat", "Was the moonflower tea bitter to me?", scene);
+  assert(fact.includes("The player says moonflower tea tastes bitter."));
+  assert(!fact.includes(submitted));
+  const prompt = await currentScenePrompt(world, card, "chat", "Quote what I said about moonflower tea.", scene);
   const interaction = scenePromptPacket(prompt, "interaction").interaction;
-  assert.equal(interaction.gmPrivateInput.text, submitted);
+  assert.equal(interaction.gmPrivateInput, submitted);
   assert.deepEqual(
-    interaction.groundedInput.map(({ for: holder, text }: { for: string; text: string }) => [holder, text]),
+    interaction.groundedInput.map(({ for: holder, text }: { for: string; text: string }) => [holder, text]).sort(),
     [
-      ["player", witnessed],
       ["mari", witnessed],
+      ["player", witnessed],
     ],
   );
   assert.equal(memoryHash(world.episodes), before, "Retrieval never rewrites saved evidence");

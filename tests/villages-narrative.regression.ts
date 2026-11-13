@@ -97,6 +97,20 @@ function world() {
   ensureNarrative(state, start);
   return { state, venue, zone };
 }
+function addActiveCircumstance({ state, venue, zone }: ReturnType<typeof world>) {
+  const id = "loose-bracket";
+  state.narrative!.situations.push({
+    id,
+    revision: 1,
+    scope: "zone",
+    title: "Loose bracket",
+    summary: "A loose bracket holds the hall sign.",
+    status: "active",
+    targets: [{ venueId: venue.id, zoneId: zone.id }],
+    updatedAt: start,
+  });
+  retainAdministrativeCircumstance(state, id, "prepare-circumstance", start);
+}
 function admitted(fixture: ReturnType<typeof world>, id = "world:test", instant = at) {
   const grant = admitNarrative(fixture.state, instant, id, "world", {
     venueId: fixture.venue.id,
@@ -946,6 +960,11 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
 }
 {
   const fixture = world();
+  const quiet = world().state;
+  quiet.returnCatchup = { capture: captureReturnContext(quiet, new Date(start)) };
+  discoverReturnBatch(quiet, new Date("2026-10-29T20:00:00.000Z"), "quiet-absence");
+  assert.deepEqual(quiet.returnCatchup!.batch!.opportunities, [], "A quiet absence creates no paid World review");
+  addActiveCircumstance(fixture);
   fixture.state.returnCatchup = { capture: captureReturnContext(fixture.state, new Date(start)) };
   const changed = structuredClone(fixture.state);
   changed.continuity.revision++;
@@ -957,11 +976,11 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
   );
   discoverReturnBatch(fixture.state, new Date("2026-10-29T20:00:00.000Z"), "absence");
   const batch = fixture.state.returnCatchup!.batch!;
-  assert.equal(batch.opportunities!.length, 6);
+  assert.equal(batch.opportunities!.length, 1, "One active circumstance warrants one review across the absence");
   assert.ok(batch.opportunities!.every((row) => row.kind === "world" && !row.actorIds.length));
   assert.equal(batch.opportunityLimit, 6);
   assert.ok(batch.opportunities!.every((row) => row.startsAt >= fixture.state.narrative!.adoptedAt));
-  assert.equal(coerceVillageState(fixture.state).returnCatchup!.batch!.opportunities!.length, 6);
+  assert.equal(coerceVillageState(fixture.state).returnCatchup!.batch!.opportunities!.length, 1);
   let queued = 0;
   const service = createReturnCatchup({
     readAuthority: async () => fixture.state,
@@ -1028,6 +1047,7 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
   try {
     const repository = createVillageRepository(() => f.documents),
       fixture = world();
+    addActiveCircumstance(fixture);
     await repository.mutateAuthority((state) => Object.assign(state, fixture.state), { memories: true });
     await repository.mutateAuthority(
       (state) => {
@@ -1078,6 +1098,7 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
 }
 {
   const fixture = world();
+  addActiveCircumstance(fixture);
   let queued: any,
     residentReads = 0;
   let answers: unknown[] = [];

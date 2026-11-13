@@ -11,6 +11,7 @@ import { continuityHolderKey, protectContinuity } from "../packages/villages/src
 
 await runCase("scene-prefix/current-native-context", async () => {
   const prefixes: { content: string }[][] = [],
+    frames: string[] = [],
     calendars: string[] = [];
   mock.timers.enable({ apis: ["Date"], now: new Date("2026-11-09T10:00:00.000Z") });
   try {
@@ -21,10 +22,11 @@ await runCase("scene-prefix/current-native-context", async () => {
       ["The mist has lifted.", "movement"],
       ["The mist has lifted.", "protected"],
       ["The mist has lifted.", "project"],
+      ["The mist has lifted.", "project-idle"],
     ]) {
       const host = await packagedSceneServer({
         configure(world, now) {
-          configureSceneCostWorld(world, now, change === "project" ? "project-discussion" : "ordinary");
+          configureSceneCostWorld(world, now, change.startsWith("project") ? "project-discussion" : "ordinary");
           world.setting = "AUTHORED RIVERSIDE SETTING";
           world.worldRules = "AUTHORED WORLD RULE";
           world.playerBackground = "AUTHORED PRIVATE BACKSTORY";
@@ -90,6 +92,12 @@ await runCase("scene-prefix/current-native-context", async () => {
             .map((row) => row.content)
             .join("\n");
         prefixes.push(prefix);
+        const frame = messages.find((row) => row.content.includes("## Current Scene reference"));
+        assert.equal(frame?.role, "system");
+        assert(frame.cacheBreakpoint);
+        frames.push(frame.content.split("\n").find((line: string) => line.startsWith('{"location":')));
+        assert(!stable.includes('"movements":'));
+        assert(changing.includes('"movements":'));
         for (const authored of [
           "AUTHORED RIVERSIDE SETTING",
           "AUTHORED WORLD RULE",
@@ -126,7 +134,7 @@ await runCase("scene-prefix/current-native-context", async () => {
                 row.forbidden.includes("PRIVATE FORGOTTEN OBSERVATORY GREETING."),
             ),
           );
-        assert(changing.includes("Scoped native access authority") || change === "policy");
+        assert.equal(changing.includes("Scoped native access authority"), change === "movement");
         return {
           content: JSON.stringify({ segments: [{ kind: "dialogue", speakerId: "mara", text: "Morning." }] }),
           finishReason: "stop",
@@ -141,7 +149,7 @@ await runCase("scene-prefix/current-native-context", async () => {
           payload: {
             sessionId: "browser",
             submissionId: "f1111111-1111-4111-8111-111111111111",
-            message: "Hello.",
+            message: change === "project" ? "What do you think of the Larger Common room design?" : "Hello.",
             mode: "chat",
             targetId: "",
             expectedSceneRevision: host.scene().sceneRevision,
@@ -158,7 +166,7 @@ await runCase("scene-prefix/current-native-context", async () => {
     assert.deepEqual(prefixes[0], prefixes[1]);
     assert.notEqual(calendars[0], calendars[1], "the admitted clock can change independently of the authored prefix");
     for (const prefix of prefixes.slice(2)) assert.deepEqual(prefix.slice(0, 2), prefixes[0].slice(0, 2));
-    assert.notDeepEqual(prefixes[3], prefixes[0], "actual Zone movement changes the Scene reference frame");
+    assert.notEqual(frames[3], frames[0], "the current Zone still changes the Scene reference");
     assert.deepEqual(prefixes[4], prefixes[1], "native Forget protection stays outside the cached Scene frame");
     assert.deepEqual(prefixes[5], prefixes[1], "native Project authority stays outside the cached Scene frame");
 
@@ -194,7 +202,11 @@ await runCase("scene-prefix/current-native-context", async () => {
         assert.equal(answer.statusCode, 200, answer.body);
       }
       assert.equal(groupPrefixes.length, 2);
-      assert.deepEqual(groupPrefixes[1], groupPrefixes[0], "a new speaker cannot reorder the same cached cast");
+      assert.deepEqual(
+        groupPrefixes[1].slice(0, groupPrefixes[0].length),
+        groupPrefixes[0],
+        "a new speaker cannot reorder the same cached cast",
+      );
     } finally {
       await group.stop();
     }

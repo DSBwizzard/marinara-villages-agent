@@ -55,7 +55,10 @@ const base = coerceSession({
   lines: [],
   submissions: [],
 });
-const scene = zoneEventScene(base, venue);
+const direct = zoneEventScene(base, venue);
+const scene = zoneEventScene(base, venue, { targetId: "near" });
+scene.contactGeneration!.hearing = undefined;
+scene.contactGeneration!.actorIds!.push("far");
 
 function routed(segments: unknown[], context = scene) {
   const reply = readNarrationReply({ segments }, context.contactGeneration!.actorIds!);
@@ -80,6 +83,8 @@ extended.sceneAttendance!.occupants.push({
   zoneId: "attic",
 });
 const distant = zoneEventScene(extended, chain, { targetId: "veryFar" });
+distant.contactGeneration!.hearing = undefined;
+distant.contactGeneration!.actorIds!.push("near", "far", "veryFar");
 const ordinary = routed([{ kind: "dialogue", speakerId: "local", text: "PRIVATE ORDINARY WORDS" }], distant).lines[0];
 assert.deepEqual(ordinary.heardBy, ["local", "player"]);
 assert.deepEqual(ordinary.soundOnly?.characterIds, ["near"]);
@@ -101,8 +106,36 @@ assert.equal(
   ).length,
   0,
 );
-const reach = zoneEventHearingContext(distant, chain);
-assert.match(reach, /"alertOnly":\["far"\]/);
+const called = zoneEventScene(base, venue, { targetId: "near" });
+assert.deepEqual(direct.contactGeneration!.actorIds, ["local"], "Ordinary turns only offer the local cast");
+assert.deepEqual(called.contactGeneration!.remoteIds, ["near"], "Direct contact admits the neighboring actor");
+assert.deepEqual(
+  zoneEventScene(base, venue, { message: "Local, you said Near was cooking." }).contactGeneration!.actorIds,
+  ["local"],
+);
+for (const message of [
+  "Near, what is cooking?",
+  "Hello, Near!",
+  "I ask Near what is cooking.",
+  "I call out to Near.",
+]) {
+  assert.deepEqual(zoneEventScene(base, venue, { message }).contactGeneration!.remoteIds, ["near"]);
+}
+assert.deepEqual(
+  zoneEventScene(base, venue, { message: "I tell Near's sister about the soup." }).contactGeneration!.remoteIds,
+  [],
+);
+assert.deepEqual(zoneEventScene(base, venue, { message: "I shout, ‘Help!’" }).contactGeneration!.remoteIds, ["near"]);
+assert.deepEqual(zoneEventScene(extended, chain, { targetId: "veryFar" }).contactGeneration!.remoteIds, []);
+const quiet = routed([{ kind: "dialogue", speakerId: "local", text: "Private local words." }], direct).lines[0];
+assert.deepEqual(quiet.heardBy, ["local", "player"]);
+assert.equal(quiet.soundOnly, undefined);
+const call = routed([{ kind: "dialogue", speakerId: "local", text: "Come here!", delivery: "shout" }], direct).lines[0];
+assert.deepEqual(call.heardBy, ["local", "near", "player"]);
+assert.equal(call.soundOnly, undefined);
+assert.throws(() => routed([crash("local")], direct), /invalid narrated sound/);
+const reach = zoneEventHearingContext(called, chain);
+assert.match(reach, /"across":\["near"\]/);
 assert.doesNotMatch(reach, /bedroom|exterior|hall|attic/, "hearing context omits hidden room identities");
 
 for (const delivery of [undefined, "whisper", "shout"] as const) {
@@ -199,7 +232,7 @@ for (let index = 0; index < 12; index++)
     characterId: "offstage" + index,
     name: "Offstage " + index,
     doing: "Reading",
-    zoneId: "bedroom",
+    zoneId: "hall",
   });
 const bounded = zoneEventScene(crowded, venue);
 assert(bounded.contactGeneration!.actorIds!.length <= 4);
@@ -208,5 +241,5 @@ assert(
 );
 assert.equal(zoneEventScene(crowded, venue, { targetId: "offstage7" }).contactGeneration!.remoteIds[0], "offstage7");
 const broadcast = routed([{ kind: "dialogue", speakerId: "local", text: "Watch out!", delivery: "shout" }], bounded);
-assert.equal(broadcast.lines[0].soundOnly!.characterIds.length, 13, "cast limits never limit delivery");
+assert.equal(broadcast.lines[0].heardBy.length, 15, "cast limits never limit delivery");
 console.log("Zone event routing, private witnesses and captured movement passed.");

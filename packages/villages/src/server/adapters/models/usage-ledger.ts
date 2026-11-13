@@ -18,7 +18,10 @@ export function withUsagePurpose<T>(purpose: UsagePurpose, work: () => T): T {
 export function inferredPurpose(): UsagePurpose {
   return ledger().inferredPurpose();
 }
-export function trackUsage<T>(meta: Parameters<UsageLedger["trackUsage"]>[0], work: () => Promise<T>): Promise<T> {
+export function trackUsage<T>(
+  meta: Parameters<UsageLedger["trackUsage"]>[0],
+  work: (onLateResult: (result: T) => Promise<void>) => Promise<T>,
+): Promise<T> {
   return ledger().trackUsage(meta, work);
 }
 export function readUsageLedger(details = true) {

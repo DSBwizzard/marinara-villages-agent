@@ -9,6 +9,13 @@ import {
 } from "./continuity.js";
 import { episodeSpeechEvidence, episodeContextActors, episodeContextRooms } from "./episode-sources.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
+import {
+  asksForPastExchange,
+  asksForRecallQuote,
+  recallTerms,
+  sceneQuoteScore,
+  sceneQuoteTerms,
+} from "./text-recall.js";
 import { assertMailHistory, episodeMailEvidence } from "./mail-evidence.js";
 
 export const emptyEpisodes = (): EpisodeCollection => ({ format: 1, revision: 0, records: [] });
@@ -324,6 +331,26 @@ function projectGmEpisode(
     : null;
 }
 
+/** Replay whole-exchange boundaries so ordinary growth never changes the head of a fitting transcript. */
+export function appendHistoryWithin<T>(rows: readonly T[], budget: number, weight: (row: T) => number): T[] {
+  let window: T[] = [],
+    used = 0,
+    previousSize = 0;
+  for (const row of rows) {
+    const size = weight(row);
+    if (size > budget) continue;
+    if (used + size > budget) {
+      const overlap = previousSize + size <= budget;
+      window = overlap ? window.slice(-1) : [];
+      used = overlap ? previousSize : 0;
+    }
+    window.push(row);
+    used += size;
+    previousSize = size;
+  }
+  return window;
+}
+
 /** Select complete exchanges locally; omission never means that an earlier event did not happen. */
 export function selectEpisodeHistory(
   collection: EpisodeCollection,
@@ -334,6 +361,12 @@ export function selectEpisodeHistory(
   sceneId?: string,
 ) {
   memoryRequire(Number.isSafeInteger(bytes) && bytes >= 0, "invalid episode context budget");
+  const holderKeys = new Set(holders.map(continuityHolderKey));
+  const eligible = collection.records.flatMap((episode, index) =>
+    episode.actors.some((actor) => holderKeys.has(continuityHolderKey({ kind: "actor", ...actor })))
+      ? [{ episode, index }]
+      : [],
+  );
   const terms = new Set(
     query
       .normalize("NFKC")
@@ -344,30 +377,39 @@ export function selectEpisodeHistory(
     collection,
     continuity,
     holders,
-    collection.records.flatMap((episode) => [
+    eligible.flatMap(({ episode }) => [
       ...episode.actors.map((actor) => ({ kind: "actor" as const, ...actor })),
       ...episodeContextActors(episode),
     ]),
   );
-  const candidates = collection.records.flatMap((episode, index) => {
+  const roomProtections = new Map<string, Set<string>>();
+  const candidates = eligible.flatMap(({ episode, index }) => {
     const view = projectGmEpisode(
       episode,
       holders,
       protections,
       new Set(
-        [...(episode.room ? [episode.room] : []), ...episodeContextRooms(episode)].flatMap((room) => [
-          ...blockedUnits(continuity, room, episodeSourceGraph(collection.records, room)),
-        ]),
+        [...(episode.room ? [episode.room] : []), ...episodeContextRooms(episode)].flatMap((room) => {
+          const key = continuityHolderKey(room);
+          let blocked = roomProtections.get(key);
+          if (!blocked) {
+            blocked = blockedUnits(continuity, room, episodeSourceGraph(collection.records, room));
+            roomProtections.set(key, blocked);
+          }
+          return [...blocked];
+        }),
       ),
     );
     if (!view) return [];
-    const text = JSON.stringify(view),
-      words = new Set(
-        text
-          .normalize("NFKC")
-          .toLocaleLowerCase("en-US")
-          .match(/[\p{L}\p{N}]+/gu) ?? [],
-      );
+    const text = !sceneId || episode.sceneId === sceneId ? JSON.stringify(view) : "";
+    const words = sceneId
+      ? new Set<string>()
+      : new Set(
+          text
+            .normalize("NFKC")
+            .toLocaleLowerCase("en-US")
+            .match(/[\p{L}\p{N}]+/gu) ?? [],
+        );
     return [
       {
         index,
@@ -378,6 +420,84 @@ export function selectEpisodeHistory(
       },
     ];
   });
+  if (sceneId) {
+    const current = candidates.filter((row) => row.episode.sceneId === sceneId);
+    const sceneWindow = appendHistoryWithin(current, bytes, (row) => row.bytes);
+    const sceneIds = new Set(sceneWindow.map((row) => row.view.id));
+    const cue =
+      /(?:^\s*about\b|\b(?:remember|earlier|before|yesterday|last time|previously|promis(?:e|ed)|(?:you|we) (?:said|talked|agreed)|told me)\b)/giu;
+    const quote = asksForRecallQuote(query);
+    const explicit = quote || asksForPastExchange(query) || new RegExp(cue.source, "iu").test(query);
+    const queryTerms = quote
+      ? sceneQuoteTerms(query)
+      : [...new Set(recallTerms(query.replace(cue, " ")))].filter((term) => term.length >= 3);
+    // shortcut: match eligible prose locally; add semantic recall only if players miss specific callbacks.
+    const recalled = candidates
+      .map((row) => {
+        const { gmPrivateInput, groundedInput, segments, letters } = row.view;
+        if (quote)
+          return {
+            row,
+            matches: Math.max(
+              0,
+              ...groundedInput.flatMap((row) =>
+                row.channel === "words" ? [sceneQuoteScore(queryTerms, "player", row.text)] : [],
+              ),
+              ...segments.flatMap((line) => {
+                if (!("text" in line) || line.perceivedBy.player !== "words") return [];
+                const speaker = row.episode.segments.find((saved) => saved.id === line.id)?.name ?? line.speakerId;
+                return [sceneQuoteScore(queryTerms, speaker, line.text)];
+              }),
+            ),
+          };
+        const prose = [
+          "text" in gmPrivateInput ? gmPrivateInput.text : "",
+          ...groundedInput.map((source) => source.text),
+          ...segments.flatMap((segment) => [
+            "text" in segment ? segment.text : "gmOnlyText" in segment ? segment.gmOnlyText : "",
+            ...segment.projections.map((projection) => projection.text),
+          ]),
+          ...(letters ?? []).map((letter) => letter.text),
+        ].join(" ");
+        const words = new Set(recallTerms(prose));
+        return { row, matches: queryTerms.filter((term) => words.has(term)).length };
+      })
+      .filter(({ matches }) => matches >= (explicit ? 1 : 3))
+      .sort((a, b) => b.matches - a.matches || b.row.index - a.row.index)
+      .map(({ row }) => row);
+    // On arrival, offer the latest eligible shared exchange even before anyone asks for a callback.
+    const arrivalRecall = sceneWindow.length
+      ? []
+      : candidates
+          .toReversed()
+          .filter(
+            ({ view }) =>
+              view.segments.some(
+                ({ perceivedBy }) =>
+                  perceivedBy.player === "words" &&
+                  Object.entries(perceivedBy).some(([id, channel]) => id !== "player" && channel === "words"),
+              ) ||
+              view.letters?.some(
+                ({ knownBy }) => knownBy.includes("player") && knownBy.some((id) => id !== "player"),
+              ) ||
+              view.groundedInput.some(
+                (row) =>
+                  row.for !== "player" &&
+                  row.channel === "words" &&
+                  view.groundedInput.some(
+                    (other) => other.for === "player" && other.id === row.id && other.channel === "words",
+                  ),
+              ),
+          );
+    return {
+      partial: sceneWindow.length < candidates.length,
+      omitted: candidates.length - sceneWindow.length,
+      bytes: sceneWindow.reduce((total, row) => total + row.bytes, 0),
+      sceneWindow: sceneIds,
+      episodes: sceneWindow.map((row) => row.view),
+      recallCandidates: [...new Set([...recalled, ...arrivalRecall])].map((row) => row.view),
+    };
+  }
   const shared = recentSharedEpisodes(collection, holders)
     .map((episode) => candidates.find((row) => row.episode.id === episode.id))
     .filter((row) => row !== undefined)
@@ -387,12 +507,9 @@ export function selectEpisodeHistory(
       .slice(0, -2)
       .filter((row) => row.score > 0)
       .sort((a, b) => b.score - a.score || b.index - a.index);
-  const current = sceneId ? candidates.filter((row) => row.episode.sceneId === sceneId) : [];
-  // Keep one completed group and the growing group, so each new turn can append until the next group starts.
-  const sceneWindow = new Set(current.slice(Math.max(0, current.length - (current.length % 4) - 4)));
   const selected: typeof candidates = [];
   let used = 0;
-  for (const row of [...[...sceneWindow].reverse(), ...shared, ...recent.toReversed(), ...rest]) {
+  for (const row of [...shared, ...recent.toReversed(), ...rest]) {
     if (!selected.includes(row) && used + row.bytes <= bytes) {
       selected.push(row);
       used += row.bytes;
@@ -402,9 +519,7 @@ export function selectEpisodeHistory(
     partial: selected.length < candidates.length,
     omitted: candidates.length - selected.length,
     bytes: used,
-    sceneWindow: new Set(selected.filter((row) => sceneWindow.has(row)).map((row) => row.view.id)),
-    episodes: selected
-      .sort((a, b) => Number(sceneWindow.has(b)) - Number(sceneWindow.has(a)) || a.index - b.index)
-      .map((row) => row.view),
+    sceneWindow: new Set<string>(),
+    episodes: selected.sort((a, b) => a.index - b.index).map((row) => row.view),
   };
 }

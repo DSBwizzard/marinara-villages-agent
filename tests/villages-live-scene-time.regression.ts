@@ -300,9 +300,8 @@ try {
     now,
   });
   assert.equal(residentPlanningOpportunity(spatial.world, currentMoment, now.toISOString())!.kind, "encounter");
-  const opportunity = residentPlanningOpportunity(spatial.world, currentMoment, now.toISOString(), conflicts)!;
-  assert.equal(opportunity.kind, "routine", "a moved resident cannot also encounter someone in the old scheduled Zone");
-  assert.deepEqual(opportunity.actorIds, ["jimmy"], "Unconflicted residents retain private planning opportunities");
+  const opportunity = residentPlanningOpportunity(spatial.world, currentMoment, now.toISOString(), conflicts);
+  assert.equal(opportunity, null, "a moved resident cannot also trigger an encounter in the old scheduled Zone");
   assert.equal(
     liveSceneEncounterConflicts(spatial.world, { ...spatial.scene, status: "closed" }, now).size,
     0,

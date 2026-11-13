@@ -153,6 +153,7 @@ async function readEngineJson<T>(path: string, response: Response): Promise<T> {
 export async function villageEngineJson<T>(
   path: string,
   init: { method?: string; body?: unknown; signal?: AbortSignal } = {},
+  onHeaders?: (headers: Headers) => void,
 ): Promise<T> {
   const hasBody = init.body !== undefined;
   const invoke = async () => {
@@ -165,6 +166,7 @@ export async function villageEngineJson<T>(
       ...(hasBody ? { body: JSON.stringify(init.body) } : {}),
       ...(init.signal ? { signal: init.signal } : {}),
     });
+    onHeaders?.(response.headers);
     return readEngineJson<T>(path, response);
   };
   return invoke();

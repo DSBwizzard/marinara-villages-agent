@@ -344,7 +344,7 @@ for (const scenario of scenarios)
         };
       else if (scenario === "wish" || scenario === "wish-new") {
         const desire = scenario === "wish" ? supplied(messages).find((row) => row.class === "desire") : undefined;
-        if (scenario === "wish") assert(desire, "replacement must use an actually fitted desire");
+        if (scenario === "wish") assert.match(desire?.id ?? "", /^h:\d+$/, "the saved update uses a fitted short ID");
         raw = {
           segments: [
             said(
@@ -455,16 +455,21 @@ for (const scenario of scenarios)
       const payload = {
         sessionId: "browser",
         submissionId: "b1111111-1111-4111-8111-111111111111",
-        message:
-          scenario === "halt"
-            ? "I advance the Village clock by two days."
-            : leave
-              ? ""
-              : scenario === "npc"
-                ? "I am waiting for an important letter."
-                : scenario === "capacity"
-                  ? "Mara and Bryn, come outside now."
-                  : "Hello.",
+        message: project
+          ? "Would you approve the Larger Common room design?"
+          : scenario === "wish"
+            ? "Would you share your leek-soup recipe?"
+            : scenario === "relationship"
+              ? "How do you feel around Player?"
+              : scenario === "halt"
+                ? "I advance the Village clock by two days."
+                : leave
+                  ? ""
+                  : scenario === "npc"
+                    ? "I am waiting for an important letter."
+                    : scenario === "capacity"
+                      ? "Mara and Bryn, come outside now."
+                      : "Hello.",
         mode: leave ? "leave" : "chat",
         targetId: "",
         expectedSceneRevision: host.scene().sceneRevision,

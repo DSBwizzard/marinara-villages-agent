@@ -160,7 +160,9 @@ await runCase("narration-circumstance/room-damage", () => {
     );
   }
   const f = roomDamage();
-  assert.match(narrationCircumstancePrompt(f.readset.circumstance)?.roomDamage ?? "", /roomKeeps/);
+  const { roomDamage: recipe, ...facts } = narrationCircumstancePrompt(f.readset.circumstance)!;
+  assert.match(recipe ?? "", /roomKeeps/);
+  assert.deepEqual(narrationCircumstancePrompt(f.readset.circumstance, false), facts);
   assert.equal(narrationCircumstancePrompt(null), null);
   f.raw.keep.push({
     id: "unrelated",

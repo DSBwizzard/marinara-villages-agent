@@ -8,14 +8,21 @@ export async function villageEngineJson<T>(
 ): Promise<T> {
   if (init.body !== undefined && ["/api/characters/avatar-generation"].includes(path)) {
     const body = init.body as Record<string, unknown>;
-    return trackUsage(
+    const { value } = await trackUsage(
       {
         connectionId: typeof body.connectionId === "string" ? body.connectionId : undefined,
         purpose: "images",
         stage: path,
       },
-      () => unmeteredEngineJson<T>(path, init),
+      async () => {
+        let imageFallback = false;
+        const value = await unmeteredEngineJson<T>(path, init, (headers) => {
+          imageFallback = headers.has("X-Marinara-Fallback-Used");
+        });
+        return { value, imageFallback };
+      },
     );
+    return value;
   }
   return unmeteredEngineJson<T>(path, init);
 }

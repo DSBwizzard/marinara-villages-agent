@@ -18,13 +18,14 @@ export function villagesLanguageModels(): CapabilityLanguageModelHost {
       chatComplete: (messages, requestOptions) => {
         requireHost();
         return guardedClockGeneration(() =>
-          trackUsage({ connectionId: model.connectionId, model: model.model }, async () => {
+          trackUsage({ connectionId: model.connectionId, model: model.model }, async (onLateResult) => {
             // A usage claim may await storage; recheck before dispatching the provider.
             requireHost();
             const result = await measureModel(() =>
               withProviderDeadline(
                 (signal) => model.chatComplete(messages, { ...requestOptions, signal }),
                 requestOptions?.signal,
+                onLateResult,
               ),
             );
             await retainJsonRepair(model, result, requestOptions?.maxTokens);

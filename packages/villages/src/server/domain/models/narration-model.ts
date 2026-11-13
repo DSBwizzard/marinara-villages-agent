@@ -1,5 +1,5 @@
 import type { NarrationSourceContext } from "../rules/narration-sources.js";
-import type { ContinuityAdmission } from "./continuity-model.js";
+import type { ContinuityAdmission, ContinuityEvidence } from "./continuity-model.js";
 import type { AcceptedEpisode } from "./episode-model.js";
 
 /** Exact final fitted evidence and native circumstances, retained by the existing operation checkpoint. */
@@ -13,6 +13,11 @@ export type NarrationReadset = {
   presentation: import("../rules/sprite-expressions.js").SpriteSelectionContext;
   source: Omit<NarrationSourceContext, "lines" | "labels" | "native" | "moves"> & { operationId: string };
   admission: Omit<ContinuityAdmission, "sources" | "blockedSources">;
+  readOnlyKnowledge?: ContinuityEvidence[];
+  ordinaryDialogue?: true;
+  ordinaryReplyRecovery?: true;
+  positionedSceneSources?: true;
+  requestedMemory?: { start: number; end: number; recipientId?: string };
   offered: AcceptedEpisode["offered"];
   npcCandidates: { npc: import("./places.js").NpcIdentity; incarnation: string; offered: string[] }[];
   circumstance: import("./narrative-model.js").NarrativeAdmission | null;

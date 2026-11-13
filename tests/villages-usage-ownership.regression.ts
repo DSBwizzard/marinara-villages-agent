@@ -27,6 +27,7 @@ import {
   type Metrics,
 } from "../packages/villages/src/server/adapters/observability/metrics-context-service.js";
 import { measureModel } from "../packages/villages/src/server/adapters/observability/pipeline-metrics.js";
+import { withProviderDeadline } from "../packages/villages/src/server/adapters/models/provider-deadline.js";
 
 function deferred() {
   return Promise.withResolvers<void>();
@@ -133,6 +134,44 @@ const completion = () =>
     finishReason: "stop",
     usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
   });
+{
+  const late = fixture("openai", 1);
+  late.seed();
+  const started = deferred(),
+    settled = deferred(),
+    response = Promise.withResolvers<Awaited<ReturnType<typeof completion>>>(),
+    controller = new AbortController();
+  const request = late.service.trackUsage(meta, (recordLate) =>
+    withProviderDeadline(
+      () => {
+        started.resolve();
+        return response.promise;
+      },
+      controller.signal,
+      async (result) => {
+        await recordLate(result);
+        settled.resolve();
+      },
+    ),
+  );
+  const canceled = assert.rejects(request, /abandoned/);
+  await started.promise;
+  controller.abort(new Error("abandoned"));
+  await canceled;
+  assert.equal((await late.service.readUsageLedger()).totals.unknown, 1);
+  response.resolve(await completion());
+  await settled.promise;
+  const ledger = await late.service.readUsageLedger();
+  assert.equal(ledger.requests[0].status, "complete");
+  assert.equal(ledger.totals.requests, 1);
+  assert.equal(ledger.totals.tokens, 15);
+  assert.equal(ledger.totals.unknown, 0);
+  assert.equal(ledger.totals.dollars, 20 / 1e6);
+  await late.service.trackUsage({ ...meta, purpose: "images" }, async () => ({ imageFallback: true }));
+  const image = (await late.service.readUsageLedger()).requests[0];
+  assert.equal(image.dollars, null);
+  assert.match(image.priceNote, /fallback/);
+}
 async function queuesAndRates() {
   const a = fixture("google", 1),
     b = fixture("anthropic", 10);

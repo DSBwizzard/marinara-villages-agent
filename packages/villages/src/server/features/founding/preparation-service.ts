@@ -4,7 +4,14 @@ import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillageSnapshot } from "../../domain/models/world.js";
 import { connectionFailureKind } from "../../domain/rules/connection-failure.js";
 import { badRequest, conflict, safeFailureMessage } from "../../domain/rules/errors.js";
-import { foundingReadyForPlay, foundingSlot, foundingTaskRevision } from "../../domain/rules/founding-tasks.js";
+import {
+  completeFoundingTask,
+  foundingReadyForPlay,
+  foundingSlot,
+  foundingTaskRevision,
+  ownsFoundingTask,
+} from "../../domain/rules/founding-tasks.js";
+import { continuityWishes } from "../../domain/rules/continuity-library.js";
 
 import { randomVillageSeed } from "../../domain/rules/village-clock.js";
 import type {
@@ -117,6 +124,30 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
           });
           try {
             const prior = await backgroundJobSnapshot(kind === "routine" ? "agenda" : "wish", id);
+            if (
+              kind === "wish" &&
+              !prior &&
+              continuityWishes(latest, id, true, villageNow().toISOString()).some((wish) => wish.status === "open")
+            ) {
+              let reused = false;
+              await mutateVillageState(
+                (state) => {
+                  const current = state.foundingPreparation?.tasks?.[id]?.wish;
+                  reused =
+                    state.seed === initial.seed &&
+                    current?.status === "pending" &&
+                    current.attempt === 0 &&
+                    ownsFoundingTask(state, id, "wish", task.revision) &&
+                    continuityWishes(state, id, true, villageNow().toISOString()).some(
+                      (wish) => wish.status === "open",
+                    );
+                  if (!reused) return false;
+                  completeFoundingTask(state, id, "wish", task.revision);
+                },
+                { memories: true },
+              );
+              if (reused) continue;
+            }
             await mutateVillageState((state) => {
               const current = state.foundingPreparation?.tasks?.[id]?.[kind];
               if (state.seed === initial.seed && current && current.status !== "completed") {

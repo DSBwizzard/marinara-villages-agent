@@ -108,7 +108,7 @@ Write dialogue, actions, thoughts, or a mixture in the message box and choose **
 
 For a first visit, try a greeting and a small action, then ask about the resident's day. Residents can agree, refuse, or suggest something else. A request or a future plan is not automatically a completed change.
 
-People hear what reaches them through the connected spaces. Addressing one person does not make ordinary speech private. Hearing someone in another room does not mean they joined you, and exchanging an object still requires being together.
+Ordinary speech reaches everyone in the same Zone. A whisper reaches its one local recipient. A deliberate shout can carry through a directly connected doorway. Hearing someone in another Zone leaves them where they are. Exchanging an object requires being together. Saved exchanges retain their original witnesses.
 
 Each Zone has room for four villagers; your Persona does not use a villager slot. If a requested change in occupancy cannot be completed, Villages keeps your input as an editable draft and shows a notice. The whole turn stays outside the Scene, including any other dialogue in that input. It will not reveal a private reason such as unseen occupants.
 
@@ -216,7 +216,7 @@ Time, schedules, construction, approved moves, and expiry can advance without mo
 
 Set **Pace → Off** to pause automatic resident and world reviews. Local time, construction, approved moves and established environmental expiry continue. Retained Wishes do not expire.
 
-Quiet, Average, and Busy permit at most 2, 6, and 12 shared automatic reviews per Village-local day, at least 60, 30, and 15 minutes apart respectively. Midnight resets the allowance without shortening spacing. Resident encounters and World developments each use one model request. One eligible automatic retry may buy another response. Quiet outcomes, failures and unknown outcomes count. Completed replies are reused. Unknown outcomes require deliberate recovery. Accepted due arrangements have priority. Other resident and World reviews alternate. Residents may initiate private encounters or personal mail.
+Quiet, Average, and Busy permit at most 2, 6, and 12 shared automatic reviews per Village-local day, at least 60, 30, and 15 minutes apart respectively. Midnight resets the allowance without shortening spacing. Automatic reviews begin after the opening gathering. Accepted due arrangements have priority. A new shared visit can warrant one review for that group and Zone per day. World reviews need a new active circumstance. An eligible review uses one model request, and one eligible automatic retry can buy another. Quiet outcomes, failures, and unknown outcomes count. Completed replies are reused. Unknown outcomes require deliberate recovery. Residents may initiate personal mail during eligible activity.
 
 **Consequence → Gentle / Moderate / Dramatic** controls introduced circumstances and event-driven escalation. Gentle is the default. It does not restrict ordinary character behavior or replace HALT. Lowering it preserves established facts and constrains uncommitted developments. Discover circumstances through ordinary visits, conversations, activities and memories; player assertions do not independently create external facts. Situations can remain quiet, develop or resolve without player involvement.
 

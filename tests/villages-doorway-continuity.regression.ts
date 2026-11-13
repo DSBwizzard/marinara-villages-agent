@@ -57,7 +57,7 @@ const arrival = {
   ],
 };
 function accept(raw: unknown, turn: string, startingScene = base) {
-  const scene = zoneEventScene(startingScene, venue);
+  const scene = zoneEventScene(startingScene, venue, { targetId: "a" });
   const context = narrationContinuityContext(state, scene, venue, "operation-" + turn, "Hello from outside.", at);
   const readset = fittedNarrationReadset(
     state,

@@ -122,6 +122,7 @@ async function main() {
     assert.equal(deep("2026-10-17T02:00:00Z")?.input, 0.15);
     assert.equal(deep("2026-10-01T02:00:00Z")?.input, 0.15, "Chinese public holiday is off peak");
     assert.equal(deep("2027-01-01T02:00:00Z"), null, "unreviewed holiday years stay unknown");
+    assert.equal(deep("2027-01-01T15:00:00Z")?.input, 0.15, "known off-peak hours need no holiday table");
     const rate = catalogRate("google", "gemini-2.5-flash-lite")!;
     assert.equal(catalogRate("openrouter", "gemini-2.5-flash-lite"), null);
     assert.equal(catalogRate("google", "gemini-2.5-flash-lite", "https://proxy.test"), null);

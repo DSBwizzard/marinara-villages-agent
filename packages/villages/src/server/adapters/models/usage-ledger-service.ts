@@ -168,7 +168,7 @@ export function createUsageLedger(ports: UsageLedgerPorts) {
 
   async function trackUsage<T>(
     meta: { connectionId?: string; model?: string; purpose?: UsagePurpose; stage?: string; capability?: "decisions" },
-    work: () => Promise<T>,
+    work: (onLateResult: (result: T) => Promise<void>) => Promise<T>,
   ): Promise<T> {
     const id = randomUUID(),
       connectionId = meta.connectionId ?? "";
@@ -214,11 +214,14 @@ export function createUsageLedger(ports: UsageLedgerPorts) {
       lastFailure = "Usage accounting is incomplete";
       villagesLogger().warn("[villages] usage recording failed: %s", String(error));
     }
-    try {
-      const result = await work();
+    const recordResult = async (result: T) => {
       if (request) {
         const resultModel = (result as { model?: unknown } | null)?.model;
         if (meta.capability && typeof resultModel === "string" && resultModel.trim()) request.model = resultModel;
+        if (request.purpose === "images" && (result as { imageFallback?: boolean } | null)?.imageFallback === true) {
+          request.priceNote = "Engine used image fallback. Provider attempt count and total cost are unavailable.";
+          request.rate = null;
+        }
         const raw = (result as { usage?: Record<string, unknown> } | null)?.usage;
         const usage = raw
           ? (Object.fromEntries(
@@ -234,6 +237,10 @@ export function createUsageLedger(ports: UsageLedgerPorts) {
           lastFailure = "Usage accounting is incomplete";
         });
       }
+    };
+    try {
+      const result = await work(recordResult);
+      await recordResult(result);
       return result;
     } catch (error) {
       if (request)
@@ -247,10 +254,13 @@ export function createUsageLedger(ports: UsageLedgerPorts) {
   async function finish(request: UsageRequest, status: UsageRequest["status"], usage?: Record<string, number>) {
     await write((ledger) => {
       const saved = ledger.requests.find((r) => r.id === request.id);
-      if (!saved || saved.status !== "running") return;
+      if (!saved || (saved.status !== "running" && !(saved.status === "unknown" && status === "complete"))) return;
+      if (saved.status === "unknown") tally(ledger, saved, false, -1);
       Object.assign(saved, {
         status,
         model: request.model,
+        rate: request.rate,
+        priceNote: request.priceNote,
         usage,
         finishedAt: new Date().toISOString(),
         dollars: status === "complete" ? usageDollars(usage, saved.rate, saved.provider) : null,

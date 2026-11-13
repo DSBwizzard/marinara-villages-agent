@@ -409,17 +409,19 @@ export async function runSceneCostFixtures(selected: readonly SceneCostCase[] = 
             ? ""
             : id === "mixed-input"
               ? '  I privately think "hidden key", then say "Good morning." *waves*\n  '
-              : ["physical", "movement-privacy"].includes(id)
-                ? "*I wait.*"
-                : id === "long-history"
-                  ? "Which tea did you prefer?"
-                  : id === "rich-resident"
-                    ? "How is the greenhouse repair going?"
-                    : id.startsWith("project-")
-                      ? "What do you think of the Larger Common room design?"
-                      : id.startsWith("wish-")
-                        ? "Would you share your recipe?"
-                        : "How are you today?";
+              : id === "movement-privacy"
+                ? "Bryn, could you come into the Common room?"
+                : id === "physical"
+                  ? "*I wait.*"
+                  : id === "long-history"
+                    ? "Which tea did you prefer?"
+                    : id === "rich-resident"
+                      ? "How is the greenhouse repair going?"
+                      : id.startsWith("project-")
+                        ? "What do you think of the Larger Common room design?"
+                        : id.startsWith("wish-")
+                          ? "Would you share your recipe?"
+                          : "How are you today?";
       const calls: {
         inputCharacters: number;
         inputBytes: number;
@@ -470,11 +472,7 @@ export async function runSceneCostFixtures(selected: readonly SceneCostCase[] = 
             .filter((line: string) => line.startsWith('{"privateContinuity":'))
             .flatMap((line: string) => JSON.parse(line).privateContinuity);
           const desires = entries.filter((row: any) => row.current && row.class === "desire");
-          assert(
-            desires.length > 0 && desires.length < 40,
-            "bounded keyword-independent initiative offers a current desire without injecting all40",
-          );
-          assert(desires.every((row: any) => row.text.startsWith("I want to share an afternoon discussing craft ")));
+          assert.equal(desires.length, 1, "a richly authored resident gets one standing initiative in an active Scene");
           assert(bytes < 200000, "rich continuity is selected rather than serializing its entire history");
         }
         return { content, finishReason: "stop" };

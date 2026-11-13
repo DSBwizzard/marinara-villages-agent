@@ -5,8 +5,9 @@ import type {
   ContinuityHolder,
   ContinuityWrite,
 } from "../models/continuity-model.js";
-import { continuityHolderKey } from "./continuity.js";
+import { continuityHolderKey, ownedContinuityClass } from "./continuity.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
+import { asRecord } from "./coerce.js";
 import { readContinuityProposal, readNarrationEffectHeader } from "./narration-contract.js";
 import {
   assertNarrationSourceOrder,
@@ -56,10 +57,14 @@ export function prepareContinuityKeep(
   sourceContext: Pick<NarrationSourceContext, "seed" | "episodeId" | "actors" | "subjects"> & {
     operationId: string;
     bindSource(ref: unknown, owner: NarrationSourceOwner): ContinuityEvidence;
+    resolveTarget?(id: string): string;
+    ordinaryDialogue?: true;
   },
 ) {
   const proposal = readContinuityProposal(raw),
     header = readNarrationEffectHeader(raw, "keep-" + ordinal);
+  for (const field of ["replace", "parent"] as const)
+    if (proposal[field] && sourceContext.resolveTarget) proposal[field] = sourceContext.resolveTarget(proposal[field]);
   memoryRequire(
     admission.seed === sourceContext.seed &&
       admission.operationId === sourceContext.operationId &&
@@ -188,6 +193,33 @@ export function prepareContinuityKeep(
   };
   const sources = citedSources(proposal.source.map((ref) => sourceContext.bindSource(ref, sourceOwner)));
   assertNarrationSourceOrder(sources);
+  const speaker = holders[0];
+  const dialogueOwner =
+    sourceContext.ordinaryDialogue &&
+    !owner &&
+    !proposal.replace &&
+    !proposal.parent &&
+    !proposal.offer &&
+    !proposal.retire &&
+    ownedContinuityClass(sourceOwner.class) &&
+    holders.length === 1 &&
+    speaker.kind === "actor" &&
+    speaker.id !== "player" &&
+    sources.length > 0 &&
+    sources.every(
+      (source) =>
+        source.episodeId === sourceContext.episodeId &&
+        source.kind === "speech" &&
+        source.unitId !== "input" &&
+        source.actorId === speaker.id &&
+        !/["“”«»‘]|(?:^|[\s,:;])'/u.test(source.excerpt) &&
+        /(?:^|[.!?]\s+|\band )I(?:['’]ll| (?:keep|will|won['’]t|intend|want|wish|hope|prefer|plan|promise|refuse|agree))\b/u.test(
+          source.excerpt,
+        ) &&
+        source.perceptions.some((row) => row.actorId === speaker.id && row.channel === "words"),
+    )
+      ? speaker
+      : undefined;
   if (proposal.parent)
     memoryRequire(
       admission.supplied.some((target) => target.id === proposal.parent),
@@ -220,7 +252,7 @@ export function prepareContinuityKeep(
   const write: ContinuityWrite = {
     id: header.id,
     holders,
-    ...(owner ? { owner } : {}),
+    ...(owner || dialogueOwner ? { owner: owner ?? dialogueOwner } : {}),
     sourceIds: sources.map((source) => source.id),
     ...(relationship ? { relationship } : {}),
     ...(target ? { target } : {}),
@@ -281,10 +313,94 @@ export function prepareNarrationKeep(
   collection: ContinuityCollection,
   admission: ContinuityAdmission,
   sourceContext: NarrationSourceContext,
+  ordinaryDialogue?: true,
+  ordinaryReplyRecovery?: true,
 ) {
+  if (ordinaryReplyRecovery) {
+    const row = asRecord(raw);
+    const { proposer, participants, ...fields } = row;
+    const flattenedOffer =
+      row.class === "offer" &&
+      !Object.hasOwn(row, "offer") &&
+      typeof proposer === "string" &&
+      Array.isArray(participants);
+    const canonical = flattenedOffer ? { ...fields, class: "commitment", offer: { proposer, participants } } : row;
+    const keep =
+      typeof canonical.for === "string" &&
+      canonical.for !== "room" &&
+      sourceContext.actors.some((actor) => actor.id === canonical.for)
+        ? { ...canonical, for: [canonical.for] }
+        : canonical;
+    raw = keep;
+    const proposal = readContinuityProposal(keep);
+    const ref = proposal.source[0];
+    const segment =
+      typeof ref === "string" && /^[A-Za-z][A-Za-z0-9_-]{0,47}$/u.test(ref) && ref !== "self"
+        ? { segment: ref }
+        : typeof ref === "object" && "segment" in ref && (!ref.act || ref.act === "offer")
+          ? ref
+          : undefined;
+    if (
+      proposal.offer &&
+      !proposal.replace &&
+      proposal.retire === undefined &&
+      proposal.source.length === 1 &&
+      segment
+    ) {
+      const id = Object.hasOwn(sourceContext.labels, segment.segment) && sourceContext.labels[segment.segment];
+      const line = sourceContext.lines.find((line) => line.id === id);
+      const { proposer, participants } = proposal.offer;
+      if (
+        line?.role === "assistant" &&
+        line.kind !== "narration" &&
+        line.speakerId === proposer &&
+        participants.every((party) => party === proposer || line.heardBy.includes(party)) &&
+        !("perceive" in segment && segment.perceive)
+      ) {
+        if (
+          ("act" in segment && segment.act === "offer") ||
+          (/(?:^|[.!?]\s+)(?:come\b[^.!?]{0,120}\band I['’]ll\b|if you want\b[^.!?]{0,130},\s*say yes and I['’]ll\b)/iu.test(
+            line.content,
+          ) &&
+            !/["“”«»‘]|(?:^|[\s,:;])'/u.test(line.content))
+        ) {
+          const { owner, ...withoutOwner } = keep;
+          raw = { ...(owner === proposer ? withoutOwner : keep), source: [{ ...segment, act: "offer" }] };
+        }
+      }
+    }
+  }
   return prepareContinuityKeep(raw, ordinal, collection, admission, {
     ...sourceContext,
     operationId: sourceContext.episodeId,
+    ordinaryDialogue,
     bindSource: (ref, owner) => bindNarrationSource(ref, sourceContext, owner),
+    resolveTarget: (id) => {
+      if (!id.startsWith("h:")) return id;
+      const evidence = Object.hasOwn(sourceContext.historical, id) && sourceContext.historical[id];
+      const version =
+        evidence &&
+        evidence.kind === "knowledge" &&
+        evidence.seed === sourceContext.seed &&
+        evidence.episodeId === sourceContext.episodeId &&
+        collection.versions.find((row) => row.id === evidence.unitId);
+      const target = version && admission.supplied.find((row) => row.id === version.rootId);
+      const record = target && collection.records.find((row) => row.id === target.id);
+      memoryRequire(
+        version &&
+          target &&
+          record &&
+          evidence &&
+          Object.entries(record.heads).some(
+            ([key, head]) =>
+              head.holder.kind === "actor" &&
+              head.holder.id === evidence.actorId &&
+              head.versionId === version.id &&
+              target.heads[key] === head.revision,
+          ),
+        "continuity target was not fitted or its holder changed",
+      );
+      return version.rootId;
+    },
   });
 }

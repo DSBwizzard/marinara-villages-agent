@@ -149,11 +149,14 @@ const records = new Map<string, any>();
     adopted: [],
     unresolved: [],
   };
-  let job: any,
+  let schedules: import("../packages/villages/src/server/domain/rules/schedule-rules.js").NativeWeekSchedule[] = [
+      source,
+    ],
+    job: any,
     requests = 0;
   const influence = createScheduleInfluence({
     readVillageState: async () => world,
-    readNativeScheduleSnapshot: async () => ({ cardsReadable: true, schedules: [source] }),
+    readNativeScheduleSnapshot: async () => ({ cardsReadable: true, schedules }),
     queueBackgroundJob: async (value: unknown) => {
       job = value;
     },
@@ -194,6 +197,27 @@ const records = new Map<string, any>();
   assert(job);
   resident.scheduleInfluence!.categories.rhythm = true;
   assert.equal(influence.handler.valid(world, job.input), false);
+  const previousInput = job.input;
+  schedules = [];
+  job = undefined;
+  await influence.queue("a");
+  assert.equal(job, undefined, "No imported schedule creates no work");
+  assert.deepEqual((await influence.handler.generate({ ...previousInput, schedule: null })).rhythms, []);
+  assert.equal(requests, 1, "A legacy empty input settles without a provider request");
+  const exact = {
+    ...source,
+    routineSummary: "",
+    days: { Monday: [{ time: "22:00-06:00", activity: "Sleeping" }] },
+  };
+  schedules = [exact];
+  resident.scheduleInfluence!.categories.weekdayWeekend = false;
+  await influence.queue("a");
+  assert.equal(job, undefined, "Exact native timing needs no semantic interpretation");
+  assert.equal(
+    deriveInfluence(exact, resident).rhythms.length,
+    7,
+    "Monday timing repeats when weekday variation is off",
+  );
 }
 
 let calls = 0,

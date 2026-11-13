@@ -46,7 +46,7 @@ export function day(at: string): string {
   ].join("-");
 }
 
-export function tally(ledger: Ledger, request: UsageRequest, start: boolean) {
+export function tally(ledger: Ledger, request: UsageRequest, start: boolean, direction: 1 | -1 = 1) {
   const buckets = [ledger.all, (ledger.days[day(request.startedAt)] ??= empty())];
   if ((request.periodId ?? "initial") === ledger.periodId) {
     buckets.push(
@@ -55,23 +55,24 @@ export function tally(ledger: Ledger, request: UsageRequest, start: boolean) {
       (ledger.connections[request.connectionId] ??= empty()),
     );
   }
-  for (const total of buckets) add(total, request, start);
+  for (const total of buckets) add(total, request, start, direction);
 }
 
-function add(total: Totals, request: UsageRequest, start: boolean) {
-  if (start) total.requests++;
+function add(total: Totals, request: UsageRequest, start: boolean, direction: 1 | -1 = 1) {
+  if (start) total.requests += direction;
   else {
     if (
       request.usage?.totalTokens === undefined &&
       (request.usage?.promptTokens === undefined || request.usage?.completionTokens === undefined)
     )
-      total.unknownTokens++;
+      total.unknownTokens += direction;
     total.tokens +=
-      request.usage?.totalTokens ?? (request.usage?.promptTokens ?? 0) + (request.usage?.completionTokens ?? 0);
-    total.dollars += request.dollars ?? 0;
-    total.yuan += request.yuan ?? 0;
-    if (request.rate?.currency !== "CNY") total.usd += request.dollars ?? 0;
-    if (request.dollars === null && request.yuan == null) total.unknown++;
+      direction *
+      (request.usage?.totalTokens ?? (request.usage?.promptTokens ?? 0) + (request.usage?.completionTokens ?? 0));
+    total.dollars += direction * (request.dollars ?? 0);
+    total.yuan += direction * (request.yuan ?? 0);
+    if (request.rate?.currency !== "CNY") total.usd += direction * (request.dollars ?? 0);
+    if (request.dollars === null && request.yuan == null) total.unknown += direction;
   }
 }
 
@@ -148,7 +149,6 @@ function deepSeekRate(model: string, at: Date): UsageRate | null {
   if (!flash && model !== "deepseek-v4-pro") return null;
   // Calendar: https://www.gov.cn/zhengce/content/202511/content_7047090.htm
   const chinaDay = new Date(at.getTime() + 8 * 3600_000).toISOString().slice(0, 10);
-  if (!chinaDay.startsWith("2026-")) return null;
   const holidays = [
     ["01-01", "01-03"],
     ["02-15", "02-23"],
@@ -161,7 +161,9 @@ function deepSeekRate(model: string, at: Date): UsageRate | null {
   const holiday = holidays.some(([start, end]) => chinaDay.slice(5) >= start && chinaDay.slice(5) <= end);
   const weekday = at.getUTCDay(),
     hour = at.getUTCHours();
-  const peak = weekday >= 1 && weekday <= 5 && !holiday && ((hour >= 1 && hour < 4) || (hour >= 6 && hour < 10));
+  const peakWindow = weekday >= 1 && weekday <= 5 && ((hour >= 1 && hour < 4) || (hour >= 6 && hour < 10));
+  if (peakWindow && !chinaDay.startsWith("2026-")) return null;
+  const peak = peakWindow && !holiday;
   const multiplier = peak ? 1 : 0.5;
   return {
     input: (flash ? 0.3 : 1.32) * multiplier,

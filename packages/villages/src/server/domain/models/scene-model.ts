@@ -107,6 +107,8 @@ export type VenueScene = {
   /** Ephemeral prompt context; never stored or disclosed. */
   contactGeneration?: {
     zoneEvents?: boolean;
+    /** Captured on new requests so retained older replies keep their original routing. */
+    hearing?: "direct";
     venue?: import("./world.js").VillageVenue;
     instruction: string;
     localIds: string[];
