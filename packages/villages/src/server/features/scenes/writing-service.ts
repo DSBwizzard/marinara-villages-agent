@@ -373,7 +373,7 @@ export function createSceneWriting({
               ordinaryReplyRecovery: true,
               positionedSceneSources: true,
               stripSceneHistoryDecoration: true,
-              ordinaryFormatRecovery: 4,
+              ordinaryFormatRecovery: 5,
               quotedSceneSources: true,
               splitKeepRecovery: 2,
               explicitSceneReplacement: true,

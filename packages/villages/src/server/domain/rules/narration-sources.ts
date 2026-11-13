@@ -186,7 +186,7 @@ export function readSceneNarrationReply(
 ) {
   const positions = readset.positionedSceneSources === true;
   const quotes = readset.quotedSceneSources === true;
-  const recovery = readset.ordinaryFormatRecovery;
+  const recovery = readset.ordinaryFormatRecovery === 5 ? 4 : readset.ordinaryFormatRecovery;
   if (readset.ordinaryReplyRecovery) raw = ordinaryReplyLayout(raw, positions, quotes);
   if (positions) raw = bindSceneSourcePositions(raw, quotes, readset.recognizeDirectOfferSpeech);
   if (

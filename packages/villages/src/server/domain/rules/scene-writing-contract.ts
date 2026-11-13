@@ -36,12 +36,15 @@ function ordinarySceneEnvelope(value: Record<string, unknown> | null): value is 
   );
 }
 
+const positionReference = (value: unknown) =>
+  typeof value === "number" || (typeof value === "string" && /^segment-\d+$/u.test(value));
+
 export function completeSceneObject(
   content: string,
   finishReason?: string,
   parsed?: ModelJsonReply,
   ordinaryReplyRecovery?: true,
-  ordinaryFormatRecovery?: true | 2 | 3 | 4,
+  ordinaryFormatRecovery?: true | 2 | 3 | 4 | 5,
   splitKeepRecovery?: true | 2,
   explicitSceneReplacement?: true,
 ): Record<string, unknown> | null {
@@ -57,6 +60,39 @@ export function completeSceneObject(
     if (value) return value;
   }
   if (!modelJsonWithinBounds(content)) return null;
+  if (ordinaryReplyRecovery === true && ordinaryFormatRecovery === 5) {
+    const joinedLines =
+      /"(?:[^"\\]|\\.)*"|(?<dialogue>\{\s*"kind"\s*:\s*"dialogue"\s*,\s*"speakerId"\s*:\s*"(?:[^"\\]|\\.)+"\s*,\s*"text"\s*:\s*"(?:[^"\\]|\\.)+"\s*),\s*(?<narration>"kind"\s*:\s*"narration"\s*,\s*"text"\s*:\s*"(?:[^"\\]|\\.)+"\s*\})/gu;
+    const joined = [...text.matchAll(joinedLines)].filter((match) => match.groups?.dialogue);
+    if (joined.length === 1) {
+      const [{ index, 0: line, groups }] = joined;
+      const { dialogue, narration } = groups!;
+      const prefix = text.slice(0, index);
+      const head = parseSceneObject(prefix + dialogue + "}]}");
+      if (head && Object.keys(head).length === 1 && Array.isArray(head.segments)) {
+        const corrected = parseSceneObject(prefix + dialogue + "},{" + narration + text.slice(index + line.length));
+        if (
+          ordinarySceneEnvelope(corrected) &&
+          (corrected.segments as unknown[]).every((row) => {
+            const { kind } = asRecord(row);
+            return kind === "dialogue" || kind === "narration";
+          }) &&
+          (corrected.keep as unknown[] | undefined)?.every((keep) => {
+            const refs = asRecord(keep).source;
+            return (
+              !Array.isArray(refs) ||
+              refs.every((ref) => {
+                const source = asRecord(ref);
+                const at = asRecord(asRecord(source.ground).at);
+                return ![ref, source.segment, at.before, at.after].some(positionReference);
+              })
+            );
+          }) !== false
+        )
+          return corrected;
+      }
+    }
+  }
   if (ordinaryReplyRecovery === true && explicitSceneReplacement === true) {
     // shortcut: recognize the observed correction and an explicit replacement line, extend when another clear form fails.
     const replacement =
@@ -76,7 +112,8 @@ export function completeSceneObject(
     ordinaryFormatRecovery === true ||
     ordinaryFormatRecovery === 2 ||
     ordinaryFormatRecovery === 3 ||
-    ordinaryFormatRecovery === 4
+    ordinaryFormatRecovery === 4 ||
+    ordinaryFormatRecovery === 5
   ) {
     // Match complete strings first so punctuation inside the prose cannot be repaired.
     const separator = /"(?:[^"\\]|\\.)*"|(?<extra>\}(?:\s*,\s*\}|\s*\]\s*\})\s*,\s*)(?=\{)/gu;

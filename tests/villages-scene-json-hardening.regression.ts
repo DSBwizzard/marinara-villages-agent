@@ -97,6 +97,30 @@ await runCase("scene-json-hardening/ambiguity", () => {
   );
   const core = { segments: [{ kind: "narration", text: 'A {gate} bears "hello", [friend], and a backslash: \\.' }] };
   const coreJson = JSON.stringify(core);
+  const joined = '{"kind":"dialogue","speakerId":"a","text":"I said hello.","kind":"narration","text":"She waves."}';
+  const splitSegments = [
+    { kind: "dialogue", speakerId: "a", text: "I said hello." },
+    { kind: "narration", text: "She waves." },
+  ];
+  const joinedReply = '{"segments":[' + joined + '],"keep":' + JSON.stringify(scene.keep) + "}";
+  const readJoined = (input: string, finish = "stop") => completeSceneObject(input, finish, undefined, true, 5, 2);
+  assert.deepEqual(readJoined(joinedReply), { segments: splitSegments, keep: scene.keep });
+  assert.equal(completeSceneObject(joinedReply, "stop", undefined, true, 4, 2), null);
+  assert.equal(readJoined(joinedReply, "length"), null);
+  for (const invalid of [
+    '{"segments":[' + joined + "," + joined + "]}",
+    coreJson.slice(0, -1) + ',"keep":[' + joined + "]}",
+    '{"segments":[{"kind":"narration","text":"A line","staging":' + joined + "}]}",
+    joinedReply.replace('"text":"I said hello.",', '"text":"I said hello.","requires":["note"],'),
+    joinedReply.replace('"text":"She waves."}', '"text":"She waves.","id":"wave"}'),
+    joinedReply.replace('"id":"note"', '"id":"note","id":"other"'),
+    joinedReply.replace('"source":["answer"]', '"source":[{"segment":2}]'),
+    joinedReply.replace('"source":["answer"]', '"source":["segment-1"]'),
+    '{"segments":[' + joined + ',{"kind":"keep","for":["a"],"source":[{"segment":2}]}]}',
+    joinedReply.replace('"source":["answer"]', '"source":[{"input":"Hi","ground":{"at":{"after":2}}}]'),
+    joinedReply.slice(0, -1) + ',"commands":[]}',
+  ])
+    assert.equal(readJoined(invalid), null, invalid);
   const keep = [{ text: "A {gate} bears a sign.", source: ["answer"] }];
   const split = coreJson + "\n,keep:" + JSON.stringify(keep) + "}";
   assert.deepEqual(completeSceneObject(split, "stop"), { ...core, keep });
