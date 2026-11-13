@@ -407,7 +407,7 @@ await runCase("narration-writing/single-request", async () => {
     "chat",
   );
   const casualPrompt = casual.fitted.messages.map((row) => row.content).join("\n");
-  assert.match(casualPrompt, /explicit request to remember, an actual promise or offer/u);
+  assert.match(casualPrompt, /a request to remember or a lasting change/u);
   assert.doesNotMatch(
     casualPrompt,
     /mutual-offer decision|decision on a supplied open offer|Details for complex memory updates/u,

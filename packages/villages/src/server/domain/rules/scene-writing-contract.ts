@@ -2,6 +2,7 @@ import type { VenueScene } from "../models/scene-model.js";
 import { conflict } from "./errors.js";
 import { modelJsonWithinBounds, readModelJsonObject, type ModelJsonReply } from "./json-reply.js";
 import { parseSceneObject } from "./scene-json-syntax.js";
+import { asRecord } from "./coerce.js";
 
 /** Refuse an unsupported Scene before generation can replace a retained response. */
 export function assertCurrentSceneGeneration(scene: VenueScene) {
@@ -13,6 +14,7 @@ export function completeSceneObject(
   finishReason?: string,
   parsed?: ModelJsonReply,
   ordinaryReplyRecovery?: true,
+  ordinaryFormatRecovery?: true,
 ): Record<string, unknown> | null {
   if (finishReason !== "stop" && finishReason !== "end_turn") return null;
   const text = content
@@ -26,6 +28,25 @@ export function completeSceneObject(
     if (value) return value;
   }
   if (!modelJsonWithinBounds(content)) return null;
+  if (ordinaryFormatRecovery === true) {
+    // Match complete strings first so punctuation inside the prose cannot be repaired.
+    const separator = /"(?:[^"\\]|\\.)*"|(?<extra>\}\s*,\s*\}\s*,\s*)(?=\{)/gu;
+    const extra = [...text.matchAll(separator)].filter((match) => match.groups?.extra);
+    if (extra.length === 1) {
+      const [{ index, 0: duplicate }] = extra;
+      const corrected = parseSceneObject(text.slice(0, index) + "}," + text.slice(index + duplicate.length));
+      if (
+        corrected &&
+        Object.keys(corrected).length === 1 &&
+        Array.isArray(corrected.segments) &&
+        corrected.segments.every((value: unknown) => {
+          const line = asRecord(value);
+          return (line.kind === "narration" || line.kind === "dialogue") && !Object.hasOwn(line, "requires");
+        })
+      )
+        return corrected;
+    }
+  }
   if (ordinaryReplyRecovery) {
     const bare = /\}\s*\r?\n\s*keep\s*:\s*(?=\[)/u.exec(text);
     if (bare && text.endsWith("]")) {

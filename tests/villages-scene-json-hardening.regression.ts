@@ -68,6 +68,16 @@ await runCase("scene-json-hardening/syntax", () => {
 });
 
 await runCase("scene-json-hardening/ambiguity", () => {
+  const segments = [{ kind: "narration", text: 'Leave this punctuation alone: },},{ and "},},{".' }, scene.segments[0]];
+  const extraBrace = JSON.stringify({ segments }).replace('},{"id"', '},},{"id"');
+  assert.equal(completeSceneObject(extraBrace, "stop", undefined, true), null);
+  assert.deepEqual(completeSceneObject(extraBrace, "stop", undefined, true, true), { segments });
+  assert.equal(completeSceneObject(extraBrace, "length", undefined, true, true), null);
+  assert.equal(completeSceneObject(extraBrace.slice(0, -1) + ',"keep":[]}', "stop", undefined, true, true), null);
+  assert.equal(
+    completeSceneObject(extraBrace.slice(0, -2) + ',{"kind":"keep"}]}', "stop", undefined, true, true),
+    null,
+  );
   const core = { segments: [{ kind: "narration", text: 'A {gate} bears "hello", [friend], and a backslash: \\.' }] };
   const coreJson = JSON.stringify(core);
   const keep = [{ text: "A {gate} bears a sign.", source: ["answer"] }];

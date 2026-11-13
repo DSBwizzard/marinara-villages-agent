@@ -247,6 +247,27 @@ await runCase("narration-acceptance/requested-memory", () => {
 await runCase("narration-acceptance/ordinary-dialogue", () => {
   {
     const f = fixture();
+    const raw = { segments: [{ kind: "dialogue", speakerId: f.id, text: "A brief aside.", delivery: "aside" }] };
+    const p = f.publication(raw);
+    assert.throws(() => acceptNarrationContinuity(f.state, p, "old-aside", later), /delivery/u);
+    p.readset.ordinaryFormatRecovery = true;
+    assert.throws(
+      () =>
+        acceptNarrationContinuity(
+          f.state,
+          { ...p, raw: { segments: [{ ...raw.segments[0], targetId: "player" }] } },
+          "targeted-aside",
+          later,
+        ),
+      /delivery/u,
+    );
+    const result = acceptNarrationContinuity(f.state, p, "aside", later);
+    assert.equal(result.held, false);
+    assert.deepEqual(result.episode?.segments[0]?.heardBy?.toSorted(), [f.id, "player"].toSorted());
+    assert.equal(raw.segments[0].delivery, "aside");
+  }
+  {
+    const f = fixture();
     const line = { ...f.response()[0], witnessedWords: { ref: "h:1515.1" } };
     const { requires: _requires, ...ordinary } = line;
     const p = f.publication({ segments: [ordinary] });

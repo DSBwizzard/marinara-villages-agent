@@ -159,6 +159,18 @@ export function readSceneNarrationReply(
     const line = asRecord(value),
       source = line.source;
     if (
+      readset.ordinaryFormatRecovery === true &&
+      line.kind === "dialogue" &&
+      line.delivery === "aside" &&
+      !Object.hasOwn(line, "targetId") &&
+      !Object.hasOwn(line, "presentation") &&
+      !Object.hasOwn(line, "requires") &&
+      source === undefined
+    ) {
+      const { delivery: _delivery, ...prose } = line;
+      return { ...prose, presentation: "aside" };
+    }
+    if (
       readset.stripSceneHistoryDecoration &&
       line.kind === "dialogue" &&
       line.requires === undefined &&
