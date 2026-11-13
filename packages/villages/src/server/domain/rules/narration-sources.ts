@@ -196,8 +196,10 @@ export function readSceneNarrationReply(
 ) {
   const positions = readset.positionedSceneSources === true;
   const quotes = readset.quotedSceneSources === true;
-  const recovery = readset.ordinaryFormatRecovery === 5 ? 4 : readset.ordinaryFormatRecovery;
+  const format = readset.ordinaryFormatRecovery;
+  const recovery = format === 5 || format === 6 ? 4 : format;
   const decorations = readset.stripSceneReplyDecorations;
+  const knownDecorations = decorations === true || decorations === 2 || decorations === 3 || decorations === 4;
   if (
     readset.recoverCodeMemoryEcho === true &&
     readset.codeRequestedMemory === true &&
@@ -220,7 +222,7 @@ export function readSceneNarrationReply(
     };
   }
   if (
-    (decorations === 2 || decorations === 3) &&
+    (decorations === 2 || decorations === 3 || decorations === 4) &&
     Array.isArray(raw.segments) &&
     raw.segments.every((row) => {
       const { kind } = asRecord(row);
@@ -231,7 +233,7 @@ export function readSceneNarrationReply(
       const { halt: _halt, ...prose } = raw;
       raw = prose;
     } else if (
-      decorations === 3 &&
+      (decorations === 3 || decorations === 4) &&
       typeof raw.leadSpeakerId === "string" &&
       speakers.includes(raw.leadSpeakerId) &&
       raw.segments.some((row) => {
@@ -241,6 +243,13 @@ export function readSceneNarrationReply(
       Object.keys(raw).every((key) => key === "segments" || key === "leadSpeakerId")
     ) {
       const { leadSpeakerId: _lead, ...prose } = raw;
+      raw = prose;
+    } else if (
+      decorations === 4 &&
+      raw._placeholder === "" &&
+      Object.keys(raw).every((key) => key === "segments" || key === "_placeholder")
+    ) {
+      const { _placeholder, ...prose } = raw;
       raw = prose;
     }
   }
@@ -262,7 +271,7 @@ export function readSceneNarrationReply(
         if (line.kind !== "dialogue") return value;
         const normal =
           recovery === 4 &&
-          (line.delivery === "normal" || (decorations && line.delivery === null)) &&
+          (line.delivery === "normal" || (knownDecorations && line.delivery === null)) &&
           !Object.hasOwn(line, "targetId");
         if (!normal && line.truncated !== false) return value;
         const normalized = { ...line };
@@ -303,7 +312,7 @@ export function readSceneNarrationReply(
     const line = asRecord(value),
       source = line.source;
     if (
-      (decorations === true || decorations === 2 || decorations === 3) &&
+      knownDecorations &&
       line.kind === "narration" &&
       Object.keys(line).every((key) => ["kind", "text", "place"].includes(key)) &&
       typeof line.place === "string" &&

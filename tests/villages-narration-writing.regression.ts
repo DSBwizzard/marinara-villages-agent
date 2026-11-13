@@ -410,7 +410,8 @@ await runCase("narration-writing/single-request", async () => {
   const casualPrompt = casual.fitted.messages.map((row) => row.content).join("\n");
   assert.match(casualPrompt, /a request to remember or a lasting change/u);
   assert.match(casualPrompt, /A commitment requires a specific future action someone explicitly promises to do/u);
-  assert.match(casualPrompt, /A second speaker adding a condition makes a separate offer/u);
+  assert.match(casualPrompt, /Keep each speaker’s proposal separate/u);
+  assert.match(casualPrompt, /Use only people in about/u);
   assert.match(casualPrompt, /a single quote from the proposer heard by every party supplies the offer evidence/u);
   assert.match(casualPrompt, /Other offer citations put act:"offer" inside the source entry/u);
   assert.doesNotMatch(

@@ -18,15 +18,15 @@ export type NarrationReadset = {
   ordinaryReplyRecovery?: true;
   positionedSceneSources?: true;
   stripSceneHistoryDecoration?: true;
-  ordinaryFormatRecovery?: true | 2 | 3 | 4 | 5;
+  ordinaryFormatRecovery?: true | 2 | 3 | 4 | 5 | 6;
   quotedSceneSources?: true;
   splitKeepRecovery?: true | 2;
   explicitSceneReplacement?: true;
   coalesceOfferDecisions?: true;
   stripOfferContributionEcho?: true;
   recognizeDirectOfferSpeech?: true | 2 | 3 | 4 | 5;
-  optionalActorMemories?: true | 2 | 3 | 4;
-  stripSceneReplyDecorations?: true | 2 | 3;
+  optionalActorMemories?: true | 2 | 3 | 4 | 5;
+  stripSceneReplyDecorations?: true | 2 | 3 | 4;
   recoverCodeMemoryEcho?: true;
   requestedMemory?: { start: number; end: number; recipientId?: string };
   codeRequestedMemory?: true;

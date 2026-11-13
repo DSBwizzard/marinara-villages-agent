@@ -418,6 +418,26 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
   }
   {
     const f = fixture();
+    const raw = { segments: [f.response()[0]], _placeholder: "" };
+    const p = f.publication(raw);
+    p.readset.stripSceneReplyDecorations = 3;
+    assert.throws(() => acceptNarrationContinuity(f.state, p, "prior-placeholder", later), /_placeholder/u);
+    p.readset.stripSceneReplyDecorations = 4;
+    for (const extra of [
+      { _placeholder: "keep this" },
+      { keep: [] },
+      { segments: [...raw.segments, { kind: "keep", ...f.keep }] },
+    ])
+      assert.throws(() =>
+        acceptNarrationContinuity(f.state, { ...p, raw: { ...raw, ...extra } }, "unknown-placeholder", later),
+      );
+    const result = acceptNarrationContinuity(f.state, p, "empty-placeholder", later);
+    assert.equal(result.held, false);
+    assert.equal(result.episode?.segments[0].content, raw.segments[0].text);
+    assert.deepEqual(p.raw, raw);
+  }
+  {
+    const f = fixture();
     const line = { ...f.response(["remember"])[0], truncated: false };
     const raw = { segments: [line], keep: [f.keep] };
     const p = f.publication(raw);
@@ -1046,6 +1066,9 @@ await runCase("narration-acceptance/independent-failure", () => {
     "open-matter-self-shared",
     "open-matter-self-asserted",
     "open-matter-self-legacy",
+    "open-matter-room-subject",
+    "open-matter-room-subject-legacy",
+    "open-matter-room-subject-asserted",
     "missing-owner",
     "missing-owner-legacy",
     "missing-owner-asserted",
@@ -1054,6 +1077,7 @@ await runCase("narration-acceptance/independent-failure", () => {
     const line = "I mean to read the two entries tonight.";
     const current = variant.startsWith("current-");
     const openMatter = variant.startsWith("open-matter-");
+    const roomSubject = variant.startsWith("open-matter-room-subject");
     const missingOwner = variant.startsWith("missing-owner");
     const raw = {
       segments: [{ ...f.response(variant.endsWith("asserted") ? ["promise"] : [])[0], text: line }],
@@ -1063,6 +1087,7 @@ await runCase("narration-acceptance/independent-failure", () => {
           for: openMatter && !variant.endsWith("shared") ? [f.id] : [f.id, "player"],
           class: openMatter ? "open-matter" : current && variant !== "current-promise" ? "information" : "commitment",
           ...(current ? { current: true } : {}),
+          ...(roomSubject ? { current: true, about: [f.id, "room"] } : {}),
           ...(missingOwner ? {} : { owner: f.id }),
           text:
             variant === "valid"
@@ -1076,7 +1101,7 @@ await runCase("narration-acceptance/independent-failure", () => {
                     speakerId: f.id,
                     quote: variant === "valid" || openMatter || missingOwner ? line : "I will read both before dusk.",
                   },
-                  ...(openMatter ? ["self"] : []),
+                  ...(openMatter && !roomSubject ? ["self"] : []),
                 ],
           ...(variant === "consent" ? { offer: { proposer: f.id, participants: [f.id, "player"] } } : {}),
         },
@@ -1095,9 +1120,17 @@ await runCase("narration-acceptance/independent-failure", () => {
             ? 2
             : variant === "missing-owner-legacy"
               ? 3
-              : 4;
+              : roomSubject && !variant.endsWith("legacy")
+                ? 5
+                : 4;
     const result = acceptNarrationContinuity(f.state, p, "submission", later);
-    const discarded = ["fallback", "current-information", "open-matter-self", "missing-owner"].includes(variant);
+    const discarded = [
+      "fallback",
+      "current-information",
+      "open-matter-self",
+      "open-matter-room-subject",
+      "missing-owner",
+    ].includes(variant);
     assert.equal(result.held, !discarded && variant !== "valid", variant);
     if (missingOwner) assert.match(result.rejected[0].reason, /private state has no owner/u);
     if (discarded) {

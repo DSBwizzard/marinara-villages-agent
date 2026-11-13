@@ -301,7 +301,11 @@ export function acceptNarrationContinuity(
   const requestedMemory = readset.requestedMemory;
   const memoryFallback = readset.optionalActorMemories;
   const optionalActorMemories =
-    (memoryFallback === true || memoryFallback === 2 || memoryFallback === 3 || memoryFallback === 4) &&
+    (memoryFallback === true ||
+      memoryFallback === 2 ||
+      memoryFallback === 3 ||
+      memoryFallback === 4 ||
+      memoryFallback === 5) &&
     allowTranscriptNotes &&
     !requestedMemory &&
     !native.effects.length &&
@@ -370,6 +374,16 @@ export function acceptNarrationContinuity(
       continue;
     }
     const note = asRecord(raw);
+    const optionalCurrentOpenMatter =
+      memoryFallback === 5 &&
+      note.class === "open-matter" &&
+      Array.isArray(note.for) &&
+      note.for.length === 1 &&
+      note.owner === note.for[0] &&
+      Array.isArray(note.about) &&
+      note.about.length === 2 &&
+      note.about.includes(note.owner) &&
+      note.about.includes("room");
     if (
       optionalActorMemories &&
       typeof note.text === "string" &&
@@ -385,14 +399,16 @@ export function acceptNarrationContinuity(
         note.class === "open-matter" ||
         (note.class === "commitment" &&
           ((typeof note.owner === "string" && note.owner !== "player") ||
-            (memoryFallback === 4 && !Object.hasOwn(note, "owner"))))) &&
+            ((memoryFallback === 4 || memoryFallback === 5) && !Object.hasOwn(note, "owner"))))) &&
       Object.keys(note).every(
         (key) =>
           ["id", "for", "text", "class", "source", "owner", "about", "independent"].includes(key) ||
-          ((memoryFallback === 2 || memoryFallback === 3 || memoryFallback === 4) &&
+          ((memoryFallback === 2 || memoryFallback === 3 || memoryFallback === 4 || memoryFallback === 5) &&
             key === "current" &&
             typeof note.current === "boolean" &&
-            (note.class === "information" || note.class === "experience")),
+            (note.class === "information" ||
+              note.class === "experience" ||
+              (optionalCurrentOpenMatter && note.current === true))),
       ) &&
       Array.isArray(note.source) &&
       note.source.some((ref) => ref !== "self") &&
@@ -400,7 +416,7 @@ export function acceptNarrationContinuity(
         const citation = asRecord(ref);
         const keys = Object.keys(citation);
         return (
-          ((memoryFallback === 3 || memoryFallback === 4) &&
+          ((memoryFallback === 3 || memoryFallback === 4 || memoryFallback === 5) &&
             ref === "self" &&
             note.class === "open-matter" &&
             Array.isArray(note.for) &&

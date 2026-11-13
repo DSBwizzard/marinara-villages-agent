@@ -107,6 +107,17 @@ await runCase("scene-json-hardening/ambiguity", () => {
   assert.deepEqual(readJoined(joinedReply), { segments: splitSegments, keep: scene.keep });
   assert.equal(completeSceneObject(joinedReply, "stop", undefined, true, 4, 2), null);
   assert.equal(readJoined(joinedReply, "length"), null);
+  const wrapped = JSON.stringify({ ...core, keep: [{ ...scene.keep[0], source: ["self"] }] });
+  const malformedSelf = wrapped.replace('"source":["self"]', '"source":[{"self"}]');
+  const readSelf = (input: string, finish = "stop") => completeSceneObject(input, finish, undefined, true, 6, 2);
+  assert.deepEqual(readSelf(malformedSelf), JSON.parse(wrapped));
+  assert.equal(readJoined(malformedSelf), null);
+  assert.equal(readSelf(malformedSelf, "length"), null);
+  assert.equal(readSelf(malformedSelf.replace('{"self"}', '{"self"},{"self"}')), null);
+  assert.equal(readSelf(malformedSelf.replace('"source":[{"self"}]', '"text":{"self"}')), null);
+  const validJsonWrongSource = malformedSelf.replace('{"self"}', '{"self":"player"}');
+  assert.deepEqual(readSelf(validJsonWrongSource), JSON.parse(validJsonWrongSource));
+  assert.equal(readSelf(malformedSelf.replace('{"self"}', '{"self"}, "__scene_self_source_repair__"')), null);
   for (const invalid of [
     '{"segments":[' + joined + "," + joined + "]}",
     coreJson.slice(0, -1) + ',"keep":[' + joined + "]}",

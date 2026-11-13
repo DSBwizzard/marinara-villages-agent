@@ -44,7 +44,7 @@ export function completeSceneObject(
   finishReason?: string,
   parsed?: ModelJsonReply,
   ordinaryReplyRecovery?: true,
-  ordinaryFormatRecovery?: true | 2 | 3 | 4 | 5,
+  ordinaryFormatRecovery?: true | 2 | 3 | 4 | 5 | 6,
   splitKeepRecovery?: true | 2,
   explicitSceneReplacement?: true,
 ): Record<string, unknown> | null {
@@ -60,7 +60,34 @@ export function completeSceneObject(
     if (value) return value;
   }
   if (!modelJsonWithinBounds(content)) return null;
-  if (ordinaryReplyRecovery === true && ordinaryFormatRecovery === 5) {
+  if (ordinaryReplyRecovery === true && ordinaryFormatRecovery === 6) {
+    const selfSource = /"(?:[^"\\]|\\.)*"|(?<wrapped>\{\s*"self"\s*\})/gu;
+    const matches = [...text.matchAll(selfSource)].filter((match) => match.groups?.wrapped);
+    if (matches.length === 1) {
+      const [{ index, 0: wrapped }] = matches;
+      const marker = JSON.stringify("__scene_self_source_repair__");
+      const corrected = parseSceneObject(text.slice(0, index) + marker + text.slice(index + wrapped.length));
+      if (
+        ordinarySceneEnvelope(corrected) &&
+        (corrected.segments as unknown[]).every((row) => {
+          const { kind } = asRecord(row);
+          return kind === "dialogue" || kind === "narration";
+        }) &&
+        Array.isArray(corrected.keep) &&
+        JSON.stringify(corrected).split(marker).length === 2
+      ) {
+        for (const row of corrected.keep) {
+          const source = asRecord(row).source;
+          if (!Array.isArray(source)) continue;
+          const entry = source.indexOf("__scene_self_source_repair__");
+          if (entry < 0) continue;
+          source[entry] = "self";
+          return corrected;
+        }
+      }
+    }
+  }
+  if (ordinaryReplyRecovery === true && (ordinaryFormatRecovery === 5 || ordinaryFormatRecovery === 6)) {
     const joinedLines =
       /"(?:[^"\\]|\\.)*"|(?<dialogue>\{\s*"kind"\s*:\s*"dialogue"\s*,\s*"speakerId"\s*:\s*"(?:[^"\\]|\\.)+"\s*,\s*"text"\s*:\s*"(?:[^"\\]|\\.)+"\s*),\s*(?<narration>"kind"\s*:\s*"narration"\s*,\s*"text"\s*:\s*"(?:[^"\\]|\\.)+"\s*\})/gu;
     const joined = [...text.matchAll(joinedLines)].filter((match) => match.groups?.dialogue);
@@ -113,7 +140,8 @@ export function completeSceneObject(
     ordinaryFormatRecovery === 2 ||
     ordinaryFormatRecovery === 3 ||
     ordinaryFormatRecovery === 4 ||
-    ordinaryFormatRecovery === 5
+    ordinaryFormatRecovery === 5 ||
+    ordinaryFormatRecovery === 6
   ) {
     // Match complete strings first so punctuation inside the prose cannot be repaired.
     const separator = /"(?:[^"\\]|\\.)*"|(?<extra>\}(?:\s*,\s*\}|\s*\]\s*\})\s*,\s*)(?=\{)/gu;
