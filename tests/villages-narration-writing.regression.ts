@@ -411,6 +411,8 @@ await runCase("narration-writing/single-request", async () => {
   assert.match(casualPrompt, /a request to remember or a lasting change/u);
   assert.match(casualPrompt, /A commitment requires a specific future action someone explicitly promises to do/u);
   assert.match(casualPrompt, /A second speaker adding a condition makes a separate offer/u);
+  assert.match(casualPrompt, /a single quote from the proposer heard by every party supplies the offer evidence/u);
+  assert.match(casualPrompt, /Other offer citations put act:"offer" inside the source entry/u);
   assert.doesNotMatch(
     casualPrompt,
     /mutual-offer decision|decision on a supplied open offer|Details for complex memory updates/u,

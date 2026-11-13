@@ -16,6 +16,7 @@ import {
   RELATIONSHIP_KEEP,
   SCENE_NARRATION_KEEP,
   SCENE_OFFER_DECISION,
+  SCENE_RELATIONSHIP_DIRECTION,
   SCENE_RELATIONSHIP_KEEP,
 } from "../../domain/rules/narration-contract.js";
 import { readModelJsonObject } from "../../domain/rules/json-reply.js";
@@ -222,7 +223,7 @@ export function createSceneWriting({
     const blocks = buildVenueSceneBlocks({
       direction: blocksFor([
         narrationDirection(nativeCommands, positions),
-        RELATIONSHIP_DIRECTION,
+        positions ? SCENE_RELATIONSHIP_DIRECTION : RELATIONSHIP_DIRECTION,
         scene.contactGeneration?.instruction ?? "",
         mode === "greet"
           ? "Open the Scene from established presence and give the player a natural opening. The player supplies any voluntary action or speech."
