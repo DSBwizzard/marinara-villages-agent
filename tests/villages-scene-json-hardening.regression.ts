@@ -105,6 +105,31 @@ await runCase("scene-json-hardening/ambiguity", () => {
   const followingField = split.replace(",keep:", "keep:");
   const separateObject = coreJson + "\n" + JSON.stringify({ keep });
   const commaSeparated = coreJson + "," + JSON.stringify({ keep });
+  const correction = "\nCorrection: Replace the earlier draft with this final reply.\n";
+  const final = { segments: [{ ...scene.segments[0], text: "The corrected line." }] };
+  const finalJson = JSON.stringify(final);
+  const readReplacement = (input: string, finish = "stop") =>
+    completeSceneObject(input, finish, undefined, true, 4, 2, true);
+  assert.deepEqual(readReplacement(commaSeparated + "]}\n" + correction + finalJson), final);
+  assert.deepEqual(readReplacement(coreJson + correction + finalJson), final);
+  assert.equal(completeSceneObject(coreJson + correction + finalJson, "stop", undefined, true, 4, 2), null);
+  assert.equal(completeSceneObject(coreJson + correction + finalJson, "stop", undefined, undefined, 4, 2, true), null);
+  assert.equal(readReplacement(coreJson + correction + finalJson, "length"), null);
+  for (const invalid of [
+    coreJson + "\n" + finalJson,
+    coreJson + correction + finalJson + correction + finalJson,
+    coreJson + correction + finalJson.slice(0, -1),
+    coreJson + correction + finalJson + "\nThis is the final reply.",
+    coreJson + correction + finalJson.slice(0, -1) + ',"segments":[]}',
+    coreJson + correction + finalJson.slice(0, -1) + ',"commands":[]}',
+    JSON.stringify({ ...core, commands: [] }) + correction + finalJson,
+    coreJson + "\nkeep:[]]}" + correction + finalJson,
+  ])
+    assert.equal(readReplacement(invalid), null, invalid);
+  const quotedCorrection = JSON.stringify({ segments: [{ kind: "narration", text: correction + finalJson }] });
+  assert.deepEqual(readReplacement(quotedCorrection), JSON.parse(quotedCorrection));
+  const unknownActor = { segments: [{ ...final.segments[0], speakerId: "stranger" }] };
+  assert.throws(() => readNarrationReply(readReplacement(coreJson + correction + JSON.stringify(unknownActor)), ["a"]));
   assert.equal(completeSceneObject(commaSeparated, "stop", undefined, true, 2, true), null);
   assert.deepEqual(completeSceneObject(commaSeparated, "stop", undefined, true, 2, 2), { ...core, keep });
   assert.equal(completeSceneObject(commaSeparated, "length", undefined, true, 2, 2), null);

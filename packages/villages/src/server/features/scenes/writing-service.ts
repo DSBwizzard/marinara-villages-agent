@@ -376,6 +376,7 @@ export function createSceneWriting({
               ordinaryFormatRecovery: 4,
               quotedSceneSources: true,
               splitKeepRecovery: 2,
+              explicitSceneReplacement: true,
               coalesceOfferDecisions: true,
               stripOfferContributionEcho: true,
               recognizeDirectOfferSpeech: 2,
@@ -430,6 +431,7 @@ export function createSceneWriting({
         request.readset.ordinaryReplyRecovery,
         request.readset.ordinaryFormatRecovery,
         request.readset.splitKeepRecovery,
+        request.readset.explicitSceneReplacement,
       );
       const diagnostics = responseDiagnostics(
         request.model,

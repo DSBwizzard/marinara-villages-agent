@@ -21,6 +21,7 @@ export type NarrationReadset = {
   ordinaryFormatRecovery?: true | 2 | 3 | 4;
   quotedSceneSources?: true;
   splitKeepRecovery?: true | 2;
+  explicitSceneReplacement?: true;
   coalesceOfferDecisions?: true;
   stripOfferContributionEcho?: true;
   recognizeDirectOfferSpeech?: true | 2;

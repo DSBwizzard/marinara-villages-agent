@@ -9,6 +9,33 @@ export function assertCurrentSceneGeneration(scene: VenueScene) {
   if (scene.version !== 5 || !scene.villageSeed) throw conflict("Unsupported Scene format. Start a fresh Village.");
 }
 
+function readCommaSeparatedKeep(text: string) {
+  const separator = /"(?:[^"\\]|\\.)*"|(?<end>\}\s*\]\s*\}\s*),\s*(?=\{\s*"keep"\s*:)/gu;
+  const splits = [...text.matchAll(separator)].filter((match) => match.groups?.end);
+  if (splits.length !== 1) return null;
+  const [{ index, 0: boundary, groups }] = splits;
+  const head = parseSceneObject(text.slice(0, index + groups!.end.length));
+  const tail = parseSceneObject(text.slice(index + boundary.length));
+  return head &&
+    Object.keys(head).length === 1 &&
+    Array.isArray(head.segments) &&
+    tail &&
+    Object.keys(tail).length === 1 &&
+    Array.isArray(tail.keep)
+    ? { segments: head.segments, keep: tail.keep }
+    : null;
+}
+
+function ordinarySceneEnvelope(value: Record<string, unknown> | null): value is Record<string, unknown> {
+  return (
+    !!value &&
+    Array.isArray(value.segments) &&
+    value.segments.length > 0 &&
+    (!Object.hasOwn(value, "keep") || Array.isArray(value.keep)) &&
+    Object.keys(value).every((key) => key === "segments" || key === "keep")
+  );
+}
+
 export function completeSceneObject(
   content: string,
   finishReason?: string,
@@ -16,6 +43,7 @@ export function completeSceneObject(
   ordinaryReplyRecovery?: true,
   ordinaryFormatRecovery?: true | 2 | 3 | 4,
   splitKeepRecovery?: true | 2,
+  explicitSceneReplacement?: true,
 ): Record<string, unknown> | null {
   if (finishReason !== "stop" && finishReason !== "end_turn") return null;
   const text = content
@@ -29,6 +57,21 @@ export function completeSceneObject(
     if (value) return value;
   }
   if (!modelJsonWithinBounds(content)) return null;
+  if (ordinaryReplyRecovery === true && explicitSceneReplacement === true) {
+    // shortcut: recognize the observed correction and an explicit replacement line, extend when another clear form fails.
+    const replacement =
+      /"(?:[^"\\]|\\.)*"|(?<correction>\r?\n[ \t]*(?:(?:Correction|Replacement): (?:Replace|Discard) (?:the|my) (?:previous|earlier|first) (?:draft|reply|answer)(?: with (?:this|the following) final (?:reply|answer))?[.:]|Wait [—-] I formatted badly; I placed the keep inside segments array closing\. Fix: produce one JSON object with "segments" array then "keep" array top-level\. Also I accidentally wrote two objects\. Let me output correctly\.)\s*)(?=\{)/giu;
+    const corrections = [...text.matchAll(replacement)].filter((match) => match.groups?.correction);
+    if (corrections.length === 1) {
+      const [{ index, 0: correction }] = corrections;
+      const prefix = text.slice(0, index).trimEnd();
+      const earlier =
+        parseSceneObject(prefix) ??
+        (/\]\s*\}$/u.test(prefix) ? readCommaSeparatedKeep(prefix.replace(/\s*\]\s*\}$/u, "")) : null);
+      const final = parseSceneObject(text.slice(index + correction.length));
+      if (ordinarySceneEnvelope(earlier) && ordinarySceneEnvelope(final)) return final;
+    }
+  }
   if (
     ordinaryFormatRecovery === true ||
     ordinaryFormatRecovery === 2 ||
@@ -57,22 +100,8 @@ export function completeSceneObject(
   }
   if (ordinaryReplyRecovery) {
     if (splitKeepRecovery === 2) {
-      const separator = /"(?:[^"\\]|\\.)*"|(?<end>\}\s*\]\s*\}\s*),\s*(?=\{\s*"keep"\s*:)/gu;
-      const splits = [...text.matchAll(separator)].filter((match) => match.groups?.end);
-      if (splits.length === 1) {
-        const [{ index, 0: boundary, groups }] = splits;
-        const head = parseSceneObject(text.slice(0, index + groups!.end.length));
-        const tail = parseSceneObject(text.slice(index + boundary.length));
-        if (
-          head &&
-          Object.keys(head).length === 1 &&
-          Array.isArray(head.segments) &&
-          tail &&
-          Object.keys(tail).length === 1 &&
-          Array.isArray(tail.keep)
-        )
-          return { segments: head.segments, keep: tail.keep };
-      }
+      const split = readCommaSeparatedKeep(text);
+      if (split) return split;
     }
     const bare = /\}\s*\r?\n\s*keep\s*:\s*(?=\[)/u.exec(text);
     if (bare && text.endsWith("]")) {
