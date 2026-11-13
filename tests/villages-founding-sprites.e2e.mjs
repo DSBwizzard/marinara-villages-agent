@@ -186,10 +186,12 @@ await withBrowser(browser, async () => {
       );
       await pane.getByRole("button", { name: "Sprites", exact: true }).click();
       await pane.getByRole("button", { name: "Add sprites manually", exact: true }).click();
-      const picker = page.getByRole("dialog", { name: "Choose front sprites" });
+      const picker = page.getByRole("dialog", { name: "Add sprites manually" });
+      await expect(picker.getByRole("combobox", { name: "Sprite folder" })).toHaveCount(0);
+      await picker.getByRole("button", { name: "Front", exact: true }).click();
       await picker.getByRole("checkbox", { name: "Happy_01", exact: true }).check();
       await picker.getByRole("checkbox", { name: "Happy_02", exact: true }).check();
-      await picker.getByRole("button", { name: "Add 2 expressions", exact: true }).click();
+      await picker.getByRole("button", { name: "Add 2 front sprites", exact: true }).click();
       await expect(pane.getByRole("button", { name: "Happy 2 variants", exact: true })).toHaveAttribute(
         "aria-pressed",
         "true",

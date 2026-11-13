@@ -29,8 +29,8 @@ export const APPEARANCE_STYLES = String.raw`
 }
 .appearance-layout { display:grid; grid-template-columns:minmax(10rem,1fr) minmax(0,3fr); gap:.75rem; }
 .appearance-mode { display:flex; max-width:33rem; margin-bottom:.7rem; }
-.villages-appearance .appearance-mode button { flex:1; }
-.villages-appearance .appearance-mode button[aria-pressed=true] { background:var(--menu-selected,#875363); }
+:is(.villages-appearance,.appearance-picker) .appearance-mode button { flex:1; }
+:is(.villages-appearance,.appearance-picker) .appearance-mode button[aria-pressed=true] { background:var(--menu-selected,#875363); }
 .appearance-actions,.appearance-footer { display:flex; align-items:center; flex-wrap:wrap; gap:.55rem; margin:.7rem 0; }
 .appearance-actions button:first-child:not(.appearance-link) { background:var(--appearance-panel); }
 .appearance-expressions { display:grid; gap:.35rem; max-height:24rem; overflow:auto; padding:3px; }

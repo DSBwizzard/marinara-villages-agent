@@ -18,7 +18,7 @@ import { APPEARANCE_STYLES } from "./appearance-styles.js";
 
 type Choice = { useSprites: boolean; expressions: AppearanceExpression[]; defaultExpressionId: string };
 type PickerTarget = { expressionId: string; view: SpriteView };
-type Picker = "set" | "front" | PickerTarget;
+type Picker = "set" | "manual" | PickerTarget;
 type NewExpression = Omit<AppearanceExpression, "id">;
 type SaveResult = Pick<SpriteAppearance, "revision" | "token" | "manager">;
 const views = ["front", "side"] as const;
@@ -312,7 +312,7 @@ export function Appearance({
               <button type="button" disabled={locked} onClick={() => setPicker("set")}>
                 Add sprite set
               </button>
-              <button type="button" disabled={locked} onClick={() => setPicker("front")}>
+              <button type="button" disabled={locked} onClick={() => setPicker("manual")}>
                 Add sprites manually
               </button>
               {typeof openCharacter === "function" ? (
@@ -573,6 +573,8 @@ function EnginePicker({
   onChoose(target: PickerTarget, source: SpriteChoice): void;
 }) {
   const target = typeof picker === "object" ? picker : null;
+  const [manualView, setManualView] = useState<SpriteView>();
+  const view = target?.view ?? manualView;
   const [selected, select] = useState<string[]>([]);
   const [folder, setFolder] = useState<string>();
   const [loading, setLoading] = useState(true);
@@ -603,9 +605,9 @@ function EnginePicker({
     ? (target.view === "side" ? "Side view for " : "Front view for ") + selectedName
     : picker === "set"
       ? "Add sprite set"
-      : "Choose front sprites";
+      : "Add sprites manually";
   const problem = error || data.libraryError;
-  const activeFolder = folder ?? preferredFolder(data.folders, target?.view ?? "front");
+  const activeFolder = folder ?? (view ? preferredFolder(data.folders, view) : "");
   const engine = data.files
     .filter((file) => target || !assignedFilenames.has(file.filename))
     .map((file) => ({
@@ -653,9 +655,28 @@ function EnginePicker({
           onAdd={onAdd}
         />
       ) : null}
-      {!loading && picker !== "set" ? (
+      {picker === "manual" ? (
+        <div className="appearance-mode" role="group" aria-label="Import view">
+          {views.map((option) => (
+            <button
+              key={option}
+              type="button"
+              aria-pressed={manualView === option}
+              onClick={() => {
+                if (manualView === option) return;
+                setManualView(option);
+                setFolder(undefined);
+                select([]);
+              }}
+            >
+              {option === "front" ? "Front" : "Side"}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {!loading && view ? (
         <>
-          {target?.view === "side" ? <p>Choose a right-facing image.</p> : null}
+          {view === "side" ? <p>Choose right-facing artwork.</p> : null}
           <div className="appearance-actions">
             <select aria-label="Sprite folder" value={activeFolder} onChange={(event) => setFolder(event.target.value)}>
               <option value="">All Engine sprites</option>
@@ -717,12 +738,12 @@ function EnginePicker({
               onClick={() =>
                 target
                   ? onChoose(target, valid[0]!.source)
-                  : onAdd(valid.map((item) => ({ name: spriteName(item.name), front: item.source })))
+                  : onAdd(valid.map((item) => ({ name: spriteName(item.name), [view]: item.source })))
               }
             >
               {target
                 ? "Use as " + target.view + " view"
-                : "Add " + valid.length + (valid.length === 1 ? " expression" : " expressions")}
+                : `Add ${valid.length} ${view} ${valid.length === 1 ? "sprite" : "sprites"}`}
             </button>
           </div>
         </>
