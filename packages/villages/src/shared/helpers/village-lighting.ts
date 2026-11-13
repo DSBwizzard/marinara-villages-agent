@@ -1,7 +1,7 @@
 export type VillageLighting = "morning" | "day" | "evening" | "night";
 
 /** Visual daylight is separate from the narrative clock's six-hour activities. */
-export function villageLighting(instant: string, timeZone?: string): VillageLighting {
+export function villageLighting(instant: string, timeZone?: string, sunriseHour = 5): VillageLighting {
   if (!Number.isFinite(Date.parse(instant))) return "day";
   const hour = Number(
     new Intl.DateTimeFormat("en-GB", {
@@ -10,7 +10,7 @@ export function villageLighting(instant: string, timeZone?: string): VillageLigh
       hourCycle: "h23",
     }).format(new Date(instant)),
   );
-  if (hour < 5 || hour >= 20) return "night";
+  if (hour < sunriseHour || hour >= 20) return "night";
   if (hour < 8) return "morning";
   if (hour < 17) return "day";
   return "evening";

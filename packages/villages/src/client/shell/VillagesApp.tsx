@@ -61,7 +61,8 @@ function VillagesContent({ element }: { element: HTMLElement }) {
   };
   const active = controller.mailboxOpen ? "mailbox" : destination(controller.screen);
   const daylight =
-    useVillageLighting(controller.snapshot?.isFounded ? controller.snapshot.village : undefined, true) !== "night";
+    useVillageLighting(controller.snapshot?.isFounded ? controller.snapshot.village : undefined, "storybook") !==
+    "night";
   const currentDestination = useRef(active);
   currentDestination.current = active;
   const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -421,6 +422,7 @@ function VillagesContent({ element }: { element: HTMLElement }) {
           <RetainedView active={!controller.mailboxOpen}>
             <VillageScreen
               controller={navigation}
+              daylight={daylight}
               openMapVenue={(place, origin) => {
                 setMapArrival({ id: place.id, origin });
                 controller.explorationReturnTab.current = "map";
@@ -445,6 +447,7 @@ type Controller = ReturnType<typeof ControllerFactory>;
 
 type VillageScreenProps = {
   controller: Controller;
+  daylight: boolean;
   people: import("react").ReactNode;
   openMapVenue: (place: import("../../shared/contracts/village.js").VillageVenue, origin: string) => void;
   arrivalOrigin?: string;
@@ -500,7 +503,7 @@ function PeoplePages({ controller, active }: { controller: Controller; active: b
 }
 
 /** One map, one Venue, and the fixed menu pages; never a history of resident/world data. */
-function VillageDestinations({ controller, people, openMapVenue, arrivalOrigin }: VillageScreenProps) {
+function VillageDestinations({ controller, daylight, people, openMapVenue, arrivalOrigin }: VillageScreenProps) {
   const { screen, menuPage, room, venueId } = controller;
   const [home, setHome] = useState(false);
   const [venue, setVenue] = useState<string | null>(null);
@@ -530,7 +533,7 @@ function VillageDestinations({ controller, people, openMapVenue, arrivalOrigin }
       ) : null}
       {venue ? (
         <RetainedView key={venue} active={screen === "venue" && !arrival}>
-          <VenueScreen controller={{ ...controller, screen: "venue", venueId: venue }} />
+          <VenueScreen controller={{ ...controller, screen: "venue", venueId: venue }} storybookDaylight={daylight} />
         </RetainedView>
       ) : null}
       {menus.map((entry) => (

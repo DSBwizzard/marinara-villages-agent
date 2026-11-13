@@ -332,7 +332,15 @@ function AssignedVillagers({ place, controller }: { place: VillageVenue; control
   );
 }
 
-export function VenueScreen({ controller, fromMap = false }: { controller: VenueScreenController; fromMap?: boolean }) {
+export function VenueScreen({
+  controller,
+  fromMap = false,
+  storybookDaylight,
+}: {
+  controller: VenueScreenController;
+  fromMap?: boolean;
+  storybookDaylight?: boolean;
+}) {
   const confirmVillages = useConfirmation();
   const [editingConnections, setEditingConnections] = useState(false);
   const [zoneDetails, setZoneDetails] = useState<"open" | "closed" | null>(null);
@@ -460,7 +468,7 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
   const browsing = venueSection === "zones";
   const zoneBackdrop = browsing && (!mobile || zoneDetailsOpen) && zoneArt?.url !== entranceArt?.url ? zoneArt : null;
   const storybookBackdrop = (zoneDetailsOpen && !zoneArt) || (!entranceArt && !zoneBackdrop);
-  const daylightBackdrop = !fromMap && storybookBackdrop && lighting !== "night";
+  const daylightBackdrop = !fromMap && storybookBackdrop && (storybookDaylight ?? lighting !== "night");
   const map = snapshot.settings.maps?.find((entry) => entry.id === place.presentation.mapId);
   const visit = () =>
     activeScene && room.placeId === place.id ? setScreen("room") : void openRoom(place, exterior?.id);

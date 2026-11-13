@@ -123,13 +123,16 @@ async function run() {
   }
   await withBrowser(browser, async () => {
     for (const width of [1366, 390]) {
-      const themed = await makePage(true, "2026-11-05T12:00:00Z");
+      const themed = await makePage(true, "2026-11-05T05:59:59Z");
       await themed.setViewportSize({ width, height: 844 });
       await people(themed);
       const desk = themed.locator("[data-desk]");
       const artwork = () => desk.evaluate((node) => getComputedStyle(node).backgroundImage);
+      await expect(desk).toHaveAttribute("data-theme", "night");
+      await themed.clock.setFixedTime(new Date("2026-11-05T06:00:00Z"));
       await expect(desk).toHaveAttribute("data-theme", "day");
       await expect(desk).toHaveCSS("color", "rgb(33, 62, 54)");
+      await expect(desk).toHaveCSS("background-color", "rgb(183, 213, 226)");
       const daylight = await artwork();
       assert.match(daylight, /blob:/, "The daytime scene is decoded before it is displayed");
       await themed.getByRole("button", { name: "Resident", exact: true }).focus();
@@ -145,7 +148,15 @@ async function run() {
       await settle(themed);
       await expect(desk).toHaveAttribute("data-theme", "night");
       await themed.evaluate(() =>
-        window.setDeskClock({ instant: "2026-11-05T13:00:00Z", timeZone: "America/Los_Angeles" }),
+        window.setDeskClock({ instant: "2026-11-05T03:59:30Z", timeZone: "America/Los_Angeles" }),
+      );
+      await expect(desk).toHaveAttribute("data-theme", "day");
+      await themed.evaluate(() =>
+        window.setDeskClock({ instant: "2026-11-05T13:59:30Z", timeZone: "America/Los_Angeles" }),
+      );
+      await expect(desk).toHaveAttribute("data-theme", "night");
+      await themed.evaluate(() =>
+        window.setDeskClock({ instant: "2026-11-05T14:00:00Z", timeZone: "America/Los_Angeles" }),
       );
       await expect(desk).toHaveAttribute("data-theme", "day");
       assert.equal(await artwork(), daylight, "The decoded village scene is reused across menus and clock changes");
