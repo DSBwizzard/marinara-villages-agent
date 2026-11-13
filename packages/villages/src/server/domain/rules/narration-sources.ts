@@ -220,17 +220,29 @@ export function readSceneNarrationReply(
     };
   }
   if (
-    decorations === 2 &&
-    raw.halt === null &&
+    (decorations === 2 || decorations === 3) &&
     Array.isArray(raw.segments) &&
     raw.segments.every((row) => {
       const { kind } = asRecord(row);
       return kind === "dialogue" || kind === "narration";
-    }) &&
-    Object.keys(raw).every((key) => key === "segments" || key === "halt")
+    })
   ) {
-    const { halt: _halt, ...prose } = raw;
-    raw = prose;
+    if (raw.halt === null && Object.keys(raw).every((key) => key === "segments" || key === "halt")) {
+      const { halt: _halt, ...prose } = raw;
+      raw = prose;
+    } else if (
+      decorations === 3 &&
+      typeof raw.leadSpeakerId === "string" &&
+      speakers.includes(raw.leadSpeakerId) &&
+      raw.segments.some((row) => {
+        const line = asRecord(row);
+        return line.kind === "dialogue" && line.speakerId === raw.leadSpeakerId;
+      }) &&
+      Object.keys(raw).every((key) => key === "segments" || key === "leadSpeakerId")
+    ) {
+      const { leadSpeakerId: _lead, ...prose } = raw;
+      raw = prose;
+    }
   }
   if (readset.ordinaryReplyRecovery) raw = ordinaryReplyLayout(raw, positions, quotes);
   if (positions) raw = bindSceneSourcePositions(raw, quotes, readset.recognizeDirectOfferSpeech);
@@ -250,7 +262,7 @@ export function readSceneNarrationReply(
         if (line.kind !== "dialogue") return value;
         const normal =
           recovery === 4 &&
-          (line.delivery === "normal" || ((decorations === true || decorations === 2) && line.delivery === null)) &&
+          (line.delivery === "normal" || (decorations && line.delivery === null)) &&
           !Object.hasOwn(line, "targetId");
         if (!normal && line.truncated !== false) return value;
         const normalized = { ...line };
@@ -291,7 +303,7 @@ export function readSceneNarrationReply(
     const line = asRecord(value),
       source = line.source;
     if (
-      (decorations === true || decorations === 2) &&
+      (decorations === true || decorations === 2 || decorations === 3) &&
       line.kind === "narration" &&
       Object.keys(line).every((key) => ["kind", "text", "place"].includes(key)) &&
       typeof line.place === "string" &&

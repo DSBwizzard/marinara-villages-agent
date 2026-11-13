@@ -401,6 +401,23 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
   }
   {
     const f = fixture();
+    const raw = { segments: [f.response()[0]], leadSpeakerId: f.id };
+    const p = f.publication(raw);
+    p.readset.stripSceneReplyDecorations = 2;
+    assert.throws(() => acceptNarrationContinuity(f.state, p, "prior-lead-speaker", later), /leadSpeakerId/u);
+    p.readset.stripSceneReplyDecorations = 3;
+    for (const extra of [{ leadSpeakerId: "player" }, { keep: [f.keep] }, { commands: [] }])
+      assert.throws(
+        () => acceptNarrationContinuity(f.state, { ...p, raw: { ...raw, ...extra } }, "unclear-lead-speaker", later),
+        /leadSpeakerId/u,
+      );
+    const result = acceptNarrationContinuity(f.state, p, "lead-speaker-echo", later);
+    assert.equal(result.held, false);
+    assert.equal(result.episode?.segments[0].speakerId, f.id);
+    assert.deepEqual(p.raw, raw);
+  }
+  {
+    const f = fixture();
     const line = { ...f.response(["remember"])[0], truncated: false };
     const raw = { segments: [line], keep: [f.keep] };
     const p = f.publication(raw);

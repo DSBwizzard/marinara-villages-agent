@@ -382,7 +382,7 @@ export function createSceneWriting({
               stripOfferContributionEcho: true,
               recognizeDirectOfferSpeech: 5,
               optionalActorMemories: 4,
-              stripSceneReplyDecorations: 2,
+              stripSceneReplyDecorations: 3,
             }
           : {}),
       },
