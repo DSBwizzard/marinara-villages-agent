@@ -836,6 +836,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     readVillageState,
     mutateVillageState,
     withSceneNavigation: (work) => sceneWork().serializeNavigation(work),
+    hasActiveScene: async () => !!(await readActive()).sessionId,
     readEffectiveVillagerCard,
     queueBackgroundJob,
     backgroundJobSnapshot,

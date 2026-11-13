@@ -60,6 +60,7 @@ export type ResidentPlanningPorts = {
   readVillageState: typeof import("../world/village-store.js").readVillageState;
   mutateVillageState?: typeof import("../world/village-store.js").mutateVillageState;
   withSceneNavigation?<T>(work: () => Promise<T>): Promise<T>;
+  hasActiveScene?: () => Promise<boolean>;
   readEffectiveVillagerCard: typeof import("../../adapters/engine/catalog.js").readEffectiveVillagerCard;
   queueBackgroundJob: typeof import("../../jobs/background-work.js").queueBackgroundJob;
   backgroundJobSnapshot: typeof import("../../jobs/background-work.js").backgroundJobSnapshot;
@@ -629,7 +630,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
     const mutate = ports.mutateVillageState;
     const settle = async () => {
       // A live Scene may own positions that the Agenda cannot establish.
-      if (await ports.activeVenueSession()) return;
+      if (await ports.hasActiveScene?.()) return;
       await mutate(
         (current) => {
           const at = villageNow();
