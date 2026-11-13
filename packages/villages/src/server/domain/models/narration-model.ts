@@ -21,6 +21,7 @@ export type NarrationReadset = {
   ordinaryFormatRecovery?: true;
   quotedSceneSources?: true;
   splitKeepRecovery?: true;
+  coalesceOfferDecisions?: true;
   requestedMemory?: { start: number; end: number; recipientId?: string };
   codeRequestedMemory?: true;
   offered: AcceptedEpisode["offered"];

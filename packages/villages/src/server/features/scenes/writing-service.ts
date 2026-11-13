@@ -375,6 +375,7 @@ export function createSceneWriting({
               ordinaryFormatRecovery: true,
               quotedSceneSources: true,
               splitKeepRecovery: true,
+              coalesceOfferDecisions: true,
             }
           : {}),
       },

@@ -455,11 +455,53 @@ await runCase("narration-writing/open-offer-guidance", async () => {
     readset.capturedAt,
   );
   assert.equal(result.held, false, JSON.stringify(result.rejected));
+  f.nextOperation("accept-operation");
   const next = await f.writing.prepareVenueTurnMessages(f.scene, "Yes, I'll help paint the sign.", "chat");
   const prompt = next.fitted.messages.map((row) => row.content).join("\n");
-  assert.match(prompt, /For a decision on a supplied open offer/u);
+  assert.match(prompt, /Record an explicit decision on an open offer once/u);
   assert.match(prompt, /"offer":\{/u);
   assert.match(prompt, /"accept":"player","source":\[\{"input":"Yes, I accept\."/u);
+  const aliases = Object.entries(next.readset.source.historical)
+    .filter(([, source]) => source.kind === "knowledge" && source.excerpt === text)
+    .map(([alias]) => alias);
+  assert.equal(aliases.length, 2);
+  const rawDecision = {
+    segments: [{ kind: "dialogue", speakerId: f.id, text: "See you there." }],
+    keep: aliases.map((replace) => ({
+      replace,
+      for: ["player", f.id],
+      accept: "player",
+      source: [
+        { input: "Yes, I'll help paint the sign.", ground: { kind: "spoken", to: [f.id, "player"] }, act: "accept" },
+      ],
+    })),
+  };
+  const collidingDecision = {
+    ...rawDecision,
+    keep: [...rawDecision.keep, { ...rawDecision.keep[0], id: "keep-1" }],
+  };
+  assert.throws(
+    () =>
+      acceptNarration(
+        structuredClone(f.state),
+        { readset: next.readset, raw: collidingDecision, responseDigest: memoryHash(collidingDecision) },
+        "accept-turn",
+        next.readset.capturedAt,
+      ),
+    /duplicate Scene effect identity/u,
+  );
+  const accepted = acceptNarration(
+    f.state,
+    { readset: next.readset, raw: rawDecision, responseDigest: memoryHash(rawDecision) },
+    "accept-turn",
+    next.readset.capturedAt,
+  );
+  assert.equal(accepted.held, false, JSON.stringify(accepted.rejected));
+  assert.equal(
+    f.state.continuity.records.find((row) => row.offer)?.offer?.events.filter((event) => event.act === "accept").length,
+    1,
+  );
+  assert.equal(rawDecision.keep.length, 2);
 });
 
 await runCase("narration-writing/circumstance-provenance", async () => {

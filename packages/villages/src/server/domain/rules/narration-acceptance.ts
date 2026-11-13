@@ -296,6 +296,7 @@ export function acceptNarrationContinuity(
     memoryRequire(effects[index].id === header.id, "native effect identity changed");
   }
   const prepared = new Map<string, ReturnType<typeof prepareNarrationKeep>>();
+  const repeatedOfferDecisions = new Set<string>();
   const allowTranscriptNotes = readset.ordinaryDialogue && !reply.commands.length && !admission.protectedRoots.length;
   const requestedMemory = readset.requestedMemory;
   const keeps = reply.keep.slice();
@@ -372,6 +373,26 @@ export function acceptNarrationContinuity(
         readset.ordinaryDialogue,
         readset.ordinaryReplyRecovery,
       );
+      const write = keep.write;
+      if (
+        readset.coalesceOfferDecisions === true &&
+        !reply.commands.length &&
+        write.target &&
+        (write.accept || write.closeOffer) &&
+        !Object.hasOwn(note, "id") &&
+        !Object.hasOwn(note, "requires") &&
+        !Object.hasOwn(note, "independent") &&
+        !reply.assertedDependencies.includes(header.id) &&
+        !keeps.some((other) => {
+          const { id, requires } = asRecord(other);
+          return id === header.id || (Array.isArray(requires) && requires.includes(header.id));
+        })
+      ) {
+        const { id: _id, ...decision } = write;
+        const key = memoryHash([decision, keep.sources]);
+        if (repeatedOfferDecisions.has(key)) continue;
+        repeatedOfferDecisions.add(key);
+      }
       for (const holder of keep.write.holders.filter((holder) => holder.kind === "room")) {
         const scope = (venue: typeof source.venue) => {
           const zone = venue.zones?.find((row) => row.id === holder.zoneId);
@@ -413,7 +434,6 @@ export function acceptNarrationContinuity(
           return id;
         });
       effect.requires = [...new Set([...header.requires, ...nativeDependencies])];
-      const { write } = keep;
       if (
         allowTranscriptNotes &&
         !effect.requires.length &&
