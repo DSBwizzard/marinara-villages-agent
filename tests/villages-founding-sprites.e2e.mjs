@@ -41,7 +41,8 @@ const snapshot = {
   },
 };
 const files = [
-  { filename: "happy.png", label: "Happy", url: image, folderId: "body" },
+  { filename: "happy.png", label: "Happy_01", url: image, folderId: "body" },
+  { filename: "bright.png", label: "Happy_02", url: image, folderId: "body" },
   { filename: "happy-side.png", label: "Happy profile", url: image, folderId: "body" },
   { filename: "neutral.png", label: "Neutral", url: image, folderId: "body" },
 ];
@@ -186,17 +187,26 @@ await withBrowser(browser, async () => {
       await pane.getByRole("button", { name: "Sprites", exact: true }).click();
       await pane.getByRole("button", { name: "Add front sprites" }).click();
       const picker = page.getByRole("dialog", { name: "Choose front sprites" });
-      await picker.getByRole("checkbox", { name: "Happy", exact: true }).check();
-      await picker.getByRole("button", { name: "Add 1 expression", exact: true }).click();
+      await picker.getByRole("checkbox", { name: "Happy_01", exact: true }).check();
+      await picker.getByRole("checkbox", { name: "Happy_02", exact: true }).check();
+      await picker.getByRole("button", { name: "Add 2 expressions", exact: true }).click();
+      await expect(pane.getByRole("button", { name: "Happy 2 variants", exact: true })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
       await pane.getByRole("button", { name: "+ Add side view", exact: true }).click();
-      const side = page.getByRole("dialog", { name: "Side view for Happy" });
+      const side = page.getByRole("dialog", { name: "Side view for Happy_01" });
       await side.getByRole("radio", { name: "Happy profile", exact: true }).check();
       await side.getByRole("button", { name: "Use as side view" }).click();
-      await expect(pane.getByRole("img", { name: "Happy · Front" })).toBeVisible();
-      await expect(pane.getByRole("img", { name: "Happy · Side" })).toBeVisible();
-      const expressionName = pane.getByRole("textbox", { name: "Expression name" });
+      await pane.getByRole("button", { name: "Variant 02", exact: true }).click();
+      await expect(pane.getByRole("img", { name: "Happy_02 · Front" })).toBeVisible();
+      await expect(pane.getByRole("button", { name: "+ Add side view", exact: true })).toBeVisible();
+      await pane.getByRole("button", { name: "Variant 01", exact: true }).click();
+      await expect(pane.getByRole("img", { name: "Happy_01 · Front" })).toBeVisible();
+      await expect(pane.getByRole("img", { name: "Happy_01 · Side" })).toBeVisible();
+      const expressionName = pane.getByRole("textbox", { name: "Variant label" });
       const setDefault = pane.getByRole("button", { name: "Set as default" });
-      await expect(expressionName).toHaveValue("Happy");
+      await expect(expressionName).toHaveValue("Happy_01");
       await expect(setDefault).toBeEnabled();
       const fieldBounds = await expressionName.boundingBox();
       const defaultBounds = await setDefault.boundingBox();

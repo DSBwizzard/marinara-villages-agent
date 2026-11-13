@@ -35,7 +35,7 @@ export const APPEARANCE_STYLES = String.raw`
 .appearance-actions button:first-child:not(.appearance-link) { background:var(--appearance-panel); }
 .appearance-expressions { display:grid; gap:.35rem; max-height:24rem; overflow:auto; padding:3px; }
 .villages-appearance .appearance-expressions button {
-  display:flex; align-items:center; gap:.4rem; text-align:start; min-width:0;
+  display:flex; flex-wrap:wrap; align-items:center; gap:.4rem; text-align:start; min-width:0;
 }
 .appearance-expressions span { flex:1; min-width:0; overflow-wrap:anywhere; }
 .villages-appearance .appearance-expressions button[aria-pressed=true] { background:var(--menu-selected,#875363); }
@@ -56,6 +56,8 @@ export const APPEARANCE_STYLES = String.raw`
 .appearance-view-actions { display:flex; justify-content:center; flex-wrap:wrap; column-gap:.35rem; }
 .appearance-portrait { display:grid; justify-items:center; }
 .appearance-portrait > .marinara-capability-villages-avatar { width:min(100%,11rem); height:auto; aspect-ratio:1; border-radius:.45rem; }
+.appearance-variants { display:flex; flex-wrap:wrap; gap:.35rem; margin-bottom:.65rem; }
+.villages-appearance .appearance-variants button[aria-pressed=true] { background:var(--menu-selected,#875363); border-color:var(--appearance-pick); }
 .appearance-expression-fields { display:flex; align-items:end; flex-wrap:wrap; gap:.55rem; margin-bottom:.65rem; }
 .villages-appearance .appearance-expression-fields label { display:grid; gap:.3rem; flex:1 1 11rem; min-width:0; margin:0; line-height:inherit; }
 .appearance-expression-fields input { min-width:0; min-height:44px; color:var(--appearance-ink); background:transparent; border:1px solid var(--appearance-line); border-radius:.35rem; font:inherit; padding:.45rem; }
@@ -81,6 +83,7 @@ export const APPEARANCE_STYLES = String.raw`
 .appearance-pairs { width:100%; table-layout:fixed; border-collapse:collapse; }
 .appearance-pairs th,.appearance-pairs td { padding:.35rem; text-align:center; border-bottom:1px solid var(--appearance-line); overflow-wrap:anywhere; }
 .appearance-pairs th:first-child { text-align:start; }
+.appearance-pair-group th { background:color-mix(in srgb,#566a93 23%,transparent); }
 .appearance-pairs img { display:block; width:100%; height:6rem; object-fit:contain; background:color-mix(in srgb,#566a93 23%,transparent); border-radius:.35rem; }
 @container (max-width:34rem) {
   .appearance-layout { grid-template-columns:1fr; }

@@ -24,7 +24,7 @@ const participants = ["a", "b", "remote"].map((characterId) => ({
   name: characterId,
   doing: "Listening",
 }));
-const artwork = ["happy_01", "happy_blush", "happy_side"].map((name, index) => {
+const artwork = ["front_a", "front_b", "side_a"].map((name, index) => {
   const id = "00000000-0000-4000-8000-00000000000" + (index + 1);
   const assetId = "villages-" + id;
   return {
@@ -72,7 +72,7 @@ const world = coerceVillageState({
             framing: { mode: "full" },
             defaultExpressionId: first,
             artwork,
-            expressions: [first, second, side].map((id) => ({ id, name: "Smile" })),
+            expressions: [first, second, side].map((id, index) => ({ id, name: `Smile_0${index + 1}` })),
             assignments: artwork.map(({ id }, index) => ({
               artworkId: id,
               expressionId: [first, second, side][index],
@@ -211,8 +211,9 @@ const writer = createSceneWriting({
     assert.doesNotMatch(prompt, /commands array|Native changes use commands|roomKeeps:\[/u);
     const catalog = scenePromptPacket(prompt, "calendar").presentation;
     assert(catalog.sprites[0].expressions.includes(group));
+    assert(catalog.sprites[0].expressions.includes('"name":"Smile"'));
     assert.deepEqual(catalog.state.a, { expression: side, look: { target: "villager", characterId: "b" } });
-    assert.doesNotMatch(JSON.stringify(catalog), /original\.png|render\.png|happy_01|remote/);
+    assert.doesNotMatch(JSON.stringify(catalog), /original\.png|render\.png|front_a|Smile_01|remote/);
     return { finishReason: "stop", content: JSON.stringify(raw) };
   },
   rejectVenueCompletion: () => assert.fail("Optional presentation cannot reject purchased Scene prose"),

@@ -6,6 +6,7 @@ import type {
   SpriteLibraryItem,
   SpriteView,
 } from "../../../shared/contracts/sprites.js";
+import { groupNumberedSpritePairs, numberedSpriteLabel } from "../../../shared/helpers/sprite-variants.js";
 import { messageFrom, request, VillageApiError } from "../../shared/api.js";
 import { useConfirmation } from "../../shared/confirmation.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
@@ -95,6 +96,9 @@ export function Appearance({
     choice.expressions.find((row) => row.id === selectedId) ??
     choice.expressions.find((row) => row.id === choice.defaultExpressionId) ??
     choice.expressions[0];
+  const groups = groupNumberedSpritePairs(choice.expressions);
+  const selectedGroup = groups.find(({ members }) => members.some((row) => row.id === selected?.id));
+  const variants = selectedGroup && selectedGroup.members.length > 1 ? selectedGroup.members : null;
   const [reload, setReload] = useState(0);
   const acknowledged = useRef(selectedRevision);
   const openCharacter = (host as (HTMLElement & { capabilityProps?: { openCharacter?: unknown } }) | undefined)
@@ -333,24 +337,47 @@ export function Appearance({
               <div className="appearance-preview">
                 <h3>Expressions</h3>
                 <div className="appearance-expressions" role="group" aria-label="Expressions">
-                  {choice.expressions.map((row) => (
-                    <button
-                      key={row.id}
-                      type="button"
-                      aria-pressed={selected.id === row.id}
-                      onClick={() => select(row.id)}
-                    >
-                      <img src={image(row.front ?? row.side) || undefined} alt="" />
-                      <span>{row.name || "Unnamed expression"}</span>
-                      {row.id === choice.defaultExpressionId ? <small>Default</small> : null}
-                    </button>
-                  ))}
+                  {groups.map((group) => {
+                    const defaultPair = group.members.find((row) => row.id === choice.defaultExpressionId);
+                    const row = defaultPair ?? group.members[0]!;
+                    return (
+                      <button
+                        key={group.members[0]!.id}
+                        type="button"
+                        aria-pressed={group === selectedGroup}
+                        onClick={() => select(group === selectedGroup ? selected.id : row.id)}
+                      >
+                        <img src={image(row.front ?? row.side) || undefined} alt="" />
+                        <span>{group.name || "Unnamed expression"}</span>
+                        {group.members.length > 1 ? <small>{group.members.length} variants</small> : null}
+                        {defaultPair ? <small>Default</small> : null}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
               <div className="appearance-preview">
+                {variants ? (
+                  <div className="appearance-variants" role="group" aria-label="Variants">
+                    {variants.map((row) => {
+                      const label = numberedSpriteLabel(row.name)?.number;
+                      return (
+                        <button
+                          key={row.id}
+                          type="button"
+                          aria-pressed={row.id === selected.id}
+                          onClick={() => select(row.id)}
+                        >
+                          {label ? `Variant ${label}` : "Base"}
+                          {row.id === choice.defaultExpressionId ? " · Default" : ""}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
                 <div className="appearance-expression-fields">
                   <label>
-                    Expression name{" "}
+                    {variants ? "Variant label" : "Expression name"}{" "}
                     <input
                       autoComplete="off"
                       value={selected.name}
@@ -434,7 +461,7 @@ export function Appearance({
                   );
                 }}
               >
-                Remove expression
+                {variants ? "Remove variant" : "Remove expression"}
               </button>
             ) : null}
             <span role="status">{notice}</span>
@@ -794,17 +821,28 @@ function SpriteSet({
               <th scope="col">Side</th>
             </tr>
           </thead>
-          <tbody>
-            {pairs.map((row) => (
-              <tr key={row.front.filename}>
-                <th scope="row">{row.name}</th>
-                <td>
-                  <img src={row.front.url} alt={row.name + " · Front"} loading="lazy" />
-                </td>
-                <td>{row.side ? <img src={row.side.url} alt={row.name + " · Side"} loading="lazy" /> : row.reason}</td>
-              </tr>
-            ))}
-          </tbody>
+          {groupNumberedSpritePairs(pairs).map(({ name, members }) => (
+            <tbody key={members[0]!.front.filename}>
+              {members.length > 1 ? (
+                <tr className="appearance-pair-group">
+                  <th scope="rowgroup" colSpan={3}>
+                    {name} · {members.length} variants
+                  </th>
+                </tr>
+              ) : null}
+              {members.map((row) => (
+                <tr key={row.front.filename}>
+                  <th scope="row">{row.name}</th>
+                  <td>
+                    <img src={row.front.url} alt={row.name + " · Front"} loading="lazy" />
+                  </td>
+                  <td>
+                    {row.side ? <img src={row.side.url} alt={row.name + " · Side"} loading="lazy" /> : row.reason}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          ))}
         </table>
       ) : null}
       {frontFolder && side.length > pairCount ? <p>{side.length - pairCount} side sprites will be left out.</p> : null}

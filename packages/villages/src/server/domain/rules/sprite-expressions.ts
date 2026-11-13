@@ -6,6 +6,7 @@ import {
   type StagingLine,
   type StagingState,
 } from "../../../shared/helpers/scene-staging.js";
+import { groupNumberedSpritePairs } from "../../../shared/helpers/sprite-variants.js";
 import type { VenueReplyLine, VenueScene } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
 import type { VillageResidentSprite } from "../models/world.js";
@@ -91,26 +92,35 @@ export function settleSceneSpriteCues(
   );
 }
 
-/** Engine convention: two or more suffixed names share the prefix before the first underscore.
- * Names have already had the structural full_ prefix and file extension removed by the media owner.
- * Mirrors Engine sprite.service / expression-agent-utils; no private Engine imports. */
 function expressionChoices(sprite: SpriteCatalog | null | undefined, variants: boolean) {
   const byExpression = new Map<string, SpriteCatalog["expressions"][number]>();
   for (const entry of sprite?.expressions ?? [])
     if (entry.view === "front" || !byExpression.has(entry.expressionId)) byExpression.set(entry.expressionId, entry);
   const entries = [...byExpression.values()];
+  if (!variants) return entries.map((entry) => ({ id: entry.expressionId, name: entry.name, members: [entry] }));
+  const numbered = new Map(
+    groupNumberedSpritePairs(entries).flatMap(({ name, members }) => {
+      if (members.length < 2) return [];
+      const group = { id: "g-" + members[0]!.expressionId, name, members };
+      return members.map((entry) => [entry.expressionId, group] as const);
+    }),
+  );
+  // Existing filename groups also support descriptive suffixes.
+  const remaining = entries.filter((entry) => !numbered.has(entry.expressionId));
   const name = (entry: SpriteCatalog["expressions"][number]) => (entry.spriteName ?? entry.name).trim().toLowerCase();
   const prefixes = new Map<string, number>();
-  for (const entry of entries) {
+  for (const entry of remaining) {
     const key = name(entry).split("_")[0];
-    if (variants && name(entry).indexOf("_") > 0) prefixes.set(key, (prefixes.get(key) ?? 0) + 1);
+    if (name(entry).indexOf("_") > 0) prefixes.set(key, (prefixes.get(key) ?? 0) + 1);
   }
   const emitted = new Set<string>();
   return entries.flatMap((entry) => {
+    const group = numbered.get(entry.expressionId);
+    if (group) return group.members[0] === entry ? [group] : [];
     const key = name(entry).split("_")[0];
     const grouped = (prefixes.get(key) ?? 0) > 1;
     const members = grouped
-      ? entries.filter((item) => name(item) === key || name(item).startsWith(key + "_"))
+      ? remaining.filter((item) => name(item) === key || name(item).startsWith(key + "_"))
       : [entry];
     const id = grouped ? "g-" + members[0].expressionId : entry.expressionId;
     if (emitted.has(id)) return [];

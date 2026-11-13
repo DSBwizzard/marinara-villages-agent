@@ -168,6 +168,29 @@ assert.equal(
   "",
   "groups cannot select another resident's artwork",
 );
+
+const numberedPairs = {
+  defaultExpressionId: "e-one",
+  expressions: [
+    { expressionId: "e-one", name: "Big_Smile_01", spriteName: "front_a", view: "front" as const },
+    { expressionId: "e-one", name: "Big_Smile_01", spriteName: "side_x", view: "side" as const },
+    { expressionId: "e-two", name: "BIG_SMILE_02", spriteName: "front_b", view: "front" as const },
+    { expressionId: "e-three", name: "Big_Smile_03", spriteName: "front_c", view: "front" as const },
+    { expressionId: "e-three", name: "Big_Smile_03", spriteName: "side_y", view: "side" as const },
+  ],
+};
+const numberedId = "g-e-one";
+assert.deepEqual(JSON.parse(describeSpriteExpressions(numberedPairs, true)), {
+  id: numberedId,
+  name: "Big_Smile",
+  views: ["front", "side"],
+  isDefault: true,
+});
+assert.equal(resolveSpriteExpression(numberedPairs, numberedId, true, "front", 0.5), "e-two");
+assert.equal(resolveSpriteExpression(numberedPairs, numberedId, true, "side", 0.5), "e-three");
+assert.equal(resolveSpriteExpression(numberedPairs, numberedId, false, "side", 0.5), "");
+assert.equal(resolveSpriteExpression(numberedPairs, "e-one", true, "side", 0.99), "e-one");
+
 const cueLines = [
   { speakerId: "a", staging: [{ characterId: "a", look: { target: "villager" as const, characterId: "b" } }] },
   { speakerId: "a", staging: [{ characterId: "a", expression: grouped.id }] },

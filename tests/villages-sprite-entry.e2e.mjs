@@ -11,10 +11,10 @@ await withBrowser(browser, async () => {
     const errors = [],
       saves = [];
     page.on("pageerror", (error) => errors.push(error.message));
-    const picture = (side) =>
+    const picture = (side, color = "#658b80") =>
       "data:image/svg+xml," +
       encodeURIComponent(
-        '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="192"><path fill="#658b80" d="M42 57h44l12 128H30z"/>' +
+        `<svg xmlns="http://www.w3.org/2000/svg" width="128" height="192"><path fill="${color}" d="M42 57h44l12 128H30z"/>` +
           (side
             ? '<path fill="#c39364" d="M52 13h24v16l10 8-10 5v10H52z"/>'
             : '<circle fill="#c39364" cx="64" cy="32" r="22"/>') +
@@ -27,6 +27,10 @@ await withBrowser(browser, async () => {
       { filename: "neutral-1.png", label: "Neutral", folderId: "side", url: picture(true), version: "100" },
       { filename: "neutral-2.png", label: "NEUTRAL", folderId: "side", url: picture(true), version: "100" },
       { filename: "thinking.png", label: "Thinking", folderId: "front", url: picture(false), version: "100" },
+      { filename: "f1.png", label: "Grin_01", folderId: "front", url: picture(false, "#6192c3"), version: "100" },
+      { filename: "f2.png", label: "Grin_02", folderId: "front", url: picture(false, "#a561c3"), version: "100" },
+      { filename: "s2.png", label: "GRIN_02", folderId: "side", url: picture(true, "#a561c3"), version: "100" },
+      { filename: "s1.png", label: "Grin_01", folderId: "side", url: picture(true, "#6192c3"), version: "100" },
     ];
     const current = {
       revision: 0,
@@ -127,6 +131,9 @@ await withBrowser(browser, async () => {
     const happy = picker.getByRole("row").filter({ hasText: "Happy" });
     await expect(happy.getByRole("img", { name: "Happy · Front" })).toBeVisible();
     await expect(happy.getByRole("img", { name: "Happy · Side" })).toBeVisible();
+    await expect(picker.getByText("Grin · 2 variants", { exact: true })).toBeVisible();
+    await expect(picker.getByRole("img", { name: "Grin_01 · Side" })).toHaveAttribute("src", files[9].url);
+    await expect(picker.getByRole("img", { name: "Grin_02 · Side" })).toHaveAttribute("src", files[8].url);
     await expect(picker.getByRole("row").filter({ hasText: "Neutral" })).toContainText("Duplicate label");
     await expect(picker.getByRole("row").filter({ hasText: "Thinking" })).toContainText("No match");
     await sideFolder.selectOption("");
@@ -136,6 +143,15 @@ await withBrowser(browser, async () => {
     const pairBounds = await picker.getByRole("table").boundingBox();
     assert.ok(pairBounds && pairBounds.x >= 0 && pairBounds.x + pairBounds.width <= width);
     await picker.getByRole("button", { name: "Add to appearance" }).click();
+    await screen.getByRole("button", { name: "Grin 2 variants", exact: true }).click();
+    await expect(screen.getByRole("img", { name: "Grin_01 · Front" })).toHaveAttribute("src", files[6].url);
+    await expect(screen.getByRole("img", { name: "Grin_01 · Side" })).toHaveAttribute("src", files[9].url);
+    const variant = screen.getByRole("button", { name: "Variant 02", exact: true });
+    await variant.click();
+    await expect(variant).toHaveAttribute("aria-pressed", "true");
+    await expect(screen.getByRole("img", { name: "Grin_02 · Front" })).toHaveAttribute("src", files[7].url);
+    await expect(screen.getByRole("img", { name: "Grin_02 · Side" })).toHaveAttribute("src", files[8].url);
+    await expect(screen.getByRole("textbox", { name: "Variant label" })).toHaveValue("Grin_02");
     await screen.getByRole("button", { name: "Neutral Default" }).click();
     await screen.getByRole("button", { name: "+ Add side view", exact: true }).click();
     const side = page.getByRole("dialog", { name: "Side view for Neutral" });
@@ -163,14 +179,21 @@ await withBrowser(browser, async () => {
     assert.equal(saves.length, 0, "Picker choices do not write until Save");
     await screen.getByRole("button", { name: "Save", exact: true }).click();
     await expect(screen.getByRole("status")).toHaveText("Saved");
-    assert.equal(saves[0].expressions.length, 3);
+    assert.equal(saves[0].expressions.length, 5);
     assert.equal(saves[0].expressions[0].name, "Joyful");
     assert.equal(saves[0].defaultExpressionId, saves[0].expressions[0].id);
     assert.equal(saves[0].expressions[0].side.filename, "happy-side.png");
     assert.equal(saves[0].expressions[1].side.filename, "neutral-1.png");
     assert.equal(saves[0].expressions[2].side, undefined);
+    assert.deepEqual(
+      saves[0].expressions.slice(3).map((row) => [row.name, row.front.filename, row.side.filename]),
+      [
+        ["Grin_01", "f1.png", "s1.png"],
+        ["Grin_02", "f2.png", "s2.png"],
+      ],
+    );
     await screen.getByRole("button", { name: "Add sprite set" }).click();
-    await expect(picker).toContainText("3 front sprites already in use.");
+    await expect(picker).toContainText("5 front sprites already in use.");
     await expect(picker.getByRole("button", { name: "Add to appearance" })).toBeDisabled();
     await picker.getByRole("button", { name: "Cancel", exact: true }).click();
     await screen.getByRole("button", { name: "Remove side view" }).click();
@@ -178,6 +201,12 @@ await withBrowser(browser, async () => {
     await screen.getByRole("button", { name: "Remove expression" }).click();
     await expect(screen.getByRole("button", { name: /^Joyful/ })).toHaveCount(0);
     await screen.getByRole("button", { name: "Discard changes" }).click();
+    await screen.getByRole("button", { name: "Grin 2 variants", exact: true }).click();
+    await variant.click();
+    await screen.getByRole("button", { name: "Remove variant", exact: true }).click();
+    await expect(screen.getByRole("button", { name: "Grin_01", exact: true })).toBeVisible();
+    await screen.getByRole("button", { name: "Discard changes" }).click();
+    await expect(screen.getByRole("button", { name: "Grin 2 variants", exact: true })).toBeVisible();
     await screen.getByRole("button", { name: "Portrait", exact: true }).click();
     await screen.getByRole("button", { name: "Save", exact: true }).click();
     await expect(screen.getByRole("status")).toHaveText("Saved");
