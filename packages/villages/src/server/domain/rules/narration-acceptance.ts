@@ -18,9 +18,14 @@ import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { asRecord } from "./coerce.js";
 import { conflict } from "./errors.js";
 import { narrationProtectionFingerprint } from "./narration-context.js";
-import { readNarrationEffectHeader, readNarrationReply } from "./narration-contract.js";
+import { readNarrationEffectHeader } from "./narration-contract.js";
 import { prepareNarrationKeep } from "./narration-keep.js";
-import { assertNarrationSourceOrder, bindNarrationSource, type NarrationSourceContext } from "./narration-sources.js";
+import {
+  assertNarrationSourceOrder,
+  bindNarrationSource,
+  readSceneNarrationReply,
+  type NarrationSourceContext,
+} from "./narration-sources.js";
 import { selectSceneEffects, type SceneEffectResult } from "./scene-acceptance.js";
 import { narrationLines } from "./narration-lines.js";
 import { admitNpcParticipants, bindNpcReferences, type NpcAdmission } from "./npc-participation.js";
@@ -159,9 +164,11 @@ export function acceptNarrationContinuity(
         ...native.admissions.map((row) => row.npc.id),
       ]),
     ];
-  const reply = readNarrationReply(
+  const reply = readSceneNarrationReply(
     bindNpcReferences(publication.raw, native.admissions),
     scene.contactGeneration?.actorIds ?? scene.activeIds,
+    readset,
+    state.continuity,
   );
   const movementDependencies = [
     ...new Set([
@@ -289,6 +296,7 @@ export function acceptNarrationContinuity(
     memoryRequire(effects[index].id === header.id, "native effect identity changed");
   }
   const prepared = new Map<string, ReturnType<typeof prepareNarrationKeep>>();
+  const allowTranscriptNotes = readset.ordinaryDialogue && !reply.commands.length && !admission.protectedRoots.length;
   for (const [index, raw] of reply.keep.entries()) {
     let header: ReturnType<typeof readNarrationEffectHeader>;
     try {
@@ -325,7 +333,15 @@ export function acceptNarrationContinuity(
       );
     const effect: SceneEffectResult = { ...header, independent: optionalNote || optionalAnswer || header.independent };
     try {
-      const keep = prepareNarrationKeep(raw, index, state.continuity, admission, source);
+      const keep = prepareNarrationKeep(
+        raw,
+        index,
+        state.continuity,
+        admission,
+        source,
+        readset.ordinaryDialogue,
+        readset.ordinaryReplyRecovery,
+      );
       for (const holder of keep.write.holders.filter((holder) => holder.kind === "room")) {
         const scope = (venue: typeof source.venue) => {
           const zone = venue.zones?.find((row) => row.id === holder.zoneId);
@@ -367,6 +383,37 @@ export function acceptNarrationContinuity(
           return id;
         });
       effect.requires = [...new Set([...header.requires, ...nativeDependencies])];
+      const { write } = keep;
+      if (
+        allowTranscriptNotes &&
+        !effect.requires.length &&
+        !write.target &&
+        !write.parentId &&
+        !write.facet &&
+        !write.retire &&
+        !write.offer &&
+        !write.accept &&
+        !write.closeOffer &&
+        !write.screening &&
+        write.current === undefined &&
+        keep.sources.every(
+          (proof) =>
+            proof.episodeId === source.episodeId &&
+            proof.unitId !== "input" &&
+            (proof.kind === "speech" || proof.kind === "context"),
+        ) &&
+        write.holders.every(
+          (holder) =>
+            holder.kind === "actor" &&
+            keep.sources.some(
+              (proof) =>
+                proof.kind === "speech" &&
+                proof.perceptions.some((row) => row.actorId === holder.id && row.channel === "words"),
+            ),
+        ) &&
+        ["experience", "information", "perspective", "open-matter"].includes(write.class ?? "experience")
+      )
+        effect.independent = true;
       prepared.set(header.id, keep);
     } catch (error) {
       effect.failure = error instanceof Error ? error.message.slice(0, 2000) : String(error).slice(0, 2000);
@@ -549,6 +596,51 @@ export function acceptNarrationContinuity(
     if (!failed) break;
   }
   const acceptedKeeps = selection.acceptedIds.flatMap((id) => (prepared.has(id) ? [prepared.get(id)!] : []));
+  const requestedMemory = readset.requestedMemory;
+  const memoryText =
+    requestedMemory && "Player said: " + source.input.slice(requestedMemory.start, requestedMemory.end);
+  if (
+    requestedMemory &&
+    !acceptedKeeps.some(
+      ({ write, sources }) =>
+        write.text?.replace(/[.!]+$/u, "") === memoryText &&
+        write.class === "information" &&
+        !write.target &&
+        !write.parentId &&
+        !write.retire &&
+        !write.offer &&
+        write.holders.some(
+          (holder) =>
+            holder.kind === "actor" &&
+            holder.id !== "player" &&
+            (!requestedMemory.recipientId || holder.id === requestedMemory.recipientId) &&
+            sources.some(
+              (proof) =>
+                proof.episodeId === source.episodeId &&
+                proof.unitId === "input" &&
+                proof.actorId === "player" &&
+                proof.kind === "speech" &&
+                proof.range &&
+                proof.range.start <= requestedMemory.start &&
+                proof.range.end >= requestedMemory.end &&
+                proof.perceptions.some((row) => row.actorId === holder.id && row.channel === "words"),
+            ),
+        ),
+    )
+  )
+    return {
+      ...selection,
+      held: true,
+      acceptedIds: [],
+      rejected: [
+        ...selection.rejected,
+        {
+          id: "requested-memory",
+          reason: "The requested memory needs a saved entry with the resident's witnessed player words.",
+        },
+      ],
+      episode: undefined,
+    };
   memoryRequire(
     native.effects
       .filter((effect) => selection.acceptedIds.includes(effect.id))
@@ -576,8 +668,18 @@ export function acceptNarrationContinuity(
     ),
     "Scene effect lost its native command",
   );
+  const readOnlyKnowledge = readset.readOnlyKnowledge ?? [];
+  memoryRequire(
+    Array.isArray(readOnlyKnowledge) &&
+      readOnlyKnowledge.length <= 1024 &&
+      readOnlyKnowledge.every(
+        (proof) => proof?.kind === "knowledge" && proof.seed === source.seed && proof.episodeId === source.episodeId,
+      ),
+    "invalid saved read-only knowledge proofs",
+  );
   const currentSources = [
     ...Object.values(source.historical).filter((row) => row.kind === "knowledge"),
+    ...readOnlyKnowledge,
     ...acceptedKeeps.flatMap((keep) => keep.sources),
     ...selection.acceptedIds.flatMap((id) => native.sources[id] ?? []),
     ...selection.acceptedIds

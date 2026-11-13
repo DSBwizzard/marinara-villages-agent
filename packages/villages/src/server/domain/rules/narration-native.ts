@@ -1,8 +1,13 @@
 import type { VillageState } from "../models/world.js";
 import type { NarrationReadset } from "../models/narration-model.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
-import { readNarrationEffectHeader, readNarrationReply } from "./narration-contract.js";
-import { bindNarrationSource, assertNarrationSourceOrder, type NarrationSourceContext } from "./narration-sources.js";
+import { readNarrationEffectHeader } from "./narration-contract.js";
+import {
+  bindNarrationSource,
+  assertNarrationSourceOrder,
+  readSceneNarrationReply,
+  type NarrationSourceContext,
+} from "./narration-sources.js";
 import { narrationLines } from "./narration-lines.js";
 import {
   acceptedNarrationEpisode,
@@ -108,9 +113,11 @@ export function prepareNarrationNative(
       ...new Set([...(scene.contactGeneration.actorIds ?? scene.activeIds), ...admissions.map((row) => row.npc.id)]),
     ];
   const source = { ...readset.source, scene, actors };
-  const reply = readNarrationReply(
+  const reply = readSceneNarrationReply(
     bindNpcReferences(raw, admissions),
     scene.contactGeneration?.actorIds ?? scene.activeIds,
+    readset,
+    state.continuity,
   );
   const projectBefore = new Map<string, ReturnType<typeof projectSpeechContext>>();
   const accessBefore = new Map(

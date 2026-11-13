@@ -1,10 +1,22 @@
-import type { ContinuityClass, ContinuityEvidence, ContinuityHolder } from "../models/continuity-model.js";
+import type {
+  ContinuityClass,
+  ContinuityCollection,
+  ContinuityEvidence,
+  ContinuityHolder,
+} from "../models/continuity-model.js";
 import type { AcceptedEpisode } from "../models/episode-model.js";
+import type { NarrationReadset } from "../models/narration-model.js";
 import type { VenueLine, VenueScene } from "../models/scene-model.js";
 import type { VillageVenue } from "../models/world.js";
-import { continuityHolderKey, continuitySelfSource } from "./continuity.js";
+import { assertContinuityKnowledge, continuityHolderKey, continuitySelfSource } from "./continuity.js";
+import { asRecord } from "./coerce.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
-import { narrationSourceSchema, type NarrationSource } from "./narration-contract.js";
+import {
+  narrationSourceSchema,
+  readContinuityProposal,
+  readNarrationReply,
+  type NarrationSource,
+} from "./narration-contract.js";
 import { exactInputSpan } from "./source-span.js";
 import { contactNeighbors, contactPosition, type ContactMove } from "./venue-contact.js";
 import { nativeReceiptSupportsRoom } from "./episode-sources.js";
@@ -43,6 +55,155 @@ export type NarrationSourceContext = {
   moves: Pick<ContactMove, "characterId" | "zoneId" | "segment">[];
 };
 export type NarrationSourceOwner = { holder: ContinuityHolder; writeId: string; text: string; class: ContinuityClass };
+
+function ordinaryReplyLayout(raw: Record<string, unknown>, positions: boolean) {
+  if (
+    !Array.isArray(raw.segments) ||
+    Object.keys(raw).some((key) => !["segments", "keep", "keeps", "effects"].includes(key))
+  )
+    return raw;
+  const fields = ["keep", "keeps", "effects"].filter((key) => Object.hasOwn(raw, key));
+  if (fields.length > 1 || (fields.length && !Array.isArray(raw[fields[0]]))) return raw;
+  const segments = [...raw.segments];
+  const misplaced = [];
+  while (asRecord(segments.at(-1)).kind === "keep") {
+    const { kind: _kind, ...proposal } = asRecord(segments.pop());
+    misplaced.unshift(proposal);
+  }
+  const field = fields[0];
+  if (field && misplaced.length) return raw;
+  const keep = field ? (raw[field] as unknown[]) : misplaced;
+  if (
+    (field === "effects" || field === "keeps" || misplaced.length > 0) &&
+    keep.some((value) => {
+      const row = asRecord(value);
+      return (
+        (row.kind !== undefined && row.kind !== "keep") || !Object.hasOwn(row, "for") || !Object.hasOwn(row, "source")
+      );
+    })
+  )
+    return raw;
+  const normalized = keep.map((value) => {
+    const { kind, ...fields } = asRecord(value);
+    if (kind !== "keep" || field !== "effects") return value;
+    const candidate = positions ? bindSceneSourcePositions({ segments, keep: [fields] }).keep : [fields];
+    try {
+      readContinuityProposal((candidate as unknown[])[0]);
+      return fields;
+    } catch {
+      return value;
+    }
+  });
+  return {
+    segments: segments.map((value) => {
+      const line = asRecord(value);
+      if (line.kind !== "dialogue" || line.color !== "") return value;
+      const { color: _color, ...dialogue } = line;
+      return dialogue;
+    }),
+    ...(field || misplaced.length ? { keep: normalized } : {}),
+  };
+}
+
+function bindSceneSourcePositions(raw: Record<string, unknown>) {
+  if (!Array.isArray(raw.segments) || Object.hasOwn(raw, "commands")) return raw;
+  const labels = raw.segments.map((value, index) => asRecord(value).id ?? "segment-" + index);
+  const label = (position: unknown) =>
+    typeof position === "number" && Number.isSafeInteger(position) && position >= 1
+      ? (labels[position - 1] ?? position)
+      : position;
+  const resolveSources = (value: unknown) => {
+    const row = asRecord(value);
+    if (!Array.isArray(row.source)) return value;
+    return {
+      ...row,
+      source: row.source.map((ref: unknown) => {
+        const source = asRecord(ref);
+        if (Object.hasOwn(source, "segment")) return { ...source, segment: label(source.segment) };
+        const ground = asRecord(source.ground);
+        const at = asRecord(ground.at);
+        const anchor = Object.keys(at)[0];
+        if (
+          Object.hasOwn(source, "input") &&
+          (anchor === "before" || anchor === "after") &&
+          Object.keys(at).length === 1
+        )
+          return { ...source, ground: { ...ground, at: { [anchor]: label(at[anchor]) } } };
+        return ref;
+      }),
+    };
+  };
+  return {
+    ...raw,
+    ...(Array.isArray(raw.keep) ? { keep: raw.keep.map(resolveSources) } : {}),
+    ...(Object.hasOwn(raw, "halt") ? { halt: resolveSources(raw.halt) } : {}),
+  };
+}
+
+/** Discard effect-free dialogue annotations that assert no provenance or have the speaker's own fitted proof. */
+export function readSceneNarrationReply(
+  raw: Record<string, unknown>,
+  speakers: string[],
+  readset: NarrationReadset,
+  continuity: ContinuityCollection,
+) {
+  const positions = readset.positionedSceneSources === true;
+  if (readset.ordinaryReplyRecovery) raw = ordinaryReplyLayout(raw, positions);
+  if (positions) raw = bindSceneSourcePositions(raw);
+  if (Object.keys(raw).length !== 1 || !Array.isArray(raw.segments)) return readNarrationReply(raw, speakers);
+  const {
+    source: { historical, seed },
+    admission,
+  } = readset;
+  const segments = raw.segments.map((value: unknown) => {
+    const line = asRecord(value),
+      source = line.source;
+    if (line.kind !== "dialogue" || line.requires !== undefined || !Array.isArray(source) || source.length !== 1)
+      return value;
+    const [alias] = source;
+    if (alias === "self") {
+      const { source: _annotation, ...prose } = line;
+      return prose;
+    }
+    if (typeof alias !== "string" || !alias.startsWith("h:") || !Object.hasOwn(historical, alias)) return value;
+    const cited = historical[alias];
+    if (cited.kind !== "knowledge" || cited.seed !== seed) return value;
+    const version = continuity.versions.find(({ id }) => id === cited.unitId);
+    if (
+      !version ||
+      (version.class !== "experience" && version.class !== "information") ||
+      version.parentId ||
+      version.closed
+    )
+      return value;
+    const owned = Object.values(historical).find((proof) => {
+      if (
+        proof.kind !== "knowledge" ||
+        proof.seed !== seed ||
+        proof.actorId !== line.speakerId ||
+        proof.excerpt !== cited.excerpt
+      )
+        return false;
+      const ownVersion = continuity.versions.find(({ id }) => id === proof.unitId);
+      return (
+        ownVersion?.rootId === version.rootId &&
+        ownVersion.class === version.class &&
+        memoryHash(ownVersion.about) === memoryHash(version.about)
+      );
+    });
+    if (!owned) return value;
+    assertContinuityKnowledge(
+      continuity,
+      owned,
+      admission.actors,
+      admission.continuityRevision,
+      admission.sourceActors,
+    );
+    const { source: _citation, ...prose } = line;
+    return prose;
+  });
+  return readNarrationReply({ segments }, speakers);
+}
 export type NarrationCommunication = Pick<
   NarrationSourceContext,
   "seed" | "episodeId" | "input" | "actors" | "lines"

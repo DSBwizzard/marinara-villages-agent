@@ -210,7 +210,8 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
     const state = await ports.readVillageState({ memories: true }),
       dateKey = activityDate(state, now),
       allowance = planningAllowance(state.backgroundPace, state.seed, dateKey);
-    if (!allowance || !eventAttemptAvailable(state, dateKey, now.getTime())) return;
+    if (state.opening?.stage === "gathering" || !allowance || !eventAttemptAvailable(state, dateKey, now.getTime()))
+      return;
     const moment = deriveVillageMoment({
         foundedAt: state.foundedAt,
         environment: state.narrative,

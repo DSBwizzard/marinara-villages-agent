@@ -5,6 +5,7 @@ import type { NarrativeAdmission } from "../../domain/models/narrative-model.js"
 import type { readWorldNarrativeInput } from "../../domain/decoding/narrative-codec.js";
 import {
   admitNarrative,
+  admitDueWorldDevelopment,
   applyNarrativeDevelopment,
   assertNarrativeAdmission,
   ensureNarrative,
@@ -136,7 +137,8 @@ export function createNarrative(ports: Ports) {
       });
       state = await ports.read();
     }
-    if (!eventAttemptAvailable(state, activityDate(state, now), now.getTime())) return;
+    if (state.opening?.stage === "gathering" || !eventAttemptAvailable(state, activityDate(state, now), now.getTime()))
+      return;
     let social: VillageState | null = null;
     try {
       social = await ports.socialSnapshot();
@@ -162,7 +164,7 @@ export function createNarrative(ports: Ports) {
     state = await ports.read({ memories: true });
     const sourceId =
       "world:" + backgroundRevision([state.seed, state.eventAttempts?.lastAttemptAt ?? "", now.toISOString()]);
-    const grant = admitNarrative(state, now.toISOString(), sourceId);
+    const grant = admitDueWorldDevelopment(state, now.toISOString(), sourceId);
     if (grant && (await queueWorld(state, grant, activityDate(state, now)))) return;
     if (preferredActivityLane(state) !== "resident") {
       try {

@@ -144,7 +144,14 @@ function fixture(speakerId = "a", whisper = false) {
     venue,
   );
   function speech(text: string, operationId = "operation") {
-    const prepared = narrationContinuityContext(state, scene, venue, operationId, "Would you agree?", at);
+    const prepared = narrationContinuityContext(
+      state,
+      scene,
+      venue,
+      operationId,
+      "Would you agree to Covered entrance?",
+      at,
+    );
     const readset = fittedNarrationReadset(
       state,
       prepared,

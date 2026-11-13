@@ -121,6 +121,30 @@ export function ensureNarrative(state: VillageState, at: string): NarrativeState
     receipts: [],
   });
 }
+/** A new unresolved circumstance can warrant review once. A world answer cannot queue its own follow-up. */
+export function admitDueWorldDevelopment(state: VillageState, at: string, sourceId: string) {
+  const previous = state.eventAttempts?.attempts.findLast((attempt) => attempt.origin === "world")?.at ?? "";
+  const narrative = state.narrative;
+  if (!narrative) return null;
+  for (const row of narrative.situations) {
+    if (row.status !== "active" || row.updatedAt <= previous || row.updatedAt > at) continue;
+    if (
+      narrative.receipts.some(
+        (receipt) =>
+          receipt.source === "world" &&
+          receipt.at === row.updatedAt &&
+          receipt.after.situations.some((result) => result.id === row.id && result.revision === row.revision),
+      )
+    )
+      continue;
+    for (const local of row.scope === "zone" ? row.targets : [undefined]) {
+      const grant = admitNarrative(state, at, sourceId, "world", local);
+      if (grant) return grant;
+    }
+  }
+  return null;
+}
+
 /** One grounded writable Zone; broader weather has separate, explicit timed authority. */
 export function admitNarrative(
   state: VillageState,

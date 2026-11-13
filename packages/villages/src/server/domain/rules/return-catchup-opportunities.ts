@@ -7,7 +7,7 @@ import { localDateKey } from "./resident-planning.js";
 import { hashString } from "./village-clock.js";
 import { villagerPlaceView } from "./village-projections.js";
 import { canEnter } from "./social-rules.js";
-import { admitNarrative } from "./narrative-development.js";
+import { admitDueWorldDevelopment } from "./narrative-development.js";
 import { preferredActivityLane } from "./activity-arbitration.js";
 import { cloneVillageContext } from "./world-context-copy.js";
 
@@ -25,6 +25,8 @@ export function returnCatchupOpportunities(
     end = until.getTime();
   if (!Number.isFinite(start) || !Number.isFinite(end) || end - start < HOUR)
     return { opportunities: [], reason: "The absence was shorter than one hour." };
+  if (captured.opening?.stage === "gathering")
+    return { opportunities: [], reason: "Automatic activity begins after the opening gathering." };
   const cap = Math.max(0, Math.min(6, Math.floor(limit)));
   if (!cap) return { opportunities: [], reason: "No resident activity allowance remains." };
   const zone = captured.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -86,7 +88,6 @@ export function returnCatchupOpportunities(
       const at = new ZonedDate(left + Math.floor((right - left) / 2), zone);
       const minute = at.getHours() * 60 + at.getMinutes();
       const groups = new Map<string, string[]>();
-      const awake: string[] = [];
       for (const { resident, blocks } of schedules) {
         const block = blocks.find((row) => row.startMinute <= minute && row.endMinute > minute);
         if (!block) {
@@ -97,7 +98,6 @@ export function returnCatchupOpportunities(
           omissions.add("Sleeping intervals were skipped.");
           continue;
         }
-        awake.push(resident.characterId);
         if (!block.venueId) {
           omissions.add("Some routines did not identify a Venue for an encounter.");
           continue;
@@ -121,48 +121,31 @@ export function returnCatchupOpportunities(
         const key = JSON.stringify([venue.id, place.zoneId]);
         groups.set(key, [...(groups.get(key) ?? []), resident.characterId]);
       }
-      const involved = new Set<string>();
-      const add = (kind: "encounter" | "routine", actorIds: string[], venueId = "", zoneId = "") => {
-        const key = JSON.stringify([localDateKey(at), kind, actorIds, venueId, zoneId]);
-        if (seen.has(key)) return;
+      for (const [location, ids] of groups) {
+        if (ids.length < 2) continue;
+        const actorIds = ids.slice(0, 4);
+        const [venueId, zoneId] = JSON.parse(location) as [string, string];
+        const key = JSON.stringify([localDateKey(at), actorIds.toSorted(), venueId, zoneId]);
+        if (seen.has(key)) continue;
         seen.add(key);
         const instant = at.toISOString();
         candidates.push({
           id:
-            "return-" +
-            at.getTime() +
-            "-" +
-            hashString([captured.seed, kind, actorIds.join(","), venueId, zoneId].join("|")),
-          kind,
+            "return-" + at.getTime() + "-" + hashString([captured.seed, actorIds.join(","), venueId, zoneId].join("|")),
+          kind: "encounter",
           startsAt: instant,
           endsAt: instant,
           actorIds,
           venueId,
-          zoneId: zoneId || undefined,
-          facts:
-            kind === "encounter"
-              ? ["Captured routines place these residents together in this Zone."]
-              : ["A resident may reflect privately."],
+          zoneId,
+          facts: ["Captured routines place these residents together in this Zone."],
         });
-      };
-      for (const [key, ids] of groups) {
-        if (ids.length < 2) continue;
-        const actors = ids.slice(0, 4);
-        actors.forEach((id) => involved.add(id));
-        const [venueId, zoneId] = JSON.parse(key) as [string, string];
-        add("encounter", actors, venueId, zoneId);
       }
-      for (const id of awake) if (!involved.has(id)) add("routine", [id]);
     }
     day.setDate(day.getDate() + 1);
   }
-  let chosen = [
-    ...candidates.filter((row) => row.kind === "encounter"),
-    ...candidates.filter((row) => row.kind === "routine"),
-  ]
-    .slice(0, cap)
-    .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
-  if (captured.narrative && residentsEligible) {
+  let chosen = candidates.slice(0, cap).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  if (residentsEligible && captured.narrative?.situations.some((row) => row.status === "active")) {
     chosen = [];
     let lane = preferredActivityLane(captured);
     const width = (end - windowStart) / cap;
@@ -176,7 +159,9 @@ export function returnCatchupOpportunities(
           !chosen.some((selected) => selected.id === row.id),
       );
       const instant = new Date(left + width / 2).toISOString();
-      const grant = admitNarrative(captured, instant, "return-world:" + instant);
+      const grant = chosen.some((row) => row.kind === "world")
+        ? null
+        : admitDueWorldDevelopment(captured, instant, "return-world:" + instant);
       const world: ResidentPlanningOpportunity | null = grant
         ? {
             id: "return-world-" + Date.parse(instant),

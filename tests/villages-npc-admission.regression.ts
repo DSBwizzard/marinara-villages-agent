@@ -281,7 +281,14 @@ await runCase("npc-admission/returning", () => {
   assert.equal(publication.readset.npcCandidates[0].npc.id, f.existing.id);
   assert(!publication.readset.source.actors.some((row) => row.id === f.existing.id));
   assert.equal(publication.readset.offered.length, 0);
-  const context = narrationContinuityContext(f.state, zoneEventScene(f.scene, f.venue), f.venue, "context", "Why?", at),
+  const context = narrationContinuityContext(
+      f.state,
+      zoneEventScene(f.scene, f.venue),
+      f.venue,
+      "context",
+      "Tell me about restoring the pond.",
+      at,
+    ),
     text = context.parts.map((part) => part.block.text).join("\n");
   assert(text.includes("Mara wants to restore a pond."));
   assert(!text.includes("Mara privately wants to tend a garden."));
@@ -314,8 +321,9 @@ await runCase("npc-admission/unused-context", () => {
     at,
     { class: "desire", owner: holder, current: true },
   );
-  const raw = { segments: [{ kind: "narration", text: "A SECRET GARDEN may matter to a future visitor." }] },
-    publication = f.publication(raw);
+  const input = "I privately wonder whether the visitor plans a garden.",
+    raw = { segments: [{ kind: "narration", text: "A SECRET GARDEN may matter to a future visitor." }] },
+    publication = f.publication(raw, input);
   assert(publication.readset.npcCandidates[0].offered.length > 0);
   assert.deepEqual(publication.readset.offered, []);
   const result = acceptNarration(f.state, publication, "unused", at);
@@ -324,7 +332,7 @@ await runCase("npc-admission/unused-context", () => {
   assert(!ep.actors.some((actor) => actor.id === holder.id));
   assert.deepEqual(ep.offered, []);
   assert.equal(actorEpisodeView(ep, f.state.continuity, holder, f.state.episodes), null);
-  const pending = f.publication(raw, "Why?", "unused-race"),
+  const pending = f.publication(raw, input, "unused-race"),
     root = f.state.continuity.records[0];
   f.state.continuity = protectContinuity(
     f.state.continuity,

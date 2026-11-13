@@ -3,6 +3,7 @@ import { createBackgroundContext } from "../packages/villages/src/server/adapter
 import { configureVillageClock } from "../packages/villages/src/server/adapters/time/clock-gate.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { ensureNarrative } from "../packages/villages/src/server/domain/rules/narrative-development.js";
+import { initialOpening } from "../packages/villages/src/server/domain/rules/opening-project.js";
 import { createNarrative } from "../packages/villages/src/server/features/narrative/narrative-service.js";
 import { createBackgroundWork } from "../packages/villages/src/server/jobs/background-service.js";
 import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
@@ -29,6 +30,18 @@ const venue = venueDraft(
 synchronizeVenueZones(venue);
 state.venues = [venue];
 ensureNarrative(state, now.toISOString());
+function addCircumstance(id: string) {
+  state.narrative!.situations.push({
+    id,
+    revision: 1,
+    scope: "zone",
+    title: "Wet paving",
+    summary: "A window has let rain onto the paving.",
+    status: "active",
+    targets: [{ venueId: venue.id, zoneId: "exterior" }],
+    updatedAt: now.toISOString(),
+  });
+}
 const releaseClock = configureVillageClock({
   now: () => new Date(now),
   observe: async () => ({}) as any,
@@ -147,6 +160,13 @@ const stop = background.startBackgroundWork({ now: () => 0 });
 try {
   await background.villageBackgroundPresence("world", true);
   await narrative.reconcile(now);
+  assert.equal(requests, 0, "A quiet world needs no purchase");
+  addCircumstance("first-circumstance");
+  state.opening = initialOpening([], venue.id, "opening");
+  await narrative.reconcile(now);
+  assert.equal(requests, 0, "Optional world writing waits for the opening gathering to finish");
+  state.opening.stage = "complete";
+  await narrative.reconcile(now);
   await background.settleBackgroundWork();
   assert.equal((await background.backgroundWorkSummaries())[0]!.status, "completed");
   assert.equal(requests, 1);
@@ -174,6 +194,7 @@ try {
   failApply = true;
   state.narrativeConsequence = "moderate";
   now = new Date(now.getTime() + 31 * 60_000);
+  addCircumstance("second-circumstance");
   await narrative.reconcile(now);
   await background.settleBackgroundWork();
   const held = (await background.backgroundWorkSummaries())[0]!;
@@ -236,6 +257,7 @@ try {
   state = await repository.readAuthority({ memories: true });
   failApply = false;
   now = new Date(now.getTime() + 31 * 60_000);
+  addCircumstance("third-circumstance");
   await narrative.reconcile(now);
   await background.settleBackgroundWork();
   assert.equal((await background.backgroundWorkSummaries())[0]!.status, "completed");

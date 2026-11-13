@@ -122,6 +122,7 @@ const scene = zoneEventScene(
     ],
   }),
   venue,
+  { targetId: "remote" },
 );
 assert(scene.contactGeneration?.actorIds?.includes("remote"), "The offstage actor is in the writer's scope");
 const raw = {
@@ -203,7 +204,12 @@ const writer = createSceneWriting({
   },
   completeWithRoom: async (_model: unknown, messages: { content: string }[]) => {
     calls++;
-    const catalog = scenePromptPacket(messages.map(({ content }) => content).join("\n"), "calendar").presentation;
+    const prompt = messages.map(({ content }) => content).join("\n");
+    assert.match(prompt, /End naturally when it's the player's turn to speak or act/u);
+    assert.doesNotMatch(prompt, /about 2,000 characters|several substantial exchanges/u);
+    assert.match(prompt, /Optional staging:/u);
+    assert.doesNotMatch(prompt, /commands array|Native changes use commands|roomKeeps:\[/u);
+    const catalog = scenePromptPacket(prompt, "calendar").presentation;
     assert(catalog.sprites[0].expressions.includes(group));
     assert.deepEqual(catalog.state.a, { expression: side, look: { target: "villager", characterId: "b" } });
     assert.doesNotMatch(JSON.stringify(catalog), /original\.png|render\.png|happy_01|remote/);

@@ -93,19 +93,21 @@ function punctuationEdits(before: string[], after: string[]): number | null {
   return left === before.length && right === after.length ? edits : null;
 }
 /** Model output only. JSON repair is local and bounded; domain validation must still accept the result. */
-export function readModelJsonObject(completion: {
+type ModelJsonCompletion = {
   content?: string | null;
   finishReason?: string | null;
-}): ModelJsonReply {
+};
+
+export function readModelJsonObject(completion: ModelJsonCompletion): ModelJsonReply {
   const failed: ModelJsonReply = { value: null, repaired: false, edits: 0 };
   if (["length", "max_tokens", "content_filter", "tool_calls"].includes(completion.finishReason ?? "")) return failed;
   const candidate = objectCandidate(completion.content ?? "");
   if (!candidate) return failed;
-  const originalTokens = tokens(candidate);
-  if (!originalTokens) return failed;
   const strict = parseSceneObject(candidate);
   if (strict) return { value: strict, repaired: false, edits: 0 };
   if (!["stop", "end_turn"].includes(completion.finishReason ?? "")) return failed;
+  const originalTokens = tokens(candidate);
+  if (!originalTokens) return failed;
   const normalized = candidate;
   try {
     const repaired = jsonrepair(normalized);
@@ -119,8 +121,6 @@ export function readModelJsonObject(completion: {
     return failed;
   }
 }
-export function extractModelJsonObject(
-  completion: Parameters<typeof readModelJsonObject>[0],
-): Record<string, unknown> | null {
+export function extractModelJsonObject(completion: ModelJsonCompletion): Record<string, unknown> | null {
   return readModelJsonObject(completion).value;
 }

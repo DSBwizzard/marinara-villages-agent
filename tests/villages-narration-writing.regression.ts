@@ -1,4 +1,4 @@
-// Test cases: narration-writing/single-request, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/history-prefix, narration-writing/required-evidence-bound, narration-writing/circumstance-provenance, narration-writing/learned-wish-initiative, narration-writing/subject-scope, narration-writing/activation-owner
+// Test cases: narration-writing/single-request, narration-writing/open-offer-guidance, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/history-prefix, narration-writing/required-evidence-bound, narration-writing/circumstance-provenance, narration-writing/learned-wish-initiative, narration-writing/subject-scope, narration-writing/activation-owner
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -9,6 +9,7 @@ import { defaultVillageState } from "../packages/villages/src/server/domain/deco
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
   episodeSourceGraph,
+  episodeUnit,
   readAcceptedEpisode,
 } from "../packages/villages/src/server/domain/decoding/episode-codec.js";
 import type { AcceptedEpisode } from "../packages/villages/src/server/domain/models/episode-model.js";
@@ -21,7 +22,10 @@ import {
   continuityVersionUnit,
   protectContinuity,
 } from "../packages/villages/src/server/domain/rules/continuity.js";
-import { bindNarrationSource } from "../packages/villages/src/server/domain/rules/narration-sources.js";
+import {
+  bindNarrationSource,
+  readSceneNarrationReply,
+} from "../packages/villages/src/server/domain/rules/narration-sources.js";
 import { routeZoneEvents, zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
 import { fitVenueWritingMessages } from "../packages/villages/src/server/domain/rules/venue-writing.js";
 import type { VenueReplyLine } from "../packages/villages/src/server/domain/models/scene-model.js";
@@ -48,7 +52,7 @@ import {
 } from "../packages/villages/src/server/adapters/storage/continuity-pages.js";
 
 const at = "2026-11-09T12:00:00.000Z";
-function fixture(beforeRead?: () => void | Promise<void>) {
+function fixture(beforeRead?: () => void | Promise<void>, modelId = "fixture") {
   const state = { ...defaultVillageState(), seed: "world", setupAt: at, foundedAt: at };
   const place = establishPlace(
     state,
@@ -94,6 +98,7 @@ function fixture(beforeRead?: () => void | Promise<void>) {
   });
   const checkpoints = new Map<string, unknown>(),
     calls = { purchases: 0, resolutions: 0, reads: 0 };
+  const formats: unknown[] = [];
   let operationId = "operation";
   let messages: any[] = [],
     unavailable = false,
@@ -102,7 +107,7 @@ function fixture(beforeRead?: () => void | Promise<void>) {
     configuredConnection = "narration",
     usedModel = "";
   const model = {
-    model: "fixture",
+    model: modelId,
     connectionId: "narration",
     maxOutputTokens: 4096,
     fitContext(input: any[], options: any) {
@@ -138,10 +143,11 @@ function fixture(beforeRead?: () => void | Promise<void>) {
       assert(!unavailable);
       return [];
     },
-    completeWithRoom: async (selected: { model: string }, input: any[]) => {
+    completeWithRoom: async (selected: { model: string }, input: any[], _tokens: number, options: any) => {
       calls.purchases++;
       usedModel = selected.model;
       messages = structuredClone(input);
+      formats.push(options.responseFormat);
       return {
         content: JSON.stringify({
           segments: [{ kind: "dialogue", speakerId: scene.activeIds[0] ?? id, text: "Because it matters to me." }],
@@ -162,6 +168,7 @@ function fixture(beforeRead?: () => void | Promise<void>) {
     id,
     checkpoints,
     calls,
+    formats,
     writing,
     messages: () => messages,
     disable: () => {
@@ -233,6 +240,19 @@ await runCase("narration-writing/subject-scope", async () => {
       cardSnapshot: { name: "Offstage", description: "PRIVATE_SUBJECT_PROFILE" },
     },
   ] as never;
+  retainNativeFact(
+    f.state,
+    {
+      id: "offstage-fact",
+      kind: "initialization",
+      targetId: f.id,
+      revision: 1,
+      text: "Offstage once owned the blue lantern.",
+      witnesses: [f.id],
+    },
+    at,
+    { about: ["offstage"] },
+  );
   const generated = await f.writing.generate(f.scene, "Tell me about Offstage.", "chat");
   assert(generated.readset.source.subjects!.some((row) => row.id === "offstage" && row.incarnation === "original"));
   assert(!generated.readset.source.actors.some((row) => row.id === "offstage"));
@@ -242,6 +262,20 @@ await runCase("narration-writing/subject-scope", async () => {
     "A Scene with no sprites omits the catalog and staging instructions",
   );
   f.state.villagers[0].incarnation = "replacement";
+  const recalled = narrationContinuityContext(
+    f.state,
+    zoneEventScene(f.scene, f.venue),
+    f.venue,
+    "recycled-subject",
+    "Tell me about Offstage's lantern.",
+    at,
+    true,
+  );
+  assert(
+    recalled.parts.some(
+      ({ block }) => block.text.startsWith('{"recalledFacts":') && block.text.includes('"pastSubjects":["offstage"]'),
+    ),
+  );
   f.disable();
   const replay = await f.writing.generate(f.scene, "Tell me about Offstage.", "chat");
   assert.deepEqual(replay.readset.source.subjects, generated.readset.source.subjects);
@@ -266,6 +300,13 @@ await runCase("narration-writing/learned-wish-initiative", () => {
     { class: "desire", owner: continuityActor(f.state, "player")!, current: true, about: ["player"] },
   );
   const root = f.state.continuity.records.at(-1)!.id;
+  const ownWish = "I want to repair the broken astrolabe.";
+  retainNativeFact(
+    f.state,
+    { id: "resident-wish", kind: "initialization", targetId: f.id, revision: 1, text: ownWish, witnesses: [f.id] },
+    at,
+    { class: "desire", owner: continuityActor(f.state, f.id)!, current: true },
+  );
   const context = narrationContinuityContext(f.state, f.scene, f.venue, "new-turn", "Ask about sailing", at),
     fitted = fittedNarrationReadset(
       f.state,
@@ -280,6 +321,15 @@ await runCase("narration-writing/learned-wish-initiative", () => {
     !fitted.offered.some((offer) => offer.holder.id === f.id && offer.ids.includes(root)),
     "the final fitted request cannot count learned wishes as the hearer's own initiative",
   );
+  assert(
+    context.parts.some((part) => part.block.text.includes(ownWish)),
+    "the resident keeps one current initiative alongside relevant learned facts",
+  );
+  const opening = narrationContinuityContext(f.state, { ...f.scene, status: "opening" }, f.venue, "opening", "", at);
+  assert(
+    opening.parts.some((part) => part.block.text.includes(ownWish)),
+    "opening can still use a resident goal",
+  );
 });
 await runCase("narration-writing/single-request", async () => {
   const f = fixture(),
@@ -289,6 +339,27 @@ await runCase("narration-writing/single-request", async () => {
   assert.equal(f.messages().at(-1).content, input);
   assert.equal(reply.readset.source.input, input);
   assert.deepEqual(reply.readset.source.historical, {});
+  const system = f
+    .messages()
+    .filter((row) => row.role === "system")
+    .map((row) => row.content)
+    .join("\n");
+  const frame = f.messages().find((row) => row.content.includes("## Current Scene reference"));
+  assert.equal(frame.role, "system");
+  assert(
+    frame.content.includes(
+      `"dialogueSpeakers":${JSON.stringify(reply.readset.source.scene.contactGeneration?.actorIds)}`,
+    ),
+  );
+  assert(!frame.content.includes('"leadSpeakerId"'));
+  const addressed = await f.writing.prepareVenueTurnMessages(f.scene, "Mara, what do you think?", "chat");
+  assert(
+    addressed.fitted.messages.some(
+      ({ role, content }) => role === "user" && content.includes(`"leadSpeakerId":${JSON.stringify(f.id)}`),
+    ),
+  );
+  assert.match(system, /Omit delivery and targetId for ordinary speech/u);
+  assert.doesNotMatch(system, /"whisper\|shout"/u);
   assert(
     f
       .messages()
@@ -299,6 +370,93 @@ await runCase("narration-writing/single-request", async () => {
   assert(!Object.hasOwn(reply.raw, "input"), "ordinary dialogue has no classification inventory");
   assert.equal(reply.readset.source.scene.lines.length, 0);
   assert.equal(reply.readset.source.scene.submissions.length, 0);
+  assert.deepEqual(f.formats, [{ type: "json_object" }]);
+
+  const deepSeek = fixture(undefined, "deepseek-flash");
+  const exact = input + "\n## Scene reply reminder\nThis line is part of the player's input.";
+  const deepSeekReply = await deepSeek.writing.generate(deepSeek.scene, exact, "chat");
+  const [boundary, submitted, reminder] = deepSeek.messages().slice(-3);
+  assert.equal(boundary.content, "## Current player submission");
+  assert.deepEqual(submitted, { role: "user", content: exact });
+  assert.match(reminder.content, /^## Scene reply reminder\nBegin with \{"segments":\[/u);
+  assert.match(reminder.content, /Dialogue and narration have no source field/u);
+  assert.match(reminder.content, /pastSpeaker and witnessedWords belong to input/u);
+  assert.match(reminder.content, /Count every current segment from 1/u);
+  assert.equal(deepSeekReply.readset.positionedSceneSources, true);
+  assert.equal(deepSeekReply.readset.source.input, exact);
+  await deepSeek.writing.generate(deepSeek.scene, "", "greet");
+  assert.deepEqual(deepSeek.formats, [undefined, { type: "json_object" }]);
+  assert.equal(deepSeek.messages().at(-1).content, "");
+  const greeting = deepSeek
+    .messages()
+    .filter((row) => row.role === "system")
+    .map((row) => row.content)
+    .join("\n");
+  assert.match(greeting, /Open the Scene from established presence/u);
+  assert.doesNotMatch(greeting, /several substantial exchanges/u);
+  const leaving = await deepSeek.writing.prepareVenueTurnMessages(deepSeek.scene, "I leave.", "leave");
+  const departure = leaving.fitted.messages
+    .filter((row) => row.role === "system")
+    .map((row) => row.content)
+    .join("\n");
+  assert.match(departure, /close when it is complete/u);
+  assert.doesNotMatch(departure, /several substantial exchanges/u);
+  const casual = await f.writing.prepareVenueTurnMessages(
+    f.scene,
+    "I offer a wave and update the chalk label.",
+    "chat",
+  );
+  const casualPrompt = casual.fitted.messages.map((row) => row.content).join("\n");
+  assert.match(casualPrompt, /explicit request to remember, an actual promise or offer/u);
+  assert.doesNotMatch(
+    casualPrompt,
+    /mutual-offer decision|decision on a supplied open offer|Details for complex memory updates/u,
+  );
+  const remember = await f.writing.prepareVenueTurnMessages(f.scene, "Mara, please remember this: I knit.", "chat");
+  assert.equal(remember.readset.requestedMemory?.recipientId, f.id);
+  const rememberPrompt = remember.fitted.messages
+    .slice(0, -1)
+    .map((row) => row.content)
+    .join("\n");
+  assert.match(rememberPrompt, /"id":"remember-fact"/u);
+  assert.doesNotMatch(rememberPrompt, /I knit/u);
+
+  const legacy = fixture(undefined, "deepseek-flash");
+  await legacy.writing.prepareVenueTurnMessages(legacy.scene, input, "chat");
+  const saved = [...legacy.checkpoints.values()][0] as { plainJson?: true };
+  assert.equal(saved.plainJson, true);
+  delete saved.plainJson;
+  await legacy.writing.generate(legacy.scene, input, "chat");
+  assert.deepEqual(legacy.formats, [{ type: "json_object" }], "an admitted request retains its previous transport");
+});
+
+await runCase("narration-writing/open-offer-guidance", async () => {
+  const f = fixture();
+  const text = "Would you paint the mill sign with me?";
+  const { readset } = await f.writing.prepareVenueTurnMessages(f.scene, "What did you have in mind?", "chat");
+  const raw = {
+    segments: [{ id: "invite", kind: "dialogue", speakerId: f.id, text }],
+    keep: [
+      {
+        for: ["player", f.id],
+        text,
+        offer: { proposer: f.id, participants: ["player", f.id] },
+        source: [{ segment: "invite", act: "offer" }],
+      },
+    ],
+  };
+  const result = acceptNarration(
+    f.state,
+    { raw, readset, responseDigest: memoryHash(raw) },
+    "offer-turn",
+    readset.capturedAt,
+  );
+  assert.equal(result.held, false, JSON.stringify(result.rejected));
+  const next = await f.writing.prepareVenueTurnMessages(f.scene, "Yes, I'll help paint the sign.", "chat");
+  const prompt = next.fitted.messages.map((row) => row.content).join("\n");
+  assert.match(prompt, /For a decision on a supplied open offer/u);
+  assert.match(prompt, /"offer":\{/u);
+  assert.match(prompt, /"accept":"player","source":\[\{"input":"Yes, I accept\."/u);
 });
 
 await runCase("narration-writing/circumstance-provenance", async () => {
@@ -503,7 +661,11 @@ await runCase("narration-writing/fitted-evidence", () => {
     context.parts.map((part) => part.block.evidenceId!),
   );
   assert(Object.keys(all.source.historical).length > Object.keys(fitted.source.historical).length);
-  assert(all.admission.supplied.length > fitted.admission.supplied.length);
+  assert.equal(
+    all.admission.supplied.length - fitted.admission.supplied.length,
+    2,
+    "ordinary recall fits up to two facts",
+  );
   assert.equal(Object.keys(fitted.admission.sourceActors ?? {}).length, 0);
   assert.deepEqual(fitted.offered, [], "unsupplied history is never counted as an initiative offer");
   for (const source of Object.values(fitted.source.historical)) assert.equal(source.kind, "knowledge");
@@ -775,7 +937,7 @@ await runCase("narration-writing/arrival-routing", () => {
         acoustic,
         [],
       ),
-    /unknown sound source/,
+    /invalid narrated sound/,
   );
   const context = narrationContinuityContext(f.state, projected, f.venue, "arrival", "Hello", at);
   const sourceContext = {
@@ -823,7 +985,7 @@ await runCase("narration-writing/explicit-player-delivery", () => {
     lines.map((line) => line.heardBy.includes("player")),
     [true, false, true, true],
   );
-  assert.equal(lines[1].soundOnly?.player, true);
+  assert.equal(lines[1].soundOnly, undefined);
   const context = narrationContinuityContext(f.state, scene, f.venue, "route", "", at);
   const sourceContext = {
     ...context.source,
@@ -923,7 +1085,15 @@ await runCase("narration-writing/optional-facets", () => {
   );
   const context = narrationContinuityContext(f.state, f.scene, f.venue, "next", "Detail marquetry", at);
   assert(context.parts.some((part) => part.block.optional === "memory"));
-  const required = context.parts.filter((part) => !part.block.optional);
+  const opening = narrationContinuityContext(
+    f.state,
+    { ...f.scene, status: "opening" },
+    f.venue,
+    "opening",
+    "Detail marquetry",
+    at,
+  );
+  const required = opening.parts.filter((part) => !part.block.optional);
   assert(
     required.reduce((sum, part) => sum + part.block.text.length, 0) < 1000,
     "optional sibling facets never become part of the required initiative block",
@@ -935,11 +1105,11 @@ await runCase("narration-writing/optional-facets", () => {
         return { messages: fits ? messages : [], maxTokens: options?.maxTokens ?? 512, trimmed: !fits } as any;
       },
     },
-    context.parts.map((part) => part.block),
+    opening.parts.map((part) => part.block),
     "Detail marquetry",
     512,
   );
-  const captured = fittedNarrationReadset(f.state, context, fitted.evidenceIds);
+  const captured = fittedNarrationReadset(f.state, opening, fitted.evidenceIds);
   assert(captured.admission.supplied.some((row) => row.id === root.id));
   assert.equal(captured.offered[0].ids[0], root.id);
 });
@@ -1001,7 +1171,7 @@ await runCase("narration-writing/long-followup", async () => {
     },
     f.state.seed,
   );
-  await f.writing.generate(f.scene, "Why weaving?", "chat");
+  const reply = await f.writing.generate(f.scene, "Why weaving?", "chat");
   const prompt = f
     .messages()
     .map((row) => row.content)
@@ -1010,11 +1180,203 @@ await runCase("narration-writing/long-followup", async () => {
     prompt.includes(question) && prompt.includes("END_7"),
     "a complete recent exchange borrows unused standing capacity before older optional context",
   );
+  assert.match(prompt, /A meaningful weaving memory [0-3]/, "relevant standing context still fits");
+  const memory = f
+    .messages()
+    .flatMap((row) => row.content.split("\n\n"))
+    .filter((row) => row.startsWith('{"recalledFacts":'))
+    .flatMap((row) => JSON.parse(row).recalledFacts);
+  assert(memory.length < 4, "routine standing context has a separate budget");
+  const shared = memory.find((row) => row.knownBy?.length === 2);
+  assert(shared, "ordinary recall names the people who know the fact");
+  assert.deepEqual(Object.keys(shared).sort(), ["class", "knownBy", "text"]);
+  assert(!Object.values(reply.readset.source.historical).some((source) => source.excerpt === shared.text));
+  assert(reply.readset.readOnlyKnowledge?.some((source) => source.excerpt === shared.text));
+  for (const callback of [
+    "Mara, I remember you mentioned the weaving memory. Does that change how you think about it?",
+    "Remember the weaving memory?",
+    "Can you remember what we said about the weaving memory?",
+  ]) {
+    const read = await f.writing.prepareVenueTurnMessages(f.scene, callback, "chat");
+    assert(read.readset.readOnlyKnowledge?.some((source) => source.excerpt === shared.text));
+    assert(!Object.values(read.readset.source.historical).some((source) => source.excerpt === shared.text));
+  }
+  const memoryEdit = await f.writing.prepareVenueTurnMessages(
+    f.scene,
+    "“Mara, please remember that weaving memory.”",
+    "chat",
+  );
+  const historical = Object.entries(memoryEdit.readset.source.historical);
+  const [alias, reference] = historical.find(
+    ([, source]) => source.kind === "knowledge" && source.actorId === "player",
+  )!;
+  const citedRoot = f.state.continuity.versions.find((version) => version.id === reference.unitId)!.rootId;
+  assert(!reply.readset.admission.supplied.some((target) => target.id === citedRoot));
+  for (const change of [
+    "Remember that weaving memory. How was your day?",
+    "Please correct what I told you about the weaving memory.",
+  ]) {
+    const write = await f.writing.prepareVenueTurnMessages(f.scene, change, "chat");
+    assert(write.readset.admission.supplied.some((target) => target.id === citedRoot));
+  }
   assert(
-    prompt.includes("A meaningful weaving memory 0"),
-    "recent history can borrow the unused older reserve while standing context remains supplied",
+    historical.some(
+      ([, source]) => source.kind === "knowledge" && source.actorId === f.id && source.excerpt === reference.excerpt,
+    ),
+  );
+  const annotated = { segments: [{ kind: "dialogue", speakerId: f.id, text: "I remember.", source: [alias] }] };
+  const normalized = readSceneNarrationReply(annotated, [f.id], memoryEdit.readset, f.state.continuity);
+  assert.equal(normalized.segments[0].text, "I remember.");
+  assert(!Object.hasOwn(normalized.segments[0], "source"));
+  assert.deepEqual(annotated.segments[0].source, [alias], "recovery keeps the exact purchased reply");
+  const selfAnnotated = { segments: [{ ...annotated.segments[0], source: ["self"] }] };
+  assert.equal(
+    readSceneNarrationReply(selfAnnotated, [f.id], reply.readset, f.state.continuity).segments[0].text,
+    "I remember.",
+  );
+  assert.deepEqual(selfAnnotated.segments[0].source, ["self"]);
+  assert.throws(
+    () =>
+      readSceneNarrationReply(
+        { segments: [{ kind: "dialogue", speakerId: f.id, text: "I remember.", witnessedWords: { ref: alias } }] },
+        [f.id],
+        reply.readset,
+        f.state.continuity,
+      ),
+    /witnessedWords/,
+  );
+  assert.throws(
+    () => readSceneNarrationReply({ ...selfAnnotated, keep: [] }, [f.id], reply.readset, f.state.continuity),
+    /Unrecognized key/,
+  );
+  assert.throws(
+    () =>
+      readSceneNarrationReply(
+        { segments: [{ ...selfAnnotated.segments[0], requires: ["effect"] }] },
+        [f.id],
+        reply.readset,
+        f.state.continuity,
+      ),
+    /Unrecognized key/,
+  );
+  assert.throws(
+    () =>
+      readSceneNarrationReply(
+        { segments: [{ ...annotated.segments[0], speakerId: "bram" }] },
+        [f.id, "bram"],
+        memoryEdit.readset,
+        f.state.continuity,
+      ),
+    /Unrecognized key/,
+  );
+  assert.throws(
+    () => readSceneNarrationReply(annotated, [f.id], reply.readset, f.state.continuity),
+    /Unrecognized key/,
   );
   assert.equal(f.calls.purchases, 1);
+
+  const saved = f.state.episodes.records.find((row) => row.id === "prior-exchange")!;
+  for (const id of ["astrolabe-note", "oversized-astrolabe-note"]) {
+    const lines = id.startsWith("oversized")
+      ? segments.map((line) => ({ ...line, content: "The astrolabe. " + line.content }))
+      : [{ ...segments[0], content: "The brass astrolabe belongs to the ferryman." }];
+    f.state.episodes = appendEpisode(
+      f.state.episodes,
+      {
+        ...saved,
+        id,
+        sceneId: "older-scene",
+        operationId: id,
+        submissionId: id,
+        privateInput: "What is the astrolabe?",
+        segments: lines,
+        responseDigest: memoryHash(lines),
+      },
+      f.state.seed,
+    );
+  }
+  f.nextOperation("astrolabe-callback");
+  const callback = await f.writing.prepareVenueTurnMessages(f.scene, "Remember the astrolabe?", "chat");
+  const recalled = callback.fitted.messages
+    .flatMap((row) => row.content.split("\n\n"))
+    .filter((row) => row.startsWith('{"interaction":'))
+    .map((row) => JSON.parse(row))
+    .filter((row) => row.earlierRecall);
+  assert.equal(recalled.length, 1);
+  assert.match(JSON.stringify(recalled), /brass astrolabe belongs to the ferryman/);
+  assert.equal(recalled[0].interaction.segments, undefined);
+  const { witnessedWords } = recalled[0].interaction.historyLines[0];
+  assert.match(witnessedWords.ref, /^h:\d+\.\d+$/u);
+  const evidence = callback.readset.source.historical[witnessedWords.ref];
+  assert.equal(evidence.episodeId, "astrolabe-note");
+  assert.equal(evidence.excerpt, "The brass astrolabe belongs to the ferryman.");
+  assert.deepEqual(
+    evidence.perceptions.map((row) => row.actorId),
+    witnessedWords.by,
+  );
+  const ordinary = await f.writing.prepareVenueTurnMessages(f.scene, "Look around the room.", "chat");
+  assert(ordinary.fitted.messages.every((row) => !row.content.includes("brass astrolabe")));
+  const summary = "The ferryman uses his astrolabe to navigate on cloudy days.";
+  retainNativeFact(
+    f.state,
+    { id: "astrolabe-summary", kind: "initialization", targetId: f.id, revision: 1, text: summary, witnesses: [f.id] },
+    at,
+  );
+  f.nextOperation("astrolabe-summary");
+  const fact = await f.writing.prepareVenueTurnMessages(f.scene, "Tell me about the astrolabe.", "chat");
+  assert(fact.fitted.messages.some((row) => row.content.includes(summary)));
+  assert(fact.fitted.messages.every((row) => !row.content.includes('"earlierRecall":true')));
+  f.nextOperation("astrolabe-exact-words");
+  const quote = await f.writing.prepareVenueTurnMessages(f.scene, "Quote the astrolabe line.", "chat");
+  assert(quote.fitted.messages.some((row) => row.content.includes("The brass astrolabe belongs to the ferryman.")));
+  assert(quote.fitted.messages.every((row) => !row.content.includes(summary)));
+
+  const curtain = {
+    ...saved,
+    id: "curtain-callback",
+    sceneId: "older-scene",
+    operationId: "curtain-callback",
+    submissionId: "curtain-callback",
+    privateInput: "What did you see on the curtain?",
+    segments: [
+      { ...segments[0], content: "The clock will need oil next week." },
+      { ...segments[1], content: "The curtain has a seam under the patch." },
+      { ...segments[2], content: "The curtain patch is paler on the back." },
+      { ...segments[3], content: "The copper kettle is cold." },
+    ],
+  };
+  curtain.responseDigest = memoryHash(curtain.segments);
+  f.state.episodes = appendEpisode(f.state.episodes, curtain, f.state.seed);
+  const excerpt = await f.writing.prepareVenueTurnMessages(f.scene, "Remember the curtain patch?", "chat");
+  const callbackBlock = excerpt.fitted.messages
+    .flatMap((row) => row.content.split("\n\n"))
+    .filter((row) => row.startsWith('{"interaction":'))
+    .map((row) => JSON.parse(row))
+    .find((row) => row.excerpt);
+  assert(callbackBlock);
+  assert.deepEqual(
+    callbackBlock.interaction.historyLines.map((line: { text: string }) => line.text),
+    curtain.segments.slice(1, 3).map((line) => line.content),
+  );
+  assert.deepEqual(
+    [
+      ...new Set(
+        Object.values(excerpt.readset.source.historical)
+          .filter((source) => source.episodeId === curtain.id)
+          .map((source) => source.unitId),
+      ),
+    ].sort(),
+    curtain.segments
+      .slice(1, 3)
+      .map((line) => line.id)
+      .sort(),
+  );
+  const units = Object.values(excerpt.readset.admission.provenance ?? {}).flat();
+  assert(units.includes(episodeUnit(curtain, "input")));
+  assert.deepEqual(
+    curtain.segments.map((line) => units.includes(episodeUnit(curtain, line.id))),
+    [false, true, true, false],
+  );
 });
 
 await runCase("narration-writing/history-prefix", async () => {
@@ -1024,23 +1386,35 @@ await runCase("narration-writing/history-prefix", async () => {
     incarnation: continuityActor(f.state, id)!.incarnation,
     zoneId: "parlor",
   }));
-  let previous: string[] = [];
-  for (let count = 1; count <= 17; count++) {
+  let previous: string[] = [],
+    resets = 0;
+  for (let count = 1; count <= 108; count++) {
     const id = "exchange-" + count;
     const keyword = count % 2 ? "cedar" : "maple";
-    const segments: AcceptedEpisode["segments"] = [
-      {
-        id: id + "-answer",
-        role: "assistant",
-        kind: "dialogue",
-        speakerId: f.id,
-        name: "Mara",
-        at,
-        zoneId: "parlor",
-        heardBy: [f.id, "player"],
-        content: (keyword + " weathered wood catches the afternoon light. ").repeat(30),
-      },
-    ];
+    const longExchange = count === 13;
+    const segments: AcceptedEpisode["segments"] = Array.from({ length: longExchange ? 24 : 1 }, (_, index) => ({
+      id: id + "-answer-" + index,
+      role: "assistant",
+      kind: "dialogue",
+      speakerId: f.id,
+      name: "Mara",
+      at,
+      zoneId: "parlor",
+      heardBy: [f.id, "player"],
+      content: (keyword + " weathered wood catches the afternoon light. ")
+        .repeat(longExchange ? 60 : count > 12 ? 28 : 7)
+        .slice(0, 1999),
+    }));
+    if (count === 2)
+      segments.unshift({
+        ...segments[0],
+        id: "gm-only",
+        kind: "narration",
+        speakerId: "__venue_scene__",
+        name: "Narration",
+        content: "Rain taps the window.",
+        heardBy: ["player"],
+      });
     f.state.episodes = appendEpisode(
       f.state.episodes,
       {
@@ -1065,20 +1439,41 @@ await runCase("narration-writing/history-prefix", async () => {
       },
       f.state.seed,
     );
-    if (count < 12) continue;
     f.nextOperation("after-" + id);
     const request = await f.writing.prepareVenueTurnMessages(f.scene, keyword, "chat");
     const blocks = request.fitted.messages
       .flatMap((row) => row.content.split("\n\n"))
       .filter((row) => row.startsWith('{"interaction":'));
     const active = blocks.filter((row) => !JSON.parse(row).earlierRecall);
-    assert.equal(JSON.parse(active.at(-1)!).interaction.id, id);
-    assert(active.length <= 7);
+    assert.equal(JSON.parse(active.at(-1)!).interaction.pastExchange, "e" + (count === 13 ? 12 : count));
     assert.deepEqual(blocks.slice(0, active.length), active);
-    if (count % 4 !== 0 && previous.length)
+    const cacheBoundary = request.fitted.messages.findLast((row) => row.cacheBreakpoint);
+    assert(cacheBoundary?.content.endsWith(active.at(-1)!));
+    assert.equal(cacheBoundary.role, "user");
+    assert(
+      request.fitted.messages
+        .filter((row) => row.role === "system")
+        .every((row) => !row.content.includes('{"interaction":')),
+    );
+    const tail = request.fitted.messages.slice(request.fitted.messages.indexOf(cacheBoundary!) + 1);
+    assert(tail.some((row) => row.role === "user" && row.content.includes('"movements":')));
+    assert(tail.some((row) => row.role === "user" && row.content.includes("## Current Scene circumstances")));
+    assert.equal(tail.at(-2)?.content, "## Current player submission");
+    assert.equal(tail.at(-1)?.content, keyword);
+    if (count <= 12) assert.equal(active.length, count, "ordinary growth retains the stable transcript");
+    if (count === 2) {
+      const [narration, dialogue] = JSON.parse(active.at(-1)!).interaction.historyLines;
+      assert.equal(narration.gmOnlyText, "Rain taps the window.");
+      assert.equal(narration.witnessedWords, undefined);
+      assert(dialogue.witnessedWords.ref && !dialogue.witnessedWords.by);
+    }
+    if (count === 13) assert.deepEqual(active, previous, "an oversized exchange leaves the previous window available");
+    else if (previous.length && active[0] === previous[0])
       assert.deepEqual(active.slice(0, -1), previous, "new turns append to the byte-identical history prefix");
+    else if (previous.length) resets++;
     previous = active;
   }
+  assert(resets > 0, "long Scenes eventually rebuild the bounded transcript");
   assert.equal(f.calls.purchases, 0);
 });
 

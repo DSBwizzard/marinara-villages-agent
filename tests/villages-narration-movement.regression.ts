@@ -481,7 +481,7 @@ await runCase("narration-movement/resident", () => {
   const result = f.accept();
   assert.equal(result.held, false, JSON.stringify(result.rejected));
   assert(!result.episode!.segments[1].heardBy.includes("player"));
-  assert(result.episode!.segments[1].soundOnly?.player);
+  assert.equal(result.episode!.segments[1].soundOnly, undefined);
   const scene = structuredClone(f.scene);
   applyAcceptedSceneDelta(scene, result.episode!);
   assert.equal(scene.zoneId, "common");

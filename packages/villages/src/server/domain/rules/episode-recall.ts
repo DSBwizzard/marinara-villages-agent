@@ -6,6 +6,7 @@ import { continuityActor } from "./continuity-actors.js";
 import { episodeUnit } from "../decoding/episode-codec.js";
 import { episodeContextActors, episodeContextRooms } from "./episode-sources.js";
 import { actorEpisodeView, recallEpisodeSpeech, recallEpisodeMail, type selectEpisodeHistory } from "./episodes.js";
+import { memoryHash } from "./memory-integrity.js";
 type Actor = Extract<ContinuityHolder, { kind: "actor" }>;
 
 /** Scene and correspondence prompts share exact perception and inherited private-context provenance. */
@@ -17,6 +18,7 @@ export function projectEpisodeRecall(
   actors: Actor[],
   contextScopes: Map<string, string>,
   sourceAlias: () => string,
+  suppliedLines?: ReadonlySet<string>,
 ) {
   const part = {
     sources: {} as Record<string, ContinuityEvidence>,
@@ -27,13 +29,14 @@ export function projectEpisodeRecall(
   for (const holder of holders) {
     const own = actorEpisodeView(episode, state.continuity, holder, state.episodes);
     if (!own) continue;
+    const witnessedLines = suppliedLines ? own.segments.filter((line) => suppliedLines.has(line.id)) : own.segments;
     const eligible = episode.grounding.flatMap((source) => {
       try {
         const projected = actorContinuityEvidence(source, holder.id);
         return own.input.some((row) => row.id === source.id) ||
           (source.kind === "written" &&
             own.letters.some((row) => row.id === source.unitId && row.text === projected.excerpt)) ||
-          own.segments.some(
+          witnessedLines.some(
             (row) =>
               row.id === source.unitId &&
               row.text === projected.excerpt &&
@@ -45,7 +48,7 @@ export function projectEpisodeRecall(
         return [];
       }
     });
-    for (const segment of own.segments)
+    for (const segment of witnessedLines)
       if (!eligible.some((source) => source.unitId === segment.id)) {
         const source = recallEpisodeSpeech(episode, segment.id, state.continuity, holder, state.episodes);
         if (source) eligible.push(source);
@@ -59,7 +62,7 @@ export function projectEpisodeRecall(
     part.provenance[key] = [
       ...new Set([
         ...eligible.map(continuitySourceUnit),
-        ...own.segments
+        ...witnessedLines
           .filter(
             (row) =>
               row.channel !== "sound-only" &&
@@ -162,4 +165,116 @@ export function projectEpisodeRecall(
     })),
   };
   return { ...part, interaction };
+}
+
+/** Shorten the on-wire projection while leaving immutable line IDs in the readset. */
+export function compactSceneExchange(
+  {
+    gmPrivateInput,
+    formerActors,
+    groundedInput,
+    letters,
+    segments,
+  }: ReturnType<typeof projectEpisodeRecall>["interaction"],
+  sources: Record<string, ContinuityEvidence>,
+  exchangeNumber: number,
+  transcript: boolean,
+) {
+  const visible: Record<string, ContinuityEvidence> = {};
+  const citation = (ref: string) => {
+    const source = sources[ref];
+    visible[ref] = source;
+    return source.act ? [ref, source.act] : ref;
+  };
+  const segmentsWithAudience = segments.map(({ id: _id, perceivedBy, projections, ...segment }) => {
+    const audiences = Object.entries(perceivedBy);
+    const words = audiences.map(([actor, { channel, source }]) => {
+      const ref = source.length === 1 && channel === "words" ? source[0].ref : undefined;
+      if (!ref) return;
+      const evidence = sources[ref];
+      const { perceptions, ...identity } = evidence;
+      if (
+        perceptions.length !== 1 ||
+        perceptions[0].actorId !== actor ||
+        perceptions[0].channel !== "words" ||
+        perceptions[0].text !== evidence.excerpt
+      )
+        return;
+      return { actor, ref, identity: memoryHash(identity), evidence, perceptions };
+    });
+    const first = words[0];
+    const shared = first && words.every((row) => row?.identity === first.identity);
+    if (shared) visible[first.ref] = { ...first.evidence, perceptions: words.flatMap((row) => row!.perceptions) };
+    return {
+      segment,
+      shared: shared ? { actors: words.map((row) => row!.actor), ref: first.ref, act: first.evidence.act } : undefined,
+      audiences,
+      projections,
+    };
+  });
+  const sharedLines = segmentsWithAudience.flatMap((row) => (row.shared ? [row.shared] : []));
+  const common = sharedLines[0]?.actors;
+  const audience =
+    transcript && common && sharedLines.every((row) => JSON.stringify(row.actors) === JSON.stringify(common))
+      ? common
+      : undefined;
+  const exchange = {
+    pastExchange: "e" + exchangeNumber,
+    ...("text" in gmPrivateInput ? { gmPrivateInput: gmPrivateInput.text } : { inputWithheld: true }),
+    ...(formerActors?.length ? { formerActors } : {}),
+    ...(groundedInput.length
+      ? {
+          groundedInput: groundedInput.map(({ id: _id, source, ...row }) => ({
+            ...row,
+            source: source.map(citation),
+          })),
+        }
+      : {}),
+    ...(letters?.length
+      ? {
+          letters: letters.map(({ id: _id, knownBy, ...row }) => ({
+            ...row,
+            readBy: Object.entries<{ source: { ref: string }[] }>(knownBy).map(([actor, { source }]) => [
+              actor,
+              ...(source.length ? [source.map(({ ref }) => citation(ref))] : []),
+            ]),
+          })),
+        }
+      : {}),
+    historyLines: segmentsWithAudience.map(
+      ({ segment: { speakerId, kind, ...text }, shared, audiences, projections }) => {
+        return {
+          pastSpeaker: speakerId,
+          pastKind: kind,
+          ...text,
+          ...(shared
+            ? {
+                witnessedWords: {
+                  ...(audience ? {} : { by: shared.actors }),
+                  ref: shared.ref,
+                  ...(shared.act ? { act: shared.act } : {}),
+                },
+              }
+            : audiences.length
+              ? {
+                  perceivedBy: audiences.map(([actor, { channel, source }]) => [
+                    actor,
+                    channel,
+                    ...(source.length ? [source.map(({ ref }) => citation(ref))] : []),
+                  ]),
+                }
+              : {}),
+          ...(projections.length
+            ? {
+                projections: projections.map(({ source, ...row }) => ({
+                  ...row,
+                  source: source.map(({ ref }) => citation(ref)),
+                })),
+              }
+            : {}),
+        };
+      },
+    ),
+  };
+  return { exchange, sources: visible, audience };
 }

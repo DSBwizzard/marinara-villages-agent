@@ -215,6 +215,8 @@ function routed(
   context: VenueScene = zoneEventScene(scene, venue),
   moves: Pick<ContactMove, "characterId" | "zoneId" | "segment">[] = [],
 ) {
+  context.contactGeneration!.hearing = undefined;
+  context.contactGeneration!.actorIds = context.sceneAttendance!.occupants.map((person) => person.characterId);
   const reply = readNarrationReply({ segments }, context.contactGeneration!.actorIds!);
   return narrationLines(reply, context, "episode-sound", "2026-10-15T00:00:00Z", moves);
 }

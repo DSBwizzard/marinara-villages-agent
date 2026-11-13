@@ -96,7 +96,8 @@ export const narrationResidenceContextSchema = z
       .max(256),
   })
   .strict();
-export function narrationResidencePrompt(context: ReturnType<typeof narrationResidenceContext>) {
+export function narrationResidencePrompt(context: ReturnType<typeof narrationResidenceContext>, commands = true) {
+  if (!context.homes.length && !context.requests.length) return "";
   return (
     "Native housing requests (not room descriptions or character knowledge): " +
     JSON.stringify({
@@ -117,7 +118,10 @@ export function narrationResidencePrompt(context: ReturnType<typeof narrationRes
         householdIds,
       })),
     }) +
-    ". A request does not move anyone or approve another person's participation. Each required person decides the exact current request. New conversational requests need one unambiguous shared sleeping Zone; private-room selection stays in the Residence controls."
+    ". Each required person decides their own participation. A request alone does not move anyone." +
+    (commands
+      ? " New conversational requests need one unambiguous shared sleeping Zone; private-room selection stays in the Residence controls."
+      : "")
   );
 }
 type Request =

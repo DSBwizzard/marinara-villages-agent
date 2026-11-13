@@ -3,6 +3,7 @@ import { backgroundRevision } from "../../domain/rules/background-revision.js";
 import {
   canInterpretSchedule,
   influenceSettings,
+  nativeScheduleInfluence,
   readPreparedInfluence,
   scheduleSemanticSource,
 } from "../../domain/rules/owned-routine.js";
@@ -29,6 +30,7 @@ export function createScheduleInfluence(ports: ScheduleInfluencePorts) {
     const native = await ports.readNativeScheduleSnapshot(villageNow(), [characterId]);
     if (!native.cardsReadable) throw new Error("Imported schedule is unavailable. Retry the settings change.");
     const schedule = native.schedules.find((row) => row.characterId === characterId) ?? null;
+    if (nativeScheduleInfluence(schedule, settings).complete) return;
     const sourceHash = scheduleSemanticSource(schedule, settings);
     if (profile.influenceSource === sourceHash && profile.influence) return;
     const input = {
@@ -61,6 +63,8 @@ export function createScheduleInfluence(ports: ScheduleInfluencePorts) {
       );
     },
     generate: async (input) => {
+      const native = nativeScheduleInfluence(input.schedule, input.settings);
+      if (native.complete) return native.snapshot;
       const model = await ports
         .villagesLanguageModels()
         .resolveForRequest({ connectionId: await ports.villagesConnectionIdFor("system") });

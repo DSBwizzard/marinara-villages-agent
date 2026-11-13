@@ -16,8 +16,8 @@ export function responseDiagnostics(
   completion: { content: string | null; finishReason?: string },
   requestedOutputTokens: number,
   raw?: Record<string, unknown> | null,
+  parsed = readModelJsonObject(completion),
 ): ResponseDiagnostics {
-  const parsed = readModelJsonObject(completion);
   return {
     model: asTrimmedString(model.model).slice(0, 160),
     connectionId: asTrimmedString(model.connectionId).slice(0, 160),

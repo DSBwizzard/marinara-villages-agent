@@ -65,7 +65,11 @@ function fixture() {
     venue,
   );
   function prepare(command: Record<string, unknown>, operation = "discovery") {
-    const context = narrationContinuityContext(state, scene, venue, operation, "Tell me about the nearby orchard.", at),
+    const input =
+      command.type === "place.establish"
+        ? "Tell me about the establishment project " + command.project + "."
+        : "Tell me about the nearby orchard.";
+    const context = narrationContinuityContext(state, scene, venue, operation, input, at),
       readset = fittedNarrationReadset(
         state,
         context,
@@ -247,8 +251,7 @@ await runCase("narration-place/objective", () => {
     if (kind === "stale") g.project.lifecycle!.revision++;
     if (kind === "quote") g.raw.commands[0].quote = "A future promise that did not occur.";
     if (kind === "empty") g.raw.commands[0].quote = " \n ";
-    if (kind === "private")
-      g.raw.commands[0].source = [{ input: "Tell me about the nearby orchard.", ground: { kind: "private" } }];
+    if (kind === "private") g.raw.commands[0].source = [{ input: g.readset.source.input, ground: { kind: "private" } }];
     const before = memoryHash(g.state);
     assert.equal(g.accept().held, true, kind);
     assert.equal(memoryHash(g.state), before);

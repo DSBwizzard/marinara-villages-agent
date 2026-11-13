@@ -75,6 +75,7 @@ await runCase("narration-contract/private-keep", () => {
     source: ["self"],
   });
   assert.equal(note.text, "Sail a boat of her own, choosing the destination herself.");
+  assert.equal(readContinuityProposal({ ...note, class: "viewpoint", owner: "mara" }).class, "perspective");
   assert.equal(Object.hasOwn(note, "view"), false);
   assert.throws(
     () => readContinuityProposal({ ...note, view: { title: "A different goal", state: "fulfilled" } }),

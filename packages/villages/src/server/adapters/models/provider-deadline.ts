@@ -19,6 +19,7 @@ export const PROVIDER_REQUEST_TIMEOUT_MS = 120_000;
 export async function withProviderDeadline<T>(
   request: (signal: AbortSignal) => Promise<T>,
   parent?: AbortSignal,
+  onLateResult?: (result: T) => Promise<void>,
 ): Promise<T> {
   parent?.throwIfAborted();
   const controller = new AbortController();
@@ -51,7 +52,10 @@ export async function withProviderDeadline<T>(
   try {
     return await Promise.race([response, deadline]);
   } catch (error) {
-    if (controller.signal.aborted && error && typeof error === "object") lateResponses.set(error, response);
+    if (controller.signal.aborted) {
+      if (error && typeof error === "object") lateResponses.set(error, response);
+      if (onLateResult) void response.then(onLateResult).catch(() => {});
+    }
     throw error;
   } finally {
     clearTimeout(timer);

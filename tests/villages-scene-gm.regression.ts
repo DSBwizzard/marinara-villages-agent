@@ -64,11 +64,13 @@ for (const scenario of ["ordinary", "invitation", "revoked", "refused", "banned"
     host.model.chatComplete = async (messages: any[]) => {
       calls++;
       assert.equal(messages.at(-1).content, calls === 1 ? message : "Why?");
+      const prompt = messages.map((row) => row.content).join("\n");
+      assert.equal(prompt.includes("Scoped native access authority"), invited);
+      assert.doesNotMatch(prompt, /Access commands use supplied venue and zone IDs/u);
       if (calls === 2)
         assert(
           messages.some(
-            (row) =>
-              row.role === "system" && row.content.includes('"gmPrivateInput":' + JSON.stringify({ text: message })),
+            (row) => row.role === "user" && row.content.includes('"gmPrivateInput":' + JSON.stringify(message)),
           ),
           "ordinary GM history preserves the complete earlier contribution",
         );

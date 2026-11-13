@@ -15,9 +15,18 @@ const scene = {
 const json = JSON.stringify(scene);
 
 await runCase("scene-json-hardening/syntax", () => {
+  const main = readNarrationReply(
+    { segments: [{ ...scene.segments[0], presentation: "main", delivery: "whisper", targetId: "player" }] },
+    ["a"],
+  ).segments[0];
+  assert.equal("presentation" in main && main.presentation, undefined);
+  assert.equal("delivery" in main && main.delivery, "whisper");
   for (const input of [
     json,
     "```json\n" + json + "\n```",
+    "```JSON\r\n" + json + "\r\n```",
+    "```json\n" + json,
+    json + "\n```",
     json.slice(0, -1) + ",}",
     json.replace('"answer"]}],', '"answer"]},],'),
   ]) {
@@ -75,6 +84,33 @@ await runCase("scene-json-hardening/ambiguity", () => {
     assert.equal(completeSceneObject(candidate.slice(0, -1), "stop"), null);
   }
   assert.equal(completeSceneObject(coreJson + '\n{"keep":[],"keep":[]}', "stop"), null);
+  const bare = coreJson + "\n\nkeep:" + JSON.stringify(keep);
+  assert.equal(completeSceneObject(bare, "stop"), null);
+  assert.deepEqual(completeSceneObject(bare, "stop", undefined, true), { ...core, keep });
+  for (const text of [
+    bare.slice(0, -1),
+    bare + " prose",
+    bare + "]",
+    bare + "\nkeep:[]",
+    bare + ',"commands":[]',
+    bare + ',"keeps":[]',
+  ])
+    assert.equal(completeSceneObject(text, "stop", undefined, true), null);
+  assert.equal(completeSceneObject(bare, "length", undefined, true), null);
+  for (const key of ["keeps", "effects"]) {
+    const response = coreJson + "\n\n" + JSON.stringify({ [key]: keep });
+    assert.equal(completeSceneObject(response, "stop"), null);
+    assert.deepEqual(completeSceneObject(response, "stop", undefined, true), { ...core, [key]: keep });
+    assert.equal(completeSceneObject(response, "length", undefined, true), null);
+  }
+  const shortId = '{"segments":[{"id":"d1,"kind":"dialogue","speakerId":"a","text":"Hello."}]}';
+  assert.equal(completeSceneObject(shortId, "stop"), null);
+  assert.equal(readNarrationReply(completeSceneObject(shortId, "stop", undefined, true), ["a"]).segments[0].id, "d1");
+  assert.equal(completeSceneObject(shortId, "length", undefined, true), null);
+  assert.equal(
+    completeSceneObject(shortId.replace('"speakerId"', '"id":"d2","speakerId"'), "stop", undefined, true),
+    null,
+  );
   assert.equal(completeSceneObject(quoted, "length"), null);
   assert.equal(completeSceneObject(quoted.slice(0, -1) + ',"commands":[]}', "stop"), null);
   assert.equal(completeSceneObject(coreJson + ',"keep":[{"text":"first","text":"second"}]}', "stop"), null);
