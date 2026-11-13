@@ -328,6 +328,30 @@ export function acceptNarrationContinuity(
     )
       occurrence++;
     memoryRequire(source.input.indexOf(fact, start) === start, "the automatic memory lost its exact words");
+    if (readset.recoverCodeMemoryEcho === true && keeps.length === 1) {
+      const echo = asRecord(keeps[0]);
+      const ref = Array.isArray(echo.source) && echo.source.length === 1 ? asRecord(echo.source[0]) : {};
+      const ground = asRecord(ref.ground);
+      if (
+        echo.id === "remember-fact" &&
+        Object.keys(echo).every((key) => ["id", "for", "class", "text", "source"].includes(key)) &&
+        echo.class === "information" &&
+        typeof echo.text === "string" &&
+        echo.text.trim() &&
+        Array.isArray(echo.for) &&
+        echo.for.length === 1 &&
+        echo.for[0] === recipientId &&
+        Object.keys(ref).every((key) => key === "input" || key === "ground") &&
+        typeof ref.input === "string" &&
+        ref.input.replace(/[.!]+$/u, "") === fact &&
+        Object.keys(ground).every((key) => key === "kind" || key === "to") &&
+        ground.kind === "spoken" &&
+        Array.isArray(ground.to) &&
+        ground.to.length === 1 &&
+        ground.to[0] === recipientId
+      )
+        keeps.pop();
+    }
     memoryRequire(!keeps.some((raw) => asRecord(raw).id === "remember-fact"), "automatic memory effect ID is reserved");
     keeps.push({
       id: "remember-fact",

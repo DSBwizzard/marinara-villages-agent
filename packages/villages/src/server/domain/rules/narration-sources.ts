@@ -189,6 +189,27 @@ export function readSceneNarrationReply(
   const recovery = readset.ordinaryFormatRecovery === 5 ? 4 : readset.ordinaryFormatRecovery;
   const decorations = readset.stripSceneReplyDecorations;
   if (
+    readset.recoverCodeMemoryEcho === true &&
+    readset.codeRequestedMemory === true &&
+    Array.isArray(raw.segments) &&
+    Object.keys(raw).every((key) => key === "segments" || key === "keep")
+  ) {
+    raw = {
+      ...raw,
+      segments: raw.segments.map((value: unknown) => {
+        const line = asRecord(value);
+        if (
+          line.kind !== "dialogue" ||
+          line.delivery !== "aside" ||
+          !Object.keys(line).every((key) => ["id", "kind", "speakerId", "text", "delivery"].includes(key))
+        )
+          return value;
+        const { delivery: _delivery, ...dialogue } = line;
+        return { ...dialogue, presentation: "aside" };
+      }),
+    };
+  }
+  if (
     decorations === 2 &&
     raw.halt === null &&
     Array.isArray(raw.segments) &&

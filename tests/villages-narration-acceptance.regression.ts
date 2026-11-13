@@ -242,6 +242,41 @@ await runCase("narration-acceptance/requested-memory", () => {
   );
   assert.throws(() => acceptNarrationContinuity(collision.state, collisionPublication, "remember", later), /reserved/u);
   assert.equal(collision.state.continuity.versions.length, 0);
+  const echo = {
+    id: "remember-fact",
+    for: [collision.id],
+    class: "information",
+    text: "The player uses the west peg.",
+    source: [{ input: fact + ".", ground: { kind: "spoken", to: [collision.id] } }],
+  };
+  const echoed = collision.publication(
+    {
+      segments: [
+        ...collision.response(["remember-fact"]),
+        { kind: "dialogue", speakerId: collision.id, text: "The other peg stays free.", delivery: "aside" },
+      ],
+      keep: [echo],
+    },
+    "echoed",
+    true,
+  );
+  echoed.readset.recoverCodeMemoryEcho = true;
+  for (const keep of [
+    [{ ...echo, for: ["player"] }],
+    [{ ...echo, replace: "elsewhere" }],
+    [{ ...echo, source: [] }],
+    [echo, collision.keep],
+  ])
+    assert.throws(
+      () => acceptNarrationContinuity(collision.state, { ...echoed, raw: { ...echoed.raw, keep } }, "echo", later),
+      /reserved/u,
+    );
+  const saved = acceptNarrationContinuity(collision.state, echoed, "echo", later);
+  assert.equal(saved.held, false);
+  assert.equal(collision.state.continuity.versions.length, 1);
+  assert.equal(collision.state.continuity.versions[0].text, "Player said: " + fact);
+  assert.equal(saved.episode?.segments[1].presentation, "aside");
+  assert.deepEqual(echoed.raw.keep, [echo]);
 });
 
 await runCase("narration-acceptance/ordinary-dialogue", () => {

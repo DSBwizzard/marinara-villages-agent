@@ -367,6 +367,7 @@ export function createSceneWriting({
       fitted,
       readset: {
         ...readset,
+        ...(context.codeRequestedMemory ? { recoverCodeMemoryEcho: true } : {}),
         ...(positions
           ? {
               ordinaryDialogue: true,
