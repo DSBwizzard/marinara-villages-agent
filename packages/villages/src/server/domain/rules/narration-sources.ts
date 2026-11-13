@@ -198,8 +198,7 @@ export function readSceneNarrationReply(
       const annotation = asRecord(witnessedWords);
       if (
         typeof annotation.ref === "string" &&
-        (/^h:\d+\.\d+$/u.test(annotation.ref) ||
-          (readset.ordinaryFormatRecovery === 2 && annotation.ref === "self")) &&
+        (/^h:\d+\.\d+$/u.test(annotation.ref) || (readset.ordinaryFormatRecovery === 2 && annotation.ref === "self")) &&
         Object.keys(annotation).length === 1
       )
         return prose;
