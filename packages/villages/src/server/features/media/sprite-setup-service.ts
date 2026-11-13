@@ -17,7 +17,9 @@ import {
   coerceSpriteManager,
   emptySpriteManager,
   isEngineSpriteFilename,
+  readSpriteFolders,
 } from "../../domain/rules/sprite-manager-model.js";
+import { spriteLabel } from "../../../shared/helpers/sprite-variants.js";
 import { asRecord, asString } from "../../domain/rules/coerce.js";
 import { badRequest, conflict, badGateway, notFound, VillagesRequestError } from "../../domain/rules/errors.js";
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
@@ -171,11 +173,13 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
     const resident = input.resident === true;
     return ports.writes.serialize(writeKey(id, resident), async () => {
       const requestId = asString(input.requestId);
+      const folders = readSpriteFolders(input.folders);
       if (
         !/^[a-z0-9-]{1,80}$/i.test(requestId) ||
         typeof input.useSprites !== "boolean" ||
         !Array.isArray(input.expressions) ||
-        typeof input.defaultExpressionId !== "string"
+        typeof input.defaultExpressionId !== "string" ||
+        (input.folders !== undefined && !folders)
       )
         throw badRequest("Check the appearance choices.");
 
@@ -192,6 +196,7 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
       if (expected !== input.token) throw conflict("Appearance changed. Reload to continue.");
 
       const manager = structuredClone(resident ? await withPreparedArtwork(id, current.manager) : current.manager);
+      if (manager.folders && !folders) throw conflict("Reload Appearance to choose sprite folders.");
       const existingExpressions = new Set(manager.expressions.map((row) => row.id));
       const ids = new Map<string, string>();
       const copies = new Map<string, SpriteArtwork>();
@@ -218,6 +223,15 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
           const choice = asRecord(row[view]);
           const artworkId = asString(choice.artworkId);
           if (artworkId && choice.filename === undefined && manager.artwork.some((art) => art.id === artworkId)) {
+            if (
+              folders &&
+              (folders[view] !== manager.folders?.[view] ||
+                !manager.expressions.some((prior) => prior.id === key && prior.name === name) ||
+                !manager.assignments.some(
+                  (prior) => prior.expressionId === key && prior.view === view && prior.artworkId === artworkId,
+                ))
+            )
+              throw conflict("Refresh the sprite folders and review again.");
             next[view] = { artworkId };
           } else if (choice.artworkId === undefined && isEngineSpriteFilename(choice.filename)) {
             const version = asString(choice.version);
@@ -231,6 +245,7 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
           } else throw badRequest("Choose an available sprite.");
         }
         if (!next.front && !next.side) throw badRequest("Choose artwork for each expression.");
+        if (folders && next.front && next.side) throw badRequest("Choose one facing for each folder sprite.");
         rows.push(next);
       }
       if (input.defaultExpressionId && !ids.has(input.defaultExpressionId))
@@ -239,6 +254,23 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
       if (filenames.size) {
         const library = await files(id);
         const byFilename = new Map(library.files.map((file) => [file.filename, file]));
+        if (folders) {
+          for (const row of rows) {
+            for (const view of views) {
+              const filename = row[view]?.filename;
+              if (!filename) continue;
+              const file = byFilename.get(filename);
+              const label =
+                file &&
+                (spriteLabel(file.label || file.filename)
+                  .slice(0, 100)
+                  .trim() ||
+                  "Sprite");
+              if (!folders[view] || file?.folderId !== folders[view] || row.name !== label)
+                throw conflict("Engine folders or labels changed. Refresh the sprite folders and review again.");
+            }
+          }
+        }
         for (const [filename, version] of filenames) {
           const file = byFilename.get(filename);
           if (!file || (file.version ?? "") !== version)
@@ -294,6 +326,7 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
         manager.expressions[0]?.id;
       if (input.useSprites && manager.assignments.length) delete manager.useSprites;
       else manager.useSprites = false;
+      if (folders) manager.folders = folders;
       manager.lastSave = { id: requestId, digest };
       signal.throwIfAborted();
 

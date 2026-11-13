@@ -1,4 +1,17 @@
-import type { SpriteArtwork, SpriteManagerState } from "../../../shared/contracts/sprites.js";
+import type { SpriteArtwork, SpriteFolders, SpriteManagerState } from "../../../shared/contracts/sprites.js";
+
+export function readSpriteFolders(value: unknown): SpriteFolders | undefined {
+  const folders = value as Partial<SpriteFolders> | null | undefined;
+  if (
+    typeof folders?.front !== "string" ||
+    typeof folders.side !== "string" ||
+    folders.front.length > 160 ||
+    folders.side.length > 160 ||
+    (folders.front && folders.front === folders.side)
+  )
+    return undefined;
+  return { front: folders.front, side: folders.side };
+}
 
 export const isEngineSpriteFilename = (value: unknown): value is string =>
   typeof value === "string" && /^[\p{L}\p{N}._-]+\.(png|jpe?g|webp)$/iu.test(value) && !value.includes("..");
@@ -120,12 +133,14 @@ export function coerceSpriteManager(value: unknown): SpriteManagerState | null {
     })
     .map((entry) => ({ expressionId: entry.expressionId, view: entry.view, artworkId: entry.artworkId }));
   const framing = state.framing;
+  const folders = readSpriteFolders(state.folders);
   return {
     version: 1,
     artwork,
     expressions,
     assignments,
     ...(state.useSprites === false ? { useSprites: false } : {}),
+    ...(folders ? { folders } : {}),
     ...(typeof state.lastSave?.id === "string" &&
     /^[a-z0-9-]{1,80}$/i.test(state.lastSave.id) &&
     /^[a-f0-9]{64}$/.test(state.lastSave.digest)
@@ -160,6 +175,7 @@ export function managerResidentSprite(state: SpriteManagerState | null | undefin
   return expressions.length
     ? {
         assetId: expressions[0]!.assetId,
+        ...(state.folders ? { named: true as const } : {}),
         expressions,
         defaultExpressionId: state.defaultExpressionId,
         framing: state.framing,

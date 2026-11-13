@@ -301,7 +301,7 @@ export function createSceneWriting({
             : "",
           nativeCommands && (context.circumstance || context.repairs.length) ? NARRATION_CIRCUMSTANCE_COMMANDS : "",
           sprites.length
-            ? 'Optional staging:[{characterId,expression?,look?:{target:"player"|"villager"|"direction",characterId?,direction?}}] uses supplied sprite IDs and visible actors. Code owns placement.'
+            ? 'Optional staging:[{characterId,expression?,look?:{target:"player"|"villager"|"direction",characterId?,direction?}}] uses supplied sprite choices and visible actors. Code owns placement.'
             : "",
           JSON.stringify({
             calendar,

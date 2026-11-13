@@ -33,6 +33,7 @@ const presentation = z
         .object({
           position: z.enum(["left", "center", "right"]),
           expression: z.string().max(40),
+          sideExpression: z.string().max(40).optional(),
           look: z.discriminatedUnion("target", [
             z.object({ target: z.literal("player") }).strict(),
             z.object({ target: z.literal("villager"), characterId: id }).strict(),
@@ -46,6 +47,7 @@ const presentation = z
       z
         .object({
           defaultExpressionId: id.optional(),
+          named: z.literal(true).optional(),
           expressions: z.array(
             z
               .object({

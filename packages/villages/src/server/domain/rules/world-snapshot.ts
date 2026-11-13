@@ -4,7 +4,7 @@ import { sceneMoveAccompanying } from "./venue-contact.js";
 import { zonePictureContext } from "./zone-picture.js";
 import { copyDate } from "../../../shared/helpers/zoned-date.js";
 import { residentSignature } from "../../../shared/helpers/resident-signature.js";
-import { groupNumberedSpritePairs } from "../../../shared/helpers/sprite-variants.js";
+import { groupNumberedSpritePairs, groupSpritesByMood } from "../../../shared/helpers/sprite-variants.js";
 import type {
   VillageMomentView,
   VillagePlaceView,
@@ -56,8 +56,11 @@ export function projectVillager(
 ): VillageVillagerView {
   const sprite = villager.sprite;
   const pairs = [...new Map(sprite?.expressions.map((entry) => [entry.expressionId, entry])).values()];
+  const groups = sprite?.named
+    ? [...groupSpritesByMood(pairs).values()]
+    : groupNumberedSpritePairs(pairs).map(({ members }) => members);
   const variantGroups = new Map(
-    groupNumberedSpritePairs(pairs).flatMap(({ members }) =>
+    groups.flatMap((members) =>
       members.length > 1 ? members.map((entry) => [entry.expressionId, members[0]!.expressionId] as const) : [],
     ),
   );

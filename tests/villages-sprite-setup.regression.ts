@@ -233,4 +233,44 @@ await assert.rejects(
   /Appearance changed/,
 );
 assert.deepEqual(world.villagers[0].spriteManager, replaced.manager);
-console.log("Appearance preserves legacy drafts, pairs facings, retries exact saves and fences resident changes.");
+prepareHook = () => {};
+const beforeFolders = await service.settled(id);
+const folderSave = {
+  token: beforeFolders.token,
+  requestId: "use-folders",
+  useSprites: true,
+  folders: { front: "full", side: "" },
+  defaultExpressionId: "new-happy",
+  expressions: [{ id: "new-happy", name: "happy", front: { filename: "happy.png", version } }],
+};
+await assert.rejects(
+  service.save(id, { ...folderSave, folders: { front: "wrong", side: "" } }, signal),
+  /Engine folders or labels changed/,
+);
+await assert.rejects(
+  service.save(id, { ...folderSave, expressions: [{ ...folderSave.expressions[0], name: "wrong" }] }, signal),
+  /Engine folders or labels changed/,
+);
+const folderSaved = await service.save(id, folderSave, signal);
+assert.deepEqual(folderSaved.manager.folders, folderSave.folders);
+assert.equal(folderSaved.manager.assignments.length, 1);
+assert.deepEqual(await service.save(id, folderSave, signal), folderSaved);
+assert.deepEqual((await service.settled(id)).manager, folderSaved.manager);
+const selected = folderSaved.manager.assignments[0];
+const portraitSave = await service.save(
+  id,
+  {
+    ...folderSave,
+    token: folderSaved.token,
+    requestId: "folder-portrait",
+    useSprites: false,
+    defaultExpressionId: selected.expressionId,
+    expressions: [{ id: selected.expressionId, name: "happy", front: { artworkId: selected.artworkId } }],
+  },
+  signal,
+);
+assert.deepEqual(portraitSave.manager.assignments, folderSaved.manager.assignments);
+assert.deepEqual(portraitSave.manager.folders, folderSave.folders);
+console.log(
+  "Appearance preserves legacy drafts, validates Engine folder selections, retries exact saves and fences resident changes.",
+);

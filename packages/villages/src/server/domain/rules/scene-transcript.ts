@@ -115,7 +115,9 @@ export function readSceneLines(value: unknown, participantIds: ReadonlySet<strin
             ...(row.kind === "narration" || row.kind === "dialogue" || row.kind === "side" || row.kind === "whisper"
               ? { kind: row.kind as VenueLine["kind"] }
               : {}),
-            ...(Array.isArray(row.staging) ? { staging: readStagingCues(row.staging, [...participantIds]) } : {}),
+            ...(Array.isArray(row.staging)
+              ? { staging: readStagingCues(row.staging, [...participantIds], undefined, true) }
+              : {}),
             ...(typeof row.targetId === "string" ? { targetId: row.targetId } : {}),
             ...(row.delivery === "ordinary" || row.delivery === "whisper" || row.delivery === "shout"
               ? { delivery: row.delivery as VenueLine["delivery"] }

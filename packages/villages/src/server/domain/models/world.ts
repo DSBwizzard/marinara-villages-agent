@@ -87,6 +87,7 @@ export type VillageVillager = {
 
 export type VillageResidentSprite = {
   assetId: string;
+  named?: true;
   defaultExpressionId?: string;
   expressions: Array<{
     view: "front" | "side";

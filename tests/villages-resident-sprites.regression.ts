@@ -200,6 +200,24 @@ const withPlainFront = {
 assert.equal(resolveSpriteExpression(withPlainFront, numberedId, true, "front", 0.99), "e-one");
 assert.equal(resolveSpriteExpression(withPlainFront, numberedId, true, "side", 0), "e-three");
 
+const named = {
+  named: true as const,
+  expressions: [
+    { expressionId: "e-a", name: "Happy_01", view: "front" as const },
+    { expressionId: "e-b", name: "Happy_pajamas_02", view: "front" as const },
+    { expressionId: "e-c", name: "Happy_pajamas_04", view: "side" as const },
+    { expressionId: "e-d", name: "Happy_pajamas_05", view: "side" as const },
+    { expressionId: "e-e", name: "Unhappy_pajamas_04", view: "side" as const },
+    { expressionId: "e-f", name: "Happy_pajamas_talk", view: "side" as const },
+  ],
+};
+assert.equal(resolveSpriteExpression(named, "happy_pajamas_wounded", true, "front", 0.99), "e-b");
+assert.equal(resolveSpriteExpression(named, "happy_pajamas_wounded", true, "side", 0.99), "e-d");
+assert.equal(resolveSpriteExpression(named, "happy_pajamas", false, "side", 0.99), "e-c");
+assert.equal(resolveSpriteExpression(named, "happy_formal", true, "front", 0), "e-a");
+assert.equal(resolveSpriteExpression(named, "unhappy", true, "front", 0), "e-e");
+assert.equal(resolveSpriteExpression(named, "unknown_pajamas", true, "front", 0), "");
+
 const cueLines = [
   { speakerId: "a", staging: [{ characterId: "a", look: { target: "villager" as const, characterId: "b" } }] },
   { speakerId: "a", staging: [{ characterId: "a", expression: grouped.id }] },

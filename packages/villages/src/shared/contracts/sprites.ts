@@ -1,4 +1,5 @@
 export type SpriteView = "front" | "side";
+export type SpriteFolders = Record<SpriteView, string>;
 export const SPRITE_CANVAS = { width: 1024, height: 1536, margin: 32, baseline: 1504, bodyHeight: 1280 };
 export type SpriteExpression = { id: string; name: string };
 export type SpriteFrame = {
@@ -32,6 +33,7 @@ export type SpriteManagerState = {
   assignments: SpriteAssignment[];
   defaultExpressionId?: string;
   useSprites?: boolean;
+  folders?: SpriteFolders;
   lastSave?: { id: string; digest: string };
   framing: { mode: "full" | "half" };
 };

@@ -43,7 +43,7 @@ const snapshot = {
 const files = [
   { filename: "happy.png", label: "Happy_01", url: image, folderId: "body" },
   { filename: "bright.png", label: "Happy_02", url: image, folderId: "body" },
-  { filename: "happy-side.png", label: "Happy profile", url: image, folderId: "body" },
+  { filename: "happy-side.png", label: "Happy_blush", url: image, folderId: "profile" },
   { filename: "neutral.png", label: "Neutral", url: image, folderId: "body" },
 ];
 const existing = {
@@ -84,7 +84,10 @@ await withBrowser(browser, async () => {
         token: "first",
         manager: structuredClone(existing),
         files,
-        folders: [{ id: "body", name: "Full-body sprites" }],
+        folders: [
+          { id: "body", name: "Full-body sprites" },
+          { id: "profile", name: "Profile artwork" },
+        ],
       };
       await page.route("**/api/villages**", async (route) => {
         const path = new URL(route.request().url()).pathname;
@@ -113,6 +116,7 @@ await withBrowser(browser, async () => {
             }),
           );
           state.manager.useSprites = body.useSprites;
+          state.manager.folders = body.folders;
           state.manager.defaultExpressionId = body.defaultExpressionId;
           saved = structuredClone(state);
           return fulfill(route, {
@@ -164,8 +168,7 @@ await withBrowser(browser, async () => {
       }
       const pane = root.getByRole("region", { name: "Aqua’s appearance", exact: true });
       await expect(pane.getByRole("button", { name: "Portrait", exact: true })).toHaveAttribute("aria-pressed", "true");
-      await expect(pane.getByRole("button", { name: "Add sprite set" })).toHaveCount(0);
-      await expect(pane.getByRole("button", { name: "Add sprites manually", exact: true })).toHaveCount(0);
+      await expect(pane.getByRole("combobox", { name: "Front folder" })).toHaveCount(0);
       const portrait = pane.locator(".appearance-portrait img");
       await expect(portrait).toHaveJSProperty("complete", true);
       const crop = await portrait.evaluate((image) => {
@@ -185,38 +188,15 @@ await withBrowser(browser, async () => {
         "Opening an older character setup does not adopt it",
       );
       await pane.getByRole("button", { name: "Sprites", exact: true }).click();
-      await pane.getByRole("button", { name: "Add sprites manually", exact: true }).click();
-      const picker = page.getByRole("dialog", { name: "Add sprites manually" });
-      await expect(picker.getByRole("combobox", { name: "Sprite folder" })).toHaveCount(0);
-      await picker.getByRole("button", { name: "Front", exact: true }).click();
-      await picker.getByRole("checkbox", { name: "Happy_01", exact: true }).check();
-      await picker.getByRole("checkbox", { name: "Happy_02", exact: true }).check();
-      await picker.getByRole("button", { name: "Add 2 front sprites", exact: true }).click();
-      await expect(pane.getByRole("button", { name: "Happy 2 variants", exact: true })).toHaveAttribute(
-        "aria-pressed",
-        "true",
-      );
-      await pane.getByRole("button", { name: "+ Add side view", exact: true }).click();
-      const side = page.getByRole("dialog", { name: "Side view for Happy_01" });
-      await side.getByRole("radio", { name: "Happy profile", exact: true }).check();
-      await side.getByRole("button", { name: "Use as side view" }).click();
-      await pane.getByRole("button", { name: "Variant 02", exact: true }).click();
-      await expect(pane.getByRole("img", { name: "Happy_02 · Front" })).toBeVisible();
-      await expect(pane.getByRole("button", { name: "+ Add side view", exact: true })).toBeVisible();
-      await pane.getByRole("button", { name: "Variant 01", exact: true }).click();
+      await expect(pane.getByRole("img", { name: "Old Happy · Front" })).toBeVisible();
+      await pane.getByRole("combobox", { name: "Front folder" }).selectOption("body");
+      await pane.getByRole("combobox", { name: "Side folder" }).selectOption("profile");
+      await pane.getByRole("button", { name: "happy", exact: true }).click();
+      await expect(pane.getByRole("heading", { name: "Front · 2" })).toBeVisible();
+      await expect(pane.getByRole("heading", { name: "Side · 1" })).toBeVisible();
       await expect(pane.getByRole("img", { name: "Happy_01 · Front" })).toBeVisible();
-      await expect(pane.getByRole("img", { name: "Happy_01 · Side" })).toBeVisible();
-      const expressionName = pane.getByRole("textbox", { name: "Variant label" });
-      const setDefault = pane.getByRole("button", { name: "Set as default" });
-      await expect(expressionName).toHaveValue("Happy_01");
-      await expect(setDefault).toBeEnabled();
-      const fieldBounds = await expressionName.boundingBox();
-      const defaultBounds = await setDefault.boundingBox();
-      assert.ok(fieldBounds && defaultBounds);
-      if (viewport.width > 600) {
-        assert.ok(Math.abs(fieldBounds.y + fieldBounds.height - defaultBounds.y - defaultBounds.height) < 1);
-      }
-      await expect(pane.getByRole("button", { name: "Remove side view" })).toBeVisible();
+      await expect(pane.getByRole("img", { name: "Happy_blush · Side" })).toBeVisible();
+      await pane.getByRole("button", { name: "Set as default" }).click();
       await expect(next).toBeDisabled();
       assert.equal(writes.length, 0);
       await pane.getByRole("button", { name: "Save", exact: true }).click();
@@ -226,9 +206,10 @@ await withBrowser(browser, async () => {
       await pane.getByRole("button", { name: "Retry save", exact: true }).click();
       await expect(next).toBeEnabled();
       assert.equal(await page.evaluate(() => window.featureController.setupSpriteRevisions.aqua), 2);
+      assert.deepEqual(writes[0].folders, { front: "body", side: "profile" });
       await page.screenshot({ path: ".build-tmp/founding-sprites/appearance-" + viewport.width + ".png" });
       await page.close();
     });
   }
 });
-console.log("Founding Appearance pairs facings and adopts only an acknowledged save.");
+console.log("Founding Appearance uses Engine folders and adopts only an acknowledged save.");
