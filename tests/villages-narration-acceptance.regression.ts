@@ -311,6 +311,28 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
     effect.readset.stripSceneHistoryDecoration = true;
     assert.throws(() => acceptNarrationContinuity(f.state, effect, "effect", later), /witnessedWords/u);
   }
+  {
+    const f = fixture();
+    const line = { ...f.response(["remember"])[0], truncated: false };
+    const raw = { segments: [line], keep: [f.keep] };
+    const p = f.publication(raw);
+    p.readset.ordinaryFormatRecovery = 2;
+    assert.throws(() => acceptNarrationContinuity(f.state, p, "prior-format", later), /truncated/u);
+    p.readset.ordinaryFormatRecovery = 3;
+    assert.throws(
+      () =>
+        acceptNarrationContinuity(
+          f.state,
+          { ...p, raw: { ...raw, segments: [{ ...line, truncated: true }] } },
+          "actual-truncation",
+          later,
+        ),
+      /truncated/u,
+    );
+    assert.equal(acceptNarrationContinuity(f.state, p, "format", later).held, false);
+    assert.deepEqual(p.raw, raw);
+    assert.equal(f.state.continuity.versions.length, 1);
+  }
   for (const [ordinary, speech, held] of [
     [true, "I'll be by the door at dawn.", false],
     [true, "Nell will be by the door at dawn.", true],

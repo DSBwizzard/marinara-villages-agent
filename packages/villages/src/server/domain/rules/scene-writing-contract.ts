@@ -14,7 +14,7 @@ export function completeSceneObject(
   finishReason?: string,
   parsed?: ModelJsonReply,
   ordinaryReplyRecovery?: true,
-  ordinaryFormatRecovery?: true | 2,
+  ordinaryFormatRecovery?: true | 2 | 3,
   splitKeepRecovery?: true | 2,
 ): Record<string, unknown> | null {
   if (finishReason !== "stop" && finishReason !== "end_turn") return null;
@@ -29,11 +29,11 @@ export function completeSceneObject(
     if (value) return value;
   }
   if (!modelJsonWithinBounds(content)) return null;
-  if (ordinaryFormatRecovery === true || ordinaryFormatRecovery === 2) {
+  if (ordinaryFormatRecovery === true || ordinaryFormatRecovery === 2 || ordinaryFormatRecovery === 3) {
     // Match complete strings first so punctuation inside the prose cannot be repaired.
     const separator = /"(?:[^"\\]|\\.)*"|(?<extra>\}(?:\s*,\s*\}|\s*\]\s*\})\s*,\s*)(?=\{)/gu;
     const extra = [...text.matchAll(separator)].filter(
-      (match) => match.groups?.extra && (ordinaryFormatRecovery === 2 || !match[0].includes("]")),
+      (match) => match.groups?.extra && (ordinaryFormatRecovery !== true || !match[0].includes("]")),
     );
     if (extra.length === 1) {
       const [{ index, 0: duplicate }] = extra;

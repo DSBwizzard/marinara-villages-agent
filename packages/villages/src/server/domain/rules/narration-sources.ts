@@ -179,6 +179,21 @@ export function readSceneNarrationReply(
   const quotes = readset.quotedSceneSources === true;
   if (readset.ordinaryReplyRecovery) raw = ordinaryReplyLayout(raw, positions, quotes);
   if (positions) raw = bindSceneSourcePositions(raw, quotes, readset.recognizeDirectOfferSpeech === 2);
+  if (
+    readset.ordinaryFormatRecovery === 3 &&
+    Array.isArray(raw.segments) &&
+    Object.keys(raw).every((key) => key === "segments" || key === "keep")
+  ) {
+    raw = {
+      ...raw,
+      segments: raw.segments.map((value: unknown) => {
+        const line = asRecord(value);
+        if (line.kind !== "dialogue" || line.truncated !== false) return value;
+        const { truncated: _truncated, ...complete } = line;
+        return complete;
+      }),
+    };
+  }
   if (readset.stripOfferContributionEcho === true && !Object.hasOwn(raw, "commands") && Array.isArray(raw.keep)) {
     raw = {
       ...raw,
@@ -210,7 +225,9 @@ export function readSceneNarrationReply(
     const line = asRecord(value),
       source = line.source;
     if (
-      (readset.ordinaryFormatRecovery === true || readset.ordinaryFormatRecovery === 2) &&
+      (readset.ordinaryFormatRecovery === true ||
+        readset.ordinaryFormatRecovery === 2 ||
+        readset.ordinaryFormatRecovery === 3) &&
       line.kind === "dialogue" &&
       line.delivery === "aside" &&
       !Object.hasOwn(line, "targetId") &&
@@ -234,7 +251,9 @@ export function readSceneNarrationReply(
       const annotation = asRecord(witnessedWords);
       if (
         typeof annotation.ref === "string" &&
-        (/^h:\d+\.\d+$/u.test(annotation.ref) || (readset.ordinaryFormatRecovery === 2 && annotation.ref === "self")) &&
+        (/^h:\d+\.\d+$/u.test(annotation.ref) ||
+          ((readset.ordinaryFormatRecovery === 2 || readset.ordinaryFormatRecovery === 3) &&
+            annotation.ref === "self")) &&
         Object.keys(annotation).length === 1
       )
         return prose;

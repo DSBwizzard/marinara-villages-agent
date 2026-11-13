@@ -341,7 +341,7 @@ export function createSceneWriting({
       plainJson
         ? '## Scene reply reminder\nBegin with {"segments":[. Return one complete JSON object. End at the player’s opening. Use only reply fields in dialogue and narration. Put new keeps in one top-level keep array. ' +
             (positions
-              ? "For a developed exchange, aim for about 500 words of visible prose before the player's opening. For keeps, cite current dialogue by exact quote and speakerId. Count every current segment from 1 when citing it by number. "
+              ? "For a developed exchange, aim for about 500 words of visible prose. Once the residents have answered and the player can respond, end the turn. Cite keeps with a short exact quote and speakerId, or count current segments from 1. "
               : "Cite the exact id you gave each current line. ") +
             "Close the object once."
         : undefined,
@@ -372,7 +372,7 @@ export function createSceneWriting({
               ordinaryReplyRecovery: true,
               positionedSceneSources: true,
               stripSceneHistoryDecoration: true,
-              ordinaryFormatRecovery: 2,
+              ordinaryFormatRecovery: 3,
               quotedSceneSources: true,
               splitKeepRecovery: 2,
               coalesceOfferDecisions: true,
