@@ -13,4 +13,5 @@ export type BackgroundCompletion = ((
 ) => Promise<CapabilityLanguageModelCompletion>) & {
   metadata?: { id: string; kind: string; cause: string; attempt?: number };
   signal?: AbortSignal;
+  beforeProviderDispatch?: () => void;
 };

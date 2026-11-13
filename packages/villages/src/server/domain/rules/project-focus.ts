@@ -87,7 +87,7 @@ export function projectAgendaReservations(state: VillageState): void {
   for (const plan of state.residentPlans.plans) {
     if (
       !["planned", "completed"].includes(plan.status) ||
-      (plan.status === "planned" && state.backgroundPace === "off") ||
+      (plan.status === "planned" && state.backgroundPace === "off" && !plan.followThrough) ||
       !plan.actors.every((actor) => {
         const resident = state.villagers.find(
           (row) => row.characterId === actor.id && row.incarnation === actor.incarnation,

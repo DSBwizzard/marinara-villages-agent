@@ -3,6 +3,10 @@ import { agendaBlocksFor, agendaDateKey, workingAgendaWeek } from "./agenda-week
 import { routineProfileFromWeek } from "./owned-routine.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 
+export function restingAgendaBlock(block: Pick<VillageAgendaBlock, "activity"> | null): boolean {
+  return /\b(?:sleep(?:ing)?|asleep|hibernate|hibernating|dormant)\b/iu.test(block?.activity ?? "");
+}
+
 export function unwrittenVillageAgenda(now = new Date()): VillageAgenda {
   const week = workingAgendaWeek();
   const weekday = VILLAGE_WEEKDAYS[(now.getDay() + 6) % 7]!;

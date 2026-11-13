@@ -9,5 +9,7 @@ export type SocialPlan = {
   revisions: Record<string, string>;
   kind: "meeting" | "avoidance";
   status: "planned" | "completed" | "cancelled";
+  followThrough?: true;
+  wishId?: string;
 };
 export type ResidentPlans = { selectedDate: string; plans: SocialPlan[] };

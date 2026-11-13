@@ -1,5 +1,6 @@
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
+import { calendarReplay } from "../../domain/rules/clock-state.js";
 import type { Handler } from "../../domain/models/background-model.js";
 import type { ResidentPlanningOpportunity, ReturnCatchupCapture, VillageState } from "../../domain/models/world.js";
 import { continuityActor } from "../../domain/rules/continuity-actors.js";
@@ -42,6 +43,7 @@ import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
 import {
   acceptSocialPlan,
   completeSocialPlan,
+  recordSocialAttendance,
   socialContinuationValid,
   socialPlanCandidates,
 } from "../../domain/rules/social-rules.js";
@@ -56,6 +58,8 @@ export type ResidentPlanningPorts = {
   afterCatchup?: (input: unknown) => Promise<void>;
   afterCatchupFailure?: (input: unknown) => Promise<void>;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
+  mutateVillageState?: typeof import("../world/village-store.js").mutateVillageState;
+  withSceneNavigation?<T>(work: () => Promise<T>): Promise<T>;
   readEffectiveVillagerCard: typeof import("../../adapters/engine/catalog.js").readEffectiveVillagerCard;
   queueBackgroundJob: typeof import("../../jobs/background-work.js").queueBackgroundJob;
   backgroundJobSnapshot: typeof import("../../jobs/background-work.js").backgroundJobSnapshot;
@@ -133,7 +137,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
                 )
                 .map(({ id, name }) => ({ id, name })),
             })),
-      plans: limited ? [] : socialPlanCandidates(state, now),
+      plans: limited ? [] : socialPlanCandidates(state, now, opportunity.actorIds),
       narration,
     };
   }
@@ -222,6 +226,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       conflicts = absentPlayerConflicts(state, await ports.activeVenueSession(), now),
       due = state.residentPlans.plans.find(
         (plan) =>
+          !plan.followThrough &&
           plan.status === "planned" &&
           plan.kind === "meeting" &&
           !plan.actors.some((actor) => conflicts.has(actor.id)) &&
@@ -527,7 +532,15 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       }
       if (replayed) return;
       const now = new ZonedDate(villageNow(), state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
-      acceptSocialPlan(next, input.context.plans, proposal.planId, now);
+      if (proposal.planWishId) {
+        const wish = next.continuity.records.find((row) => row.id === proposal.planWishId);
+        memoryRequire(
+          wish?.owner &&
+            capture.context.supplied.some((target) => target.id === wish.id && target.recordRevision === wish.revision),
+          "meetup Wish changed",
+        );
+      }
+      acceptSocialPlan(next, input.context.plans, proposal.planId, now, proposal.planWishId);
       if (input.socialPlan) {
         memoryRequire(!!proposal.encounter, "due encounter must preserve its accepted plan");
         completeSocialPlan(
@@ -604,5 +617,29 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       if (input.catchup) await ports.afterCatchupFailure?.(input);
     },
   };
-  return { reconcile, queueReturnOpportunity, handler };
+  async function settleAttendance(now: Date): Promise<void> {
+    if (!ports.mutateVillageState) return;
+    const state = await ports.readVillageState();
+    if (
+      !state.residentPlans.plans.some(
+        (plan) => plan.followThrough && socialContinuationValid(state, plan.id, plan, now),
+      )
+    )
+      return;
+    const mutate = ports.mutateVillageState;
+    const settle = async () => {
+      // A live Scene may own positions that the Agenda cannot establish.
+      if (await ports.activeVenueSession()) return;
+      await mutate(
+        (current) => {
+          const at = villageNow();
+          if (current.seed !== state.seed || current.setupAt !== state.setupAt || calendarReplay(current, at)) return;
+          recordSocialAttendance(current, at, new Set());
+        },
+        { memories: true },
+      );
+    };
+    await (ports.withSceneNavigation ? ports.withSceneNavigation(settle) : settle());
+  }
+  return { reconcile, settleAttendance, queueReturnOpportunity, handler };
 }
