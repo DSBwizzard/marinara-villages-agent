@@ -67,7 +67,7 @@ export function foundingVenueIssues(venues: readonly VillageVenue[], existing = 
       (venue.occupancy.playerHome && venues.some((row) => row.id !== venue.id && row.occupancy.playerHome))
     )
       add("assignment", "Assign this resident to only one home.");
-    if (!existing)
+    if (!existing && venue.destinations)
       for (const actor of foundingHomeMembers(venue)) {
         const sleep = venue.destinations?.[actor]?.sleep;
         if (!foundingSleepZones(venue, actor).some((zone) => zone.id === sleep))
