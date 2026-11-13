@@ -3,6 +3,7 @@ import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { Handler } from "../../domain/models/background-model.js";
 import type { ResidentPlanningOpportunity, ReturnCatchupCapture, VillageState } from "../../domain/models/world.js";
 import { continuityActor } from "../../domain/rules/continuity-actors.js";
+import { dueRelationshipAnswers } from "../../domain/rules/continuity-library.js";
 import { activityDate, eventAttemptAvailable } from "../../domain/rules/event-attempts.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { acceptResidentLetter } from "../../domain/rules/mail-delivery.js";
@@ -35,6 +36,7 @@ import {
 } from "../../domain/rules/return-catchup-authority.js";
 import { departureContinuityAvailable } from "../../domain/rules/return-catchup-capture.js";
 import { returnCaptureRevision } from "../../domain/rules/return-capture-revision.js";
+import { capturedSceneCalendar } from "../../domain/rules/scene-calendar.js";
 import { liveSceneEncounterConflicts, sameSceneRoutine } from "../../domain/rules/scene-attendance.js";
 import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
 import {
@@ -92,7 +94,8 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         timeZone: state.timeZone || undefined,
         now,
       }),
-      narration = captureResidentNarration(state, opportunity, catchup);
+      narration = captureResidentNarration(state, opportunity, catchup),
+      limited = catchup || opportunity.kind === "relationship";
     return {
       format: 1,
       ...(catchup ? { catchup: true as const } : {}),
@@ -111,7 +114,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           profile: venueCardProfile(card, readPlayerIdentity(state).name),
         };
       }),
-      housing: catchup
+      housing: limited
         ? []
         : opportunity.actorIds
             .filter((id) => !state.residences.some((row) => row.characterId === id && row.status !== "current"))
@@ -130,15 +133,16 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
                 )
                 .map(({ id, name }) => ({ id, name })),
             })),
-      plans: catchup ? [] : socialPlanCandidates(state, now),
+      plans: limited ? [] : socialPlanCandidates(state, now),
       narration,
     };
   }
   function assertCurrent(state: VillageState, input: ResidentPlanningInput) {
     const { context, catchup } = input,
-      opportunity = context.narration.opportunity;
+      opportunity = context.narration.opportunity,
+      relationship = opportunity.kind === "relationship";
     memoryRequire(
-      context.setting === villageCurrentSetting(state) && state.backgroundPace !== "off",
+      relationship || (context.setting === villageCurrentSetting(state) && state.backgroundPace !== "off"),
       "resident planning setting or pace changed",
     );
     if (catchup) {
@@ -152,10 +156,19 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           capture &&
           returnCaptureRevision(capture) === catchup.captureRevision &&
           memoryHash(capture.world) === memoryHash(catchup.world) &&
-          departureContinuityAvailable(capture, state) &&
+          (relationship || departureContinuityAvailable(capture, state)) &&
           batch.opportunities?.some((row) => memoryHash(row) === memoryHash(opportunity)),
         "historical resident opportunity changed",
       );
+      if (relationship) {
+        memoryRequire(
+          batch.records?.every(
+            (row) => row.opportunityId === opportunity.id || row.status === "settled" || row.status === "rejected",
+          ),
+          "relationship blurbs must follow settled catch-up history",
+        );
+        return;
+      }
       const historical = { ...state, ...structuredClone(catchup.world) },
         at = new ZonedDate(opportunity.endsAt, historical.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
       memoryRequire(
@@ -182,6 +195,15 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           socialContinuationValid(state, input.socialPlan.id, input.socialPlan, new Date(context.narration.context.at)),
         "due resident plan changed",
       );
+    }
+  }
+  function relationshipContextCurrent(state: VillageState, context: ResidentPlanningContext) {
+    if (state.backgroundPace === "off" || context.setting !== villageCurrentSetting(state)) return false;
+    try {
+      assertResidentNarrationCurrent(state, context.narration);
+      return true;
+    } catch {
+      return false;
     }
   }
   async function reconcile(now: Date, dueOnly = false): Promise<boolean | void> {
@@ -256,7 +278,8 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
     const state = await ports.readVillageState({ memories: true }),
       batch = state.returnCatchup?.batch,
       eventAt = Date.parse(opportunity.startsAt),
-      returnAt = Date.parse(batch?.until || "");
+      returnAt = Date.parse(batch?.until || ""),
+      relationship = opportunity.kind === "relationship";
     if (
       batch?.id !== batchId ||
       batch.status !== "running" ||
@@ -269,18 +292,25 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       eventAt > returnAt ||
       returnAt > villageNow().getTime() ||
       opportunity.startsAt !== opportunity.endsAt ||
-      !["encounter", "routine"].includes(opportunity.kind) ||
-      !departureContinuityAvailable(capture, state)
+      (relationship
+        ? eventAt !== returnAt
+        : !["encounter", "routine"].includes(opportunity.kind) || !departureContinuityAvailable(capture, state))
     )
       throw new ReturnOpportunityUnavailable(
         "The historical opportunity is no longer supported by its departure capture.",
       );
-    const historical = { ...state, ...structuredClone(capture.world) },
-      at = new ZonedDate(opportunity.startsAt, historical.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
-    planRoutineDays(historical, at);
+    const calendar = capturedSceneCalendar({ startedAt: opportunity.startsAt }, state.timeZone);
+    if (relationship && !dueRelationshipAnswers(state, calendar, opportunity.actorIds).owners.length)
+      throw new ReturnOpportunityUnavailable("No relationship blurb is due.");
+    const source = relationship ? state : { ...state, ...structuredClone(capture.world) };
+    if (!relationship)
+      planRoutineDays(
+        source,
+        new ZonedDate(opportunity.startsAt, source.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
+      );
     const input = readResidentPlanningInput({
       format: 1,
-      context: contextFor(historical, opportunity, true),
+      context: contextFor(source, opportunity, !relationship),
       dateKey: batch.budgetDate,
       catchup: { batchId, captureRevision: returnCaptureRevision(capture), until: batch.until!, world: capture.world },
     });
@@ -291,7 +321,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       seed: state.seed,
       revision: batchId + ":" + opportunity.id,
       finite: false,
-      label: "Return catch-up",
+      label: relationship ? "Relationship blurbs" : "Return catch-up",
       automaticDate: batch.budgetDate,
       input,
     });
@@ -307,17 +337,20 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
     },
     async generate(raw) {
       const input = readResidentPlanningInput(raw),
-        state = await ports.readVillageState({ memories: true });
+        state = await ports.readVillageState({ memories: true }),
+        relationship = input.context.narration.opportunity.kind === "relationship";
       assertCurrent(state, input);
+      if (relationship)
+        memoryRequire(relationshipContextCurrent(state, input.context), "relationship refresh context changed");
       const active = await ports.activeVenueSession(),
         conflicts = absentPlayerConflicts(state, active, new Date(input.context.narration.context.at));
       memoryRequire(
-        !input.context.narration.actors.some((actor) => conflicts.has(actor.id)),
+        relationship || !input.context.narration.actors.some((actor) => conflicts.has(actor.id)),
         "resident entered a live Scene",
       );
-      const model = await ports
-          .villagesLanguageModels()
-          .resolveForRequest({ connectionId: await ports.villagesConnectionIdFor("system") }),
+      const model = await ports.villagesLanguageModels().resolveForRequest({
+          connectionId: await ports.villagesConnectionIdFor(relationship ? "narration" : "system"),
+        }),
         messages = buildResidentPlanningMessages(input.context),
         output = 4096,
         fitted = fitVenueWritingMessages(
@@ -325,7 +358,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           [{ text: String(messages[0].content) }],
           String(messages[1].content),
           Math.min(model.maxOutputTokens ?? output, output),
-          "System",
+          relationship ? "Narration" : "System",
         ),
         completion = await ports.completeWithRoom(model, fitted.messages, fitted.maxTokens ?? output, {
           responseFormat: { type: "json_object" },
@@ -333,13 +366,15 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           beforeBackgroundDispatch: async () => {
             const latest = await ports.readVillageState({ memories: true });
             assertCurrent(latest, input);
+            if (relationship)
+              memoryRequire(relationshipContextCurrent(latest, input.context), "relationship refresh context changed");
             const conflicts = absentPlayerConflicts(
               latest,
               await ports.activeVenueSession(),
               new Date(input.context.narration.context.at),
             );
             memoryRequire(
-              !input.context.narration.actors.some((actor) => conflicts.has(actor.id)),
+              relationship || !input.context.narration.actors.some((actor) => conflicts.has(actor.id)),
               "resident entered a live Scene",
             );
           },
@@ -393,6 +428,20 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       if (state.seed !== input.context.narration.context.seed) return false;
       if (state.processedActionIds.includes(id)) return true;
       assertCurrent(state, input);
+      const capture = input.context.narration;
+      if (
+        capture.opportunity.kind === "relationship" &&
+        !admission?.activityDate &&
+        (!relationshipContextCurrent(state, input.context) ||
+          !dueRelationshipAnswers(
+            state,
+            capture.calendar,
+            capture.relationshipAnswerIds ?? [],
+            undefined,
+            capture.context.continuityRevision,
+          ).owners.length)
+      )
+        return false;
       return (
         !!input.catchup ||
         admission?.activityDate === input.dateKey ||
@@ -453,9 +502,10 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
               }
             : undefined,
         );
-      } else {
-        const target = input.catchup ? { ...next, ...structuredClone(input.catchup.world) } : next;
-        if (input.catchup)
+      } else if (opportunity.kind !== "relationship" || relationshipContextCurrent(state, input.context)) {
+        const target =
+          input.catchup && capture.historical ? { ...next, ...structuredClone(input.catchup.world) } : next;
+        if (capture.historical)
           planRoutineDays(
             target,
             new ZonedDate(capture.context.at, target.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
@@ -535,7 +585,10 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           tracking?.capture && tracking.batch?.id === input.catchup.batchId && record,
           "historical resident record changed",
         );
-        record.outcome = structuredClone(proposal);
+        record.outcome =
+          opportunity.kind === "relationship"
+            ? { relationshipBlurbs: next.continuity.versions.length - state.continuity.versions.length }
+            : structuredClone(proposal);
         record.status = "settled";
         tracking.capture.continuityRevision = next.continuity.revision;
         tracking.capture.episodeRevision = next.episodes.revision;

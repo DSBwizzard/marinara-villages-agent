@@ -8,11 +8,58 @@ import type {
   ContinuityVersion,
   ContinuityView,
   ContinuityWrite,
+  RelationshipImpact,
 } from "../models/continuity-model.js";
 import { memoryHash, memoryKnowerId, memoryRequire, memoryString, memoryTimestamp } from "./memory-integrity.js";
 
 export const CONTINUITY_TEXT_BYTES = 2400;
 export const ROOM_CONTINUITY_TEXT_BYTES = 16000;
+export const RELATIONSHIP_ANSWER_WORD_LIMIT = 15;
+const relationshipSentence = new Intl.Segmenter("en", { granularity: "sentence" });
+const relationshipWords = new Intl.Segmenter("en", { granularity: "word" });
+
+export function isRelationshipAnswer(answer: unknown): answer is string {
+  if (typeof answer !== "string" || Buffer.byteLength(answer) > 320 || /[\r\n\u0085\u2028\u2029]/u.test(answer))
+    return false;
+  // ICU suppresses breaks before lowercase words; check those as sentence starts too.
+  const sentence = answer.replace(/(\.["'”’)]*\s+)(\p{Ll})/gu, (_, end, letter: string) => end + letter.toUpperCase());
+  const words = [...relationshipWords.segment(answer)].filter((word) => word.isWordLike).length;
+  return (
+    words > 0 && words <= RELATIONSHIP_ANSWER_WORD_LIMIT && [...relationshipSentence.segment(sentence)].length === 1
+  );
+}
+
+export const RELATIONSHIP_IMPACTS = {
+  "small-positive": 3,
+  "meaningful-positive": 6,
+  "turning-positive": 10,
+  "small-negative": -3,
+  "meaningful-negative": -6,
+  "turning-negative": -10,
+} satisfies Record<RelationshipImpact, number>;
+
+type ActorIdentity = { id: string; incarnation: string };
+export const relationshipKey = (owner: ActorIdentity, subject: ActorIdentity) =>
+  JSON.stringify([owner.id, owner.incarnation, subject.id, subject.incarnation]);
+
+function latestRelationshipVersions(collection: ContinuityCollection, field: "relationshipScore" | "romanticInterest") {
+  const owners = new Map(collection.records.map((record) => [record.id, record.owner]));
+  const latest = new Map<string, ContinuityVersion>();
+  for (const version of collection.versions) {
+    if (version[field] === undefined) continue;
+    const owner = owners.get(version.rootId);
+    if (!owner || !version.about[0]) continue;
+    const key = relationshipKey(owner, version.about[0]);
+    if ((latest.get(key)?.createdRevision ?? 0) < version.createdRevision) latest.set(key, version);
+  }
+  return latest;
+}
+
+export const latestRelationshipScores = (collection: ContinuityCollection) =>
+  latestRelationshipVersions(collection, "relationshipScore");
+export const latestRomanticInterests = (collection: ContinuityCollection) =>
+  latestRelationshipVersions(collection, "romanticInterest");
+
 export const ownedContinuityClass = (value: string) =>
   ["perspective", "desire", "motivation", "commitment"].includes(value);
 export function continuitySelfSource(
@@ -569,6 +616,172 @@ export function applyContinuityWrite(
       .flatMap((version) => version.about.map((subject) => [subject.id, subject.incarnation] as const)),
   );
   const created: ContinuityVersion[] = [];
+  let relationshipScore: number | undefined;
+  let romanticInterest: number | undefined;
+  let romanticDay: ContinuityVersion["romanticDay"];
+  let relationshipDay: ContinuityVersion["relationshipDay"];
+  let relationshipMilestone: true | undefined;
+  let relationshipAnswer: string | undefined;
+  let relationshipAnswerScore: number | undefined;
+  let ownerAnswer = false;
+  if (write.relationship) {
+    const ownerBefore = before.find(({ holder }) => owner && same(holder, owner));
+    const about = write.about ?? [];
+    const subject = about[0];
+    const active = (actor: ActorIdentity) =>
+      context.relationshipActors?.some((row) => row.id === actor.id && row.incarnation === actor.incarnation);
+    memoryRequire(
+      owner &&
+        owner.id !== "player" &&
+        ownerBefore &&
+        active(owner) &&
+        about.length === 1 &&
+        subject.id !== owner.id &&
+        active(subject) &&
+        write.class === "perspective" &&
+        !write.parentId &&
+        !ownerBefore.version?.parentId &&
+        !write.retire &&
+        !ownerBefore.version?.closed &&
+        !write.offer &&
+        !record.offer &&
+        write.current === true,
+      "relationship change needs a current villager-owned perspective about one person",
+    );
+    const experienced = sources.filter((source) =>
+      ["speech", "written", "observation", "native"].includes(source.kind),
+    );
+    const { impact, romance } = write.relationship;
+    ownerAnswer = write.holders.length === 1;
+    memoryRequire(
+      experienced.some((source) => source.episodeId === context.episodeId) ||
+        (!impact &&
+          !romance &&
+          ownerAnswer &&
+          sources.some((source) => source.episodeId === context.episodeId && source.kind === "self")),
+      "relationship change needs a current experienced event",
+    );
+    memoryRequire(impact || romance || write.relationship.answer, "empty relationship update");
+    if (write.relationship.answer !== undefined) {
+      if (isRelationshipAnswer(write.relationship.answer)) relationshipAnswer = write.relationship.answer;
+      else
+        memoryRequire(
+          impact || romance,
+          `relationship answer must be one sentence of at most ${RELATIONSHIP_ANSWER_WORD_LIMIT} words`,
+        );
+    }
+    if (impact) {
+      memoryRequire(Number.isInteger(RELATIONSHIP_IMPACTS[impact]), "invalid relationship impact");
+      const latest = latestRelationshipScores(collection).get(relationshipKey(owner, subject));
+      memoryRequire(
+        context.continuityRevision !== undefined && (!latest || latest.createdRevision <= context.continuityRevision),
+        "relationship changed since admission or already changed in this exchange",
+      );
+      const calendar = context.relationshipCalendar;
+      memoryRequire(
+        calendar && /^\d{4}-\d{2}-\d{2}$/.test(calendar.date),
+        "relationship scoring needs the Village day",
+      );
+      const score = latest?.relationshipScore ?? 0;
+      const previous = latest?.relationshipDay;
+      relationshipDay =
+        previous && previous.date >= calendar.date
+          ? { ...previous }
+          : { date: calendar.date, start: score, gained: 0, lost: 0, breach: 0 };
+      const turningPoint =
+        impact === "turning-positive" &&
+        experienced.some((source) => {
+          const date = calendar.historical[source.episodeId];
+          return source.episodeId !== context.episodeId && date && date < calendar.date;
+        });
+      const delta =
+        impact === "turning-positive" && !turningPoint
+          ? RELATIONSHIP_IMPACTS["meaningful-positive"]
+          : RELATIONSHIP_IMPACTS[impact];
+      if (delta > 0) {
+        const base = turningPoint ? 10 : 6;
+        const limit = Math.ceil((base * (100 - Math.max(0, relationshipDay.start))) / 100);
+        const gained = Math.max(0, Math.min(delta, limit - relationshipDay.gained, 100 - score));
+        relationshipDay.gained += gained;
+        relationshipScore = score + gained;
+      } else {
+        const budget = impact === "turning-negative" ? "breach" : "lost";
+        const limit = budget === "breach" ? 10 : 6;
+        const lost = Math.min(-delta, limit - relationshipDay[budget], score + 100);
+        relationshipDay[budget] += lost;
+        relationshipScore = score - lost;
+      }
+      if (relationshipScore !== score && (turningPoint || impact === "turning-negative")) relationshipMilestone = true;
+    }
+    if (romance) {
+      memoryRequire(
+        ownerAnswer &&
+          context.actors.some((actor) => actor.id === subject.id && actor.incarnation === subject.incarnation) &&
+          experienced.some(
+            (source) =>
+              source.episodeId === context.episodeId &&
+              source.actorId === subject.id &&
+              ((source.kind === "observation" &&
+                source.perceptions.some((row) => row.actorId === owner.id && row.channel === "sight")) ||
+                ((source.kind === "speech" || source.kind === "written") &&
+                  source.perceptions.some((row) => row.actorId === owner.id && row.channel === "words"))),
+          ),
+        "romantic interest needs the owner to witness this interaction",
+      );
+      const latest = latestRomanticInterests(collection).get(relationshipKey(owner, subject));
+      memoryRequire(
+        context.continuityRevision !== undefined && (!latest || latest.createdRevision <= context.continuityRevision),
+        "romantic interest changed since admission or already changed in this exchange",
+      );
+      const date = context.relationshipCalendar?.date;
+      memoryRequire(date && /^\d{4}-\d{2}-\d{2}$/.test(date), "romantic interest needs the Village day");
+      const previous = latest?.romanticDay;
+      if (!previous || date >= previous.date) {
+        const score = latest?.romanticInterest ?? 0;
+        const gained = previous?.date === date && previous.gained;
+        const delta = romance === "grows" ? (gained ? 0 : 1) : romance === "fades" ? -1 : -3;
+        romanticInterest = Math.min(20, Math.max(0, score + delta));
+        romanticDay = { date, gained: gained || romanticInterest > score };
+      }
+    }
+    if (relationshipAnswer !== undefined) {
+      memoryRequire(
+        subject.id === "player" &&
+          context.relationshipAnswers?.owners.some(
+            (actor) => actor.id === owner.id && actor.incarnation === owner.incarnation,
+          ),
+        "relationship answer is not due for this villager",
+      );
+      const ownedRoots = new Set(
+        collection.records.filter((root) => root.owner && same(root.owner, owner)).map((root) => root.id),
+      );
+      memoryRequire(
+        context.continuityRevision !== undefined &&
+          !collection.versions.some(
+            (version) =>
+              version.relationshipAnswer &&
+              version.createdRevision > context.continuityRevision! &&
+              ownedRoots.has(version.rootId) &&
+              version.about[0]?.id === subject.id &&
+              version.about[0]?.incarnation === subject.incarnation,
+          ),
+        "relationship answer already refreshed",
+      );
+      relationshipAnswerScore =
+        relationshipScore ??
+        latestRelationshipScores(collection).get(relationshipKey(owner, subject))?.relationshipScore ??
+        0;
+      memoryRequire(
+        ownerAnswer ||
+          (before.some(({ holder }) => holder.kind === "actor" && holder.id === "player") &&
+            sources.some(
+              (source) =>
+                source.episodeId === context.episodeId && source.actorId === owner.id && heardWords(source, "player"),
+            )),
+        "relationship answer needs the villager's words heard or read by the player",
+      );
+    }
+  }
   for (const { key, holder, head, version: prior } of before) {
     const text = write.text ?? prior?.text;
     const completeNativeMeaning = sources.length === 1 && sources[0].kind === "native" && sources[0].excerpt === text;
@@ -585,6 +798,21 @@ export function applyContinuityWrite(
       createdRevision: collection.revision + 1,
       text,
       class: room ? "information" : (write.class ?? prior?.class ?? "experience"),
+      ...(relationshipScore !== undefined && owner && same(holder, owner)
+        ? { relationshipScore, relationshipDay, ...(relationshipMilestone ? { relationshipMilestone } : {}) }
+        : {}),
+      ...(romanticInterest !== undefined && owner && same(holder, owner) ? { romanticInterest, romanticDay } : {}),
+      ...(holder.kind === "actor" &&
+      (ownerAnswer ? holder.id === owner?.id : holder.id === "player") &&
+      relationshipAnswer
+        ? {
+            relationshipAnswer,
+            relationshipAnswerScore,
+            ...(context.relationshipAnswers?.sceneId
+              ? { relationshipAnswerScene: context.relationshipAnswers.sceneId }
+              : {}),
+          }
+        : {}),
       about: (write.about ?? prior?.about ?? []).map(({ id, incarnation }) => ({ id, incarnation })),
       ...(parentId ? { parentId } : {}),
       ...(facet ? { facet } : {}),
@@ -927,6 +1155,14 @@ export function protectContinuity(
         administrative: { holder: structuredClone(holder), at },
       };
       if (!restored) delete version.offerEvents;
+      delete version.relationshipScore;
+      delete version.relationshipDay;
+      delete version.romanticInterest;
+      delete version.romanticDay;
+      delete version.relationshipAnswer;
+      delete version.relationshipAnswerScore;
+      delete version.relationshipAnswerScene;
+      delete version.relationshipMilestone;
       created.push(version);
       head.versionId = version.id;
       head.revision++;

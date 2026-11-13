@@ -84,6 +84,28 @@ const version = z
     createdRevision: revision.min(1),
     text: text(ROOM_CONTINUITY_TEXT_BYTES),
     class: z.enum(["experience", "information", "perspective", "desire", "motivation", "commitment", "open-matter"]),
+    relationshipScore: z.number().int().min(-100).max(100).optional(),
+    romanticInterest: z.number().int().min(0).max(20).optional(),
+    romanticDay: z
+      .object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), gained: z.boolean() })
+      .strict()
+      .optional(),
+    relationshipDay: z
+      .object({
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        start: z.number().int().min(-100).max(100),
+        gained: z.number().int().min(0).max(10),
+        lost: z.number().int().min(0).max(6),
+        breach: z.number().int().min(0).max(10),
+      })
+      .strict()
+      .optional(),
+    relationshipAnswer: text(320)
+      .refine((value) => !/[\r\n]/.test(value))
+      .optional(),
+    relationshipAnswerScore: z.number().int().min(-100).max(100).optional(),
+    relationshipAnswerScene: id.optional(),
+    relationshipMilestone: z.literal(true).optional(),
     about: z
       .array(actorReference)
       .max(32)
@@ -208,6 +230,63 @@ export function readContinuity(raw: unknown, seed?: string): ContinuityCollectio
     }
     subjectsByRoot.set(entry.rootId, subjects);
     memoryRequire(!ownedContinuityClass(entry.class) || root.owner || root.offer, "saved private state has no owner");
+    memoryRequire(
+      (!entry.relationshipMilestone || entry.relationshipDay) &&
+        (!entry.romanticDay || entry.romanticInterest !== undefined) &&
+        (entry.relationshipAnswerScore === undefined || entry.relationshipAnswer) &&
+        (!entry.relationshipAnswerScene || entry.relationshipAnswerScore !== undefined),
+      "invalid saved relationship metadata",
+    );
+    if (
+      entry.relationshipScore !== undefined ||
+      entry.romanticInterest !== undefined ||
+      entry.relationshipAnswer !== undefined ||
+      entry.relationshipDay
+    ) {
+      const owner = root.owner;
+      const evidenceSeed = entry.sources[0]?.seed;
+      memoryRequire(
+        owner &&
+          owner.id !== "player" &&
+          evidenceSeed &&
+          entry.class === "perspective" &&
+          !entry.administrative &&
+          !entry.parentId &&
+          !entry.closed &&
+          !entry.room &&
+          entry.about.length === 1 &&
+          entry.about[0].id !== owner.id,
+        "invalid saved relationship update",
+      );
+      const ownerVersion = entry.id === continuityVersionId(evidenceSeed, entry.operationId, owner);
+      if (entry.relationshipScore !== undefined || entry.romanticInterest !== undefined)
+        memoryRequire(ownerVersion, "relationship score belongs to its owner");
+      if (entry.relationshipDay) {
+        const { start, gained, lost, breach } = entry.relationshipDay;
+        memoryRequire(
+          entry.relationshipScore === start + gained - lost - breach &&
+            gained <= Math.ceil((100 - Math.max(0, start)) / 10),
+          "invalid saved relationship day",
+        );
+      }
+      if (entry.relationshipAnswer !== undefined)
+        memoryRequire(
+          ownerVersion ||
+            (Object.values(root.heads).some(
+              ({ holder }) =>
+                holder.kind === "actor" &&
+                holder.id === "player" &&
+                entry.id === continuityVersionId(evidenceSeed, entry.operationId, holder),
+            ) &&
+              entry.sources.some(
+                (source) =>
+                  source.actorId === owner.id &&
+                  ["speech", "written"].includes(source.kind) &&
+                  source.perceptions.some((row) => row.actorId === "player" && row.channel === "words"),
+              )),
+          "saved relationship answer needs its owner or the player who received it",
+        );
+    }
     if (entry.administrative) {
       const key = continuityHolderKey(entry.administrative.holder),
         receipt = value.receipts[entry.operationId];

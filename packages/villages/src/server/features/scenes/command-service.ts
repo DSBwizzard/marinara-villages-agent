@@ -18,6 +18,7 @@ import { completeOpeningGathering, matchesOpeningGathering } from "../../domain/
 import { captureSceneAttendance, sceneZoneOccupants } from "../../domain/rules/scene-attendance.js";
 import { movedAttentionContacts } from "../../domain/rules/scene-attention.js";
 import { sceneContinuityView, cloneSceneFacts } from "../../domain/rules/scene-continuity.js";
+import { recordClosedRelationshipScene } from "../../domain/rules/continuity-library.js";
 import { requireSceneZoneId, sceneLayoutVenue } from "../../domain/rules/scene-layout.js";
 import { assertCurrentSceneGeneration } from "../../domain/rules/scene-writing-contract.js";
 import { claimVisitPermission, evaluateZoneAccess } from "../../domain/rules/venue-access.js";
@@ -935,6 +936,7 @@ export function createSceneCommands({
       input.mode === "leave" ? "leave" : "chat",
       venueOperationSignal(),
     );
+    if (published.status === "closed") await finishClosedScene(published);
     const turn = published.submissions.find((turn) => turn.id === input.submissionId)!;
     return { session: published, recordEvents: await visibleNoticeEvents(published, sceneTurnNotices(turn)) };
   }
@@ -1029,7 +1031,16 @@ export function createSceneCommands({
     return finishClosedScene(closed);
   }
   async function finishClosedScene(closed: VenueScene): Promise<VenueScene> {
-    if (closed.openingGatheringId) await mutateVillageState((state) => completeOpeningGathering(state, closed));
+    const countsAsMeeting = closed.status === "closed" && ["player", "scene"].includes(closed.endReason);
+    if (closed.openingGatheringId || countsAsMeeting)
+      await mutateVillageState(
+        (state) => {
+          if (closed.openingGatheringId) completeOpeningGathering(state, closed);
+          if (countsAsMeeting && state.seed === closed.villageSeed && closed.endedAt)
+            recordClosedRelationshipScene(state, closed);
+        },
+        { memories: true },
+      );
     await clearActivePointer(closed.id, true);
     return closed;
   }

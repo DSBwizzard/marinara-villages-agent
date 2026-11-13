@@ -1,8 +1,10 @@
-// Deterministic zip writer: store-only entries, fixed DOS timestamps, no
+// Deterministic zip writer: fixed DOS timestamps and compression settings, no
 // dependence on a system `zip` binary. Byte-for-byte reproducible for a given
 // (name, data) list, readable by unzip/AdmZip, and directory-entry-free so
 // `unzip -Z1` lists exactly the declared files (what validate-catalog.mjs
 // compares against manifest.files).
+
+import { deflateRawSync } from "node:zlib";
 
 // 2000-01-01T00:00:00Z in DOS date/time fields — matches ARTIFACT_MTIME used
 // by the other package builders.
@@ -43,31 +45,35 @@ export function createDeterministicZip(entries) {
     }
     const data = Buffer.isBuffer(entry.data) ? entry.data : Buffer.from(entry.data);
     const checksum = crc32(data);
+    const compressed = deflateRawSync(data, { level: 9 });
+    const store = compressed.length >= data.length;
+    const payload = store ? data : compressed;
+    const method = store ? 0 : 8;
 
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50, 0);
     local.writeUInt16LE(20, 4); // version needed
     local.writeUInt16LE(0, 6); // flags
-    local.writeUInt16LE(0, 8); // method: store
+    local.writeUInt16LE(method, 8);
     local.writeUInt16LE(DOS_TIME, 10);
     local.writeUInt16LE(DOS_DATE, 12);
     local.writeUInt32LE(checksum, 14);
-    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(payload.length, 18);
     local.writeUInt32LE(data.length, 22);
     local.writeUInt16LE(name.length, 26);
     local.writeUInt16LE(0, 28); // extra length
-    localParts.push(local, name, data);
+    localParts.push(local, name, payload);
 
     const central = Buffer.alloc(46);
     central.writeUInt32LE(0x02014b50, 0);
     central.writeUInt16LE((3 << 8) | 20, 4); // made by: unix, zip 2.0
     central.writeUInt16LE(20, 6);
     central.writeUInt16LE(0, 8);
-    central.writeUInt16LE(0, 10);
+    central.writeUInt16LE(method, 10);
     central.writeUInt16LE(DOS_TIME, 12);
     central.writeUInt16LE(DOS_DATE, 14);
     central.writeUInt32LE(checksum, 16);
-    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(payload.length, 20);
     central.writeUInt32LE(data.length, 24);
     central.writeUInt16LE(name.length, 28);
     central.writeUInt16LE(0, 30); // extra
@@ -78,7 +84,7 @@ export function createDeterministicZip(entries) {
     central.writeUInt32LE(offset, 42);
     centralParts.push(central, name);
 
-    offset += local.length + name.length + data.length;
+    offset += local.length + name.length + payload.length;
   }
 
   const centralSize = centralParts.reduce((total, part) => total + part.length, 0);

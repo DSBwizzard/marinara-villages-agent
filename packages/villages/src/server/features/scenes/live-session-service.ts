@@ -7,6 +7,7 @@ import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.
 import type { VenueScene } from "../../domain/models/scene-model.js";
 import { conflict } from "../../domain/rules/errors.js";
 import { completeOpeningGathering } from "../../domain/rules/opening-project.js";
+import { recordClosedRelationshipScene } from "../../domain/rules/continuity-library.js";
 
 import {
   accessExits,
@@ -114,7 +115,12 @@ export function createLiveScenes({
     const session = await readSession(active.sessionId);
     await observeVillageClock();
     if (session.status === "closed") {
-      if (session.openingGatheringId) await mutateVillageState((state) => completeOpeningGathering(state, session));
+      if (session.openingGatheringId || ["player", "scene"].includes(session.endReason))
+        await mutateVillageState((state) => {
+          if (session.openingGatheringId) completeOpeningGathering(state, session);
+          if (state.seed === session.villageSeed && session.endedAt && ["player", "scene"].includes(session.endReason))
+            recordClosedRelationshipScene(state, session);
+        });
       await clearActivePointer(session.id, true);
       return null;
     }

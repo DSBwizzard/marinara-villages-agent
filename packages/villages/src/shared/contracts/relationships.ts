@@ -8,11 +8,14 @@ export type RelationshipEntry = MemoryListEntry & {
   closed?: "fulfilled" | "withdrawn" | "ended";
   offer?: { state: "offered" | "accepted" | "refused" | "withdrawn"; participants: MemoryPerson[] };
 };
-/** Ordinary notebook data contains only information available to the player. */
+export type RelationshipScore = { person: MemoryPerson; score: number; romanticInterest: number; answer?: string };
+
+/** Scores show the actual attitude. Notes and answers follow the player's knowledge. */
 export type RelationshipProfile = {
   characterId: string;
   name: string;
   entries: RelationshipEntry[];
+  scores: RelationshipScore[];
   knownWishes: import("./wishes.js").KnownWish[];
   access: { venueId: string; zoneId: string; active: boolean; name: string }[];
 };

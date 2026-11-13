@@ -12,6 +12,8 @@ import {
   narrationDirection,
   narrationResponse,
   ordinarySceneKeep,
+  RELATIONSHIP_DIRECTION,
+  RELATIONSHIP_KEEP,
   SCENE_NARRATION_KEEP,
   SCENE_OFFER_DECISION,
 } from "../../domain/rules/narration-contract.js";
@@ -219,6 +221,7 @@ export function createSceneWriting({
     const blocks = buildVenueSceneBlocks({
       direction: blocksFor([
         narrationDirection(nativeCommands, positions),
+        RELATIONSHIP_DIRECTION,
         scene.contactGeneration?.instruction ?? "",
         mode === "greet"
           ? "Open the Scene from established presence and give the player a natural opening. The player supplies any voluntary action or speech."
@@ -241,6 +244,7 @@ export function createSceneWriting({
       metadata: blocksFor([
         narrationResponse(nativeCommands, positions),
         nativeCommands ? SCENE_NARRATION_KEEP : ordinarySceneKeep(positions),
+        RELATIONSHIP_KEEP,
         nativeCommands ? NARRATION_NATIVE : "",
       ]),
       identity: blocksFor([
@@ -354,10 +358,11 @@ export function createSceneWriting({
         }),
       });
     }
+    const readset = fittedNarrationReadset(authority, context, fitted.evidenceIds);
     const request: Request = {
       fitted,
       readset: {
-        ...fittedNarrationReadset(authority, context, fitted.evidenceIds),
+        ...readset,
         ...(positions ? { ordinaryDialogue: true, ordinaryReplyRecovery: true, positionedSceneSources: true } : {}),
       },
       model: { model: model.model, connectionId: model.connectionId },

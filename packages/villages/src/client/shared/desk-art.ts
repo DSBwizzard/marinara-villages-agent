@@ -3,15 +3,19 @@ import type { DeskDestination } from "./DeskWorkspace.js";
 import { loadLetterFont } from "./letter-font-css.js";
 
 type ArtworkLayer = {
-  file: string;
+  url: string;
   property: string;
   loaded?: { image: HTMLImageElement; ready: Promise<void> };
 };
 
+const assets = "/api/capability-packages/villages/assets/";
+export const STORYBOOK_BACKGROUND_URL = assets + "storybook-background-wide.webp";
+export const VENUE_FALLBACK_URL = assets + "venue-fallback.webp";
+
 // The foreground matte uses the same pixel coordinates as the backdrop.
 const artwork: ArtworkLayer[] = [
-  { file: "storybook-background-wide.webp", property: "--menu-art" },
-  { file: "storybook-scenery-matte.webp", property: "--menu-scenery-matte" },
+  { url: STORYBOOK_BACKGROUND_URL, property: "--menu-art" },
+  { url: assets + "storybook-scenery-matte.webp", property: "--menu-scenery-matte" },
 ];
 
 async function prepareLayer(layer: ArtworkLayer): Promise<void> {
@@ -19,7 +23,7 @@ async function prepareLayer(layer: ArtworkLayer): Promise<void> {
     const image = new Image();
     let url: string | undefined;
     const ready = (async () => {
-      const response = await fetch(`/api/capability-packages/villages/assets/${layer.file}`, {
+      const response = await fetch(layer.url, {
         signal: AbortSignal.timeout(15_000),
       });
       if (!response.ok) throw new Error("Artwork unavailable");

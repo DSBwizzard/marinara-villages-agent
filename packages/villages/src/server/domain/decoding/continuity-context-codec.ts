@@ -40,6 +40,20 @@ export const continuityCaptureSchema = z
     prompt: z
       .object({
         entries: z.array(z.record(z.string(), z.unknown())).max(256),
+        relationships: z
+          .array(
+            z
+              .object({
+                for: id,
+                about: id,
+                score: z.number().int().min(-100).max(100).optional(),
+                romanticInterest: z.number().int().min(0).max(20).optional(),
+              })
+              .strict()
+              .refine((row) => row.score !== undefined || row.romanticInterest !== undefined),
+          )
+          .max(16)
+          .optional(),
         history: z.unknown(),
         protections: z.array(z.unknown()).max(1024),
       })
@@ -58,6 +72,13 @@ export const continuityCaptureSchema = z
       new Set(value.subjects.map((actor) => actor.id)).size === value.subjects.length &&
       value.actors.every((actor) =>
         value.subjects.some((subject) => subject.id === actor.id && subject.incarnation === actor.incarnation),
+      ) &&
+      (value.prompt.relationships ?? []).every(
+        (row) =>
+          row.for !== "player" &&
+          row.for !== row.about &&
+          value.actors.some((actor) => actor.id === row.for) &&
+          value.actors.some((actor) => actor.id === row.about),
       ) &&
       Object.keys(value.provenance).every((key) => keys.has(key)) &&
       new Set(value.offered.map((row) => row.holder.id)).size === value.offered.length &&

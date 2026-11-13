@@ -6,20 +6,18 @@ export function venueDisplayZones(place: VillageVenue) {
     const exterior = zone.kind === "exterior";
     const allowed = !zone.closed && (zone.accessView?.decision.allowed ?? false);
     const restricted = !exterior && zone.accessView?.decision.mode === "permission-required";
-    const accessLabel = allowed
-      ? "Open to you"
-      : zone.closed
-        ? "Closed for renovation"
-        : restricted
-          ? "Permission needed"
+    const accessLabel = zone.closed
+      ? "Closed for renovation"
+      : restricted || zone.kind === "private-residence"
+        ? "Permission required"
+        : allowed
+          ? "Open to you"
           : "Currently unavailable";
     return {
       ...zone,
       name: exterior ? "Entrance" : zone.name,
       allowed,
-      restricted,
       accessLabel,
-      isPrivate: zone.kind === "private-residence",
     };
   });
 }

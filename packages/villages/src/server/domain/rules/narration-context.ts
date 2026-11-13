@@ -22,7 +22,7 @@ import {
   continuityConstraints,
   continuityProtectionFingerprint,
 } from "./continuity.js";
-import { selectActorContinuity, selectRoomContinuity } from "./continuity-retrieval.js";
+import { relationshipAttitudes, selectActorContinuity, selectRoomContinuity } from "./continuity-retrieval.js";
 import { appendHistoryWithin, selectEpisodeHistory } from "./episodes.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import {
@@ -352,6 +352,17 @@ export function narrationContinuityContext(
     episodeIds: [],
     offered: [],
   });
+  const relationships = relationshipAttitudes(state.continuity, holders);
+  if (relationships.length)
+    parts.push({
+      ...emptyPart(),
+      block: {
+        text: JSON.stringify({ relationships }),
+        evidenceId: "relationship-attitudes",
+        optional: "memory",
+        pruningPriority: 1,
+      },
+    });
   // Raw witness views are larger than the rendered transcript. Fit the model-facing
   // transcript below, with a separate ceiling on raw projection work.
   const transcriptBudget = 12_000;

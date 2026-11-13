@@ -17,7 +17,7 @@ const capture = z
     opportunity: z
       .object({
         id,
-        kind: z.enum(["encounter", "routine"]),
+        kind: z.enum(["encounter", "routine", "relationship"]),
         startsAt: at,
         endsAt: at,
         actorIds: z.array(id).min(1).max(4),
@@ -33,6 +33,7 @@ const capture = z
     nativeFingerprint: digest,
     protectionFingerprint: digest,
     historical: z.literal(true).optional(),
+    relationshipAnswerIds: z.array(id).max(4).optional(),
     calendar: z.custom<ResidentNarrationCapture["calendar"]>((value) => {
       try {
         readSceneCalendar(value);
@@ -100,6 +101,12 @@ const capture = z
           value.context.actors.some((row) => row.id === actor.id && row.incarnation === actor.incarnation),
       ) &&
       (source.kind !== "encounter" || (value.actors.length >= 2 && !!source.venueId && !!source.zoneId)) &&
+      (source.kind !== "relationship" ||
+        (!value.historical &&
+          !source.venueId &&
+          !source.zoneId &&
+          !!value.relationshipAnswerIds?.length &&
+          value.relationshipAnswerIds.every((id) => source.actorIds.includes(id)))) &&
       !!room === !!source.venueId &&
       (!room ||
         (room.holder.placeId === source.venueId &&

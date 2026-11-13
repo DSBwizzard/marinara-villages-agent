@@ -176,6 +176,18 @@ await withBrowser(browser, async () => {
       profiles: ["mara", "eli"].map((characterId) => ({
         characterId,
         name: person(characterId).name,
+        scores:
+          characterId === "mara"
+            ? [
+                {
+                  person: { id: "player", name: "You" },
+                  score: 3,
+                  romanticInterest: 7,
+                  answer: "I enjoy when you visit.",
+                },
+                { person: { id: "eli", name: secondName }, score: -10, romanticInterest: 0 },
+              ]
+            : [],
         entries: [
           {
             ...memory(characterId + "-perspective", "player", "Mara has expressed an interest in talking again."),
@@ -1047,6 +1059,28 @@ await withBrowser(browser, async () => {
     await chooseSection("Venues");
     await expect(profile.getByText(/Agenda destination/)).toBeVisible();
     await chooseSection("Relationships");
+    await expect(profile.getByRole("meter", { name: "Toward you", exact: true })).toHaveAttribute("aria-valuenow", "3");
+    await expect(profile.getByRole("meter", { name: "Toward " + secondName, exact: true })).toHaveAttribute(
+      "aria-valuenow",
+      "-10",
+    );
+    const hearts = profile.getByRole("meter", { name: "Romantic interest toward you", exact: true });
+    await expect(hearts).toHaveAttribute("aria-valuenow", "7");
+    await expect(hearts.locator("[data-fill=full]")).toHaveCount(3);
+    await expect(hearts.locator("[data-fill=half]")).toHaveCount(1);
+    await expect(hearts.locator("[data-fill=empty]")).toHaveCount(6);
+    const emptyHearts = profile.getByRole("meter", { name: "Romantic interest toward " + secondName, exact: true });
+    await expect(emptyHearts.locator("[data-fill=empty]")).toHaveCount(10);
+    assert(
+      await emptyHearts.evaluate(
+        (node) =>
+          node.lastElementChild.getBoundingClientRect().right <= node.parentElement.getBoundingClientRect().right + 1,
+      ),
+    );
+    await expect(profile.getByText("I enjoy when you visit.", { exact: true })).toBeVisible();
+    await profile
+      .locator(".villages-relationship-scores")
+      .screenshot({ path: resolve(output, "relationship-meters-" + width + "-" + height + ".png") });
     await expect(profile.getByText("PRIVATE MARA STANCE", { exact: true })).toBeVisible();
     await expect(profile.getByText("Starting history returned an invalid connection.", { exact: false })).toBeVisible();
     await profile.getByRole("button", { name: "Retry unfinished work", exact: true }).click();

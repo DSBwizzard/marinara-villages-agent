@@ -4,7 +4,15 @@ import { z } from "zod";
 import { readResidentNarrationCapture } from "../decoding/resident-narration-codec.js";
 import { socialPlanSchema } from "../decoding/resident-plans-codec.js";
 import type { ResidentNarrationCapture } from "../models/resident-narration.js";
-import { NARRATION_KEEP } from "./narration-contract.js";
+import {
+  NARRATION_KEEP,
+  NARRATION_SEGMENT_CHARACTERS,
+  RELATIONSHIP_ANSWER,
+  RELATIONSHIP_ANSWER_STYLE,
+  RELATIONSHIP_DIRECTION,
+  RELATIONSHIP_KEEP,
+  residentReflectionSchema,
+} from "./narration-contract.js";
 import { memoryRequire } from "./memory-integrity.js";
 import { readNarrationNativeCommand } from "./narration-command-contract.js";
 import { narrationAccessPrompt } from "./narration-access.js";
@@ -134,7 +142,7 @@ const id = z.string().min(1).max(160),
 const proposal = z
   .object({
     encounter: z.unknown().optional(),
-    reflection: z.unknown().optional(),
+    reflection: residentReflectionSchema.optional(),
     mail: z
       .object({ senderId: id, text: z.string().min(1).max(2000) })
       .strict()
@@ -165,15 +173,71 @@ export type ResidentPlanningProposal = z.infer<typeof proposal>;
 export function buildResidentPlanningMessages(context: ResidentPlanningContext): CapabilityLanguageModelMessage[] {
   const capture = readResidentNarrationCapture(context.narration),
     offered = capture.opportunity;
+  if (offered.kind === "relationship") {
+    const { entries, protections, relationships } = capture.context.prompt;
+    const due = new Set(capture.relationshipAnswerIds);
+    const residents = context.residents
+      .filter((row) => due.has(row.characterId))
+      .map((resident) => {
+        const id = resident.characterId;
+        return {
+          ...resident,
+          warmth: relationships?.find((row) => row.for === id && row.about === "player")?.score ?? 0,
+          remembered: entries.filter(
+            (row) => row.for === id && Array.isArray(row.about) && row.about.includes("player"),
+          ),
+          exchanges: Object.values(capture.context.historical)
+            .flatMap((source) =>
+              (source.kind === "speech" || source.kind === "written") &&
+              (source.actorId === id || source.actorId === "player")
+                ? source.perceptions
+                    .filter((row) => row.actorId === id && row.channel === "words")
+                    .map((row) => ({ by: source.actorId, text: row.text }))
+                : [],
+            )
+            .slice(-12),
+          protections: protections.filter((row) => row.for === id),
+        };
+      });
+    return [
+      {
+        role: "system",
+        content: [
+          "Catch-up has reached the present. Write only private relationship blurbs about the player. Return JSON {keep:[{owner:resident ID,answer:[three alternative strings]}]}. The game shows one line per listed resident.",
+          RELATIONSHIP_ANSWER_STYLE,
+          "Use the card, the current relationship score and what each resident personally knows. Address the player directly. Treat private knowledge as belonging only to its named holder. Base every impression on existing history.",
+          'When protectionRequired is true, include protection:{roots:[applicable supplied protected root IDs, or an empty array],disposition:"clear"} only after checking the lines against the resident’s memory protections.',
+        ].join("\n\n"),
+      },
+      {
+        role: "user",
+        content: JSON.stringify({
+          player: context.playerPersonaName,
+          relationshipAnswersDue: capture.relationshipAnswerIds,
+          residents,
+          protectionRequired: capture.context.protectedRoots.length > 0,
+        }),
+      },
+    ];
+  }
   const text = [
     VILLAGE_SHARED_SETTING_RULE,
     "You are the GM for one captured resident opportunity. Return one JSON object. A quiet result {} is valid; no daily quota or obligation to act. The player is absent: never invent player participation, knowledge, actions or consent.",
     "Cards govern complete identity. The shared continuity contains individual knowledge and private GM history, never a shared resident mind. Current desires, perspectives and commitments guide initiative naturally without a separate lifecycle review. A refusal remains meaningful; an unchanged desire is no reason to repeat a declined invitation.",
     "Choose at most one source: encounter, reflection or mail. encounter:{opportunityId,lines:[{id?:label,speakerId,text}|{id?:label,kind:narration,text}]} requires the offered encounter and two to eight short lines, with two actual speakers. Only captured participants hear ordinary words and witness explicitly grounded local actions. No player, whispers, travel, construction, official services or time skips. Current Room entries support freeform nonstructural changes; keep only affected complete entries. Omitted room details are not absent. Intentions are not completed deeds.",
-    "reflection:{actorId,text} is one offered resident's private thought. Use segment:reflection with private perception for its own grounded keep; it proves no external observation, consent or other person's response. No public learning from private reflection.",
+    `reflection:{actorId,text} is one offered resident's brief private thought (max ${NARRATION_SEGMENT_CHARACTERS} characters). Use segment:reflection with private perception for its own grounded keep; it proves no external observation, consent or other person's response. No public learning from private reflection.`,
     "mail:{senderId,text} is an exact personal letter to the player from one offered resident instead of an encounter/reflection. Source letter refers to its exact writing; keep may retain only its actual writer or future reader. Player learning happens only when they read it. A letter grants no access and performs no native action.",
     PERSONAL_LETTER_INSTRUCTION,
     NARRATION_KEEP,
+    RELATIONSHIP_DIRECTION,
+    RELATIONSHIP_KEEP,
+    ...(capture.relationshipAnswerIds?.length
+      ? [
+          "Relationship answers can accompany an encounter or private reflection.",
+          RELATIONSHIP_ANSWER,
+          JSON.stringify({ relationshipAnswersDue: capture.relationshipAnswerIds }),
+        ]
+      : []),
     "Only an actual encounter may use commands:[{id?:label,at:line label,source:[current spoken line labels],requires?:[effect IDs],independent?:true,...}]. Each deciding actor must speak its complete decision now, to an actual participant. Supported: permission.grant or permission.revoke with by,visitor,venue,zone; access.decide with by,venue,zone,decision (invite-later,invite-outside-hours,ban-zone,ban-venue with visitor and optional accompanies; or access-management with the existing supplied management action); residence.request with by,venue; residence.decide with by,person,venue,approved; appointment with by,when:{dayOffset}|{weekday,afterToday?}|{date},minute?. No current-visit action or Scene ID. Use native:effect ID as a keep source for its actual result. Native authority and required household approvals remain mandatory; no immediate relocation. Reflections and letters perform no native commands.",
     "Use keep and requires in this same object for consequential lasting meaning; no meaning object, separate Wish/relationship review or full input classification. requires lists effects necessary to the source's successful fiction. Only independent:true permits an unrelated optional effect to drop. Historical aliases remain scoped; self is only the portrayed non-player's own internal state. Native mechanics cannot be obtained through keep.",
     context.catchup
@@ -209,6 +273,21 @@ export function readResidentPlanningProposal(
 ): ResidentPlanningProposal {
   const value = proposal.parse(payload),
     actors = context.narration.opportunity.actorIds;
+  if (context.narration.opportunity.kind === "relationship") {
+    memoryRequire(
+      !value.encounter &&
+        !value.reflection &&
+        !value.mail &&
+        !value.commands.length &&
+        !value.requires.length &&
+        !value.planId &&
+        !value.routineIdea &&
+        !value.housingRequests.length &&
+        value.keep.length <= 4,
+      "relationship catch-up accepts only private blurbs",
+    );
+    return value;
+  }
   memoryRequire(
     [value.encounter, value.reflection, value.mail].filter(Boolean).length <= 1,
     "choose one resident fictional source",
@@ -297,6 +376,7 @@ export function readResidentPlanningInput(raw: unknown): ResidentPlanningInput {
     context = value.context;
   memoryRequire(context.format === 1, "unsupported resident planning context");
   const capture = readResidentNarrationCapture(context.narration);
+  const relationship = capture.opportunity.kind === "relationship";
   memoryRequire(
     context.moment.instant === capture.context.at &&
       new Set(context.residents.map((row) => row.characterId)).size === context.residents.length &&
@@ -305,8 +385,13 @@ export function readResidentPlanningInput(raw: unknown): ResidentPlanningInput {
     "resident planning profile or calendar changed cast",
   );
   memoryRequire(
-    !!context.catchup === !!value.catchup &&
-      !!capture.historical === !!value.catchup &&
+    !!context.catchup === (!!value.catchup && !relationship) &&
+      !!capture.historical === (!!value.catchup && !relationship) &&
+      (!relationship ||
+        (value.catchup?.until === capture.context.at &&
+          !value.socialPlan &&
+          !context.housing.length &&
+          !context.plans.length)) &&
       (!value.catchup ||
         (value.catchup.world.seed === capture.context.seed && value.catchup.world.setupAt === capture.context.setupAt)),
     "resident planning changed historical world",

@@ -10,7 +10,7 @@ Villages saves the fitted request and its exact evidence before dispatch, then c
 
 Ordinary diagnostics share one server-only log of 100 recent entries, each capped at 24,000 characters of redacted response text. Prompts and connection configuration are excluded. The opaque diagnostic envelope owns no Gallery media and has no recovery authority. Eviction cannot release unfinished work, purchased responses or unknown accounting. Publication is best effort and cannot change the original failure. Redaction does not guarantee that story text contains no private information.
 
-Villages validates the GM's segments, common continuity and native commands against detached state. Invalid required effects or a valid halt hold the turn. Explicitly independent optional failures can accompany accepted prose. One Village compare-and-swap publishes the accepted Episode and its effects before Scene acknowledgement. Recovery attaches an already committed Episode before considering abandonment or replacement. Reads, reloads and copying diagnostics purchase no inference.
+Villages validates the GM's segments, common continuity and native commands against detached state. Invalid required effects or a valid halt hold the turn. A simple unnamed actor experience or information note is optional unless another required effect or the narration depends on it. Other effects can explicitly declare independence. Failed optional effects remain in the diagnostics alongside accepted prose. One Village compare-and-swap publishes the accepted Episode and its effects before Scene acknowledgement. Recovery attaches an already committed Episode before considering abandonment or replacement. Reads, reloads and copying diagnostics purchase no inference.
 
 ## Lost turn connections
 

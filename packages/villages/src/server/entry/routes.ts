@@ -45,8 +45,13 @@ import {
 export async function villagesRoutes(engine: FastifyInstance) {
   // Read-only Village browsing remains available; player writes cannot create a second history.
   const guard = async (method: string, path: string, body: unknown) => {
+    const settingsFields =
+      method === "patch" && path === "/settings" && body && typeof body === "object" && !Array.isArray(body)
+        ? Object.keys(body)
+        : undefined;
     if (
       method === "get" ||
+      settingsFields?.length === 0 ||
       path === "/background/presence" ||
       path === "/background/catchup/retry" ||
       path === "/background/catchup/continue" ||
@@ -60,6 +65,12 @@ export async function villagesRoutes(engine: FastifyInstance) {
       await prepareReturnCatchup(villageNow(), randomUUID());
       state = await peekVillageAuthority();
     }
+    if (
+      state.returnCatchup?.batch?.status === "failed" &&
+      settingsFields?.length === 1 &&
+      settingsFields[0] === "backgroundPace"
+    )
+      return null;
     let alreadyAdvanced = false;
     if (path === "/clock/advance") {
       const request = asRecord(body);

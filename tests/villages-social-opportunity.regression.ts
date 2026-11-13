@@ -14,6 +14,8 @@ import {
   departureContinuityAvailable,
 } from "../packages/villages/src/server/domain/rules/return-catchup-capture.js";
 import { createReturnCatchup } from "../packages/villages/src/server/features/background/return-catchup-service.js";
+import { backgroundSlotId } from "../packages/villages/src/server/domain/rules/background-revision.js";
+import { returnCatchupSubject } from "../packages/villages/src/server/domain/rules/return-catchup-authority.js";
 import {
   discoverReturnBatch,
   recordReturnVisibility,
@@ -237,9 +239,12 @@ assert.equal(changedKnowledge.returnCatchup?.batch?.status, "completed");
 assert.match(changedKnowledge.returnCatchup?.batch?.reason ?? "", /continuity changed/i);
 let working = structuredClone(tracking);
 const dispatched: string[] = [];
+let beforeMutation: (() => void) | undefined;
 const coordinator = createReturnCatchup({
   readSnapshot: async () => structuredClone(working),
   mutate: async (change: any) => {
+    beforeMutation?.();
+    beforeMutation = undefined;
     change(working);
     return structuredClone(working);
   },
@@ -268,6 +273,26 @@ assert.equal(
   "A completed visible return establishes a new boundary.",
 );
 working = structuredClone(tracking);
+const racedBatch = working.returnCatchup!.batch!;
+racedBatch.status = "running";
+for (const record of racedBatch.records!) record.status = "settled";
+beforeMutation = () => {
+  const at = racedBatch.until!;
+  racedBatch.opportunities!.push({
+    id: "relationship-concurrent",
+    kind: "relationship",
+    startsAt: at,
+    endsAt: at,
+    actorIds: [working.villagers[0].characterId],
+    venueId: "",
+    facts: [],
+  });
+  racedBatch.records!.push({ opportunityId: "relationship-concurrent", status: "pending" });
+};
+await coordinator.advance();
+assert.equal(racedBatch.status, "running", "A stale completion cannot close over a newly queued blurb.");
+assert.equal(racedBatch.records!.at(-1)!.status, "pending");
+working = structuredClone(tracking);
 working.returnCatchup!.batch!.opportunities = [];
 working.returnCatchup!.batch!.records = [];
 working.continuity.revision++;
@@ -278,6 +303,12 @@ working = structuredClone(tracking);
 working.returnCatchup!.batch!.status = "failed";
 working.returnCatchup!.batch!.records![0]!.status = "queued";
 let releaseRetry: (() => void) | undefined;
+const retryInstance = "12345678-1234-4abc-8def-123456789abc";
+const retryOpportunity = working.returnCatchup!.batch!.opportunities![0]!;
+const retrySlot = backgroundSlotId({
+  kind: "resident-planning",
+  subjectId: returnCatchupSubject("grounded-return", retryOpportunity.id),
+});
 const retryCoordinator = createReturnCatchup({
   readSnapshot: async () => structuredClone(working),
   mutate: async (change: any) => {
@@ -285,11 +316,13 @@ const retryCoordinator = createReturnCatchup({
     return structuredClone(working);
   },
   queue: async () => {},
-  job: async () => ({ id: "job", status: "failed", attempt: 1, error: "failed" }),
-  retryJob: async () =>
-    new Promise<void>((resolve) => {
+  job: async () => ({ id: "1".repeat(64), instanceId: retryInstance, status: "failed", attempt: 1 }),
+  retryJob: async (...args: unknown[]) => {
+    assert.deepEqual(args, [retrySlot, 1, "retry-action", retryInstance]);
+    return new Promise<void>((resolve) => {
       releaseRetry = resolve;
-    }),
+    });
+  },
   cancel: async () => {},
   settle: async () => "settled",
   hasPresence: () => true,

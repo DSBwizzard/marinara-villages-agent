@@ -11,10 +11,49 @@ import {
   continuityGuidesHolder,
   continuityProtectionUnits,
   continuityViews,
+  latestRelationshipScores,
+  latestRomanticInterests,
+  relationshipKey,
 } from "./continuity.js";
 import { memoryRequire } from "./memory-integrity.js";
 import { recallTerms } from "./text-recall.js";
 import { recentSharedEpisodes } from "./episodes.js";
+
+/** Current attitude is private GM context for its owner, not a source of in-world knowledge. */
+export function relationshipAttitudes(
+  collection: ContinuityCollection,
+  actors: Extract<ContinuityHolder, { kind: "actor" }>[],
+) {
+  const scores = latestRelationshipScores(collection);
+  const interests = latestRomanticInterests(collection);
+  if (!scores.size && !interests.size) return [];
+  return actors
+    .filter((owner) => owner.id !== "player")
+    .flatMap((owner) =>
+      actors.flatMap((subject) => {
+        if (owner.id === subject.id) return [];
+        const key = relationshipKey(owner, subject);
+        const score = scores.get(key)?.relationshipScore;
+        const romanticInterest = interests.get(key)?.romanticInterest;
+        if (score === undefined && romanticInterest === undefined) return [];
+        return [
+          {
+            for: owner.id,
+            about: subject.id,
+            ...(score !== undefined ? { score } : {}),
+            ...(romanticInterest !== undefined ? { romanticInterest } : {}),
+          },
+        ];
+      }),
+    )
+    .sort(
+      (a, b) =>
+        Number(b.about === "player") - Number(a.about === "player") ||
+        Math.max(Math.abs(b.score ?? 0), (b.romanticInterest ?? 0) * 5) -
+          Math.max(Math.abs(a.score ?? 0), (a.romanticInterest ?? 0) * 5),
+    )
+    .slice(0, 16);
+}
 
 function rank<T>(rows: T[], query: string, prose: (row: T) => string) {
   const terms = new Set(recallTerms(query)),

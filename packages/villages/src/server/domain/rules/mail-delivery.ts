@@ -139,6 +139,7 @@ function deliverLetter(
       delete row.offer;
       delete row.accept;
       delete row.closeOffer;
+      delete row.relationship;
     }
     if (Array.isArray(row.requires))
       row.requires = row.requires.filter(

@@ -2,6 +2,7 @@ import { ELEMENT_TAG } from "../../shared/constants.js";
 import { SpriteVisualSettings } from "./SpriteVisualSettings.js";
 import { MapsPanel } from "./MapsPanel.js";
 import { WorldNameSettings } from "./WorldNameSettings.js";
+import { PublicMeetingPlace } from "./PublicMeetingPlace.js";
 
 import { LoreTokenBudgetField, VillageLorebookPicker } from "../founding/FoundingPanels.js";
 import { SceneryStyleFields } from "../founding/villages-founding-editor";
@@ -105,6 +106,7 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
                   initial={snapshot.settings.worldName ?? ""}
                   reportLocalDraftStatus={ports.reportLocalDraftStatus}
                 />
+                <PublicMeetingPlace snapshot={snapshot} onSnapshot={ports.setSnapshot} />
                 <VillageLorebookPicker
                   books={lorebooks}
                   error={lorebooksError}
