@@ -315,7 +315,7 @@ export function prepareNarrationKeep(
   sourceContext: NarrationSourceContext,
   ordinaryDialogue?: true,
   ordinaryReplyRecovery?: true,
-  recognizeDirectOfferSpeech?: true | 2,
+  recognizeDirectOfferSpeech?: true | 2 | 3,
 ) {
   if (ordinaryReplyRecovery) {
     const row = asRecord(raw);
@@ -351,6 +351,22 @@ export function prepareNarrationKeep(
       const id = Object.hasOwn(sourceContext.labels, segment.segment) && sourceContext.labels[segment.segment];
       const line = sourceContext.lines.find((line) => line.id === id);
       const { proposer, participants } = proposal.offer;
+      if (
+        recognizeDirectOfferSpeech === 3 &&
+        proposal.owner === proposer &&
+        Array.isArray(proposal.for) &&
+        proposal.for.length === 1 &&
+        proposal.for[0] === proposer &&
+        "act" in segment &&
+        segment.act === "offer"
+      )
+        memoryRequire(
+          line?.role === "assistant" &&
+            line.kind !== "narration" &&
+            line.speakerId === proposer &&
+            participants.every((party) => party === proposer || line.heardBy.includes(party)),
+          "every offer participant must hear the proposer’s words",
+        );
       if (
         line?.role === "assistant" &&
         line.kind !== "narration" &&

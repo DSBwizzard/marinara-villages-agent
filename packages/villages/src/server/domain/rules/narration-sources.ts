@@ -105,7 +105,7 @@ function ordinaryReplyLayout(raw: Record<string, unknown>, positions: boolean, q
   };
 }
 
-function bindSceneSourcePositions(raw: Record<string, unknown>, quotes: boolean, directOffers = false) {
+function bindSceneSourcePositions(raw: Record<string, unknown>, quotes: boolean, directOffers?: true | 2 | 3) {
   if (!Array.isArray(raw.segments) || Object.hasOwn(raw, "commands")) return raw;
   const labels = raw.segments.map((value, index) => asRecord(value).id ?? "segment-" + index);
   const label = (position: unknown) =>
@@ -136,13 +136,14 @@ function bindSceneSourcePositions(raw: Record<string, unknown>, quotes: boolean,
           const [match] = matches;
           const offer = asRecord(row.offer);
           const declaredOffer =
-            directOffers &&
+            (directOffers === 2 || directOffers === 3) &&
             citations.length === 1 &&
             Object.keys(proof).length === 0 &&
             offer.proposer === speakerId &&
             Array.isArray(holders) &&
             Array.isArray(offer.participants) &&
-            offer.participants.every((party) => holders.includes(party)) &&
+            (offer.participants.every((party) => holders.includes(party)) ||
+              (directOffers === 3 && holders.length === 1 && holders[0] === speakerId && row.owner === speakerId)) &&
             !["replace", "parent", "accept", "closeOffer", "retire"].some((key) => Object.hasOwn(row, key)) &&
             !/["“”«»‘]|(?:^|[^\p{L}\p{N}])'/u.test(match.text);
           return { ...proof, segment: match.label, ...(declaredOffer ? { act: "offer" } : {}) };
@@ -179,7 +180,7 @@ export function readSceneNarrationReply(
   const quotes = readset.quotedSceneSources === true;
   const recovery = readset.ordinaryFormatRecovery;
   if (readset.ordinaryReplyRecovery) raw = ordinaryReplyLayout(raw, positions, quotes);
-  if (positions) raw = bindSceneSourcePositions(raw, quotes, readset.recognizeDirectOfferSpeech === 2);
+  if (positions) raw = bindSceneSourcePositions(raw, quotes, readset.recognizeDirectOfferSpeech);
   if (
     (recovery === 3 || recovery === 4) &&
     Array.isArray(raw.segments) &&

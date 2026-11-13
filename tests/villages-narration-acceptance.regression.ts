@@ -504,25 +504,43 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
       assert.equal(result.episode?.continuityVersionIds.length, 2);
     }
   }
-  for (const variant of ["exact", "legacy", "quoted", "reported", "wrong-proposer", "own-words", "by-number"]) {
+  for (const variant of [
+    "exact",
+    "legacy",
+    "quoted",
+    "reported",
+    "wrong-proposer",
+    "own-words",
+    "by-number",
+    "sole-proposer",
+    "sole-proposer-legacy",
+    "unheard-proposer",
+    "missing-holders",
+  ]) {
     const f = fixture();
     const quote = "come and look at this leg with me. I'll keep my hands off it until you've said.";
     const text =
       variant === "quoted" ? `She said, “${quote}”` : variant === "reported" ? `Her note—'${quote}'` : "So " + quote;
+    const soleProposer = variant.startsWith("sole-proposer") || variant === "unheard-proposer";
     const raw = {
       segments: [
         {
           kind: "dialogue",
           speakerId: f.id,
           text,
+          ...(variant === "unheard-proposer" ? { delivery: "whisper", targetId: "player" } : {}),
         },
       ],
       keep: [
         {
-          for: [f.id, "player"],
+          ...(variant !== "missing-holders" ? { for: soleProposer ? [f.id] : [f.id, "player"] } : {}),
+          ...(soleProposer ? { owner: f.id } : {}),
           class: "commitment",
           text: "Look at the stool leg together.",
-          offer: { proposer: variant === "wrong-proposer" ? "player" : f.id, participants: [f.id, "player"] },
+          offer: {
+            proposer: variant === "wrong-proposer" ? "player" : f.id,
+            participants: [f.id, "player", ...(variant === "unheard-proposer" ? ["unheard"] : [])],
+          },
           source: [
             variant === "by-number"
               ? { segment: 1 }
@@ -530,6 +548,7 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
                   speakerId: f.id,
                   quote,
                   ...(variant === "own-words" ? { perceive: { kind: "words", by: [f.id] } } : {}),
+                  ...(variant === "unheard-proposer" ? { act: "offer" } : {}),
                 },
           ],
         },
@@ -539,13 +558,15 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
     p.readset.ordinaryReplyRecovery = true;
     p.readset.positionedSceneSources = true;
     p.readset.quotedSceneSources = true;
-    p.readset.recognizeDirectOfferSpeech = variant === "legacy" ? true : 2;
+    p.readset.recognizeDirectOfferSpeech = variant === "legacy" ? true : variant === "sole-proposer-legacy" ? 2 : 3;
     const result = acceptNarrationContinuity(f.state, p, "quote-offer", later);
-    assert.equal(result.held, variant !== "exact", variant);
+    assert.equal(result.held, variant !== "exact" && variant !== "sole-proposer", variant);
     if (!result.held) {
       const source = f.state.continuity.records[0]?.offer?.events[0].sources[0];
       assert.equal(source?.excerpt, text);
       assert.equal(source?.act, "offer");
+      assert.equal(result.episode?.continuityVersionIds.length, variant === "sole-proposer" ? 1 : 2);
+      assert.equal(f.state.continuity.records[0]?.owner, undefined);
       assert(!Object.hasOwn(raw.keep[0].source[0], "act"));
     }
   }
