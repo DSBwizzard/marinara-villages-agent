@@ -19,6 +19,7 @@ export type NarrationReadset = {
   positionedSceneSources?: true;
   stripSceneHistoryDecoration?: true;
   ordinaryFormatRecovery?: true;
+  quotedSceneSources?: true;
   requestedMemory?: { start: number; end: number; recipientId?: string };
   codeRequestedMemory?: true;
   offered: AcceptedEpisode["offered"];

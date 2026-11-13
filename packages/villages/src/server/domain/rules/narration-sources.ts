@@ -56,7 +56,7 @@ export type NarrationSourceContext = {
 };
 export type NarrationSourceOwner = { holder: ContinuityHolder; writeId: string; text: string; class: ContinuityClass };
 
-function ordinaryReplyLayout(raw: Record<string, unknown>, positions: boolean) {
+function ordinaryReplyLayout(raw: Record<string, unknown>, positions: boolean, quotes: boolean) {
   if (
     !Array.isArray(raw.segments) ||
     Object.keys(raw).some((key) => !["segments", "keep", "keeps", "effects"].includes(key))
@@ -86,7 +86,7 @@ function ordinaryReplyLayout(raw: Record<string, unknown>, positions: boolean) {
   const normalized = keep.map((value) => {
     const { kind, ...fields } = asRecord(value);
     if (kind !== "keep" || field !== "effects") return value;
-    const candidate = positions ? bindSceneSourcePositions({ segments, keep: [fields] }).keep : [fields];
+    const candidate = positions ? bindSceneSourcePositions({ segments, keep: [fields] }, quotes).keep : [fields];
     try {
       readContinuityProposal((candidate as unknown[])[0]);
       return fields;
@@ -105,7 +105,7 @@ function ordinaryReplyLayout(raw: Record<string, unknown>, positions: boolean) {
   };
 }
 
-function bindSceneSourcePositions(raw: Record<string, unknown>) {
+function bindSceneSourcePositions(raw: Record<string, unknown>, quotes: boolean) {
   if (!Array.isArray(raw.segments) || Object.hasOwn(raw, "commands")) return raw;
   const labels = raw.segments.map((value, index) => asRecord(value).id ?? "segment-" + index);
   const label = (position: unknown) =>
@@ -119,6 +119,20 @@ function bindSceneSourcePositions(raw: Record<string, unknown>) {
       ...row,
       source: row.source.map((ref: unknown) => {
         const source = asRecord(ref);
+        if (quotes && typeof source.quote === "string" && source.quote.trim()) {
+          const { quote, speakerId, ...proof } = source;
+          if (!Object.keys(proof).every((key) => key === "act" || key === "perceive")) return ref;
+          const matches = (raw.segments as unknown[]).flatMap((value, index) => {
+            const line = asRecord(value);
+            return line.kind === "dialogue" &&
+              line.speakerId === speakerId &&
+              typeof line.text === "string" &&
+              line.text.includes(quote)
+              ? [labels[index]]
+              : [];
+          });
+          return matches.length === 1 ? { ...proof, segment: matches[0] } : ref;
+        }
         if (Object.hasOwn(source, "segment")) return { ...source, segment: label(source.segment) };
         const ground = asRecord(source.ground);
         const at = asRecord(ground.at);
@@ -148,8 +162,9 @@ export function readSceneNarrationReply(
   continuity: ContinuityCollection,
 ) {
   const positions = readset.positionedSceneSources === true;
-  if (readset.ordinaryReplyRecovery) raw = ordinaryReplyLayout(raw, positions);
-  if (positions) raw = bindSceneSourcePositions(raw);
+  const quotes = readset.quotedSceneSources === true;
+  if (readset.ordinaryReplyRecovery) raw = ordinaryReplyLayout(raw, positions, quotes);
+  if (positions) raw = bindSceneSourcePositions(raw, quotes);
   if (Object.keys(raw).length !== 1 || !Array.isArray(raw.segments)) return readNarrationReply(raw, speakers);
   const {
     source: { historical, seed },

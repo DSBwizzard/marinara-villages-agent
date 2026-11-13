@@ -245,6 +245,35 @@ await runCase("narration-acceptance/requested-memory", () => {
 });
 
 await runCase("narration-acceptance/ordinary-dialogue", () => {
+  for (const [variant, held] of [
+    ["exact", false],
+    ["wrong-speaker", true],
+    ["ambiguous", true],
+    ["legacy", true],
+  ] as const) {
+    const f = fixture();
+    const segments = [{ kind: "dialogue", speakerId: f.id, text: "I'll bring the lantern at dusk." }];
+    if (variant === "ambiguous") segments.push({ ...segments[0] });
+    const raw = {
+      segments,
+      keep: [
+        {
+          ...f.keep,
+          owner: f.id,
+          class: "commitment",
+          text: "Mara will bring the lantern at dusk.",
+          source: [{ speakerId: variant === "wrong-speaker" ? "player" : f.id, quote: "bring the lantern at dusk" }],
+        },
+      ],
+    };
+    const p = f.publication(raw);
+    p.readset.positionedSceneSources = true;
+    if (variant !== "legacy") p.readset.quotedSceneSources = true;
+    const result = acceptNarrationContinuity(f.state, p, "quoted", later);
+    assert.equal(result.held, held, variant);
+    assert.equal(f.state.continuity.versions[0]?.sources[0].actorId, held ? undefined : f.id);
+    assert.equal(raw.keep[0].source[0].quote, "bring the lantern at dusk");
+  }
   {
     const f = fixture();
     const raw = { segments: [{ kind: "dialogue", speakerId: f.id, text: "A brief aside.", delivery: "aside" }] };

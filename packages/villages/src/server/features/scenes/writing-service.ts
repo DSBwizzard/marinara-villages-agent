@@ -16,6 +16,7 @@ import {
   RELATIONSHIP_KEEP,
   SCENE_NARRATION_KEEP,
   SCENE_OFFER_DECISION,
+  SCENE_RELATIONSHIP_KEEP,
 } from "../../domain/rules/narration-contract.js";
 import { readModelJsonObject } from "../../domain/rules/json-reply.js";
 import { fittedNarrationReadset, narrationContinuityContext } from "../../domain/rules/narration-context.js";
@@ -244,7 +245,7 @@ export function createSceneWriting({
       metadata: blocksFor([
         narrationResponse(nativeCommands, positions),
         nativeCommands ? SCENE_NARRATION_KEEP : ordinarySceneKeep(positions),
-        RELATIONSHIP_KEEP,
+        positions ? SCENE_RELATIONSHIP_KEEP : RELATIONSHIP_KEEP,
         nativeCommands ? NARRATION_NATIVE : "",
       ]),
       identity: blocksFor([
@@ -340,7 +341,7 @@ export function createSceneWriting({
       plainJson
         ? '## Scene reply reminder\nBegin with {"segments":[. Return one complete JSON object. End at the player’s opening. Dialogue and narration have no source field. Historical pastSpeaker and witnessedWords belong to input. Put new keeps in one top-level keep array. ' +
             (positions
-              ? "Count every current segment from 1 when citing it. "
+              ? "For keeps, cite current dialogue by exact quote and speakerId. Count every current segment from 1 when citing it by number. "
               : "Cite the exact id you gave each current line. ") +
             "Close the object once."
         : undefined,
@@ -372,6 +373,7 @@ export function createSceneWriting({
               positionedSceneSources: true,
               stripSceneHistoryDecoration: true,
               ordinaryFormatRecovery: true,
+              quotedSceneSources: true,
             }
           : {}),
       },
