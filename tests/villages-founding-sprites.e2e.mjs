@@ -194,8 +194,16 @@ await withBrowser(browser, async () => {
       await side.getByRole("button", { name: "Use as side view" }).click();
       await expect(pane.getByRole("img", { name: "Happy · Front" })).toBeVisible();
       await expect(pane.getByRole("img", { name: "Happy · Side" })).toBeVisible();
-      await expect(pane.getByRole("textbox", { name: "Expression name" })).toHaveValue("Happy");
-      await expect(pane.getByRole("button", { name: "Set as default" })).toBeEnabled();
+      const expressionName = pane.getByRole("textbox", { name: "Expression name" });
+      const setDefault = pane.getByRole("button", { name: "Set as default" });
+      await expect(expressionName).toHaveValue("Happy");
+      await expect(setDefault).toBeEnabled();
+      const fieldBounds = await expressionName.boundingBox();
+      const defaultBounds = await setDefault.boundingBox();
+      assert.ok(fieldBounds && defaultBounds);
+      if (viewport.width > 600) {
+        assert.ok(Math.abs(fieldBounds.y + fieldBounds.height - defaultBounds.y - defaultBounds.height) < 1);
+      }
       await expect(pane.getByRole("button", { name: "Remove side view" })).toBeVisible();
       await expect(next).toBeDisabled();
       assert.equal(writes.length, 0);

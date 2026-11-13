@@ -57,7 +57,7 @@ export const APPEARANCE_STYLES = String.raw`
 .appearance-portrait { display:grid; justify-items:center; }
 .appearance-portrait > .marinara-capability-villages-avatar { width:min(100%,11rem); height:auto; aspect-ratio:1; border-radius:.45rem; }
 .appearance-expression-fields { display:flex; align-items:end; flex-wrap:wrap; gap:.55rem; margin-bottom:.65rem; }
-.appearance-expression-fields label { display:grid; gap:.3rem; flex:1 1 11rem; min-width:0; }
+.villages-appearance .appearance-expression-fields label { display:grid; gap:.3rem; flex:1 1 11rem; min-width:0; margin:0; line-height:inherit; }
 .appearance-expression-fields input { min-width:0; min-height:44px; color:var(--appearance-ink); background:transparent; border:1px solid var(--appearance-line); border-radius:.35rem; font:inherit; padding:.45rem; }
 .appearance-footer > span { margin-inline-end:auto; }
 .villages-appearance button.appearance-primary,.villages-founding-dialog.appearance-picker button.appearance-primary {
