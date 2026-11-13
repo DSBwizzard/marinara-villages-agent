@@ -109,8 +109,14 @@ await withBrowser(browser, async () => {
     await page.keyboard.press("Enter");
     const screen = page.getByRole("region", { name: "Mara’s appearance" });
     await expect(screen.getByRole("heading", { name: "Mara’s appearance" })).toBeFocused();
+    await expect(screen.getByRole("heading", { name: "Scene portrait" })).toBeVisible();
+    for (const name of ["Add sprite set", "Add front sprites", "Edit art in Engine"]) {
+      await expect(screen.getByRole("button", { name })).toHaveCount(0);
+    }
+    await screen.getByRole("button", { name: "Sprites", exact: true }).click();
     await screen.getByRole("button", { name: "Edit art in Engine" }).click();
     assert.deepEqual(await page.evaluate(() => window.engineOpen), ["mara", { tab: "sprites" }]);
+    await screen.getByRole("button", { name: "Sprites", exact: true }).click();
 
     await screen.getByRole("button", { name: "Add sprite set" }).click();
     const picker = page.getByRole("dialog", { name: "Add sprite set" });
@@ -142,10 +148,24 @@ await withBrowser(browser, async () => {
     const frontBounds = await screen.getByRole("img", { name: "Happy · Front" }).boundingBox();
     const sideBounds = await screen.getByRole("img", { name: "Happy · Side" }).boundingBox();
     assert.ok(frontBounds && sideBounds && sideBounds.x > frontBounds.x && sideBounds.x + sideBounds.width <= width);
+    assert.ok(Math.abs(frontBounds.y - sideBounds.y) < 1, "The paired artwork aligns at the top");
+    const expressionName = screen.getByRole("textbox", { name: "Expression name" });
+    const fields = await expressionName.boundingBox();
+    assert.ok(fields && fields.y < frontBounds.y && fields.x + fields.width <= width);
+    await expect(expressionName).toHaveValue("Happy");
+    await expressionName.fill("Joyful");
+    await screen.getByRole("button", { name: "Edit art in Engine" }).click();
+    const confirm = page.getByRole("dialog", { name: "Confirm" });
+    await expect(confirm).toContainText("Discard unsaved appearance changes?");
+    await confirm.getByRole("button", { name: "Keep editing" }).click();
+    await screen.getByRole("button", { name: "Set as default" }).click();
+    await expect(screen.getByRole("button", { name: "Joyful Default" })).toHaveAttribute("aria-pressed", "true");
     assert.equal(saves.length, 0, "Picker choices do not write until Save");
     await screen.getByRole("button", { name: "Save", exact: true }).click();
     await expect(screen.getByRole("status")).toHaveText("Saved");
     assert.equal(saves[0].expressions.length, 3);
+    assert.equal(saves[0].expressions[0].name, "Joyful");
+    assert.equal(saves[0].defaultExpressionId, saves[0].expressions[0].id);
     assert.equal(saves[0].expressions[0].side.filename, "happy-side.png");
     assert.equal(saves[0].expressions[1].side.filename, "neutral-1.png");
     assert.equal(saves[0].expressions[2].side, undefined);
@@ -153,6 +173,11 @@ await withBrowser(browser, async () => {
     await expect(picker).toContainText("3 front sprites already in use.");
     await expect(picker.getByRole("button", { name: "Add to appearance" })).toBeDisabled();
     await picker.getByRole("button", { name: "Cancel", exact: true }).click();
+    await screen.getByRole("button", { name: "Remove side view" }).click();
+    await expect(screen.getByRole("button", { name: "+ Add side view" })).toBeVisible();
+    await screen.getByRole("button", { name: "Remove expression" }).click();
+    await expect(screen.getByRole("button", { name: /^Joyful/ })).toHaveCount(0);
+    await screen.getByRole("button", { name: "Discard changes" }).click();
     await screen.getByRole("button", { name: "Portrait", exact: true }).click();
     await screen.getByRole("button", { name: "Save", exact: true }).click();
     await expect(screen.getByRole("status")).toHaveText("Saved");

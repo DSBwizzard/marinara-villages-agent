@@ -86,7 +86,10 @@ export function Appearance({
   const lastSave = useRef<{ key: string; id: string } | null>(null);
   const alive = useRef(false);
   const heading = useRef<HTMLHeadingElement>(null);
-  const dirty = JSON.stringify(choice) !== JSON.stringify(baseline);
+  const spriteEdits =
+    choice.defaultExpressionId !== baseline.defaultExpressionId ||
+    JSON.stringify(choice.expressions) !== JSON.stringify(baseline.expressions);
+  const dirty = spriteEdits || choice.useSprites !== baseline.useSprites;
   const locked = pending || uncertain;
   const selected =
     choice.expressions.find((row) => row.id === selectedId) ??
@@ -136,10 +139,11 @@ export function Appearance({
     return () => onBusyChange?.(false);
   }, [pending, dirty, stale, uncertain, onBusyChange]);
 
-  async function mayLeave() {
+  async function mayLeave(hasChanges = dirty) {
     if (working.current || uncertain) return false;
     return (
-      !dirty || (await confirm("Discard unsaved appearance changes?", { cancel: "Keep editing", confirm: "Discard" }))
+      !hasChanges ||
+      (await confirm("Discard unsaved appearance changes?", { cancel: "Keep editing", confirm: "Discard" }))
     );
   }
 
@@ -286,51 +290,54 @@ export function Appearance({
         )
       ) : (
         <>
-          <div className="appearance-layout">
-            <div>
-              <div className="appearance-mode" role="group" aria-label="Appearance mode">
-                {(["Portrait", "Sprites"] as const).map((label) => (
-                  <button
-                    type="button"
-                    key={label}
-                    aria-pressed={choice.useSprites === (label === "Sprites")}
-                    disabled={locked}
-                    onClick={() => edit({ ...choice, useSprites: label === "Sprites" })}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <div className="appearance-actions">
-                <button type="button" disabled={locked} onClick={() => setPicker("set")}>
-                  Add sprite set
+          <div className="appearance-mode" role="group" aria-label="Appearance mode">
+            {(["Portrait", "Sprites"] as const).map((label) => (
+              <button
+                type="button"
+                key={label}
+                aria-pressed={choice.useSprites === (label === "Sprites")}
+                disabled={locked}
+                onClick={() => edit({ ...choice, useSprites: label === "Sprites" })}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {choice.useSprites ? (
+            <div className="appearance-actions">
+              <button type="button" disabled={locked} onClick={() => setPicker("set")}>
+                Add sprite set
+              </button>
+              <button type="button" disabled={locked} onClick={() => setPicker("front")}>
+                Add front sprites
+              </button>
+              {typeof openCharacter === "function" ? (
+                <button
+                  type="button"
+                  className="appearance-link"
+                  disabled={locked}
+                  onClick={async () => {
+                    if (await mayLeave(spriteEdits)) {
+                      edit(baseline);
+                      openCharacter(characterId, { tab: "sprites" });
+                    }
+                  }}
+                >
+                  Edit art in Engine ↗
                 </button>
-                <button type="button" disabled={locked} onClick={() => setPicker("front")}>
-                  Add front sprites
-                </button>
-                {typeof openCharacter === "function" ? (
-                  <button
-                    type="button"
-                    className="appearance-link"
-                    disabled={locked}
-                    onClick={async () => {
-                      if (await mayLeave()) {
-                        edit(baseline);
-                        openCharacter(characterId, { tab: "sprites" });
-                      }
-                    }}
-                  >
-                    Edit art in Engine ↗
-                  </button>
-                ) : null}
-              </div>
-              {choice.useSprites && choice.expressions.length ? (
-                <div className="appearance-expressions" aria-label="Expressions">
+              ) : null}
+            </div>
+          ) : null}
+          {choice.useSprites && selected ? (
+            <div className="appearance-layout">
+              <div className="appearance-preview">
+                <h3>Expressions</h3>
+                <div className="appearance-expressions" role="group" aria-label="Expressions">
                   {choice.expressions.map((row) => (
                     <button
                       key={row.id}
                       type="button"
-                      aria-pressed={selected?.id === row.id}
+                      aria-pressed={selected.id === row.id}
                       onClick={() => select(row.id)}
                     >
                       <img src={image(row.front ?? row.side) || undefined} alt="" />
@@ -339,95 +346,97 @@ export function Appearance({
                     </button>
                   ))}
                 </div>
-              ) : null}
-            </div>
-            <div className="appearance-preview">
-              {choice.useSprites && selected ? (
-                <>
-                  <h3>{selected.name || "Expression"}</h3>
-                  <div className="appearance-views">
-                    {views.map((view) => {
-                      const label = view === "front" ? "Front" : "Side";
-                      const source = selected[view];
-                      return (
-                        <div key={view} className="appearance-view">
-                          <h4>{label}</h4>
-                          {source ? (
-                            <img src={image(source) || undefined} alt={selected.name + " · " + label} />
-                          ) : (
-                            <button
-                              type="button"
-                              disabled={locked}
-                              onClick={() => setPicker({ expressionId: selected.id, view })}
-                            >
-                              + Add {view} view
-                            </button>
-                          )}
-                          {source ? (
-                            <button
-                              type="button"
-                              className="appearance-link"
-                              disabled={locked}
-                              onClick={() => setPicker({ expressionId: selected.id, view })}
-                            >
-                              Replace {view} view
-                            </button>
-                          ) : null}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <details>
-                    <summary>Expression options</summary>
-                    <label>
-                      Expression name{" "}
-                      <input
-                        autoComplete="off"
-                        value={selected.name}
-                        maxLength={100}
-                        disabled={locked}
-                        onChange={(event) => updateSelected({ name: event.target.value })}
-                      />
-                    </label>
-                    <div className="appearance-actions">
-                      <button
-                        type="button"
-                        disabled={locked || selected.id === choice.defaultExpressionId}
-                        onClick={() => edit({ ...choice, defaultExpressionId: selected.id })}
-                      >
-                        Set as default
-                      </button>
-                      {selected.front && selected.side ? (
-                        <button type="button" disabled={locked} onClick={() => updateSelected({ side: undefined })}>
-                          Remove side view
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        disabled={locked}
-                        onClick={() => {
-                          edit(
-                            updateSprites(
-                              choice,
-                              choice.expressions.filter((row) => row.id !== selected.id),
-                            ),
-                          );
-                        }}
-                      >
-                        Remove expression
-                      </button>
-                    </div>
-                  </details>
-                </>
-              ) : (
-                <div className="appearance-portrait">
-                  <h3>Scene portrait</h3>
-                  <AvatarFace className={`${ELEMENT_TAG}-avatar`} name={name} portrait={portrait} />
+              </div>
+              <div className="appearance-preview">
+                <div className="appearance-expression-fields">
+                  <label>
+                    Expression name{" "}
+                    <input
+                      autoComplete="off"
+                      value={selected.name}
+                      maxLength={100}
+                      disabled={locked}
+                      onChange={(event) => updateSelected({ name: event.target.value })}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={locked || selected.id === choice.defaultExpressionId}
+                    onClick={() => edit({ ...choice, defaultExpressionId: selected.id })}
+                  >
+                    Set as default
+                  </button>
                 </div>
-              )}
+                <div className="appearance-views">
+                  {views.map((view) => {
+                    const label = view === "front" ? "Front" : "Side";
+                    const source = selected[view];
+                    return (
+                      <div key={view} className="appearance-view">
+                        <h4>{label}</h4>
+                        {source ? (
+                          <>
+                            <img src={image(source) || undefined} alt={selected.name + " · " + label} />
+                            <div className="appearance-view-actions">
+                              <button
+                                type="button"
+                                className="appearance-link"
+                                disabled={locked}
+                                onClick={() => setPicker({ expressionId: selected.id, view })}
+                              >
+                                Replace {view} view
+                              </button>
+                              {view === "side" && selected.front ? (
+                                <button
+                                  type="button"
+                                  className="appearance-link"
+                                  disabled={locked}
+                                  onClick={() => updateSelected({ side: undefined })}
+                                >
+                                  Remove side view
+                                </button>
+                              ) : null}
+                            </div>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={locked}
+                            onClick={() => setPicker({ expressionId: selected.id, view })}
+                          >
+                            + Add {view} view
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
-          </div>
+          ) : null}
+          {!choice.useSprites ? (
+            <div className="appearance-preview appearance-portrait">
+              <h3>Scene portrait</h3>
+              <AvatarFace className={`${ELEMENT_TAG}-avatar`} name={name} portrait={portrait} />
+            </div>
+          ) : null}
           <div className="appearance-footer">
+            {choice.useSprites && selected ? (
+              <button
+                type="button"
+                disabled={locked}
+                onClick={() => {
+                  edit(
+                    updateSprites(
+                      choice,
+                      choice.expressions.filter((row) => row.id !== selected.id),
+                    ),
+                  );
+                }}
+              >
+                Remove expression
+              </button>
+            ) : null}
             <span role="status">{notice}</span>
             {pendingFilenames.size > 200 ? (
               <p role="alert">
