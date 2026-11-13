@@ -840,16 +840,30 @@ await runCase("narration-acceptance/independent-failure", () => {
   assert.equal(result.rejected[0].id, "unrelated");
   assert.equal(f.state.continuity.versions.length, 1);
   assert.equal(f.state.episodes.records[0].segments.length, 1);
-  for (const variant of ["fallback", "legacy", "asserted", "dependency", "remember", "consent", "valid", "private"]) {
+  for (const variant of [
+    "fallback",
+    "legacy",
+    "asserted",
+    "dependency",
+    "remember",
+    "consent",
+    "valid",
+    "private",
+    "current-information",
+    "current-promise",
+    "current-legacy",
+  ]) {
     const f = fixture(variant === "remember" ? "Mara, please remember this: I use the west peg." : undefined);
     const line = "I mean to read the two entries tonight.";
+    const current = variant.startsWith("current-");
     const raw = {
       segments: [{ ...f.response(variant === "asserted" ? ["promise"] : [])[0], text: line }],
       keep: [
         {
           id: "promise",
           for: [f.id, "player"],
-          class: "commitment",
+          class: current && variant !== "current-promise" ? "information" : "commitment",
+          ...(current ? { current: true } : {}),
           owner: f.id,
           text:
             variant === "valid"
@@ -868,10 +882,11 @@ await runCase("narration-acceptance/independent-failure", () => {
     p.readset.ordinaryDialogue = true;
     p.readset.positionedSceneSources = true;
     p.readset.quotedSceneSources = true;
-    if (variant !== "legacy") p.readset.optionalActorMemories = true;
+    if (variant !== "legacy") p.readset.optionalActorMemories = variant === "current-legacy" ? true : 2;
     const result = acceptNarrationContinuity(f.state, p, "submission", later);
-    assert.equal(result.held, variant !== "fallback" && variant !== "valid", variant);
-    if (variant === "fallback") {
+    const discarded = variant === "fallback" || variant === "current-information";
+    assert.equal(result.held, !discarded && variant !== "valid", variant);
+    if (discarded) {
       assert.equal(result.episode?.segments[0].content, line);
       assert.equal(result.episode?.grounding.length, 0);
       assert.equal(result.rejected[0]?.id, "promise");

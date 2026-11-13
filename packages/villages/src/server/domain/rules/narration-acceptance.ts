@@ -300,7 +300,7 @@ export function acceptNarrationContinuity(
   const allowTranscriptNotes = readset.ordinaryDialogue && !reply.commands.length && !admission.protectedRoots.length;
   const requestedMemory = readset.requestedMemory;
   const optionalActorMemories =
-    readset.optionalActorMemories === true &&
+    (readset.optionalActorMemories === true || readset.optionalActorMemories === 2) &&
     allowTranscriptNotes &&
     !requestedMemory &&
     !native.effects.length &&
@@ -359,8 +359,13 @@ export function acceptNarrationContinuity(
         note.class === "perspective" ||
         note.class === "open-matter" ||
         (note.class === "commitment" && typeof note.owner === "string" && note.owner !== "player")) &&
-      Object.keys(note).every((key) =>
-        ["id", "for", "text", "class", "source", "owner", "about", "independent"].includes(key),
+      Object.keys(note).every(
+        (key) =>
+          ["id", "for", "text", "class", "source", "owner", "about", "independent"].includes(key) ||
+          (readset.optionalActorMemories === 2 &&
+            key === "current" &&
+            typeof note.current === "boolean" &&
+            (note.class === "information" || note.class === "experience")),
       ) &&
       Array.isArray(note.source) &&
       note.source.length &&
