@@ -158,6 +158,24 @@ export function readSceneNarrationReply(
   const segments = raw.segments.map((value: unknown) => {
     const line = asRecord(value),
       source = line.source;
+    if (
+      readset.stripSceneHistoryDecoration &&
+      line.kind === "dialogue" &&
+      line.requires === undefined &&
+      source === undefined &&
+      !line.delivery &&
+      !line.targetId &&
+      Object.hasOwn(line, "witnessedWords")
+    ) {
+      const { witnessedWords, ...prose } = line;
+      const annotation = asRecord(witnessedWords);
+      if (
+        typeof annotation.ref === "string" &&
+        /^h:\d+\.\d+$/u.test(annotation.ref) &&
+        Object.keys(annotation).length === 1
+      )
+        return prose;
+    }
     if (line.kind !== "dialogue" || line.requires !== undefined || !Array.isArray(source) || source.length !== 1)
       return value;
     const [alias] = source;

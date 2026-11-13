@@ -290,9 +290,11 @@ export function createSceneWriting({
           housing,
           nativeCommands && housing ? NARRATION_HOUSING_COMMANDS : "",
           narrationPlacePrompt(places),
-          requestedMemory
-            ? `The player explicitly asked to save a fact. Add this required top-level keep entry: {"id":"remember-fact","for":[${JSON.stringify(requestedMemory.recipientId ?? "resident-id")}],"class":"information","text":"Player said: <exact fact after the colon>","source":[{"input":"<exact fact after the colon>","ground":{"kind":"spoken","to":[${JSON.stringify(requestedMemory.recipientId ?? "resident-id")}]}}]}. Fill in the exact fact from the player submission. Use the ID of the resident who heard it. Put "remember-fact" in requires on any line claiming it was saved.`
-            : "",
+          context.codeRequestedMemory
+            ? 'Code records the exact requested fact for the named resident. Omit a keep for that fact. The resident may acknowledge it. Use "remember-fact" in requires on any line claiming it was saved.'
+            : requestedMemory
+              ? `The player explicitly asked to save a fact. Add this required top-level keep entry: {"id":"remember-fact","for":[${JSON.stringify(requestedMemory.recipientId ?? "resident-id")}],"class":"information","text":"Player said: <exact fact after the colon>","source":[{"input":"<exact fact after the colon>","ground":{"kind":"spoken","to":[${JSON.stringify(requestedMemory.recipientId ?? "resident-id")}]}}]}. Fill in the exact fact from the player submission. Use the ID of the resident who heard it. Put "remember-fact" in requires on any line claiming it was saved.`
+              : "",
           !nativeCommands && context.protections.length
             ? 'Check every proposed keep against the supplied protected meanings. Give protection.roots as the supplied root IDs and protection.disposition as "clear", "conflict", or "uncertain". Only clear may publish. Never restore a protected meaning through paraphrase, player input, or self attribution.'
             : "",
@@ -363,7 +365,14 @@ export function createSceneWriting({
       fitted,
       readset: {
         ...readset,
-        ...(positions ? { ordinaryDialogue: true, ordinaryReplyRecovery: true, positionedSceneSources: true } : {}),
+        ...(positions
+          ? {
+              ordinaryDialogue: true,
+              ordinaryReplyRecovery: true,
+              positionedSceneSources: true,
+              stripSceneHistoryDecoration: true,
+            }
+          : {}),
       },
       model: { model: model.model, connectionId: model.connectionId },
       // Plain transport lets local validation see replies that JSON mode can return as spaces.

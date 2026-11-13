@@ -414,11 +414,13 @@ await runCase("narration-writing/single-request", async () => {
   );
   const remember = await f.writing.prepareVenueTurnMessages(f.scene, "Mara, please remember this: I knit.", "chat");
   assert.equal(remember.readset.requestedMemory?.recipientId, f.id);
+  assert.equal(remember.readset.codeRequestedMemory, true);
   const rememberPrompt = remember.fitted.messages
     .slice(0, -1)
     .map((row) => row.content)
     .join("\n");
-  assert.match(rememberPrompt, /"id":"remember-fact"/u);
+  assert.match(rememberPrompt, /Code records the exact requested fact/u);
+  assert.doesNotMatch(rememberPrompt, /"id":"remember-fact"/u);
   assert.doesNotMatch(rememberPrompt, /I knit/u);
 
   const legacy = fixture(undefined, "deepseek-flash");
@@ -1235,15 +1237,24 @@ await runCase("narration-writing/long-followup", async () => {
     "I remember.",
   );
   assert.deepEqual(selfAnnotated.segments[0].source, ["self"]);
+  const decoration = { ref: "h:1515.1" };
+  const witnessed = {
+    segments: [{ kind: "dialogue", speakerId: f.id, text: "I remember.", witnessedWords: decoration }],
+  };
+  assert.equal(
+    readSceneNarrationReply(witnessed, [f.id], reply.readset, f.state.continuity).segments[0].text,
+    "I remember.",
+  );
+  assert.deepEqual(witnessed.segments[0].witnessedWords, decoration);
   assert.throws(
     () =>
       readSceneNarrationReply(
-        { segments: [{ kind: "dialogue", speakerId: f.id, text: "I remember.", witnessedWords: { ref: alias } }] },
+        { segments: [{ ...witnessed.segments[0], witnessedWords: { ref: alias } }] },
         [f.id],
         reply.readset,
         f.state.continuity,
       ),
-    /witnessedWords/,
+    /witnessedWords/u,
   );
   assert.throws(
     () => readSceneNarrationReply({ ...selfAnnotated, keep: [] }, [f.id], reply.readset, f.state.continuity),

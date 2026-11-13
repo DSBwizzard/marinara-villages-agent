@@ -757,9 +757,9 @@ export function narrationContinuityContext(
   const bounded = parts
     .filter((part) => retained.has(part) && hasWritingEvidence(part.block, evidenceIds))
     .map((part): Part => (readOnlyRecall && part.plainRecall ? { ...part, readOnly: true } : part));
-  const references = episodeContextActors({ actors, room }, [
-    ...new Set(bounded.flatMap((part) => Object.keys(part.provenance))),
-  ]);
+  const provenanceKeys = [...new Set(bounded.flatMap((part) => Object.keys(part.provenance)))];
+  const references = episodeContextActors({ actors, room }, provenanceKeys);
+  const roomReferences = episodeContextRooms({ actors, room }, provenanceKeys);
   const protections = continuityConstraints(state.continuity, [
     ...new Map(
       [...actors, room, ...npcCandidates.map((row) => row.holder), ...references].map((holder) => [
@@ -768,6 +768,12 @@ export function narrationContinuityContext(
       ]),
     ).values(),
   ]);
+  const codeRequestedMemory =
+    requestedMemory?.recipientId &&
+    fact &&
+    !/[*_[\]()`:]|^['‘]|\b(?:privately|to myself|in my head)\b/iu.test(fact) &&
+    !protections.length &&
+    !continuityConstraints(state.continuity, roomReferences).length;
   return {
     episodeId,
     actors,
@@ -786,6 +792,7 @@ export function narrationContinuityContext(
     at,
     memoryChange,
     requestedMemory,
+    codeRequestedMemory,
     parts: bounded,
     recentLore: bounded
       .filter((part) => part.sharedLoreWords)
@@ -798,10 +805,7 @@ export function narrationContinuityContext(
     residence: narrationResidenceContext(captured, ["player", ...writerIds]),
     places: narrationPlaceContext(captured, ["player", ...writerIds]),
     protections,
-    roomReferences: readOnlyRoomContext(
-      state,
-      episodeContextRooms({ actors, room }, [...new Set(bounded.flatMap((part) => Object.keys(part.provenance)))]),
-    ),
+    roomReferences: readOnlyRoomContext(state, roomReferences),
     source: {
       seed: state.seed,
       episodeId,
@@ -881,6 +885,7 @@ export function fittedNarrationReadset(
     source: { ...context.source, historical, subjects },
     ...(readOnlyKnowledge.length ? { readOnlyKnowledge } : {}),
     ...(context.requestedMemory ? { requestedMemory: context.requestedMemory } : {}),
+    ...(context.codeRequestedMemory ? { codeRequestedMemory: true as const } : {}),
     admission: {
       seed: state.seed,
       // The Scene request ID is local to one visit. Common continuity uses its Episode identity.

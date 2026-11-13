@@ -165,6 +165,8 @@ await runCase("narration-acceptance/requested-memory", () => {
       end: input.indexOf(fact) + fact.length,
       recipientId: f.id,
     });
+    assert.equal(publication.readset.codeRequestedMemory, true);
+    delete publication.readset.codeRequestedMemory;
     if (variant === "legacy") delete publication.readset.requestedMemory;
     const result = acceptNarrationContinuity(f.state, publication, "memory", later);
     assert.equal(result.held, variant !== "valid" && variant !== "legacy", variant);
@@ -181,9 +183,84 @@ await runCase("narration-acceptance/requested-memory", () => {
   ]) {
     assert.equal(fixture(casual).publication({}, "operation", true).readset.requestedMemory, undefined);
   }
+  const repeated = fixture(`Mara, remember this for ${fact}: ${fact}.`);
+  const raw = { segments: repeated.response(["remember-fact"]) };
+  const publication = repeated.publication(raw, "operation", true);
+  const result = acceptNarrationContinuity(repeated.state, publication, "remember", later);
+  assert.equal(result.held, false);
+  const [version] = repeated.state.continuity.versions;
+  assert.equal(version.text, "Player said: " + fact);
+  assert.equal(version.sources[0].range?.start, repeated.input.lastIndexOf(fact));
+  assert.deepEqual(
+    version.sources[0].perceptions.map((row) => row.actorId),
+    [repeated.id],
+  );
+  assert.equal(Object.hasOwn(raw, "keep"), false);
+  acceptNarrationContinuity(repeated.state, publication, "remember", later);
+  assert.equal(repeated.state.continuity.versions.length, 1);
+  const unnamed = fixture(`Remember this: ${fact}.`).publication({}, "operation", true).readset;
+  assert(unnamed.requestedMemory);
+  assert.equal(unnamed.codeRequestedMemory, undefined);
+  for (const aside of ["*I use the west peg*", "I think privately that I use the west peg", "[I use the west peg]"])
+    assert.equal(
+      fixture(`Mara, remember this: ${aside}`).publication({}, "operation", true).readset.codeRequestedMemory,
+      undefined,
+    );
+  const protectedWorld = fixture(input);
+  acceptNarrationContinuity(
+    protectedWorld.state,
+    protectedWorld.publication(
+      {
+        segments: protectedWorld.response(),
+        keep: [protectedWorld.keep],
+      },
+      "seed-memory",
+    ),
+    "seed-memory",
+    later,
+  );
+  const holder = continuityActor(protectedWorld.state, protectedWorld.id)!;
+  const root = protectedWorld.state.continuity.records[0];
+  const key = continuityHolderKey(holder);
+  protectedWorld.state.continuity = protectContinuity(
+    protectedWorld.state.continuity,
+    { id: root.id, recordRevision: root.revision, heads: { [key]: root.heads[key].revision } },
+    [holder],
+    "forget",
+    later,
+    { forget: true },
+  );
+  const screened = protectedWorld.publication({ segments: protectedWorld.response() }, "screened", true);
+  assert(screened.readset.requestedMemory && screened.readset.admission.protectedRoots.length);
+  assert.equal(screened.readset.codeRequestedMemory, undefined);
+  assert.equal(acceptNarrationContinuity(protectedWorld.state, screened, "screened", later).held, true);
+  const collision = fixture(input);
+  const collisionPublication = collision.publication(
+    { segments: collision.response(), keep: [{ ...collision.keep, id: "remember-fact" }] },
+    "operation",
+    true,
+  );
+  assert.throws(() => acceptNarrationContinuity(collision.state, collisionPublication, "remember", later), /reserved/u);
+  assert.equal(collision.state.continuity.versions.length, 0);
 });
 
 await runCase("narration-acceptance/ordinary-dialogue", () => {
+  {
+    const f = fixture();
+    const line = { ...f.response()[0], witnessedWords: { ref: "h:1515.1" } };
+    const { requires: _requires, ...ordinary } = line;
+    const p = f.publication({ segments: [ordinary] });
+    p.readset.positionedSceneSources = true;
+    assert.throws(() => acceptNarrationContinuity(f.state, p, "old", later), /witnessedWords/u);
+    p.readset.stripSceneHistoryDecoration = true;
+    assert.equal(acceptNarrationContinuity(f.state, p, "fixed", later).held, false);
+    assert.equal(f.state.continuity.versions.length, 0);
+    assert.deepEqual(p.raw, { segments: [ordinary] });
+    const effect = f.publication({ segments: [line], keep: [f.keep] }, "effect-operation");
+    effect.readset.positionedSceneSources = true;
+    effect.readset.stripSceneHistoryDecoration = true;
+    assert.throws(() => acceptNarrationContinuity(f.state, effect, "effect", later), /witnessedWords/u);
+  }
   for (const [ordinary, speech, held] of [
     [true, "I'll be by the door at dawn.", false],
     [true, "Nell will be by the door at dawn.", true],

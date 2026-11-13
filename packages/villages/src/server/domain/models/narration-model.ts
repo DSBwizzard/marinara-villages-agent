@@ -17,7 +17,9 @@ export type NarrationReadset = {
   ordinaryDialogue?: true;
   ordinaryReplyRecovery?: true;
   positionedSceneSources?: true;
+  stripSceneHistoryDecoration?: true;
   requestedMemory?: { start: number; end: number; recipientId?: string };
+  codeRequestedMemory?: true;
   offered: AcceptedEpisode["offered"];
   npcCandidates: { npc: import("./places.js").NpcIdentity; incarnation: string; offered: string[] }[];
   circumstance: import("./narrative-model.js").NarrativeAdmission | null;

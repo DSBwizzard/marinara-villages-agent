@@ -297,7 +297,37 @@ export function acceptNarrationContinuity(
   }
   const prepared = new Map<string, ReturnType<typeof prepareNarrationKeep>>();
   const allowTranscriptNotes = readset.ordinaryDialogue && !reply.commands.length && !admission.protectedRoots.length;
-  for (const [index, raw] of reply.keep.entries()) {
+  const requestedMemory = readset.requestedMemory;
+  const keeps = reply.keep.slice();
+  if (readset.codeRequestedMemory) {
+    memoryRequire(
+      requestedMemory?.recipientId && !admission.protectedRoots.length && !reply.commands.length,
+      "the automatic memory lost its captured scope",
+    );
+    const { start, end, recipientId } = requestedMemory;
+    const fact = source.input.slice(start, end);
+    memoryRequire(
+      fact && Number.isSafeInteger(start) && Number.isSafeInteger(end) && start >= 0 && end <= source.input.length,
+      "the automatic memory lost its exact words",
+    );
+    let occurrence = 0;
+    for (
+      let index = source.input.indexOf(fact);
+      index >= 0 && index <= start;
+      index = source.input.indexOf(fact, index + 1)
+    )
+      occurrence++;
+    memoryRequire(source.input.indexOf(fact, start) === start, "the automatic memory lost its exact words");
+    memoryRequire(!keeps.some((raw) => asRecord(raw).id === "remember-fact"), "automatic memory effect ID is reserved");
+    keeps.push({
+      id: "remember-fact",
+      for: [recipientId],
+      class: "information",
+      text: "Player said: " + fact,
+      source: [{ input: fact, occurrence, ground: { kind: "spoken", to: [recipientId], at: "start" } }],
+    });
+  }
+  for (const [index, raw] of keeps.entries()) {
     let header: ReturnType<typeof readNarrationEffectHeader>;
     try {
       header = readNarrationEffectHeader(raw, "keep-" + index);
@@ -596,7 +626,6 @@ export function acceptNarrationContinuity(
     if (!failed) break;
   }
   const acceptedKeeps = selection.acceptedIds.flatMap((id) => (prepared.has(id) ? [prepared.get(id)!] : []));
-  const requestedMemory = readset.requestedMemory;
   const memoryText =
     requestedMemory && "Player said: " + source.input.slice(requestedMemory.start, requestedMemory.end);
   if (
