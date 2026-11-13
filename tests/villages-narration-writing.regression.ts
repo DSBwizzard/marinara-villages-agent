@@ -382,7 +382,7 @@ await runCase("narration-writing/single-request", async () => {
   assert.match(reminder.content, /Use only reply fields in dialogue and narration/u);
   assert.match(reminder.content, /For a developed exchange, aim for about 500 words of visible prose/u);
   assert.match(reminder.content, /count current segments from 1/u);
-  assert.match(reminder.content, /a short exact quote and speakerId/u);
+  assert.match(reminder.content, /short exact quotes and speakerId/u);
   assert.equal(deepSeekReply.readset.positionedSceneSources, true);
   assert.equal(deepSeekReply.readset.source.input, exact);
   await deepSeek.writing.generate(deepSeek.scene, "", "greet");

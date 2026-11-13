@@ -313,6 +313,32 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
   }
   {
     const f = fixture();
+    const line = { kind: "narration", text: "Mara tilts the rack.", place: "by the shelf" };
+    const raw = { segments: [line] };
+    const p = f.publication(raw);
+    assert.throws(() => acceptNarrationContinuity(f.state, p, "old-place-label", later), /place/u);
+    p.readset.stripSceneReplyDecorations = true;
+    for (const unexpected of [
+      { ...line, place: "another Zone" },
+      { ...line, requires: ["move"] },
+    ])
+      assert.throws(
+        () => acceptNarrationContinuity(f.state, { ...p, raw: { segments: [unexpected] } }, "place-change", later),
+        /place/u,
+      );
+    assert.throws(
+      () => acceptNarrationContinuity(f.state, { ...p, raw: { ...raw, keep: [f.keep] } }, "cited-place", later),
+      /place/u,
+    );
+    const result = acceptNarrationContinuity(f.state, p, "local-place-label", later);
+    assert.equal(result.held, false);
+    assert.equal(result.episode?.segments[0].content, line.text);
+    assert.equal(result.episode?.segments[0].zoneId, f.scene.zoneId);
+    assert.equal(f.state.continuity.versions.length, 0);
+    assert.deepEqual(p.raw, raw);
+  }
+  {
+    const f = fixture();
     const line = { ...f.response(["remember"])[0], truncated: false };
     const raw = { segments: [line], keep: [f.keep] };
     const p = f.publication(raw);
@@ -333,9 +359,9 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
     assert.deepEqual(p.raw, raw);
     assert.equal(f.state.continuity.versions.length, 1);
   }
-  {
+  for (const delivery of ["normal", null]) {
     const f = fixture();
-    const line = { ...f.response(["remember"])[0], delivery: "normal" };
+    const line = { ...f.response(["remember"])[0], delivery };
     const raw = {
       segments: [{ kind: "narration", text: "Mara sets down the cup.", text_extra: "" }, line],
       keep: [f.keep],
@@ -344,6 +370,10 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
     p.readset.ordinaryFormatRecovery = 3;
     assert.throws(() => acceptNarrationContinuity(f.state, p, "old-delivery", later), /delivery/u);
     p.readset.ordinaryFormatRecovery = 4;
+    if (delivery === null) {
+      assert.throws(() => acceptNarrationContinuity(f.state, p, "old-null-delivery", later), /delivery/u);
+      p.readset.stripSceneReplyDecorations = true;
+    }
     assert.throws(
       () =>
         acceptNarrationContinuity(

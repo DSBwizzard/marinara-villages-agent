@@ -25,6 +25,7 @@ export type NarrationReadset = {
   stripOfferContributionEcho?: true;
   recognizeDirectOfferSpeech?: true | 2;
   optionalActorMemories?: true;
+  stripSceneReplyDecorations?: true;
   requestedMemory?: { start: number; end: number; recipientId?: string };
   codeRequestedMemory?: true;
   offered: AcceptedEpisode["offered"];

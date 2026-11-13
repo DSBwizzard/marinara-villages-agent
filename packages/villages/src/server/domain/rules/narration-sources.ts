@@ -194,7 +194,10 @@ export function readSceneNarrationReply(
           return prose;
         }
         if (line.kind !== "dialogue") return value;
-        const normal = recovery === 4 && line.delivery === "normal" && !Object.hasOwn(line, "targetId");
+        const normal =
+          recovery === 4 &&
+          (line.delivery === "normal" || (readset.stripSceneReplyDecorations === true && line.delivery === null)) &&
+          !Object.hasOwn(line, "targetId");
         if (!normal && line.truncated !== false) return value;
         const normalized = { ...line };
         if (line.truncated === false) delete normalized.truncated;
@@ -233,6 +236,16 @@ export function readSceneNarrationReply(
   const segments = raw.segments.map((value: unknown) => {
     const line = asRecord(value),
       source = line.source;
+    if (
+      readset.stripSceneReplyDecorations === true &&
+      line.kind === "narration" &&
+      Object.keys(line).every((key) => ["kind", "text", "place"].includes(key)) &&
+      typeof line.place === "string" &&
+      /^by the \p{L}[\p{L} -]{0,39}$/iu.test(line.place)
+    ) {
+      const { place: _place, ...prose } = line;
+      return prose;
+    }
     if (
       (recovery === true || recovery === 2 || recovery === 3 || recovery === 4) &&
       line.kind === "dialogue" &&
