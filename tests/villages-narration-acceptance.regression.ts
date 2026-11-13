@@ -852,17 +852,22 @@ await runCase("narration-acceptance/independent-failure", () => {
     "current-information",
     "current-promise",
     "current-legacy",
+    "open-matter-self",
+    "open-matter-self-shared",
+    "open-matter-self-asserted",
+    "open-matter-self-legacy",
   ]) {
     const f = fixture(variant === "remember" ? "Mara, please remember this: I use the west peg." : undefined);
     const line = "I mean to read the two entries tonight.";
     const current = variant.startsWith("current-");
+    const openMatter = variant.startsWith("open-matter-");
     const raw = {
-      segments: [{ ...f.response(variant === "asserted" ? ["promise"] : [])[0], text: line }],
+      segments: [{ ...f.response(variant.endsWith("asserted") ? ["promise"] : [])[0], text: line }],
       keep: [
         {
           id: "promise",
-          for: [f.id, "player"],
-          class: current && variant !== "current-promise" ? "information" : "commitment",
+          for: openMatter && !variant.endsWith("shared") ? [f.id] : [f.id, "player"],
+          class: openMatter ? "open-matter" : current && variant !== "current-promise" ? "information" : "commitment",
           ...(current ? { current: true } : {}),
           owner: f.id,
           text:
@@ -872,7 +877,13 @@ await runCase("narration-acceptance/independent-failure", () => {
           source:
             variant === "private"
               ? [{ segment: "reply", perceive: { kind: "private", by: [f.id] } }]
-              : [{ speakerId: f.id, quote: variant === "valid" ? line : "I will read both before dusk." }],
+              : [
+                  {
+                    speakerId: f.id,
+                    quote: variant === "valid" || openMatter ? line : "I will read both before dusk.",
+                  },
+                  ...(openMatter ? ["self"] : []),
+                ],
           ...(variant === "consent" ? { offer: { proposer: f.id, participants: [f.id, "player"] } } : {}),
         },
         ...(variant === "dependency" ? [{ ...f.keep, requires: ["promise"] }] : []),
@@ -882,9 +893,10 @@ await runCase("narration-acceptance/independent-failure", () => {
     p.readset.ordinaryDialogue = true;
     p.readset.positionedSceneSources = true;
     p.readset.quotedSceneSources = true;
-    if (variant !== "legacy") p.readset.optionalActorMemories = variant === "current-legacy" ? true : 2;
+    if (variant !== "legacy")
+      p.readset.optionalActorMemories = variant === "current-legacy" ? true : variant.endsWith("legacy") ? 2 : 3;
     const result = acceptNarrationContinuity(f.state, p, "submission", later);
-    const discarded = variant === "fallback" || variant === "current-information";
+    const discarded = variant === "fallback" || variant === "current-information" || variant === "open-matter-self";
     assert.equal(result.held, !discarded && variant !== "valid", variant);
     if (discarded) {
       assert.equal(result.episode?.segments[0].content, line);

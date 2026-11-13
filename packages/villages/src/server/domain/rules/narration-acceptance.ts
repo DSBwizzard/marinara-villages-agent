@@ -300,7 +300,9 @@ export function acceptNarrationContinuity(
   const allowTranscriptNotes = readset.ordinaryDialogue && !reply.commands.length && !admission.protectedRoots.length;
   const requestedMemory = readset.requestedMemory;
   const optionalActorMemories =
-    (readset.optionalActorMemories === true || readset.optionalActorMemories === 2) &&
+    (readset.optionalActorMemories === true ||
+      readset.optionalActorMemories === 2 ||
+      readset.optionalActorMemories === 3) &&
     allowTranscriptNotes &&
     !requestedMemory &&
     !native.effects.length &&
@@ -362,17 +364,23 @@ export function acceptNarrationContinuity(
       Object.keys(note).every(
         (key) =>
           ["id", "for", "text", "class", "source", "owner", "about", "independent"].includes(key) ||
-          (readset.optionalActorMemories === 2 &&
+          ((readset.optionalActorMemories === 2 || readset.optionalActorMemories === 3) &&
             key === "current" &&
             typeof note.current === "boolean" &&
             (note.class === "information" || note.class === "experience")),
       ) &&
       Array.isArray(note.source) &&
-      note.source.length &&
+      note.source.some((ref) => ref !== "self") &&
       note.source.every((ref: unknown) => {
         const citation = asRecord(ref);
         const keys = Object.keys(citation);
         return (
+          (readset.optionalActorMemories === 3 &&
+            ref === "self" &&
+            note.class === "open-matter" &&
+            Array.isArray(note.for) &&
+            note.for.length === 1 &&
+            note.for[0] === note.owner) ||
           (keys.length === 1 && typeof citation.segment === "string") ||
           (keys.length === 2 && typeof citation.speakerId === "string" && typeof citation.quote === "string")
         );
