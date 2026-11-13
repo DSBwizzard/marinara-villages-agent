@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { selectSpriteImage } from "../packages/villages/src/client/features/scenes/villages-sprite-stage.js";
 import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { readNarrationSubmission } from "../packages/villages/src/server/domain/decoding/narration-submission.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -10,6 +11,7 @@ import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-
 import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
+import { projectVillager } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
 import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
 import {
   createSceneWriting,
@@ -85,6 +87,30 @@ const world = coerceVillageState({
 });
 const venue = world.venues[0]!;
 assert.equal(world.villagers[0].sprite?.expressions.length, 3, "Current Sprite Manager assignments supply the catalog");
+const spriteImages = [
+  { view: "front" as const, label: "neutral", url: "/neutral", isDefault: true },
+  ...projectVillager(world.villagers[0], "A", "", [], "", "", null).sprite!.images.map((image) => ({
+    ...image,
+    isDefault: false,
+  })),
+];
+assert.equal(selectSpriteImage(spriteImages, side, "left")?.image.expressionId, side);
+assert.equal(selectSpriteImage(spriteImages, side, "front")?.image.expressionId, first);
+assert.equal(
+  selectSpriteImage(spriteImages, side, "right")?.image.expressionId,
+  side,
+  "Turning back reuses the same Side",
+);
+const frontMissing = spriteImages.filter((image) => image.expressionId !== first);
+assert.equal(selectSpriteImage(frontMissing, side, "front")?.image.expressionId, second);
+assert.equal(
+  selectSpriteImage(
+    spriteImages.filter((image) => image.view === "side" || image.isDefault),
+    side,
+    "front",
+  )?.image.url,
+  "/neutral",
+);
 const scene = zoneEventScene(
   coerceSession({
     version: 5,

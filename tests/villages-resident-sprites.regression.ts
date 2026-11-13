@@ -190,6 +190,15 @@ assert.equal(resolveSpriteExpression(numberedPairs, numberedId, true, "front", 0
 assert.equal(resolveSpriteExpression(numberedPairs, numberedId, true, "side", 0.5), "e-three");
 assert.equal(resolveSpriteExpression(numberedPairs, numberedId, false, "side", 0.5), "");
 assert.equal(resolveSpriteExpression(numberedPairs, "e-one", true, "side", 0.99), "e-one");
+const withPlainFront = {
+  ...numberedPairs,
+  expressions: [
+    { ...numberedPairs.expressions[0], name: "Big_Smile" },
+    { ...numberedPairs.expressions[4], name: "Big_Smile_03" },
+  ],
+};
+assert.equal(resolveSpriteExpression(withPlainFront, numberedId, true, "front", 0.99), "e-one");
+assert.equal(resolveSpriteExpression(withPlainFront, numberedId, true, "side", 0), "e-three");
 
 const cueLines = [
   { speakerId: "a", staging: [{ characterId: "a", look: { target: "villager" as const, characterId: "b" } }] },

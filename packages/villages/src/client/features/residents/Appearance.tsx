@@ -514,6 +514,7 @@ export function Appearance({
           availableRows={availableRows}
           assignedArtwork={assignedArtwork}
           assignedFilenames={assignedFilenames}
+          expressions={choice.expressions}
           onLibrary={(library) =>
             setData(
               (prior) =>
@@ -551,6 +552,7 @@ function EnginePicker({
   availableRows,
   assignedArtwork,
   assignedFilenames,
+  expressions,
   onLibrary,
   onClose,
   onAdd,
@@ -564,6 +566,7 @@ function EnginePicker({
   availableRows: number;
   assignedArtwork: ReadonlySet<string>;
   assignedFilenames: ReadonlySet<string>;
+  expressions: readonly AppearanceExpression[];
   onLibrary(value: SpriteAppearance): void;
   onClose(): void;
   onAdd(choices: NewExpression[]): void;
@@ -644,6 +647,7 @@ function EnginePicker({
         <SpriteSet
           data={data}
           assignedFilenames={assignedFilenames}
+          expressions={expressions}
           availableImports={Math.min(availableImports, availableRows)}
           onClose={onClose}
           onAdd={onAdd}
@@ -739,12 +743,14 @@ function folderKey(file: SpriteLibraryItem) {
 function SpriteSet({
   data,
   assignedFilenames,
+  expressions,
   availableImports,
   onClose,
   onAdd,
 }: {
   data: SpriteAppearance;
   assignedFilenames: ReadonlySet<string>;
+  expressions: readonly AppearanceExpression[];
   availableImports: number;
   onClose(): void;
   onAdd(choices: NewExpression[]): void;
@@ -766,8 +772,12 @@ function SpriteSet({
     const key = keyOf(file);
     sideByLabel.set(key, sideByLabel.has(key) ? null : file);
   }
-  const pairs = front
-    .filter((file) => !assignedFilenames.has(file.filename))
+  const existingLabels = new Set(expressions.map((row) => row.name.trim().toLowerCase()));
+  const existingSideOnly = new Set(expressions.filter((row) => !row.front).map((row) => row.name.trim().toLowerCase()));
+  const unusedFront = front.filter((file) => !assignedFilenames.has(file.filename));
+  const unusedSide = side.filter((file) => !assignedFilenames.has(file.filename));
+  const frontRows = unusedFront
+    .filter((file) => !existingSideOnly.has(keyOf(file)))
     .map((file) => {
       const key = keyOf(file);
       const match = key ? sideByLabel.get(key) : undefined;
@@ -776,8 +786,16 @@ function SpriteSet({
       const reason = ambiguous ? "Duplicate label" : match ? "Already in use" : sideFolder ? "No match" : "—";
       return { name: labelOf(file) || "Sprite", front: file, side: paired, reason };
     });
-  const pairCount = pairs.filter((row) => row.side).length;
-  const skippedFront = front.length - pairs.length;
+  const sideRows = unusedSide.flatMap((file) => {
+    const key = keyOf(file);
+    return key && !frontCounts.has(key) && !existingLabels.has(key) && sideByLabel.get(key) === file
+      ? [{ name: labelOf(file), front: undefined, side: file, reason: "Side only" }]
+      : [];
+  });
+  const pairs = [...frontRows, ...sideRows];
+  const pairCount = frontRows.filter((row) => row.side).length;
+  const skippedFront = front.length - unusedFront.length;
+  const skippedSide = unusedSide.length - pairCount - sideRows.length;
   const limitExceeded = pairs.length + pairCount > availableImports;
   const folders = data.folders.map((folder) => ({ key: "folder:" + folder.id, name: folder.name }));
   if (data.files.some((file) => !file.folderId)) folders.push({ key: "unfiled", name: "Unfiled" });
@@ -792,7 +810,7 @@ function SpriteSet({
               value={view === "front" ? frontFolder : sideFolder}
               onChange={(event) => (view === "front" ? setFrontFolder : setSideFolder)(event.target.value)}
             >
-              <option value="">{view === "front" ? "Choose a folder" : "None"}</option>
+              <option value="">None</option>
               {folders.map((folder) => (
                 <option
                   key={folder.key}
@@ -812,6 +830,7 @@ function SpriteSet({
           {skippedFront} front {skippedFront === 1 ? "sprite already in use" : "sprites already in use"}.
         </p>
       ) : null}
+      {frontRows.length < unusedFront.length ? <p>Use Add front view for labels already saved as Side only.</p> : null}
       {pairs.length ? (
         <table className="appearance-pairs" aria-label="Sprite pairs">
           <thead>
@@ -822,7 +841,7 @@ function SpriteSet({
             </tr>
           </thead>
           {groupNumberedSpritePairs(pairs).map(({ name, members }) => (
-            <tbody key={members[0]!.front.filename}>
+            <tbody key={(members[0]!.front ?? members[0]!.side)!.filename}>
               {members.length > 1 ? (
                 <tr className="appearance-pair-group">
                   <th scope="rowgroup" colSpan={3}>
@@ -831,10 +850,10 @@ function SpriteSet({
                 </tr>
               ) : null}
               {members.map((row) => (
-                <tr key={row.front.filename}>
+                <tr key={(row.front ?? row.side)!.filename}>
                   <th scope="row">{row.name}</th>
                   <td>
-                    <img src={row.front.url} alt={row.name + " · Front"} loading="lazy" />
+                    {row.front ? <img src={row.front.url} alt={row.name + " · Front"} loading="lazy" /> : row.reason}
                   </td>
                   <td>
                     {row.side ? <img src={row.side.url} alt={row.name + " · Side"} loading="lazy" /> : row.reason}
@@ -845,12 +864,18 @@ function SpriteSet({
           ))}
         </table>
       ) : null}
-      {frontFolder && side.length > pairCount ? <p>{side.length - pairCount} side sprites will be left out.</p> : null}
+      {skippedSide > 0 ? (
+        <p>
+          Skipped {skippedSide} Side {skippedSide === 1 ? "sprite" : "sprites"} with duplicate or already used labels.
+        </p>
+      ) : null}
       {limitExceeded ? (
         <p role="alert">Choose smaller folders or save your current changes before adding this set.</p>
       ) : null}
       <div className="appearance-footer">
-        <span>{pairs.length ? pairCount + " paired" : null}</span>
+        <span>
+          {pairs.length ? `${pairCount} paired${sideRows.length ? ` · ${sideRows.length} Side only` : ""}` : null}
+        </span>
         <button type="button" className="appearance-link" onClick={onClose}>
           Cancel
         </button>
@@ -862,7 +887,7 @@ function SpriteSet({
             onAdd(
               pairs.map((row) => ({
                 name: row.name,
-                front: engineChoice(row.front),
+                front: row.front && engineChoice(row.front),
                 side: row.side && engineChoice(row.side),
               })),
             )

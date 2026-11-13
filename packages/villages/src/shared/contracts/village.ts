@@ -59,6 +59,7 @@ export type ResidentSprite = {
     label: string;
     url: string;
     expressionId?: string;
+    variantGroup?: string;
     isDefault?: boolean;
   }>;
   framing: { mode: "full" | "half" };

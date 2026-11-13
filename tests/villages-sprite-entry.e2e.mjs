@@ -31,6 +31,7 @@ await withBrowser(browser, async () => {
       { filename: "f2.png", label: "Grin_02", folderId: "front", url: picture(false, "#a561c3"), version: "100" },
       { filename: "s2.png", label: "GRIN_02", folderId: "side", url: picture(true, "#a561c3"), version: "100" },
       { filename: "s1.png", label: "Grin_01", folderId: "side", url: picture(true, "#6192c3"), version: "100" },
+      { filename: "s3.png", label: "Grin_03", folderId: "side", url: picture(true, "#d49845"), version: "100" },
     ];
     const current = {
       revision: 0,
@@ -136,11 +137,18 @@ await withBrowser(browser, async () => {
     const happy = picker.getByRole("row").filter({ hasText: "Happy" });
     await expect(happy.getByRole("img", { name: "Happy · Front" })).toBeVisible();
     await expect(happy.getByRole("img", { name: "Happy · Side" })).toBeVisible();
-    await expect(picker.getByText("Grin · 2 variants", { exact: true })).toBeVisible();
+    await expect(picker.getByText("Grin · 3 variants", { exact: true })).toBeVisible();
     await expect(picker.getByRole("img", { name: "Grin_01 · Side" })).toHaveAttribute("src", files[9].url);
     await expect(picker.getByRole("img", { name: "Grin_02 · Side" })).toHaveAttribute("src", files[8].url);
     await expect(picker.getByRole("row").filter({ hasText: "Neutral" })).toContainText("Duplicate label");
     await expect(picker.getByRole("row").filter({ hasText: "Thinking" })).toContainText("No match");
+    const sideOnly = picker.getByRole("row", { name: /Grin_03/ });
+    await expect(sideOnly).toContainText("Side only");
+    await expect(sideOnly.getByRole("img", { name: "Grin_03 · Side" })).toHaveAttribute("src", files[10].url);
+    await frontFolder.selectOption("");
+    await expect(picker.getByRole("row", { name: /Grin_01/ })).toContainText("Side only");
+    await expect(picker.getByRole("button", { name: "Add to appearance" })).toBeEnabled();
+    await frontFolder.selectOption("folder:front");
     await sideFolder.selectOption("");
     await expect(happy.getByRole("img", { name: "Happy · Side" })).toHaveCount(0);
     await sideFolder.selectOption("folder:side");
@@ -148,7 +156,8 @@ await withBrowser(browser, async () => {
     const pairBounds = await picker.getByRole("table").boundingBox();
     assert.ok(pairBounds && pairBounds.x >= 0 && pairBounds.x + pairBounds.width <= width);
     await picker.getByRole("button", { name: "Add to appearance" }).click();
-    await screen.getByRole("button", { name: "Grin 2 variants", exact: true }).click();
+    const grin = screen.getByRole("button", { name: "Grin 3 variants", exact: true });
+    await grin.click();
     await expect(screen.getByRole("img", { name: "Grin_01 · Front" })).toHaveAttribute("src", files[6].url);
     await expect(screen.getByRole("img", { name: "Grin_01 · Side" })).toHaveAttribute("src", files[9].url);
     const variant = screen.getByRole("button", { name: "Variant 02", exact: true });
@@ -157,6 +166,10 @@ await withBrowser(browser, async () => {
     await expect(screen.getByRole("img", { name: "Grin_02 · Front" })).toHaveAttribute("src", files[7].url);
     await expect(screen.getByRole("img", { name: "Grin_02 · Side" })).toHaveAttribute("src", files[8].url);
     await expect(screen.getByRole("textbox", { name: "Variant label" })).toHaveValue("Grin_02");
+    const thirdVariant = screen.getByRole("button", { name: "Variant 03", exact: true });
+    await thirdVariant.click();
+    await expect(screen.getByRole("button", { name: "+ Add front view", exact: true })).toBeVisible();
+    await expect(screen.getByRole("img", { name: "Grin_03 · Side" })).toHaveAttribute("src", files[10].url);
     await screen.getByRole("button", { name: "Neutral Default" }).click();
     await screen.getByRole("button", { name: "+ Add side view", exact: true }).click();
     const side = page.getByRole("dialog", { name: "Side view for Neutral" });
@@ -184,17 +197,18 @@ await withBrowser(browser, async () => {
     assert.equal(saves.length, 0, "Picker choices do not write until Save");
     await screen.getByRole("button", { name: "Save", exact: true }).click();
     await expect(screen.getByRole("status")).toHaveText("Saved");
-    assert.equal(saves[0].expressions.length, 5);
+    assert.equal(saves[0].expressions.length, 6);
     assert.equal(saves[0].expressions[0].name, "Joyful");
     assert.equal(saves[0].defaultExpressionId, saves[0].expressions[0].id);
     assert.equal(saves[0].expressions[0].side.filename, "happy-side.png");
     assert.equal(saves[0].expressions[1].side.filename, "neutral-1.png");
     assert.equal(saves[0].expressions[2].side, undefined);
     assert.deepEqual(
-      saves[0].expressions.slice(3).map((row) => [row.name, row.front.filename, row.side.filename]),
+      saves[0].expressions.slice(3).map((row) => [row.name, row.front?.filename, row.side.filename]),
       [
         ["Grin_01", "f1.png", "s1.png"],
         ["Grin_02", "f2.png", "s2.png"],
+        ["Grin_03", undefined, "s3.png"],
       ],
     );
     await screen.getByRole("button", { name: "Add sprite set" }).click();
@@ -206,12 +220,12 @@ await withBrowser(browser, async () => {
     await screen.getByRole("button", { name: "Remove expression" }).click();
     await expect(screen.getByRole("button", { name: /^Joyful/ })).toHaveCount(0);
     await screen.getByRole("button", { name: "Discard changes" }).click();
-    await screen.getByRole("button", { name: "Grin 2 variants", exact: true }).click();
-    await variant.click();
+    await grin.click();
+    await thirdVariant.click();
     await screen.getByRole("button", { name: "Remove variant", exact: true }).click();
-    await expect(screen.getByRole("button", { name: "Grin_01", exact: true })).toBeVisible();
-    await screen.getByRole("button", { name: "Discard changes" }).click();
     await expect(screen.getByRole("button", { name: "Grin 2 variants", exact: true })).toBeVisible();
+    await screen.getByRole("button", { name: "Discard changes" }).click();
+    await expect(grin).toBeVisible();
     await screen.getByRole("button", { name: "Portrait", exact: true }).click();
     await screen.getByRole("button", { name: "Save", exact: true }).click();
     await expect(screen.getByRole("status")).toHaveText("Saved");

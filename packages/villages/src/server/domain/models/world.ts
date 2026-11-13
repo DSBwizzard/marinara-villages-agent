@@ -1,5 +1,5 @@
 import type { SpriteManagerState } from "../../../shared/contracts/sprites.js";
-import type { ProjectRoomEdit, VillageSettings } from "../../../shared/contracts/village.js";
+import type { ProjectRoomEdit, ResidentSprite, VillageSettings } from "../../../shared/contracts/village.js";
 import type { VillageNarrationStyle } from "../rules/narration-style.js";
 import type { HomeBuildingKind } from "../rules/prompt-preset.js";
 
@@ -886,13 +886,7 @@ export type VillageVillagerView = {
   dialogueColor: string;
   sprite:
     | (VillageResidentSprite & {
-        images: Array<{
-          view: "front" | "side";
-          label: string;
-          url: string;
-          expressionId?: string;
-          isDefault?: boolean;
-        }>;
+        images: ResidentSprite["images"];
       })
     | null;
   name: string;
