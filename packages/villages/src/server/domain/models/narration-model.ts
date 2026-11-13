@@ -18,7 +18,7 @@ export type NarrationReadset = {
   ordinaryReplyRecovery?: true;
   positionedSceneSources?: true;
   stripSceneHistoryDecoration?: true;
-  ordinaryFormatRecovery?: true | 2 | 3;
+  ordinaryFormatRecovery?: true | 2 | 3 | 4;
   quotedSceneSources?: true;
   splitKeepRecovery?: true | 2;
   coalesceOfferDecisions?: true;

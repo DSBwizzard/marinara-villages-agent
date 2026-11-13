@@ -333,6 +333,42 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
     assert.deepEqual(p.raw, raw);
     assert.equal(f.state.continuity.versions.length, 1);
   }
+  {
+    const f = fixture();
+    const line = { ...f.response(["remember"])[0], delivery: "normal" };
+    const raw = {
+      segments: [{ kind: "narration", text: "Mara sets down the cup.", text_extra: "" }, line],
+      keep: [f.keep],
+    };
+    const p = f.publication(raw);
+    p.readset.ordinaryFormatRecovery = 3;
+    assert.throws(() => acceptNarrationContinuity(f.state, p, "old-delivery", later), /delivery/u);
+    p.readset.ordinaryFormatRecovery = 4;
+    assert.throws(
+      () =>
+        acceptNarrationContinuity(
+          f.state,
+          { ...p, raw: { ...raw, segments: [{ ...line, targetId: "player" }] } },
+          "targeted",
+          later,
+        ),
+      /delivery/u,
+    );
+    assert.throws(
+      () =>
+        acceptNarrationContinuity(
+          f.state,
+          { ...p, raw: { ...raw, segments: [{ ...raw.segments[0], delivery: "shout" }] } },
+          "no-spoken-shout",
+          later,
+        ),
+      /delivery/u,
+    );
+    const result = acceptNarrationContinuity(f.state, p, "normal-speech", later);
+    assert.equal(result.held, false);
+    assert.deepEqual(result.episode?.segments[1]?.heardBy?.toSorted(), [f.id, "player"].toSorted());
+    assert.deepEqual(p.raw, raw);
+  }
   for (const [ordinary, speech, held] of [
     [true, "I'll be by the door at dawn.", false],
     [true, "Nell will be by the door at dawn.", true],

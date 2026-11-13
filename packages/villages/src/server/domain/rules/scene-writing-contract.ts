@@ -14,7 +14,7 @@ export function completeSceneObject(
   finishReason?: string,
   parsed?: ModelJsonReply,
   ordinaryReplyRecovery?: true,
-  ordinaryFormatRecovery?: true | 2 | 3,
+  ordinaryFormatRecovery?: true | 2 | 3 | 4,
   splitKeepRecovery?: true | 2,
 ): Record<string, unknown> | null {
   if (finishReason !== "stop" && finishReason !== "end_turn") return null;
@@ -29,7 +29,12 @@ export function completeSceneObject(
     if (value) return value;
   }
   if (!modelJsonWithinBounds(content)) return null;
-  if (ordinaryFormatRecovery === true || ordinaryFormatRecovery === 2 || ordinaryFormatRecovery === 3) {
+  if (
+    ordinaryFormatRecovery === true ||
+    ordinaryFormatRecovery === 2 ||
+    ordinaryFormatRecovery === 3 ||
+    ordinaryFormatRecovery === 4
+  ) {
     // Match complete strings first so punctuation inside the prose cannot be repaired.
     const separator = /"(?:[^"\\]|\\.)*"|(?<extra>\}(?:\s*,\s*\}|\s*\]\s*\})\s*,\s*)(?=\{)/gu;
     const extra = [...text.matchAll(separator)].filter(

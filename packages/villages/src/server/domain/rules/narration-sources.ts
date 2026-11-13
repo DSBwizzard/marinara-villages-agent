@@ -177,10 +177,11 @@ export function readSceneNarrationReply(
 ) {
   const positions = readset.positionedSceneSources === true;
   const quotes = readset.quotedSceneSources === true;
+  const recovery = readset.ordinaryFormatRecovery;
   if (readset.ordinaryReplyRecovery) raw = ordinaryReplyLayout(raw, positions, quotes);
   if (positions) raw = bindSceneSourcePositions(raw, quotes, readset.recognizeDirectOfferSpeech === 2);
   if (
-    readset.ordinaryFormatRecovery === 3 &&
+    (recovery === 3 || recovery === 4) &&
     Array.isArray(raw.segments) &&
     Object.keys(raw).every((key) => key === "segments" || key === "keep")
   ) {
@@ -188,9 +189,17 @@ export function readSceneNarrationReply(
       ...raw,
       segments: raw.segments.map((value: unknown) => {
         const line = asRecord(value);
-        if (line.kind !== "dialogue" || line.truncated !== false) return value;
-        const { truncated: _truncated, ...complete } = line;
-        return complete;
+        if (recovery === 4 && line.kind === "narration" && line.text_extra === "") {
+          const { text_extra: _extra, ...prose } = line;
+          return prose;
+        }
+        if (line.kind !== "dialogue") return value;
+        const normal = recovery === 4 && line.delivery === "normal" && !Object.hasOwn(line, "targetId");
+        if (!normal && line.truncated !== false) return value;
+        const normalized = { ...line };
+        if (line.truncated === false) delete normalized.truncated;
+        if (normal) delete normalized.delivery;
+        return normalized;
       }),
     };
   }
@@ -225,9 +234,7 @@ export function readSceneNarrationReply(
     const line = asRecord(value),
       source = line.source;
     if (
-      (readset.ordinaryFormatRecovery === true ||
-        readset.ordinaryFormatRecovery === 2 ||
-        readset.ordinaryFormatRecovery === 3) &&
+      (recovery === true || recovery === 2 || recovery === 3 || recovery === 4) &&
       line.kind === "dialogue" &&
       line.delivery === "aside" &&
       !Object.hasOwn(line, "targetId") &&
@@ -252,8 +259,7 @@ export function readSceneNarrationReply(
       if (
         typeof annotation.ref === "string" &&
         (/^h:\d+\.\d+$/u.test(annotation.ref) ||
-          ((readset.ordinaryFormatRecovery === 2 || readset.ordinaryFormatRecovery === 3) &&
-            annotation.ref === "self")) &&
+          ((recovery === 2 || recovery === 3 || recovery === 4) && annotation.ref === "self")) &&
         Object.keys(annotation).length === 1
       )
         return prose;
