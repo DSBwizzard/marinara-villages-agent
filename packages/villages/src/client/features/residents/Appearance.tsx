@@ -391,6 +391,7 @@ export function Appearance({
                     <label>
                       Expression name{" "}
                       <input
+                        autoComplete="off"
                         value={selected.name}
                         maxLength={100}
                         disabled={locked}
@@ -603,6 +604,7 @@ function EnginePicker({
                 <img src={item.url} alt="" loading="lazy" />
                 <span>
                   <input
+                    autoComplete="off"
                     type={target ? "radio" : "checkbox"}
                     name={target ? "appearance-facing" : undefined}
                     checked={selected.includes(item.key)}
