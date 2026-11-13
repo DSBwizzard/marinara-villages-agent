@@ -165,6 +165,8 @@ await runCase("narration-acceptance/requested-memory", () => {
       end: input.indexOf(fact) + fact.length,
       recipientId: f.id,
     });
+    assert.equal(publication.readset.codeRequestedMemory, true);
+    delete publication.readset.codeRequestedMemory;
     if (variant === "legacy") delete publication.readset.requestedMemory;
     const result = acceptNarrationContinuity(f.state, publication, "memory", later);
     assert.equal(result.held, variant !== "valid" && variant !== "legacy", variant);
@@ -181,9 +183,321 @@ await runCase("narration-acceptance/requested-memory", () => {
   ]) {
     assert.equal(fixture(casual).publication({}, "operation", true).readset.requestedMemory, undefined);
   }
+  const repeated = fixture(`Mara, remember this for ${fact}: ${fact}.`);
+  const raw = { segments: repeated.response(["remember-fact"]) };
+  const publication = repeated.publication(raw, "operation", true);
+  const result = acceptNarrationContinuity(repeated.state, publication, "remember", later);
+  assert.equal(result.held, false);
+  const [version] = repeated.state.continuity.versions;
+  assert.equal(version.text, "Player said: " + fact);
+  assert.equal(version.sources[0].range?.start, repeated.input.lastIndexOf(fact));
+  assert.deepEqual(
+    version.sources[0].perceptions.map((row) => row.actorId),
+    [repeated.id],
+  );
+  assert.equal(Object.hasOwn(raw, "keep"), false);
+  acceptNarrationContinuity(repeated.state, publication, "remember", later);
+  assert.equal(repeated.state.continuity.versions.length, 1);
+  const unnamed = fixture(`Remember this: ${fact}.`).publication({}, "operation", true).readset;
+  assert(unnamed.requestedMemory);
+  assert.equal(unnamed.codeRequestedMemory, undefined);
+  for (const aside of ["*I use the west peg*", "I think privately that I use the west peg", "[I use the west peg]"])
+    assert.equal(
+      fixture(`Mara, remember this: ${aside}`).publication({}, "operation", true).readset.codeRequestedMemory,
+      undefined,
+    );
+  const protectedWorld = fixture(input);
+  acceptNarrationContinuity(
+    protectedWorld.state,
+    protectedWorld.publication(
+      {
+        segments: protectedWorld.response(),
+        keep: [protectedWorld.keep],
+      },
+      "seed-memory",
+    ),
+    "seed-memory",
+    later,
+  );
+  const holder = continuityActor(protectedWorld.state, protectedWorld.id)!;
+  const root = protectedWorld.state.continuity.records[0];
+  const key = continuityHolderKey(holder);
+  protectedWorld.state.continuity = protectContinuity(
+    protectedWorld.state.continuity,
+    { id: root.id, recordRevision: root.revision, heads: { [key]: root.heads[key].revision } },
+    [holder],
+    "forget",
+    later,
+    { forget: true },
+  );
+  const screened = protectedWorld.publication({ segments: protectedWorld.response() }, "screened", true);
+  assert(screened.readset.requestedMemory && screened.readset.admission.protectedRoots.length);
+  assert.equal(screened.readset.codeRequestedMemory, undefined);
+  assert.equal(acceptNarrationContinuity(protectedWorld.state, screened, "screened", later).held, true);
+  const collision = fixture(input);
+  const collisionPublication = collision.publication(
+    { segments: collision.response(), keep: [{ ...collision.keep, id: "remember-fact" }] },
+    "operation",
+    true,
+  );
+  assert.throws(() => acceptNarrationContinuity(collision.state, collisionPublication, "remember", later), /reserved/u);
+  assert.equal(collision.state.continuity.versions.length, 0);
+  const echo = {
+    id: "remember-fact",
+    for: [collision.id],
+    class: "information",
+    text: "The player uses the west peg.",
+    source: [{ input: fact + ".", ground: { kind: "spoken", to: [collision.id] } }],
+  };
+  const echoed = collision.publication(
+    {
+      segments: [
+        ...collision.response(["remember-fact"]),
+        { kind: "dialogue", speakerId: collision.id, text: "The other peg stays free.", delivery: "aside" },
+      ],
+      keep: [echo],
+    },
+    "echoed",
+    true,
+  );
+  echoed.readset.recoverCodeMemoryEcho = true;
+  for (const keep of [
+    [{ ...echo, for: ["player"] }],
+    [{ ...echo, replace: "elsewhere" }],
+    [{ ...echo, source: [] }],
+    [echo, collision.keep],
+  ])
+    assert.throws(
+      () => acceptNarrationContinuity(collision.state, { ...echoed, raw: { ...echoed.raw, keep } }, "echo", later),
+      /reserved/u,
+    );
+  const saved = acceptNarrationContinuity(collision.state, echoed, "echo", later);
+  assert.equal(saved.held, false);
+  assert.equal(collision.state.continuity.versions.length, 1);
+  assert.equal(collision.state.continuity.versions[0].text, "Player said: " + fact);
+  assert.equal(saved.episode?.segments[1].presentation, "aside");
+  assert.deepEqual(echoed.raw.keep, [echo]);
 });
 
 await runCase("narration-acceptance/ordinary-dialogue", () => {
+  for (const [variant, held] of [
+    ["exact", false],
+    ["wrong-speaker", true],
+    ["ambiguous", true],
+    ["legacy", true],
+  ] as const) {
+    const f = fixture();
+    const segments = [{ kind: "dialogue", speakerId: f.id, text: "I'll bring the lantern at dusk." }];
+    if (variant === "ambiguous") segments.push({ ...segments[0] });
+    const raw = {
+      segments,
+      keep: [
+        {
+          ...f.keep,
+          owner: f.id,
+          class: "commitment",
+          text: "Mara will bring the lantern at dusk.",
+          source: [{ speakerId: variant === "wrong-speaker" ? "player" : f.id, quote: "bring the lantern at dusk" }],
+        },
+      ],
+    };
+    const p = f.publication(raw);
+    p.readset.positionedSceneSources = true;
+    if (variant !== "legacy") p.readset.quotedSceneSources = true;
+    const result = acceptNarrationContinuity(f.state, p, "quoted", later);
+    assert.equal(result.held, held, variant);
+    assert.equal(f.state.continuity.versions[0]?.sources[0].actorId, held ? undefined : f.id);
+    assert.equal(raw.keep[0].source[0].quote, "bring the lantern at dusk");
+  }
+  {
+    const f = fixture();
+    const raw = { segments: [{ kind: "dialogue", speakerId: f.id, text: "A brief aside.", delivery: "aside" }] };
+    const p = f.publication(raw);
+    assert.throws(() => acceptNarrationContinuity(f.state, p, "old-aside", later), /delivery/u);
+    p.readset.ordinaryFormatRecovery = true;
+    assert.throws(
+      () =>
+        acceptNarrationContinuity(
+          f.state,
+          { ...p, raw: { segments: [{ ...raw.segments[0], targetId: "player" }] } },
+          "targeted-aside",
+          later,
+        ),
+      /delivery/u,
+    );
+    const result = acceptNarrationContinuity(f.state, p, "aside", later);
+    assert.equal(result.held, false);
+    assert.deepEqual(result.episode?.segments[0]?.heardBy?.toSorted(), [f.id, "player"].toSorted());
+    assert.equal(raw.segments[0].delivery, "aside");
+  }
+  {
+    const f = fixture();
+    const line = { ...f.response()[0], witnessedWords: { ref: "h:1515.1" } };
+    const { requires: _requires, ...ordinary } = line;
+    const p = f.publication({ segments: [ordinary] });
+    p.readset.positionedSceneSources = true;
+    assert.throws(() => acceptNarrationContinuity(f.state, p, "old", later), /witnessedWords/u);
+    p.readset.stripSceneHistoryDecoration = true;
+    assert.equal(acceptNarrationContinuity(f.state, p, "fixed", later).held, false);
+    assert.equal(f.state.continuity.versions.length, 0);
+    assert.deepEqual(p.raw, { segments: [ordinary] });
+    const effect = f.publication({ segments: [line], keep: [f.keep] }, "effect-operation");
+    effect.readset.positionedSceneSources = true;
+    effect.readset.stripSceneHistoryDecoration = true;
+    assert.throws(() => acceptNarrationContinuity(f.state, effect, "effect", later), /witnessedWords/u);
+  }
+  {
+    const f = fixture();
+    const line = { kind: "narration", text: "Mara tilts the rack.", place: "by the shelf" };
+    const raw = { segments: [line] };
+    const p = f.publication(raw);
+    assert.throws(() => acceptNarrationContinuity(f.state, p, "old-place-label", later), /place/u);
+    p.readset.stripSceneReplyDecorations = true;
+    for (const unexpected of [
+      { ...line, place: "another Zone" },
+      { ...line, requires: ["move"] },
+    ])
+      assert.throws(
+        () => acceptNarrationContinuity(f.state, { ...p, raw: { segments: [unexpected] } }, "place-change", later),
+        /place/u,
+      );
+    assert.throws(
+      () => acceptNarrationContinuity(f.state, { ...p, raw: { ...raw, keep: [f.keep] } }, "cited-place", later),
+      /place/u,
+    );
+    const result = acceptNarrationContinuity(f.state, p, "local-place-label", later);
+    assert.equal(result.held, false);
+    assert.equal(result.episode?.segments[0].content, line.text);
+    assert.equal(result.episode?.segments[0].zoneId, f.scene.zoneId);
+    assert.equal(f.state.continuity.versions.length, 0);
+    assert.deepEqual(p.raw, raw);
+  }
+  {
+    const f = fixture();
+    const raw = {
+      segments: [{ kind: "dialogue", speakerId: f.id, text: "Hello.", delivery: null }],
+      halt: null,
+    };
+    const p = f.publication(raw);
+    p.readset.ordinaryReplyRecovery = true;
+    p.readset.ordinaryFormatRecovery = 5;
+    p.readset.stripSceneReplyDecorations = true;
+    assert.throws(() => acceptNarrationContinuity(f.state, p, "legacy-null-halt", later), /halt/u);
+    p.readset.stripSceneReplyDecorations = 2;
+    for (const extra of [
+      { keep: [] },
+      { commands: [] },
+      { halt: { reason: "authority" } },
+      { segments: [...raw.segments, { kind: "keep", ...f.keep }] },
+    ])
+      assert.throws(() =>
+        acceptNarrationContinuity(f.state, { ...p, raw: { ...raw, ...extra } }, "null-halt-effects", later),
+      );
+    const result = acceptNarrationContinuity(f.state, p, "null-halt", later);
+    assert.equal(result.held, false);
+    assert.equal(result.episode?.segments[0].content, "Hello.");
+    assert.deepEqual(result.episode?.segments[0].heardBy.toSorted(), [f.id, "player"].toSorted());
+    assert.deepEqual(p.raw, raw);
+  }
+  {
+    const f = fixture();
+    const raw = { segments: [f.response()[0]], leadSpeakerId: f.id };
+    const p = f.publication(raw);
+    p.readset.stripSceneReplyDecorations = 2;
+    assert.throws(() => acceptNarrationContinuity(f.state, p, "prior-lead-speaker", later), /leadSpeakerId/u);
+    p.readset.stripSceneReplyDecorations = 3;
+    for (const extra of [{ leadSpeakerId: "player" }, { keep: [f.keep] }, { commands: [] }])
+      assert.throws(
+        () => acceptNarrationContinuity(f.state, { ...p, raw: { ...raw, ...extra } }, "unclear-lead-speaker", later),
+        /leadSpeakerId/u,
+      );
+    const result = acceptNarrationContinuity(f.state, p, "lead-speaker-echo", later);
+    assert.equal(result.held, false);
+    assert.equal(result.episode?.segments[0].speakerId, f.id);
+    assert.deepEqual(p.raw, raw);
+  }
+  {
+    const f = fixture();
+    const raw = { segments: [f.response()[0]], _placeholder: "" };
+    const p = f.publication(raw);
+    p.readset.stripSceneReplyDecorations = 3;
+    assert.throws(() => acceptNarrationContinuity(f.state, p, "prior-placeholder", later), /_placeholder/u);
+    p.readset.stripSceneReplyDecorations = 4;
+    for (const extra of [
+      { _placeholder: "keep this" },
+      { keep: [] },
+      { segments: [...raw.segments, { kind: "keep", ...f.keep }] },
+    ])
+      assert.throws(() =>
+        acceptNarrationContinuity(f.state, { ...p, raw: { ...raw, ...extra } }, "unknown-placeholder", later),
+      );
+    const result = acceptNarrationContinuity(f.state, p, "empty-placeholder", later);
+    assert.equal(result.held, false);
+    assert.equal(result.episode?.segments[0].content, raw.segments[0].text);
+    assert.deepEqual(p.raw, raw);
+  }
+  {
+    const f = fixture();
+    const line = { ...f.response(["remember"])[0], truncated: false };
+    const raw = { segments: [line], keep: [f.keep] };
+    const p = f.publication(raw);
+    p.readset.ordinaryFormatRecovery = 2;
+    assert.throws(() => acceptNarrationContinuity(f.state, p, "prior-format", later), /truncated/u);
+    p.readset.ordinaryFormatRecovery = 3;
+    assert.throws(
+      () =>
+        acceptNarrationContinuity(
+          f.state,
+          { ...p, raw: { ...raw, segments: [{ ...line, truncated: true }] } },
+          "actual-truncation",
+          later,
+        ),
+      /truncated/u,
+    );
+    assert.equal(acceptNarrationContinuity(f.state, p, "format", later).held, false);
+    assert.deepEqual(p.raw, raw);
+    assert.equal(f.state.continuity.versions.length, 1);
+  }
+  for (const delivery of ["normal", null]) {
+    const f = fixture();
+    const line = { ...f.response(["remember"])[0], delivery };
+    const raw = {
+      segments: [{ kind: "narration", text: "Mara sets down the cup.", text_extra: "" }, line],
+      keep: [f.keep],
+    };
+    const p = f.publication(raw);
+    p.readset.ordinaryFormatRecovery = 3;
+    assert.throws(() => acceptNarrationContinuity(f.state, p, "old-delivery", later), /delivery/u);
+    p.readset.ordinaryFormatRecovery = 4;
+    if (delivery === null) {
+      assert.throws(() => acceptNarrationContinuity(f.state, p, "old-null-delivery", later), /delivery/u);
+      p.readset.stripSceneReplyDecorations = true;
+    }
+    assert.throws(
+      () =>
+        acceptNarrationContinuity(
+          f.state,
+          { ...p, raw: { ...raw, segments: [{ ...line, targetId: "player" }] } },
+          "targeted",
+          later,
+        ),
+      /delivery/u,
+    );
+    assert.throws(
+      () =>
+        acceptNarrationContinuity(
+          f.state,
+          { ...p, raw: { ...raw, segments: [{ ...raw.segments[0], delivery: "shout" }] } },
+          "no-spoken-shout",
+          later,
+        ),
+      /delivery/u,
+    );
+    const result = acceptNarrationContinuity(f.state, p, "normal-speech", later);
+    assert.equal(result.held, false);
+    assert.deepEqual(result.episode?.segments[1]?.heardBy?.toSorted(), [f.id, "player"].toSorted());
+    assert.deepEqual(p.raw, raw);
+  }
   for (const [ordinary, speech, held] of [
     [true, "I'll be by the door at dawn.", false],
     [true, "Nell will be by the door at dawn.", true],
@@ -224,11 +538,15 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
     assert.deepEqual(f.state.continuity.records, []);
     assert.equal(f.state.episodes.records.length, held ? 0 : 1);
   }
-  for (const [recover, ref, text, held] of [
+  for (const [recover, ref, text, held, direct] of [
     [true, "reply", "Come to the bench and I'll show you.", false],
     [true, "reply", "No, I won't show you.", true],
     [true, "h:old", "Come to the bench and I'll show you.", true],
     [false, "reply", "Come to the bench and I'll show you.", true],
+    [true, "reply", "Then say the word and I'll walk you through.", false, true],
+    [true, "reply", "Then say the word and I'll walk you through.", true],
+    [true, "reply", "Then say the word and I'll never help you again.", true, true],
+    [true, "reply", '"Then say the word and I\'ll walk you through," she said.', true, true],
   ] as const) {
     const f = fixture();
     const p = f.publication({
@@ -245,6 +563,7 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
       ],
     });
     if (recover) p.readset.ordinaryReplyRecovery = true;
+    if (direct) p.readset.recognizeDirectOfferSpeech = true;
     const result = acceptNarrationContinuity(f.state, p, "offer", later);
     assert.equal(result.held, held);
     assert.equal(f.state.continuity.records[0]?.offer?.events[0].act, held ? undefined : "offer");
@@ -282,6 +601,162 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
     if (!result.held) {
       assert.equal(result.episode?.segments[0].content, text);
       assert.equal(result.episode?.continuityVersionIds.length, 2);
+    }
+  }
+  for (const variant of [
+    "exact",
+    "legacy",
+    "quoted",
+    "reported",
+    "earlier-quoted-label",
+    "earlier-quoted-label-legacy",
+    "earlier-quoted-label-repeated",
+    "earlier-unclosed-quote",
+    "wrong-proposer",
+    "own-words",
+    "by-number",
+    "sole-proposer",
+    "sole-proposer-legacy",
+    "unheard-proposer",
+    "missing-holders",
+    "missing-holders-legacy",
+    "missing-holders-unheard",
+    "missing-holders-decision",
+    "null-holders",
+  ]) {
+    const f = fixture("Yes, I accept.");
+    const witness = { ...f.state.worldPlaces.npcs[f.id], id: "npc:leo", name: "Leo", label: "Leo" };
+    if (variant === "missing-holders-unheard") {
+      f.state.worldPlaces.npcs[witness.id] = witness;
+      f.scene.activeIds.push(witness.id);
+      f.scene.contactGeneration!.actorIds!.push(witness.id);
+      f.scene.participants.push({ characterId: witness.id, name: witness.name, doing: "Listening" });
+      f.scene.sceneAttendance!.occupants.push({
+        characterId: witness.id,
+        name: witness.name,
+        doing: "Listening",
+        zoneId: "parlor",
+      });
+    }
+    const quote = "come and look at this leg with me. I'll keep my hands off it until you've said.";
+    const text =
+      variant === "quoted"
+        ? `She said, “${quote}”`
+        : variant === "reported"
+          ? `Her note—'${quote}'`
+          : variant.startsWith("earlier-quoted-label")
+            ? `The 'blue post' is out of sight. ${quote}${variant.endsWith("repeated") ? ` ${quote}` : ""}`
+            : variant === "earlier-unclosed-quote"
+              ? `She said 'The blue post is out of sight. ${quote}`
+              : "So " + quote;
+    const soleProposer = variant.startsWith("sole-proposer") || variant === "unheard-proposer";
+    const missingHolders = variant.startsWith("missing-holders");
+    const raw = {
+      segments: [
+        {
+          kind: "dialogue",
+          speakerId: f.id,
+          text,
+          ...(["unheard-proposer", "missing-holders-unheard"].includes(variant)
+            ? { delivery: "whisper", targetId: "player" }
+            : {}),
+        },
+      ],
+      keep: [
+        {
+          ...(missingHolders
+            ? {}
+            : { for: variant === "null-holders" ? null : soleProposer ? [f.id] : [f.id, "player"] }),
+          ...(soleProposer ? { owner: f.id } : {}),
+          ...(variant === "missing-holders-decision" ? { accept: "player" } : {}),
+          class: "commitment",
+          text: "Look at the stool leg together.",
+          offer: {
+            proposer: variant === "wrong-proposer" ? "player" : f.id,
+            participants: [
+              f.id,
+              "player",
+              ...(variant === "unheard-proposer"
+                ? ["unheard"]
+                : variant === "missing-holders-unheard"
+                  ? [witness.id]
+                  : []),
+            ],
+          },
+          source: [
+            variant === "by-number"
+              ? { segment: 1 }
+              : {
+                  speakerId: f.id,
+                  quote,
+                  ...(variant === "own-words" ? { perceive: { kind: "words", by: [f.id] } } : {}),
+                  ...(variant === "unheard-proposer" ? { act: "offer" } : {}),
+                },
+          ],
+        },
+      ],
+    };
+    const p = f.publication(raw);
+    if (variant === "missing-holders-unheard") assert(p.readset.admission.actors.some(({ id }) => id === witness.id));
+    p.readset.ordinaryReplyRecovery = true;
+    p.readset.positionedSceneSources = true;
+    p.readset.quotedSceneSources = true;
+    p.readset.recognizeDirectOfferSpeech =
+      variant === "legacy"
+        ? true
+        : variant === "sole-proposer-legacy"
+          ? 2
+          : variant === "missing-holders-legacy"
+            ? 3
+            : variant === "earlier-quoted-label-legacy"
+              ? 4
+              : 5;
+    const result = acceptNarrationContinuity(f.state, p, "quote-offer", later);
+    assert.equal(
+      result.held,
+      !["exact", "sole-proposer", "missing-holders", "earlier-quoted-label"].includes(variant),
+      variant,
+    );
+    if (!result.held) {
+      const source = f.state.continuity.records[0]?.offer?.events[0].sources[0];
+      assert.equal(source?.excerpt, text);
+      assert.equal(source?.act, "offer");
+      assert.equal(result.episode?.continuityVersionIds.length, variant === "sole-proposer" ? 1 : 2);
+      assert.equal(f.state.continuity.records[0]?.owner, undefined);
+      assert(!Object.hasOwn(raw.keep[0].source[0], "act"));
+      if (missingHolders) {
+        const [offer] = f.state.continuity.records;
+        assert.deepEqual(
+          Object.values(offer.heads)
+            .map(({ holder }) => holder.id)
+            .sort(),
+          [f.id, "player"].sort(),
+        );
+        assert.deepEqual(
+          offer.offer?.events.map(({ act }) => act),
+          ["offer"],
+        );
+        const accepted = f.publication(
+          {
+            segments: [{ ...f.response()[0], text: "See you there." }],
+            keep: [
+              {
+                for: [f.id, "player"],
+                accept: "player",
+                replace: offer.id,
+                source: [{ input: f.input, ground: { kind: "spoken", to: [f.id, "player"] }, act: "accept" }],
+              },
+            ],
+          },
+          "later-decision",
+        );
+        const saved = acceptNarrationContinuity(f.state, accepted, "accept-offer", later);
+        assert.equal(saved.held, false, JSON.stringify(saved.rejected));
+        assert.deepEqual(
+          f.state.continuity.records[0].offer?.events.map(({ act }) => act),
+          ["offer", "accept"],
+        );
+      }
     }
   }
   for (const [ref, positions, heard, held] of [
@@ -575,6 +1050,98 @@ await runCase("narration-acceptance/independent-failure", () => {
   assert.equal(result.rejected[0].id, "unrelated");
   assert.equal(f.state.continuity.versions.length, 1);
   assert.equal(f.state.episodes.records[0].segments.length, 1);
+  for (const variant of [
+    "fallback",
+    "legacy",
+    "asserted",
+    "dependency",
+    "remember",
+    "consent",
+    "valid",
+    "private",
+    "current-information",
+    "current-promise",
+    "current-legacy",
+    "open-matter-self",
+    "open-matter-self-shared",
+    "open-matter-self-asserted",
+    "open-matter-self-legacy",
+    "open-matter-room-subject",
+    "open-matter-room-subject-legacy",
+    "open-matter-room-subject-asserted",
+    "missing-owner",
+    "missing-owner-legacy",
+    "missing-owner-asserted",
+  ]) {
+    const f = fixture(variant === "remember" ? "Mara, please remember this: I use the west peg." : undefined);
+    const line = "I mean to read the two entries tonight.";
+    const current = variant.startsWith("current-");
+    const openMatter = variant.startsWith("open-matter-");
+    const roomSubject = variant.startsWith("open-matter-room-subject");
+    const missingOwner = variant.startsWith("missing-owner");
+    const raw = {
+      segments: [{ ...f.response(variant.endsWith("asserted") ? ["promise"] : [])[0], text: line }],
+      keep: [
+        {
+          id: "promise",
+          for: openMatter && !variant.endsWith("shared") ? [f.id] : [f.id, "player"],
+          class: openMatter ? "open-matter" : current && variant !== "current-promise" ? "information" : "commitment",
+          ...(current ? { current: true } : {}),
+          ...(roomSubject ? { current: true, about: [f.id, "room"] } : {}),
+          ...(missingOwner ? {} : { owner: f.id }),
+          text:
+            variant === "valid"
+              ? "Mara intends to read the two entries tonight."
+              : "Mara will read the two entries before dusk.",
+          source:
+            variant === "private"
+              ? [{ segment: "reply", perceive: { kind: "private", by: [f.id] } }]
+              : [
+                  {
+                    speakerId: f.id,
+                    quote: variant === "valid" || openMatter || missingOwner ? line : "I will read both before dusk.",
+                  },
+                  ...(openMatter && !roomSubject ? ["self"] : []),
+                ],
+          ...(variant === "consent" ? { offer: { proposer: f.id, participants: [f.id, "player"] } } : {}),
+        },
+        ...(variant === "dependency" ? [{ ...f.keep, requires: ["promise"] }] : []),
+      ],
+    };
+    const p = f.publication(raw, "operation", variant === "remember");
+    p.readset.ordinaryDialogue = true;
+    p.readset.positionedSceneSources = true;
+    p.readset.quotedSceneSources = true;
+    if (variant !== "legacy")
+      p.readset.optionalActorMemories =
+        variant === "current-legacy"
+          ? true
+          : variant === "open-matter-self-legacy"
+            ? 2
+            : variant === "missing-owner-legacy"
+              ? 3
+              : roomSubject && !variant.endsWith("legacy")
+                ? 5
+                : 4;
+    const result = acceptNarrationContinuity(f.state, p, "submission", later);
+    const discarded = [
+      "fallback",
+      "current-information",
+      "open-matter-self",
+      "open-matter-room-subject",
+      "missing-owner",
+    ].includes(variant);
+    assert.equal(result.held, !discarded && variant !== "valid", variant);
+    if (missingOwner) assert.match(result.rejected[0].reason, /private state has no owner/u);
+    if (discarded) {
+      assert.equal(result.episode?.segments[0].content, line);
+      assert.equal(result.episode?.grounding.length, 0);
+      assert.equal(result.rejected[0]?.id, "promise");
+      assert.deepEqual(acceptNarrationContinuity(f.state, p, "submission", later).rejected, result.rejected);
+    }
+    assert.equal(f.state.continuity.versions.length, variant === "valid" ? 2 : 0, variant);
+    assert.deepEqual(p.raw, raw);
+  }
 });
 
 await runCase("narration-acceptance/anonymous-experience", () => {

@@ -16,6 +16,8 @@ import {
   RELATIONSHIP_KEEP,
   SCENE_NARRATION_KEEP,
   SCENE_OFFER_DECISION,
+  SCENE_RELATIONSHIP_DIRECTION,
+  SCENE_RELATIONSHIP_KEEP,
 } from "../../domain/rules/narration-contract.js";
 import { readModelJsonObject } from "../../domain/rules/json-reply.js";
 import { fittedNarrationReadset, narrationContinuityContext } from "../../domain/rules/narration-context.js";
@@ -221,7 +223,7 @@ export function createSceneWriting({
     const blocks = buildVenueSceneBlocks({
       direction: blocksFor([
         narrationDirection(nativeCommands, positions),
-        RELATIONSHIP_DIRECTION,
+        positions ? SCENE_RELATIONSHIP_DIRECTION : RELATIONSHIP_DIRECTION,
         scene.contactGeneration?.instruction ?? "",
         mode === "greet"
           ? "Open the Scene from established presence and give the player a natural opening. The player supplies any voluntary action or speech."
@@ -244,7 +246,7 @@ export function createSceneWriting({
       metadata: blocksFor([
         narrationResponse(nativeCommands, positions),
         nativeCommands ? SCENE_NARRATION_KEEP : ordinarySceneKeep(positions),
-        RELATIONSHIP_KEEP,
+        positions ? SCENE_RELATIONSHIP_KEEP : RELATIONSHIP_KEEP,
         nativeCommands ? NARRATION_NATIVE : "",
       ]),
       identity: blocksFor([
@@ -290,9 +292,11 @@ export function createSceneWriting({
           housing,
           nativeCommands && housing ? NARRATION_HOUSING_COMMANDS : "",
           narrationPlacePrompt(places),
-          requestedMemory
-            ? `The player explicitly asked to save a fact. Add this required top-level keep entry: {"id":"remember-fact","for":[${JSON.stringify(requestedMemory.recipientId ?? "resident-id")}],"class":"information","text":"Player said: <exact fact after the colon>","source":[{"input":"<exact fact after the colon>","ground":{"kind":"spoken","to":[${JSON.stringify(requestedMemory.recipientId ?? "resident-id")}]}}]}. Fill in the exact fact from the player submission. Use the ID of the resident who heard it. Put "remember-fact" in requires on any line claiming it was saved.`
-            : "",
+          context.codeRequestedMemory
+            ? 'Code records the exact requested fact for the named resident. Omit a keep for that fact. The resident may acknowledge it. Use "remember-fact" in requires on any line claiming it was saved.'
+            : requestedMemory
+              ? `The player explicitly asked to save a fact. Add this required top-level keep entry: {"id":"remember-fact","for":[${JSON.stringify(requestedMemory.recipientId ?? "resident-id")}],"class":"information","text":"Player said: <exact fact after the colon>","source":[{"input":"<exact fact after the colon>","ground":{"kind":"spoken","to":[${JSON.stringify(requestedMemory.recipientId ?? "resident-id")}]}}]}. Fill in the exact fact from the player submission. Use the ID of the resident who heard it. Put "remember-fact" in requires on any line claiming it was saved.`
+              : "",
           !nativeCommands && context.protections.length
             ? 'Check every proposed keep against the supplied protected meanings. Give protection.roots as the supplied root IDs and protection.disposition as "clear", "conflict", or "uncertain". Only clear may publish. Never restore a protected meaning through paraphrase, player input, or self attribution.'
             : "",
@@ -336,9 +340,9 @@ export function createSceneWriting({
       Math.min(model.maxOutputTokens ?? VENUE_REPLY_MAX_TOKENS, VENUE_REPLY_MAX_TOKENS),
       "Narration",
       plainJson
-        ? '## Scene reply reminder\nBegin with {"segments":[. Return one complete JSON object. End at the player’s opening. Dialogue and narration have no source field. Historical pastSpeaker and witnessedWords belong to input. Put new keeps in one top-level keep array. ' +
+        ? '## Scene reply reminder\nBegin with {"segments":[. Return one complete JSON object. End at the player’s opening. Use only reply fields in dialogue and narration. Put new keeps in one top-level keep array. ' +
             (positions
-              ? "Count every current segment from 1 when citing it. "
+              ? 'For a developed exchange, aim for about 500 words of visible prose. Give the addressed resident room to answer. Other residents speak when they change the answer or the next choice. End at that choice. Use short exact quotes and speakerId for keeps, or count current segments from 1. A reported Room change stays in dialogue. For a change shown now, use for:"room" and cite the narration as seen by its actual witnesses. '
               : "Cite the exact id you gave each current line. ") +
             "Close the object once."
         : undefined,
@@ -363,7 +367,24 @@ export function createSceneWriting({
       fitted,
       readset: {
         ...readset,
-        ...(positions ? { ordinaryDialogue: true, ordinaryReplyRecovery: true, positionedSceneSources: true } : {}),
+        ...(context.codeRequestedMemory ? { recoverCodeMemoryEcho: true } : {}),
+        ...(positions
+          ? {
+              ordinaryDialogue: true,
+              ordinaryReplyRecovery: true,
+              positionedSceneSources: true,
+              stripSceneHistoryDecoration: true,
+              ordinaryFormatRecovery: 6,
+              quotedSceneSources: true,
+              splitKeepRecovery: 2,
+              explicitSceneReplacement: true,
+              coalesceOfferDecisions: true,
+              stripOfferContributionEcho: true,
+              recognizeDirectOfferSpeech: 5,
+              optionalActorMemories: 5,
+              stripSceneReplyDecorations: 4,
+            }
+          : {}),
       },
       model: { model: model.model, connectionId: model.connectionId },
       // Plain transport lets local validation see replies that JSON mode can return as spaces.
@@ -409,6 +430,9 @@ export function createSceneWriting({
         completion.finishReason,
         parsed,
         request.readset.ordinaryReplyRecovery,
+        request.readset.ordinaryFormatRecovery,
+        request.readset.splitKeepRecovery,
+        request.readset.explicitSceneReplacement,
       );
       const diagnostics = responseDiagnostics(
         request.model,
