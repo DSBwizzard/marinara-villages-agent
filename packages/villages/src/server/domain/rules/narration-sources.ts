@@ -138,15 +138,25 @@ function bindSceneSourcePositions(
         if (matches.length !== 1) return ref;
         const [match] = matches;
         const offer = asRecord(row.offer);
-        const omitHolders = directOffers === 4 && !Object.hasOwn(row, "for") && !Object.hasOwn(row, "owner");
+        const omitHolders =
+          (directOffers === 4 || directOffers === 5) && !Object.hasOwn(row, "for") && !Object.hasOwn(row, "owner");
         const soleProposer =
-          (directOffers === 3 || directOffers === 4) &&
+          (directOffers === 3 || directOffers === 4 || directOffers === 5) &&
           Array.isArray(holders) &&
           holders.length === 1 &&
           holders[0] === speakerId &&
           row.owner === speakerId;
+        const start = match.text.indexOf(quote);
+        // A quoted label in an earlier sentence is separate from the actual offer.
+        const directSpeech =
+          directOffers === 5 && match.text.lastIndexOf(quote) === start && /[.!?]\s+$/u.test(match.text.slice(0, start))
+            ? match.text
+                .slice(0, start)
+                .replace(/(^|\s)'[\p{L}\p{N}-]{1,20}(?: [\p{L}\p{N}-]{1,20}){0,2}'(?=\s)/u, "$1") +
+              match.text.slice(start)
+            : match.text;
         const declaredOffer =
-          (directOffers === 2 || directOffers === 3 || directOffers === 4) &&
+          (directOffers === 2 || directOffers === 3 || directOffers === 4 || directOffers === 5) &&
           citations.length === 1 &&
           (Object.keys(proof).length === 0 ||
             (omitHolders && Object.keys(proof).length === 1 && proof.act === "offer")) &&
@@ -156,7 +166,7 @@ function bindSceneSourcePositions(
             soleProposer ||
             (Array.isArray(holders) && offer.participants.every((party) => holders.includes(party)))) &&
           !["replace", "parent", "accept", "closeOffer", "retire"].some((key) => Object.hasOwn(row, key)) &&
-          !/["“”«»‘]|(?:^|[^\p{L}\p{N}])'/u.test(match.text);
+          !/["“”«»‘]|(?:^|[^\p{L}\p{N}])'/u.test(directSpeech);
         if (declaredOffer && omitHolders) defaultHolders = offer.participants as unknown[];
         return { ...proof, segment: match.label, ...(declaredOffer ? { act: "offer" } : {}) };
       }

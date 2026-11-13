@@ -353,7 +353,7 @@ export function prepareNarrationKeep(
       const line = sourceContext.lines.find((line) => line.id === id);
       const { proposer, participants } = proposal.offer;
       if (
-        (recognizeDirectOfferSpeech === 3 || recognizeDirectOfferSpeech === 4) &&
+        (recognizeDirectOfferSpeech === 3 || recognizeDirectOfferSpeech === 4 || recognizeDirectOfferSpeech === 5) &&
         proposal.owner === proposer &&
         Array.isArray(proposal.for) &&
         proposal.for.length === 1 &&

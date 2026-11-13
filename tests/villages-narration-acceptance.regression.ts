@@ -571,6 +571,10 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
     "legacy",
     "quoted",
     "reported",
+    "earlier-quoted-label",
+    "earlier-quoted-label-legacy",
+    "earlier-quoted-label-repeated",
+    "earlier-unclosed-quote",
     "wrong-proposer",
     "own-words",
     "by-number",
@@ -599,7 +603,15 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
     }
     const quote = "come and look at this leg with me. I'll keep my hands off it until you've said.";
     const text =
-      variant === "quoted" ? `She said, “${quote}”` : variant === "reported" ? `Her note—'${quote}'` : "So " + quote;
+      variant === "quoted"
+        ? `She said, “${quote}”`
+        : variant === "reported"
+          ? `Her note—'${quote}'`
+          : variant.startsWith("earlier-quoted-label")
+            ? `The 'blue post' is out of sight. ${quote}${variant.endsWith("repeated") ? ` ${quote}` : ""}`
+            : variant === "earlier-unclosed-quote"
+              ? `She said 'The blue post is out of sight. ${quote}`
+              : "So " + quote;
     const soleProposer = variant.startsWith("sole-proposer") || variant === "unheard-proposer";
     const missingHolders = variant.startsWith("missing-holders");
     const raw = {
@@ -659,9 +671,15 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
           ? 2
           : variant === "missing-holders-legacy"
             ? 3
-            : 4;
+            : variant === "earlier-quoted-label-legacy"
+              ? 4
+              : 5;
     const result = acceptNarrationContinuity(f.state, p, "quote-offer", later);
-    assert.equal(result.held, !["exact", "sole-proposer", "missing-holders"].includes(variant), variant);
+    assert.equal(
+      result.held,
+      !["exact", "sole-proposer", "missing-holders", "earlier-quoted-label"].includes(variant),
+      variant,
+    );
     if (!result.held) {
       const source = f.state.continuity.records[0]?.offer?.events[0].sources[0];
       assert.equal(source?.excerpt, text);
