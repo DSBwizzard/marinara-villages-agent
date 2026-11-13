@@ -84,6 +84,20 @@ await runCase("scene-json-hardening/ambiguity", () => {
     assert.equal(completeSceneObject(candidate.slice(0, -1), "stop"), null);
   }
   assert.equal(completeSceneObject(coreJson + '\n{"keep":[],"keep":[]}', "stop"), null);
+  for (const key of ["keeps", "effects"]) {
+    const response = coreJson + "\n\n" + JSON.stringify({ [key]: keep });
+    assert.equal(completeSceneObject(response, "stop"), null);
+    assert.deepEqual(completeSceneObject(response, "stop", undefined, true), { ...core, [key]: keep });
+    assert.equal(completeSceneObject(response, "length", undefined, true), null);
+  }
+  const shortId = '{"segments":[{"id":"d1,"kind":"dialogue","speakerId":"a","text":"Hello."}]}';
+  assert.equal(completeSceneObject(shortId, "stop"), null);
+  assert.equal(readNarrationReply(completeSceneObject(shortId, "stop", undefined, true), ["a"]).segments[0].id, "d1");
+  assert.equal(completeSceneObject(shortId, "length", undefined, true), null);
+  assert.equal(
+    completeSceneObject(shortId.replace('"speakerId"', '"id":"d2","speakerId"'), "stop", undefined, true),
+    null,
+  );
   assert.equal(completeSceneObject(quoted, "length"), null);
   assert.equal(completeSceneObject(quoted.slice(0, -1) + ',"commands":[]}', "stop"), null);
   assert.equal(completeSceneObject(coreJson + ',"keep":[{"text":"first","text":"second"}]}', "stop"), null);

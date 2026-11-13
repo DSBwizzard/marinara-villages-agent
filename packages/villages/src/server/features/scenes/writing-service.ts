@@ -321,7 +321,7 @@ export function createSceneWriting({
       Math.min(model.maxOutputTokens ?? VENUE_REPLY_MAX_TOKENS, VENUE_REPLY_MAX_TOKENS),
       "Narration",
       plainJson
-        ? '## Scene reply reminder\nBegin with {"segments":[ and return one complete JSON object. Put all prose in segment text. Transcript fields such as pastSpeaker and witnessedWords belong to input. Dialogue and narration have no source field. Add source only inside keep or halt. Finish the JSON object after the last segment or effect.'
+        ? '## Scene reply reminder\nBegin with {"segments":[. Return one complete JSON object. End at the player’s opening. Dialogue and narration have no source field. Historical pastSpeaker and witnessedWords belong to input. Put new keeps in one top-level keep array. Cite the exact id you gave each current line. Close the object once.'
         : undefined,
     );
     if (loreInspection) {
@@ -343,7 +343,7 @@ export function createSceneWriting({
       fitted,
       readset: {
         ...fittedNarrationReadset(authority, context, fitted.evidenceIds),
-        ...(!nativeCommands && !context.memoryChange ? { ordinaryDialogue: true } : {}),
+        ...(!nativeCommands && !context.memoryChange ? { ordinaryDialogue: true, ordinaryReplyRecovery: true } : {}),
       },
       model: { model: model.model, connectionId: model.connectionId },
       // Plain transport lets local validation see replies that JSON mode can return as spaces.
@@ -384,7 +384,12 @@ export function createSceneWriting({
         );
       }
       const parsed = readModelJsonObject(completion);
-      const raw = completeSceneObject(completion.content ?? "", completion.finishReason, parsed);
+      const raw = completeSceneObject(
+        completion.content ?? "",
+        completion.finishReason,
+        parsed,
+        request.readset.ordinaryReplyRecovery,
+      );
       const diagnostics = responseDiagnostics(
         request.model,
         completion,

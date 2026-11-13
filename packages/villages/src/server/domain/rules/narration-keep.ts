@@ -7,6 +7,7 @@ import type {
 } from "../models/continuity-model.js";
 import { continuityHolderKey, ownedContinuityClass } from "./continuity.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
+import { asRecord } from "./coerce.js";
 import { readContinuityProposal, readNarrationEffectHeader } from "./narration-contract.js";
 import {
   assertNarrationSourceOrder,
@@ -293,7 +294,50 @@ export function prepareNarrationKeep(
   admission: ContinuityAdmission,
   sourceContext: NarrationSourceContext,
   ordinaryDialogue?: true,
+  ordinaryReplyRecovery?: true,
 ) {
+  if (ordinaryReplyRecovery) {
+    const row = asRecord(raw);
+    const { proposer, participants, ...fields } = row;
+    const flattenedOffer =
+      row.class === "offer" &&
+      !Object.hasOwn(row, "offer") &&
+      typeof proposer === "string" &&
+      Array.isArray(participants);
+    const canonical = flattenedOffer ? { ...fields, class: "commitment", offer: { proposer, participants } } : row;
+    const keep =
+      typeof canonical.for === "string" &&
+      canonical.for !== "room" &&
+      sourceContext.actors.some((actor) => actor.id === canonical.for)
+        ? { ...canonical, for: [canonical.for] }
+        : canonical;
+    raw = keep;
+    const proposal = readContinuityProposal(keep);
+    const ref = proposal.source[0];
+    const segment =
+      typeof ref === "string" && /^[A-Za-z][A-Za-z0-9_-]{0,47}$/u.test(ref) && ref !== "self"
+        ? { segment: ref }
+        : typeof ref === "object" && "segment" in ref && !ref.act
+          ? ref
+          : undefined;
+    if (proposal.offer && !proposal.replace && proposal.source.length === 1 && segment) {
+      const id = Object.hasOwn(sourceContext.labels, segment.segment) && sourceContext.labels[segment.segment];
+      const line = sourceContext.lines.find((line) => line.id === id);
+      const { proposer, participants } = proposal.offer;
+      if (
+        line?.role === "assistant" &&
+        line.kind !== "narration" &&
+        line.speakerId === proposer &&
+        /(?:^|[.!?]\s+)(?:come\b[^.!?]{0,120}\band I['’]ll\b|if you want\b[^.!?]{0,130},\s*say yes and I['’]ll\b)/iu.test(
+          line.content,
+        ) &&
+        !/["“”«»‘]|(?:^|[\s,:;])'/u.test(line.content) &&
+        participants.every((party) => party === proposer || line.heardBy.includes(party)) &&
+        !("perceive" in segment && segment.perceive)
+      )
+        raw = { ...keep, source: [{ ...segment, act: "offer" }] };
+    }
+  }
   return prepareContinuityKeep(raw, ordinal, collection, admission, {
     ...sourceContext,
     operationId: sourceContext.episodeId,

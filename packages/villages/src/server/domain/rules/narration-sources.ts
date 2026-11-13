@@ -11,7 +11,12 @@ import type { VillageVenue } from "../models/world.js";
 import { assertContinuityKnowledge, continuityHolderKey, continuitySelfSource } from "./continuity.js";
 import { asRecord } from "./coerce.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
-import { narrationSourceSchema, readNarrationReply, type NarrationSource } from "./narration-contract.js";
+import {
+  narrationSourceSchema,
+  readContinuityProposal,
+  readNarrationReply,
+  type NarrationSource,
+} from "./narration-contract.js";
 import { exactInputSpan } from "./source-span.js";
 import { contactNeighbors, contactPosition, type ContactMove } from "./venue-contact.js";
 import { nativeReceiptSupportsRoom } from "./episode-sources.js";
@@ -51,6 +56,54 @@ export type NarrationSourceContext = {
 };
 export type NarrationSourceOwner = { holder: ContinuityHolder; writeId: string; text: string; class: ContinuityClass };
 
+function ordinaryReplyLayout(raw: Record<string, unknown>) {
+  if (
+    !Array.isArray(raw.segments) ||
+    Object.keys(raw).some((key) => !["segments", "keep", "keeps", "effects"].includes(key))
+  )
+    return raw;
+  const fields = ["keep", "keeps", "effects"].filter((key) => Object.hasOwn(raw, key));
+  if (fields.length > 1 || (fields.length && !Array.isArray(raw[fields[0]]))) return raw;
+  const segments = [...raw.segments];
+  const misplaced = [];
+  while (asRecord(segments.at(-1)).kind === "keep") {
+    const { kind: _kind, ...proposal } = asRecord(segments.pop());
+    misplaced.unshift(proposal);
+  }
+  const field = fields[0];
+  if (field && misplaced.length) return raw;
+  const keep = field ? (raw[field] as unknown[]) : misplaced;
+  if (
+    (field === "effects" || field === "keeps" || misplaced.length > 0) &&
+    keep.some((value) => {
+      const row = asRecord(value);
+      return (
+        (row.kind !== undefined && row.kind !== "keep") || !Object.hasOwn(row, "for") || !Object.hasOwn(row, "source")
+      );
+    })
+  )
+    return raw;
+  const normalized = keep.map((value) => {
+    const { kind, ...fields } = asRecord(value);
+    if (kind !== "keep" || field !== "effects") return value;
+    try {
+      readContinuityProposal(fields);
+      return fields;
+    } catch {
+      return value;
+    }
+  });
+  return {
+    segments: segments.map((value) => {
+      const line = asRecord(value);
+      if (line.kind !== "dialogue" || line.color !== "") return value;
+      const { color: _color, ...dialogue } = line;
+      return dialogue;
+    }),
+    ...(field || misplaced.length ? { keep: normalized } : {}),
+  };
+}
+
 /** Discard effect-free dialogue annotations that assert no provenance or have the speaker's own fitted proof. */
 export function readSceneNarrationReply(
   raw: Record<string, unknown>,
@@ -58,6 +111,7 @@ export function readSceneNarrationReply(
   readset: NarrationReadset,
   continuity: ContinuityCollection,
 ) {
+  if (readset.ordinaryReplyRecovery) raw = ordinaryReplyLayout(raw);
   if (Object.keys(raw).length !== 1 || !Array.isArray(raw.segments)) return readNarrationReply(raw, speakers);
   const {
     source: { historical, seed },

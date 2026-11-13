@@ -275,7 +275,15 @@ export function acceptNarrationContinuity(
     }
     const effect: SceneEffectResult = { ...header };
     try {
-      const keep = prepareNarrationKeep(raw, index, state.continuity, admission, source, readset.ordinaryDialogue);
+      const keep = prepareNarrationKeep(
+        raw,
+        index,
+        state.continuity,
+        admission,
+        source,
+        readset.ordinaryDialogue,
+        readset.ordinaryReplyRecovery,
+      );
       for (const holder of keep.write.holders.filter((holder) => holder.kind === "room")) {
         const scope = (venue: typeof source.venue) => {
           const zone = venue.zones?.find((row) => row.id === holder.zoneId);

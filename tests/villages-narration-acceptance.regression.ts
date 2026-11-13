@@ -159,6 +159,65 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
     assert.deepEqual(f.state.continuity.records, []);
     assert.equal(f.state.episodes.records.length, held ? 0 : 1);
   }
+  for (const [recover, ref, text, held] of [
+    [true, "reply", "Come to the bench and I'll show you.", false],
+    [true, "reply", "No, I won't show you.", true],
+    [true, "h:old", "Come to the bench and I'll show you.", true],
+    [false, "reply", "Come to the bench and I'll show you.", true],
+  ] as const) {
+    const f = fixture();
+    const p = f.publication({
+      segments: [{ ...f.response()[0], text }],
+      keep: [
+        {
+          ...f.keep,
+          for: [f.id, "player"],
+          class: "commitment",
+          text,
+          offer: { proposer: f.id, participants: [f.id, "player"] },
+          source: [ref],
+        },
+      ],
+    });
+    if (recover) p.readset.ordinaryReplyRecovery = true;
+    const result = acceptNarrationContinuity(f.state, p, "offer", later);
+    assert.equal(result.held, held);
+    assert.equal(f.state.continuity.records[0]?.offer?.events[0].act, held ? undefined : "offer");
+  }
+  for (const layout of ["embedded", "effects", "whisper", "mixed"]) {
+    const f = fixture();
+    const text = "Come to the bench and I'll show you.";
+    const reply = {
+      ...f.response()[0],
+      text,
+      color: "",
+      ...(layout === "whisper" ? { delivery: "whisper", targetId: "player" } : {}),
+    };
+    const proposal = {
+      kind: "keep",
+      ...f.keep,
+      for: [f.id, "player"],
+      class: "commitment",
+      text,
+      offer: { proposer: f.id, participants: [f.id, "player", ...(layout === "whisper" ? ["unheard"] : [])] },
+      source: ["reply"],
+    };
+    const p = f.publication({
+      segments: [reply, ...(layout === "embedded" || layout === "mixed" ? [proposal] : [])],
+      ...(layout !== "embedded" ? { effects: [proposal] } : {}),
+    });
+    p.readset.ordinaryReplyRecovery = true;
+    if (layout === "mixed") {
+      assert.throws(() => acceptNarrationContinuity(f.state, p, "layout", later));
+      continue;
+    }
+    const result = acceptNarrationContinuity(f.state, p, "layout", later);
+    assert.equal(result.held, layout === "whisper");
+    if (layout !== "whisper") {
+      assert.equal(result.episode?.segments[0].content, text);
+      assert.equal(result.episode?.continuityVersionIds.length, 2);
+    }
+  }
 });
 
 await runCase("narration-acceptance/inherited-private-context", () => {

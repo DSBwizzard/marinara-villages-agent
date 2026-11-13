@@ -12,6 +12,7 @@ export function completeSceneObject(
   content: string,
   finishReason?: string,
   parsed?: ModelJsonReply,
+  ordinaryReplyRecovery?: true,
 ): Record<string, unknown> | null {
   if (finishReason !== "stop" && finishReason !== "end_turn") return null;
   const text = content
@@ -23,6 +24,36 @@ export function completeSceneObject(
   const value = (parsed ?? readModelJsonObject({ content, finishReason })).value;
   if (value) return value;
   if (!modelJsonWithinBounds(content)) return null;
+  if (ordinaryReplyRecovery) {
+    const missingIdQuote = /\{"id":"([A-Za-z][A-Za-z0-9_-]{0,47}),"kind":"(dialogue|narration)",/gu;
+    const matches = [...text.matchAll(missingIdQuote)];
+    if (matches.length === 1) {
+      const corrected = parseSceneObject(text.replace(missingIdQuote, '{"id":"$1","kind":"$2",'));
+      if (
+        corrected &&
+        Object.keys(corrected).length === 1 &&
+        Array.isArray(corrected.segments) &&
+        corrected.segments.some((line) => line?.id === matches[0][1] && line.kind === matches[0][2])
+      )
+        return corrected;
+    }
+    const split = /\}\s+(?=\{\s*"(?:keep|keeps|effects)"\s*:)/u.exec(text);
+    if (split) {
+      const head = parseSceneObject(text.slice(0, split.index + 1));
+      const tail = parseSceneObject(text.slice(split.index + split[0].length));
+      if (
+        head &&
+        Object.keys(head).length === 1 &&
+        Array.isArray(head.segments) &&
+        tail &&
+        Object.keys(tail).length === 1
+      ) {
+        const key = Object.keys(tail)[0];
+        if (["keep", "keeps", "effects"].includes(key) && Array.isArray(tail[key]))
+          return { segments: head.segments, [key]: tail[key] };
+      }
+    }
+  }
   // Some replies close the root after segments, then emit the keep field or a keep-only object.
   const boundary = /\}\s*(?=\{\s*"keep"\s*:)|\}(?:\s*,\s*|[ \t]*\r?\n\s*)(?:keep|"keep")\s*:\s*(?=\[)/u.exec(text);
   if (!boundary) return null;
