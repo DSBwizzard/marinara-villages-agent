@@ -339,6 +339,33 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
   }
   {
     const f = fixture();
+    const raw = {
+      segments: [{ kind: "dialogue", speakerId: f.id, text: "Hello.", delivery: null }],
+      halt: null,
+    };
+    const p = f.publication(raw);
+    p.readset.ordinaryReplyRecovery = true;
+    p.readset.ordinaryFormatRecovery = 5;
+    p.readset.stripSceneReplyDecorations = true;
+    assert.throws(() => acceptNarrationContinuity(f.state, p, "legacy-null-halt", later), /halt/u);
+    p.readset.stripSceneReplyDecorations = 2;
+    for (const extra of [
+      { keep: [] },
+      { commands: [] },
+      { halt: { reason: "authority" } },
+      { segments: [...raw.segments, { kind: "keep", ...f.keep }] },
+    ])
+      assert.throws(() =>
+        acceptNarrationContinuity(f.state, { ...p, raw: { ...raw, ...extra } }, "null-halt-effects", later),
+      );
+    const result = acceptNarrationContinuity(f.state, p, "null-halt", later);
+    assert.equal(result.held, false);
+    assert.equal(result.episode?.segments[0].content, "Hello.");
+    assert.deepEqual(result.episode?.segments[0].heardBy.toSorted(), [f.id, "player"].toSorted());
+    assert.deepEqual(p.raw, raw);
+  }
+  {
+    const f = fixture();
     const line = { ...f.response(["remember"])[0], truncated: false };
     const raw = { segments: [line], keep: [f.keep] };
     const p = f.publication(raw);

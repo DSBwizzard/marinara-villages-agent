@@ -187,6 +187,20 @@ export function readSceneNarrationReply(
   const positions = readset.positionedSceneSources === true;
   const quotes = readset.quotedSceneSources === true;
   const recovery = readset.ordinaryFormatRecovery === 5 ? 4 : readset.ordinaryFormatRecovery;
+  const decorations = readset.stripSceneReplyDecorations;
+  if (
+    decorations === 2 &&
+    raw.halt === null &&
+    Array.isArray(raw.segments) &&
+    raw.segments.every((row) => {
+      const { kind } = asRecord(row);
+      return kind === "dialogue" || kind === "narration";
+    }) &&
+    Object.keys(raw).every((key) => key === "segments" || key === "halt")
+  ) {
+    const { halt: _halt, ...prose } = raw;
+    raw = prose;
+  }
   if (readset.ordinaryReplyRecovery) raw = ordinaryReplyLayout(raw, positions, quotes);
   if (positions) raw = bindSceneSourcePositions(raw, quotes, readset.recognizeDirectOfferSpeech);
   if (
@@ -205,7 +219,7 @@ export function readSceneNarrationReply(
         if (line.kind !== "dialogue") return value;
         const normal =
           recovery === 4 &&
-          (line.delivery === "normal" || (readset.stripSceneReplyDecorations === true && line.delivery === null)) &&
+          (line.delivery === "normal" || ((decorations === true || decorations === 2) && line.delivery === null)) &&
           !Object.hasOwn(line, "targetId");
         if (!normal && line.truncated !== false) return value;
         const normalized = { ...line };
@@ -246,7 +260,7 @@ export function readSceneNarrationReply(
     const line = asRecord(value),
       source = line.source;
     if (
-      readset.stripSceneReplyDecorations === true &&
+      (decorations === true || decorations === 2) &&
       line.kind === "narration" &&
       Object.keys(line).every((key) => ["kind", "text", "place"].includes(key)) &&
       typeof line.place === "string" &&
