@@ -376,6 +376,7 @@ export function createSceneWriting({
               quotedSceneSources: true,
               splitKeepRecovery: true,
               coalesceOfferDecisions: true,
+              stripOfferContributionEcho: true,
             }
           : {}),
       },

@@ -443,11 +443,57 @@ await runCase("narration-writing/open-offer-guidance", async () => {
       {
         for: ["player", f.id],
         text,
-        offer: { proposer: f.id, participants: ["player", f.id] },
+        offer: { proposer: f.id, participants: ["player", f.id], contributions: [{ by: f.id, act: "offer" }] },
         source: [{ segment: "invite", act: "offer" }],
       },
     ],
   };
+  const withoutRecovery = { ...readset, stripOfferContributionEcho: undefined };
+  assert.equal(
+    acceptNarration(
+      structuredClone(f.state),
+      { raw, readset: withoutRecovery, responseDigest: memoryHash(raw) },
+      "offer-turn",
+      readset.capturedAt,
+    ).held,
+    true,
+  );
+  const contradictory = {
+    ...raw,
+    keep: [{ ...raw.keep[0], offer: { ...raw.keep[0].offer, contributions: [{ by: "player", act: "accept" }] } }],
+  };
+  assert.equal(
+    acceptNarration(
+      structuredClone(f.state),
+      { raw: contradictory, readset, responseDigest: memoryHash(contradictory) },
+      "offer-turn",
+      readset.capturedAt,
+    ).held,
+    true,
+  );
+  const noSpokenOffer = { ...raw, keep: [{ ...raw.keep[0], source: ["self"] }] };
+  assert.equal(
+    acceptNarration(
+      structuredClone(f.state),
+      { raw: noSpokenOffer, readset, responseDigest: memoryHash(noSpokenOffer) },
+      "offer-turn",
+      readset.capturedAt,
+    ).held,
+    true,
+  );
+  const unheardOffer = {
+    ...raw,
+    keep: [{ ...raw.keep[0], source: [{ segment: "invite", act: "offer", perceive: { kind: "words", by: [f.id] } }] }],
+  };
+  assert.equal(
+    acceptNarration(
+      structuredClone(f.state),
+      { raw: unheardOffer, readset, responseDigest: memoryHash(unheardOffer) },
+      "offer-turn",
+      readset.capturedAt,
+    ).held,
+    true,
+  );
   const result = acceptNarration(
     f.state,
     { raw, readset, responseDigest: memoryHash(raw) },

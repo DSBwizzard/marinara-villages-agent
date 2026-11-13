@@ -22,6 +22,7 @@ export type NarrationReadset = {
   quotedSceneSources?: true;
   splitKeepRecovery?: true;
   coalesceOfferDecisions?: true;
+  stripOfferContributionEcho?: true;
   requestedMemory?: { start: number; end: number; recipientId?: string };
   codeRequestedMemory?: true;
   offered: AcceptedEpisode["offered"];

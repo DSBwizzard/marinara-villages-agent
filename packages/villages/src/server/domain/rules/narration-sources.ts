@@ -165,6 +165,28 @@ export function readSceneNarrationReply(
   const quotes = readset.quotedSceneSources === true;
   if (readset.ordinaryReplyRecovery) raw = ordinaryReplyLayout(raw, positions, quotes);
   if (positions) raw = bindSceneSourcePositions(raw, quotes);
+  if (readset.stripOfferContributionEcho === true && !Object.hasOwn(raw, "commands") && Array.isArray(raw.keep)) {
+    raw = {
+      ...raw,
+      keep: raw.keep.map((value: unknown) => {
+        const keep = asRecord(value);
+        const { contributions, ...offer } = asRecord(keep.offer);
+        const echo = Array.isArray(contributions) && contributions.length === 1 && asRecord(contributions[0]);
+        if (
+          !echo ||
+          echo.act !== "offer" ||
+          typeof offer.proposer !== "string" ||
+          echo.by !== offer.proposer ||
+          Object.keys(echo).length !== 2 ||
+          Object.hasOwn(keep, "replace") ||
+          Object.hasOwn(keep, "accept") ||
+          Object.hasOwn(keep, "closeOffer")
+        )
+          return value;
+        return { ...keep, offer };
+      }),
+    };
+  }
   if (Object.keys(raw).length !== 1 || !Array.isArray(raw.segments)) return readNarrationReply(raw, speakers);
   const {
     source: { historical, seed },
