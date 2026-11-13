@@ -517,6 +517,51 @@ export function acceptNarrationContinuity(
     if (!failed) break;
   }
   const acceptedKeeps = selection.acceptedIds.flatMap((id) => (prepared.has(id) ? [prepared.get(id)!] : []));
+  const requestedMemory = readset.requestedMemory;
+  const memoryText =
+    requestedMemory && "Player said: " + source.input.slice(requestedMemory.start, requestedMemory.end);
+  if (
+    requestedMemory &&
+    !acceptedKeeps.some(
+      ({ write, sources }) =>
+        write.text?.replace(/[.!]+$/u, "") === memoryText &&
+        write.class === "information" &&
+        !write.target &&
+        !write.parentId &&
+        !write.retire &&
+        !write.offer &&
+        write.holders.some(
+          (holder) =>
+            holder.kind === "actor" &&
+            holder.id !== "player" &&
+            (!requestedMemory.recipientId || holder.id === requestedMemory.recipientId) &&
+            sources.some(
+              (proof) =>
+                proof.episodeId === source.episodeId &&
+                proof.unitId === "input" &&
+                proof.actorId === "player" &&
+                proof.kind === "speech" &&
+                proof.range &&
+                proof.range.start <= requestedMemory.start &&
+                proof.range.end >= requestedMemory.end &&
+                proof.perceptions.some((row) => row.actorId === holder.id && row.channel === "words"),
+            ),
+        ),
+    )
+  )
+    return {
+      ...selection,
+      held: true,
+      acceptedIds: [],
+      rejected: [
+        ...selection.rejected,
+        {
+          id: "requested-memory",
+          reason: "The requested memory needs a saved entry with the resident's witnessed player words.",
+        },
+      ],
+      episode: undefined,
+    };
   memoryRequire(
     native.effects
       .filter((effect) => selection.acceptedIds.includes(effect.id))

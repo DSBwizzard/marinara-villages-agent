@@ -1,4 +1,4 @@
-// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/ordinary-dialogue, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context, narration-acceptance/inherited-room-context, narration-acceptance/anonymous-metadata
+// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/ordinary-dialogue, narration-acceptance/requested-memory, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context, narration-acceptance/inherited-room-context, narration-acceptance/anonymous-metadata
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -91,8 +91,16 @@ function fixture(input = "I think privately that I am nervous. I say, “My moth
     text: "The player said their mother taught them weaving.",
     source: [source],
   };
-  function publication(raw: Record<string, unknown>): NarrationPublication {
-    const context = narrationContinuityContext(state, scene, place.location, "operation", input, at);
+  function publication(raw: Record<string, unknown>, separateRecallFromEvidence = false): NarrationPublication {
+    const context = narrationContinuityContext(
+      state,
+      scene,
+      place.location,
+      "operation",
+      input,
+      at,
+      separateRecallFromEvidence,
+    );
     const readset = fittedNarrationReadset(
       state,
       context,
@@ -117,6 +125,53 @@ function fixture(input = "I think privately that I am nervous. I say, “My moth
     ],
   };
 }
+
+await runCase("narration-acceptance/requested-memory", () => {
+  const fact = "My mother taught me weaving";
+  const input = `Mara, please remember this for future visits: ${fact}.`;
+  for (const variant of ["missing", "wrong-text", "wrong-recipient", "wrong-source", "valid", "legacy"] as const) {
+    const f = fixture(input);
+    const keep = {
+      ...f.keep,
+      class: "information",
+      text: variant === "wrong-text" ? "Player said: I hate weaving" : "Player said: " + fact + ".",
+      for: variant === "wrong-recipient" ? ["player"] : [f.id],
+      source: [
+        {
+          input: variant === "wrong-source" ? "please remember this for future visits" : fact,
+          ground: { kind: "spoken", to: [f.id, "player"] },
+        },
+      ],
+    };
+    const publication = f.publication(
+      {
+        segments: f.response(variant === "valid" ? ["remember"] : []),
+        ...(variant === "missing" || variant === "legacy" ? {} : { keep: [keep] }),
+      },
+      true,
+    );
+    assert.deepEqual(publication.readset.requestedMemory, {
+      start: input.indexOf(fact),
+      end: input.indexOf(fact) + fact.length,
+      recipientId: f.id,
+    });
+    if (variant === "legacy") delete publication.readset.requestedMemory;
+    const result = acceptNarrationContinuity(f.state, publication, "memory", later);
+    assert.equal(result.held, variant !== "valid" && variant !== "legacy", variant);
+    assert.equal(f.state.continuity.versions.length, variant === "valid" ? 1 : 0);
+    assert.equal(f.state.episodes.records.length, result.held ? 0 : 1);
+    if (variant === "valid")
+      assert.equal(acceptNarrationContinuity(f.state, publication, "memory", later).episode?.id, result.episode?.id);
+  }
+  for (const casual of [
+    "Mara, please remember that weaving memory.",
+    "Mara, do you remember this: the weaving?",
+    "Mara, remember this: I weave. How are you?",
+    'Mara, I think "please remember this: I weave".',
+  ]) {
+    assert.equal(fixture(casual).publication({}, true).readset.requestedMemory, undefined);
+  }
+});
 
 await runCase("narration-acceptance/ordinary-dialogue", () => {
   for (const [ordinary, speech, held] of [

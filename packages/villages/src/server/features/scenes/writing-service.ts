@@ -13,6 +13,7 @@ import {
   narrationResponse,
   ordinarySceneKeep,
   SCENE_NARRATION_KEEP,
+  SCENE_OFFER_DECISION,
 } from "../../domain/rules/narration-contract.js";
 import { readModelJsonObject } from "../../domain/rules/json-reply.js";
 import { fittedNarrationReadset, narrationContinuityContext } from "../../domain/rules/narration-context.js";
@@ -211,6 +212,10 @@ export function createSceneWriting({
           );
     const showAccess = context.access.length > 0 && (mode !== "chat" || sceneAccessDiscussed(scene, venue, input));
     const positions = !nativeCommands && !context.memoryChange;
+    const requestedMemory = context.requestedMemory;
+    const openOffers = context.parts.flatMap(({ openOffer, block }) =>
+      openOffer && block.evidenceId ? [block.evidenceId] : [],
+    );
     const blocks = buildVenueSceneBlocks({
       direction: blocksFor([
         narrationDirection(nativeCommands, positions),
@@ -272,48 +277,53 @@ export function createSceneWriting({
           ),
         })),
       ],
-      circumstances: blocksFor([
-        nativeCommands && context.projects.length ? PROJECT_SPEECH_DIRECTION : "",
-        nativeCommands && context.projects.length ? NARRATION_PROJECT_COMMANDS : "",
-        showAccess ? narrationAccessPrompt(context.access) : "",
-        nativeCommands && showAccess ? NARRATION_ACCESS_COMMANDS : "",
-        housing,
-        nativeCommands && housing ? NARRATION_HOUSING_COMMANDS : "",
-        narrationPlacePrompt(places),
-        !nativeCommands && context.parts.some((part) => part.openOffer)
-          ? 'For a decision on a supplied open offer, cite the actual deciding words with act "accept", "refuse", or "withdraw". Use the offer’s exact entry ID in replace. Use the deciding actor ID as accept, or use closeOffer with by and reason "refused" or "withdrawn". Qualified consent is a new offer. Silence leaves an offer open.'
-          : "",
-        !nativeCommands && context.protections.length
-          ? 'Check every proposed keep against the supplied protected meanings. Give protection.roots as the supplied root IDs and protection.disposition as "clear", "conflict", or "uncertain". Only clear may publish. Never restore a protected meaning through paraphrase, player input, or self attribution.'
-          : "",
-        !nativeCommands && context.repairs.length
-          ? "For a lasting Room fact changed by repair, cite the actual observed work and use the affected supplied Room entry ID in replace."
-          : "",
-        nativeCommands && (context.circumstance || context.repairs.length) ? NARRATION_CIRCUMSTANCE_COMMANDS : "",
-        sprites.length
-          ? 'Optional staging:[{characterId,expression?,look?:{target:"player"|"villager"|"direction",characterId?,direction?}}] uses supplied sprite IDs and visible actors. Code owns placement.'
-          : "",
-        JSON.stringify({
-          calendar,
-          leadSpeakerId,
-          movements: residentMovementPrompt(residentMovementOptions(village, venue, scene, selectedIds)),
-          doorwayContacts: scene.doorwayContacts?.map((contact) => contact.characterId) ?? [],
-          protections: context.protections,
-          roomReferences: context.roomReferences,
-          circumstance: narrationCircumstancePrompt(context.circumstance, nativeCommands),
-          presentation: sprites.length
-            ? {
-                state: Object.fromEntries(
-                  Object.entries(presentation.state).map(([id, { expression, look }]) => [id, { expression, look }]),
-                ),
-                sprites: sprites.map(([actorId, sprite]) => ({
-                  actorId,
-                  expressions: describeSpriteExpressions(sprite, presentation.variants),
-                })),
-              }
-            : undefined,
-        }),
-      ]),
+      circumstances: [
+        ...blocksFor([
+          nativeCommands && context.projects.length ? PROJECT_SPEECH_DIRECTION : "",
+          nativeCommands && context.projects.length ? NARRATION_PROJECT_COMMANDS : "",
+          showAccess ? narrationAccessPrompt(context.access) : "",
+          nativeCommands && showAccess ? NARRATION_ACCESS_COMMANDS : "",
+          housing,
+          nativeCommands && housing ? NARRATION_HOUSING_COMMANDS : "",
+          narrationPlacePrompt(places),
+          requestedMemory
+            ? `The player explicitly asked to save a fact. Add this required top-level keep entry: {"id":"remember-fact","for":[${JSON.stringify(requestedMemory.recipientId ?? "resident-id")}],"class":"information","text":"Player said: <exact fact after the colon>","source":[{"input":"<exact fact after the colon>","ground":{"kind":"spoken","to":[${JSON.stringify(requestedMemory.recipientId ?? "resident-id")}]}}]}. Fill in the exact fact from the player submission. Use the ID of the resident who heard it. Put "remember-fact" in requires on any line claiming it was saved.`
+            : "",
+          !nativeCommands && context.protections.length
+            ? 'Check every proposed keep against the supplied protected meanings. Give protection.roots as the supplied root IDs and protection.disposition as "clear", "conflict", or "uncertain". Only clear may publish. Never restore a protected meaning through paraphrase, player input, or self attribution.'
+            : "",
+          !nativeCommands && context.repairs.length
+            ? "For a lasting Room fact changed by repair, cite the actual observed work and use the affected supplied Room entry ID in replace."
+            : "",
+          nativeCommands && (context.circumstance || context.repairs.length) ? NARRATION_CIRCUMSTANCE_COMMANDS : "",
+          sprites.length
+            ? 'Optional staging:[{characterId,expression?,look?:{target:"player"|"villager"|"direction",characterId?,direction?}}] uses supplied sprite IDs and visible actors. Code owns placement.'
+            : "",
+          JSON.stringify({
+            calendar,
+            leadSpeakerId,
+            movements: residentMovementPrompt(residentMovementOptions(village, venue, scene, selectedIds)),
+            doorwayContacts: scene.doorwayContacts?.map((contact) => contact.characterId) ?? [],
+            protections: context.protections,
+            roomReferences: context.roomReferences,
+            circumstance: narrationCircumstancePrompt(context.circumstance, nativeCommands),
+            presentation: sprites.length
+              ? {
+                  state: Object.fromEntries(
+                    Object.entries(presentation.state).map(([id, { expression, look }]) => [id, { expression, look }]),
+                  ),
+                  sprites: sprites.map(([actorId, sprite]) => ({
+                    actorId,
+                    expressions: describeSpriteExpressions(sprite, presentation.variants),
+                  })),
+                }
+              : undefined,
+          }),
+        ]),
+        ...(!nativeCommands && openOffers.length
+          ? [{ text: SCENE_OFFER_DECISION, requiresEvidence: [openOffers] }]
+          : []),
+      ],
     });
     const fitted = fitVenueWritingMessages(
       model,

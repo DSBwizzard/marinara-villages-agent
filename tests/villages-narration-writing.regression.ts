@@ -412,6 +412,14 @@ await runCase("narration-writing/single-request", async () => {
     casualPrompt,
     /mutual-offer decision|decision on a supplied open offer|Details for complex memory updates/u,
   );
+  const remember = await f.writing.prepareVenueTurnMessages(f.scene, "Mara, please remember this: I knit.", "chat");
+  assert.equal(remember.readset.requestedMemory?.recipientId, f.id);
+  const rememberPrompt = remember.fitted.messages
+    .slice(0, -1)
+    .map((row) => row.content)
+    .join("\n");
+  assert.match(rememberPrompt, /"id":"remember-fact"/u);
+  assert.doesNotMatch(rememberPrompt, /I knit/u);
 
   const legacy = fixture(undefined, "deepseek-flash");
   await legacy.writing.prepareVenueTurnMessages(legacy.scene, input, "chat");
@@ -448,6 +456,7 @@ await runCase("narration-writing/open-offer-guidance", async () => {
   const prompt = next.fitted.messages.map((row) => row.content).join("\n");
   assert.match(prompt, /For a decision on a supplied open offer/u);
   assert.match(prompt, /"offer":\{/u);
+  assert.match(prompt, /"accept":"player","source":\[\{"input":"Yes, I accept\."/u);
 });
 
 await runCase("narration-writing/circumstance-provenance", async () => {

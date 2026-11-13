@@ -11,6 +11,7 @@ import { coerceSession } from "../decoding/scene-codec.js";
 import { episodeSourceGraph } from "../decoding/episode-codec.js";
 import { continuityActor } from "./continuity-actors.js";
 import {
+  CONTINUITY_TEXT_BYTES,
   continuityHolderKey,
   continuityKnowledge,
   continuityProtectionUnits,
@@ -49,6 +50,7 @@ import { offerSceneNarrative } from "./scene-narrative.js";
 import { nativeCircumstanceRoots } from "./native-continuity.js";
 import { sceneRepairOffers } from "./narration-circumstance.js";
 import { sceneSpriteSelection } from "./sprite-expressions.js";
+import { contactPosition } from "./venue-contact.js";
 
 type Part = {
   block: VenueWritingBlock;
@@ -292,15 +294,35 @@ export function narrationContinuityContext(
           .replace(/^["“]\s*/u, "")
           .toLocaleLowerCase("en-US")
       : "";
-  const recallQuery =
-    address &&
-    scene.participants.some(({ name }) => {
-      const lower = name.toLocaleLowerCase("en-US");
-      return lower === address || lower.split(/\s+/u)[0] === address;
-    })
-      ? input.slice(comma + 1)
-      : input;
+  const addressed = address
+    ? scene.participants.filter(({ name }) => {
+        const lower = name.toLocaleLowerCase("en-US");
+        return lower === address || lower.split(/\s+/u)[0] === address;
+      })
+    : [];
+  const recallQuery = addressed.length ? input.slice(comma + 1) : input;
   const memoryChange = requestsMemoryChange(recallQuery);
+  const remember =
+    memoryChange && separateRecallFromEvidence && addressed.length < 2
+      ? /^\s*(?:please\s+)?remember\s+this(?:\s+for\s+[^:\r\n]{1,60})?\s*:\s*(\S[^\r\n]*?)\s*$/diu.exec(recallQuery)
+      : null;
+  const fact = remember?.[1].replace(/[.!]+$/u, "").trimEnd();
+  const factRange = remember?.indices?.[1];
+  const recipientId = addressed[0]?.characterId;
+  const local = (id: string) => id !== "player" && contactPosition(scene, id) === scene.zoneId;
+  // shortcut: gate only a single explicit “remember this:” fact until mixed-intent speech has a structured input.
+  const requestedMemory =
+    fact &&
+    factRange &&
+    !/[.!?"“”]/u.test(fact) &&
+    Buffer.byteLength("Player said: " + fact) < CONTINUITY_TEXT_BYTES &&
+    actors.some(({ id }) => local(id) && (!recipientId || id === recipientId))
+      ? {
+          start: input.length - recallQuery.length + factRange[0],
+          end: input.length - recallQuery.length + factRange[0] + fact.length,
+          ...(recipientId ? { recipientId } : {}),
+        }
+      : undefined;
   const readOnlyRecall = separateRecallFromEvidence && !memoryChange;
   const opening = scene.status === "opening";
   const actorSelection = selectActorContinuity(state.continuity, state.episodes, holders, at, {
@@ -546,7 +568,7 @@ export function narrationContinuityContext(
       );
     const packet: Part = {
       ...part,
-      ...(entries.some((row) => row.offer && !row.closed) ? { openOffer: true } : {}),
+      ...(entries.some((row) => row.offer?.state === "offered" && !row.closed) ? { openOffer: true } : {}),
       ...(plainRecall ? { plainRecall: true as const } : {}),
       block: {
         text: JSON.stringify(
@@ -752,6 +774,7 @@ export function narrationContinuityContext(
     repairs,
     at,
     memoryChange,
+    requestedMemory,
     parts: bounded,
     recentLore: bounded
       .filter((part) => part.sharedLoreWords)
@@ -846,6 +869,7 @@ export function fittedNarrationReadset(
     presentation: context.presentation,
     source: { ...context.source, historical, subjects },
     ...(readOnlyKnowledge.length ? { readOnlyKnowledge } : {}),
+    ...(context.requestedMemory ? { requestedMemory: context.requestedMemory } : {}),
     admission: {
       seed: state.seed,
       // The Scene request ID is local to one visit. Common continuity uses its Episode identity.
