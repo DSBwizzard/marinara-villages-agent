@@ -16,7 +16,7 @@ import { useLetterFont } from "../../shared/letter-font-css.js";
 import type { VenueScreenController } from "./screen-contracts.js";
 import { venueDisplayZones, type VenueDisplayZone } from "./venue-view.js";
 import { VenueLayoutEditor } from "./VenueLayoutEditor.js";
-import { VillageIcon } from "../../shared/VillageIcon.js";
+import { VenueSections, VenueZoneRow } from "../../shared/VenueNavigation.js";
 
 function VenueName({ place, controller }: { place: VillageVenue; controller: VenueScreenController }) {
   const id = useId();
@@ -573,31 +573,23 @@ export function VenueScreen({
             ) : null}
           </dl>
         </header>
-        <nav className={`${ELEMENT_TAG}-venue-sections`} aria-label="Venue sections">
-          {(["about", "zones", "manage"] as const).map((section) => (
-            <button
-              type="button"
-              key={section}
-              disabled={navigationBusy}
-              aria-pressed={venueSection === section}
-              onClick={async () => {
-                if (section === venueSection) {
-                  if (zoneDetailsOpen) await closeZoneDetails();
-                  else if (editingConnections) await closeConnections();
-                  return;
-                }
-                if (!(await canLeave())) return;
-                setEditingConnections(false);
-                setZoneDetails(null);
-                zoneReturn.current = null;
-                setZoneNameDirty(false);
-                setVenueSection(section);
-              }}
-            >
-              {section === "about" ? "About" : section === "zones" ? "Zones" : "Manage"}
-            </button>
-          ))}
-        </nav>
+        <VenueSections
+          section={venueSection}
+          disabled={navigationBusy}
+          onSelect={async (section) => {
+            if (section === venueSection) {
+              if (zoneDetailsOpen) await closeZoneDetails();
+              else if (editingConnections) await closeConnections();
+              return;
+            }
+            if (!(await canLeave())) return;
+            setEditingConnections(false);
+            setZoneDetails(null);
+            zoneReturn.current = null;
+            setZoneNameDirty(false);
+            setVenueSection(section);
+          }}
+        />
         <main className={`${ELEMENT_TAG}-venue-profile-body`}>
           {navigationBusy ? <p role="status">Saving…</p> : null}
           {about ? (
@@ -640,24 +632,15 @@ export function VenueScreen({
                 {zones.map((zone) => {
                   const image = roomArtwork(zone);
                   return (
-                    <button
+                    <VenueZoneRow
                       key={zone.id}
-                      type="button"
-                      aria-current={zone.id === selected?.id || undefined}
+                      name={zone.name}
+                      image={image?.url}
+                      accessLabel={zone.accessLabel !== "Open to you" ? zone.accessLabel : undefined}
+                      current={zone.id === selected?.id}
                       disabled={navigationBusy}
-                      onClick={(event) => openZoneDetails(zone.id, event.currentTarget)}
-                    >
-                      <span className={`${ELEMENT_TAG}-venue-zone-thumb`} aria-hidden="true">
-                        {image ? <ArtworkImage src={image.url} alt="" tile /> : <VillageIcon name="places" />}
-                      </span>
-                      <span className={`${ELEMENT_TAG}-venue-zone-caption`}>
-                        <span>{zone.name}</span>
-                        {zone.accessLabel !== "Open to you" ? <small>{zone.accessLabel}</small> : null}
-                      </span>
-                      <span className={`${ELEMENT_TAG}-venue-zone-chevron`} aria-hidden="true">
-                        ›
-                      </span>
-                    </button>
+                      onOpen={(event) => openZoneDetails(zone.id, event.currentTarget)}
+                    />
                   );
                 })}
               </section>

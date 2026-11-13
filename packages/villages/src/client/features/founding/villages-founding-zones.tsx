@@ -4,11 +4,17 @@ import { resolveZoneLayout } from "../../../shared/helpers/zone-layout.js";
 import { connectionProblem, materializeConnections } from "../../../shared/helpers/zone-contact.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 
-function foundingLayoutZones(venue: VillageVenue) {
+export function foundingLayoutZones(venue: VillageVenue) {
   return materializeConnections([
     { id: "exterior", name: "Entrance", kind: "exterior", connectedTo: undefined as string[] | undefined },
-    ...(venue.spaces ?? []).map((zone) => ({ ...zone, kind: "public" })),
-    ...(venue.privateSpaces ?? []).map((zone) => ({ ...zone, kind: "restricted" })),
+    ...(venue.spaces ?? []).map((zone) => ({
+      ...zone,
+      kind: zone.venueClass === "residence" ? "shared-residence" : "public",
+    })),
+    ...(venue.privateSpaces ?? []).map((zone) => ({
+      ...zone,
+      kind: zone.venueClass === "residence" ? "private-residence" : "restricted",
+    })),
   ]);
 }
 
@@ -68,6 +74,7 @@ export function FoundingConnections({
   allowAdd = false,
   busy = false,
   readOnly = false,
+  layoutOnly = false,
 }: {
   venue: VillageVenue;
   onPatch(venue: VillageVenue): void;
@@ -77,9 +84,10 @@ export function FoundingConnections({
   allowAdd?: boolean;
   busy?: boolean;
   readOnly?: boolean;
+  layoutOnly?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
-  const editingLayout = editing && !readOnly;
+  const editingLayout = (editing || layoutOnly) && !readOnly;
   const zones = foundingLayoutZones(venue);
   const remove = () => {
     if (!selectedZoneId || selectedZoneId === "exterior") return;
@@ -90,7 +98,7 @@ export function FoundingConnections({
     <section className="villages-founding-zone-nav" data-editing={editingLayout} aria-label="Zones">
       <header className="villages-founding-zone-nav-heading">
         <h3>Zones</h3>
-        {editingLayout ? (
+        {editingLayout && !layoutOnly ? (
           <button type="button" disabled={busy} onClick={() => setEditing(false)}>
             Finish layout
           </button>
