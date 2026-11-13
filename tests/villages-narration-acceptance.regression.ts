@@ -949,11 +949,15 @@ await runCase("narration-acceptance/independent-failure", () => {
     "open-matter-self-shared",
     "open-matter-self-asserted",
     "open-matter-self-legacy",
+    "missing-owner",
+    "missing-owner-legacy",
+    "missing-owner-asserted",
   ]) {
     const f = fixture(variant === "remember" ? "Mara, please remember this: I use the west peg." : undefined);
     const line = "I mean to read the two entries tonight.";
     const current = variant.startsWith("current-");
     const openMatter = variant.startsWith("open-matter-");
+    const missingOwner = variant.startsWith("missing-owner");
     const raw = {
       segments: [{ ...f.response(variant.endsWith("asserted") ? ["promise"] : [])[0], text: line }],
       keep: [
@@ -962,7 +966,7 @@ await runCase("narration-acceptance/independent-failure", () => {
           for: openMatter && !variant.endsWith("shared") ? [f.id] : [f.id, "player"],
           class: openMatter ? "open-matter" : current && variant !== "current-promise" ? "information" : "commitment",
           ...(current ? { current: true } : {}),
-          owner: f.id,
+          ...(missingOwner ? {} : { owner: f.id }),
           text:
             variant === "valid"
               ? "Mara intends to read the two entries tonight."
@@ -973,7 +977,7 @@ await runCase("narration-acceptance/independent-failure", () => {
               : [
                   {
                     speakerId: f.id,
-                    quote: variant === "valid" || openMatter ? line : "I will read both before dusk.",
+                    quote: variant === "valid" || openMatter || missingOwner ? line : "I will read both before dusk.",
                   },
                   ...(openMatter ? ["self"] : []),
                 ],
@@ -987,10 +991,18 @@ await runCase("narration-acceptance/independent-failure", () => {
     p.readset.positionedSceneSources = true;
     p.readset.quotedSceneSources = true;
     if (variant !== "legacy")
-      p.readset.optionalActorMemories = variant === "current-legacy" ? true : variant.endsWith("legacy") ? 2 : 3;
+      p.readset.optionalActorMemories =
+        variant === "current-legacy"
+          ? true
+          : variant === "open-matter-self-legacy"
+            ? 2
+            : variant === "missing-owner-legacy"
+              ? 3
+              : 4;
     const result = acceptNarrationContinuity(f.state, p, "submission", later);
-    const discarded = variant === "fallback" || variant === "current-information" || variant === "open-matter-self";
+    const discarded = ["fallback", "current-information", "open-matter-self", "missing-owner"].includes(variant);
     assert.equal(result.held, !discarded && variant !== "valid", variant);
+    if (missingOwner) assert.match(result.rejected[0].reason, /private state has no owner/u);
     if (discarded) {
       assert.equal(result.episode?.segments[0].content, line);
       assert.equal(result.episode?.grounding.length, 0);

@@ -380,7 +380,7 @@ export function createSceneWriting({
               coalesceOfferDecisions: true,
               stripOfferContributionEcho: true,
               recognizeDirectOfferSpeech: 4,
-              optionalActorMemories: 3,
+              optionalActorMemories: 4,
               stripSceneReplyDecorations: true,
             }
           : {}),

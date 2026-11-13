@@ -299,10 +299,9 @@ export function acceptNarrationContinuity(
   const repeatedOfferDecisions = new Set<string>();
   const allowTranscriptNotes = readset.ordinaryDialogue && !reply.commands.length && !admission.protectedRoots.length;
   const requestedMemory = readset.requestedMemory;
+  const memoryFallback = readset.optionalActorMemories;
   const optionalActorMemories =
-    (readset.optionalActorMemories === true ||
-      readset.optionalActorMemories === 2 ||
-      readset.optionalActorMemories === 3) &&
+    (memoryFallback === true || memoryFallback === 2 || memoryFallback === 3 || memoryFallback === 4) &&
     allowTranscriptNotes &&
     !requestedMemory &&
     !native.effects.length &&
@@ -360,11 +359,13 @@ export function acceptNarrationContinuity(
         note.class === "information" ||
         note.class === "perspective" ||
         note.class === "open-matter" ||
-        (note.class === "commitment" && typeof note.owner === "string" && note.owner !== "player")) &&
+        (note.class === "commitment" &&
+          ((typeof note.owner === "string" && note.owner !== "player") ||
+            (memoryFallback === 4 && !Object.hasOwn(note, "owner"))))) &&
       Object.keys(note).every(
         (key) =>
           ["id", "for", "text", "class", "source", "owner", "about", "independent"].includes(key) ||
-          ((readset.optionalActorMemories === 2 || readset.optionalActorMemories === 3) &&
+          ((memoryFallback === 2 || memoryFallback === 3 || memoryFallback === 4) &&
             key === "current" &&
             typeof note.current === "boolean" &&
             (note.class === "information" || note.class === "experience")),
@@ -375,7 +376,7 @@ export function acceptNarrationContinuity(
         const citation = asRecord(ref);
         const keys = Object.keys(citation);
         return (
-          (readset.optionalActorMemories === 3 &&
+          ((memoryFallback === 3 || memoryFallback === 4) &&
             ref === "self" &&
             note.class === "open-matter" &&
             Array.isArray(note.for) &&
