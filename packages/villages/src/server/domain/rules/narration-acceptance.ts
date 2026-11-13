@@ -299,6 +299,14 @@ export function acceptNarrationContinuity(
   const repeatedOfferDecisions = new Set<string>();
   const allowTranscriptNotes = readset.ordinaryDialogue && !reply.commands.length && !admission.protectedRoots.length;
   const requestedMemory = readset.requestedMemory;
+  const optionalActorMemories =
+    readset.optionalActorMemories === true &&
+    allowTranscriptNotes &&
+    !requestedMemory &&
+    !native.effects.length &&
+    !native.admissions.length
+      ? new Set<string>()
+      : undefined;
   const keeps = reply.keep.slice();
   if (readset.codeRequestedMemory) {
     memoryRequire(
@@ -337,6 +345,35 @@ export function acceptNarrationContinuity(
       continue;
     }
     const note = asRecord(raw);
+    if (
+      optionalActorMemories &&
+      typeof note.text === "string" &&
+      note.text.trim() &&
+      Array.isArray(note.for) &&
+      note.for.some((id) => id !== "player") &&
+      new Set(note.for).size === note.for.length &&
+      note.for.every((id) => source.actors.some((actor) => actor.id === id)) &&
+      (!Object.hasOwn(note, "owner") || (note.owner !== "player" && note.for.includes(note.owner))) &&
+      (note.class === "experience" ||
+        note.class === "information" ||
+        note.class === "perspective" ||
+        note.class === "open-matter" ||
+        (note.class === "commitment" && typeof note.owner === "string" && note.owner !== "player")) &&
+      Object.keys(note).every((key) =>
+        ["id", "for", "text", "class", "source", "owner", "about", "independent"].includes(key),
+      ) &&
+      Array.isArray(note.source) &&
+      note.source.length &&
+      note.source.every((ref: unknown) => {
+        const citation = asRecord(ref);
+        const keys = Object.keys(citation);
+        return (
+          (keys.length === 1 && typeof citation.segment === "string") ||
+          (keys.length === 2 && typeof citation.speakerId === "string" && typeof citation.quote === "string")
+        );
+      })
+    )
+      optionalActorMemories.add(header.id);
     const optionalNote =
       Array.isArray(note.for) &&
       typeof note.text === "string" &&
@@ -550,6 +587,9 @@ export function acceptNarrationContinuity(
   let selection: ReturnType<typeof selectSceneEffects>;
   const referenced = new Set([...reply.assertedDependencies, ...effects.flatMap((effect) => effect.requires)]);
   for (;;) {
+    for (const effect of effects)
+      if (effect.failure && optionalActorMemories?.has(effect.id) && !referenced.has(effect.id))
+        effect.independent = true;
     selection = selectSceneEffects(effects, [
       ...reply.assertedDependencies,
       ...arrivalDependencies,

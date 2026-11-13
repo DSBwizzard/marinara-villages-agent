@@ -810,6 +810,46 @@ await runCase("narration-acceptance/independent-failure", () => {
   assert.equal(result.rejected[0].id, "unrelated");
   assert.equal(f.state.continuity.versions.length, 1);
   assert.equal(f.state.episodes.records[0].segments.length, 1);
+  for (const variant of ["fallback", "legacy", "asserted", "dependency", "remember", "consent", "valid", "private"]) {
+    const f = fixture(variant === "remember" ? "Mara, please remember this: I use the west peg." : undefined);
+    const line = "I mean to read the two entries tonight.";
+    const raw = {
+      segments: [{ ...f.response(variant === "asserted" ? ["promise"] : [])[0], text: line }],
+      keep: [
+        {
+          id: "promise",
+          for: [f.id, "player"],
+          class: "commitment",
+          owner: f.id,
+          text:
+            variant === "valid"
+              ? "Mara intends to read the two entries tonight."
+              : "Mara will read the two entries before dusk.",
+          source:
+            variant === "private"
+              ? [{ segment: "reply", perceive: { kind: "private", by: [f.id] } }]
+              : [{ speakerId: f.id, quote: variant === "valid" ? line : "I will read both before dusk." }],
+          ...(variant === "consent" ? { offer: { proposer: f.id, participants: [f.id, "player"] } } : {}),
+        },
+        ...(variant === "dependency" ? [{ ...f.keep, requires: ["promise"] }] : []),
+      ],
+    };
+    const p = f.publication(raw, "operation", variant === "remember");
+    p.readset.ordinaryDialogue = true;
+    p.readset.positionedSceneSources = true;
+    p.readset.quotedSceneSources = true;
+    if (variant !== "legacy") p.readset.optionalActorMemories = true;
+    const result = acceptNarrationContinuity(f.state, p, "submission", later);
+    assert.equal(result.held, variant !== "fallback" && variant !== "valid", variant);
+    if (variant === "fallback") {
+      assert.equal(result.episode?.segments[0].content, line);
+      assert.equal(result.episode?.grounding.length, 0);
+      assert.equal(result.rejected[0]?.id, "promise");
+      assert.deepEqual(acceptNarrationContinuity(f.state, p, "submission", later).rejected, result.rejected);
+    }
+    assert.equal(f.state.continuity.versions.length, variant === "valid" ? 2 : 0, variant);
+    assert.deepEqual(p.raw, raw);
+  }
 });
 
 await runCase("narration-acceptance/anonymous-experience", () => {

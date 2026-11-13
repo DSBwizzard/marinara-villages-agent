@@ -379,6 +379,7 @@ export function createSceneWriting({
               coalesceOfferDecisions: true,
               stripOfferContributionEcho: true,
               recognizeDirectOfferSpeech: 2,
+              optionalActorMemories: true,
             }
           : {}),
       },
