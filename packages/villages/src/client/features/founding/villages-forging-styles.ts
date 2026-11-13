@@ -559,4 +559,33 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-forging-v2 .villages-founding-overlay>dialog[data-compact=true] { width:min(26rem,100%); max-height:100%; }
 .villages-forging-v2 .villages-founding-overlay>dialog.villages-quick-dialog { width:min(92rem,100%); height:min(48rem,100%); }
 @media(max-width:1000px) { .villages-founding-overlay { padding:0; } .villages-forging-v2 .villages-founding-overlay>dialog.villages-quick-dialog { width:100%; height:100%; } }
+.villages-founding-guide { display:flex; align-items:center; gap:.7rem; margin:.35rem 0 .7rem; font:1rem/1.4 "village-letter-lora", Georgia, serif; }
+.villages-forging-v2 { --background:#302d47; --foreground:#f0dfbc; --muted-foreground:#ded0c2; --border:#a39b8460; color:var(--foreground); background:#302d47; font-family:"village-letter-lora", Georgia, serif; }
+.villages-forging-v2 .villages-forging-card { background:#352c44; border-color:#a3899666; }
+.villages-forging-v2 :is(.villages-forging-footer,.villages-forging-heading) { background:#462d43; border-color:#a3899666; }
+.villages-forging-v2 :is(button,.villages-quick-venue-card) { color:#f0dfbc; background-color:#514157; border-color:#a87788; }
+.villages-forging-v2 button[aria-pressed=true] { background-color:#83576b; border-color:#d29399; }
+.villages-forging-v2 .villages-forging-primary { color:#292938; background:#a5ac8b; border-color:#a5ac8b; }
+.villages-founding-guide img { width:2rem; height:3rem; object-fit:contain; image-rendering:pixelated; }
+.villages-founding-guide strong { color:#e0a6af; font-size:.8rem; }
+.villages-forging-v2 .villages-founding-guide p { margin:0; color:#f0dfbc; font-style:italic; }
+.villages-forging-v2 dialog.villages-founding-venue-dialog[open] { gap:0; padding:0; background:#302d47; color:#f0dfbc; border-color:#a38996; }
+.villages-founding-venue-workspace { --menu-font:"village-letter-lora",Georgia,serif; --border:#a39b8460; --menu-tab-line:#d29399; flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; font:1rem/1.45 var(--menu-font); }
+.villages-forging-v2 .villages-founding-venue-dialog .marinara-capability-villages-venue-profile { padding:clamp(1rem,3cqw,2.5rem); }
+.villages-founding-venue-dialog .marinara-capability-villages-venue-profile::before { background:linear-gradient(90deg,#262134fa 0%,#262134f0 38%,#262134ac 61%,transparent 93%); }
+.villages-founding-venue-dialog .marinara-capability-villages-venue-navigation { margin-bottom:1rem; }
+.villages-forging-v2 .villages-founding-venue-dialog fieldset.villages-quick-venue-header { display:grid; grid-template-columns:minmax(0,1fr); }
+.villages-founding-venue-dialog .villages-quick-zone-content { grid-template-columns:minmax(0,1fr); }
+.villages-founding-venue-dialog .villages-founding-zone-use { grid-row:1; }
+.villages-forging-v2 .villages-founding-venue-dialog :is(input:not([type=checkbox]),textarea) { background:#33283f; color:#f0dfbc; border-color:#9f788e; }
+.villages-forging-v2 .villages-founding-venue-dialog fieldset.villages-founding-venue-choices { display:flex; flex-wrap:wrap; gap:.4rem; margin:.8rem 0; }
+.villages-founding-venue-choices legend { margin-bottom:.3rem; }
+.villages-forging-v2 .villages-founding-venue-choices button { color:#f0dfbc; background:#514157; border-color:#a87788; }
+.villages-forging-v2 .villages-founding-venue-choices button[aria-pressed=true] { opacity:1; background:#8c596d; border-color:#dea2a7; }
+.villages-forging-v2 dialog.villages-founding-venue-dialog>.villages-quick-footer { padding:.5rem 1rem; border-top:1px solid #a39b8460; }
+.villages-forging-v2 .villages-founding-venue-dialog .villages-forging-primary { color:#292938; background:#a5ac8b; border-color:#a5ac8b; }
+@container founding-editor (max-width:42rem) {
+ .villages-founding-venue-dialog .marinara-capability-villages-venue-profile :is(.marinara-capability-villages-workspace-venue-header,.marinara-capability-villages-venue-sections,.marinara-capability-villages-venue-profile-body) { width:100%; }
+ .villages-founding-venue-dialog .marinara-capability-villages-venue-profile::before { background:linear-gradient(180deg,#262134e8,#262134f2); }
+}
 `;

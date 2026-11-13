@@ -1,8 +1,9 @@
 import { foundingVenueShapeProblem } from "../../../shared/helpers/founding-venues.js";
 import { simpleFoundingMap } from "./simple-map.js";
-import { foundingHomeMembers, reconcileFoundingRoster } from "./founding-homes.js";
+import { assignFoundingHome, foundingHomeMembers, reconcileFoundingRoster } from "./founding-homes.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ELEMENT_TAG } from "../../shared/constants.js";
+import { useLetterFont } from "../../shared/letter-font-css.js";
 import type { MobileMapView } from "../exploration/MapStage.js";
 import { defaultView, MapStage } from "../exploration/MapStage.js";
 import { AgentConnections } from "../settings/AgentConnections.js";
@@ -15,6 +16,7 @@ import {
   foundingCircumstanceFromText,
 } from "../../../shared/helpers/founding-circumstance.js";
 import { FoundingField } from "./FoundingField.js";
+import { FoundingGuide } from "./FoundingGuide.js";
 import {
   FoundingPersonaSelector,
   FoundingVillagerPicker,
@@ -122,6 +124,8 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
   const [artSettingsOpen, setArtSettingsOpen] = useState(false);
   const [spriteId, setSpriteId] = useState<string | null>(null);
   const [reviewPage, setReviewPage] = useState(0);
+  useLetterFont(screen === "setup" ? "lora" : undefined);
+  const [openVenueFromMap, setOpenVenueFromMap] = useState<{ id: string }>();
   const availableSpriteIds = setupFoundingVillagerIds.filter((id) => catalog?.some((person) => person.id === id));
   const activeSpriteId = spriteId && availableSpriteIds.includes(spriteId) ? spriteId : (availableSpriteIds[0] ?? null);
   const [spriteBusy, setSpriteBusy] = useState(false);
@@ -259,6 +263,8 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                 interactive && !setupVenueBusy && !setupSuggestionsBusy
                   ? () => {
                       setSelectedSetupVenueId(pin.id);
+                      setSetupFocusIssue(null);
+                      setOpenVenueFromMap({ id: pin.id });
                       setMovingSetupVenueId(null);
                       setSetupWorkspace((state) => ({ ...state, paused: true, view: "details" }));
                     }
@@ -321,13 +327,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
       setSetupVenues((rows) =>
         rows.length && foundingVenueShapeProblem(rows, setupContext.communityVenueId)
           ? rows
-          : arrangeQuickStartVenues(
-              reconcileFoundingRoster(rows, actors, added, setupContext.communityVenueId).filter(
-                (venue) =>
-                  venue.id === setupContext.communityVenueId ||
-                  foundingHomeMembers(venue).some((id) => actors.some((actor) => actor.id === id)),
-              ),
-            ),
+          : arrangeQuickStartVenues(reconcileFoundingRoster(rows, actors, added, setupContext.communityVenueId)),
       );
       setSetupFoundingVillagerIds(ids);
       setSetupMapReviewed(false);
@@ -354,6 +354,16 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
             ))}
           </ol>
           <h1>Begin your Village</h1>
+          <FoundingGuide>
+            {
+              [
+                "Give your village a name and tell me where it begins.",
+                "Choose who starts here, then set up how they appear in Scenes.",
+                "Open a Venue from the map or the list. Its Zones show where people can sleep and visit.",
+                "Check where everyone lives and sleeps, then set the scene for the first day.",
+              ][setupStep]!
+            }
+          </FoundingGuide>
 
           {setupStep === 0 ? (
             <button
@@ -551,7 +561,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
             </div>
             <section className="villages-forging-card villages-place-options">
               <div className="villages-founding-tabs" role="group" aria-label="Village context">
-                {["World rules", "Circumstances", "Lorebooks", "Connections"].map((view) => (
+                {["World rules", "Lorebooks", "Connections"].map((view) => (
                   <button key={view} aria-pressed={contextView === view} onClick={() => setContextView(view)}>
                     {view}
                   </button>
@@ -570,29 +580,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                       onChange={(event) => setSetupContext((context) => ({ ...context, rules: event.target.value }))}
                     />
                   </FoundingField>
-                ) : null}
-                {contextView === "Circumstances" ? (
-                  <>
-                    <FoundingField title="Starting circumstances" optional>
-                      <textarea
-                        autoComplete="off"
-                        aria-label="Starting circumstances"
-                        maxLength={FOUNDING_CIRCUMSTANCE_MAX_LENGTH}
-                        rows={7}
-                        value={foundingCircumstanceText(setupContext.circumstances)}
-                        disabled={busy}
-                        onChange={(event) =>
-                          setSetupContext((context) => ({
-                            ...context,
-                            circumstances: foundingCircumstanceFromText(event.target.value),
-                          }))
-                        }
-                      />
-                    </FoundingField>
-                    {setupContext.circumstances.some((row) => row.scope === "zone") ? (
-                      <p role="status">Saved circumstance scopes retained until edited.</p>
-                    ) : null}
-                  </>
                 ) : null}
                 {contextView === "Lorebooks" ? (
                   <>
@@ -702,6 +689,16 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   setSetupWorkspace((state) => ({ ...state, paused: true, view: "details" }));
                 }}
                 onPatch={(venue) => patchSetupVenue(venue.id, () => venue)}
+                openFromMap={openVenueFromMap}
+                onMapOpened={() => setOpenVenueFromMap(undefined)}
+                onMoveResident={(venueId, actorId) => {
+                  try {
+                    setSetupVenues(assignFoundingHome(setupVenues, venueId, actorId, true));
+                    return "";
+                  } catch (cause) {
+                    return cause instanceof Error ? cause.message : "Could not move this resident.";
+                  }
+                }}
                 onGenerateImage={(venue, area, zoneId) => void generateSetupImage(venue, area, zoneId)}
                 onUploadImage={(venue, area, file, zoneId) => void uploadSetupImage(venue, area, file, zoneId)}
               />
@@ -719,10 +716,25 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                         Change people
                       </button>
                     </div>
-                    <p>{personas?.find((person) => person.id === personaDraft)?.name ?? "Selected Persona"} · You</p>
-                    {wizardVillagers.map((person) => (
-                      <p key={person.id}>{person.name}</p>
-                    ))}
+                    {[
+                      {
+                        id: "player",
+                        name:
+                          (personas?.find((person) => person.id === personaDraft)?.name ?? "Your Persona") + " (you)",
+                      },
+                      ...wizardVillagers,
+                    ].map((person) => {
+                      const home = setupVenues.find((venue) => foundingHomeMembers(venue).includes(person.id));
+                      const sleep = [...(home?.spaces ?? []), ...(home?.privateSpaces ?? [])].find(
+                        (zone) => zone.id === home?.destinations?.[person.id]?.sleep,
+                      );
+                      return (
+                        <p key={person.id}>
+                          <strong>{person.name}</strong> · {home?.name || "Choose a home"}
+                          {sleep ? ` · Sleeps in ${sleep.name || "Zone"}` : ""}
+                        </p>
+                      );
+                    })}
                   </section>
                   <section className="villages-forging-card">
                     <div className="villages-forging-card-heading">
@@ -733,16 +745,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                     </div>
                     <p>{setupSetting}</p>
                     {setupContext.rules ? <p>World rules: {setupContext.rules}</p> : null}
-                    {setupContext.circumstances
-                      .filter((row) => row.summary.trim())
-                      .map((row, index) => (
-                        <p key={index}>
-                          {row.scope === "village"
-                            ? "Village-wide"
-                            : `${setupVenues.find((venue) => venue.id === row.venueId)?.name} / ${row.zoneId}`}
-                          : {row.summary}
-                        </p>
-                      ))}
                     {setupWorldName ? <p>World: {setupWorldName}</p> : null}
                     <p>{setupLorebookDraft.length} lorebooks selected</p>
                   </section>
@@ -814,6 +816,28 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   <p>
                     {placed} of {setupVenues.length} Venues placed
                   </p>
+                  <FoundingField title="First day" optional>
+                    <textarea
+                      autoComplete="off"
+                      aria-label="First day"
+                      placeholder="What’s happening when the village begins?"
+                      maxLength={FOUNDING_CIRCUMSTANCE_MAX_LENGTH}
+                      rows={4}
+                      value={foundingCircumstanceText(
+                        setupContext.circumstances.filter((row) => row.scope === "village"),
+                      )}
+                      disabled={busy}
+                      onChange={(event) =>
+                        setSetupContext((context) => ({
+                          ...context,
+                          circumstances: [
+                            ...foundingCircumstanceFromText(event.target.value),
+                            ...context.circumstances.filter((row) => row.scope === "zone"),
+                          ],
+                        }))
+                      }
+                    />
+                  </FoundingField>
                   <h3>After founding</h3>
                   <p>Prepare local routines and optional initial Wishes, then meet at the Community Venue.</p>
                 </section>

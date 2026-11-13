@@ -4,6 +4,7 @@ import { addFoundingZone } from "../packages/villages/src/client/features/foundi
 import {
   assignFoundingHome,
   assignFoundingPrivateZone,
+  changeFoundingZoneOwner,
   foundingSleepZones,
   reconcileFoundingHome,
   reconcileFoundingRoster,
@@ -88,7 +89,32 @@ rows[0] = assignFoundingPrivateZone(rows[0], "ada-room", "a");
 assert.equal(rows[0].destinations!.a.sleep, "ada-room");
 const restored = JSON.parse(JSON.stringify(rows));
 assert.equal(restored[0].foundingCapacity, null);
-assert.throws(() => parsePlaces(restored, new Set(["a", "b"]), true, "community"), /separate Residences/);
+const placed = restored.map((row: any, index: number) => ({
+  ...row,
+  presentation: { ...row.presentation, x: 0.1 + index * 0.2, y: 0.5 },
+}));
+const founded = parsePlaces(placed, new Set(["a", "b"]), true, "community");
+assert.equal(founded[0].destinations!.a.sleep, "ada-room");
+assert.equal(founded[0].destinations!.player.sleep, "common:base");
+const shared = changeFoundingZoneOwner(restored[0], "ada-room", "");
+assert.equal(shared.destinations!.a.sleep, "ada-room");
+assert.equal(shared.spaces!.find((zone) => zone.id === "ada-room")!.access!.mode, "permission-required");
+assert.throws(() => changeFoundingZoneOwner(shared, "ada-room", "player"), /another sleeping Zone/);
+const personal = changeFoundingZoneOwner(shared, "ada-room", "a");
+assert.equal(personal.destinations!.player.sleep, "common:base");
+assert.equal(personal.destinations!.a.sleep, "ada-room");
+assert.deepEqual(personal.privateSpaces![0].access!.managerIds, ["a"]);
+const throughCabin = {
+  ...personal,
+  presentation: placed[0].presentation,
+  spaces: personal.spaces!.map((zone) => ({ ...zone, connectedTo: ["ada-room"] })),
+  privateSpaces: personal.privateSpaces!.map((zone) => ({ ...zone, connectedTo: ["exterior", "common:base"] })),
+};
+assert.equal(foundingSleepZones(throughCabin, "player").length, 0, "A private passage can block a shared room");
+assert.throws(
+  () => parsePlaces([throughCabin, ...placed.slice(1)], new Set(["a", "b"]), true, "community"),
+  /accessible sleeping destination/,
+);
 const saved = restored.map((row: any, index: number) =>
   parsePlace({
     ...row,

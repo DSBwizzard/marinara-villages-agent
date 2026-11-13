@@ -1,6 +1,7 @@
 import type { SetupVenueDraft } from "../../shared/types.js";
+import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import { newSetupVenue } from "./FoundingPanels.js";
-import { draftZonePolicy } from "./villages-founding-zones.js";
+import { draftZonePolicy, foundingLayoutZones } from "./villages-founding-zones.js";
 
 export const foundingHomeMembers = (venue: SetupVenueDraft): string[] => [
   ...(venue.occupancy.playerHome ? ["player"] : []),
@@ -8,16 +9,40 @@ export const foundingHomeMembers = (venue: SetupVenueDraft): string[] => [
 ];
 
 export function foundingSleepZones(venue: SetupVenueDraft, actor: string) {
+  const members = foundingHomeMembers(venue);
+  const zones = foundingLayoutZones(venue);
+  const accessible = new Set(
+    zones
+      .filter((zone) => {
+        if (zone.kind === "exterior") return true;
+        const area = zone as NonNullable<SetupVenueDraft["spaces"]>[number];
+        const access =
+          area.access ??
+          (zone.kind === "private-residence" && !area.ownerId
+            ? { ...draftZonePolicy(venue, area, true), managerIds: null, memberIds: [] }
+            : draftZonePolicy(venue, area, zone.kind === "private-residence"));
+        return (
+          access.mode === "public" ||
+          area.ownerId === actor ||
+          (access.managerIds ?? members).includes(actor) ||
+          access.memberIds.includes(actor) ||
+          (access.memberRoles.includes("residents") && members.includes(actor))
+        );
+      })
+      .map((zone) => zone.id),
+  );
+  const path = ["exterior"];
+  for (const id of path) {
+    for (const next of contactNeighborIds(zones, id)) {
+      if (accessible.delete(next)) path.push(next);
+    }
+  }
   return [...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])].filter(
     (zone) =>
       zone.venueClass === "residence" &&
       (!zone.ownerId || zone.ownerId === actor) &&
       (!venue.privateSpaces?.some((room) => room.id === zone.id) || zone.ownerId === actor) &&
-      (!zone.access ||
-        zone.access.mode === "public" ||
-        zone.ownerId === actor ||
-        zone.access.memberRoles.includes("residents") ||
-        zone.access.memberIds.includes(actor)),
+      path.includes(zone.id),
   );
 }
 
@@ -129,7 +154,19 @@ export function reconcileFoundingRoster(
       const updated = assignFoundingHome(next, id, actor.id, true);
       next.splice(0, next.length, ...updated);
     } else {
-      if (next.length >= 16) continue;
+      if (next.filter((venue) => venue.classes?.includes("residence")).length >= 4) {
+        const vacant = next.find(
+          (venue) =>
+            venue.classes?.includes("residence") &&
+            !foundingHomeMembers(venue).length &&
+            foundingSleepZones(reconcileFoundingHome(venue, [actor.id]), actor.id).length,
+        );
+        if (vacant) {
+          const updated = assignFoundingHome(next, vacant.id, actor.id, true);
+          next.splice(0, next.length, ...updated);
+        }
+        continue;
+      }
       const venue = newSetupVenue(id, "residence", 0.5, 0.5, actor.id === "player");
       venue.name = `${actor.name} home`;
       venue.residentIds = actor.id === "player" ? [] : [actor.id];
@@ -143,6 +180,55 @@ export function reconcileFoundingRoster(
     next.push(venue);
   }
   return next;
+}
+
+export function changeFoundingZoneOwner(venue: SetupVenueDraft, zoneId: string, ownerId: string): SetupVenueDraft {
+  const spaces = venue.spaces ?? [],
+    privateSpaces = venue.privateSpaces ?? [];
+  const zone = [...spaces, ...privateSpaces].find((row) => row.id === zoneId);
+  const personal = privateSpaces.some((row) => row.id === zoneId);
+  if (!zone || zone.venueClass !== "residence" || (personal === !!ownerId && (zone.ownerId || "") === ownerId))
+    return venue;
+  const members = foundingHomeMembers(venue);
+  if (ownerId && !members.includes(ownerId)) throw new Error("Choose someone who lives here.");
+  if (ownerId && members.some((id) => id !== ownerId && venue.destinations?.[id]?.sleep === zoneId))
+    throw new Error("Choose another sleeping Zone for the other residents first.");
+  const links = new Map(foundingLayoutZones(venue).map((row) => [row.id, row.connectedTo]));
+  const connected = <T extends { id: string; connectedTo?: string[] }>(row: T) => ({
+    ...row,
+    connectedTo: links.get(row.id),
+  });
+  const priorAccess = zone.access ?? draftZonePolicy(venue, zone, personal);
+  const policy = draftZonePolicy(venue, { ...zone, ownerId }, !!ownerId);
+  const updated = connected({
+    ...zone,
+    ownerId,
+    controllerIds: undefined,
+    access: {
+      ...priorAccess,
+      managerIds: policy.managerIds,
+      memberIds: policy.memberIds,
+      memberRoles: policy.memberRoles,
+      inviterIds: [],
+    },
+  });
+  const common = spaces.filter((row) => row.id !== zoneId).map(connected);
+  const rooms = privateSpaces.filter((row) => row.id !== zoneId).map(connected);
+  if (ownerId) rooms.push(updated);
+  else common.push(updated);
+  const result = reconcileFoundingHome({
+    ...venue,
+    spaces: common,
+    privateSpaces: rooms,
+    layout: common.length ? (rooms.length ? "both" : "common") : "private",
+  });
+  if (
+    members.some(
+      (id) => venue.destinations?.[id]?.sleep && result.destinations?.[id]?.sleep !== venue.destinations[id].sleep,
+    )
+  )
+    throw new Error("Choose a sleeping Zone for each resident before changing personal space.");
+  return result;
 }
 
 export function assignFoundingPrivateZone(venue: SetupVenueDraft, zoneId: string, actor: string): SetupVenueDraft {

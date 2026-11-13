@@ -26,6 +26,12 @@ const deskAssets = {
   "letter-fonts/lora.json": "application/json",
 };
 const mockDeskAsset = async (context) => {
+  await context.route("**/sprites/mari/basic/pose-wave.webp", (route) =>
+    route.fulfill({
+      path: fileURLToPath(new URL("../../packages/villages/villages-icon.png", import.meta.url)),
+      contentType: "image/png",
+    }),
+  );
   for (const [asset, contentType] of Object.entries(deskAssets))
     await context.route("**/api/capability-packages/villages/assets/" + asset, (route) =>
       route.fulfill({ path: fileURLToPath(new URL("../../packages/villages/" + asset, import.meta.url)), contentType }),
