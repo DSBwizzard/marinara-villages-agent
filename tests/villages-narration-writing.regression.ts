@@ -379,8 +379,7 @@ await runCase("narration-writing/single-request", async () => {
   assert.equal(boundary.content, "## Current player submission");
   assert.deepEqual(submitted, { role: "user", content: exact });
   assert.match(reminder.content, /^## Scene reply reminder\nBegin with \{"segments":\[/u);
-  assert.match(reminder.content, /Dialogue and narration have no source field/u);
-  assert.match(reminder.content, /pastSpeaker and witnessedWords belong to input/u);
+  assert.match(reminder.content, /Use only reply fields in dialogue and narration/u);
   assert.match(reminder.content, /Count every current segment from 1/u);
   assert.match(reminder.content, /cite current dialogue by exact quote and speakerId/u);
   assert.equal(deepSeekReply.readset.positionedSceneSources, true);
@@ -1289,6 +1288,31 @@ await runCase("narration-writing/long-followup", async () => {
     "I remember.",
   );
   assert.deepEqual(witnessed.segments[0].witnessedWords, decoration);
+  const selfWitnessed = { segments: [{ ...witnessed.segments[0], witnessedWords: { ref: "self" } }] };
+  assert.throws(
+    () =>
+      readSceneNarrationReply(
+        selfWitnessed,
+        [f.id],
+        { ...reply.readset, ordinaryFormatRecovery: true },
+        f.state.continuity,
+      ),
+    /witnessedWords/u,
+  );
+  assert.equal(
+    readSceneNarrationReply(selfWitnessed, [f.id], reply.readset, f.state.continuity).segments[0].text,
+    "I remember.",
+  );
+  assert.throws(
+    () =>
+      readSceneNarrationReply(
+        { segments: [{ ...selfWitnessed.segments[0], witnessedWords: { ref: "self", by: ["player"] } }] },
+        [f.id],
+        reply.readset,
+        f.state.continuity,
+      ),
+    /witnessedWords/u,
+  );
   assert.throws(
     () =>
       readSceneNarrationReply(

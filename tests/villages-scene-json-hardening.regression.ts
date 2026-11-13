@@ -84,6 +84,11 @@ await runCase("scene-json-hardening/ambiguity", () => {
   );
   assert.equal(completeSceneObject(extraBrace, "stop", undefined, true), null);
   assert.deepEqual(completeSceneObject(extraBrace, "stop", undefined, true, true), { segments });
+  const earlyClose = JSON.stringify({ segments }).replace('},{"id"', '}]},{"id"');
+  assert.equal(completeSceneObject(earlyClose, "stop", undefined, true, true), null);
+  assert.deepEqual(completeSceneObject(earlyClose, "stop", undefined, true, 2), { segments });
+  assert.equal(completeSceneObject(earlyClose, "length", undefined, true, 2), null);
+  assert.equal(completeSceneObject(earlyClose.slice(0, -1) + ',"keep":[]}', "stop", undefined, true, 2), null);
   assert.equal(completeSceneObject(extraBrace, "length", undefined, true, true), null);
   assert.equal(completeSceneObject(extraBrace.slice(0, -1) + ',"keep":[]}', "stop", undefined, true, true), null);
   assert.equal(

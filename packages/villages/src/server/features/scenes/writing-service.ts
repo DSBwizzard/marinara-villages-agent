@@ -339,7 +339,7 @@ export function createSceneWriting({
       Math.min(model.maxOutputTokens ?? VENUE_REPLY_MAX_TOKENS, VENUE_REPLY_MAX_TOKENS),
       "Narration",
       plainJson
-        ? '## Scene reply reminder\nBegin with {"segments":[. Return one complete JSON object. End at the player’s opening. Dialogue and narration have no source field. Historical pastSpeaker and witnessedWords belong to input. Put new keeps in one top-level keep array. ' +
+        ? '## Scene reply reminder\nBegin with {"segments":[. Return one complete JSON object. End at the player’s opening. Use only reply fields in dialogue and narration. Put new keeps in one top-level keep array. ' +
             (positions
               ? "For keeps, cite current dialogue by exact quote and speakerId. Count every current segment from 1 when citing it by number. "
               : "Cite the exact id you gave each current line. ") +
@@ -372,7 +372,7 @@ export function createSceneWriting({
               ordinaryReplyRecovery: true,
               positionedSceneSources: true,
               stripSceneHistoryDecoration: true,
-              ordinaryFormatRecovery: true,
+              ordinaryFormatRecovery: 2,
               quotedSceneSources: true,
               splitKeepRecovery: true,
               coalesceOfferDecisions: true,

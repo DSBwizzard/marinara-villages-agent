@@ -174,7 +174,7 @@ export function readSceneNarrationReply(
     const line = asRecord(value),
       source = line.source;
     if (
-      readset.ordinaryFormatRecovery === true &&
+      (readset.ordinaryFormatRecovery === true || readset.ordinaryFormatRecovery === 2) &&
       line.kind === "dialogue" &&
       line.delivery === "aside" &&
       !Object.hasOwn(line, "targetId") &&
@@ -198,7 +198,8 @@ export function readSceneNarrationReply(
       const annotation = asRecord(witnessedWords);
       if (
         typeof annotation.ref === "string" &&
-        /^h:\d+\.\d+$/u.test(annotation.ref) &&
+        (/^h:\d+\.\d+$/u.test(annotation.ref) ||
+          (readset.ordinaryFormatRecovery === 2 && annotation.ref === "self")) &&
         Object.keys(annotation).length === 1
       )
         return prose;
