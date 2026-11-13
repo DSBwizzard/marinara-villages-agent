@@ -1399,7 +1399,7 @@ export function useOpenRoom(ports: {
           method: "POST",
           body: JSON.stringify({
             venueId: place.id,
-            zoneId,
+            zoneId: zoneId ?? "exterior",
             expectedSceneRevision: room?.sceneRevision,
           }),
           signal: AbortSignal.timeout(20_000),

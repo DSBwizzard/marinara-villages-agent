@@ -331,7 +331,7 @@ export function QuickStartVenues({
                           autoComplete="off"
                           type="checkbox"
                           role="switch"
-                          aria-label="Restricted access"
+                          aria-label="Permission required"
                           checked={zoneAccess.mode === "permission-required"}
                           disabled={selected.id === communityVenueId && zoneAccess.mode === "public"}
                           onChange={(event) =>
@@ -340,7 +340,7 @@ export function QuickStartVenues({
                             })
                           }
                         />
-                        {zoneAccess.mode === "permission-required" ? "Restricted" : "Public"}
+                        {zoneAccess.mode === "permission-required" ? "Permission required" : "Public"}
                       </label>
                     ) : null}
                   </div>

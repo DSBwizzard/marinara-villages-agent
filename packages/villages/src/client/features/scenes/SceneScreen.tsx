@@ -11,6 +11,7 @@ import type { SceneScreenController } from "./screen-contracts.js";
 import { hasPublishedRoomSubmission } from "./villages-room-reading.js";
 import { ModalDialog } from "../../shared/ModalDialog.js";
 import type { PlaceDetail } from "../../../shared/contracts/places.js";
+import { zoneAccessStatus } from "../../shared/zone-access.js";
 
 const requestErrorIds = new Set(["room", "operation", "greeting"]);
 
@@ -104,6 +105,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     openVenue,
     snapshot,
   } = controller;
+  const sceneVenue = sceneVenues.find((entry) => entry.id === room?.placeId);
 
   return (
     <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-room-screen`} data-mobile={mobile ? "true" : "false"}>
@@ -269,24 +271,17 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
               }
             })();
           }}
-          movementZones={(() => {
-            const venue = sceneVenues.find((entry) => entry.id === room.placeId);
-            return (venue?.zones ?? [])
-              .filter((zone) => {
-                if (zone.id === room.zoneId) return true;
-                if (zone.closed) return false;
-                return zone.accessView?.decision.allowed ?? false;
-              })
-              .map((zone) => ({
-                id: zone.id,
-                label: sceneZoneLabel(zone) + (zone.accessView?.decision.reason === "invitation" ? " (invited)" : ""),
-                closed: zone.closed,
-              }));
-          })()}
+          movementZones={(sceneVenue?.zones ?? []).map((zone) => {
+            const { allowed, label } = zoneAccessStatus(zone, true);
+            return {
+              id: zone.id,
+              label: [sceneZoneLabel(zone), label].filter(Boolean).join(" · "),
+              allowed,
+              needsPermission: !allowed && !zone.closed && zone.accessView?.decision.reason === "permission-required",
+            };
+          })}
           onMovementTarget={(zoneId) => void moveRoom(zoneId)}
-          currentZoneLabel={sceneZoneLabel(
-            sceneVenues.find((venue) => venue.id === room.placeId)?.zones?.find((zone) => zone.id === room.zoneId),
-          )}
+          currentZoneLabel={sceneZoneLabel(sceneVenue?.zones?.find((zone) => zone.id === room.zoneId))}
           busy={roomBusy || contactReviewBusy || controller.replyPending || room.operation?.status === "running"}
           error={
             roomError ||
@@ -381,16 +376,14 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
       {showPlace && room ? (
         <ModalDialog title={room.placeName} onClose={() => setShowPlace(false)} scrollBody>
           <div className="villages-founding-editor-body villages-places-directory">
-            <p>{sceneVenues.find((place) => place.id === room.placeId)?.description}</p>
+            <p>{sceneVenue?.description}</p>
             <ul>
-              {sceneVenues
-                .find((place) => place.id === room.placeId)
-                ?.zones?.map((zone) => (
-                  <li key={zone.id}>
-                    {zone.name}
-                    {zone.seen ? <p>{zone.description}</p> : null}
-                  </li>
-                ))}
+              {sceneVenue?.zones?.map((zone) => (
+                <li key={zone.id}>
+                  {[sceneZoneLabel(zone), zoneAccessStatus(zone, true).label].filter(Boolean).join(" · ")}
+                  {zone.seen ? <p>{zone.description}</p> : null}
+                </li>
+              ))}
             </ul>
             <button
               type="button"

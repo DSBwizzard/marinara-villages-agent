@@ -353,7 +353,7 @@ export function evaluateZoneAccess(
       true,
       "invitation",
       grant.duration === "standing" ? "You have standing permission." : "You are invited for this visit.",
-      { permissionId: grant.id, ...(escort ? { accompaniedBy: escort } : {}) },
+      { permissionId: grant.id, invitationDuration: grant.duration, ...(escort ? { accompaniedBy: escort } : {}) },
     );
   }
   if (!bans.length && policy.mode === "public" && !policy.accompanied)
