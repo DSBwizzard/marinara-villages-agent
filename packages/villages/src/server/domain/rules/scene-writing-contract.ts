@@ -20,11 +20,28 @@ export function completeSceneObject(
     .replace(/^```(?:json)?\s*\n/iu, "")
     .replace(/\r?\n```$/u, "")
     .trim();
-  if (!text.startsWith("{") || !text.endsWith("}")) return null;
-  const value = (parsed ?? readModelJsonObject({ content, finishReason })).value;
-  if (value) return value;
+  if (!text.startsWith("{") || !(text.endsWith("}") || (ordinaryReplyRecovery && text.endsWith("]")))) return null;
+  if (text.endsWith("}")) {
+    const value = (parsed ?? readModelJsonObject({ content, finishReason })).value;
+    if (value) return value;
+  }
   if (!modelJsonWithinBounds(content)) return null;
   if (ordinaryReplyRecovery) {
+    const bare = /\}\s*\r?\n\s*keep\s*:\s*(?=\[)/u.exec(text);
+    if (bare && text.endsWith("]")) {
+      const head = parseSceneObject(text.slice(0, bare.index + 1));
+      const tail = parseSceneObject('{"keep":' + text.slice(bare.index + bare[0].length) + "}");
+      if (
+        head &&
+        Object.keys(head).length === 1 &&
+        Array.isArray(head.segments) &&
+        tail &&
+        Object.keys(tail).length === 1 &&
+        Array.isArray(tail.keep)
+      )
+        return { segments: head.segments, keep: tail.keep };
+    }
+    if (!text.endsWith("}")) return null;
     const missingIdQuote = /\{"id":"([A-Za-z][A-Za-z0-9_-]{0,47}),"kind":"(dialogue|narration)",/gu;
     const matches = [...text.matchAll(missingIdQuote)];
     if (matches.length === 1) {

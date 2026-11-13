@@ -317,10 +317,16 @@ export function prepareNarrationKeep(
     const segment =
       typeof ref === "string" && /^[A-Za-z][A-Za-z0-9_-]{0,47}$/u.test(ref) && ref !== "self"
         ? { segment: ref }
-        : typeof ref === "object" && "segment" in ref && !ref.act
+        : typeof ref === "object" && "segment" in ref && (!ref.act || ref.act === "offer")
           ? ref
           : undefined;
-    if (proposal.offer && !proposal.replace && proposal.source.length === 1 && segment) {
+    if (
+      proposal.offer &&
+      !proposal.replace &&
+      proposal.retire === undefined &&
+      proposal.source.length === 1 &&
+      segment
+    ) {
       const id = Object.hasOwn(sourceContext.labels, segment.segment) && sourceContext.labels[segment.segment];
       const line = sourceContext.lines.find((line) => line.id === id);
       const { proposer, participants } = proposal.offer;
@@ -328,14 +334,20 @@ export function prepareNarrationKeep(
         line?.role === "assistant" &&
         line.kind !== "narration" &&
         line.speakerId === proposer &&
-        /(?:^|[.!?]\s+)(?:come\b[^.!?]{0,120}\band I['’]ll\b|if you want\b[^.!?]{0,130},\s*say yes and I['’]ll\b)/iu.test(
-          line.content,
-        ) &&
-        !/["“”«»‘]|(?:^|[\s,:;])'/u.test(line.content) &&
         participants.every((party) => party === proposer || line.heardBy.includes(party)) &&
         !("perceive" in segment && segment.perceive)
-      )
-        raw = { ...keep, source: [{ ...segment, act: "offer" }] };
+      ) {
+        if (
+          ("act" in segment && segment.act === "offer") ||
+          (/(?:^|[.!?]\s+)(?:come\b[^.!?]{0,120}\band I['’]ll\b|if you want\b[^.!?]{0,130},\s*say yes and I['’]ll\b)/iu.test(
+            line.content,
+          ) &&
+            !/["“”«»‘]|(?:^|[\s,:;])'/u.test(line.content))
+        ) {
+          const { owner, ...withoutOwner } = keep;
+          raw = { ...(owner === proposer ? withoutOwner : keep), source: [{ ...segment, act: "offer" }] };
+        }
+      }
     }
   }
   return prepareContinuityKeep(raw, ordinal, collection, admission, {

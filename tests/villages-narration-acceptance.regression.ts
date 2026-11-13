@@ -184,7 +184,7 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
     assert.equal(result.held, held);
     assert.equal(f.state.continuity.records[0]?.offer?.events[0].act, held ? undefined : "offer");
   }
-  for (const layout of ["embedded", "effects", "whisper", "mixed"]) {
+  for (const layout of ["embedded", "effects", "whisper", "mixed", "redundant-owner", "different-owner"]) {
     const f = fixture();
     const text = "Come to the bench and I'll show you.";
     const reply = {
@@ -200,7 +200,8 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
       class: "commitment",
       text,
       offer: { proposer: f.id, participants: [f.id, "player", ...(layout === "whisper" ? ["unheard"] : [])] },
-      source: ["reply"],
+      source: layout.endsWith("-owner") ? [{ segment: "reply", act: "offer" }] : ["reply"],
+      ...(layout.endsWith("-owner") ? { owner: layout === "redundant-owner" ? f.id : "player" } : {}),
     };
     const p = f.publication({
       segments: [reply, ...(layout === "embedded" || layout === "mixed" ? [proposal] : [])],
@@ -212,8 +213,8 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
       continue;
     }
     const result = acceptNarrationContinuity(f.state, p, "layout", later);
-    assert.equal(result.held, layout === "whisper");
-    if (layout !== "whisper") {
+    assert.equal(result.held, layout === "whisper" || layout === "different-owner");
+    if (!result.held) {
       assert.equal(result.episode?.segments[0].content, text);
       assert.equal(result.episode?.continuityVersionIds.length, 2);
     }
