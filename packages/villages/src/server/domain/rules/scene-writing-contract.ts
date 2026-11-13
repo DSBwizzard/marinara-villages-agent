@@ -15,7 +15,7 @@ export function completeSceneObject(
   parsed?: ModelJsonReply,
   ordinaryReplyRecovery?: true,
   ordinaryFormatRecovery?: true | 2,
-  splitKeepRecovery?: true,
+  splitKeepRecovery?: true | 2,
 ): Record<string, unknown> | null {
   if (finishReason !== "stop" && finishReason !== "end_turn") return null;
   const text = content
@@ -51,6 +51,24 @@ export function completeSceneObject(
     }
   }
   if (ordinaryReplyRecovery) {
+    if (splitKeepRecovery === 2) {
+      const separator = /"(?:[^"\\]|\\.)*"|(?<end>\}\s*\]\s*\}\s*),\s*(?=\{\s*"keep"\s*:)/gu;
+      const splits = [...text.matchAll(separator)].filter((match) => match.groups?.end);
+      if (splits.length === 1) {
+        const [{ index, 0: boundary, groups }] = splits;
+        const head = parseSceneObject(text.slice(0, index + groups!.end.length));
+        const tail = parseSceneObject(text.slice(index + boundary.length));
+        if (
+          head &&
+          Object.keys(head).length === 1 &&
+          Array.isArray(head.segments) &&
+          tail &&
+          Object.keys(tail).length === 1 &&
+          Array.isArray(tail.keep)
+        )
+          return { segments: head.segments, keep: tail.keep };
+      }
+    }
     const bare = /\}\s*\r?\n\s*keep\s*:\s*(?=\[)/u.exec(text);
     if (bare && text.endsWith("]")) {
       const head = parseSceneObject(text.slice(0, bare.index + 1));
@@ -97,7 +115,7 @@ export function completeSceneObject(
   }
   // Some replies close the root after segments, then emit the keep field or a keep-only object.
   const extraKeep =
-    splitKeepRecovery === true
+    splitKeepRecovery === true || splitKeepRecovery === 2
       ? [...text.matchAll(/"(?:[^"\\]|\\.)*"|(?<boundary>\}\s*\]\s*,\s*"keep"\s*:\s*(?=\[))/gu)].filter(
           (match) => match.groups?.boundary,
         )

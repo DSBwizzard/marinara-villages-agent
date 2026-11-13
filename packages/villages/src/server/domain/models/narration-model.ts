@@ -20,7 +20,7 @@ export type NarrationReadset = {
   stripSceneHistoryDecoration?: true;
   ordinaryFormatRecovery?: true | 2;
   quotedSceneSources?: true;
-  splitKeepRecovery?: true;
+  splitKeepRecovery?: true | 2;
   coalesceOfferDecisions?: true;
   stripOfferContributionEcho?: true;
   recognizeDirectOfferSpeech?: true | 2;

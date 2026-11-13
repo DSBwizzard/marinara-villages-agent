@@ -374,7 +374,7 @@ export function createSceneWriting({
               stripSceneHistoryDecoration: true,
               ordinaryFormatRecovery: 2,
               quotedSceneSources: true,
-              splitKeepRecovery: true,
+              splitKeepRecovery: 2,
               coalesceOfferDecisions: true,
               stripOfferContributionEcho: true,
               recognizeDirectOfferSpeech: 2,
