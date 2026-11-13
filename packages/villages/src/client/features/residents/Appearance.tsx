@@ -7,6 +7,7 @@ import type {
 } from "../../../shared/contracts/sprites.js";
 import { messageFrom, request, VillageApiError } from "../../shared/api.js";
 import { useConfirmation } from "../../shared/confirmation.js";
+import { ELEMENT_TAG } from "../../shared/constants.js";
 import { ModalDialog } from "../../shared/ModalDialog.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import type { Portrait } from "../../shared/types.js";
@@ -429,7 +430,7 @@ export function Appearance({
               ) : (
                 <div className="appearance-portrait">
                   <h3>Scene portrait</h3>
-                  <AvatarFace className="appearance-avatar" name={name} portrait={portrait} />
+                  <AvatarFace className={`${ELEMENT_TAG}-avatar`} name={name} portrait={portrait} />
                 </div>
               )}
             </div>

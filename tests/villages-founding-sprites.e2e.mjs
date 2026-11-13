@@ -65,6 +65,17 @@ await withBrowser(browser, async () => {
     await runCase(name, async () => {
       const page = await browser.newPage({ viewport, hasTouch: viewport.width < 600 });
       await mockEngineLookups(page);
+      await page.route("**/api/characters/summaries", (route) =>
+        route.fulfill({
+          json: [
+            {
+              id: "aqua",
+              avatarUrl: image,
+              avatarCrop: { srcX: 0.3, srcY: 0.2, srcWidth: 0.25, srcHeight: 0.25 },
+            },
+          ],
+        }),
+      );
       const writes = [];
       let saved;
       const state = {
@@ -152,6 +163,19 @@ await withBrowser(browser, async () => {
       }
       const pane = root.getByRole("region", { name: "Aqua’s appearance", exact: true });
       await expect(pane.getByRole("button", { name: "Portrait", exact: true })).toHaveAttribute("aria-pressed", "true");
+      const portrait = pane.locator(".appearance-portrait img");
+      await expect(portrait).toHaveJSProperty("complete", true);
+      const crop = await portrait.evaluate((image) => {
+        const frame = image.parentElement;
+        const bounds = frame.getBoundingClientRect();
+        return {
+          contained: image.offsetParent === frame && getComputedStyle(frame).overflow === "hidden",
+          square: Math.abs(bounds.width - bounds.height) < 1,
+          enlarged: image.getBoundingClientRect().width > bounds.width,
+          fits: bounds.width > 0 && bounds.width <= 176,
+        };
+      });
+      assert.deepEqual(crop, { contained: true, square: true, enlarged: true, fits: true });
       assert.equal(
         await page.evaluate(() => window.featureController.setupSpriteRevisions.aqua),
         undefined,

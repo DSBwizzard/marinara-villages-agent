@@ -53,7 +53,7 @@ export const APPEARANCE_STYLES = String.raw`
 .appearance-view img { width:100%; height:clamp(8rem,28cqw,22rem); object-fit:contain; }
 .appearance-view > button:only-of-type:not(.appearance-link) { margin:auto .1rem; border:1px dashed var(--appearance-pick); }
 .appearance-portrait { display:grid; justify-items:center; }
-.appearance-portrait [aria-hidden] { width:min(100%,11rem); }
+.appearance-portrait > .marinara-capability-villages-avatar { width:min(100%,11rem); height:auto; aspect-ratio:1; border-radius:.45rem; }
 .appearance-preview details { margin-top:.65rem; }
 .appearance-preview summary { cursor:pointer; min-height:36px; padding:.35rem 0; }
 .appearance-preview label { display:grid; gap:.3rem; }
