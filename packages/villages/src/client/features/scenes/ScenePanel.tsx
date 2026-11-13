@@ -987,13 +987,6 @@ export function RoomPanel({
           </div>
         </div>
       ) : null}
-      {room.area === "outside" ? (
-        <p className={`${ELEMENT_TAG}-hint`} role="status">
-          {room.spaceClass === "residence"
-            ? "You’re outside this Residence. A resident needs to invite you in. You can speak in your own words, or leave whenever you like."
-            : "You’re outside this Venue. You can speak in your own words, or leave whenever you like."}
-        </p>
-      ) : null}
       <div className={`${ELEMENT_TAG}-scene-notice-chips`}>
         {!settingsOpen ? (
           <SceneErrorChip
