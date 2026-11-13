@@ -22,14 +22,18 @@ await withBrowser(browser, async () => {
       );
     const files = [
       { filename: "happy.png", label: "Happy", folderId: "front", url: picture(false), version: "100" },
-      { filename: "happy-side.png", label: "Happy profile", folderId: "side", url: picture(true), version: "100" },
+      { filename: "happy-side.png", label: " FULL_HAPPY.png ", folderId: "side", url: picture(true), version: "100" },
+      { filename: "neutral.png", label: "Neutral", folderId: "front", url: picture(false), version: "100" },
+      { filename: "neutral-1.png", label: "Neutral", folderId: "side", url: picture(true), version: "100" },
+      { filename: "neutral-2.png", label: "NEUTRAL", folderId: "side", url: picture(true), version: "100" },
+      { filename: "thinking.png", label: "Thinking", folderId: "front", url: picture(false), version: "100" },
     ];
     const current = {
       revision: 0,
       token: "resident-0",
       folders: [
-        { id: "front", name: "Front sprites" },
-        { id: "side", name: "Side sprites" },
+        { id: "front", name: "Front" },
+        { id: "side", name: "Side" },
       ],
       files,
       manager: { version: 1, artwork: [], expressions: [], assignments: [], framing: { mode: "full" } },
@@ -58,7 +62,12 @@ await withBrowser(browser, async () => {
             if (!choice?.filename) continue;
             const source = files.find((file) => file.filename === choice.filename);
             assert.equal(choice.version, source.version);
-            current.manager.artwork.push({ id: choice.filename, name: source.label, rendered: { url: source.url } });
+            current.manager.artwork.push({
+              id: choice.filename,
+              name: source.label,
+              rendered: { url: source.url },
+              engineSource: { characterId: "mara", filename: choice.filename },
+            });
           }
         }
         current.manager.expressions = rows.map(({ id, name }) => ({ id, name }));
@@ -103,15 +112,31 @@ await withBrowser(browser, async () => {
     await screen.getByRole("button", { name: "Edit art in Engine" }).click();
     assert.deepEqual(await page.evaluate(() => window.engineOpen), ["mara", { tab: "sprites" }]);
 
-    await screen.getByRole("button", { name: "Choose from Engine" }).click();
-    const picker = page.getByRole("dialog", { name: "Choose from Engine" });
-    await picker.getByRole("combobox", { name: "Sprite folder" }).selectOption("front");
-    await picker.getByRole("checkbox", { name: "Happy", exact: true }).check();
-    await picker.getByRole("button", { name: "Add 1 sprite", exact: true }).click();
+    await screen.getByRole("button", { name: "Add sprite set" }).click();
+    const picker = page.getByRole("dialog", { name: "Add sprite set" });
+    const frontFolder = picker.getByRole("combobox", { name: "Front folder" });
+    const sideFolder = picker.getByRole("combobox", { name: "Side folder" });
+    await expect(frontFolder).toHaveValue("folder:front");
+    await expect(sideFolder).toHaveValue("folder:side");
+    const happy = picker.getByRole("row").filter({ hasText: "Happy" });
+    await expect(happy.getByRole("img", { name: "Happy · Front" })).toBeVisible();
+    await expect(happy.getByRole("img", { name: "Happy · Side" })).toBeVisible();
+    await expect(picker.getByRole("row").filter({ hasText: "Neutral" })).toContainText("Duplicate label");
+    await expect(picker.getByRole("row").filter({ hasText: "Thinking" })).toContainText("No match");
+    await sideFolder.selectOption("");
+    await expect(happy.getByRole("img", { name: "Happy · Side" })).toHaveCount(0);
+    await sideFolder.selectOption("folder:side");
+    await expect(happy.getByRole("img", { name: "Happy · Side" })).toBeVisible();
+    const pairBounds = await picker.getByRole("table").boundingBox();
+    assert.ok(pairBounds && pairBounds.x >= 0 && pairBounds.x + pairBounds.width <= width);
+    await picker.getByRole("button", { name: "Add to appearance" }).click();
+    await screen.getByRole("button", { name: "Neutral Default" }).click();
     await screen.getByRole("button", { name: "+ Add side view", exact: true }).click();
-    const side = page.getByRole("dialog", { name: "Side view for Happy" });
-    await side.getByRole("radio", { name: "Happy profile", exact: true }).check();
+    const side = page.getByRole("dialog", { name: "Side view for Neutral" });
+    await expect(side.getByRole("combobox", { name: "Sprite folder" })).toHaveValue("folder:side");
+    await side.getByRole("radio", { name: "Neutral", exact: true }).first().check();
     await side.getByRole("button", { name: "Use as side view" }).click();
+    await screen.getByRole("button", { name: "Happy", exact: true }).click();
     await expect(screen.getByRole("img", { name: "Happy · Front" })).toHaveAttribute("src", files[0].url);
     await expect(screen.getByRole("img", { name: "Happy · Side" })).toHaveAttribute("src", files[1].url);
     const frontBounds = await screen.getByRole("img", { name: "Happy · Front" }).boundingBox();
@@ -120,8 +145,14 @@ await withBrowser(browser, async () => {
     assert.equal(saves.length, 0, "Picker choices do not write until Save");
     await screen.getByRole("button", { name: "Save", exact: true }).click();
     await expect(screen.getByRole("status")).toHaveText("Saved");
-    assert.equal(saves[0].expressions.length, 1);
+    assert.equal(saves[0].expressions.length, 3);
     assert.equal(saves[0].expressions[0].side.filename, "happy-side.png");
+    assert.equal(saves[0].expressions[1].side.filename, "neutral-1.png");
+    assert.equal(saves[0].expressions[2].side, undefined);
+    await screen.getByRole("button", { name: "Add sprite set" }).click();
+    await expect(picker).toContainText("3 front sprites already in use.");
+    await expect(picker.getByRole("button", { name: "Add to appearance" })).toBeDisabled();
+    await picker.getByRole("button", { name: "Cancel", exact: true }).click();
     await screen.getByRole("button", { name: "Portrait", exact: true }).click();
     await screen.getByRole("button", { name: "Save", exact: true }).click();
     await expect(screen.getByRole("status")).toHaveText("Saved");

@@ -181,10 +181,10 @@ await withBrowser(browser, async () => {
         undefined,
         "Opening an older character setup does not adopt it",
       );
-      await pane.getByRole("button", { name: "Choose from Engine" }).click();
-      const picker = page.getByRole("dialog", { name: "Choose from Engine" });
+      await pane.getByRole("button", { name: "Add front sprites" }).click();
+      const picker = page.getByRole("dialog", { name: "Choose front sprites" });
       await picker.getByRole("checkbox", { name: "Happy", exact: true }).check();
-      await picker.getByRole("button", { name: "Add 1 sprite", exact: true }).click();
+      await picker.getByRole("button", { name: "Add 1 expression", exact: true }).click();
       await pane.getByRole("button", { name: "+ Add side view", exact: true }).click();
       const side = page.getByRole("dialog", { name: "Side view for Happy" });
       await side.getByRole("radio", { name: "Happy profile", exact: true }).check();

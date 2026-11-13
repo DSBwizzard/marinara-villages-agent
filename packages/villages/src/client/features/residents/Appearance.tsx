@@ -3,6 +3,7 @@ import type {
   AppearanceExpression,
   SpriteAppearance,
   SpriteChoice,
+  SpriteLibraryItem,
   SpriteView,
 } from "../../../shared/contracts/sprites.js";
 import { messageFrom, request, VillageApiError } from "../../shared/api.js";
@@ -15,10 +16,19 @@ import { AvatarFace } from "./ResidentPanels.js";
 import { APPEARANCE_STYLES } from "./appearance-styles.js";
 
 type Choice = { useSprites: boolean; expressions: AppearanceExpression[]; defaultExpressionId: string };
-type PickerTarget = { expressionId: string; view: SpriteView } | null;
+type PickerTarget = { expressionId: string; view: SpriteView };
+type Picker = "set" | "front" | PickerTarget;
+type NewExpression = Omit<AppearanceExpression, "id">;
 type SaveResult = Pick<SpriteAppearance, "revision" | "token" | "manager">;
 const views = ["front", "side"] as const;
 const empty: Choice = { useSprites: false, expressions: [], defaultExpressionId: "" };
+const spriteName = (name: string) =>
+  name
+    .trim()
+    .replace(/\.(png|jpe?g|webp)$/i, "")
+    .replace(/^full_/i, "")
+    .trim();
+const engineChoice = ({ filename, version }: SpriteLibraryItem): SpriteChoice => ({ filename, version });
 
 function savedChoice(manager: SpriteAppearance["manager"], enabled: boolean): Choice {
   const expressions = manager.expressions.flatMap((expression) => {
@@ -66,7 +76,7 @@ export function Appearance({
   const [baseline, setBaseline] = useState<Choice>(empty);
   const [choice, setChoice] = useState<Choice>(empty);
   const [selectedId, select] = useState("");
-  const [picker, setPicker] = useState<{ target: PickerTarget } | null>(null);
+  const [picker, setPicker] = useState<Picker | null>(null);
   const [pending, setPending] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -169,49 +179,31 @@ export function Appearance({
       : (data.files.find((file) => file.filename === source.filename)?.url ?? "");
   }
 
-  function applyChoices(target: PickerTarget, choices: Array<{ name: string; source: SpriteChoice }>) {
-    if (target) {
-      edit({
-        ...choice,
-        expressions: choice.expressions.map((row) =>
-          row.id === target.expressionId ? { ...row, [target.view]: choices[0]!.source } : row,
-        ),
-      });
-    } else {
-      const sameSource = (left: SpriteChoice | undefined, right: SpriteChoice) =>
-        left &&
-        (left.artworkId && right.artworkId
-          ? left.artworkId === right.artworkId
-          : left.filename && right.filename
-            ? left.filename === right.filename
-            : data?.manager.artwork.some(
-                (art) =>
-                  art.id === (left.artworkId ?? right.artworkId) &&
-                  art.engineSource?.filename === (left.filename ?? right.filename),
-              ));
-      const rows = choices
-        .filter(
-          ({ source }) =>
-            !choice.expressions.some((row) => sameSource(row.front, source) || sameSource(row.side, source)),
-        )
-        .map(({ name, source }) => ({
-          id: "new-" + createVillagesClientId(),
-          name:
-            name
-              .replace(/\.(png|jpe?g|webp)$/i, "")
-              .replace(/^full_/i, "")
-              .trim()
-              .slice(0, 100) || "Sprite",
-          front: source,
-        }));
-      const next = updateSprites({ ...choice, useSprites: true }, [...choice.expressions, ...rows]);
-      edit(next);
-      if (!choice.expressions.length) select(next.defaultExpressionId);
-      else if (rows[0]) select(rows[0].id);
-    }
+  function addExpressions(expressions: NewExpression[]) {
+    const rows = expressions.map((row) => ({
+      ...row,
+      id: "new-" + createVillagesClientId(),
+      name: row.name.slice(0, 100) || "Sprite",
+    }));
+    const next = updateSprites({ ...choice, useSprites: true }, [...choice.expressions, ...rows]);
+    edit(next);
+    select(choice.expressions.length ? rows[0]!.id : next.defaultExpressionId);
     setPicker(null);
   }
 
+  const assignedArtwork = new Set(
+    choice.expressions.flatMap((row) => views.flatMap((view) => row[view]?.artworkId ?? [])),
+  );
+  const pendingFilenames = new Set(
+    choice.expressions.flatMap((row) => views.flatMap((view) => row[view]?.filename ?? [])),
+  );
+  const availableRows = (data?.manager.expressions.length ?? 0) + 200 - choice.expressions.length;
+  const assignedFilenames = new Set([
+    ...pendingFilenames,
+    ...(data?.manager.artwork.flatMap((art) =>
+      assignedArtwork.has(art.id) && art.engineSource ? [art.engineSource.filename] : [],
+    ) ?? []),
+  ]);
   async function save() {
     if (!data || working.current) return;
     const body = { ...choice, token: data.token, resident };
@@ -265,10 +257,6 @@ export function Appearance({
     }
   }
 
-  function openPicker(target: PickerTarget) {
-    setPicker({ target });
-  }
-
   const title = name + "’s appearance";
   return (
     <section className="villages-appearance" aria-label={title}>
@@ -314,8 +302,11 @@ export function Appearance({
                 ))}
               </div>
               <div className="appearance-actions">
-                <button type="button" disabled={locked} onClick={() => openPicker(null)}>
-                  Choose from Engine
+                <button type="button" disabled={locked} onClick={() => setPicker("set")}>
+                  Add sprite set
+                </button>
+                <button type="button" disabled={locked} onClick={() => setPicker("front")}>
+                  Add front sprites
                 </button>
                 {typeof openCharacter === "function" ? (
                   <button
@@ -367,7 +358,7 @@ export function Appearance({
                             <button
                               type="button"
                               disabled={locked}
-                              onClick={() => openPicker({ expressionId: selected.id, view })}
+                              onClick={() => setPicker({ expressionId: selected.id, view })}
                             >
                               + Add {view} view
                             </button>
@@ -377,7 +368,7 @@ export function Appearance({
                               type="button"
                               className="appearance-link"
                               disabled={locked}
-                              onClick={() => openPicker({ expressionId: selected.id, view })}
+                              onClick={() => setPicker({ expressionId: selected.id, view })}
                             >
                               Replace {view} view
                             </button>
@@ -438,6 +429,11 @@ export function Appearance({
           </div>
           <div className="appearance-footer">
             <span role="status">{notice}</span>
+            {pendingFilenames.size > 200 ? (
+              <p role="alert">
+                Remove a pending sprite or discard your changes. You can add up to 200 images per save.
+              </p>
+            ) : null}
             {dirty || stale || uncertain ? (
               <button
                 type="button"
@@ -461,6 +457,7 @@ export function Appearance({
               disabled={
                 pending ||
                 (!dirty && !stale && !uncertain) ||
+                pendingFilenames.size > 200 ||
                 choice.expressions.some((row) => !row.name.trim()) ||
                 (choice.useSprites && !choice.expressions.length)
               }
@@ -475,8 +472,12 @@ export function Appearance({
         <EnginePicker
           readPath={readPath}
           data={data}
-          selectedName={choice.expressions.find((row) => row.id === picker.target?.expressionId)?.name ?? ""}
-          target={picker.target}
+          selectedName={selected?.name ?? ""}
+          picker={picker}
+          availableImports={200 - pendingFilenames.size}
+          availableRows={availableRows}
+          assignedArtwork={assignedArtwork}
+          assignedFilenames={assignedFilenames}
           onLibrary={(library) =>
             setData(
               (prior) =>
@@ -489,7 +490,16 @@ export function Appearance({
             )
           }
           onClose={() => setPicker(null)}
-          onChoose={(choices) => applyChoices(picker.target, choices)}
+          onAdd={addExpressions}
+          onChoose={(target, source) => {
+            edit({
+              ...choice,
+              expressions: choice.expressions.map((row) =>
+                row.id === target.expressionId ? { ...row, [target.view]: source } : row,
+              ),
+            });
+            setPicker(null);
+          }}
         />
       ) : null}
     </section>
@@ -500,21 +510,32 @@ function EnginePicker({
   readPath,
   data,
   selectedName,
-  target,
+  picker,
+  availableImports,
+  availableRows,
+  assignedArtwork,
+  assignedFilenames,
   onLibrary,
   onClose,
+  onAdd,
   onChoose,
 }: {
   readPath: string;
   data: SpriteAppearance;
   selectedName: string;
-  target: PickerTarget;
+  picker: Picker;
+  availableImports: number;
+  availableRows: number;
+  assignedArtwork: ReadonlySet<string>;
+  assignedFilenames: ReadonlySet<string>;
   onLibrary(value: SpriteAppearance): void;
   onClose(): void;
-  onChoose(choices: Array<{ name: string; source: SpriteChoice }>): void;
+  onAdd(choices: NewExpression[]): void;
+  onChoose(target: PickerTarget, source: SpriteChoice): void;
 }) {
+  const target = typeof picker === "object" ? picker : null;
   const [selected, select] = useState<string[]>([]);
-  const [folder, setFolder] = useState("");
+  const [folder, setFolder] = useState<string>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reload, setReload] = useState(0);
@@ -538,68 +559,86 @@ function EnginePicker({
       });
     return () => controller.abort();
   }, [readPath, reload]);
-  const engine = data.files.map((file) => ({
-    key: "file:" + file.filename,
-    name: file.label || file.filename,
-    url: file.url,
-    source: { filename: file.filename, version: file.version } as SpriteChoice,
-    folderId: file.folderId ?? null,
-  }));
-  const saved = data.manager.artwork.map((art) => ({
-    key: art.id,
-    name: art.name,
-    url: art.rendered.url,
-    source: { artworkId: art.id } as SpriteChoice,
-    folderId: "saved",
-  }));
-  const library = [...engine, ...saved];
-  const visible =
-    folder === "saved"
-      ? saved
-      : !folder
-        ? engine
-        : engine.filter((item) => item.folderId === (folder === "unfiled" ? null : folder));
-  const valid = library.filter((item) => selected.includes(item.key));
+
   const title = target
     ? (target.view === "side" ? "Side view for " : "Front view for ") + selectedName
-    : "Choose from Engine";
+    : picker === "set"
+      ? "Add sprite set"
+      : "Choose front sprites";
+  const problem = error || data.libraryError;
+  const activeFolder = folder ?? preferredFolder(data.folders, target?.view ?? "front");
+  const engine = data.files
+    .filter((file) => target || !assignedFilenames.has(file.filename))
+    .map((file) => ({
+      key: "file:" + file.filename,
+      name: file.label || file.filename,
+      url: file.url,
+      source: engineChoice(file),
+      folderId: folderKey(file),
+    }));
+  const saved = data.manager.artwork
+    .filter(
+      (art) => target || (!assignedArtwork.has(art.id) && !assignedFilenames.has(art.engineSource?.filename ?? "")),
+    )
+    .map((art) => ({
+      key: art.id,
+      name: art.name,
+      url: art.rendered.url,
+      source: { artworkId: art.id } as SpriteChoice,
+      folderId: "saved",
+    }));
+  const visible =
+    activeFolder === "saved" ? saved : engine.filter((item) => !activeFolder || item.folderId === activeFolder);
+  const valid = [...engine, ...saved].filter((item) => selected.includes(item.key));
+  const tooMany =
+    !target && (valid.length > availableRows || valid.filter((item) => item.source.filename).length > availableImports);
+
   return (
     <ModalDialog className="appearance-picker" title={title} onClose={onClose} scrollBody>
-      {target?.view === "side" ? <p>Choose a right-facing image.</p> : null}
-      <div className="appearance-actions">
-        <select aria-label="Sprite folder" value={folder} onChange={(event) => setFolder(event.target.value)}>
-          <option value="">All Engine sprites</option>
-          {data.folders.map((entry) => (
-            <option value={entry.id} key={entry.id}>
-              {entry.name}
-            </option>
-          ))}
-          <option value="unfiled">Unfiled</option>
-          {saved.length ? <option value="saved">Saved copies</option> : null}
-        </select>
-        {!target && visible.length > 1 ? (
-          <button
-            type="button"
-            disabled={loading}
-            onClick={() => select([...new Set([...selected, ...visible.map((item) => item.key)])])}
-          >
-            Select all
-          </button>
-        ) : null}
-      </div>
       {loading ? <p role="status">Loading sprites…</p> : null}
-      {!loading && (error || data.libraryError) ? (
+      {!loading && problem ? (
         <div role="alert">
-          <p>{error || data.libraryError}</p>
+          <p>{problem}</p>
           <button type="button" onClick={() => setReload(reload + 1)}>
             Retry Engine library
           </button>
         </div>
       ) : null}
-      {!loading && !visible.length && !error && !data.libraryError ? <p>No sprites in this folder.</p> : null}
-      <div className="appearance-picker-grid">
-        {!loading
-          ? visible.map((item) => (
+      {!loading && picker === "set" && !problem ? (
+        <SpriteSet
+          data={data}
+          assignedFilenames={assignedFilenames}
+          availableImports={Math.min(availableImports, availableRows)}
+          onClose={onClose}
+          onAdd={onAdd}
+        />
+      ) : null}
+      {!loading && picker !== "set" ? (
+        <>
+          {target?.view === "side" ? <p>Choose a right-facing image.</p> : null}
+          <div className="appearance-actions">
+            <select aria-label="Sprite folder" value={activeFolder} onChange={(event) => setFolder(event.target.value)}>
+              <option value="">All Engine sprites</option>
+              {data.folders.map((entry) => (
+                <option value={"folder:" + entry.id} key={entry.id}>
+                  {entry.name}
+                </option>
+              ))}
+              <option value="unfiled">Unfiled</option>
+              {saved.length ? <option value="saved">Saved copies</option> : null}
+            </select>
+            {!target && visible.length > 1 ? (
+              <button
+                type="button"
+                onClick={() => select([...new Set([...selected, ...visible.map((item) => item.key)])])}
+              >
+                Select all
+              </button>
+            ) : null}
+          </div>
+          {!visible.length && !problem ? <p>No available sprites in this folder.</p> : null}
+          <div className="appearance-picker-grid">
+            {visible.map((item) => (
               <label key={item.key}>
                 <img src={item.url} alt="" loading="lazy" />
                 <span>
@@ -621,25 +660,170 @@ function EnginePicker({
                   {item.name}
                 </span>
               </label>
-            ))
-          : null}
+            ))}
+          </div>
+          <div className="appearance-footer">
+            <span>{!target ? valid.length + " selected" : null}</span>
+            <button type="button" className="appearance-link" onClick={onClose}>
+              Cancel
+            </button>
+            {tooMany ? (
+              <p role="alert">Save your current changes before adding more sprites, or select fewer images.</p>
+            ) : null}
+            <button
+              type="button"
+              className="appearance-primary"
+              disabled={!valid.length || tooMany}
+              onClick={() =>
+                target
+                  ? onChoose(target, valid[0]!.source)
+                  : onAdd(valid.map((item) => ({ name: spriteName(item.name), front: item.source })))
+              }
+            >
+              {target
+                ? "Use as " + target.view + " view"
+                : "Add " + valid.length + (valid.length === 1 ? " expression" : " expressions")}
+            </button>
+          </div>
+        </>
+      ) : null}
+    </ModalDialog>
+  );
+}
+
+function preferredFolder(folders: SpriteAppearance["folders"], name: SpriteView) {
+  const matches = folders.filter((entry) => entry.name.trim().toLowerCase() === name);
+  return matches.length === 1 ? "folder:" + matches[0]!.id : "";
+}
+
+function folderKey(file: SpriteLibraryItem) {
+  return file.folderId ? "folder:" + file.folderId : "unfiled";
+}
+
+function SpriteSet({
+  data,
+  assignedFilenames,
+  availableImports,
+  onClose,
+  onAdd,
+}: {
+  data: SpriteAppearance;
+  assignedFilenames: ReadonlySet<string>;
+  availableImports: number;
+  onClose(): void;
+  onAdd(choices: NewExpression[]): void;
+}) {
+  const [frontFolder, setFrontFolder] = useState(() => preferredFolder(data.folders, "front"));
+  const [sideFolder, setSideFolder] = useState(() => preferredFolder(data.folders, "side"));
+  const filesIn = (folder: string) => data.files.filter((file) => folderKey(file) === folder);
+  const front = filesIn(frontFolder);
+  const side = filesIn(sideFolder);
+  const labelOf = (file: SpriteLibraryItem) => spriteName(file.label || file.filename);
+  const keyOf = (file: SpriteLibraryItem) => labelOf(file).toLowerCase();
+  const frontCounts = new Map<string, number>();
+  for (const file of front) {
+    const key = keyOf(file);
+    frontCounts.set(key, (frontCounts.get(key) ?? 0) + 1);
+  }
+  const sideByLabel = new Map<string, SpriteLibraryItem | null>();
+  for (const file of side) {
+    const key = keyOf(file);
+    sideByLabel.set(key, sideByLabel.has(key) ? null : file);
+  }
+  const pairs = front
+    .filter((file) => !assignedFilenames.has(file.filename))
+    .map((file) => {
+      const key = keyOf(file);
+      const match = key ? sideByLabel.get(key) : undefined;
+      const ambiguous = match === null || (match && frontCounts.get(key)! > 1);
+      const paired = !ambiguous && match && !assignedFilenames.has(match.filename) ? match : undefined;
+      const reason = ambiguous ? "Duplicate label" : match ? "Already in use" : sideFolder ? "No match" : "—";
+      return { name: labelOf(file) || "Sprite", front: file, side: paired, reason };
+    });
+  const pairCount = pairs.filter((row) => row.side).length;
+  const skippedFront = front.length - pairs.length;
+  const limitExceeded = pairs.length + pairCount > availableImports;
+  const folders = data.folders.map((folder) => ({ key: "folder:" + folder.id, name: folder.name }));
+  if (data.files.some((file) => !file.folderId)) folders.push({ key: "unfiled", name: "Unfiled" });
+
+  return (
+    <>
+      <div className="appearance-set-folders">
+        {views.map((view) => (
+          <label key={view}>
+            {view === "front" ? "Front folder" : "Side folder"}
+            <select
+              value={view === "front" ? frontFolder : sideFolder}
+              onChange={(event) => (view === "front" ? setFrontFolder : setSideFolder)(event.target.value)}
+            >
+              <option value="">{view === "front" ? "Choose a folder" : "None"}</option>
+              {folders.map((folder) => (
+                <option
+                  key={folder.key}
+                  value={folder.key}
+                  disabled={folder.key === (view === "front" ? sideFolder : frontFolder)}
+                >
+                  {folder.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ))}
       </div>
+      {frontFolder && !front.length ? <p>No sprites in the Front folder.</p> : null}
+      {skippedFront ? (
+        <p>
+          {skippedFront} front {skippedFront === 1 ? "sprite already in use" : "sprites already in use"}.
+        </p>
+      ) : null}
+      {pairs.length ? (
+        <table className="appearance-pairs" aria-label="Sprite pairs">
+          <thead>
+            <tr>
+              <th scope="col">Expression</th>
+              <th scope="col">Front</th>
+              <th scope="col">Side</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pairs.map((row) => (
+              <tr key={row.front.filename}>
+                <th scope="row">{row.name}</th>
+                <td>
+                  <img src={row.front.url} alt={row.name + " · Front"} loading="lazy" />
+                </td>
+                <td>{row.side ? <img src={row.side.url} alt={row.name + " · Side"} loading="lazy" /> : row.reason}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
+      {frontFolder && side.length > pairCount ? <p>{side.length - pairCount} side sprites will be left out.</p> : null}
+      {limitExceeded ? (
+        <p role="alert">Choose smaller folders or save your current changes before adding this set.</p>
+      ) : null}
       <div className="appearance-footer">
-        {!target ? <span>{valid.length} selected</span> : <span />}
+        <span>{pairs.length ? pairCount + " paired" : null}</span>
         <button type="button" className="appearance-link" onClick={onClose}>
           Cancel
         </button>
         <button
           type="button"
           className="appearance-primary"
-          disabled={loading || !valid.length || valid.length > 200}
-          onClick={() => onChoose(valid)}
+          disabled={!pairs.length || limitExceeded}
+          onClick={() =>
+            onAdd(
+              pairs.map((row) => ({
+                name: row.name,
+                front: engineChoice(row.front),
+                side: row.side && engineChoice(row.side),
+              })),
+            )
+          }
         >
-          {target
-            ? "Use as " + target.view + " view"
-            : "Add " + valid.length + (valid.length === 1 ? " sprite" : " sprites")}
+          Add to appearance
         </button>
       </div>
-    </ModalDialog>
+    </>
   );
 }

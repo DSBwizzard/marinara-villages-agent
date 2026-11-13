@@ -75,6 +75,12 @@ export const APPEARANCE_STYLES = String.raw`
 .appearance-picker-grid img { width:100%; height:8rem; object-fit:contain; }
 .appearance-picker-grid span { display:flex; align-items:center; gap:.35rem; }
 .appearance-picker .appearance-picker-grid input { width:1rem; height:1rem; min-height:0; flex:none; accent-color:var(--appearance-pick); }
+.appearance-set-folders { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.75rem; margin-bottom:.75rem; }
+.appearance-set-folders select { background:var(--appearance-panel); color-scheme:dark; }
+.appearance-pairs { width:100%; table-layout:fixed; border-collapse:collapse; }
+.appearance-pairs th,.appearance-pairs td { padding:.35rem; text-align:center; border-bottom:1px solid var(--appearance-line); overflow-wrap:anywhere; }
+.appearance-pairs th:first-child { text-align:start; }
+.appearance-pairs img { display:block; width:100%; height:6rem; object-fit:contain; background:color-mix(in srgb,#566a93 23%,transparent); border-radius:.35rem; }
 @container (max-width:42rem) { .appearance-layout { grid-template-columns:1fr; } }
 @media(max-width:480px) { .appearance-picker-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 `;
