@@ -5,6 +5,7 @@ import type {
   ContinuityHolder,
   ContinuityWrite,
 } from "../models/continuity-model.js";
+import type { NarrationReadset } from "../models/narration-model.js";
 import { continuityHolderKey, ownedContinuityClass } from "./continuity.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { asRecord } from "./coerce.js";
@@ -315,7 +316,7 @@ export function prepareNarrationKeep(
   sourceContext: NarrationSourceContext,
   ordinaryDialogue?: true,
   ordinaryReplyRecovery?: true,
-  recognizeDirectOfferSpeech?: true | 2 | 3,
+  recognizeDirectOfferSpeech?: NarrationReadset["recognizeDirectOfferSpeech"],
 ) {
   if (ordinaryReplyRecovery) {
     const row = asRecord(raw);
@@ -352,7 +353,7 @@ export function prepareNarrationKeep(
       const line = sourceContext.lines.find((line) => line.id === id);
       const { proposer, participants } = proposal.offer;
       if (
-        recognizeDirectOfferSpeech === 3 &&
+        (recognizeDirectOfferSpeech === 3 || recognizeDirectOfferSpeech === 4) &&
         proposal.owner === proposer &&
         Array.isArray(proposal.for) &&
         proposal.for.length === 1 &&

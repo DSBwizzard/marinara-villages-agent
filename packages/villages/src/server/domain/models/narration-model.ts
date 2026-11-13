@@ -24,7 +24,7 @@ export type NarrationReadset = {
   explicitSceneReplacement?: true;
   coalesceOfferDecisions?: true;
   stripOfferContributionEcho?: true;
-  recognizeDirectOfferSpeech?: true | 2 | 3;
+  recognizeDirectOfferSpeech?: true | 2 | 3 | 4;
   optionalActorMemories?: true | 2 | 3;
   stripSceneReplyDecorations?: true;
   requestedMemory?: { start: number; end: number; recipientId?: string };

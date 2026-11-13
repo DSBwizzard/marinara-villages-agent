@@ -105,7 +105,11 @@ function ordinaryReplyLayout(raw: Record<string, unknown>, positions: boolean, q
   };
 }
 
-function bindSceneSourcePositions(raw: Record<string, unknown>, quotes: boolean, directOffers?: true | 2 | 3) {
+function bindSceneSourcePositions(
+  raw: Record<string, unknown>,
+  quotes: boolean,
+  directOffers?: NarrationReadset["recognizeDirectOfferSpeech"],
+) {
   if (!Array.isArray(raw.segments) || Object.hasOwn(raw, "commands")) return raw;
   const labels = raw.segments.map((value, index) => asRecord(value).id ?? "segment-" + index);
   const label = (position: unknown) =>
@@ -116,51 +120,55 @@ function bindSceneSourcePositions(raw: Record<string, unknown>, quotes: boolean,
     const row = asRecord(value);
     const { source: citations, for: holders } = row;
     if (!Array.isArray(citations)) return value;
-    return {
-      ...row,
-      source: citations.map((ref: unknown) => {
-        const source = asRecord(ref);
-        if (quotes && typeof source.quote === "string" && source.quote.trim()) {
-          const { quote, speakerId, ...proof } = source;
-          if (!Object.keys(proof).every((key) => key === "act" || key === "perceive")) return ref;
-          const matches = (raw.segments as unknown[]).flatMap((value, index) => {
-            const line = asRecord(value);
-            return line.kind === "dialogue" &&
-              line.speakerId === speakerId &&
-              typeof line.text === "string" &&
-              line.text.includes(quote)
-              ? [{ label: labels[index], text: line.text }]
-              : [];
-          });
-          if (matches.length !== 1) return ref;
-          const [match] = matches;
-          const offer = asRecord(row.offer);
-          const declaredOffer =
-            (directOffers === 2 || directOffers === 3) &&
-            citations.length === 1 &&
-            Object.keys(proof).length === 0 &&
-            offer.proposer === speakerId &&
-            Array.isArray(holders) &&
-            Array.isArray(offer.participants) &&
-            (offer.participants.every((party) => holders.includes(party)) ||
-              (directOffers === 3 && holders.length === 1 && holders[0] === speakerId && row.owner === speakerId)) &&
-            !["replace", "parent", "accept", "closeOffer", "retire"].some((key) => Object.hasOwn(row, key)) &&
-            !/["“”«»‘]|(?:^|[^\p{L}\p{N}])'/u.test(match.text);
-          return { ...proof, segment: match.label, ...(declaredOffer ? { act: "offer" } : {}) };
-        }
-        if (Object.hasOwn(source, "segment")) return { ...source, segment: label(source.segment) };
-        const ground = asRecord(source.ground);
-        const at = asRecord(ground.at);
-        const anchor = Object.keys(at)[0];
-        if (
-          Object.hasOwn(source, "input") &&
-          (anchor === "before" || anchor === "after") &&
-          Object.keys(at).length === 1
-        )
-          return { ...source, ground: { ...ground, at: { [anchor]: label(at[anchor]) } } };
-        return ref;
-      }),
-    };
+    let defaultHolders: unknown[] | undefined;
+    const sources = citations.map((ref: unknown) => {
+      const source = asRecord(ref);
+      if (quotes && typeof source.quote === "string" && source.quote.trim()) {
+        const { quote, speakerId, ...proof } = source;
+        if (!Object.keys(proof).every((key) => key === "act" || key === "perceive")) return ref;
+        const matches = (raw.segments as unknown[]).flatMap((value, index) => {
+          const line = asRecord(value);
+          return line.kind === "dialogue" &&
+            line.speakerId === speakerId &&
+            typeof line.text === "string" &&
+            line.text.includes(quote)
+            ? [{ label: labels[index], text: line.text }]
+            : [];
+        });
+        if (matches.length !== 1) return ref;
+        const [match] = matches;
+        const offer = asRecord(row.offer);
+        const omitHolders = directOffers === 4 && !Object.hasOwn(row, "for") && !Object.hasOwn(row, "owner");
+        const soleProposer =
+          (directOffers === 3 || directOffers === 4) &&
+          Array.isArray(holders) &&
+          holders.length === 1 &&
+          holders[0] === speakerId &&
+          row.owner === speakerId;
+        const declaredOffer =
+          (directOffers === 2 || directOffers === 3 || directOffers === 4) &&
+          citations.length === 1 &&
+          (Object.keys(proof).length === 0 ||
+            (omitHolders && Object.keys(proof).length === 1 && proof.act === "offer")) &&
+          offer.proposer === speakerId &&
+          Array.isArray(offer.participants) &&
+          (omitHolders ||
+            soleProposer ||
+            (Array.isArray(holders) && offer.participants.every((party) => holders.includes(party)))) &&
+          !["replace", "parent", "accept", "closeOffer", "retire"].some((key) => Object.hasOwn(row, key)) &&
+          !/["“”«»‘]|(?:^|[^\p{L}\p{N}])'/u.test(match.text);
+        if (declaredOffer && omitHolders) defaultHolders = offer.participants as unknown[];
+        return { ...proof, segment: match.label, ...(declaredOffer ? { act: "offer" } : {}) };
+      }
+      if (Object.hasOwn(source, "segment")) return { ...source, segment: label(source.segment) };
+      const ground = asRecord(source.ground);
+      const at = asRecord(ground.at);
+      const anchor = Object.keys(at)[0];
+      if (Object.hasOwn(source, "input") && (anchor === "before" || anchor === "after") && Object.keys(at).length === 1)
+        return { ...source, ground: { ...ground, at: { [anchor]: label(at[anchor]) } } };
+      return ref;
+    });
+    return { ...row, ...(defaultHolders ? { for: defaultHolders } : {}), source: sources };
   };
   return {
     ...raw,
