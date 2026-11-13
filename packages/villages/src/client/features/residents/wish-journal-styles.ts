@@ -17,7 +17,7 @@ export const WISH_JOURNAL_STYLES = `
 .villages-wish-actions button{min-height:44px;height:44px;padding:5px 10px}
 .villages-wish-tabs{display:flex;flex-wrap:wrap;align-content:start;gap:4px;border-bottom:1px solid var(--border);padding-bottom:4px}
 .villages-wish-tabs button{flex:1 0 auto;min-height:44px;padding:4px 8px;font-size:14px;line-height:1.2;border-radius:6px 6px 0 0;box-shadow:none;white-space:nowrap}
-.villages-wish-tabs button[aria-selected=true]{background:#995963;color:#fff0d5;border-color:#b97980;box-shadow:inset 0 -3px #d29399;font-weight:700}
+.villages-wish-tabs button[aria-selected=true]{background:var(--menu-selection-fill,#995963);color:var(--menu-selected-ink,#fff0d5);border-color:var(--menu-selected-border,#b97980);box-shadow:inset 0 -3px var(--menu-tab-line,#d29399);font-weight:700}
 .villages-wish-section{min-width:0;display:block}
 .villages-wish-section h4{font-size:19px;margin:0 0 8px;line-height:1.3}
 .villages-wish-section p+h4{margin-top:16px}

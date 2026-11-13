@@ -5,7 +5,7 @@ import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { ArtworkImage } from "../../shared/ArtworkImage.js";
-import { VENUE_FALLBACK_URL } from "../../shared/desk-art.js";
+import { VENUE_FALLBACK_DAY_URL, VENUE_FALLBACK_URL } from "../../shared/desk-art.js";
 import { ModalDialog } from "../../shared/ModalDialog.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import { playerDisplayName } from "../../shared/presentation.js";
@@ -332,7 +332,15 @@ function AssignedVillagers({ place, controller }: { place: VillageVenue; control
   );
 }
 
-export function VenueScreen({ controller, fromMap = false }: { controller: VenueScreenController; fromMap?: boolean }) {
+export function VenueScreen({
+  controller,
+  fromMap = false,
+  storybookDaylight,
+}: {
+  controller: VenueScreenController;
+  fromMap?: boolean;
+  storybookDaylight?: boolean;
+}) {
   const confirmVillages = useConfirmation();
   const [editingConnections, setEditingConnections] = useState(false);
   const [zoneDetails, setZoneDetails] = useState<"open" | "closed" | null>(null);
@@ -460,6 +468,7 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
   const browsing = venueSection === "zones";
   const zoneBackdrop = browsing && (!mobile || zoneDetailsOpen) && zoneArt?.url !== entranceArt?.url ? zoneArt : null;
   const storybookBackdrop = (zoneDetailsOpen && !zoneArt) || (!entranceArt && !zoneBackdrop);
+  const daylightBackdrop = !fromMap && storybookBackdrop && (storybookDaylight ?? lighting !== "night");
   const map = snapshot.settings.maps?.find((entry) => entry.id === place.presentation.mapId);
   const visit = () =>
     activeScene && room.placeId === place.id ? setScreen("room") : void openRoom(place, exterior?.id);
@@ -492,6 +501,7 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
         className={`${ELEMENT_TAG}-venue-profile`}
         data-room-backdrop={zoneDetailsOpen && !!zoneArt ? "true" : undefined}
         data-storybook-backdrop={storybookBackdrop || undefined}
+        data-storybook-daylight={daylightBackdrop || undefined}
         aria-label="Venue"
         onKeyDown={(event) => {
           if (
@@ -510,7 +520,11 @@ export function VenueScreen({ controller, fromMap = false }: { controller: Venue
       >
         <figure className={ELEMENT_TAG + "-venue-photo"}>
           {storybookBackdrop ? (
-            <img className={`${ELEMENT_TAG}-venue-storybook-photo`} src={VENUE_FALLBACK_URL} alt="" />
+            <img
+              className={`${ELEMENT_TAG}-venue-storybook-photo`}
+              src={daylightBackdrop ? VENUE_FALLBACK_DAY_URL : VENUE_FALLBACK_URL}
+              alt=""
+            />
           ) : entranceArt ? (
             <ArtworkImage src={entranceArt.url} alt={zoneBackdrop ? "" : place.name} />
           ) : null}

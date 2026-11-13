@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { build } from "../scripts/esbuild.mjs";
-import { chromium, withBrowser, fulfill } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser, fulfill } from "./fixtures/browser-diagnostics.mjs";
 
 async function bundle() {
   const stubs = new Map([
@@ -18,6 +18,7 @@ async function bundle() {
         const [exploreSheet,setExploreSheet]=useState(null);
         const spriteLeaveGuard=useRef(async()=>{window.guardCalls++;return true});
         window.scopeChange=()=>setSnapshot({worldScope:'world-b',settings:{venues:[]}});
+        window.setDeskClock=village=>setSnapshot(value=>({...value,isFounded:!!village,village}));
         return {screen,setScreen,menuPage,setMenuPage,snapshot,spriteLeaveGuard,exploreSheet,setExploreSheet,personProfile,
           explorationReturnTab:useRef("map"),explorationOrigin:useRef(null),
           mailboxOpen:false,setMailboxOpen(){},room:null,sceneRestoration:{status:'ready'},
@@ -72,11 +73,13 @@ async function run() {
   const source = await bundle();
   const browser = await chromium.launch({ headless: true });
   const errors = [];
-  async function makePage(reduced = false) {
+  async function makePage(reduced = false, deviceTime = "2026-11-05T23:00:00Z") {
     const page = await browser.newPage({
       viewport: { width: 1024, height: 800 },
       reducedMotion: reduced ? "reduce" : "no-preference",
+      timezoneId: "UTC",
     });
+    await page.clock.setFixedTime(new Date(deviceTime));
     page.on("pageerror", (error) => errors.push(error.message));
     await page.route("https://desk.test/", (route) =>
       route.fulfill({
@@ -119,6 +122,47 @@ async function run() {
     await settle(page);
   }
   await withBrowser(browser, async () => {
+    for (const width of [1366, 390]) {
+      const themed = await makePage(true, "2026-11-05T05:59:59Z");
+      await themed.setViewportSize({ width, height: 844 });
+      await people(themed);
+      const desk = themed.locator("[data-desk]");
+      const artwork = () => desk.evaluate((node) => getComputedStyle(node).backgroundImage);
+      await expect(desk).toHaveAttribute("data-theme", "night");
+      await themed.clock.setFixedTime(new Date("2026-11-05T06:00:00Z"));
+      await expect(desk).toHaveAttribute("data-theme", "day");
+      await expect(desk).toHaveCSS("color", "rgb(33, 62, 54)");
+      await expect(desk).toHaveCSS("background-color", "rgb(183, 213, 226)");
+      const daylight = await artwork();
+      assert.match(daylight, /blob:/, "The daytime scene is decoded before it is displayed");
+      await themed.getByRole("button", { name: "Resident", exact: true }).focus();
+      await themed.evaluate(() =>
+        window.setDeskClock({ instant: "2026-11-05T04:00:00Z", timeZone: "America/Los_Angeles" }),
+      );
+      await expect(desk).toHaveAttribute("data-theme", "night");
+      await expect(desk).toHaveCSS("color", "rgb(240, 223, 188)");
+      assert.notEqual(await artwork(), daylight, "Village time selects different retained artwork");
+      await expect(themed.getByRole("button", { name: "Resident", exact: true })).toBeFocused();
+      await themed.getByRole("button", { name: "Settings", exact: true }).click();
+      await expect(desk).toHaveAttribute("data-desk", "settings");
+      await settle(themed);
+      await expect(desk).toHaveAttribute("data-theme", "night");
+      await themed.evaluate(() =>
+        window.setDeskClock({ instant: "2026-11-05T03:59:30Z", timeZone: "America/Los_Angeles" }),
+      );
+      await expect(desk).toHaveAttribute("data-theme", "day");
+      await themed.evaluate(() =>
+        window.setDeskClock({ instant: "2026-11-05T13:59:30Z", timeZone: "America/Los_Angeles" }),
+      );
+      await expect(desk).toHaveAttribute("data-theme", "night");
+      await themed.evaluate(() =>
+        window.setDeskClock({ instant: "2026-11-05T14:00:00Z", timeZone: "America/Los_Angeles" }),
+      );
+      await expect(desk).toHaveAttribute("data-theme", "day");
+      assert.equal(await artwork(), daylight, "The decoded village scene is reused across menus and clock changes");
+      await themed.close();
+    }
+
     const normal = await makePage();
     await people(normal);
     await normal.getByRole("button", { name: "Resident", exact: true }).focus();

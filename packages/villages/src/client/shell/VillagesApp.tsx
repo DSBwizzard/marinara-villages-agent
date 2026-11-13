@@ -20,6 +20,7 @@ import type { useVillageController as ControllerFactory } from "./useVillageCont
 import { useVillageController } from "./useVillageController.js";
 import { VillagesFrame } from "./VillagesFrame.js";
 import { prepareDeskArtwork } from "../shared/desk-art.js";
+import { useVillageLighting } from "../shared/useVillageLighting.js";
 
 export function VillagesView({ element }: { element: HTMLElement }) {
   return (
@@ -59,6 +60,9 @@ function VillagesContent({ element }: { element: HTMLElement }) {
     return null;
   };
   const active = controller.mailboxOpen ? "mailbox" : destination(controller.screen);
+  const daylight =
+    useVillageLighting(controller.snapshot?.isFounded ? controller.snapshot.village : undefined, "storybook") !==
+    "night";
   const currentDestination = useRef(active);
   currentDestination.current = active;
   const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -144,7 +148,7 @@ function VillagesContent({ element }: { element: HTMLElement }) {
     if (next) {
       setPhase("preparing");
       try {
-        await prepareDeskArtwork();
+        await prepareDeskArtwork(daylight);
       } catch {
         if (ticket === lifetime.current.epoch) {
           moving.current = false;
@@ -356,6 +360,7 @@ function VillagesContent({ element }: { element: HTMLElement }) {
       <DeskLeaveGuard value={guardRegistration}>
         <DeskWorkspace
           active={active}
+          daylight={daylight}
           venue={active === "places" && controller.screen === "venue"}
           phase={phase}
           disabled={navigationDisabled}
@@ -417,6 +422,7 @@ function VillagesContent({ element }: { element: HTMLElement }) {
           <RetainedView active={!controller.mailboxOpen}>
             <VillageScreen
               controller={navigation}
+              daylight={daylight}
               openMapVenue={(place, origin) => {
                 setMapArrival({ id: place.id, origin });
                 controller.explorationReturnTab.current = "map";
@@ -441,6 +447,7 @@ type Controller = ReturnType<typeof ControllerFactory>;
 
 type VillageScreenProps = {
   controller: Controller;
+  daylight: boolean;
   people: import("react").ReactNode;
   openMapVenue: (place: import("../../shared/contracts/village.js").VillageVenue, origin: string) => void;
   arrivalOrigin?: string;
@@ -496,7 +503,7 @@ function PeoplePages({ controller, active }: { controller: Controller; active: b
 }
 
 /** One map, one Venue, and the fixed menu pages; never a history of resident/world data. */
-function VillageDestinations({ controller, people, openMapVenue, arrivalOrigin }: VillageScreenProps) {
+function VillageDestinations({ controller, daylight, people, openMapVenue, arrivalOrigin }: VillageScreenProps) {
   const { screen, menuPage, room, venueId } = controller;
   const [home, setHome] = useState(false);
   const [venue, setVenue] = useState<string | null>(null);
@@ -526,7 +533,7 @@ function VillageDestinations({ controller, people, openMapVenue, arrivalOrigin }
       ) : null}
       {venue ? (
         <RetainedView key={venue} active={screen === "venue" && !arrival}>
-          <VenueScreen controller={{ ...controller, screen: "venue", venueId: venue }} />
+          <VenueScreen controller={{ ...controller, screen: "venue", venueId: venue }} storybookDaylight={daylight} />
         </RetainedView>
       ) : null}
       {menus.map((entry) => (

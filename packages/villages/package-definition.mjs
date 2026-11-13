@@ -1,7 +1,13 @@
 import { letterFontAssets } from "./letter-font-assets.mjs";
 
 const description = "A text-first shared-life sim in any setting that reconstructs elapsed life when you return.";
-const menuArtAssets = ["storybook-background-wide.webp", "storybook-scenery-matte.webp", "venue-fallback.webp"];
+const menuArtAssets = [
+  "storybook-background-wide.webp",
+  "storybook-background-day.webp",
+  "storybook-scenery-matte.webp",
+  "venue-fallback.webp",
+  "venue-fallback-day.webp",
+];
 
 // Authoritative Villages package metadata; generated payloads are built from this definition.
 export const villagesDefinition = {
