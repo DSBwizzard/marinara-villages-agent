@@ -23,7 +23,7 @@ export type NarrationReadset = {
   splitKeepRecovery?: true;
   coalesceOfferDecisions?: true;
   stripOfferContributionEcho?: true;
-  recognizeDirectOfferSpeech?: true;
+  recognizeDirectOfferSpeech?: true | 2;
   requestedMemory?: { start: number; end: number; recipientId?: string };
   codeRequestedMemory?: true;
   offered: AcceptedEpisode["offered"];

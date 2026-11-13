@@ -416,6 +416,51 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
       assert.equal(result.episode?.continuityVersionIds.length, 2);
     }
   }
+  for (const variant of ["exact", "legacy", "quoted", "reported", "wrong-proposer", "own-words", "by-number"]) {
+    const f = fixture();
+    const quote = "come and look at this leg with me. I'll keep my hands off it until you've said.";
+    const text =
+      variant === "quoted" ? `She said, “${quote}”` : variant === "reported" ? `Her note—'${quote}'` : "So " + quote;
+    const raw = {
+      segments: [
+        {
+          kind: "dialogue",
+          speakerId: f.id,
+          text,
+        },
+      ],
+      keep: [
+        {
+          for: [f.id, "player"],
+          class: "commitment",
+          text: "Look at the stool leg together.",
+          offer: { proposer: variant === "wrong-proposer" ? "player" : f.id, participants: [f.id, "player"] },
+          source: [
+            variant === "by-number"
+              ? { segment: 1 }
+              : {
+                  speakerId: f.id,
+                  quote,
+                  ...(variant === "own-words" ? { perceive: { kind: "words", by: [f.id] } } : {}),
+                },
+          ],
+        },
+      ],
+    };
+    const p = f.publication(raw);
+    p.readset.ordinaryReplyRecovery = true;
+    p.readset.positionedSceneSources = true;
+    p.readset.quotedSceneSources = true;
+    p.readset.recognizeDirectOfferSpeech = variant === "legacy" ? true : 2;
+    const result = acceptNarrationContinuity(f.state, p, "quote-offer", later);
+    assert.equal(result.held, variant !== "exact", variant);
+    if (!result.held) {
+      const source = f.state.continuity.records[0]?.offer?.events[0].sources[0];
+      assert.equal(source?.excerpt, text);
+      assert.equal(source?.act, "offer");
+      assert(!Object.hasOwn(raw.keep[0].source[0], "act"));
+    }
+  }
   for (const [ref, positions, heard, held] of [
     [2, true, true, false],
     [2, true, false, true],

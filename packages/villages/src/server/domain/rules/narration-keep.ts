@@ -315,7 +315,7 @@ export function prepareNarrationKeep(
   sourceContext: NarrationSourceContext,
   ordinaryDialogue?: true,
   ordinaryReplyRecovery?: true,
-  recognizeDirectOfferSpeech?: true,
+  recognizeDirectOfferSpeech?: true | 2,
 ) {
   if (ordinaryReplyRecovery) {
     const row = asRecord(raw);

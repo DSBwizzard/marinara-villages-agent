@@ -377,7 +377,7 @@ export function createSceneWriting({
               splitKeepRecovery: true,
               coalesceOfferDecisions: true,
               stripOfferContributionEcho: true,
-              recognizeDirectOfferSpeech: true,
+              recognizeDirectOfferSpeech: 2,
             }
           : {}),
       },

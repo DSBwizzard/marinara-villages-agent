@@ -105,7 +105,7 @@ function ordinaryReplyLayout(raw: Record<string, unknown>, positions: boolean, q
   };
 }
 
-function bindSceneSourcePositions(raw: Record<string, unknown>, quotes: boolean) {
+function bindSceneSourcePositions(raw: Record<string, unknown>, quotes: boolean, directOffers = false) {
   if (!Array.isArray(raw.segments) || Object.hasOwn(raw, "commands")) return raw;
   const labels = raw.segments.map((value, index) => asRecord(value).id ?? "segment-" + index);
   const label = (position: unknown) =>
@@ -114,10 +114,11 @@ function bindSceneSourcePositions(raw: Record<string, unknown>, quotes: boolean)
       : position;
   const resolveSources = (value: unknown) => {
     const row = asRecord(value);
-    if (!Array.isArray(row.source)) return value;
+    const { source: citations, for: holders } = row;
+    if (!Array.isArray(citations)) return value;
     return {
       ...row,
-      source: row.source.map((ref: unknown) => {
+      source: citations.map((ref: unknown) => {
         const source = asRecord(ref);
         if (quotes && typeof source.quote === "string" && source.quote.trim()) {
           const { quote, speakerId, ...proof } = source;
@@ -128,10 +129,23 @@ function bindSceneSourcePositions(raw: Record<string, unknown>, quotes: boolean)
               line.speakerId === speakerId &&
               typeof line.text === "string" &&
               line.text.includes(quote)
-              ? [labels[index]]
+              ? [{ label: labels[index], text: line.text }]
               : [];
           });
-          return matches.length === 1 ? { ...proof, segment: matches[0] } : ref;
+          if (matches.length !== 1) return ref;
+          const [match] = matches;
+          const offer = asRecord(row.offer);
+          const declaredOffer =
+            directOffers &&
+            citations.length === 1 &&
+            Object.keys(proof).length === 0 &&
+            offer.proposer === speakerId &&
+            Array.isArray(holders) &&
+            Array.isArray(offer.participants) &&
+            offer.participants.every((party) => holders.includes(party)) &&
+            !["replace", "parent", "accept", "closeOffer", "retire"].some((key) => Object.hasOwn(row, key)) &&
+            !/["“”«»‘]|(?:^|[^\p{L}\p{N}])'/u.test(match.text);
+          return { ...proof, segment: match.label, ...(declaredOffer ? { act: "offer" } : {}) };
         }
         if (Object.hasOwn(source, "segment")) return { ...source, segment: label(source.segment) };
         const ground = asRecord(source.ground);
@@ -164,7 +178,7 @@ export function readSceneNarrationReply(
   const positions = readset.positionedSceneSources === true;
   const quotes = readset.quotedSceneSources === true;
   if (readset.ordinaryReplyRecovery) raw = ordinaryReplyLayout(raw, positions, quotes);
-  if (positions) raw = bindSceneSourcePositions(raw, quotes);
+  if (positions) raw = bindSceneSourcePositions(raw, quotes, readset.recognizeDirectOfferSpeech === 2);
   if (readset.stripOfferContributionEcho === true && !Object.hasOwn(raw, "commands") && Array.isArray(raw.keep)) {
     raw = {
       ...raw,
