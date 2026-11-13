@@ -374,6 +374,7 @@ export function createSceneWriting({
               stripSceneHistoryDecoration: true,
               ordinaryFormatRecovery: true,
               quotedSceneSources: true,
+              splitKeepRecovery: true,
             }
           : {}),
       },
@@ -422,6 +423,7 @@ export function createSceneWriting({
         parsed,
         request.readset.ordinaryReplyRecovery,
         request.readset.ordinaryFormatRecovery,
+        request.readset.splitKeepRecovery,
       );
       const diagnostics = responseDiagnostics(
         request.model,

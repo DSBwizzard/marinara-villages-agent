@@ -70,6 +70,18 @@ await runCase("scene-json-hardening/syntax", () => {
 await runCase("scene-json-hardening/ambiguity", () => {
   const segments = [{ kind: "narration", text: 'Leave this punctuation alone: },},{ and "},},{".' }, scene.segments[0]];
   const extraBrace = JSON.stringify({ segments }).replace('},{"id"', '},},{"id"');
+  const strayTail = JSON.stringify({ segments, keep: scene.keep }).replace('],"keep"', ']}],"keep"');
+  assert.equal(completeSceneObject(strayTail, "stop", undefined, true), null);
+  assert.deepEqual(completeSceneObject(strayTail, "stop", undefined, true, true, true), { segments, keep: scene.keep });
+  assert.equal(completeSceneObject(strayTail, "length", undefined, true, true, true), null);
+  assert.equal(
+    completeSceneObject(strayTail.slice(0, -1) + ',"k\\u0065ep":[]}', "stop", undefined, true, true, true),
+    null,
+  );
+  assert.equal(
+    completeSceneObject(strayTail.slice(0, -1) + ',"commands":[]}', "stop", undefined, true, true, true),
+    null,
+  );
   assert.equal(completeSceneObject(extraBrace, "stop", undefined, true), null);
   assert.deepEqual(completeSceneObject(extraBrace, "stop", undefined, true, true), { segments });
   assert.equal(completeSceneObject(extraBrace, "length", undefined, true, true), null);
