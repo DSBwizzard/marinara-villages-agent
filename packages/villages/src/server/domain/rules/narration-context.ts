@@ -519,6 +519,13 @@ export function narrationContinuityContext(
       .filter((entry) => !circumstanceRoots.has(entry.id))
       .map((entry) => [JSON.stringify([entry.for, entry.id]), sourceAlias()]),
   );
+  const modelMemory = <T extends { offer?: (typeof actorSelection.packet.entries)[number]["offer"] }>(entry: T) =>
+    readOnlyRecall && entry.offer
+      ? {
+          ...entry,
+          offer: { ...entry.offer, contributions: entry.offer.contributions.map(({ by, act }) => ({ by, act })) },
+        }
+      : entry;
   for (const entry of actorSelection.packet.entries) {
     if (circumstanceRoots.has(entry.id)) continue;
     const holder = holders.find((row) => row.id === entry.for)!,
@@ -590,7 +597,7 @@ export function narrationContinuityContext(
                   knownBy: [actor],
                 })),
               }
-            : { privateContinuity: entries },
+            : { privateContinuity: entries.map(modelMemory) },
         ),
         evidenceId: "actor-context:" + parts.length,
         ...(!required ? { optional: "memory" as const } : {}),
@@ -606,7 +613,7 @@ export function narrationContinuityContext(
         prior.part.block.text = JSON.stringify(
           readOnlyRecall && prior.part.plainRecall
             ? { recalledFacts: [{ ...meaning, knownBy: prior.holders.map(({ for: actor }) => actor) }] }
-            : { privateContinuity: [{ id: prior.holders[0].source, ...meaning, holders: prior.holders }] },
+            : { privateContinuity: [{ id: prior.holders[0].source, ...modelMemory(meaning), holders: prior.holders }] },
         );
         prior.part.sources[source] = part.sources[source];
         prior.part.provenance[key] = part.provenance[key];

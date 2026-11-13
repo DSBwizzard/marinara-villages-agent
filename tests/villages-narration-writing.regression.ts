@@ -510,6 +510,7 @@ await runCase("narration-writing/open-offer-guidance", async () => {
   const prompt = next.fitted.messages.map((row) => row.content).join("\n");
   assert.match(prompt, /Record an explicit decision on an open offer once/u);
   assert.match(prompt, /"offer":\{/u);
+  assert.match(prompt, /"contributions":\[\{"by":"[^"]+","act":"offer"\}\]/u);
   assert.match(prompt, /"accept":"player","source":\[\{"input":"Yes, I accept\."/u);
   const aliases = Object.entries(next.readset.source.historical)
     .filter(([, source]) => source.kind === "knowledge" && source.excerpt === text)

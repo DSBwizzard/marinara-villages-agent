@@ -342,7 +342,7 @@ export function createSceneWriting({
       plainJson
         ? '## Scene reply reminder\nBegin with {"segments":[. Return one complete JSON object. End at the player’s opening. Use only reply fields in dialogue and narration. Put new keeps in one top-level keep array. ' +
             (positions
-              ? "For a developed exchange, aim for about 500 words of visible prose. Keep reactions that add something new. End once the residents have answered and the player can respond. Use short exact quotes and speakerId for keeps, or count current segments from 1. "
+              ? 'For a developed exchange, aim for about 500 words of visible prose. Give the addressed resident room to answer. Other residents speak when they change the answer or the next choice. End at that choice. Use short exact quotes and speakerId for keeps, or count current segments from 1. A reported Room change stays in dialogue. For a change shown now, use for:"room" and cite the narration as seen by its actual witnesses. '
               : "Cite the exact id you gave each current line. ") +
             "Close the object once."
         : undefined,
