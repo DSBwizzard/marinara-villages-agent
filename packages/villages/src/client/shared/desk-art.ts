@@ -6,17 +6,18 @@ type ArtworkLayer = {
   url: string;
   property: string;
   loaded?: { image: HTMLImageElement; ready: Promise<void> };
+  decoded?: boolean;
 };
 
 const assets = "/api/capability-packages/villages/assets/";
 export const STORYBOOK_BACKGROUND_URL = assets + "storybook-background-wide.webp";
 export const VENUE_FALLBACK_URL = assets + "venue-fallback.webp";
+export const VENUE_FALLBACK_DAY_URL = assets + "venue-fallback-day.webp";
 
 // The foreground matte uses the same pixel coordinates as the backdrop.
-const artwork: ArtworkLayer[] = [
-  { url: STORYBOOK_BACKGROUND_URL, property: "--menu-art" },
-  { url: assets + "storybook-scenery-matte.webp", property: "--menu-scenery-matte" },
-];
+const night: ArtworkLayer = { url: STORYBOOK_BACKGROUND_URL, property: "--menu-art" };
+const day: ArtworkLayer = { url: assets + "storybook-background-day.webp", property: "--menu-art" };
+const matte: ArtworkLayer = { url: assets + "storybook-scenery-matte.webp", property: "--menu-scenery-matte" };
 
 async function prepareLayer(layer: ArtworkLayer): Promise<void> {
   if (!layer.loaded) {
@@ -30,6 +31,7 @@ async function prepareLayer(layer: ArtworkLayer): Promise<void> {
       url = URL.createObjectURL(await response.blob());
       image.src = url;
       await image.decode();
+      layer.decoded = true;
     })().catch((error: unknown) => {
       layer.loaded = undefined;
       if (url) URL.revokeObjectURL(url);
@@ -42,14 +44,28 @@ async function prepareLayer(layer: ArtworkLayer): Promise<void> {
   await image.decode();
 }
 
-export async function prepareDeskArtwork(): Promise<void> {
-  await Promise.all([...artwork.map(prepareLayer), loadLetterFont("lora").catch(() => {})]);
+export async function prepareDeskArtwork(daylight: boolean): Promise<void> {
+  const prepareDay = prepareDayDeskArtwork();
+  await Promise.all([
+    prepareLayer(night),
+    prepareLayer(matte),
+    loadLetterFont("lora").catch(() => {}),
+    daylight ? prepareDay : undefined,
+  ]);
 }
 
-export function deskArtworkStyle(menu: DeskDestination | null): CSSProperties {
+export function prepareDayDeskArtwork(): Promise<void> {
+  return prepareLayer(day).catch(() => {});
+}
+
+export function dayDeskArtworkReady(): boolean {
+  return day.decoded === true;
+}
+
+export function deskArtworkStyle(menu: DeskDestination | null, daylight: boolean): CSSProperties {
   if (!menu) return {};
   return Object.fromEntries(
-    artwork.map(({ property, loaded }) => [
+    [daylight ? day : night, matte].map(({ property, loaded }) => [
       property,
       loaded?.image.complete ? `url("${loaded.image.src}")` : undefined,
     ]),
