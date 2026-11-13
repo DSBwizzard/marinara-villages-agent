@@ -57,6 +57,7 @@ documents.set(documentId, {
   errors: {},
 });
 const initialDocument = structuredClone(documents.get(documentId));
+const looseFiles = ["loose.png", ...Array.from({ length: 100 }, (_, index) => `extra-${index}.png`)];
 const service = createSpriteSetup({
   villagesDocuments: () => ({
     getById: async (_pkg: string, key: string) => ({ data: structuredClone(documents.get(key)) }),
@@ -71,10 +72,10 @@ const service = createSpriteSetup({
     if (!url.endsWith("/catalog")) throw new Error(url);
     return {
       folders: [{ id: "full", name: "Full body", category: "full-body" }],
-      sprites: ["neutral.png", "happy.png", "happy-side.png", "happy-alt.png"].map((filename) => ({
+      sprites: ["neutral.png", "happy.png", "happy-side.png", "happy-alt.png", ...looseFiles].map((filename) => ({
         filename,
         label: filename,
-        folderId: "full",
+        folderId: looseFiles.includes(filename) ? null : "full",
         url: "/api/sprites/mara/file/" + filename + "?v=" + version,
       })),
     };
@@ -271,6 +272,40 @@ const portraitSave = await service.save(
 );
 assert.deepEqual(portraitSave.manager.assignments, folderSaved.manager.assignments);
 assert.deepEqual(portraitSave.manager.folders, folderSave.folders);
+const looseSave = {
+  ...folderSave,
+  token: portraitSave.token,
+  requestId: "no-folder",
+  folders: { front: "", side: "" },
+  expressions: [{ id: "new-happy", name: "loose", front: { filename: "loose.png", version } }],
+};
+await assert.rejects(
+  service.save(id, { ...looseSave, expressions: folderSave.expressions }, signal),
+  /Engine folders or labels changed/,
+);
+const looseSaved = await service.save(id, looseSave, signal);
+assert.deepEqual(looseSaved.manager.folders, looseSave.folders);
+assert.equal(looseSaved.manager.assignments[0].view, "front");
+assert.deepEqual((await service.settled(id)).manager, looseSaved.manager);
+const bothFacings = await service.save(
+  id,
+  {
+    ...looseSave,
+    token: looseSaved.token,
+    requestId: "same-loose-source",
+    defaultExpressionId: "new-front-0",
+    expressions: ["front", "side"].flatMap((view) =>
+      looseFiles.map((filename, index) => ({
+        id: `new-${view}-${index}`,
+        name: filename.replace(/\.png$/, ""),
+        [view]: { filename, version },
+      })),
+    ),
+  },
+  signal,
+);
+assert.equal(bothFacings.manager.assignments.length, 202);
+assert.equal(new Set(bothFacings.manager.assignments.map((row) => row.artworkId)).size, 101);
 console.log(
   "Appearance preserves legacy drafts, validates Engine folder selections, retries exact saves and fences resident changes.",
 );

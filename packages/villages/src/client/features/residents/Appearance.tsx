@@ -190,7 +190,7 @@ export function Appearance({
         return choice.expressions.filter((row) => choice.folders?.[view] === folder && row[view]);
       }
       return library.files
-        .filter((file) => folder && file.folderId === folder)
+        .filter((file) => (file.folderId ?? "") === folder)
         .map((file) => ({
           id: savedByFile.get(view + ":" + file.filename)?.id ?? "new-" + createVillagesClientId(),
           name:
@@ -212,8 +212,9 @@ export function Appearance({
   const pendingFilenames = new Set(
     choice.expressions.flatMap((row) => views.flatMap((view) => row[view]?.filename ?? [])),
   );
+  const rowLimit = choice.folders && !choice.folders.front && !choice.folders.side ? 400 : 200;
   const overLimit =
-    pendingFilenames.size > 200 || choice.expressions.length > (data?.manager.expressions.length ?? 0) + 200;
+    pendingFilenames.size > 200 || choice.expressions.length > (data?.manager.expressions.length ?? 0) + rowLimit;
   async function refreshFolders() {
     if (!data || working.current) return;
     working.current = true;
@@ -224,7 +225,11 @@ export function Appearance({
       if (!alive.current) return;
       setData({ ...data, files: library.files, folders: library.folders, libraryError: library.libraryError });
       const folders = choice.folders ?? suggestedFolders(library);
-      if (!library.libraryError && (choice.folders || folders.front || folders.side)) chooseFolders(folders, library);
+      if (
+        !library.libraryError &&
+        (choice.folders || folders.front || folders.side || library.files.some((file) => !file.folderId))
+      )
+        chooseFolders(folders, library);
     } catch (cause) {
       if (alive.current) setError(messageFrom(cause, "Could not refresh sprite folders."));
     } finally {
@@ -324,12 +329,7 @@ export function Appearance({
                 disabled={locked}
                 onClick={() => {
                   const folders = suggestedFolders(data);
-                  if (
-                    label === "Sprites" &&
-                    !choice.expressions.length &&
-                    !choice.folders &&
-                    (folders.front || folders.side)
-                  ) {
+                  if (label === "Sprites" && !choice.expressions.length && !choice.folders && !data.libraryError) {
                     chooseFolders(folders, data);
                   } else edit({ ...choice, useSprites: label === "Sprites" });
                 }}
@@ -355,7 +355,7 @@ export function Appearance({
                         )
                       }
                     >
-                      <option value="">None</option>
+                      <option value="">No folder</option>
                       {choice.folders?.[view] &&
                       !data.folders.some((folder) => folder.id === choice.folders?.[view]) ? (
                         <option value={choice.folders[view]}>Unavailable folder</option>
@@ -395,7 +395,7 @@ export function Appearance({
               </div>
               {data.libraryError ? <p role="alert">{data.libraryError}</p> : null}
               {!selectedGroup ? (
-                <p>Choose a folder with sprites.</p>
+                <p>No sprites in the selected sources.</p>
               ) : (
                 <div className="appearance-layout">
                   <div className="appearance-preview">

@@ -200,7 +200,7 @@ Day/night imagery is standard, with one image reused for AI-known constant light
 
 The map's artwork changes tint with Village time, leaving markers and controls readable. Morning begins at 05:00, daytime at 08:00, evening at 17:00 and night at 20:00 in the saved Village timezone, including daylight-saving changes. The server clock and saved development time advance govern presentation; the browser's local timezone does not. Active Scenes select their saved day/night background from the time admitted between exchanges, while concluded Scenes retain their captured presentation. Clock changes never request artwork.
 
-In **Appearance → Sprites**, choose the Engine **Front folder**, **Side folder**, or both. Review the thumbnails by expression and save. Use right-facing art in Side so Villages can mirror it to face left. Each folder can have its own number of variants. `happy_01`, `happy_blush` and `happy_pajamas_04` all appear under `happy`.
+In **Appearance → Sprites**, choose an Engine folder or **No folder** for Front and Side. **No folder** uses the sprites outside folders in the character’s Engine library. Review the thumbnails by expression and save. Use right-facing art in Side so Villages can mirror it to face left. Each facing can have its own number of variants. `happy_01`, `happy_blush` and `happy_pajamas_04` all appear under `happy`.
 
 Upload, rename, move, and edit sprites in the character’s Engine Sprites tab. Use **Refresh folders** to review changes in Villages before saving them. You can import up to 200 images per save. **Portrait** shows the card portrait and keeps the sprite selection for later.
 

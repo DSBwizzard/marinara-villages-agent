@@ -202,7 +202,9 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
       const copies = new Map<string, SpriteArtwork>();
       const rows: AppearanceExpression[] = [];
       const filenames = new Map<string, string>();
-      if (input.expressions.length > manager.expressions.length + 200)
+      const folderFiles = new Set<string>();
+      const rowLimit = folders && !folders.front && !folders.side ? 400 : 200;
+      if (input.expressions.length > manager.expressions.length + rowLimit)
         throw badRequest("Choose up to 200 new sprites at a time.");
 
       for (const value of input.expressions) {
@@ -235,11 +237,14 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
             next[view] = { artworkId };
           } else if (choice.artworkId === undefined && isEngineSpriteFilename(choice.filename)) {
             const version = asString(choice.version);
+            const facingFile = view + ":" + choice.filename;
             if (
               (version && !/^\d{1,20}$/.test(version)) ||
-              (filenames.has(choice.filename) && filenames.get(choice.filename) !== version)
+              (filenames.has(choice.filename) && filenames.get(choice.filename) !== version) ||
+              (folders && folderFiles.has(facingFile))
             )
               throw badRequest("Reopen the picker to choose the current sprite.");
+            folderFiles.add(facingFile);
             next[view] = { filename: choice.filename };
             filenames.set(choice.filename, version);
           } else throw badRequest("Choose an available sprite.");
@@ -266,7 +271,7 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
                   .slice(0, 100)
                   .trim() ||
                   "Sprite");
-              if (!folders[view] || file?.folderId !== folders[view] || row.name !== label)
+              if (!file || (file.folderId ?? "") !== folders[view] || row.name !== label)
                 throw conflict("Engine folders or labels changed. Refresh the sprite folders and review again.");
             }
           }

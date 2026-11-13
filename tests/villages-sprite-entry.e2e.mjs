@@ -39,6 +39,7 @@ await withBrowser(browser, async () => {
       { filename: "s1.png", label: "Grin_01", folderId: "side", url: picture(true, "#6192c3"), version: "100" },
       { filename: "s3.png", label: "Grin_pajamas_04", folderId: "side", url: picture(true, "#d49845"), version: "100" },
     ];
+    const loose = { filename: "unfiled.png", label: "Grin_wide", folderId: null, url: picture(false), version: "100" };
     const current = {
       revision: 0,
       token: "resident-0",
@@ -133,6 +134,7 @@ await withBrowser(browser, async () => {
     await screen.getByRole("button", { name: "Sprites", exact: true }).click();
     await expect(frontFolder).toHaveValue("front");
     await expect(sideFolder).toHaveValue("side");
+    await expect(frontFolder.getByRole("option", { name: "None", exact: true })).toHaveCount(0);
     await engineLink.click();
     const confirm = page.getByRole("dialog", { name: "Confirm" });
     await confirm.getByRole("button", { name: "Keep editing" }).click();
@@ -156,7 +158,7 @@ await withBrowser(browser, async () => {
     assert.equal(saves[0].expressions.filter((row) => row.name.toLowerCase() === "neutral").length, 3);
     await engineLink.click();
     assert.deepEqual(await page.evaluate(() => window.engineOpen), ["mara", { tab: "sprites" }]);
-    await frontFolder.selectOption("");
+    await frontFolder.selectOption({ label: "No folder" });
     await screen.getByRole("button", { name: "grin", exact: true }).click();
     await expect(front.getByRole("heading", { name: "Front · 0" })).toBeVisible();
     await expect(side.getByRole("heading", { name: "Side · 3" })).toBeVisible();
@@ -167,6 +169,19 @@ await withBrowser(browser, async () => {
     await entry.click();
     await expect(frontFolder).toHaveValue("front");
     await expect(sideFolder).toHaveValue("side");
+    files.push(loose);
+    await screen.getByRole("button", { name: "Refresh folders" }).click();
+    await frontFolder.selectOption({ label: "No folder" });
+    await sideFolder.selectOption({ label: "No folder" });
+    await expect(front.getByRole("img", { name: "Grin_wide · Front" })).toBeVisible();
+    await expect(side.getByRole("img", { name: "Grin_wide · Side" })).toBeVisible();
+    await screen.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(screen.getByRole("status")).toHaveText("Saved");
+    assert.deepEqual(saves[1].folders, { front: "", side: "" });
+    assert.deepEqual(
+      saves[1].expressions.map((row) => row.front?.filename ?? row.side?.filename),
+      [loose.filename, loose.filename],
+    );
     assert.deepEqual(errors, []);
     await page.close();
   }
