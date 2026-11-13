@@ -56,7 +56,7 @@ export type NarrationSourceContext = {
 };
 export type NarrationSourceOwner = { holder: ContinuityHolder; writeId: string; text: string; class: ContinuityClass };
 
-function ordinaryReplyLayout(raw: Record<string, unknown>, positions: boolean) {
+function ordinaryReplyLayout(raw: Record<string, unknown>, positions: boolean, quotes: boolean) {
   if (
     !Array.isArray(raw.segments) ||
     Object.keys(raw).some((key) => !["segments", "keep", "keeps", "effects"].includes(key))
@@ -86,7 +86,7 @@ function ordinaryReplyLayout(raw: Record<string, unknown>, positions: boolean) {
   const normalized = keep.map((value) => {
     const { kind, ...fields } = asRecord(value);
     if (kind !== "keep" || field !== "effects") return value;
-    const candidate = positions ? bindSceneSourcePositions({ segments, keep: [fields] }).keep : [fields];
+    const candidate = positions ? bindSceneSourcePositions({ segments, keep: [fields] }, quotes).keep : [fields];
     try {
       readContinuityProposal((candidate as unknown[])[0]);
       return fields;
@@ -105,7 +105,11 @@ function ordinaryReplyLayout(raw: Record<string, unknown>, positions: boolean) {
   };
 }
 
-function bindSceneSourcePositions(raw: Record<string, unknown>) {
+function bindSceneSourcePositions(
+  raw: Record<string, unknown>,
+  quotes: boolean,
+  directOffers?: NarrationReadset["recognizeDirectOfferSpeech"],
+) {
   if (!Array.isArray(raw.segments) || Object.hasOwn(raw, "commands")) return raw;
   const labels = raw.segments.map((value, index) => asRecord(value).id ?? "segment-" + index);
   const label = (position: unknown) =>
@@ -114,24 +118,67 @@ function bindSceneSourcePositions(raw: Record<string, unknown>) {
       : position;
   const resolveSources = (value: unknown) => {
     const row = asRecord(value);
-    if (!Array.isArray(row.source)) return value;
-    return {
-      ...row,
-      source: row.source.map((ref: unknown) => {
-        const source = asRecord(ref);
-        if (Object.hasOwn(source, "segment")) return { ...source, segment: label(source.segment) };
-        const ground = asRecord(source.ground);
-        const at = asRecord(ground.at);
-        const anchor = Object.keys(at)[0];
-        if (
-          Object.hasOwn(source, "input") &&
-          (anchor === "before" || anchor === "after") &&
-          Object.keys(at).length === 1
-        )
-          return { ...source, ground: { ...ground, at: { [anchor]: label(at[anchor]) } } };
-        return ref;
-      }),
-    };
+    const { source: citations, for: holders } = row;
+    if (!Array.isArray(citations)) return value;
+    let defaultHolders: unknown[] | undefined;
+    const sources = citations.map((ref: unknown) => {
+      const source = asRecord(ref);
+      if (quotes && typeof source.quote === "string" && source.quote.trim()) {
+        const { quote, speakerId, ...proof } = source;
+        if (!Object.keys(proof).every((key) => key === "act" || key === "perceive")) return ref;
+        const matches = (raw.segments as unknown[]).flatMap((value, index) => {
+          const line = asRecord(value);
+          return line.kind === "dialogue" &&
+            line.speakerId === speakerId &&
+            typeof line.text === "string" &&
+            line.text.includes(quote)
+            ? [{ label: labels[index], text: line.text }]
+            : [];
+        });
+        if (matches.length !== 1) return ref;
+        const [match] = matches;
+        const offer = asRecord(row.offer);
+        const omitHolders =
+          (directOffers === 4 || directOffers === 5) && !Object.hasOwn(row, "for") && !Object.hasOwn(row, "owner");
+        const soleProposer =
+          (directOffers === 3 || directOffers === 4 || directOffers === 5) &&
+          Array.isArray(holders) &&
+          holders.length === 1 &&
+          holders[0] === speakerId &&
+          row.owner === speakerId;
+        const start = match.text.indexOf(quote);
+        // A quoted label in an earlier sentence is separate from the actual offer.
+        const directSpeech =
+          directOffers === 5 && match.text.lastIndexOf(quote) === start && /[.!?]\s+$/u.test(match.text.slice(0, start))
+            ? match.text
+                .slice(0, start)
+                .replace(/(^|\s)'[\p{L}\p{N}-]{1,20}(?: [\p{L}\p{N}-]{1,20}){0,2}'(?=\s)/u, "$1") +
+              match.text.slice(start)
+            : match.text;
+        const declaredOffer =
+          (directOffers === 2 || directOffers === 3 || directOffers === 4 || directOffers === 5) &&
+          citations.length === 1 &&
+          (Object.keys(proof).length === 0 ||
+            (omitHolders && Object.keys(proof).length === 1 && proof.act === "offer")) &&
+          offer.proposer === speakerId &&
+          Array.isArray(offer.participants) &&
+          (omitHolders ||
+            soleProposer ||
+            (Array.isArray(holders) && offer.participants.every((party) => holders.includes(party)))) &&
+          !["replace", "parent", "accept", "closeOffer", "retire"].some((key) => Object.hasOwn(row, key)) &&
+          !/["“”«»‘]|(?:^|[^\p{L}\p{N}])'/u.test(directSpeech);
+        if (declaredOffer && omitHolders) defaultHolders = offer.participants as unknown[];
+        return { ...proof, segment: match.label, ...(declaredOffer ? { act: "offer" } : {}) };
+      }
+      if (Object.hasOwn(source, "segment")) return { ...source, segment: label(source.segment) };
+      const ground = asRecord(source.ground);
+      const at = asRecord(ground.at);
+      const anchor = Object.keys(at)[0];
+      if (Object.hasOwn(source, "input") && (anchor === "before" || anchor === "after") && Object.keys(at).length === 1)
+        return { ...source, ground: { ...ground, at: { [anchor]: label(at[anchor]) } } };
+      return ref;
+    });
+    return { ...row, ...(defaultHolders ? { for: defaultHolders } : {}), source: sources };
   };
   return {
     ...raw,
@@ -148,8 +195,114 @@ export function readSceneNarrationReply(
   continuity: ContinuityCollection,
 ) {
   const positions = readset.positionedSceneSources === true;
-  if (readset.ordinaryReplyRecovery) raw = ordinaryReplyLayout(raw, positions);
-  if (positions) raw = bindSceneSourcePositions(raw);
+  const quotes = readset.quotedSceneSources === true;
+  const format = readset.ordinaryFormatRecovery;
+  const recovery = format === 5 || format === 6 ? 4 : format;
+  const decorations = readset.stripSceneReplyDecorations;
+  const knownDecorations = decorations === true || decorations === 2 || decorations === 3 || decorations === 4;
+  if (
+    readset.recoverCodeMemoryEcho === true &&
+    readset.codeRequestedMemory === true &&
+    Array.isArray(raw.segments) &&
+    Object.keys(raw).every((key) => key === "segments" || key === "keep")
+  ) {
+    raw = {
+      ...raw,
+      segments: raw.segments.map((value: unknown) => {
+        const line = asRecord(value);
+        if (
+          line.kind !== "dialogue" ||
+          line.delivery !== "aside" ||
+          !Object.keys(line).every((key) => ["id", "kind", "speakerId", "text", "delivery"].includes(key))
+        )
+          return value;
+        const { delivery: _delivery, ...dialogue } = line;
+        return { ...dialogue, presentation: "aside" };
+      }),
+    };
+  }
+  if (
+    (decorations === 2 || decorations === 3 || decorations === 4) &&
+    Array.isArray(raw.segments) &&
+    raw.segments.every((row) => {
+      const { kind } = asRecord(row);
+      return kind === "dialogue" || kind === "narration";
+    })
+  ) {
+    if (raw.halt === null && Object.keys(raw).every((key) => key === "segments" || key === "halt")) {
+      const { halt: _halt, ...prose } = raw;
+      raw = prose;
+    } else if (
+      (decorations === 3 || decorations === 4) &&
+      typeof raw.leadSpeakerId === "string" &&
+      speakers.includes(raw.leadSpeakerId) &&
+      raw.segments.some((row) => {
+        const line = asRecord(row);
+        return line.kind === "dialogue" && line.speakerId === raw.leadSpeakerId;
+      }) &&
+      Object.keys(raw).every((key) => key === "segments" || key === "leadSpeakerId")
+    ) {
+      const { leadSpeakerId: _lead, ...prose } = raw;
+      raw = prose;
+    } else if (
+      decorations === 4 &&
+      raw._placeholder === "" &&
+      Object.keys(raw).every((key) => key === "segments" || key === "_placeholder")
+    ) {
+      const { _placeholder, ...prose } = raw;
+      raw = prose;
+    }
+  }
+  if (readset.ordinaryReplyRecovery) raw = ordinaryReplyLayout(raw, positions, quotes);
+  if (positions) raw = bindSceneSourcePositions(raw, quotes, readset.recognizeDirectOfferSpeech);
+  if (
+    (recovery === 3 || recovery === 4) &&
+    Array.isArray(raw.segments) &&
+    Object.keys(raw).every((key) => key === "segments" || key === "keep")
+  ) {
+    raw = {
+      ...raw,
+      segments: raw.segments.map((value: unknown) => {
+        const line = asRecord(value);
+        if (recovery === 4 && line.kind === "narration" && line.text_extra === "") {
+          const { text_extra: _extra, ...prose } = line;
+          return prose;
+        }
+        if (line.kind !== "dialogue") return value;
+        const normal =
+          recovery === 4 &&
+          (line.delivery === "normal" || (knownDecorations && line.delivery === null)) &&
+          !Object.hasOwn(line, "targetId");
+        if (!normal && line.truncated !== false) return value;
+        const normalized = { ...line };
+        if (line.truncated === false) delete normalized.truncated;
+        if (normal) delete normalized.delivery;
+        return normalized;
+      }),
+    };
+  }
+  if (readset.stripOfferContributionEcho === true && !Object.hasOwn(raw, "commands") && Array.isArray(raw.keep)) {
+    raw = {
+      ...raw,
+      keep: raw.keep.map((value: unknown) => {
+        const keep = asRecord(value);
+        const { contributions, ...offer } = asRecord(keep.offer);
+        const echo = Array.isArray(contributions) && contributions.length === 1 && asRecord(contributions[0]);
+        if (
+          !echo ||
+          echo.act !== "offer" ||
+          typeof offer.proposer !== "string" ||
+          echo.by !== offer.proposer ||
+          Object.keys(echo).length !== 2 ||
+          Object.hasOwn(keep, "replace") ||
+          Object.hasOwn(keep, "accept") ||
+          Object.hasOwn(keep, "closeOffer")
+        )
+          return value;
+        return { ...keep, offer };
+      }),
+    };
+  }
   if (Object.keys(raw).length !== 1 || !Array.isArray(raw.segments)) return readNarrationReply(raw, speakers);
   const {
     source: { historical, seed },
@@ -158,6 +311,47 @@ export function readSceneNarrationReply(
   const segments = raw.segments.map((value: unknown) => {
     const line = asRecord(value),
       source = line.source;
+    if (
+      knownDecorations &&
+      line.kind === "narration" &&
+      Object.keys(line).every((key) => ["kind", "text", "place"].includes(key)) &&
+      typeof line.place === "string" &&
+      /^by the \p{L}[\p{L} -]{0,39}$/iu.test(line.place)
+    ) {
+      const { place: _place, ...prose } = line;
+      return prose;
+    }
+    if (
+      (recovery === true || recovery === 2 || recovery === 3 || recovery === 4) &&
+      line.kind === "dialogue" &&
+      line.delivery === "aside" &&
+      !Object.hasOwn(line, "targetId") &&
+      !Object.hasOwn(line, "presentation") &&
+      !Object.hasOwn(line, "requires") &&
+      source === undefined
+    ) {
+      const { delivery: _delivery, ...prose } = line;
+      return { ...prose, presentation: "aside" };
+    }
+    if (
+      readset.stripSceneHistoryDecoration &&
+      line.kind === "dialogue" &&
+      line.requires === undefined &&
+      source === undefined &&
+      !line.delivery &&
+      !line.targetId &&
+      Object.hasOwn(line, "witnessedWords")
+    ) {
+      const { witnessedWords, ...prose } = line;
+      const annotation = asRecord(witnessedWords);
+      if (
+        typeof annotation.ref === "string" &&
+        (/^h:\d+\.\d+$/u.test(annotation.ref) ||
+          ((recovery === 2 || recovery === 3 || recovery === 4) && annotation.ref === "self")) &&
+        Object.keys(annotation).length === 1
+      )
+        return prose;
+    }
     if (line.kind !== "dialogue" || line.requires !== undefined || !Array.isArray(source) || source.length !== 1)
       return value;
     const [alias] = source;

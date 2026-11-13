@@ -379,9 +379,10 @@ await runCase("narration-writing/single-request", async () => {
   assert.equal(boundary.content, "## Current player submission");
   assert.deepEqual(submitted, { role: "user", content: exact });
   assert.match(reminder.content, /^## Scene reply reminder\nBegin with \{"segments":\[/u);
-  assert.match(reminder.content, /Dialogue and narration have no source field/u);
-  assert.match(reminder.content, /pastSpeaker and witnessedWords belong to input/u);
-  assert.match(reminder.content, /Count every current segment from 1/u);
+  assert.match(reminder.content, /Use only reply fields in dialogue and narration/u);
+  assert.match(reminder.content, /For a developed exchange, aim for about 500 words of visible prose/u);
+  assert.match(reminder.content, /count current segments from 1/u);
+  assert.match(reminder.content, /short exact quotes and speakerId/u);
   assert.equal(deepSeekReply.readset.positionedSceneSources, true);
   assert.equal(deepSeekReply.readset.source.input, exact);
   await deepSeek.writing.generate(deepSeek.scene, "", "greet");
@@ -407,18 +408,25 @@ await runCase("narration-writing/single-request", async () => {
     "chat",
   );
   const casualPrompt = casual.fitted.messages.map((row) => row.content).join("\n");
-  assert.match(casualPrompt, /explicit request to remember, an actual promise or offer/u);
+  assert.match(casualPrompt, /a request to remember or a lasting change/u);
+  assert.match(casualPrompt, /A commitment requires a specific future action someone explicitly promises to do/u);
+  assert.match(casualPrompt, /Keep each speaker’s proposal separate/u);
+  assert.match(casualPrompt, /Use only people in about/u);
+  assert.match(casualPrompt, /a single quote from the proposer heard by every party supplies the offer evidence/u);
+  assert.match(casualPrompt, /Other offer citations put act:"offer" inside the source entry/u);
   assert.doesNotMatch(
     casualPrompt,
     /mutual-offer decision|decision on a supplied open offer|Details for complex memory updates/u,
   );
   const remember = await f.writing.prepareVenueTurnMessages(f.scene, "Mara, please remember this: I knit.", "chat");
   assert.equal(remember.readset.requestedMemory?.recipientId, f.id);
+  assert.equal(remember.readset.codeRequestedMemory, true);
   const rememberPrompt = remember.fitted.messages
     .slice(0, -1)
     .map((row) => row.content)
     .join("\n");
-  assert.match(rememberPrompt, /"id":"remember-fact"/u);
+  assert.match(rememberPrompt, /Code records the exact requested fact/u);
+  assert.doesNotMatch(rememberPrompt, /"id":"remember-fact"/u);
   assert.doesNotMatch(rememberPrompt, /I knit/u);
 
   const legacy = fixture(undefined, "deepseek-flash");
@@ -440,11 +448,57 @@ await runCase("narration-writing/open-offer-guidance", async () => {
       {
         for: ["player", f.id],
         text,
-        offer: { proposer: f.id, participants: ["player", f.id] },
+        offer: { proposer: f.id, participants: ["player", f.id], contributions: [{ by: f.id, act: "offer" }] },
         source: [{ segment: "invite", act: "offer" }],
       },
     ],
   };
+  const withoutRecovery = { ...readset, stripOfferContributionEcho: undefined };
+  assert.equal(
+    acceptNarration(
+      structuredClone(f.state),
+      { raw, readset: withoutRecovery, responseDigest: memoryHash(raw) },
+      "offer-turn",
+      readset.capturedAt,
+    ).held,
+    true,
+  );
+  const contradictory = {
+    ...raw,
+    keep: [{ ...raw.keep[0], offer: { ...raw.keep[0].offer, contributions: [{ by: "player", act: "accept" }] } }],
+  };
+  assert.equal(
+    acceptNarration(
+      structuredClone(f.state),
+      { raw: contradictory, readset, responseDigest: memoryHash(contradictory) },
+      "offer-turn",
+      readset.capturedAt,
+    ).held,
+    true,
+  );
+  const noSpokenOffer = { ...raw, keep: [{ ...raw.keep[0], source: ["self"] }] };
+  assert.equal(
+    acceptNarration(
+      structuredClone(f.state),
+      { raw: noSpokenOffer, readset, responseDigest: memoryHash(noSpokenOffer) },
+      "offer-turn",
+      readset.capturedAt,
+    ).held,
+    true,
+  );
+  const unheardOffer = {
+    ...raw,
+    keep: [{ ...raw.keep[0], source: [{ segment: "invite", act: "offer", perceive: { kind: "words", by: [f.id] } }] }],
+  };
+  assert.equal(
+    acceptNarration(
+      structuredClone(f.state),
+      { raw: unheardOffer, readset, responseDigest: memoryHash(unheardOffer) },
+      "offer-turn",
+      readset.capturedAt,
+    ).held,
+    true,
+  );
   const result = acceptNarration(
     f.state,
     { raw, readset, responseDigest: memoryHash(raw) },
@@ -452,11 +506,54 @@ await runCase("narration-writing/open-offer-guidance", async () => {
     readset.capturedAt,
   );
   assert.equal(result.held, false, JSON.stringify(result.rejected));
+  f.nextOperation("accept-operation");
   const next = await f.writing.prepareVenueTurnMessages(f.scene, "Yes, I'll help paint the sign.", "chat");
   const prompt = next.fitted.messages.map((row) => row.content).join("\n");
-  assert.match(prompt, /For a decision on a supplied open offer/u);
+  assert.match(prompt, /Record an explicit decision on an open offer once/u);
   assert.match(prompt, /"offer":\{/u);
+  assert.match(prompt, /"contributions":\[\{"by":"[^"]+","act":"offer"\}\]/u);
   assert.match(prompt, /"accept":"player","source":\[\{"input":"Yes, I accept\."/u);
+  const aliases = Object.entries(next.readset.source.historical)
+    .filter(([, source]) => source.kind === "knowledge" && source.excerpt === text)
+    .map(([alias]) => alias);
+  assert.equal(aliases.length, 2);
+  const rawDecision = {
+    segments: [{ kind: "dialogue", speakerId: f.id, text: "See you there." }],
+    keep: aliases.map((replace) => ({
+      replace,
+      for: ["player", f.id],
+      accept: "player",
+      source: [
+        { input: "Yes, I'll help paint the sign.", ground: { kind: "spoken", to: [f.id, "player"] }, act: "accept" },
+      ],
+    })),
+  };
+  const collidingDecision = {
+    ...rawDecision,
+    keep: [...rawDecision.keep, { ...rawDecision.keep[0], id: "keep-1" }],
+  };
+  assert.throws(
+    () =>
+      acceptNarration(
+        structuredClone(f.state),
+        { readset: next.readset, raw: collidingDecision, responseDigest: memoryHash(collidingDecision) },
+        "accept-turn",
+        next.readset.capturedAt,
+      ),
+    /duplicate Scene effect identity/u,
+  );
+  const accepted = acceptNarration(
+    f.state,
+    { readset: next.readset, raw: rawDecision, responseDigest: memoryHash(rawDecision) },
+    "accept-turn",
+    next.readset.capturedAt,
+  );
+  assert.equal(accepted.held, false, JSON.stringify(accepted.rejected));
+  assert.equal(
+    f.state.continuity.records.find((row) => row.offer)?.offer?.events.filter((event) => event.act === "accept").length,
+    1,
+  );
+  assert.equal(rawDecision.keep.length, 2);
 });
 
 await runCase("narration-writing/circumstance-provenance", async () => {
@@ -1235,15 +1332,49 @@ await runCase("narration-writing/long-followup", async () => {
     "I remember.",
   );
   assert.deepEqual(selfAnnotated.segments[0].source, ["self"]);
+  const decoration = { ref: "h:1515.1" };
+  const witnessed = {
+    segments: [{ kind: "dialogue", speakerId: f.id, text: "I remember.", witnessedWords: decoration }],
+  };
+  assert.equal(
+    readSceneNarrationReply(witnessed, [f.id], reply.readset, f.state.continuity).segments[0].text,
+    "I remember.",
+  );
+  assert.deepEqual(witnessed.segments[0].witnessedWords, decoration);
+  const selfWitnessed = { segments: [{ ...witnessed.segments[0], witnessedWords: { ref: "self" } }] };
   assert.throws(
     () =>
       readSceneNarrationReply(
-        { segments: [{ kind: "dialogue", speakerId: f.id, text: "I remember.", witnessedWords: { ref: alias } }] },
+        selfWitnessed,
+        [f.id],
+        { ...reply.readset, ordinaryFormatRecovery: true },
+        f.state.continuity,
+      ),
+    /witnessedWords/u,
+  );
+  assert.equal(
+    readSceneNarrationReply(selfWitnessed, [f.id], reply.readset, f.state.continuity).segments[0].text,
+    "I remember.",
+  );
+  assert.throws(
+    () =>
+      readSceneNarrationReply(
+        { segments: [{ ...selfWitnessed.segments[0], witnessedWords: { ref: "self", by: ["player"] } }] },
         [f.id],
         reply.readset,
         f.state.continuity,
       ),
-    /witnessedWords/,
+    /witnessedWords/u,
+  );
+  assert.throws(
+    () =>
+      readSceneNarrationReply(
+        { segments: [{ ...witnessed.segments[0], witnessedWords: { ref: alias } }] },
+        [f.id],
+        reply.readset,
+        f.state.continuity,
+      ),
+    /witnessedWords/u,
   );
   assert.throws(
     () => readSceneNarrationReply({ ...selfAnnotated, keep: [] }, [f.id], reply.readset, f.state.continuity),
