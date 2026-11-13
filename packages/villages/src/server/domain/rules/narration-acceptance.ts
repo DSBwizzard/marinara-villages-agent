@@ -372,6 +372,7 @@ export function acceptNarrationContinuity(
         source,
         readset.ordinaryDialogue,
         readset.ordinaryReplyRecovery,
+        readset.recognizeDirectOfferSpeech,
       );
       const write = keep.write;
       if (

@@ -351,11 +351,15 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
     assert.deepEqual(f.state.continuity.records, []);
     assert.equal(f.state.episodes.records.length, held ? 0 : 1);
   }
-  for (const [recover, ref, text, held] of [
+  for (const [recover, ref, text, held, direct] of [
     [true, "reply", "Come to the bench and I'll show you.", false],
     [true, "reply", "No, I won't show you.", true],
     [true, "h:old", "Come to the bench and I'll show you.", true],
     [false, "reply", "Come to the bench and I'll show you.", true],
+    [true, "reply", "Then say the word and I'll walk you through.", false, true],
+    [true, "reply", "Then say the word and I'll walk you through.", true],
+    [true, "reply", "Then say the word and I'll never help you again.", true, true],
+    [true, "reply", '"Then say the word and I\'ll walk you through," she said.', true, true],
   ] as const) {
     const f = fixture();
     const p = f.publication({
@@ -372,6 +376,7 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
       ],
     });
     if (recover) p.readset.ordinaryReplyRecovery = true;
+    if (direct) p.readset.recognizeDirectOfferSpeech = true;
     const result = acceptNarrationContinuity(f.state, p, "offer", later);
     assert.equal(result.held, held);
     assert.equal(f.state.continuity.records[0]?.offer?.events[0].act, held ? undefined : "offer");
