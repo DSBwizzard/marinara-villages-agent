@@ -381,6 +381,8 @@ await runCase("narration-writing/single-request", async () => {
   assert.match(reminder.content, /^## Scene reply reminder\nBegin with \{"segments":\[/u);
   assert.match(reminder.content, /Dialogue and narration have no source field/u);
   assert.match(reminder.content, /pastSpeaker and witnessedWords belong to input/u);
+  assert.match(reminder.content, /Count every current segment from 1/u);
+  assert.equal(deepSeekReply.readset.positionedSceneSources, true);
   assert.equal(deepSeekReply.readset.source.input, exact);
   await deepSeek.writing.generate(deepSeek.scene, "", "greet");
   assert.deepEqual(deepSeek.formats, [undefined, { type: "json_object" }]);

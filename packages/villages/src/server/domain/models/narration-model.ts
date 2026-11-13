@@ -16,6 +16,7 @@ export type NarrationReadset = {
   readOnlyKnowledge?: ContinuityEvidence[];
   ordinaryDialogue?: true;
   ordinaryReplyRecovery?: true;
+  positionedSceneSources?: true;
   offered: AcceptedEpisode["offered"];
   npcCandidates: { npc: import("./places.js").NpcIdentity; incarnation: string; offered: string[] }[];
   circumstance: import("./narrative-model.js").NarrativeAdmission | null;

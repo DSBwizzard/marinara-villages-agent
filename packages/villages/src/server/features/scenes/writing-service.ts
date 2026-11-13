@@ -11,7 +11,7 @@ import { memoryHash, memoryRequire } from "../../domain/rules/memory-integrity.j
 import {
   narrationDirection,
   narrationResponse,
-  ORDINARY_SCENE_KEEP,
+  ordinarySceneKeep,
   SCENE_NARRATION_KEEP,
 } from "../../domain/rules/narration-contract.js";
 import { readModelJsonObject } from "../../domain/rules/json-reply.js";
@@ -210,9 +210,10 @@ export function createSceneWriting({
             ({ id, name }) => id === scene.placeId || placeQuery.includes(name.toLocaleLowerCase("en-US")),
           );
     const showAccess = context.access.length > 0 && (mode !== "chat" || sceneAccessDiscussed(scene, venue, input));
+    const positions = !nativeCommands && !context.memoryChange;
     const blocks = buildVenueSceneBlocks({
       direction: blocksFor([
-        narrationDirection(nativeCommands),
+        narrationDirection(nativeCommands, positions),
         scene.contactGeneration?.instruction ?? "",
         mode === "greet"
           ? "Open the Scene from established presence and give the player a natural opening. The player supplies any voluntary action or speech."
@@ -233,8 +234,8 @@ export function createSceneWriting({
         venueAdditionalWritingGuidance(village.narrationStyle),
       ]),
       metadata: blocksFor([
-        narrationResponse(nativeCommands),
-        nativeCommands ? SCENE_NARRATION_KEEP : ORDINARY_SCENE_KEEP,
+        narrationResponse(nativeCommands, positions),
+        nativeCommands ? SCENE_NARRATION_KEEP : ordinarySceneKeep(positions),
         nativeCommands ? NARRATION_NATIVE : "",
       ]),
       identity: blocksFor([
@@ -321,7 +322,11 @@ export function createSceneWriting({
       Math.min(model.maxOutputTokens ?? VENUE_REPLY_MAX_TOKENS, VENUE_REPLY_MAX_TOKENS),
       "Narration",
       plainJson
-        ? '## Scene reply reminder\nBegin with {"segments":[. Return one complete JSON object. End at the player’s opening. Dialogue and narration have no source field. Historical pastSpeaker and witnessedWords belong to input. Put new keeps in one top-level keep array. Cite the exact id you gave each current line. Close the object once.'
+        ? '## Scene reply reminder\nBegin with {"segments":[. Return one complete JSON object. End at the player’s opening. Dialogue and narration have no source field. Historical pastSpeaker and witnessedWords belong to input. Put new keeps in one top-level keep array. ' +
+            (positions
+              ? "Count every current segment from 1 when citing it. "
+              : "Cite the exact id you gave each current line. ") +
+            "Close the object once."
         : undefined,
     );
     if (loreInspection) {
@@ -343,7 +348,7 @@ export function createSceneWriting({
       fitted,
       readset: {
         ...fittedNarrationReadset(authority, context, fitted.evidenceIds),
-        ...(!nativeCommands && !context.memoryChange ? { ordinaryDialogue: true, ordinaryReplyRecovery: true } : {}),
+        ...(positions ? { ordinaryDialogue: true, ordinaryReplyRecovery: true, positionedSceneSources: true } : {}),
       },
       model: { model: model.model, connectionId: model.connectionId },
       // Plain transport lets local validation see replies that JSON mode can return as spaces.

@@ -219,6 +219,66 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
       assert.equal(result.episode?.continuityVersionIds.length, 2);
     }
   }
+  for (const [ref, positions, heard, held] of [
+    [2, true, true, false],
+    [2, true, false, true],
+    [2, false, true, true],
+    [0, true, true, true],
+    [3, true, true, true],
+    [1.5, true, true, true],
+    ["2", true, true, true],
+  ] as const) {
+    const f = fixture();
+    const text = "Come to the bench and I'll show you.";
+    const p = f.publication({
+      segments: [
+        { kind: "narration", text: "Mara puts the cloth down." },
+        { kind: "dialogue", speakerId: f.id, text },
+      ],
+      keep: [
+        {
+          ...f.keep,
+          for: [f.id, "player"],
+          class: "commitment",
+          text,
+          offer: { proposer: f.id, participants: [f.id, "player"] },
+          source: [{ segment: ref, act: "offer", ...(!heard ? { perceive: { kind: "words", by: [f.id] } } : {}) }],
+        },
+      ],
+    });
+    if (positions) p.readset.positionedSceneSources = true;
+    const original = structuredClone(p.raw);
+    const result = acceptNarrationContinuity(f.state, p, "position", later);
+    assert.equal(result.held, held);
+    assert.deepEqual(p.raw, original);
+    if (!result.held) {
+      const source = f.state.continuity.records[0].offer?.events[0].sources[0];
+      assert.equal(source?.unitId, result.episode?.segments[1].id);
+      assert.equal(source?.actorId, f.id);
+      assert.equal(acceptNarrationContinuity(f.state, p, "position", later).replayed, true);
+    }
+  }
+  for (const positions of [true, false]) {
+    const f = fixture();
+    const text = "Come to the bench and I'll show you.";
+    const p = f.publication({
+      segments: [{ kind: "dialogue", speakerId: f.id, text }],
+      effects: [
+        {
+          kind: "keep",
+          ...f.keep,
+          for: [f.id, "player"],
+          class: "commitment",
+          text,
+          offer: { proposer: f.id, participants: [f.id, "player"] },
+          source: [{ segment: 1, act: "offer" }],
+        },
+      ],
+    });
+    p.readset.ordinaryReplyRecovery = true;
+    if (positions) p.readset.positionedSceneSources = true;
+    assert.equal(acceptNarrationContinuity(f.state, p, "position-effects", later).held, !positions);
+  }
 });
 
 await runCase("narration-acceptance/inherited-private-context", () => {
